@@ -7760,3 +7760,145 @@ following the 2026-09-26 retirement policy of
 [#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
 [Predecessor retirement](#predecessor-retirement) lists what was retired and
 what stays desktop-only.
+
+## Pinned-message workflow journeys
+
+Suite `android.pinned-message-workflow` migrates the two pinned-workflow
+definitions of the unchanged predecessor
+`e2e/browser/journeys/conversations/pinned-message-workflow.spec.mts`
+(446 lines, SHA-256
+`ee52c7e30ba06c519d277e0009416e63f1c5239a98e56fe1a6187cb8d18620f2`, the
+issue's own pin at Git object `ee52c7e3…` read via `readRetiredPredecessor`
+from commit `dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf`) into one serial
+two-stage installed-Android Node/Maestro suite. The working tree hashes
+`f0a1f4be395c30c05bc71820aadf5fe719d0062654e9b83d115c35e2a2ed5ff7`, differing
+from the pinned bytes only at line 27, a `//` comment the #839 retirement
+edited. The two stages map to definition 193–290 (`pin-jump-unpin`) and
+definition 300–400 (`repeat-jump`); the guard also pins
+`e2e/support/app.mts`
+(`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`) and
+`e2e/support/account.mts`
+(`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`).
+
+The suite records 26 ordered, unique identities: 25 direct + 1 inherited (the
+action-sheet readiness of `openMessageActionSheet`, app line 220, reached
+from line 226).
+
+| Stage | Source line (helper@call) | Kind | Canonical assertion | Android parity identity |
+| --- | --- | --- | --- | --- |
+| `pin-jump-unpin` | 212 | direct | Timeline visible | `pinned-message-workflow.pin-jump-unpin.timeline-visible` |
+| `pin-jump-unpin` | 220 (openMessageActionSheet@226) | inherited | Message-actions sheet visible with sheet-pin | `pinned-message-workflow.pin-jump-unpin.sheet-ready` |
+| `pin-jump-unpin` | 237 | direct | Overflow pin badge reads 1 | `pinned-message-workflow.pin-jump-unpin.badge-one` |
+| `pin-jump-unpin` | 241 | direct | Pinned messages heading visible | `pinned-message-workflow.pin-jump-unpin.panel-heading-visible` |
+| `pin-jump-unpin` | 246 | direct | Target pin row visible | `pinned-message-workflow.pin-jump-unpin.pin-row-visible` |
+| `pin-jump-unpin` | 247 | direct | Pin row body contains the target text | `pinned-message-workflow.pin-jump-unpin.pin-row-body` |
+| `pin-jump-unpin` | 263 | direct | Jump flashes the target row once | `pinned-message-workflow.pin-jump-unpin.jump-flash` |
+| `pin-jump-unpin` | 267 | direct | Panel closed by the jump | `pinned-message-workflow.pin-jump-unpin.panel-closed-by-jump` |
+| `pin-jump-unpin` | 271 | direct | Target row in the viewport | `pinned-message-workflow.pin-jump-unpin.target-in-viewport` |
+| `pin-jump-unpin` | 275 | direct | Panel reopened | `pinned-message-workflow.pin-jump-unpin.panel-reopened` |
+| `pin-jump-unpin` | 284 | direct | Empty panel copy visible and exact | `pinned-message-workflow.pin-jump-unpin.empty-copy-visible` |
+| `pin-jump-unpin` | 289 | direct | No pin badge remains | `pinned-message-workflow.pin-jump-unpin.badge-cleared` |
+| `repeat-jump` | 321 | direct | Timeline visible | `pinned-message-workflow.repeat-jump.timeline-visible` |
+| `repeat-jump` | 354 | direct | Last filler row in the viewport | `pinned-message-workflow.repeat-jump.last-filler-in-viewport` |
+| `repeat-jump` | 355 | direct | Target row rendered and offscreen | `pinned-message-workflow.repeat-jump.target-offscreen` |
+| `repeat-jump` | 365 | direct | First heading visible | `pinned-message-workflow.repeat-jump.first-heading-visible` |
+| `repeat-jump` | 366 | direct | First pin row visible | `pinned-message-workflow.repeat-jump.first-pin-row-visible` |
+| `repeat-jump` | 369 | direct | First jump flashes the target row once | `pinned-message-workflow.repeat-jump.first-flash` |
+| `repeat-jump` | 376 | direct | Panel closed by the first jump | `pinned-message-workflow.repeat-jump.first-panel-closed` |
+| `repeat-jump` | 377 | direct | Target row in the viewport after the first jump | `pinned-message-workflow.repeat-jump.first-target-in-viewport` |
+| `repeat-jump` | 384 | direct | Target row rendered and offscreen at latest | `pinned-message-workflow.repeat-jump.target-offscreen-at-latest` |
+| `repeat-jump` | 391 | direct | Second heading visible | `pinned-message-workflow.repeat-jump.second-heading-visible` |
+| `repeat-jump` | 392 | direct | Second pin row visible | `pinned-message-workflow.repeat-jump.second-pin-row-visible` |
+| `repeat-jump` | 395 | direct | Second jump flashes the target row once, independent of the first | `pinned-message-workflow.repeat-jump.second-flash` |
+| `repeat-jump` | 398 | direct | Panel closed by the second jump | `pinned-message-workflow.repeat-jump.second-panel-closed` |
+| `repeat-jump` | 399 | direct | Target row in the viewport after the second jump | `pinned-message-workflow.repeat-jump.second-target-in-viewport` |
+
+REST arranges every Account, Room, message and pinned state through the
+shared fixtures, read back before any UI step. `pin-jump-unpin` seeds one
+Room with two messages and no server pins; `repeat-jump` seeds one Room with
+two messages already pinned to the target. Maestro owns sign-in, Room
+opening, the native long-press on the target row, its message-action sheet's
+`sheet-pin`, the toolbar overflow button and its "Pinned messages" item, each
+native jump on the pinned item, the `jump-to-latest` pill and the native
+unpin and close taps. The Pixel 5 profile is applied at launch, and reduced
+motion is checked before any tap. Thirty-two live fillers are sent
+sequentially, after the Room is open, before `repeat-jump`'s flood is
+observed. Every wait window starts at the event it waits for, never before a
+native tap or REST send; server polls measure their remaining bound from the
+tap's own return time.
+
+Before any UI step the suite registers the Account (user id, username and
+password), the Room id and name, every run-bearing text and transaction id
+(including all 32 filler bodies and transaction ids, known from `run` in
+advance) and every event id as it becomes known. The shared strict scrub and
+fail-closed scan cover every registered form, plus every raw Matrix Room- and
+event-id shape, and delete every raster; the gated
+`android-pinned-message-workflow` upload runs only once the scan marks the
+run `publication-safe`. Records hold counts, booleans, labels, measured
+numbers and digests only, never row or filler text. Failure text rethrown to
+the job log keeps only error names and first message lines: Node appends an
+assertion's actual and expected values to its message, so
+`redactStageFailure` keeps just the first line, and every registered value
+and Matrix identifier shape is redacted from what remains; a failed teardown
+step is rethrown through `redactStageFailure`, and a failed guarded cleanup
+is rethrown through `redactCleanupFailure`, never as the raw error.
+
+Documented reinterpretations of the predecessor:
+
+- **Toolbar pinned control (240, 274, 364, 390).** At Pixel 5 the desktop
+  `open-pinned` button is `max-md:hidden`. The suite taps the toolbar
+  overflow button and its "Pinned messages" item, both calling
+  `openPinnedPanel()`, as #756 ruled. A receipt proves `open-pinned` is
+  hidden.
+- **Pin badge (237, 289).** The observed badge is the visible
+  `header-pin__badge` on the overflow button, the product's phone badge.
+  Every badge in the document must agree, and "cleared" means none remains.
+- **Action sheet (226–227).** Playwright's synthetic touch long press becomes
+  a native Maestro long press on the reconciled row. `sheet-pin` is tapped
+  natively.
+- **Return to latest (381–383).** The renderer `scrollTo` becomes a native tap
+  on the production `jump-to-latest` pill, failing closed if it never
+  appears.
+- **Flash (263, 369, 395).** The class is captured passively from the jump's
+  own trusted click, not by polling after the tap. The 1.5 s bound is kept,
+  on the renderer clock, between the click and the class. The class must
+  also self-clear.
+- **Offscreen (355, 384).** "Not in viewport" requires the row to be rendered.
+  The stage-2 jumps additionally prove the target offscreen at the moment of
+  their own trusted click.
+- **Server convergence.** The predecessor trusts the UI. Fail-closed receipts
+  read Synapse's `m.room.pinned_events` after the native pin and the native
+  unpin, and the fillers after the flood.
+- **REST login and Account naming (64–83, 96–97, 147–148).** The shared
+  fixture's session and namespaced Account replace the predecessor's separate
+  password login and `pin-reader-<run>`/`reader-pass-<run>`.
+- **Visibility and bounds.** Visible means one element with a non-empty box
+  and `visibility: visible`. The predecessor's 10 s and 15 s bounds become
+  20 s. Every window is anchored after its event.
+- **Identity without identifiers.** Rooms are opened by exact name, and rows
+  and pin items are found by body. No selector or wait description carries an
+  event or Room id.
+- **Desktop definition excluded (known limitation).** "the panel takes its
+  own width, and only offers a divider where one means something"
+  (402–445) compares the 1280 px member column and divider with a
+  programmatically resized 1000 px viewport. It is not an Android claim and
+  stays with the predecessor, which remains canonical for it.
+- **Desktop pin path (known limitation).** The hover `⋯` menu
+  (`clickRowMenuItem`, `msg-pin`) and the desktop `open-pinned` button are not
+  exercised on Android.
+- **Flash latency on the renderer clock (known limitation).** The 1.5 s bound
+  is measured between two renderer timestamps, not from the native gesture's
+  start, which Maestro does not report.
+
+```bash
+pnpm nx run trinity-e2e-android:pinned-message-workflow --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:pinned-message-workflow
+```
+
+The uncached serial target owns `android-avd` and `synapse`: one attempt and
+zero retries, with a 15-minute Node test and a 20-minute CI wrapper. Shard 4
+runs it last, after message-unread.
+
+Predecessor status: enabled; the coordinator retires the two migrated
+definitions after hosted acceptance; definition 402–445 stays.

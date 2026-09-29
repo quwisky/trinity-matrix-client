@@ -69,6 +69,7 @@ const ANDROID_NATIVE_PLACEMENT = [
   ['message-unread', 4, 'message-unread', 1_200_000],
   ['oidc-login', 4, 'oidc-login', 1_500_000],
   ['password-registration', 4, 'password-registration', 1_200_000],
+  ['pinned-message-workflow', 4, 'pinned-message-workflow', 1_200_000],
   ['recovery-reset', 4, 'recovery-reset', 3_000_000],
   ['room-settings-mobile', 4, 'room-settings-mobile', 1_200_000],
   ['security-settings', 4, 'security-settings', 1_200_000],

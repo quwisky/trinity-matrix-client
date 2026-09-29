@@ -558,6 +558,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.pinned-message-panel'],
   },
   {
+    name: 'e2e:android:pinned-message-workflow',
+    command: 'nx run trinity-e2e-android:pinned-message-workflow',
+    kind: 'canonical',
+    suiteIds: ['android.pinned-message-workflow'],
+  },
+  {
     name: 'e2e:android:message-spoiler',
     command: 'nx run trinity-e2e-android:message-spoiler',
     kind: 'canonical',
@@ -1184,6 +1190,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "4" ]; then echo \'message-unread-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-unread; fi',
     tier: 'pull-request',
     suiteIds: ['android.message-unread'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'pinned-message-workflow-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:pinned-message-workflow; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.pinned-message-workflow'],
   },
   {
     command: 'pnpm e2e:scheduled',
