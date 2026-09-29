@@ -353,6 +353,7 @@ authorize retirement, describe that time.
 | `conversations/message-spoiler.spec.mts` | #753 | file deleted | — |
 | `conversations/message-swipe.spec.mts` | #754 | file deleted | — |
 | `conversations/message-unread.spec.mts` | #755 | file deleted | — |
+| `conversations/pinned-message-panel.spec.mts` | #756 | file deleted | — |
 
 ## Native shell, Back and Appearance batch
 

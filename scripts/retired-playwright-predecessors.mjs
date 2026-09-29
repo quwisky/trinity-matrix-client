@@ -891,6 +891,14 @@ export const RETIRED_PREDECESSORS = Object.freeze([
     retired: ['shows a divider and a jump pill for unread messages'],
     desktopOnly: [],
   },
+  {
+    path: 'e2e/browser/journeys/conversations/pinned-message-panel.spec.mts',
+    sha256: 'd30470d1c2129818a096aefdf50768d31c4eae995ce17b5300e69afc696d56c0',
+    issues: [756],
+    deleted: true,
+    retired: ['lists pinned messages and unpins one in place'],
+    desktopOnly: [],
+  },
 ]);
 
 if (
