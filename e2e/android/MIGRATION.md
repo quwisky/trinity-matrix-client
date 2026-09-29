@@ -7728,5 +7728,31 @@ retries in invocation `mulxfwqi-585dc486-cb28-485e-8577-27d742fdabe0` (one
 test in 5.259 seconds; 6.538-second suite); the predecessor file is
 unchanged, so this retry-0 result still stands.
 
-Predecessor status: enabled; the coordinator retires it after hosted
-acceptance.
+Accepted at `7a9dc76f`. Hosted run 36509840358 ran on head `eb49eb26`
+(merge sha `eb49eb26cb5ff71de6df6b2e56779fa25dc53cfa`). Android shard 3 ran
+`android.pinned-message-panel` as invocation `mum3luy2`: 1/1 stage, 12/12
+assertion records, attempt 1, zero retries and a 94.7 s stage; settled
+geometry held equal 56 px headers with a 12 px title inset, and the hold
+recorded 5 reads over 2056 ms. The shard-3 job took 87 min against s1 81,
+s2 64, s4 75 and s5 77. Shard 6 failed on the unrelated
+`space-settings-core` suite's `address-via-enter`, a suspected
+shared-harness IME/Back race tracked in #665, with a re-run pending; that
+failure does not touch this suite, and the #756 evidence comes from shard
+3's original attempt, which the acceptance policy allows. The unchanged
+predecessor ran in the same run's canonical browser job as invocation
+`mum1cimr`: 1 test, passed on its single attempt, retry 0. A leak audit
+over all 80 artifacts (13,066 files, nested zips extracted) found 0
+Room-id and 0 event-id shapes in any Android artifact and 0 `syt_`
+tokens, 0 Bearer values and 0 password values in any artifact; the only
+id shapes are in the browser blob report, which keeps Room and event ids
+by the 2026-09-27 decision. The predecessor file is byte-identical at
+`dd0cb53c` and HEAD (blob
+`dbeec6983fcf62ec283bcd7725afed57e5852aca`), so it stays pinned at the
+existing `RETIRED_PREDECESSOR_COMMIT`; no new fetch is needed.
+
+Predecessor status: retired on 2026-09-29 under
+[#756](https://github.com/quwisky/trinity-matrix-client/issues/756),
+following the 2026-09-26 retirement policy of
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
