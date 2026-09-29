@@ -3645,7 +3645,9 @@ describe('Android pinned-message-workflow hosted wiring and parity ledger', () =
       'a failed teardown step is rethrown through `redactStageFailure`, and a failed guarded cleanup is rethrown through `redactCleanupFailure`, never as the raw error.',
     );
     expect(flat).toContain('402–445');
-    expect(flat).toContain('Shard 4 runs it last, after message-unread.');
+    expect(flat).toContain(
+      'Shard 4 runs it last, after message-unread; its budget comment adds the 6-minute local run time (about 85 native minutes of the 240-minute job).',
+    );
     expect(section).not.toContain('pnpm exec nx');
   });
 });
