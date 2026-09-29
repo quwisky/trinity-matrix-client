@@ -7483,7 +7483,8 @@ message lines: Node appends an assertion's actual and expected values to its
 message even when a custom message is given, so `redactStageFailure` keeps
 just the first line, and every registered value and Matrix identifier shape
 is redacted from what remains; a failed local teardown step is rethrown the
-same way through `redactCleanupFailure`, never as the raw error.
+same way through `redactStageFailure`, and a failed guarded cleanup is
+rethrown through `redactCleanupFailure`, never as the raw error.
 
 Documented reinterpretations of the predecessor:
 
@@ -7645,6 +7646,7 @@ keeps only error names and first message lines: Node appends an assertion's
 actual and expected values to its message, so `redactStageFailure` keeps
 just the first line, and every registered value and Matrix identifier shape
 is redacted from what remains; a failed teardown step is rethrown through
+`redactStageFailure`, and a failed guarded cleanup is rethrown through
 `redactCleanupFailure`, never as the raw error.
 
 Documented reinterpretations of the predecessor:
@@ -7675,7 +7677,8 @@ Documented reinterpretations of the predecessor:
   carries an event or Room id.
 - **Desktop path not exercised (known limitation).** The desktop
   `open-pinned` button and the side-column layout are not exercised on
-  Android; the predecessor covers them until its retirement.
+  Android; the predecessor covers them until its retirement, and the gap is
+  accepted as lost under the #839 policy until #661.
 - **Safe-area growth not exercised (known limitation).**
   `env(safe-area-inset-top)` is 0 under the emulated profile, so the panel
   header's growth on a notched device is not exercised.

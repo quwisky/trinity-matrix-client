@@ -1,8 +1,8 @@
 # Android Pinned-Message Panel Maestro Migration Design
 
 - Issue: #756, part of #660
-- Status: Proposed; the open questions below await the coordinator's rulings
-- Branch: local `wip/756-pinned-panel` at `854d9898` (head of PR #677); PR #677 stays draft and unmerged
+- Status: Accepted; the coordinator's rulings on the open questions below are recorded in the SDD progress ledger's pre-flight scan
+- Branch: local `wip/756-pinned-panel`, rebased onto `4e418d20` (#755 close-out, head of PR #677); PR #677 stays draft and unmerged
 
 This document records the design for the installed-Android
 `android.pinned-message-panel` suite. Implementation and acceptance evidence
@@ -552,7 +552,7 @@ For each control, the guard must fail when its protection is removed:
    artifact, the browser artifact and the renderer artifact, then retires the
    predecessor and updates the parent ledger.
 
-## Open questions for the coordinator
+## Open questions for the coordinator, with rulings
 
 1. **The toolbar control at Pixel 5.** The issue says "tap the toolbar pinned
    control". At the production profile that control (`open-pinned`) is
@@ -567,6 +567,13 @@ For each control, the guard must fail when its protection is removed:
    keeps the choice honest. Option (b) would test a layout no Android phone
    renders.
 
+   **Ruling: (a), the overflow path** (`room-actions-overflow` →
+   `overflow-open-pinned`) at Pixel 5, with a check that `open-pinned` stays
+   hidden. The production profile is Pixel 5 (same as #755 Q1), and the probe
+   proved the toolbar control has no box at 393 px. If wrong, one
+   reinterpretation changes and the desktop button stays covered only by the
+   predecessor until #661.
+
 2. **Pinned-state fixture.** The alternatives are:
    - (a) add `'m.room.pinned_events'` to the shared `WorkspaceRoomStateEventType`
      union and reuse `setRoomState` and `roomState` (a one-line, type-only
@@ -580,23 +587,49 @@ For each control, the guard must fail when its protection is removed:
    `m.room.encryption` is present). This breaks #755's "no shared source
    changes" precedent, which is why it is asked.
 
+   **Ruling: (a).** One-line type-only change beats about 150 lines of
+   duplicate fixture; no guard pins the union's full member list, and the
+   full `scripts:test` covers every reader. If wrong, a guard in another
+   suite needs a line update.
+
 3. **Rendered pin order.** The predecessor asserts only the count. The issue's
    negative controls include "exact pin order". **Recommendation:** keep
    record 2 count-only (faithful) and prove the rendered order `[unpin, keep]`
    in a fail-closed receipt. The published order is proved separately by the
    arrangement read-back.
+
+   **Ruling: accepted.** Record 2 stays a count, as the predecessor; the
+   rendered order `[unpin, keep]` is a separate stage-failing receipt.
+   Faithful to the source, stricter in practice. If wrong, one receipt reads
+   as extra.
+
 4. **Shard.** **Recommendation: shard 3**, last after `message-spoiler`. It
    has 102 minutes of headroom against shard 4's 101, and it had the shortest
    hosted job in run 36436865291. The #755 spec called shard 3 "nearly full".
    The budget figures do not support that, so please confirm. If the
    recommendation is wrong, one `ci.yml` line moves to shard 4.
+
+   **Ruling: shard 3**, last after `message-spoiler` — budget 78 of 240, the
+   most headroom; the hosted shard-3 job ran 90 minutes in run 36454318595.
+   If wrong, one `ci.yml` line moves after the hosted measurement.
+
 5. **Retirement scope.** Retiring the predecessor ends end-to-end coverage of
    the desktop `open-pinned` button and the side-column layout. Under the
    #839 policy, implicit web-only paths were accepted as lost until #661.
    **Recommendation:** retire the whole file on hosted acceptance, and record
    the desktop path under the MIGRATION known limitations and the retirement
    table. The alternative is to keep it desktop-only and skip it on Android.
+
+   **Ruling: retire the whole predecessor file on hosted acceptance**, per
+   the #839 policy; the desktop `open-pinned` button and the side-column
+   layout become a known limitation until #661. If wrong, there is a desktop
+   coverage gap until #661.
+
 6. **Held negative claims.** Records 10–12 hold for 2 s rather than passing
    on the first read. **Recommendation: keep the hold.** The issue asks to
    prove the panel "stays open", and #754 set this precedent for negative
    claims.
+
+   **Ruling: keep the hold.** Records 10–12 hold on every read for 2 s and
+   never pass on a closed or empty panel, following the #754 precedent. If
+   wrong, about 2 s extra per run.
