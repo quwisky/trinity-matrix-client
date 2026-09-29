@@ -63,7 +63,7 @@ export type PinnedWorkflowHelper = keyof typeof PINNED_WORKFLOW_HELPERS;
 
 /** The desktop `else` branch's helper: reached only from 229, never expanded here. */
 export const PINNED_WORKFLOW_EXCLUDED = [
-  { helper: 'clickRowMenuItem', module: 'e2e/support/app.mts', line: 207, call: 229, reason: 'desktop else branch' },
+  { helper: 'clickRowMenuItem', module: 'e2e/support/app.mts', line: 206, call: 229, reason: 'desktop else branch' },
 ] as const;
 
 /**

@@ -487,7 +487,7 @@ describe('Android pinned-message-workflow helper expansion by binding', () => {
       {
         helper: 'clickRowMenuItem',
         module: 'e2e/support/app.mts',
-        line: 207,
+        line: 206,
         call: 229,
         reason: 'desktop else branch',
       },
@@ -504,6 +504,16 @@ describe('Android pinned-message-workflow helper expansion by binding', () => {
       expandDefinition(source, STAGES[1].span).length;
     expect(naive).toBe(27);
     expect(naive).not.toBe(contract.PINNED_WORKFLOW_ASSERTION_RECORDS);
+  });
+
+  it('derives the excluded clickRowMenuItem line from the AST of the pinned app.mts, not by hand', async () => {
+    const contract = await loadContract();
+    const lines = helperExpectLines(
+      'e2e/support/app.mts',
+      'clickRowMenuItem',
+    ).map((entry) => entry.line);
+    expect(lines).toEqual([206]);
+    expect(contract.PINNED_WORKFLOW_EXCLUDED[0].line).toBe(lines[0]);
   });
 
   it('matches the contract sites, identities and helper table exactly', async () => {
