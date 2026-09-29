@@ -4,7 +4,7 @@ import decodeQr from 'qr/decode.js';
 
 /** RGB or RGBA pixels which may contain a QR code. */
 export interface QrCodeFrame {
-  readonly data: Uint8Array | Uint8ClampedArray | number[];
+  readonly data: Uint8Array | Uint8ClampedArray;
   readonly width: number;
   readonly height: number;
 }

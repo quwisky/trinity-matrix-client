@@ -1,5 +1,10 @@
 import { Injectable, inject } from '@angular/core';
-import { EventType } from 'matrix-js-sdk';
+import {
+  EventType,
+  M_POLL_END,
+  M_POLL_RESPONSE,
+  M_POLL_START,
+} from 'matrix-js-sdk';
 import { Observable, defer, from, map, of, switchMap, throwError } from 'rxjs';
 import { MediaService, type ImagePackImage } from '@trinity/data-access/media';
 import { type VoiceRecording } from '@trinity/platform-native';
@@ -161,7 +166,7 @@ export class TimelineActionsService {
       return from(
         ctx.client.sendEvent(
           ctx.room.roomId,
-          'm.poll.start' as never,
+          M_POLL_START.name as never,
           pollStartContent(question.trim(), clean) as never,
         ),
       );
@@ -178,7 +183,7 @@ export class TimelineActionsService {
       return from(
         ctx.client.sendEvent(
           ctx.room.roomId,
-          'm.poll.response' as never,
+          M_POLL_RESPONSE.name as never,
           pollResponseContent(pollId, answerId) as never,
         ),
       );
@@ -195,7 +200,7 @@ export class TimelineActionsService {
       return from(
         ctx.client.sendEvent(
           ctx.room.roomId,
-          'm.poll.end' as never,
+          M_POLL_END.name as never,
           pollEndContent(pollId) as never,
         ),
       );

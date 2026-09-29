@@ -44,6 +44,9 @@ All notable changes to this project are documented here. The format is based on
 - Keep grouped message timestamps from taking over touch long-press selection while
   preserving the message body and links, so Android message actions open from row padding.
 
+- Polls created in Trinity, and votes and closures cast in it, now appear in FluffyChat
+  and other clients that read only the MSC3381 poll event types.
+
 - Keep Renovate's repository configuration schema-valid so dependency processing reaches
   extraction instead of aborting on an explanatory, unsupported option.
 

@@ -186,26 +186,62 @@ describe('poll content builders', () => {
       'Apple',
       'Pear',
     ]) as Record<string, Record<string, unknown>>;
-    const start = content['m.poll.start'];
-    expect(start['kind']).toBe('m.poll.disclosed');
+    // Unstable namespace: FluffyChat (matrix-dart-sdk) only parses MSC3381/MSC1767 keys.
+    const start = content['org.matrix.msc3381.poll.start'];
+    expect(start['kind']).toBe('org.matrix.msc3381.poll.disclosed');
     expect(start['max_selections']).toBe(1);
+    expect(start['question']).toEqual({
+      'org.matrix.msc1767.text': 'Best fruit?',
+      body: 'Best fruit?',
+    });
     expect(start['answers']).toEqual([
-      { id: 'a0', 'm.text': 'Apple', body: 'Apple' },
-      { id: 'a1', 'm.text': 'Pear', body: 'Pear' },
+      { id: 'a0', 'org.matrix.msc1767.text': 'Apple', body: 'Apple' },
+      { id: 'a1', 'org.matrix.msc1767.text': 'Pear', body: 'Pear' },
     ]);
-    expect(content['m.text']).toContain('Best fruit?');
+    expect(content['org.matrix.msc1767.text']).toContain('Best fruit?');
+  });
+
+  it('projects a poll it built itself, tallying a vote it built itself', () => {
+    const start = {
+      getId: () => POLL_ID,
+      getType: () => 'org.matrix.msc3381.poll.start',
+      getContent: () => pollStartContent('Lunch?', ['Pizza', 'Sushi']),
+    } as unknown as MatrixEvent;
+    const vote = {
+      getSender: () => '@me:hs',
+      getTs: () => 1,
+      isRedacted: () => false,
+      getContent: () => pollResponseContent(POLL_ID, 'a1'),
+    } as unknown as MatrixEvent;
+    const unstableRoom = {
+      relations: {
+        getChildEventsForEvent: (_id: string, _rel: string, type: string) =>
+          type === 'org.matrix.msc3381.poll.response'
+            ? { getRelations: () => [vote] }
+            : undefined,
+      },
+    } as unknown as Room;
+
+    expect(isPollStart(start)).toBe(true);
+    const view = buildPollView(client, unstableRoom, start);
+    expect(view.question).toBe('Lunch?');
+    expect(view.options).toEqual([
+      { id: 'a0', text: 'Pizza', votes: 0, chosen: false },
+      { id: 'a1', text: 'Sushi', votes: 1, chosen: true },
+    ]);
   });
 
   it('builds a response referencing the poll', () => {
+    // Unstable namespace: FluffyChat (matrix-dart-sdk) and Element only read MSC3381 keys.
     expect(pollResponseContent('$p', 'a1')).toEqual({
-      'm.poll.response': { answers: ['a1'] },
+      'org.matrix.msc3381.poll.response': { answers: ['a1'] },
       'm.relates_to': { rel_type: 'm.reference', event_id: '$p' },
     });
   });
 
   it('builds an end event referencing the poll', () => {
     const content = pollEndContent('$p') as Record<string, unknown>;
-    expect(content['m.poll.end']).toEqual({});
+    expect(content['org.matrix.msc3381.poll.end']).toEqual({});
     expect(content['m.relates_to']).toEqual({
       rel_type: 'm.reference',
       event_id: '$p',
