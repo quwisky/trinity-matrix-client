@@ -7694,17 +7694,20 @@ zero retries, with a 15-minute Node test and a 20-minute CI wrapper. Shard 3
 runs it last, after message-spoiler; its budget comment adds the 3-minute
 local run time (about 81 native minutes of the 240-minute job).
 
-Accepted locally at `4fb55c7f`. Local acceptance used the unchanged Pixel 5
-API 36 profile with SHA-256
+Accepted locally at `7a9dc76f`, the final-review fix wave (I1–I3, M1–M5:
+a guarded teardown call, a server-convergence window guard, a hold loop
+that now reads until the last read is itself at least 2 s after the first,
+and small wording and documentation corrections). Local acceptance used the
+unchanged Pixel 5 API 36 profile with SHA-256
 `3bacc567648982dd6b92b0e62b085908ad33cdced196ac6776d397a3a5d65157`,
 production renderer manifest SHA-256
-`9e0fbc333dec6f17ae391e22670b7f43054b87f1ae950f6c9d6918cbcdfba1ba` and debug
-APK SHA-256 `9c495f99f737bab90a0d03ac82e033e248d91e1e616af08a5bc7e2c8c1b9705b`.
+`9c024af0da020f81660b6cd32a7754b7b1efaffbe23d0790a97c4cbb7243bf6e` and debug
+APK SHA-256 `e9e95ef07e0f1cba138f516782fe5c8d5a0d5ce4963695b8fd3327e65fe2e113`.
 Three unchanged-input uncached invocations passed:
 
-- `mulwxehk-1f0ae00a-8150-45cd-b914-6fb43d7ed679` in 111.280 seconds;
-- `mulx1853-4d8e4569-b723-4f1d-8bed-2049e2e15a9c` in 108.783 seconds;
-- `mulx4foq-f4ef7ab8-c3df-45ab-ba44-462209435141` in 109.858 seconds.
+- `mum010jk-ab1c2936-fcd1-4c54-b5e5-74976ab330c7` in 111.055 seconds;
+- `mum050mh-9a1e12e7-aee2-4e9a-8aa4-669b5ff06df0` in 110.388 seconds;
+- `mum085m5-7cca2883-5042-4d48-8d88-c37435b6bdf3` in 110.747 seconds.
 
 Every invocation recorded one passed stage, 12/12 unique assertion records,
 attempt 1, zero retries and zero failures, with matching built and installed
@@ -7712,14 +7715,13 @@ APK digests and the post-scan `publication-safe` marker. Settled geometry was
 identical across all three: the panel header matched the Room header's 56 px
 height (`Object.is`), the title's 12 px inset held exactly
 (\|12 − 0 − 12\| = 0), and the title stayed centred with a 0.762 px imbalance
-(below the 2 px bound). Each held series ran 4 reads, spanning 2063 ms, 2051
-ms and 2057 ms respectively. Each retained tree held no raster files, and the
-leak grep's `$ExternalSyntheticLambda`/`$TransitionPlayerImpl`/`$$Nest$m…`
-Java-synthetic hits, the `PinnedTaskListenerImpl`/
-`OnBluetoothActivityEnergyInfoProxy` `Outer$Inner` and `lambda$method$N`
-Java stack-frame identifiers (both inside `system_server`, pid 664, frames —
-not the app), and the `"password"` tap-point key were inspected and
-accepted; none exposed a Room, event or token identifier.
+(below the 2 px bound). Each held series now reports the last read's own
+time, not a trailing sleep with no read behind it: each ran 5 reads,
+spanning 2073 ms, 2072 ms and 2072 ms respectively, corrected from the
+previous 4 reads over about 1.55 s. Each retained tree held no raster
+files, and the leak grep's `$ExternalSyntheticLambda`/`$TransitionPlayerImpl`/
+`$$Nest$m…` Java-synthetic hits and the `"password"` tap-point key were
+inspected and accepted; none exposed a Room, event or token identifier.
 
 The complete browser predecessor also passed with one worker and zero
 retries in invocation `mulxfwqi-585dc486-cb28-485e-8577-27d742fdabe0` (one
