@@ -179,11 +179,11 @@ importers:
         version: 1.4.0
     devDependencies:
       '@analogjs/vite-plugin-angular':
-        specifier: 2.7.2
-        version: 2.7.2(@angular-devkit/build-angular@22.1.2(435977124332938c4ab460370942ea44))(@angular/build@22.1.8(b298bcdc59c68784b272fb05015482fd))(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(vite@8.2.0(@types/node@24.13.6)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.1))
+        specifier: 2.7.5
+        version: 2.7.5(@angular-devkit/build-angular@22.1.2(435977124332938c4ab460370942ea44))(@angular/build@22.1.8(b298bcdc59c68784b272fb05015482fd))(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(vite@8.2.0(@types/node@24.13.6)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.1))
       '@analogjs/vitest-angular':
-        specifier: 2.7.2
-        version: 2.7.2(@analogjs/vite-plugin-angular@2.7.2(@angular-devkit/build-angular@22.1.2(435977124332938c4ab460370942ea44))(@angular/build@22.1.8(b298bcdc59c68784b272fb05015482fd))(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(vite@8.2.0(@types/node@24.13.6)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.1)))(@angular-devkit/architect@0.2201.8(chokidar@5.0.0))(@angular-devkit/schematics@22.1.8(chokidar@5.0.0))(vitest@4.1.11)(zone.js@0.16.2)
+        specifier: 2.7.5
+        version: 2.7.5(@analogjs/vite-plugin-angular@2.7.5(@angular-devkit/build-angular@22.1.2(435977124332938c4ab460370942ea44))(@angular/build@22.1.8(b298bcdc59c68784b272fb05015482fd))(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(vite@8.2.0(@types/node@24.13.6)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.1)))(@angular-devkit/architect@0.2201.8(chokidar@5.0.0))(@angular-devkit/schematics@22.1.8(chokidar@5.0.0))(vitest@4.1.11)(zone.js@0.16.2)
       '@angular-devkit/architect':
         specifier: 0.2201.8
         version: 0.2201.8(chokidar@5.0.0)
@@ -264,7 +264,7 @@ importers:
         version: 10.5.9(storybook@10.5.9(prettier@3.9.9)(react@19.2.8))
       '@storybook/angular-vite':
         specifier: 10.5.9
-        version: 10.5.9(80d2fdbef0f22599d5a477114fdb2023)
+        version: 10.5.9(34a3102096f042e2436ee0d58dedb515)
       '@swc/helpers':
         specifier: ~0.5.23
         version: 0.5.23
@@ -384,8 +384,8 @@ packages:
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
     engines: {node: '>=6.0.0'}
 
-  '@analogjs/vite-plugin-angular@2.7.2':
-    resolution: {integrity: sha512-AmJCuz6D20XGnFPL/UWW+ZzeMDEHKb6+hefbV9HEbXlMoUZWqr2u8uxQqaUQgnDV3yl8HMazFnxWfTPrKLPPzA==}
+  '@analogjs/vite-plugin-angular@2.7.5':
+    resolution: {integrity: sha512-WpOXLn0gmjdqVeRURafH6OKeE3jRMbRZGPVXxvunVNUYuzvKPB5VQUq5CQGxBgmoB1HZUJSayjMmfKNc2iqUiA==}
     peerDependencies:
       '@angular-devkit/build-angular': ^17.0.0 || ^18.0.0 || ^19.0.0 || ^20.0.0 || ^21.0.0 || ^22.0.0
       '@angular/build': ^18.0.0 || ^19.0.0 || ^20.0.0 || ^21.0.0 || ^22.0.0
@@ -398,13 +398,13 @@ packages:
       vite:
         optional: true
 
-  '@analogjs/vitest-angular@2.7.2':
-    resolution: {integrity: sha512-S4wb0EXrm6Yi2YBsN707cH9Sr8rrXyAw0HFvEmaZwZpk1yi9n5r5vHl1VWXXoVdT5ikWcmcdZgjPgcpYOhiy7A==}
+  '@analogjs/vitest-angular@2.7.5':
+    resolution: {integrity: sha512-HCfOQ9AvsFVsEbRHF8c99B4TR1aaI76lzna9MZB+nkueTJm0Ru9JiQmqo1eQ5M8Yi8hdEhMv1Wu24Rlm6YjxTw==}
     peerDependencies:
       '@analogjs/vite-plugin-angular': '*'
       '@angular-devkit/architect': '>=0.1700.0 < 0.2300.0 || >=0.2200.0 < 0.2300.0'
       '@angular-devkit/schematics': '>=17.0.0'
-      vitest: ^1.3.1 || ^2.0.0 || ^3.0.0 || ^4.0.0
+      vitest: ^1.3.1 || ^2.0.0 || ^3.0.0 || ^4.0.0 || ^5.0.0
       zone.js: '>=0.14.0'
     peerDependenciesMeta:
       zone.js:
@@ -11117,7 +11117,7 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
 
-  '@analogjs/vite-plugin-angular@2.7.2(@angular-devkit/build-angular@22.1.2(435977124332938c4ab460370942ea44))(@angular/build@22.1.8(b298bcdc59c68784b272fb05015482fd))(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(vite@8.2.0(@types/node@24.13.6)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.1))':
+  '@analogjs/vite-plugin-angular@2.7.5(@angular-devkit/build-angular@22.1.2(435977124332938c4ab460370942ea44))(@angular/build@22.1.8(b298bcdc59c68784b272fb05015482fd))(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(vite@8.2.0(@types/node@24.13.6)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.1))':
     dependencies:
       magic-string: 0.30.21
       obug: 2.1.4
@@ -11131,9 +11131,9 @@ snapshots:
       - '@emnapi/core'
       - '@emnapi/runtime'
 
-  '@analogjs/vitest-angular@2.7.2(@analogjs/vite-plugin-angular@2.7.2(@angular-devkit/build-angular@22.1.2(435977124332938c4ab460370942ea44))(@angular/build@22.1.8(b298bcdc59c68784b272fb05015482fd))(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(vite@8.2.0(@types/node@24.13.6)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.1)))(@angular-devkit/architect@0.2201.8(chokidar@5.0.0))(@angular-devkit/schematics@22.1.8(chokidar@5.0.0))(vitest@4.1.11)(zone.js@0.16.2)':
+  '@analogjs/vitest-angular@2.7.5(@analogjs/vite-plugin-angular@2.7.5(@angular-devkit/build-angular@22.1.2(435977124332938c4ab460370942ea44))(@angular/build@22.1.8(b298bcdc59c68784b272fb05015482fd))(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(vite@8.2.0(@types/node@24.13.6)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.1)))(@angular-devkit/architect@0.2201.8(chokidar@5.0.0))(@angular-devkit/schematics@22.1.8(chokidar@5.0.0))(vitest@4.1.11)(zone.js@0.16.2)':
     dependencies:
-      '@analogjs/vite-plugin-angular': 2.7.2(@angular-devkit/build-angular@22.1.2(435977124332938c4ab460370942ea44))(@angular/build@22.1.8(b298bcdc59c68784b272fb05015482fd))(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(vite@8.2.0(@types/node@24.13.6)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.1))
+      '@analogjs/vite-plugin-angular': 2.7.5(@angular-devkit/build-angular@22.1.2(435977124332938c4ab460370942ea44))(@angular/build@22.1.8(b298bcdc59c68784b272fb05015482fd))(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(vite@8.2.0(@types/node@24.13.6)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.1))
       '@angular-devkit/architect': 0.2201.8(chokidar@5.0.0)
       '@angular-devkit/schematics': 22.1.8(chokidar@5.0.0)
       vitest: 4.1.11(@types/node@24.13.6)(@vitest/coverage-v8@4.1.11)(jsdom@30.1.0)(vite@8.2.0(@types/node@24.13.6)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.1))
@@ -15949,9 +15949,9 @@ snapshots:
       axe-core: 4.13.0
       storybook: 10.5.9(prettier@3.9.9)(react@19.2.8)
 
-  '@storybook/angular-vite@10.5.9(80d2fdbef0f22599d5a477114fdb2023)':
+  '@storybook/angular-vite@10.5.9(34a3102096f042e2436ee0d58dedb515)':
     dependencies:
-      '@analogjs/vite-plugin-angular': 2.7.2(@angular-devkit/build-angular@22.1.2(435977124332938c4ab460370942ea44))(@angular/build@22.1.8(b298bcdc59c68784b272fb05015482fd))(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(vite@8.2.0(@types/node@24.13.6)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.1))
+      '@analogjs/vite-plugin-angular': 2.7.5(@angular-devkit/build-angular@22.1.2(435977124332938c4ab460370942ea44))(@angular/build@22.1.8(b298bcdc59c68784b272fb05015482fd))(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(vite@8.2.0(@types/node@24.13.6)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.1))
       '@angular-devkit/architect': 0.2201.8(chokidar@5.0.0)
       '@angular-devkit/core': 22.1.8(chokidar@5.0.0)
       '@angular/animations': 22.1.7(@angular/core@22.1.7(@angular/compiler@22.1.7)(rxjs@7.8.2)(zone.js@0.16.2))
