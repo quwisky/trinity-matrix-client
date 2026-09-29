@@ -30,6 +30,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- A new Room or Space address keeps the letters as typed. Mobile keyboards no longer
+  capitalize its first letter or autocorrect it, so `team-chat` is not published as
+  `Team-chat`.
+
 - On narrow screens, the browser Back button from an open room shows the room list again
   instead of snapping back into the room. Back pressed as the window widens past the
   narrow layout follows the browser history to the previous page.

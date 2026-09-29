@@ -190,6 +190,8 @@
             [formField]="aliasForm.localpart"
             placeholder="new-address"
             autocomplete="off"
+            autocapitalize="off"
+            autocorrect="off"
             (keydown.enter)="onEnter($event)"
             data-testid="room-alias-input"
           />

@@ -96,6 +96,16 @@ describe('RoomAliasesComponent', () => {
     expect(addAlias).toHaveBeenCalledWith(TARGET, '#team:hs.example');
   });
 
+  it('keeps the soft keyboard from capitalizing or correcting the local address', async () => {
+    // Android's IME rewrote a typed `space-addr-…` as `Space-addr-…` when Enter
+    // committed it, because the field advertised sentence capitalization.
+    const { container } = await build();
+    const input = container.querySelector('[data-testid="room-alias-input"]');
+
+    expect(input?.getAttribute('autocapitalize')).toBe('off');
+    expect(input?.getAttribute('autocorrect')).toBe('off');
+  });
+
   it('loads and lists the room’s local aliases on init', async () => {
     const { cmp, container } = await build({ aliases: ['#a:hs.example'] });
     expect(cmp.aliases()).toEqual(['#a:hs.example']);
