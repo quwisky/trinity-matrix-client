@@ -7691,5 +7691,37 @@ zero retries, with a 15-minute Node test and a 20-minute CI wrapper. Shard 3
 runs it last, after message-spoiler; its budget comment adds the 3-minute
 local run time (about 81 native minutes of the 240-minute job).
 
+Accepted locally at `4fb55c7f`. Local acceptance used the unchanged Pixel 5
+API 36 profile with SHA-256
+`3bacc567648982dd6b92b0e62b085908ad33cdced196ac6776d397a3a5d65157`,
+production renderer manifest SHA-256
+`9e0fbc333dec6f17ae391e22670b7f43054b87f1ae950f6c9d6918cbcdfba1ba` and debug
+APK SHA-256 `9c495f99f737bab90a0d03ac82e033e248d91e1e616af08a5bc7e2c8c1b9705b`.
+Three unchanged-input uncached invocations passed:
+
+- `mulwxehk-1f0ae00a-8150-45cd-b914-6fb43d7ed679` in 111.280 seconds;
+- `mulx1853-4d8e4569-b723-4f1d-8bed-2049e2e15a9c` in 108.783 seconds;
+- `mulx4foq-f4ef7ab8-c3df-45ab-ba44-462209435141` in 109.858 seconds.
+
+Every invocation recorded one passed stage, 12/12 unique assertion records,
+attempt 1, zero retries and zero failures, with matching built and installed
+APK digests and the post-scan `publication-safe` marker. Settled geometry was
+identical across all three: the panel header matched the Room header's 56 px
+height (`Object.is`), the title's 12 px inset held exactly
+(\|12 − 0 − 12\| = 0), and the title stayed centred with a 0.762 px imbalance
+(below the 2 px bound). Each held series ran 4 reads, spanning 2063 ms, 2051
+ms and 2057 ms respectively. Each retained tree held no raster files, and the
+leak grep's `$ExternalSyntheticLambda`/`$TransitionPlayerImpl`/`$$Nest$m…`
+Java-synthetic hits, the `PinnedTaskListenerImpl`/
+`OnBluetoothActivityEnergyInfoProxy` `Outer$Inner` and `lambda$method$N`
+Java stack-frame identifiers (both inside `system_server`, pid 664, frames —
+not the app), and the `"password"` tap-point key were inspected and
+accepted; none exposed a Room, event or token identifier.
+
+The complete browser predecessor also passed with one worker and zero
+retries in invocation `mulxfwqi-585dc486-cb28-485e-8577-27d742fdabe0` (one
+test in 5.259 seconds; 6.538-second suite); the predecessor file is
+unchanged, so this retry-0 result still stands.
+
 Predecessor status: enabled; the coordinator retires it after hosted
 acceptance.
