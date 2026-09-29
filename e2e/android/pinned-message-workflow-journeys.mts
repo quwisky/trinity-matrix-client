@@ -64,6 +64,7 @@ import {
   type PinnedWorkflowAssertion,
   type PinnedWorkflowStage,
   type PinnedWorkflowStageId,
+  type SheetView,
   type WorkflowView,
 } from './pinned-message-workflow-contract.mts';
 import {
@@ -295,6 +296,11 @@ export async function finishPinnedWorkflowStage(
   return failures.length > before;
 }
 
+/** Time left of `boundMs` since `since`; never below 1 ms, so a spent bound still reads once and reports the assertion's own reason. */
+function left(boundMs: number, since: number): number {
+  return Math.max(boundMs - (Date.now() - since), 1);
+}
+
 /** Poll the view until `check` passes; on timeout rethrow `check`'s own failure on the last read. */
 async function until(context: PinnedWorkflowStageContext, texts: WorkflowTexts,
   check: (v: WorkflowView) => void, timeoutMs: number, description: string): Promise<WorkflowView> {
@@ -318,8 +324,7 @@ async function tap(context: PinnedWorkflowStageContext, selector: string,
 /** Poll Synapse until `check` passes, within `bound` measured from `anchor` (never a fresh bound). */
 async function server<T>(context: PinnedWorkflowStageContext, read: () => Promise<T>,
   check: (value: T) => void, anchor: number, description: string): Promise<T> {
-  const remaining = SERVER_MS - (Date.now() - anchor);
-  const value = await waitForNativeShellState(read, passes(check), description, context.signal, Math.max(remaining, 1));
+  const value = await waitForNativeShellState(read, passes(check), description, context.signal, left(SERVER_MS, anchor));
   check(value);
   return value;
 }
@@ -337,7 +342,7 @@ async function jump(context: PinnedWorkflowStageContext, texts: WorkflowTexts,
   await armFlashRecorder(context.client, key, texts.targetBody);
   const tapped = await tap(context, '[data-testid="pinned-item"]', { text: texts.targetBody });
   const window = await readFlashRecorder(context.client, key,
-    { accepts: flashWindowComplete, timeoutMs: UI_MS - (Date.now() - tapped), description: 'flash window complete' })
+    { accepts: flashWindowComplete, timeoutMs: left(UI_MS, tapped), description: 'flash window complete' })
     .catch(async (error: unknown) => {
       const last = await readFlashRecorder(context.client, key);
       assertJumpFlash(last, { requireOffscreenAtClick });
@@ -345,9 +350,9 @@ async function jump(context: PinnedWorkflowStageContext, texts: WorkflowTexts,
     });
   await record(context, suffixes[0], () => assertJumpFlash(window, { requireOffscreenAtClick }),
     assertJumpFlash(window, { requireOffscreenAtClick }));
-  const closed = await until(context, texts, assertHeadingHidden, UI_MS - (Date.now() - tapped), 'panel closed by the jump');
+  const closed = await until(context, texts, assertHeadingHidden, left(UI_MS, tapped), 'panel closed by the jump');
   await record(context, suffixes[1], () => assertHeadingHidden(closed), { headings: closed.heading.count });
-  const shown = await until(context, texts, assertTargetInViewport, UI_MS - (Date.now() - tapped), 'target in the viewport');
+  const shown = await until(context, texts, assertTargetInViewport, left(UI_MS, tapped), 'target in the viewport');
   await record(context, suffixes[2], () => assertTargetInViewport(shown), { inViewport: true });
 }
 
@@ -385,13 +390,18 @@ export async function runPinJumpUnpin(context: PinnedWorkflowStageContext): Prom
 
   await client.longPressCurrent('.scroll .msg[data-mid^="$"]', { text: PIN_BODY });
   const pressed = Date.now();
-  const sheet = await readSheetView(client, { accepts: passes(assertSheetReady),
-    timeoutMs: UI_MS - (Date.now() - pressed), description: 'Android message-action sheet' });
+  let lastSheet: SheetView | undefined;
+  const sheet = await readSheetView(client, { accepts: (v) => { lastSheet = v; return passes(assertSheetReady)(v); },
+    timeoutMs: left(UI_MS, pressed), description: 'Android message-action sheet' })
+    .catch((error: unknown) => {
+      if (lastSheet && error instanceof Error && error.message.startsWith('Timed out waiting for')) assertSheetReady(lastSheet);
+      throw error;
+    });
   await record(context, 'sheet-ready', () => assertSheetReady(sheet), { dialogs: sheet.dialogs, pins: sheet.pin.count });
   assertSheetPinReachable(sheet);
   await receipt(context, 'sheet-pin-reachable', { unobstructed: sheet.pin.unobstructed });
   const pinned = await tap(context, '[data-testid="sheet-pin"]');
-  const badge = await until(context, texts, assertBadgeOne, PIN_MS - (Date.now() - pinned), 'badge reads 1');
+  const badge = await until(context, texts, assertBadgeOne, left(PIN_MS, pinned), 'badge reads 1');
   await record(context, 'badge-one', () => assertBadgeOne(badge), { badges: badge.badges });
   await server(context, () => fixtures.roomState(reader, room.id, 'm.room.pinned_events', ''),
     (s) => assertServerPins(s, [targetId]), pinned, 'server pinned state converged to the target');
@@ -400,7 +410,7 @@ export async function runPinJumpUnpin(context: PinnedWorkflowStageContext): Prom
   assertOpenPinnedHidden(badge);
   await receipt(context, 'toolbar-pin-hidden', { openPinned: badge.openPinned });
   const shownAt = await openPanel(context, texts);
-  const heading = await until(context, texts, assertHeadingVisible, UI_MS - (Date.now() - shownAt), 'panel heading visible');
+  const heading = await until(context, texts, assertHeadingVisible, left(UI_MS, shownAt), 'panel heading visible');
   await record(context, 'panel-heading-visible', () => assertHeadingVisible(heading), { headings: heading.heading.count });
   const row = await until(context, texts, assertPinRowVisible, UI_MS, 'pin row visible');
   await record(context, 'pin-row-visible', () => assertPinRowVisible(row), { rows: row.pinRow.count });
@@ -410,12 +420,12 @@ export async function runPinJumpUnpin(context: PinnedWorkflowStageContext): Prom
   await jump(context, texts, ['jump-flash', 'panel-closed-by-jump', 'target-in-viewport'], false);
 
   const reopenedAt = await openPanel(context, texts);
-  const reopened = await until(context, texts, assertHeadingVisible, UI_MS - (Date.now() - reopenedAt), 'panel reopened');
+  const reopened = await until(context, texts, assertHeadingVisible, left(UI_MS, reopenedAt), 'panel reopened');
   await record(context, 'panel-reopened', () => assertHeadingVisible(reopened), { headings: reopened.heading.count });
   const target = await until(context, texts, assertUnpinTarget, UI_MS, 'one unpin control in the target row');
   await receipt(context, 'unpin-target', { unpinCount: target.pinRow.unpinCount, inside: true, unobstructed: true });
   const unpinned = await tap(context, '[data-testid="pinned-unpin"]', { within: { selector: '.pin-item', text: PIN_BODY } });
-  const empty = await until(context, texts, assertEmptyCopy, EMPTY_MS - (Date.now() - unpinned), 'empty panel copy');
+  const empty = await until(context, texts, assertEmptyCopy, left(EMPTY_MS, unpinned), 'empty panel copy');
   await record(context, 'empty-copy-visible', () => assertEmptyCopy(empty), { exact: true });
   await server(context, () => fixtures.roomState(reader, room.id, 'm.room.pinned_events', ''),
     (s) => assertServerPins(s, []), unpinned, 'server pinned state converged to empty');
@@ -424,7 +434,7 @@ export async function runPinJumpUnpin(context: PinnedWorkflowStageContext): Prom
   assertCloseControl(empty);
   await receipt(context, 'close-control', { label: empty.close.label });
   const closedAt = await tap(context, '[data-testid="pinned-close"]');
-  const cleared = await until(context, texts, assertBadgeCleared, CLEARED_MS - (Date.now() - closedAt), 'badge cleared');
+  const cleared = await until(context, texts, assertBadgeCleared, left(CLEARED_MS, closedAt), 'badge cleared');
   await record(context, 'badge-cleared', () => assertBadgeCleared(cleared), { badges: cleared.badges.length });
 }
 
@@ -475,7 +485,7 @@ export async function runRepeatJump(context: PinnedWorkflowStageContext): Promis
     (events) => assertFillers(events, { readerId: reader.userId, run, leadId, targetId, fillerIds }), sent,
     'Exactly 32 fillers after the target');
   await receipt(context, 'fillers-sent', { fillers: FILLER_COUNT, ordered: true });
-  const flooded = await until(context, texts, assertLastFillerInViewport, FLOOD_MS - (Date.now() - sent), 'last filler in view');
+  const flooded = await until(context, texts, assertLastFillerInViewport, left(FLOOD_MS, sent), 'last filler in view');
   await record(context, 'last-filler-in-viewport', () => assertLastFillerInViewport(flooded), { inViewport: true });
   const away = await until(context, texts, assertTargetOffscreen, UI_MS, 'target offscreen after the flood');
   await record(context, 'target-offscreen', () => assertTargetOffscreen(away), { rendered: away.target.count, inViewport: false });
@@ -483,7 +493,7 @@ export async function runRepeatJump(context: PinnedWorkflowStageContext): Promis
   assertOpenPinnedHidden(away);
   await receipt(context, 'toolbar-pin-hidden', { openPinned: away.openPinned });
   const firstAt = await openPanel(context, texts);
-  const h1 = await until(context, texts, assertHeadingVisible, UI_MS - (Date.now() - firstAt), 'first heading');
+  const h1 = await until(context, texts, assertHeadingVisible, left(UI_MS, firstAt), 'first heading');
   await record(context, 'first-heading-visible', () => assertHeadingVisible(h1), { headings: h1.heading.count });
   const r1 = await until(context, texts, assertPinRowVisible, UI_MS, 'first pin row');
   await record(context, 'first-pin-row-visible', () => assertPinRowVisible(r1), { rows: r1.pinRow.count });
@@ -493,14 +503,14 @@ export async function runRepeatJump(context: PinnedWorkflowStageContext): Promis
   const pill = await until(context, texts, assertJumpLatestReady, UI_MS, 'jump-to-latest did not appear; revisit D3');
   await receipt(context, 'jump-to-latest-ready', { visible: pill.jumpLatest.visible, unobstructed: pill.jumpLatest.unobstructed });
   const latestAt = await tap(context, '[data-testid="jump-to-latest"]');
-  const atLatest = await until(context, texts, assertTargetOffscreen, UI_MS - (Date.now() - latestAt), 'target offscreen at latest');
+  const atLatest = await until(context, texts, assertTargetOffscreen, left(UI_MS, latestAt), 'target offscreen at latest');
   await record(context, 'target-offscreen-at-latest', () => assertTargetOffscreen(atLatest),
     { rendered: atLatest.target.count, inViewport: false });
   const newest = await until(context, texts, assertLastFillerInViewport, UI_MS, 'last filler in view at latest');
   await receipt(context, 'at-latest', { lastFillerInViewport: newest.lastFiller.inViewport });
 
   const secondAt = await openPanel(context, texts);
-  const h2 = await until(context, texts, assertHeadingVisible, UI_MS - (Date.now() - secondAt), 'second heading');
+  const h2 = await until(context, texts, assertHeadingVisible, left(UI_MS, secondAt), 'second heading');
   await record(context, 'second-heading-visible', () => assertHeadingVisible(h2), { headings: h2.heading.count });
   const r2 = await until(context, texts, assertPinRowVisible, UI_MS, 'second pin row');
   await record(context, 'second-pin-row-visible', () => assertPinRowVisible(r2), { rows: r2.pinRow.count });

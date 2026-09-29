@@ -1821,9 +1821,12 @@ async function simulatedWorkflowApp(stageId, faults = {}) {
       return jumpDone();
     }
     if (latestIdx !== -1)
-      return !switched(JUMP_LATEST_TAP, faults.jumpLatestUiLagMs);
+      return (
+        !switched(JUMP_LATEST_TAP, faults.jumpLatestUiLagMs) ||
+        !!faults.targetInViewAtLatest
+      );
     if (stage1) return true;
-    return !floodSettled();
+    return !floodSettled() || !!faults.targetInViewAfterFlood;
   }
 
   function targetRenderedNow() {
@@ -1972,7 +1975,7 @@ async function simulatedWorkflowApp(stageId, faults = {}) {
     webview: {
       diagnostics: {
         send: async (_method, { expression }) => {
-          advance();
+          vi.setSystemTime(Date.now() + (faults.readMs ?? 1_000));
           if (expression === VIEW_EXPR)
             return { result: { value: currentView() } };
           if (expression === SHEET_EXPR)
@@ -2334,9 +2337,7 @@ describe('Android pinned-message-workflow native journey against a simulated ins
       'pin-jump-unpin',
       { sheetMissingPin: true },
       async ({ context }) => {
-        await expect(runPinJumpUnpin(context)).rejects.toThrow(
-          /message-action sheet/u,
-        );
+        await expect(runPinJumpUnpin(context)).rejects.toThrow(/sheet-pin/u);
       },
     );
   }, 20_000);
@@ -2398,7 +2399,7 @@ describe('Android pinned-message-workflow native journey against a simulated ins
       { emptyCopyWrong: true },
       async ({ context }) => {
         await expect(runPinJumpUnpin(context)).rejects.toThrow(
-          /visible and exact/u,
+          /empty-copy text is visible and exact/u,
         );
       },
     );
@@ -2453,6 +2454,50 @@ describe('Android pinned-message-workflow native journey against a simulated ins
       },
     );
   }, 20_000);
+
+  it('fails closed when the target is still in view after the flood [offscreen]', async () => {
+    const { runRepeatJump } = await loadJourneys();
+    await withSimulatedWorkflowStage(
+      'repeat-jump',
+      { targetInViewAfterFlood: true },
+      async ({ context }) => {
+        await expect(runRepeatJump(context)).rejects.toThrow(
+          /out of the viewport/u,
+        );
+      },
+    );
+  }, 20_000);
+
+  it('fails closed when the target is still in view after jump-to-latest [offscreen]', async () => {
+    const { runRepeatJump } = await loadJourneys();
+    await withSimulatedWorkflowStage(
+      'repeat-jump',
+      { targetInViewAtLatest: true },
+      async ({ context }) => {
+        await expect(runRepeatJump(context)).rejects.toThrow(
+          /out of the viewport/u,
+        );
+      },
+    );
+  }, 20_000);
+
+  it('rejects a server that converges 31 s after the tap when every read burns 10 s [RF-3]', async () => {
+    const { runPinJumpUnpin } = await loadJourneys();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      await withSimulatedWorkflowStage(
+        'pin-jump-unpin',
+        { tapMs: 45_000, readMs: 10_000, pinServerLagMs: 31_000 },
+        async ({ context }) => {
+          await expect(runPinJumpUnpin(context)).rejects.toThrow(
+            /server pinned state/u,
+          );
+        },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 25_000);
 
   it('fails closed when jump-to-latest never appears [revisit D3]', async () => {
     const { runRepeatJump } = await loadJourneys();
@@ -3220,6 +3265,15 @@ function assertTapsAnchorDateNow(source) {
   }
 }
 
+/** Every elapsed-time bound goes through the clamped `left()` helper, never `BOUND - (Date.now() - t)`. */
+function assertElapsedBoundsClamped(source) {
+  const unclamped = source
+    .split('\n')
+    .filter((line) => /-\s*\(Date\.now\(\)\s*-/u.test(line))
+    .filter((line) => !line.includes('Math.max('));
+  expect(unclamped, 'unclamped elapsed-time bound').toEqual([]);
+}
+
 describe('Android pinned-message-workflow source rules', () => {
   it('keeps the journeys, observer and artifacts read-only, bounded, forbidden-token free and tap-anchored', () => {
     for (const path of [
@@ -3236,6 +3290,7 @@ describe('Android pinned-message-workflow source rules', () => {
       assertWorkflowReadOnlyObserver(read(path));
     }
     assertTapsAnchorDateNow(read(JOURNEYS));
+    assertElapsedBoundsClamped(read(JOURNEYS));
   });
 
   it('fails the forbidden-token, read-only, bounded-wait and tap-anchoring rules under each effective mutation', () => {
@@ -3296,6 +3351,14 @@ describe('Android pinned-message-workflow source rules', () => {
       'async function tap(context: PinnedWorkflowStageContext, selector: string,\n  filter: AccountElementFilter = {}): Promise<number> {\n  await context.client.tapCurrent(selector, filter);\n  return Date.now();\n}',
       'async function tap(context: PinnedWorkflowStageContext, selector: string,\n  filter: AccountElementFilter = {}): Promise<number> {\n  await context.client.tapCurrent(selector, filter);\n  await Promise.resolve();\n  await Promise.resolve();\n  await Promise.resolve();\n  await Promise.resolve();\n  return Date.now();\n}',
     );
+    expect(() =>
+      assertElapsedBoundsClamped(
+        journeys.replace(
+          'left(UI_MS, tapped)',
+          'UI_MS - (Date.now() - tapped)',
+        ),
+      ),
+    ).toThrow();
     expect(mutated).not.toBe(journeys);
     expect(() => assertTapsAnchorDateNow(mutated)).toThrow();
   });
