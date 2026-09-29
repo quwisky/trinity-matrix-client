@@ -3143,8 +3143,7 @@ describe('Android pinned-message-workflow teardown and redaction guards [RF-5]',
 
   it("makes the runner's own finishPinnedWorkflowStage call from its stage finally [RF-5]", async () => {
     // ponytail: the runner is one closure over a real device, so pin its call in source.
-    const source = await readFile(JOURNEYS, 'utf8');
-    expect(source).toMatch(
+    expect(read(JOURNEYS)).toMatch(
       /finally \{[^}]*if \(await finishPinnedWorkflowStage\(client, device, failures\)\) safety\.cleanupFailed = true;/u,
     );
   });
