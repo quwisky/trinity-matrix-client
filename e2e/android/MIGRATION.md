@@ -7901,5 +7901,43 @@ zero retries, with a 15-minute Node test and a 20-minute CI wrapper. Shard 4
 runs it last, after message-unread; its budget comment adds the 6-minute local
 run time (about 85 native minutes of the 240-minute job).
 
+Accepted locally at `cb8667d0`. Local acceptance used the unchanged Pixel 5
+API 36 profile with SHA-256
+`3bacc567648982dd6b92b0e62b085908ad33cdced196ac6776d397a3a5d65157`,
+production renderer manifest SHA-256
+`6b9594ed043b421efcc96e5a035b3b1422f6f004c0d561866c7ed13d210287d5`
+and debug APK SHA-256
+`d2fd2a6441f26176e2ff32c0154bd82ef47705f50f8ed1c0a3a8a0fd2316d1ca`.
+Three unchanged-input uncached invocations passed:
+
+- `mun0id1s-0ea75d05-7196-4ec8-b5b5-1a79931308cf` in 326.771 seconds;
+- `mun0pyt8-54ecfd64-b6ec-40d7-9eb4-6309390d5598` in 337.548 seconds;
+- `mun0xs5i-01b04909-4a15-4f3d-b9b0-4e6f3c4b8551` in 335.252 seconds.
+
+Every invocation recorded two passed stages, 26/26 unique assertion records,
+attempt 1, zero retries and zero failures, with matching built and installed
+APK digests and the post-scan `publication-safe` marker. Flash windows,
+latency then duration in milliseconds, per run (`pin-jump-unpin` jump,
+`repeat-jump` first jump, `repeat-jump` second jump):
+
+- run 1: 16.9 and 1600.3; 47.3 and 1605.1; 45.3 and 1612.6;
+- run 2: 30.4 and 1626.0; 36.1 and 1606.6; 41.4 and 1596.6;
+- run 3: 18.6 and 1599.6; 46.6 and 1629.2; 48.0 and 1639.9.
+
+In all three runs both `repeat-jump` windows recorded the target outside the
+viewport at click time (`targetInViewport: false`, published as
+`offscreenAtClick: true`), and each jump then brought it into view. Each
+retained tree held no raster files. The leak grep found no Room-id, `syt_`
+token or fixture body; its only hits were `$ExternalSyntheticLambda`,
+`$TransitionPlayerImpl`, `$mdumpAsStringNoCheck` and similar Java class names
+in the device logcat (one `$r8$lambda$` name in a Settings stack trace), and
+the `"password"` tap-point key in `sign-in-1.json`. All were inspected and
+accepted; none exposed a Room, event or token identifier.
+
+The complete browser predecessor also passed, all 3 tests with one worker and
+zero retries, in invocation `mun16cgv-b1f54430-d5ce-41d8-ac32-44522d5af23f`
+(both applicable definitions and the desktop-only one); the predecessor file
+is unchanged, so this retry-0 result still stands.
+
 Predecessor status: enabled; the coordinator retires the two migrated
 definitions after hosted acceptance; definition 402–445 stays.
