@@ -127,14 +127,14 @@ describe('TimelineActionsService', () => {
     ).rejects.toThrow();
   });
 
-  it('creates a poll via an m.poll.start event', async () => {
+  it('creates a poll via an MSC3381 poll start event', async () => {
     const sent: unknown[][] = [];
     const svc = setupActions([], sent);
     await firstValueFrom(svc.createPoll('Best fruit?', ['Apple', 'Pear']));
     const event = sent.find((c) => c[0] === 'event');
-    expect(event?.[1]).toBe('m.poll.start');
+    expect(event?.[1]).toBe('org.matrix.msc3381.poll.start');
     const content = event?.[2] as Record<string, { answers: unknown[] }>;
-    expect(content['m.poll.start'].answers).toHaveLength(2);
+    expect(content['org.matrix.msc3381.poll.start'].answers).toHaveLength(2);
   });
 
   it('rejects a poll with fewer than two options', async () => {

@@ -1,5 +1,6 @@
 import {
   M_POLL_END,
+  M_POLL_KIND_DISCLOSED,
   M_POLL_RESPONSE,
   M_POLL_START,
   M_TEXT,
@@ -98,36 +99,34 @@ function referenceRelations(
 }
 
 /**
- * Content for an `m.poll.start` (single-select, disclosed — results visible). Written
- * with the stable spec keys plus a plain-text fallback for clients that can't render polls.
+ * Content for a poll start (single-select, disclosed — results visible), plus a
+ * plain-text fallback for clients that can't render polls. Written in the unstable
+ * MSC3381/MSC1767 namespace (the `.name` of each value): FluffyChat parses only those
+ * keys, and Element sends them too; we read both.
  */
 export function pollStartContent(
   question: string,
   options: readonly string[],
 ): Record<string, unknown> {
   return {
-    'm.poll.start': {
-      question: { 'm.text': question, body: question },
-      kind: 'm.poll.disclosed',
+    [M_POLL_START.name]: {
+      question: { [M_TEXT.name]: question, body: question },
+      kind: M_POLL_KIND_DISCLOSED.name,
       max_selections: 1,
       answers: options.map((text, index) => ({
         id: `a${index}`,
-        'm.text': text,
+        [M_TEXT.name]: text,
         body: text,
       })),
     },
-    'm.text': [
+    [M_TEXT.name]: [
       question,
       ...options.map((option, index) => `${index + 1}. ${option}`),
     ].join('\n'),
   };
 }
 
-/**
- * Content for a poll response casting `answerId` on `pollId`. Sent in the unstable
- * MSC3381 namespace (`M_POLL_RESPONSE.name`): FluffyChat reads only that, and
- * Element sends it too; we still read both.
- */
+/** Content for a poll response casting `answerId` on `pollId` (unstable namespace). */
 export function pollResponseContent(
   pollId: string,
   answerId: string,
@@ -138,7 +137,7 @@ export function pollResponseContent(
   };
 }
 
-/** Content for a poll end closing `pollId` (unstable namespace, like responses). */
+/** Content for a poll end closing `pollId` (unstable namespace). */
 export function pollEndContent(pollId: string): Record<string, unknown> {
   return {
     [M_POLL_END.name]: {},
