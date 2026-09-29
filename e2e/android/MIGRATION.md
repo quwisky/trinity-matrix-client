@@ -7688,7 +7688,8 @@ pnpm e2e:android:pinned-message-panel
 
 The uncached serial target owns `android-avd` and `synapse`: one attempt and
 zero retries, with a 15-minute Node test and a 20-minute CI wrapper. Shard 3
-runs it last, after message-spoiler.
+runs it last, after message-spoiler; its budget comment adds the 3-minute
+local run time (about 81 native minutes of the 240-minute job).
 
 Predecessor status: enabled; the coordinator retires it after hosted
 acceptance.
