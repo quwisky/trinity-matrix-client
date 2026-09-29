@@ -77,7 +77,7 @@ every `expect` call expression in the definition's span. Definition 1 owns 11
 direct sites, definition 2 owns 14, and definition 3 owns 11 excluded sites
 (417–444). The Android branch at 226 expands `openMessageActionSheet`'s one
 readiness site (app 220). The desktop branch's `clickRowMenuItem` site (app
-207, reached from 229) is excluded, as message-quote excludes its desktop
+207, reached from 229; the ruled, AST-checked line is 206) is excluded, as message-quote excludes its desktop
 sites. `apiLogin`, `seedPinRoom`, `seedRepeatJumpPinRoom`, `registerUser`,
 `login` (with `fillLabeledInput` and `waitForRooms`) and `synapseSession`
 reach no site. `waitFor` calls (208, 217, 318, 328) are not `expect` sites;

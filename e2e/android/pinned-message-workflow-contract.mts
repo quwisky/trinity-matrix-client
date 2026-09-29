@@ -504,6 +504,7 @@ export function assertBadgeOne(v: WorkflowView): void {
   const overflow = v.badges.find((badge) => badge.host === 'room-actions-overflow');
   assert(overflow, 'The overflow pin badge exists');
   assert(overflow.visible && overflow.text === '1', 'The overflow pin badge reads 1 and is visible');
+  assert(v.badges.every((badge) => badge.text === '1'), 'Every pin badge reads 1');
 }
 export function assertOpenPinnedHidden(v: WorkflowView): void {
   assert.equal(v.openPinned.count, 1, 'open-pinned exists in the document at Pixel 5');

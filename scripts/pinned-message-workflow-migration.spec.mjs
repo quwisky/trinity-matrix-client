@@ -1141,6 +1141,16 @@ describe('Android pinned-message-workflow asserters', () => {
         }),
       ),
     ).toThrow();
+    expect(() =>
+      c.assertBadgeOne(
+        v({
+          badges: [
+            { host: 'room-actions-overflow', text: '1', visible: true },
+            { host: 'open-pinned', text: '2', visible: false },
+          ],
+        }),
+      ),
+    ).toThrow(/Every pin badge reads 1/u);
     expect(() => c.assertBadgeCleared(v({}))).toThrow();
     expect(() =>
       c.assertOpenPinnedHidden(v({ openPinned: { count: 1, rendered: true } })),
@@ -1209,6 +1219,11 @@ describe('Android pinned-message-workflow asserters', () => {
       pin: { count: 0, visible: false, unobstructed: false },
     });
     expect(() => c.assertSheetReady(noPin)).toThrow();
+    const twoPins = c.parseSheetView({
+      ...probeSheet(),
+      pin: { count: 2, visible: true, unobstructed: true },
+    });
+    expect(() => c.assertSheetReady(twoPins)).toThrow(/exactly one sheet-pin/u);
     const obstructed = c.parseSheetView({
       ...probeSheet(),
       pin: { ...probeSheet().pin, unobstructed: false },
@@ -1893,7 +1908,7 @@ async function simulatedWorkflowApp(stageId, faults = {}) {
   function lastFillerNow() {
     const settled = floodSettled();
     return {
-      count: settled ? 1 : 0,
+      count: settled || faults.fillersBeforeOpen ? 1 : 0,
       inViewport: settled && !faults.lastFillerNeverInView,
     };
   }
@@ -1984,9 +1999,9 @@ async function simulatedWorkflowApp(stageId, faults = {}) {
             return {
               result: {
                 value: {
-                  innerWidth: 393,
-                  innerHeight: 727,
-                  devicePixelRatio: 2.75,
+                  innerWidth: faults.wrongProfile ? 1280 : 393,
+                  innerHeight: faults.wrongProfile ? 800 : 727,
+                  devicePixelRatio: faults.wrongProfile ? 1 : 2.75,
                   coarsePointer: true,
                   hoverNone: true,
                   platform: 'android',
@@ -2441,6 +2456,32 @@ describe('Android pinned-message-workflow native journey against a simulated ins
       },
     );
   }, 20_000);
+
+  it('rejects a filler that already exists before the flood [pre-flood zero]', async () => {
+    const { runRepeatJump } = await loadJourneys();
+    await withSimulatedWorkflowStage(
+      'repeat-jump',
+      { fillersBeforeOpen: true },
+      async ({ context }) => {
+        await expect(runRepeatJump(context)).rejects.toThrow(
+          /No filler exists before the flood/u,
+        );
+      },
+    );
+  }, 20_000);
+
+  it('rejects a profile other than Pixel 5 after the reset [profile assertion]', async () => {
+    const { runPinJumpUnpin } = await loadJourneys();
+    await withSimulatedWorkflowStage(
+      'pin-jump-unpin',
+      { wrongProfile: true },
+      async ({ context }) => {
+        await expect(runPinJumpUnpin(context)).rejects.toThrow(
+          /The applied profile is Pixel 5/u,
+        );
+      },
+    );
+  });
 
   it('fails closed when the target row is removed from the DOM after the flood [RF-4]', async () => {
     const { runRepeatJump } = await loadJourneys();
@@ -3100,7 +3141,15 @@ describe('Android pinned-message-workflow teardown and redaction guards [RF-5]',
     expect(early.report.cleanupErrors).toHaveLength(1);
   });
 
-  it("runs close then clear through the runner's own finishPinnedWorkflowStage call, even when close throws [RF-5][I1]", async () => {
+  it("makes the runner's own finishPinnedWorkflowStage call from its stage finally [RF-5]", async () => {
+    // ponytail: the runner is one closure over a real device, so pin its call in source.
+    const source = await readFile(JOURNEYS, 'utf8');
+    expect(source).toMatch(
+      /finally \{[^}]*if \(await finishPinnedWorkflowStage\(client, device, failures\)\) safety\.cleanupFailed = true;/u,
+    );
+  });
+
+  it('runs close then clear through finishPinnedWorkflowStage, even when close throws [RF-5][I1]', async () => {
     const { finishPinnedWorkflowStage } = await loadJourneys();
     const order = [];
     const client = {

@@ -296,7 +296,7 @@ export async function finishPinnedWorkflowStage(
   return failures.length > before;
 }
 
-/** Time left of `boundMs` since `since`; never below 1 ms, so a spent bound still reads once and reports the assertion's own reason. */
+/** Time left of `boundMs` since `since`, never below 1 ms. A spent bound fails closed: on the real clock the wait may make no read and time out with its generic message. */
 function left(boundMs: number, since: number): number {
   return Math.max(boundMs - (Date.now() - since), 1);
 }
@@ -329,7 +329,7 @@ async function server<T>(context: PinnedWorkflowStageContext, read: () => Promis
   return value;
 }
 
-async function openPanel(context: PinnedWorkflowStageContext, texts: WorkflowTexts): Promise<number> {
+async function openPanel(context: PinnedWorkflowStageContext): Promise<number> {
   await tap(context, '[data-testid="room-actions-overflow"]');
   await context.client.visible('[data-testid="overflow-open-pinned"]', {}, UI_MS);
   return tap(context, '[data-testid="overflow-open-pinned"]');
@@ -382,10 +382,9 @@ export async function runPinJumpUnpin(context: PinnedWorkflowStageContext): Prom
   await client.hideKeyboard();
   await tap(context, '[data-testid="rail-rooms"]');
   await client.visible('.channel', { text: roomName }, ROOM_ROW_MS);
-  const opened = await tap(context, '.channel', { text: roomName });
+  await tap(context, '.channel', { text: roomName });
   const timeline = await until(context, texts, assertTimelineVisible, UI_MS, 'timeline visible');
   await record(context, 'timeline-visible', () => assertTimelineVisible(timeline), { scrolls: timeline.scroll.count });
-  void opened;
   await until(context, texts, assertTargetRendered, UI_MS, 'target row rendered');     // 217 waitFor
 
   await client.longPressCurrent('.scroll .msg[data-mid^="$"]', { text: PIN_BODY });
@@ -409,7 +408,7 @@ export async function runPinJumpUnpin(context: PinnedWorkflowStageContext): Prom
 
   assertOpenPinnedHidden(badge);
   await receipt(context, 'toolbar-pin-hidden', { openPinned: badge.openPinned });
-  const shownAt = await openPanel(context, texts);
+  const shownAt = await openPanel(context);
   const heading = await until(context, texts, assertHeadingVisible, left(UI_MS, shownAt), 'panel heading visible');
   await record(context, 'panel-heading-visible', () => assertHeadingVisible(heading), { headings: heading.heading.count });
   const row = await until(context, texts, assertPinRowVisible, UI_MS, 'pin row visible');
@@ -419,7 +418,7 @@ export async function runPinJumpUnpin(context: PinnedWorkflowStageContext): Prom
 
   await jump(context, texts, ['jump-flash', 'panel-closed-by-jump', 'target-in-viewport'], false);
 
-  const reopenedAt = await openPanel(context, texts);
+  const reopenedAt = await openPanel(context);
   const reopened = await until(context, texts, assertHeadingVisible, left(UI_MS, reopenedAt), 'panel reopened');
   await record(context, 'panel-reopened', () => assertHeadingVisible(reopened), { headings: reopened.heading.count });
   const target = await until(context, texts, assertUnpinTarget, UI_MS, 'one unpin control in the target row');
@@ -492,7 +491,7 @@ export async function runRepeatJump(context: PinnedWorkflowStageContext): Promis
 
   assertOpenPinnedHidden(away);
   await receipt(context, 'toolbar-pin-hidden', { openPinned: away.openPinned });
-  const firstAt = await openPanel(context, texts);
+  const firstAt = await openPanel(context);
   const h1 = await until(context, texts, assertHeadingVisible, left(UI_MS, firstAt), 'first heading');
   await record(context, 'first-heading-visible', () => assertHeadingVisible(h1), { headings: h1.heading.count });
   const r1 = await until(context, texts, assertPinRowVisible, UI_MS, 'first pin row');
@@ -509,7 +508,7 @@ export async function runRepeatJump(context: PinnedWorkflowStageContext): Promis
   const newest = await until(context, texts, assertLastFillerInViewport, UI_MS, 'last filler in view at latest');
   await receipt(context, 'at-latest', { lastFillerInViewport: newest.lastFiller.inViewport });
 
-  const secondAt = await openPanel(context, texts);
+  const secondAt = await openPanel(context);
   const h2 = await until(context, texts, assertHeadingVisible, left(UI_MS, secondAt), 'second heading');
   await record(context, 'second-heading-visible', () => assertHeadingVisible(h2), { headings: h2.heading.count });
   const r2 = await until(context, texts, assertPinRowVisible, UI_MS, 'second pin row');
