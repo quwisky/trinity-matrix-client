@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, posix, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -2859,8 +2866,12 @@ const SIM_BOXES = {
   who: [10, 100, 60, 20],
   composer: [0, 780, 393, 40],
   msg: [0, 90, 393, 200],
+  btn: [10, 10, 40, 40],
+  lastKey: [300, 320, 50, 50],
   zero: [0, 0, 0, 0],
 };
+const SIM_LIGHT_PAINT = 'oklch(0.965 0.008 265)';
+const SIM_DARK_PAINT = 'oklch(0.24 0.016 265)';
 const simEscape = (value) =>
   String(value)
     .replace(/&/gu, '&amp;')
@@ -2905,6 +2916,17 @@ const simKeyOrder = (rendered) => {
  */
 async function simulatedWhoReactedApp(faults = {}) {
   const c = await loadContract();
+  const stage = faults.stage ?? 'pill-dialog';
+  const mobile = stage === 'mobile-sheet';
+  const prefix = mobile ? 'ms' : 'pd';
+  const simReader = simAccount(`${prefix}-reader`);
+  const simOthers = Array.from({ length: 16 }, (_, i) =>
+    simAccount(`${prefix}-other-${simPad(i + 1)}`),
+  );
+  const simSenders = [simReader, ...simOthers];
+  const output = mobile
+    ? await mkdtemp(join(tmpdir(), 'who-reacted-sim-'))
+    : undefined;
   const controller = new AbortController();
   const advance = (ms) => vi.setSystemTime(Date.now() + ms);
   const plan = c.reactionPlan(SIM_RUN);
@@ -2940,6 +2962,18 @@ async function simulatedWhoReactedApp(faults = {}) {
     dismissedAt: undefined,
     secretsAtReset: undefined,
     joins: 0,
+    // Mobile: the route (`room` | `rooms` | `settings` | `appearance`), the theme and the sheet's timeline.
+    route: 'rooms',
+    opens: 0,
+    dialogOpens: 0,
+    dark: faults.modeIgnored === 'light' || faults.startDark === true,
+    settingsBackApplied: false,
+    restoredSeenAt: undefined,
+    scrollLeft: 0,
+    dchain: {},
+    swipes: [],
+    nativeRects: [],
+    flows: [],
   };
   const lagOf = (label) => faults.lag?.[label] ?? 0;
   const applyDueEntries = () => {
@@ -2986,6 +3020,19 @@ async function simulatedWhoReactedApp(faults = {}) {
       : state.rendered;
   const summaryShown = () =>
     state.rendered.length < 36 || since(state.groupsSatisfiedAt, 'summary');
+  const maxScroll = () => (faults.directoryWidth ?? 1121) - 393;
+  const swipeStep = () =>
+    faults.swipesNeeded
+      ? Math.ceil(maxScroll() / faults.swipesNeeded)
+      : (faults.swipeStep ?? 201);
+  const lastKeyName = () => simKeyOrder(state.snapshot).at(-1);
+  const lastKeyUnobstructed = () =>
+    !faults.lastKeyBlocked && state.scrollLeft >= maxScroll();
+  const inSettings = () =>
+    state.route === 'settings' || state.route === 'appearance';
+  /** The light sheet's class follows the visible read by `lag.sheet`; the dark one is asserted on its visible read. */
+  const sheetShown = () =>
+    !mobile || state.dialogOpens > 1 || since(state.dchain.visibleAt, 'sheet');
   const pillsHtml = () =>
     simKeyOrder(visiblePills())
       .map((key) => {
@@ -3009,6 +3056,8 @@ async function simulatedWhoReactedApp(faults = {}) {
     );
     if (key === '👍' && faults.reactors !== undefined)
       names = names.slice(0, faults.reactors);
+    if (mobile && faults.lastKeyTwoReactors && key === lastKeyName())
+      names = [...names, 'Second reactor'];
     return names;
   };
   const dialogHtml = () => {
@@ -3018,13 +3067,16 @@ async function simulatedWhoReactedApp(faults = {}) {
     const selected = state.dialogKey ?? '👍';
     // heart-reactors: the list follows the pressed key `lag.heartReactors` after heart-pressed.
     const listed =
-      selected === '❤️' && !since(state.heartPressedAt, 'heartReactors')
+      (selected === '❤️' && !since(state.heartPressedAt, 'heartReactors')) ||
+      (mobile &&
+        selected === lastKeyName() &&
+        !since(state.dchain.scrolledAt, 'lastKeyReactors'))
         ? '👍'
         : selected;
     const keyButtons = shownKeys
       .map(
         (key) =>
-          `<button data-testid="reactions-key" aria-pressed="${key === selected}" aria-label="${simEscape(key)}, ${state.snapshot.filter((item) => item.key === key).length} reacted">${key}</button>`,
+          `<button data-testid="reactions-key"${mobile && key === shownKeys.at(-1) ? ' data-box="lastKey"' : ''} aria-pressed="${key === selected}" aria-label="${simEscape(key)}, ${state.snapshot.filter((item) => item.key === key).length} reacted">${key}</button>`,
       )
       .join('');
     const items = reactorsFor(listed)
@@ -3035,10 +3087,10 @@ async function simulatedWhoReactedApp(faults = {}) {
       )
       .join('');
     return (
-      `<trn-reactions-dialog class="reactions-dialog--sheet"><div data-testid="reactions-dialog" data-box="dialog">` +
+      `<trn-reactions-dialog class="${faults.noSheetClass || !sheetShown() ? '' : 'reactions-dialog--sheet'}"><div data-testid="reactions-dialog" data-box="${mobile ? 'sheet' : 'dialog'}" data-style='${JSON.stringify({ backgroundColor: state.dark && !faults.darkPaintSame ? SIM_DARK_PAINT : SIM_LIGHT_PAINT })}'>` +
       `<span class="reactions-dialog__total">${faults.total ?? '36 total'}</span>` +
-      `<div data-testid="reactions-directory" data-box="directory" data-scroll='${JSON.stringify({ scrollWidth: 1121, clientWidth: 393, scrollLeft: 0 })}'>${keyButtons}</div>` +
-      `<div class="reactions-dialog__detail" data-scroll='${JSON.stringify({ scrollHeight: 791, clientHeight: faults.detailScrolls === false || !since(state.chainAnchor, 'detail') ? 791 : 441 })}'><ul data-testid="reactors-list">${items}</ul></div>` +
+      `<div data-testid="reactions-directory" data-box="directory" data-scroll='${JSON.stringify({ scrollWidth: mobile && !since(state.dchain.sheetAt, 'directory') ? 393 : (faults.directoryWidth ?? 1121), clientWidth: 393, scrollLeft: mobile && state.dchain.pressedAt !== undefined && !since(state.dchain.pressedAt, 'scrolled') ? 0 : state.scrollLeft })}'>${keyButtons}</div>` +
+      `<div class="reactions-dialog__detail" data-scroll='${JSON.stringify({ scrollHeight: 791, clientHeight: faults.detailScrolls === false || !since(mobile ? state.dchain.overflowAt : state.chainAnchor, 'detail') ? 791 : 441 })}'><ul data-testid="reactors-list">${items}</ul></div>` +
       `</div></trn-reactions-dialog>` +
       `<button data-testid="close-reactions" data-box="${faults.closeHidden ? 'zero' : 'close'}"></button>`
     );
@@ -3048,8 +3100,34 @@ async function simulatedWhoReactedApp(faults = {}) {
     const parts = ['<nav>'];
     if (state.signedIn)
       parts.push('<button data-testid="rail-rooms">Rooms</button>');
+    if (state.signedIn && mobile)
+      parts.push(
+        '<button data-testid="open-settings" data-box="btn">Settings</button>',
+      );
     parts.push('</nav>');
-    if (state.roomsShown)
+    if (mobile && state.roomOpen)
+      parts.push(
+        `<button data-testid="back-to-rooms" data-box="${faults.backToRoomsHidden ? 'zero' : 'btn'}">Rooms</button>`,
+      );
+    const settingsHost =
+      inSettings() ||
+      (state.settingsBackApplied &&
+        (faults.settingsStuck || !since(state.restoredSeenAt, 'detached')));
+    if (mobile && settingsHost) {
+      parts.push('<trn-settings>');
+      if (state.route === 'settings')
+        parts.push(
+          `<nav aria-label="Settings sections" data-box="${faults.sectionsHidden ? 'zero' : 'btn'}"><button data-testid="settings-nav-appearance">Appearance</button></nav>`,
+        );
+      if (state.route === 'appearance')
+        parts.push(
+          '<button data-testid="mode-light">Light</button><button data-testid="mode-dark">Dark</button>',
+        );
+      if (inSettings())
+        parts.push('<button aria-label="Back" data-box="btn"></button>');
+      parts.push('</trn-settings>');
+    }
+    if (state.roomsShown && !inSettings())
       parts.push(
         `<aside><div class="channel">${simEscape(SIM_ROOM_NAME)}</div></aside>`,
       );
@@ -3059,7 +3137,7 @@ async function simulatedWhoReactedApp(faults = {}) {
       );
       if (rowShown())
         parts.push(
-          `<div class="msg" data-mid="${SIM_TARGET}" data-box="msg"><p class="msg__text">${simEscape(SIM_BODY)}</p>${pillsHtml()}<button class="reaction reaction--who" data-testid="reactions-who" data-box="who">5</button></div>`,
+          `<div class="msg" data-mid="${faults.otherRoomReopened && state.opens >= 2 ? '$other' : SIM_TARGET}" data-box="msg"><p class="msg__text">${simEscape(SIM_BODY)}</p>${pillsHtml()}<button class="reaction reaction--who" data-testid="reactions-who" data-box="who">5</button></div>`,
         );
       else if (state.timelineReset && faults.ghostRow)
         parts.push(
@@ -3076,11 +3154,29 @@ async function simulatedWhoReactedApp(faults = {}) {
     if (state.dialog) parts.push(dialogHtml());
     return parts.join('');
   };
+  const routeUrl = () => {
+    if (!mobile)
+      return state.roomOpen ? SIM_ROUTE : 'https://localhost/rooms?account=x';
+    // The Rooms route resolves its account `lag.roomsRoute` after the back-to-rooms tap returned.
+    const qualified =
+      !faults.routeWithoutAccount &&
+      (state.roomOpen || since(state.returns.roomsTap, 'roomsRoute'));
+    const account = qualified
+      ? `?account=${encodeURIComponent(simReader.userId)}`
+      : '';
+    if (state.roomOpen)
+      return `https://localhost/rooms/${Buffer.from(SIM_ROOM).toString('base64url')}${account}`;
+    if (state.route === 'settings') return 'https://localhost/settings';
+    if (state.route === 'appearance')
+      return 'https://localhost/settings/appearance';
+    return `https://localhost/rooms${account}`;
+  };
   const dom = () => {
     const jsdom = new JSDOM(`<main>${render()}</main>`, {
-      url: state.roomOpen ? SIM_ROUTE : 'https://localhost/rooms?account=x',
+      url: routeUrl(),
     });
     const { window } = jsdom;
+    if (state.dark) window.document.documentElement.classList.add('dark');
     const requested = state.profile ?? c.GENERAL_TOUCH_PROFILE;
     Object.defineProperty(window, 'innerWidth', {
       value: faults.profileWidth ?? requested.width,
@@ -3101,7 +3197,14 @@ async function simulatedWhoReactedApp(faults = {}) {
     });
     const proto = window.HTMLElement.prototype;
     proto.getBoundingClientRect = function () {
-      return rect(SIM_BOXES[this.getAttribute('data-box')] ?? SIM_BOXES.zero);
+      const name = this.getAttribute('data-box');
+      if (name === 'sheet') {
+        const left = faults.sheetLeft ?? 0;
+        const right = faults.sheetRight ?? 393.14;
+        const bottom = faults.sheetBottom ?? 851.05;
+        return rect([left, 170, right - left, bottom - 170]);
+      }
+      return rect(SIM_BOXES[name] ?? SIM_BOXES.zero);
     };
     for (const name of [
       'scrollWidth',
@@ -3132,10 +3235,17 @@ async function simulatedWhoReactedApp(faults = {}) {
         get: (target, key) => (key in overrides ? overrides[key] : target[key]),
       });
     };
-    window.document.elementFromPoint = () =>
-      state.chipRevealed || faults.chipVisible
+    window.document.elementFromPoint = (x, y) => {
+      if (x === 325 && y === 345)
+        return window.document.querySelector(
+          lastKeyUnobstructed()
+            ? '[data-box="lastKey"]'
+            : '[data-testid="reactions-directory"]',
+        );
+      return state.chipRevealed || faults.chipVisible
         ? window.document.querySelector('[data-box="who"]')
         : window.document.querySelector('[data-box="composer"]');
+    };
     return window;
   };
   const matches = (selector, filter = {}) =>
@@ -3170,6 +3280,8 @@ async function simulatedWhoReactedApp(faults = {}) {
       throw notActionable(selector);
     if (selector === SIM_WHO && !(state.chipRevealed || faults.chipVisible))
       throw notActionable(selector);
+    if (selector.includes(':last-of-type') && !lastKeyUnobstructed())
+      throw notActionable(selector);
     return found[0];
   };
   /** A native call finishes: the clock advances, then its return is recorded. */
@@ -3185,8 +3297,25 @@ async function simulatedWhoReactedApp(faults = {}) {
     workspaceRoot: root,
     applicationId: 'eu.qwky.trinity',
     signal: controller.signal,
+    output,
     device: {
       async runFlow(flow, env) {
+        if (mobile && /accounts-point-swipe-directory-\d+\.yaml$/u.test(flow)) {
+          state.flows.push({
+            name: basename(flow),
+            text: await readFile(flow, 'utf8'),
+          });
+          state.actions.push('flow:swipe');
+          finish('swipe');
+          enqueue('swipe', () => {
+            if (!faults.swipeIgnored)
+              state.scrollLeft = Math.min(
+                state.scrollLeft + swipeStep(),
+                maxScroll(),
+              );
+          });
+          return;
+        }
         assert.ok(
           flow.endsWith(SIM_BACK_FLOW),
           'Only the Back flow is modelled',
@@ -3213,6 +3342,8 @@ async function simulatedWhoReactedApp(faults = {}) {
           if (state.roomOpen && state.firstReadyRead === undefined)
             state.firstReadyRead = Date.now();
           const now = Date.now();
+          if (state.settingsBackApplied && state.restoredSeenAt === undefined)
+            state.restoredSeenAt = now;
           if (
             state.thumbsSatisfiedAt === undefined &&
             state.sendReturns.length === 36 &&
@@ -3232,6 +3363,30 @@ async function simulatedWhoReactedApp(faults = {}) {
             state.dialogReads++;
             // Read 8 satisfies long-reactor-overflow; detail-overflow polls from it.
             if (state.dialogReads === 8) state.chainAnchor = now;
+            // Mobile: each record's knob counts from the read that satisfied the previous one; one stage advances per read.
+            const d = state.dchain;
+            if (d.visibleAt === undefined) {
+              d.visibleAt = now;
+              // The dark sheet is asserted on its own visible read.
+              if (state.dialogOpens > 1) d.sheetAt = now;
+            } else if (d.sheetAt === undefined) {
+              if (sheetShown()) d.sheetAt = now;
+            } else if (d.overflowAt === undefined) {
+              if (since(d.sheetAt, 'directory')) d.overflowAt = now;
+            } else if (
+              d.pressedAt === undefined &&
+              mobile &&
+              state.dialogKey !== null &&
+              state.dialogKey === lastKeyName()
+            )
+              d.pressedAt = now;
+            else if (
+              d.scrolledAt === undefined &&
+              d.pressedAt !== undefined &&
+              since(d.pressedAt, 'scrolled') &&
+              state.scrollLeft > 0
+            )
+              d.scrolledAt = now;
             if (state.dialogKey === '❤️' && state.heartPressedAt === undefined)
               state.heartPressedAt = now;
           }
@@ -3303,38 +3458,104 @@ async function simulatedWhoReactedApp(faults = {}) {
           found.length === 1 && found[0].getAttribute('data-mid') === eventId,
       };
     },
+    async nativeRect(rect) {
+      state.nativeRects.push(rect);
+      const point = (x, y) => ({
+        x: Math.round(x * 2.75),
+        y: Math.round(y * 2.75),
+      });
+      return {
+        topLeft: point(rect.x + 0.5, rect.y + 0.5),
+        bottomRight: point(
+          rect.x + rect.width - 0.5,
+          rect.y + rect.height - 0.5,
+        ),
+      };
+    },
     async tapCurrent(selector, filter = {}) {
       // A target that is not one actionable element fails before any native input.
       const element = actionable(selector, filter);
       state.actions.push(`tap:${label(selector, filter)}`);
       const testId = element.getAttribute('data-testid');
-      if (testId === 'rail-rooms')
-        enqueue('rail', () => (state.roomsShown = true));
-      else if (element.classList.contains('channel'))
-        enqueue('room', () => {
+      let tapped;
+      if (testId === 'rail-rooms') {
+        tapped = 'rail';
+        enqueue(tapped, () => (state.roomsShown = true));
+      } else if (element.classList.contains('channel')) {
+        tapped = 'room';
+        enqueue(tapped, () => {
           state.roomOpen = true;
+          state.route = 'room';
+          state.opens++;
+          state.chipRevealed = false;
           if (faults.dialogWithoutTap) state.dialog = true;
         });
-      else if (testId === 'reactions-who')
-        enqueue('who', () => {
+      } else if (testId === 'reactions-who') {
+        tapped = 'who';
+        enqueue(tapped, () => {
           state.dialog = true;
           state.dialogKey = '👍';
           state.snapshot = [...state.rendered];
+          state.dialogOpens++;
+          state.dialogReads = 0;
+          state.dchain = {};
         });
-      else if (testId === 'reactions-key')
-        enqueue('heart', () => {
+      } else if (
+        testId === 'reactions-key' &&
+        selector.includes(':last-of-type')
+      ) {
+        tapped = 'lastKey';
+        enqueue(tapped, () => {
+          if (faults.lastKeyIgnored) return;
+          state.dialogKey = lastKeyName();
+          if (faults.scrollResetOnTap) state.scrollLeft = 0;
+        });
+      } else if (testId === 'reactions-key') {
+        tapped = 'heart';
+        enqueue(tapped, () => {
           if (!faults.heartIgnored) state.dialogKey = '❤️';
         });
-      else throw new Error(`Unmodelled simulated tap ${selector}`);
-      finish(
-        testId === 'rail-rooms'
-          ? 'rail'
-          : testId === 'reactions-who'
-            ? 'who'
-            : testId === 'reactions-key'
-              ? 'heart'
-              : 'room',
-      );
+      } else if (testId === 'close-reactions') {
+        tapped = 'close';
+        enqueue(tapped, () => {
+          if (!faults.closeIgnored) state.dialog = false;
+        });
+      } else if (testId === 'back-to-rooms') {
+        tapped = 'roomsTap';
+        enqueue(tapped, () => {
+          state.roomOpen = false;
+          state.route = 'rooms';
+        });
+      } else if (testId === 'open-settings') {
+        tapped = 'sections';
+        enqueue(tapped, () => {
+          state.roomOpen = false;
+          state.route = 'settings';
+          state.settingsBackApplied = false;
+          state.restoredSeenAt = undefined;
+        });
+      } else if (testId === 'settings-nav-appearance') {
+        tapped = 'nav';
+        enqueue(tapped, () => (state.route = 'appearance'));
+      } else if (testId === 'mode-light' || testId === 'mode-dark') {
+        tapped = 'mode';
+        const mode = testId.slice('mode-'.length);
+        enqueue(tapped, () => {
+          if (faults.modeIgnored !== mode) state.dark = mode === 'dark';
+        });
+      } else if (element.matches('button[aria-label="Back"]')) {
+        const from = state.route;
+        tapped = from === 'appearance' ? 'unwound' : 'restored';
+        enqueue(tapped, () => {
+          if (from === 'appearance' && !faults.firstBackToRooms) {
+            if (!faults.sectionStuck) state.route = 'settings';
+            return;
+          }
+          state.route = 'rooms';
+          state.settingsBackApplied = true;
+        });
+      } else throw new Error(`Unmodelled simulated tap ${selector}`);
+      finish(tapped);
     },
     async scrollIntoViewIfNeeded(selector) {
       assert.equal(selector, SIM_WHO, 'Only the chip is scrolled into view');
@@ -3357,7 +3578,7 @@ async function simulatedWhoReactedApp(faults = {}) {
       state_key: userId,
       content: { membership, displayname },
     });
-    const others = SIM_OTHERS.slice(0, faults.joinedOthers ?? 16);
+    const others = simOthers.slice(0, faults.joinedOthers ?? 16);
     const events = [
       ...(faults.noCreate
         ? []
@@ -3367,7 +3588,7 @@ async function simulatedWhoReactedApp(faults = {}) {
         state_key: '',
         content: { join_rule: faults.joinRule ?? 'public' },
       },
-      member(SIM_READER.userId, 'join', 'Reader'),
+      member(simReader.userId, 'join', 'Reader'),
       ...others.map((other, index) =>
         member(
           other.userId,
@@ -3378,9 +3599,7 @@ async function simulatedWhoReactedApp(faults = {}) {
       {
         type: 'm.room.message',
         event_id: SIM_TARGET,
-        sender: faults.targetFromOther
-          ? SIM_OTHERS[0].userId
-          : SIM_READER.userId,
+        sender: faults.targetFromOther ? simOthers[0].userId : simReader.userId,
         content: { msgtype: 'm.text', body: SIM_BODY },
       },
     ];
@@ -3388,7 +3607,7 @@ async function simulatedWhoReactedApp(faults = {}) {
       events.push({
         type: 'm.room.message',
         event_id: '$extra',
-        sender: SIM_READER.userId,
+        sender: simReader.userId,
         content: { msgtype: 'm.text', body: 'extra' },
       });
     return { chunk: [...events].reverse() };
@@ -3397,7 +3616,7 @@ async function simulatedWhoReactedApp(faults = {}) {
     let events = state.sent.map(({ id, key, sender }) => ({
       type: 'm.reaction',
       event_id: id,
-      sender: SIM_SENDERS[sender].userId,
+      sender: simSenders[sender].userId,
       content: {
         'm.relates_to': {
           rel_type: 'm.annotation',
@@ -3433,17 +3652,17 @@ async function simulatedWhoReactedApp(faults = {}) {
   const fixtures = {
     async account(role) {
       state.rest.push('rest:account');
-      const account = SIM_SENDERS.find(({ username }) => username === role);
+      const account = simSenders.find(({ username }) => username === role);
       assert.ok(account, `Unknown role ${role}`);
       return account;
     },
     async setDisplayName(account, name) {
-      assert.equal(account, SIM_OTHERS[0]);
+      assert.equal(account, simOthers[0]);
       assert.equal(name, SIM_LONG);
       state.rest.push('rest:setDisplayName');
     },
     async createRoom(account, { name, preset }) {
-      assert.equal(account, SIM_READER);
+      assert.equal(account, simReader);
       assert.equal(preset, 'public_chat');
       assert.equal(name, SIM_ROOM_NAME);
       state.rest.push('rest:createRoom');
@@ -3451,7 +3670,7 @@ async function simulatedWhoReactedApp(faults = {}) {
     },
     async joinHonoringRateLimit(account, roomId) {
       assert.equal(roomId, SIM_ROOM);
-      assert.equal(account, SIM_OTHERS[state.joins]);
+      assert.equal(account, simOthers[state.joins]);
       if (faults.joinExhausted)
         throw new Error(
           'Matrix fixture join still rate-limited after 5 attempts',
@@ -3466,7 +3685,7 @@ async function simulatedWhoReactedApp(faults = {}) {
       };
     },
     async sendMessage(account, roomId, body, txn) {
-      assert.equal(account, SIM_READER);
+      assert.equal(account, simReader);
       assert.equal(roomId, SIM_ROOM);
       assert.equal(body, SIM_BODY);
       assert.equal(txn, c.targetTxnOf(SIM_RUN));
@@ -3474,7 +3693,7 @@ async function simulatedWhoReactedApp(faults = {}) {
       return SIM_TARGET;
     },
     async roomMessages(account, roomId) {
-      assert.equal(account, SIM_READER);
+      assert.equal(account, simReader);
       assert.equal(roomId, SIM_ROOM);
       advance(faults.readMs ?? 1_000);
       state.rest.push('rest:roomMessages');
@@ -3487,7 +3706,7 @@ async function simulatedWhoReactedApp(faults = {}) {
       assert.equal(eventId, SIM_TARGET);
       assert.equal(key, planned.key);
       assert.equal(txn, planned.txn);
-      assert.equal(sender, SIM_SENDERS[planned.sender]);
+      assert.equal(sender, simSenders[planned.sender]);
       // Rule 7: the previous reaction's id is registered before this send.
       state.registeredBeforeSend.push(
         index === 0
@@ -3507,7 +3726,7 @@ async function simulatedWhoReactedApp(faults = {}) {
       return id;
     },
     async reactionRelations(observer, roomId, eventId) {
-      assert.equal(observer, SIM_READER);
+      assert.equal(observer, simReader);
       assert.equal(roomId, SIM_ROOM);
       assert.equal(eventId, SIM_TARGET);
       advance(faults.readMs ?? 1_000);
@@ -3516,7 +3735,7 @@ async function simulatedWhoReactedApp(faults = {}) {
     },
   };
   context = {
-    entry: c.WHO_REACTED_STAGES.find(({ id }) => id === SIM_STAGE),
+    entry: c.WHO_REACTED_STAGES.find(({ id }) => id === stage),
     records: [],
     identities: new Set(),
     receipts: 0,
@@ -3536,7 +3755,7 @@ async function simulatedWhoReactedApp(faults = {}) {
     },
     reactionIds: [],
   };
-  return { client, fixtures, state, context };
+  return { client, fixtures, state, context, output };
 }
 
 /** Runs one simulated stage on the fake clock, restoring real timers afterwards. */
@@ -3544,11 +3763,18 @@ async function withSimulatedStage(faults, run, journeysModule) {
   const journeys = journeysModule ?? (await loadJourneys());
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(1_000_000);
+  let output;
   try {
     const app = await simulatedWhoReactedApp(faults);
-    return await run({ ...app, runPillDialog: journeys.runPillDialog });
+    output = app.output;
+    return await run({
+      ...app,
+      runPillDialog: journeys.runPillDialog,
+      runMobileSheet: journeys.runMobileSheet,
+    });
   } finally {
     vi.useRealTimers();
+    if (output) await rm(output, { recursive: true, force: true });
   }
 }
 
@@ -3930,6 +4156,519 @@ describe('Android who-reacted pill-dialog against a simulated installed app', ()
       },
     );
   }, 120_000);
+});
+
+const MS_STAGE = 'mobile-sheet';
+const MS_BACK = 'tap:trn-settings button[aria-label="Back"]';
+const MS_LAST_KEY =
+  'tap:[data-testid="reactions-directory"] > [data-testid="reactions-key"]:last-of-type';
+const msSettings = (mode) => [
+  'tap:[data-testid="back-to-rooms"]',
+  'tap:[data-testid="open-settings"]',
+  'tap:[data-testid="settings-nav-appearance"]',
+  `tap:[data-testid="mode-${mode}"]`,
+  MS_BACK,
+  MS_BACK,
+  'tap:[data-testid="rail-rooms"]',
+  `tap:.channel|${SIM_ROOM_NAME}`,
+];
+const MS_ACTIONS = [
+  'reset',
+  'login',
+  'hide-keyboard',
+  'tap:[data-testid="rail-rooms"]',
+  `tap:.channel|${SIM_ROOM_NAME}`,
+  ...msSettings('light'),
+  `scroll:${SIM_WHO}`,
+  `tap:${SIM_WHO}`,
+  'tap:[data-testid="close-reactions"]',
+  ...msSettings('dark'),
+  `scroll:${SIM_WHO}`,
+  `tap:${SIM_WHO}`,
+  'flow:swipe',
+  'flow:swipe',
+  'flow:swipe',
+  'flow:swipe',
+  MS_LAST_KEY,
+  'flow:native-shell-back.yaml',
+];
+const MS_RECEIPTS = [
+  'arranged',
+  'reaction-gate-1',
+  'reaction-gate-2',
+  'reaction-gate-3',
+  'reaction-gate-4',
+  'reactions-arranged',
+  'light-back-to-rooms',
+  'light-same-room',
+  'light-dialog-absent',
+  'light-sheet-paint',
+  'dark-back-to-rooms',
+  'dark-same-room',
+  'dark-dialog-absent',
+  'dark-sheet-usable',
+  'directory-swipe-1',
+  'directory-swipe-2',
+  'directory-swipe-3',
+  'directory-swipe-4',
+  'room-recovered',
+];
+/** The actions through index `last` (inclusive) of the happy-path log. */
+const through = (last) => MS_ACTIONS.slice(0, last + 1);
+const IX = {
+  reset: 0,
+  firstBackToRooms: 5,
+  openSettings: 6,
+  lightMode: 8,
+  firstBack: 9,
+  secondBack: 10,
+  lightRoom: 12,
+  lightChip: 14,
+  close: 15,
+  darkMode: 19,
+  darkRoom: 23,
+  darkChip: 25,
+  firstSwipe: 26,
+  lastKey: 30,
+};
+const msRecords = async () =>
+  (await loadContract()).WHO_REACTED_STAGES.find(({ id }) => id === MS_STAGE)
+    .assertions;
+const withMobileStage = (faults, run, journeysModule) =>
+  withSimulatedStage(
+    { stage: MS_STAGE, ...faults },
+    (app) => run({ ...app, run: app.runMobileSheet }),
+    journeysModule,
+  );
+
+describe('Android who-reacted mobile-sheet against a simulated installed app', () => {
+  it('drives the exact native sequence and records all 103 identities in order', async () => {
+    await withMobileStage({}, async ({ context, state, run, output }) => {
+      await run(context);
+      expect(context.records).toEqual(await msRecords());
+      expect(context.records).toHaveLength(103);
+      expect(state.actions).toEqual(MS_ACTIONS);
+      expect(state.batches).toEqual([8, 8, 8, 8, 4]);
+      expect(
+        state.written
+          .map(({ name }) => name)
+          .filter((name) => name.startsWith('receipt-'))
+          .map((name) => name.replace(/^receipt-\d+-/u, '')),
+      ).toEqual(MS_RECEIPTS);
+      // The swipe is a materialized native flow on the client's mapped directory rect.
+      expect(state.flows.map(({ name }) => name)).toEqual(
+        [1, 2, 3, 4].map((n) => `accounts-point-swipe-directory-${n}.yaml`),
+      );
+      const rect = { x: 0, y: 320, width: 393, height: 50 };
+      expect(state.nativeRects).toEqual(Array(4).fill(rect));
+      const px = (css) => Math.round(css * 2.75);
+      const left = px(rect.x + 0.5);
+      const span = px(rect.x + rect.width - 0.5) - left;
+      const y = Math.round(
+        (px(rect.y + 0.5) + px(rect.y + rect.height - 0.5)) / 2,
+      );
+      for (const { text } of state.flows)
+        expect(text).toBe(
+          `appId: eu.qwky.trinity\n---\n- swipe:\n    start: "${Math.round(left + span * 0.8)},${y}"\n    end: "${Math.round(left + span * 0.2)},${y}"\n    duration: 600\n`,
+        );
+      expect(state.scrollLeft).toBe(728);
+      const swipes = state.written.filter(({ name }) =>
+        name.includes('directory-swipe-'),
+      );
+      expect(swipes.map(({ value }) => [value.before, value.after])).toEqual([
+        [0, 201],
+        [201, 402],
+        [402, 603],
+        [603, 728],
+      ]);
+      expect(swipes.every(({ value }) => value.max === 728)).toBe(true);
+      const accounts = [simAccount('ms-reader')];
+      for (const account of accounts)
+        expect(state.secretsAtReset).toContain(account.userId);
+      expect(context.reactionIds).toHaveLength(36);
+      assertIdFreeEvidence(state, Object.values(context.secrets));
+      await expect(readdir(output)).resolves.toEqual(
+        state.flows.map(({ name }) => name),
+      );
+    });
+  }, 120_000);
+
+  it('records every Settings, sheet and swipe identity with a receipt that is not a parity suffix', async () => {
+    await withMobileStage({}, async ({ context, run }) => {
+      await run(context);
+      const suffixes = context.records.map((id) => id.split('.').at(-1));
+      for (const suffix of [
+        'light-rooms-route',
+        'light-settings-sections',
+        'light-mode',
+        'light-section-unwound',
+        'light-rooms-restored',
+        'light-settings-detached',
+        'light-room-open',
+        'sheet-class',
+        'sheet-left-bound',
+        'sheet-right-bound',
+        'sheet-bottom-attached',
+        'light-dialog-closed',
+        'dark-mode',
+        'directory-overflow',
+        'detail-overflow',
+        'last-key-pressed',
+        'directory-scrolled',
+        'last-key-reactors',
+        'dialog-dismissed',
+        'composer-visible',
+      ])
+        expect(suffixes).toContain(suffix);
+    });
+  }, 120_000);
+
+  // Every fault is modelled exactly as the matrix names it; `through` is the last native action that runs.
+  const swipeSix = [...through(IX.darkChip), ...Array(6).fill('flow:swipe')];
+  const CONTROLS = [
+    [
+      'profileWidth: 412',
+      { profileWidth: 412 },
+      'mobile sheet profile',
+      through(IX.reset),
+    ],
+    [
+      'routeWithoutAccount',
+      { routeWithoutAccount: true },
+      'Account-qualified Rooms route',
+      through(IX.firstBackToRooms),
+    ],
+    [
+      'sectionsHidden',
+      { sectionsHidden: true },
+      'Settings sections',
+      through(IX.openSettings),
+    ],
+    [
+      "modeIgnored: 'light'",
+      { modeIgnored: 'light' },
+      'Appearance mode is light',
+      through(IX.lightMode),
+    ],
+    [
+      "modeIgnored: 'dark'",
+      { modeIgnored: 'dark' },
+      'Appearance mode is dark',
+      through(IX.darkMode),
+    ],
+    [
+      'sectionStuck',
+      { sectionStuck: true },
+      'Settings section unwound',
+      through(IX.firstBack),
+    ],
+    [
+      'settingsStuck',
+      { settingsStuck: true },
+      'Settings host is detached',
+      through(IX.secondBack),
+    ],
+    [
+      'otherRoomReopened',
+      { otherRoomReopened: true },
+      'same Room and target',
+      through(IX.lightRoom),
+    ],
+    [
+      'noSheetClass',
+      { noSheetClass: true },
+      'carries the sheet class',
+      through(IX.lightChip),
+    ],
+    [
+      'sheetLeft: -1',
+      { sheetLeft: -1 },
+      'starts inside the viewport',
+      through(IX.lightChip),
+    ],
+    [
+      'sheetRight: 395',
+      { sheetRight: 395 },
+      'ends inside the viewport',
+      through(IX.lightChip),
+    ],
+    [
+      'sheetBottom: 850.5',
+      { sheetBottom: 850.5 },
+      'bottom-attached',
+      through(IX.lightChip),
+    ],
+    [
+      'closeIgnored',
+      { closeIgnored: true },
+      'Reactions dialog is dismissed',
+      through(IX.close),
+    ],
+    [
+      'darkPaintSame',
+      { darkPaintSame: true },
+      'differs from the light',
+      through(IX.darkChip),
+    ],
+    [
+      'directoryWidth: 393',
+      { directoryWidth: 393 },
+      'overflows horizontally',
+      through(IX.darkChip),
+    ],
+    [
+      'swipeIgnored',
+      { swipeIgnored: true },
+      'native swipe advanced the directory',
+      through(IX.firstSwipe),
+    ],
+    [
+      'swipesNeeded: 7',
+      { swipesNeeded: 7 },
+      'last key within six native swipes',
+      swipeSix,
+    ],
+    [
+      'lastKeyBlocked',
+      { lastKeyBlocked: true },
+      'native swipe advanced the directory',
+      [...through(IX.darkChip), ...Array(5).fill('flow:swipe')],
+    ],
+    [
+      'lastKeyIgnored',
+      { lastKeyIgnored: true },
+      'last key is pressed',
+      through(IX.lastKey),
+    ],
+    [
+      'scrollResetOnTap',
+      { scrollResetOnTap: true },
+      'scrolled to the last key',
+      through(IX.lastKey),
+    ],
+    [
+      'lastKeyTwoReactors',
+      { lastKeyTwoReactors: true },
+      'detail lists 1 reactors',
+      through(IX.lastKey),
+    ],
+    [
+      'backIgnored',
+      { backIgnored: true },
+      'Reactions dialog is dismissed',
+      MS_ACTIONS,
+    ],
+    ['composerLost', { composerLost: true }, 'composer', MS_ACTIONS],
+  ];
+  for (const [name, faults, message, actions] of CONTROLS)
+    it(`rejects ${name} with ${message}`, async () => {
+      await withMobileStage(
+        { readMs: 4_000, ...faults },
+        async ({ context, state, run }) => {
+          await expect(run(context)).rejects.toThrow(fragment(message));
+          expect(state.actions).toEqual(actions);
+        },
+      );
+    }, 120_000);
+
+  // The three sheet bounds come from one read; each fault must fail its own record, not an earlier one.
+  for (const [name, faults, last] of [
+    ['noSheetClass', { noSheetClass: true }, 'light-dialog-visible'],
+    ['sheetLeft: -1', { sheetLeft: -1 }, 'sheet-class'],
+    ['sheetRight: 395', { sheetRight: 395 }, 'sheet-left-bound'],
+    ['sheetBottom: 850.5', { sheetBottom: 850.5 }, 'sheet-right-bound'],
+  ])
+    it(`fails ${name} at its own sheet record`, async () => {
+      await withMobileStage(faults, async ({ context, run }) => {
+        await expect(run(context)).rejects.toThrow();
+        expect(context.records.at(-1)).toBe(`who-reacted.${MS_STAGE}.${last}`);
+      });
+    }, 120_000);
+
+  it('passes without the back-to-rooms taps when that button is hidden, as the predecessor conditional', async () => {
+    await withMobileStage(
+      { backToRoomsHidden: true },
+      async ({ context, state, run }) => {
+        await run(context);
+        expect(context.records).toEqual(await msRecords());
+        expect(state.actions).toEqual(
+          MS_ACTIONS.filter((a) => a !== 'tap:[data-testid="back-to-rooms"]'),
+        );
+        expect(
+          state.written.filter(({ name }) => name.endsWith('-back-to-rooms')),
+        ).toHaveLength(2);
+        expect(
+          state.written
+            .filter(({ name }) => name.endsWith('-back-to-rooms'))
+            .every(({ value }) => !value.tapped && !value.visible),
+        ).toBe(true);
+      },
+    );
+  }, 120_000);
+
+  it('passes with one Back tap when the first Back lands on Rooms, as the helper conditional', async () => {
+    await withMobileStage(
+      { firstBackToRooms: true },
+      async ({ context, state, run }) => {
+        await run(context);
+        expect(context.records).toEqual(await msRecords());
+        expect(state.actions).toEqual(
+          MS_ACTIONS.filter(
+            (_, index) => index !== IX.secondBack && index !== 21,
+          ),
+        );
+      },
+    );
+  }, 120_000);
+
+  // [RF-3] Every D4 window class of the stage: pass 5 s inside its bound, fail 1 s past it, 45 s taps and 5 s sends.
+  const SLOW = { tapMs: 45_000, sendMs: 5_000 };
+  const WINDOWS = [
+    // Shared with pill-dialog, re-run on this stage's own anchors.
+    ['rail', 25_000, 31_000, '.channel'],
+    ['room', 15_000, 21_000, 'composer'],
+    ['targetRow', 15_000, 21_000, 'Exactly one reconciled target row'],
+    ['gate', 25_000, 31_000, 'cumulative 👍'],
+    ['final', 25_000, 31_000, '17'],
+    ['group', 25_000, 31_000, 'reaction groups'],
+    // Settings and Rooms navigation (19–99).
+    ['roomsRoute', 15_000, 21_000, 'Account-qualified Rooms route'],
+    ['sections', 15_000, 21_000, 'Settings sections'],
+    ['mode', 15_000, 21_000, 'Appearance mode is light', { startDark: true }],
+    ['unwound', 15_000, 21_000, 'Settings section unwound'],
+    ['restored', 15_000, 21_000, 'Account-qualified Rooms route'],
+    ['detached', 15_000, 21_000, 'Settings host is detached'],
+    // The sheet, the directory and the last key (320–707).
+    ['who', 15_000, 21_000, 'one visible Reactions dialog'],
+    ['sheet', 15_000, 21_000, 'carries the sheet class'],
+    ['close', 15_000, 21_000, 'Reactions dialog is dismissed'],
+    ['directory', 15_000, 21_000, 'overflows horizontally'],
+    ['detail', 15_000, 21_000, 'scrolls vertically'],
+    ['swipe', 15_000, 21_000, 'native swipe advanced the directory'],
+    ['lastKey', 15_000, 21_000, 'last key is pressed'],
+    ['scrolled', 15_000, 21_000, 'scrolled to the last key'],
+    ['lastKeyReactors', 15_000, 21_000, 'lists 1 reactors'],
+    ['back', 15_000, 21_000, 'Reactions dialog is dismissed'],
+    ['composer', 15_000, 21_000, 'composer'],
+  ];
+  for (const [key, passAt, failAt, message, extra = {}] of WINDOWS) {
+    it(`passes the ${key} window at ${passAt} ms [RF-3]`, async () => {
+      await withMobileStage(
+        { ...SLOW, ...extra, lag: { [key]: passAt } },
+        async ({ context, run }) => {
+          await run(context);
+          expect(context.records).toEqual(await msRecords());
+        },
+      );
+    }, 240_000);
+    it(`fails the ${key} window at ${failAt} ms [RF-3]`, async () => {
+      await withMobileStage(
+        { ...SLOW, ...extra, lag: { [key]: failAt } },
+        async ({ context, state, run }) => {
+          await expect(run(context)).rejects.toThrow(fragment(message));
+          if (key === 'gate')
+            expect(
+              state.written.some(({ name }) =>
+                name.endsWith('reaction-gate-1'),
+              ),
+            ).toBe(false);
+        },
+      );
+    }, 240_000);
+  }
+  it('passes the reactions-arranged window at 25 000 ms [RF-3]', async () => {
+    await withMobileStage(
+      { ...SLOW, relationsLagMs: 25_000 },
+      async ({ context, run }) => {
+        await run(context);
+        expect(context.records).toHaveLength(103);
+      },
+    );
+  }, 240_000);
+  it('fails the reactions-arranged window at 31 000 ms [RF-3]', async () => {
+    await withMobileStage(
+      { ...SLOW, relationsLagMs: 31_000 },
+      async ({ context, run }) => {
+        await expect(run(context)).rejects.toThrow(fragment('exactly 36'));
+      },
+    );
+  }, 240_000);
+  it('fails the reactions-arranged read-back when every read takes 10 s, which a fresh per-read bound would pass [RF-3]', async () => {
+    const faults = { ...SLOW, readMs: 10_000, relationsLagMs: 45_000 };
+    await withMobileStage(faults, async ({ context, run }) => {
+      await expect(run(context)).rejects.toThrow(fragment('exactly 36'));
+    });
+    const source = read(JOURNEYS);
+    const mutated = source.replace(
+      'await proveReactionsArranged(context, a, lastSentAt);\n  const dialog =',
+      'await proveReactionsArranged(context, a, Date.now());\n  const dialog =',
+    );
+    expect(mutated).not.toBe(source);
+    await withMutatedJourneys({ journeys: mutated }, (module) =>
+      withMobileStage(
+        faults,
+        async ({ context, run }) => {
+          await run(context);
+          expect(context.records).toHaveLength(103);
+        },
+        module,
+      ),
+    );
+  }, 240_000);
+  // Step 5 proofs: an anchor taken before its native call makes the 15 000 ms case fail.
+  for (const [key, from, to, faults, message] of [
+    [
+      'mode',
+      'await tap(context, \'[data-testid="settings-nav-appearance"]\');\n  const modeAt = await tap(context, `[data-testid="mode-${mode}"]`);',
+      'const modeAt = Date.now();\n  await tap(context, \'[data-testid="settings-nav-appearance"]\');\n  await tap(context, `[data-testid="mode-${mode}"]`);',
+      { startDark: true },
+      'Appearance mode is light',
+    ],
+    [
+      'swipe',
+      'await client.device.runFlow(flow, {});\n    const swipedAt = Date.now();',
+      'const swipedAt = Date.now();\n    await client.device.runFlow(flow, {});',
+      {},
+      'native swipe advanced the directory',
+    ],
+    [
+      'lastKey',
+      'const lastAt = await tap(context, LAST_KEY);',
+      'const lastAt = Date.now();\n  await tap(context, LAST_KEY);',
+      {},
+      'last key is pressed',
+    ],
+  ])
+    it(`fails the ${key} window at 15 000 ms when its anchor is taken before the native call [RF-3]`, async () => {
+      const source = read(JOURNEYS);
+      const mutated = source.includes(from)
+        ? source.replace(from, to)
+        : undefined;
+      expect(mutated).toBeDefined();
+      await withMutatedJourneys({ journeys: mutated }, (module) =>
+        withMobileStage(
+          { ...SLOW, ...faults, lag: { [key]: 15_000 } },
+          async ({ context, run }) => {
+            await expect(run(context)).rejects.toThrow(fragment(message));
+          },
+          module,
+        ),
+      );
+    }, 240_000);
+  for (const [key, failAt, message] of [
+    ['final', 31_000, '17'],
+    ['sections', 21_000, 'Settings sections'],
+    ['lastKey', 21_000, 'last key is pressed'],
+    ['composer', 21_000, 'composer'],
+  ])
+    it(`fails the ${key} window at ${failAt} ms even when every read takes 10 s [RF-3]`, async () => {
+      await withMobileStage(
+        { ...SLOW, readMs: 10_000, lag: { [key]: failAt } },
+        async ({ context, run }) => {
+          await expect(run(context)).rejects.toThrow(fragment(message));
+        },
+      );
+    }, 240_000);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -4556,7 +5295,8 @@ const enclosingFunction = (node) => {
   return undefined;
 };
 /** Helpers that return the native call's `Date.now()` anchor. */
-const ANCHORING_HELPERS = new Set(['tap', 'pressHostBack', 'swipeDirectory']);
+// `swipeDirectory` returns the swipe count, so its flow is anchored inline by `const swipedAt = Date.now();`.
+const ANCHORING_HELPERS = new Set(['tap', 'pressHostBack']);
 const DIRECT_NATIVE = ['tapCurrent', 'scrollIntoViewIfNeeded', 'runFlow'];
 
 /**
@@ -4670,7 +5410,19 @@ const WINDOW_OWNERS = [
   ['enterRoom', 2],
   ['sendPacedReactions', 1],
   ['revealAndOpenDialog', 1],
+  ['roundTripAppearance', 5],
+  ['swipeDirectory', 1],
+  ['runMobileSheet', 5],
 ];
+
+/** Replace the first `from` inside the named function, so a text repeated in a sibling stage cannot be hit instead. */
+function replaceWithin(source, name, from, to) {
+  const start = source.indexOf(`async function ${name}(`);
+  expect(start, `${name} is declared`).toBeGreaterThanOrEqual(0);
+  const at = source.indexOf(from, start);
+  expect(at, `${from} is inside ${name}`).toBeGreaterThanOrEqual(0);
+  return source.slice(0, at) + to + source.slice(at + from.length);
+}
 
 describe('Android who-reacted source rules', () => {
   const TARGETS = {
@@ -4725,6 +5477,10 @@ describe('Android who-reacted source rules', () => {
       [
         'await context.client.tapCurrent(selector, filter);\n  return Date.now();',
         'await context.client.tapCurrent(selector, filter);\n  return 0;',
+      ],
+      [
+        'await client.device.runFlow(flow, {});\n    const swipedAt = Date.now();',
+        'await client.device.runFlow(flow, {});\n    const swipedAt = 0;',
       ],
     ];
     for (const [from, to] of cases) {
@@ -4786,6 +5542,66 @@ describe('Android who-reacted source rules', () => {
         'const railAt = Date.now();\n  await tap(context, RAIL);',
       ],
       [
+        'runMobileSheet',
+        'const lastSentAt = await sendPacedReactions(context, a);',
+        'const lastSentAt = Date.now();\n  await sendPacedReactions(context, a);',
+      ],
+      [
+        'runMobileSheet',
+        'proveReactionsArranged(context, a, lastSentAt)',
+        'proveReactionsArranged(context, a, Date.now())',
+      ],
+      [
+        'runMobileSheet',
+        'const closeAt = await tap(context, CLOSE);',
+        'const closeAt = Date.now();\n  await tap(context, CLOSE);',
+      ],
+      [
+        'runMobileSheet',
+        'const lastAt = await tap(context, LAST_KEY);',
+        'const lastAt = Date.now();\n  await tap(context, LAST_KEY);',
+      ],
+      [
+        'runMobileSheet',
+        'const backAt = await pressHostBack(context);',
+        'const backAt = Date.now();\n  await pressHostBack(context);',
+      ],
+      [
+        'roundTripAppearance',
+        'const anchor = start.backToRoomsVisible ? await tap(context, \'[data-testid="back-to-rooms"]\') : Date.now();',
+        'const anchor = Date.now();\n  if (start.backToRoomsVisible) await tap(context, \'[data-testid="back-to-rooms"]\');',
+      ],
+      [
+        'roundTripAppearance',
+        "const sectionsAt = rooms.path.startsWith('/settings') ? Date.now() : await tap(context, '[data-testid=\"open-settings\"]');",
+        "const sectionsAt = Date.now();\n  if (!rooms.path.startsWith('/settings')) await tap(context, '[data-testid=\"open-settings\"]');",
+      ],
+      [
+        'roundTripAppearance',
+        'await tap(context, \'[data-testid="settings-nav-appearance"]\');\n  const modeAt = await tap(context, `[data-testid="mode-${mode}"]`);',
+        'const modeAt = Date.now();\n  await tap(context, \'[data-testid="settings-nav-appearance"]\');\n  await tap(context, `[data-testid="mode-${mode}"]`);',
+      ],
+      [
+        'roundTripAppearance',
+        'const modeAt = await tap(context, `[data-testid="mode-${mode}"]`);',
+        'const modeAt = Date.now();\n  await tap(context, `[data-testid="mode-${mode}"]`);',
+      ],
+      [
+        'roundTripAppearance',
+        'const firstBackAt = await tap(context, SETTINGS_BACK);',
+        'const firstBackAt = Date.now();\n  await tap(context, SETTINGS_BACK);',
+      ],
+      [
+        'roundTripAppearance',
+        "const restoredAnchor = unwound.path === '/settings' ? await tap(context, SETTINGS_BACK) : Date.now();",
+        "const restoredAnchor = Date.now();\n  if (unwound.path === '/settings') await tap(context, SETTINGS_BACK);",
+      ],
+      [
+        'swipeDirectory',
+        'await client.device.runFlow(flow, {});\n    const swipedAt = Date.now();',
+        'const swipedAt = Date.now();\n    await client.device.runFlow(flow, {});',
+      ],
+      [
         'openArrangedRoom',
         "await enterRoom(context, a, 'room-open');\n  const readyAt = Date.now();",
         "const readyAt = Date.now();\n  await enterRoom(context, a, 'room-open');",
@@ -4793,8 +5609,7 @@ describe('Android who-reacted source rules', () => {
       ['sendPacedReactions', '    const sentAt = lastSentAt;\n', ''],
     ];
     for (const [name, from, to] of cases) {
-      expect(journeys).toContain(from);
-      let mutated = journeys.replace(from, to);
+      let mutated = replaceWithin(journeys, name, from, to);
       if (name === 'sendPacedReactions')
         // The gate anchor moves before the group's sends.
         mutated = mutated.replace(

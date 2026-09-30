@@ -20,6 +20,7 @@ import {
 import {
   GATES,
   GENERAL_TOUCH_PROFILE,
+  MOBILE_SHEET_PROFILE,
   REACTION_GROUP,
   RUN_TAGS,
   WHO_REACTED_ASSERTION_RECORDS,
@@ -30,6 +31,8 @@ import {
   assertComposerVisible,
   assertDetailOverflow,
   assertDialogDismissed,
+  assertDirectoryOverflow,
+  assertDirectoryScrolled,
   assertDialogTotal,
   assertDialogVisible,
   assertEventSent,
@@ -40,10 +43,20 @@ import {
   assertKeyPressed,
   assertLongReactorEllipsis,
   assertLongReactorListed,
+  assertLastKeyPressed,
   assertLongReactorOverflow,
+  assertMode,
   assertReactionsArranged,
   assertReactors,
   assertRoomCreated,
+  assertRoomsRoute,
+  assertSectionUnwound,
+  assertSettingsDetached,
+  assertSettingsSections,
+  assertSheetBottom,
+  assertSheetClass,
+  assertSheetLeft,
+  assertSheetRight,
   assertTargetRow,
   assertThumbsCount,
   assertThumbsSummary,
@@ -68,6 +81,7 @@ import {
   readShellRoute,
   type ReactionDialogObservation,
   type ReactionRowObservation,
+  type ShellRouteObservation,
 } from './who-reacted-observer.mts';
 import { readAppliedProfile, type ObservationOptions } from './message-quote-observer.mts';
 import {
@@ -240,6 +254,9 @@ const APPLICATION_ID = 'eu.qwky.trinity';
 const RAIL = '[data-testid="rail-rooms"]';
 const WHO = '[data-testid="reactions-who"]';
 const KEY = '[data-testid="reactions-key"]';
+const CLOSE = '[data-testid="close-reactions"]';
+const LAST_KEY = '[data-testid="reactions-directory"] > [data-testid="reactions-key"]:last-of-type';
+const SETTINGS_BACK = 'trn-settings button[aria-label="Back"]';
 const TIMELINE = '.scroll';
 const READY_ROW = '.scroll .msg[data-mid^="$"]';
 const BACK_FLOW = 'e2e/android/flows/native-shell-back.yaml';
@@ -507,11 +524,122 @@ export async function runPillDialog(context: WhoReactedStageContext): Promise<vo
   await receipt(context, 'room-recovered', { composerVisible: recovered.composerVisible, sameRoom: true });
 }
 
-/** Task 6 replaces this. */
-export async function runMobileSheet(_context: WhoReactedStageContext): Promise<void> {
-  await Promise.resolve();
-  throw new Error('Task 6');
+/** 568–575 (light) and 607–615 (dark): the real native Settings path and back to the same Room. */
+export async function roundTripAppearance(context: WhoReactedStageContext, a: Arranged,
+  mode: 'light' | 'dark'): Promise<void> {
+  const { client } = context;
+  const route = (o: ObservationOptions<ShellRouteObservation>) => readShellRoute(client, o);
+  const start = await readShellRoute(client);
+  // The predecessor's conditional (568/608): the tap's return anchors the window, else the read before it.
+  const anchor = start.backToRoomsVisible ? await tap(context, '[data-testid="back-to-rooms"]') : Date.now();
+  await receipt(context, `${mode}-back-to-rooms`, { visible: start.backToRoomsVisible, tapped: start.backToRoomsVisible });
+  // Navigation 19–35 (Android path).
+  const rooms = await until(context, route, (r) => assertRoomsRoute(r, a.reader.userId), left(UI_MS, anchor), 'Rooms route');
+  await record(context, `${mode}-rooms-route`, () => assertRoomsRoute(rooms, a.reader.userId), { rooms: true, accountQualified: true });
+  const sectionsAt = rooms.path.startsWith('/settings') ? Date.now() : await tap(context, '[data-testid="open-settings"]');
+  const sections = await until(context, route, assertSettingsSections, left(UI_MS, sectionsAt), 'Settings sections');
+  await record(context, `${mode}-settings-sections`, () => assertSettingsSections(sections), { sectionsVisible: true });
+  // 570–572 / 610–612.
+  await tap(context, '[data-testid="settings-nav-appearance"]');
+  const modeAt = await tap(context, `[data-testid="mode-${mode}"]`);
+  const applied = await until(context, route, (r) => assertMode(r, mode), left(UI_MS, modeAt), `${mode} mode`);
+  await record(context, `${mode}-mode`, () => assertMode(applied, mode), { dark: applied.dark });
+  // Navigation 64–102 (Android path): the in-page Back button, twice when the first lands on /settings.
+  const firstBackAt = await tap(context, SETTINGS_BACK);
+  const unwound = await until(context, route, assertSectionUnwound, left(UI_MS, firstBackAt), 'Settings section unwound');
+  await record(context, `${mode}-section-unwound`, () => assertSectionUnwound(unwound), { settingsRoot: unwound.path === '/settings' });
+  const restoredAnchor = unwound.path === '/settings' ? await tap(context, SETTINGS_BACK) : Date.now();
+  const restored = await until(context, route, (r) => assertRoomsRoute(r, a.reader.userId), left(UI_MS, restoredAnchor), 'Rooms restored');
+  await record(context, `${mode}-rooms-restored`, () => assertRoomsRoute(restored, a.reader.userId), { rooms: true, accountQualified: true });
+  const detached = await until(context, route, assertSettingsDetached, left(UI_MS, Date.now()), 'Settings detached');
+  await record(context, `${mode}-settings-detached`, () => assertSettingsDetached(detached), { settingsHosts: 0 });
+  // 574 / 614: the same Room again.
+  await enterRoom(context, a, `${mode}-room-open`);
+  const same = await client.eventIdentity(READY_ROW, { text: a.body }, a.targetId);
+  assert(same.matches === 1 && same.exactEvent, 'The same Room and target reopened');
+  await receipt(context, `${mode}-same-room`, { sameRoom: true });
 }
+
+const MAX_DIRECTORY_SWIPES = 6;
+const SWIPE_MS = 20_000;
+
+/**
+ * Spec D7: native horizontal swipes on the reaction directory until its last
+ * key is unobstructed. Renderer access only measures; the swipe is a Maestro
+ * flow at points mapped by the client's read-only `nativeRect`.
+ */
+export async function swipeDirectory(context: WhoReactedStageContext, a: Arranged): Promise<number> {
+  const { client } = context;
+  for (let swipe = 1; swipe <= MAX_DIRECTORY_SWIPES + 1; swipe++) {
+    const before = await readReactionDialog(client, a.longName);
+    if (before.lastKey.unobstructed) return swipe - 1;
+    assert(swipe <= MAX_DIRECTORY_SWIPES, 'The last key within six native swipes');
+    assert(before.directory, 'The reaction directory is rendered');
+    const native = await client.nativeRect(before.directory.rect);
+    const y = Math.round((native.topLeft.y + native.bottomRight.y) / 2);
+    const span = native.bottomRight.x - native.topLeft.x;
+    const startX = Math.round(native.topLeft.x + span * 0.8);
+    const endX = Math.round(native.topLeft.x + span * 0.2);
+    const flow = join(client.output, `accounts-point-swipe-directory-${swipe}.yaml`);
+    await writeFile(flow, `appId: ${APPLICATION_ID}\n---\n- swipe:\n    start: "${startX},${y}"\n    end: "${endX},${y}"\n    duration: 600\n`);
+    await client.device.runFlow(flow, {});
+    const swipedAt = Date.now();
+    const after = await until<ReactionDialogObservation>(context, (o) => readReactionDialog(client, a.longName, o),
+      (d) => assert((d.directory?.scrollLeft ?? 0) > before.directory!.scrollLeft,
+        'The native swipe advanced the directory'), left(SWIPE_MS, swipedAt), 'directory swipe');
+    await receipt(context, `directory-swipe-${swipe}`, { before: before.directory.scrollLeft,
+      after: after.directory!.scrollLeft, max: after.directory!.scrollWidth - after.directory!.clientWidth });
+  }
+  throw new Error('unreachable');
+}
+
+export async function runMobileSheet(context: WhoReactedStageContext): Promise<void> {
+  const { client } = context;
+  const a = await arrangeStage(context);
+  await openArrangedRoom(context, a, MOBILE_SHEET_PROFILE);
+  const lastSentAt = await sendPacedReactions(context, a);
+  const row = (o: ObservationOptions<ReactionRowObservation>) => readReactionRow(client, a.body, a.targetId, o);
+  const counted = await until(context, row, assertThumbsCount, left(REACTION_MS, lastSentAt), '👍 17');
+  await record(context, 'thumbs-count', () => assertThumbsCount(counted), { thumbsCount: 17 });
+  await chain(context, row, [['group-count', assertGroupCount, (r) => ({ groups: r.pills })]], REACTION_MS);
+  await proveReactionsArranged(context, a, lastSentAt);
+  const dialog = (o: ObservationOptions<ReactionDialogObservation>) => readReactionDialog(client, a.longName, o);
+  await roundTripAppearance(context, a, 'light');
+  await revealAndOpenDialog(context, a, 'light-dialog-visible', 'light-');
+  const sheet = await chain(context, dialog, [['sheet-class', assertSheetClass, () => ({ sheet: true })]]);
+  // 586–599: one geometry read decides the three bounds, as the predecessor's single evaluate.
+  await record(context, 'sheet-left-bound', () => assertSheetLeft(sheet), { left: sheet.box?.left });
+  await record(context, 'sheet-right-bound', () => assertSheetRight(sheet), { right: sheet.box?.right, innerWidth: sheet.innerWidth });
+  await record(context, 'sheet-bottom-attached', () => assertSheetBottom(sheet), { bottom: sheet.box?.bottom, innerHeight: sheet.innerHeight });
+  await receipt(context, 'light-sheet-paint', { backgroundDigest: digest(sheet.background ?? '') });
+  const closeAt = await tap(context, CLOSE);
+  const closed = await until(context, dialog, assertDialogDismissed, left(UI_MS, closeAt), 'dialog closed');
+  await record(context, 'light-dialog-closed', () => assertDialogDismissed(closed), { dialogs: 0 });
+  await roundTripAppearance(context, a, 'dark');
+  const dark = await revealAndOpenDialog(context, a, 'dark-dialog-visible', 'dark-');
+  assertSheetClass(dark); assertSheetLeft(dark); assertSheetRight(dark); assertSheetBottom(dark);
+  assert.notEqual(dark.background, sheet.background, 'The dark sheet paint differs from the light one');
+  await receipt(context, 'dark-sheet-usable', { sheet: true, bounded: true, bottomAttached: true, paintChanged: true });
+  await chain(context, dialog, [
+    ['directory-overflow', assertDirectoryOverflow, (d) => ({ overflowPx: d.directory!.scrollWidth - d.directory!.clientWidth })],
+    ['detail-overflow', assertDetailOverflow, (d) => ({ detailOverflowPx: d.detailOverflow })],
+  ]);
+  await swipeDirectory(context, a);
+  const lastAt = await tap(context, LAST_KEY);
+  const last = await until(context, dialog, assertLastKeyPressed, left(UI_MS, lastAt), 'last key pressed');
+  await record(context, 'last-key-pressed', () => assertLastKeyPressed(last), { key: last.lastKey.key });
+  await chain(context, dialog, [
+    ['directory-scrolled', assertDirectoryScrolled, (d) => ({ scrollLeft: d.directory!.scrollLeft })],
+    ['last-key-reactors', (d) => assertReactors(d, 1), (d) => ({ reactors: d.reactors })],
+  ]);
+  const backAt = await pressHostBack(context);
+  const dismissed = await until(context, dialog, assertDialogDismissed, left(UI_MS, backAt), 'sheet dismissed');
+  await record(context, 'dialog-dismissed', () => assertDialogDismissed(dismissed), { dialogs: 0 });
+  await chain(context, (o) => readShellRoute(client, o),
+    [['composer-visible', assertComposerVisible, () => ({ composerVisible: true })]]);
+  await receipt(context, 'room-recovered', { composerVisible: true });
+}
+
 const STAGE_RUNNERS: Readonly<Record<
   WhoReactedStageId,
   (context: WhoReactedStageContext) => Promise<void>
