@@ -8130,3 +8130,123 @@ following the 2026-09-26 retirement policy of
 stays as a desktop-only definition that skips on Android and no definition is
 removed; [Predecessor retirement](#predecessor-retirement) lists what stays
 desktop-only.
+
+## Who-reacted journeys
+
+[Migrate Android who-reacted journeys](https://github.com/quwisky/trinity-matrix-client/issues/759)
+moves the two Android-applicable definitions of
+[`reactions-who.spec.mts`](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/conversations/reactions-who.spec.mts)
+to the installed-Android `android.who-reacted` suite: “names the reactors on the
+pill and lists them all in the dialog” (241–531, stage `pill-dialog`) and “uses
+touch selection and native Back to dismiss the reaction sheet” (731–735 through
+534–709, stage `mobile-sheet`). The predecessor is pinned at SHA-256
+`dce976ac883e07e14850bfee43cf50050b1b1f334174ba742ca530e2b0dc9b8a` (737 lines) in
+both the working tree and the `dd0cb53c` blob, which the guard proves equal. The
+fixture and Room helper span 32–235. `e2e/support/app.mts`, `e2e/support/account.mts`,
+`e2e/support/journeys/navigation.mts` and `e2e/browser/support/settings-journey.mts`
+stay pinned at `60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`,
+`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`,
+`43232dafbf9e80df6977442f366974100ccfa315b20ab680f893d4300ab46f81` and
+`b645b7cb0ad697c8a2ec28cf74d0c5a74e0f103ea2ee1a51f8d0c3fad22fb813`.
+
+The suite records 191 ordered, unique identities: pill-dialog 88 (16 direct + 71 fixture + 1 Room) and mobile-sheet 103 (19 direct + 71 fixture + 3 Room + 10 Settings).
+
+| Fixture block (both stages) | Source (helper@call via) | Identities |
+| --- | --- | --- |
+| API logins | `loginApi` 45 via 119 and 130 | `api-login-reader`, `api-login-other-01`–`16` |
+| Room | 139 | `room-created` |
+| Rate-limited joins | `joinWithRetry` 64 via 142 | `join-other-01`–`16` |
+| Target | 149 | `target-sent` |
+| Reactions | `react` 169 via 172, 176, 178, 201 | `reaction-01`–`36` |
+
+| Source line (helper@call) | Stage | Android parity identity |
+| --- | --- | --- |
+| 232@253 | pill-dialog | `who-reacted.pill-dialog.room-open` |
+| 256 | pill-dialog | `who-reacted.pill-dialog.target-visible` |
+| 265 | pill-dialog | `who-reacted.pill-dialog.thumbs-count` |
+| 271 | pill-dialog | `who-reacted.pill-dialog.group-count` |
+| 278 | pill-dialog | `who-reacted.pill-dialog.thumbs-summary` |
+| 320 | pill-dialog | `who-reacted.pill-dialog.dialog-visible` |
+| 348 | pill-dialog | `who-reacted.pill-dialog.dialog-total` |
+| 351 | pill-dialog | `who-reacted.pill-dialog.close-visible` |
+| 391 | pill-dialog | `who-reacted.pill-dialog.key-count` |
+| 401 | pill-dialog | `who-reacted.pill-dialog.long-reactor-listed` |
+| 404 | pill-dialog | `who-reacted.pill-dialog.thumbs-reactors` |
+| 405 | pill-dialog | `who-reacted.pill-dialog.long-reactor-ellipsis` |
+| 411 | pill-dialog | `who-reacted.pill-dialog.long-reactor-overflow` |
+| 420 | pill-dialog | `who-reacted.pill-dialog.detail-overflow` |
+| 476 | pill-dialog | `who-reacted.pill-dialog.heart-pressed` |
+| 477 | pill-dialog | `who-reacted.pill-dialog.heart-reactors` |
+| 529 | pill-dialog | `who-reacted.pill-dialog.dialog-dismissed` |
+| 232@551 | mobile-sheet | `who-reacted.mobile-sheet.room-open` |
+| 553 | mobile-sheet | `who-reacted.mobile-sheet.target-visible` |
+| 558 | mobile-sheet | `who-reacted.mobile-sheet.thumbs-count` |
+| 562 | mobile-sheet | `who-reacted.mobile-sheet.group-count` |
+| 19@569, 32@569 | mobile-sheet | `who-reacted.mobile-sheet.light-rooms-route`, `.light-settings-sections` |
+| 572 | mobile-sheet | `who-reacted.mobile-sheet.light-mode` |
+| 69@573, 84@573, 99@573 | mobile-sheet | `who-reacted.mobile-sheet.light-section-unwound`, `.light-rooms-restored`, `.light-settings-detached` |
+| 232@574 | mobile-sheet | `who-reacted.mobile-sheet.light-room-open` |
+| 583, 584 | mobile-sheet | `who-reacted.mobile-sheet.light-dialog-visible`, `.sheet-class` |
+| 597, 598, 599 | mobile-sheet | `who-reacted.mobile-sheet.sheet-left-bound`, `.sheet-right-bound`, `.sheet-bottom-attached` |
+| 606 | mobile-sheet | `who-reacted.mobile-sheet.light-dialog-closed` |
+| 19@609, 32@609 | mobile-sheet | `who-reacted.mobile-sheet.dark-rooms-route`, `.dark-settings-sections` |
+| 612 | mobile-sheet | `who-reacted.mobile-sheet.dark-mode` |
+| 69@613, 84@613, 99@613 | mobile-sheet | `who-reacted.mobile-sheet.dark-section-unwound`, `.dark-rooms-restored`, `.dark-settings-detached` |
+| 232@614 | mobile-sheet | `who-reacted.mobile-sheet.dark-room-open` |
+| 618 | mobile-sheet | `who-reacted.mobile-sheet.dark-dialog-visible` |
+| 626, 633 | mobile-sheet | `who-reacted.mobile-sheet.directory-overflow`, `.detail-overflow` |
+| 641, 642, 645 | mobile-sheet | `who-reacted.mobile-sheet.last-key-pressed`, `.directory-scrolled`, `.last-key-reactors` |
+| 703, 707 | mobile-sheet | `who-reacted.mobile-sheet.dialog-dismissed`, `.composer-visible` |
+
+Each stage arranges a fresh reader and sixteen other fixture Accounts, a public Room,
+one target and the predecessor's exact 36 `m.reaction` events in 20 groups. The long
+reactor's display name is the predecessor's long localpart, set before it joins.
+Joins honour Synapse's 429 `retry_after_ms` within five attempts. The reactions go out
+in groups of eight, and the stage waits for each group to render before the next,
+so no incremental sync can carry more than Synapse's default of ten timeline events
+and reset the live timeline. A relations read-back proves all 36 on the server.
+
+The reader signs in through the one-flow native sign-in and opens the Room. The
+reaction chip is revealed with a native timeline swipe where the composer covers it
+and tapped natively; the heart and the last key are tapped natively after native
+horizontal directory swipes; Light and Dark are chosen through the real Settings
+path, returning to the same Room each time; both journeys end with Android host Back.
+Renderer reads only observe counts, text, attributes, classes, geometry, style,
+overflow and scroll offsets.
+
+Every Account, password, the Room id and name, the body, the long name, every
+transaction id and every event id is registered as it becomes known, and the shared
+strict scrub and fail-closed scan cover the rest; records hold counts, booleans,
+emoji keys and digests only. A failed stage is rethrown through `redactStageFailure`
+with first lines only; a failed teardown step is rethrown through `redactStageFailure`, and a failed guarded cleanup is rethrown through `redactCleanupFailure`, never as the raw error.
+
+Documented reinterpretations of the predecessor:
+
+- Fixture Accounts and closure-private sessions replace `registerUser`, `loginApi`
+  and the `Bearer` headers; the bounded join retry is kept exactly.
+- The live burst is paced in five groups with render gates; the final 👍 17 and 20
+  groups are the predecessor's claims.
+- Playwright's actionability scroll of the chip and of the last key becomes a native
+  timeline swipe and native directory swipes.
+- The general journey's Escape and the mobile journey's `app.pressBack()` are both
+  Android host Back.
+- Screenshots become id-free captures; 10/15 s and default 5 s bounds become 20 s.
+
+Known limitations:
+
+- **Desktop paths.** Hover tooltips, desktop Settings paint comparison, pane geometry,
+  keyboard traversal and focus restoration stay in the predecessor.
+- **Synthetic stages.** The 900/320 px resizes, fake count text and root-font change
+  (647–700) and the Playwright Pixel definition (723–729) are not Android claims.
+- **Unpaced burst.** A local unpaced burst of 36 did not reset the timeline; the
+  pacing guards the hosted batching seen in #757.
+
+```bash
+pnpm nx run trinity-e2e-android:who-reacted --skipNxCache
+pnpm e2e:android:who-reacted
+```
+
+The target runs one attempt with zero retries, a 25-minute Node test and a
+30-minute CI wrapper. Shard 3 runs it last, after quote-notification.
+
+Predecessor status: enabled; after hosted acceptance the coordinator retires the Android definition and keeps the general definition desktop-only, skipped on Android (#839).

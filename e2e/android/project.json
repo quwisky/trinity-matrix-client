@@ -1044,6 +1044,20 @@
         "cwd": "{workspaceRoot}"
       }
     },
+    "who-reacted": {
+      "//": "Native Android who-reacted: the reaction pill names its reactors, the dialog lists every group, and the mobile sheet is selected by touch and dismissed with host Back.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.who-reacted --timeout-ms=1500000 --entrypoint=e2e/android/who-reacted-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
     "message-spoiler": {
       "//": "Native Android spoiler reveal: the exact formatted spoiler renders as a transparent black bar and a native tap reveals its painted text.",
       "cache": false,

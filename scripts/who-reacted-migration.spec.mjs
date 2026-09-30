@@ -5625,3 +5625,322 @@ describe('Android who-reacted source rules', () => {
     }
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Hosted wiring, retention and parity ledger                                 */
+/* -------------------------------------------------------------------------- */
+
+const WHO_NX_COMMAND =
+  '--suite=android.who-reacted --timeout-ms=1500000 --entrypoint=e2e/android/who-reacted-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse';
+const WHO_CI_LINE =
+  'if [ "${{ matrix.shard }}" = "3" ]; then echo \'who-reacted-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1800000 -- pnpm exec nx run trinity-e2e-android:who-reacted; fi';
+const QUOTE_CI_RUN_LINE =
+  'if [ "${{ matrix.shard }}" = "3" ]; then echo \'quote-notification-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:quote-notification; fi';
+const WHO_GATE_PATH =
+  "-path '*/android.who-reacted/who-reacted/publication-safe'";
+const WHO_UPLOAD_IF =
+  "${{ !cancelled() && steps.android.outputs.who-reacted-started == 'true' && steps.who-reacted-artifact-gate.outputs.who-reacted-safe == 'true' }}";
+
+function whoWiringInputs() {
+  return {
+    project: JSON.parse(read('e2e/android/project.json')),
+    pkg: JSON.parse(read('package.json')),
+    workflow: read('.github/workflows/ci.yml'),
+  };
+}
+
+/** Every hosted wiring rule for who-reacted, as a pure function of the files' text. */
+function assertWhoWiring({ project, pkg, workflow }) {
+  const target = project.targets['who-reacted'];
+  expect(target.cache).toBe(false);
+  expect(target.parallelism).toBe(false);
+  expect(target.dependsOn).toEqual([
+    { projects: ['trinity-android'], target: 'build-prebuilt' },
+  ]);
+  expect(target.options.command).toContain('web-bundle-manifest.mjs verify');
+  expect(target.options.command).toContain(WHO_NX_COMMAND);
+  expect(pkg.scripts['e2e:android:who-reacted']).toBe(
+    'node scripts/nx.mjs run trinity-e2e-android:who-reacted',
+  );
+  const lines = workflow.split('\n').map((line) => line.trim());
+  const runner = lines.indexOf(WHO_CI_LINE);
+  expect(runner).toBeGreaterThan(-1);
+  expect(runner).toBeLessThan(
+    lines.findIndex((line) => line.includes('pnpm e2e:android --')),
+  );
+  // Shard 3, last: directly after quote-notification's own runner line.
+  expect(lines.indexOf(QUOTE_CI_RUN_LINE)).toBeGreaterThan(-1);
+  expect(runner).toBe(lines.indexOf(QUOTE_CI_RUN_LINE) + 1);
+  expect(
+    lines.filter((line) => line.includes('trinity-e2e-android:who-reacted')),
+  ).toHaveLength(1);
+  const gate = workflow
+    .split('      - name: Gate Android who-reacted diagnostics\n')[1]
+    ?.split('\n      - ')[0];
+  expect(gate).toBeDefined();
+  expect(gate).toContain('id: who-reacted-artifact-gate');
+  expect(gate).toContain(
+    "if: ${{ !cancelled() && steps.android.outputs.who-reacted-started == 'true' }}",
+  );
+  expect(gate).toContain('WHO_REACTED_DIAGNOSTIC_ROOT');
+  expect(gate).toContain(WHO_GATE_PATH);
+  expect(gate).toContain('echo \'who-reacted-safe=true\' >> "$GITHUB_OUTPUT"');
+  const upload = workflow
+    .split('\n      - uses: ./.github/actions/upload-playwright-diagnostics\n')
+    .find((step) => step.includes('surface: android-who-reacted\n'));
+  expect(upload).toBeDefined();
+  expect(upload.split('\n')[0].trim()).toBe(`if: ${WHO_UPLOAD_IF}`);
+  expect(upload).toContain(
+    'report-path: dist/.playwright/trinity-e2e-android/*/android.who-reacted/**',
+  );
+}
+
+const callsNamed = (source, name) => {
+  const tree = ts.createSourceFile(
+    'x.mts',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const found = [];
+  const visit = (node) => {
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression.getText(tree);
+      if (callee === name) found.push(node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+  return { tree, found };
+};
+
+describe('Android who-reacted hosted wiring and parity ledger', () => {
+  it('registers one serialized uncached target, script, registry suite and commands on shard 3 after quote-notification', async () => {
+    assertWhoWiring(whoWiringInputs());
+    const { RUNNER_E2E_SUITES } =
+      await import('../e2e/registry/suites/runners.mts');
+    const { E2E_PACKAGE_SCRIPTS, E2E_CI_ENTRYPOINTS } =
+      await import('../e2e/registry/commands.mts');
+    const suites = RUNNER_E2E_SUITES.filter(
+      (suite) => suite.id === 'android.who-reacted',
+    );
+    expect(suites).toHaveLength(1);
+    expect(suites[0]).toMatchObject({
+      environment: 'android',
+      runner: 'node-test',
+      currentTarget: 'trinity-e2e-android:who-reacted',
+      canonicalScript: 'e2e:android:who-reacted',
+      availabilityPolicy: 'required',
+      ciTier: 'pull-request',
+      cachePolicy: 'never',
+      serializationKeys: ['android-avd', 'synapse'],
+    });
+    expect([...suites[0].sourceEntrypoints]).toEqual([
+      JOURNEYS,
+      CONTRACT_PATH,
+      OBSERVER_PATH,
+      ARTIFACTS_PATH,
+    ]);
+    expect(
+      E2E_PACKAGE_SCRIPTS.filter(
+        (item) => item.name === 'e2e:android:who-reacted',
+      ),
+    ).toEqual([
+      {
+        name: 'e2e:android:who-reacted',
+        command: 'nx run trinity-e2e-android:who-reacted',
+        kind: 'canonical',
+        suiteIds: ['android.who-reacted'],
+      },
+    ]);
+    const entrypoints = E2E_CI_ENTRYPOINTS.filter((item) =>
+      item.suiteIds.includes('android.who-reacted'),
+    );
+    expect(entrypoints).toHaveLength(1);
+    expect(entrypoints[0].tier).toBe('pull-request');
+    expect(entrypoints[0].command).toContain(
+      'if [ "${{ matrix.shard }}" = "3" ]',
+    );
+    expect(entrypoints[0].command).toContain(
+      'pnpm exec nx run trinity-e2e-android:who-reacted',
+    );
+    const { found } = callsNamed(read(JOURNEYS), 'test');
+    expect(found.map((call) => call.getText())).toEqual([
+      "test('Android who-reacted journeys', { timeout: 1_500_000 }, runWhoReactedSuite)",
+    ]);
+  });
+
+  it('fails the wiring guard for every effective mutation', () => {
+    const valid = whoWiringInputs();
+    const clone = () => structuredClone(valid);
+    const withTarget = (change) => {
+      const inputs = clone();
+      change(inputs.project.targets['who-reacted']);
+      return inputs;
+    };
+    const withText = (key, from, to) => {
+      const inputs = clone();
+      expect(inputs[key]).toContain(from);
+      inputs[key] = inputs[key].replace(from, to);
+      return inputs;
+    };
+    for (const mutated of [
+      withTarget((target) => (target.cache = true)),
+      withTarget((target) => (target.parallelism = true)),
+      withTarget((target) => (target.dependsOn = [])),
+      withTarget(
+        (target) =>
+          (target.options.command = target.options.command.replace(
+            ' --resource=synapse',
+            '',
+          )),
+      ),
+      withTarget(
+        (target) =>
+          (target.options.command = target.options.command.replace(
+            'who-reacted-journeys.mts',
+            'quote-notification-journeys.mts',
+          )),
+      ),
+      withTarget(
+        (target) =>
+          (target.options.command = target.options.command.replace(
+            '--timeout-ms=1500000',
+            '--timeout-ms=150000',
+          )),
+      ),
+      (() => {
+        const inputs = clone();
+        delete inputs.pkg.scripts['e2e:android:who-reacted'];
+        return inputs;
+      })(),
+      withText('workflow', WHO_CI_LINE, WHO_CI_LINE.replace('= "3"', '= "4"')),
+      withText(
+        'workflow',
+        WHO_CI_LINE,
+        WHO_CI_LINE.replace('1800000', '1200000'),
+      ),
+      withText('workflow', `${WHO_CI_LINE}\n`, ''),
+      withText(
+        'workflow',
+        WHO_GATE_PATH,
+        "-path '*/android.who-reacted/publication-safe'",
+      ),
+      withText(
+        'workflow',
+        WHO_UPLOAD_IF,
+        "${{ !cancelled() && steps.android.outputs.who-reacted-started == 'true' }}",
+      ),
+    ])
+      expect(() => assertWhoWiring(mutated)).toThrow();
+    // Moved past the shard runner lines: present but wrongly placed.
+    const late = clone();
+    const lateLines = late.workflow.split('\n');
+    const at = lateLines.findIndex((l) => l.trim() === WHO_CI_LINE);
+    const [moved] = lateLines.splice(at, 1);
+    const retained = lateLines.findIndex((l) =>
+      l.includes('pnpm e2e:android --'),
+    );
+    lateLines.splice(retained + 1, 0, moved);
+    late.workflow = lateLines.join('\n');
+    expect(() => assertWhoWiring(late)).toThrow();
+    // Moved before quote-notification's own runner line: wrongly ordered.
+    const before = clone();
+    const beforeLines = before.workflow.split('\n');
+    const whoAt = beforeLines.findIndex((l) => l.trim() === WHO_CI_LINE);
+    const [whoLine] = beforeLines.splice(whoAt, 1);
+    const quoteAt = beforeLines.findIndex(
+      (l) => l.trim() === QUOTE_CI_RUN_LINE,
+    );
+    beforeLines.splice(quoteAt, 0, whoLine);
+    before.workflow = beforeLines.join('\n');
+    expect(() => assertWhoWiring(before)).toThrow();
+  });
+
+  it('keeps the predecessor enabled and unchanged', async () => {
+    expect(sha256(readFileSync(resolve(root, PREDECESSOR)))).toBe(
+      SOURCE_SHA256,
+    );
+    expect(read(PREDECESSOR)).toBe(blob());
+    const source = read(PREDECESSOR);
+    const tests = callsNamed(source, 'test');
+    const skips = callsNamed(source, 'test.skip');
+    expect(
+      tests.found.map(
+        (call) =>
+          tests.tree.getLineAndCharacterOfPosition(call.getStart(tests.tree))
+            .line + 1,
+      ),
+    ).toEqual([241, 723, 731]);
+    expect(skips.found).toHaveLength(2);
+    for (const token of ['test.fixme', 'test.only', 'test.skip(true'])
+      expect(source).not.toContain(token);
+    const { BROWSER_JOURNEYS } =
+      await import('../e2e/browser/journey-catalog.mts');
+    expect(
+      BROWSER_JOURNEYS.filter(
+        (journey) =>
+          journey.path === 'journeys/conversations/reactions-who.spec.mts',
+      ),
+    ).toHaveLength(1);
+    expect(read('e2e/android/playwright.config.mts')).toContain(
+      "testMatch: ['browser/journeys/**/*.spec.mts', 'android/**/*.spec.mts']",
+    );
+    const { RETIRED_PREDECESSORS } =
+      await import('./retired-playwright-predecessors.mjs');
+    expect(
+      RETIRED_PREDECESSORS.filter((entry) => entry.path === PREDECESSOR),
+    ).toHaveLength(0);
+  });
+
+  it('documents the identities, fixture blocks, hashes, redaction sentence and placement prefix', async () => {
+    const section = read('e2e/android/MIGRATION.md')
+      .split('## Who-reacted journeys')[1]
+      ?.split('\n## ')[0];
+    expect(section).toBeTruthy();
+    const c = await loadContract();
+    const FIXTURE_HELPERS = new Set(['loginApi', 'joinWithRetry', 'react']);
+    const isFixture = (site) =>
+      site.kind === 'inherited' &&
+      (FIXTURE_HELPERS.has(site.helper) ||
+        site.helper === 'seedReactedMessage');
+    for (const stage of c.WHO_REACTED_STAGES) {
+      const expected = stage.sites
+        .filter((site) => !isFixture(site))
+        .map((site) => `who-reacted.${stage.id}.${site.suffix}`)
+        .sort();
+      const documented = [];
+      for (const row of section.matchAll(
+        /^\| [^|\n]+ \| (pill-dialog|mobile-sheet) \| ([^\n]+) \|$/gmu,
+      )) {
+        if (row[1] !== stage.id) continue;
+        for (const cell of row[2].matchAll(/`(\.?)([^`]+)`/gu))
+          documented.push(
+            cell[1] ? `who-reacted.${stage.id}.${cell[2]}` : cell[2],
+          );
+      }
+      expect(documented.sort()).toEqual(expected);
+    }
+    for (const row of [
+      '| API logins | `loginApi` 45 via 119 and 130 | `api-login-reader`, `api-login-other-01`–`16` |',
+      '| Room | 139 | `room-created` |',
+      '| Rate-limited joins | `joinWithRetry` 64 via 142 | `join-other-01`–`16` |',
+      '| Target | 149 | `target-sent` |',
+      '| Reactions | `react` 169 via 172, 176, 178, 201 | `reaction-01`–`36` |',
+    ])
+      expect(section).toContain(row);
+    const flat = section.replace(/\s+/gu, ' ');
+    expect(flat).toContain(
+      'The suite records 191 ordered, unique identities: pill-dialog 88 (16 direct + 71 fixture + 1 Room) and mobile-sheet 103 (19 direct + 71 fixture + 3 Room + 10 Settings).',
+    );
+    expect(section).toContain(SOURCE_SHA256);
+    expect(flat).toContain(
+      'a failed teardown step is rethrown through `redactStageFailure`, and a failed guarded cleanup is rethrown through `redactCleanupFailure`, never as the raw error.',
+    );
+    expect(flat).toContain('Shard 3 runs it last, after quote-notification');
+    expect(section).toContain(
+      'Predecessor status: enabled; after hosted acceptance the coordinator retires the Android definition and keeps the general definition desktop-only, skipped on Android (#839).',
+    );
+    expect(section).not.toContain('pnpm exec nx');
+  });
+});

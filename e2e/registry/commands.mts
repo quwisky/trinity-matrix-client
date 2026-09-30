@@ -570,6 +570,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.quote-notification'],
   },
   {
+    name: 'e2e:android:who-reacted',
+    command: 'nx run trinity-e2e-android:who-reacted',
+    kind: 'canonical',
+    suiteIds: ['android.who-reacted'],
+  },
+  {
     name: 'e2e:android:message-spoiler',
     command: 'nx run trinity-e2e-android:message-spoiler',
     kind: 'canonical',
@@ -992,6 +998,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "3" ]; then echo \'quote-notification-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:quote-notification; fi',
     tier: 'pull-request',
     suiteIds: ['android.quote-notification'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "3" ]; then echo \'who-reacted-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:who-reacted; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.who-reacted'],
   },
   {
     command:

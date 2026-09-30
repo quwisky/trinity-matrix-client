@@ -114,6 +114,7 @@
     "e2e:android:pinned-message-panel": "node scripts/nx.mjs run trinity-e2e-android:pinned-message-panel",
     "e2e:android:pinned-message-workflow": "node scripts/nx.mjs run trinity-e2e-android:pinned-message-workflow",
     "e2e:android:quote-notification": "node scripts/nx.mjs run trinity-e2e-android:quote-notification",
+    "e2e:android:who-reacted": "node scripts/nx.mjs run trinity-e2e-android:who-reacted",
     "e2e:android:message-spoiler": "node scripts/nx.mjs run trinity-e2e-android:message-spoiler",
     "e2e:android:message-swipe": "node scripts/nx.mjs run trinity-e2e-android:message-swipe",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
