@@ -7944,5 +7944,28 @@ zero retries, in invocation `mun16cgv-b1f54430-d5ce-41d8-ac32-44522d5af23f`
 (both applicable definitions and the desktop-only one); the predecessor file
 is unchanged, so this retry-0 result still stands.
 
+Accepted at `2227fd14`. Hosted run 36623419958 ran on head `41b31dd0`
+(attempt 1; the pull-request run reports the head sha and no separate merge
+sha). Android shard 4 ran `android.pinned-message-workflow` as invocation
+`mun8ifr6`: 2/2 stages, 26/26 assertion records (12 + 14), attempt 1, zero
+retries; the `pin-jump-unpin` stage took 157.0 s and `repeat-jump` 140.9 s.
+The run's other red jobs do not touch this suite. Unit tests and Documentation
+site failed on the develop Electron 43.7.5 bump
+([#842](https://github.com/quwisky/trinity-matrix-client/pull/842)) against the
+technology-stack doc, which `66eb6216` and `54bd802b` fix on the PR head. Shard
+6 failed only on the flaky retained Playwright `trust/key-export.spec.mts:23`
+setup timeout under `--fail-on-flaky-tests`, tracked in #665. The acceptance
+policy allows accepting a suite whose own shard passed on its original attempt,
+as shard 4 did. The unchanged predecessor ran in the same run's canonical
+browser job as invocation `mun5z57b`: 3 tests passed, retry 0 (the two
+migrated definitions and the desktop-only one). A leak audit over all 89
+artifacts (15,155 files, nested zips extracted) found 0 Room-id and 0 event-id
+shapes in any of the 79 Android artifacts and 0 `syt_` tokens, 0 Bearer values
+and 0 password values in any artifact. The predecessor blob at HEAD differs
+from its blob at `dd0cb53c` (`713f55d55fd5e521ce511a1eabea888f0e0c987f`
+there, `acdd3c28056bf8233400d3cbe36b02efb3a07808` at HEAD) only at line 27, a
+`//` comment; the file stays pinned at the existing
+`RETIRED_PREDECESSOR_COMMIT`, so no new fetch is needed.
+
 Predecessor status: enabled; the coordinator retires the two migrated
 definitions after hosted acceptance; definition 402–445 stays.
