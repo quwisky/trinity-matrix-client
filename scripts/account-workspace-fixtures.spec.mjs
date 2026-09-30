@@ -560,6 +560,229 @@ describe('account workspace fixtures', () => {
     }
   });
 
+  it('joins honouring bounded 429 delays exactly as the who-reacted predecessor', async () => {
+    createNodeAccount.mockImplementation(async (_resources, _signal, role) =>
+      account(role),
+    );
+    const waits = [];
+    const timer = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation((callback, ms) => {
+        waits.push(ms);
+        queueMicrotask(callback);
+        return 0;
+      });
+    const joins = [
+      response({ errcode: 'M_LIMIT_EXCEEDED', retry_after_ms: 462 }, 429),
+      response({ room_id: '!room:test' }),
+      response({ retry_after_ms: 20_000 }, 429),
+      response({}, 429),
+      response({ retry_after_ms: 0 }, 429),
+      response({ room_id: '!room:test' }),
+      response({ errcode: 'M_FORBIDDEN' }, 403),
+      ...Array.from({ length: 5 }, () => response({ retry_after_ms: 5 }, 429)),
+    ];
+    globalThis.fetch = vi.fn(async (url, init) => {
+      fetchCalls.push({ url, init });
+      if (url.endsWith('/login')) {
+        const user = JSON.parse(init.body).identifier.user;
+        return response({
+          user_id: `@${user}:test`,
+          access_token: `secret-${user}-token`,
+        });
+      }
+      if (url.endsWith('/createRoom'))
+        return response({ room_id: '!room:test' });
+      return joins.shift();
+    });
+    try {
+      const fixtures = createAccountFixtures(
+        resources(),
+        new AbortController().signal,
+      );
+      const owner = await fixtures.account('owner');
+      const member = await fixtures.account('member');
+      const room = await fixtures.createRoom(owner, {
+        name: 'Who',
+        preset: 'public_chat',
+      });
+      expect(await fixtures.joinHonoringRateLimit(member, room.id)).toEqual({
+        status: 200,
+        attempts: 2,
+        retryAfterMs: [462],
+      });
+      expect(await fixtures.joinHonoringRateLimit(member, room.id)).toEqual({
+        status: 200,
+        attempts: 4,
+        retryAfterMs: [20_000, null, 0],
+      });
+      expect(waits).toEqual([462, 10_000, 1_000, 1]);
+      await expect(
+        fixtures.joinHonoringRateLimit(member, room.id),
+      ).rejects.toThrow('failed with HTTP 403');
+      expect(waits).toHaveLength(4);
+      await expect(
+        fixtures.joinHonoringRateLimit(member, room.id),
+      ).rejects.toThrow(
+        'Matrix fixture join still rate-limited after 5 attempts',
+      );
+      expect(waits).toEqual([462, 10_000, 1_000, 1, 5, 5, 5, 5, 5]);
+      const joinCalls = fetchCalls.filter(({ url }) => url.endsWith('/join'));
+      expect(joinCalls).toHaveLength(12);
+      for (const { url, init } of joinCalls) {
+        expect(new URL(url).pathname).toBe(
+          '/_matrix/client/v3/rooms/!room%3Atest/join',
+        );
+        expect([init.method, init.headers.Authorization]).toEqual([
+          'POST',
+          'Bearer secret-user-member-token',
+        ]);
+      }
+    } finally {
+      timer.mockRestore();
+    }
+  });
+
+  it('sends one exact annotation and reads a complete reaction page without exposing tokens', async () => {
+    createNodeAccount.mockResolvedValue(account('reader'));
+    const puts = [response({ event_id: '$r1' }), response({}, 500)];
+    const pages = [
+      response({ chunk: [{ event_id: '$r1', type: 'm.reaction' }] }),
+      response({ chunk: [], next_batch: 'more' }),
+      response({}, 500),
+    ];
+    globalThis.fetch = vi.fn(async (url, init) => {
+      fetchCalls.push({ url, init });
+      if (url.endsWith('/login'))
+        return response({
+          user_id: '@user-reader:test',
+          access_token: 'secret-reader-token',
+        });
+      if (init.method === 'PUT') return puts.shift();
+      return pages.shift();
+    });
+    const fixtures = createAccountFixtures(
+      resources(),
+      new AbortController().signal,
+    );
+    const reader = await fixtures.account('reader');
+    expect(
+      await fixtures.sendReaction(
+        reader,
+        '!room:test',
+        '$target',
+        '👍',
+        'r1-run',
+      ),
+    ).toBe('$r1');
+    const put = fetchCalls.find(({ init }) => init.method === 'PUT');
+    expect(new URL(put.url).pathname).toBe(
+      '/_matrix/client/v3/rooms/!room%3Atest/send/m.reaction/r1-run',
+    );
+    expect(JSON.parse(put.init.body)).toEqual({
+      'm.relates_to': {
+        rel_type: 'm.annotation',
+        event_id: '$target',
+        key: '👍',
+      },
+    });
+    await expect(
+      fixtures.sendReaction(reader, '!room:test', '$target', '👍', 'r2-run'),
+    ).rejects.toThrow('failed with HTTP 500');
+    const events = await fixtures.reactionRelations(
+      reader,
+      '!room:test',
+      '$target',
+    );
+    expect(events).toEqual([{ event_id: '$r1', type: 'm.reaction' }]);
+    const get = fetchCalls.at(-1);
+    expect(get.init.method).toBe('GET');
+    expect(new URL(get.url).pathname).toBe(
+      '/_matrix/client/v1/rooms/!room%3Atest/relations/%24target/m.annotation/m.reaction',
+    );
+    expect(new URL(get.url).search).toBe('?limit=100');
+    await expect(
+      fixtures.reactionRelations(reader, '!room:test', '$target'),
+    ).rejects.toThrow('Matrix fixture reaction relations fit one page');
+    await expect(
+      fixtures.reactionRelations(reader, '!room:test', '$target'),
+    ).rejects.toThrow('failed with HTTP 500');
+    expect(JSON.stringify(events)).not.toContain('secret-reader-token');
+  });
+
+  it('keeps the who-reacted members to their one method and never returns a token', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync(
+      new URL('../e2e/android/account-workspace-fixtures.mts', import.meta.url),
+      'utf8',
+    );
+    const bodyOf = (text, name) => {
+      const start = text.indexOf(`  async function ${name}(`);
+      expect(start, name).toBeGreaterThan(-1);
+      return text.slice(start, text.indexOf('\n  }\n', start));
+    };
+    const tokenUses = (body) => body.match(/\.token\b/gu) ?? [];
+    const rules = {
+      reactionRelations: (body) => {
+        expect(body).toContain("method: 'GET'");
+        expect(body).not.toMatch(
+          /request\(|'POST'|'PUT'|'DELETE'|access_token|console\./u,
+        );
+        expect(tokenUses(body)).toHaveLength(1);
+        expect(body).toContain(
+          'Authorization: `Bearer ${access(observer).token}`',
+        );
+      },
+      sendReaction: (body) => {
+        expect(body.match(/'PUT'/gu) ?? []).toHaveLength(1);
+        expect(body).not.toMatch(
+          /'POST'|'DELETE'|method: 'GET'|\.token\b|access_token|console\./u,
+        );
+      },
+      joinHonoringRateLimit: (body) => {
+        expect(body.match(/method: 'POST'/gu) ?? []).toHaveLength(1);
+        expect(body).not.toMatch(
+          /'PUT'|'DELETE'|method: 'GET'|access_token|console\./u,
+        );
+        expect(tokenUses(body)).toHaveLength(1);
+        expect(body).toContain(
+          'Authorization: `Bearer ${access(member).token}`',
+        );
+        expect(body).toMatch(/attempt <= JOIN_ATTEMPTS;/u);
+      },
+    };
+    for (const [name, rule] of Object.entries(rules)) {
+      rule(bodyOf(source, name));
+      expect(source).toContain(`    ${name},\n`);
+    }
+    for (const [name, from, to] of [
+      ['reactionRelations', "method: 'GET'", "method: 'POST'"],
+      [
+        'reactionRelations',
+        'return chunk.map(',
+        'void access(observer).token;\n    return chunk.map(',
+      ],
+      ['sendReaction', "'PUT',", "'POST',"],
+      [
+        'sendReaction',
+        'return stringField(',
+        'void access(sender).token;\n    return stringField(',
+      ],
+      [
+        'joinHonoringRateLimit',
+        'attempt <= JOIN_ATTEMPTS',
+        'attempt <= JOIN_ATTEMPTS + 1',
+      ],
+      ['joinHonoringRateLimit', "method: 'POST'", "method: 'PUT'"],
+    ]) {
+      const body = bodyOf(source, name);
+      const mutated = body.replace(from, to);
+      expect(mutated, `${name} mutation applies`).not.toBe(body);
+      expect(() => rules[name](mutated), `${name}: ${to}`).toThrow();
+    }
+    expect(source).toContain('const JOIN_ATTEMPTS = 5;');
+  });
+
   it('reads joined room IDs through an authenticated GET without returning token fields', async () => {
     createNodeAccount.mockResolvedValue(account('owner'));
     globalThis.fetch = vi.fn(async (url, init) => {

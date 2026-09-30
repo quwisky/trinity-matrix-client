@@ -120,6 +120,14 @@ export interface WorkspaceUnreadSync {
   readonly room?: WorkspaceRoomUnread;
 }
 
+/** One bounded, rate-limit-honouring join: its final status, attempts and each 429's `retry_after_ms`. */
+export interface WorkspaceRateLimitedJoin {
+  readonly status: number;
+  readonly attempts: number;
+  /** One entry per 429, in order; `null` when the response carried no finite value. */
+  readonly retryAfterMs: readonly (number | null)[];
+}
+
 interface AccessSession {
   readonly account: NodeWorkspaceAccount;
   readonly token: string;
@@ -144,6 +152,7 @@ type WorkspaceRoomStateEventType =
   | 'm.space.parent';
 
 const REQUEST_TIMEOUT_MS = 15_000;
+const JOIN_ATTEMPTS = 5;
 const LONG_ACCOUNT_SUFFIX = '-long-display-account-name';
 
 class MatrixFixtureHttpError extends Error {
@@ -332,6 +341,22 @@ export function createAccountFixtures(
     roomId: string,
     since?: string,
   ): Promise<WorkspaceUnreadSync>;
+  joinHonoringRateLimit(
+    member: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<WorkspaceRateLimitedJoin>;
+  sendReaction(
+    sender: NodeWorkspaceAccount,
+    roomId: string,
+    eventId: string,
+    key: string,
+    transactionId: string,
+  ): Promise<string>;
+  reactionRelations(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+    eventId: string,
+  ): Promise<readonly MatrixRecord[]>;
   resolveRoomAlias(
     observer: NodeWorkspaceAccount,
     alias: string,
@@ -1419,6 +1444,107 @@ export function createAccountFixtures(
     };
   }
 
+  /** Wait `ms` on the global timer, rejecting at once when the invocation aborts. */
+  async function pause(ms: number): Promise<void> {
+    signal.throwIfAborted();
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = (): void => {
+        clearTimeout(timer);
+        reject(signal.reason);
+      };
+      const timer = setTimeout(() => {
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+
+  /**
+   * Join as the who-reacted predecessor's `joinWithRetry` does: at most five
+   * attempts; after each 429 wait `retry_after_ms` clamped to 1–10 000 ms, or
+   * 1 000 ms when it is absent. Any other failure throws at once. The
+   * membership is tracked for cleanup, as `join` does.
+   */
+  async function joinHonoringRateLimit(
+    member: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<WorkspaceRateLimitedJoin> {
+    const members = roomMembers.get(roomId);
+    assert(members, `Unknown Matrix fixture room ${roomId}`);
+    const path = `/rooms/${encodeURIComponent(roomId)}/join`;
+    const retryAfterMs: (number | null)[] = [];
+    for (let attempt = 1; attempt <= JOIN_ATTEMPTS; attempt++) {
+      const response = await fetch(`${SYNAPSE_HTTP}/_matrix/client/v3${path}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${access(member).token}`,
+          'Content-Type': 'application/json',
+        },
+        body: '{}',
+        signal: requestSignal(signal),
+      });
+      if (response.ok) {
+        members.add(member.userId);
+        return { status: response.status, attempts: attempt, retryAfterMs };
+      }
+      if (response.status !== 429) throw new MatrixFixtureHttpError(response.status, 'POST', path);
+      const body: unknown = await response.json().catch(() => ({}));
+      const value = Number(
+        body !== null && typeof body === 'object'
+          ? (body as { readonly retry_after_ms?: unknown }).retry_after_ms
+          : undefined,
+      );
+      retryAfterMs.push(Number.isFinite(value) ? value : null);
+      await pause(Number.isFinite(value) ? Math.min(Math.max(value, 1), 10_000) : 1_000);
+    }
+    throw new Error(`Matrix fixture join still rate-limited after ${JOIN_ATTEMPTS} attempts`);
+  }
+
+  /** One `m.reaction` annotating `eventId` with `key`, exactly as the predecessor's `react`. */
+  async function sendReaction(
+    sender: NodeWorkspaceAccount,
+    roomId: string,
+    eventId: string,
+    key: string,
+    transactionId: string,
+  ): Promise<string> {
+    const response = await request(
+      access(sender),
+      `/rooms/${encodeURIComponent(roomId)}/send/m.reaction/${encodeURIComponent(transactionId)}`,
+      'PUT',
+      { 'm.relates_to': { rel_type: 'm.annotation', event_id: eventId, key } },
+    );
+    return stringField(response, 'event_id', 'Matrix fixture sent-reaction event id');
+  }
+
+  /**
+   * Every `m.reaction` annotating `eventId`, from one read-only relations
+   * page of up to 100. A `next_batch` fails: the list must be complete.
+   */
+  async function reactionRelations(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+    eventId: string,
+  ): Promise<readonly MatrixRecord[]> {
+    const response = await fetch(
+      `${SYNAPSE_HTTP}/_matrix/client/v1/rooms/${encodeURIComponent(roomId)}/relations/${encodeURIComponent(eventId)}/m.annotation/m.reaction?limit=100`,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${access(observer).token}` },
+        signal: requestSignal(signal),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Matrix fixture reaction relations failed with HTTP ${response.status}`);
+    }
+    const body = record(await response.json(), 'Matrix fixture reaction-relations response');
+    assert(body['next_batch'] === undefined, 'Matrix fixture reaction relations fit one page');
+    const chunk = body['chunk'];
+    assert(Array.isArray(chunk), 'Matrix fixture reaction-relations chunk');
+    return chunk.map((event, index) => record(event, `Matrix fixture reaction event ${index}`));
+  }
+
   /** Cleanup may supply its own bounded signal after the invocation is cancelled. */
   async function joinedRoomIds(
     observer: NodeWorkspaceAccount,
@@ -1513,6 +1639,9 @@ export function createAccountFixtures(
     roomMessages,
     roomReceipts,
     roomUnreadSync,
+    joinHonoringRateLimit,
+    sendReaction,
+    reactionRelations,
     resolveRoomAlias,
     allowEndedMembershipCleanup,
     trackRoomMembership,
