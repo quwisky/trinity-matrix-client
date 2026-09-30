@@ -2792,3 +2792,291 @@ describe('Android quote-notification source rules', () => {
     expect(() => assertWindowsAnchoredAfterNativeCalls(early)).toThrow();
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Hosted wiring, retention and parity ledger                                 */
+/* -------------------------------------------------------------------------- */
+
+const QUOTE_NX_COMMAND =
+  '--suite=android.quote-notification --timeout-ms=900000 --entrypoint=e2e/android/quote-notification-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse';
+const QUOTE_CI_LINE =
+  'if [ "${{ matrix.shard }}" = "3" ]; then echo \'quote-notification-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:quote-notification; fi';
+const QUOTE_GATE_PATH =
+  "-path '*/android.quote-notification/quote-notification/publication-safe'";
+const QUOTE_UPLOAD_IF =
+  "${{ !cancelled() && steps.android.outputs.quote-notification-started == 'true' && steps.quote-notification-artifact-gate.outputs.quote-notification-safe == 'true' }}";
+
+function quoteWiringInputs() {
+  return {
+    project: JSON.parse(read('e2e/android/project.json')),
+    pkg: JSON.parse(read('package.json')),
+    workflow: read('.github/workflows/ci.yml'),
+  };
+}
+
+/** Every hosted wiring rule for quote-notification, as a pure function of the files' text. */
+function assertQuoteWiring({ project, pkg, workflow }) {
+  const target = project.targets['quote-notification'];
+  expect(target.cache).toBe(false);
+  expect(target.parallelism).toBe(false);
+  expect(target.dependsOn).toEqual([
+    { projects: ['trinity-android'], target: 'build-prebuilt' },
+  ]);
+  expect(target.options.command).toContain('web-bundle-manifest.mjs verify');
+  expect(target.options.command).toContain(QUOTE_NX_COMMAND);
+  expect(pkg.scripts['e2e:android:quote-notification']).toBe(
+    'node scripts/nx.mjs run trinity-e2e-android:quote-notification',
+  );
+  const lines = workflow.split('\n').map((line) => line.trim());
+  const runner = lines.indexOf(QUOTE_CI_LINE);
+  expect(runner).toBeGreaterThan(-1);
+  expect(runner).toBeLessThan(
+    lines.findIndex((line) => line.includes('pnpm e2e:android --')),
+  );
+  // Shard 3: directly after pinned-message-panel's own runner line.
+  const panel = lines.findIndex((line) =>
+    line.includes('pinned-message-panel-started=true'),
+  );
+  expect(panel).toBeGreaterThan(-1);
+  expect(runner).toBe(panel + 1);
+  expect(
+    lines.filter((line) =>
+      line.includes('trinity-e2e-android:quote-notification'),
+    ),
+  ).toHaveLength(1);
+  const gate = workflow
+    .split('      - name: Gate Android quote-notification diagnostics\n')[1]
+    ?.split('\n      - ')[0];
+  expect(gate).toBeDefined();
+  expect(gate).toContain('id: quote-notification-artifact-gate');
+  expect(gate).toContain(
+    "if: ${{ !cancelled() && steps.android.outputs.quote-notification-started == 'true' }}",
+  );
+  expect(gate).toContain(QUOTE_GATE_PATH);
+  expect(gate).toContain(
+    'echo \'quote-notification-safe=true\' >> "$GITHUB_OUTPUT"',
+  );
+  const upload = workflow
+    .split('\n      - uses: ./.github/actions/upload-playwright-diagnostics\n')
+    .find((step) => step.includes('surface: android-quote-notification\n'));
+  expect(upload).toBeDefined();
+  expect(upload.split('\n')[0].trim()).toBe(`if: ${QUOTE_UPLOAD_IF}`);
+  expect(upload).toContain(
+    'report-path: dist/.playwright/trinity-e2e-android/*/android.quote-notification/**',
+  );
+}
+
+describe('Android quote-notification hosted wiring and parity ledger', () => {
+  it('registers one serialized uncached target, script, registry suite and commands on shard 3 after pinned-message-panel', async () => {
+    assertQuoteWiring(quoteWiringInputs());
+    const { RUNNER_E2E_SUITES } =
+      await import('../e2e/registry/suites/runners.mts');
+    const { E2E_PACKAGE_SCRIPTS, E2E_CI_ENTRYPOINTS } =
+      await import('../e2e/registry/commands.mts');
+    const suites = RUNNER_E2E_SUITES.filter(
+      (suite) => suite.id === 'android.quote-notification',
+    );
+    expect(suites).toHaveLength(1);
+    expect(suites[0]).toMatchObject({
+      environment: 'android',
+      runner: 'node-test',
+      currentTarget: 'trinity-e2e-android:quote-notification',
+      canonicalScript: 'e2e:android:quote-notification',
+      availabilityPolicy: 'required',
+      ciTier: 'pull-request',
+      cachePolicy: 'never',
+      serializationKeys: ['android-avd', 'synapse'],
+    });
+    expect([...suites[0].sourceEntrypoints]).toEqual([
+      JOURNEYS,
+      CONTRACT_PATH,
+      ARTIFACTS_PATH,
+    ]);
+    expect(
+      E2E_PACKAGE_SCRIPTS.filter(
+        (item) => item.name === 'e2e:android:quote-notification',
+      ),
+    ).toEqual([
+      {
+        name: 'e2e:android:quote-notification',
+        command: 'nx run trinity-e2e-android:quote-notification',
+        kind: 'canonical',
+        suiteIds: ['android.quote-notification'],
+      },
+    ]);
+    const entrypoints = E2E_CI_ENTRYPOINTS.filter((item) =>
+      item.suiteIds.includes('android.quote-notification'),
+    );
+    expect(entrypoints).toHaveLength(1);
+    expect(entrypoints[0].tier).toBe('pull-request');
+    expect(entrypoints[0].command).toContain(
+      'if [ "${{ matrix.shard }}" = "3" ]',
+    );
+    expect(entrypoints[0].command).toContain(
+      'pnpm exec nx run trinity-e2e-android:quote-notification',
+    );
+    expect(read(JOURNEYS)).toContain('timeout: 900_000');
+  });
+
+  it('fails the wiring guard for every effective mutation', () => {
+    const valid = quoteWiringInputs();
+    const clone = () => structuredClone(valid);
+    const withTarget = (change) => {
+      const inputs = clone();
+      change(inputs.project.targets['quote-notification']);
+      return inputs;
+    };
+    const withText = (key, from, to) => {
+      const inputs = clone();
+      expect(inputs[key]).toContain(from);
+      inputs[key] = inputs[key].replace(from, to);
+      return inputs;
+    };
+    for (const mutated of [
+      withTarget((target) => (target.cache = true)),
+      withTarget((target) => (target.parallelism = true)),
+      withTarget((target) => (target.dependsOn = [])),
+      withTarget(
+        (target) =>
+          (target.options.command = target.options.command.replace(
+            ' --resource=synapse',
+            '',
+          )),
+      ),
+      withTarget(
+        (target) =>
+          (target.options.command = target.options.command.replace(
+            'quote-notification-journeys.mts',
+            'message-source-journeys.mts',
+          )),
+      ),
+      withTarget(
+        (target) =>
+          (target.options.command = target.options.command.replace(
+            '--timeout-ms=900000',
+            '--timeout-ms=90000',
+          )),
+      ),
+      (() => {
+        const inputs = clone();
+        delete inputs.pkg.scripts['e2e:android:quote-notification'];
+        return inputs;
+      })(),
+      withText(
+        'workflow',
+        QUOTE_CI_LINE,
+        QUOTE_CI_LINE.replace('= "3"', '= "4"'),
+      ),
+      withText(
+        'workflow',
+        QUOTE_CI_LINE,
+        QUOTE_CI_LINE.replace('1200000', '600000'),
+      ),
+      withText('workflow', `${QUOTE_CI_LINE}\n`, ''),
+      withText(
+        'workflow',
+        QUOTE_GATE_PATH,
+        "-path '*/android.quote-notification/publication-safe'",
+      ),
+      withText(
+        'workflow',
+        QUOTE_UPLOAD_IF,
+        "${{ !cancelled() && steps.android.outputs.quote-notification-started == 'true' }}",
+      ),
+    ])
+      expect(() => assertQuoteWiring(mutated)).toThrow();
+    // Moved past the shard runner lines: present but wrongly placed.
+    const late = clone();
+    const lateLines = late.workflow.split('\n');
+    const at = lateLines.findIndex((l) => l.trim() === QUOTE_CI_LINE);
+    const [moved] = lateLines.splice(at, 1);
+    const retained = lateLines.findIndex((l) =>
+      l.includes('pnpm e2e:android --'),
+    );
+    lateLines.splice(retained + 1, 0, moved);
+    late.workflow = lateLines.join('\n');
+    expect(() => assertQuoteWiring(late)).toThrow();
+    // Moved before pinned-message-panel's own runner line: wrongly ordered.
+    const before = clone();
+    const beforeLines = before.workflow.split('\n');
+    const quoteAt = beforeLines.findIndex((l) => l.trim() === QUOTE_CI_LINE);
+    const [quoteLine] = beforeLines.splice(quoteAt, 1);
+    const panelAt = beforeLines.findIndex((l) =>
+      l.includes('pinned-message-panel-started=true'),
+    );
+    beforeLines.splice(panelAt, 0, quoteLine);
+    before.workflow = beforeLines.join('\n');
+    expect(() => assertQuoteWiring(before)).toThrow();
+  });
+
+  it('keeps the predecessor enabled and unchanged', async () => {
+    expect(sha256(readFileSync(resolve(root, PREDECESSOR)))).toBe(
+      SOURCE_SHA256,
+    );
+    expect(read(PREDECESSOR)).toBe(blob());
+    const source = read(PREDECESSOR);
+    expect(source.match(/^ {2}test\('/gmu)).toHaveLength(1);
+    expect(source.match(/test\.skip\(/gu)).toHaveLength(1);
+    for (const token of ['test.fixme', 'test.only', 'test.skip(true'])
+      expect(source).not.toContain(token);
+    const { BROWSER_JOURNEYS } =
+      await import('../e2e/browser/journey-catalog.mts');
+    expect(
+      BROWSER_JOURNEYS.filter(
+        (journey) =>
+          journey.path === 'journeys/conversations/quote-mentions.spec.mts',
+      ),
+    ).toHaveLength(1);
+    expect(read('e2e/android/playwright.config.mts')).toContain(
+      "testMatch: ['browser/journeys/**/*.spec.mts', 'android/**/*.spec.mts']",
+    );
+    const { RETIRED_PREDECESSORS } =
+      await import('./retired-playwright-predecessors.mjs');
+    expect(
+      RETIRED_PREDECESSORS.filter((entry) => entry.path === PREDECESSOR),
+    ).toHaveLength(0);
+  });
+
+  it('documents the 8 identities with their source lines, both hashes, the redaction sentence and the placement', () => {
+    const section = read('e2e/android/MIGRATION.md')
+      .split('## Quote-notification journey')[1]
+      ?.split('\n## ')[0];
+    expect(section).toBeTruthy();
+    const rows = [
+      ...section.matchAll(
+        /^\| ([0-9@]+) \| (direct|inherited) \| [^\n]+ \| `(quote-notification\.[^`]+)` \|$/gmu,
+      ),
+    ];
+    expect(rows.map((row) => row[3])).toEqual(ALL_IDENTITIES);
+    expect(rows.map((row) => row[2])).toEqual(
+      ALL_IDENTITIES.map((identity) =>
+        identity.endsWith('.sheet-ready') ||
+        identity.endsWith('.answer-send-enabled')
+          ? 'inherited'
+          : 'direct',
+      ),
+    );
+    expect(rows.map((row) => row[1])).toEqual([
+      '118',
+      '123',
+      '220@125',
+      '132',
+      '53@135',
+      '136',
+      '153',
+      '173',
+    ]);
+    const flat = section.replace(/\s+/gu, ' ');
+    expect(flat).toContain('6 direct + 2 inherited');
+    expect(section).toContain(ISSUE_SHA256);
+    expect(section).toContain(SOURCE_SHA256);
+    expect(flat).toContain(
+      'a failed teardown step is rethrown through `redactStageFailure`, and a failed guarded cleanup is rethrown through `redactCleanupFailure`, never as the raw error.',
+    );
+    expect(flat).toContain('Shard 3 runs it last, after pinned-message-panel');
+    expect(section).toContain(
+      'Predecessor status: enabled; after hosted acceptance the coordinator keeps the file as a desktop-only definition, skipped on Android (#839).',
+    );
+    expect(section).not.toContain('pnpm exec nx');
+  });
+});

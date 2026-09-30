@@ -7997,3 +7997,91 @@ two migrated definitions are removed and definition 402–445 stays in the
 browser suite, unchanged and not skipped on Android;
 [Predecessor retirement](#predecessor-retirement) lists what was retired and
 what stays desktop-only.
+
+## Quote-notification journey
+
+[Migrate Android quote-notification journey](https://github.com/quwisky/trinity-matrix-client/issues/758)
+moves the one definition of
+[`quote-mentions.spec.mts`](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/conversations/quote-mentions.spec.mts),
+“a quoted display name gives the reader no highlight”, to the installed-Android
+`android.quote-notification` suite. The predecessor is pinned at SHA-256
+`5186fc3b45f12fd03e2ad71e79ae636a688fce41b96d05fb0e38f278f80266e5` (175 lines), in
+both the working tree and the `dd0cb53c` blob, which the guard proves equal. The
+issue's pin, `354f8f2ccd02e32b12bf74bea400abb4dec40bad31715fd80e03c4fd79fd49f8` (174 lines),
+is stale: it is the file before `fe2c7c3e`, which added the `sendComposerDraft`
+import (line 16) and sends through the mobile Send button in place of
+`press('Enter')` (line 135). The definition spans 64–174, and the display-name
+constant and API-login helper span 40–59. `e2e/support/app.mts`,
+`e2e/support/account.mts` and `e2e/support/message-composer.mts` stay pinned at
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`,
+`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594` and
+`4b81585eea679d11dabd285449c9b004b6d70612ca777186ac34e44705c12d9d`.
+
+The suite records 8 ordered, unique identities: 6 direct + 2 inherited (the action-sheet readiness of openMessageActionSheet, app line 220, reached from line 125, and the Send readiness of sendComposerDraft, message-composer line 53, reached from line 135).
+
+| Source line (helper@call) | Kind | Canonical assertion | Android parity identity |
+| --- | --- | --- | --- |
+| 118 | direct | `composer-input` visible | `quote-notification.quoted-display-name.composer-visible` |
+| 123 | direct | the row naming the reader is visible | `quote-notification.quoted-display-name.source-row-visible` |
+| 220@125 | inherited | the `Message actions` sheet is visible | `quote-notification.quoted-display-name.sheet-ready` |
+| 132 | direct | the composer holds exactly `> ${named}\n\n` | `quote-notification.quoted-display-name.composer-quote` |
+| 53@135 | inherited | the composer's Send button is enabled | `quote-notification.quoted-display-name.answer-send-enabled` |
+| 136 | direct | the answer row is visible | `quote-notification.quoted-display-name.answer-visible` |
+| 153 | direct | the reader's incremental notification count is above 0 | `quote-notification.quoted-display-name.notification-positive` |
+| 173 | direct | that response's highlight count is 0 | `quote-notification.quoted-display-name.highlight-zero` |
+
+The desktop `clickRowMenuItem` site (app 206, reached from 128) is excluded.
+
+Fixture Accounts arrange the writer and a reader named `Zephyrine` (named before
+the invite and join) in a private Room, and the reader sends the source. The writer
+signs in through the one-flow native sign-in, opens the Room, long-presses the
+reconciled source row, taps Quote, appends the answer natively behind a digit
+sentinel and taps Send. A receipt proves the answer event's exact body on the
+server. The reader's fixture session then takes a `sync?timeout=0` token, the writer
+sends the plain probe through REST, and only after that send returns does the
+suite poll the reader's incremental sync. The first response that echoes the
+token, carries the Room, includes the probe and reports a positive
+notification count decides both records; its highlight count must be 0.
+Synapse caches non-empty sync responses for two minutes, so no incremental read
+is made before the probe.
+
+Every Account, password, the Room id and name, the answer and probe texts, both
+transaction ids and every event id is registered before any UI step or as soon as
+it is known, and the shared strict scrub and fail-closed scan cover the rest;
+records hold counts, booleans and digests only. A failed stage is rethrown through
+`redactStageFailure` with first lines only; a failed teardown step is rethrown through `redactStageFailure`, and a failed guarded cleanup is rethrown through `redactCleanupFailure`, never as the raw error.
+
+Documented reinterpretations of the predecessor:
+
+- Fixture Accounts and closure-private sessions replace `registerUser`, `loginApi`
+  and the `Bearer` headers; the writer signs in natively.
+- The synthetic touch long press becomes a native long press, and Quote is tapped
+  natively.
+- `pressSequentially` becomes the sentinel-guarded native append.
+- `sendComposerDraft`'s Playwright click on the Send button becomes a native tap,
+  after its enabled-wait is proved as `answer-send-enabled`.
+- Both rows are the proved server events, compared by id and never printed.
+- The accepting incremental response must also hold the probe, and the highlight
+  decision is read from it alone.
+- The predecessor's note that a full sync reports zeroes does not hold on
+  Synapse 1.161; the incremental requirement is kept.
+- The reader's `.channel__badge`, named in the predecessor's comment, is not
+  observed: its code asserts the homeserver's counts, and so does the suite.
+- The 10 s and 15 s bounds become 20 s; every window is anchored after its event.
+
+Known limitations:
+
+- **Desktop path.** The hover menu (`clickRowMenuItem`, `msg-quote`) is not
+  exercised on Android.
+- **Server rule sensitivity.** A run does not re-prove that the display-name rule
+  would fire without `m.mentions`; the design probe showed it does on Synapse 1.161.
+
+```bash
+pnpm nx run trinity-e2e-android:quote-notification --skipNxCache
+pnpm e2e:android:quote-notification
+```
+
+The target runs one attempt with zero retries, a 15-minute Node test and a
+20-minute CI wrapper. Shard 3 runs it last, after pinned-message-panel.
+
+Predecessor status: enabled; after hosted acceptance the coordinator keeps the file as a desktop-only definition, skipped on Android (#839).

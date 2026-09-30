@@ -57,6 +57,7 @@ const ANDROID_NATIVE_PLACEMENT = [
   ['message-source', 3, 'message-source', 1_200_000],
   ['message-spoiler', 3, 'message-spoiler', 1_200_000],
   ['pinned-message-panel', 3, 'pinned-message-panel', 1_200_000],
+  ['quote-notification', 3, 'quote-notification', 1_200_000],
   ['room-access-policy', 3, 'room-access-policy', 2_400_000],
   ['room-address-lifecycle', 3, 'room-address-lifecycle', 900_000],
   ['room-profile-settings', 3, 'room-profile-settings', 2_400_000],
