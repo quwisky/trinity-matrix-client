@@ -8085,22 +8085,24 @@ The target runs one attempt with zero retries, a 15-minute Node test and a
 20-minute CI wrapper. Shard 3 runs it last, after pinned-message-panel; its budget comment adds the 3-minute local run time (about 84 native minutes of the 240-minute job).
 
 Local acceptance used the unchanged Pixel 5 profile, renderer manifest
-`f13dbcdc39b767623ba760d505de9ed34e6d78de87bb5ca24a5c155b01897f01`, debug APK
+`a79b78309bbf4efde6b8fee6652e003786347b6ed792a14e2aa4f286c7221b6a`, debug APK
 `8794d1c6cce0109773dd903a2d4653da22c0dbfe595c1923311b58bf90e14661`
 (installed digest equal) and profile
-`3bacc567648982dd6b92b0e62b085908ad33cdced196ac6776d397a3a5d65157`. Three
-consecutive first-attempt passes at `c8e6f4a8`, each 1/1 stage, 8/8 records,
+`3bacc567648982dd6b92b0e62b085908ad33cdced196ac6776d397a3a5d65157`. It was
+repeated at `442952c3`, the commit that registers the reader sync token as a secret. Three
+consecutive first-attempt passes, each 1/1 stage, 8/8 records,
 attempt 1, retries 0 and publication-safe, are invocations
-`munha15p-cf6f76d3-a0c0-4e1d-a073-4aa2edf216d7` (2 m 29 s),
-`munhd7pn-b716a842-441f-4d7a-9ad1-b8ceec09caa0` (2 m 24 s) and
-`munhgcps-a77e54cd-f76a-43fb-afce-98d4ff4b98ba` (2 m 25 s). In every run the
+`munjs2ka-c652a39d-c10b-47c8-a8d3-4441b2f4bbab` (141.7 s test time),
+`munjvzs9-1e64640b-d72c-407f-bf18-9153558b27ca` (133.7 s) and
+`munjzfzw-e16e6b84-d7bc-4bfe-809f-1d628843ba83` (129.3 s). In every run the
 decision counts were: baseline 1 notification and 0 highlights,
 `notification-positive` 2 with the probe in the sync, and `highlight-zero` 0 with
 2 notifications from the same response. The incremental read count and the
 slowest tap are not recorded in the artifacts, so they are not reported; no
-window timed out. The leak grep found no identifier, token or raster; its only
-hits were Java class names (`$$ExternalSyntheticLambda…`,
-`-$$Nest$mdumpAsStringNoCheck`) in the device logcat, and the `"password"` tap-point
+window timed out. The leak grep found no identifier, sync token or raster, and no
+`since=` or sync-token-shaped value appears in any artifact; its only
+hits were Java class and lambda names (`$mdumpAsStringNoCheck`, `$ExternalSyntheticLambda…`,
+`$r8$lambda$…`) in the device logcat, and the `"password"` tap-point
 key, whose value is `[REDACTED]`.
 
 The browser predecessor passed at retry 0 (1 passed, one worker) in invocation
