@@ -276,6 +276,24 @@ All through real Synapse, before any UI step, except the stage-2 fillers.
   back. It must hold exactly 34 `m.room.message` events: the lead, the target,
   then fillers 0–31 in order, all from the reader, plus `m.room.create`. With
   about eight state events the page is about 42 of its 50-event limit.
+- **Amendment (2026-09-30, #757 flake): the flood is paced.** Hosted run
+  36651166182 failed `target-offscreen` with the target row no longer
+  rendered. The app's incremental `/sync` filter sets no timeline limit
+  (`initialSyncLimit: 20` applies to the first sync only), so Synapse applies
+  its default of 10. When one incremental batch carries more than 10 fillers,
+  Synapse marks it `limited`; none of its events are known to the client, so
+  matrix-js-sdk calls `resetLiveTimeline` and the live timeline restarts at
+  the batch, without the target. A local probe that held the app's `/sync`
+  during the flood reproduced it every time (`limited: true`, 10 events, 10
+  rendered rows, no target row). The fillers therefore go out in groups of
+  `FILLER_GROUP` = 8, still sequential and awaited. After each group but the
+  last, the stage polls (30 s, anchored at that group's last send's return)
+  until the group's last filler row is rendered. The SDK has then processed
+  the batch holding it, so the next batch holds at most 8 new events and can
+  never be `limited`. The bodies, transaction ids, order, count and the
+  `fillers-sent` receipt are unchanged, and the target must still be rendered
+  and offscreen (D4). A product change, such as a sync filter with a larger
+  limit or back-pagination after a reset, was not needed for this claim.
 - Every text is from the predecessor. The three fixed bodies are constants,
   not secrets. No body is a substring of another within its stage, and no
   filler body contains `pin me`. The guard pins all of this.
@@ -395,6 +413,7 @@ Every observation, in stage order, with its type:
 | 11 `empty-copy-visible`                      | poll-until-true            | 30 s  | the unpin tap's return                                                                        |
 | server pins empty (receipt)                  | poll-until-true (REST)     | 30 s  | the unpin tap's return                                                                        |
 | 12 `badge-cleared`                           | poll-until-true            | 30 s  | the close tap's return                                                                        |
+| filler group rendered (D2 amendment)         | poll-until-true            | 30 s  | that group's last send's return                                                               |
 | `fillers-sent` (receipt)                     | poll-until-true (REST)     | 30 s  | the 32nd send's return                                                                        |
 | 14 `last-filler-in-viewport`                 | poll-until-true            | 30 s  | the 32nd send's return                                                                        |
 | 15 `target-offscreen`                        | poll-until-true            | 20 s  | the read that satisfied record 14                                                             |

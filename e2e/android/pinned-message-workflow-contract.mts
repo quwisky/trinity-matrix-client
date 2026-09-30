@@ -312,6 +312,14 @@ export const OTHER_BODY = 'just chatting';
 export const PIN_BODY = 'pin me please';
 export const REPEAT_PIN_BODY = 'pin me twice please';
 export const FILLER_COUNT = 32;
+/**
+ * Spec D2 amendment (#757): the flood is sent in groups of this size, and each
+ * group but the last waits until the app renders its last filler. The app's
+ * incremental `/sync` filter sets no timeline limit, so Synapse applies its
+ * default of 10; a batch holding more new events is `limited`, and the SDK
+ * resets the live timeline, dropping the loaded target row.
+ */
+export const FILLER_GROUP = 8;
 export const EMPTY_COPY = 'No pinned messages in this channel yet.';
 export const PANEL_HEADING = 'Pinned messages';
 export const CLOSE_LABEL = 'Close pinned messages';
@@ -526,6 +534,9 @@ export function assertTargetInViewport(v: WorkflowView): void {
 export function assertTargetOffscreen(v: WorkflowView): void {
   assert.equal(v.target.count, 1, 'The target row is rendered');
   assert(!v.target.inViewport, 'The target row is out of the viewport');
+}
+export function assertLastFillerRendered(v: WorkflowView): void {
+  assert.equal(v.lastFiller.count, 1, 'The last filler row is rendered');
 }
 export function assertLastFillerInViewport(v: WorkflowView): void {
   assert.equal(v.lastFiller.count, 1, 'The last filler row is rendered');

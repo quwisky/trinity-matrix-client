@@ -7824,7 +7824,8 @@ native jump on the pinned item, the `jump-to-latest` pill and the native
 unpin and close taps. The Pixel 5 profile is applied at launch, and reduced
 motion is checked before any tap. Thirty-two live fillers are sent
 sequentially, after the Room is open, before `repeat-jump`'s flood is
-observed. Every wait window starts at the event it waits for, never before a
+observed. They go out in groups of eight, and each group but the last waits
+until the app renders its last filler (see the flake note below). Every wait window starts at the event it waits for, never before a
 native tap or REST send; server polls measure their remaining bound from the
 tap's own return time.
 
@@ -7967,6 +7968,24 @@ from its blob at `dd0cb53c` (`713f55d55fd5e521ce511a1eabea888f0e0c987f`
 there, `acdd3c28056bf8233400d3cbe36b02efb3a07808` at HEAD) only at line 27, a
 `//` comment; the file stays pinned at the existing
 `RETIRED_PREDECESSOR_COMMIT`, so no new fetch is needed.
+
+Flake after acceptance (2026-09-30). Hosted run 36651166182 (shard 4,
+head `01c0a1d2`) failed `repeat-jump` at `target-offscreen` with "The target
+row is rendered", after `last-filler-in-viewport` had passed; the previous
+hosted run and six local runs passed. Root cause: the app's incremental
+`/sync` filter sets no timeline limit, so Synapse applies its default of 10.
+On a slow runner one sync batch carried more than 10 of the 32 fillers;
+Synapse marked it `limited`, and matrix-js-sdk reset the live timeline to
+that batch, so the loaded target row left the DOM and could never be
+"rendered but offscreen". A local probe that held the app's `/sync` during
+the flood reproduced it deterministically (a `limited` batch of 10 fillers,
+10 rendered rows, no target row); unprobed local batches peaked at 5 fillers.
+The fix paces the flood: groups of eight, each but the last followed by a
+bounded poll until its last filler is rendered, so no batch can exceed eight
+new events. The same held-sync probe then passed with batches of at most
+eight and no `limited` flag. The offscreen claim is unchanged: a removed row
+still never passes. A simulated-app control models the limited-sync reset
+and fails without the pacing.
 
 Predecessor status: retired on 2026-09-30 under
 [#757](https://github.com/quwisky/trinity-matrix-client/issues/757),

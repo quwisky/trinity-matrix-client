@@ -608,6 +608,8 @@ describe('Android pinned-message-workflow contract ledger', () => {
       'pin me twice please',
     ]);
     expect(c.FILLER_COUNT).toBe(32);
+    // #757: well under Synapse's default incremental timeline limit of 10.
+    expect(c.FILLER_GROUP).toBe(8);
     expect(c.EMPTY_COPY).toBe('No pinned messages in this channel yet.');
     expect([c.PANEL_HEADING, c.CLOSE_LABEL]).toEqual([
       'Pinned messages',
@@ -1759,6 +1761,21 @@ async function simulatedWorkflowApp(stageId, faults = {}) {
       };
 
   const VIEW_EXPR = observer.workflowViewExpression(texts);
+  // #757: the paced flood's group reads, keyed by their last filler's index.
+  const GROUP_EXPR = new Map();
+  if (!stage1)
+    for (
+      let i = contract.FILLER_GROUP - 1;
+      i < contract.FILLER_COUNT - 1;
+      i += contract.FILLER_GROUP
+    )
+      GROUP_EXPR.set(
+        observer.workflowViewExpression({
+          ...texts,
+          lastFillerBody: contract.fillerBody(RUN, i),
+        }),
+        i,
+      );
   const SHEET_EXPR = observer.sheetViewExpression();
   const PROFILE_EXPR = panelObserver.appliedProfileExpression();
   const ARM_EXPR = new Map();
@@ -1778,6 +1795,16 @@ async function simulatedWorkflowApp(stageId, faults = {}) {
   let pendingArmKey = null;
   let pendingArmClickInViewport = null;
   let fillersSeen = 0;
+  // #757 limited-sync model: every renderer read first "syncs" the fillers sent
+  // since the last read. A batch above `faults.syncTimelineLimit` is `limited`
+  // and resets the live timeline, which drops the loaded target row for good.
+  let fillersSynced = 0;
+  let timelineReset = false;
+  function syncApp() {
+    if (fillersSeen - fillersSynced > (faults.syncTimelineLimit ?? Infinity))
+      timelineReset = true;
+    fillersSynced = fillersSeen;
+  }
 
   const label = (text) =>
     text === texts.roomName
@@ -1842,6 +1869,7 @@ async function simulatedWorkflowApp(stageId, faults = {}) {
   }
 
   function targetRenderedNow() {
+    if (timelineReset) return false;
     if (faults.targetRemovedAfterFlood && floodSettled()) return false;
     return true;
   }
@@ -1988,8 +2016,20 @@ async function simulatedWorkflowApp(stageId, faults = {}) {
       diagnostics: {
         send: async (_method, { expression }) => {
           vi.setSystemTime(Date.now() + (faults.readMs ?? 1_000));
+          syncApp();
           if (expression === VIEW_EXPR)
             return { result: { value: currentView() } };
+          if (GROUP_EXPR.has(expression)) {
+            const rendered = fillersSynced > GROUP_EXPR.get(expression) ? 1 : 0;
+            return {
+              result: {
+                value: {
+                  ...currentView(),
+                  lastFiller: { count: rendered, inViewport: rendered === 1 },
+                },
+              },
+            };
+          }
           if (expression === SHEET_EXPR)
             return { result: { value: currentSheet() } };
           if (expression === PROFILE_EXPR)
@@ -2485,6 +2525,34 @@ describe('Android pinned-message-workflow native journey against a simulated ins
     await withSimulatedWorkflowStage(
       'repeat-jump',
       { targetRemovedAfterFlood: true },
+      async ({ context }) => {
+        await expect(runRepeatJump(context)).rejects.toThrow(
+          /target row is rendered/u,
+        );
+      },
+    );
+  }, 20_000);
+
+  it('paces the flood under the sync timeline limit, so a limited sync never resets the target [#757]', async () => {
+    const { runRepeatJump } = await loadJourneys();
+    // Synapse's default timeline limit, which the app's incremental /sync filter inherits.
+    await withSimulatedWorkflowStage(
+      'repeat-jump',
+      { syncTimelineLimit: 10 },
+      async ({ context, state }) => {
+        await runRepeatJump(context);
+        expect(state.actions).toEqual(REPEAT_JUMP_ACTIONS);
+        expect(context.records).toHaveLength(14);
+      },
+    );
+  }, 20_000);
+
+  it('fails closed when a filler batch exceeds the sync timeline limit and resets the target [#757]', async () => {
+    const { runRepeatJump } = await loadJourneys();
+    const { FILLER_GROUP } = await loadContract();
+    await withSimulatedWorkflowStage(
+      'repeat-jump',
+      { syncTimelineLimit: FILLER_GROUP - 1 },
       async ({ context }) => {
         await expect(runRepeatJump(context)).rejects.toThrow(
           /target row is rendered/u,

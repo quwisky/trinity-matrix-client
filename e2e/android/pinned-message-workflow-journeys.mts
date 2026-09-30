@@ -19,6 +19,7 @@ import {
 } from './account-workspace-fixtures.mts';
 import {
   FILLER_COUNT,
+  FILLER_GROUP,
   OTHER_BODY,
   PIN_BODY,
   PIN_RUN_SUFFIX,
@@ -36,6 +37,7 @@ import {
   assertJumpFlash,
   assertJumpLatestReady,
   assertLastFillerInViewport,
+  assertLastFillerRendered,
   assertMotionFull,
   assertOpenPinnedHidden,
   assertPinArrangement,
@@ -473,11 +475,15 @@ export async function runRepeatJump(context: PinnedWorkflowStageContext): Promis
   await receipt(context, 'pre-flood', { targetRendered: true, fillers: 0 });
 
   // 334–346: live fillers, sequential and awaited, after the Room is open.
+  // D2 amendment: paced in FILLER_GROUP groups, so no incremental /sync batch
+  // exceeds Synapse's default timeline limit and resets the live timeline.
   const fillerIds: string[] = [];
-  for (const filler of fillers) {
+  for (const [i, filler] of fillers.entries()) {
     const id = await fixtures.sendMessage(reader, room.id, filler.body, filler.txn);
     fillerIds.push(id);
     protect(context, { eventIds: [id] });
+    if ((i + 1) % FILLER_GROUP === 0 && i + 1 < FILLER_COUNT)   // anchored at this send's return
+      await until(context, { ...texts, lastFillerBody: filler.body }, assertLastFillerRendered, FLOOD_MS, 'filler group rendered');
   }
   const sent = Date.now();
   await server(context, async () => historyOf(await fixtures.roomMessages(reader, room.id)),
