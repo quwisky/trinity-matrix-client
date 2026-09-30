@@ -8108,4 +8108,18 @@ key, whose value is `[REDACTED]`.
 The browser predecessor passed at retry 0 (1 passed, one worker) in invocation
 `munhkfdf-c2676c7b-be18-4fd4-8324-d93d8ac947cd`; the predecessor file is unchanged.
 
+Accepted at `6d763606`. Hosted run 36665714518 ran on the pull-request head
+`6d763606` (attempt 1) and was fully green: every job passed, and the scheduled
+E2E job is skipped on push. Android shard 3 ran `android.quote-notification` as
+invocation `munmrjib`: 1/1 stage, 8/8 assertion records, attempt 1, zero
+retries; the `quoted-display-name` stage took 103.3 s. The unchanged
+predecessor ran in the same run's canonical browser job as invocation
+`munkqj44-1983348a-aedd-43b3-b86e-3ec013c627f7`: 1 test passed, retry 0. A leak
+audit over all 90 artifacts (15,240 files, nested zips extracted) found 0
+Room-id and 0 event-id shapes in any of the 80 Android artifacts and 0 `syt_`
+tokens, 0 Bearer values and 0 password values in any artifact. The predecessor
+blob at HEAD equals its blob at `dd0cb53c` (SHA-256 `5186fc3b45f12fd03e2ad71e79ae636a688fce41b96d05fb0e38f278f80266e5`
+in both); the file stays pinned at the existing `RETIRED_PREDECESSOR_COMMIT`, so
+no new fetch is needed.
+
 Predecessor status: enabled; after hosted acceptance the coordinator keeps the file as a desktop-only definition, skipped on Android (#839).
