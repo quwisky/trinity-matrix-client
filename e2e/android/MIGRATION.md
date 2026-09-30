@@ -8082,6 +8082,6 @@ pnpm e2e:android:quote-notification
 ```
 
 The target runs one attempt with zero retries, a 15-minute Node test and a
-20-minute CI wrapper. Shard 3 runs it last, after pinned-message-panel.
+20-minute CI wrapper. Shard 3 runs it last, after pinned-message-panel; its budget comment adds the 3-minute local run time (about 84 native minutes of the 240-minute job).
 
 Predecessor status: enabled; after hosted acceptance the coordinator keeps the file as a desktop-only definition, skipped on Android (#839).
