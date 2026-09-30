@@ -283,8 +283,10 @@ All through real Synapse, before any UI step, except the stage-2 fillers.
   its default of 10. When one incremental batch carries more than 10 fillers,
   Synapse marks it `limited`; none of its events are known to the client, so
   matrix-js-sdk calls `resetLiveTimeline` and the live timeline restarts at
-  the batch, without the target. A local probe that held the app's `/sync`
-  during the flood reproduced it every time (`limited: true`, 10 events, 10
+  the batch, without the target. The hosted run was not instrumented, so this
+  cause is inferred: it most likely received one batch with more than 10
+  fillers. A local probe that held the app's `/sync` during the flood
+  reproduced the mechanism deterministically (`limited: true`, 10 events, 10
   rendered rows, no target row). The fillers therefore go out in groups of
   `FILLER_GROUP` = 8, still sequential and awaited. After each group but the
   last, the stage polls (30 s, anchored at that group's last send's return)
