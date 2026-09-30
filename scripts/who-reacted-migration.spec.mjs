@@ -1,7 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { basename, posix, resolve } from 'node:path';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, join, posix, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
@@ -2348,5 +2351,481 @@ describe('Android who-reacted read-only observer (jsdom)', () => {
     ];
     for (const token of banned) expect(source, token).not.toContain(token);
     expect(source).not.toMatch(/(?<![.\w])(location|history)\./u);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Artifacts and diagnostics safety                                           */
+/* -------------------------------------------------------------------------- */
+
+const ARTIFACTS_PATH = 'e2e/android/who-reacted-artifacts.mts';
+const loadArtifacts = () => import('../e2e/android/who-reacted-artifacts.mts');
+async function withOutput(prefix, operation) {
+  const output = await mkdtemp(join(tmpdir(), prefix));
+  try {
+    return await operation(output);
+  } finally {
+    await rm(output, { recursive: true, force: true });
+  }
+}
+
+describe('Android who-reacted diagnostics safety', () => {
+  const RUN = 'R';
+  const two = (n) => String(n).padStart(2, '0');
+  const READER = {
+    userId: '@who-reader-R:localhost',
+    username: 'who-reader-R',
+    password: 'pw-reader-R',
+  };
+  const OTHERS = Array.from({ length: 16 }, (_, i) => ({
+    userId: `@who-other-R-${two(i + 1)}:localhost`,
+    username: `who-other-R-${two(i + 1)}`,
+    password: `pw-other-R-${two(i + 1)}`,
+  }));
+  const ROOM = { id: '!who:localhost', name: 'Who reacted R' };
+  const TXNS = [
+    'who-R',
+    ...Array.from({ length: 17 }, (_, i) => `r${i + 1}-R`),
+    ...Array.from({ length: 18 }, (_, i) => `group${i}-R`),
+  ];
+  const EVENTS = [
+    '$target',
+    ...Array.from({ length: 36 }, (_, i) => `$r${two(i + 1)}`),
+  ];
+  const stageIds = (c) => ({
+    accounts: [READER, ...OTHERS],
+    rooms: [ROOM],
+    texts: ['react to me R', c.longReactorNameOf(RUN)],
+    transactions: TXNS,
+    eventIds: EVENTS,
+  });
+  const secretsOf = async (stage = 'pill-dialog') => {
+    const c = await loadContract();
+    const { whoReactedSecrets } = await loadArtifacts();
+    return whoReactedSecrets(stage, stageIds(c));
+  };
+
+  it('registers 17 accounts, the Room, texts, 36 transactions and 37 event ids in every form', async () => {
+    const c = await loadContract();
+    const secrets = await secretsOf('mobile-sheet');
+    expect(
+      Object.keys(secrets).every((key) =>
+        key.startsWith('SECRET_WHO_REACTED_MOBILE_SHEET_'),
+      ),
+    ).toBe(true);
+    expect(new Set(TXNS).size).toBe(36);
+    expect(EVENTS).toHaveLength(37);
+    const values = new Set(Object.values(secrets));
+    for (const account of [READER, ...OTHERS])
+      for (const value of [
+        account.userId,
+        encodeURIComponent(account.userId),
+        account.username,
+        account.password,
+      ])
+        expect(values.has(value), value).toBe(true);
+    for (const value of [
+      ROOM.id,
+      ROOM.id.slice(1),
+      encodeURIComponent(ROOM.id),
+      Buffer.from(ROOM.id).toString('base64url'),
+      ROOM.name,
+      'react to me R',
+      c.longReactorNameOf(RUN),
+      ...TXNS,
+      ...EVENTS,
+    ])
+      expect(values.has(value), value).toBe(true);
+  });
+
+  it('registers no emoji key, thumbs-up, party popper or bare server name', async () => {
+    const c = await loadContract();
+    const values = new Set(Object.values(await secretsOf()));
+    for (const key of [...c.REACTION_KEYS, '👍', '🎉'])
+      expect(values.has(key), key).toBe(false);
+    expect(values.has('localhost')).toBe(false);
+    const { whoReactedSecrets } = await loadArtifacts();
+    expect(() => whoReactedSecrets('not-a-stage', stageIds(c))).toThrow();
+  });
+
+  it('rejects every identifier form and token in both stage directories', async () => {
+    const c = await loadContract();
+    const secrets = await secretsOf();
+    const { scanPinnedPanelArtifacts } =
+      await import('../e2e/android/pinned-message-panel-artifacts.mts');
+    const fixtureTokens = Array.from(
+      { length: 17 },
+      (_, n) => `syt_fixtureToken_${n}`,
+    );
+    const unsafeValues = [
+      'react to me R',
+      c.longReactorNameOf(RUN),
+      ROOM.name,
+      READER.username,
+      OTHERS[15].username,
+      READER.userId,
+      OTHERS[0].userId,
+      ROOM.id,
+      ROOM.id.slice(1),
+      encodeURIComponent(ROOM.id),
+      Buffer.from(ROOM.id).toString('base64url'),
+      '$r17',
+      'r10-R',
+      'group17-R',
+      READER.password,
+      OTHERS[3].password,
+      ...fixtureTokens,
+      'syt_deviceToken_x',
+    ];
+    expect(new Set(fixtureTokens).size).toBe(17);
+    await withOutput('trinity-who-scan-', async (output) => {
+      for (const stage of ['pill-dialog', 'mobile-sheet']) {
+        await mkdir(join(output, stage));
+        const capture = join(output, stage, 'receipt-01-x.json');
+        for (const unsafe of unsafeValues) {
+          await writeFile(capture, `x=${unsafe}`);
+          await expect(
+            scanPinnedPanelArtifacts(output, secrets),
+            `${stage}: ${unsafe}`,
+          ).rejects.toThrow();
+        }
+        await writeFile(capture, '{"ok":true}\n');
+      }
+      await expect(
+        scanPinnedPanelArtifacts(output, secrets),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  const flags = {
+    unsafeSecrets: false,
+    cleanupFailed: false,
+    scrubFailed: false,
+  };
+  const CAPTURES = ['passed.json', 'passed-ui.json', 'passed-surface.json'];
+  /** A complete two-stage passing run, as the runner reports it. */
+  const reportOf = (c) => ({
+    status: 'passed',
+    expectedStages: 2,
+    expectedAssertionRecords: 191,
+    attempt: 1,
+    retries: 0,
+    stages: c.WHO_REACTED_STAGES.map((entry) => ({
+      id: entry.id,
+      status: 'passed',
+      attempt: 1,
+      retries: 0,
+      expectedAssertionRecords: entry.expectedAssertionRecords,
+      assertionRecords: entry.assertions.length,
+      assertions: [...entry.assertions],
+      failureCount: 0,
+    })),
+  });
+
+  /** Each case arranges the output, report, flags or secrets to be unsafe in one way. */
+  const casesOf = (c) => {
+    const { GENERAL_TOUCH_PROFILE: GENERAL, MOBILE_SHEET_PROFILE: MOBILE } = c;
+    const swap = (stage, a, b) => (report) => {
+      const list = report.stages[stage].assertions;
+      [list[a], list[b]] = [list[b], list[a]];
+    };
+    const truncate = (stage, records) => (report) => {
+      report.stages[stage].assertions.pop();
+      report.stages[stage].assertionRecords = records;
+    };
+    return {
+      'one stage': { report: (r) => r.stages.pop() },
+      'three stages': {
+        report: (r) => r.stages.push(structuredClone(r.stages[0])),
+      },
+      'expectedStages 1': { report: (r) => (r.expectedStages = 1) },
+      'expectedAssertionRecords 190': {
+        report: (r) => (r.expectedAssertionRecords = 190),
+      },
+      'attempt 2': { report: (r) => (r.attempt = 2) },
+      'retries 1': { report: (r) => (r.retries = 1) },
+      '87 records in pill-dialog': { report: truncate(0, 87) },
+      '102 records in mobile-sheet': { report: truncate(1, 102) },
+      'assertionRecords count alone': {
+        report: (r) => (r.stages[0].assertionRecords = 87),
+      },
+      'stage expected records alone': {
+        report: (r) => (r.stages[1].expectedAssertionRecords = 102),
+      },
+      'two records swapped': { report: swap(1, 5, 6) },
+      'journeys.json differs from the run': { differentJourneys: true },
+      'provenance with the mobile profile': { provenance: MOBILE },
+      'general profile in mobile-sheet': {
+        applied: { 'mobile-sheet': GENERAL },
+      },
+      'mobile profile in pill-dialog': { applied: { 'pill-dialog': MOBILE } },
+      'missing capture': { missing: join('mobile-sheet', 'passed-ui.json') },
+      cleanupFailed: { flags: { cleanupFailed: true } },
+      scrubFailed: { flags: { scrubFailed: true } },
+      unsafeSecrets: { flags: { unsafeSecrets: true } },
+      'raster under a stage': { png: true },
+      'unscrubbed identifier': { leak: true },
+    };
+  };
+
+  /** Arrange a passing output, apply one case, and return a call against `module`. */
+  async function attempt(c, output, module, spec = {}) {
+    const write = (path, value) =>
+      writeFile(join(output, path), `${JSON.stringify(value, null, 2)}\n`);
+    const report = reportOf(c);
+    spec.report?.(report);
+    const profile = spec.provenance ?? c.GENERAL_TOUCH_PROFILE;
+    await write(
+      'journeys.json',
+      spec.differentJourneys ? { other: true } : report,
+    );
+    await write('runtime-provenance.json', {
+      schemaVersion: 1,
+      profile: { requested: profile, digest: sha256(JSON.stringify(profile)) },
+    });
+    for (const entry of c.WHO_REACTED_STAGES) {
+      await mkdir(join(output, entry.id), { recursive: true });
+      await write(join(entry.id, 'profile-applied.json'), {
+        requested: spec.applied?.[entry.id] ?? c.WHO_REACTED_PROFILES[entry.id],
+      });
+      for (const name of CAPTURES)
+        await write(join(entry.id, name), { ok: true });
+    }
+    if (spec.missing) await rm(join(output, spec.missing));
+    if (spec.png)
+      await writeFile(
+        join(output, 'mobile-sheet', 'failed.png'),
+        Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+      );
+    if (spec.leak)
+      await writeFile(
+        join(output, 'pill-dialog', 'passed-surface.json'),
+        'token=$r17',
+      );
+    const marker = join(output, 'publication-safe');
+    await writeFile(marker, 'stale\n');
+    return {
+      marker,
+      call: async () =>
+        module.markWhoReactedDiagnosticsSafe(
+          output,
+          spec.leak ? await secretsOf() : {},
+          { ...flags, ...spec.flags },
+          undefined,
+          report,
+        ),
+    };
+  }
+
+  it('withholds publication-safe from every unsafe run and writes it for a complete report', async () => {
+    const c = await loadContract();
+    const artifacts = await loadArtifacts();
+    await withOutput('trinity-who-gate-', async (output) => {
+      const good = await attempt(c, output, artifacts);
+      await good.call();
+      expect(await readFile(good.marker, 'utf8')).toBe('scanned\n');
+      for (const [name, spec] of Object.entries(casesOf(c))) {
+        const unsafe = await attempt(c, output, artifacts, spec);
+        await expect(unsafe.call(), name).rejects.toThrow();
+        expect(existsSync(unsafe.marker), name).toBe(false);
+      }
+    });
+  });
+
+  // Every refusal term of the marker: deleting it in memory lets the same case through.
+  const TERMS = [
+    ['unsafeSecrets', '!flags.unsafeSecrets && ', '', ['unsafeSecrets']],
+    ['cleanupFailed', '!flags.cleanupFailed && ', '', ['cleanupFailed']],
+    ['scrubFailed', ' && !flags.scrubFailed', '', ['scrubFailed']],
+    [
+      'expectedStages',
+      "report['expectedStages'] === WHO_REACTED_STAGES.length &&",
+      'true &&',
+      ['expectedStages 1'],
+    ],
+    [
+      'expectedAssertionRecords',
+      "report['expectedAssertionRecords'] === WHO_REACTED_ASSERTION_RECORDS &&",
+      'true &&',
+      ['expectedAssertionRecords 190'],
+    ],
+    ['attempt', "report['attempt'] === 1 && ", '', ['attempt 2']],
+    ['retries', "report['retries'] === 0", 'true', ['retries 1']],
+    [
+      'stage count',
+      "report['stages'].length === WHO_REACTED_STAGES.length",
+      'true',
+      ['three stages'],
+    ],
+    [
+      'stage expected records',
+      "stage['expectedAssertionRecords'] === entry.expectedAssertionRecords &&",
+      'true &&',
+      ['stage expected records alone'],
+    ],
+    [
+      'stage record count',
+      "stage['assertionRecords'] === entry.assertions.length &&",
+      'true &&',
+      ['assertionRecords count alone'],
+    ],
+    [
+      'stage assertion order',
+      "assert.deepEqual(stage['assertions'], [...entry.assertions],",
+      'assert.deepEqual([], [],',
+      ['two records swapped'],
+    ],
+    // A truncated stage is refused by its count and by its list: both terms go together.
+    [
+      'stage count and list',
+      [
+        "stage['assertionRecords'] === entry.assertions.length &&",
+        "assert.deepEqual(stage['assertions'], [...entry.assertions],",
+      ],
+      ['true &&', 'assert.deepEqual([], [],'],
+      ['87 records in pill-dialog', '102 records in mobile-sheet'],
+    ],
+    [
+      'persisted report',
+      "assert.deepEqual(await readJsonObject(join(output, 'journeys.json')), current,",
+      'assert.deepEqual(current, current,',
+      ['journeys.json differs from the run'],
+    ],
+    [
+      'provenance profile',
+      'assert.deepEqual(installed, {',
+      'assert.deepEqual(installed, installed, {',
+      ['provenance with the mobile profile'],
+    ],
+    [
+      'applied profile',
+      "assert.deepEqual(applied['requested'], WHO_REACTED_PROFILES[entry.id],",
+      "assert.deepEqual(applied['requested'], applied['requested'],",
+      ['general profile in mobile-sheet', 'mobile profile in pill-dialog'],
+    ],
+    [
+      'required captures',
+      'await requireTextFile(join(output, entry.id, name));',
+      'void name;',
+      ['missing capture'],
+    ],
+    [
+      'scan (identifier and raster)',
+      'await scanPinnedPanelArtifacts(output, secrets);',
+      '',
+      ['unscrubbed identifier', 'raster under a stage'],
+    ],
+  ];
+
+  it('gives every marker refusal flag and the raster case a mutation term present once', () => {
+    const names = TERMS.flatMap(([, , , cases]) => cases);
+    for (const required of [
+      'unsafeSecrets',
+      'cleanupFailed',
+      'scrubFailed',
+      'raster under a stage',
+    ])
+      expect(names).toContain(required);
+    const source = read(ARTIFACTS_PATH);
+    for (const [name, from] of TERMS)
+      for (const term of [from].flat())
+        expect(
+          source.split(term).length,
+          `${name}: term is present exactly once`,
+        ).toBe(2);
+  });
+
+  it('refuses a .png under the stage output', async () => {
+    const c = await loadContract();
+    const artifacts = await loadArtifacts();
+    await withOutput('trinity-who-raster-', async (output) => {
+      const unsafe = await attempt(c, output, artifacts, { png: true });
+      await expect(unsafe.call()).rejects.toThrow();
+      expect(existsSync(unsafe.marker)).toBe(false);
+    });
+  });
+
+  for (const [index, [name, from, to, caseNames]] of TERMS.entries())
+    it(`deleting the "${name}" term lets its unsafe case publish (in-memory mutation)`, async () => {
+      const c = await loadContract();
+      const artifacts = await loadArtifacts();
+      const source = read(ARTIFACTS_PATH);
+      const mutated = [from]
+        .flat()
+        .reduce((text, term, i) => text.replace(term, [to].flat()[i]), source);
+      expect(mutated, `${name}: mutation applied`).not.toBe(source);
+      const temp = resolve(
+        root,
+        `e2e/android/who-reacted-artifacts.mutant-${process.pid}-${index}.mts`,
+      );
+      try {
+        await writeFile(temp, mutated);
+        const mutant = await import(pathToFileURL(temp).href);
+        const cases = casesOf(c);
+        for (const caseName of caseNames)
+          await withOutput('trinity-who-mut-', async (output) => {
+            const real = await attempt(c, output, artifacts, cases[caseName]);
+            await expect(
+              real.call(),
+              `${caseName}: real module refuses`,
+            ).rejects.toThrow();
+            const loose = await attempt(c, output, mutant, cases[caseName]);
+            await loose.call();
+            expect(
+              await readFile(loose.marker, 'utf8'),
+              `${caseName}: mutant publishes`,
+            ).toBe('scanned\n');
+          });
+      } finally {
+        await rm(temp, { force: true });
+      }
+    }, 30_000);
+
+  it('revokes publication on abort with the exact message', async () => {
+    const { revokeWhoReactedPublicationOnAbort } = await loadArtifacts();
+    await withOutput('trinity-who-abort-', async (output) => {
+      const report = {
+        status: 'passed',
+        stages: [
+          { status: 'passed', failureCount: 0 },
+          { status: 'passed', failureCount: 0 },
+        ],
+      };
+      await writeFile(join(output, 'publication-safe'), 'scanned\n');
+      await revokeWhoReactedPublicationOnAbort(
+        output,
+        report,
+        new AbortController().signal,
+      );
+      expect(existsSync(join(output, 'publication-safe'))).toBe(true);
+      const controller = new AbortController();
+      controller.abort();
+      await revokeWhoReactedPublicationOnAbort(
+        output,
+        report,
+        controller.signal,
+      );
+      expect(existsSync(join(output, 'publication-safe'))).toBe(false);
+      expect(report.status).toBe('failed');
+      expect(report.stages.at(-1)).toMatchObject({
+        status: 'failed',
+        failureCount: 1,
+        error: 'Cancelled before who-reacted publication',
+      });
+      expect(
+        JSON.parse(await readFile(join(output, 'journeys.json'), 'utf8'))
+          .status,
+      ).toBe('failed');
+    });
+  });
+
+  it('imports only the scan and its type from the pinned-panel module', () => {
+    const source = read(ARTIFACTS_PATH);
+    expect(source).toMatch(
+      /import \{\s*scanPinnedPanelArtifacts,\s*type PinnedPanelPublicationSafety,\s*\} from '\.\/pinned-message-panel-artifacts\.mts';/u,
+    );
+    expect(source).toContain(
+      'export type WhoReactedPublicationSafety = PinnedPanelPublicationSafety;',
+    );
   });
 });
