@@ -8247,6 +8247,6 @@ pnpm e2e:android:who-reacted
 ```
 
 The target runs one attempt with zero retries, a 25-minute Node test and a
-30-minute CI wrapper. Shard 3 runs it last, after quote-notification.
+30-minute CI wrapper. Shard 3 runs it last, after quote-notification; its budget comment adds the 10-minute local run time (about 94 native minutes of the 240-minute job).
 
 Predecessor status: enabled; after hosted acceptance the coordinator retires the Android definition and keeps the general definition desktop-only, skipped on Android (#839).
