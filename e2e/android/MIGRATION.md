@@ -354,6 +354,7 @@ authorize retirement, describe that time.
 | `conversations/message-swipe.spec.mts` | #754 | file deleted | — |
 | `conversations/message-unread.spec.mts` | #755 | file deleted | — |
 | `conversations/pinned-message-panel.spec.mts` | #756 | file deleted | — |
+| `conversations/pinned-message-workflow.spec.mts` | #757 | 2 retired | — |
 
 ## Native shell, Back and Appearance batch
 
@@ -7967,5 +7968,11 @@ there, `acdd3c28056bf8233400d3cbe36b02efb3a07808` at HEAD) only at line 27, a
 `//` comment; the file stays pinned at the existing
 `RETIRED_PREDECESSOR_COMMIT`, so no new fetch is needed.
 
-Predecessor status: enabled; the coordinator retires the two migrated
-definitions after hosted acceptance; definition 402–445 stays.
+Predecessor status: retired on 2026-09-30 under
+[#757](https://github.com/quwisky/trinity-matrix-client/issues/757),
+following the 2026-09-26 retirement policy of
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839); only the
+two migrated definitions are removed and definition 402–445 stays in the
+browser suite, unchanged and not skipped on Android;
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.

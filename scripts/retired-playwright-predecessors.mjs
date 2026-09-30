@@ -899,6 +899,17 @@ export const RETIRED_PREDECESSORS = Object.freeze([
     retired: ['lists pinned messages and unpins one in place'],
     desktopOnly: [],
   },
+  {
+    path: 'e2e/browser/journeys/conversations/pinned-message-workflow.spec.mts',
+    sha256: 'ee52c7e30ba06c519d277e0009416e63f1c5239a98e56fe1a6187cb8d18620f2',
+    issues: [757],
+    deleted: false,
+    retired: [
+      'pin a message, see it (and its count) in the pinned panel, jump to it, then unpin it',
+      're-jumping to the SAME pinned message a second time still scrolls it into view',
+    ],
+    desktopOnly: [],
+  },
 ]);
 
 if (

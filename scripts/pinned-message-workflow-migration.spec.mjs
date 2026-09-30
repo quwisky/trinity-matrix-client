@@ -34,9 +34,6 @@ const loadArtifacts = () =>
 /** The issue's predecessor bytes, at RETIRED_PREDECESSOR_COMMIT (dd0cb53c). */
 const PREDECESSOR_SHA256 =
   'ee52c7e30ba06c519d277e0009416e63f1c5239a98e56fe1a6187cb8d18620f2';
-/** The working tree: identical except line 27, a comment #839 edited. */
-const WORKING_TREE_SHA256 =
-  'f0a1f4be395c30c05bc71820aadf5fe719d0062654e9b83d115c35e2a2ed5ff7';
 const SHARED_SHA256 = {
   'e2e/support/app.mts':
     '60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3',
@@ -376,18 +373,14 @@ function assertPredecessorShape(source) {
 /* -------------------------------------------------------------------------- */
 
 describe('Android pinned-message-workflow predecessor pins', () => {
-  it('pins the canonical predecessor bytes, the working tree and both shared helpers by SHA-256', () => {
+  it('pins the canonical predecessor bytes and both shared helpers by SHA-256', () => {
     expect(RETIRED_PREDECESSOR_COMMIT.startsWith('dd0cb53c')).toBe(true);
     expect(sha256(readPredecessor())).toBe(PREDECESSOR_SHA256);
-    expect(sha256(read(PREDECESSOR))).toBe(WORKING_TREE_SHA256);
     for (const [path, hash] of Object.entries(SHARED_SHA256))
       expect(digest(path)).toBe(hash);
     const flippedCommit = Buffer.from(readPredecessor());
     flippedCommit[0] ^= 1;
     expect(sha256(flippedCommit)).not.toBe(PREDECESSOR_SHA256);
-    const flippedTree = Buffer.from(read(PREDECESSOR));
-    flippedTree[0] ^= 1;
-    expect(sha256(flippedTree)).not.toBe(WORKING_TREE_SHA256);
     for (const path of Object.keys(SHARED_SHA256)) {
       const shared = Buffer.from(readFileSync(resolve(root, path)));
       shared[0] ^= 1;
@@ -395,26 +388,30 @@ describe('Android pinned-message-workflow predecessor pins', () => {
     }
   });
 
-  it('differs from the working tree only in the line-27 comment', () => {
-    const commit = readPredecessor().split('\n');
-    const tree = read(PREDECESSOR).split('\n');
-    expect(commit).toHaveLength(447);
-    expect(tree).toHaveLength(commit.length);
-    const diffs = commit
-      .map((_, index) => index)
-      .filter((index) => commit[index] !== tree[index]);
-    expect(diffs).toEqual([26]);
-    expect(commit[26].trim().startsWith('//')).toBe(true);
-    expect(tree[26].trim().startsWith('//')).toBe(true);
+  it('retires the two migrated definitions and keeps the desktop-only one in the working tree', async () => {
+    const current = read(PREDECESSOR);
+    for (const title of [
+      'pin a message, see it (and its count) in the pinned panel, jump to it, then unpin it',
+      'the SAME pinned message a second time still scrolls it into view',
+    ])
+      expect(current).not.toContain(title);
+    expect(current).not.toContain('seedRepeatJumpPinRoom');
+    expect(current).not.toContain('isAndroidE2E');
+    expect(current).toContain(
+      "test('the panel takes its own width, and only offers a divider where one means something'",
+    );
+    expect(current.match(/^ {2}test\(/gmu)).toHaveLength(1);
+    const { BROWSER_JOURNEYS } =
+      await import('../e2e/browser/journey-catalog.mts');
+    expect(BROWSER_JOURNEYS.map(({ path }) => path)).toContain(
+      'journeys/conversations/pinned-message-workflow.spec.mts',
+    );
   });
 
   it('pins the same source, spans and both stages in the contract', async () => {
     const contract = await loadContract();
     expect(contract.PINNED_WORKFLOW_SOURCE).toBe(PREDECESSOR);
     expect(contract.PINNED_WORKFLOW_SOURCE_SHA256).toBe(PREDECESSOR_SHA256);
-    expect(contract.PINNED_WORKFLOW_WORKING_TREE_SHA256).toBe(
-      WORKING_TREE_SHA256,
-    );
     expect(contract.PINNED_WORKFLOW_SOURCE_LINES).toBe(446);
     expect(contract.PINNED_WORKFLOW_SHARED_SOURCE_SHA256).toEqual(
       SHARED_SHA256,
@@ -3687,7 +3684,7 @@ describe('Android pinned-message-workflow hosted wiring and parity ledger', () =
     for (const hash of Object.values(SHARED_SHA256))
       expect(section).toContain(hash);
     expect(flat).toContain('Suite `android.pinned-message-workflow`');
-    expect(flat).toContain('Predecessor status: enabled');
+    expect(flat).toContain('Predecessor status: retired');
     expect(flat).toContain('Documented reinterpretations of the predecessor:');
     expect(flat).toContain(
       'a failed teardown step is rethrown through `redactStageFailure`, and a failed guarded cleanup is rethrown through `redactCleanupFailure`, never as the raw error.',

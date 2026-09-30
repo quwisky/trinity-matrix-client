@@ -27,17 +27,18 @@ const EXTRACTED_ASSERTION_SUPPORT = [
  * The 2026-09-28 retirement of the accepted message-unread predecessor (#755) removed 1 more
  * file, 1 definition and 14 assertion calls. The 2026-09-29 retirement of the accepted
  * pinned-message-panel predecessor (#756) removed 1 more file, 1 definition and 12 assertion
- * calls.
+ * calls. The 2026-09-30 partial retirement of the accepted pinned-message-workflow predecessor
+ * (#757) removed 2 more definitions and 25 assertion calls and kept the file.
  */
 export const BROWSER_ASSERTION_BASELINE = Object.freeze({
   baselineSpecFiles: 103,
   currentSpecFiles: 74,
-  testDefinitions: 156,
-  assertionCalls: 1424,
+  testDefinitions: 154,
+  assertionCalls: 1399,
   testFingerprint:
-    '23e179845e22693fb798dae28fe424ccaca9c26ebc8a7d69906cadf501a81550',
+    'f6814aba467550418306a477b47c942a2e78da7f2b182580126a04a21b7e6191',
   assertionFingerprint:
-    'c4f883d180d3797ed44fd6bb6839710aaac603dd5c1c422168ad7c4cd6eb3751',
+    'b149e6ad622f0133d212bd83d61fed4d39591b72ad1162bdcd218373b51990a2',
 });
 
 const normalizeSource = (source) => source.replace(/\s+/gu, ' ').trim();

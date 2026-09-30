@@ -9,9 +9,6 @@ export const PINNED_WORKFLOW_SOURCE =
  */
 export const PINNED_WORKFLOW_SOURCE_SHA256 =
   'ee52c7e30ba06c519d277e0009416e63f1c5239a98e56fe1a6187cb8d18620f2';
-/** The working tree hashes differently: the #839 retirement edited line 27, a comment. */
-export const PINNED_WORKFLOW_WORKING_TREE_SHA256 =
-  'f0a1f4be395c30c05bc71820aadf5fe719d0062654e9b83d115c35e2a2ed5ff7';
 export const PINNED_WORKFLOW_SOURCE_LINES = 446;
 
 export const PINNED_WORKFLOW_SHARED_SOURCE_SHA256 = {
