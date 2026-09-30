@@ -4,8 +4,11 @@ import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, posix, resolve } from 'node:path';
+import { runInNewContext } from 'node:vm';
+import { pathToFileURL } from 'node:url';
+import { JSDOM } from 'jsdom';
 import ts from 'typescript';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   readRetiredPredecessor,
   RETIRED_PREDECESSOR_COMMIT,
@@ -1272,5 +1275,1520 @@ describe('Android quote-notification diagnostics safety', () => {
           .status,
       ).toBe('failed');
     });
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Simulated installed app: the exact journey against production-shaped DOM   */
+/* -------------------------------------------------------------------------- */
+
+const JOURNEYS = 'e2e/android/quote-notification-journeys.mts';
+const CONTRACT_PATH = 'e2e/android/quote-notification-contract.mts';
+const ARTIFACTS_PATH = 'e2e/android/quote-notification-artifacts.mts';
+const loadJourneys = () =>
+  import('../e2e/android/quote-notification-journeys.mts');
+
+const SIM_ROOM = '!Room-AbC:example.test';
+const SIM_HOMESERVER = 'https://localhost:8448';
+const SIM_WRITER = {
+  userId: '@qmw:example.test',
+  username: 'qmw',
+  password: 'w-pass"word\\token',
+  homeserver: SIM_HOMESERVER,
+};
+const SIM_READER = {
+  userId: '@qmr:example.test',
+  username: 'qmr',
+  password: 'r-pass"word\\token',
+  homeserver: SIM_HOMESERVER,
+};
+const SIM_ROUTE = `https://localhost/rooms/${Buffer.from(SIM_ROOM).toString('base64url')}?account=${encodeURIComponent(SIM_WRITER.userId)}&view=rooms`;
+const SIM_RUN = 'r';
+const SIM_ROOM_NAME = `Quote mentions ${SIM_RUN}`;
+const SIM_ANSWER = `on it ${SIM_RUN}`;
+const SIM_PROBE = `poke ${SIM_RUN}`;
+const simEscape = (value) =>
+  String(value)
+    .replace(/&/gu, '&amp;')
+    .replace(/</gu, '&lt;')
+    .replace(/>/gu, '&gt;')
+    .replace(/"/gu, '&quot;');
+const SIM_COMPOSER = '[data-testid="composer-input"]';
+const SIM_APPEND_FLOW = 'e2e/android/flows/message-quote-append.yaml';
+
+/**
+ * A model of the installed app, its Synapse Room and Gboard. Every state is a
+ * pure function of the fake clock and of the returns recorded when a native
+ * call finished (#757 final review): a tap only enqueues its transition, and
+ * a later render or read applies it once `lag[label]` has elapsed since the
+ * call returned. Only the composer edits of runFlow/key/keyCombination apply
+ * inside the call, because appendNativeLine waits on each with its own window.
+ */
+async function simulatedQuoteNotificationApp(faults = {}) {
+  const c = await loadContract();
+  const controller = new AbortController();
+  const advance = (ms) => vi.setSystemTime(Date.now() + ms);
+  const state = {
+    actions: [],
+    rest: [],
+    written: [],
+    returns: {},
+    queue: [],
+    signedIn: false,
+    roomsShown: false,
+    roomOpen: false,
+    composer: { value: '', start: 0, end: 0, focused: false },
+    sendReady: false,
+    sheet: false,
+    local: null,
+    answerRows: [],
+    firstReadyRead: undefined,
+    probeReturn: undefined,
+    secretsAtReset: undefined,
+    syncs: 0,
+  };
+  const lagOf = (label) => faults.lag?.[label] ?? 0;
+  const applyDue = () => {
+    state.queue = state.queue.filter((entry) => {
+      if (Date.now() - state.returns[entry.label] < lagOf(entry.label))
+        return true;
+      return entry.apply() === false;
+    });
+  };
+  const sourceShown = () =>
+    state.roomOpen &&
+    state.firstReadyRead !== undefined &&
+    Date.now() - state.firstReadyRead >= lagOf('sourceRow');
+  const rowHtml = (id, body) =>
+    `<div class="msg" data-mid="${simEscape(id)}"><div class="msg__body"><div class="msg__content"><p class="msg__text">${simEscape(body)}</p></div></div></div>`;
+  const sheetButtons = () =>
+    [
+      faults.quoteMissing
+        ? ''
+        : '<button data-testid="sheet-quote">Quote</button>',
+      faults.twoQuotes
+        ? '<button data-testid="sheet-quote">Quote</button>'
+        : '',
+      '<button data-testid="sheet-copy">Copy text</button>',
+      '<button data-testid="sheet-forward">Forward</button>',
+      '<button>Cancel</button>',
+    ].join('');
+  const render = () => {
+    applyDue();
+    const parts = ['<nav>'];
+    if (state.signedIn)
+      parts.push('<button data-testid="rail-rooms">Rooms</button>');
+    parts.push('</nav>');
+    if (state.roomsShown)
+      parts.push(
+        `<aside><div class="channel">${simEscape(SIM_ROOM_NAME)}</div></aside>`,
+      );
+    if (state.roomOpen) {
+      parts.push(
+        '<div class="scroll"><div class="msg msg--event" data-mid="$create"><span class="msg__event-text">created the room</span></div>',
+      );
+      if (sourceShown()) parts.push(rowHtml('$src', c.SOURCE_BODY));
+      if (state.local) parts.push(rowHtml('~local', state.local.body));
+      for (const row of state.answerRows) parts.push(rowHtml(row.id, row.body));
+      parts.push('</div>');
+      const enabled =
+        state.composer.value.trim() &&
+        state.sendReady &&
+        !faults.sendNeverEnabled;
+      parts.push(
+        `<trn-message-composer><textarea data-testid="composer-input" placeholder="${simEscape(`Message #${SIM_ROOM_NAME}`)}"></textarea><button data-testid="composer-send"${enabled ? '' : ' disabled'}>Send</button></trn-message-composer>`,
+      );
+    }
+    if (state.sheet)
+      parts.push(
+        `<div role="dialog" aria-label="Message actions"><div data-testid="action-sheet-surface">${sheetButtons()}</div></div>`,
+      );
+    return parts.join('');
+  };
+  const dom = () => {
+    const jsdom = new JSDOM(`<main>${render()}</main>`, {
+      url: state.roomOpen ? SIM_ROUTE : 'https://localhost/rooms?account=x',
+    });
+    const { window } = jsdom;
+    Object.defineProperty(window, 'innerWidth', {
+      value: faults.profileWidth ?? 393,
+    });
+    Object.defineProperty(window, 'innerHeight', { value: 727 });
+    Object.defineProperty(window, 'devicePixelRatio', { value: 2.75 });
+    window.HTMLElement.prototype.getBoundingClientRect = () => ({
+      x: 0,
+      y: 0,
+      width: 120,
+      height: 20,
+      bottom: 20,
+      right: 120,
+    });
+    window.matchMedia = (query) => ({
+      matches: query === '(hover: none)' || query === '(pointer: coarse)',
+    });
+    window.Capacitor = { getPlatform: () => 'android' };
+    const computed = window.getComputedStyle.bind(window);
+    window.getComputedStyle = (element) => ({
+      ...computed(element),
+      visibility: 'visible',
+    });
+    const input = window.document.querySelector(SIM_COMPOSER);
+    if (input) {
+      input.value = state.composer.value;
+      input.setSelectionRange(state.composer.start, state.composer.end);
+      if (state.composer.focused) input.focus();
+    }
+    return window;
+  };
+  const matches = (selector, filter = {}) =>
+    [...dom().document.querySelectorAll(selector)].filter(
+      (element) =>
+        (filter.text === undefined ||
+          (element.textContent ?? '').includes(filter.text)) &&
+        (filter.exactText === undefined ||
+          element.textContent?.trim() === filter.exactText),
+    );
+  const elementsOf = (selector, filter) =>
+    matches(selector, filter).map((element) => ({
+      text: element.textContent?.trim() ?? '',
+      visible: true,
+      focused: state.composer.focused && element.matches(SIM_COMPOSER),
+      disabled: element.matches(':disabled'),
+      value: 'value' in element ? element.value : null,
+      unobstructedCenter: true,
+      rect: { x: 0, y: 0, width: 120, height: 20, bottom: 20, right: 120 },
+      scrollHeight: 400,
+      clientHeight: 200,
+    }));
+  const actionable = (selector, filter) => {
+    const found = matches(selector, filter);
+    if (found.length !== 1 || found[0].matches(':disabled'))
+      throw new Error(`Simulated target is not actionable: ${selector}`);
+    return found[0];
+  };
+  const insert = (text) => {
+    const { value, start, end } = state.composer;
+    state.composer.value = `${value.slice(0, start)}${text}${value.slice(end)}`;
+    state.composer.start = state.composer.end = start + text.length;
+  };
+  /** A native call that only takes time: it advances the clock and records its return. */
+  const finish = (label, ms = 1_000) => {
+    advance(ms);
+    state.returns[label] = Date.now();
+  };
+  const label = (selector, filter) =>
+    `${selector}${filter.text || filter.exactText ? `|${filter.text ?? filter.exactText}` : ''}`;
+  let context;
+  const client = {
+    workspaceRoot: root,
+    applicationId: 'eu.qwky.trinity',
+    signal: controller.signal,
+    device: {
+      async runFlow(flow, env) {
+        assert(
+          flow.endsWith(SIM_APPEND_FLOW),
+          'Only the append flow is modelled',
+        );
+        applyDue();
+        state.actions.push(`append|${env.SECRET_TEXT.slice(0, 1)}`);
+        assert(
+          state.composer.focused,
+          'The append types into the focused composer',
+        );
+        advance(1_000);
+        let typed = env.SECRET_TEXT;
+        // Gboard capitalises the first letter after the sentinel.
+        if (faults.capitalised)
+          typed = `${typed.slice(0, 1)}${typed.slice(1, 2).toUpperCase()}${typed.slice(2)}`;
+        if (faults.eraseQuote)
+          state.composer = {
+            value: typed,
+            start: typed.length,
+            end: typed.length,
+            focused: true,
+          };
+        else insert(typed);
+        state.sendReady = false;
+        state.returns.runFlow = Date.now();
+      },
+    },
+    webview: {
+      diagnostics: {
+        send: async (_method, { expression }) => {
+          advance(faults.readMs ?? 1_000);
+          const window = dom();
+          if (
+            state.roomOpen &&
+            state.firstReadyRead === undefined &&
+            expression.includes('sendCount')
+          )
+            state.firstReadyRead = Date.now();
+          return {
+            result: {
+              value: JSON.parse(
+                JSON.stringify(
+                  runInNewContext(expression, { document: window.document }),
+                ),
+              ),
+            },
+          };
+        },
+      },
+    },
+    async reset() {
+      state.actions.push('reset');
+      state.secretsAtReset = Object.values(context.secrets);
+      finish('reset');
+    },
+    async login() {
+      state.actions.push('login');
+      finish('login');
+      state.queue.push({
+        label: 'login',
+        apply: () => (state.signedIn = true),
+      });
+    },
+    async hideKeyboard() {
+      state.actions.push('hide-keyboard');
+      finish('hide');
+      state.queue.push({
+        label: 'hide',
+        apply: () => (state.sendReady = true),
+      });
+    },
+    async elements(selector, filter) {
+      advance(faults.readMs ?? 1_000);
+      return elementsOf(selector, filter);
+    },
+    async waitElements(selector, accepts, description, filter, timeoutMs) {
+      assert(Number.isFinite(timeoutMs), 'Simulated waits are bounded');
+      const deadline = Date.now() + timeoutMs;
+      for (;;) {
+        controller.signal.throwIfAborted();
+        advance(faults.readMs ?? 1_000);
+        const values = elementsOf(selector, filter);
+        if (accepts(values)) return values;
+        if (Date.now() >= deadline)
+          throw new Error(`Timed out waiting for ${description}`);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+      }
+    },
+    async visible(selector, filter, timeoutMs = 15_000) {
+      const [element] = await client.waitElements(
+        selector,
+        (values) => values.length === 1 && values[0].visible,
+        selector,
+        filter,
+        timeoutMs,
+      );
+      return element;
+    },
+    async focused(selector) {
+      await client.waitElements(
+        selector,
+        (values) => values.length === 1 && values[0].focused,
+        selector,
+        {},
+        15_000,
+      );
+    },
+    async tapCurrent(selector, filter = {}) {
+      state.actions.push(`tap:${label(selector, filter)}`);
+      const element = actionable(selector, filter);
+      const testId = element.getAttribute('data-testid');
+      const entries = [];
+      if (testId === 'rail-rooms')
+        entries.push({ label: 'rail', apply: () => (state.roomsShown = true) });
+      else if (element.classList.contains('channel'))
+        entries.push({
+          label: 'room',
+          apply: () => {
+            state.roomOpen = true;
+            const value = faults.prefilled ? c.QUOTED_COMPOSER : '';
+            state.composer = {
+              value,
+              start: value.length,
+              end: value.length,
+              focused: false,
+            };
+          },
+        });
+      else if (testId === 'sheet-quote')
+        entries.push({
+          label: 'quote',
+          apply: () => {
+            if (faults.quoteIgnored) return;
+            state.sheet = false;
+            const value = faults.quoteValue ?? c.QUOTED_COMPOSER;
+            const caret = faults.caretStart ? 0 : value.length;
+            state.composer = {
+              value,
+              start: caret,
+              end: caret,
+              focused: !faults.blurAfterQuote,
+            };
+            state.sendReady = false;
+          },
+        });
+      else if (testId === 'composer-send')
+        entries.push(
+          {
+            label: 'send',
+            apply: () => {
+              state.local = { body: state.composer.value };
+              if (!faults.notCleared)
+                state.composer = {
+                  value: '',
+                  start: 0,
+                  end: 0,
+                  focused: state.composer.focused,
+                };
+            },
+          },
+          {
+            label: 'echo',
+            apply: () => {
+              if (!state.local) return false;
+              if (faults.echoNever) return undefined;
+              const { body } = state.local;
+              state.answerRows = [
+                { id: '$answer', body },
+                ...(faults.twoAnswerRows ? [{ id: '$answer2', body }] : []),
+              ];
+              state.local = null;
+              return undefined;
+            },
+          },
+        );
+      else throw new Error(`Unmodelled simulated tap ${selector}`);
+      advance(faults.tapMs ?? 1_000);
+      for (const entry of entries) {
+        state.returns[entry.label] = Date.now();
+        state.queue.push(entry);
+      }
+    },
+    async longPressCurrent(selector, filter = {}) {
+      state.actions.push(`long-press:${label(selector, filter)}`);
+      const found = matches(selector, filter);
+      if (found.length !== 1)
+        throw new Error(`Simulated long press needs one target: ${selector}`);
+      advance(faults.tapMs ?? 1_000);
+      state.returns.sheet = Date.now();
+      state.queue.push({ label: 'sheet', apply: () => (state.sheet = true) });
+    },
+    async key(name) {
+      applyDue();
+      state.actions.push(`key:${name}`);
+      advance(1_000);
+      const { value, start } = state.composer;
+      if (name === 'arrowLeft')
+        state.composer.start = state.composer.end = Math.max(0, start - 1);
+      else if (name === 'backspace') {
+        if (!faults.sentinelKept) {
+          state.composer.value = `${value.slice(0, start - 1)}${value.slice(start)}`;
+          state.composer.start = state.composer.end = start - 1;
+        }
+      } else throw new Error(`Unmodelled key ${name}`);
+      state.returns.key = Date.now();
+    },
+    async keyCombination(name) {
+      applyDue();
+      state.actions.push(`chord:${name}`);
+      assert.equal(name, 'documentEnd');
+      advance(1_000);
+      state.composer.start = state.composer.end = state.composer.value.length;
+      state.returns.chord = Date.now();
+    },
+    async record(name, value) {
+      state.written.push({ name, value });
+    },
+    async capture(name) {
+      state.actions.push(`capture:${name}`);
+    },
+  };
+  const history = () => {
+    const member = (userId, membership, displayname) => ({
+      type: 'm.room.member',
+      event_id: `$member-${membership}`,
+      state_key: userId,
+      content: { membership, displayname },
+    });
+    const events = [
+      ...(faults.noCreate
+        ? []
+        : [{ type: 'm.room.create', event_id: '$create', content: {} }]),
+      member(SIM_WRITER.userId, 'join', 'Writer'),
+      member(
+        SIM_READER.userId,
+        faults.readerInvited ? 'invite' : 'join',
+        faults.displayName ?? c.READER_DISPLAY_NAME,
+      ),
+      {
+        type: 'm.room.message',
+        event_id: '$src',
+        sender: faults.sourceFromWriter ? SIM_WRITER.userId : SIM_READER.userId,
+        content: { msgtype: 'm.text', body: c.SOURCE_BODY },
+      },
+    ];
+    if (faults.extraMessage)
+      events.push({
+        type: 'm.room.message',
+        event_id: '$extra',
+        sender: SIM_READER.userId,
+        content: { msgtype: 'm.text', body: 'extra' },
+      });
+    if (
+      state.returns.send !== undefined &&
+      !faults.serverNever &&
+      Date.now() - state.returns.send >= lagOf('server')
+    ) {
+      const body = faults.serverBody ?? `${c.QUOTED_COMPOSER}${SIM_ANSWER}`;
+      events.push({
+        type: 'm.room.message',
+        event_id: '$answer',
+        sender: faults.answerFromReader ? SIM_READER.userId : SIM_WRITER.userId,
+        content: {
+          msgtype: 'm.text',
+          body,
+          format: 'org.matrix.custom.html',
+          formatted_body: `<blockquote>${simEscape(body)}</blockquote>`,
+          'm.mentions': {},
+        },
+      });
+    }
+    return { chunk: [...events].reverse() };
+  };
+  const fixtures = {
+    async account(role) {
+      assert(
+        [c.WRITER_ROLE, c.READER_ROLE].includes(role),
+        `Unknown role ${role}`,
+      );
+      return role === c.WRITER_ROLE ? SIM_WRITER : SIM_READER;
+    },
+    async setDisplayName(account, name) {
+      assert.equal(account, SIM_READER);
+      assert.equal(name, c.READER_DISPLAY_NAME);
+      state.rest.push('rest:setDisplayName');
+    },
+    async createRoom(account, { name, preset, invite }) {
+      assert.equal(account, SIM_WRITER);
+      assert.equal(preset, 'private_chat');
+      assert.deepEqual(invite, [SIM_READER.userId]);
+      state.rest.push('rest:createRoom');
+      return { id: SIM_ROOM, name };
+    },
+    async join(account, roomId) {
+      assert.equal(account, SIM_READER);
+      assert.equal(roomId, SIM_ROOM);
+      state.rest.push('rest:join');
+    },
+    async sendMessage(account, roomId, body, txn) {
+      assert.equal(roomId, SIM_ROOM);
+      if (txn === c.sourceTxn(SIM_RUN)) {
+        assert.equal(account, SIM_READER);
+        assert.equal(body, c.SOURCE_BODY);
+        state.rest.push('rest:sendMessage:source');
+        return '$src';
+      }
+      assert.equal(txn, c.probeTxn(SIM_RUN));
+      assert.equal(account, SIM_WRITER);
+      assert.equal(body, SIM_PROBE);
+      state.rest.push('rest:sendMessage:probe');
+      advance(faults.sendMs ?? 0);
+      state.probeReturn = Date.now();
+      return '$probe';
+    },
+    async roomMessages(account, roomId) {
+      assert.equal(account, SIM_WRITER);
+      assert.equal(roomId, SIM_ROOM);
+      advance(faults.readMs ?? 1_000);
+      return history();
+    },
+    async roomUnreadSync(observer, roomId, requestedSince) {
+      assert.equal(observer, SIM_READER);
+      assert.equal(roomId, SIM_ROOM);
+      advance(faults.readMs ?? 1_000);
+      const since = faults.dropSince ? undefined : requestedSince;
+      state.rest.push(
+        since === undefined
+          ? 'rest:roomUnreadSync'
+          : 'rest:roomUnreadSync:since',
+      );
+      if (since === undefined)
+        return {
+          since: null,
+          nextBatch: 'b1',
+          room: {
+            notificationCount: 1,
+            highlightCount: 0,
+            timelineEventIds: ['$src', '$answer'],
+          },
+        };
+      if (state.probeReturn === undefined)
+        throw new Error('Incremental sync before the probe');
+      if (
+        faults.notifyNever ||
+        Date.now() - state.probeReturn < lagOf('notify')
+      )
+        return { since, nextBatch: 'b2' };
+      const sequence = faults.highlightSequence ?? [faults.highlight ?? 0];
+      const highlightCount =
+        sequence[Math.min(state.syncs++, sequence.length - 1)];
+      return {
+        since,
+        nextBatch: 'b3',
+        room: {
+          notificationCount: faults.notificationCount ?? 2,
+          highlightCount,
+          timelineEventIds: faults.probeMissing ? [] : ['$probe'],
+        },
+      };
+    },
+  };
+  context = {
+    entry: c.QUOTE_NOTIFICATION_STAGES[0],
+    records: [],
+    identities: new Set(),
+    receipts: 0,
+    client,
+    fixtures,
+    secrets: {},
+    safety: { unsafeSecrets: true, cleanupFailed: false, scrubFailed: false },
+    native: false,
+    signal: controller.signal,
+    ledger: {
+      run: SIM_RUN,
+      accounts: [],
+      rooms: [],
+      texts: [],
+      eventIds: [],
+      transactions: [],
+    },
+  };
+  return { client, fixtures, state, context };
+}
+
+/** Runs one simulated stage on the fake clock, restoring real timers afterwards. */
+async function withSimulatedStage(faults, run) {
+  const journeys = await loadJourneys();
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(1_000_000);
+  try {
+    const app = await simulatedQuoteNotificationApp(faults);
+    return await run({
+      ...app,
+      runQuotedDisplayName: journeys.runQuotedDisplayName,
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+const SIM_LINE = `on it ${SIM_RUN}`;
+const SIM_ACTIONS = [
+  'reset',
+  'login',
+  'hide-keyboard',
+  'tap:[data-testid="rail-rooms"]',
+  `tap:.channel|${SIM_ROOM_NAME}`,
+  'hide-keyboard',
+  'long-press:.scroll .msg[data-mid^="$"]|Zephyrine, can you look at this?',
+  'tap:[data-testid="sheet-quote"]',
+  'append|1',
+  ...Array(SIM_LINE.length).fill('key:arrowLeft'),
+  'key:backspace',
+  'chord:documentEnd',
+  'hide-keyboard',
+  'tap:[data-testid="composer-send"]',
+];
+const SIM_RECEIPTS = [
+  'arranged',
+  'composer-empty',
+  'quote-offered',
+  'quote-picked',
+  'quote-caret',
+  'answer-native-draft',
+  'answer-sent',
+  'answer-event',
+  'sync-token',
+  'probe-sent',
+];
+const SIM_SLICE = {
+  none: 0,
+  reset: 1,
+  room: 5,
+  press: 7,
+  quote: 8,
+  append: 9,
+  backspace: 9 + SIM_LINE.length + 1,
+  noSend: SIM_ACTIONS.length - 1,
+  send: SIM_ACTIONS.length,
+};
+
+/** Written evidence carries digests and booleans, never an identifier, a credential or the sync token. */
+function assertIdFreeEvidence(state, secrets) {
+  const written = JSON.stringify(state.written);
+  for (const value of [...secrets, 'b1'])
+    expect(written, `written evidence leaks ${value}`).not.toContain(value);
+  for (const action of state.actions)
+    expect(action.split('|')[0]).not.toMatch(
+      /[$!~][A-Za-z0-9_]{2,}|data-mid[*~|]?=[^^]/u,
+    );
+}
+
+describe('Android quote-notification native journey against a simulated installed app', () => {
+  it('drives the exact native sequence and records all eight identities in order', async () => {
+    await withSimulatedStage(
+      {},
+      async ({ context, state, runQuotedDisplayName }) => {
+        await runQuotedDisplayName(context);
+        expect(context.records).toEqual(ALL_IDENTITIES);
+        expect(state.actions).toEqual(SIM_ACTIONS);
+        const at = (entry) => state.rest.indexOf(entry);
+        expect(state.rest.slice(0, 4)).toEqual([
+          'rest:setDisplayName',
+          'rest:createRoom',
+          'rest:join',
+          'rest:sendMessage:source',
+        ]);
+        expect(at('rest:sendMessage:probe')).toBeGreaterThan(-1);
+        expect(at('rest:sendMessage:probe')).toBeLessThan(
+          at('rest:roomUnreadSync:since'),
+        );
+        expect(
+          state.written
+            .map(({ name }) => name)
+            .filter((name) => name.startsWith('receipt-'))
+            .map((name) => name.replace(/^receipt-\d+-/u, '')),
+        ).toEqual(SIM_RECEIPTS);
+        for (const value of [
+          SIM_WRITER.userId,
+          SIM_WRITER.username,
+          SIM_WRITER.password,
+          SIM_READER.userId,
+          SIM_READER.username,
+          SIM_READER.password,
+          SIM_ROOM,
+          SIM_ROOM_NAME,
+          '$src',
+          SIM_ANSWER,
+          SIM_PROBE,
+          'r-src',
+          'r-probe',
+        ])
+          expect(state.secretsAtReset).toContain(value);
+        assertIdFreeEvidence(state, Object.values(context.secrets));
+      },
+    );
+  }, 30_000);
+
+  const CONTROLS = [
+    ['sourceFromWriter', { sourceFromWriter: true }, /reader sent/u, 'none'],
+    ['extraMessage', { extraMessage: true }, /exactly the arranged/u, 'none'],
+    [
+      'displayName',
+      { displayName: 'Zephyrin' },
+      /joined as Zephyrine/u,
+      'none',
+    ],
+    ['readerInvited', { readerInvited: true }, /joined the Room/u, 'none'],
+    ['noCreate', { noCreate: true }, /m\.room\.create/u, 'none'],
+    ['profileWidth', { profileWidth: 412 }, /Pixel 5/u, 'reset'],
+    [
+      'prefilled [RF-4]',
+      { prefilled: true },
+      /empty before the native Quote/u,
+      'room',
+    ],
+    [
+      'quoteMissing',
+      { quoteMissing: true },
+      /Exactly one Quote action/u,
+      'press',
+    ],
+    ['twoQuotes', { twoQuotes: true }, /Exactly one Quote action/u, 'press'],
+    [
+      'quoteIgnored [RF-4]',
+      { quoteIgnored: true },
+      /No message-action sheet remains/u,
+      'quote',
+    ],
+    [
+      'quote value: changed punctuation',
+      { quoteValue: '> Zephyrine, can you look at this!\n\n' },
+      /quote block and a blank line/u,
+      'quote',
+    ],
+    [
+      'quote value: no blank line',
+      { quoteValue: '> Zephyrine, can you look at this?\n' },
+      /quote block and a blank line/u,
+      'quote',
+    ],
+    [
+      'quote value: marked blank line',
+      { quoteValue: '> Zephyrine, can you look at this?\n>\n\n' },
+      /quote block and a blank line/u,
+      'quote',
+    ],
+    ['caretStart', { caretStart: true }, /end of the quote/u, 'quote'],
+    ['blurAfterQuote', { blurAfterQuote: true }, /native focus/u, 'quote'],
+    [
+      'capitalised',
+      { capitalised: true },
+      /sentinel-prefixed native paragraph/u,
+      'append',
+    ],
+    [
+      'eraseQuote',
+      { eraseQuote: true },
+      /sentinel-prefixed native paragraph/u,
+      'append',
+    ],
+    ['sentinelKept', { sentinelKept: true }, /sentinel removed/u, 'backspace'],
+    [
+      'sendNeverEnabled',
+      { sendNeverEnabled: true },
+      /Send button is enabled/u,
+      'noSend',
+      4,
+    ],
+    [
+      'notCleared',
+      { notCleared: true },
+      /empty after the native send/u,
+      'send',
+    ],
+    ['echoNever', { echoNever: true }, /homeserver event id/u, 'send'],
+    ['twoAnswerRows', { twoAnswerRows: true }, /Exactly one Room row/u, 'send'],
+    [
+      'serverBody with one character changed',
+      { serverBody: `${'> Zephyrine, can you look at this?\n\n'}on it q` },
+      /quote and the answer, exactly/u,
+      'send',
+    ],
+    [
+      'answerFromReader',
+      { answerFromReader: true },
+      /writer sent the answer/u,
+      'send',
+    ],
+    ['notifyNever', { notifyNever: true }, /carries the Room/u, 'send'],
+    [
+      'notificationCount 0',
+      { notificationCount: 0 },
+      /positive notification count/u,
+      'send',
+    ],
+    ['probeMissing [RF-1]', { probeMissing: true }, /probe landed/u, 'send'],
+    [
+      'dropSince [RF-1]',
+      { dropSince: true },
+      /incremental sync since the pre-probe token/u,
+      'send',
+    ],
+    ['highlight 1', { highlight: 1 }, /no highlight/u, 'send', 7],
+    [
+      'highlightSequence [1, 0] [RF-2]',
+      { highlightSequence: [1, 0] },
+      /no highlight/u,
+      'send',
+      7,
+    ],
+  ];
+  for (const [name, faults, message, upTo, recordCount] of CONTROLS)
+    it(`rejects ${name} with ${message}`, async () => {
+      await withSimulatedStage(
+        faults,
+        async ({ context, state, runQuotedDisplayName }) => {
+          await expect(runQuotedDisplayName(context)).rejects.toThrow(message);
+          expect(state.actions).toEqual(SIM_ACTIONS.slice(0, SIM_SLICE[upTo]));
+          if (recordCount !== undefined)
+            expect(context.records).toHaveLength(recordCount);
+        },
+      );
+    }, 40_000);
+
+  it('rejects an incremental sync read before the probe send [RF-1, journeys mutation]', async () => {
+    const path = resolve(root, JOURNEYS);
+    const source = readFileSync(path, 'utf8');
+    const tree = ts.createSourceFile(
+      JOURNEYS,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    const statements = [];
+    const collect = (node) => {
+      if (ts.isVariableStatement(node)) statements.push(node);
+      ts.forEachChild(node, collect);
+    };
+    collect(tree);
+    const named = (name) =>
+      statements.find(
+        (st) => st.declarationList.declarations[0].name.getText(tree) === name,
+      );
+    const decided = named('decided');
+    const probeId = named('probeId');
+    expect(decided).toBeDefined();
+    expect(probeId).toBeDefined();
+    expect(probeId.getStart(tree)).toBeLessThan(decided.getStart(tree));
+    // The anchor const would sit in its temporal dead zone; the moved read anchors at now.
+    const moved = decided.getText(tree).replaceAll('probeSentAt', 'Date.now()');
+    const mutated = [
+      source.slice(0, probeId.getStart(tree)),
+      moved,
+      '\n  ',
+      source.slice(probeId.getStart(tree), decided.getStart(tree)),
+      source.slice(decided.getEnd()),
+    ].join('');
+    expect(mutated).not.toBe(source);
+    const temp = resolve(
+      root,
+      `e2e/android/quote-notification-journeys.probe-order-${process.pid}.mts`,
+    );
+    try {
+      await writeFile(temp, mutated);
+      const journeys = await import(pathToFileURL(temp).href);
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(1_000_000);
+      try {
+        const app = await simulatedQuoteNotificationApp({});
+        await expect(
+          journeys.runQuotedDisplayName(app.context),
+        ).rejects.toThrow('Incremental sync before the probe');
+      } finally {
+        vi.useRealTimers();
+      }
+    } finally {
+      await rm(temp, { force: true });
+    }
+  }, 40_000);
+
+  // [RF-3] Every window is anchored after its event: 45 s native calls, one pass 5 s inside the bound, one fail 1 s past it.
+  const WINDOWS = [
+    ['room', 15_000, 21_000, /composer/u],
+    ['sourceRow', 25_000, 31_000, /Exactly one Room row/u],
+    ['sheet', 15_000, 21_000, /Message actions sheet/u],
+    ['quote', 15_000, 21_000, /No message-action sheet remains/u],
+    ['hide', 15_000, 21_000, /Send button is enabled/u],
+    ['echo', 25_000, 31_000, /homeserver event id/u],
+    ['server', 15_000, undefined, /answer event is on the server/u],
+    ['notify', 25_000, 31_000, /carries the Room/u],
+  ];
+  const SLOW = { tapMs: 45_000, sendMs: 45_000 };
+  for (const [key, passAt, failAt, message] of WINDOWS) {
+    it(`passes the ${key} window at ${passAt} ms [RF-3]`, async () => {
+      await withSimulatedStage(
+        { ...SLOW, lag: { [key]: passAt } },
+        async ({ context, runQuotedDisplayName }) => {
+          await runQuotedDisplayName(context);
+          expect(context.records).toEqual(ALL_IDENTITIES);
+        },
+      );
+    }, 60_000);
+    it(`fails the ${key} window at ${failAt ?? 'never'} ms [RF-3]`, async () => {
+      const faults =
+        failAt === undefined
+          ? { ...SLOW, serverNever: true }
+          : { ...SLOW, lag: { [key]: failAt } };
+      await withSimulatedStage(
+        faults,
+        async ({ context, runQuotedDisplayName }) => {
+          await expect(runQuotedDisplayName(context)).rejects.toThrow(message);
+        },
+      );
+    }, 60_000);
+  }
+  for (const [key, message] of [
+    ['server', /answer event is on the server/u],
+    ['notify', /carries the Room/u],
+  ])
+    it(`fails a ${key} convergence at 31 000 ms even when every read takes 10 s [RF-3]`, async () => {
+      await withSimulatedStage(
+        { ...SLOW, readMs: 10_000, lag: { [key]: 31_000 } },
+        async ({ context, runQuotedDisplayName }) => {
+          await expect(runQuotedDisplayName(context)).rejects.toThrow(message);
+        },
+      );
+    }, 60_000);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Teardown, must-run steps and redaction                                     */
+/* -------------------------------------------------------------------------- */
+
+const treeOf = (source) =>
+  ts.createSourceFile(JOURNEYS, source, ts.ScriptTarget.Latest, true);
+
+/** Apply source edits (`{ start, end, text }`) from the back, so earlier offsets stay valid. */
+function applyEdits(source, edits) {
+  return [...edits]
+    .sort((a, b) => b.start - a.start)
+    .reduce(
+      (text, { start, end, text: replacement }) =>
+        `${text.slice(0, start)}${replacement}${text.slice(end)}`,
+      source,
+    );
+}
+
+const allNodes = (tree) => {
+  const nodes = [];
+  const visit = (node) => {
+    nodes.push(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+  return nodes;
+};
+
+/** The structure of `runQuoteNotificationSuite` that the must-run steps depend on (rule d). */
+function runnerShape(source) {
+  const tree = treeOf(source);
+  const runner = allNodes(tree).find(
+    (node) =>
+      ts.isFunctionDeclaration(node) &&
+      node.name?.text === 'runQuoteNotificationSuite',
+  );
+  expect(runner, 'runQuoteNotificationSuite is declared').toBeDefined();
+  const inside = allNodes(runner);
+  const stageCall = 'STAGE_RUNNERS[entry.id](context)';
+  const stageTry = inside
+    .filter(
+      (node) =>
+        ts.isTryStatement(node) &&
+        node.tryBlock.getText(tree).includes(stageCall),
+    )
+    .sort((a, b) => a.tryBlock.getWidth(tree) - b.tryBlock.getWidth(tree))[0];
+  const tryCalls = stageTry
+    ? allNodes(stageTry.tryBlock)
+        .filter(ts.isCallExpression)
+        .map((node) => node.getText(tree))
+    : [];
+  const firstDevice = inside.find(
+    (node) =>
+      ts.isCallExpression(node) &&
+      node.expression.getText(tree) === 'openMaestroDevice',
+  );
+  const outerTry = inside.find(ts.isTryStatement);
+  const outerFinally = outerTry?.finallyBlock?.statements.find(
+    ts.isIfStatement,
+  );
+  return {
+    finallyFirst: stageTry?.finallyBlock?.statements[0]?.getText(tree),
+    tryOrder: tryCalls,
+    cleanups: inside
+      .filter(
+        (node) =>
+          ts.isCallExpression(node) &&
+          node.expression.getText(tree) === 'guardedCleanup' &&
+          (!firstDevice || node.getStart(tree) < firstDevice.getStart(tree)),
+      )
+      .map((node) => node.arguments[0]?.getText(tree).slice(1, -1)),
+    outerFinally: outerFinally?.getText(tree),
+    throws: allNodes(tree)
+      .filter(ts.isThrowStatement)
+      .map((node) => node.getText(tree)),
+  };
+}
+
+const STAGE_THROW = 'throw redactStageFailure(entry.id, failures, secrets);';
+
+function assertRunnerShape(shape) {
+  expect(shape.finallyFirst).toBe(
+    'if (await finishQuoteNotificationStage(client, device, failures)) safety.cleanupFailed = true;',
+  );
+  const positions = [
+    'STAGE_RUNNERS[entry.id](context)',
+    'assertQuoteNotificationRecords(entry.id, records)',
+    "client.capture('passed')",
+  ].map((call) => shape.tryOrder.indexOf(call));
+  expect(positions[0]).toBeGreaterThan(-1);
+  expect(positions[1]).toBeGreaterThan(positions[0]);
+  expect(positions[2]).toBeGreaterThan(positions[1]);
+  expect(shape.cleanups).toEqual([
+    'Scan quote-notification diagnostics',
+    'Scrub quote-notification diagnostics',
+  ]);
+  expect(shape.outerFinally).toBe(
+    'if (effectiveSignal.aborted) await revokeOnAbort?.();',
+  );
+  expect(shape.throws.filter((text) => text === STAGE_THROW)).toHaveLength(1);
+  expect(
+    shape.throws.filter((text) => /failures|AggregateError/u.test(text)),
+  ).toEqual([STAGE_THROW]);
+}
+
+/** Locate one node of the runner by predicate and replace its text (or delete it). */
+function editRunner(source, edits) {
+  const tree = treeOf(source);
+  const nodes = allNodes(tree);
+  const found = (predicate) => {
+    const node = nodes.find(predicate);
+    expect(node, 'mutation target exists').toBeDefined();
+    return node;
+  };
+  const text = (node) => node.getText(tree);
+  return applyEdits(
+    source,
+    edits(found, text, tree).map(([node, replacement]) => ({
+      start: node.getStart(tree),
+      end: node.getEnd(),
+      text: replacement,
+    })),
+  );
+}
+
+const statementStartingWith = (prefix, tree) => (node) =>
+  ts.isStatement(node) &&
+  !ts.isBlock(node) &&
+  node.getText(tree).startsWith(prefix);
+
+describe('Android quote-notification teardown, must-run and redaction guards', () => {
+  const RUN = 'r';
+  const WRITER = {
+    userId: '@qmw-r:localhost',
+    username: 'qmw-r',
+    password: 'writer-Pass-1!',
+  };
+  const ROOM = { id: '!Quote_room:localhost', name: 'Quote mentions r' };
+  const EVENT = '$Quote_event';
+
+  it('runs close then clear through finishQuoteNotificationStage, even when close throws', async () => {
+    const { finishQuoteNotificationStage } = await loadJourneys();
+    const order = [];
+    const client = {
+      close: async () => {
+        order.push('close');
+        throw new Error('close');
+      },
+    };
+    const device = {
+      clearApplicationData: async (id) => {
+        order.push(`clear:${id}`);
+      },
+    };
+    const failures = [];
+    expect(await finishQuoteNotificationStage(client, device, failures)).toBe(
+      true,
+    );
+    expect(order).toEqual(['close', 'clear:eu.qwky.trinity']);
+    expect(failures).toHaveLength(1);
+  });
+
+  it('reports no cleanup failure when both teardown steps succeed', async () => {
+    const { finishQuoteNotificationStage } = await loadJourneys();
+    const failures = [];
+    expect(
+      await finishQuoteNotificationStage(
+        { close: async () => {} },
+        { clearApplicationData: async () => {} },
+        failures,
+      ),
+    ).toBe(false);
+    expect(failures).toHaveLength(0);
+  });
+
+  it('rethrows stage failures to the job log as redacted first lines only', async () => {
+    const c = await loadContract();
+    const { quoteNotificationSecrets } = await loadArtifacts();
+    const { redactStageFailure, redactCleanupFailure } = await loadJourneys();
+    const { AssertionError } = await import('node:assert');
+    const secrets = quoteNotificationSecrets('quoted-display-name', {
+      accounts: [WRITER],
+      rooms: [ROOM],
+      texts: [c.answerText(RUN)],
+      eventIds: [EVENT],
+      transactions: [c.sourceTxn(RUN)],
+    });
+    const failure = new AssertionError({
+      actual: EVENT,
+      expected: '$Quote_expected',
+      operator: 'strictEqual',
+      message: `The row is the proved server event ${EVENT} ${ROOM.id} ${WRITER.password}`,
+    });
+    const error = redactStageFailure(
+      'quoted-display-name',
+      [new AggregateError([failure], 'Native action failed')],
+      secrets,
+    );
+    expect(error).not.toBeInstanceOf(AggregateError);
+    expect(error.message).toContain(
+      'Android quote-notification quoted-display-name failed',
+    );
+    expect(error.message).toContain('[REDACTED]');
+    for (const value of [EVENT, ROOM.id, WRITER.password, '$Quote_expected'])
+      expect(error.message).not.toContain(value);
+    expect(error.message).not.toContain('actual');
+    const [firstLine, ...appended] = failure.message.split('\n');
+    expect(error.message.split('\n')).toContain(
+      `AssertionError: ${firstLine.replace(EVENT, '[REDACTED]').replace(ROOM.id, '[REDACTED]').replace(WRITER.password, '[REDACTED]')}`,
+    );
+    for (const line of appended.map((fragment) => fragment.trim()))
+      if (line.length >= 3) expect(error.message).not.toContain(line);
+    expect(
+      redactCleanupFailure(
+        'fixtures',
+        Object.assign(new Error(`leave ${ROOM.id}`), { status: 403 }),
+      ).message,
+    ).toBe('Quote-notification cleanup failed: fixtures (Error HTTP 403)');
+  });
+
+  it('marks a failed guarded cleanup, blocks publication and rethrows an id-free error', async () => {
+    const { guardQuoteNotificationCleanup } = await loadJourneys();
+    const registered = [];
+    const state = {
+      safety: {
+        unsafeSecrets: false,
+        cleanupFailed: false,
+        scrubFailed: false,
+      },
+      report: {
+        status: 'passed',
+        stages: [{ status: 'passed', failureCount: 0 }],
+      },
+      saves: 0,
+      async save() {
+        this.saves++;
+      },
+    };
+    guardQuoteNotificationCleanup(
+      (label, action) => registered.push({ label, action }),
+      state,
+    )('Room cleanup', async () => {
+      throw new Error(`forget ${ROOM.id}`);
+    });
+    await expect(registered[0].action()).rejects.toThrow(
+      'Quote-notification cleanup failed: Room cleanup (Error)',
+    );
+    expect(state.safety.cleanupFailed).toBe(true);
+    expect(state.report.status).toBe('failed');
+    expect(state.report.stages[0]).toMatchObject({
+      status: 'failed',
+      failureCount: 1,
+    });
+    expect(state.report.stages[0].error).toContain(ROOM.id);
+    expect(state.saves).toBe(1);
+    const early = { ...state, report: { status: 'running', stages: [] } };
+    const later = [];
+    guardQuoteNotificationCleanup((label, action) => later.push(action), early)(
+      'Device',
+      async () => {
+        throw new Error('device');
+      },
+    );
+    await expect(later[0]()).rejects.toThrow();
+    expect(early.report.cleanupErrors).toHaveLength(1);
+  });
+
+  it('keeps every must-run step of the runner in place [rule d]', () => {
+    const source = read(JOURNEYS);
+    const shape = runnerShape(source);
+    assertRunnerShape(shape);
+    expect(shape.cleanups).toHaveLength(2);
+  });
+
+  const FINISH =
+    'if (await finishQuoteNotificationStage(client, device, failures)) safety.cleanupFailed = true;';
+  const MUTATIONS = {
+    'delete the finishQuoteNotificationStage statement': (source) =>
+      editRunner(source, (found, text, tree) => [
+        [found(statementStartingWith(FINISH, tree)), ''],
+      ]),
+    'move finishQuoteNotificationStage into the try': (source) =>
+      editRunner(source, (found, text, tree) => {
+        const finish = found(statementStartingWith(FINISH, tree));
+        const stageRun = found(
+          statementStartingWith('await STAGE_RUNNERS[entry.id](context)', tree),
+        );
+        return [
+          [finish, ''],
+          [stageRun, `${text(stageRun)}\n              ${FINISH}`],
+        ];
+      }),
+    'delete the Scan guardedCleanup registration': (source) =>
+      editRunner(source, (found, text, tree) => [
+        [
+          found(
+            statementStartingWith(
+              "guardedCleanup('Scan quote-notification",
+              tree,
+            ),
+          ),
+          '',
+        ],
+      ]),
+    'delete the Scrub guardedCleanup registration': (source) =>
+      editRunner(source, (found, text, tree) => [
+        [
+          found(
+            statementStartingWith(
+              "guardedCleanup('Scrub quote-notification",
+              tree,
+            ),
+          ),
+          '',
+        ],
+      ]),
+    'swap the two guardedCleanup registrations': (source) =>
+      editRunner(source, (found, text, tree) => {
+        const scan = found(
+          statementStartingWith(
+            "guardedCleanup('Scan quote-notification",
+            tree,
+          ),
+        );
+        const scrub = found(
+          statementStartingWith(
+            "guardedCleanup('Scrub quote-notification",
+            tree,
+          ),
+        );
+        return [
+          [scan, text(scrub)],
+          [scrub, text(scan)],
+        ];
+      }),
+    'delete the revokeOnAbort line': (source) =>
+      editRunner(source, (found, text, tree) => [
+        [
+          found(statementStartingWith('if (effectiveSignal.aborted)', tree)),
+          '',
+        ],
+      ]),
+    "delete client.capture('passed')": (source) =>
+      editRunner(source, (found, text, tree) => [
+        [
+          found(statementStartingWith("await client.capture('passed')", tree)),
+          '',
+        ],
+      ]),
+    'swap capture with assertQuoteNotificationRecords': (source) =>
+      editRunner(source, (found, text, tree) => {
+        const check = found(
+          statementStartingWith(
+            'assertQuoteNotificationRecords(entry.id, records)',
+            tree,
+          ),
+        );
+        const capture = found(
+          statementStartingWith("await client.capture('passed')", tree),
+        );
+        return [
+          [check, text(capture)],
+          [capture, text(check)],
+        ];
+      }),
+    'replace the throw line with throw failures[0]': (source) =>
+      editRunner(source, (found, text) => [
+        [
+          found(
+            (node) => ts.isThrowStatement(node) && text(node) === STAGE_THROW,
+          ),
+          'throw failures[0];',
+        ],
+      ]),
+  };
+  for (const [name, mutate] of Object.entries(MUTATIONS))
+    it(`fails the must-run guard when you ${name}`, () => {
+      const source = read(JOURNEYS);
+      const mutated = mutate(source);
+      expect(mutated).not.toBe(source);
+      expect(() => assertRunnerShape(runnerShape(mutated))).toThrow();
+    });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Source rules: contract, artifacts and journeys                             */
+/* -------------------------------------------------------------------------- */
+
+const BANNED_TOKENS = [
+  '.click(',
+  '.focus(',
+  'dispatchEvent',
+  '.value =',
+  'location.',
+  'history.',
+  '.fill(',
+  '.press(',
+  'requestSubmit',
+  '.submit(',
+  'preventDefault',
+  'stopPropagation',
+  'quote(',
+  'onQuote',
+  'new SharedStageAccount(',
+  'input_method',
+  'dumpsys',
+  'pushrules',
+];
+
+function assertNoBannedTokens(source, name) {
+  for (const token of BANNED_TOKENS)
+    expect(source.includes(token), `${name} must not contain ${token}`).toBe(
+      false,
+    );
+}
+
+const NATIVE_CALLS = new Set([
+  'tap',
+  'tapCurrent',
+  'longPressCurrent',
+  'hideKeyboard',
+  'appendNativeLine',
+  'sendMessage',
+  'login',
+]);
+const calleeName = (node, tree) =>
+  node.expression.getText(tree).split('.').at(-1);
+const enclosingFunction = (node) => {
+  for (let at = node.parent; at; at = at.parent)
+    if (ts.isFunctionDeclaration(at)) return at;
+  return undefined;
+};
+
+/** Every native tap or long press sits in `tap()` or is immediately followed by `const x = Date.now();`. */
+function assertTapsAnchorDateNow(source) {
+  const tree = treeOf(source);
+  for (const node of allNodes(tree)) {
+    if (
+      !ts.isCallExpression(node) ||
+      !['tapCurrent', 'longPressCurrent'].includes(calleeName(node, tree))
+    )
+      continue;
+    if (enclosingFunction(node)?.name?.text === 'tap') continue;
+    let statement = node;
+    while (statement.parent && !ts.isBlock(statement.parent))
+      statement = statement.parent;
+    const siblings = statement.parent.statements;
+    const next = siblings[siblings.indexOf(statement) + 1];
+    const declaration =
+      next && ts.isVariableStatement(next)
+        ? next.declarationList.declarations[0]
+        : undefined;
+    expect(
+      declaration?.initializer?.getText(tree),
+      `${node.getText(tree)} is followed by a Date.now() anchor`,
+    ).toBe('Date.now()');
+  }
+}
+
+/** No window anchor (`left(bound, anchor)`, `server(…, anchor, …)`, `timeoutMs: anchor`) was assigned before a native call it waits on. */
+function assertWindowsAnchoredAfterNativeCalls(source) {
+  const tree = treeOf(source);
+  const stage = allNodes(tree).find(
+    (node) =>
+      ts.isFunctionDeclaration(node) &&
+      node.name?.text === 'runQuotedDisplayName',
+  );
+  expect(stage, 'runQuotedDisplayName is declared').toBeDefined();
+  const inside = allNodes(stage);
+  const natives = inside.filter(
+    (node) =>
+      ts.isCallExpression(node) && NATIVE_CALLS.has(calleeName(node, tree)),
+  );
+  const declarationOf = (name) =>
+    inside.find(
+      (node) =>
+        ts.isVariableDeclaration(node) && node.name.getText(tree) === name,
+    );
+  let windows = 0;
+  for (const node of inside) {
+    const anchors = [];
+    if (ts.isCallExpression(node) && node.expression.getText(tree) === 'left')
+      anchors.push(...allNodes(node.arguments[1]).filter(ts.isIdentifier));
+    if (ts.isCallExpression(node) && node.expression.getText(tree) === 'server')
+      anchors.push(...allNodes(node.arguments[3]).filter(ts.isIdentifier));
+    if (
+      ts.isPropertyAssignment(node) &&
+      node.name.getText(tree) === 'timeoutMs'
+    )
+      anchors.push(...allNodes(node.initializer).filter(ts.isIdentifier));
+    for (const anchor of anchors) {
+      const declaration = declarationOf(anchor.text);
+      if (!declaration) continue;
+      windows++;
+      const between = natives.filter(
+        (call) =>
+          call.getStart(tree) > declaration.getEnd() &&
+          call.getEnd() < anchor.getStart(tree),
+      );
+      expect(
+        between.map((call) => call.getText(tree)),
+        `the ${anchor.text} anchor is assigned after every native call before its window`,
+      ).toEqual([]);
+    }
+  }
+  expect(windows, 'the stage has anchored windows').toBeGreaterThan(8);
+}
+
+describe('Android quote-notification source rules', () => {
+  const TARGETS = {
+    contract: CONTRACT_PATH,
+    artifacts: ARTIFACTS_PATH,
+    journeys: JOURNEYS,
+  };
+
+  it('keeps the contract, artifacts and journeys free of every banned token', () => {
+    for (const path of Object.values(TARGETS))
+      assertNoBannedTokens(read(path), path);
+  });
+
+  it('shows each banned-token rule effective under an in-memory insertion', () => {
+    const journeys = read(JOURNEYS);
+    for (const token of BANNED_TOKENS)
+      expect(() =>
+        assertNoBannedTokens(`${journeys}\n${token}`, JOURNEYS),
+      ).toThrow();
+  });
+
+  it('anchors every native tap and long press with a Date.now() capture', () => {
+    const journeys = read(JOURNEYS);
+    assertTapsAnchorDateNow(journeys);
+    const target =
+      'await client.longPressCurrent(READY_ROW, { text: SOURCE_BODY });\n  const pressedAt = Date.now();';
+    expect(journeys).toContain(target);
+    for (const mutated of [
+      journeys.replace(
+        target,
+        'await client.longPressCurrent(READY_ROW, { text: SOURCE_BODY });\n  await client.hideKeyboard();\n  const pressedAt = Date.now();',
+      ),
+      journeys.replace(
+        target,
+        'await client.longPressCurrent(READY_ROW, { text: SOURCE_BODY });',
+      ),
+      `${journeys}\nasync function sneaky(client: AccountWorkspaceClient): Promise<void> {\n  await client.tapCurrent('x', {});\n}\n`,
+    ]) {
+      expect(mutated).not.toBe(journeys);
+      expect(() => assertTapsAnchorDateNow(mutated)).toThrow();
+    }
+  });
+
+  it('never anchors a window before a native call or send it waits on', () => {
+    const journeys = read(JOURNEYS);
+    assertWindowsAnchoredAfterNativeCalls(journeys);
+    for (const [from, to] of [
+      [
+        'const sentAt = await tap(context, SEND);',
+        'const sentAt = Date.now();\n  await tap(context, SEND);',
+      ],
+      [
+        'const probeSentAt = Date.now();',
+        'const probeSentAt = Date.now() - 1;\n  await client.hideKeyboard();',
+      ],
+    ]) {
+      expect(journeys).toContain(from);
+      const mutated = journeys.replace(from, to);
+      expect(() => assertWindowsAnchoredAfterNativeCalls(mutated)).toThrow();
+    }
+    const early = journeys
+      .replace('const probeSentAt = Date.now();\n', '')
+      .replace(
+        'const probeId = await fixtures.sendMessage(writer, room.id, probe, probeTxn(run));',
+        'const probeSentAt = Date.now();\n  const probeId = await fixtures.sendMessage(writer, room.id, probe, probeTxn(run));',
+      );
+    expect(early).not.toBe(journeys);
+    expect(() => assertWindowsAnchoredAfterNativeCalls(early)).toThrow();
   });
 });
