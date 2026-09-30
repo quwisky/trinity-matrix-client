@@ -2931,6 +2931,13 @@ async function simulatedWhoReactedApp(faults = {}) {
     sendReturns: [],
     registeredBeforeSend: [],
     firstReadyRead: undefined,
+    thumbsSatisfiedAt: undefined,
+    groupsSatisfiedAt: undefined,
+    dialogReads: 0,
+    chainAnchor: undefined,
+    heartPressedAt: undefined,
+    backApplied: false,
+    dismissedAt: undefined,
     secretsAtReset: undefined,
     joins: 0,
   };
@@ -2969,15 +2976,25 @@ async function simulatedWhoReactedApp(faults = {}) {
       Date.now() - state.sendReturns.at(-1) < lagOf('final');
     return stale ? Math.max(capped - 1, 0) : capped;
   };
+  /** A knob of 0 means immediate; otherwise it counts from the read that satisfied the previous record. */
+  const since = (at, key) =>
+    lagOf(key) === 0 || (at !== undefined && Date.now() - at >= lagOf(key));
+  /** The last batch's pills (group-count) render `lag.group` after the read that satisfied thumbs-count. */
+  const visiblePills = () =>
+    state.rendered.length > 32 && !since(state.thumbsSatisfiedAt, 'group')
+      ? state.rendered.slice(0, 32)
+      : state.rendered;
+  const summaryShown = () =>
+    state.rendered.length < 36 || since(state.groupsSatisfiedAt, 'summary');
   const pillsHtml = () =>
-    simKeyOrder(state.rendered)
+    simKeyOrder(visiblePills())
       .map((key) => {
         const count =
           key === '👍'
             ? thumbsCount()
-            : state.rendered.filter((item) => item.key === key).length;
+            : visiblePills().filter((item) => item.key === key).length;
         const label =
-          key === '👍'
+          key === '👍' && summaryShown()
             ? ` aria-label="${simEscape(count > 3 ? `👍 reacted by ${faults.summaryWithoutYou ? 'Alpha' : 'You'}, Beta, Gamma and ${count - 3} others` : `👍 reacted by ${faults.summaryWithoutYou ? 'Alpha' : 'You'}`)}"`
             : '';
         return `<span class="reaction"${label}><span class="reaction__key">${key}</span><span class="reaction__count">${count}</span></span>`;
@@ -2999,13 +3016,18 @@ async function simulatedWhoReactedApp(faults = {}) {
     const shownKeys =
       faults.keys !== undefined ? keys.slice(0, faults.keys) : keys;
     const selected = state.dialogKey ?? '👍';
+    // heart-reactors: the list follows the pressed key `lag.heartReactors` after heart-pressed.
+    const listed =
+      selected === '❤️' && !since(state.heartPressedAt, 'heartReactors')
+        ? '👍'
+        : selected;
     const keyButtons = shownKeys
       .map(
         (key) =>
           `<button data-testid="reactions-key" aria-pressed="${key === selected}" aria-label="${simEscape(key)}, ${state.snapshot.filter((item) => item.key === key).length} reacted">${key}</button>`,
       )
       .join('');
-    const items = reactorsFor(selected)
+    const items = reactorsFor(listed)
       .map((name) =>
         name === SIM_LONG
           ? `<li class="reactor"><span class="reactor__name" data-scroll='${JSON.stringify({ clientWidth: 500, scrollWidth: faults.longWidth ?? 544 })}' data-style='${JSON.stringify({ textOverflow: faults.textOverflow ?? 'ellipsis' })}'>${name}</span></li>`
@@ -3016,7 +3038,7 @@ async function simulatedWhoReactedApp(faults = {}) {
       `<trn-reactions-dialog class="reactions-dialog--sheet"><div data-testid="reactions-dialog" data-box="dialog">` +
       `<span class="reactions-dialog__total">${faults.total ?? '36 total'}</span>` +
       `<div data-testid="reactions-directory" data-box="directory" data-scroll='${JSON.stringify({ scrollWidth: 1121, clientWidth: 393, scrollLeft: 0 })}'>${keyButtons}</div>` +
-      `<div class="reactions-dialog__detail" data-scroll='${JSON.stringify({ scrollHeight: 791, clientHeight: faults.detailScrolls === false ? 791 : 441 })}'><ul data-testid="reactors-list">${items}</ul></div>` +
+      `<div class="reactions-dialog__detail" data-scroll='${JSON.stringify({ scrollHeight: 791, clientHeight: faults.detailScrolls === false || !since(state.chainAnchor, 'detail') ? 791 : 441 })}'><ul data-testid="reactors-list">${items}</ul></div>` +
       `</div></trn-reactions-dialog>` +
       `<button data-testid="close-reactions" data-box="${faults.closeHidden ? 'zero' : 'close'}"></button>`
     );
@@ -3044,7 +3066,9 @@ async function simulatedWhoReactedApp(faults = {}) {
           `<div class="msg" data-mid="$ghost" data-box="msg"><p class="msg__text">${simEscape(SIM_BODY)}</p>${pillsHtml()}</div>`,
         );
       parts.push('</div>');
-      if (!state.composerGone)
+      const composerLate =
+        state.backApplied && !since(state.dismissedAt, 'composer');
+      if (!state.composerGone && !composerLate)
         parts.push(
           '<textarea data-testid="composer-input" data-box="composer"></textarea>',
         );
@@ -3171,7 +3195,10 @@ async function simulatedWhoReactedApp(faults = {}) {
         state.actions.push('flow:native-shell-back.yaml');
         finish('back');
         enqueue('back', () => {
-          if (!faults.backIgnored) state.dialog = false;
+          if (!faults.backIgnored) {
+            state.dialog = false;
+            state.backApplied = true;
+          }
           if (faults.composerLost) state.composerGone = true;
         });
       },
@@ -3185,6 +3212,31 @@ async function simulatedWhoReactedApp(faults = {}) {
           const window = dom();
           if (state.roomOpen && state.firstReadyRead === undefined)
             state.firstReadyRead = Date.now();
+          const now = Date.now();
+          if (
+            state.thumbsSatisfiedAt === undefined &&
+            state.sendReturns.length === 36 &&
+            state.rendered.length > 0 &&
+            rowShown() &&
+            thumbsCount() === 17
+          )
+            state.thumbsSatisfiedAt = now;
+          else if (
+            state.groupsSatisfiedAt === undefined &&
+            state.thumbsSatisfiedAt !== undefined &&
+            state.rendered.length === 36 &&
+            visiblePills().length === 36
+          )
+            state.groupsSatisfiedAt = now;
+          if (state.dialog && expression.includes('reactions-dialog"')) {
+            state.dialogReads++;
+            // Read 8 satisfies long-reactor-overflow; detail-overflow polls from it.
+            if (state.dialogReads === 8) state.chainAnchor = now;
+            if (state.dialogKey === '❤️' && state.heartPressedAt === undefined)
+              state.heartPressedAt = now;
+          }
+          if (state.backApplied && state.dismissedAt === undefined)
+            state.dismissedAt = now;
           return {
             result: {
               value: JSON.parse(
@@ -3354,6 +3406,12 @@ async function simulatedWhoReactedApp(faults = {}) {
         },
       },
     }));
+    // The relations read converges only `relationsLagMs` after the last send.
+    if (
+      faults.relationsLagMs !== undefined &&
+      Date.now() - state.sendReturns.at(-1) < faults.relationsLagMs
+    )
+      events = events.slice(0, -1);
     if (faults.relationsMissing) events = events.slice(0, -1);
     if (faults.relationsWrongTarget)
       events[0] = {
@@ -3781,6 +3839,12 @@ describe('Android who-reacted pill-dialog against a simulated installed app', ()
     ['who', 15_000, 21_000, 'one visible Reactions dialog'],
     ['heart', 15_000, 21_000, 'Only ❤️ is pressed'],
     ['back', 15_000, 21_000, 'dismissed'],
+    ['rail', 25_000, 31_000, '.channel'],
+    ['group', 25_000, 31_000, 'reaction groups'],
+    ['summary', 15_000, 21_000, 'names its reactors'],
+    ['detail', 15_000, 21_000, 'scrolls vertically'],
+    ['heartReactors', 15_000, 21_000, 'lists 1 reactors'],
+    ['composer', 15_000, 21_000, 'composer'],
   ];
   const SLOW = { tapMs: 45_000, sendMs: 5_000 };
   for (const [key, passAt, failAt, message] of WINDOWS) {
@@ -3799,14 +3863,65 @@ describe('Android who-reacted pill-dialog against a simulated installed app', ()
     it(`fails the ${key} window at ${failAt} ms [RF-3]`, async () => {
       await withSimulatedStage(
         { ...SLOW, lag: { [key]: failAt } },
-        async ({ context, runPillDialog }) => {
+        async ({ context, state, runPillDialog }) => {
           await expect(runPillDialog(context)).rejects.toThrow(
             fragment(message),
           );
+          // The lagged gate is gate 1 itself, not a later count fault.
+          if (key === 'gate')
+            expect(
+              state.written.some(({ name }) =>
+                name.endsWith('reaction-gate-1'),
+              ),
+            ).toBe(false);
         },
       );
     }, 120_000);
   }
+  // The reactions-arranged read-back converges `relationsLagMs` after the last send; its bound runs from that send.
+  it('passes the reactions-arranged window at 25 000 ms [RF-3]', async () => {
+    await withSimulatedStage(
+      { ...SLOW, relationsLagMs: 25_000 },
+      async ({ context, runPillDialog }) => {
+        await runPillDialog(context);
+        expect(context.records).toHaveLength(88);
+      },
+    );
+  }, 120_000);
+  it('fails the reactions-arranged window at 31 000 ms [RF-3]', async () => {
+    await withSimulatedStage(
+      { ...SLOW, relationsLagMs: 31_000 },
+      async ({ context, runPillDialog }) => {
+        await expect(runPillDialog(context)).rejects.toThrow(
+          fragment('exactly 36'),
+        );
+      },
+    );
+  }, 120_000);
+  it('fails the reactions-arranged read-back when every read takes 10 s, which a fresh per-read bound would pass [RF-3]', async () => {
+    const faults = { ...SLOW, readMs: 10_000, relationsLagMs: 55_000 };
+    await withSimulatedStage(faults, async ({ context, runPillDialog }) => {
+      await expect(runPillDialog(context)).rejects.toThrow(
+        fragment('exactly 36'),
+      );
+    });
+    const source = read(JOURNEYS);
+    const mutated = source.replace(
+      "lastSentAt, 'the 36 reactions on the server'",
+      "Date.now(), 'the 36 reactions on the server'",
+    );
+    expect(mutated).not.toBe(source);
+    await withMutatedJourneys({ journeys: mutated }, (module) =>
+      withSimulatedStage(
+        faults,
+        async ({ context, runPillDialog }) => {
+          await runPillDialog(context);
+          expect(context.records).toHaveLength(88);
+        },
+        module,
+      ),
+    );
+  }, 240_000);
   it('fails the final window at 31 000 ms even when every read takes 10 s [RF-3]', async () => {
     await withSimulatedStage(
       { ...SLOW, readMs: 10_000, lag: { final: 31_000 } },
@@ -3925,6 +4040,19 @@ describe('Android who-reacted pacing controls [RF-1]', () => {
           );
           expect(state.batches).toEqual([36]);
           expect(state.timelineReset).toBe(true);
+        },
+        module,
+      ),
+    );
+    // Counter-run: the same journeys pass when the limit is high, so the reset caused the failure.
+    await withMutatedJourneys({ journeys: mutated }, async (module) =>
+      withSimulatedStage(
+        { readMs: 4_000, burstLimit: 40 },
+        async ({ context, state, runPillDialog }) => {
+          await runPillDialog(context);
+          expect(state.batches).toEqual([36]);
+          expect(state.timelineReset).toBe(false);
+          expect(context.records).toHaveLength(88);
         },
         module,
       ),
@@ -4502,6 +4630,11 @@ function assertWindowsAnchoredAfterNativeCalls(
     const anchors = [];
     if (ts.isCallExpression(node) && node.expression.getText(tree) === 'left')
       anchors.push(...allNodes(node.arguments[1]).filter(ts.isIdentifier));
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.getText(tree) === 'proveReactionsArranged'
+    )
+      anchors.push(...allNodes(node.arguments[2]).filter(ts.isIdentifier));
     if (ts.isCallExpression(node) && node.expression.getText(tree) === 'server')
       anchors.push(...allNodes(node.arguments[3]).filter(ts.isIdentifier));
     if (
@@ -4532,7 +4665,7 @@ function assertWindowsAnchoredAfterNativeCalls(
 
 /** Each function that owns windows, with its minimum count of anchored ones. */
 const WINDOW_OWNERS = [
-  ['runPillDialog', 3],
+  ['runPillDialog', 4],
   ['openArrangedRoom', 1],
   ['enterRoom', 2],
   ['sendPacedReactions', 1],
@@ -4631,6 +4764,11 @@ describe('Android who-reacted source rules', () => {
         'runPillDialog',
         'const lastSentAt = await sendPacedReactions(context, a);',
         'const lastSentAt = Date.now();\n  await sendPacedReactions(context, a);',
+      ],
+      [
+        'runPillDialog',
+        'proveReactionsArranged(context, a, lastSentAt)',
+        'proveReactionsArranged(context, a, Date.now())',
       ],
       [
         'revealAndOpenDialog',

@@ -420,12 +420,13 @@ export async function sendPacedReactions(context: WhoReactedStageContext, a: Arr
 }
 
 /** Spec D5 read-back: every reaction on the server, exactly as planned. */
-async function proveReactionsArranged(context: WhoReactedStageContext, a: Arranged): Promise<void> {
+async function proveReactionsArranged(context: WhoReactedStageContext, a: Arranged,
+  lastSentAt: number): Promise<void> {
   const expected = () => ({ plan: reactionPlan(a.runId), ids: context.reactionIds,
     readerId: a.reader.userId, otherIds: a.others.map(({ userId }) => userId), targetId: a.targetId });
   const events = await server(context,
     async () => await context.fixtures.reactionRelations(a.reader, a.room.id, a.targetId) as unknown as readonly RoomEvent[],
-    (e) => { assertReactionsArranged(e, expected()); }, Date.now(), 'the 36 reactions on the server', SERVER_MS);
+    (e) => { assertReactionsArranged(e, expected()); }, lastSentAt, 'the 36 reactions on the server', SERVER_MS);
   await receipt(context, 'reactions-arranged', assertReactionsArranged(events, expected()));
 }
 
@@ -475,7 +476,7 @@ export async function runPillDialog(context: WhoReactedStageContext): Promise<vo
   await chain(context, row, [
     ['thumbs-summary', assertThumbsSummary, (r) => ({ matches: true, others: r.summaryOthers })],
   ]);
-  await proveReactionsArranged(context, a);
+  await proveReactionsArranged(context, a, lastSentAt);
   await revealAndOpenDialog(context, a, 'dialog-visible', '');
   const dialog = (o: ObservationOptions<ReactionDialogObservation>) => readReactionDialog(client, a.longName, o);
   const shape = await chain(context, dialog, [
