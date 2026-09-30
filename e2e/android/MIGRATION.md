@@ -8273,4 +8273,27 @@ The browser predecessor passed both definitions at retry 0 (2 passed, one worker
 in invocation `munt7hcb-4297747e-c618-403e-9227-7b8bd9337725`; the predecessor
 file is unchanged.
 
+Accepted at `4240497e`. Hosted run 36690000945 ran on the pull-request head
+`4240497e`. Android shard 3 ran `android.who-reacted` as invocation `munxk5o1`:
+2/2 stages, 191 assertion records (88 + 103), attempt 1, zero retries; the
+`pill-dialog` stage took 134.9 s and `mobile-sheet` 337.1 s. The unchanged
+predecessor ran in the same run's canonical browser job as invocation
+`munuzoj5-1c740e79-bd8f-44e6-bc3a-20bb1b72029e`: both browser definitions passed
+at retry 0 (“names the reactors on the pill and lists them all in the dialog”
+and “Who reacted · Pixel 5 sheet › keeps the reaction sheet bounded, touch-selectable and scrollable”).
+A leak audit over all 89 artifacts (15,088 files, nested zips extracted) found 0
+Room-id and 0 event-id shapes in any of the 79 Android artifacts and 0 `syt_`
+tokens, 0 Bearer values and 0 password values in any artifact. The run's other
+red jobs do not reflect on this suite. Unit tests failed on a guard race this
+suite's guard introduced (mutant modules written into `e2e/android/` while other
+guards scanned it), fixed in `5726e88b`. Shard 1 failed on the unrelated
+`android.room-for-you` `account-isolation-partial-retry` stage
+([#665](https://github.com/quwisky/trinity-matrix-client/issues/665)). The
+acceptance policy allows accepting a suite whose own shard passed on its
+original attempt, as shard 3 did. The predecessor blob at HEAD equals its blob
+at `dd0cb53c` (Git blob `292b2e0ca4e703055610c09d9c21a8254d78d165`, SHA-256
+`dce976ac883e07e14850bfee43cf50050b1b1f334174ba742ca530e2b0dc9b8a` in both); the
+file stays pinned at the existing `RETIRED_PREDECESSOR_COMMIT`, so no new fetch
+is needed.
+
 Predecessor status: enabled; after hosted acceptance the coordinator retires the Android definition and keeps the general definition desktop-only, skipped on Android (#839).
