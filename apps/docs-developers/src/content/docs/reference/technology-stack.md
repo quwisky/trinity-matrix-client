@@ -27,7 +27,7 @@ These versions are checked against the root and Electron manifests. The site foo
 | `matrix-js-sdk` | `^42.1.0` |
 | RxJS            | `~7.8.2`  |
 | Capacitor Core  | `8.5.2`   |
-| Electron        | `43.7.3`  |
+| Electron        | `43.7.5`  |
 
 Angular framework packages and the builder can intentionally use different patch releases. Treat installed peer requirements and repository checks as the compatibility contract.
 
