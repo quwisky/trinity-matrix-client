@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -8,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   readRetiredPredecessor,
   RETIRED_PREDECESSOR_COMMIT,
@@ -2827,5 +2828,1847 @@ describe('Android who-reacted diagnostics safety', () => {
     expect(source).toContain(
       'export type WhoReactedPublicationSafety = PinnedPanelPublicationSafety;',
     );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Simulated installed app: the pill-dialog stage against production-shaped DOM */
+/* -------------------------------------------------------------------------- */
+
+const JOURNEYS = 'e2e/android/who-reacted-journeys.mts';
+const CONTRACT_PATH = 'e2e/android/who-reacted-contract.mts';
+const OBSERVER_PATH = 'e2e/android/who-reacted-observer.mts';
+const loadJourneys = () => import('../e2e/android/who-reacted-journeys.mts');
+
+const SIM_ROOM = '!Room-AbC:example.test';
+const SIM_HOMESERVER = 'https://localhost:8448';
+const SIM_RUN = 'simrun';
+const SIM_STAGE = 'pill-dialog';
+const SIM_ROOM_NAME = `Who reacted ${SIM_RUN}`;
+const SIM_BODY = `react to me ${SIM_RUN}`;
+const SIM_LONG = `who-other-${SIM_RUN}-${'x'.repeat(36)}`;
+const SIM_TARGET = '$Tgt9z';
+const SIM_ROUTE = `https://localhost/rooms/${Buffer.from(SIM_ROOM).toString('base64url')}?account=x&view=rooms`;
+const SIM_WHO = '[data-testid="reactions-who"]';
+const SIM_KEY = '[data-testid="reactions-key"]';
+const SIM_BACK_FLOW = 'e2e/android/flows/native-shell-back.yaml';
+const SIM_BOXES = {
+  dialog: [0, 300, 393, 551],
+  directory: [0, 320, 393, 50],
+  close: [340, 310, 40, 40],
+  who: [10, 100, 60, 20],
+  composer: [0, 780, 393, 40],
+  msg: [0, 90, 393, 200],
+  zero: [0, 0, 0, 0],
+};
+const simEscape = (value) =>
+  String(value)
+    .replace(/&/gu, '&amp;')
+    .replace(/</gu, '&lt;')
+    .replace(/>/gu, '&gt;')
+    .replace(/"/gu, '&quot;');
+const simPad = (n) => String(n).padStart(2, '0');
+const simAccount = (role) => ({
+  userId: `@${role}:localhost`,
+  username: role,
+  password: `pw-${role}`,
+  homeserver: SIM_HOMESERVER,
+});
+const SIM_READER = simAccount('pd-reader');
+const SIM_OTHERS = Array.from({ length: 16 }, (_, i) =>
+  simAccount(`pd-other-${simPad(i + 1)}`),
+);
+const SIM_SENDERS = [SIM_READER, ...SIM_OTHERS];
+const simNameOf = (sender, longMissing) =>
+  sender === 0
+    ? 'You'
+    : sender === 1 && !longMissing
+      ? SIM_LONG
+      : `Other ${simPad(sender)}`;
+/** Keys ordered 👍, 🎉, then first appearance (the dialog snapshot's order). */
+const simKeyOrder = (rendered) => {
+  const rank = (key) => (key === '👍' ? 0 : key === '🎉' ? 1 : 2);
+  return [...new Set(rendered.map(({ key }) => key))]
+    .map((key, index) => ({ key, index }))
+    .sort((a, b) => rank(a.key) - rank(b.key) || a.index - b.index)
+    .map(({ key }) => key);
+};
+
+/**
+ * A model of the installed app, its Synapse Room and native input. Every state
+ * is a pure function of the fake clock and of the returns recorded when a
+ * native call finished (#757/#758): a native call only enqueues its transition
+ * and a later read applies it once `lag[label]` has elapsed since the call
+ * returned. REST reactions reach the rendered state only as one sync batch on a
+ * webview read; a batch above the limit resets the timeline (the target row is
+ * gone and stays gone), Synapse's default incremental limit being 10.
+ */
+async function simulatedWhoReactedApp(faults = {}) {
+  const c = await loadContract();
+  const controller = new AbortController();
+  const advance = (ms) => vi.setSystemTime(Date.now() + ms);
+  const plan = c.reactionPlan(SIM_RUN);
+  const state = {
+    actions: [],
+    rest: [],
+    written: [],
+    returns: {},
+    queue: [],
+    profile: undefined,
+    signedIn: false,
+    roomsShown: false,
+    roomOpen: false,
+    chipRevealed: false,
+    dialog: false,
+    dialogKey: null,
+    snapshot: [],
+    composerGone: false,
+    timelineReset: false,
+    pendingReactions: [],
+    rendered: [],
+    batches: [],
+    sent: [],
+    sendReturns: [],
+    registeredBeforeSend: [],
+    firstReadyRead: undefined,
+    secretsAtReset: undefined,
+    joins: 0,
+  };
+  const lagOf = (label) => faults.lag?.[label] ?? 0;
+  const applyDueEntries = () => {
+    const rest = [];
+    for (const entry of state.queue) {
+      if (Date.now() - state.returns[entry.label] < lagOf(entry.label))
+        rest.push(entry);
+      else entry.apply();
+    }
+    state.queue = rest;
+  };
+  const deliver = () => {
+    if (!state.roomOpen || state.pendingReactions.length === 0) return;
+    const lastSend = state.sendReturns.at(-1);
+    if (Date.now() - lastSend < lagOf('gate')) return;
+    const batch = state.pendingReactions;
+    state.pendingReactions = [];
+    state.batches.push(batch.length);
+    if (batch.length > (faults.burstLimit ?? 10)) {
+      state.timelineReset = true;
+      state.rendered = [...batch];
+    } else state.rendered.push(...batch);
+  };
+  const rowShown = () =>
+    state.roomOpen &&
+    !state.timelineReset &&
+    state.firstReadyRead !== undefined &&
+    Date.now() - state.firstReadyRead >= lagOf('targetRow');
+  const thumbsCount = () => {
+    const raw = state.rendered.filter(({ key }) => key === '👍').length;
+    const capped = Math.min(raw, faults.thumbsRenderedAs ?? raw);
+    const stale =
+      state.sendReturns.length === 36 &&
+      Date.now() - state.sendReturns.at(-1) < lagOf('final');
+    return stale ? Math.max(capped - 1, 0) : capped;
+  };
+  const pillsHtml = () =>
+    simKeyOrder(state.rendered)
+      .map((key) => {
+        const count =
+          key === '👍'
+            ? thumbsCount()
+            : state.rendered.filter((item) => item.key === key).length;
+        const label =
+          key === '👍'
+            ? ` aria-label="${simEscape(count > 3 ? `👍 reacted by ${faults.summaryWithoutYou ? 'Alpha' : 'You'}, Beta, Gamma and ${count - 3} others` : `👍 reacted by ${faults.summaryWithoutYou ? 'Alpha' : 'You'}`)}"`
+            : '';
+        return `<span class="reaction"${label}><span class="reaction__key">${key}</span><span class="reaction__count">${count}</span></span>`;
+      })
+      .join('');
+  const reactorsFor = (key) => {
+    const senders = state.snapshot
+      .filter((item) => item.key === key)
+      .map(({ sender }) => sender);
+    let names = senders.map((sender) =>
+      simNameOf(sender, faults.longReactorMissing),
+    );
+    if (key === '👍' && faults.reactors !== undefined)
+      names = names.slice(0, faults.reactors);
+    return names;
+  };
+  const dialogHtml = () => {
+    const keys = simKeyOrder(state.snapshot);
+    const shownKeys =
+      faults.keys !== undefined ? keys.slice(0, faults.keys) : keys;
+    const selected = state.dialogKey ?? '👍';
+    const keyButtons = shownKeys
+      .map(
+        (key) =>
+          `<button data-testid="reactions-key" aria-pressed="${key === selected}" aria-label="${simEscape(key)}, ${state.snapshot.filter((item) => item.key === key).length} reacted">${key}</button>`,
+      )
+      .join('');
+    const items = reactorsFor(selected)
+      .map((name) =>
+        name === SIM_LONG
+          ? `<li class="reactor"><span class="reactor__name" data-scroll='${JSON.stringify({ clientWidth: 500, scrollWidth: faults.longWidth ?? 544 })}' data-style='${JSON.stringify({ textOverflow: faults.textOverflow ?? 'ellipsis' })}'>${name}</span></li>`
+          : `<li class="reactor"><span class="reactor__name">${name}</span></li>`,
+      )
+      .join('');
+    return (
+      `<trn-reactions-dialog class="reactions-dialog--sheet"><div data-testid="reactions-dialog" data-box="dialog">` +
+      `<span class="reactions-dialog__total">${faults.total ?? '36 total'}</span>` +
+      `<div data-testid="reactions-directory" data-box="directory" data-scroll='${JSON.stringify({ scrollWidth: 1121, clientWidth: 393, scrollLeft: 0 })}'>${keyButtons}</div>` +
+      `<div class="reactions-dialog__detail" data-scroll='${JSON.stringify({ scrollHeight: 791, clientHeight: faults.detailScrolls === false ? 791 : 441 })}'><ul data-testid="reactors-list">${items}</ul></div>` +
+      `</div></trn-reactions-dialog>` +
+      `<button data-testid="close-reactions" data-box="${faults.closeHidden ? 'zero' : 'close'}"></button>`
+    );
+  };
+  const render = () => {
+    applyDueEntries();
+    const parts = ['<nav>'];
+    if (state.signedIn)
+      parts.push('<button data-testid="rail-rooms">Rooms</button>');
+    parts.push('</nav>');
+    if (state.roomsShown)
+      parts.push(
+        `<aside><div class="channel">${simEscape(SIM_ROOM_NAME)}</div></aside>`,
+      );
+    if (state.roomOpen) {
+      parts.push(
+        '<div class="scroll" data-box="msg"><div class="msg msg--event" data-mid="$create"><span class="msg__event-text">created the room</span></div>',
+      );
+      if (rowShown())
+        parts.push(
+          `<div class="msg" data-mid="${SIM_TARGET}" data-box="msg"><p class="msg__text">${simEscape(SIM_BODY)}</p>${pillsHtml()}<button class="reaction reaction--who" data-testid="reactions-who" data-box="who">5</button></div>`,
+        );
+      else if (state.timelineReset && faults.ghostRow)
+        parts.push(
+          `<div class="msg" data-mid="$ghost" data-box="msg"><p class="msg__text">${simEscape(SIM_BODY)}</p>${pillsHtml()}</div>`,
+        );
+      parts.push('</div>');
+      if (!state.composerGone)
+        parts.push(
+          '<textarea data-testid="composer-input" data-box="composer"></textarea>',
+        );
+    }
+    if (state.dialog) parts.push(dialogHtml());
+    return parts.join('');
+  };
+  const dom = () => {
+    const jsdom = new JSDOM(`<main>${render()}</main>`, {
+      url: state.roomOpen ? SIM_ROUTE : 'https://localhost/rooms?account=x',
+    });
+    const { window } = jsdom;
+    const requested = state.profile ?? c.GENERAL_TOUCH_PROFILE;
+    Object.defineProperty(window, 'innerWidth', {
+      value: faults.profileWidth ?? requested.width,
+    });
+    Object.defineProperty(window, 'innerHeight', { value: requested.height });
+    Object.defineProperty(window, 'devicePixelRatio', {
+      value: requested.deviceScaleFactor ?? 1,
+    });
+    const rect = ([x, y, width, height]) => ({
+      x,
+      y,
+      width,
+      height,
+      left: x,
+      top: y,
+      right: x + width,
+      bottom: y + height,
+    });
+    const proto = window.HTMLElement.prototype;
+    proto.getBoundingClientRect = function () {
+      return rect(SIM_BOXES[this.getAttribute('data-box')] ?? SIM_BOXES.zero);
+    };
+    for (const name of [
+      'scrollWidth',
+      'clientWidth',
+      'scrollHeight',
+      'clientHeight',
+      'scrollLeft',
+    ])
+      Object.defineProperty(proto, name, {
+        get() {
+          const scroll = JSON.parse(this.getAttribute('data-scroll') ?? '{}');
+          return scroll[name] ?? 0;
+        },
+        configurable: true,
+      });
+    window.matchMedia = (query) => ({
+      matches: query === '(hover: none)' || query === '(pointer: coarse)',
+    });
+    window.Capacitor = { getPlatform: () => 'android' };
+    const computed = window.getComputedStyle.bind(window);
+    window.getComputedStyle = (element) => {
+      const overrides = {
+        visibility: 'visible',
+        ...JSON.parse(element.getAttribute('data-style') ?? '{}'),
+      };
+      const base = computed(element);
+      return new Proxy(base, {
+        get: (target, key) => (key in overrides ? overrides[key] : target[key]),
+      });
+    };
+    window.document.elementFromPoint = () =>
+      state.chipRevealed || faults.chipVisible
+        ? window.document.querySelector('[data-box="who"]')
+        : window.document.querySelector('[data-box="composer"]');
+    return window;
+  };
+  const matches = (selector, filter = {}) =>
+    [...dom().document.querySelectorAll(selector)].filter(
+      (element) =>
+        (filter.text === undefined ||
+          (element.textContent ?? '').includes(filter.text)) &&
+        (filter.exactText === undefined ||
+          element.textContent?.trim() === filter.exactText) &&
+        (filter.within === undefined ||
+          (element.closest(filter.within.selector)?.textContent ?? '').includes(
+            filter.within.text,
+          )),
+    );
+  const elementsOf = (selector, filter) =>
+    matches(selector, filter).map((element) => ({
+      text: element.textContent?.trim() ?? '',
+      visible: true,
+      focused: false,
+      disabled: element.matches(':disabled'),
+      value: null,
+      unobstructedCenter: true,
+      rect: { x: 0, y: 0, width: 120, height: 20, bottom: 20, right: 120 },
+      scrollHeight: 400,
+      clientHeight: 200,
+    }));
+  const notActionable = (selector) =>
+    new Error(`Simulated target is not one actionable element: ${selector}`);
+  const actionable = (selector, filter) => {
+    const found = matches(selector, filter);
+    if (found.length !== 1 || found[0].matches(':disabled'))
+      throw notActionable(selector);
+    if (selector === SIM_WHO && !(state.chipRevealed || faults.chipVisible))
+      throw notActionable(selector);
+    return found[0];
+  };
+  /** A native call finishes: the clock advances, then its return is recorded. */
+  const finish = (label, ms = faults.tapMs ?? 1_000) => {
+    advance(ms);
+    state.returns[label] = Date.now();
+  };
+  const enqueue = (label, apply) => state.queue.push({ label, apply });
+  const label = (selector, filter) =>
+    `${selector}${filter.text || filter.exactText ? `|${filter.text ?? filter.exactText}` : ''}`;
+  let context;
+  const client = {
+    workspaceRoot: root,
+    applicationId: 'eu.qwky.trinity',
+    signal: controller.signal,
+    device: {
+      async runFlow(flow, env) {
+        assert.ok(
+          flow.endsWith(SIM_BACK_FLOW),
+          'Only the Back flow is modelled',
+        );
+        assert.equal(env.APP_ID, 'eu.qwky.trinity');
+        state.actions.push('flow:native-shell-back.yaml');
+        finish('back');
+        enqueue('back', () => {
+          if (!faults.backIgnored) state.dialog = false;
+          if (faults.composerLost) state.composerGone = true;
+        });
+      },
+    },
+    webview: {
+      diagnostics: {
+        send: async (_method, { expression }) => {
+          advance(faults.readMs ?? 1_000);
+          applyDueEntries();
+          deliver();
+          const window = dom();
+          if (state.roomOpen && state.firstReadyRead === undefined)
+            state.firstReadyRead = Date.now();
+          return {
+            result: {
+              value: JSON.parse(
+                JSON.stringify(
+                  runInNewContext(expression, {
+                    document: window.document,
+                    URL: window.URL,
+                  }),
+                ),
+              ),
+            },
+          };
+        },
+      },
+    },
+    async reset(profile) {
+      state.actions.push('reset');
+      state.secretsAtReset = Object.values(context.secrets);
+      state.profile = profile;
+      finish('reset');
+    },
+    async login() {
+      state.actions.push('login');
+      finish('login');
+      enqueue('login', () => (state.signedIn = true));
+    },
+    async hideKeyboard() {
+      state.actions.push('hide-keyboard');
+      finish('hide');
+    },
+    async elements(selector, filter) {
+      advance(faults.readMs ?? 1_000);
+      return elementsOf(selector, filter);
+    },
+    async waitElements(selector, accepts, description, filter, timeoutMs) {
+      assert.ok(Number.isFinite(timeoutMs), 'Simulated waits are bounded');
+      const deadline = Date.now() + timeoutMs;
+      for (;;) {
+        controller.signal.throwIfAborted();
+        advance(faults.readMs ?? 1_000);
+        const values = elementsOf(selector, filter);
+        if (accepts(values)) return values;
+        if (Date.now() >= deadline)
+          throw new Error(`Timed out waiting for ${description}`);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+      }
+    },
+    async visible(selector, filter, timeoutMs = 15_000) {
+      const [element] = await client.waitElements(
+        selector,
+        (values) => values.length === 1 && values[0].visible,
+        selector,
+        filter,
+        timeoutMs,
+      );
+      return element;
+    },
+    async eventIdentity(selector, filter, eventId) {
+      advance(faults.readMs ?? 1_000);
+      const found = matches(selector, filter);
+      return {
+        matches: found.length,
+        exactEvent:
+          found.length === 1 && found[0].getAttribute('data-mid') === eventId,
+      };
+    },
+    async tapCurrent(selector, filter = {}) {
+      // A target that is not one actionable element fails before any native input.
+      const element = actionable(selector, filter);
+      state.actions.push(`tap:${label(selector, filter)}`);
+      const testId = element.getAttribute('data-testid');
+      if (testId === 'rail-rooms')
+        enqueue('rail', () => (state.roomsShown = true));
+      else if (element.classList.contains('channel'))
+        enqueue('room', () => {
+          state.roomOpen = true;
+          if (faults.dialogWithoutTap) state.dialog = true;
+        });
+      else if (testId === 'reactions-who')
+        enqueue('who', () => {
+          state.dialog = true;
+          state.dialogKey = '👍';
+          state.snapshot = [...state.rendered];
+        });
+      else if (testId === 'reactions-key')
+        enqueue('heart', () => {
+          if (!faults.heartIgnored) state.dialogKey = '❤️';
+        });
+      else throw new Error(`Unmodelled simulated tap ${selector}`);
+      finish(
+        testId === 'rail-rooms'
+          ? 'rail'
+          : testId === 'reactions-who'
+            ? 'who'
+            : testId === 'reactions-key'
+              ? 'heart'
+              : 'room',
+      );
+    },
+    async scrollIntoViewIfNeeded(selector) {
+      assert.equal(selector, SIM_WHO, 'Only the chip is scrolled into view');
+      state.actions.push(`scroll:${selector}`);
+      finish('scroll');
+      if (!faults.chipObstructed)
+        enqueue('scroll', () => (state.chipRevealed = true));
+    },
+    async record(name, value) {
+      state.written.push({ name, value });
+    },
+    async capture(name) {
+      state.actions.push(`capture:${name}`);
+    },
+  };
+  const history = () => {
+    const member = (userId, membership, displayname) => ({
+      type: 'm.room.member',
+      event_id: `$member-${userId}`,
+      state_key: userId,
+      content: { membership, displayname },
+    });
+    const others = SIM_OTHERS.slice(0, faults.joinedOthers ?? 16);
+    const events = [
+      ...(faults.noCreate
+        ? []
+        : [{ type: 'm.room.create', event_id: '$create', content: {} }]),
+      {
+        type: 'm.room.join_rules',
+        state_key: '',
+        content: { join_rule: faults.joinRule ?? 'public' },
+      },
+      member(SIM_READER.userId, 'join', 'Reader'),
+      ...others.map((other, index) =>
+        member(
+          other.userId,
+          'join',
+          index === 0 && !faults.longNameMissing ? SIM_LONG : other.username,
+        ),
+      ),
+      {
+        type: 'm.room.message',
+        event_id: SIM_TARGET,
+        sender: faults.targetFromOther
+          ? SIM_OTHERS[0].userId
+          : SIM_READER.userId,
+        content: { msgtype: 'm.text', body: SIM_BODY },
+      },
+    ];
+    if (faults.extraMessage)
+      events.push({
+        type: 'm.room.message',
+        event_id: '$extra',
+        sender: SIM_READER.userId,
+        content: { msgtype: 'm.text', body: 'extra' },
+      });
+    return { chunk: [...events].reverse() };
+  };
+  const relations = () => {
+    let events = state.sent.map(({ id, key, sender }) => ({
+      type: 'm.reaction',
+      event_id: id,
+      sender: SIM_SENDERS[sender].userId,
+      content: {
+        'm.relates_to': {
+          rel_type: 'm.annotation',
+          event_id: SIM_TARGET,
+          key,
+        },
+      },
+    }));
+    if (faults.relationsMissing) events = events.slice(0, -1);
+    if (faults.relationsWrongTarget)
+      events[0] = {
+        ...events[0],
+        content: {
+          'm.relates_to': {
+            rel_type: 'm.annotation',
+            event_id: '$elsewhere',
+            key: '👍',
+          },
+        },
+      };
+    if (faults.relationsDuplicateSender)
+      events[1] = { ...events[1], sender: events[0].sender };
+    if (faults.relationsWrongSender)
+      events[1] = { ...events[1], sender: '@stranger:localhost' };
+    return events;
+  };
+  const fixtures = {
+    async account(role) {
+      state.rest.push('rest:account');
+      const account = SIM_SENDERS.find(({ username }) => username === role);
+      assert.ok(account, `Unknown role ${role}`);
+      return account;
+    },
+    async setDisplayName(account, name) {
+      assert.equal(account, SIM_OTHERS[0]);
+      assert.equal(name, SIM_LONG);
+      state.rest.push('rest:setDisplayName');
+    },
+    async createRoom(account, { name, preset }) {
+      assert.equal(account, SIM_READER);
+      assert.equal(preset, 'public_chat');
+      assert.equal(name, SIM_ROOM_NAME);
+      state.rest.push('rest:createRoom');
+      return { id: SIM_ROOM, name };
+    },
+    async joinHonoringRateLimit(account, roomId) {
+      assert.equal(roomId, SIM_ROOM);
+      assert.equal(account, SIM_OTHERS[state.joins]);
+      if (faults.joinExhausted)
+        throw new Error(
+          'Matrix fixture join still rate-limited after 5 attempts',
+        );
+      const attempts = faults.joinAttempts?.[state.joins] ?? 1;
+      state.joins++;
+      state.rest.push('rest:joinHonoringRateLimit');
+      return {
+        status: 200,
+        attempts,
+        retryAfterMs: Array(attempts - 1).fill(462),
+      };
+    },
+    async sendMessage(account, roomId, body, txn) {
+      assert.equal(account, SIM_READER);
+      assert.equal(roomId, SIM_ROOM);
+      assert.equal(body, SIM_BODY);
+      assert.equal(txn, c.targetTxnOf(SIM_RUN));
+      state.rest.push('rest:sendMessage');
+      return SIM_TARGET;
+    },
+    async roomMessages(account, roomId) {
+      assert.equal(account, SIM_READER);
+      assert.equal(roomId, SIM_ROOM);
+      advance(faults.readMs ?? 1_000);
+      state.rest.push('rest:roomMessages');
+      return history();
+    },
+    async sendReaction(sender, roomId, eventId, key, txn) {
+      const index = state.sent.length;
+      const planned = plan[index];
+      assert.equal(roomId, SIM_ROOM);
+      assert.equal(eventId, SIM_TARGET);
+      assert.equal(key, planned.key);
+      assert.equal(txn, planned.txn);
+      assert.equal(sender, SIM_SENDERS[planned.sender]);
+      // Rule 7: the previous reaction's id is registered before this send.
+      state.registeredBeforeSend.push(
+        index === 0
+          ? true
+          : Object.values(context.secrets).includes(state.sent[index - 1].id),
+      );
+      state.rest.push('rest:sendReaction');
+      if (faults.reactionSendFails === index + 1)
+        throw new Error(
+          `Matrix fixture PUT /rooms/x/send/m.reaction/${txn} failed with HTTP 500`,
+        );
+      advance(faults.sendMs ?? 0);
+      state.sendReturns.push(Date.now());
+      const id = `$evt-r${simPad(index + 1)}`;
+      state.sent.push({ id, key, sender: planned.sender });
+      state.pendingReactions.push({ key, sender: planned.sender });
+      return id;
+    },
+    async reactionRelations(observer, roomId, eventId) {
+      assert.equal(observer, SIM_READER);
+      assert.equal(roomId, SIM_ROOM);
+      assert.equal(eventId, SIM_TARGET);
+      advance(faults.readMs ?? 1_000);
+      state.rest.push('rest:reactionRelations');
+      return relations();
+    },
+  };
+  context = {
+    entry: c.WHO_REACTED_STAGES.find(({ id }) => id === SIM_STAGE),
+    records: [],
+    identities: new Set(),
+    receipts: 0,
+    client,
+    fixtures,
+    secrets: {},
+    safety: { unsafeSecrets: true, cleanupFailed: false, scrubFailed: false },
+    native: false,
+    signal: controller.signal,
+    ledger: {
+      run: SIM_RUN,
+      accounts: [],
+      rooms: [],
+      texts: [],
+      eventIds: [],
+      transactions: [],
+    },
+    reactionIds: [],
+  };
+  return { client, fixtures, state, context };
+}
+
+/** Runs one simulated stage on the fake clock, restoring real timers afterwards. */
+async function withSimulatedStage(faults, run, journeysModule) {
+  const journeys = journeysModule ?? (await loadJourneys());
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(1_000_000);
+  try {
+    const app = await simulatedWhoReactedApp(faults);
+    return await run({ ...app, runPillDialog: journeys.runPillDialog });
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+const SIM_ACTIONS = [
+  'reset',
+  'login',
+  'hide-keyboard',
+  'tap:[data-testid="rail-rooms"]',
+  `tap:.channel|${SIM_ROOM_NAME}`,
+  `scroll:${SIM_WHO}`,
+  `tap:${SIM_WHO}`,
+  `tap:${SIM_KEY}|❤️`,
+  'flow:native-shell-back.yaml',
+];
+const SIM_RECEIPTS = [
+  'arranged',
+  'reaction-gate-1',
+  'reaction-gate-2',
+  'reaction-gate-3',
+  'reaction-gate-4',
+  'reactions-arranged',
+  'dialog-absent',
+  'dialog-shape',
+  'room-recovered',
+];
+const SIM_SLICE = {
+  none: 0,
+  reset: 1,
+  room: 5,
+  scroll: 6,
+  chip: 7,
+  heart: 8,
+  all: 9,
+};
+
+/** Written evidence carries digests and booleans, never an identifier, a credential or the pill label. */
+function assertIdFreeEvidence(state, secrets) {
+  const written = JSON.stringify(state.written);
+  for (const value of secrets)
+    expect(written, `written evidence leaks ${value}`).not.toContain(value);
+  expect(written).not.toContain('reacted by');
+  for (const action of state.actions)
+    expect(action.split('|')[0]).not.toMatch(
+      /[$!~][A-Za-z0-9_]{2,}|data-mid[*~|]?=[^^]/u,
+    );
+}
+
+const fragment = (text) =>
+  new RegExp(text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'iu');
+
+describe('Android who-reacted pill-dialog against a simulated installed app', () => {
+  it('drives the exact native sequence and records all 88 identities in order', async () => {
+    const c = await loadContract();
+    await withSimulatedStage({}, async ({ context, state, runPillDialog }) => {
+      await runPillDialog(context);
+      expect(context.records).toEqual(
+        c.WHO_REACTED_STAGES.find(({ id }) => id === SIM_STAGE).assertions,
+      );
+      expect(context.records).toHaveLength(88);
+      expect(state.actions).toEqual(SIM_ACTIONS);
+      expect(state.rest).toEqual([
+        ...Array(17).fill('rest:account'),
+        'rest:setDisplayName',
+        'rest:createRoom',
+        ...Array(16).fill('rest:joinHonoringRateLimit'),
+        'rest:sendMessage',
+        'rest:roomMessages',
+        ...Array(36).fill('rest:sendReaction'),
+        'rest:reactionRelations',
+      ]);
+      expect(state.batches.every((size) => size <= 8)).toBe(true);
+      expect(state.batches).toEqual([8, 8, 8, 8, 4]);
+      expect(
+        state.written
+          .map(({ name }) => name)
+          .filter((name) => name.startsWith('receipt-'))
+          .map((name) => name.replace(/^receipt-\d+-/u, '')),
+      ).toEqual(SIM_RECEIPTS);
+      const registered = [];
+      for (const account of [SIM_READER, ...SIM_OTHERS])
+        registered.push(account.userId, account.username, account.password);
+      registered.push(
+        SIM_ROOM,
+        SIM_ROOM_NAME,
+        SIM_BODY,
+        SIM_LONG,
+        SIM_TARGET,
+        c.targetTxnOf(SIM_RUN),
+        ...new Set(c.reactionPlan(SIM_RUN).map(({ txn }) => txn)),
+      );
+      for (const value of registered)
+        expect(state.secretsAtReset).toContain(value);
+      // Each reaction id was registered as its send returned.
+      for (const id of context.reactionIds)
+        expect(Object.values(context.secrets)).toContain(id);
+      expect(context.reactionIds).toHaveLength(36);
+      expect(new Set(c.reactionPlan(SIM_RUN).map(({ txn }) => txn)).size).toBe(
+        35,
+      );
+      expect(state.registeredBeforeSend).toHaveLength(36);
+      expect(state.registeredBeforeSend.every(Boolean)).toBe(true);
+      assertIdFreeEvidence(state, Object.values(context.secrets));
+    });
+  }, 60_000);
+
+  const CONTROLS = [
+    ['joinedOthers: 15', { joinedOthers: 15 }, '17 joined members', 'none'],
+    ['extraMessage', { extraMessage: true }, 'exactly the target', 'none'],
+    [
+      'targetFromOther',
+      { targetFromOther: true },
+      'reader sent the target',
+      'none',
+    ],
+    ['joinRule: invite', { joinRule: 'invite' }, 'public', 'none'],
+    [
+      'longNameMissing [RF-2]',
+      { longNameMissing: true },
+      "long reactor's display name",
+      'none',
+    ],
+    ['noCreate', { noCreate: true }, 'm.room.create', 'none'],
+    [
+      'joinExhausted [RF-5]',
+      { joinExhausted: true },
+      'still rate-limited after 5 attempts',
+      'none',
+    ],
+    [
+      'profileWidth: 1279',
+      { profileWidth: 1279 },
+      'general touch profile',
+      'reset',
+    ],
+    ['thumbsRenderedAs: 16', { thumbsRenderedAs: 16 }, 'cumulative 👍', 'room'],
+    ['relationsMissing', { relationsMissing: true }, 'exactly 36', 'room'],
+    [
+      'relationsWrongTarget',
+      { relationsWrongTarget: true },
+      'annotates the target',
+      'room',
+    ],
+    [
+      'relationsDuplicateSender',
+      { relationsDuplicateSender: true },
+      '17 distinct',
+      'room',
+    ],
+    [
+      'relationsWrongSender',
+      { relationsWrongSender: true },
+      'planned sender',
+      'room',
+    ],
+    [
+      'summaryWithoutYou',
+      { summaryWithoutYou: true },
+      'reacted by You',
+      'room',
+    ],
+    [
+      'reactionSendFails: 12',
+      { reactionSendFails: 12 },
+      'failed with HTTP 500',
+      'room',
+    ],
+    ['chipObstructed', { chipObstructed: true }, 'one actionable', 'scroll'],
+    [
+      'dialogWithoutTap [RF-4]',
+      { dialogWithoutTap: true },
+      'no Reactions dialog before the native tap',
+      'room',
+    ],
+    ['total: 35 total', { total: '35 total' }, '36 total', 'chip'],
+    ['closeHidden', { closeHidden: true }, 'close control is visible', 'chip'],
+    ['keys: 19', { keys: 19 }, 'lists 20 keys', 'chip'],
+    [
+      'longReactorMissing',
+      { longReactorMissing: true },
+      "long reactor's name is listed",
+      'chip',
+    ],
+    [
+      'textOverflow: clip',
+      { textOverflow: 'clip' },
+      'text-overflow: ellipsis',
+      'chip',
+    ],
+    ['longWidth: 500 [RF-2]', { longWidth: 500 }, 'actually overflows', 'chip'],
+    [
+      'detailScrolls: false',
+      { detailScrolls: false },
+      'scrolls vertically',
+      'chip',
+    ],
+    ['reactors: 16', { reactors: 16 }, 'lists 17 reactors', 'chip'],
+    ['heartIgnored', { heartIgnored: true }, 'Only ❤️ is pressed', 'heart'],
+    ['backIgnored', { backIgnored: true }, 'dismissed', 'all'],
+    ['composerLost', { composerLost: true }, 'composer', 'all'],
+    [
+      'burstLimit: 7 [RF-1]',
+      { burstLimit: 7 },
+      'target row is still rendered',
+      'room',
+    ],
+    [
+      'ghostRow [RF-1]',
+      { burstLimit: 7, ghostRow: true },
+      'target row is still rendered',
+      'room',
+    ],
+  ];
+  for (const [name, faults, message, upTo] of CONTROLS)
+    it(`rejects ${name} with ${message}`, async () => {
+      await withSimulatedStage(
+        { readMs: 4_000, ...faults },
+        async ({ context, state, runPillDialog }) => {
+          await expect(runPillDialog(context)).rejects.toThrow(
+            fragment(message),
+          );
+          expect(state.actions).toEqual(SIM_ACTIONS.slice(0, SIM_SLICE[upTo]));
+          if (faults.reactionSendFails !== undefined)
+            expect(
+              context.records.filter((record) => record.includes('.reaction-')),
+            ).toEqual(
+              Array.from(
+                { length: 11 },
+                (_, i) => `who-reacted.${SIM_STAGE}.reaction-${simPad(i + 1)}`,
+              ),
+            );
+        },
+      );
+    }, 60_000);
+
+  it('passes with bursts capped at 8 and proves every batch holds at most 8 [RF-1]', async () => {
+    await withSimulatedStage(
+      { burstLimit: 8 },
+      async ({ context, state, runPillDialog }) => {
+        await runPillDialog(context);
+        expect(Math.max(...state.batches)).toBeLessThanOrEqual(8);
+        expect(state.timelineReset).toBe(false);
+      },
+    );
+  }, 60_000);
+
+  it('keeps a user id and the long name in an assertion actual and expected out of the redacted failure [RF-5]', async () => {
+    const { redactStageFailure } = await loadJourneys();
+    const { AssertionError } = await import('node:assert');
+    const { default: strict } = await import('node:assert/strict');
+    const userId = SIM_READER.userId;
+    const secrets = { reader: userId, long: SIM_LONG };
+    const withMessage = new AssertionError({
+      actual: userId,
+      expected: SIM_LONG,
+      operator: 'strictEqual',
+      message: 'The first line names no value',
+    });
+    let generated;
+    try {
+      strict.equal(userId, SIM_LONG);
+    } catch (error) {
+      generated = error;
+    }
+    expect(generated.actual).toBe(userId);
+    expect(generated.expected).toBe(SIM_LONG);
+    expect(generated.generatedMessage).toBe(true);
+    const thrown = redactStageFailure(
+      SIM_STAGE,
+      [withMessage, generated, new AggregateError([generated], 'nested')],
+      secrets,
+    );
+    for (const value of [userId, SIM_LONG, '@pd-reader', 'xxxxxxxx'])
+      expect(thrown.message).not.toContain(value);
+    expect(thrown.message).toContain('The first line names no value');
+    expect(thrown.message).toContain('strictEqual assertion failed');
+    expect(Object.keys(thrown)).toEqual([]);
+    expect(thrown.cause).toBeUndefined();
+    for (const property of ['actual', 'expected', 'errors', 'operator'])
+      expect(Reflect.has(thrown, property)).toBe(false);
+  });
+
+  // [RF-3] Every window is anchored after its event: 45 s taps and 5 s sends, one pass 5 s inside the bound and one fail 1 s past it.
+  const WINDOWS = [
+    ['room', 15_000, 21_000, 'composer'],
+    ['targetRow', 15_000, 21_000, 'Exactly one reconciled target row'],
+    ['gate', 25_000, 31_000, 'cumulative 👍'],
+    ['final', 25_000, 31_000, '17'],
+    ['who', 15_000, 21_000, 'one visible Reactions dialog'],
+    ['heart', 15_000, 21_000, 'Only ❤️ is pressed'],
+    ['back', 15_000, 21_000, 'dismissed'],
+  ];
+  const SLOW = { tapMs: 45_000, sendMs: 5_000 };
+  for (const [key, passAt, failAt, message] of WINDOWS) {
+    it(`passes the ${key} window at ${passAt} ms [RF-3]`, async () => {
+      const c = await loadContract();
+      await withSimulatedStage(
+        { ...SLOW, lag: { [key]: passAt } },
+        async ({ context, runPillDialog }) => {
+          await runPillDialog(context);
+          expect(context.records).toEqual(
+            c.WHO_REACTED_STAGES.find(({ id }) => id === SIM_STAGE).assertions,
+          );
+        },
+      );
+    }, 120_000);
+    it(`fails the ${key} window at ${failAt} ms [RF-3]`, async () => {
+      await withSimulatedStage(
+        { ...SLOW, lag: { [key]: failAt } },
+        async ({ context, runPillDialog }) => {
+          await expect(runPillDialog(context)).rejects.toThrow(
+            fragment(message),
+          );
+        },
+      );
+    }, 120_000);
+  }
+  it('fails the final window at 31 000 ms even when every read takes 10 s [RF-3]', async () => {
+    await withSimulatedStage(
+      { ...SLOW, readMs: 10_000, lag: { final: 31_000 } },
+      async ({ context, runPillDialog }) => {
+        await expect(runPillDialog(context)).rejects.toThrow(fragment('17'));
+      },
+    );
+  }, 120_000);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Journeys mutations and AST helpers                                         */
+/* -------------------------------------------------------------------------- */
+
+const treeOf = (source) =>
+  ts.createSourceFile(JOURNEYS, source, ts.ScriptTarget.Latest, true);
+
+/** Apply source edits (`{ start, end, text }`) from the back, so earlier offsets stay valid. */
+function applyEdits(source, edits) {
+  return [...edits]
+    .sort((a, b) => b.start - a.start)
+    .reduce(
+      (text, { start, end, text: replacement }) =>
+        `${text.slice(0, start)}${replacement}${text.slice(end)}`,
+      source,
+    );
+}
+
+const allNodes = (tree) => {
+  const nodes = [];
+  const visit = (node) => {
+    nodes.push(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+  return nodes;
+};
+
+const statementStartingWith = (prefix, tree) => (node) =>
+  ts.isStatement(node) &&
+  !ts.isBlock(node) &&
+  node.getText(tree).startsWith(prefix);
+
+/** Locate nodes of the journeys by predicate and replace (or delete) their text. */
+function editRunner(source, edits) {
+  const tree = treeOf(source);
+  const nodes = allNodes(tree);
+  const found = (predicate) => {
+    const node = nodes.find(predicate);
+    expect(node, 'mutation target exists').toBeDefined();
+    return node;
+  };
+  const text = (node) => node.getText(tree);
+  return applyEdits(
+    source,
+    edits(found, text, tree).map(([node, replacement]) => ({
+      start: node.getStart(tree),
+      end: node.getEnd(),
+      text: replacement,
+    })),
+  );
+}
+
+/** Import a mutated copy of the journeys (and optionally the contract) beside the original. */
+async function withMutatedJourneys({ journeys, contract }, run) {
+  const tag = `${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+  const journeysTemp = resolve(
+    root,
+    `e2e/android/who-reacted-journeys.mutated-${tag}.mts`,
+  );
+  const contractTemp = resolve(
+    root,
+    `e2e/android/who-reacted-contract.mutated-${tag}.mts`,
+  );
+  try {
+    let source = journeys;
+    if (contract !== undefined) {
+      await writeFile(contractTemp, contract);
+      source = source.replace(
+        "'./who-reacted-contract.mts'",
+        `'./who-reacted-contract.mutated-${tag}.mts'`,
+      );
+      expect(source).not.toBe(journeys);
+    }
+    await writeFile(journeysTemp, source);
+    return await run(await import(pathToFileURL(journeysTemp).href));
+  } finally {
+    await rm(journeysTemp, { force: true });
+    await rm(contractTemp, { force: true });
+  }
+}
+
+describe('Android who-reacted pacing controls [RF-1]', () => {
+  const GATE_PREFIXES = [
+    'const sentAt = lastSentAt;',
+    'const row = await until<ReactionRowObservation>(',
+    'await receipt(context, `reaction-gate-',
+  ];
+
+  it('fails a run whose sendPacedReactions has no gate: the batch of 36 resets the timeline', async () => {
+    const source = read(JOURNEYS);
+    const mutated = editRunner(source, (found, text, tree) =>
+      GATE_PREFIXES.map((prefix) => [
+        found(statementStartingWith(prefix, tree)),
+        '',
+      ]),
+    );
+    expect(mutated).not.toBe(source);
+    expect(mutated).not.toContain('reaction-gate-');
+    await withMutatedJourneys({ journeys: mutated }, async (module) =>
+      withSimulatedStage(
+        { readMs: 4_000 },
+        async ({ context, state, runPillDialog }) => {
+          await expect(runPillDialog(context)).rejects.toThrow(
+            fragment('One 👍 pill is rendered'),
+          );
+          expect(state.batches).toEqual([36]);
+          expect(state.timelineReset).toBe(true);
+        },
+        module,
+      ),
+    );
+  }, 60_000);
+
+  it('fails a run whose REACTION_GROUP is 11 at the first gate: the batch of 11 resets the timeline', async () => {
+    const contractSource = read(CONTRACT_PATH);
+    const contract = contractSource.replace(
+      'export const REACTION_GROUP = 8;',
+      'export const REACTION_GROUP = 11;',
+    );
+    expect(contract).not.toBe(contractSource);
+    await withMutatedJourneys(
+      { journeys: read(JOURNEYS), contract },
+      async (module) =>
+        withSimulatedStage(
+          { readMs: 4_000 },
+          async ({ context, state, runPillDialog }) => {
+            await expect(runPillDialog(context)).rejects.toThrow(
+              fragment('target row is still rendered'),
+            );
+            expect(state.batches).toEqual([11]);
+            expect(state.timelineReset).toBe(true);
+          },
+          module,
+        ),
+    );
+  }, 60_000);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Teardown, must-run steps and redaction                                     */
+/* -------------------------------------------------------------------------- */
+
+/** The structure of `runWhoReactedSuite` that the must-run steps depend on (rule d). */
+function runnerShape(source) {
+  const tree = treeOf(source);
+  const runner = allNodes(tree).find(
+    (node) =>
+      ts.isFunctionDeclaration(node) &&
+      node.name?.text === 'runWhoReactedSuite',
+  );
+  expect(runner, 'runWhoReactedSuite is declared').toBeDefined();
+  const inside = allNodes(runner);
+  const stageCall = 'STAGE_RUNNERS[entry.id](context)';
+  const stageTry = inside
+    .filter(
+      (node) =>
+        ts.isTryStatement(node) &&
+        node.tryBlock.getText(tree).includes(stageCall),
+    )
+    .sort((a, b) => a.tryBlock.getWidth(tree) - b.tryBlock.getWidth(tree))[0];
+  const tryCalls = stageTry
+    ? allNodes(stageTry.tryBlock)
+        .filter(ts.isCallExpression)
+        .map((node) => node.getText(tree))
+    : [];
+  const firstDevice = inside.find(
+    (node) =>
+      ts.isCallExpression(node) &&
+      node.expression.getText(tree) === 'openMaestroDevice',
+  );
+  const outerTry = inside.find(ts.isTryStatement);
+  const outerFinally = outerTry?.finallyBlock?.statements.find(
+    ts.isIfStatement,
+  );
+  return {
+    finallyFirst: stageTry?.finallyBlock?.statements[0]?.getText(tree),
+    tryOrder: tryCalls,
+    cleanups: inside
+      .filter(
+        (node) =>
+          ts.isCallExpression(node) &&
+          node.expression.getText(tree) === 'guardedCleanup' &&
+          (!firstDevice || node.getStart(tree) < firstDevice.getStart(tree)),
+      )
+      .map((node) => node.arguments[0]?.getText(tree).slice(1, -1)),
+    outerFinally: outerFinally?.getText(tree),
+    throws: allNodes(tree)
+      .filter(ts.isThrowStatement)
+      .map((node) => node.getText(tree)),
+  };
+}
+
+const STAGE_THROW = 'throw redactStageFailure(entry.id, failures, secrets);';
+
+function assertRunnerShape(shape) {
+  expect(shape.finallyFirst).toBe(
+    'if (await finishWhoReactedStage(client, device, failures)) safety.cleanupFailed = true;',
+  );
+  const positions = [
+    'STAGE_RUNNERS[entry.id](context)',
+    'assertWhoReactedRecords(entry.id, records)',
+    "client.capture('passed')",
+  ].map((call) => shape.tryOrder.indexOf(call));
+  expect(positions[0]).toBeGreaterThan(-1);
+  expect(positions[1]).toBeGreaterThan(positions[0]);
+  expect(positions[2]).toBeGreaterThan(positions[1]);
+  expect(shape.cleanups).toEqual([
+    'Scan who-reacted diagnostics',
+    'Scrub who-reacted diagnostics',
+  ]);
+  expect(shape.outerFinally).toBe(
+    'if (effectiveSignal.aborted) await revokeOnAbort?.();',
+  );
+  expect(shape.throws.filter((text) => text === STAGE_THROW)).toHaveLength(1);
+  expect(
+    shape.throws.filter((text) => /failures|AggregateError/u.test(text)),
+  ).toEqual([STAGE_THROW]);
+}
+
+describe('Android who-reacted teardown, must-run and redaction guards', () => {
+  const RUN = 'runq';
+  const READER = {
+    userId: '@pd-reader:localhost',
+    username: 'pd-reader',
+    password: 'reader-Pass-1!',
+  };
+  const ROOM = { id: '!Who_room:localhost', name: 'Who reacted runq' };
+  const EVENT = '$Who_event';
+
+  it('runs close then clear through finishWhoReactedStage, even when close throws', async () => {
+    const { finishWhoReactedStage } = await loadJourneys();
+    const order = [];
+    const client = {
+      close: async () => {
+        order.push('close');
+        throw new Error('close');
+      },
+    };
+    const device = {
+      clearApplicationData: async (id) => {
+        order.push(`clear:${id}`);
+      },
+    };
+    const failures = [];
+    expect(await finishWhoReactedStage(client, device, failures)).toBe(true);
+    expect(order).toEqual(['close', 'clear:eu.qwky.trinity']);
+    expect(failures).toHaveLength(1);
+  });
+
+  it('reports no cleanup failure when both teardown steps succeed', async () => {
+    const { finishWhoReactedStage, whoReactedTeardown } = await loadJourneys();
+    const failures = [];
+    expect(
+      await finishWhoReactedStage(
+        { close: async () => {} },
+        { clearApplicationData: async () => {} },
+        failures,
+      ),
+    ).toBe(false);
+    expect(failures).toHaveLength(0);
+    expect(
+      whoReactedTeardown(
+        { close: async () => {} },
+        { clearApplicationData: async () => {} },
+      ),
+    ).toHaveLength(2);
+  });
+
+  it('rethrows stage failures to the job log as redacted first lines only', async () => {
+    const c = await loadContract();
+    const { whoReactedSecrets } = await loadArtifacts();
+    const { redactStageFailure, redactCleanupFailure } = await loadJourneys();
+    const { AssertionError } = await import('node:assert');
+    const secrets = whoReactedSecrets('pill-dialog', {
+      accounts: [READER],
+      rooms: [ROOM],
+      texts: [c.bodyOf(RUN)],
+      eventIds: [EVENT],
+      transactions: [c.targetTxnOf(RUN)],
+    });
+    const failure = new AssertionError({
+      actual: EVENT,
+      expected: '$Who_expected',
+      operator: 'strictEqual',
+      message: `The row is the proved server event ${EVENT} ${ROOM.id} ${READER.password}`,
+    });
+    const error = redactStageFailure(
+      'pill-dialog',
+      [new AggregateError([failure], 'Native action failed')],
+      secrets,
+    );
+    expect(error).not.toBeInstanceOf(AggregateError);
+    expect(error.message).toContain('Android who-reacted pill-dialog failed');
+    expect(error.message).toContain('[REDACTED]');
+    for (const value of [EVENT, ROOM.id, READER.password, '$Who_expected'])
+      expect(error.message).not.toContain(value);
+    expect(error.message).not.toContain('actual');
+    const [firstLine, ...appended] = failure.message.split('\n');
+    expect(error.message.split('\n')).toContain(
+      `AssertionError: ${firstLine.replace(EVENT, '[REDACTED]').replace(ROOM.id, '[REDACTED]').replace(READER.password, '[REDACTED]')}`,
+    );
+    for (const line of appended.map((fragmentLine) => fragmentLine.trim()))
+      if (line.length >= 3) expect(error.message).not.toContain(line);
+    expect(
+      redactCleanupFailure(
+        'fixtures',
+        Object.assign(new Error(`leave ${ROOM.id}`), { status: 403 }),
+      ).message,
+    ).toBe('Who-reacted cleanup failed: fixtures (Error HTTP 403)');
+  });
+
+  it('marks a failed guarded cleanup, blocks publication and rethrows an id-free error', async () => {
+    const { guardWhoReactedCleanup } = await loadJourneys();
+    const registered = [];
+    const state = {
+      safety: {
+        unsafeSecrets: false,
+        cleanupFailed: false,
+        scrubFailed: false,
+      },
+      report: {
+        status: 'passed',
+        stages: [{ status: 'passed', failureCount: 0 }],
+      },
+      saves: 0,
+      async save() {
+        this.saves++;
+      },
+    };
+    guardWhoReactedCleanup(
+      (label, action) => registered.push({ label, action }),
+      state,
+    )('Room cleanup', async () => {
+      throw new Error(`forget ${ROOM.id}`);
+    });
+    await expect(registered[0].action()).rejects.toThrow(
+      'Who-reacted cleanup failed: Room cleanup (Error)',
+    );
+    expect(state.safety.cleanupFailed).toBe(true);
+    expect(state.report.status).toBe('failed');
+    expect(state.report.stages[0]).toMatchObject({
+      status: 'failed',
+      failureCount: 1,
+    });
+    expect(state.report.stages[0].error).toContain(ROOM.id);
+    expect(state.saves).toBe(1);
+    const early = { ...state, report: { status: 'running', stages: [] } };
+    const later = [];
+    guardWhoReactedCleanup((label, action) => later.push(action), early)(
+      'Device',
+      async () => {
+        throw new Error('device');
+      },
+    );
+    await expect(later[0]()).rejects.toThrow();
+    expect(early.report.cleanupErrors).toHaveLength(1);
+  });
+
+  it('keeps every must-run step of the runner in place [rule d]', () => {
+    const shape = runnerShape(read(JOURNEYS));
+    assertRunnerShape(shape);
+    expect(shape.cleanups).toHaveLength(2);
+  });
+
+  const FINISH =
+    'if (await finishWhoReactedStage(client, device, failures)) safety.cleanupFailed = true;';
+  const MUTATIONS = {
+    'delete the finishWhoReactedStage statement': (source) =>
+      editRunner(source, (found, text, tree) => [
+        [found(statementStartingWith(FINISH, tree)), ''],
+      ]),
+    'move finishWhoReactedStage into the try': (source) =>
+      editRunner(source, (found, text, tree) => {
+        const finish = found(statementStartingWith(FINISH, tree));
+        const stageRun = found(
+          statementStartingWith('await STAGE_RUNNERS[entry.id](context)', tree),
+        );
+        return [
+          [finish, ''],
+          [stageRun, `${text(stageRun)}\n              ${FINISH}`],
+        ];
+      }),
+    'delete the Scan guardedCleanup registration': (source) =>
+      editRunner(source, (found, text, tree) => [
+        [
+          found(
+            statementStartingWith("guardedCleanup('Scan who-reacted", tree),
+          ),
+          '',
+        ],
+      ]),
+    'delete the Scrub guardedCleanup registration': (source) =>
+      editRunner(source, (found, text, tree) => [
+        [
+          found(
+            statementStartingWith("guardedCleanup('Scrub who-reacted", tree),
+          ),
+          '',
+        ],
+      ]),
+    'swap the two guardedCleanup registrations': (source) =>
+      editRunner(source, (found, text, tree) => {
+        const scan = found(
+          statementStartingWith("guardedCleanup('Scan who-reacted", tree),
+        );
+        const scrub = found(
+          statementStartingWith("guardedCleanup('Scrub who-reacted", tree),
+        );
+        return [
+          [scan, text(scrub)],
+          [scrub, text(scan)],
+        ];
+      }),
+    'delete the revokeOnAbort line': (source) =>
+      editRunner(source, (found, text, tree) => [
+        [
+          found(statementStartingWith('if (effectiveSignal.aborted)', tree)),
+          '',
+        ],
+      ]),
+    "delete client.capture('passed')": (source) =>
+      editRunner(source, (found, text, tree) => [
+        [
+          found(statementStartingWith("await client.capture('passed')", tree)),
+          '',
+        ],
+      ]),
+    'delete assertWhoReactedRecords': (source) =>
+      editRunner(source, (found, text, tree) => [
+        [
+          found(
+            statementStartingWith(
+              'assertWhoReactedRecords(entry.id, records)',
+              tree,
+            ),
+          ),
+          '',
+        ],
+      ]),
+    'swap capture with assertWhoReactedRecords': (source) =>
+      editRunner(source, (found, text, tree) => {
+        const check = found(
+          statementStartingWith(
+            'assertWhoReactedRecords(entry.id, records)',
+            tree,
+          ),
+        );
+        const capture = found(
+          statementStartingWith("await client.capture('passed')", tree),
+        );
+        return [
+          [check, text(capture)],
+          [capture, text(check)],
+        ];
+      }),
+    'replace the throw line with throw failures[0]': (source) =>
+      editRunner(source, (found, text) => [
+        [
+          found(
+            (node) => ts.isThrowStatement(node) && text(node) === STAGE_THROW,
+          ),
+          'throw failures[0];',
+        ],
+      ]),
+  };
+  for (const [name, mutate] of Object.entries(MUTATIONS))
+    it(`fails the must-run guard when you ${name}`, () => {
+      const source = read(JOURNEYS);
+      const mutated = mutate(source);
+      expect(mutated).not.toBe(source);
+      expect(() => assertRunnerShape(runnerShape(mutated))).toThrow();
+    });
+
+  it('keeps every reaction id registered before the next send [rule d]', async () => {
+    // Behavioural: the simulated stage snapshots the registration before each send.
+    await withSimulatedStage({}, async ({ context, state, runPillDialog }) => {
+      await runPillDialog(context);
+      expect(state.registeredBeforeSend).toEqual(Array(36).fill(true));
+    });
+    // Effective mutation: registering the id after its record leaves the next send unregistered.
+    const source = read(JOURNEYS);
+    const mutated = editRunner(source, (found, text, tree) => {
+      const register = found(
+        statementStartingWith('protect(context, { eventIds: [id] });', tree),
+      );
+      return [[register, '']];
+    });
+    expect(mutated).not.toBe(source);
+    await withMutatedJourneys({ journeys: mutated }, (module) =>
+      withSimulatedStage(
+        { readMs: 4_000 },
+        async ({ context, state, runPillDialog }) => {
+          await runPillDialog(context).catch(() => undefined);
+          expect(state.registeredBeforeSend.includes(false)).toBe(true);
+        },
+        module,
+      ),
+    );
+  }, 60_000);
+
+  it('registers every pre-UI identifier before the native reset [rule d]', async () => {
+    const source = read(JOURNEYS);
+    const mutated = editRunner(source, (found, text, tree) => [
+      [
+        found(
+          statementStartingWith(
+            'protect(context, { rooms: [{ name: roomName }], texts: [body, longName],',
+            tree,
+          ),
+        ),
+        '',
+      ],
+    ]);
+    expect(mutated).not.toBe(source);
+    await withMutatedJourneys({ journeys: mutated }, (module) =>
+      withSimulatedStage(
+        { readMs: 4_000 },
+        async ({ context, state, runPillDialog }) => {
+          await runPillDialog(context).catch(() => undefined);
+          expect(state.secretsAtReset).not.toContain(SIM_BODY);
+        },
+        module,
+      ),
+    );
+  }, 60_000);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Source rules: contract, observer, artifacts and journeys                   */
+/* -------------------------------------------------------------------------- */
+
+const BANNED_TOKENS = [
+  '.click(',
+  '.tap(',
+  '.focus(',
+  'dispatchEvent',
+  '.value =',
+  'textContent =',
+  '.style.',
+  'classList.add',
+  'classList.remove',
+  'classList.toggle',
+  'scrollLeft =',
+  'scrollTop =',
+  'scrollTo(',
+  'scrollBy(',
+  'scrollIntoView(',
+  'setViewportSize',
+  '.resize(',
+  'location.',
+  'history.',
+  '.fill(',
+  '.press(',
+  'localStorage',
+  'Preferences.set',
+  'requestSubmit',
+  '.submit(',
+  'preventDefault',
+  'stopPropagation',
+  'select(',
+  'showReactors',
+  'toggleReaction',
+  'open$(',
+  'new SharedStageAccount(',
+  'input_method',
+  'dumpsys',
+];
+/** `view.location.href` is a read-only observation; the bare forms are not. */
+const BARE_TOKENS = new Set(['location.', 'history.']);
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+const tokenPresent = (source, token) =>
+  BARE_TOKENS.has(token)
+    ? new RegExp(`(^|[^.\\w])${escapeRegExp(token)}`, 'mu').test(source)
+    : source.includes(token);
+
+function assertNoBannedTokens(source, name) {
+  for (const token of BANNED_TOKENS)
+    expect(
+      tokenPresent(source, token),
+      `${name} must not contain ${token}`,
+    ).toBe(false);
+}
+
+/** Native input, or a helper that performs one, or a REST send that a window follows. */
+const NATIVE_CALLS = new Set([
+  'tap',
+  'tapCurrent',
+  'scrollIntoViewIfNeeded',
+  'hideKeyboard',
+  'login',
+  'reset',
+  'runFlow',
+  'pressHostBack',
+  'swipeDirectory',
+  'sendReaction',
+  'sendMessage',
+  'arrangeStage',
+  'openArrangedRoom',
+  'enterRoom',
+  'sendPacedReactions',
+  'revealAndOpenDialog',
+]);
+const calleeName = (node, tree) =>
+  node.expression.getText(tree).split('.').at(-1);
+const enclosingFunction = (node) => {
+  for (let at = node.parent; at; at = at.parent)
+    if (ts.isFunctionDeclaration(at)) return at;
+  return undefined;
+};
+/** Helpers that return the native call's `Date.now()` anchor. */
+const ANCHORING_HELPERS = new Set(['tap', 'pressHostBack', 'swipeDirectory']);
+const DIRECT_NATIVE = ['tapCurrent', 'scrollIntoViewIfNeeded', 'runFlow'];
+
+/**
+ * Every direct native tap, scroll or flow either sits in an anchoring helper and is
+ * followed by `return Date.now();`, or is followed by `const x = Date.now();` (or by
+ * the next anchoring native call, which anchors every later window itself).
+ */
+function assertTapsAnchorDateNow(source) {
+  const tree = treeOf(source);
+  let checked = 0;
+  for (const node of allNodes(tree)) {
+    if (
+      !ts.isCallExpression(node) ||
+      !DIRECT_NATIVE.includes(calleeName(node, tree))
+    )
+      continue;
+    checked++;
+    let statement = node;
+    while (statement.parent && !ts.isBlock(statement.parent))
+      statement = statement.parent;
+    const siblings = statement.parent.statements;
+    const next = siblings[siblings.indexOf(statement) + 1];
+    const inHelper = ANCHORING_HELPERS.has(
+      enclosingFunction(node)?.name?.text ?? '',
+    );
+    if (inHelper) {
+      expect(
+        next?.getText(tree),
+        `${node.getText(tree)} in its helper is followed by return Date.now()`,
+      ).toBe('return Date.now();');
+      continue;
+    }
+    const initializer =
+      next && ts.isVariableStatement(next)
+        ? next.declarationList.declarations[0].initializer?.getText(tree)
+        : undefined;
+    expect(
+      initializer !== undefined &&
+        (initializer === 'Date.now()' ||
+          /^await (tap|pressHostBack)\(/u.test(initializer)),
+      `${node.getText(tree)} is followed by a Date.now() anchor`,
+    ).toBe(true);
+  }
+  expect(checked, 'the journeys have native calls').toBeGreaterThan(2);
+}
+
+/** No window anchor (`left(bound, anchor)`, `server(…, anchor, …)`, `timeoutMs: anchor`) was assigned before a native call it waits on. */
+function assertWindowsAnchoredAfterNativeCalls(
+  source,
+  functionName,
+  minimumWindows,
+) {
+  const tree = treeOf(source);
+  const stage = allNodes(tree).find(
+    (node) =>
+      ts.isFunctionDeclaration(node) && node.name?.text === functionName,
+  );
+  expect(stage, `${functionName} is declared`).toBeDefined();
+  const inside = allNodes(stage);
+  const natives = inside.filter(
+    (node) =>
+      ts.isCallExpression(node) && NATIVE_CALLS.has(calleeName(node, tree)),
+  );
+  const declarationOf = (name) =>
+    inside.find(
+      (node) =>
+        ts.isVariableDeclaration(node) && node.name.getText(tree) === name,
+    );
+  let windows = 0;
+  for (const node of inside) {
+    const anchors = [];
+    if (ts.isCallExpression(node) && node.expression.getText(tree) === 'left')
+      anchors.push(...allNodes(node.arguments[1]).filter(ts.isIdentifier));
+    if (ts.isCallExpression(node) && node.expression.getText(tree) === 'server')
+      anchors.push(...allNodes(node.arguments[3]).filter(ts.isIdentifier));
+    if (
+      ts.isPropertyAssignment(node) &&
+      node.name.getText(tree) === 'timeoutMs'
+    )
+      anchors.push(...allNodes(node.initializer).filter(ts.isIdentifier));
+    for (const anchor of anchors) {
+      const declaration = declarationOf(anchor.text);
+      if (!declaration) continue;
+      windows++;
+      const between = natives.filter(
+        (call) =>
+          call.getStart(tree) > declaration.getEnd() &&
+          call.getEnd() < anchor.getStart(tree),
+      );
+      expect(
+        between.map((call) => call.getText(tree)),
+        `the ${anchor.text} anchor is assigned after every native call before its window`,
+      ).toEqual([]);
+    }
+  }
+  expect(
+    windows,
+    `${functionName} has anchored windows`,
+  ).toBeGreaterThanOrEqual(minimumWindows);
+}
+
+/** Each function that owns windows, with its minimum count of anchored ones. */
+const WINDOW_OWNERS = [
+  ['runPillDialog', 3],
+  ['openArrangedRoom', 1],
+  ['enterRoom', 2],
+  ['sendPacedReactions', 1],
+  ['revealAndOpenDialog', 1],
+];
+
+describe('Android who-reacted source rules', () => {
+  const TARGETS = {
+    contract: CONTRACT_PATH,
+    observer: OBSERVER_PATH,
+    artifacts: 'e2e/android/who-reacted-artifacts.mts',
+    journeys: JOURNEYS,
+  };
+
+  it('keeps the contract, observer, artifacts and journeys free of every banned token', () => {
+    for (const path of Object.values(TARGETS))
+      assertNoBannedTokens(read(path), path);
+  });
+
+  it('allows the observer read-only view.location.href but not a bare location.', () => {
+    expect(read(OBSERVER_PATH)).toContain('view.location.href');
+    expect(tokenPresent('const url = view.location.href;', 'location.')).toBe(
+      false,
+    );
+    expect(tokenPresent('  location.assign(x)', 'location.')).toBe(true);
+    expect(tokenPresent('(history.back())', 'history.')).toBe(true);
+    expect(tokenPresent('window.history.back()', 'history.')).toBe(false);
+  });
+
+  it('shows each banned-token rule effective under an in-memory insertion in every source', () => {
+    for (const path of Object.values(TARGETS)) {
+      const source = read(path);
+      for (const token of BANNED_TOKENS)
+        expect(
+          () => assertNoBannedTokens(`${source}\n${token}`, path),
+          `${path} + ${token}`,
+        ).toThrow();
+    }
+  });
+
+  it('anchors every native tap, scroll and flow with a Date.now() capture', () => {
+    const journeys = read(JOURNEYS);
+    assertTapsAnchorDateNow(journeys);
+    const cases = [
+      [
+        'await client.scrollIntoViewIfNeeded(WHO, TIMELINE, { within });\n  const tappedAt = await tap(context, WHO, { within });',
+        'await client.scrollIntoViewIfNeeded(WHO, TIMELINE, { within });\n  await client.hideKeyboard();\n  const tappedAt = await tap(context, WHO, { within });',
+      ],
+      [
+        'await client.scrollIntoViewIfNeeded(WHO, TIMELINE, { within });\n  const tappedAt = await tap(context, WHO, { within });',
+        'await client.scrollIntoViewIfNeeded(WHO, TIMELINE, { within });\n  const tappedAt = 0;',
+      ],
+      [
+        'await client.device.runFlow(join(client.workspaceRoot, BACK_FLOW), { APP_ID: APPLICATION_ID });\n  return Date.now();',
+        'await client.device.runFlow(join(client.workspaceRoot, BACK_FLOW), { APP_ID: APPLICATION_ID });\n  return 0;',
+      ],
+      [
+        'await context.client.tapCurrent(selector, filter);\n  return Date.now();',
+        'await context.client.tapCurrent(selector, filter);\n  return 0;',
+      ],
+    ];
+    for (const [from, to] of cases) {
+      expect(journeys).toContain(from);
+      expect(() =>
+        assertTapsAnchorDateNow(journeys.replace(from, to)),
+      ).toThrow();
+    }
+    expect(() =>
+      assertTapsAnchorDateNow(
+        `${journeys}\nasync function sneaky(client: AccountWorkspaceClient): Promise<void> {\n  await client.tapCurrent('x', {});\n}\n`,
+      ),
+    ).toThrow();
+    expect(() =>
+      assertTapsAnchorDateNow(
+        `${journeys}\nasync function sneaky(client: AccountWorkspaceClient): Promise<void> {\n  await client.device.runFlow('x', {});\n}\n`,
+      ),
+    ).toThrow();
+  });
+
+  it('never anchors a window before a native call or send it waits on', () => {
+    const journeys = read(JOURNEYS);
+    for (const [name, minimum] of WINDOW_OWNERS)
+      assertWindowsAnchoredAfterNativeCalls(journeys, name, minimum);
+    const cases = [
+      [
+        'runPillDialog',
+        "const heartAt = await tap(context, KEY, { text: '❤️' });",
+        "const heartAt = Date.now();\n  await tap(context, KEY, { text: '❤️' });",
+      ],
+      [
+        'runPillDialog',
+        'const backAt = await pressHostBack(context);',
+        'const backAt = Date.now();\n  await pressHostBack(context);',
+      ],
+      [
+        'runPillDialog',
+        'const lastSentAt = await sendPacedReactions(context, a);',
+        'const lastSentAt = Date.now();\n  await sendPacedReactions(context, a);',
+      ],
+      [
+        'revealAndOpenDialog',
+        'const tappedAt = await tap(context, WHO, { within });',
+        'const tappedAt = Date.now();\n  await tap(context, WHO, { within });',
+      ],
+      [
+        'enterRoom',
+        "const openedAt = await tap(context, '.channel', { text: a.roomName });",
+        "const openedAt = Date.now();\n  await tap(context, '.channel', { text: a.roomName });",
+      ],
+      [
+        'enterRoom',
+        'const railAt = await tap(context, RAIL);',
+        'const railAt = Date.now();\n  await tap(context, RAIL);',
+      ],
+      [
+        'openArrangedRoom',
+        "await enterRoom(context, a, 'room-open');\n  const readyAt = Date.now();",
+        "const readyAt = Date.now();\n  await enterRoom(context, a, 'room-open');",
+      ],
+      ['sendPacedReactions', '    const sentAt = lastSentAt;\n', ''],
+    ];
+    for (const [name, from, to] of cases) {
+      expect(journeys).toContain(from);
+      let mutated = journeys.replace(from, to);
+      if (name === 'sendPacedReactions')
+        // The gate anchor moves before the group's sends.
+        mutated = mutated.replace(
+          'for (const entry of plan.slice(start, start + REACTION_GROUP)) {',
+          'const sentAt = Date.now();\n    for (const entry of plan.slice(start, start + REACTION_GROUP)) {',
+        );
+      expect(mutated).not.toBe(journeys);
+      const minimum = WINDOW_OWNERS.find(([owner]) => owner === name)[1];
+      expect(
+        () => assertWindowsAnchoredAfterNativeCalls(mutated, name, minimum),
+        `${name}: ${from}`,
+      ).toThrow();
+    }
   });
 });
