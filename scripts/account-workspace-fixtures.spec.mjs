@@ -401,6 +401,165 @@ describe('account workspace fixtures', () => {
     );
   });
 
+  it('reads one Room unread count from an initial or incremental sync without exposing the token', async () => {
+    createNodeAccount.mockResolvedValue(account('reader'));
+    const bodies = [
+      {
+        next_batch: 's1',
+        rooms: {
+          join: {
+            '!room:test': {
+              unread_notifications: {
+                notification_count: 1,
+                highlight_count: 0,
+              },
+              timeline: { events: [{ event_id: '$answer' }] },
+            },
+          },
+        },
+      },
+      {
+        next_batch: 's2',
+        rooms: {
+          join: {
+            '!room:test': {
+              unread_notifications: {
+                notification_count: 2,
+                highlight_count: 0,
+              },
+              timeline: { events: [{ event_id: '$probe' }] },
+            },
+          },
+        },
+      },
+      { next_batch: 's3' },
+      {
+        next_batch: 's4',
+        rooms: { join: { '!room:test': { timeline: { events: [] } } } },
+      },
+    ];
+    globalThis.fetch = vi.fn(async (url, init) => {
+      fetchCalls.push({ url, init });
+      if (url.endsWith('/login'))
+        return response({
+          user_id: '@user-reader:test',
+          access_token: 'secret-reader-token',
+        });
+      return response(bodies.shift());
+    });
+    const fixtures = createAccountFixtures(
+      resources(),
+      new AbortController().signal,
+    );
+    const reader = await fixtures.account('reader');
+
+    const initial = await fixtures.roomUnreadSync(reader, '!room:test');
+    const incremental = await fixtures.roomUnreadSync(
+      reader,
+      '!room:test',
+      's1/x',
+    );
+    const empty = await fixtures.roomUnreadSync(reader, '!room:test', 's2');
+    expect(initial).toEqual({
+      since: null,
+      nextBatch: 's1',
+      room: {
+        notificationCount: 1,
+        highlightCount: 0,
+        timelineEventIds: ['$answer'],
+      },
+    });
+    expect(incremental).toEqual({
+      since: 's1/x',
+      nextBatch: 's2',
+      room: {
+        notificationCount: 2,
+        highlightCount: 0,
+        timelineEventIds: ['$probe'],
+      },
+    });
+    expect(empty).toEqual({ since: 's2', nextBatch: 's3' });
+    await expect(
+      fixtures.roomUnreadSync(reader, '!room:test', 's3'),
+    ).rejects.toThrow('Matrix fixture sync unread notifications');
+    await expect(
+      fixtures.roomUnreadSync(reader, '!room:test', ''),
+    ).rejects.toThrow('non-empty since');
+    const gets = fetchCalls.slice(1).map(({ url, init }) => {
+      const parsed = new URL(url);
+      return [
+        parsed.pathname,
+        parsed.search,
+        init.method,
+        init.headers.Authorization,
+      ];
+    });
+    expect(gets).toEqual([
+      [
+        '/_matrix/client/v3/sync',
+        '?timeout=0',
+        'GET',
+        'Bearer secret-reader-token',
+      ],
+      [
+        '/_matrix/client/v3/sync',
+        '?since=s1%2Fx&timeout=0',
+        'GET',
+        'Bearer secret-reader-token',
+      ],
+      [
+        '/_matrix/client/v3/sync',
+        '?since=s2&timeout=0',
+        'GET',
+        'Bearer secret-reader-token',
+      ],
+      [
+        '/_matrix/client/v3/sync',
+        '?since=s3&timeout=0',
+        'GET',
+        'Bearer secret-reader-token',
+      ],
+    ]);
+    expect(JSON.stringify({ initial, incremental, empty })).not.toContain(
+      'secret-reader-token',
+    );
+  });
+
+  it('keeps roomUnreadSync a read-only GET that never returns the token', async () => {
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync(
+      new URL('../e2e/android/account-workspace-fixtures.mts', import.meta.url),
+      'utf8',
+    );
+    const bodyOf = (text) => {
+      const start = text.indexOf('  async function roomUnreadSync(');
+      expect(start).toBeGreaterThan(-1);
+      return text.slice(start, text.indexOf('\n  }\n', start));
+    };
+    const readOnly = (body) => {
+      expect(body).toContain('await get(access(observer), `/sync?${query}`)');
+      expect(body).not.toMatch(
+        /request\(|'POST'|'PUT'|'DELETE'|\.token\b|access_token|Authorization|console\./u,
+      );
+    };
+    readOnly(bodyOf(source));
+    expect(source).toContain('    roomUnreadSync,\n');
+    for (const [from, to] of [
+      [
+        'await get(access(observer), `/sync?${query}`)',
+        "await request(access(observer), `/sync?${query}`, 'POST', {})",
+      ],
+      [
+        'nextBatch,\n      room: {',
+        'nextBatch,\n      token: access(observer).token,\n      room: {',
+      ],
+    ]) {
+      const mutated = source.replace(from, to);
+      expect(mutated).not.toBe(source);
+      expect(() => readOnly(bodyOf(mutated))).toThrow();
+    }
+  });
+
   it('reads joined room IDs through an authenticated GET without returning token fields', async () => {
     createNodeAccount.mockResolvedValue(account('owner'));
     globalThis.fetch = vi.fn(async (url, init) => {

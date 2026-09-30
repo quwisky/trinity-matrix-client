@@ -104,6 +104,22 @@ export interface WorkspaceMessageActionSheetReaction {
 
 export type WorkspaceRoomNotificationMode = 'all' | 'mentions' | 'mute';
 
+/** One Room's entry in a `/sync` response, as the homeserver computed it for the observer. */
+export interface WorkspaceRoomUnread {
+  readonly notificationCount: number;
+  readonly highlightCount: number;
+  /** The Room's timeline event ids in this response, oldest first. */
+  readonly timelineEventIds: readonly string[];
+}
+
+/** One `/sync` read: the `since` it sent (`null` for an initial sync) and its `next_batch`. */
+export interface WorkspaceUnreadSync {
+  readonly since: string | null;
+  readonly nextBatch: string;
+  /** Absent when this response carries no entry for the Room. */
+  readonly room?: WorkspaceRoomUnread;
+}
+
 interface AccessSession {
   readonly account: NodeWorkspaceAccount;
   readonly token: string;
@@ -311,6 +327,11 @@ export function createAccountFixtures(
     observer: NodeWorkspaceAccount,
     roomId: string,
   ): Promise<readonly Readonly<Record<string, unknown>>[]>;
+  roomUnreadSync(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+    since?: string,
+  ): Promise<WorkspaceUnreadSync>;
   resolveRoomAlias(
     observer: NodeWorkspaceAccount,
     alias: string,
@@ -1349,6 +1370,55 @@ export function createAccountFixtures(
     );
   }
 
+  /**
+   * One non-blocking `/sync` as the observer's fixture session, with exactly
+   * the query the quote-notification predecessor sends: `timeout=0`, plus
+   * `since` for an incremental read. It returns the Room's
+   * `unread_notifications` and timeline event ids; the token stays in this closure.
+   */
+  async function roomUnreadSync(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+    since?: string,
+  ): Promise<WorkspaceUnreadSync> {
+    assert(since === undefined || since.length > 0,
+      'An incremental Matrix fixture sync needs a non-empty since token');
+    const query = since === undefined
+      ? 'timeout=0'
+      : `since=${encodeURIComponent(since)}&timeout=0`;
+    const response = record(
+      await get(access(observer), `/sync?${query}`),
+      'Matrix fixture sync response',
+    );
+    const nextBatch = stringField(response, 'next_batch', 'Matrix fixture sync next batch');
+    const rooms = record(response['rooms'] ?? {}, 'Matrix fixture sync rooms');
+    const joined = record(rooms['join'] ?? {}, 'Matrix fixture sync joined rooms');
+    if (joined[roomId] === undefined) return { since: since ?? null, nextBatch };
+    const room = record(joined[roomId], 'Matrix fixture sync room');
+    const unread = record(room['unread_notifications'],
+      'Matrix fixture sync unread notifications');
+    const count = (field: string): number => {
+      const value = unread[field];
+      assert(typeof value === 'number' && Number.isSafeInteger(value) && value >= 0,
+        `Matrix fixture sync ${field}`);
+      return value;
+    };
+    const timeline = record(room['timeline'] ?? {}, 'Matrix fixture sync timeline');
+    const events = timeline['events'] ?? [];
+    assert(Array.isArray(events), 'Matrix fixture sync timeline events');
+    return {
+      since: since ?? null,
+      nextBatch,
+      room: {
+        notificationCount: count('notification_count'),
+        highlightCount: count('highlight_count'),
+        timelineEventIds: events.map((event, index) => stringField(
+          record(event, `Matrix fixture sync timeline event ${index}`),
+          'event_id', 'Matrix fixture sync timeline event id')),
+      },
+    };
+  }
+
   /** Cleanup may supply its own bounded signal after the invocation is cancelled. */
   async function joinedRoomIds(
     observer: NodeWorkspaceAccount,
@@ -1442,6 +1512,7 @@ export function createAccountFixtures(
     roomEvent,
     roomMessages,
     roomReceipts,
+    roomUnreadSync,
     resolveRoomAlias,
     allowEndedMembershipCleanup,
     trackRoomMembership,
