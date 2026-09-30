@@ -404,6 +404,8 @@ export async function runQuotedDisplayName(context: QuoteNotificationStageContex
   // 143–150: the reader's token, then the writer's plain probe.
   const token = await fixtures.roomUnreadSync(reader, room.id);
   const since = token.nextBatch;
+  // The fixture error text for a failed poll carries `since=<token>` to the ungated job log.
+  protect(context, { texts: since ? [since] : [] });
   await receipt(context, 'sync-token', { established: since.length > 0,
     baseline: token.room ? { notificationCount: token.room.notificationCount, highlightCount: token.room.highlightCount } : null });
   const probeId = await fixtures.sendMessage(writer, room.id, probe, probeTxn(run));
@@ -660,7 +662,6 @@ export async function runQuoteNotificationSuite(testContext: TestContext): Promi
               },
             };
             try {
-              protect(context, {});
               await STAGE_RUNNERS[entry.id](context);
               assertQuoteNotificationRecords(entry.id, records);
               await client.capture('passed');

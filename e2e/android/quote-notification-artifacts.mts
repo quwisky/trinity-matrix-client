@@ -36,10 +36,10 @@ export interface QuoteNotificationSecretIds {
     readonly password: string;
   }[];
   readonly rooms: readonly { readonly id?: string; readonly name?: string }[];
-  /** Run-scoped texts: the answer and the probe (never the fixed source body). */
+  /** Run-scoped texts: the answer, the probe and the reader sync token (never the fixed source body). */
   readonly texts: readonly string[];
   readonly eventIds: readonly string[];
-  /** Each transaction id is also one of the texts (D2), registered again for its own key. */
+  /** Each transaction id is derived from the run, not one of the texts; registered under its own key. */
   readonly transactions: readonly string[];
 }
 

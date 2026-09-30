@@ -276,11 +276,11 @@ function helperExpectLines(
 }
 
 /**
- * Expand a definition into parity sites by naively following every
- * module-local or `support/` call in its span. Unlike message-quote's guard,
- * this has no `isAndroidE2E` branch awareness: it is used here only to show
- * why the contract's site list is pinned by hand rather than derived from it
- * (the "expands only the Android branch" test, below).
+ * Expand a definition into parity sites by following every module-local or
+ * `support/` call in its span (AST-derived, rule (c)). Unlike message-quote's
+ * guard, this has no `isAndroidE2E` branch awareness, so its output is
+ * compared against the contract's site table with `toEqual` rather than
+ * trusted on its own.
  */
 function expandDefinition(source, span) {
   const [from, to] = span;
@@ -664,8 +664,8 @@ describe('Android quote-notification imported-export shape (ruled Q4)', () => {
     for (const path of [
       'e2e/android/quote-notification-contract.mts',
       'e2e/android/quote-notification-journeys.mts',
+      'e2e/android/quote-notification-artifacts.mts',
     ]) {
-      if (!existsSync(resolve(root, path))) continue;
       const tree = ts.createSourceFile(
         path,
         read(path),
@@ -1222,6 +1222,19 @@ describe('Android quote-notification diagnostics safety', () => {
 
       await arrange();
       await refused(report(), { flags: { ...flags, cleanupFailed: true } });
+
+      await arrange();
+      await refused(report(), { flags: { ...flags, scrubFailed: true } });
+
+      await arrange();
+      await refused(report(), { flags: { ...flags, unsafeSecrets: true } });
+
+      await arrange();
+      await writeFile(
+        join(output, 'quoted-display-name', 'failed.png'),
+        Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+      );
+      await refused(report()); // a raster survives the scrub
 
       await arrange();
       const secrets = artifacts.quoteNotificationSecrets(
@@ -1818,7 +1831,7 @@ async function simulatedQuoteNotificationApp(faults = {}) {
       if (since === undefined)
         return {
           since: null,
-          nextBatch: 'b1',
+          nextBatch: faults.sinceToken ?? 'b1',
           room: {
             notificationCount: 1,
             highlightCount: 0,
@@ -1827,6 +1840,10 @@ async function simulatedQuoteNotificationApp(faults = {}) {
         };
       if (state.probeReturn === undefined)
         throw new Error('Incremental sync before the probe');
+      if (faults.httpFailure)
+        throw new Error(
+          `Matrix fixture GET /sync?since=${since} failed with HTTP 502`,
+        );
       if (
         faults.notifyNever ||
         Date.now() - state.probeReturn < lagOf('notify')
@@ -2109,6 +2126,30 @@ describe('Android quote-notification native journey against a simulated installe
         },
       );
     }, 40_000);
+
+  it('keeps the incremental-sync token out of the redacted stage failure [since token]', async () => {
+    const { redactStageFailure } = await loadJourneys();
+    const since = 's72_4711_0815_42';
+    await withSimulatedStage(
+      { sinceToken: since, httpFailure: true },
+      async ({ context, runQuotedDisplayName }) => {
+        const error = await runQuotedDisplayName(context).then(
+          () => undefined,
+          (thrown) => thrown,
+        );
+        expect(error?.message).toContain(`since=${since}`);
+        expect(Object.values(context.secrets)).toContain(since);
+        const redacted = redactStageFailure(
+          'quoted-display-name',
+          [error],
+          context.secrets,
+        );
+        expect(redacted.message).toContain('failed with HTTP 502');
+        expect(redacted.message).not.toContain(since);
+        expect(redacted.message).not.toContain('4711');
+      },
+    );
+  }, 40_000);
 
   it('rejects an incremental sync read before the probe send [RF-1, journeys mutation]', async () => {
     const path = resolve(root, JOURNEYS);

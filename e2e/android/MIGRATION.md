@@ -8063,8 +8063,6 @@ Documented reinterpretations of the predecessor:
 - Both rows are the proved server events, compared by id and never printed.
 - The accepting incremental response must also hold the probe, and the highlight
   decision is read from it alone.
-- The predecessor's note that a full sync reports zeroes does not hold on
-  Synapse 1.161; the incremental requirement is kept.
 - The reader's `.channel__badge`, named in the predecessor's comment, is not
   observed: its code asserts the homeserver's counts, and so does the suite.
 - The 10 s and 15 s bounds become 20 s; every window is anchored after its event.
@@ -8075,6 +8073,8 @@ Known limitations:
   exercised on Android.
 - **Server rule sensitivity.** A run does not re-prove that the display-name rule
   would fire without `m.mentions`; the design probe showed it does on Synapse 1.161.
+- **Full-sync zeroes.** The predecessor's note that a full sync reports zeroes does
+  not hold on Synapse 1.161; the incremental requirement is kept.
 
 ```bash
 pnpm nx run trinity-e2e-android:quote-notification --skipNxCache
