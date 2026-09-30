@@ -8084,4 +8084,26 @@ pnpm e2e:android:quote-notification
 The target runs one attempt with zero retries, a 15-minute Node test and a
 20-minute CI wrapper. Shard 3 runs it last, after pinned-message-panel; its budget comment adds the 3-minute local run time (about 84 native minutes of the 240-minute job).
 
+Local acceptance used the unchanged Pixel 5 profile, renderer manifest
+`f13dbcdc39b767623ba760d505de9ed34e6d78de87bb5ca24a5c155b01897f01`, debug APK
+`8794d1c6cce0109773dd903a2d4653da22c0dbfe595c1923311b58bf90e14661`
+(installed digest equal) and profile
+`3bacc567648982dd6b92b0e62b085908ad33cdced196ac6776d397a3a5d65157`. Three
+consecutive first-attempt passes at `c8e6f4a8`, each 1/1 stage, 8/8 records,
+attempt 1, retries 0 and publication-safe, are invocations
+`munha15p-cf6f76d3-a0c0-4e1d-a073-4aa2edf216d7` (2 m 29 s),
+`munhd7pn-b716a842-441f-4d7a-9ad1-b8ceec09caa0` (2 m 24 s) and
+`munhgcps-a77e54cd-f76a-43fb-afce-98d4ff4b98ba` (2 m 25 s). In every run the
+decision counts were: baseline 1 notification and 0 highlights,
+`notification-positive` 2 with the probe in the sync, and `highlight-zero` 0 with
+2 notifications from the same response. The incremental read count and the
+slowest tap are not recorded in the artifacts, so they are not reported; no
+window timed out. The leak grep found no identifier, token or raster; its only
+hits were Java class names (`$$ExternalSyntheticLambda…`,
+`-$$Nest$mdumpAsStringNoCheck`) in the device logcat, and the `"password"` tap-point
+key, whose value is `[REDACTED]`.
+
+The browser predecessor passed at retry 0 (1 passed, one worker) in invocation
+`munhkfdf-c2676c7b-be18-4fd4-8324-d93d8ac947cd`; the predecessor file is unchanged.
+
 Predecessor status: enabled; after hosted acceptance the coordinator keeps the file as a desktop-only definition, skipped on Android (#839).
