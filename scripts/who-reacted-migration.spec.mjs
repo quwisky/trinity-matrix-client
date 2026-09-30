@@ -31,8 +31,12 @@ const digest = (path) => sha256(readFileSync(resolve(root, path)));
 const PREDECESSOR = 'e2e/browser/journeys/conversations/reactions-who.spec.mts';
 const predecessor = PREDECESSOR;
 const NAVIGATION = 'e2e/support/journeys/navigation.mts';
+/** The canonical bytes: the dd0cb53c blob. */
 const SOURCE_SHA256 =
   'dce976ac883e07e14850bfee43cf50050b1b1f334174ba742ca530e2b0dc9b8a';
+/** The working tree after the #759 retirement: the desktop-only general definition and the Pixel 5 one. */
+const WORKING_TREE_SHA256 =
+  'be60fe7cb441be52354c429c841003154efeb72b43c0156f59b6491e52966d1f';
 const SHARED_SHA256 = {
   'e2e/support/app.mts':
     '60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3',
@@ -850,11 +854,11 @@ function naiveExpand(source, span) {
 }
 
 describe('Android who-reacted predecessor pins', () => {
-  it('pins the dd0cb53c blob and the working tree at one hash, byte-equal, and four shared sources', () => {
+  it('pins the dd0cb53c blob, the retired working tree and four shared sources', () => {
     expect(RETIRED_PREDECESSOR_COMMIT.startsWith('dd0cb53c')).toBe(true);
     expect(sha256(blob())).toBe(SOURCE_SHA256);
-    expect(sha256(read(PREDECESSOR))).toBe(SOURCE_SHA256);
-    expect(read(PREDECESSOR) === blob()).toBe(true);
+    expect(sha256(read(PREDECESSOR))).toBe(WORKING_TREE_SHA256);
+    expect(read(PREDECESSOR) === blob()).toBe(false);
     for (const [path, hash] of Object.entries(SHARED_SHA256)) {
       expect(digest(path)).toBe(hash);
       const committed = execFileSync(
@@ -872,8 +876,7 @@ describe('Android who-reacted predecessor pins', () => {
     expect(sha256(flippedBlob)).not.toBe(SOURCE_SHA256);
     const flippedTree = Buffer.from(readFileSync(resolve(root, PREDECESSOR)));
     flippedTree[0] ^= 1;
-    expect(sha256(flippedTree)).not.toBe(SOURCE_SHA256);
-    expect(flippedTree.toString('utf8') === blob()).toBe(false);
+    expect(sha256(flippedTree)).not.toBe(WORKING_TREE_SHA256);
     for (const path of Object.keys(SHARED_SHA256)) {
       const shared = Buffer.from(readFileSync(resolve(root, path)));
       shared[0] ^= 1;
@@ -5859,11 +5862,7 @@ describe('Android who-reacted hosted wiring and parity ledger', () => {
     expect(() => assertWhoWiring(before)).toThrow();
   });
 
-  it('keeps the predecessor enabled and unchanged', async () => {
-    expect(sha256(readFileSync(resolve(root, PREDECESSOR)))).toBe(
-      SOURCE_SHA256,
-    );
-    expect(read(PREDECESSOR)).toBe(blob());
+  it('retires the Android definition and keeps the general one desktop-only', async () => {
     const source = read(PREDECESSOR);
     const tests = callsNamed(source, 'test');
     const skips = callsNamed(source, 'test.skip');
@@ -5873,10 +5872,19 @@ describe('Android who-reacted hosted wiring and parity ledger', () => {
           tests.tree.getLineAndCharacterOfPosition(call.getStart(tests.tree))
             .line + 1,
       ),
-    ).toEqual([241, 723, 731]);
-    expect(skips.found).toHaveLength(2);
+    ).toEqual([241, 685]);
+    expect(skips.found).toHaveLength(3);
     for (const token of ['test.fixme', 'test.only', 'test.skip(true'])
       expect(source).not.toContain(token);
+    expect(source).not.toContain(
+      'uses touch selection and native Back to dismiss the reaction sheet',
+    );
+    expect(source).not.toContain('app.pressBack');
+    expect(source).toContain(
+      "test.skip(\n      isAndroidE2E,\n      'Android runs this through android.who-reacted (#759).',\n    );",
+    );
+    expect(source).not.toMatch(/isAndroidE2E\s*\?|if \(isAndroidE2E\)/u);
+    expect(source.match(/if \(!isAndroidE2E\)/gu)).toHaveLength(1);
     const { BROWSER_JOURNEYS } =
       await import('../e2e/browser/journey-catalog.mts');
     expect(
@@ -5892,7 +5900,20 @@ describe('Android who-reacted hosted wiring and parity ledger', () => {
       await import('./retired-playwright-predecessors.mjs');
     expect(
       RETIRED_PREDECESSORS.filter((entry) => entry.path === PREDECESSOR),
-    ).toHaveLength(0);
+    ).toEqual([
+      {
+        path: PREDECESSOR,
+        sha256: SOURCE_SHA256,
+        issues: [759],
+        deleted: false,
+        retired: [
+          'uses touch selection and native Back to dismiss the reaction sheet',
+        ],
+        desktopOnly: [
+          'names the reactors on the pill and lists them all in the dialog',
+        ],
+      },
+    ]);
   });
 
   it('documents the identities, fixture blocks, hashes, redaction sentence and placement prefix', async () => {
@@ -5940,8 +5961,8 @@ describe('Android who-reacted hosted wiring and parity ledger', () => {
       'a failed teardown step is rethrown through `redactStageFailure`, and a failed guarded cleanup is rethrown through `redactCleanupFailure`, never as the raw error.',
     );
     expect(flat).toContain('Shard 3 runs it last, after quote-notification');
-    expect(section).toContain(
-      'Predecessor status: enabled; after hosted acceptance the coordinator retires the Android definition and keeps the general definition desktop-only, skipped on Android (#839).',
+    expect(flat).toContain(
+      'Predecessor status: retired on 2026-09-30 under [#759](https://github.com/quwisky/trinity-matrix-client/issues/759)',
     );
     expect(section).not.toContain('pnpm exec nx');
   });

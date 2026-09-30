@@ -30,17 +30,19 @@ const EXTRACTED_ASSERTION_SUPPORT = [
  * calls. The 2026-09-30 partial retirement of the accepted pinned-message-workflow predecessor
  * (#757) removed 2 more definitions and 25 assertion calls and kept the file. The 2026-09-30
  * retirement of the accepted quote-notification predecessor (#758) removed nothing: its one
- * definition stays desktop-only and skips on Android, which moves only the test fingerprint.
+ * definition stays desktop-only and skips on Android, which moves only the test fingerprint. The 2026-09-30 partial retirement of the accepted
+ * who-reacted predecessor (#759) removed 1 more definition and 4 assertion calls and kept the file,
+ * whose remaining general definition is desktop-only and skips on Android.
  */
 export const BROWSER_ASSERTION_BASELINE = Object.freeze({
   baselineSpecFiles: 103,
   currentSpecFiles: 74,
-  testDefinitions: 154,
-  assertionCalls: 1399,
+  testDefinitions: 153,
+  assertionCalls: 1395,
   testFingerprint:
-    '8d2c8b819ffa6fc25eb427319d64f0acbcd703869855d78373c2994ba12655f0',
+    'c10c156e5b13e130594e130cf59e1362b44b1453fc3a79afd4f609ce8deb46d7',
   assertionFingerprint:
-    'b149e6ad622f0133d212bd83d61fed4d39591b72ad1162bdcd218373b51990a2',
+    'd7b72559887e802b9acece7402c4d03cee4c2083905cf6574ba4155d9115eb70',
 });
 
 const normalizeSource = (source) => source.replace(/\s+/gu, ' ').trim();

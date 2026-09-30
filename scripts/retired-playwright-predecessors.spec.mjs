@@ -18,13 +18,14 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 // #754 (message-swipe) and #755 (message-unread) were accepted and retired separately on
 // 2026-09-28 under the same policy. #756 (pinned-message-panel) followed on 2026-09-29, and #757
 // (pinned-message-workflow, two of its three definitions) and #758 (quote-notification, kept
-// desktop-only) on 2026-09-30.
+// desktop-only) and #759 (who-reacted, one definition retired and one kept desktop-only) on
+// 2026-09-30.
 const ACCEPTED_BATCHES = new Set([
   670, 672, 674, 676, 687, 688, 689, 690, 691, 692, 693, 694, 695, 696, 697,
   698, 699, 700, 701, 706, 707, 708, 709, 710, 711, 712, 713, 714, 715, 716,
   717, 718, 719, 720, 721, 722, 723, 724, 725, 726, 727, 728, 729, 730, 731,
   732, 733, 734, 735, 736, 737, 738, 739, 740, 741, 742, 743, 744, 745, 746,
-  747, 748, 749, 750, 751, 752, 753, 754, 755, 756, 757, 758,
+  747, 748, 749, 750, 751, 752, 753, 754, 755, 756, 757, 758, 759,
 ]);
 
 const titleOf = (argument) =>

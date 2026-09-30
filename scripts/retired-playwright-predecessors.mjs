@@ -918,6 +918,18 @@ export const RETIRED_PREDECESSORS = Object.freeze([
     retired: [],
     desktopOnly: ['a quoted display name gives the reader no highlight'],
   },
+  {
+    path: 'e2e/browser/journeys/conversations/reactions-who.spec.mts',
+    sha256: 'dce976ac883e07e14850bfee43cf50050b1b1f334174ba742ca530e2b0dc9b8a',
+    issues: [759],
+    deleted: false,
+    retired: [
+      'uses touch selection and native Back to dismiss the reaction sheet',
+    ],
+    desktopOnly: [
+      'names the reactors on the pill and lists them all in the dialog',
+    ],
+  },
 ]);
 
 if (

@@ -242,6 +242,10 @@ test.describe('Who reacted', () => {
     page,
     request,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'Android runs this through android.who-reacted (#759).',
+    );
     const runId = `${testResourceId('run')}w`;
     const seeded = await seedReactedMessage(
       request,
@@ -293,28 +297,21 @@ test.describe('Who reacted', () => {
     // row costs a retry instead of the test. The inner timeout is short on purpose: it is a
     // per-attempt budget, and a long one here would spend the whole run inside one doomed
     // attempt rather than re-hovering.
-    if (!isAndroidE2E) {
-      await expect(async () => {
-        await thumbsUp.hover();
-        await expect(page.getByRole('tooltip')).toContainText(
-          'reacted by You',
-          {
-            timeout: 1_000,
-          },
-        );
-      }).toPass({ timeout: 20_000 });
-    }
+    await expect(async () => {
+      await thumbsUp.hover();
+      await expect(page.getByRole('tooltip')).toContainText('reacted by You', {
+        timeout: 1_000,
+      });
+    }).toPass({ timeout: 20_000 });
 
     // The trailing chip opens the full list.
-    if (!isAndroidE2E) {
-      // Establish the light proof state through the product's Appearance controls rather
-      // than relying on a clean profile's default preference.
-      await openSettingsFromRooms(page);
-      await page.getByTestId('settings-nav-appearance').click();
-      await page.getByTestId('mode-light').click();
-      await expect.poll(() => hasDarkMode(page)).toBe(false);
-      await closeSettings(page);
-    }
+    // Establish the light proof state through the product's Appearance controls rather
+    // than relying on a clean profile's default preference.
+    await openSettingsFromRooms(page);
+    await page.getByTestId('settings-nav-appearance').click();
+    await page.getByTestId('mode-light').click();
+    await expect.poll(() => hasDarkMode(page)).toBe(false);
+    await closeSettings(page);
     await row.first().getByTestId('reactions-who').click();
     const dialog = page.getByTestId('reactions-dialog');
     await expect(dialog).toBeVisible({ timeout: 10_000 });
@@ -324,25 +321,23 @@ test.describe('Who reacted', () => {
     // classes and media queries are not meaningful in unit tests.
     const sidebar = page.getByTestId('reactions-directory');
     const detail = dialog.locator('.reactions-dialog__detail');
-    if (!isAndroidE2E) {
-      const [sidebarBox, detailBox] = await Promise.all([
-        sidebar.boundingBox(),
-        detail.boundingBox(),
-      ]);
-      expect(sidebarBox).not.toBeNull();
-      expect(detailBox).not.toBeNull();
-      expect(detailBox!.x).toBeGreaterThanOrEqual(
-        sidebarBox!.x + sidebarBox!.width - 1,
-      );
-      await expect(dialog).toHaveCSS('overflow-x', 'hidden');
-      await expect
-        .poll(async () =>
-          dialog.evaluate((element) =>
-            Math.max(0, element.scrollWidth - element.clientWidth),
-          ),
-        )
-        .toBeLessThanOrEqual(1);
-    }
+    const [sidebarBox, detailBox] = await Promise.all([
+      sidebar.boundingBox(),
+      detail.boundingBox(),
+    ]);
+    expect(sidebarBox).not.toBeNull();
+    expect(detailBox).not.toBeNull();
+    expect(detailBox!.x).toBeGreaterThanOrEqual(
+      sidebarBox!.x + sidebarBox!.width - 1,
+    );
+    await expect(dialog).toHaveCSS('overflow-x', 'hidden');
+    await expect
+      .poll(async () =>
+        dialog.evaluate((element) =>
+          Math.max(0, element.scrollWidth - element.clientWidth),
+        ),
+      )
+      .toBeLessThanOrEqual(1);
 
     // The subtitle counts every reaction event across the large snapshot.
     await expect(dialog.locator('.reactions-dialog__total')).toHaveText(
@@ -350,54 +345,49 @@ test.describe('Who reacted', () => {
     );
     await expect(page.getByTestId('close-reactions')).toBeVisible();
 
-    let lightPaint: { background: string; foreground: string } | undefined;
-    if (!isAndroidE2E) {
-      lightPaint = await dialog.evaluate((element) => {
-        const style = getComputedStyle(element);
-        return {
-          background: style.backgroundColor,
-          foreground: style.color,
-        };
-      });
-      await test.info().attach('reactions-desktop-light', {
-        body: await captureScreenshot(page, () => dialog.screenshot()),
-        contentType: 'image/png',
-      });
-      await page.getByTestId('close-reactions').click();
-      await expect(dialog).toBeHidden();
-      await openSettingsFromRooms(page);
-      await page.getByTestId('settings-nav-appearance').click();
-      await page.getByTestId('mode-dark').click();
-      await expect.poll(() => hasDarkMode(page)).toBe(true);
-      await closeSettings(page);
-      await row.first().getByTestId('reactions-who').click();
-      await expect(dialog).toBeVisible({ timeout: 10_000 });
-      const darkPaint = await dialog.evaluate((element) => {
-        const style = getComputedStyle(element);
-        return {
-          background: style.backgroundColor,
-          foreground: style.color,
-        };
-      });
-      expect(darkPaint.background).not.toBe(lightPaint.background);
-      expect(darkPaint.foreground).not.toBe(lightPaint.foreground);
-      await test.info().attach('reactions-desktop-dark', {
-        body: await captureScreenshot(page, () => dialog.screenshot()),
-        contentType: 'image/png',
-      });
-    }
+    const lightPaint = await dialog.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        background: style.backgroundColor,
+        foreground: style.color,
+      };
+    });
+    await test.info().attach('reactions-desktop-light', {
+      body: await captureScreenshot(page, () => dialog.screenshot()),
+      contentType: 'image/png',
+    });
+    await page.getByTestId('close-reactions').click();
+    await expect(dialog).toBeHidden();
+    await openSettingsFromRooms(page);
+    await page.getByTestId('settings-nav-appearance').click();
+    await page.getByTestId('mode-dark').click();
+    await expect.poll(() => hasDarkMode(page)).toBe(true);
+    await closeSettings(page);
+    await row.first().getByTestId('reactions-who').click();
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    const darkPaint = await dialog.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        background: style.backgroundColor,
+        foreground: style.color,
+      };
+    });
+    expect(darkPaint.background).not.toBe(lightPaint.background);
+    expect(darkPaint.foreground).not.toBe(lightPaint.foreground);
+    await test.info().attach('reactions-desktop-dark', {
+      body: await captureScreenshot(page, () => dialog.screenshot()),
+      contentType: 'image/png',
+    });
 
     // One section per emoji; the first lists the full large reactor set.
     await expect(dialog.getByTestId('reactions-key')).toHaveCount(20);
-    if (!isAndroidE2E) {
-      await expect
-        .poll(() =>
-          sidebar.evaluate(
-            (element) => element.scrollHeight - element.clientHeight,
-          ),
-        )
-        .toBeGreaterThan(0);
-    }
+    await expect
+      .poll(() =>
+        sidebar.evaluate(
+          (element) => element.scrollHeight - element.clientHeight,
+        ),
+      )
+      .toBeGreaterThan(0);
     await expect(dialog.getByTestId('reactors-list')).toContainText(
       seeded.otherName,
     );
@@ -425,109 +415,86 @@ test.describe('Who reacted', () => {
       )
       .toBeGreaterThan(0);
 
-    if (!isAndroidE2E) {
-      // Keyboard activation changes the selected group and preserves the pressed/current
-      // semantics used by the directory buttons.
-      const closeButton = page.getByTestId('close-reactions');
-      const firstKey = dialog.getByTestId('reactions-key').first();
-      await closeButton.focus();
-      await page.keyboard.press('Tab');
-      await expect(firstKey).toBeFocused();
-      const firstFocusPaint = await firstKey.evaluate((element) => {
-        const style = getComputedStyle(element);
-        return { outline: style.outlineStyle, shadow: style.boxShadow };
-      });
-      expect(
-        firstFocusPaint.outline !== 'none' || firstFocusPaint.shadow !== 'none',
-      ).toBe(true);
-      await test.info().attach('reactions-desktop-focus', {
-        body: await captureScreenshot(page, () => firstKey.screenshot()),
-        contentType: 'image/png',
-      });
-      await page.keyboard.press('Tab');
-      const celebration = dialog
-        .getByTestId('reactions-key')
-        .filter({ hasText: '🎉' });
-      await expect(celebration).toBeFocused();
-      await page.keyboard.press('Shift+Tab');
-      await expect(firstKey).toBeFocused();
-      await page.keyboard.press('Tab');
-      await page.keyboard.press('Enter');
-      await expect(celebration).toHaveAttribute('aria-pressed', 'true');
-      await expect(celebration).toHaveAttribute('aria-current', 'true');
-      const heart = dialog
-        .getByTestId('reactions-key')
-        .filter({ hasText: '❤️' });
-      await page.keyboard.press('Tab');
-      await expect(heart).toBeFocused();
-      await page.keyboard.press('Space');
-      await expect(heart).toHaveAttribute('aria-pressed', 'true');
-      await expect(celebration).toHaveAttribute('aria-pressed', 'false');
-      await celebration.click();
-      await expect(dialog.locator('.reactor')).toHaveCount(1);
-      await expect(dialog.getByTestId('reactors-list')).toContainText(
-        seeded.otherName,
-      );
-    } else {
-      const heart = dialog
-        .getByTestId('reactions-key')
-        .filter({ hasText: '❤️' });
-      await heart.click();
-      await expect(heart).toHaveAttribute('aria-pressed', 'true');
-      await expect(dialog.locator('.reactor')).toHaveCount(1);
-    }
+    // Keyboard activation changes the selected group and preserves the pressed/current
+    // semantics used by the directory buttons.
+    const closeButton = page.getByTestId('close-reactions');
+    const firstKey = dialog.getByTestId('reactions-key').first();
+    await closeButton.focus();
+    await page.keyboard.press('Tab');
+    await expect(firstKey).toBeFocused();
+    const firstFocusPaint = await firstKey.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { outline: style.outlineStyle, shadow: style.boxShadow };
+    });
+    expect(
+      firstFocusPaint.outline !== 'none' || firstFocusPaint.shadow !== 'none',
+    ).toBe(true);
+    await test.info().attach('reactions-desktop-focus', {
+      body: await captureScreenshot(page, () => firstKey.screenshot()),
+      contentType: 'image/png',
+    });
+    await page.keyboard.press('Tab');
+    const celebration = dialog
+      .getByTestId('reactions-key')
+      .filter({ hasText: '🎉' });
+    await expect(celebration).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(firstKey).toBeFocused();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Enter');
+    await expect(celebration).toHaveAttribute('aria-pressed', 'true');
+    await expect(celebration).toHaveAttribute('aria-current', 'true');
+    const heart = dialog.getByTestId('reactions-key').filter({ hasText: '❤️' });
+    await page.keyboard.press('Tab');
+    await expect(heart).toBeFocused();
+    await page.keyboard.press('Space');
+    await expect(heart).toHaveAttribute('aria-pressed', 'true');
+    await expect(celebration).toHaveAttribute('aria-pressed', 'false');
+    await celebration.click();
+    await expect(dialog.locator('.reactor')).toHaveCount(1);
+    await expect(dialog.getByTestId('reactors-list')).toContainText(
+      seeded.otherName,
+    );
 
     // The same surface falls back to a compact stacked layout below the Settings
     // breakpoint, keeping the reaction directory reachable without horizontal overflow.
-    if (!isAndroidE2E) {
-      await page.setViewportSize({ width: 640, height: 800 });
-      const workspace = dialog.locator('.reactions-dialog__workspace');
-      await expect
-        .poll(() =>
-          workspace.evaluate(
-            (element) => getComputedStyle(element).flexDirection,
-          ),
-        )
-        .toBe('column');
-      const [compactSidebarBox, compactDetailBox] = await Promise.all([
-        sidebar.boundingBox(),
-        detail.boundingBox(),
-      ]);
-      expect(compactSidebarBox).not.toBeNull();
-      expect(compactDetailBox).not.toBeNull();
-      expect(compactDetailBox!.y).toBeGreaterThanOrEqual(
-        compactSidebarBox!.y + compactSidebarBox!.height - 1,
-      );
-      await test.info().attach('reactions-compact', {
-        body: await captureScreenshot(page, () => dialog.screenshot()),
-        contentType: 'image/png',
-      });
-    }
+    await page.setViewportSize({ width: 640, height: 800 });
+    const workspace = dialog.locator('.reactions-dialog__workspace');
+    await expect
+      .poll(() =>
+        workspace.evaluate(
+          (element) => getComputedStyle(element).flexDirection,
+        ),
+      )
+      .toBe('column');
+    const [compactSidebarBox, compactDetailBox] = await Promise.all([
+      sidebar.boundingBox(),
+      detail.boundingBox(),
+    ]);
+    expect(compactSidebarBox).not.toBeNull();
+    expect(compactDetailBox).not.toBeNull();
+    expect(compactDetailBox!.y).toBeGreaterThanOrEqual(
+      compactSidebarBox!.y + compactSidebarBox!.height - 1,
+    );
+    await test.info().attach('reactions-compact', {
+      body: await captureScreenshot(page, () => dialog.screenshot()),
+      contentType: 'image/png',
+    });
 
-    if (!isAndroidE2E) {
-      // Traverse back to the close control and dismiss with Space, proving focus returns
-      // to the message control that opened the dialog. Escape is checked on a fresh open.
-      const closeButton = page.getByTestId('close-reactions');
-      const firstKey = dialog.getByTestId('reactions-key').first();
-      await firstKey.focus();
-      await page.keyboard.press('Shift+Tab');
-      await expect(closeButton).toBeFocused();
-      await page.keyboard.press('Space');
-      await expect(dialog).toBeHidden();
-      await expect(row.first().getByTestId('reactions-who')).toBeFocused();
+    // Traverse back to the close control and dismiss with Space, proving focus returns
+    // to the message control that opened the dialog. Escape is checked on a fresh open.
+    await firstKey.focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(closeButton).toBeFocused();
+    await page.keyboard.press('Space');
+    await expect(dialog).toBeHidden();
+    await expect(row.first().getByTestId('reactions-who')).toBeFocused();
 
-      await row.first().getByTestId('reactions-who').press('Enter');
-      await expect(dialog).toBeVisible({ timeout: 10_000 });
-      await page.keyboard.press('Escape');
-      await expect(dialog).toBeHidden();
-      await expect(row.first().getByTestId('reactions-who')).toBeFocused();
-    } else {
-      // The Android runner owns host Back dispatch; Escape keeps this shared journey's
-      // browser and WebView close contract meaningful without requiring the web adapter's
-      // Android-only app fixture.
-      await page.keyboard.press('Escape');
-      await expect(dialog).toBeHidden();
-    }
+    await row.first().getByTestId('reactions-who').press('Enter');
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(row.first().getByTestId('reactions-who')).toBeFocused();
   });
 });
 
@@ -539,8 +506,7 @@ async function runMobileReactionJourney(
   const touch = async (
     target: import('@playwright/test').Locator,
   ): Promise<void> => {
-    if (isAndroidE2E) await target.click();
-    else await target.tap();
+    await target.tap();
   };
   const seeded = await seedReactedMessage(
     request,
@@ -701,11 +667,7 @@ async function runMobileReactionJourney(
 
   await pressHostBack();
   await expect(dialog).toBeHidden();
-  if (!isAndroidE2E) {
-    await expect(trigger).toBeFocused();
-  } else {
-    await expect(page.getByTestId('composer-input')).toBeVisible();
-  }
+  await expect(trigger).toBeFocused();
 }
 
 test.describe('Who reacted · Pixel 5 sheet', () => {
@@ -727,11 +689,5 @@ test.describe('Who reacted · Pixel 5 sheet', () => {
       runMobileReactionJourney(page, request, () =>
         page.keyboard.press('Escape'),
       ));
-  } else {
-    test('uses touch selection and native Back to dismiss the reaction sheet', async ({
-      page,
-      request,
-      app,
-    }) => runMobileReactionJourney(page, request, () => app.pressBack()));
   }
 });

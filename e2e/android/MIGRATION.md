@@ -356,6 +356,7 @@ authorize retirement, describe that time.
 | `conversations/pinned-message-panel.spec.mts` | #756 | file deleted | — |
 | `conversations/pinned-message-workflow.spec.mts` | #757 | 2 retired | — |
 | `conversations/quote-mentions.spec.mts` | #758 | 0 retired | “a quoted display name gives the reader no highlight” |
+| `conversations/reactions-who.spec.mts` | #759 | 1 retired | “names the reactors on the pill and lists them all in the dialog” |
 
 ## Native shell, Back and Appearance batch
 
@@ -8296,4 +8297,11 @@ at `dd0cb53c` (Git blob `292b2e0ca4e703055610c09d9c21a8254d78d165`, SHA-256
 file stays pinned at the existing `RETIRED_PREDECESSOR_COMMIT`, so no new fetch
 is needed.
 
-Predecessor status: enabled; after hosted acceptance the coordinator retires the Android definition and keeps the general definition desktop-only, skipped on Android (#839).
+Predecessor status: retired on 2026-09-30 under
+[#759](https://github.com/quwisky/trinity-matrix-client/issues/759),
+following the 2026-09-26 retirement policy of
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839); the
+Android-only definition is removed, the general definition stays desktop-only
+and skips on Android, and the Playwright Pixel 5 definition is unchanged;
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
