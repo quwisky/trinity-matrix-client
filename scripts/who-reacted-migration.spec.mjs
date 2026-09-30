@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, posix, resolve } from 'node:path';
+import { runInNewContext } from 'node:vm';
+import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import {
@@ -1462,5 +1464,889 @@ describe('Android who-reacted contract ledger', () => {
     for (const stage of c.WHO_REACTED_STAGES)
       for (const suffix of STAGE_SUFFIXES(stage))
         expect(() => c.assertWhoReactedReceiptName(suffix)).toThrow();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Texts, plan and asserters                                                  */
+/* -------------------------------------------------------------------------- */
+
+const loadObserver = () => import('../e2e/android/who-reacted-observer.mts');
+
+describe('Android who-reacted texts, plan and asserters', () => {
+  const READER = '@reader:localhost';
+  const OTHERS = Array.from({ length: 16 }, (_, i) => `@o${i + 1}:localhost`);
+  const TARGET = '$target';
+
+  const arrangement = (
+    c,
+    { others = OTHERS, extra = [], mutate = (e) => e } = {},
+  ) => {
+    const member = (id, extraContent = {}) => ({
+      type: 'm.room.member',
+      state_key: id,
+      sender: id,
+      content: { membership: 'join', ...extraContent },
+    });
+    const events = [
+      { type: 'm.room.create', content: {} },
+      member(READER),
+      { type: 'm.room.power_levels', content: {} },
+      { type: 'm.room.join_rules', content: { join_rule: 'public' } },
+      { type: 'm.room.history_visibility', content: {} },
+      { type: 'm.room.name', content: { name: c.roomNameOf('R') } },
+      ...others.map((id, i) =>
+        member(id, i === 0 ? { displayname: c.longReactorNameOf('R') } : {}),
+      ),
+      {
+        type: 'm.room.message',
+        event_id: TARGET,
+        sender: READER,
+        content: { msgtype: 'm.text', body: c.bodyOf('R') },
+      },
+      ...extra,
+    ];
+    return mutate(events);
+  };
+  const expectation = {
+    readerId: READER,
+    otherIds: OTHERS,
+    targetId: TARGET,
+    runId: 'R',
+  };
+
+  const reactions = (c) => {
+    const plan = c.reactionPlan('R');
+    const ids = plan.map((p) => `$re${p.n}`);
+    const events = plan.map((p, i) => ({
+      type: 'm.reaction',
+      event_id: ids[i],
+      sender: p.sender === 0 ? READER : OTHERS[p.sender - 1],
+      content: {
+        'm.relates_to': {
+          rel_type: 'm.annotation',
+          event_id: TARGET,
+          key: p.key,
+        },
+      },
+    }));
+    return {
+      plan,
+      ids,
+      events,
+      e: { plan, ids, readerId: READER, otherIds: OTHERS, targetId: TARGET },
+    };
+  };
+
+  it('types exactly the predecessor texts and profiles', async () => {
+    const c = await loadContract();
+    expect(c.GENERAL_TOUCH_PROFILE).toEqual({
+      width: 1280,
+      height: 720,
+      isMobile: false,
+      hasTouch: true,
+      deviceScaleFactor: 1,
+    });
+    expect(c.MOBILE_SHEET_PROFILE).toEqual({
+      width: 393,
+      height: 851,
+      isMobile: true,
+      hasTouch: true,
+      deviceScaleFactor: 1,
+    });
+    expect(c.WHO_REACTED_PROFILES).toEqual({
+      'pill-dialog': c.GENERAL_TOUCH_PROFILE,
+      'mobile-sheet': c.MOBILE_SHEET_PROFILE,
+    });
+    expect(c.RUN_TAGS).toEqual({
+      'pill-dialog': { role: 'run', suffix: 'w' },
+      'mobile-sheet': { role: 'mobile', suffix: 'm' },
+    });
+    expect([c.roomNameOf('R'), c.bodyOf('R'), c.targetTxnOf('R')]).toEqual([
+      'Who reacted R',
+      'react to me R',
+      'who-R',
+    ]);
+    expect(c.longReactorNameOf('R')).toBe(`who-other-R-${'x'.repeat(36)}`);
+    expect([
+      c.readerRole('pill-dialog'),
+      c.otherRole('mobile-sheet', 7),
+    ]).toEqual(['pd-reader', 'ms-other-07']);
+    expect(c.REACTION_KEYS).toEqual([
+      '❤️',
+      '😂',
+      '😮',
+      '😢',
+      '😡',
+      '🚀',
+      '✅',
+      '❌',
+      '👏',
+      '🙌',
+      '🔥',
+      '💯',
+      '🎯',
+      '✨',
+      '💡',
+      '🌈',
+      '🍀',
+      '🌟',
+    ]);
+    expect(c.REACTION_GROUP).toBe(8);
+    expect(c.GATES).toEqual([
+      { thumbs: 8, groups: 1 },
+      { thumbs: 16, groups: 1 },
+      { thumbs: 17, groups: 8 },
+      { thumbs: 17, groups: 16 },
+    ]);
+  });
+
+  it("plans the predecessor's 36 reactions exactly", async () => {
+    const c = await loadContract();
+    const plan = c.reactionPlan('R');
+    expect(plan).toHaveLength(36);
+    expect(plan[0]).toEqual({ n: 1, key: '👍', sender: 0, txn: 'r1-R' });
+    for (let n = 2; n <= 17; n++)
+      expect(plan[n - 1]).toEqual({
+        n,
+        key: '👍',
+        sender: n - 1,
+        txn: `r${n}-R`,
+      });
+    expect(plan[17]).toEqual({ n: 18, key: '🎉', sender: 1, txn: 'r10-R' });
+    c.REACTION_KEYS.forEach((key, i) =>
+      expect(plan[18 + i]).toEqual({
+        n: 19 + i,
+        key,
+        sender: ((i + 1) % 16) + 1,
+        txn: `group${i}-R`,
+      }),
+    );
+    expect(plan.filter((p) => p.key === '👍')).toHaveLength(17);
+    expect(new Set(plan.map((p) => p.key)).size).toBe(20);
+    // The plan implements the predecessor's templates at the pinned lines.
+    const pinFor = (n) => LINE_PINS[c.reactionVia(n)];
+    expect(pinFor(1)).toContain('`r1-${runId}`');
+    expect(pinFor(2)).toContain('`r${index + 2}-${runId}`');
+    expect(pinFor(18)).toContain("'🎉', `r10-${runId}`");
+    expect(LINE_PINS[176]).toContain("'👍'");
+    expect(LINE_PINS[202]).toContain('(index + 1) % otherHeaders.length');
+    expect(LINE_PINS[204]).toContain('`group${index}-${runId}`');
+    expect(LINE_PINS[c.reactionVia(19)]).toBeUndefined(); // 201 is a multi-line call; 202/204 carry its arguments
+    for (const p of plan) expect(typeof c.reactionVia(p.n)).toBe('number');
+  });
+
+  it('asserts the API login, Room, join and event send', async () => {
+    const c = await loadContract();
+    c.assertApiLogin({ userId: '@u:localhost', username: 'u' });
+    expect(() =>
+      c.assertApiLogin({ userId: '@v:localhost', username: 'u' }),
+    ).toThrow(/API login returned the exact user/);
+    c.assertRoomCreated('!r:localhost');
+    expect(() => c.assertRoomCreated('r')).toThrow(/Room id/);
+    c.assertJoined({ status: 200, attempts: 2, retryAfterMs: [440] });
+    for (const bad of [
+      { status: 403, attempts: 2, retryAfterMs: [440] },
+      { status: 200, attempts: 6, retryAfterMs: [1, 1, 1, 1, 1] },
+      { status: 200, attempts: 2, retryAfterMs: [] },
+    ])
+      expect(() => c.assertJoined(bad)).toThrow(/joined within five attempts/);
+    c.assertEventSent('$e');
+    expect(() => c.assertEventSent('e')).toThrow(/event id/);
+  });
+
+  it('asserts the arrangement and fails each fault', async () => {
+    const c = await loadContract();
+    c.assertArrangement(arrangement(c), expectation);
+    const cases = [
+      [/17 joined members/, arrangement(c, { others: OTHERS.slice(0, 15) })],
+      [
+        /exactly the target/,
+        arrangement(c, {
+          extra: [
+            {
+              type: 'm.room.message',
+              event_id: '$two',
+              sender: READER,
+              content: { body: 'x' },
+            },
+          ],
+        }),
+      ],
+      [
+        /the reader sent the target/i,
+        arrangement(c, {
+          mutate: (e) =>
+            e.map((x) =>
+              x.type === 'm.room.message' ? { ...x, sender: OTHERS[0] } : x,
+            ),
+        }),
+      ],
+      [
+        /public/,
+        arrangement(c, {
+          mutate: (e) =>
+            e.map((x) =>
+              x.type === 'm.room.join_rules'
+                ? { ...x, content: { join_rule: 'invite' } }
+                : x,
+            ),
+        }),
+      ],
+      [
+        /long reactor's display name/,
+        arrangement(c, {
+          mutate: (e) =>
+            e.map((x) =>
+              x.state_key === OTHERS[0]
+                ? { ...x, content: { membership: 'join' } }
+                : x,
+            ),
+        }),
+      ],
+      [
+        /m\.room\.create/,
+        arrangement(c, {
+          mutate: (e) => e.filter((x) => x.type !== 'm.room.create'),
+        }),
+      ],
+    ];
+    for (const [message, events] of cases)
+      expect(() => c.assertArrangement(events, expectation)).toThrow(message);
+  });
+
+  it('asserts the 36 reactions and fails each fault', async () => {
+    const c = await loadContract();
+    const good = reactions(c);
+    expect(c.assertReactionsArranged(good.events, good.e)).toEqual({
+      reactions: 36,
+      thumbs: 17,
+      keys: 20,
+      readerIncluded: true,
+    });
+    const fail = (message, events, e = good.e) =>
+      expect(() => c.assertReactionsArranged(events, e)).toThrow(message);
+    fail(/exactly 36/i, good.events.slice(1));
+    fail(
+      /annotates the target/,
+      good.events.map((x, i) =>
+        i === 3
+          ? {
+              ...x,
+              content: {
+                'm.relates_to': {
+                  rel_type: 'm.annotation',
+                  event_id: '$other',
+                  key: '👍',
+                },
+              },
+            }
+          : x,
+      ),
+    );
+    fail(
+      /17 distinct/,
+      good.events.map((x, i) => (i === 3 ? { ...x, sender: OTHERS[0] } : x)),
+    );
+    const merge = good.events.map((x) =>
+      x.content['m.relates_to'].key === '🌟'
+        ? {
+            ...x,
+            content: {
+              'm.relates_to': {
+                rel_type: 'm.annotation',
+                event_id: TARGET,
+                key: '🌈',
+              },
+            },
+          }
+        : x,
+    );
+    fail(/20 keys/, merge);
+    fail(
+      /planned sender/,
+      good.events.map((x) =>
+        x.content['m.relates_to'].key === '🚀'
+          ? { ...x, sender: OTHERS[15] }
+          : x,
+      ),
+    );
+    fail(
+      /recorded ids/,
+      good.events.map((x, i) =>
+        i === 0 ? { ...x, event_id: '$stranger' } : x,
+      ),
+    );
+    fail(
+      /unredacted/,
+      good.events.map((x, i) =>
+        i === 5 ? { ...x, unsigned: { redacted_because: {} } } : x,
+      ),
+    );
+  });
+
+  const row = (over = {}) => ({
+    rows: 1,
+    exactEvent: true,
+    pills: 1,
+    thumbsPills: 1,
+    thumbsCount: '8',
+    summaryMatches: true,
+    ...over,
+  });
+  it('asserts rows, gates, counts and summary', async () => {
+    const c = await loadContract();
+    c.assertGate(row(), c.GATES[0]);
+    for (const bad of [row({ rows: 0 }), row({ exactEvent: false })])
+      expect(() => c.assertGate(bad, c.GATES[0])).toThrow(
+        /target row is still rendered/,
+      );
+    expect(() => c.assertGate(row({ thumbsCount: '7' }), c.GATES[0])).toThrow(
+      /cumulative 👍/,
+    );
+    expect(() => c.assertGate(row({ pills: 2 }), c.GATES[0])).toThrow(
+      /cumulative groups/,
+    );
+    c.assertTargetRow(row());
+    for (const bad of [
+      row({ rows: 0 }),
+      row({ rows: 2 }),
+      row({ exactEvent: false }),
+    ])
+      expect(() => c.assertTargetRow(bad)).toThrow(
+        /Exactly one reconciled target row/,
+      );
+    c.assertThumbsCount(row({ thumbsCount: '17' }));
+    expect(() => c.assertThumbsCount(row({ thumbsCount: '16' }))).toThrow(/17/);
+    c.assertGroupCount(row({ pills: 20 }));
+    expect(() => c.assertGroupCount(row({ pills: 19 }))).toThrow(
+      /20 reaction groups/,
+    );
+    c.assertThumbsSummary(row());
+    for (const bad of [
+      row({ summaryMatches: false }),
+      row({ thumbsPills: 0, summaryMatches: false }),
+    ])
+      expect(() => c.assertThumbsSummary(bad)).toThrow(/reacted by You/);
+    c.assertComposerVisible({ composers: 1, composerVisible: true });
+    expect(() =>
+      c.assertComposerVisible({ composers: 1, composerVisible: false }),
+    ).toThrow();
+    expect(() =>
+      c.assertComposerVisible({ composers: 0, composerVisible: false }),
+    ).toThrow();
+  });
+
+  const dialog = (over = {}) => ({
+    dialogs: 1,
+    sheetHost: true,
+    box: { left: 0, right: 393.14, top: 300, bottom: 851.05 },
+    innerWidth: 393,
+    innerHeight: 851,
+    total: '36 total',
+    closeVisible: true,
+    keys: 20,
+    pressedKeys: ['❤️'],
+    lastKey: { key: '🌟', pressed: true, unobstructed: true },
+    reactors: 1,
+    listContainsLong: true,
+    longName: { found: true, textOverflow: 'ellipsis', overflow: 44 },
+    detailOverflow: 350,
+    directory: {
+      scrollWidth: 1121,
+      clientWidth: 393,
+      scrollLeft: 728,
+      rect: { x: 0, y: 0, width: 393, height: 50 },
+    },
+    ...over,
+  });
+  it('asserts the dialog and sheet observations and fails each fault', async () => {
+    const c = await loadContract();
+    const ok = (name, ...args) => expect(() => c[name](...args)).not.toThrow();
+    const bad = (name, message, ...args) =>
+      message
+        ? expect(() => c[name](...args)).toThrow(message)
+        : expect(() => c[name](...args)).toThrow();
+    ok('assertDialogVisible', dialog());
+    for (const dialogs of [0, 2])
+      bad(
+        'assertDialogVisible',
+        /one visible Reactions dialog/,
+        dialog({ dialogs }),
+      );
+    ok('assertDialogTotal', dialog());
+    bad('assertDialogTotal', /36 total/, dialog({ total: '35 total' }));
+    ok('assertCloseVisible', dialog());
+    bad('assertCloseVisible', null, dialog({ closeVisible: false }));
+    ok('assertKeyCount', dialog());
+    bad('assertKeyCount', null, dialog({ keys: 19 }));
+    ok('assertLongReactorListed', dialog());
+    bad('assertLongReactorListed', null, dialog({ listContainsLong: false }));
+    for (const n of [1, 17]) {
+      ok('assertReactors', dialog({ reactors: n }), n);
+      for (const off of [-1, 1])
+        bad('assertReactors', null, dialog({ reactors: n + off }), n);
+    }
+    ok('assertLongReactorEllipsis', dialog());
+    bad(
+      'assertLongReactorEllipsis',
+      null,
+      dialog({
+        longName: { found: false, textOverflow: null, overflow: null },
+      }),
+    );
+    bad(
+      'assertLongReactorEllipsis',
+      /ellipsis/,
+      dialog({ longName: { found: true, textOverflow: 'clip', overflow: 44 } }),
+    );
+    ok('assertLongReactorOverflow', dialog());
+    bad(
+      'assertLongReactorOverflow',
+      /actually overflows/,
+      dialog({
+        longName: { found: true, textOverflow: 'ellipsis', overflow: 0 },
+      }),
+    );
+    ok('assertDetailOverflow', dialog());
+    bad('assertDetailOverflow', null, dialog({ detailOverflow: 0 }));
+    ok('assertKeyPressed', dialog({ pressedKeys: ['❤️'] }), '❤️');
+    for (const pressedKeys of [['👍'], [], ['❤️', '👍']])
+      bad('assertKeyPressed', /pressed/, dialog({ pressedKeys }), '❤️');
+    ok('assertDialogDismissed', dialog({ dialogs: 0 }));
+    bad('assertDialogDismissed', /dismissed/, dialog({ dialogs: 1 }));
+    ok('assertSheetClass', dialog());
+    bad('assertSheetClass', null, dialog({ sheetHost: false }));
+    ok('assertSheetLeft', dialog());
+    bad(
+      'assertSheetLeft',
+      null,
+      dialog({ box: { left: -1, right: 393, top: 0, bottom: 851 } }),
+    );
+    ok('assertSheetRight', dialog());
+    bad(
+      'assertSheetRight',
+      null,
+      dialog({ box: { left: 0, right: 395, top: 0, bottom: 851 } }),
+    );
+    ok('assertSheetBottom', dialog());
+    for (const bottom of [850.5, 851.5])
+      bad(
+        'assertSheetBottom',
+        /bottom-attached/,
+        dialog({ box: { left: 0, right: 393, top: 0, bottom } }),
+      );
+    ok('assertDirectoryOverflow', dialog());
+    bad(
+      'assertDirectoryOverflow',
+      null,
+      dialog({
+        directory: {
+          scrollWidth: 393,
+          clientWidth: 393,
+          scrollLeft: 0,
+          rect: {},
+        },
+      }),
+    );
+    ok('assertLastKeyPressed', dialog());
+    bad(
+      'assertLastKeyPressed',
+      null,
+      dialog({ lastKey: { key: '🌟', pressed: false, unobstructed: true } }),
+    );
+    ok('assertDirectoryScrolled', dialog());
+    bad(
+      'assertDirectoryScrolled',
+      null,
+      dialog({
+        directory: {
+          scrollWidth: 1121,
+          clientWidth: 393,
+          scrollLeft: 0,
+          rect: {},
+        },
+      }),
+    );
+  });
+
+  const route = (over = {}) => ({
+    path: '/rooms/x',
+    account: '@u:localhost',
+    settingsHosts: 0,
+    sectionsVisible: false,
+    dark: true,
+    backToRoomsVisible: false,
+    composers: 1,
+    composerVisible: true,
+    ...over,
+  });
+  it('asserts the shell route and mode and fails each fault', async () => {
+    const c = await loadContract();
+    c.assertRoomsRoute(route(), '@u:localhost');
+    expect(() =>
+      c.assertRoomsRoute(route({ path: '/settings' }), '@u:localhost'),
+    ).toThrow(/Account-qualified Rooms route/);
+    expect(() =>
+      c.assertRoomsRoute(route({ account: '@v:localhost' }), '@u:localhost'),
+    ).toThrow(/Account-qualified Rooms route/);
+    c.assertSettingsSections(
+      route({ path: '/settings', sectionsVisible: true }),
+    );
+    expect(() =>
+      c.assertSettingsSections(
+        route({ path: '/settings', sectionsVisible: false }),
+      ),
+    ).toThrow();
+    c.assertMode(route({ dark: true }), 'dark');
+    c.assertMode(route({ dark: false }), 'light');
+    expect(() => c.assertMode(route({ dark: true }), 'light')).toThrow();
+    expect(() => c.assertMode(route({ dark: false }), 'dark')).toThrow();
+    for (const path of ['/settings', '/rooms/x'])
+      c.assertSectionUnwound(route({ path }));
+    expect(() =>
+      c.assertSectionUnwound(route({ path: '/settings/appearance' })),
+    ).toThrow();
+    c.assertSettingsDetached(route());
+    expect(() =>
+      c.assertSettingsDetached(route({ settingsHosts: 1 })),
+    ).toThrow();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Read-only observer (jsdom)                                                 */
+/* -------------------------------------------------------------------------- */
+
+describe('Android who-reacted read-only observer (jsdom)', () => {
+  const LONG = `who-other-R-${'x'.repeat(36)}`;
+  const BOXES = {
+    dialog: [0, 300, 393, 551],
+    directory: [0, 320, 393, 50],
+    close: [340, 310, 40, 40],
+    lastkey: [300, 330, 60, 30],
+    composer: [0, 700, 393, 40],
+    who: [10, 100, 60, 20],
+    back: [0, 0, 0, 0],
+    sections: [0, 0, 200, 300],
+  };
+  const rect = ([x, y, width, height]) => ({
+    x,
+    y,
+    width,
+    height,
+    left: x,
+    top: y,
+    right: x + width,
+    bottom: y + height,
+  });
+
+  const rowHtml = `
+    <div class="scroll"><div class="msg" data-mid="$target">react to me R
+      <span class="reaction" aria-label="👍 reacted by You, a, b and 14 others"><span class="reaction__key">👍</span><span class="reaction__count">17</span></span>
+      <span class="reaction"><span class="reaction__key">🎉</span><span class="reaction__count">1</span></span>
+      <span class="reaction"><span class="reaction__key">❤️</span><span class="reaction__count">1</span></span>
+      <span class="reaction reaction--who"><span class="reaction__key">5</span></span>
+      <button class="reaction reaction--who" data-testid="reactions-who" data-box="who"></button>
+    </div></div>
+    <textarea data-testid="composer-input" data-box="composer"></textarea>`;
+  const names = Array.from(
+    { length: 16 },
+    (_, i) =>
+      `<li class="reactor"><span class="reactor__name">n${i}</span></li>`,
+  ).join('');
+  const keys = ['❤️', '🎉', '🌟']
+    .map(
+      (k, i, all) =>
+        `<button data-testid="reactions-key" aria-pressed="${i === 0}" aria-label="${k}, ${i + 1} reacted"${i === all.length - 1 ? ' data-box="lastkey"' : ''}></button>`,
+    )
+    .join('');
+  const dialogHtml = (longText = LONG) => `
+    <trn-reactions-dialog class="reactions-dialog--sheet"><div data-testid="reactions-dialog" data-box="dialog">
+      <span class="reactions-dialog__total">36 total</span>
+      <div data-testid="reactions-directory" data-box="directory">${keys}</div>
+      <div class="reactions-dialog__detail"><ul data-testid="reactors-list">${names}<li class="reactor"><span class="reactor__name">${longText}</span></li></ul></div>
+    </div></trn-reactions-dialog>
+    <button data-testid="close-reactions" data-box="close"></button>
+    <textarea data-testid="composer-input" data-box="composer"></textarea>`;
+  const settingsHtml = `<trn-settings><nav aria-label="Settings sections" data-box="sections"></nav></trn-settings>`;
+
+  function windowFor(
+    html,
+    { url = 'http://localhost/rooms/x', dark = false, guard = false } = {},
+  ) {
+    const dom = new JSDOM(
+      `<!doctype html><html class="${dark ? 'dark' : ''}"><body><main>${html}</main></body></html>`,
+      { url },
+    );
+    const { window } = dom;
+    Object.defineProperty(window, 'innerWidth', {
+      value: 393,
+      configurable: true,
+    });
+    Object.defineProperty(window, 'innerHeight', {
+      value: 851,
+      configurable: true,
+    });
+    const proto = window.HTMLElement.prototype;
+    proto.getBoundingClientRect = function () {
+      const key = this.getAttribute('data-box');
+      if (key && BOXES[key]) return rect(BOXES[key]);
+      if (this.matches('.msg')) return rect([0, 90, 393, 200]);
+      return rect([0, 0, 0, 0]);
+    };
+    Object.defineProperties(proto, {
+      scrollWidth: {
+        get() {
+          return this.matches('[data-testid="reactions-directory"]')
+            ? 1121
+            : this.matches('.reactor__name')
+              ? 200
+              : 0;
+        },
+        configurable: true,
+      },
+      clientWidth: {
+        get() {
+          return this.matches('[data-testid="reactions-directory"]')
+            ? 393
+            : this.matches('.reactor__name')
+              ? 156
+              : 0;
+        },
+        configurable: true,
+      },
+      scrollHeight: {
+        get() {
+          return this.matches('.reactions-dialog__detail') ? 500 : 0;
+        },
+        configurable: true,
+      },
+      clientHeight: {
+        get() {
+          return this.matches('.reactions-dialog__detail') ? 150 : 0;
+        },
+        configurable: true,
+      },
+    });
+    window.getComputedStyle = (element) => ({
+      visibility: 'visible',
+      display: 'block',
+      backgroundColor: 'rgb(0, 0, 0)',
+      textOverflow: element.matches('.reactor__name') ? 'ellipsis' : 'clip',
+    });
+    window.document.elementFromPoint = (x, y) =>
+      [
+        ...window.document.querySelectorAll(
+          '[data-box="who"], [data-box="lastkey"]',
+        ),
+      ].find((element) => {
+        const b = element.getBoundingClientRect();
+        return (
+          x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height
+        );
+      }) ?? null;
+    if (guard) {
+      const boom = (name) => () => {
+        throw new Error(`write: ${name}`);
+      };
+      for (const name of [
+        'click',
+        'focus',
+        'scrollTo',
+        'scrollBy',
+        'scrollIntoView',
+      ])
+        proto[name] = boom(name);
+      window.Element.prototype.scrollTo = boom('scrollTo');
+      window.Element.prototype.scrollBy = boom('scrollBy');
+      window.Element.prototype.scrollIntoView = boom('scrollIntoView');
+      window.Element.prototype.dispatchEvent = boom('dispatchEvent');
+      window.EventTarget.prototype.dispatchEvent = boom('dispatchEvent');
+      for (const name of ['scrollLeft', 'scrollTop'])
+        Object.defineProperty(window.Element.prototype, name, {
+          get: () => 0,
+          set: boom(name),
+          configurable: true,
+        });
+      const tokens = window.DOMTokenList.prototype;
+      for (const name of ['add', 'remove', 'toggle', 'replace'])
+        tokens[name] = boom(`classList.${name}`);
+      Object.defineProperty(window.Node.prototype, 'textContent', {
+        get: Object.getOwnPropertyDescriptor(
+          window.Node.prototype,
+          'textContent',
+        )?.get,
+        set: boom('textContent'),
+        configurable: true,
+      });
+    }
+    return window;
+  }
+  const run = (window, expression) =>
+    JSON.parse(
+      JSON.stringify(
+        runInNewContext(expression, {
+          document: window.document,
+          URL: window.URL,
+        }),
+      ),
+    );
+
+  it('observes the reaction row', async () => {
+    const o = await loadObserver();
+    const window = windowFor(rowHtml);
+    expect(
+      run(window, o.reactionRowExpression('react to me R', '$target')),
+    ).toEqual({
+      rows: 1,
+      exactEvent: true,
+      pills: 3,
+      thumbsPills: 1,
+      thumbsCount: '17',
+      summaryMatches: true,
+      summaryOthers: 14,
+      who: 1,
+      whoUnobstructed: true,
+      composers: 1,
+      composerVisible: true,
+    });
+    expect(
+      run(window, o.reactionRowExpression('react to me R', '$other'))
+        .exactEvent,
+    ).toBe(false);
+  });
+
+  it('observes the dialog and ignores a name that only contains a prefix', async () => {
+    const o = await loadObserver();
+    const seen = run(windowFor(dialogHtml()), o.reactionDialogExpression(LONG));
+    expect(seen).toMatchObject({
+      dialogs: 1,
+      sheetHost: true,
+      box: { left: 0, right: 393, top: 300, bottom: 851 },
+      innerWidth: 393,
+      innerHeight: 851,
+      total: '36 total',
+      closeVisible: true,
+      keys: 3,
+      pressedKeys: ['❤️'],
+      lastKey: { key: '🌟', pressed: false, unobstructed: true },
+      reactors: 17,
+      listContainsLong: true,
+      longName: { found: true, textOverflow: 'ellipsis', overflow: 44 },
+      detailOverflow: 350,
+      directory: {
+        scrollWidth: 1121,
+        clientWidth: 393,
+        scrollLeft: 0,
+        rect: { x: 0, y: 320, width: 393, height: 50 },
+      },
+      background: 'rgb(0, 0, 0)',
+      composers: 1,
+      composerVisible: true,
+    });
+    const prefix = run(
+      windowFor(dialogHtml(LONG.slice(0, 20))),
+      o.reactionDialogExpression(LONG),
+    );
+    expect(prefix.longName).toEqual({
+      found: false,
+      textOverflow: null,
+      overflow: null,
+    });
+    expect(prefix.listContainsLong).toBe(false);
+    // A longer name that merely contains the arranged one is not the long reactor either.
+    const longer = run(
+      windowFor(dialogHtml(`${LONG}y`)),
+      o.reactionDialogExpression(LONG),
+    );
+    expect(longer.longName.found).toBe(false);
+  });
+
+  it('observes the Settings route', async () => {
+    const o = await loadObserver();
+    const window = windowFor(settingsHtml, {
+      url: 'http://localhost/settings/appearance',
+      dark: true,
+    });
+    expect(run(window, o.shellRouteExpression())).toEqual({
+      path: '/settings/appearance',
+      account: null,
+      settingsHosts: 1,
+      sectionsVisible: true,
+      dark: true,
+      backToRoomsVisible: false,
+      composers: 0,
+      composerVisible: false,
+    });
+  });
+
+  it('writes nothing: each expression succeeds against a document whose writers throw', async () => {
+    const o = await loadObserver();
+    run(
+      windowFor(rowHtml, { guard: true }),
+      o.reactionRowExpression('react to me R', '$target'),
+    );
+    run(
+      windowFor(dialogHtml(), { guard: true }),
+      o.reactionDialogExpression(LONG),
+    );
+    run(
+      windowFor(settingsHtml, {
+        guard: true,
+        url: 'http://localhost/settings',
+      }),
+      o.shellRouteExpression(),
+    );
+    // The proof is effective: a write appended to an expression throws.
+    for (const write of [
+      'document.querySelector("textarea").focus()',
+      'document.querySelector("textarea").click()',
+      'document.body.classList.add("x")',
+      'document.body.textContent = "x"',
+    ])
+      expect(() =>
+        run(windowFor(rowHtml, { guard: true }), `(() => { ${write}; })()`),
+      ).toThrow(/write:/);
+  });
+
+  it('carries no banned token', () => {
+    const source = read('e2e/android/who-reacted-observer.mts');
+    const banned = [
+      '.click(',
+      '.tap(',
+      '.focus(',
+      'dispatchEvent',
+      '.value =',
+      'textContent =',
+      '.style.',
+      'classList.add',
+      'classList.remove',
+      'classList.toggle',
+      'scrollLeft =',
+      'scrollTop =',
+      'scrollTo(',
+      'scrollBy(',
+      'scrollIntoView(',
+      'setViewportSize',
+      '.resize(',
+      '.fill(',
+      '.press(',
+      'localStorage',
+      'Preferences.set',
+      'requestSubmit',
+      '.submit(',
+      'preventDefault',
+      'stopPropagation',
+      'select(',
+      'showReactors',
+      'toggleReaction',
+      'open$(',
+      'new SharedStageAccount(',
+      'input_method',
+      'dumpsys',
+    ];
+    for (const token of banned) expect(source, token).not.toContain(token);
+    expect(source).not.toMatch(/(?<![.\w])(location|history)\./u);
   });
 });

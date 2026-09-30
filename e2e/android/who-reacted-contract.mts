@@ -1,4 +1,9 @@
 import assert from 'node:assert/strict';
+import type { AccountViewportProfile } from './account-workspace-client.mts';
+import type { WorkspaceRateLimitedJoin } from './account-workspace-fixtures.mts';
+import type {
+  ReactionDialogObservation, ReactionRowObservation, ShellRouteObservation,
+} from './who-reacted-observer.mts';
 
 /** Canonical bytes: the working tree, equal to the dd0cb53c blob (the issue's pin is current). */
 export const WHO_REACTED_SOURCE = 'e2e/browser/journeys/conversations/reactions-who.spec.mts';
@@ -241,4 +246,250 @@ export function assertWhoReactedReceiptName(name: string): void {
   assert.match(name, KEBAB, `Receipt name ${name} is kebab-case`);
   const suffixes = new Set(WHO_REACTED_STAGES.flatMap((entry) => entry.sites.map((site) => site.suffix)));
   assert(!suffixes.has(name), `Receipt ${name} is not a parity suffix`);
+}
+
+/** The Android Playwright project's default viewport plus the describe's `hasTouch` (239). */
+export const GENERAL_TOUCH_PROFILE: AccountViewportProfile = {
+  width: 1280, height: 720, isMobile: false, hasTouch: true, deviceScaleFactor: 1,
+};
+/** The Pixel 5 describe's Android `test.use` (713–717); its UA and DPR are non-Android only. */
+export const MOBILE_SHEET_PROFILE: AccountViewportProfile = {
+  width: 393, height: 851, isMobile: true, hasTouch: true, deviceScaleFactor: 1,
+};
+export const WHO_REACTED_PROFILES: Readonly<Record<WhoReactedStageId, AccountViewportProfile>> = {
+  'pill-dialog': GENERAL_TOUCH_PROFILE,
+  'mobile-sheet': MOBILE_SHEET_PROFILE,
+};
+
+/** `testResourceId(role) + suffix` (245, 548): the Node namespace's `role()` is its implementation. */
+export const RUN_TAGS = {
+  'pill-dialog': { role: 'run', suffix: 'w' },
+  'mobile-sheet': { role: 'mobile', suffix: 'm' },
+} as const satisfies Readonly<Record<WhoReactedStageId, { readonly role: string; readonly suffix: string }>>;
+export const roomNameOf = (runId: string): string => `Who reacted ${runId}`;
+export const bodyOf = (runId: string): string => `react to me ${runId}`;
+export const targetTxnOf = (runId: string): string => `who-${runId}`;
+/** The predecessor's long localpart (108), shown as a display name (spec D2). */
+export const longReactorNameOf = (runId: string): string => `who-other-${runId}-${'x'.repeat(36)}`;
+const STAGE_ROLE_PREFIX: Readonly<Record<WhoReactedStageId, string>> = { 'pill-dialog': 'pd', 'mobile-sheet': 'ms' };
+export const readerRole = (stage: WhoReactedStageId): string => `${STAGE_ROLE_PREFIX[stage]}-reader`;
+export const otherRole = (stage: WhoReactedStageId, n: number): string =>
+  `${STAGE_ROLE_PREFIX[stage]}-other-${String(n).padStart(2, '0')}`;
+
+export const REACTION_KEYS = ['❤️', '😂', '😮', '😢', '😡', '🚀', '✅', '❌', '👏', '🙌',
+  '🔥', '💯', '🎯', '✨', '💡', '🌈', '🍀', '🌟'] as const;
+/** At most 8 new timeline events per sync batch: below Synapse's default limit of 10 (spec D5). */
+export const REACTION_GROUP = 8;
+/** Cumulative rendered state after groups 1–4. */
+export const GATES = [
+  { thumbs: 8, groups: 1 }, { thumbs: 16, groups: 1 }, { thumbs: 17, groups: 8 }, { thumbs: 17, groups: 16 },
+] as const;
+
+export interface PlannedReaction {
+  /** 1-based position; the record is `reaction-NN`. */
+  readonly n: number;
+  readonly key: string;
+  /** 0 is the reader; 1–16 are the others in creation order (1 is the long reactor). */
+  readonly sender: number;
+  readonly txn: string;
+}
+
+/** Lines 171–206 exactly: the reader's 👍, sixteen 👍, other 1's 🎉, then 18 keys. */
+export function reactionPlan(runId: string): readonly PlannedReaction[] {
+  return [
+    { n: 1, key: '👍', sender: 0, txn: `r1-${runId}` },
+    ...Array.from({ length: 16 }, (_, i) => ({ n: i + 2, key: '👍', sender: i + 1, txn: `r${i + 2}-${runId}` })),
+    { n: 18, key: '🎉', sender: 1, txn: `r10-${runId}` },
+    ...REACTION_KEYS.map((key, i) => ({ n: 19 + i, key, sender: ((i + 1) % 16) + 1, txn: `group${i}-${runId}` })),
+  ];
+}
+
+/* ------------------------------------------------------------------ asserters */
+
+/** A timeline or state event as the fixture's relations and room reads return it. */
+export interface RoomEvent {
+  readonly event_id?: string;
+  readonly type: string;
+  readonly sender?: string;
+  readonly state_key?: string;
+  readonly content: Readonly<Record<string, unknown>>;
+  readonly unsigned?: Readonly<Record<string, unknown>>;
+}
+
+export function assertApiLogin(account: { readonly userId: string; readonly username: string }): void {
+  assert.equal(account.userId, `@${account.username}:localhost`, 'API login returned the exact user');
+}
+export function assertRoomCreated(roomId: string): void {
+  assert.match(roomId, /^![^:\s]+:\S+$/u, 'Room id is a Matrix room id');
+}
+export function assertJoined(r: WorkspaceRateLimitedJoin): void {
+  const ok = r.status >= 200 && r.status <= 299 && r.attempts >= 1 && r.attempts <= 5
+    && r.retryAfterMs.length === r.attempts - 1;
+  assert.ok(ok, 'The member joined within five attempts');
+}
+export function assertEventSent(eventId: string): void {
+  assert.match(eventId, /^\$\S+$/u, 'The sent event id is a Matrix event id');
+}
+
+const latestState = (events: readonly RoomEvent[], type: string, stateKey = ''): RoomEvent | undefined =>
+  events.filter((e) => e.type === type && (e.state_key ?? '') === stateKey).at(-1);
+
+export interface ArrangementExpectation {
+  readonly readerId: string;
+  readonly otherIds: readonly string[];
+  readonly targetId: string;
+  readonly runId: string;
+}
+export function assertArrangement(events: readonly RoomEvent[], e: ArrangementExpectation): void {
+  assert.ok(events.some((event) => event.type === 'm.room.create'), 'The Room has an m.room.create event');
+  const messages = events.filter((event) => event.type === 'm.room.message');
+  assert.equal(messages.length, 1, 'The Room holds exactly the target message');
+  const [target] = messages;
+  assert.equal(target?.event_id, e.targetId, 'The Room holds exactly the target message');
+  assert.equal(target?.sender, e.readerId, 'The reader sent the target');
+  assert.equal(target?.content['body'], bodyOf(e.runId), 'The target carries the arranged body');
+  assert.equal(latestState(events, 'm.room.join_rules')?.content['join_rule'], 'public', 'The Room is public');
+  const latestMembers = new Map<string, RoomEvent>();
+  for (const event of events) if (event.type === 'm.room.member' && event.state_key !== undefined) {
+    latestMembers.set(event.state_key, event);
+  }
+  const joined = [...latestMembers].filter(([, event]) => event.content['membership'] === 'join').map(([key]) => key);
+  assert.deepEqual([...joined].sort(), [e.readerId, ...e.otherIds].sort(), 'The Room has exactly 17 joined members');
+  const first = e.otherIds[0];
+  assert.equal(first === undefined ? undefined : latestMembers.get(first)?.content['displayname'],
+    longReactorNameOf(e.runId), "The long reactor's display name is the arranged long name");
+}
+
+export interface ReactionsExpectation {
+  readonly plan: readonly PlannedReaction[];
+  readonly ids: readonly string[];
+  readonly readerId: string;
+  readonly otherIds: readonly string[];
+  readonly targetId: string;
+}
+export function assertReactionsArranged(events: readonly RoomEvent[], e: ReactionsExpectation):
+  { readonly reactions: number; readonly thumbs: number; readonly keys: number; readonly readerIncluded: boolean } {
+  assert.equal(events.length, 36, 'Exactly 36 reactions are related to the target');
+  const keyOf = (event: RoomEvent): string => String((event.content['m.relates_to'] as { key?: unknown } | undefined)?.key);
+  for (const event of events) {
+    assert.equal(event.type, 'm.reaction', 'Every related event is an m.reaction');
+    assert.ok(event.unsigned?.['redacted_because'] === undefined, 'Every reaction is unredacted');
+    assert.deepEqual(event.content['m.relates_to'],
+      { rel_type: 'm.annotation', event_id: e.targetId, key: keyOf(event) }, 'Every reaction annotates the target');
+  }
+  assert.deepEqual(new Set(events.map((event) => event.event_id)), new Set(e.ids), 'The reactions are exactly the recorded ids');
+  const thumbSenders = events.filter((event) => keyOf(event) === '👍').map((event) => event.sender);
+  assert.equal(new Set(thumbSenders).size, 17, 'The 👍 reactions come from 17 distinct senders');
+  assert.equal(thumbSenders.length, 17, 'The 👍 reactions come from 17 distinct senders');
+  assert.ok(thumbSenders.includes(e.readerId), 'The reader is among the 👍 senders');
+  const keys = new Set(events.map(keyOf));
+  assert.equal(keys.size, 20, 'The reactions use 20 keys');
+  const everyone = new Set([e.readerId, ...e.otherIds]);
+  for (const planned of e.plan) {
+    const sender = planned.sender === 0 ? e.readerId : e.otherIds[planned.sender - 1];
+    const senders = new Set(events.filter((event) => keyOf(event) === planned.key).map((event) => event.sender));
+    if (planned.key === '👍') assert.deepEqual(senders, everyone, 'The 👍 is sent by the planned sender set');
+    else assert.ok(sender !== undefined && senders.has(sender), `Key ${planned.key} is sent by its planned sender`);
+  }
+  return { reactions: 36, thumbs: 17, keys: 20, readerIncluded: true };
+}
+
+export function assertTargetRow(row: Pick<ReactionRowObservation, 'rows' | 'exactEvent'>,
+  message = 'Exactly one reconciled target row is rendered and it is the arranged event'): void {
+  assert.equal(row.rows, 1, message);
+  assert.ok(row.exactEvent, message);
+}
+export function assertGate(row: ReactionRowObservation, gate: (typeof GATES)[number]): void {
+  assertTargetRow(row, 'The target row is still rendered and still the arranged event');
+  assert.equal(row.thumbsCount, String(gate.thumbs), `The cumulative 👍 count is ${gate.thumbs}`);
+  assert.equal(row.pills, gate.groups, `The cumulative groups are ${gate.groups}`);
+}
+export function assertThumbsCount(row: ReactionRowObservation): void {
+  assert.equal(row.thumbsPills, 1, 'One 👍 pill is rendered');
+  assert.equal(row.thumbsCount, '17', 'The 👍 count is 17');
+}
+export function assertGroupCount(row: ReactionRowObservation): void {
+  assert.equal(row.pills, 20, 'The row renders 20 reaction groups');
+}
+export function assertThumbsSummary(row: ReactionRowObservation): void {
+  assert.ok(row.thumbsPills === 1 && row.summaryMatches, 'The 👍 pill names its reactors: reacted by You first');
+}
+
+type Dialog = ReactionDialogObservation;
+export function assertDialogVisible(d: Dialog): void {
+  assert.equal(d.dialogs, 1, 'There is one visible Reactions dialog');
+}
+export function assertDialogTotal(d: Dialog): void {
+  assert.equal(d.total, '36 total', 'The dialog totals 36 total');
+}
+export function assertCloseVisible(d: Dialog): void {
+  assert.ok(d.closeVisible, 'The close control is visible');
+}
+export function assertKeyCount(d: Dialog): void {
+  assert.equal(d.keys, 20, 'The dialog lists 20 keys');
+}
+export function assertLongReactorListed(d: Dialog): void {
+  assert.ok(d.listContainsLong, "The long reactor's name is listed");
+}
+export function assertReactors(d: Dialog, n: number): void {
+  assert.equal(d.reactors, n, `The detail lists ${n} reactors`);
+}
+export function assertLongReactorEllipsis(d: Dialog): void {
+  assert.ok(d.longName.found, 'The long reactor name is rendered whole in its own element');
+  assert.equal(d.longName.textOverflow, 'ellipsis', 'The long reactor name uses text-overflow: ellipsis');
+}
+export function assertLongReactorOverflow(d: Dialog): void {
+  assert.ok((d.longName.overflow ?? 0) > 0, 'The long reactor name actually overflows its box');
+}
+export function assertDetailOverflow(d: Dialog): void {
+  assert.ok((d.detailOverflow ?? 0) > 0, 'The reactor detail scrolls vertically');
+}
+export function assertKeyPressed(d: Dialog, key: string): void {
+  assert.deepEqual(d.pressedKeys, [key], `Only ${key} is pressed`);
+}
+export function assertDialogDismissed(d: Dialog): void {
+  assert.equal(d.dialogs, 0, 'The Reactions dialog is dismissed');
+}
+export function assertSheetClass(d: Dialog): void {
+  assert.ok(d.sheetHost, 'The dialog host carries the sheet class');
+}
+export function assertSheetLeft(d: Dialog): void {
+  assert.ok(d.box !== null && d.box.left >= 0, 'The sheet starts inside the viewport');
+}
+export function assertSheetRight(d: Dialog): void {
+  assert.ok(d.box !== null && d.box.right <= d.innerWidth + 1, 'The sheet ends inside the viewport');
+}
+export function assertSheetBottom(d: Dialog): void {
+  assert.ok(d.box !== null && Math.abs(d.box.bottom - d.innerHeight) < 0.5, 'The sheet is bottom-attached');
+}
+export function assertDirectoryOverflow(d: Dialog): void {
+  assert.ok(d.directory !== null && d.directory.scrollWidth > d.directory.clientWidth,
+    'The key directory overflows horizontally');
+}
+export function assertLastKeyPressed(d: Dialog): void {
+  assert.ok(d.lastKey.pressed, 'The last key is pressed');
+}
+export function assertDirectoryScrolled(d: Dialog): void {
+  assert.ok(d.directory !== null && d.directory.scrollLeft > 0, 'The key directory scrolled to the last key');
+}
+export function assertComposerVisible(v: Pick<ReactionRowObservation, 'composers' | 'composerVisible'>): void {
+  assert.equal(v.composers, 1, 'One composer is rendered');
+  assert.ok(v.composerVisible, 'The composer is visible');
+}
+
+type Route = ShellRouteObservation;
+export function assertRoomsRoute(r: Route, userId: string): void {
+  assert.ok(r.path.startsWith('/rooms') && r.account === userId, 'Account-qualified Rooms route');
+}
+export function assertSettingsSections(r: Route): void {
+  assert.ok(r.path.startsWith('/settings') && r.sectionsVisible, 'The Settings sections are visible');
+}
+export function assertMode(r: Route, mode: 'dark' | 'light'): void {
+  assert.equal(r.dark, mode === 'dark', `The Appearance mode is ${mode}`);
+}
+export function assertSectionUnwound(r: Route): void {
+  assert.ok(r.path === '/settings' || r.path.startsWith('/rooms'), 'The Settings section unwound');
+}
+export function assertSettingsDetached(r: Route): void {
+  assert.equal(r.settingsHosts, 0, 'The Settings host is detached');
 }
