@@ -8,7 +8,6 @@ import {
   clickRowMenuItem,
   isAndroidE2E,
   login,
-  openMessageActionSheet,
   synapseSession,
   type SynapseSession,
 } from '../../../support/app.mts';
@@ -65,6 +64,10 @@ test.describe('Quoting does not notify the people it quotes', () => {
     page,
     request,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'Android runs this through android.quote-notification (#758).',
+    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}qm`;
     const writer = `qmw-${runId}`;
@@ -121,12 +124,7 @@ test.describe('Quoting does not notify the people it quotes', () => {
 
     const row = page.locator('.scroll .msg', { hasText: named });
     await expect(row.first()).toBeVisible({ timeout: 30_000 });
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, row.first());
-      await sheet.getByTestId('sheet-quote').click();
-    } else {
-      await clickRowMenuItem(row.first(), page.getByTestId('msg-quote'));
-    }
+    await clickRowMenuItem(row.first(), page.getByTestId('msg-quote'));
 
     const composer = page.getByTestId('composer-input');
     await expect(composer).toHaveValue(`> ${named}\n\n`, { timeout: 10_000 });

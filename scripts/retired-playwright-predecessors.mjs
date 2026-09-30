@@ -910,6 +910,14 @@ export const RETIRED_PREDECESSORS = Object.freeze([
     ],
     desktopOnly: [],
   },
+  {
+    path: 'e2e/browser/journeys/conversations/quote-mentions.spec.mts',
+    sha256: '5186fc3b45f12fd03e2ad71e79ae636a688fce41b96d05fb0e38f278f80266e5',
+    issues: [758],
+    deleted: false,
+    retired: [],
+    desktopOnly: ['a quoted display name gives the reader no highlight'],
+  },
 ]);
 
 if (

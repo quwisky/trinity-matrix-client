@@ -355,6 +355,7 @@ authorize retirement, describe that time.
 | `conversations/message-unread.spec.mts` | #755 | file deleted | — |
 | `conversations/pinned-message-panel.spec.mts` | #756 | file deleted | — |
 | `conversations/pinned-message-workflow.spec.mts` | #757 | 2 retired | — |
+| `conversations/quote-mentions.spec.mts` | #758 | 0 retired | “a quoted display name gives the reader no highlight” |
 
 ## Native shell, Back and Appearance batch
 
@@ -8122,4 +8123,10 @@ blob at HEAD equals its blob at `dd0cb53c` (SHA-256 `5186fc3b45f12fd03e2ad71e79a
 in both); the file stays pinned at the existing `RETIRED_PREDECESSOR_COMMIT`, so
 no new fetch is needed.
 
-Predecessor status: enabled; after hosted acceptance the coordinator keeps the file as a desktop-only definition, skipped on Android (#839).
+Predecessor status: retired on 2026-09-30 under
+[#758](https://github.com/quwisky/trinity-matrix-client/issues/758),
+following the 2026-09-26 retirement policy of
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839); the file
+stays as a desktop-only definition that skips on Android and no definition is
+removed; [Predecessor retirement](#predecessor-retirement) lists what stays
+desktop-only.

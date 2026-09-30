@@ -22,9 +22,12 @@ const digest = (path) => sha256(readFileSync(resolve(root, path)));
 const PREDECESSOR =
   'e2e/browser/journeys/conversations/quote-mentions.spec.mts';
 const predecessor = PREDECESSOR;
-/** The canonical bytes (ruled Q1): the dd0cb53c blob, equal to the working tree. */
+/** The canonical bytes (ruled Q1): the dd0cb53c blob. */
 const SOURCE_SHA256 =
   '5186fc3b45f12fd03e2ad71e79ae636a688fce41b96d05fb0e38f278f80266e5';
+/** The working tree after the #758 retirement: the desktop-only definition, skipped on Android. */
+const WORKING_TREE_SHA256 =
+  'eda4fdfedf05e04f78eb9fef1e6ac041b102a358b1f375196ba89ade5ce1e9e6';
 /** The issue's stale pin: the same file before fe2c7c3e (provenance only). */
 const ISSUE_SHA256 =
   '354f8f2ccd02e32b12bf74bea400abb4dec40bad31715fd80e03c4fd79fd49f8';
@@ -353,11 +356,11 @@ function corrupt(text) {
 }
 
 describe('Android quote-notification predecessor pins', () => {
-  it('pins the dd0cb53c blob and the working tree at one hash, byte-equal, and three shared sources', () => {
+  it('pins the dd0cb53c blob, the desktop-only working tree and three shared sources', () => {
     expect(RETIRED_PREDECESSOR_COMMIT.startsWith('dd0cb53c')).toBe(true);
     expect(sha256(blob())).toBe(SOURCE_SHA256);
-    expect(sha256(read(PREDECESSOR))).toBe(SOURCE_SHA256);
-    expect(read(PREDECESSOR) === blob()).toBe(true);
+    expect(sha256(read(PREDECESSOR))).toBe(WORKING_TREE_SHA256);
+    expect(read(PREDECESSOR) === blob()).toBe(false);
     for (const [path, hash] of Object.entries(SHARED_SHA256))
       expect(digest(path)).toBe(hash);
     const flippedBlob = Buffer.from(blob());
@@ -365,8 +368,7 @@ describe('Android quote-notification predecessor pins', () => {
     expect(sha256(flippedBlob)).not.toBe(SOURCE_SHA256);
     const flippedTree = Buffer.from(readFileSync(resolve(root, PREDECESSOR)));
     flippedTree[0] ^= 1;
-    expect(sha256(flippedTree)).not.toBe(SOURCE_SHA256);
-    expect(flippedTree.toString('utf8') === blob()).toBe(false);
+    expect(sha256(flippedTree)).not.toBe(WORKING_TREE_SHA256);
     for (const path of Object.keys(SHARED_SHA256)) {
       const shared = Buffer.from(readFileSync(resolve(root, path)));
       shared[0] ^= 1;
@@ -3050,16 +3052,17 @@ describe('Android quote-notification hosted wiring and parity ledger', () => {
     expect(() => assertQuoteWiring(before)).toThrow();
   });
 
-  it('keeps the predecessor enabled and unchanged', async () => {
-    expect(sha256(readFileSync(resolve(root, PREDECESSOR)))).toBe(
-      SOURCE_SHA256,
-    );
-    expect(read(PREDECESSOR)).toBe(blob());
+  it('keeps the predecessor as a desktop-only definition, skipped on Android', async () => {
     const source = read(PREDECESSOR);
     expect(source.match(/^ {2}test\('/gmu)).toHaveLength(1);
-    expect(source.match(/test\.skip\(/gu)).toHaveLength(1);
+    expect(source.match(/test\.skip\(/gu)).toHaveLength(2);
     for (const token of ['test.fixme', 'test.only', 'test.skip(true'])
       expect(source).not.toContain(token);
+    expect(source).not.toContain('openMessageActionSheet');
+    expect(source).toContain(
+      "test.skip(\n      isAndroidE2E,\n      'Android runs this through android.quote-notification (#758).',\n    );",
+    );
+    expect(source).not.toMatch(/if \(!?isAndroidE2E\)/u);
     const { BROWSER_JOURNEYS } =
       await import('../e2e/browser/journey-catalog.mts');
     expect(
@@ -3075,7 +3078,16 @@ describe('Android quote-notification hosted wiring and parity ledger', () => {
       await import('./retired-playwright-predecessors.mjs');
     expect(
       RETIRED_PREDECESSORS.filter((entry) => entry.path === PREDECESSOR),
-    ).toHaveLength(0);
+    ).toEqual([
+      {
+        path: PREDECESSOR,
+        sha256: SOURCE_SHA256,
+        issues: [758],
+        deleted: false,
+        retired: [],
+        desktopOnly: ['a quoted display name gives the reader no highlight'],
+      },
+    ]);
   });
 
   it('documents the 8 identities with their source lines, both hashes, the redaction sentence and the placement', () => {
@@ -3115,8 +3127,8 @@ describe('Android quote-notification hosted wiring and parity ledger', () => {
       'a failed teardown step is rethrown through `redactStageFailure`, and a failed guarded cleanup is rethrown through `redactCleanupFailure`, never as the raw error.',
     );
     expect(flat).toContain('Shard 3 runs it last, after pinned-message-panel');
-    expect(section).toContain(
-      'Predecessor status: enabled; after hosted acceptance the coordinator keeps the file as a desktop-only definition, skipped on Android (#839).',
+    expect(flat).toContain(
+      'Predecessor status: retired on 2026-09-30 under [#758](https://github.com/quwisky/trinity-matrix-client/issues/758)',
     );
     expect(section).not.toContain('pnpm exec nx');
   });

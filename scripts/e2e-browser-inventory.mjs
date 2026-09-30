@@ -28,7 +28,9 @@ const EXTRACTED_ASSERTION_SUPPORT = [
  * file, 1 definition and 14 assertion calls. The 2026-09-29 retirement of the accepted
  * pinned-message-panel predecessor (#756) removed 1 more file, 1 definition and 12 assertion
  * calls. The 2026-09-30 partial retirement of the accepted pinned-message-workflow predecessor
- * (#757) removed 2 more definitions and 25 assertion calls and kept the file.
+ * (#757) removed 2 more definitions and 25 assertion calls and kept the file. The 2026-09-30
+ * retirement of the accepted quote-notification predecessor (#758) removed nothing: its one
+ * definition stays desktop-only and skips on Android, which moves only the test fingerprint.
  */
 export const BROWSER_ASSERTION_BASELINE = Object.freeze({
   baselineSpecFiles: 103,
@@ -36,7 +38,7 @@ export const BROWSER_ASSERTION_BASELINE = Object.freeze({
   testDefinitions: 154,
   assertionCalls: 1399,
   testFingerprint:
-    'f6814aba467550418306a477b47c942a2e78da7f2b182580126a04a21b7e6191',
+    '8d2c8b819ffa6fc25eb427319d64f0acbcd703869855d78373c2994ba12655f0',
   assertionFingerprint:
     'b149e6ad622f0133d212bd83d61fed4d39591b72ad1162bdcd218373b51990a2',
 });
