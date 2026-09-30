@@ -8249,4 +8249,28 @@ pnpm e2e:android:who-reacted
 The target runs one attempt with zero retries, a 25-minute Node test and a
 30-minute CI wrapper. Shard 3 runs it last, after quote-notification; its budget comment adds the 10-minute local run time (about 94 native minutes of the 240-minute job).
 
+Local acceptance used the unchanged general-touch and Pixel 5 profiles, renderer
+manifest `13bfc039026afb63fe0487d576d36a459c14d323aa5d1ebbd8c2c9835ae4b166`, debug APK
+`6878433d258be73b5e508e912177200cd97425a04f9833039caf86204b76c887`
+(installed digest equal), general-touch profile
+`17b467f886357b96f649995094fb52c4860246be226426b34ac891ef2e43a907` and Pixel 5
+profile `53d1fe730fd894c711c5c9a6c7ac3ee9a319ce7ab1841e6b0241c4616f1bbcc7`, at
+`36e560fb`. Three consecutive first-attempt passes, each 2/2 stages, 88 + 103
+records, attempt 1, retries 0 and publication-safe, are invocations
+`muns7gdi-51938ca5-867b-44af-b8da-3d992ba2c5f5` (493.1 s stage time),
+`munsjcx4-8d7dfd42-e29b-4978-935c-559e7476b7d8` (484.1 s) and
+`munsus9z-6349897b-fe14-4a5d-8f0f-de53ff4a6022` (492.3 s). Per run, the 429 joins
+were 13, 14 and 14 (each retried once); the slowest render gate was 148, 238 and
+175 ms; five swipes ran (one timeline and four directory); the long reactor
+overflowed by 51, 55 and 55 px and the sheet detail by 245 px in every run. The
+slowest tap is not recorded in the artifacts, so it is not reported; no window
+timed out. The leak grep found no identifier, token, name, text or raster; its
+only hits were Java class and lambda names (`$mdumpAsStringNoCheck`,
+`$ExternalSyntheticLambda…`, `$r8$lambda$…`) in the device logcat, and the
+`"password"` tap-point key, whose value is `[REDACTED]`.
+
+The browser predecessor passed both definitions at retry 0 (2 passed, one worker)
+in invocation `munt7hcb-4297747e-c618-403e-9227-7b8bd9337725`; the predecessor
+file is unchanged.
+
 Predecessor status: enabled; after hosted acceptance the coordinator retires the Android definition and keeps the general definition desktop-only, skipped on Android (#839).
