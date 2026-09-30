@@ -5,9 +5,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, posix, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { pathToFileURL } from 'node:url';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
+import { withMutantModule } from './support/mutant-module.mjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   readRetiredPredecessor,
@@ -2187,26 +2187,24 @@ describe('Android quote-notification native journey against a simulated installe
       source.slice(decided.getEnd()),
     ].join('');
     expect(mutated).not.toBe(source);
-    const temp = resolve(
-      root,
-      `e2e/android/quote-notification-journeys.probe-order-${process.pid}.mts`,
+    await withMutantModule(
+      {
+        original: resolve(root, 'e2e/android/quote-notification-journeys.mts'),
+        source: mutated,
+      },
+      async (journeys) => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(1_000_000);
+        try {
+          const app = await simulatedQuoteNotificationApp({});
+          await expect(
+            journeys.runQuotedDisplayName(app.context),
+          ).rejects.toThrow('Incremental sync before the probe');
+        } finally {
+          vi.useRealTimers();
+        }
+      },
     );
-    try {
-      await writeFile(temp, mutated);
-      const journeys = await import(pathToFileURL(temp).href);
-      vi.useFakeTimers({ toFake: ['Date'] });
-      vi.setSystemTime(1_000_000);
-      try {
-        const app = await simulatedQuoteNotificationApp({});
-        await expect(
-          journeys.runQuotedDisplayName(app.context),
-        ).rejects.toThrow('Incremental sync before the probe');
-      } finally {
-        vi.useRealTimers();
-      }
-    } finally {
-      await rm(temp, { force: true });
-    }
   }, 40_000);
 
   // [RF-3] Every window is anchored after its event: 45 s native calls, one pass 5 s inside the bound, one fail 1 s past it.

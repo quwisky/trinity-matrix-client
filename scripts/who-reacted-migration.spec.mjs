@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import {
   mkdir,
   mkdtemp,
@@ -16,6 +16,7 @@ import { pathToFileURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
+import { withMutantModule } from './support/mutant-module.mjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   readRetiredPredecessor,
@@ -4724,34 +4725,35 @@ function editRunner(source, edits) {
   );
 }
 
-/** Import a mutated copy of the journeys (and optionally the contract) beside the original. */
-async function withMutatedJourneys({ journeys, contract }, run) {
-  const tag = `${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
-  const journeysTemp = resolve(
-    root,
-    `e2e/android/who-reacted-journeys.mutated-${tag}.mts`,
+/** Import a mutated copy of the journeys (and optionally the contract) from outside the source tree. */
+function withMutatedJourneys({ journeys, contract }, run) {
+  const journeysPath = resolve(root, JOURNEYS);
+  return withMutantModule(
+    {
+      original: journeysPath,
+      source: journeys,
+      companions:
+        contract === undefined
+          ? {}
+          : { [resolve(root, CONTRACT_PATH)]: contract },
+    },
+    run,
   );
-  const contractTemp = resolve(
-    root,
-    `e2e/android/who-reacted-contract.mutated-${tag}.mts`,
-  );
-  try {
-    let source = journeys;
-    if (contract !== undefined) {
-      await writeFile(contractTemp, contract);
-      source = source.replace(
-        "'./who-reacted-contract.mts'",
-        `'./who-reacted-contract.mutated-${tag}.mts'`,
-      );
-      expect(source).not.toBe(journeys);
-    }
-    await writeFile(journeysTemp, source);
-    return await run(await import(pathToFileURL(journeysTemp).href));
-  } finally {
-    await rm(journeysTemp, { force: true });
-    await rm(contractTemp, { force: true });
-  }
 }
+
+describe('who-reacted mutant modules', () => {
+  it('never place a mutant inside the scanned e2e/android tree', async () => {
+    const strays = () =>
+      readdirSync(resolve(root, 'e2e/android')).filter((name) =>
+        /mutated|probe-order/u.test(name),
+      );
+    expect(strays()).toEqual([]);
+    await withMutatedJourneys(
+      { journeys: read(JOURNEYS), contract: read(CONTRACT_PATH) },
+      async () => expect(strays()).toEqual([]),
+    );
+  });
+});
 
 describe('Android who-reacted pacing controls [RF-1]', () => {
   const GATE_PREFIXES = [
