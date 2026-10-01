@@ -340,6 +340,8 @@ export const quoteEventBody = (run: string): string =>
 export const QUOTE_IMAGE_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 export const QUOTE_IMAGE_FILENAME = 'shot.png';
+/** The accessible name of the image row's media button, as the predecessor finds it. */
+export const QUOTE_IMAGE_LABEL = `Open image ${QUOTE_IMAGE_FILENAME}`;
 export const QUOTE_IMAGE_BODY = 'shot.png';
 export const QUOTE_IMAGE_MIME = 'image/png';
 export const quoteImageTransaction = (run: string): string => `${run}img`;
@@ -593,6 +595,8 @@ export interface MessageRowObservation {
   /** `.msg__media` attachments, and the rendered `.media` kinds inside them. */
   readonly media: number;
   readonly mediaKinds: readonly string[];
+  /** Accessible names of the rendered `.media--image` buttons. */
+  readonly mediaLabels: readonly string[];
   readonly blockquotes: number;
   readonly texts: readonly MessageTextObservation[];
 }
@@ -630,6 +634,7 @@ export function parseTimeline(value: unknown): TimelineObservation {
         text: stringField(row, 'text'),
         media: countField(row, 'media'),
         mediaKinds: stringArrayField(row, 'mediaKinds'),
+        mediaLabels: stringArrayField(row, 'mediaLabels'),
         blockquotes: countField(row, 'blockquotes'),
         texts: arrayField(row, 'texts').map((text, textIndex) =>
           parseMessageText(text, `Timeline row ${index} text ${textIndex}`)),
@@ -717,19 +722,23 @@ export function assertAnswerOutside(
 }
 
 /**
- * Line 200: exactly one row carries the fixture's filename, as the predecessor
- * finds it (`hasText: 'shot.png'`), and it is the proved `m.image` event with
- * one media attachment and no message text to quote. The fixture carries no
- * `info.mimetype`, so the renderer shows it as a named download tile.
+ * Line 200: exactly one row renders the fixture's image, as the predecessor
+ * finds it (a button named `Open image shot.png`), and it is the proved
+ * `m.image` event with one media attachment rendered as an image and no
+ * message text to quote. The fixture carries no `info`, so the renderer shows
+ * the image itself, not a filename.
  */
 export function assertImageRow(
   timeline: TimelineObservation,
   imageId: string,
 ): MessageRowObservation {
-  const row = assertRowVisible(timeline, QUOTE_IMAGE_FILENAME);
-  assert.equal(row.id, imageId, 'The filename row is the image fixture event');
+  const rows = messageRows(timeline).filter((row) => row.mediaLabels.includes(QUOTE_IMAGE_LABEL));
+  assert.equal(rows.length, 1, `Exactly one Room row renders ${JSON.stringify(QUOTE_IMAGE_LABEL)}`);
+  const row = rows[0]!;
+  assert(row.visible, 'The row is visible');
+  assert.equal(row.id, imageId, 'The image row is the image fixture event');
   assert.equal(row.media, 1, 'The image row renders exactly one media attachment');
-  assert.equal(row.mediaKinds.length, 1, 'The attachment renders one media element');
+  assert.deepEqual(row.mediaKinds, ['media--image'], 'The attachment renders one image');
   assert.equal(row.texts.length, 0, 'The image row renders no message text');
   assert.equal(messageRows(timeline).filter((candidate) => candidate.media > 0).length, 1,
     'Exactly one media row renders');

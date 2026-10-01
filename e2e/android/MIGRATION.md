@@ -6733,11 +6733,11 @@ Documented reinterpretations of the predecessor:
   Cancel, the sheet's last button, is reached with bounded native in-sheet
   swipes. Quote absence on the image is read from the same open sheet that
   shows exactly one visible Copy.
-- **Image row.** The pinned fixture carries no `info.mimetype`, so the
-  renderer classifies it as `application/octet-stream` and draws a download
-  tile named `shot.png`, the text the predecessor's `hasText` matches. Line
-  200 requires exactly one such row, the fixture's event id, one media
-  attachment and no message text.
+- **Image row.** The pinned fixture carries no `info`, so the renderer draws
+  the image itself: a `media--image` button named `Open image shot.png`, the
+  button the predecessor's `getByRole` matches. Line 200 requires exactly one
+  such row, the fixture's event id, one media attachment and no message text,
+  and the long press targets that row through the same button.
 
 Both stages run at the Pixel 5 profile (393×727 CSS pixels, DPR 2.75, mobile
 and touch) and write `profile-applied.json`. Every Room, Account, event and

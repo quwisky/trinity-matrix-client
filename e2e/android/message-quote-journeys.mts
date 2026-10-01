@@ -24,6 +24,7 @@ import {
   PARAGRAPH_SENTINEL,
   QUOTE_IMAGE_BODY,
   QUOTE_IMAGE_FILENAME,
+  QUOTE_IMAGE_LABEL,
   assertAnswerOutside,
   assertAnswerVisible,
   assertCapabilityRoom,
@@ -673,7 +674,8 @@ export async function runQuoteCapability(context: MessageQuoteStageContext): Pro
     mediaKinds: imageRow.mediaKinds,
     eventDigest: digest(image.eventId),
   });
-  await openSheet(context, READY_ROW, { text: QUOTE_IMAGE_FILENAME }, 'image-sheet-ready');
+  await openSheet(context, `${READY_ROW}:has(.media--image[aria-label="${QUOTE_IMAGE_LABEL}"])`, {},
+    'image-sheet-ready');
   const imageSheet = await sheet(client, assertCopyVisible, 'image sheet offers Copy');
   await record(context, 'image-copy-visible', () => assertCopyVisible(imageSheet), {
     copyActions: imageSheet.copy.count,

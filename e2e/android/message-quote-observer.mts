@@ -86,6 +86,8 @@ export function timelineExpression(): string {
         media: row.querySelectorAll('.msg__media').length,
         mediaKinds: [...row.querySelectorAll('.msg__media .media')].map((media) =>
           [...media.classList].filter((name) => name.startsWith('media--')).join(' ')),
+        mediaLabels: [...row.querySelectorAll('.msg__media .media--image')].map((media) =>
+          media.getAttribute('aria-label') ?? ''),
         blockquotes: row.querySelectorAll('blockquote').length,
         texts: [...row.querySelectorAll('.msg__text')].map(text),
       })),
