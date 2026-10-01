@@ -1,4 +1,11 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { browser } from '@wdio/globals';
+import { appiumLogPath } from './artifacts.mts';
+import {
+  chromedriverFromAppiumLog,
+  parseWebViewVersion,
+  webviewSwitchError,
+} from './versions.mts';
 
 export const APP_PACKAGE = 'eu.qwky.trinity';
 const WEBVIEW_CONTEXT = `WEBVIEW_${APP_PACKAGE}`;
@@ -14,7 +21,18 @@ export async function webview(): Promise<void> {
       (await browser.getContexts()).map(String).includes(WEBVIEW_CONTEXT),
     { timeout: 30_000, timeoutMsg: `${WEBVIEW_CONTEXT} never appeared` },
   );
-  await browser.switchContext(WEBVIEW_CONTEXT);
+  try {
+    await browser.switchContext(WEBVIEW_CONTEXT);
+  } catch (error) {
+    throw webviewSwitchError(
+      WEBVIEW_CONTEXT,
+      {
+        webview: await webviewVersion().catch(() => 'unknown'),
+        chromedriver: chromedriverVersion(),
+      },
+      error,
+    );
+  }
   // acceptInsecureCerts covers chromedriver's own session; this covers the WebView target.
   await executeCdp('Security.setIgnoreCertificateErrors', { ignore: true });
 }
@@ -72,9 +90,13 @@ export async function pressBack(): Promise<void> {
 }
 
 export async function webviewVersion(): Promise<string> {
-  const out = await shell('dumpsys', ['webviewupdate']);
-  return (
-    /Current WebView package \(name, version\): \(([^)]+)\)/.exec(out)?.[1] ??
-    out.slice(0, 200)
-  );
+  return parseWebViewVersion(await shell('dumpsys', ['webviewupdate']));
+}
+
+/** The chromedriver Appium chose for this run, read from its server log. */
+export function chromedriverVersion(): string {
+  const log = appiumLogPath();
+  return existsSync(log)
+    ? chromedriverFromAppiumLog(readFileSync(log, 'utf8'))
+    : 'unknown';
 }

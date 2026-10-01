@@ -31,6 +31,11 @@ import {
 } from '../support/invocation.mts';
 import { e2eArtifactPath } from '../support/playwright-config.mts';
 import { MOBILE_ANDROID_SUITE } from '../support/host-suites.mts';
+import { appiumLogPath } from './support/artifacts.mts';
+import {
+  chromedriverFromAppiumLog,
+  parseWebViewVersion,
+} from './support/versions.mts';
 
 const exec = promisify(execFile);
 const workspaceRoot = join(import.meta.dirname, '../..');
@@ -434,6 +439,17 @@ async function captureDiagnostics(): Promise<void> {
     }
   };
 
+  await writeDiagnostic('versions.txt', async () => {
+    const webview = parseWebViewVersion(
+      await adbRun('shell', 'dumpsys', 'webviewupdate'),
+    );
+    const chromedriver = existsSync(appiumLogPath())
+      ? chromedriverFromAppiumLog(readFileSync(appiumLogPath(), 'utf8'))
+      : 'unknown (no Appium log)';
+    const line = `[mobile] Android System WebView: ${webview}; chromedriver: ${chromedriver}`;
+    console.log(line);
+    return `${line}\n`;
+  });
   await writeDiagnostic('adb-devices.txt', async () => {
     const { stdout } = await exec(adb, ['devices', '-l'], {
       cwd: workspaceRoot,

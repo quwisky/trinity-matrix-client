@@ -7,14 +7,11 @@ import {
 } from '../support/execution-report.mts';
 import { MOBILE_ANDROID_SUITE } from '../support/host-suites.mts';
 import { readSession } from '../support/session.mts';
+import { wdioOutputDir } from './support/artifacts.mts';
 
 const workspaceRoot = join(import.meta.dirname, '../..');
 const startedAt = Date.now();
-const outputDir = join(
-  workspaceRoot,
-  'dist/.wdio/trinity-e2e-mobile',
-  process.env['TRINITY_E2E_RUN_ID'] ?? 'local',
-);
+const outputDir = wdioOutputDir();
 
 export const config: WebdriverIO.Config = {
   runner: 'local',
@@ -63,12 +60,12 @@ export const config: WebdriverIO.Config = {
   async afterTest(test, _context, { passed }) {
     if (passed) return;
     const name = test.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    mkdirSync(outputDir, { recursive: true });
     await browser
       .saveScreenshot(join(outputDir, `${name}.png`))
       .catch(() => undefined);
     await browser.switchContext('NATIVE_APP').catch(() => undefined);
     const hierarchy = await browser.getPageSource().catch(() => '');
-    mkdirSync(outputDir, { recursive: true });
     writeFileSync(join(outputDir, `${name}.native.xml`), hierarchy);
   },
   /** Publish the suite summary the E2E aggregate runner validates. */
