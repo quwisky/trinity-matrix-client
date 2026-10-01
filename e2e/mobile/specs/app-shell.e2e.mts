@@ -3,6 +3,17 @@ import { resetApp } from '../support/session.mts';
 
 /** In-app navigation like the Android Playwright layer: pushState plus popstate, no reload. */
 async function navigate(path: string): Promise<void> {
+  // A pushState before Angular's initial navigation is overwritten by it; wait for the router.
+  await browser.waitUntil(
+    () =>
+      browser.execute(
+        () => typeof window.history.state?.navigationId === 'number',
+      ),
+    {
+      timeout: 20_000,
+      timeoutMsg: 'router never completed its first navigation',
+    },
+  );
   const target = new URL(path, await browser.getUrl()).href;
   await browser.execute((url: string) => {
     const state = {

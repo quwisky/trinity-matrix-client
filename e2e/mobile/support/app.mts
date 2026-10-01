@@ -1,5 +1,6 @@
 import { browser, expect } from '@wdio/globals';
 import { HS_TLS } from '../../support/synapse/start.mjs';
+import { APP_PACKAGE, native, webview } from './session.mts';
 
 /** Fill an input through its `<label for>`, like the browser suite's fillLabeledInput. */
 export async function fillByLabel(label: string, value: string): Promise<void> {
@@ -55,4 +56,37 @@ export async function tap(selector: string): Promise<void> {
     .down()
     .up()
     .perform();
+}
+
+/**
+ * Capacitor Preferences resolves after SharedPreferences.apply(), whose disk write is
+ * asynchronous. Observe the on-disk Active Account before a process kill so a restart test
+ * proves restoration, not a race with Android persistence.
+ */
+export async function waitForDurableActiveAccount(
+  accountId: string,
+): Promise<void> {
+  const expected = `activeUserId&quot;:&quot;${accountId}`;
+  await native();
+  try {
+    let registry = '';
+    await browser.waitUntil(
+      async () => {
+        registry = String(
+          await browser.execute('mobile: shell', {
+            command: 'run-as',
+            args: [APP_PACKAGE, 'cat', 'shared_prefs/CapacitorStorage.xml'],
+          }),
+        );
+        return registry.includes(expected);
+      },
+      {
+        timeout: 10_000,
+        interval: 50,
+        timeoutMsg: `Active Account ${accountId} was not durable before process restart`,
+      },
+    );
+  } finally {
+    await webview();
+  }
 }
