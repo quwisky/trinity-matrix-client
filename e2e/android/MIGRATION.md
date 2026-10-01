@@ -6724,10 +6724,11 @@ Documented reinterpretations of the predecessor:
   event id: one visible real `blockquote` inside the rendered Markdown text,
   holding both paragraphs, with the answer rendered outside it.
 - **Exact rows without identifiers.** Each long press targets
-  `.scroll .msg[data-mid^="$"]` with a text filter (the first paragraph, the
-  control, or the image row found by the `Open image shot.png` button); a read-only
-  observation first proves that exactly one row matches and that it is the
-  proved event.
+  `.scroll .msg[data-mid^="$"]`, narrowed by a text filter
+  (the first paragraph or the control) or, for the image row,
+  by `:has(.media--image[aria-label="Open image shot.png"])`;
+  a read-only observation first proves that exactly one row
+  matches and that it is the proved event.
 - **Android sheets.** Each sheet is proved as the message-forward suite proves
   it: one visible `Message actions` dialog with one visible Forward action.
   Cancel, the sheet's last button, is reached with bounded native in-sheet
