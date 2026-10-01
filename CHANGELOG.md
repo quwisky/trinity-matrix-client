@@ -34,6 +34,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Images sent without size or type details now show as images instead of file downloads.
+
 - Polls created in Trinity, and votes and closures cast in it, now appear in FluffyChat
   and other clients that read only the MSC3381 poll event types.
 
