@@ -429,11 +429,12 @@ jobs:
 
       # Also covers dist/.ci (full run stdout) and a run killed before its own cleanup.
       - name: Scrub identifiers from mobile artifacts
+        id: mobile-scrub
         if: ${{ !cancelled() && steps.mobile.outputs.started == 'true' }}
         run: node e2e/mobile/scrub-cli.mts dist/.ci dist/.playwright
 
       - uses: ./.github/actions/upload-playwright-diagnostics
-        if: ${{ !cancelled() && steps.mobile.outputs.started == 'true' }}
+        if: ${{ !cancelled() && steps.mobile.outputs.started == 'true' && steps.mobile-scrub.outcome == 'success' }}
         with:
           surface: mobile
           report-path: dist/.playwright/trinity-e2e-mobile/*/mobile.android/**
