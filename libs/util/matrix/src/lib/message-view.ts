@@ -1195,8 +1195,8 @@ const UNSAFE_INLINE_MIME = /^(?:image\/svg\+xml|text\/html)$/i;
 /**
  * Project an `m.image`/`m.file`/`m.video`/`m.audio` content block into a
  * {@link MediaPayload}, or null when it lacks a source (`url`/`file`). The kind is
- * derived from the msgtype, then downgraded to `'file'` (download-only) for unknown
- * or script-bearing MIME types so nothing scriptable is rendered inline.
+ * derived from the msgtype, then downgraded to `'file'` (download-only) for a declared
+ * MIME type that mismatches it or is script-bearing so nothing scriptable is rendered inline.
  */
 export function normalizeMediaPayload(
   content: Record<string, unknown>,
@@ -1209,10 +1209,9 @@ export function normalizeMediaPayload(
     return null;
   }
   const info = (content['info'] ?? {}) as Record<string, unknown>;
-  const mimeType =
-    typeof info['mimetype'] === 'string'
-      ? (info['mimetype'] as string)
-      : 'application/octet-stream';
+  const declaredMime =
+    typeof info['mimetype'] === 'string' ? (info['mimetype'] as string) : null;
+  const mimeType = declaredMime ?? 'application/octet-stream';
 
   let kind: MediaKind =
     msgtype === MsgType.Image
@@ -1222,11 +1221,14 @@ export function normalizeMediaPayload(
         : msgtype === MsgType.Audio
           ? 'audio'
           : 'file';
-  // Inline rendering requires a MIME that matches its category and isn't scriptable.
+  // A declared MIME must match its category and not be scriptable. `info` is optional,
+  // so an undeclared one trusts the msgtype; the blob stays opaque and the media
+  // element sniffs the bytes, which never executes script.
   const category = kind === 'file' ? null : kind;
   if (
-    UNSAFE_INLINE_MIME.test(mimeType) ||
-    (category && !mimeType.toLowerCase().startsWith(`${category}/`))
+    declaredMime !== null &&
+    (UNSAFE_INLINE_MIME.test(declaredMime) ||
+      (category && !declaredMime.toLowerCase().startsWith(`${category}/`)))
   ) {
     kind = 'file';
   }

@@ -1424,6 +1424,39 @@ describe('TimelineService', () => {
       expect(m.media?.mimeType).toBe('image/svg+xml'); // MIME preserved on the payload
     });
 
+    it('renders an m.image without info inline, since the spec makes info optional', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$bare',
+          sender: '@a:hs',
+          msgtype: 'm.image',
+          body: 'shot.png',
+          url: 'mxc://hs/shot',
+        }),
+      ]);
+
+      const m = svc.messages()[0];
+      expect(m.kind).toBe('image');
+      expect(m.media?.kind).toBe('image');
+      // No declared type, so the blob stays opaque; <img> sniffs the raster bytes.
+      expect(m.media?.mimeType).toBe('application/octet-stream');
+    });
+
+    it('downgrades an image whose declared MIME is not an image', () => {
+      const svc = setup([
+        fakeEvent({
+          id: '$html',
+          sender: '@a:hs',
+          msgtype: 'm.image',
+          body: 'page.html',
+          url: 'mxc://hs/html',
+          info: { mimetype: 'application/xhtml+xml' },
+        }),
+      ]);
+
+      expect(svc.messages()[0].media?.kind).toBe('file');
+    });
+
     it('falls back to unsupported with no media when a media event has neither url nor file', () => {
       const svc = setup([
         fakeEvent({
