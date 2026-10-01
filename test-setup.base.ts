@@ -25,13 +25,28 @@ const IGNORED_JSDOM_ERRORS = [
   'Could not parse CSS stylesheet',
   'Not implemented: navigation',
 ];
-const virtualConsole = (
+// jsdom has no public handle on the VirtualConsole vitest creates for the window, so
+// this reads its private slot: `_settings.virtualConsole` since jsdom 30.1.1,
+// `_virtualConsole` before. Throw rather than skip when neither exists, so a future
+// jsdom move fails here instead of silently turning the filter off.
+type JsdomVirtualConsole = {
+  emit(event: string, ...args: unknown[]): boolean;
+};
+const jsdomWindow = (
   globalThis as unknown as {
     window?: {
-      _virtualConsole?: { emit(event: string, ...args: unknown[]): boolean };
+      _settings?: { virtualConsole?: JsdomVirtualConsole };
+      _virtualConsole?: JsdomVirtualConsole;
     };
   }
-).window?._virtualConsole;
+).window;
+const virtualConsole =
+  jsdomWindow?._settings?.virtualConsole ?? jsdomWindow?._virtualConsole;
+if (jsdomWindow && !virtualConsole) {
+  throw new Error(
+    'test-setup.base: jsdom moved its VirtualConsole again; update the lookup above.',
+  );
+}
 if (virtualConsole) {
   const emit = virtualConsole.emit.bind(virtualConsole);
   virtualConsole.emit = (event: string, ...args: unknown[]): boolean => {
@@ -77,6 +92,18 @@ class NoopResizeObserver {
 }
 globalThis.ResizeObserver =
   NoopResizeObserver as unknown as typeof ResizeObserver;
+
+// jsdom implements no object URLs; vitest's jsdom environment supplies them by
+// converting a jsdom Blob to a Node Blob, and that conversion finds the Blob's bytes
+// through the `Symbol("impl")` own property jsdom used until 30.0. jsdom 30.1 keeps
+// the impl in a private `#impl` field, so vitest (4.1 and 5.0) throws
+// "Cannot read properties of undefined (reading '_buffer' / '_bytes')" for every jsdom
+// Blob. Specs only need distinct, revocable URL strings, never the bytes behind them,
+// so issue counted fakes. Specs that assert on these calls still install their own
+// spies. Drop this once vitest's makeCompatBlob reads jsdom's private impl again.
+let objectUrlCount = 0;
+URL.createObjectURL = () => `blob:test/${++objectUrlCount}`;
+URL.revokeObjectURL = () => undefined;
 
 // jsdom HAS shipped PointerEvent since 27, so this is no longer a missing-feature shim.
 // It survives for its DEFAULTS. The native constructor follows the spec — `pointerType`
