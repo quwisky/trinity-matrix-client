@@ -34,6 +34,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- A message's author no longer appears in that message's "Seen by" receipts.
+
 - Images sent without size or type details now show as images instead of file downloads.
 
 - Polls created in Trinity, and votes and closures cast in it, now appear in FluffyChat

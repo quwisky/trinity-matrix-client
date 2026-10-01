@@ -9,6 +9,7 @@ import {
   parseLocationInput,
   reactionDetailsFor,
   reactionsFor,
+  readReceiptsFor,
   sanitizeMatrixHtml,
   sanitizeOutgoingHtml,
   setCodeHighlighter,
@@ -893,6 +894,24 @@ describe('collectMessageSenders', () => {
 
     // Not ourselves: our own receipt is never rendered, so nothing depends on it.
     expect([...senders]).toEqual(['@author:hs', '@reader:hs']);
+  });
+});
+
+describe('readReceiptsFor', () => {
+  it("leaves the author out of their own message's seen-by list", () => {
+    // The SDK counts the sender as having read their own event; that receipt says nothing.
+    const room = {
+      ...reactedRoom({}),
+      getUsersReadUpTo: () => ['@author:hs', '@reader:hs', '@me:hs'],
+    } as unknown as Room;
+    const message = {
+      getId: () => '$m',
+      getSender: () => '@author:hs',
+    } as unknown as MatrixEvent;
+
+    expect(readReceiptsFor(ME, room, message).map((r) => r.userId)).toEqual([
+      '@reader:hs',
+    ]);
   });
 });
 

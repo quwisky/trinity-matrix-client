@@ -211,15 +211,19 @@ const MAX_RECEIPTS = 5;
  */
 const MAX_WAVEFORM_BARS = 512;
 
-/** User ids (excluding the local user) whose read receipt sits on this event, capped. */
+/**
+ * User ids whose read receipt sits on this event, capped. Excludes the local user and
+ * the event's author, whose receipt on their own message carries no information.
+ */
 export function readReceiptUserIds(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,
 ): string[] {
   const selfId = client.getUserId();
+  const senderId = event.getSender();
   return (room.getUsersReadUpTo?.(event) ?? [])
-    .filter((id) => id !== selfId)
+    .filter((id) => id !== selfId && id !== senderId)
     .slice(0, MAX_RECEIPTS);
 }
 
