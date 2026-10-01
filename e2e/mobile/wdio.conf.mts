@@ -55,7 +55,17 @@ export const config: WebdriverIO.Config = {
   framework: 'mocha',
   mochaOpts: { ui: 'bdd', timeout: 180_000, retries: 0 },
   specFileRetries: 0,
-  reporters: ['spec', ['junit', { outputDir: join(outputDir, 'junit') }]],
+  reporters: [
+    'spec',
+    [
+      'junit',
+      {
+        outputDir: join(outputDir, 'junit'),
+        // The default name ends in .log; CI diagnostics require an .xml report.
+        outputFileFormat: ({ cid }) => `results-${cid}.xml`,
+      },
+    ],
+  ],
   waitforTimeout: 20_000,
   async afterTest(test, _context, { passed }) {
     if (passed) return;
