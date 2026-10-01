@@ -39,7 +39,7 @@ export async function webview(): Promise<void> {
 
 /**
  * WebdriverIO binds its CDP commands only to Chromium sessions, so call Appium's
- * `:vendor/cdp/execute` route directly; in a WebView context Appium proxies it to chromedriver.
+ * `goog/cdp/execute` route directly; in a WebView context Appium proxies it to chromedriver.
  */
 async function executeCdp(
   cmd: string,
