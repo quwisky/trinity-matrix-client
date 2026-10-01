@@ -52,6 +52,16 @@ describe('mobile E2E scrub on disk', () => {
     );
   });
 
+  it('redacts URL-encoded user and room ids, any case', () => {
+    expect(scrub('/v3/user/%40smoke-573fd710%3Alocalhost/filter?x=1')).toBe(
+      '/v3/user/%40<user>/filter?x=1',
+    );
+    expect(scrub('/rooms/%21AbC%3ALOCALHOST%3A8448/send')).toBe(
+      '/rooms/%21<room>/send',
+    );
+    expect(scrub('%40a%3alocalhost')).toBe('%40<user>');
+  });
+
   it('CLI scrubs every directory it is given', () => {
     const a = mkdtempSync(join(tmpdir(), 'scrub-a-'));
     const b = mkdtempSync(join(tmpdir(), 'scrub-b-'));
