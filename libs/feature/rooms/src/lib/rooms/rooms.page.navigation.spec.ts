@@ -414,6 +414,9 @@ describe('RoomsPage mobile navigation', () => {
         MockProvider(RoomLibraryService, {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
+          // ng-mocks >= 14.18 no longer stubs signal fields; the selected-library
+          // projection reads this one.
+          rooms: signal<RoomSummary[]>([]),
         }),
         MockProvider(SpacesService, {
           openSpace: () => of(void 0),
@@ -1034,6 +1037,9 @@ describe('RoomsPage account switcher summary', () => {
         MockProvider(RoomLibraryService, {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
+          // ng-mocks >= 14.18 no longer stubs signal fields; the selected-library
+          // projection reads this one.
+          rooms: signal<RoomSummary[]>([]),
         }),
         MockProvider(SpacesService, {
           openSpace: () => of(void 0),
@@ -1443,6 +1449,9 @@ describe('RoomsPage room-in-URL deep link', () => {
         MockProvider(RoomLibraryService, {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
+          // ng-mocks >= 14.18 no longer stubs signal fields; the selected-library
+          // projection reads this one.
+          rooms: signal<RoomSummary[]>([]),
         }),
         MockProvider(SpacesService, {
           openSpace: () => of(void 0),
