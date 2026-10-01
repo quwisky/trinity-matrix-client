@@ -240,7 +240,7 @@ describe('MessageActionsService', () => {
       },
       {
         name: 'poll vote',
-        run: (a) => a.onPollVote({ pollId: '$p', answerId: 'a' }),
+        run: (a) => a.onPollVote({ pollId: '$p', answerIds: ['a'] }),
         stub: votePoll,
         message: 'Could not cast your vote.',
       },

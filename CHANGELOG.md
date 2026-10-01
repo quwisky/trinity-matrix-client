@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Multi-select polls: set how many answers each voter may choose when creating a poll.
+  Voting toggles answers up to that limit, and tallies count every chosen answer from
+  Trinity and other MSC3381 clients.
+
 - Optional reaction notifications while Trinity is running, grouped by original message
   with a preview and click-through to that message. The account setting defaults off and
   respects account notification disable, room mute, sound and focused-room suppression.
@@ -47,6 +51,10 @@ All notable changes to this project are documented here. The format is based on
 
 - Keep grouped message timestamps from taking over touch long-press selection while
   preserving the message body and links, so Android message actions open from row padding.
+
+- A message's author no longer appears in that message's "Seen by" receipts.
+
+- Images sent without size or type details now show as images instead of file downloads.
 
 - Polls created in Trinity, and votes and closures cast in it, now appear in FluffyChat
   and other clients that read only the MSC3381 poll event types.

@@ -191,7 +191,10 @@ test.describe('Quote a message', () => {
     });
     await page.keyboard.press('Escape');
 
-    const imageRow = page.locator('.scroll .msg', { hasText: 'shot.png' });
+    // The event has no `info`, so this also proves the msgtype alone renders an image.
+    const imageRow = page.locator('.scroll .msg', {
+      has: page.getByRole('button', { name: 'Open image shot.png' }),
+    });
     await expect(imageRow.first()).toBeVisible({ timeout: 20_000 });
     await clickRowToolbar(
       imageRow.first(),

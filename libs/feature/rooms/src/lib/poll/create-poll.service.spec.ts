@@ -37,6 +37,7 @@ describe('CreatePollService', () => {
     const { svc, createPoll, openAndWait$ } = setup({
       question: 'Best fruit?',
       options: ['Apple', 'Pear'],
+      maxSelections: 2,
     });
     await lastValueFrom(svc.open$());
     expect(openAndWait$).toHaveBeenCalledWith(
@@ -46,7 +47,11 @@ describe('CreatePollService', () => {
         autoFocus: '[data-testid=poll-question]',
       }),
     );
-    expect(createPoll).toHaveBeenCalledWith('Best fruit?', ['Apple', 'Pear']);
+    expect(createPoll).toHaveBeenCalledWith(
+      'Best fruit?',
+      ['Apple', 'Pear'],
+      2,
+    );
   });
 
   it('does nothing when the dialog is cancelled', async () => {
@@ -57,7 +62,7 @@ describe('CreatePollService', () => {
 
   it('toasts when creating the poll fails', async () => {
     const { svc, show } = setup(
-      { question: 'Q', options: ['A', 'B'] },
+      { question: 'Q', options: ['A', 'B'], maxSelections: 1 },
       throwError(() => new Error('boom')),
     );
     await lastValueFrom(svc.open$(), { defaultValue: undefined });

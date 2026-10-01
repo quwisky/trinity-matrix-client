@@ -137,6 +137,22 @@ describe('TimelineActionsService', () => {
     expect(content['org.matrix.msc3381.poll.start'].answers).toHaveLength(2);
   });
 
+  it('sends the requested max_selections, clamped to the answer count', async () => {
+    const sent: unknown[][] = [];
+    const svc = setupActions([], sent);
+    await firstValueFrom(svc.createPoll('Q', ['A', 'B', 'C'], 2));
+    await firstValueFrom(svc.createPoll('Q', ['A', 'B', ' '], 5));
+    const max = sent
+      .filter((c) => c[0] === 'event')
+      .map(
+        (c) =>
+          (c[2] as Record<string, { max_selections: number }>)[
+            'org.matrix.msc3381.poll.start'
+          ].max_selections,
+      );
+    expect(max).toEqual([2, 2]);
+  });
+
   it('rejects a poll with fewer than two options', async () => {
     const sent: unknown[][] = [];
     const svc = setupActions([], sent);
@@ -147,11 +163,14 @@ describe('TimelineActionsService', () => {
   it('casts a poll vote via an MSC3381 poll response event', async () => {
     const sent: unknown[][] = [];
     const svc = setupActions([], sent);
-    await firstValueFrom(svc.votePoll('$p', 'a1'));
+    await firstValueFrom(svc.votePoll('$p', ['a0', 'a1']));
     const event = sent.find((c) => c[0] === 'event');
     expect(event?.[1]).toBe('org.matrix.msc3381.poll.response');
     const content = event?.[2] as Record<string, { answers: string[] }>;
-    expect(content['org.matrix.msc3381.poll.response'].answers).toEqual(['a1']);
+    expect(content['org.matrix.msc3381.poll.response'].answers).toEqual([
+      'a0',
+      'a1',
+    ]);
   });
 
   it('ends a poll via an MSC3381 poll end event', async () => {

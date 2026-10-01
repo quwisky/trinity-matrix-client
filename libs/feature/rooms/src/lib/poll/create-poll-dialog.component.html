@@ -64,6 +64,22 @@
     }
   </div>
 
+  <div>
+    <label trnLabel for="poll-max-selections">Max selections</label>
+    <input
+      id="poll-max-selections"
+      trnInput
+      type="number"
+      inputmode="numeric"
+      min="1"
+      [max]="selectionLimit()"
+      class="mt-1 w-24"
+      [value]="effectiveMaxSelections()"
+      (input)="onMaxSelections($event)"
+      data-testid="poll-max-selections"
+    />
+  </div>
+
   <div class="flex justify-end gap-2">
     <button trnBtn variant="secondary" presentation="ghost" (click)="cancel()">
       Cancel

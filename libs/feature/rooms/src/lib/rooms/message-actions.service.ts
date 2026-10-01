@@ -268,9 +268,15 @@ export class MessageActionsService {
   }
 
   /** Cast a vote on a poll (m.poll.response). */
-  onPollVote({ pollId, answerId }: { pollId: string; answerId: string }): void {
+  onPollVote({
+    pollId,
+    answerIds,
+  }: {
+    pollId: string;
+    answerIds: readonly string[];
+  }): void {
     this.runAction(
-      this.timelineActions.votePoll(pollId, answerId),
+      this.timelineActions.votePoll(pollId, answerIds),
       'Could not cast your vote.',
     );
   }

@@ -11,7 +11,11 @@ import {
 
 const POLL_ID = '$poll';
 
-function startEvent(question: string, options: string[]): MatrixEvent {
+function startEvent(
+  question: string,
+  options: string[],
+  maxSelections: unknown = 1,
+): MatrixEvent {
   return {
     getId: () => POLL_ID,
     getType: () => 'm.poll.start',
@@ -20,7 +24,7 @@ function startEvent(question: string, options: string[]): MatrixEvent {
       'm.poll.start': {
         question: { 'm.text': question },
         kind: 'm.poll.disclosed',
-        max_selections: 1,
+        max_selections: maxSelections,
         answers: options.map((text, i) => ({ id: `a${i}`, 'm.text': text })),
       },
     }),
@@ -29,15 +33,16 @@ function startEvent(question: string, options: string[]): MatrixEvent {
 
 function response(
   sender: string,
-  answer: string,
+  answer: string | string[],
   ts: number,
   redacted = false,
 ): MatrixEvent {
+  const answers = Array.isArray(answer) ? answer : [answer];
   return {
     getSender: () => sender,
     getTs: () => ts,
     isRedacted: () => redacted,
-    getContent: () => ({ 'm.poll.response': { answers: [answer] } }),
+    getContent: () => ({ 'm.poll.response': { answers } }),
   } as unknown as MatrixEvent;
 }
 
@@ -173,6 +178,66 @@ describe('buildPollView', () => {
     expect(view.question).toBe('Q');
   });
 
+  it('counts every answer of a multi-select response', () => {
+    const view = buildPollView(
+      client,
+      room([
+        response('@me:hs', ['a0', 'a2'], 10),
+        response('@b:hs', ['a0'], 11),
+      ]),
+      startEvent('Q', ['A', 'B', 'C'], 2),
+    );
+    expect(view.maxSelections).toBe(2);
+    expect(view.options.map((o) => o.votes)).toEqual([2, 0, 1]);
+    expect(view.options.map((o) => o.chosen)).toEqual([true, false, true]);
+    expect(view.totalVotes).toBe(2); // voters, not selections
+  });
+
+  it('truncates a response to max_selections and ignores duplicate ids', () => {
+    const view = buildPollView(
+      client,
+      room([response('@a:hs', ['a0', 'a0', 'a1', 'a2'], 10)]),
+      startEvent('Q', ['A', 'B', 'C'], 2),
+    );
+    expect(view.options.map((o) => o.votes)).toEqual([1, 1, 0]);
+  });
+
+  it('spoils a response naming any unknown answer id', () => {
+    const view = buildPollView(
+      client,
+      room([response('@a:hs', ['a0', 'nope'], 10)]),
+      startEvent('Q', ['A', 'B'], 2),
+    );
+    expect(view.totalVotes).toBe(0);
+    expect(view.options.map((o) => o.votes)).toEqual([0, 0]);
+  });
+
+  it('treats an empty latest response as withdrawing the vote', () => {
+    const view = buildPollView(
+      client,
+      room([response('@a:hs', ['a0'], 10), response('@a:hs', [], 20)]),
+      startEvent('Q', ['A', 'B'], 2),
+    );
+    expect(view.totalVotes).toBe(0);
+    expect(view.options[0].votes).toBe(0);
+  });
+
+  it.each([
+    [undefined, 1],
+    ['3', 1],
+    [0, 1],
+    [-2, 1],
+    [1.5, 1],
+    [99, 3],
+  ])('normalises max_selections %s to %s', (raw, expected) => {
+    const view = buildPollView(
+      client,
+      room([]),
+      startEvent('Q', ['A', 'B', 'C'], raw),
+    );
+    expect(view.maxSelections).toBe(expected);
+  });
+
   it('caps the projected options at the MSC3381 limit (20)', () => {
     const many = Array.from({ length: 100 }, (_, i) => `opt${i}`);
     const view = buildPollView(client, room([]), startEvent('Q', many));
@@ -201,6 +266,14 @@ describe('poll content builders', () => {
     expect(content['org.matrix.msc1767.text']).toContain('Best fruit?');
   });
 
+  it('writes a user-defined max_selections', () => {
+    const content = pollStartContent('Q', ['A', 'B', 'C'], 2) as Record<
+      string,
+      Record<string, unknown>
+    >;
+    expect(content['org.matrix.msc3381.poll.start']['max_selections']).toBe(2);
+  });
+
   it('projects a poll it built itself, tallying a vote it built itself', () => {
     const start = {
       getId: () => POLL_ID,
@@ -211,7 +284,7 @@ describe('poll content builders', () => {
       getSender: () => '@me:hs',
       getTs: () => 1,
       isRedacted: () => false,
-      getContent: () => pollResponseContent(POLL_ID, 'a1'),
+      getContent: () => pollResponseContent(POLL_ID, ['a1']),
     } as unknown as MatrixEvent;
     const unstableRoom = {
       relations: {
@@ -225,6 +298,7 @@ describe('poll content builders', () => {
     expect(isPollStart(start)).toBe(true);
     const view = buildPollView(client, unstableRoom, start);
     expect(view.question).toBe('Lunch?');
+    expect(view.maxSelections).toBe(1);
     expect(view.options).toEqual([
       { id: 'a0', text: 'Pizza', votes: 0, chosen: false },
       { id: 'a1', text: 'Sushi', votes: 1, chosen: true },
@@ -233,8 +307,8 @@ describe('poll content builders', () => {
 
   it('builds a response referencing the poll', () => {
     // Unstable namespace: FluffyChat (matrix-dart-sdk) and Element only read MSC3381 keys.
-    expect(pollResponseContent('$p', 'a1')).toEqual({
-      'org.matrix.msc3381.poll.response': { answers: ['a1'] },
+    expect(pollResponseContent('$p', ['a1', 'a2'])).toEqual({
+      'org.matrix.msc3381.poll.response': { answers: ['a1', 'a2'] },
       'm.relates_to': { rel_type: 'm.reference', event_id: '$p' },
     });
   });
@@ -279,6 +353,14 @@ describe('poll content builders', () => {
         buildPollView(client, early, start).totalVotes,
       );
       expect(pollSignature(early, start)).not.toBe(pollSignature(late, start));
+    });
+
+    it('changes when a voter changes a non-first selection', () => {
+      const before = room([response('@a:hs', ['a0', 'a1'], 10)]);
+      const after = room([response('@a:hs', ['a0'], 10)]);
+      expect(pollSignature(after, start)).not.toBe(
+        pollSignature(before, start),
+      );
     });
   });
 });

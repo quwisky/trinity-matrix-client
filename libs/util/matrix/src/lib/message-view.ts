@@ -211,15 +211,19 @@ const MAX_RECEIPTS = 5;
  */
 const MAX_WAVEFORM_BARS = 512;
 
-/** User ids (excluding the local user) whose read receipt sits on this event, capped. */
+/**
+ * User ids whose read receipt sits on this event, capped. Excludes the local user and
+ * the event's author, whose receipt on their own message carries no information.
+ */
 export function readReceiptUserIds(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,
 ): string[] {
   const selfId = client.getUserId();
+  const senderId = event.getSender();
   return (room.getUsersReadUpTo?.(event) ?? [])
-    .filter((id) => id !== selfId)
+    .filter((id) => id !== selfId && id !== senderId)
     .slice(0, MAX_RECEIPTS);
 }
 
@@ -1191,8 +1195,8 @@ const UNSAFE_INLINE_MIME = /^(?:image\/svg\+xml|text\/html)$/i;
 /**
  * Project an `m.image`/`m.file`/`m.video`/`m.audio` content block into a
  * {@link MediaPayload}, or null when it lacks a source (`url`/`file`). The kind is
- * derived from the msgtype, then downgraded to `'file'` (download-only) for unknown
- * or script-bearing MIME types so nothing scriptable is rendered inline.
+ * derived from the msgtype, then downgraded to `'file'` (download-only) for a declared
+ * MIME type that mismatches it or is script-bearing so nothing scriptable is rendered inline.
  */
 export function normalizeMediaPayload(
   content: Record<string, unknown>,
@@ -1205,10 +1209,9 @@ export function normalizeMediaPayload(
     return null;
   }
   const info = (content['info'] ?? {}) as Record<string, unknown>;
-  const mimeType =
-    typeof info['mimetype'] === 'string'
-      ? (info['mimetype'] as string)
-      : 'application/octet-stream';
+  const declaredMime =
+    typeof info['mimetype'] === 'string' ? (info['mimetype'] as string) : null;
+  const mimeType = declaredMime ?? 'application/octet-stream';
 
   let kind: MediaKind =
     msgtype === MsgType.Image
@@ -1218,11 +1221,14 @@ export function normalizeMediaPayload(
         : msgtype === MsgType.Audio
           ? 'audio'
           : 'file';
-  // Inline rendering requires a MIME that matches its category and isn't scriptable.
+  // A declared MIME must match its category and not be scriptable. `info` is optional,
+  // so an undeclared one trusts the msgtype; the blob stays opaque and the media
+  // element sniffs the bytes, which never executes script.
   const category = kind === 'file' ? null : kind;
   if (
-    UNSAFE_INLINE_MIME.test(mimeType) ||
-    (category && !mimeType.toLowerCase().startsWith(`${category}/`))
+    declaredMime !== null &&
+    (UNSAFE_INLINE_MIME.test(declaredMime) ||
+      (category && !declaredMime.toLowerCase().startsWith(`${category}/`)))
   ) {
     kind = 'file';
   }
