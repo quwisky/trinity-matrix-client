@@ -114,6 +114,9 @@ storybook-static
 /e2e/support/synapse/data/
 /e2e/support/synapse/remote-data/
 
+# Repo-local APPIUM_HOME (pinned drivers and downloaded chromedrivers)
+/.appium/
+
 # Local agent plans, specs and SDD workspaces: never committed
 /docs/superpowers/
 /.superpowers/

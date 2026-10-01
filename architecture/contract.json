@@ -99,6 +99,10 @@
     {
       "project": "trinity-e2e-android",
       "reason": "Black-box Android E2E harnesses are outside the shipped application dependency model."
+    },
+    {
+      "project": "trinity-e2e-mobile",
+      "reason": "Black-box Android E2E harnesses are outside the shipped application dependency model."
     }
   ],
   "classificationExceptions": [],

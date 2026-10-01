@@ -10,7 +10,7 @@
       "//": "Declared, not inferred: @nx/eslint only infers a lint target for projects with .ts/.js sources, and every file here is .mts — so removing 'e2e' from globalIgnores would otherwise have changed nothing about what `pnpm lint` actually runs.",
       "executor": "nx:run-commands",
       "options": {
-        "command": "eslint \"**/*.mts\" --ignore-pattern \"android/**\" --ignore-pattern \"browser/**\" --ignore-pattern \"components/**\" --ignore-pattern \"electron/**\" --ignore-pattern \"protocol/**\" --ignore-pattern \"support/**\" --ignore-pattern \"web/**\"",
+        "command": "eslint \"**/*.mts\" --ignore-pattern \"android/**\" --ignore-pattern \"browser/**\" --ignore-pattern \"components/**\" --ignore-pattern \"electron/**\" --ignore-pattern \"mobile/**\" --ignore-pattern \"protocol/**\" --ignore-pattern \"support/**\" --ignore-pattern \"web/**\"",
         "cwd": "{projectRoot}"
       }
     },
