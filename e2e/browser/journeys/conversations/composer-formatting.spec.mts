@@ -594,7 +594,7 @@ test.describe('On-demand composer formatting on mobile', () => {
     const viewport = page.viewportSize();
     expect(box).not.toBeNull();
     expect(box!.x).toBeGreaterThanOrEqual(0);
-    // Allow subpixel rounding in the installed WebView device-scale ratio.
+    // Allow subpixel rounding under a fractional device-scale ratio.
     expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width + 0.5);
     expect(box!.y).toBeGreaterThanOrEqual(0);
     expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height + 0.5);

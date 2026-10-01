@@ -46,21 +46,3 @@ export async function closeSettings(page: Page): Promise<void> {
   await page.getByTestId('close-settings').click();
   await expect(page.getByRole('dialog', { name: 'Settings' })).toBeHidden();
 }
-
-/** Is document.activeElement inside a component, piercing any shadow roots? */
-export const focusInside = (page: Page, selector: string): Promise<boolean> =>
-  page.evaluate((componentSelector) => {
-    const host = document.querySelector(componentSelector);
-    if (!host) return false;
-
-    let node: Node | null = document.activeElement;
-    while (node) {
-      if (node === host) return true;
-      const root = node.getRootNode();
-      node =
-        root instanceof ShadowRoot
-          ? root.host
-          : (node as Element).parentElement;
-    }
-    return false;
-  }, selector);

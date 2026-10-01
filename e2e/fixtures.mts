@@ -8,8 +8,6 @@ import {
 } from '@playwright/test';
 import { testResourceId } from './support/namespace.mts';
 
-import { test } from './web-fixtures.mts';
-
-export { test };
+export { test } from './web-fixtures.mts';
 export { devices, expect, testResourceId };
 export type { APIRequestContext, Locator, Page, Route };

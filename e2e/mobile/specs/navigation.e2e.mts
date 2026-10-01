@@ -242,7 +242,7 @@ describe('Android navigation', () => {
     });
   });
 
-  it('moves focus into a routed Settings section on entry and leaves Settings on Close', async () => {
+  it('moves focus into a routed Settings section on entry and returns to Rooms with Back', async () => {
     const user = uniqueId('android-focus');
     const pass = `${user}-pass`;
     await registerUser(user, pass);
@@ -264,8 +264,10 @@ describe('Android navigation', () => {
     await clickButton('Back');
     await waitForRooms();
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
-    // the base contract also asserted focus inside trn-rooms after Close; on the
-    // phone layout focus stays on <body> (see task-6 fix report), so it is not pinned here.
+    // Known gap: on the installed phone layout, focus after leaving routed Settings
+    // lands on <body> rather than inside trn-rooms. The base browser test only passed
+    // at the old 1280x720 Android viewport, so the focus assertion stays unpinned
+    // pending a product decision.
   });
 
   it('routes Verify device and returns focus to the Security heading on Close', async () => {

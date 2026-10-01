@@ -56,8 +56,8 @@ test.describe('Settings', () => {
     expect(detailBox).not.toBeNull();
     // Beside, not stacked: the detail starts after the nav ends.
     expect(detailBox!.x).toBeGreaterThanOrEqual(navBox!.x + navBox!.width - 1);
-    // Android WebView reports CSS-pixel geometry as a float after device-scale
-    // conversion (for example 255.999992px for this exact 16rem pane).
+    // Device-scale conversion can report CSS-pixel geometry as a float
+    // (for example 255.999992px for this exact 16rem pane).
     expect(navBox!.width).toBeCloseTo(256, 4);
     await expect
       .poll(async () => Math.abs(await settingsTitleAlignment(page)))

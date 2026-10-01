@@ -565,8 +565,7 @@ test.describe('Matrix room links', () => {
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.getByTestId('user-card-name')).toHaveText(bobName);
 
-    // Android deliberately uses its mobile dialog interaction model even under a wide
-    // emulated viewport. Web uses the anchored pointer popover.
+    // The web layout uses the anchored pointer popover.
     // On web it is a POPOVER pinned to the mention, not a centred modal.
     await expect(
       page.locator('.cdk-overlay-connected-position-bounding-box'),
