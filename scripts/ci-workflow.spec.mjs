@@ -47,7 +47,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(8);
+    expect(uploads.length).toBe(9);
     for (const step of uploads) {
       expect(step.if).toMatch(/!cancelled\(\).*outputs.started == 'true'/);
       expect(step.with.surface).toBeTruthy();

@@ -8,7 +8,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import {
   DEFAULT_AVD,
@@ -32,6 +32,7 @@ import {
 import { e2eArtifactPath } from '../support/playwright-config.mts';
 import { MOBILE_ANDROID_SUITE } from '../support/host-suites.mts';
 import { appiumLogPath } from './support/artifacts.mts';
+import { scrubDirectory } from './support/scrub.mts';
 import {
   chromedriverFromAppiumLog,
   parseWebViewVersion,
@@ -544,6 +545,9 @@ async function cleanup(): Promise<void> {
     cleaningUp = true;
     try {
       await captureDiagnostics().catch(() => undefined);
+      // Appium flushes its log after wdio's onComplete, so scrub once everything is written.
+      // Uploaded CI artifacts must not carry Matrix ids, tokens or passwords.
+      scrubDirectory(dirname(artifactsDir()));
       if (serial) {
         await adbRun('shell', 'am', 'force-stop', packageName).catch(
           () => undefined,

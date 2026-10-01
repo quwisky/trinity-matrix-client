@@ -134,7 +134,7 @@ export const HOST_E2E_SUITES = defineSuites([
     targetProject: 'trinity-e2e-mobile',
     prerequisites: ['android-avd', 'android-sdk', 'docker', 'java-21', 'kvm'],
     availabilityPolicy: 'required',
-    ciTier: 'local-only',
+    ciTier: 'pull-request',
     cachePolicy: 'never',
     serializationKeys: ['android-avd', 'synapse'],
     timeoutClass: 'host',

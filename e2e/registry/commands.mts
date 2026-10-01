@@ -311,6 +311,11 @@ export const E2E_CI_ENTRYPOINTS = [
     suiteIds: ['android.installed-webview'],
   },
   {
+    command: 'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:mobile',
+    tier: 'pull-request',
+    suiteIds: ['mobile.android'],
+  },
+  {
     command: 'pnpm e2e:scheduled',
     tier: 'scheduled',
     suiteIds: [

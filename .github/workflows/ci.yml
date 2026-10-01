@@ -362,6 +362,81 @@ jobs:
         if: ${{ !cancelled() }}
         run: git diff --exit-code
 
+  # WebdriverIO + Appium on the installed app; runs beside the Playwright shards
+  # while the two harnesses are compared. See e2e/README.md.
+  mobile-e2e:
+    needs: [classify, renderer]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' }}
+    name: Mobile E2E (Android)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.renderer.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/restore-verified-renderer
+        with:
+          sha: ${{ needs.renderer.outputs.sha }}
+          source-run-id: ${{ github.run_id }}
+          artifact-id: ${{ needs.renderer.outputs.artifact-id }}
+          artifact-name: ${{ needs.renderer.outputs.artifact-name }}
+          manifest-digest: ${{ needs.renderer.outputs.manifest-digest }}
+          destination: dist/renderer-download
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'android/**/*.gradle', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .appium
+          key: appium-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'scripts/setup-appium.mjs') }}
+          restore-keys: appium-${{ runner.os }}-
+
+      - name: Grant emulator access to KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo udevadm settle --timeout=30
+          test -r /dev/kvm -a -w /dev/kvm
+
+      - id: mobile
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          avd-name: trinity_api_36_ci
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            echo 'started=true' >> "$GITHUB_OUTPUT"
+            TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:mobile
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.mobile.outputs.started == 'true' }}
+        with:
+          surface: mobile
+          report-path: dist/.playwright/trinity-e2e-mobile/*/mobile.android/**
+
+      - name: Verify Mobile E2E left the worktree unchanged
+        if: ${{ !cancelled() }}
+        run: git diff --exit-code
+
   ios-native-build:
     name: iOS Native Build
     needs: [classify, renderer]
