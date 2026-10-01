@@ -1,6 +1,4 @@
-import { captureScreenshot } from '../../../support/screenshot.mts';
 import { expect, test, testResourceId } from '../../../fixtures.mts';
-import { isAndroidE2E } from '../../../support/app.mts';
 import {
   closeSettings,
   openSettingsFromRooms,
@@ -37,11 +35,8 @@ test.describe('Settings', () => {
     // The default (wide) viewport auto-selects the first section and renders the
     // submenu and detail together. Web keeps the underlying room URL; installed
     // Capacitor hosts expose the same composition through a routed Settings page.
-    if (isAndroidE2E) {
-      await expect(page).toHaveURL(/\/settings\/profile$/);
-    } else {
-      await expect(page).not.toHaveURL(/\/settings/);
-    }
+    await expect(page).not.toHaveURL(/\/settings/);
+
     await expect(page.getByTestId('settings-nav-profile')).toBeVisible();
     await expect(page.getByTestId('display-name-input')).toBeVisible();
     // The active section link is marked current for assistive tech.
@@ -64,22 +59,20 @@ test.describe('Settings', () => {
     // Android WebView reports CSS-pixel geometry as a float after device-scale
     // conversion (for example 255.999992px for this exact 16rem pane).
     expect(navBox!.width).toBeCloseTo(256, 4);
-    if (!isAndroidE2E) {
-      await expect
-        .poll(async () => Math.abs(await settingsTitleAlignment(page)))
-        .toBeLessThanOrEqual(1);
+    await expect
+      .poll(async () => Math.abs(await settingsTitleAlignment(page)))
+      .toBeLessThanOrEqual(1);
 
-      const settingsDialog = page.getByTestId('settings-dialog');
-      await settingsDialog.evaluate((element) => {
-        element.setAttribute('dir', 'rtl');
-      });
-      await expect
-        .poll(async () => Math.abs(await settingsTitleAlignment(page)))
-        .toBeLessThanOrEqual(1);
-      await settingsDialog.evaluate((element) => {
-        element.setAttribute('dir', 'ltr');
-      });
-    }
+    const settingsDialog = page.getByTestId('settings-dialog');
+    await settingsDialog.evaluate((element) => {
+      element.setAttribute('dir', 'rtl');
+    });
+    await expect
+      .poll(async () => Math.abs(await settingsTitleAlignment(page)))
+      .toBeLessThanOrEqual(1);
+    await settingsDialog.evaluate((element) => {
+      element.setAttribute('dir', 'ltr');
+    });
 
     // The mobile drill-in chevron is suppressed in the sidebar — and it is suppressed by
     // NOT BEING RENDERED, which is why this asserts absence rather than a computed style.
@@ -110,10 +103,6 @@ test.describe('Settings', () => {
     page,
     request,
   }) => {
-    test.skip(
-      isAndroidE2E,
-      'the routed Android Settings page has its own host',
-    );
     test.setTimeout(150_000);
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}settingsframe`;
@@ -175,9 +164,7 @@ test.describe('Settings', () => {
     };
     expectSharedFrame(main);
     await test.info().attach('main-settings-desktop-scaled', {
-      body: await captureScreenshot(page, () =>
-        page.getByTestId('settings-dialog').screenshot(),
-      ),
+      body: await page.getByTestId('settings-dialog').screenshot(),
       contentType: 'image/png',
     });
 
@@ -195,9 +182,7 @@ test.describe('Settings', () => {
     });
     expectSharedFrame(roomFrame);
     await test.info().attach('room-settings-desktop-scaled', {
-      body: await captureScreenshot(page, () =>
-        page.getByTestId('room-settings').screenshot(),
-      ),
+      body: await page.getByTestId('room-settings').screenshot(),
       contentType: 'image/png',
     });
     const roomHeader = page
@@ -224,9 +209,7 @@ test.describe('Settings', () => {
     });
     expectSharedFrame(spaceFrame);
     await test.info().attach('space-settings-desktop-scaled', {
-      body: await captureScreenshot(page, () =>
-        page.getByTestId('space-settings').screenshot(),
-      ),
+      body: await page.getByTestId('space-settings').screenshot(),
       contentType: 'image/png',
     });
     const spaceHeader = page
@@ -363,13 +346,6 @@ test.describe('Settings', () => {
     // keyboard focus still reaches the editor's supported outer focus treatment.
     const editor = page.getByTestId('advanced-config-editor');
     const editorFrame = page.locator('.cm-editor', { has: editor });
-    if (isAndroidE2E) {
-      await expect(editor).toHaveCount(0);
-      await expect(
-        page.getByTestId('advanced-editing-unavailable'),
-      ).toBeVisible();
-      return;
-    }
     await expect(editor).toBeVisible({ timeout: 20_000 });
     const editorPaint = await editorFrame.evaluate((element) => {
       const editorStyle = getComputedStyle(element);
@@ -416,15 +392,7 @@ test.describe('Settings', () => {
 
     await closeSettings(page);
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeHidden();
-    if (isAndroidE2E) {
-      await expect(page).toHaveURL(
-        (url) =>
-          url.pathname.startsWith('/rooms') &&
-          (url.searchParams.get('account')?.length ?? 0) > 0,
-      );
-    } else {
-      await expect(page).toHaveURL(roomUrl);
-    }
+    await expect(page).toHaveURL(roomUrl);
   });
 
   test('mobile: shows the category list, drills into a section, and backs out', async ({
@@ -492,13 +460,8 @@ test.describe('Settings', () => {
     // presentation model.
     await page.setViewportSize({ width: 1024, height: 700 });
     await expect(appearance).toBeVisible();
-    if (isAndroidE2E) {
-      await expect(page.locator('trn-settings')).toHaveCount(1);
-    } else {
-      await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(
-        1,
-      );
-    }
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(1);
+
     await closeSettings(page);
     await expect(page).not.toHaveURL(/\/settings/);
   });
@@ -511,7 +474,7 @@ test.describe('Settings', () => {
     await appearance.click();
     await page
       .getByRole('button', {
-        name: isAndroidE2E ? 'Back' : 'Back to sections',
+        name: 'Back to sections',
       })
       .click();
     await expect(appearance).toBeFocused();

@@ -6,7 +6,6 @@ import {
   type Page,
 } from '../../../fixtures.mts';
 import {
-  isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
@@ -183,11 +182,10 @@ test.describe('Member info panel', () => {
     // must paste back exactly, while the deliberately different display name must not.
     // Desktop browsers model the user's clipboard-write choice as a context permission;
     // Android's installed WebView uses its native foreground clipboard path instead.
-    if (!isAndroidE2E) {
-      await context.grantPermissions(['clipboard-write'], {
-        origin: new URL(page.url()).origin,
-      });
-    }
+    await context.grantPermissions(['clipboard-write'], {
+      origin: new URL(page.url()).origin,
+    });
+
     await page.getByTestId('member-info-copy').click();
     await expect(
       page.getByText('User ID copied.', { exact: true }),

@@ -1,5 +1,4 @@
 import { expect, type Locator, type Page } from '@playwright/test';
-import { isAndroidE2E } from '../app.mts';
 
 export type Activate = (control: Locator) => Promise<void>;
 
@@ -22,18 +21,6 @@ export async function openSettingsFromRooms(
     { timeout: 20_000 },
   );
   const currentUrl = page.url();
-  if (isAndroidE2E) {
-    if (!new URL(page.url()).pathname.startsWith('/settings')) {
-      await activate(page.getByTestId('open-settings'));
-    }
-    await page.waitForURL((url) => url.pathname.startsWith('/settings'), {
-      timeout: 20_000,
-    });
-    await expect(
-      page.getByRole('navigation', { name: 'Settings sections' }),
-    ).toBeVisible({ timeout: 20_000 });
-    return;
-  }
   const dialog = page.getByRole('dialog', { name: 'Settings' });
   if (!(await dialog.isVisible())) {
     await activate(page.getByTestId('open-settings'));
@@ -51,56 +38,11 @@ export async function openSettingsSection(
 ): Promise<void> {
   await openSettingsFromRooms(page);
   await page.getByTestId(`settings-nav-${section}`).click();
-  if (isAndroidE2E) {
-    await page.waitForURL((url) => url.pathname === `/settings/${section}`, {
-      timeout: 20_000,
-    });
-  }
   await expect(page.getByTestId('settings-detail')).not.toBeEmpty();
 }
 
 /** Close the web settings modal and wait until its focus trap is gone. */
 export async function closeSettings(page: Page): Promise<void> {
-  if (isAndroidE2E) {
-    const back = page.getByRole('button', { name: 'Back' });
-    const waitForPath = async (
-      predicate: (path: string) => boolean,
-    ): Promise<void> => {
-      await expect
-        .poll(() => predicate(new URL(page.url()).pathname), {
-          timeout: 20_000,
-        })
-        .toBe(true);
-    };
-    if (new URL(page.url()).pathname !== '/settings') {
-      await back.click();
-      await waitForPath(
-        (path) => path === '/settings' || path.startsWith('/rooms'),
-      );
-    }
-    if (new URL(page.url()).pathname === '/settings') {
-      await back.click();
-    }
-    await expect
-      .poll(
-        () => {
-          const url = new URL(page.url());
-          return (
-            url.pathname.startsWith('/rooms') &&
-            (url.searchParams.get('account')?.length ?? 0) > 0
-          );
-        },
-        { timeout: 20_000 },
-      )
-      .toBe(true);
-    // The router commits the destination before the host-owned settings surface has
-    // finished detaching. Wait for the old owner as well, otherwise the next room-rail
-    // action can race a still-visible settings screen on the native WebView.
-    await expect(page.locator('trn-settings')).toHaveCount(0, {
-      timeout: 20_000,
-    });
-    return;
-  }
   await page.getByTestId('close-settings').click();
   await expect(page.getByRole('dialog', { name: 'Settings' })).toBeHidden();
 }

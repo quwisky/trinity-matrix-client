@@ -8,18 +8,8 @@ import {
 } from '@playwright/test';
 import { testResourceId } from './support/namespace.mts';
 
-/**
- * Composition-edge fixture selection. Environment adapters depend inward on shared
- * contracts; only this entrypoint chooses one adapter for the current invocation.
- */
-const adapter =
-  process.env['TRINITY_E2E_PLATFORM'] === 'android'
-    ? await import('./android/fixtures.mts')
-    : await import('./web-fixtures.mts');
+import { test } from './web-fixtures.mts';
 
-const environmentTest =
-  adapter.test as typeof import('./android/fixtures.mts').test;
-
-export const test = environmentTest;
+export { test };
 export { devices, expect, testResourceId };
 export type { APIRequestContext, Locator, Page, Route };

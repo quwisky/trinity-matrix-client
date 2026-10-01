@@ -1,11 +1,5 @@
 export type E2EEnvironment =
-  | 'android'
-  | 'browser'
-  | 'components'
-  | 'electron'
-  | 'mobile'
-  | 'protocol'
-  | 'web';
+  'browser' | 'components' | 'electron' | 'mobile' | 'protocol' | 'web';
 
 export type E2EContractType =
   'accessibility' | 'host' | 'journey' | 'protocol' | 'security' | 'visual';

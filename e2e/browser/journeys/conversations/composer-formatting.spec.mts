@@ -15,7 +15,6 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
-import { captureScreenshot } from '../../../support/screenshot.mts';
 
 // Covers the composer's formatting affordances: the on-demand Format menu, rebindable chords,
 // markdown-aware Shift+Enter, preview, sending, and composer layout.
@@ -114,10 +113,6 @@ async function chooseDesktopFormat(page: Page, action: string): Promise<void> {
 
 test.describe('Composer formatting', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
-  test.skip(
-    process.env['TRINITY_E2E_PLATFORM'] === 'android',
-    'Android uses the mobile Format action sheet journey',
-  );
 
   test('a keyboard chord formats, and the rebound one takes over', async ({
     page,
@@ -445,10 +440,6 @@ test.describe('Composer formatting', () => {
 // send, and layout regressions.
 test.describe('On-demand composer formatting', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
-  test.skip(
-    process.env['TRINITY_E2E_PLATFORM'] === 'android',
-    'Android uses the mobile action-sheet surface below',
-  );
 
   test('opens the desktop Format popover, applies selected text, and restores focus', async ({
     page,
@@ -464,7 +455,7 @@ test.describe('On-demand composer formatting', () => {
     await expect(menu.getByTestId('format-bold')).toBeVisible();
     await expect(menu.getByTestId('format-preview')).toBeVisible();
     await test.info().attach('composer-format-desktop', {
-      body: await captureScreenshot(page, () => page.screenshot()),
+      body: await page.screenshot(),
       contentType: 'image/png',
     });
     await menu.getByTestId('format-bold').click();
@@ -608,7 +599,7 @@ test.describe('On-demand composer formatting on mobile', () => {
     expect(box!.y).toBeGreaterThanOrEqual(0);
     expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height + 0.5);
     await test.info().attach('composer-format-mobile', {
-      body: await captureScreenshot(page, () => page.screenshot()),
+      body: await page.screenshot(),
       contentType: 'image/png',
     });
 

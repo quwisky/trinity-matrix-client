@@ -5,7 +5,6 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -22,7 +21,6 @@ import {
   ADB_FAILURE_LIMIT,
   ANDROID_INFRASTRUCTURE_FAILURE,
   nextAdbFailureCount,
-  parseInfrastructureFailure,
   startAndroidInfrastructureWatchdog,
 } from './health.mts';
 import {
@@ -72,7 +70,6 @@ let baselineWorktree: string | undefined;
 let cleaningUp = false;
 let requestedExitCode: number | undefined;
 let signalCount = 0;
-let infrastructureFailureMarker = '';
 let adbFailureCount = 0;
 
 const sdkRoot = process.env['ANDROID_HOME'] ?? process.env['ANDROID_SDK_ROOT'];
@@ -130,22 +127,6 @@ function terminateProcessGroup(
 
 async function inspectAndroidInfrastructure(): Promise<Error | undefined> {
   if (abortController.signal.aborted) return undefined;
-  if (infrastructureFailureMarker && existsSync(infrastructureFailureMarker)) {
-    try {
-      const failure = parseInfrastructureFailure(
-        readFileSync(infrastructureFailureMarker, 'utf8'),
-      );
-      return new Error(
-        `${failure.kind}: ${failure.layer}: ${failure.summary}; ` +
-          `diagnostics=${artifactsDir()}`,
-      );
-    } catch (error) {
-      return new Error(
-        `${ANDROID_INFRASTRUCTURE_FAILURE}: invalid fixture failure marker: ${String(error)}; ` +
-          `diagnostics=${artifactsDir()}`,
-      );
-    }
-  }
   if (emulatorSpawnError) {
     return new Error(
       `${ANDROID_INFRASTRUCTURE_FAILURE}: emulator-process: ${emulatorSpawnError.message}; ` +
@@ -419,10 +400,6 @@ async function captureDiagnostics(): Promise<void> {
         emulatorSpawnError: emulatorSpawnError?.message ?? null,
         activeChildPid: activeChild?.pid ?? null,
         ownedEmulatorLaunchArgs,
-        infrastructureFailureMarker:
-          infrastructureFailureMarker && existsSync(infrastructureFailureMarker)
-            ? readFileSync(infrastructureFailureMarker, 'utf8')
-            : null,
       },
       null,
       2,
@@ -631,7 +608,6 @@ async function main(): Promise<void> {
   await assertJava21();
   await selectOrStartDevice();
   await validateAndWaitForBoot();
-  process.env['TRINITY_E2E_PLATFORM'] = 'android';
   const reusePrebuiltBundle = process.env['TRINITY_E2E_PREBUILT_WWW'] === '1';
   if (reusePrebuiltBundle) {
     await run(process.execPath, [
@@ -683,12 +659,6 @@ async function main(): Promise<void> {
   process.env['TRINITY_ANDROID_SERIAL'] = serial;
   const outputDirectory = artifactsDir();
   mkdirSync(outputDirectory, { recursive: true });
-  infrastructureFailureMarker = join(
-    outputDirectory,
-    'infrastructure-failure.json',
-  );
-  rmSync(infrastructureFailureMarker, { force: true });
-  process.env['TRINITY_ANDROID_FATAL_MARKER'] = infrastructureFailureMarker;
   await run(process.execPath, ['scripts/setup-appium.mjs']);
   process.env['APPIUM_HOME'] = join(workspaceRoot, '.appium');
   await run(

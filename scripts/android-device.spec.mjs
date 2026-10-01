@@ -5,7 +5,7 @@ import {
   parseOnlineDevices,
   reverseTarget,
   validateEmulator,
-} from '../e2e/android/device.mts';
+} from '../e2e/mobile/device.mts';
 
 describe('Android E2E device selection', () => {
   it('retains offline emulator targets for safe port allocation', () => {

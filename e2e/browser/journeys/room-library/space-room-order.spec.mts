@@ -1,4 +1,3 @@
-import { captureScreenshot } from '../../../support/screenshot.mts';
 import {
   testResourceId,
   test,
@@ -285,7 +284,7 @@ test.describe('Room order inside a space', () => {
     });
     await expect(page.getByTestId('space-settings-for-you-form')).toBeVisible();
     await test.info().attach('space-personal-order-desktop-light-scaled', {
-      body: await captureScreenshot(page, () => settings.screenshot()),
+      body: await settings.screenshot(),
       contentType: 'image/png',
     });
     await page.evaluate(() => {
@@ -293,7 +292,7 @@ test.describe('Room order inside a space', () => {
       document.documentElement.setAttribute('data-theme', 'amethyst');
     });
     await test.info().attach('space-personal-order-desktop-dark-amethyst', {
-      body: await captureScreenshot(page, () => settings.screenshot()),
+      body: await settings.screenshot(),
       contentType: 'image/png',
     });
     await page.evaluate(({ dark, theme, fontSize }) => {

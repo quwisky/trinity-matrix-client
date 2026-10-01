@@ -1,5 +1,4 @@
 import { expect, test } from '../../../fixtures.mts';
-import { isAndroidE2E } from '../../../support/app.mts';
 import {
   closeSettings,
   openSettingsFromRooms,
@@ -176,25 +175,10 @@ test.describe('Settings', () => {
     await expect.poll(densityAttr).toBe('compact');
     await expect.poll(spaceToken).toBe('12px');
     await expect.poll(previewGap).toBe('8px');
-    if (isAndroidE2E) {
-      const routedTitleInsideDetail = await page.evaluate(() => {
-        const detail = document.querySelector<HTMLElement>(
-          '[data-testid=settings-detail]',
-        );
-        const title = document.querySelector<HTMLElement>(
-          '#appearance-heading',
-        );
-        if (!detail || !title) throw new Error('routed settings title missing');
-        const pane = detail.getBoundingClientRect();
-        const heading = title.getBoundingClientRect();
-        return heading.left >= pane.left - 1 && heading.right <= pane.right + 1;
-      });
-      expect(routedTitleInsideDetail).toBe(true);
-    } else {
-      await expect
-        .poll(async () => Math.abs(await settingsTitleAlignment(page)))
-        .toBeLessThanOrEqual(1);
-    }
+    await expect
+      .poll(async () => Math.abs(await settingsTitleAlignment(page)))
+      .toBeLessThanOrEqual(1);
+
     await expect(page.getByTestId('appearance-preview-state')).toContainText(
       'Compact',
     );

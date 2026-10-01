@@ -7,7 +7,6 @@ import {
   type Page,
 } from '../../../fixtures.mts';
 import {
-  isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
@@ -135,14 +134,6 @@ async function activateRoomLinkPrimary(
   page: Page,
   primary: Locator,
 ): Promise<void> {
-  if (isAndroidE2E) {
-    // Remote debugging can report a viewport shorter than the physical WebView,
-    // even though the portrait geometry check proves the footer is on-screen.
-    await primary.focus();
-    await page.keyboard.press('Enter');
-    return;
-  }
-
   await primary.click();
 }
 
@@ -423,87 +414,6 @@ test.describe('Matrix room links', () => {
     await expect(preview).toBeVisible();
   });
 
-  test.describe('Android portrait room-link sheet', () => {
-    test.use({
-      viewport: { width: 390, height: 844 },
-      hasTouch: true,
-      isMobile: true,
-    });
-
-    test('keeps the sheet and its action footer reachable', async ({
-      page,
-      request,
-    }) => {
-      test.skip(!isAndroidE2E, 'Android WebView geometry only');
-      const runId = `${testResourceId('run')}m`;
-      const local = await localScenario(request, runId);
-      const targetName = `Portrait Target ${runId}`;
-      const targetId = await createRoom(request, local.hs, local.auth, {
-        name: targetName,
-      });
-      await sendRoomLink(
-        request,
-        local.hs,
-        local.auth,
-        local.sourceId,
-        `https://matrix.to/#/${targetId}`,
-        'open the portrait target',
-      );
-
-      await login(page, {
-        available: true,
-        hs: local.hs,
-        user: local.username,
-        pass: local.password,
-      } as SynapseSession);
-      await openRoom(page, local.sourceName);
-      await page
-        .getByRole('link', { name: 'open the portrait target' })
-        .click();
-
-      const preview = page.getByTestId('room-link-preview');
-      await expect(preview).toBeVisible();
-      await expect(page.locator('trn-room-link-preview')).toHaveClass(
-        /room-link-preview--sheet/,
-      );
-      await expect(preview.getByTestId('room-link-primary')).toHaveText(
-        'Open room',
-      );
-      const geometry = await preview.evaluate((element) => {
-        const surface = element.getBoundingClientRect();
-        const footer = element
-          .querySelector<HTMLElement>('.room-preview__actions')!
-          .getBoundingClientRect();
-        const viewport = window.visualViewport;
-        const viewportBottom =
-          (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight);
-        return {
-          portrait: window.innerHeight > window.innerWidth,
-          surface: {
-            left: surface.left,
-            right: surface.right,
-            bottom: surface.bottom,
-          },
-          footer: { top: footer.top, bottom: footer.bottom },
-          viewportBottom,
-          viewportWidth: window.innerWidth,
-        };
-      });
-      expect(geometry.portrait).toBe(true);
-      expect(Math.abs(geometry.surface.left)).toBeLessThanOrEqual(1);
-      expect(
-        Math.abs(geometry.surface.right - geometry.viewportWidth),
-      ).toBeLessThanOrEqual(1);
-      expect(
-        Math.abs(geometry.surface.bottom - geometry.viewportBottom),
-      ).toBeLessThanOrEqual(1);
-      expect(geometry.footer.top).toBeGreaterThanOrEqual(0);
-      expect(geometry.footer.bottom).toBeLessThanOrEqual(
-        geometry.viewportBottom + 1,
-      );
-    });
-  });
-
   test('clicking a mention shows a user card, not an empty room', async ({
     page,
     request,
@@ -575,18 +485,6 @@ test.describe('Matrix room links', () => {
 
     // Android deliberately uses its mobile dialog interaction model even under a wide
     // emulated viewport. Web uses the anchored pointer popover.
-    if (isAndroidE2E) {
-      await expect(
-        page.locator('.cdk-overlay-connected-position-bounding-box'),
-      ).toHaveCount(0);
-      await expect(page.getByRole('dialog')).toContainText(bobName);
-      await expect(page.getByTestId('composer-input')).toHaveAttribute(
-        'placeholder',
-        new RegExp(roomName),
-      );
-      return;
-    }
-
     // On web it is a POPOVER pinned to the mention, not a centred modal.
     await expect(
       page.locator('.cdk-overlay-connected-position-bounding-box'),

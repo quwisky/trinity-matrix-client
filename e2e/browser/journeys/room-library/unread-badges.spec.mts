@@ -5,7 +5,6 @@ import {
   type APIRequestContext,
 } from '../../../fixtures.mts';
 import {
-  isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
@@ -14,7 +13,6 @@ import { registerUser } from '../../../support/account.mts';
 import {
   installBadgeRecorder,
   recordedBadgeCalls,
-  recordedBadgeCount,
 } from '../../../support/platform-badge.mts';
 
 // Covers the two unread-badge features end to end:
@@ -171,19 +169,6 @@ test.describe('Unread badges', () => {
     await installBadgeRecorder(page);
 
     await login(page, reader);
-
-    if (isAndroidE2E) {
-      await expect
-        .poll(() => recordedBadgeCount(page), { timeout: 30_000 })
-        .toBe(SEED);
-
-      await page.getByTestId('rail-rooms').click();
-      await page.locator('.channel', { hasText: roomName }).first().click();
-      await expect
-        .poll(() => recordedBadgeCount(page), { timeout: 15_000 })
-        .toBe(0);
-      return;
-    }
 
     // Wait for AppBadgeService's effect to settle on the seeded total (its
     // constructor effect runs on every RoomsService.totalUnread() change).

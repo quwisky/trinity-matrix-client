@@ -43,8 +43,8 @@ describe('E2E execution reports', () => {
           durationMs: 1_500,
         },
         {
-          id: 'android.installed-webview',
-          environment: 'android',
+          id: 'mobile.android',
+          environment: 'mobile',
           capabilities: ['composition', 'host'],
           contractTypes: ['host', 'journey'],
           ciTier: 'pull-request',
@@ -61,7 +61,7 @@ describe('E2E execution reports', () => {
       durationMs: 1_500,
       outcomes: { retry: 1, unavailable: 1 },
     });
-    expect(report.byEnvironment.android.outcomes.unavailable).toBe(1);
+    expect(report.byEnvironment.mobile.outcomes.unavailable).toBe(1);
     expect(report.byCapability.host.outcomes.unavailable).toBe(1);
     expect(report.byContractType.journey).toMatchObject({
       suites: 2,

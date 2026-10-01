@@ -26,7 +26,7 @@ These checks can prove source boundaries, manifests, bridge shape, and packaging
 ```bash
 pnpm electron:e2e:smoke
 pnpm electron:e2e
-pnpm e2e:android
+pnpm e2e:mobile
 pnpm nx run trinity-ios:verify-native
 ```
 
