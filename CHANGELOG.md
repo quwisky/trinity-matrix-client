@@ -34,6 +34,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- A message's author no longer appears in that message's "Seen by" receipts.
+
 - Polls created in Trinity, and votes and closures cast in it, now appear in FluffyChat
   and other clients that read only the MSC3381 poll event types.
 
