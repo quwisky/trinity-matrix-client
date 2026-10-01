@@ -8,6 +8,7 @@ import {
 import { MOBILE_ANDROID_SUITE } from '../support/host-suites.mts';
 import { readSession } from '../support/session.mts';
 import { wdioOutputDir } from './support/artifacts.mts';
+import { native } from './support/session.mts';
 
 const workspaceRoot = join(import.meta.dirname, '../..');
 const startedAt = Date.now();
@@ -74,7 +75,7 @@ export const config: WebdriverIO.Config = {
     await browser
       .saveScreenshot(join(outputDir, `${name}.png`))
       .catch(() => undefined);
-    await browser.switchContext('NATIVE_APP').catch(() => undefined);
+    await native().catch(() => undefined);
     const hierarchy = await browser.getPageSource().catch(() => '');
     writeFileSync(join(outputDir, `${name}.native.xml`), hierarchy);
   },

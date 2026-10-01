@@ -6,16 +6,7 @@ import {
   registerUser,
   uniqueId,
 } from '../support/matrix.mts';
-import { native, pressBack, resetApp, webview } from '../support/session.mts';
-
-async function keyboardShown(): Promise<boolean> {
-  await native();
-  try {
-    return await browser.isKeyboardShown();
-  } finally {
-    await webview();
-  }
-}
+import { keyboardShown, pressBack, resetApp } from '../support/session.mts';
 
 describe('Android composer formatting', () => {
   beforeEach(resetApp);

@@ -1,5 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { browser } from '@wdio/globals';
+import {
+  KEYBOARD_SHOWN_COMMAND,
+  WEBVIEW_DEVTOOLS_UNFREEZE_COMMAND,
+  parseKeyboardShown,
+  parseWebviewDevtoolsUnfreeze,
+} from './android-shell.mts';
 import { appiumLogPath } from './artifacts.mts';
 import {
   chromedriverFromAppiumLog,
@@ -10,15 +16,40 @@ import {
 export const APP_PACKAGE = 'eu.qwky.trinity';
 const WEBVIEW_CONTEXT = `WEBVIEW_${APP_PACKAGE}`;
 
+/**
+ * Every Appium context switch or lookup opens each WebView DevTools socket on the device.
+ * Run this first so no frozen owner leaves those connections hanging.
+ */
+async function unfreezeWebviewOwners(): Promise<void> {
+  const { sockets, frozen } = parseWebviewDevtoolsUnfreeze(
+    await shell(WEBVIEW_DEVTOOLS_UNFREEZE_COMMAND),
+  );
+  if (frozen > 0) {
+    throw new Error(
+      `${frozen} of ${sockets} WebView DevTools socket owners stayed frozen after am unfreeze --sticky`,
+    );
+  }
+}
+
 export async function native(): Promise<void> {
+  await unfreezeWebviewOwners();
   await browser.switchContext('NATIVE_APP');
+}
+
+/** Soft keyboard visibility, read on the device without a context switch. */
+export async function keyboardShown(): Promise<boolean> {
+  return parseKeyboardShown(await shell(KEYBOARD_SHOWN_COMMAND));
 }
 
 /** Switch into the app's own WebView (never another app's) and apply the TLS bypass. */
 export async function webview(): Promise<void> {
   await browser.waitUntil(
-    async () =>
-      (await browser.getContexts()).map(String).includes(WEBVIEW_CONTEXT),
+    async () => {
+      await unfreezeWebviewOwners();
+      return (await browser.getContexts())
+        .map(String)
+        .includes(WEBVIEW_CONTEXT);
+    },
     { timeout: 30_000, timeoutMsg: `${WEBVIEW_CONTEXT} never appeared` },
   );
   try {
