@@ -1,5 +1,9 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { scrub } from '../e2e/mobile/support/scrub.mts';
+import { scrub, scrubDirectory } from '../e2e/mobile/support/scrub.mts';
 
 describe('mobile E2E artifact scrub', () => {
   it('removes Matrix ids, tokens and passwords', () => {
@@ -16,5 +20,45 @@ describe('mobile E2E artifact scrub', () => {
       'body: {"text":"<typed>"}',
     );
     expect(scrub('{"value":["p","a","s","s"]}')).toBe('{"value":["<typed>"]}');
+  });
+});
+
+describe('mobile E2E scrub on disk', () => {
+  const run = (dir) =>
+    execFileSync(
+      process.execPath,
+      [join(import.meta.dirname, '../e2e/mobile/scrub-cli.mts'), ...dir],
+      { stdio: 'pipe' },
+    );
+
+  it('scrubs .json and keeps it valid, including host:port ids', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'scrub-'));
+    const file = join(tmp, 'state.json');
+    writeFileSync(
+      file,
+      JSON.stringify({ u: '@alice:localhost:8448', password: 'p', n: 1 }),
+    );
+    scrubDirectory(tmp);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
+      u: '@<user>',
+      password: '<redacted>',
+      n: 1,
+    });
+  });
+
+  it('redacts escaped JSON forms', () => {
+    expect(scrub('{\\"password\\":\\"hunter2\\",\\"text\\":\\"abc\\"}')).toBe(
+      '{\\"password\\":\\"<redacted>\\",\\"text\\":\\"<typed>\\"}',
+    );
+  });
+
+  it('CLI scrubs every directory it is given', () => {
+    const a = mkdtempSync(join(tmpdir(), 'scrub-a-'));
+    const b = mkdtempSync(join(tmpdir(), 'scrub-b-'));
+    writeFileSync(join(a, 'x.log'), '@a:localhost');
+    writeFileSync(join(b, 'y.txt'), 'syt_abc');
+    run([a, b]);
+    expect(readFileSync(join(a, 'x.log'), 'utf8')).toBe('@<user>');
+    expect(readFileSync(join(b, 'y.txt'), 'utf8')).toBe('<token>');
   });
 });

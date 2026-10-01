@@ -543,11 +543,9 @@ async function cleanup(): Promise<void> {
   if (cleanupPromise) return cleanupPromise;
   cleanupPromise = (async () => {
     cleaningUp = true;
+    let scrubError: unknown;
     try {
       await captureDiagnostics().catch(() => undefined);
-      // Appium flushes its log after wdio's onComplete, so scrub once everything is written.
-      // Uploaded CI artifacts must not carry Matrix ids, tokens or passwords.
-      scrubDirectory(dirname(artifactsDir()));
       if (serial) {
         await adbRun('shell', 'am', 'force-stop', packageName).catch(
           () => undefined,
@@ -571,6 +569,18 @@ async function cleanup(): Promise<void> {
         terminateProcessGroup(spawnedEmulator, 'SIGKILL');
         await waitForProcessExit(spawnedEmulator, 2_000);
       }
+      // Appium flushes its log after wdio's onComplete, so scrub once everything is
+      // written, after device cleanup so a scrub failure cannot skip it. Uploaded CI
+      // artifacts must not carry Matrix ids, tokens or passwords.
+      try {
+        scrubDirectory(dirname(artifactsDir()));
+      } catch (error) {
+        scrubError = error;
+        console.error(
+          'Artifact scrub failed; artifacts may hold identifiers',
+          error,
+        );
+      }
     } finally {
       try {
         if (emulatorLogFd !== undefined) {
@@ -592,6 +602,7 @@ async function cleanup(): Promise<void> {
         );
       }
     }
+    if (scrubError) throw scrubError;
   })();
   return cleanupPromise;
 }

@@ -427,6 +427,11 @@ jobs:
             echo 'started=true' >> "$GITHUB_OUTPUT"
             TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:mobile
 
+      # Also covers dist/.ci (full run stdout) and a run killed before its own cleanup.
+      - name: Scrub identifiers from mobile artifacts
+        if: ${{ !cancelled() && steps.mobile.outputs.started == 'true' }}
+        run: node e2e/mobile/scrub-cli.mts dist/.ci dist/.playwright
+
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.mobile.outputs.started == 'true' }}
         with:

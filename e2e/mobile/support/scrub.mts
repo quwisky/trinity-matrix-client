@@ -9,22 +9,22 @@ export function scrub(text: string): string {
       .replace(/![A-Za-z0-9]+:[a-z0-9.\-]+(:\d+)?/g, '!<room>')
       .replace(/\$[A-Za-z0-9_\-]{20,}/g, '$<event>')
       .replace(/syt_[A-Za-z0-9_]+/g, '<token>')
-      .replace(/("password"\s*:\s*")[^"]*/g, '$1<redacted>')
+      .replace(/(\\?"password\\?"\s*:\s*\\?")[^"\\]*/g, '$1<redacted>')
       // Text typed into the WebView (usernames, passwords) travels as {"text":"..."}.
-      .replace(/("text"\s*:\s*")[^"]*/g, '$1<typed>')
+      .replace(/(\\?"text\\?"\s*:\s*\\?")[^"\\]*/g, '$1<typed>')
       // ...and as {"value":["a","b",...]}, one character per element.
       .replace(/("value"\s*:\s*\[)(?:"[^"]",?)+/g, '$1"<typed>"')
   );
 }
 
-/** Scrub every text artifact (.log, .xml, .txt) under a directory, in place. */
+/** Scrub every text artifact (.log, .xml, .txt, .json) under a directory, in place. */
 export function scrubDirectory(dir: string): void {
   if (!existsSync(dir)) return;
   for (const entry of readdirSync(dir, {
     recursive: true,
     withFileTypes: true,
   })) {
-    if (!entry.isFile() || !/\.(log|xml|txt)$/u.test(entry.name)) continue;
+    if (!entry.isFile() || !/\.(log|xml|txt|json)$/u.test(entry.name)) continue;
     const file = join(entry.parentPath, entry.name);
     writeFileSync(file, scrub(readFileSync(file, 'utf8')));
   }
