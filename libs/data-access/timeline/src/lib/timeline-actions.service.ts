@@ -155,8 +155,15 @@ export class TimelineActionsService {
     }).pipe(map(() => void 0));
   }
 
-  /** Start a single-select poll (MSC3381) in the open room. Cold: runs on subscribe. */
-  createPoll(question: string, options: string[]): Observable<void> {
+  /**
+   * Start a poll (MSC3381) in the open room letting each voter choose up to
+   * `maxSelections` answers (clamped to the answer count). Cold: runs on subscribe.
+   */
+  createPoll(
+    question: string,
+    options: string[],
+    maxSelections = 1,
+  ): Observable<void> {
     return defer(() => {
       const ctx = this.actionContext.resolve();
       const clean = options.map((o) => o.trim()).filter(Boolean);
@@ -167,14 +174,21 @@ export class TimelineActionsService {
         ctx.client.sendEvent(
           ctx.room.roomId,
           M_POLL_START.name as never,
-          pollStartContent(question.trim(), clean) as never,
+          pollStartContent(
+            question.trim(),
+            clean,
+            Math.min(Math.max(Math.trunc(maxSelections), 1), clean.length),
+          ) as never,
         ),
       );
     }).pipe(map(() => void 0));
   }
 
-  /** Cast (or change) the local user's vote on a poll. Cold: runs on subscribe. */
-  votePoll(pollId: string, answerId: string): Observable<void> {
+  /**
+   * Cast (or change) the local user's vote on a poll; an empty `answerIds` withdraws it.
+   * Cold: runs on subscribe.
+   */
+  votePoll(pollId: string, answerIds: readonly string[]): Observable<void> {
     return defer(() => {
       const ctx = this.actionContext.resolve();
       if (!ctx) {
@@ -184,7 +198,7 @@ export class TimelineActionsService {
         ctx.client.sendEvent(
           ctx.room.roomId,
           M_POLL_RESPONSE.name as never,
-          pollResponseContent(pollId, answerId) as never,
+          pollResponseContent(pollId, answerIds) as never,
         ),
       );
     }).pipe(map(() => void 0));

@@ -5,10 +5,10 @@ import { CreatePollDialogComponent } from './create-poll-dialog.component';
 
 async function setup() {
   const close = vi.fn();
-  const { fixture } = await render(CreatePollDialogComponent, {
+  const { fixture, container } = await render(CreatePollDialogComponent, {
     providers: [{ provide: TrnDialogRef, useValue: { close } }],
   });
-  return { cmp: fixture.componentInstance, close };
+  return { cmp: fixture.componentInstance, close, fixture, container };
 }
 
 describe('CreatePollDialogComponent', () => {
@@ -33,7 +33,64 @@ describe('CreatePollDialogComponent', () => {
     expect(close).toHaveBeenCalledWith({
       question: 'Best fruit?',
       options: ['Apple', 'Pear'],
+      maxSelections: 1,
     });
+  });
+
+  it('closes with the max selections typed into its labelled field', async () => {
+    const { cmp, close, fixture, container } = await setup();
+    cmp.question.set('Q');
+    cmp.options.set(['A', 'B', 'C']);
+    fixture.detectChanges();
+
+    const field = container.querySelector<HTMLInputElement>(
+      '[data-testid=poll-max-selections]',
+    )!;
+    expect(field.labels?.[0]?.textContent).toContain('Max selections');
+    field.value = '2';
+    field.dispatchEvent(new Event('input'));
+    cmp.create();
+
+    expect(close).toHaveBeenCalledWith(
+      expect.objectContaining({ maxSelections: 2 }),
+    );
+  });
+
+  it('shows the clamped value when more selections than answers are typed', async () => {
+    const { cmp, fixture, container } = await setup();
+    cmp.options.set(['A', 'B', 'C']);
+    fixture.detectChanges();
+    const field = container.querySelector<HTMLInputElement>(
+      '[data-testid=poll-max-selections]',
+    )!;
+
+    field.value = '3';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    field.value = '9';
+    field.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    expect(field.value).toBe('3');
+    expect(field.max).toBe('3');
+  });
+
+  it('clamps max selections to the filled-in answers', async () => {
+    const { cmp, close } = await setup();
+    cmp.question.set('Q');
+    cmp.options.set(['A', 'B', 'C']);
+    cmp.maxSelections.set(3);
+
+    cmp.options.set(['A', '', 'C']);
+    expect(cmp.effectiveMaxSelections()).toBe(2);
+    cmp.maxSelections.set(0);
+    expect(cmp.effectiveMaxSelections()).toBe(1);
+
+    cmp.maxSelections.set(3);
+    cmp.create();
+    expect(close).toHaveBeenCalledWith(
+      expect.objectContaining({ maxSelections: 2 }),
+    );
   });
 
   it('adds an option field', async () => {

@@ -10,7 +10,9 @@
           [class.poll__option--chosen]="option.chosen"
           [class.poll__option--ended]="poll().ended"
           [attr.aria-pressed]="option.chosen"
-          [disabled]="poll().ended || pending()"
+          [disabled]="
+            poll().ended || pending() || (atLimit() && !option.chosen)
+          "
           (click)="onVote(option.id)"
         >
           <span
@@ -33,6 +35,8 @@
       {{ poll().totalVotes === 1 ? 'vote' : 'votes' }}
       @if (poll().ended) {
         · Final results
+      } @else if (poll().maxSelections > 1) {
+        · Choose up to {{ poll().maxSelections }}
       }
     </span>
     @if (canEnd() && !poll().ended) {

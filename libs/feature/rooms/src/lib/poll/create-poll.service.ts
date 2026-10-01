@@ -31,7 +31,11 @@ export class CreatePollService {
       .pipe(
         switchMap((poll) =>
           poll
-            ? this.timelineActions.createPoll(poll.question, poll.options)
+            ? this.timelineActions.createPoll(
+                poll.question,
+                poll.options,
+                poll.maxSelections,
+              )
             : of(void 0),
         ),
         map(() => undefined),

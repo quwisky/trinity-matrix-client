@@ -95,7 +95,7 @@
             [poll]="poll"
             [canEnd]="r.isOwn"
             [pending]="!!r.status"
-            (vote)="pollVote.emit({ pollId: poll.id, answerId: $event })"
+            (vote)="pollVote.emit({ pollId: poll.id, answerIds: $event })"
             (end)="pollEnd.emit(poll.id)"
           />
         } @else if (r.location; as location) {

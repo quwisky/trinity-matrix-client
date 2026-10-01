@@ -702,7 +702,10 @@ export class MessageRowComponent {
   readonly matrixLink = output<MatrixLinkClick>();
 
   /** A vote cast on this row's poll (the host sends the m.poll.response). */
-  readonly pollVote = output<{ pollId: string; answerId: string }>();
+  readonly pollVote = output<{
+    pollId: string;
+    answerIds: readonly string[];
+  }>();
   /** A request to close this row's poll (the host sends the m.poll.end). */
   readonly pollEnd = output<string>();
 
