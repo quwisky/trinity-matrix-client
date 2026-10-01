@@ -11,7 +11,8 @@ import { TrnButton } from '@trinity/components/controls';
 /**
  * Renders a poll (MSC3381): the question, each answer with its live tally and share
  * bar, the total vote count, and — for the poll's creator, while it's open — an
- * "End poll" control. Clicking an answer casts (or changes) the local user's vote.
+ * "End poll" control. Clicking an answer casts (or changes) the local user's vote: it
+ * replaces the choice in a single-select poll and toggles it in a multi-select one.
  * Presentational: it emits `vote`/`end` and leaves the sending to the host.
  */
 @Component({
@@ -33,8 +34,8 @@ export class PollComponent {
    */
   readonly pending = input(false);
 
-  /** The chosen answer id to cast a vote for. */
-  readonly vote = output<string>();
+  /** The full set of answer ids to vote for (empty withdraws the vote). */
+  readonly vote = output<readonly string[]>();
   /** Close the poll. */
   readonly end = output<void>();
 
@@ -48,9 +49,32 @@ export class PollComponent {
     return out;
   });
 
+  /** Whether a multi-select voter has used every allowed choice. */
+  readonly atLimit = computed(() => {
+    const { maxSelections, options } = this.poll();
+    return (
+      maxSelections > 1 &&
+      options.filter((o) => o.chosen).length >= maxSelections
+    );
+  });
+
   onVote(answerId: string): void {
-    if (!this.poll().ended && !this.pending()) {
-      this.vote.emit(answerId);
+    const { ended, maxSelections, options } = this.poll();
+    if (ended || this.pending()) {
+      return;
     }
+    if (maxSelections === 1) {
+      this.vote.emit([answerId]);
+      return;
+    }
+    const target = options.find((o) => o.id === answerId);
+    if (!target || (!target.chosen && this.atLimit())) {
+      return;
+    }
+    this.vote.emit(
+      options
+        .filter((o) => (o.id === answerId ? !o.chosen : o.chosen))
+        .map((o) => o.id),
+    );
   }
 }

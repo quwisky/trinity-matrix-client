@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Multi-select polls: set how many answers each voter may choose when creating a poll.
+  Voting toggles answers up to that limit, and tallies count every chosen answer from
+  Trinity and other MSC3381 clients.
+
 - Optional reaction notifications while Trinity is running, grouped by original message
   with a preview and click-through to that message. The account setting defaults off and
   respects account notification disable, room mute, sound and focused-room suppression.

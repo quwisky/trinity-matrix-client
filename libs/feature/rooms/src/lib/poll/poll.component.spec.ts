@@ -9,6 +9,7 @@ function poll(over: Partial<PollView> = {}): PollView {
     question: 'Best fruit?',
     ended: false,
     totalVotes: 3,
+    maxSelections: 1,
     options: [
       { id: 'a0', text: 'Apple', votes: 2, chosen: false },
       { id: 'a1', text: 'Pear', votes: 1, chosen: true },
@@ -51,12 +52,64 @@ describe('PollComponent', () => {
     const { fixture, container } = await render(PollComponent, {
       inputs: { poll: poll() },
     });
-    let voted: string | undefined;
-    fixture.componentInstance.vote.subscribe((id) => (voted = id));
+    let voted: readonly string[] | undefined;
+    fixture.componentInstance.vote.subscribe((ids) => (voted = ids));
 
     container.querySelectorAll<HTMLButtonElement>('.poll__option')[0].click();
 
-    expect(voted).toBe('a0');
+    expect(voted).toEqual(['a0']); // single-select replaces the current choice
+  });
+
+  describe('multi-select', () => {
+    const multi = (chosen: boolean[]) =>
+      poll({
+        maxSelections: 2,
+        options: ['Apple', 'Pear', 'Plum'].map((text, i) => ({
+          id: `a${i}`,
+          text,
+          votes: 0,
+          chosen: chosen[i],
+        })),
+      });
+
+    async function clickOption(view: PollView, index: number) {
+      const { fixture, container } = await render(PollComponent, {
+        inputs: { poll: view },
+      });
+      let voted: readonly string[] | undefined;
+      fixture.componentInstance.vote.subscribe((ids) => (voted = ids));
+      container
+        .querySelectorAll<HTMLButtonElement>('.poll__option')
+        [index].click();
+      return { voted, container };
+    }
+
+    it('adds a clicked option to the current choices', async () => {
+      const { voted } = await clickOption(multi([true, false, false]), 1);
+      expect(voted).toEqual(['a0', 'a1']);
+    });
+
+    it('removes a chosen option when clicked again', async () => {
+      const { voted } = await clickOption(multi([true, true, false]), 0);
+      expect(voted).toEqual(['a1']);
+    });
+
+    it('disables unchosen options once the limit is reached', async () => {
+      const { voted, container } = await clickOption(
+        multi([true, true, false]),
+        2,
+      );
+      const buttons =
+        container.querySelectorAll<HTMLButtonElement>('.poll__option');
+      expect(buttons[2].disabled).toBe(true);
+      expect(buttons[0].disabled).toBe(false);
+      expect(voted).toBeUndefined();
+    });
+
+    it('tells the voter how many answers they may choose', async () => {
+      const { container } = await clickOption(multi([false, false, false]), 0);
+      expect(container.textContent).toContain('Choose up to 2');
+    });
   });
 
   it('disables voting and shows final results once ended', async () => {

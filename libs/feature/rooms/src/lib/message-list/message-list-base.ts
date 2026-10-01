@@ -229,7 +229,10 @@ export abstract class MessageListBase {
   /** A `matrix.to` permalink clicked in a message body, for the host to route in-app. */
   readonly matrixLink = output<MatrixLinkClick>();
   /** A vote cast on a poll (the host sends the response). */
-  readonly pollVote = output<{ pollId: string; answerId: string }>();
+  readonly pollVote = output<{
+    pollId: string;
+    answerIds: readonly string[];
+  }>();
   /** A request to close a poll (the host sends the end event). */
   readonly pollEnd = output<string>();
 
