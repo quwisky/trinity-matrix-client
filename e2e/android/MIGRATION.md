@@ -6725,7 +6725,7 @@ Documented reinterpretations of the predecessor:
   holding both paragraphs, with the answer rendered outside it.
 - **Exact rows without identifiers.** Each long press targets
   `.scroll .msg[data-mid^="$"]` with a text filter (the first paragraph, the
-  control, or `shot.png` as the predecessor finds the image row); a read-only
+  control, or the image row found by the `Open image shot.png` button); a read-only
   observation first proves that exactly one row matches and that it is the
   proved event.
 - **Android sheets.** Each sheet is proved as the message-forward suite proves
