@@ -44,6 +44,11 @@ export const E2E_INVENTORY = {
       ignoredTargets: ['lint', 'typecheck'],
     },
     {
+      project: 'trinity-e2e-mobile',
+      projectFile: 'e2e/mobile/project.json',
+      ignoredTargets: ['lint', 'typecheck'],
+    },
+    {
       project: 'trinity-e2e-web',
       projectFile: 'e2e/web/project.json',
       ignoredTargets: ['lint', 'typecheck'],
@@ -73,6 +78,8 @@ export const E2E_INVENTORY = {
     'e2e/**/playwright*.config.mts',
     'e2e/protocol/*.spec.mjs',
     'e2e/android/run.mts',
+    'e2e/mobile/run.mts',
+    'e2e/**/wdio*.conf.mts',
   ],
   sharedEntrypoints: [
     {

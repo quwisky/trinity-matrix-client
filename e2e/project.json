@@ -139,6 +139,14 @@
         "command": "node scripts/e2e-suite-registry.mjs run e2e-android"
       }
     },
+    "e2e-mobile": {
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/e2e-suite-registry.mjs run e2e-mobile"
+      }
+    },
     "synapse-up": {
       "cache": false,
       "parallelism": false,

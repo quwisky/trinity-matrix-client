@@ -1,6 +1,15 @@
-import { join } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import {
+  suiteSummaryPath,
+  wdioSuiteSummary,
+  type WdioLauncherResult,
+} from '../support/execution-report.mts';
+import { MOBILE_ANDROID_SUITE } from '../support/host-suites.mts';
+import { readSession } from '../support/session.mts';
 
 const workspaceRoot = join(import.meta.dirname, '../..');
+const startedAt = Date.now();
 const outputDir = join(
   workspaceRoot,
   'dist/.wdio/trinity-e2e-mobile',
@@ -59,8 +68,30 @@ export const config: WebdriverIO.Config = {
       .catch(() => undefined);
     await browser.switchContext('NATIVE_APP').catch(() => undefined);
     const hierarchy = await browser.getPageSource().catch(() => '');
-    const { writeFileSync, mkdirSync } = await import('node:fs');
     mkdirSync(outputDir, { recursive: true });
     writeFileSync(join(outputDir, `${name}.native.xml`), hierarchy);
+  },
+  /** Publish the suite summary the E2E aggregate runner validates. */
+  onComplete(
+    exitCode: number,
+    _config,
+    _capabilities,
+    result: WdioLauncherResult,
+  ) {
+    const session = readSession();
+    const file = suiteSummaryPath(
+      session.workspaceRoot,
+      MOBILE_ANDROID_SUITE.targetProject,
+      session.id,
+      MOBILE_ANDROID_SUITE.id,
+    );
+    const summary = wdioSuiteSummary({
+      suiteId: MOBILE_ANDROID_SUITE.id,
+      exitCode,
+      durationMs: Date.now() - startedAt,
+      result,
+    });
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, `${JSON.stringify(summary, undefined, 2)}\n`);
   },
 };

@@ -30,6 +30,7 @@ import {
   type E2EInvocation,
 } from '../support/invocation.mts';
 import { e2eArtifactPath } from '../support/playwright-config.mts';
+import { MOBILE_ANDROID_SUITE } from '../support/host-suites.mts';
 
 const exec = promisify(execFile);
 const workspaceRoot = join(import.meta.dirname, '../..');
@@ -78,7 +79,11 @@ const adb = join(sdkRoot, 'platform-tools/adb');
 const emulator = join(sdkRoot, 'emulator/emulator');
 
 const artifactsDir = (): string =>
-  e2eArtifactPath('trinity-e2e-mobile', 'android.mobile', 'host-output');
+  e2eArtifactPath(
+    MOBILE_ANDROID_SUITE.targetProject,
+    MOBILE_ANDROID_SUITE.id,
+    'host-output',
+  );
 
 function commandSignal(): AbortSignal | undefined {
   return cleaningUp ? undefined : abortController.signal;
