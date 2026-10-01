@@ -72,6 +72,15 @@ export async function resetApp(): Promise<void> {
   const cleared = await shell('pm', ['clear', APP_PACKAGE]);
   if (!cleared.includes('Success'))
     throw new Error(`pm clear failed: ${cleared}`);
+  // Push registration asks for Android 13+ notifications after login. Grant up front, as the
+  // Playwright layer did, so an OS-owned prompt cannot take focus or the first Back press.
+  const granted = await shell('pm', [
+    'grant',
+    APP_PACKAGE,
+    'android.permission.POST_NOTIFICATIONS',
+  ]);
+  if (granted.trim())
+    throw new Error(`pm grant POST_NOTIFICATIONS failed: ${granted}`);
   await browser.activateApp(APP_PACKAGE);
   await webview();
 }

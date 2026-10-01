@@ -44,3 +44,15 @@ export async function login(user: string, pass: string): Promise<void> {
   await signIn.click();
   await waitForRooms();
 }
+
+/** One W3C touch tap, which reaches the WebView as a gesture (a plain click does not raise the IME). */
+export async function tap(selector: string): Promise<void> {
+  const target = $(selector);
+  await target.scrollIntoView({ block: 'center' });
+  await browser
+    .action('pointer', { parameters: { pointerType: 'touch' } })
+    .move({ origin: target })
+    .down()
+    .up()
+    .perform();
+}
