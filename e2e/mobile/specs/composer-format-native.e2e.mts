@@ -98,7 +98,7 @@ describe('Android composer formatting', () => {
         )!.value,
     );
     await pressBack();
-    await expect($('[data-testid="format-cancel"]')).not.toBeDisplayed();
+    await expect($('[data-testid="format-cancel"]')).not.toExist();
     await expect(composer).toHaveValue(unchanged);
   });
 });
