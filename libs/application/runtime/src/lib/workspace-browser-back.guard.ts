@@ -26,9 +26,11 @@ export function workspaceBrowserBackGuard(): boolean | Observable<boolean> {
     if (active !== null && routed.owns(active)) return true;
   }
   if (back.hasActive()) {
+    // `hasActive` is a cached projection; `back()` re-reads the surface when it runs. If
+    // nothing handles Back by then, the browser's own history move stands.
     return back.back().pipe(
       take(1),
-      map(() => false),
+      map((outcome) => outcome.kind === 'unhandled'),
     );
   }
   if (!dialog.hasOpen()) return true;

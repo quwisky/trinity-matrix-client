@@ -34,6 +34,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Browser Back from an open room now returns to the room list after the window grows from
+  phone to desktop width. Previously, if Back arrived before the layout caught up, it was
+  treated as closing the phone conversation and the room reopened.
+
 - Escape now dismisses an open or pending tooltip. Open select menus tell screen readers
   which list they control and which option is active, and toast action buttons match
   Trinity's other buttons.
