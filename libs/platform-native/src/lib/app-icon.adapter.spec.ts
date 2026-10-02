@@ -9,6 +9,7 @@ const plugin = vi.hoisted(() => ({ set: vi.fn(() => Promise.resolve()) }));
 const desktop = vi.hoisted(() => ({
   set: vi.fn(() => Promise.resolve(true)),
   present: false,
+  noIcon: false,
 }));
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
@@ -21,7 +22,9 @@ vi.mock('./trinity-desktop-bridge', () => ({
   isElectronRenderer: () => desktop.present,
   getTrinityDesktopBridge: () =>
     desktop.present
-      ? { capabilities: { appIcon: { set: desktop.set } } }
+      ? {
+          capabilities: desktop.noIcon ? {} : { appIcon: { set: desktop.set } },
+        }
       : undefined,
 }));
 
@@ -33,6 +36,7 @@ describe('AppIconAdapter', () => {
     plugin.set.mockClear();
     desktop.set.mockClear();
     desktop.present = false;
+    desktop.noIcon = false;
     platform.mockReturnValue('web');
   });
 
@@ -73,6 +77,26 @@ describe('AppIconAdapter', () => {
     );
     await firstValueFrom(adapter.apply('dark', 'dark'));
     expect(plugin.set).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries when the desktop host reports the icon was not applied', async () => {
+    desktop.present = true;
+    desktop.set.mockResolvedValueOnce(false);
+    const adapter = TestBed.inject(AppIconAdapter);
+    await expect(firstValueFrom(adapter.apply('dark', 'dark'))).rejects.toThrow(
+      'App icon was not applied',
+    );
+    await firstValueFrom(adapter.apply('dark', 'dark'));
+    expect(desktop.set).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats a desktop bridge without the appIcon capability as unsupported', async () => {
+    desktop.present = true;
+    desktop.noIcon = true;
+    const adapter = TestBed.inject(AppIconAdapter);
+    await expect(
+      firstValueFrom(adapter.apply('dark', 'dark')),
+    ).resolves.toBeUndefined();
   });
 
   it('sends the resolved icon to the desktop host', async () => {

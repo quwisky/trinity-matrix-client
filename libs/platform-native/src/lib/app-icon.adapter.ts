@@ -72,9 +72,13 @@ export class AppIconAdapter {
         }
         return;
       case 'desktop':
-        await getTrinityDesktopBridge()?.capabilities.appIcon?.set(
-          target as AppIconName,
-        );
+        {
+          // An absent capability (older preload) is unsupported, not a failure to retry.
+          const set = getTrinityDesktopBridge()?.capabilities.appIcon?.set;
+          if (set && !(await set(target as AppIconName))) {
+            throw new Error('App icon was not applied');
+          }
+        }
         return;
       case 'web':
         this.swapFavicons(target === 'dark');
