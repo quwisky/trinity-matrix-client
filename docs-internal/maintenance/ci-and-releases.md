@@ -15,6 +15,7 @@ public developer guide.
 | [`ci.yml`](../../.github/workflows/ci.yml)                 | A pull request, selected pushes, or its weekly schedule                | Branch checks and browser, desktop, and Android evidence                                                 |
 | [`docs-pages.yml`](../../.github/workflows/docs-pages.yml) | A `develop` push or manual dispatch from `develop`                     | Validated user and developer sites deployed to GitHub Pages                                              |
 | [`release.yml`](../../.github/workflows/release.yml)       | A push to `develop` or `master`, or a manual dispatch with a tag input | release-please release PRs and tags, then tag verification, desktop packages, and a draft GitHub release |
+| [`homebrew.yml`](../../.github/workflows/homebrew.yml)     | A release is published, or a manual dispatch with a tag input          | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                       |
 | [`renovate.yml`](../../.github/workflows/renovate.yml)     | Daily at 00:00 UTC or a manual dispatch                                | Dependency update maintenance through a GitHub App token                                                 |
 
 The branch workflow accepts pushes to `develop`, `master`, and
@@ -282,6 +283,40 @@ Android and iOS retain independent `1.0` / build-code values and are not part
 of the current release version gate. Their build and distribution requirements
 belong to the [Android](../../apps/docs-developers/src/content/docs/platforms/android.md)
 and [iOS](../../apps/docs-developers/src/content/docs/platforms/ios.md) guides.
+
+## Homebrew tap
+
+Publishing a release runs [`homebrew.yml`](../../.github/workflows/homebrew.yml),
+which writes the cask to the `quwisky/homebrew-trinity` tap: `trinity` for stable
+releases and `trinity@next` for `-next` prereleases. Users install with
+`brew install --cask quwisky/trinity/trinity` (or `…/trinity@next`). The casks are
+Apple Silicon only and require macOS 13; each conflicts with the other because both
+install `Trinity.app`.
+
+The job refuses any app that is not signed with a Developer ID, notarized, and
+stapled (`codesign`, `spctl`, `stapler` in the step "App is signed, notarized and
+stapled"). It audits the generated cask with `brew style` and `brew audit` before
+pushing, and pushes nothing when the cask is unchanged. To rewrite a cask, for
+example after fixing the tap, dispatch `homebrew.yml` with the published tag.
+
+### One-off setup
+
+1. Join the Apple Developer Program, create a **Developer ID Application**
+   certificate, export it as `.p12`, and create an app-specific password. Set the
+   secrets `MAC_CSC_LINK` (base64 of the `.p12`), `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`,
+   `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`. `release.yml` fails the macOS
+   build when only some of them are set.
+2. Create the public repository `quwisky/homebrew-trinity`.
+3. Run `ssh-keygen -t ed25519 -C homebrew-trinity -f homebrew-trinity`. Add
+   `homebrew-trinity.pub` to the tap as a deploy key **with write access**, and store
+   the private key in this repository as the secret `HOMEBREW_TAP_DEPLOY_KEY`.
+
+| Failure                                                    | Recovery                                                                                                    |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| "is not a published release" (step "Release is published") | Publish the draft first; drafts never reach the tap.                                                        |
+| Missing `-arm64-mac.zip` asset                             | The macOS package failed. Re-package the tag with `release.yml`, then dispatch `homebrew.yml`.              |
+| Signing gate fails                                         | The app is unsigned or not notarized. Set all macOS signing secrets, release a new version, and publish it. |
+| `brew style` / `brew audit` fails                          | Fix `scripts/homebrew-cask.mjs` and its test, merge, then dispatch `homebrew.yml` with the tag.             |
 
 ## Recover a release run
 
