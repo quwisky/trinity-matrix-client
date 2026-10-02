@@ -48,11 +48,17 @@ export const TRN_TOOLTIP_CONTENT_CLASSES = trn(
  * their absence is what keeps the timing of a hover-revealed toolbar identical to today —
  * the e2e suite has 14 unhardened hover-then-click sites that a changed delay would turn
  * into interception flakes.
+ *
+ * That timing is pinned here because Brain 1.5 changed its own defaults from 150/100 to 0/0.
+ * Nearly every call site labels an icon-only button in a dense, hover-revealed toolbar; at 0
+ * a pointer crossing the row opens a tooltip over the neighbouring action on every pass.
  */
 @Directive({
   selector: '[trnTooltip]',
   providers: [
     provideBrnTooltipDefaultOptions({
+      showDelay: 150,
+      hideDelay: 100,
       svgClasses: TRN_TOOLTIP_SVG_CLASSES,
       tooltipContentClasses: TRN_TOOLTIP_CONTENT_CLASSES,
       arrowClasses: (position: BrnTooltipPosition) =>
