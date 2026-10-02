@@ -1,5 +1,5 @@
 import { expect, test, testResourceId } from '../../../fixtures.mts';
-import { isAndroidE2E, login } from '../../../support/app.mts';
+import { login } from '../../../support/app.mts';
 import {
   addAccountViaUi,
   configureMultiAccountSuite,
@@ -17,10 +17,6 @@ test.describe('Multiple accounts', () => {
     page,
     request,
   }) => {
-    test.skip(
-      isAndroidE2E,
-      'native notification delivery and collapse tags need an FCM integration environment; renderer notification assertions are web-only',
-    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}n`;
 

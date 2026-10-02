@@ -41,14 +41,24 @@ export class NavigationFocusService {
     });
   }
 
+  /**
+   * Focus the entering page's feature-owned target, else its first heading or main,
+   * else the page itself. A candidate inside a pane the current layout hides (the
+   * compact Rooms list hides the conversation pane holding the shell's <h1>) cannot
+   * take focus, so keep the first candidate the browser actually focuses (#859).
+   */
   focusEnteringPage(): void {
     const page = this.document.querySelector<HTMLElement>('router-outlet + *');
     if (!page) return;
-    const target =
-      page.querySelector<HTMLElement>('[data-route-focus]') ??
-      page.querySelector<HTMLElement>('[role="heading"], h1, main') ??
-      page;
-    if (target.tabIndex < 0) target.tabIndex = -1;
-    target.focus({ preventScroll: true });
+    const candidates = [
+      ...page.querySelectorAll<HTMLElement>('[data-route-focus]'),
+      ...page.querySelectorAll<HTMLElement>('[role="heading"], h1, main'),
+      page,
+    ];
+    for (const target of candidates) {
+      if (target.tabIndex < 0) target.tabIndex = -1;
+      target.focus({ preventScroll: true });
+      if (this.document.activeElement === target) return;
+    }
   }
 }

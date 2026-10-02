@@ -86,6 +86,9 @@ describe('RoomsPage space actions', () => {
         MockProvider(RoomLibraryService, {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
+          // ng-mocks >= 14.18 no longer stubs signal fields; the selected-library
+          // projection reads this one.
+          rooms: signal<RoomSummary[]>([]),
         }),
         MockProvider(RoomReadinessService, { waitForRoom }),
         MockProvider(SpacesService, {

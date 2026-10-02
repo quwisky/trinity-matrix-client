@@ -1,5 +1,4 @@
 import { devices, expect, test, testResourceId } from '../../../fixtures.mts';
-import { captureScreenshot } from '../../../support/screenshot.mts';
 import { login } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
@@ -266,9 +265,7 @@ test.describe('Multiple accounts', () => {
       await test
         .info()
         .attach(`accounts-in-view-desktop-${dark ? 'dark' : 'light'}-125`, {
-          body: await captureScreenshot(page, () =>
-            desktopSelector.screenshot(),
-          ),
+          body: await desktopSelector.screenshot(),
           contentType: 'image/png',
         });
     }
@@ -421,13 +418,13 @@ test.describe('Multiple accounts', () => {
         await test
           .info()
           .attach(`accounts-in-view-mobile-${dark ? 'dark' : 'light'}-125`, {
-            body: await captureScreenshot(page, () => page.screenshot()),
+            body: await page.screenshot(),
             contentType: 'image/png',
           });
       }
       await page.setViewportSize({ width: 390, height: 260 });
       await test.info().attach('accounts-in-view-mobile-scroll', {
-        body: await captureScreenshot(page, () => picker.screenshot()),
+        body: await picker.screenshot(),
         contentType: 'image/png',
       });
       const mobileList = picker.locator('.picker__list');

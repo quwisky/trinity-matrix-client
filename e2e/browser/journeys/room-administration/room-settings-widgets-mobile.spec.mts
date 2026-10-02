@@ -1,4 +1,3 @@
-import { captureScreenshot } from '../../../support/screenshot.mts';
 import {
   testResourceId,
   devices,
@@ -221,9 +220,7 @@ test.describe('Room settings widgets on a phone', () => {
     await lastWidget.scrollIntoViewIfNeeded();
     await expect(lastWidget).toBeVisible();
     await test.info().attach('room-widgets-mobile', {
-      body: await captureScreenshot(page, () =>
-        page.getByTestId('room-settings').screenshot(),
-      ),
+      body: await page.getByTestId('room-settings').screenshot(),
       contentType: 'image/png',
     });
     await page.evaluate(({ dark, theme, fontSize }) => {

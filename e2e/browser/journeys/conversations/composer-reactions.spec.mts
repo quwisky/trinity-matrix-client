@@ -6,9 +6,7 @@ import {
   type Page,
 } from '../../../fixtures.mts';
 import {
-  isAndroidE2E,
   login,
-  openMessageActionSheet,
   synapseSession,
   type SynapseSession,
 } from '../../../support/app.mts';
@@ -143,12 +141,6 @@ test.describe('Full emoji reaction picker', () => {
     // sheet, whose "More reactions…" action reaches the same full picker. Desktop keeps
     // its hover toolbar → quick reactions → "+" interaction below.
     const dialog = page.getByRole('dialog', { name: 'Pick a reaction' });
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, row.first());
-      await sheet.getByTestId('sheet-react-more').click();
-      await expect(dialog).toBeVisible({ timeout: 10_000 });
-    }
-
     // Reveal the hover toolbar, open the quick reactions, then escalate to "+".
     // The hover → "Add reaction" → quick-reactions popover chain is a fragile pointer
     // interaction: under full-suite load the popover occasionally doesn't open on the
@@ -161,20 +153,18 @@ test.describe('Full emoji reaction picker', () => {
     // the click then waits out the whole 120s test timeout on an element that is never
     // coming back. Bounding it at 5s turns that hang into another attempt instead.
     const reactMore = page.getByTestId('react-more');
-    if (!isAndroidE2E) {
-      await expect(async () => {
-        if (await dialog.isVisible()) return;
-        if (!(await reactMore.isVisible())) {
-          await row.first().hover();
-          await row
-            .first()
-            .getByRole('button', { name: 'Add reaction' })
-            .click({ timeout: 2_000 });
-        }
-        await reactMore.click({ timeout: 2_000 });
-        await expect(dialog).toBeVisible({ timeout: 2_000 });
-      }).toPass({ timeout: 30_000 });
-    }
+    await expect(async () => {
+      if (await dialog.isVisible()) return;
+      if (!(await reactMore.isVisible())) {
+        await row.first().hover();
+        await row
+          .first()
+          .getByRole('button', { name: 'Add reaction' })
+          .click({ timeout: 2_000 });
+      }
+      await reactMore.click({ timeout: 2_000 });
+      await expect(dialog).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
 
     // The full picker opens in a dialog; drive it through its search box (emoji-mart
     // lazy-renders, so search first) and pick the first result.

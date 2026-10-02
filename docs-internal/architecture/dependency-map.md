@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **78 Nx projects** and **282 dependencies**. No project cycles detected.
+This snapshot contains **78 Nx projects** and **280 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -193,11 +193,11 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `trinity`                         | `apps/trinity`                         | role:app; capability:composition                |                   9 |
 | `trinity-android`                 | `android`                              | role:app; capability:composition                |                   1 |
 | `trinity-desktop`                 | `electron`                             | role:app; capability:composition                |                   1 |
-| `trinity-e2e`                     | `e2e`                                  | unmanaged tooling/test                          |                   4 |
-| `trinity-e2e-android`             | `e2e/android`                          | unmanaged tooling/test                          |                   4 |
+| `trinity-e2e`                     | `e2e`                                  | unmanaged tooling/test                          |                   2 |
 | `trinity-e2e-browser`             | `e2e/browser`                          | unmanaged tooling/test                          |                   5 |
 | `trinity-e2e-components`          | `e2e/components`                       | unmanaged tooling/test                          |                   7 |
 | `trinity-e2e-electron`            | `e2e/electron`                         | unmanaged tooling/test                          |                   3 |
+| `trinity-e2e-mobile`              | `e2e/mobile`                           | unmanaged tooling/test                          |                   4 |
 | `trinity-e2e-protocol`            | `e2e/protocol`                         | unmanaged tooling/test                          |                   4 |
 | `trinity-e2e-support`             | `e2e/support`                          | unmanaged tooling/test                          |                   0 |
 | `trinity-e2e-web`                 | `e2e/web`                              | unmanaged tooling/test                          |                   6 |

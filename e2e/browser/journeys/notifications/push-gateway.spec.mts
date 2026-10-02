@@ -5,7 +5,6 @@ import {
   type APIRequestContext,
 } from '../../../fixtures.mts';
 import {
-  isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
@@ -76,14 +75,9 @@ test.describe('Push gateway', () => {
     await expect(
       page.getByRole('heading', { name: 'Push gateway (this device)' }),
     ).toBeVisible({ timeout: 15_000 });
-    if (isAndroidE2E) {
-      await expect(page.getByTestId('push-gateway-unsupported')).toHaveCount(0);
-      await expect(page.getByTestId('push-gateway-url')).toBeVisible();
-    } else {
-      // On the web platform it is inert: the note shows, the form does not.
-      await expect(page.getByTestId('push-gateway-unsupported')).toBeVisible();
-      await expect(page.getByTestId('push-gateway-url')).toHaveCount(0);
-    }
+    // On the web platform it is inert: the note shows, the form does not.
+    await expect(page.getByTestId('push-gateway-unsupported')).toBeVisible();
+    await expect(page.getByTestId('push-gateway-url')).toHaveCount(0);
   });
 
   test('append lets co-hosted accounts coexist and an app-id change leaves no orphan', async ({

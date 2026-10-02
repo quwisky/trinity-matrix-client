@@ -5,11 +5,9 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs';
-import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import {
   DEFAULT_AVD,
@@ -23,7 +21,6 @@ import {
   ADB_FAILURE_LIMIT,
   ANDROID_INFRASTRUCTURE_FAILURE,
   nextAdbFailureCount,
-  parseInfrastructureFailure,
   startAndroidInfrastructureWatchdog,
 } from './health.mts';
 import {
@@ -31,14 +28,17 @@ import {
   type E2EInvocation,
 } from '../support/invocation.mts';
 import { e2eArtifactPath } from '../support/playwright-config.mts';
+import { MOBILE_ANDROID_SUITE } from '../support/host-suites.mts';
+import { appiumLogPath } from './support/artifacts.mts';
+import { scrubDirectory } from './support/scrub.mts';
+import {
+  chromedriverFromAppiumLog,
+  parseWebViewVersion,
+} from './support/versions.mts';
 
 const exec = promisify(execFile);
 const workspaceRoot = join(import.meta.dirname, '../..');
 const packageName = 'eu.qwky.trinity';
-const driverPackages = [
-  'com.microsoft.playwright.androiddriver',
-  'com.microsoft.playwright.androiddriver.test',
-];
 const ownedEmulatorLaunchArgs = [
   '-no-window',
   '-no-audio',
@@ -63,7 +63,6 @@ const changedReverseMappings: Array<{
   local: string;
   previous: string | undefined;
 }> = [];
-let playwrightAttachAttempted = false;
 let activeChild: ChildProcess | undefined;
 let cleanupPromise: Promise<void> | undefined;
 let invocation: E2EInvocation | undefined;
@@ -71,7 +70,6 @@ let baselineWorktree: string | undefined;
 let cleaningUp = false;
 let requestedExitCode: number | undefined;
 let signalCount = 0;
-let infrastructureFailureMarker = '';
 let adbFailureCount = 0;
 
 const sdkRoot = process.env['ANDROID_HOME'] ?? process.env['ANDROID_SDK_ROOT'];
@@ -85,8 +83,8 @@ const emulator = join(sdkRoot, 'emulator/emulator');
 
 const artifactsDir = (): string =>
   e2eArtifactPath(
-    'trinity-e2e-android',
-    'android.installed-webview',
+    MOBILE_ANDROID_SUITE.targetProject,
+    MOBILE_ANDROID_SUITE.id,
     'host-output',
   );
 
@@ -129,22 +127,6 @@ function terminateProcessGroup(
 
 async function inspectAndroidInfrastructure(): Promise<Error | undefined> {
   if (abortController.signal.aborted) return undefined;
-  if (infrastructureFailureMarker && existsSync(infrastructureFailureMarker)) {
-    try {
-      const failure = parseInfrastructureFailure(
-        readFileSync(infrastructureFailureMarker, 'utf8'),
-      );
-      return new Error(
-        `${failure.kind}: ${failure.layer}: ${failure.summary}; ` +
-          `diagnostics=${artifactsDir()}`,
-      );
-    } catch (error) {
-      return new Error(
-        `${ANDROID_INFRASTRUCTURE_FAILURE}: invalid fixture failure marker: ${String(error)}; ` +
-          `diagnostics=${artifactsDir()}`,
-      );
-    }
-  }
   if (emulatorSpawnError) {
     return new Error(
       `${ANDROID_INFRASTRUCTURE_FAILURE}: emulator-process: ${emulatorSpawnError.message}; ` +
@@ -210,23 +192,6 @@ async function run(
       else reject(new Error(`${command} exited with ${code ?? signalName}`));
     });
   });
-}
-
-function packageVersion(packagePath: string): string {
-  const require = createRequire(import.meta.url);
-  const resolved = require.resolve(`${packagePath}/package.json`);
-  return (JSON.parse(readFileSync(resolved, 'utf8')) as { version: string })
-    .version;
-}
-
-function assertPlaywrightVersions(): void {
-  const runnerVersion = packageVersion('playwright');
-  const testVersion = packageVersion('@playwright/test');
-  if (runnerVersion !== testVersion) {
-    throw new Error(
-      `playwright (${runnerVersion}) and @playwright/test (${testVersion}) must match`,
-    );
-  }
 }
 
 async function gitStatus(): Promise<string> {
@@ -395,16 +360,6 @@ async function validateAndWaitForBoot(): Promise<void> {
       'package:',
     ),
   );
-  for (const driverPackage of driverPackages) {
-    const installed = await adbRun('shell', 'pm', 'path', driverPackage).catch(
-      () => '',
-    );
-    if (installed.startsWith('package:')) {
-      throw new Error(
-        `${serial} already contains ${driverPackage}; remove pre-existing Playwright drivers before using this disposable test target`,
-      );
-    }
-  }
 
   const properties = {
     qemu: await adbRun('shell', 'getprop', 'ro.kernel.qemu'),
@@ -445,10 +400,6 @@ async function captureDiagnostics(): Promise<void> {
         emulatorSpawnError: emulatorSpawnError?.message ?? null,
         activeChildPid: activeChild?.pid ?? null,
         ownedEmulatorLaunchArgs,
-        infrastructureFailureMarker:
-          infrastructureFailureMarker && existsSync(infrastructureFailureMarker)
-            ? readFileSync(infrastructureFailureMarker, 'utf8')
-            : null,
       },
       null,
       2,
@@ -466,6 +417,17 @@ async function captureDiagnostics(): Promise<void> {
     }
   };
 
+  await writeDiagnostic('versions.txt', async () => {
+    const webview = parseWebViewVersion(
+      await adbRun('shell', 'dumpsys', 'webviewupdate'),
+    );
+    const chromedriver = existsSync(appiumLogPath())
+      ? chromedriverFromAppiumLog(readFileSync(appiumLogPath(), 'utf8'))
+      : 'unknown (no Appium log)';
+    const line = `[mobile] Android System WebView: ${webview}; chromedriver: ${chromedriver}`;
+    console.log(line);
+    return `${line}\n`;
+  });
   await writeDiagnostic('adb-devices.txt', async () => {
     const { stdout } = await exec(adb, ['devices', '-l'], {
       cwd: workspaceRoot,
@@ -490,31 +452,19 @@ async function captureDiagnostics(): Promise<void> {
     return `${emulatorProcesses.join('\n') || '<no matching emulator process>'}\n`;
   });
   await writeDiagnostic('webview-final.txt', async () => {
-    const [provider, appPids, primaryDriverPids, testDriverPids, sockets] =
-      await Promise.all([
-        adbRun(
-          'shell',
-          'cmd',
-          'webviewupdate',
-          'getCurrentWebViewPackage',
-        ).catch(() => adbRun('shell', 'dumpsys', 'webviewupdate')),
-        adbRun('shell', 'pidof', packageName).catch(() => '<not running>'),
-        adbRun('shell', 'pidof', driverPackages[0]!).catch(
-          () => '<not running>',
-        ),
-        adbRun('shell', 'pidof', driverPackages[1]!).catch(
-          () => '<not running>',
-        ),
-        adbRun('shell', 'cat', '/proc/net/unix').catch(() => ''),
-      ]);
+    const [provider, appPids, sockets] = await Promise.all([
+      adbRun('shell', 'cmd', 'webviewupdate', 'getCurrentWebViewPackage').catch(
+        () => adbRun('shell', 'dumpsys', 'webviewupdate'),
+      ),
+      adbRun('shell', 'pidof', packageName).catch(() => '<not running>'),
+      adbRun('shell', 'cat', '/proc/net/unix').catch(() => ''),
+    ]);
     const webViewSockets = sockets
       .split(/\r?\n/)
       .filter((line) => line.includes('webview_devtools_remote'));
     return [
       `provider=${provider}`,
       `app-pids=${appPids || '<not running>'}`,
-      `driver-pids=${primaryDriverPids || '<not running>'}`,
-      `driver-test-pids=${testDriverPids || '<not running>'}`,
       'devtools-sockets:',
       webViewSockets.join('\n') || '<none>',
       '',
@@ -570,17 +520,13 @@ async function cleanup(): Promise<void> {
   if (cleanupPromise) return cleanupPromise;
   cleanupPromise = (async () => {
     cleaningUp = true;
+    let scrubError: unknown;
     try {
       await captureDiagnostics().catch(() => undefined);
       if (serial) {
         await adbRun('shell', 'am', 'force-stop', packageName).catch(
           () => undefined,
         );
-        if (playwrightAttachAttempted) {
-          for (const driverPackage of driverPackages) {
-            await adbRun('uninstall', driverPackage).catch(() => undefined);
-          }
-        }
         for (const { local, previous } of changedReverseMappings.reverse()) {
           await adbRun('reverse', '--remove', local).catch(() => undefined);
           if (previous) {
@@ -599,6 +545,18 @@ async function cleanup(): Promise<void> {
       ) {
         terminateProcessGroup(spawnedEmulator, 'SIGKILL');
         await waitForProcessExit(spawnedEmulator, 2_000);
+      }
+      // Appium flushes its log after wdio's onComplete, so scrub once everything is
+      // written, after device cleanup so a scrub failure cannot skip it. Uploaded CI
+      // artifacts must not carry Matrix ids, tokens or passwords.
+      try {
+        scrubDirectory(dirname(artifactsDir()));
+      } catch (error) {
+        scrubError = error;
+        console.error(
+          'Artifact scrub failed; artifacts may hold identifiers',
+          error,
+        );
       }
     } finally {
       try {
@@ -621,6 +579,7 @@ async function cleanup(): Promise<void> {
         );
       }
     }
+    if (scrubError) throw scrubError;
   })();
   return cleanupPromise;
 }
@@ -647,11 +606,8 @@ async function main(): Promise<void> {
     throw new Error('Android CI requires the verified prebuilt renderer');
   }
   await assertJava21();
-  assertPlaywrightVersions();
-  await run('pnpm', ['exec', 'playwright', 'install', 'android']);
   await selectOrStartDevice();
   await validateAndWaitForBoot();
-  process.env['TRINITY_E2E_PLATFORM'] = 'android';
   const reusePrebuiltBundle = process.env['TRINITY_E2E_PREBUILT_WWW'] === '1';
   if (reusePrebuiltBundle) {
     await run(process.execPath, [
@@ -703,21 +659,15 @@ async function main(): Promise<void> {
   process.env['TRINITY_ANDROID_SERIAL'] = serial;
   const outputDirectory = artifactsDir();
   mkdirSync(outputDirectory, { recursive: true });
-  infrastructureFailureMarker = join(
-    outputDirectory,
-    'infrastructure-failure.json',
-  );
-  rmSync(infrastructureFailureMarker, { force: true });
-  process.env['TRINITY_ANDROID_FATAL_MARKER'] = infrastructureFailureMarker;
-  playwrightAttachAttempted = true;
+  await run(process.execPath, ['scripts/setup-appium.mjs']);
+  process.env['APPIUM_HOME'] = join(workspaceRoot, '.appium');
   await run(
     'pnpm',
     [
       'exec',
-      'playwright',
-      'test',
-      '-c',
-      'e2e/android/playwright.config.mts',
+      'wdio',
+      'run',
+      'e2e/mobile/wdio.conf.mts',
       ...process.argv.slice(2),
     ],
     true,

@@ -5,7 +5,6 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
-import { captureScreenshot } from '../../../support/screenshot.mts';
 
 // Covers the sidebar's touch affordances, which no other spec can see: every other
 // authenticated spec runs the desktop Chromium project, where `hover: hover` and
@@ -89,7 +88,7 @@ test.describe('Sidebar on a touch device', () => {
     });
     expect(menuGeometry.withinViewport).toBe(true);
     await test.info().attach('account-menu-mobile', {
-      body: await captureScreenshot(page, () => page.screenshot()),
+      body: await page.screenshot(),
       contentType: 'image/png',
     });
     await page.keyboard.press('Escape');

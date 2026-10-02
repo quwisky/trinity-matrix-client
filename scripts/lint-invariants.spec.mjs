@@ -241,11 +241,11 @@ const UI_BOUNDARY = [
 const OUTSIDE_THE_VENDOR_BANS = [
   'apps/docs-developers/project.json',
   'apps/docs-users/project.json',
-  'e2e/android/project.json',
   'e2e/browser/project.json',
   'e2e/components/project.json',
   'e2e/docs/project.json',
   'e2e/electron/project.json',
+  'e2e/mobile/project.json',
   'e2e/project.json',
   'e2e/protocol/project.json',
   'e2e/support/project.json',
@@ -351,10 +351,10 @@ describe('UI vendor boundary', () => {
     // vendor ban keys on `type:tool`. The Trinity-scoped executable E2E projects sit outside
     // that library scope axis; shared lifecycle support remains covered by `scope:shared`.
     expect(unscoped).toEqual([
-      'e2e/android/project.json',
       'e2e/browser/project.json',
       'e2e/components/project.json',
       'e2e/electron/project.json',
+      'e2e/mobile/project.json',
       'e2e/project.json',
       'e2e/protocol/project.json',
       'e2e/web/project.json',

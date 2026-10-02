@@ -1,9 +1,5 @@
 import { expect, test, testResourceId } from '../../../fixtures.mts';
-import {
-  fillLabeledInput,
-  isAndroidE2E,
-  readPreference,
-} from '../../../support/app.mts';
+import { fillLabeledInput, readPreference } from '../../../support/app.mts';
 import {
   PNG_1x1,
   configureSettingsSuite,
@@ -102,7 +98,7 @@ test.describe('Settings', () => {
     expect(expanded.horizontalOverflow).toBeLessThanOrEqual(1);
     // Native Settings is routed, with host chrome above the detail pane. Its one
     // content scroller may be needed; the fixed-height desktop dialog still fits.
-    if (!isAndroidE2E) expect(expanded.overflows).toBe(false);
+    expect(expanded.overflows).toBe(false);
     const flagRows = await page
       .getByTestId('hs-unstable')
       .locator('li')

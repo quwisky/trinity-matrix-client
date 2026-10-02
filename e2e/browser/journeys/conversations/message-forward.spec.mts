@@ -1,9 +1,7 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   clickRowMenuItem,
-  isAndroidE2E,
   login,
-  openMessageActionSheet,
   synapseSession,
   type SynapseSession,
   waitForSent,
@@ -73,12 +71,7 @@ test.describe('Message forwarding', () => {
 
     // Android exposes message actions through a long-press sheet; pointer hosts use
     // the row's overflow menu. Both dispatch the same forward command.
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, row.first());
-      await sheet.getByTestId('sheet-forward').click();
-    } else {
-      await clickRowMenuItem(row.first(), page.getByTestId('msg-forward'));
-    }
+    await clickRowMenuItem(row.first(), page.getByTestId('msg-forward'));
 
     // The switcher opens as a room picker — choose the target room.
     const search = page.getByPlaceholder('Search rooms, spaces, people');

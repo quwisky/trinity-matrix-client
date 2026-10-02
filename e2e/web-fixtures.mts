@@ -55,7 +55,6 @@ const webTestWithPlatform = webTest.extend<{
     const auxiliaryContexts = new Set<BrowserContext>();
     try {
       await use({
-        isNative: false,
         oidcApplicationType: 'web',
         async route(appPage, matcher, handler): Promise<void> {
           await appPage.route(matcher, handler);

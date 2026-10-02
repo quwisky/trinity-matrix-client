@@ -1,7 +1,5 @@
-import { captureScreenshot } from '../../../support/screenshot.mts';
 import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
-  isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
@@ -102,25 +100,6 @@ test.describe('Security settings', () => {
     await expect(verify).toBeVisible({ timeout: 15_000 });
     await verify.click();
 
-    if (isAndroidE2E) {
-      await page.waitForURL((url) => url.pathname === '/encryption/verify', {
-        timeout: 20_000,
-      });
-      await expect(page.getByTestId('verify-page')).toBeVisible();
-      await expect(
-        page.getByRole('heading', { name: 'Verify device', exact: true }),
-      ).toBeFocused();
-
-      await page.getByRole('button', { name: 'Close' }).click();
-      await page.waitForURL((url) => url.pathname === '/settings/security', {
-        timeout: 20_000,
-      });
-      await expect(
-        page.getByRole('heading', { name: 'Security', exact: true }),
-      ).toBeFocused();
-      return;
-    }
-
     const encryption = page.getByRole('dialog', { name: 'Encryption' });
     await expect(encryption).toBeVisible({
       timeout: 20_000,
@@ -139,10 +118,6 @@ test.describe('Security settings', () => {
     page,
     request,
   }, testInfo) => {
-    test.skip(
-      process.env['TRINITY_E2E_PLATFORM'] === 'android',
-      'fault injection requires Angular development hooks; the installed APK is production',
-    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}trust-health`;
     const user = `trust-health-${runId}`;
@@ -197,7 +172,7 @@ test.describe('Security settings', () => {
       'Verification and recovery status may be out of date',
     );
     await testInfo.attach('trust-unavailable', {
-      body: await captureScreenshot(page, () => page.screenshot()),
+      body: await page.screenshot(),
       contentType: 'image/png',
     });
 
@@ -217,7 +192,7 @@ test.describe('Security settings', () => {
     await expect(page.getByTestId('security-setup')).toBeVisible();
     await expect(page.getByTestId('security-verify')).toBeVisible();
     await testInfo.attach('trust-recovered', {
-      body: await captureScreenshot(page, () => page.screenshot()),
+      body: await page.screenshot(),
       contentType: 'image/png',
     });
   });

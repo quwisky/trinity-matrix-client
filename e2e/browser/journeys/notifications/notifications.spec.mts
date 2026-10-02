@@ -6,7 +6,6 @@ import {
   type Page,
 } from '../../../fixtures.mts';
 import {
-  isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
@@ -388,7 +387,7 @@ async function seedReactionRoom(
  * (including the /login → /rooms redirect `login()` drives).
  */
 async function installNotificationRecorder(page: Page): Promise<void> {
-  function install(nativeExpected: boolean): void {
+  function install(): void {
     const w = window as typeof window & {
       __notifications: Array<{
         title: string;
@@ -396,49 +395,9 @@ async function installNotificationRecorder(page: Page): Promise<void> {
         instance?: { onclick: (() => void) | null };
       }>;
       __notificationRecorderInstalled?: boolean;
-      Capacitor?: {
-        nativePromise?(
-          pluginName: string,
-          methodName: string,
-          options?: Record<string, unknown>,
-        ): Promise<unknown>;
-      };
     };
     if (w.__notificationRecorderInstalled) return;
     w.__notifications = [];
-
-    const capacitor = w.Capacitor;
-    if (!capacitor && nativeExpected) {
-      setTimeout(() => install(nativeExpected), 0);
-      return;
-    }
-    if (nativeExpected && capacitor?.nativePromise) {
-      w.__notificationRecorderInstalled = true;
-      const nativePromise = capacitor.nativePromise.bind(capacitor);
-      capacitor.nativePromise = (
-        pluginName: string,
-        methodName: string,
-        options: Record<string, unknown> = {},
-      ): Promise<unknown> => {
-        if (pluginName !== 'LocalNotifications' || methodName !== 'schedule') {
-          return nativePromise(pluginName, methodName, options);
-        }
-        const notifications = Array.isArray(options['notifications'])
-          ? (options['notifications'] as Array<Record<string, unknown>>)
-          : [];
-        for (const notification of notifications) {
-          w.__notifications.push({
-            title: String(notification['title'] ?? ''),
-            options: {
-              body: notification['body'],
-              tag: notification['threadIdentifier'],
-            },
-          });
-        }
-        return Promise.resolve();
-      };
-      return;
-    }
 
     w.__notificationRecorderInstalled = true;
     class RecordingNotification {
@@ -493,11 +452,8 @@ async function installNotificationRecorder(page: Page): Promise<void> {
     }
   }
 
-  const nativeExpected = isAndroidE2E;
-  await page.addInitScript(install, nativeExpected);
-  // Capacitor journeys stay in one WebView document while login navigates through
-  // Angular. Install into that live document as well as future document loads.
-  await page.evaluate(install, nativeExpected);
+  await page.addInitScript(install);
+  await page.evaluate(install);
 }
 
 test.describe('Message notifications', () => {
@@ -508,10 +464,6 @@ test.describe('Message notifications', () => {
     page,
     request,
   }) => {
-    test.skip(
-      isAndroidE2E,
-      'native notification delivery needs an FCM integration environment; renderer notification assertions are web-only',
-    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}n`;
 
@@ -638,10 +590,6 @@ test.describe('Reaction notifications', () => {
     page,
     request,
   }) => {
-    test.skip(
-      isAndroidE2E,
-      'native notification delivery needs an FCM integration environment; renderer notification assertions are web-only',
-    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}r`;
     const fixture = await seedReactionRoom(request, hs, runId);

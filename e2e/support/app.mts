@@ -1,9 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { readSession } from './session.mts';
-import { touchLongPress } from './touch-platform.mts';
-import { isAndroidE2E, navigateApplication } from './navigation.mts';
+import { navigateApplication } from './navigation.mts';
 import type { Navigate } from './platform-contracts.mts';
-export { isAndroidE2E };
 export const webNavigate = navigateApplication;
 export type { Navigate };
 const capacitorStoragePrefix = 'CapacitorStorage.';
@@ -20,53 +18,19 @@ export async function readPreference(
   key: string,
 ): Promise<string | null> {
   const logicalKey = preferenceKey(key);
-  if (!isAndroidE2E) {
-    return page.evaluate(
-      (value) => localStorage.getItem(`CapacitorStorage.${value}`),
-      logicalKey,
-    );
-  }
-  return page.evaluate(async (value) => {
-    const capacitor = (
-      window as typeof window & {
-        Capacitor?: {
-          Plugins?: {
-            Preferences?: {
-              get(options: { key: string }): Promise<{ value: string | null }>;
-            };
-          };
-        };
-      }
-    ).Capacitor;
-    const preferences = capacitor?.Plugins?.Preferences;
-    if (!preferences)
-      throw new Error('Capacitor Preferences plugin is unavailable');
-    return (await preferences.get({ key: value })).value;
-  }, logicalKey);
+  return page.evaluate(
+    (value) => localStorage.getItem(`CapacitorStorage.${value}`),
+    logicalKey,
+  );
 }
 
 /** Enumerate Capacitor Preferences keys through the backend active on this platform. */
 export async function preferenceKeys(page: Page): Promise<string[]> {
-  if (!isAndroidE2E) {
-    return page.evaluate(() =>
-      Object.keys(localStorage)
-        .filter((key) => key.startsWith('CapacitorStorage.'))
-        .map((key) => key.slice('CapacitorStorage.'.length)),
-    );
-  }
-  return page.evaluate(async () => {
-    const capacitor = (
-      window as typeof window & {
-        Capacitor?: {
-          Plugins?: { Preferences?: { keys(): Promise<{ keys: string[] }> } };
-        };
-      }
-    ).Capacitor;
-    const preferences = capacitor?.Plugins?.Preferences;
-    if (!preferences)
-      throw new Error('Capacitor Preferences plugin is unavailable');
-    return (await preferences.keys()).keys;
-  });
+  return page.evaluate(() =>
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith('CapacitorStorage.'))
+      .map((key) => key.slice('CapacitorStorage.'.length)),
+  );
 }
 
 /** Seed a preference before a journey reads it during application startup. */
@@ -76,42 +40,18 @@ export async function seedPreference(
   value: string,
 ): Promise<void> {
   const logicalKey = preferenceKey(key);
-  if (!isAndroidE2E) {
-    const seed = ([storageKey, storageValue]: readonly [string, string]) =>
-      localStorage.setItem(`CapacitorStorage.${storageKey}`, storageValue);
-    const preference = [logicalKey, value] as const;
-    // A brand-new Playwright page is still at about:blank and needs an init script
-    // for the first application boot. Once the app origin is loaded, write only the
-    // live document: keeping an init script there would resurrect a preference after
-    // the clear-data journey removes storage and reloads the application.
-    if (page.url() === 'about:blank') {
-      await page.addInitScript(seed, preference);
-    } else {
-      await page.evaluate(seed, preference);
-    }
-    return;
+  const seed = ([storageKey, storageValue]: readonly [string, string]) =>
+    localStorage.setItem(`CapacitorStorage.${storageKey}`, storageValue);
+  const preference = [logicalKey, value] as const;
+  // A brand-new Playwright page is still at about:blank and needs an init script
+  // for the first application boot. Once the app origin is loaded, write only the
+  // live document: keeping an init script there would resurrect a preference after
+  // the clear-data journey removes storage and reloads the application.
+  if (page.url() === 'about:blank') {
+    await page.addInitScript(seed, preference);
+  } else {
+    await page.evaluate(seed, preference);
   }
-  await page.evaluate(
-    async ([storageKey, storageValue]) => {
-      const capacitor = (
-        window as typeof window & {
-          Capacitor?: {
-            Plugins?: {
-              Preferences?: {
-                set(options: { key: string; value: string }): Promise<void>;
-              };
-            };
-          };
-        }
-      ).Capacitor;
-      const preferences = capacitor?.Plugins?.Preferences;
-      if (!preferences)
-        throw new Error('Capacitor Preferences plugin is unavailable');
-      await preferences.set({ key: storageKey, value: storageValue });
-    },
-    [logicalKey, value],
-  );
-  await page.reload({ waitUntil: 'domcontentloaded' });
 }
 
 /** The Dex-backed account Synapse created via SSO, so it has no Matrix password. */
@@ -208,17 +148,6 @@ export async function clickRowMenuItem(
     await row.getByTestId('msg-more').click({ timeout: 2_000 });
     await menuItem.click({ timeout: 2_000 });
   }).toPass({ timeout: 30_000 });
-}
-
-/** Open the message actions surface used by the iOS/Android interaction model. */
-export async function openMessageActionSheet(
-  page: Page,
-  row: Locator,
-): Promise<Locator> {
-  await touchLongPress(page, row);
-  const sheet = page.getByRole('dialog', { name: 'Message actions' });
-  await expect(sheet).toBeVisible({ timeout: 10_000 });
-  return sheet;
 }
 
 /**
