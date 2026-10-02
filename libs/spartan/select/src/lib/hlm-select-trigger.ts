@@ -16,6 +16,10 @@ import type { ClassValue } from 'clsx';
  * element, so either attribute placed on `hlm-select-trigger` lands on a
  * role-less host instead.
  *
+ * Trinity drives `aria-invalid` through `forceInvalid` and `HlmSelectExplicitInvalid`;
+ * upstream's `aria-invalid` input is intentionally not carried, because that
+ * directive would overwrite it anyway.
+ *
  * The override is registered in the developer UI and theming guide and pinned
  * by the public select wrapper test.
  * └──────────────────────────────────────────────────────────────────────────┘

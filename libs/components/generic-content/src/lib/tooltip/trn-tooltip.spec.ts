@@ -45,6 +45,18 @@ describe('TrnTooltip', () => {
     expect(brn.brnTooltip()).toBe('Members');
   });
 
+  it('keeps the hover-intent delays that Brain 1.5 no longer defaults', async () => {
+    // Brain 1.5 dropped its defaults to 0/0. At 0 a pointer sweeping across a message row's
+    // hover toolbar opens a tooltip over the neighbouring action on every pass.
+    const { fixture } = await render(HostComponent);
+    const brn = fixture.debugElement
+      .query(By.directive(BrnTooltip))
+      .injector.get(BrnTooltip);
+
+    expect(brn.showDelay()).toBe(150);
+    expect(brn.hideDelay()).toBe(100);
+  });
+
   it('decorates the host without replacing it', async () => {
     // 29 of 30 call sites put this on a button that already carries other directives, and
     // one puts it on a <trn-icon>. Anything that changed the host element would break both.
