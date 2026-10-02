@@ -1,7 +1,7 @@
 name: Release
 
 # release-please runs on every push to develop (prerelease line: vX.Y.Z-next.N) and
-# master (stable line: vX.Y.Z). It keeps one release PR open per branch; merging that
+# main (stable line: vX.Y.Z). It keeps one release PR open per branch; merging that
 # PR makes release-please tag the merge commit and create a DRAFT GitHub release, and
 # the jobs below package the desktop installers into that draft in the same run.
 #
@@ -12,7 +12,7 @@ name: Release
 # recovering a failed release must not require deleting and re-pushing a tag.
 on:
   push:
-    branches: [develop, master]
+    branches: [develop, main]
   workflow_dispatch:
     inputs:
       tag:
@@ -46,8 +46,8 @@ jobs:
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           target-branch: ${{ github.ref_name }}
-          config-file: ${{ github.ref_name == 'master' && 'release-please-config.json' || 'release-please-config.next.json' }}
-          manifest-file: ${{ github.ref_name == 'master' && '.release-please-manifest.json' || '.release-please-manifest.next.json' }}
+          config-file: ${{ github.ref_name == 'main' && 'release-please-config.json' || 'release-please-config.next.json' }}
+          manifest-file: ${{ github.ref_name == 'main' && '.release-please-manifest.json' || '.release-please-manifest.next.json' }}
 
   # The whole gate for a release: the same checks ci.yml runs on a branch, plus the
   # tag/ancestry/version checks below. A dispatch can name any tag, so nothing here may
@@ -85,16 +85,16 @@ jobs:
       # A tag is not evidence of review — anyone who can push one can point it at an
       # arbitrary commit. Require that the commit is reachable from a long-lived
       # branch, so releases can only be cut from code that went through a PR.
-      - name: Tagged commit is on develop or master
+      - name: Tagged commit is on develop or main
         run: |
-          for branch in origin/develop origin/master; do
+          for branch in origin/develop origin/main; do
             if git rev-parse --verify --quiet "$branch" >/dev/null &&
                git merge-base --is-ancestor HEAD "$branch"; then
               echo "Tagged commit is contained in $branch."
               exit 0
             fi
           done
-          echo "::error::${TAG} points at a commit that is not contained in develop or master. Release only from a merged commit."
+          echo "::error::${TAG} points at a commit that is not contained in develop or main. Release only from a merged commit."
           exit 1
         env:
           TAG: ${{ steps.tag.outputs.tag }}

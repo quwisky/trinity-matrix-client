@@ -17,7 +17,7 @@ on:
     # Matched on the patch- prefix, NOT on renovate/** — the pattern has to select exactly
     # the branches that never get a PR. Every other Renovate branch does get one, and would
     # otherwise run all five jobs twice per rebase: once here, once for the pull request.
-    branches: [develop, master, 'renovate/patch-**']
+    branches: [develop, main, 'renovate/patch-**']
   pull_request:
 
 # A newer push to the same branch makes the run in flight obsolete.

@@ -10,14 +10,14 @@ public developer guide.
 
 ## Know what ran
 
-| Workflow                                                   | Starts when                                                            | What it provides                                                                                         |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| [`ci.yml`](../../.github/workflows/ci.yml)                 | A pull request, selected pushes, or its weekly schedule                | Branch checks and browser, desktop, and Android evidence                                                 |
-| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml) | A `develop` push or manual dispatch from `develop`                     | Validated user and developer sites deployed to GitHub Pages                                              |
-| [`release.yml`](../../.github/workflows/release.yml)       | A push to `develop` or `master`, or a manual dispatch with a tag input | release-please release PRs and tags, then tag verification, desktop packages, and a draft GitHub release |
-| [`renovate.yml`](../../.github/workflows/renovate.yml)     | Daily at 00:00 UTC or a manual dispatch                                | Dependency update maintenance through a GitHub App token                                                 |
+| Workflow                                                   | Starts when                                                          | What it provides                                                                                         |
+| ---------------------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [`ci.yml`](../../.github/workflows/ci.yml)                 | A pull request, selected pushes, or its weekly schedule              | Branch checks and browser, desktop, and Android evidence                                                 |
+| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml) | A `develop` push or manual dispatch from `develop`                   | Validated user and developer sites deployed to GitHub Pages                                              |
+| [`release.yml`](../../.github/workflows/release.yml)       | A push to `develop` or `main`, or a manual dispatch with a tag input | release-please release PRs and tags, then tag verification, desktop packages, and a draft GitHub release |
+| [`renovate.yml`](../../.github/workflows/renovate.yml)     | Daily at 00:00 UTC or a manual dispatch                              | Dependency update maintenance through a GitHub App token                                                 |
 
-The branch workflow accepts pushes to `develop`, `master`, and
+The branch workflow accepts pushes to `develop`, `main`, and
 `renovate/patch-**`; pull requests are its usual review path. A newer run for
 the same workflow and ref cancels an older run. Diagnose the newest run rather
 than treating a cancelled predecessor as a product failure.
@@ -171,7 +171,7 @@ Releases come from two lines, each managed by release-please through
 | Line       | Branch    | Versions       | Config / manifest                                                        | Notes                             |
 | ---------- | --------- | -------------- | ------------------------------------------------------------------------ | --------------------------------- |
 | Prerelease | `develop` | `X.Y.Z-next.N` | `release-please-config.next.json` / `.release-please-manifest.next.json` | GitHub release only (prerelease)  |
-| Stable     | `master`  | `X.Y.Z`        | `release-please-config.json` / `.release-please-manifest.json`           | GitHub release and `CHANGELOG.md` |
+| Stable     | `main`    | `X.Y.Z`        | `release-please-config.json` / `.release-please-manifest.json`           | GitHub release and `CHANGELOG.md` |
 
 On every push to either branch, release-please updates that branch's release PR
 from the Conventional Commits since the last release. Merging the release PR bumps
@@ -190,25 +190,25 @@ reads them on both lines, so one footer tries to cut the same version twice.
 1. Close any release PR still open on `develop`. Merging it after the promotion
    would cut a `-next` prerelease of a version that is already stable; release-please
    opens a fresh one after the back-merge.
-2. Open a pull request from `develop` to `master` and merge it with a **merge
-   commit** (not squash), so `master` keeps the individual commits release-please
+2. Open a pull request from `develop` to `main` and merge it with a **merge
+   commit** (not squash), so `main` keeps the individual commits release-please
    reads.
-3. release-please opens the stable release PR on `master`. Review its version and
+3. release-please opens the stable release PR on `main`. Review its version and
    `CHANGELOG.md` entry, then merge it. The draft release and packages follow.
-4. Open a pull request from `master` back to `develop` and merge it with a merge
+4. Open a pull request from `main` back to `develop` and merge it with a merge
    commit. The stable release PR already wrote the stable version into
    `.release-please-manifest.next.json`, so the merge needs no edits and the next
    prerelease starts a new `-next.0` series above the stable version: the next
    minor after a `feat`, the next patch after only fixes. Only if a prerelease was merged on
    `develop` between promotion and back-merge do the version files conflict;
-   resolve them to `master`'s values.
+   resolve them to `main`'s values.
 
 ### First release
 
 `0.1.0` predates release-please. After the migration merge, push the `v0.1.0`
-tag on the migration commit **first**, then create `master` from that commit, and
+tag on the migration commit **first**, then create `main` from that commit, and
 dispatch `release.yml` with `tag: v0.1.0` to build its draft. In the other order,
-`master`'s first run finds no `v0.1.0` release and proposes a stable release for
+`main`'s first run finds no `v0.1.0` release and proposes a stable release for
 whatever reached `develop` after the bootstrap commit. Both configs carry a
 `bootstrap-sha` so release-please's first runs do not read the project's whole
 history; once the `v0.1.0` release exists it no longer matters.
@@ -218,7 +218,7 @@ to `published` and update the README's "has not published its first release"
 notice.
 
 The release verifier checks the tag format, ancestry and both manifest versions.
-Ancestry shows that the commit is contained in `develop` or `master`; it does not
+Ancestry shows that the commit is contained in `develop` or `main`; it does not
 by itself prove that a pull request was reviewed or every required check passed.
 
 ### What the release verifier runs
@@ -285,14 +285,14 @@ and [iOS](../../apps/docs-developers/src/content/docs/platforms/ios.md) guides.
 
 ## Recover a release run
 
-| Situation                                                                         | Recovery                                                                                                                                                                                                                                  |
-| --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tag is not reachable from `develop` or `master`, or does not match both manifests | Fix the cause through a normal pull request; release-please then proposes a new version. Do not retarget or reuse an existing tag.                                                                                                        |
-| A platform package fails but other packages succeed                               | Inspect the failed matrix log and the draft's partial warning. After a transient runner, credential, or service fix, dispatch `release.yml` with the same tag; `--clobber` replaces the draft's assets. A source fix needs a new release. |
-| Every package fails                                                               | For a transient failure, dispatch the same tag again. For a source or manifest failure, fix it through a normal pull request and release the next version.                                                                                |
-| A draft-release upload fails                                                      | Dispatch `release.yml` with the same tag after diagnosing the failure.                                                                                                                                                                    |
-| release-please fails or opens no release PR                                       | Read the `Release PR and tag` job log. Only `feat`, `fix`, `perf`, `revert` and breaking commits produce a release; `chore`, `ci`, `docs`, `test`, `build`, `refactor` and `style` alone do not.                                          |
-| The release is already published                                                  | The workflow refuses to replace its assets. Release the next version instead.                                                                                                                                                             |
+| Situation                                                                       | Recovery                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tag is not reachable from `develop` or `main`, or does not match both manifests | Fix the cause through a normal pull request; release-please then proposes a new version. Do not retarget or reuse an existing tag.                                                                                                        |
+| A platform package fails but other packages succeed                             | Inspect the failed matrix log and the draft's partial warning. After a transient runner, credential, or service fix, dispatch `release.yml` with the same tag; `--clobber` replaces the draft's assets. A source fix needs a new release. |
+| Every package fails                                                             | For a transient failure, dispatch the same tag again. For a source or manifest failure, fix it through a normal pull request and release the next version.                                                                                |
+| A draft-release upload fails                                                    | Dispatch `release.yml` with the same tag after diagnosing the failure.                                                                                                                                                                    |
+| release-please fails or opens no release PR                                     | Read the `Release PR and tag` job log. Only `feat`, `fix`, `perf`, `revert` and breaking commits produce a release; `chore`, `ci`, `docs`, `test`, `build`, `refactor` and `style` alone do not.                                          |
+| The release is already published                                                | The workflow refuses to replace its assets. Release the next version instead.                                                                                                                                                             |
 
 Release runs share one concurrency group and never cancel each other: an
 incomplete draft is worse than a slower package run, and two runs must not upload
