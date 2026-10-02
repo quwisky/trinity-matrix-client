@@ -16,6 +16,17 @@ import { hlm } from '@trinity/helm/utils';
 import type { ClassValue } from 'clsx';
 import { HlmSwitchThumb } from './hlm-switch-thumb';
 
+/**
+ * ┌─ VENDORED FILE — @spartan-ng/cli generated, then diverged ───────────────┐
+ *
+ * Keeps `data-[disabled=true]:` where upstream 1.5 writes `data-disabled:`.
+ * `brn-switch` renders `data-disabled="false"` when enabled, and Trinity's
+ * theme treats the bare variant as a presence test (see
+ * `kit-state-variants.spec.mjs`), so the upstream spelling would dim every
+ * enabled switch.
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+
 export const HLM_SWITCH_VALUE_ACCESSOR = {
 	provide: NG_VALUE_ACCESSOR,
 	useExisting: forwardRef(() => HlmSwitch),

@@ -4,7 +4,7 @@ import { classes } from '@trinity/helm/utils';
 
 @Directive({
 	selector: '[hlmSwitchThumb],hlm-switch-thumb',
-	hostDirectives: [BrnSwitchThumb],
+	hostDirectives: [{ directive: BrnSwitchThumb, inputs: [], outputs: [] }],
 	host: { 'data-slot': 'switch-thumb' },
 })
 export class HlmSwitchThumb {
