@@ -84,6 +84,38 @@ describe('icon wiring', () => {
       );
     }
   });
+
+  it('ships iOS alternate icons the build includes and the plugin can name', () => {
+    const catalog = 'ios/App/App/Assets.xcassets';
+    for (const set of ['AppIconBlurple', 'AppIconDark']) {
+      const images = JSON.parse(
+        read(`${catalog}/${set}.appiconset/Contents.json`),
+      ).images;
+      expect(images).toEqual([
+        {
+          filename: 'AppIcon.png',
+          idiom: 'universal',
+          platform: 'ios',
+          size: '1024x1024',
+        },
+      ]);
+      expect(
+        existsSync(join(root, catalog, `${set}.appiconset/AppIcon.png`)),
+      ).toBe(true);
+    }
+    const project = read('ios/App/App.xcodeproj/project.pbxproj');
+    expect(
+      project.match(
+        /ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIconBlurple AppIconDark";/g,
+      ),
+    ).toHaveLength(2);
+    expect(
+      project.match(/ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;/g),
+    ).toHaveLength(2);
+    const swift = read('ios/App/App/MainViewController.swift');
+    expect(swift).toContain('bridge?.registerPluginInstance(AppIconPlugin())');
+    expect(swift).toContain('let jsName = "AppIcon"');
+  });
 });
 
 describe('desktop icon wiring', () => {

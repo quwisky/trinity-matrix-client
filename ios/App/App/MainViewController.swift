@@ -18,6 +18,7 @@ class MainViewController: CAPBridgeViewController {
         super.capacitorDidLoad()
         webView?.allowsBackForwardNavigationGestures = false
         bridge?.registerPluginInstance(NativeNavigationPlugin())
+        bridge?.registerPluginInstance(AppIconPlugin())
     }
 }
 
@@ -38,6 +39,40 @@ class NativeNavigationPlugin: CAPInstancePlugin, CAPBridgedPlugin {
         DispatchQueue.main.async { [weak self] in
             self?.bridge?.webView?.allowsBackForwardNavigationGestures = enabled
             call.resolve()
+        }
+    }
+}
+
+/**
+ * Switches the home-screen icon for the App icon preference.
+ *
+ * `name` is an alternate icon set (`AppIconBlurple`, `AppIconDark`) or null for the primary
+ * icon, which carries its own light/dark/tinted appearances ("Match system"). iOS shows a
+ * system alert on every change, so an unchanged request resolves without calling it.
+ */
+@objc(AppIconPlugin)
+class AppIconPlugin: CAPInstancePlugin, CAPBridgedPlugin {
+    let identifier = "AppIconPlugin"
+    let jsName = "AppIcon"
+    let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "set", returnType: CAPPluginReturnPromise)
+    ]
+
+    @objc func set(_ call: CAPPluginCall) {
+        let name = call.getString("name")
+        DispatchQueue.main.async {
+            let app = UIApplication.shared
+            guard app.supportsAlternateIcons, app.alternateIconName != name else {
+                call.resolve()
+                return
+            }
+            app.setAlternateIconName(name) { error in
+                if let error = error {
+                    call.reject(error.localizedDescription)
+                } else {
+                    call.resolve()
+                }
+            }
         }
     }
 }
