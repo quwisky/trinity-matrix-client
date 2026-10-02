@@ -44,6 +44,13 @@ export async function login(user: string, pass: string): Promise<void> {
   await fillByLabel('Password', pass);
   await signIn.click();
   await waitForRooms();
+  // Every mobile journey signs in a freshly registered account, whose crypto state
+  // resolves after the Rooms shell renders and mounts this banner above it. Its arrival
+  // pushes the rail and lists down, so wait for it before any tap is aimed: a tap that
+  // only checked stability before the banner existed lands on whatever slid under it.
+  await expect(
+    $('//trn-banner[contains(normalize-space(.),"Set up encryption")]'),
+  ).toBeDisplayed({ wait: 30_000 });
 }
 
 /**

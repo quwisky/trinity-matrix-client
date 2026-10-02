@@ -34,8 +34,24 @@ describe('CI execution contract', () => {
       'pnpm nx test docs-site',
       'pnpm nx run docs-site:check',
       'pnpm nx run docs-site:assemble',
-      'pnpm nx run docs-site:e2e',
+      `echo 'started=true' >> "$GITHUB_OUTPUT"\npnpm nx run docs-site:e2e\n`,
     ]);
+  });
+
+  it('keeps docs-site Playwright traces when its suite ran', () => {
+    // The docs suite is not a registry suite, so it uploads directly rather than through
+    // the registry-validated diagnostics action, with the same artifact conventions.
+    const steps = workflow.jobs['docs-gate'].steps;
+    const run = steps.findIndex((step) => step.id === 'docs-e2e');
+    const upload = steps[run + 1];
+    expect(upload.uses).toMatch(/^actions\/upload-artifact@[0-9a-f]{40}$/);
+    expect(upload.if).toBe(
+      "${{ !cancelled() && steps.docs-e2e.outputs.started == 'true' }}",
+    );
+    expect(upload.with.path).toBe('dist/.playwright/docs-site/\n');
+    expect(upload.with['include-hidden-files']).toBe(true);
+    expect(upload.with['if-no-files-found']).toBe('error');
+    expect(upload.with.name).toContain('docs-site');
   });
 
   it('uploads only started suites, including hidden output, after ordinary failures', () => {

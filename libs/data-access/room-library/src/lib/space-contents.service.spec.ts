@@ -2,12 +2,17 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MockProvider } from 'ng-mocks';
+import { MatrixError } from '@trinity/util/matrix';
+import { ClientEvent } from 'matrix-js-sdk';
 import { BehaviorSubject, firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { RoomLibraryService } from './room-library.service';
 import { ROOM_LIBRARY_GOVERNANCE_POLICY } from './room-library-governance-policy';
 import { SpaceChildrenService } from './space-children.service';
-import { SpaceContentsService } from './space-contents.service';
+import {
+  SpaceContentsService,
+  type SpaceContentsSnapshot,
+} from './space-contents.service';
 import { SpacesService } from './spaces.service';
 
 const TARGET = { accountId: '@opening:hs', spaceId: '!parent:hs' } as const;
@@ -223,6 +228,56 @@ describe('SpaceContentsService', () => {
     expect(snapshot.availability).toBe('available');
     expect(snapshot.hierarchyError).toBe('server unavailable');
     expect(snapshot.items).toEqual([]);
+  });
+
+  it('coalesces a burst of invalidations into a bounded number of hierarchy reads', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service, client, handlers } = setup();
+      const subscription = service.observe(TARGET).subscribe();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // One sync batch can announce many Rooms at once. Synapse allows each user a burst
+      // of 10 hierarchy reads at 5/s, so one read per event trips 429 within a batch.
+      const onRoom = handlers.get(ClientEvent.Room) as () => void;
+      for (let index = 0; index < 20; index += 1) onRoom();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(client.getRoomHierarchy.mock.calls.length).toBeLessThanOrEqual(3);
+      subscription.unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries a rate-limited hierarchy read instead of stranding the error', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service, client } = setup();
+      const success = await client.getRoomHierarchy();
+      client.getRoomHierarchy.mockReset();
+      client.getRoomHierarchy
+        .mockRejectedValueOnce(
+          new MatrixError(
+            { errcode: 'M_LIMIT_EXCEEDED', error: 'Too Many Requests' },
+            429,
+          ),
+        )
+        .mockResolvedValue(success);
+      const snapshots: SpaceContentsSnapshot[] = [];
+      const subscription = service
+        .observe(TARGET)
+        .subscribe((snapshot) => snapshots.push(snapshot));
+
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(client.getRoomHierarchy).toHaveBeenCalledTimes(2);
+      expect(snapshots.at(-1)).toMatchObject({ hierarchyError: null });
+      expect(snapshots.at(-1)?.items).toHaveLength(2);
+      subscription.unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('creates and links on the exact Account with parent-only policy', async () => {
