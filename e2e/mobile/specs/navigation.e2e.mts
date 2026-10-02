@@ -242,7 +242,7 @@ describe('Android navigation', () => {
     });
   });
 
-  it('moves focus into a routed Settings section on entry and returns to Rooms with Back', async () => {
+  it('moves focus into a routed Settings section on entry and back into Rooms with Back', async () => {
     const user = uniqueId('android-focus');
     const pass = `${user}-pass`;
     await registerUser(user, pass);
@@ -264,10 +264,18 @@ describe('Android navigation', () => {
     await clickButton('Back');
     await waitForRooms();
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
-    // Known gap: on the installed phone layout, focus after leaving routed Settings
-    // lands on <body> rather than inside trn-rooms. The base browser test only passed
-    // at the old 1280x720 Android viewport, so the focus assertion stays unpinned
-    // until #859 is fixed; re-enable it with that fix.
+    // The phone layout hides the pane holding the shell's <h1>; focus must still
+    // land inside Rooms rather than on <body> (#859).
+    await browser.waitUntil(
+      () =>
+        browser.execute(
+          () =>
+            document
+              .querySelector('trn-rooms')
+              ?.contains(document.activeElement) ?? false,
+        ),
+      { timeout: 20_000, timeoutMsg: 'focus did not enter trn-rooms' },
+    );
   });
 
   it('routes Verify device and returns focus to the Security heading on Close', async () => {
