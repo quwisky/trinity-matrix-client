@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- The desktop app tells you when a new version is available: a notification opens the
+  release page, and **Help → Check for Updates…** checks on demand. The Help menu now
+  links to Trinity on GitHub.
+
 - Multi-select polls: set how many answers each voter may choose when creating a poll.
   Voting toggles answers up to that limit, and tallies count every chosen answer from
   Trinity and other MSC3381 clients.
