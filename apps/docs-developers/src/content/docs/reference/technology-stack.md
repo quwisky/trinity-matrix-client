@@ -37,7 +37,7 @@ Angular framework packages and the builder can intentionally use different patch
 | ---------- | --------- |
 | Astro      | `7.3.5`   |
 | Starlight  | `0.42.4`  |
-| Vitest     | `4.1.11`  |
+| Vitest     | `5.0.2`   |
 | Playwright | `^1.62.1` |
 
 The Electron shell has a separate manifest and lockfile. Use its declared versions and run its own type and host checks after dependency changes.
