@@ -1,4 +1,6 @@
 import { signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { TrnSelectComponent } from '@trinity/components/controls';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import { screen } from '@testing-library/angular';
@@ -99,6 +101,18 @@ describe('AppIconBlockComponent', () => {
     (
       view.fixture.componentInstance as unknown as { update(v: string): void }
     ).update('dark');
+    expect(controller.update).not.toHaveBeenCalled();
+  });
+
+  it('reverts the displayed select value when the Android warning is cancelled', async () => {
+    host.value = 'android';
+    const { view, controller } = await setup('blurple', false);
+    const select = view.fixture.debugElement.query(
+      By.directive(TrnSelectComponent),
+    ).componentInstance as TrnSelectComponent<string>;
+    select.value.set('dark');
+    view.fixture.detectChanges();
+    expect(select.value()).toBe('blurple');
     expect(controller.update).not.toHaveBeenCalled();
   });
 

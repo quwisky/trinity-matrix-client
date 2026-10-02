@@ -4,6 +4,7 @@ import {
   DestroyRef,
   computed,
   inject,
+  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
@@ -59,6 +60,8 @@ export class AppIconBlockComponent {
     return this.host === 'android' && value === 'system' ? 'blurple' : value;
   });
 
+  private readonly select = viewChild(TrnSelectComponent);
+
   protected update(value: string | null | undefined): void {
     if (!value || value === this.value()) return;
     if (this.host !== 'android') {
@@ -74,6 +77,7 @@ export class AppIconBlockComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((confirmed) => {
         if (confirmed) this.controller.update('appIcon', value);
+        else this.select()?.value.set(this.value());
       });
   }
 
