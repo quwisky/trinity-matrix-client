@@ -33,6 +33,8 @@ describe('BrowserAppearanceDocumentAdapter', () => {
       density: 'compact',
       codeSize: 'larger',
       codeLinePresentation: 'always',
+      appIcon: 'blurple',
+      appIconPreference: 'system',
     };
 
     adapter().apply(value);
@@ -54,6 +56,8 @@ describe('BrowserAppearanceDocumentAdapter', () => {
       density: 'compact',
       codeSize: 'smaller',
       codeLinePresentation: 'off',
+      appIcon: 'blurple',
+      appIconPreference: 'system',
     });
 
     documentAdapter.apply({
@@ -63,6 +67,8 @@ describe('BrowserAppearanceDocumentAdapter', () => {
       density: 'cosy',
       codeSize: 'default',
       codeLinePresentation: 'auto',
+      appIcon: 'blurple',
+      appIconPreference: 'system',
     });
 
     expect(root.classList.contains('dark')).toBe(false);
@@ -82,6 +88,8 @@ describe('BrowserAppearanceDocumentAdapter', () => {
         density: 'cosy',
         codeSize: 'default',
         codeLinePresentation: 'auto',
+        appIcon: 'blurple',
+        appIconPreference: 'system',
       });
 
       expect(root.getAttribute('data-theme')).toBe(theme.dataTheme);

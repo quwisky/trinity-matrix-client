@@ -73,7 +73,12 @@ export class AppearanceEffects {
       );
       const nativeChromeEffects = resolved.pipe(
         map(toNativeChromeAppearance),
-        distinctUntilChanged((left, right) => left.mode === right.mode),
+        distinctUntilChanged(
+          (left, right) =>
+            left.mode === right.mode &&
+            left.appIcon === right.appIcon &&
+            left.appIconPreference === right.appIconPreference,
+        ),
         concatMap((appearance) =>
           defer(() =>
             this.nativeChrome
