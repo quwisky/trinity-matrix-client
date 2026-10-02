@@ -1,4 +1,5 @@
 import { app } from 'electron';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 /**
@@ -17,4 +18,24 @@ export function iconCandidatePaths(fileName: string): string[] {
     path.join(__dirname, '..', 'build', fileName), // dist/ -> build/
     path.join(__dirname, fileName), // alongside compiled main
   ];
+}
+
+/** First existing candidate for an `electron/build/` asset, or `undefined`. */
+export function resolveIconFile(fileName: string): string | undefined {
+  return iconCandidatePaths(fileName).find((candidate) =>
+    fs.existsSync(candidate),
+  );
+}
+
+/** The tray image for a platform: a template on macOS, a larger icon for Linux AppIndicators. */
+export function trayIconFile(platform: NodeJS.Platform): string {
+  if (platform === 'darwin') return 'trinityTrayTemplate.png';
+  return platform === 'linux' ? 'trinityTrayLinux.png' : 'trinityTray.png';
+}
+
+/** BrowserWindow icon options: the generated icon on Windows/Linux, the bundle icon on macOS. */
+export function windowIconOptions(platform: NodeJS.Platform): {
+  icon?: string;
+} {
+  return platform === 'darwin' ? {} : { icon: resolveIconFile('icon.png') };
 }
