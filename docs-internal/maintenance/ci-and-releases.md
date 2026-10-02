@@ -10,14 +10,15 @@ public developer guide.
 
 ## Know what ran
 
-| Workflow                                                   | Starts when                                                       | What it provides                                               |
-| ---------------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------- |
-| [`ci.yml`](../../.github/workflows/ci.yml)                 | A pull request, selected pushes, or its weekly schedule           | Branch checks and browser, desktop, and Android evidence       |
-| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml) | A `develop` push or manual dispatch from `develop`                | Validated user and developer sites deployed to GitHub Pages    |
-| [`release.yml`](../../.github/workflows/release.yml)       | A stable `vX.Y.Z` tag push, or a manual dispatch with a tag input | Tag verification, desktop packages, and a draft GitHub release |
-| [`renovate.yml`](../../.github/workflows/renovate.yml)     | Daily at 00:00 UTC or a manual dispatch                           | Dependency update maintenance through a GitHub App token       |
+| Workflow                                                   | Starts when                                                          | What it provides                                                                                         |
+| ---------------------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [`ci.yml`](../../.github/workflows/ci.yml)                 | A pull request, selected pushes, or its weekly schedule              | Branch checks and browser, desktop, and Android evidence                                                 |
+| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml) | A `develop` push or manual dispatch from `develop`                   | Validated user and developer sites deployed to GitHub Pages                                              |
+| [`release.yml`](../../.github/workflows/release.yml)       | A push to `develop` or `main`, or a manual dispatch with a tag input | release-please release PRs and tags, then tag verification, desktop packages, and a draft GitHub release |
+| [`homebrew.yml`](../../.github/workflows/homebrew.yml)     | A release is published, or a manual dispatch with a tag input        | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                       |
+| [`renovate.yml`](../../.github/workflows/renovate.yml)     | Daily at 00:00 UTC or a manual dispatch                              | Dependency update maintenance through a GitHub App token                                                 |
 
-The branch workflow accepts pushes to `develop`, `master`, and
+The branch workflow accepts pushes to `develop`, `main`, and
 `renovate/patch-**`; pull requests are its usual review path. A newer run for
 the same workflow and ref cancels an older run. Diagnose the newest run rather
 than treating a cancelled predecessor as a product failure.
@@ -165,28 +166,61 @@ notices. Container publication remains release work.
 
 ## Releases
 
-An authorized release begins with the repository's normal review process.
-Before creating a tag:
+Releases come from two lines, each managed by release-please through
+[`release.yml`](../../.github/workflows/release.yml):
 
-1. Make a dedicated release commit on the agreed long-lived branch. The current
-   release workflow accepts only a tagged commit reachable from `develop` or
-   `master`. A commit that exists solely on a temporary integration branch does
-   not meet that gate until it is merged.
-2. Update `package.json` and `electron/package.json` to the same semantic
-   version. Rename `CHANGELOG.md`'s `Unreleased` section to that version and
-   date, then add a fresh `Unreleased` section. The changelog describes user
-   impact; ordinary commits do not change versions.
-3. Select and run the necessary local checks before review. The release verify
-   job is a useful final gate, but it is not the complete branch CI suite.
-4. When tagging is authorized, use an exact stable tag such as `v1.2.3`. A tag
-   push starts this workflow only when it matches that stable-tag glob. The
-   manual dispatch has a tag input but no separate format or annotated-tag
-   guard; checkout, ancestry, and manifest-version verification still decide
-   whether it can package the selected ref.
+| Line       | Branch    | Versions       | Config / manifest                                                        | Notes                             |
+| ---------- | --------- | -------------- | ------------------------------------------------------------------------ | --------------------------------- |
+| Prerelease | `develop` | `X.Y.Z-next.N` | `release-please-config.next.json` / `.release-please-manifest.next.json` | GitHub release only (prerelease)  |
+| Stable     | `main`    | `X.Y.Z`        | `release-please-config.json` / `.release-please-manifest.json`           | GitHub release and `CHANGELOG.md` |
 
-The release verifier checks ancestry and those two manifest versions. Ancestry
-shows that the commit is contained in `develop` or `master`; it does not by
-itself prove that a pull request was reviewed or every required check passed.
+On every push to either branch, release-please updates that branch's release PR
+from the Conventional Commits since the last release. Merging the release PR bumps
+`package.json`, `electron/package.json` and the manifest, and release-please then
+tags the merge commit and creates a **draft** GitHub release. The same workflow run
+verifies the tag and attaches the desktop packages to that draft. Nothing is
+published automatically.
+
+Versions: before 1.0, `feat` and breaking changes bump the minor version and `fix`
+the patch version. The prerelease line counts `0.2.0-next.0`, `0.2.0-next.1`, …
+until the next stable release. Do not use `Release-As` commit footers: release-please
+reads them on both lines, so one footer tries to cut the same version twice.
+
+### Promote to stable
+
+1. Close any release PR still open on `develop`. Merging it after the promotion
+   would cut a `-next` prerelease of a version that is already stable; release-please
+   opens a fresh one after the back-merge.
+2. Open a pull request from `develop` to `main` and merge it with a **merge
+   commit** (not squash), so `main` keeps the individual commits release-please
+   reads.
+3. release-please opens the stable release PR on `main`. Review its version and
+   `CHANGELOG.md` entry, then merge it. The draft release and packages follow.
+4. Open a pull request from `main` back to `develop` and merge it with a merge
+   commit. The stable release PR already wrote the stable version into
+   `.release-please-manifest.next.json`, so the merge needs no edits and the next
+   prerelease starts a new `-next.0` series above the stable version: the next
+   minor after a `feat`, the next patch after only fixes. Only if a prerelease was merged on
+   `develop` between promotion and back-merge do the version files conflict;
+   resolve them to `main`'s values.
+
+### First release
+
+`0.1.0` predates release-please. After the migration merge, push the `v0.1.0`
+tag on the migration commit **first**, then create `main` from that commit, and
+dispatch `release.yml` with `tag: v0.1.0` to build its draft. In the other order,
+`main`'s first run finds no `v0.1.0` release and proposes a stable release for
+whatever reached `develop` after the bootstrap commit. Both configs carry a
+`bootstrap-sha` so release-please's first runs do not read the project's whole
+history; once the `v0.1.0` release exists it no longer matters.
+
+When the first release is published, also switch `apps/docs-users/release.json`
+to `published` and update the README's "has not published its first release"
+notice.
+
+The release verifier checks the tag format, ancestry and both manifest versions.
+Ancestry shows that the commit is contained in `develop` or `main`; it does not
+by itself prove that a pull request was reviewed or every required check passed.
 
 ### What the release verifier runs
 
@@ -194,7 +228,7 @@ The verifier runs lint, Stylelint, format checking, `pnpm test`, a production
 web build, and Electron typecheck and unit tests. It does **not** run the
 workspace-wide typecheck, Storybook, production-renderer, browser E2E, Android
 or iOS E2E, or launched Electron E2E. Select extra evidence according to the
-change before the tag is created, following [testing](../../apps/docs-developers/src/content/docs/testing/testing-strategy.md).
+change before merging the release PR, following [testing](../../apps/docs-developers/src/content/docs/testing/testing-strategy.md).
 
 ## Package and review the draft
 
@@ -233,6 +267,11 @@ The workflow recognizes these secret names only:
   `APPLE_TEAM_ID`
 
 Without the applicable credentials, packaging can produce unsigned artifacts.
+
+An unsigned Windows installer may be published. Windows SmartScreen shows
+"Windows protected your PC" until the user chooses **More info → Run anyway**,
+and SmartScreen reputation does not carry over to a later signed build. Say in
+the release notes that the Windows installer is unsigned.
 The notarization hook skips when no complete credential set is available and
 fails when supplied credentials are rejected. The local hook also supports an
 API-key credential form, while the committed release workflow supplies the
@@ -245,21 +284,70 @@ of the current release version gate. Their build and distribution requirements
 belong to the [Android](../../apps/docs-developers/src/content/docs/platforms/android.md)
 and [iOS](../../apps/docs-developers/src/content/docs/platforms/ios.md) guides.
 
+## Homebrew tap
+
+Publishing a release runs [`homebrew.yml`](../../.github/workflows/homebrew.yml),
+which writes the cask to the `quwisky/homebrew-trinity` tap: `trinity` for stable
+releases and `trinity@next` for `-next` prereleases. Users install with
+`brew install --cask quwisky/trinity/trinity` (or `…/trinity@next`). The casks are
+Apple Silicon only and require macOS 13; each conflicts with the other because both
+install `Trinity.app`.
+
+The job refuses any app that is not signed with a Developer ID, notarized, and
+stapled (`codesign`, `spctl`, `stapler` in the step "App is signed, notarized and
+stapled"). It audits the generated cask with `brew style` and `brew audit` before
+pushing, and pushes nothing when the cask is unchanged. It also checks that the
+app's minimum macOS is still 13.0, because `brew audit` requires the cask to match
+it exactly. The job maintains `audit_exceptions/github_prerelease_allowlist.json` in
+the tap, which `trinity@next` needs because it points at GitHub prereleases.
+
+To rewrite a cask, for example after fixing the tap, dispatch `homebrew.yml` with the
+published tag. Only the latest release of each line can be repaired: the audit's
+livecheck rejects a cask whose version is older than the newest matching release.
+Releases are tagged on the commit release-please merged, so a release whose tagged
+commit predates `homebrew.yml` never triggers it; dispatch it from `develop` instead.
+
+### One-off setup
+
+1. Join the Apple Developer Program, create a **Developer ID Application**
+   certificate, export it as `.p12`, and create an app-specific password. Set the
+   secrets `MAC_CSC_LINK` (base64 of the `.p12`), `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`,
+   `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`. `release.yml` fails the macOS
+   build when only some of them are set.
+2. Create the public repository `quwisky/homebrew-trinity` **with an initial commit**
+   (a README is enough); checkout and push fail on an empty repository.
+3. Create the environment `homebrew` in this repository. Under deployment branches
+   and tags, allow only `develop`, `main` and tags matching `v*`.
+4. Run `ssh-keygen -t ed25519 -C homebrew-trinity -f homebrew-trinity`. Add
+   `homebrew-trinity.pub` to the tap as a deploy key **with write access**, and store
+   the private key as the **environment** secret `HOMEBREW_TAP_DEPLOY_KEY` in
+   `homebrew`. Delete the local key files afterwards.
+
+| Failure                                                    | Recovery                                                                                                                                                                                                                                          |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "is not a published release" (step "Release is published") | Publish the draft first; drafts never reach the tap.                                                                                                                                                                                              |
+| Missing `-arm64-mac.zip` asset                             | The macOS package failed. `release.yml` refuses to change a published release, so either cut a new version, or run `gh release edit <tag> --draft=true`, re-package the tag with `release.yml`, and publish it again (which runs `homebrew.yml`). |
+| Signing gate fails                                         | The app is unsigned or not notarized. Set all macOS signing secrets, release a new version, and publish it.                                                                                                                                       |
+| `brew style` / `brew audit` fails                          | Fix `scripts/homebrew-cask.mjs` and its test, merge, then dispatch `homebrew.yml` with the tag.                                                                                                                                                   |
+
 ## Recover a release run
 
-| Situation                                                                         | Recovery                                                                                                                                                                                                                                                   |
-| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tag is not reachable from `develop` or `master`, or does not match both manifests | Correct the release commit through the normal review path, then create an authorized new matching tag. Do not retarget an existing tag.                                                                                                                    |
-| A platform package fails but other packages succeed                               | Inspect the failed matrix log and the draft's partial warning. Rerun the same tag only after a transient runner, credential, or service fix; a draft's assets are replaced with `--clobber`. A source or manifest fix needs a new reviewed commit and tag. |
-| Every package fails                                                               | For a transient runner, credential, or service failure, rerun the existing tag. For a source or manifest failure, make a new reviewed release commit and matching tag. No usable draft asset exists until a platform succeeds.                             |
-| A draft-release upload fails                                                      | Use the retained package artifacts and rerun the workflow on the existing tag after diagnosing the failure.                                                                                                                                                |
-| The release is already published                                                  | The workflow refuses to replace its assets. Prepare a new version and repeat the authorized release process.                                                                                                                                               |
+| Situation                                                                       | Recovery                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tag is not reachable from `develop` or `main`, or does not match both manifests | Fix the cause through a normal pull request; release-please then proposes a new version. Do not retarget or reuse an existing tag.                                                                                                        |
+| A platform package fails but other packages succeed                             | Inspect the failed matrix log and the draft's partial warning. After a transient runner, credential, or service fix, dispatch `release.yml` with the same tag; `--clobber` replaces the draft's assets. A source fix needs a new release. |
+| Every package fails                                                             | For a transient failure, dispatch the same tag again. For a source or manifest failure, fix it through a normal pull request and release the next version.                                                                                |
+| A draft-release upload fails                                                    | Dispatch `release.yml` with the same tag after diagnosing the failure.                                                                                                                                                                    |
+| release-please fails or opens no release PR                                     | Read the `Release PR and tag` job log. Only `feat`, `fix`, `perf`, `revert` and breaking commits produce a release; `chore`, `ci`, `docs`, `test`, `build`, `refactor` and `style` alone do not.                                          |
+| The release is already published                                                | The workflow refuses to replace its assets. Release the next version instead.                                                                                                                                                             |
 
-Release runs intentionally do not cancel each other: an incomplete draft is
-worse than a slower package run. A manual dispatch accepts an existing tag for
-this recovery path; it is not a way to bypass the version or ancestry checks.
-It rebuilds the tagged source, so a source or manifest correction needs a new
-reviewed release commit and authorized matching tag.
+Release runs share one concurrency group and never cancel each other: an
+incomplete draft is worse than a slower package run, and two runs must not upload
+to the same draft at once. A push queued behind a running release waits; a newer
+push replaces an older queued one, which loses nothing because each run reads the
+branch as it is. A manual dispatch re-packages an existing tag;
+it is not a way to bypass the tag-format, version or ancestry checks. It rebuilds
+the tagged source, so a source or manifest correction needs a new release.
 
 Fresh builds include generated build information, so packages from the same
 commit are not guaranteed to be byte-identical. Compare the release workflow's
