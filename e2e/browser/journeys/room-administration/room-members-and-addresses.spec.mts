@@ -323,6 +323,10 @@ test.describe('Room settings', () => {
     await kickConfirmation
       .getByRole('button', { name: 'Remove' })
       .press('Enter');
+    // The roster is not rendered while the detail is open, so `row` alone cannot prove the
+    // write landed. The detail closes and focus returns to the filter only once it has.
+    await expect(detail).toHaveCount(0, { timeout: 20_000 });
+    await expect(page.getByTestId('member-filter')).toBeFocused();
     await expect(row).toHaveCount(0, { timeout: 20_000 });
 
     // Rejoin the same exact Room and ban through Members so both moderation commands are
@@ -349,6 +353,9 @@ test.describe('Room settings', () => {
     await expect(banConfirmation).toContainText(roomName);
     await expect(banConfirmation).toContainText(`Account ${adminId}`);
     await banConfirmation.getByRole('button', { name: 'Ban' }).press('Enter');
+    // Wait for that focus move before pressing Banned, or it can steal the Enter.
+    await expect(detail).toHaveCount(0, { timeout: 20_000 });
+    await expect(page.getByTestId('member-filter')).toBeFocused();
     await expect(row).toHaveCount(0, { timeout: 20_000 });
 
     await page.getByTestId('members-settings-banned').focus();
