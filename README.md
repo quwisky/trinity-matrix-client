@@ -33,7 +33,8 @@ Signed with a Developer ID and notarized by Apple.
 Download the `.exe` installer from
 [the latest release](https://github.com/quwisky/trinity-matrix-client/releases/latest).
 The installer is not code-signed yet, so Windows SmartScreen shows "Windows protected
-your PC" the first time: choose **More info**, then **Run anyway**.
+your PC" when you run each new version's installer: choose **More info**, then
+**Run anyway**.
 
 ### Linux
 
@@ -42,16 +43,19 @@ x86-64 only. Download the `.deb` or the AppImage from
 On Debian and Ubuntu, prefer the `.deb`: AppImages need `libfuse2`, and recent Ubuntu
 releases restrict the sandbox they rely on.
 
+From the folder you downloaded to, replacing `<version>` with the release you
+downloaded:
+
 ```bash
-chmod +x Trinity-*.AppImage && ./Trinity-*.AppImage   # AppImage
-sudo apt install ./<downloaded-file>.deb              # Debian and Ubuntu
+sudo apt install ./<downloaded-file>.deb                                # Debian and Ubuntu
+chmod +x Trinity-<version>.AppImage && ./Trinity-<version>.AppImage    # AppImage
 ```
 
 ### Prereleases
 
 `-next` builds are published on the
 [releases page](https://github.com/quwisky/trinity-matrix-client/releases) as
-pre-releases, for testing. On macOS:
+pre-releases, for testing. On macOS, once a `-next` prerelease has been published:
 `brew install --cask quwisky/trinity/trinity@next`. The two casks conflict because both
 install `Trinity.app`; run `brew uninstall --cask trinity` first.
 
@@ -86,14 +90,17 @@ install `Trinity.app`; run `brew uninstall --cask trinity` first.
 | Simplified sliding sync (MSC4186) | ❌                | ❔                  | ✅        | ❔         | ❔    |
 | Multi-language interface          | ❌ (English only) | ✅                  | ✅        | ✅         | ❌    |
 
-✅ supported · 🟡 partial · ❌ not supported · ❔ unknown · 🚧 in development
+✅ supported · 🟡 partial · ❌ not supported · ❔ unknown · 🚧 in development ·
+— not offered by that app. Element X is Element's mobile app, so Element Web/Desktop
+shows — for Android and iOS. Trinity's macOS builds are Apple Silicon only, and its
+Linux builds are x86-64 only.
 
-Also in Trinity: polls, voice messages, location sharing, stickers and GIFs, jump to
-date, pinned messages, room key export and import, and desktop and push
-notifications.
+Trinity also supports polls, voice messages, location sharing, stickers and GIFs, jump
+to date, pinned messages, room key export and import, and desktop notifications.
 
 Other clients: [matrix.org client pages](https://matrix.org/ecosystem/clients/),
-retrieved 2026-10-02. Trinity: this repository.
+retrieved 2026-10-02. Trinity's column is self-assessed from this repository against the
+same feature definitions.
 
 ## Run from source
 
