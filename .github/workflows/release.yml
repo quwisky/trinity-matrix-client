@@ -1,19 +1,22 @@
 name: Release
 
-# Version tags only — `v1.2.3`. Pre-release tags (`v1.2.3-beta.1`) deliberately do not
-# match: they would publish installers named after a version this pipeline never
-# verified. Widen the pattern here if you start shipping pre-releases.
+# release-please runs on every push to develop (prerelease line: vX.Y.Z-next.N) and
+# master (stable line: vX.Y.Z). It keeps one release PR open per branch; merging that
+# PR makes release-please tag the merge commit and create a DRAFT GitHub release, and
+# the jobs below package the desktop installers into that draft in the same run.
 #
-# workflow_dispatch exists because artifacts are immutable per run: re-running a failed
-# release is the normal recovery path, and it must not require deleting and re-pushing a
-# tag (which is precisely what the version gate below exists to make unnecessary).
+# Tags created with GITHUB_TOKEN never trigger other workflows, which is why packaging
+# lives here instead of behind a tag trigger.
+#
+# workflow_dispatch re-packages an existing tag: artifacts are immutable per run, and
+# recovering a failed release must not require deleting and re-pushing a tag.
 on:
   push:
-    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+    branches: [develop, master]
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing vX.X.X tag to package'
+        description: 'Existing vX.Y.Z or vX.Y.Z-next.N tag to package'
         required: true
 
 # Never cancel a release mid-flight: a half-uploaded draft is worse than a slow one.
@@ -25,27 +28,63 @@ permissions:
   contents: read
 
 jobs:
-  # A tag can be pushed from anywhere, and a tag push triggers NO ci.yml run at all, so
-  # nothing else would ever check this commit. This job is the whole gate.
+  release-please:
+    name: Release PR and tag
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          target-branch: ${{ github.ref_name }}
+          config-file: ${{ github.ref_name == 'master' && 'release-please-config.json' || 'release-please-config.next.json' }}
+          manifest-file: ${{ github.ref_name == 'master' && '.release-please-manifest.json' || '.release-please-manifest.next.json' }}
+
+  # The whole gate for a release: the same checks ci.yml runs on a branch, plus the
+  # tag/ancestry/version checks below. A dispatch can name any tag, so nothing here may
+  # assume the tag came from release-please.
   verify:
     name: Verify the tag
+    needs: release-please
+    # !cancelled(): on a dispatch release-please is skipped, which would otherwise skip
+    # this job too. On a push this runs only when release-please created a release.
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.release-please.outputs.created == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
+      # Validated before anything uses it: a dispatch input is free text.
+      - id: tag
+        name: Tag is a release version
+        run: |
+          if ! [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-next\.(0|[1-9][0-9]*))?$ ]]; then
+            echo "::error::'$TAG' is not a vX.Y.Z or vX.Y.Z-next.N tag."
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        env:
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag }}
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag || github.ref }}
-          # Full history: the ancestry check below needs to reach the branch tips.
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+          # Full history and every branch: the ancestry check needs the branch tips.
           fetch-depth: 0
+          persist-credentials: false
 
       # A tag is not evidence of review — anyone who can push one can point it at an
-      # arbitrary commit. Require that the commit is actually reachable from a long-lived
+      # arbitrary commit. Require that the commit is reachable from a long-lived
       # branch, so releases can only be cut from code that went through a PR.
       - name: Tagged commit is on develop or master
         run: |
-          git fetch --quiet --no-tags origin \
-            '+refs/heads/develop:refs/remotes/origin/develop' \
-            '+refs/heads/master:refs/remotes/origin/master' || true
           for branch in origin/develop origin/master; do
             if git rev-parse --verify --quiet "$branch" >/dev/null &&
                git merge-base --is-ancestor HEAD "$branch"; then
@@ -56,31 +95,30 @@ jobs:
           echo "::error::${TAG} points at a commit that is not contained in develop or master. Release only from a merged commit."
           exit 1
         env:
-          TAG: ${{ inputs.tag || github.ref_name }}
+          TAG: ${{ steps.tag.outputs.tag }}
 
       - uses: ./.github/actions/setup
 
       # electron-builder names every artifact after package.json's version, NOT the tag,
-      # so a mismatch silently ships "Trinity Setup 0.1.0.exe" for tag v0.3.0. The repo's
-      # semver rule already says the version bump and the CHANGELOG land in one release
-      # commit — this enforces it before anything is built.
+      # so a mismatch silently ships "Trinity Setup 0.1.0.exe" for tag v0.3.0. The
+      # release PR bumps both manifests (electron/package.json via extra-files); this
+      # catches a hand edit or a dispatch of the wrong tag before anything is built.
       - name: Tag matches the package versions
         run: |
           tag="${TAG#v}"
           root=$(node -p "require('./package.json').version")
           desktop=$(node -p "require('./electron/package.json').version")
           if [ "$tag" != "$root" ] || [ "$tag" != "$desktop" ]; then
-            echo "::error::Tag $TAG does not match package.json ($root) / electron/package.json ($desktop). Bump both in the release commit, then re-tag."
+            echo "::error::Tag $TAG does not match package.json ($root) / electron/package.json ($desktop). release-please bumps both in the release PR; fix the mismatch in a new PR."
             exit 1
           fi
           echo "Version $tag agrees across the tag and both manifests."
         env:
-          TAG: ${{ inputs.tag || github.ref_name }}
+          TAG: ${{ steps.tag.outputs.tag }}
 
-      # The same gates ci.yml runs on a branch. Not redundant: a tag gets no ci.yml run,
-      # and `pnpm build` in particular catches AOT-only failures (the `lib: es2018` trap)
-      # that Vitest passes — far better here than three times over on 2x/10x-billed
-      # macOS and Windows runners.
+      # The same gates ci.yml runs on a branch. `pnpm build` in particular catches
+      # AOT-only failures (the `lib: es2018` trap) that Vitest passes — far better here
+      # than three times over on 2x/10x-billed macOS and Windows runners.
       - run: pnpm lint
       - run: pnpm stylelint
       - run: pnpm format:check
@@ -132,7 +170,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: refs/tags/${{ needs.verify.outputs.tag }}
+          persist-credentials: false
       - uses: ./.github/actions/setup
 
       # The release-specific Nx path builds the shared renderer and shell without the
@@ -179,12 +218,12 @@ jobs:
 
   draft-release:
     name: Draft the release
-    needs: package
+    needs: [verify, package]
     # NOT the default `success()`. A matrix job reports failure if ANY leg fails, even
     # with fail-fast off — so the default would skip this entirely when one platform
     # breaks, throwing away the installers that did build. That is the exact opposite of
     # what fail-fast: false is for. The missing-platform check below makes the gap loud.
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.verify.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # The only job that may write to the repo, and only to attach these artifacts.
@@ -193,7 +232,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: refs/tags/${{ needs.verify.outputs.tag }}
+          persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: artifacts
@@ -216,11 +256,12 @@ jobs:
           fi
 
       # Left as a DRAFT on purpose: nothing is downloadable until you review the
-      # artifacts and press publish. Re-running re-uploads into the same draft.
+      # artifacts and press publish. release-please normally created this draft already
+      # (with its notes); a dispatch for a tag without a release creates it here.
       - name: Create or update the draft release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ inputs.tag || github.ref_name }}
+          TAG: ${{ needs.verify.outputs.tag }}
         run: |
           state=$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null || echo missing)
           case "$state" in
@@ -235,8 +276,11 @@ jobs:
               gh release upload "$TAG" artifacts/* --clobber
               ;;
             *)
+              prerelease=''
+              case "$TAG" in *-next.*) prerelease='--prerelease' ;; esac
               gh release create "$TAG" artifacts/* \
-                --draft \
+                --draft $prerelease \
+                --verify-tag \
                 --title "Trinity $TAG" \
                 --notes "Desktop builds for $TAG. Artifacts are unsigned unless signing secrets were configured — see https://quwisky.github.io/trinity-matrix-client/developers/platforms/electron/"
               ;;
