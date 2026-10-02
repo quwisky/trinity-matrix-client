@@ -11,7 +11,6 @@ export interface ExternalPageLease {
 }
 
 export interface AuthPlatform {
-  readonly isNative: boolean;
   readonly oidcApplicationType: 'native' | 'web';
   route(
     appPage: Page,

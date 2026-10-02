@@ -9,14 +9,11 @@ import {
 } from '../../../fixtures.mts';
 import {
   clickRowToolbar,
-  isAndroidE2E,
   login,
-  openMessageActionSheet,
   synapseSession,
   type SynapseSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
-import { captureScreenshot } from '../../../support/screenshot.mts';
 
 // Covers the rendered thread summary on a real timeline: keyboard activation on desktop,
 // touch activation on a Pixel 5, and the long-preview layout in the browser engine.
@@ -441,9 +438,7 @@ test.describe('Thread preview', () => {
     );
     const testInfo = test.info();
     const screenshotPath = testInfo.outputPath('thread-preview-desktop.png');
-    await captureScreenshot(page, () =>
-      page.screenshot({ path: screenshotPath }),
-    );
+    await page.screenshot({ path: screenshotPath });
     await testInfo.attach('thread-preview-desktop', {
       path: screenshotPath,
       contentType: 'image/png',
@@ -484,15 +479,11 @@ test.describe('Thread preview', () => {
 
     // Use the real thread reply action so the SDK emits an explicit m.in_reply_to
     // relation with is_falling_back=false and the rich-reply fallback content.
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, ordinary);
-      await sheet.getByTestId('sheet-reply').click();
-    } else {
-      await clickRowToolbar(
-        ordinary,
-        ordinary.getByRole('button', { name: 'Reply' }),
-      );
-    }
+    await clickRowToolbar(
+      ordinary,
+      ordinary.getByRole('button', { name: 'Reply' }),
+    );
+
     await expect(thread.locator('.composer__banner')).toContainText(
       'Replying to',
     );
@@ -545,9 +536,7 @@ test.describe('Thread preview', () => {
     const screenshotPath = testInfo.outputPath(
       'thread-preview-explicit-quote.png',
     );
-    await captureScreenshot(page, () =>
-      page.screenshot({ path: screenshotPath }),
-    );
+    await page.screenshot({ path: screenshotPath });
     await testInfo.attach('thread-preview-explicit-quote', {
       path: screenshotPath,
       contentType: 'image/png',
@@ -568,9 +557,7 @@ test.describe('Thread preview', () => {
       const summary = await assertPreview(page, seeded);
       const testInfo = test.info();
       const screenshotPath = testInfo.outputPath('thread-preview-mobile.png');
-      await captureScreenshot(page, () =>
-        page.screenshot({ path: screenshotPath }),
-      );
+      await page.screenshot({ path: screenshotPath });
       await testInfo.attach('thread-preview-mobile', {
         path: screenshotPath,
         contentType: 'image/png',
@@ -698,9 +685,7 @@ test.describe('Thread preview', () => {
             const groupProofPath = testInfo.outputPath(
               'thread-preview-connected-group.png',
             );
-            await captureScreenshot(page, () =>
-              page.screenshot({ path: groupProofPath }),
-            );
+            await page.screenshot({ path: groupProofPath });
             await testInfo.attach('thread-preview-connected-group', {
               path: groupProofPath,
               contentType: 'image/png',
@@ -709,11 +694,9 @@ test.describe('Thread preview', () => {
           const textProofPath = testInfo.outputPath(
             `thread-preview-short-text-${mobile ? 'mobile' : 'desktop'}.png`,
           );
-          await captureScreenshot(page, () =>
-            textSummary
-              .locator('xpath=ancestor::div[contains(@class, "msg")][1]')
-              .screenshot({ path: textProofPath }),
-          );
+          await textSummary
+            .locator('xpath=ancestor::div[contains(@class, "msg")][1]')
+            .screenshot({ path: textProofPath });
           await testInfo.attach(
             `thread-preview-short-text-${mobile ? 'mobile' : 'desktop'}`,
             { path: textProofPath, contentType: 'image/png' },
@@ -721,9 +704,7 @@ test.describe('Thread preview', () => {
           const screenshotPath = testInfo.outputPath(
             `thread-preview-short-${mobile ? 'mobile' : 'desktop'}.png`,
           );
-          await captureScreenshot(page, () =>
-            page.screenshot({ path: screenshotPath }),
-          );
+          await page.screenshot({ path: screenshotPath });
           await testInfo.attach(
             `thread-preview-short-${mobile ? 'mobile' : 'desktop'}`,
             {

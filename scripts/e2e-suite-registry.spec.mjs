@@ -89,7 +89,7 @@ describe('E2E suite registry', () => {
     );
   });
 
-  it('locks canonical browser and Android suites to one CI retry', () => {
+  it('locks the canonical browser suite to one CI retry and the mobile suite to none', () => {
     const snapshot = registrySnapshot();
     snapshot.suites.find(({ id }) => id === 'browser.canonical').ciRetries = 2;
 
@@ -101,9 +101,8 @@ describe('E2E suite registry', () => {
       ]),
     );
     expect(
-      snapshot.suites.find(({ id }) => id === 'android.installed-webview')
-        .ciRetries,
-    ).toBe(1);
+      snapshot.suites.find(({ id }) => id === 'mobile.android').ciRetries ?? 0,
+    ).toBe(0);
   });
 
   it('rejects undefined serialization ownership and command drift', () => {
@@ -392,11 +391,11 @@ steps:
       yamlRunCommands(`
 steps:
   - run: node scripts/ci-run-command.mjs --timeout-ms 3600000 -- pnpm exec nx run trinity-e2e-browser:e2e
-  - run: TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 3600000 -- pnpm e2e:android -- --fail-on-flaky-tests
+  - run: TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 3600000 -- pnpm e2e:mobile
 `),
     ).toEqual([
       'pnpm exec nx run trinity-e2e-browser:e2e',
-      'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:android -- --fail-on-flaky-tests',
+      'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:mobile',
     ]);
   });
 
@@ -841,12 +840,12 @@ describe('E2E suite registry runner', () => {
   it('continues e2e-all with available suites and reports unavailable hosts', async () => {
     const available = runnerSuite();
     const unavailable = runnerSuite({
-      id: 'android.installed-webview',
-      environment: 'android',
+      id: 'mobile.android',
+      environment: 'mobile',
       capabilities: ['composition', 'host'],
       contractTypes: ['host', 'journey'],
-      currentTarget: 'trinity-e2e-android:e2e',
-      targetProject: 'trinity-e2e-android',
+      currentTarget: 'trinity-e2e-mobile:e2e',
+      targetProject: 'trinity-e2e-mobile',
       prerequisites: ['android-avd'],
       availabilityPolicy: 'optional',
       serializationKeys: ['android-avd'],
@@ -1103,12 +1102,12 @@ describe('E2E suite registry runner', () => {
 
     expect(
       await main(
-        ['run', 'e2e-android', '--', '--fail-on-flaky-tests', '--shard=2/4'],
+        ['run', 'e2e-mobile', '--', '--spec', 'e2e/mobile/specs/smoke.e2e.mts'],
         { executeSelection },
       ),
     ).toBe(0);
-    expect(executeSelection).toHaveBeenCalledWith('e2e-android', {
-      forwardedArgs: ['--fail-on-flaky-tests', '--shard=2/4'],
+    expect(executeSelection).toHaveBeenCalledWith('e2e-mobile', {
+      forwardedArgs: ['--spec', 'e2e/mobile/specs/smoke.e2e.mts'],
     });
   });
 });

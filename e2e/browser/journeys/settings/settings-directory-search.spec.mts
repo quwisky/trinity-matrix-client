@@ -1,6 +1,4 @@
-import { captureScreenshot } from '../../../support/screenshot.mts';
 import { devices, expect, test, type Page } from '../../../fixtures.mts';
-import { isAndroidE2E } from '../../../support/app.mts';
 import {
   closeSettings,
   openSettingsFromRooms,
@@ -24,11 +22,6 @@ test.describe('Settings directory search', () => {
   test('filters by label or group, announces results, clears by button, and keeps detail selected', async ({
     page,
   }) => {
-    test.skip(
-      isAndroidE2E,
-      'the routed Android host has a separate directory journey',
-    );
-
     await openSection(page, 'notifications');
     await expect(
       page.getByRole('heading', { name: 'Notifications' }),
@@ -48,7 +41,7 @@ test.describe('Settings directory search', () => {
     ).toBeHidden();
     await expect(navItems(page)).toHaveCount(3);
     await test.info().attach('settings-search-desktop', {
-      body: await captureScreenshot(page, () => page.screenshot()),
+      body: await page.screenshot(),
       contentType: 'image/png',
     });
     expect(await navItems(page).allTextContents()).toEqual([
@@ -173,15 +166,13 @@ test.describe('Settings directory search', () => {
     test('restores result focus on modal Back and exits in one step after resize', async ({
       page,
     }) => {
-      test.skip(isAndroidE2E, 'the routed Android host does not own a modal');
-
       await page.setViewportSize(devices['Pixel 5'].viewport);
       await closeSettings(page);
       await openSettingsFromRooms(page);
       const field = search(page);
       await field.fill('appearance');
       await test.info().attach('settings-search-mobile', {
-        body: await captureScreenshot(page, () => page.screenshot()),
+        body: await page.screenshot(),
         contentType: 'image/png',
       });
       const appearance = page.getByTestId('settings-nav-appearance');
@@ -217,8 +208,6 @@ test.describe('Settings directory search', () => {
     test('keeps the bounded frame and both scroll owners usable when scaled', async ({
       page,
     }) => {
-      test.skip(isAndroidE2E, 'the routed Android host has a separate frame');
-
       await page.setViewportSize({ width: 375, height: 800 });
       await closeSettings(page);
       await openSettingsFromRooms(page);

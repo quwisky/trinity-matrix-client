@@ -1,9 +1,7 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   clickRowToolbar,
-  isAndroidE2E,
   login,
-  openMessageActionSheet,
   synapseSession,
   waitForSent,
   type SynapseSession,
@@ -69,15 +67,10 @@ test.describe('Thread composer', () => {
     // first — "Reply in thread" is withheld from an unsent local echo (whose id is
     // only a `~txnId` placeholder the homeserver could never resolve).
     await waitForSent(row.first());
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, row.first());
-      await sheet.getByTestId('sheet-thread').click();
-    } else {
-      await clickRowToolbar(
-        row.first(),
-        row.first().getByRole('button', { name: 'Reply in thread' }),
-      );
-    }
+    await clickRowToolbar(
+      row.first(),
+      row.first().getByRole('button', { name: 'Reply in thread' }),
+    );
 
     const thread = page.getByTestId('thread-view');
     await expect(thread).toBeVisible({ timeout: 15_000 });
@@ -158,15 +151,10 @@ test.describe('Thread composer', () => {
     const row = page.locator('.scroll .msg[data-mid]', { hasText: rootBody });
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
     await waitForSent(row.first());
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, row.first());
-      await sheet.getByTestId('sheet-thread').click();
-    } else {
-      await clickRowToolbar(
-        row.first(),
-        row.first().getByRole('button', { name: 'Reply in thread' }),
-      );
-    }
+    await clickRowToolbar(
+      row.first(),
+      row.first().getByRole('button', { name: 'Reply in thread' }),
+    );
 
     const thread = page.getByTestId('thread-view');
     await expect(thread).toBeVisible({ timeout: 15_000 });

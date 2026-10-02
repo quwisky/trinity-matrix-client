@@ -15,7 +15,6 @@ import { validateBrowserJourneyInventory } from './e2e-browser-inventory.mjs';
 import { validateProtocolAssertionInventory } from './e2e-protocol-inventory.mjs';
 
 const TARGET_PROJECT_BY_ENVIRONMENT = {
-  android: 'trinity-e2e-android',
   browser: 'trinity-e2e-browser',
   components: 'trinity-e2e-components',
   electron: 'trinity-e2e-electron',
@@ -29,7 +28,6 @@ const PROJECT_FILES = {
   'trinity-android': 'android/project.json',
   'trinity-desktop': 'electron/project.json',
   'trinity-e2e': 'e2e/project.json',
-  'trinity-e2e-android': 'e2e/android/project.json',
   'trinity-e2e-browser': 'e2e/browser/project.json',
   'trinity-e2e-components': 'e2e/components/project.json',
   'trinity-e2e-electron': 'e2e/electron/project.json',
@@ -43,7 +41,6 @@ const HISTORICAL_E2E_NAME =
   /(?:phase[ _-]?[67]|shipped[ _-]?ui|shipped-interface)/iu;
 const RETAINED_COMPATIBILITY_ALIAS = 'e2e:ui:shipped';
 const ACTIVE_LIFECYCLE_PROJECTS = new Set([
-  'trinity-e2e-android',
   'trinity-e2e-browser',
   'trinity-e2e-components',
   'trinity-e2e-electron',

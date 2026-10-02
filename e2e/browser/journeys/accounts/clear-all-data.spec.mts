@@ -1,6 +1,5 @@
 import { test, expect, type Page } from '../../../fixtures.mts';
 import {
-  isAndroidE2E,
   login,
   preferenceKeys,
   seedPreference,
@@ -94,13 +93,12 @@ test.describe('Clear all data', () => {
       dbs: await databaseNames(page),
     };
     // The key carries the full MXID, not the localpart `session.user` holds.
-    if (!isAndroidE2E) {
-      expect(
-        before.keys.some((k) =>
-          k.startsWith('CapacitorStorage.secure.matrix.accessToken:@'),
-        ),
-      ).toBe(true);
-    }
+    expect(
+      before.keys.some((k) =>
+        k.startsWith('CapacitorStorage.secure.matrix.accessToken:@'),
+      ),
+    ).toBe(true);
+
     expect(before.keys).toContain('CapacitorStorage.matrix.accounts');
     expect(
       before.dbs.some((n) => n.startsWith('matrix-js-sdk:trinity-sync:@')),

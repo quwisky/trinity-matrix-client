@@ -103,34 +103,12 @@ export const HOST_E2E_SUITES = defineSuites([
     sourceEntrypoints: ['e2e/electron/playwright.smoke.config.mts'],
   },
   {
-    id: 'android.installed-webview',
-    environment: 'android',
-    capabilities: ['composition', 'host'],
-    contractTypes: ['host', 'journey'],
-    currentTarget: 'trinity-e2e-android:e2e',
-    delegatingTargets: ['trinity-android:e2e', 'trinity-e2e:android-e2e'],
-    targetProject: 'trinity-e2e-android',
-    prerequisites: ['android-avd', 'android-sdk', 'docker', 'java-21', 'kvm'],
-    availabilityPolicy: 'required',
-    ciTier: 'pull-request',
-    ciRetries: 1,
-    cachePolicy: 'never',
-    serializationKeys: ['android-avd', 'synapse'],
-    timeoutClass: 'host',
-    canonicalScript: 'e2e:android',
-    currentArtifactRoot: 'dist/.playwright/trinity-e2e-android/<run-id>',
-    targetArtifactRoot: 'dist/.playwright/trinity-e2e-android/<run-id>',
-    sourceEntrypoints: [
-      'e2e/android/run.mts',
-      'e2e/android/playwright.config.mts',
-    ],
-  },
-  {
     id: 'mobile.android',
     environment: 'mobile',
     capabilities: ['composition', 'host'],
     contractTypes: ['host', 'journey'],
     currentTarget: 'trinity-e2e-mobile:e2e',
+    delegatingTargets: ['trinity-android:e2e'],
     targetProject: 'trinity-e2e-mobile',
     prerequisites: ['android-avd', 'android-sdk', 'docker', 'java-21', 'kvm'],
     availabilityPolicy: 'required',
@@ -147,5 +125,4 @@ export const HOST_E2E_SUITES = defineSuites([
 
 export const ELECTRON_FULL_SUITE = HOST_E2E_SUITES[3];
 export const ELECTRON_SMOKE_SUITE = HOST_E2E_SUITES[4];
-export const ANDROID_INSTALLED_WEBVIEW_SUITE = HOST_E2E_SUITES[5];
-export const MOBILE_ANDROID_SUITE = HOST_E2E_SUITES[6];
+export const MOBILE_ANDROID_SUITE = HOST_E2E_SUITES[5];

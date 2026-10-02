@@ -56,7 +56,7 @@ function project(platform) {
               cache: false,
               parallelism: false,
               options: {
-                command: 'pnpm exec nx run trinity-e2e-android:e2e',
+                command: 'pnpm exec nx run trinity-e2e-mobile:e2e',
               },
             },
           }
@@ -70,7 +70,7 @@ function validInput() {
     projects: { android: project('android'), ios: project('ios') },
     packageJson: {
       scripts: {
-        'e2e:android': 'nx run trinity-e2e:e2e-android',
+        'e2e:mobile': 'nx run trinity-e2e:e2e-mobile',
         'android:sync': 'nx run trinity-android:sync',
         'android:run': 'nx run trinity-android:run',
         'android:build': 'nx run trinity-android:build',

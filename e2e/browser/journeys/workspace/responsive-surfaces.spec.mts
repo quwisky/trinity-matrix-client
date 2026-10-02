@@ -9,7 +9,6 @@ import {
 } from '../../../fixtures.mts';
 import {
   fillLabeledInput,
-  isAndroidE2E,
   seedPreference,
   synapseSession,
   waitForRooms,
@@ -153,10 +152,6 @@ async function expectInsideViewport(
 
 test.describe('Responsive auth, crypto, and overlay surfaces', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
-  test.skip(
-    isAndroidE2E,
-    'browser-only viewport matrix; Android WebView has its own installed-package suite',
-  );
 
   test('keeps auth, picker and crypto surfaces bounded with larger compact UI', async ({
     page,

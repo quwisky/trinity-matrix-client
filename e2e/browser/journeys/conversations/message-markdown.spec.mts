@@ -5,9 +5,7 @@ import {
   type APIRequestContext,
 } from '../../../fixtures.mts';
 import {
-  isAndroidE2E,
   login,
-  openMessageActionSheet,
   synapseSession,
   waitForSent,
   type SynapseSession,
@@ -210,19 +208,6 @@ test.describe('Message markdown', () => {
     );
     const row = page.locator('.msg', { has: pre }).first();
     await expect(row).toHaveClass(/msg--cont/);
-
-    if (isAndroidE2E) {
-      // Installed touch hosts do not paint the web hover toolbar at all. The
-      // caption remains rendered, and message actions move to a long-press sheet.
-      await expect(row.locator('.msg__toolbar')).toHaveCount(0);
-      expect(
-        await pre.evaluate(
-          (element) => getComputedStyle(element, '::after').content,
-        ),
-      ).toContain('python');
-      await expect(await openMessageActionSheet(page, row)).toBeVisible();
-      return;
-    }
 
     await pre.hover();
 

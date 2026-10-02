@@ -1,6 +1,5 @@
 import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
-  isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
@@ -24,10 +23,6 @@ test.describe('Encrypted key export', () => {
     page,
     request,
   }) => {
-    test.skip(
-      isAndroidE2E,
-      'native WebView export needs a production Files/Share implementation before this browser download journey is portable',
-    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}ke`;
     const user = `keyexp-${runId}`;
