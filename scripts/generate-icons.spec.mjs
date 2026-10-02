@@ -1,7 +1,8 @@
 /** Every generated icon has the exact size and the pixel rule its platform requires. */
-import { mkdtempSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { encodePng, OUTPUTS, renderIcons } from './generate-icons.mjs';
 
 let out;
@@ -117,5 +118,42 @@ describe('generated icons', () => {
     expect(() =>
       encodePng(1, 1, Uint8Array.from([0, 0, 0, 128]), false),
     ).toThrow(/opaque/);
+  });
+});
+
+describe('committed icons', () => {
+  const root = resolve(import.meta.dirname, '..');
+  it('match a fresh render byte for byte', () => {
+    const stale = OUTPUTS.filter(
+      (output) =>
+        !readFileSync(join(out, output.path)).equals(
+          (() => {
+            try {
+              return readFileSync(join(root, output.path));
+            } catch {
+              return Buffer.alloc(0);
+            }
+          })(),
+        ),
+    ).map((output) => output.path);
+    expect(stale, 'run `pnpm icons:generate` and commit the results').toEqual(
+      [],
+    );
+  });
+});
+
+describe('generator module', () => {
+  it('can be imported without a script entry point', () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `const m = await import(${JSON.stringify(resolve(import.meta.dirname, 'generate-icons.mjs'))}); console.log(m.OUTPUTS.length);`,
+      ],
+      { encoding: 'utf8' },
+    );
+    expect(result.stderr).toBe('');
+    expect(Number(result.stdout.trim())).toBeGreaterThan(0);
   });
 });

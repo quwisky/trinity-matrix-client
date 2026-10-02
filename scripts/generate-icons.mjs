@@ -289,7 +289,10 @@ export function renderIcons(outRoot = ROOT) {
   return rendered;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   const { values } = parseArgs({ options: { out: { type: 'string' } } });
   const written = renderIcons(values.out ? resolve(values.out) : ROOT);
   console.log(
