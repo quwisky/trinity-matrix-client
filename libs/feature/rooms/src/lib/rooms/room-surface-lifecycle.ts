@@ -21,6 +21,7 @@ import type { MemberSummary } from '@trinity/data-access/room-administration';
 import {
   BELOW_MD_QUERY,
   BELOW_MEMBERS_QUERY,
+  matchesQuery,
   mediaQuerySignal,
 } from '@trinity/util/ui';
 import { Observable, defer, map, of } from 'rxjs';
@@ -423,7 +424,10 @@ export class RoomSurfaceLifecycle {
     }
     const accountId = this.workspace.activeAccountId();
     const roomId = this.workspace.activeRoomId();
+    // The signal keeps this reactive; the live query covers the gap before its `change`
+    // event, when a busy main thread can deliver Back for a viewport that is already wide.
     return this.compactConversation() &&
+      matchesQuery(BELOW_MD_QUERY) &&
       this.workspace.pane() === 'conversation' &&
       accountId &&
       roomId
