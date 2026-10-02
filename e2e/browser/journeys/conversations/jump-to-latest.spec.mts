@@ -6,7 +6,6 @@ import {
   type Page,
 } from '../../../fixtures.mts';
 import {
-  isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
@@ -153,12 +152,9 @@ test.describe('Jump to latest', () => {
     // Desktop Chromium accepts a wheel gesture. Android's attached WebView does
     // not receive Playwright's synthetic mouse wheel, so drive the same scroll
     // container directly there and let its real scroll event update the signal.
-    if (isAndroidE2E) {
-      await scroll.evaluate((element) => element.scrollBy({ top: -3000 }));
-    } else {
-      await scroll.hover();
-      await page.mouse.wheel(0, -3000);
-    }
+    await scroll.hover();
+    await page.mouse.wheel(0, -3000);
+
     await expect(pill).toBeVisible({ timeout: 15_000 });
 
     // Jumping returns to the newest message and dismisses the pill.

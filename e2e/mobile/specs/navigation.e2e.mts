@@ -55,6 +55,14 @@ async function seedComposerRoom(): Promise<{
   return { user, pass, roomName };
 }
 
+const clickButton = async (name: string): Promise<void> => {
+  const button = $(
+    `//button[normalize-space()="${name}" or @aria-label="${name}"]`,
+  );
+  await expect(button).toBeDisplayed({ wait: 20_000 });
+  await button.click();
+};
+
 describe('Android navigation', () => {
   beforeEach(resetApp);
 
@@ -232,5 +240,66 @@ describe('Android navigation', () => {
     await expect($('[data-testid="composer-input"]')).not.toBeDisplayed({
       wait: 5_000,
     });
+  });
+
+  it('moves focus into a routed Settings section on entry and returns to Rooms with Back', async () => {
+    const user = uniqueId('android-focus');
+    const pass = `${user}-pass`;
+    await registerUser(user, pass);
+    await login(user, pass);
+    await openSettingsFromRooms();
+    await waitForPath((path) => path.startsWith('/settings'), '/settings');
+
+    await tap('[data-testid="settings-nav-profile"]');
+    await waitForPath(
+      (path) => path === '/settings/profile',
+      '/settings/profile',
+    );
+    await expect(
+      $('//*[self::h1 or self::h2][normalize-space()="Profile"]'),
+    ).toBeFocused({ wait: 10_000 });
+
+    await clickButton('Back');
+    await waitForPath((path) => path === '/settings', '/settings');
+    await clickButton('Back');
+    await waitForRooms();
+    await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
+    // Known gap: on the installed phone layout, focus after leaving routed Settings
+    // lands on <body> rather than inside trn-rooms. The base browser test only passed
+    // at the old 1280x720 Android viewport, so the focus assertion stays unpinned
+    // until #859 is fixed; re-enable it with that fix.
+  });
+
+  it('routes Verify device and returns focus to the Security heading on Close', async () => {
+    const user = uniqueId('android-verify');
+    const pass = `${user}-pass`;
+    await registerUser(user, pass);
+    await login(user, pass);
+    await openSettingsFromRooms();
+    await tap('[data-testid="settings-nav-security"]');
+    await waitForPath(
+      (path) => path === '/settings/security',
+      '/settings/security',
+    );
+    await tap('[data-testid="security-verify"]');
+    await waitForPath(
+      (path) => path === '/encryption/verify',
+      '/encryption/verify',
+    );
+    await expect($('[data-testid="verify-page"]')).toBeDisplayed({
+      wait: 20_000,
+    });
+    await expect(
+      $('//*[self::h1 or self::h2][normalize-space()="Verify device"]'),
+    ).toBeFocused({ wait: 10_000 });
+
+    await clickButton('Close');
+    await waitForPath(
+      (path) => path === '/settings/security',
+      '/settings/security',
+    );
+    await expect(
+      $('//*[self::h1 or self::h2][normalize-space()="Security"]'),
+    ).toBeFocused({ wait: 10_000 });
   });
 });

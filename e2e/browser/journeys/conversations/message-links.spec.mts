@@ -1,4 +1,5 @@
 import {
+  devices,
   testResourceId,
   test,
   expect,
@@ -7,7 +8,6 @@ import {
   type Page,
 } from '../../../fixtures.mts';
 import {
-  isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
@@ -135,14 +135,6 @@ async function activateRoomLinkPrimary(
   page: Page,
   primary: Locator,
 ): Promise<void> {
-  if (isAndroidE2E) {
-    // Remote debugging can report a viewport shorter than the physical WebView,
-    // even though the portrait geometry check proves the footer is on-screen.
-    await primary.focus();
-    await page.keyboard.press('Enter');
-    return;
-  }
-
   await primary.click();
 }
 
@@ -423,18 +415,18 @@ test.describe('Matrix room links', () => {
     await expect(preview).toBeVisible();
   });
 
-  test.describe('Android portrait room-link sheet', () => {
+  test.describe('Portrait room-link sheet', () => {
     test.use({
       viewport: { width: 390, height: 844 },
       hasTouch: true,
       isMobile: true,
+      userAgent: devices['Pixel 5'].userAgent,
     });
 
     test('keeps the sheet and its action footer reachable', async ({
       page,
       request,
     }) => {
-      test.skip(!isAndroidE2E, 'Android WebView geometry only');
       const runId = `${testResourceId('run')}m`;
       const local = await localScenario(request, runId);
       const targetName = `Portrait Target ${runId}`;
@@ -573,20 +565,7 @@ test.describe('Matrix room links', () => {
     await expect(card).toBeVisible({ timeout: 15_000 });
     await expect(card.getByTestId('user-card-name')).toHaveText(bobName);
 
-    // Android deliberately uses its mobile dialog interaction model even under a wide
-    // emulated viewport. Web uses the anchored pointer popover.
-    if (isAndroidE2E) {
-      await expect(
-        page.locator('.cdk-overlay-connected-position-bounding-box'),
-      ).toHaveCount(0);
-      await expect(page.getByRole('dialog')).toContainText(bobName);
-      await expect(page.getByTestId('composer-input')).toHaveAttribute(
-        'placeholder',
-        new RegExp(roomName),
-      );
-      return;
-    }
-
+    // The web layout uses the anchored pointer popover.
     // On web it is a POPOVER pinned to the mention, not a centred modal.
     await expect(
       page.locator('.cdk-overlay-connected-position-bounding-box'),

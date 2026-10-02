@@ -46,16 +46,27 @@ export async function login(user: string, pass: string): Promise<void> {
   await waitForRooms();
 }
 
-/** One W3C touch tap, which reaches the WebView as a gesture (a plain click does not raise the IME). */
+/**
+ * One W3C touch tap, which reaches the WebView as a gesture (a plain click does not
+ * raise the IME). Lists re-render as sync updates arrive, so an element found by
+ * `selector` can go stale before the pointer action lands; re-query and retry then.
+ */
 export async function tap(selector: string): Promise<void> {
-  const target = $(selector);
-  await target.scrollIntoView({ block: 'center' });
-  await browser
-    .action('pointer', { parameters: { pointerType: 'touch' } })
-    .move({ origin: target })
-    .down()
-    .up()
-    .perform();
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const target = $(selector);
+      await target.scrollIntoView({ block: 'center' });
+      await browser
+        .action('pointer', { parameters: { pointerType: 'touch' } })
+        .move({ origin: target })
+        .down()
+        .up()
+        .perform();
+      return;
+    } catch (error) {
+      if (attempt >= 3 || !/stale element/i.test(String(error))) throw error;
+    }
+  }
 }
 
 /**

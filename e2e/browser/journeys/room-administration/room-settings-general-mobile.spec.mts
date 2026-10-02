@@ -1,4 +1,3 @@
-import { captureScreenshot } from '../../../support/screenshot.mts';
 import { devices, expect, test, testResourceId } from '../../../fixtures.mts';
 import { login, type SynapseSession } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
@@ -118,7 +117,7 @@ test.describe('Room settings on a phone', () => {
       44,
     );
     await test.info().attach('room-settings-mobile-directory', {
-      body: await captureScreenshot(page, () => settings.screenshot()),
+      body: await settings.screenshot(),
       contentType: 'image/png',
     });
 
@@ -132,7 +131,7 @@ test.describe('Room settings on a phone', () => {
       0,
     );
     await test.info().attach('room-access-mobile', {
-      body: await captureScreenshot(page, () => settings.screenshot()),
+      body: await settings.screenshot(),
       contentType: 'image/png',
     });
     await touchPlatform.tap(

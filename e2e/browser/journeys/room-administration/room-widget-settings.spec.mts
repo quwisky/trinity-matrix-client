@@ -1,4 +1,3 @@
-import { captureScreenshot } from '../../../support/screenshot.mts';
 import { expect, test, testResourceId } from '../../../fixtures.mts';
 import {
   login,
@@ -358,9 +357,7 @@ test.describe('Room settings', () => {
       new RegExp(`user=${encodeURIComponent(user_id as string)}`),
     );
     await test.info().attach('room-widgets-desktop', {
-      body: await captureScreenshot(page, () =>
-        page.getByTestId('room-settings').screenshot(),
-      ),
+      body: await page.getByTestId('room-settings').screenshot(),
       contentType: 'image/png',
     });
     expect(widgetFixture.requestCount()).toBe(0);
