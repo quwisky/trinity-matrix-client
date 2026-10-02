@@ -21,4 +21,11 @@ describe('desktop app identity', () => {
     // The workspace package name stays: Nx and pnpm address the project by it.
     expect(pkg.name).toBe('trinity-desktop');
   });
+
+  it('describes the app for users, since Linux menus and Windows file properties show it', () => {
+    const pkg = JSON.parse(
+      readFileSync(join(electronRoot, 'package.json'), 'utf8'),
+    );
+    expect(pkg.description).toBe('End-to-end encrypted Matrix client');
+  });
 });
