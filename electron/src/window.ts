@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell } from 'electron';
 import * as path from 'node:path';
 import { isAppUrl, START_URL } from './scheme';
 import { processDeepLinkQueue } from './deep-link';
+import { storedAppIcon } from './app-icon-state';
 import { windowIconOptions } from './icons';
 
 let mainWindow: BrowserWindow | null = null;
@@ -110,7 +111,7 @@ export function createWindow(): void {
     backgroundColor: '#1e1f22',
     // Windows/Linux taskbar and window icon (packaged builds also embed it; dev runs
     // would otherwise show Electron's default). macOS uses the bundle's .icns.
-    ...windowIconOptions(process.platform),
+    ...windowIconOptions(process.platform, storedAppIcon()),
     autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

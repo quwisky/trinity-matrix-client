@@ -171,10 +171,10 @@ describe('icon wiring', () => {
 describe('desktop icon wiring', () => {
   it('takes window and tray icons from the tested icon helpers and the dedicated notification icon', () => {
     expect(read('electron/src/window.ts')).toContain(
-      '...windowIconOptions(process.platform)',
+      '...windowIconOptions(process.platform, storedAppIcon())',
     );
     expect(read('electron/src/tray.ts')).toContain(
-      'trayIconFile(process.platform)',
+      'trayIconFile(process.platform, icon)',
     );
     expect(read('electron/src/notifications.ts')).toContain(
       "iconCandidatePaths('notificationIcon.png')",
@@ -199,6 +199,12 @@ describe('desktop icon wiring', () => {
       'trinityTrayTemplate@2x.png',
       'notificationIcon.png',
       'unreadOverlay.png',
+      'icon-dark.png',
+      'icon-mac-dark.png',
+      'trinityTray-dark.png',
+      'trinityTray-dark@2x.png',
+      'trinityTrayLinux-dark.png',
+      'trinityTrayLinux-dark@2x.png',
     ]) {
       expect(config, file).toContain(`from: build/${file}`);
       expect(existsSync(join(root, 'electron/build', file)), file).toBe(true);
