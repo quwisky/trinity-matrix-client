@@ -26,7 +26,7 @@ brew install --cask quwisky/trinity/trinity
 
 Or download the `.dmg` from
 [the latest release](https://github.com/quwisky/trinity-matrix-client/releases/latest).
-The app is signed and notarized by Apple.
+Signed with a Developer ID and notarized by Apple.
 
 ### Windows
 
@@ -37,8 +37,10 @@ your PC" the first time: choose **More info**, then **Run anyway**.
 
 ### Linux
 
-Download the AppImage or the `.deb` from
-[the latest release](https://github.com/quwisky/trinity-matrix-client/releases/latest):
+x86-64 only. Download the `.deb` or the AppImage from
+[the latest release](https://github.com/quwisky/trinity-matrix-client/releases/latest).
+On Debian and Ubuntu, prefer the `.deb`: AppImages need `libfuse2`, and recent Ubuntu
+releases restrict the sandbox they rely on.
 
 ```bash
 chmod +x Trinity-*.AppImage && ./Trinity-*.AppImage   # AppImage
@@ -50,8 +52,8 @@ sudo apt install ./<downloaded-file>.deb              # Debian and Ubuntu
 `-next` builds are published on the
 [releases page](https://github.com/quwisky/trinity-matrix-client/releases) as
 pre-releases, for testing. On macOS:
-`brew install --cask quwisky/trinity/trinity@next` (it replaces the stable app; only
-one can be installed).
+`brew install --cask quwisky/trinity/trinity@next`. The two casks conflict because both
+install `Trinity.app`; run `brew uninstall --cask trinity` first.
 
 ### Web, Android and iOS
 
@@ -68,19 +70,21 @@ one can be installed).
 | Windows / macOS / Linux | ✅       | ✅                  | —         | Linux      | ✅    |
 | Android / iOS           | 🚧       | —                   | ✅        | ✅         | —     |
 
-| Features                      | Trinity           | Element Web/Desktop | Element X | FluffyChat | Cinny |
-| ----------------------------- | ----------------- | ------------------- | --------- | ---------- | ----- |
-| End-to-end encryption         | ✅                | ✅                  | ✅        | ✅         | ✅    |
-| Spaces                        | ✅                | ✅                  | ✅        | ✅         | ✅    |
-| Threads                       | ✅                | ✅                  | 🟡        | ✅         | ❌    |
-| Multiple accounts             | ✅                | ❌                  | ❌        | ✅         | ❌    |
-| OAuth 2.0 (next-gen auth)     | ✅                | ✅                  | ✅        | ❔         | ❔    |
-| Legacy SSO                    | ✅                | ✅                  | ❌        | ✅         | ✅    |
-| Emoji and image packs         | ✅                | 🟡                  | ❔        | 🟡         | 🟡    |
-| Voice/video calls (1:1)       | ❌                | ✅                  | ❌        | ❌         | ❌    |
-| Voice/video calls (Jitsi)     | ❌                | ✅                  | ❌        | ❌         | ❌    |
-| Voice/video calls (MatrixRTC) | ❌                | ✅                  | ✅        | ❔         | ✅    |
-| Multi-language interface      | ❌ (English only) | ✅                  | ✅        | ✅         | ❌    |
+| Features                          | Trinity           | Element Web/Desktop | Element X | FluffyChat | Cinny |
+| --------------------------------- | ----------------- | ------------------- | --------- | ---------- | ----- |
+| End-to-end encryption             | ✅                | ✅                  | ✅        | ✅         | ✅    |
+| Spaces                            | ✅                | ✅                  | ✅        | ✅         | ✅    |
+| Threads                           | ✅                | ✅                  | 🟡        | ✅         | ❌    |
+| Multiple accounts                 | ✅                | ❌                  | ❌        | ✅         | ❌    |
+| OAuth 2.0 (next-gen auth)         | ✅                | ✅                  | ✅        | ❔         | ❔    |
+| Legacy SSO                        | ✅                | ✅                  | ❌        | ✅         | ✅    |
+| Emoji and image packs             | 🟡                | 🟡                  | ❔        | 🟡         | 🟡    |
+| Voice/video calls (1:1)           | ❌                | ✅                  | ❌        | ❌         | ❌    |
+| Voice/video calls (Jitsi)         | ❌                | ✅                  | ❌        | ❌         | ❌    |
+| Voice/video calls (MatrixRTC)     | ❌                | ✅                  | ✅        | ❔         | ✅    |
+| Invisible cryptography (MSC4153)  | ❌                | 🟡                  | 🟡        | ❔         | ❔    |
+| Simplified sliding sync (MSC4186) | ❌                | ❔                  | ✅        | ❔         | ❔    |
+| Multi-language interface          | ❌ (English only) | ✅                  | ✅        | ✅         | ❌    |
 
 ✅ supported · 🟡 partial · ❌ not supported · ❔ unknown · 🚧 in development
 
