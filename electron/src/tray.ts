@@ -1,6 +1,6 @@
 import { Menu, nativeImage, Tray } from 'electron';
 import * as fs from 'node:fs';
-import { iconCandidatePaths } from './icons';
+import { iconCandidatePaths, trayIconFile } from './icons';
 import { focusMainWindow, requestQuit } from './window';
 
 // The reference is held in module scope so the tray is not garbage-collected
@@ -11,12 +11,12 @@ let tray: Tray | null = null;
  * Resolve the platform tray icon as a NativeImage.
  *
  * macOS uses a monochrome *template* image (`…Template.png`, black + alpha) that
- * the system recolors for light/dark menubars; Windows/Linux use the colored
- * PNG. Never throws if the asset is missing.
+ * the system recolors for light/dark menubars; Windows uses a 16 px colored PNG and
+ * Linux a 32 px one (AppIndicators draw larger), each with an @2x sibling. Never throws if the asset is missing.
  */
 function resolveTrayIcon(): Electron.NativeImage {
   const isMac = process.platform === 'darwin';
-  const fileName = isMac ? 'trinityTrayTemplate.png' : 'trinityTray.png';
+  const fileName = trayIconFile(process.platform);
 
   for (const candidate of iconCandidatePaths(fileName)) {
     try {
