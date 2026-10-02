@@ -182,8 +182,8 @@ published automatically.
 
 Versions: before 1.0, `feat` and breaking changes bump the minor version and `fix`
 the patch version. The prerelease line counts `0.2.0-next.0`, `0.2.0-next.1`, …
-until the next stable release. Force a version with a `Release-As: x.y.z` commit
-footer.
+until the next stable release. Do not use `Release-As` commit footers: release-please
+reads them on both lines, so one footer tries to cut the same version twice.
 
 ### Promote to stable
 

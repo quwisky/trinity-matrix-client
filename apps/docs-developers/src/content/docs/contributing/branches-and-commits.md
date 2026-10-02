@@ -39,6 +39,6 @@ Use a body when the motivation or behavior change is not self-evident. Mark brea
 
 `develop` is also the prerelease line and `master` the stable line. release-please keeps a release pull request open on each: merging it on `develop` cuts an `X.Y.Z-next.N` prerelease, and merging it on `master` cuts a stable release and updates `CHANGELOG.md`. `feat`, `fix`, `perf` and `revert` subjects become the release notes, so write them for users.
 
-Never edit versions or `CHANGELOG.md` by hand. To force a version, add a `Release-As: x.y.z` footer to a commit. Maintainers promote `develop` to `master` and publish releases.
+Never edit versions or `CHANGELOG.md` by hand, and do not add `Release-As` footers: both release lines read them. Maintainers promote `develop` to `master` and publish releases.
 
 Do not rewrite pushed history without explicit coordination. Continue with [prepare a pull request](../prepare-a-pull-request/).
