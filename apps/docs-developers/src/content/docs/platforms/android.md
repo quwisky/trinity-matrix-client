@@ -37,3 +37,5 @@ The release target creates an AAB but remains unsigned unless external signing i
 Use an installed-host journey for permissions, system Back, app lifecycle, native secure storage, push, badges, keyboards, touch gestures, and WebView TLS. A mobile browser profile remains useful for layout but cannot prove these paths.
 
 Read [platform integrations](../../development/platform-integrations/) and [desktop and native tests](../../testing/desktop-and-native-tests/).
+
+App icons and splash screens are generated from shared sources; see [application icons](../electron/#application-icons).

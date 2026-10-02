@@ -22,7 +22,7 @@ export const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
 // Per-room collapse for desktop notifications: a fresh notification for a room
 // replaces the previous still-open one (mirrors the Web Notification `tag`).
 const activeNotifications = new Map<string, Electron.Notification>();
-// Lazily resolved colored app icon for notifications. `undefined` => not yet
+// Lazily resolved 256 px app icon for notifications. `undefined` => not yet
 // resolved; `null` => none found. macOS ignores this and uses the bundle icon.
 let notificationIconCache: Electron.NativeImage | null | undefined;
 
@@ -35,7 +35,7 @@ let notificationIconCache: Electron.NativeImage | null | undefined;
 function resolveNotificationIcon(): Electron.NativeImage | undefined {
   if (notificationIconCache === undefined) {
     let found: Electron.NativeImage | null = null;
-    for (const candidate of iconCandidatePaths('trinityTray.png')) {
+    for (const candidate of iconCandidatePaths('notificationIcon.png')) {
       try {
         if (!fs.existsSync(candidate)) {
           continue;
