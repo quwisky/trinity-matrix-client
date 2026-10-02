@@ -1,4 +1,3 @@
-import { captureScreenshot } from '../../../support/screenshot.mts';
 import {
   devices,
   expect,
@@ -216,7 +215,7 @@ test.describe('Space settings on a phone', () => {
       44,
     );
     await test.info().attach('space-settings-mobile-directory', {
-      body: await captureScreenshot(page, () => settings.screenshot()),
+      body: await settings.screenshot(),
       contentType: 'image/png',
     });
 
@@ -248,7 +247,7 @@ test.describe('Space settings on a phone', () => {
       alphabetical.getByRole('radio', { name: 'Alphabetical' }),
     ).toBeChecked();
     await test.info().attach('space-personal-order-mobile', {
-      body: await captureScreenshot(page, () => settings.screenshot()),
+      body: await settings.screenshot(),
       contentType: 'image/png',
     });
     await touchPlatform.tap(
@@ -277,7 +276,7 @@ test.describe('Space settings on a phone', () => {
       0,
     );
     await test.info().attach('space-access-mobile', {
-      body: await captureScreenshot(page, () => settings.screenshot()),
+      body: await settings.screenshot(),
       contentType: 'image/png',
     });
     await touchPlatform.tap(
@@ -335,7 +334,7 @@ test.describe('Space settings on a phone', () => {
       )
       .not.toBe(true);
     await test.info().attach('space-contents-mobile', {
-      body: await captureScreenshot(page, () => contentsPanel.screenshot()),
+      body: await contentsPanel.screenshot(),
       contentType: 'image/png',
     });
 
@@ -530,7 +529,7 @@ test.describe('Space settings on a phone', () => {
     const surfaceBox = await surface.boundingBox();
     expect(surfaceBox?.width ?? 0).toBeGreaterThan(0);
     await test.info().attach('space-settings-mobile-read-only', {
-      body: await captureScreenshot(page, () => surface.screenshot()),
+      body: await surface.screenshot(),
       contentType: 'image/png',
     });
   });

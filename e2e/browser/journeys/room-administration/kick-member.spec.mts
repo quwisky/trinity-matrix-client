@@ -1,4 +1,3 @@
-import { captureScreenshot } from '../../../support/screenshot.mts';
 import {
   testResourceId,
   test,
@@ -169,10 +168,6 @@ test.describe('Remove a member', () => {
     page,
     request,
   }, testInfo) => {
-    test.skip(
-      process.env['TRINITY_E2E_PLATFORM'] === 'android',
-      'fault injection requires Angular development hooks; the installed APK is production',
-    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}health`;
     const adminUser = `administration-health-${runId}`;
@@ -265,7 +260,7 @@ test.describe('Remove a member', () => {
       'true',
     );
     await testInfo.attach('room-administration-stale-roster', {
-      body: await captureScreenshot(page, () => page.screenshot()),
+      body: await page.screenshot(),
       contentType: 'image/png',
     });
 
@@ -285,7 +280,7 @@ test.describe('Remove a member', () => {
     await expect(roster).toBeVisible();
     await expect(memberRow).toBeVisible();
     await testInfo.attach('room-administration-recovered-roster', {
-      body: await captureScreenshot(page, () => page.screenshot()),
+      body: await page.screenshot(),
       contentType: 'image/png',
     });
   });

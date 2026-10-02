@@ -68,7 +68,7 @@ describe('verified renderer workflow boundary', () => {
     }
   });
 
-  it.each(['desktop', 'e2e', 'android-e2e', 'ios-native-build'])(
+  it.each(['desktop', 'e2e', 'mobile-e2e', 'ios-native-build'])(
     'restores explicit coordinates before %s consumes production',
     (id) => {
       const job = ci.jobs[id];
@@ -120,7 +120,7 @@ describe('verified renderer workflow boundary', () => {
     expect(
       ci.jobs.desktop.steps.find((step) => step.id === 'electron').run,
     ).toContain('pnpm nx run trinity-e2e-electron:full-prebuilt');
-    expect(read('e2e/android/run.mts')).toContain(
+    expect(read('e2e/mobile/run.mts')).toContain(
       'Android CI requires the verified prebuilt renderer',
     );
   });

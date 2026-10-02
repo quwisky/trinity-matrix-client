@@ -1,4 +1,3 @@
-import { captureScreenshot } from '../../../support/screenshot.mts';
 import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
@@ -87,10 +86,6 @@ test.describe('Notification settings', () => {
     page,
     request,
   }, testInfo) => {
-    test.skip(
-      process.env['TRINITY_E2E_PLATFORM'] === 'android',
-      'fault injection requires Angular development hooks; the installed APK is production',
-    );
     const hs = session.hs as string;
     const user = `notif-health-${testResourceId('run')}`;
     const pass = `${user}-pass`;
@@ -138,7 +133,7 @@ test.describe('Notification settings', () => {
     await expect(health).not.toContainText('synthetic');
     await expect.poll(runtimePhase).toBe('ready');
     await testInfo.attach('notification-rules-unavailable', {
-      body: await captureScreenshot(page, () => page.screenshot()),
+      body: await page.screenshot(),
       contentType: 'image/png',
     });
 
@@ -153,7 +148,7 @@ test.describe('Notification settings', () => {
     await status.getByRole('button', { name: 'Close' }).click();
     await expect(page).toHaveURL(/\/rooms/);
     await testInfo.attach('notification-rules-recovered', {
-      body: await captureScreenshot(page, () => page.screenshot()),
+      body: await page.screenshot(),
       contentType: 'image/png',
     });
   });

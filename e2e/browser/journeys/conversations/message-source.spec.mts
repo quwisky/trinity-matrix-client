@@ -1,9 +1,7 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   clickRowMenuItem,
-  isAndroidE2E,
   login,
-  openMessageActionSheet,
   synapseSession,
   type SynapseSession,
   waitForSent,
@@ -65,12 +63,7 @@ test.describe('Message source', () => {
     await waitForSent(row.first());
 
     // Open the host's message-actions surface → View source.
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, row.first());
-      await sheet.getByTestId('sheet-view-source').click();
-    } else {
-      await clickRowMenuItem(row.first(), page.getByTestId('msg-view-source'));
-    }
+    await clickRowMenuItem(row.first(), page.getByTestId('msg-view-source'));
 
     // The dialog shows the raw event JSON — the event type and the message body.
     const dialog = page.getByTestId('message-source');

@@ -12,7 +12,6 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
-import { captureScreenshot } from '../../../support/screenshot.mts';
 
 const { defaultBrowserType: _pixelBrowser, ...pixel5 } = devices['Pixel 5'];
 
@@ -445,7 +444,7 @@ test.describe('Edit history', () => {
       .poll(() => dialog.evaluate((el) => el.contains(document.activeElement)))
       .toBe(true);
     await test.info().attach('edit-history-settings-style', {
-      body: await captureScreenshot(page, () => dialog.screenshot()),
+      body: await dialog.screenshot(),
       contentType: 'image/png',
     });
 
@@ -546,7 +545,7 @@ test.describe('Edit history', () => {
         viewport!.width,
       );
       await test.info().attach('edit-history-pixel5', {
-        body: await captureScreenshot(page, () => dialog.screenshot()),
+        body: await dialog.screenshot(),
         contentType: 'image/png',
       });
     });

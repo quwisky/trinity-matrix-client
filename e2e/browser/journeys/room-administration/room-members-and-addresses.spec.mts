@@ -1,4 +1,3 @@
-import { captureScreenshot } from '../../../support/screenshot.mts';
 import {
   devices,
   expect,
@@ -294,9 +293,7 @@ test.describe('Room settings', () => {
       'Moderator',
     );
     await test.info().attach('room-members-desktop', {
-      body: await captureScreenshot(page, () =>
-        page.getByTestId('room-settings').screenshot(),
-      ),
+      body: await page.getByTestId('room-settings').screenshot(),
       contentType: 'image/png',
     });
 
@@ -483,7 +480,7 @@ test.describe('Room settings', () => {
         .getByText(`${alias} is now the primary address.`),
     ).toBeHidden({ timeout: 5_000 });
     await test.info().attach('room-addresses-desktop', {
-      body: await captureScreenshot(page, () => settings.screenshot()),
+      body: await settings.screenshot(),
       contentType: 'image/png',
     });
 
@@ -651,7 +648,7 @@ test.describe('Space member and address settings on a phone', () => {
       document.documentElement.style.fontSize = '125%';
     });
     await test.info().attach('space-members-mobile-light', {
-      body: await captureScreenshot(page, () => settings.screenshot()),
+      body: await settings.screenshot(),
       contentType: 'image/png',
     });
     await page.evaluate(() => {
@@ -659,7 +656,7 @@ test.describe('Space member and address settings on a phone', () => {
       document.documentElement.setAttribute('data-theme', 'amethyst');
     });
     await test.info().attach('space-members-mobile-dark-amethyst', {
-      body: await captureScreenshot(page, () => settings.screenshot()),
+      body: await settings.screenshot(),
       contentType: 'image/png',
     });
     await page.evaluate(({ dark, theme, fontSize }) => {
@@ -805,7 +802,7 @@ test.describe('Space member and address settings on a phone', () => {
     });
     await expect(row).toBeVisible();
     await test.info().attach('space-addresses-mobile-light', {
-      body: await captureScreenshot(page, () => settings.screenshot()),
+      body: await settings.screenshot(),
       contentType: 'image/png',
     });
     await page.evaluate(() => {
@@ -813,7 +810,7 @@ test.describe('Space member and address settings on a phone', () => {
       document.documentElement.setAttribute('data-theme', 'amethyst');
     });
     await test.info().attach('space-addresses-mobile-dark-amethyst', {
-      body: await captureScreenshot(page, () => settings.screenshot()),
+      body: await settings.screenshot(),
       contentType: 'image/png',
     });
     await page.evaluate(({ dark, theme, fontSize }) => {

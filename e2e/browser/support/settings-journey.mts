@@ -1,5 +1,5 @@
 import { devices, expect, test, type Page } from '../../fixtures.mts';
-import { isAndroidE2E, login, synapseSession } from '../../support/app.mts';
+import { login, synapseSession } from '../../support/app.mts';
 import { openSettingsFromRooms } from '../../support/journeys/navigation.mts';
 
 // Authenticated journeys through Settings — theme switching, profile editing,
@@ -42,11 +42,6 @@ export const themeAttr = (page: Page): Promise<string | null> =>
 /** Open a section inside whichever Settings surface the host owns. */
 export async function openSection(page: Page, path: string): Promise<void> {
   await page.getByTestId(`settings-nav-${path}`).click();
-  if (isAndroidE2E) {
-    await page.waitForURL((url) => url.pathname === `/settings/${path}`, {
-      timeout: 20_000,
-    });
-  }
   await expect(page.getByTestId('settings-detail')).not.toBeEmpty();
 }
 
