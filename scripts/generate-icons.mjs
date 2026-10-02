@@ -30,6 +30,8 @@ const inner = (svg) =>
 const MARK = inner(read('icon.svg'));
 const PLATED = inner(read('icon-plated.svg'));
 const PLATED_SQUARE = PLATED.replaceAll('rx="224"', 'rx="0"');
+/** The square plate's gradient and sheen without the mark. */
+const PLATE_ONLY = PLATED_SQUARE.replace(/<g stroke[\s\S]*$/, '');
 
 const doc = (w, h, body) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${body}</svg>`;
@@ -54,17 +56,17 @@ const platedRound = (s) =>
     `<clipPath id="c"><circle cx="${s / 2}" cy="${s / 2}" r="${s / 2}"/></clipPath><g clip-path="url(#c)">${plate(0, 0, s, PLATED_SQUARE)}</g>`,
   );
 /** Apple's macOS grid: an 824 tile centred on a transparent 1024 canvas. */
-const macGrid = (s) => doc(s, s, plate(s * 0.0977, s * 0.0977, s * 0.8047));
+const macGrid = (s) =>
+  doc(
+    s,
+    s,
+    `<defs><filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="${s * 0.0098}" stdDeviation="${s * 0.0098}" flood-color="#000000" flood-opacity="0.3"/></filter></defs><g filter="url(#shadow)">${plate(s * 0.0977, s * 0.0977, s * 0.8047)}</g>`,
+  );
 const markOnly = (s, color, fraction) => doc(s, s, mark(s, s, color, fraction));
 const markOnTile = (s, tile, color, fraction) =>
   doc(s, s, rect(s, s, tile) + mark(s, s, color, fraction));
 const maskable = (s) =>
-  doc(
-    s,
-    s,
-    plate(0, 0, s, PLATED_SQUARE.replace(/<g stroke[\s\S]*$/, '')) +
-      mark(s, s, '#ffffff', 0.56),
-  );
+  doc(s, s, plate(0, 0, s, PLATE_ONLY) + mark(s, s, '#ffffff', 0.56));
 const splash = (w, h) => {
   const side = Math.round(Math.min(w, h) * 0.25);
   return doc(
@@ -106,8 +108,11 @@ export const OUTPUTS = [
     () => markOnly(32, '#000000', 0.95),
     { rule: 'black-alpha' },
   ),
-  out('electron/build/trinityTray.png', 32, 32, () => plated(32)),
-  out('electron/build/trinityTray@2x.png', 64, 64, () => plated(64)),
+  out('electron/build/trinityTray.png', 16, 16, () => plated(16)),
+  out('electron/build/trinityTray@2x.png', 32, 32, () => plated(32)),
+  // Linux AppIndicators draw larger than the Windows notification area.
+  out('electron/build/trinityTrayLinux.png', 32, 32, () => plated(32)),
+  out('electron/build/trinityTrayLinux@2x.png', 64, 64, () => plated(64)),
   out('electron/build/notificationIcon.png', 256, 256, () => plated(256)),
   // Web and PWA
   out(`${ICON_DIR}/icon-1024.png`, 1024, 1024, () => plated(1024)),
@@ -148,6 +153,12 @@ export const OUTPUTS = [
       () => markOnly(108 * k, '#ffffff', 0.42),
       { rule: 'white-alpha', safeRadius: 0.3056 },
     ),
+    out(
+      `${RES}/mipmap-${dpi}/ic_launcher_background.png`,
+      108 * k,
+      108 * k,
+      () => doc(108 * k, 108 * k, plate(0, 0, 108 * k, PLATE_ONLY)),
+    ),
     out(`${RES}/mipmap-${dpi}/ic_launcher.png`, 48 * k, 48 * k, () =>
       plated(48 * k),
     ),
@@ -158,7 +169,7 @@ export const OUTPUTS = [
       `${RES}/drawable-${dpi}/ic_stat_trinity.png`,
       24 * k,
       24 * k,
-      () => markOnly(24 * k, '#ffffff', 0.9),
+      () => markOnly(24 * k, '#ffffff', 0.83),
       { rule: 'white-alpha' },
     ),
   ]),
@@ -202,19 +213,19 @@ export const OUTPUTS = [
     () => markOnly(1024, TINT_MARK, 0.66),
     { rule: 'mark-on-transparent' },
   ),
-  ...[
-    'splash-2732x2732.png',
-    'splash-2732x2732-1.png',
-    'splash-2732x2732-2.png',
-  ].map((name) =>
-    out(
-      `${IOS}/Splash.imageset/${name}`,
-      2732,
-      2732,
-      () => splash(2732, 2732),
-      { alpha: false },
-    ),
+  out(
+    `${IOS}/Splash.imageset/splash-2732x2732.png`,
+    2732,
+    2732,
+    () => splash(2732, 2732),
+    { alpha: false },
   ),
+  // The other two scales are the same image; copy it instead of rendering it again.
+  ...['splash-2732x2732-1.png', 'splash-2732x2732-2.png'].map((name) => ({
+    path: `${IOS}/Splash.imageset/${name}`,
+    copyOf: `${IOS}/Splash.imageset/splash-2732x2732.png`,
+    fromOutput: true,
+  })),
   // Copied, not rendered: the transparent mark as an SVG favicon.
   { path: `${ICON_DIR}/favicon.svg`, copyOf: `${ICON_DIR}/icon.svg` },
 ];
@@ -265,7 +276,10 @@ export function renderIcons(outRoot = ROOT) {
     const target = join(outRoot, output.path);
     mkdirSync(dirname(target), { recursive: true });
     if (output.copyOf) {
-      writeFileSync(target, readFileSync(join(ROOT, output.copyOf)));
+      writeFileSync(
+        target,
+        readFileSync(join(output.fromOutput ? outRoot : ROOT, output.copyOf)),
+      );
       continue;
     }
     const image = new Resvg(output.svg(), {

@@ -59,6 +59,10 @@ extraResources:
     to: build/icon.png
   - from: build/trinityTray@2x.png
     to: build/trinityTray@2x.png
+  - from: build/trinityTrayLinux.png
+    to: build/trinityTrayLinux.png
+  - from: build/trinityTrayLinux@2x.png
+    to: build/trinityTrayLinux@2x.png
   - from: build/trinityTrayTemplate@2x.png
     to: build/trinityTrayTemplate@2x.png
   - from: build/notificationIcon.png

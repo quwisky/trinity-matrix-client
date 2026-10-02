@@ -34,6 +34,77 @@ const pixels = (icon) => {
 const byRule = (rule) => icons.filter((icon) => icon.rule === rule);
 
 describe('generated icons', () => {
+  const find = (path) => icons.find((i) => i.path === path);
+  const alphaAt = (icon, x, y) => icon.rgba[(y * icon.width + x) * 4 + 3];
+
+  it('renders the iOS splash once and copies it for the other scales', () => {
+    const splashes = OUTPUTS.filter((o) => o.path.includes('Splash.imageset/'));
+    expect(splashes.filter((o) => o.width).map((o) => o.path)).toEqual([
+      'ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732.png',
+    ]);
+    expect(splashes.filter((o) => o.copyOf)).toHaveLength(2);
+  });
+
+  it('keeps the Android notification mark within the 20 dp live area', () => {
+    const icon = find(
+      'android/app/src/main/res/drawable-xxxhdpi/ic_stat_trinity.png',
+    );
+    let min = icon.width;
+    let max = -1;
+    for (let i = 0; i < icon.rgba.length; i += 4) {
+      if (icon.rgba[i + 3] > 0) {
+        const x = (i / 4) % icon.width;
+        min = Math.min(min, x);
+        max = Math.max(max, x);
+      }
+    }
+    expect(max - min + 1).toBeLessThanOrEqual((20 / 24) * icon.width);
+  });
+
+  it('gives the adaptive icon an opaque gradient background without the mark', () => {
+    const icon = find(
+      'android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_background.png',
+    );
+    expect([icon.width, icon.height]).toEqual([432, 432]);
+    const px = (x, y) =>
+      icon.rgba.subarray(
+        (y * icon.width + x) * 4,
+        (y * icon.width + x) * 4 + 4,
+      );
+    for (let i = 3; i < icon.rgba.length; i += 4)
+      expect(icon.rgba[i]).toBe(255);
+    expect(px(10, 10)).not.toEqual(px(420, 420));
+    let white = 0;
+    for (let i = 0; i < icon.rgba.length; i += 4) {
+      if (
+        icon.rgba[i] > 240 &&
+        icon.rgba[i + 1] > 240 &&
+        icon.rgba[i + 2] > 240
+      )
+        white += 1;
+    }
+    expect(white).toBe(0);
+  });
+
+  it('casts a soft shadow below the macOS tile', () => {
+    const icon = find('electron/build/icon-mac.png');
+    const below = Math.round(1024 * (0.0977 + 0.8047)) + 8;
+    const a = alphaAt(icon, 512, below);
+    expect(a).toBeGreaterThan(0);
+    expect(a).toBeLessThan(255);
+  });
+
+  it('sizes the Windows tray for 16 px and the Linux tray for 32 px, each with @2x', () => {
+    expect(
+      [
+        'electron/build/trinityTray.png',
+        'electron/build/trinityTray@2x.png',
+        'electron/build/trinityTrayLinux.png',
+        'electron/build/trinityTrayLinux@2x.png',
+      ].map((path) => find(path)?.width),
+    ).toEqual([16, 32, 32, 64]);
+  });
+
   it('keeps the Windows/Linux icon full-bleed and insets only the macOS one', () => {
     const at = (path, x, y) => {
       const icon = icons.find((i) => i.path === path);
@@ -102,7 +173,7 @@ describe('generated icons', () => {
       const cy = icon.height / 2;
       const limit = icon.safeRadius * icon.width;
       const mark = pixels(icon).filter((p) =>
-        icon.rule === 'white-alpha' || icon.rule === 'mark-on-transparent'
+        icon.rule === 'white-alpha'
           ? p.a > 0
           : p.r > 240 && p.g > 240 && p.b > 240,
       );

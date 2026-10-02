@@ -26,3 +26,16 @@ export function resolveIconFile(fileName: string): string | undefined {
     fs.existsSync(candidate),
   );
 }
+
+/** The tray image for a platform: a template on macOS, a larger icon for Linux AppIndicators. */
+export function trayIconFile(platform: NodeJS.Platform): string {
+  if (platform === 'darwin') return 'trinityTrayTemplate.png';
+  return platform === 'linux' ? 'trinityTrayLinux.png' : 'trinityTray.png';
+}
+
+/** BrowserWindow icon options: the generated icon on Windows/Linux, the bundle icon on macOS. */
+export function windowIconOptions(platform: NodeJS.Platform): {
+  icon?: string;
+} {
+  return platform === 'darwin' ? {} : { icon: resolveIconFile('icon.png') };
+}

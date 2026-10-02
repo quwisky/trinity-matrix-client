@@ -44,6 +44,11 @@ describe('icon wiring', () => {
     expect(read(`${RES}/values/ic_launcher_background.xml`)).toContain(
       '#5865F2',
     );
+    for (const file of ['ic_launcher.xml', 'ic_launcher_round.xml']) {
+      expect(read(`${RES}/mipmap-anydpi-v26/${file}`)).toContain(
+        '<background android:drawable="@mipmap/ic_launcher_background"/>',
+      );
+    }
     const manifest = read('android/app/src/main/AndroidManifest.xml');
     expect(manifest).toContain(
       'com.google.firebase.messaging.default_notification_icon',
@@ -82,9 +87,12 @@ describe('icon wiring', () => {
 });
 
 describe('desktop icon wiring', () => {
-  it('sets the window icon outside macOS and uses the dedicated notification icon', () => {
-    expect(read('electron/src/window.ts')).toMatch(
-      /process\.platform === 'darwin'\s*\?\s*{}\s*:\s*{\s*icon: resolveIconFile\('icon\.png'\)/,
+  it('takes window and tray icons from the tested icon helpers and the dedicated notification icon', () => {
+    expect(read('electron/src/window.ts')).toContain(
+      '...windowIconOptions(process.platform)',
+    );
+    expect(read('electron/src/tray.ts')).toContain(
+      'trayIconFile(process.platform)',
     );
     expect(read('electron/src/notifications.ts')).toContain(
       "iconCandidatePaths('notificationIcon.png')",
@@ -103,6 +111,8 @@ describe('desktop icon wiring', () => {
       'icon.png',
       'trinityTray.png',
       'trinityTray@2x.png',
+      'trinityTrayLinux.png',
+      'trinityTrayLinux@2x.png',
       'trinityTrayTemplate.png',
       'trinityTrayTemplate@2x.png',
       'notificationIcon.png',
