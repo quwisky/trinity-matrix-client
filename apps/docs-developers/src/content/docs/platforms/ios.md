@@ -35,3 +35,5 @@ The static verifier checks shared host contracts on any supported development ma
 Keep plugin access in `libs/platform-native` adapters and consume shared host operations from application code. Test safe areas, keyboard resizing, system browser authentication, deep links, lifecycle, secure storage, notification activation, and Back behavior in the environment whose behavior changed.
 
 Record iOS checks as unavailable when the required Apple environment is missing. Read [host capabilities](../../architecture/host-capabilities/) and [desktop and native tests](../../testing/desktop-and-native-tests/).
+
+App icons and splash screens are generated from shared sources; see [application icons](../electron/#application-icons).

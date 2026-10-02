@@ -76,7 +76,8 @@
     "ios:run": "node scripts/nx.mjs run trinity-ios:run",
     "ios:build": "node scripts/nx.mjs run trinity-ios:build",
     "ios:verify": "node scripts/nx.mjs run trinity-ios:verify",
-    "ios:build:prebuilt": "node scripts/nx.mjs run trinity-ios:build-prebuilt"
+    "ios:build:prebuilt": "node scripts/nx.mjs run trinity-ios:build-prebuilt",
+    "icons:generate": "node scripts/generate-icons.mjs"
   },
   "private": true,
   "packageManager": "pnpm@12.8.1",
@@ -168,6 +169,7 @@
     "@nx/vite": "23.2.1",
     "@nx/web": "23.2.1",
     "@playwright/test": "^1.62.1",
+    "@resvg/resvg-js": "2.6.2",
     "@schematics/angular": "22.2.0",
     "@spartan-ng/cli": "1.5.0",
     "@storybook/addon-a11y": "10.6.0",

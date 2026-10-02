@@ -12,6 +12,11 @@ const config: CapacitorConfig = {
     Keyboard: {
       resize: 'native',
     },
+    // Android status-bar icon for local notifications: white-only (Android tints it).
+    LocalNotifications: {
+      smallIcon: 'ic_stat_trinity',
+      iconColor: '#5865F2',
+    },
   },
 };
 

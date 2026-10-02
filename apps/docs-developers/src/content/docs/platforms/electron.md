@@ -36,6 +36,10 @@ Renderer code uses the validated preload API, not direct Node or Electron access
 
 Packaging targets produce host-specific artifacts and may require native toolchains or signing configuration. Do not describe an unsigned development package as a release artifact. Read [host capabilities](../../architecture/host-capabilities/) and [desktop and native tests](../../testing/desktop-and-native-tests/).
 
+## Application icons {#application-icons}
+
+All app, tray, notification and splash icons are generated from two sources in `apps/trinity/src/assets/icon/`: `icon-plated.svg` (the app icon) and `icon.svg` (the transparent mark, recoloured for single-colour variants). After editing either, run `pnpm icons:generate` and commit the results; `scripts/generate-icons.spec.mjs` fails when a committed icon no longer matches a fresh render.
+
 ## Data and updates {#data-updates}
 
 The desktop app stores its data in the `Trinity` folder under the operating system's application-data directory (`~/Library/Application Support/Trinity`, `%APPDATA%\Trinity`, `~/.config/Trinity`). The folder follows `productName` in `electron/package.json`; renaming it after a release would strand users' sessions and encrypted keys.

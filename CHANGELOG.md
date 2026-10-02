@@ -36,6 +36,13 @@ All notable changes to this project are documented here. The format is based on
   sections, mobile Back focus, navigation history and the search during resizing are preserved.
   Shared Settings frames also return to side-by-side panes when a compact window is widened.
 
+### Changed
+
+- Trinity's icon now appears correctly everywhere: Android and iOS use the Trinity icon
+  instead of a placeholder, with Android themed icons, a proper notification icon and
+  iOS dark and tinted variants; desktop gets sharper tray and notification icons and a
+  macOS-style Dock icon; installed web apps get maskable and monochrome icons.
+
 ### Fixed
 
 - Space settings no longer gets stuck on "Space contents could not be loaded" after several
