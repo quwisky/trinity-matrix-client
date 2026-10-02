@@ -183,6 +183,26 @@ jobs:
       # local `trinity-dev` signature. electron-builder owns real signing below.
       - run: pnpm electron:build:release
 
+      # Half a signing setup yields an app that is signed but not notarized, or the
+      # reverse; Gatekeeper and the Homebrew tap reject both. All five or none.
+      - name: macOS signing secrets are complete
+        if: matrix.platform == 'mac'
+        env:
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          count=0
+          for name in MAC_CSC_LINK MAC_CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -n "${!name:-}" ]; then count=$((count + 1)); fi
+          done
+          if [ "$count" -ne 0 ] && [ "$count" -ne 5 ]; then
+            echo "::error::Set all five macOS signing secrets or none; $count of 5 are set."
+            exit 1
+          fi
+
       - name: electron-builder ${{ matrix.flag }}
         working-directory: electron
         run: pnpm exec electron-builder ${{ matrix.flag }} --publish never
