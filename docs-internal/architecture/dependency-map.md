@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **78 Nx projects** and **282 dependencies**. No project cycles detected.
+This snapshot contains **79 Nx projects** and **287 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -176,7 +176,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `radio-group`                     | `libs/spartan/radio-group`             | role:design-system; capability:design-system    |                   1 |
 | `runtime-host`                    | `libs/runtime/host`                    | role:kernel; capability:host                    |                   0 |
 | `runtime-preferences`             | `libs/runtime/preferences`             | role:kernel; capability:preferences             |                   0 |
-| `scripts`                         | `scripts`                              | unmanaged tooling/test                          |                   4 |
+| `scripts`                         | `scripts`                              | unmanaged tooling/test                          |                   5 |
 | `select`                          | `libs/spartan/select`                  | role:design-system; capability:design-system    |                   1 |
 | `separator`                       | `libs/spartan/separator`               | role:design-system; capability:design-system    |                   1 |
 | `sonner`                          | `libs/spartan/sonner`                  | role:design-system; capability:design-system    |                   1 |
@@ -198,6 +198,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `trinity-e2e-browser`             | `e2e/browser`                          | unmanaged tooling/test                          |                   5 |
 | `trinity-e2e-components`          | `e2e/components`                       | unmanaged tooling/test                          |                   7 |
 | `trinity-e2e-electron`            | `e2e/electron`                         | unmanaged tooling/test                          |                   3 |
+| `trinity-e2e-mobile`              | `e2e/mobile`                           | unmanaged tooling/test                          |                   4 |
 | `trinity-e2e-protocol`            | `e2e/protocol`                         | unmanaged tooling/test                          |                   4 |
 | `trinity-e2e-support`             | `e2e/support`                          | unmanaged tooling/test                          |                   0 |
 | `trinity-e2e-web`                 | `e2e/web`                              | unmanaged tooling/test                          |                   6 |

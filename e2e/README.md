@@ -70,6 +70,22 @@ Shared message-action journeys must use Android's long-press action sheet throug
 even in a wide WebView. The thread-preview quote journey exercises Reply through each
 platform's action surface before checking quote content and jump behavior.
 
+## Mobile (Android)
+
+`pnpm e2e:mobile` runs the WebdriverIO and Appium suite in `e2e/mobile` against the
+installed Capacitor app. A test belongs there only when it needs the installed app (a
+native plugin, OS UI, a hardware or system event, a deep link); everything else stays in
+`e2e/browser`.
+
+- Prerequisites: Android SDK, the `Trinity_API_36` AVD, JDK 21 and Docker (Synapse).
+- `pnpm e2e:mobile` installs the pinned UiAutomator2 driver into the repo-local `.appium`
+  (`node scripts/setup-appium.mjs` does that step alone), then runs every spec.
+- `pnpm e2e:mobile -- --spec e2e/mobile/specs/<file>.e2e.mts` runs one spec.
+- Artifacts land in `dist/.playwright/trinity-e2e-mobile/<run-id>/mobile.android/wdio`
+  (Appium log, JUnit, failure screenshots and native hierarchies). Text artifacts are
+  scrubbed of Matrix ids, tokens and passwords when the run completes.
+- CI runs this as the `mobile-e2e` job beside the `android-e2e` shards, with no retries.
+
 ## MSC2545 image-pack management
 
 The image-pack journey is shared by browser, Android WebView, and Electron wrappers. It

@@ -36,6 +36,7 @@
     "browser/**",
     "components/**",
     "electron/**",
+    "mobile/**",
     "protocol/**",
     "web/**"
   ]

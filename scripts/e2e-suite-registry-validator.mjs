@@ -19,6 +19,7 @@ const TARGET_PROJECT_BY_ENVIRONMENT = {
   browser: 'trinity-e2e-browser',
   components: 'trinity-e2e-components',
   electron: 'trinity-e2e-electron',
+  mobile: 'trinity-e2e-mobile',
   protocol: 'trinity-e2e-protocol',
   web: 'trinity-e2e-web',
 };
@@ -32,6 +33,7 @@ const PROJECT_FILES = {
   'trinity-e2e-browser': 'e2e/browser/project.json',
   'trinity-e2e-components': 'e2e/components/project.json',
   'trinity-e2e-electron': 'e2e/electron/project.json',
+  'trinity-e2e-mobile': 'e2e/mobile/project.json',
   'trinity-e2e-protocol': 'e2e/protocol/project.json',
   'trinity-e2e-web': 'e2e/web/project.json',
 };
@@ -45,6 +47,7 @@ const ACTIVE_LIFECYCLE_PROJECTS = new Set([
   'trinity-e2e-browser',
   'trinity-e2e-components',
   'trinity-e2e-electron',
+  'trinity-e2e-mobile',
   'trinity-e2e-protocol',
   'trinity-e2e-web',
 ]);

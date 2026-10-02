@@ -12,6 +12,7 @@ import {
   buildAggregateReport,
   readPlaywrightSuiteSummary,
   suiteSummaryPath,
+  wdioSuiteSummary,
   writeAggregateReport,
 } from './execution-report.mts';
 
@@ -185,4 +186,55 @@ describe('E2E execution reports', () => {
       );
     },
   );
+
+  it('maps a passing WebdriverIO run onto a summary the aggregate accepts', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'trinity-suite-report-'));
+    directories.push(directory);
+    const file = join(directory, 'suite-summary.json');
+    const summary = wdioSuiteSummary({
+      suiteId: 'mobile.android',
+      exitCode: 0,
+      durationMs: 1200,
+      result: { passed: 2, failed: 0, retries: 0 },
+    });
+    writeFileSync(file, `${JSON.stringify(summary)}\n`);
+
+    expect(readPlaywrightSuiteSummary(file)).toEqual({
+      schemaVersion: 1,
+      suiteId: 'mobile.android',
+      status: 'passed',
+      attempts: 2,
+      retries: 0,
+      durationMs: 1200,
+      attemptDurationMs: 1200,
+      attemptsByStatus: { passed: 2 },
+    });
+  });
+
+  it('counts retried spec files as failed attempts', () => {
+    expect(
+      wdioSuiteSummary({
+        suiteId: 'mobile.android',
+        exitCode: 1,
+        durationMs: 5,
+        result: { passed: 1, failed: 1, retries: 2 },
+      }),
+    ).toMatchObject({
+      status: 'failed',
+      attempts: 4,
+      retries: 2,
+      attemptsByStatus: { passed: 1, failed: 3 },
+    });
+  });
+
+  it('fails a run whose launcher exited non-zero without a failed spec', () => {
+    expect(
+      wdioSuiteSummary({
+        suiteId: 'mobile.android',
+        exitCode: 1,
+        durationMs: 5,
+        result: { passed: 0, failed: 0, retries: 0 },
+      }),
+    ).toMatchObject({ status: 'failed', attempts: 0, attemptsByStatus: {} });
+  });
 });

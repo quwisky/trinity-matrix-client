@@ -125,8 +125,27 @@ export const HOST_E2E_SUITES = defineSuites([
       'e2e/android/playwright.config.mts',
     ],
   },
+  {
+    id: 'mobile.android',
+    environment: 'mobile',
+    capabilities: ['composition', 'host'],
+    contractTypes: ['host', 'journey'],
+    currentTarget: 'trinity-e2e-mobile:e2e',
+    targetProject: 'trinity-e2e-mobile',
+    prerequisites: ['android-avd', 'android-sdk', 'docker', 'java-21', 'kvm'],
+    availabilityPolicy: 'required',
+    ciTier: 'pull-request',
+    cachePolicy: 'never',
+    serializationKeys: ['android-avd', 'synapse'],
+    timeoutClass: 'host',
+    canonicalScript: 'e2e:mobile',
+    currentArtifactRoot: 'dist/.playwright/trinity-e2e-mobile/<run-id>',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-mobile/<run-id>',
+    sourceEntrypoints: ['e2e/mobile/run.mts', 'e2e/mobile/wdio.conf.mts'],
+  },
 ]);
 
 export const ELECTRON_FULL_SUITE = HOST_E2E_SUITES[3];
 export const ELECTRON_SMOKE_SUITE = HOST_E2E_SUITES[4];
 export const ANDROID_INSTALLED_WEBVIEW_SUITE = HOST_E2E_SUITES[5];
+export const MOBILE_ANDROID_SUITE = HOST_E2E_SUITES[6];

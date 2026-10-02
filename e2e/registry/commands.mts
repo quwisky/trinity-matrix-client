@@ -53,6 +53,11 @@ export const E2E_AGGREGATE_TARGETS = [
     unavailablePolicy: 'fail',
     selection: { kind: 'environment', value: 'android' },
   },
+  {
+    target: 'e2e-mobile',
+    unavailablePolicy: 'fail',
+    selection: { kind: 'environment', value: 'mobile' },
+  },
 ] as const satisfies readonly E2EAggregateTarget[];
 
 export const E2E_PACKAGE_SCRIPTS = [
@@ -142,6 +147,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     command: 'nx run trinity-e2e:e2e-android',
     kind: 'canonical',
     suiteIds: ['android.installed-webview'],
+  },
+  {
+    name: 'e2e:mobile',
+    command: 'nx run trinity-e2e:e2e-mobile',
+    kind: 'canonical',
+    suiteIds: ['mobile.android'],
   },
   {
     name: 'e2e:verify',
@@ -298,6 +309,11 @@ export const E2E_CI_ENTRYPOINTS = [
       'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/4',
     tier: 'pull-request',
     suiteIds: ['android.installed-webview'],
+  },
+  {
+    command: 'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:mobile',
+    tier: 'pull-request',
+    suiteIds: ['mobile.android'],
   },
   {
     command: 'pnpm e2e:scheduled',
