@@ -12,16 +12,17 @@ import {
 } from 'matrix-js-sdk';
 import {
   Observable,
+  asyncScheduler,
   catchError,
   defer,
-  from,
   map,
   of,
   switchMap,
+  throttleTime,
   throwError,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { roomAvatarMxc } from '@trinity/util/matrix';
+import { retryTransient, roomAvatarMxc } from '@trinity/util/matrix';
 import { directMapOf, initialOf } from './room-projection';
 import { RoomLibraryService } from './room-library.service';
 import {
@@ -38,6 +39,8 @@ import { compareOrder } from './space-child-order';
 import { SpacesService } from './spaces.service';
 
 const HIERARCHY_LIMIT = 100;
+/** Minimum spacing between hierarchy refreshes triggered by sync invalidations. */
+const HIERARCHY_REFRESH_MS = 250;
 
 export interface SpaceContentsTarget {
   readonly accountId: string;
@@ -231,7 +234,16 @@ export class SpaceContentsService {
         client.off(RoomEvent.MyMembership, publish);
       };
     });
-    return invalidations.pipe(switchMap(() => this.load(target, client)));
+    // Synapse allows each user a burst of 10 hierarchy reads at 5/s, and one sync batch
+    // can announce many Rooms. Leading + trailing keeps the first read immediate and the
+    // last event reflected while holding the rate under that budget.
+    return invalidations.pipe(
+      throttleTime(HIERARCHY_REFRESH_MS, asyncScheduler, {
+        leading: true,
+        trailing: true,
+      }),
+      switchMap(() => this.load(target, client)),
+    );
   }
 
   private load(
@@ -240,7 +252,8 @@ export class SpaceContentsService {
   ): Observable<SpaceContentsSnapshot> {
     const local = this.localSnapshot(target, client);
     if (local.availability !== 'available') return of(local);
-    return from(fetchHierarchyRooms(client, target.spaceId)).pipe(
+    return defer(() => fetchHierarchyRooms(client, target.spaceId)).pipe(
+      retryTransient(),
       map((rooms) => {
         if (this.matrix.clientFor(target.accountId) !== client) {
           return this.unavailableSnapshot(target);

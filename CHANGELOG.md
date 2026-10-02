@@ -34,6 +34,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Space settings no longer gets stuck on "Space contents could not be loaded" after several
+  quick changes. The Rooms & spaces list now batches its refreshes to stay within the
+  homeserver's rate limit, and retries automatically when a request is still throttled.
+
 - Browser Back from an open room now returns to the room list after the window grows from
   phone to desktop width. Previously, if Back arrived before the layout caught up, it was
   treated as closing the phone conversation and the room reopened.
