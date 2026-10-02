@@ -9,7 +9,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { RoomLibraryService } from './room-library.service';
 import { ROOM_LIBRARY_GOVERNANCE_POLICY } from './room-library-governance-policy';
 import { SpaceChildrenService } from './space-children.service';
-import { SpaceContentsService } from './space-contents.service';
+import {
+  SpaceContentsService,
+  type SpaceContentsSnapshot,
+} from './space-contents.service';
 import { SpacesService } from './spaces.service';
 
 const TARGET = { accountId: '@opening:hs', spaceId: '!parent:hs' } as const;
@@ -261,8 +264,7 @@ describe('SpaceContentsService', () => {
           ),
         )
         .mockResolvedValue(success);
-      const snapshots: { hierarchyError: string | null; items: unknown[] }[] =
-        [];
+      const snapshots: SpaceContentsSnapshot[] = [];
       const subscription = service
         .observe(TARGET)
         .subscribe((snapshot) => snapshots.push(snapshot));
