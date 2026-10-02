@@ -13,19 +13,13 @@ const relativeImports = (source: string): string[] =>
 
 describe('E2E support architecture', () => {
   it('keeps environment adapters independent and selects them only at composition', () => {
-    const adapters = [
-      'e2e/android/fixtures.mts',
-      'e2e/web-fixtures.mts',
-      'e2e/electron/fixtures.mts',
-    ];
-    const [android, web, electron] = adapters.map(read);
+    const adapters = ['e2e/web-fixtures.mts', 'e2e/electron/fixtures.mts'];
+    const [web, electron] = adapters.map(read);
     const composition = read('e2e/fixtures.mts');
-    expect(android).not.toMatch(/\.\.\/(?:browser|web-fixtures)/);
-    expect(web).not.toMatch(/\.\/android\//);
-    expect(electron).not.toMatch(/\.\.\/(?:android|browser)\//);
+    expect(web).not.toMatch(/\.\/(?:android|mobile)\//);
+    expect(electron).not.toMatch(/\.\.\/(?:android|mobile|browser)\//);
     expect(electron).not.toMatch(/\.\.\/web-fixtures/);
-    expect(composition).toContain("import('./android/fixtures.mts')");
-    expect(composition).toContain("import('./web-fixtures.mts')");
+    expect(composition).toContain("from './web-fixtures.mts'");
     for (const adapter of adapters) {
       for (const specifier of relativeImports(read(adapter)).filter((value) =>
         value.startsWith('.'),
@@ -37,8 +31,8 @@ describe('E2E support architecture', () => {
     }
   });
 
-  it('prevents Android and Electron implementations from importing another environment fixture', () => {
-    for (const environment of ['android', 'electron']) {
+  it('prevents Electron implementations from importing another environment fixture', () => {
+    for (const environment of ['electron']) {
       const sources = globSync(`e2e/${environment}/**/*.{mjs,mts,ts}`, {
         cwd: workspaceRoot,
       });
@@ -57,7 +51,7 @@ describe('E2E support architecture', () => {
   });
 
   it('keeps host applications as delegates of lifecycle-owned targets', () => {
-    const android = JSON.parse(read('e2e/android/project.json')) as {
+    const mobile = JSON.parse(read('e2e/mobile/project.json')) as {
       name: string;
       targets: Record<string, { cache?: boolean; parallelism?: boolean }>;
     };
@@ -68,22 +62,22 @@ describe('E2E support architecture', () => {
     const androidHost = read('android/project.json');
     const electronHost = read('electron/project.json');
 
-    expect(android.name).toBe('trinity-e2e-android');
+    expect(mobile.name).toBe('trinity-e2e-mobile');
     expect(electron.name).toBe('trinity-e2e-electron');
     expect(
-      JSON.parse(read('e2e/android/project.json')).implicitDependencies,
+      JSON.parse(read('e2e/mobile/project.json')).implicitDependencies,
     ).toEqual(['trinity', 'trinity-android', 'trinity-e2e-support']);
     expect(
       JSON.parse(read('e2e/electron/project.json')).implicitDependencies,
     ).toEqual(['trinity-desktop', 'trinity-e2e-support']);
     for (const target of [
-      android.targets['e2e'],
+      mobile.targets['e2e'],
       electron.targets['full'],
       electron.targets['smoke'],
     ]) {
       expect(target).toMatchObject({ cache: false, parallelism: false });
     }
-    expect(androidHost).toContain('trinity-e2e-android:e2e');
+    expect(androidHost).toContain('trinity-e2e-mobile:e2e');
     expect(electronHost).toContain('trinity-e2e-electron:full');
     expect(electronHost).toContain('trinity-e2e-electron:smoke');
   });

@@ -236,6 +236,16 @@ describe('AvatarService', () => {
 // identity's media — leaking the association, and failing outright where the two servers
 // don't federate media to each other.
 describe('AvatarService per-account resolution', () => {
+  // Stub the network like the block above: without it, resolve() really fetches
+  // `https://owner/…`, which only passes where that host fails to resolve quickly.
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(okResponse()));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   function setupAccounts() {
     const activeClient = fakeClient();
     const ownerClient = fakeClient({

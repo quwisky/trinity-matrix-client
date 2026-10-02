@@ -64,10 +64,6 @@ async function openSeededRoom(page: import('@playwright/test').Page) {
 }
 
 test.describe('Mobile composer insert sheet', () => {
-  test.skip(
-    process.env['TRINITY_E2E_PLATFORM'] === 'android',
-    'Android has a separate installed-WebView journey',
-  );
   test.skip(!session.available, 'requires the disposable Synapse homeserver');
   test.beforeAll(async ({ request, workerResourceNamespace }) => {
     const runId = workerResourceNamespace.role('composer-insert-sheet');

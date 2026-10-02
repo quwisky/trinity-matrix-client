@@ -150,6 +150,42 @@ export function readPlaywrightSuiteSummary(
   };
 }
 
+/** Spec-file counts WebdriverIO's launcher passes to `onComplete`. */
+export interface WdioLauncherResult {
+  readonly passed: number;
+  readonly failed: number;
+  readonly retries: number;
+}
+
+/**
+ * Map a WebdriverIO run onto the suite summary the aggregate runner reads. WebdriverIO
+ * reports spec files, not tests, so an attempt here is one spec-file run; every retried
+ * attempt failed, and the run's wall clock stands in for summed attempt time.
+ */
+export function wdioSuiteSummary(options: {
+  readonly suiteId: string;
+  readonly exitCode: number;
+  readonly durationMs: number;
+  readonly result: WdioLauncherResult;
+}): PlaywrightSuiteSummary {
+  const { passed, failed, retries } = options.result;
+  const attemptsByStatus = Object.fromEntries(
+    Object.entries({ passed, failed: failed + retries }).filter(
+      ([, count]) => count > 0,
+    ),
+  );
+  return {
+    schemaVersion: 1,
+    suiteId: options.suiteId,
+    status: options.exitCode === 0 && failed === 0 ? 'passed' : 'failed',
+    attempts: passed + failed + retries,
+    retries,
+    durationMs: options.durationMs,
+    attemptDurationMs: options.durationMs,
+    attemptsByStatus,
+  };
+}
+
 function emptyOutcomeCounts(): Record<E2EOutcome, number> {
   return Object.fromEntries(
     E2E_OUTCOMES.map((outcome) => [outcome, 0]),

@@ -1,7 +1,6 @@
 import { expect, test, testResourceId } from '../../fixtures.mts';
 import { registerUser } from '../../support/account.mts';
 import {
-  isAndroidE2E,
   login,
   synapseSession,
   waitForSent,
@@ -170,11 +169,9 @@ test.describe('Code block rendering', () => {
       caption.content === 'attr(language)' ||
         caption.content.includes('python'),
     ).toBe(true);
-    expect((await captionStyle()).opacity).toBe(isAndroidE2E ? '1' : '0');
-    if (!isAndroidE2E) {
-      await pre.hover();
-      await expect.poll(async () => (await captionStyle()).opacity).toBe('1');
-    }
+    expect((await captionStyle()).opacity).toBe('0');
+    await pre.hover();
+    await expect.poll(async () => (await captionStyle()).opacity).toBe('1');
 
     // And it stays out of the text: the <pre> reads exactly as its <code> does, so
     // selecting or copying the block yields only the sender's source — and the

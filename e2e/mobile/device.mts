@@ -31,7 +31,10 @@ export function parseOnlineDevices(output: string): string[] {
 }
 
 /** Return an existing reverse target for one local socket, if the device has one. */
-export function reverseTarget(output: string, local: string): string | undefined {
+export function reverseTarget(
+  output: string,
+  local: string,
+): string | undefined {
   for (const line of output.split(/\r?\n/)) {
     const [, candidateLocal, remote] = line.trim().split(/\s+/);
     if (candidateLocal === local) return remote;
@@ -48,7 +51,9 @@ export function validateEmulator(properties: DeviceProperties): string[] {
     );
   }
   if (properties.abi !== REQUIRED_ABI) {
-    problems.push(`ABI ${properties.abi || '<unknown>'} is not ${REQUIRED_ABI}`);
+    problems.push(
+      `ABI ${properties.abi || '<unknown>'} is not ${REQUIRED_ABI}`,
+    );
   }
   return problems;
 }

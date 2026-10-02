@@ -1,7 +1,6 @@
 import { expect, test, testResourceId } from '../../../fixtures.mts';
 import {
   fillLabeledInput,
-  isAndroidE2E,
   login,
   waitForRooms,
 } from '../../../support/app.mts';
@@ -9,7 +8,6 @@ import { registerUser } from '../../../support/account.mts';
 import {
   installBadgeRecorder,
   recordedBadgeCalls,
-  recordedBadgeCount,
 } from '../../../support/platform-badge.mts';
 import {
   addAccountViaUi,
@@ -151,22 +149,16 @@ test.describe('Multiple accounts', () => {
     await expect(page.locator('.userbar__handle')).toContainText(`@${b.user}:`);
 
     // The badge reflects the cross-account total: A(0) + B(SEED) = SEED.
-    if (isAndroidE2E) {
-      await expect
-        .poll(() => recordedBadgeCount(page), { timeout: 30_000 })
-        .toBe(SEED);
-    } else {
-      await page.waitForFunction(
-        (seed) => {
-          const w = window as unknown as { __appBadgeCalls?: unknown[][] };
-          return (w.__appBadgeCalls ?? []).some(
-            (call) => call[0] === 'set' && call[1] === seed,
-          );
-        },
-        SEED,
-        { timeout: 30_000, polling: 300 },
-      );
-    }
+    await page.waitForFunction(
+      (seed) => {
+        const w = window as unknown as { __appBadgeCalls?: unknown[][] };
+        return (w.__appBadgeCalls ?? []).some(
+          (call) => call[0] === 'set' && call[1] === seed,
+        );
+      },
+      SEED,
+      { timeout: 30_000, polling: 300 },
+    );
 
     // Switch to account A (0 unread of its own). Because the total is aggregated
     // across every account, B's unread still counts — the badge must NOT clear or
@@ -178,11 +170,6 @@ test.describe('Multiple accounts', () => {
       .filter({ hasText: `@${userA}:` })
       .click();
     await expect(page.locator('.userbar__handle')).toContainText(`@${userA}:`);
-
-    if (isAndroidE2E) {
-      await expect.poll(() => recordedBadgeCount(page)).toBe(SEED);
-      return;
-    }
 
     const calls = await recordedBadgeCalls(page);
     const lastSet = [...calls].reverse().find((call) => call[0] === 'set');

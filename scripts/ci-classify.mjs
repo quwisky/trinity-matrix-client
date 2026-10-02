@@ -9,7 +9,7 @@ export const CODE_JOB_IDS = Object.freeze([
   'renderer',
   'desktop',
   'e2e',
-  'android-e2e',
+  'mobile-e2e',
   'ios-native-build',
 ]);
 export const DOCS_JOB_IDS = Object.freeze(['docs-gate']);

@@ -62,6 +62,36 @@ describe('NavigationFocusService', () => {
     expect(() => service.focusEnteringPage()).not.toThrow();
   });
 
+  // jsdom renders nothing, so a candidate in a hidden pane is modelled the way a
+  // browser treats it: its focus() call is refused and activeElement stays put.
+  function refuseFocus(element: Element | null): void {
+    (element as HTMLElement).focus = () => undefined;
+  }
+
+  it('skips a heading the browser cannot focus, as in a hidden compact pane (#859)', () => {
+    mountPage(
+      '<section><div class="chat"><h1>Trinity</h1></div><main>Rooms</main></section>',
+    );
+    refuseFocus(document.querySelector('h1'));
+
+    service.focusEnteringPage();
+
+    expect(document.activeElement).toBe(document.querySelector('main'));
+  });
+
+  it('falls back to the entering page when no candidate takes focus (#859)', () => {
+    mountPage(
+      '<trn-rooms><div class="chat"><h1>Trinity</h1></div></trn-rooms>',
+    );
+    refuseFocus(document.querySelector('h1'));
+
+    service.focusEnteringPage();
+
+    const page = document.querySelector<HTMLElement>('trn-rooms');
+    expect(document.activeElement).toBe(page);
+    expect(page?.tabIndex).toBe(-1);
+  });
+
   it('cancels pending focus work when the runtime session stops', () => {
     const frames = new Map<number, FrameRequestCallback>();
     const cancel = vi.fn((frameId: number) => frames.delete(frameId));

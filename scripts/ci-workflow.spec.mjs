@@ -21,9 +21,7 @@ describe('CI execution contract', () => {
         "needs.classify.outputs.mode != 'docs'",
       );
     }
-    expect(workflow.jobs['android-e2e'].strategy.matrix.shard).toEqual([
-      1, 2, 3, 4,
-    ]);
+    expect(workflow.jobs['android-e2e']).toBeUndefined();
   });
 
   it('runs the complete documentation gate for docs and code changes', () => {
@@ -73,8 +71,19 @@ describe('CI execution contract', () => {
     }
   });
 
-  it('waits for KVM udev completion and separates browser and Gradle caches', () => {
-    const steps = workflow.jobs['android-e2e'].steps;
+  it('uploads mobile diagnostics only after the identifier scrub succeeded', () => {
+    const steps = workflow.jobs['mobile-e2e'].steps;
+    const scrub = steps.find((step) => step.id === 'mobile-scrub');
+    expect(scrub.if).toContain('!cancelled()');
+    const upload = steps.find(
+      (step) => step.uses === './.github/actions/upload-playwright-diagnostics',
+    );
+    expect(upload.if).toContain("steps.mobile-scrub.outcome == 'success'");
+    expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(scrub));
+  });
+
+  it('waits for KVM udev completion and separates Appium and Gradle caches', () => {
+    const steps = workflow.jobs['mobile-e2e'].steps;
     const kvm = steps.find(
       (step) => step.name === 'Grant emulator access to KVM',
     ).run;
@@ -91,13 +100,13 @@ describe('CI execution contract', () => {
       caches.some(
         (step) =>
           step.with.path.includes('.gradle') &&
-          !step.with.path.includes('ms-playwright'),
+          !step.with.path.includes('.appium'),
       ),
     ).toBe(true);
     expect(
       caches.some(
         (step) =>
-          step.with.path.includes('ms-playwright') &&
+          step.with.path.includes('.appium') &&
           !step.with.path.includes('.gradle'),
       ),
     ).toBe(true);
