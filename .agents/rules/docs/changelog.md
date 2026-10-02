@@ -1,13 +1,15 @@
 ---
 id: changelog
 name: Changelog Maintenance
-description: Every meaningful change gets a [Unreleased] entry in CHANGELOG.md before it is considered done
+description: release-please writes CHANGELOG.md from Conventional Commit subjects; never edit it by hand
 category: docs
 recommended: true
 ---
 
 # Changelog Maintenance
 
-For features, fixes, breaking changes and release preparation, follow
-[private release guide](../../../docs-internal/maintenance/ci-and-releases.md).
-Record user impact in the appropriate Unreleased section before final validation.
+release-please writes `CHANGELOG.md` when a stable release PR merges on `master`; do
+not edit it by hand. `feat`, `fix`, `perf` and `revert` subjects and `BREAKING CHANGE:`
+footers become the release notes, so write them for users. Follow the
+[private release guide](../../../docs-internal/maintenance/ci-and-releases.md) for
+releases.
