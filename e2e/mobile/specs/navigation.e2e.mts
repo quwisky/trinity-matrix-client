@@ -267,7 +267,7 @@ describe('Android navigation', () => {
     // Known gap: on the installed phone layout, focus after leaving routed Settings
     // lands on <body> rather than inside trn-rooms. The base browser test only passed
     // at the old 1280x720 Android viewport, so the focus assertion stays unpinned
-    // pending a product decision.
+    // until #859 is fixed; re-enable it with that fix.
   });
 
   it('routes Verify device and returns focus to the Security heading on Close', async () => {
