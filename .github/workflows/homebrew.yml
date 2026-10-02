@@ -1,0 +1,119 @@
+name: Homebrew
+
+# Publishes the macOS app to the quwisky/homebrew-trinity tap when a release is
+# published. Publishing is a maintainer action, so drafts never reach Homebrew.
+# Prereleases update trinity@next and stable releases update trinity. Only a signed,
+# notarized and stapled app passes the gate; anything else fails here and leaves the
+# tap untouched. workflow_dispatch regenerates the cask for an already-published release.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Published vX.Y.Z or vX.Y.Z-next.N release to write to the tap'
+        required: true
+
+# One tap, one writer at a time.
+concurrency:
+  group: homebrew
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tap:
+    name: Update the Homebrew tap
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+      HOMEBREW_NO_INSTALL_CLEANUP: '1'
+    steps:
+      - id: release
+        name: Resolve the release
+        env:
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: |
+          if ! [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-next\.(0|[1-9][0-9]*))?$ ]]; then
+            echo "::error::'$TAG' is not a vX.Y.Z or vX.Y.Z-next.N tag."
+            exit 1
+          fi
+          version="${TAG#v}"
+          case "$TAG" in *-next.*) cask='trinity@next' ;; *) cask='trinity' ;; esac
+          {
+            echo "tag=$TAG"
+            echo "version=$version"
+            echo "cask=$cask"
+            echo "asset=Trinity-$version-arm64-mac.zip"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Release is published
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          if [ "$(gh release view "$TAG" --json isDraft -q .isDraft)" != false ]; then
+            echo "::error::$TAG is not a published release."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the macOS zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.release.outputs.tag }}
+          ASSET: ${{ steps.release.outputs.asset }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/release"
+          if ! gh release download "$TAG" --pattern "$ASSET" --dir "$RUNNER_TEMP/release"; then
+            echo "::error::$TAG has no $ASSET asset."
+            exit 1
+          fi
+
+      # Homebrew users get exactly what Gatekeeper accepts: a Developer ID signature, a
+      # notarization ticket, and that ticket stapled so first launch works offline.
+      - name: App is signed, notarized and stapled
+        env:
+          ASSET: ${{ steps.release.outputs.asset }}
+        run: |
+          cd "$RUNNER_TEMP/release"
+          ditto -x -k "$ASSET" unpacked
+          codesign --verify --deep --strict --verbose=2 unpacked/Trinity.app
+          spctl --assess --type execute --verbose unpacked/Trinity.app
+          xcrun stapler validate unpacked/Trinity.app
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: quwisky/homebrew-trinity
+          ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          path: tap
+
+      - name: Write, check and push the cask
+        env:
+          CASK: ${{ steps.release.outputs.cask }}
+          VERSION: ${{ steps.release.outputs.version }}
+          ASSET: ${{ steps.release.outputs.asset }}
+        run: |
+          sha=$(shasum -a 256 "$RUNNER_TEMP/release/$ASSET" | cut -d ' ' -f 1)
+          mkdir -p tap/Casks
+          node scripts/homebrew-cask.mjs --cask "$CASK" --version "$VERSION" --sha256 "$sha" > "tap/Casks/$CASK.rb"
+          if [ -z "$(git -C tap status --porcelain -- "Casks/$CASK.rb")" ]; then
+            echo "Casks/$CASK.rb already describes $VERSION; nothing to push."
+            exit 0
+          fi
+          git -C tap config user.name 'github-actions[bot]'
+          git -C tap config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C tap add "Casks/$CASK.rb"
+          git -C tap commit -m "$CASK $VERSION"
+          # Audit the committed cask through a local tap before anything leaves the runner.
+          brew tap quwisky/trinity "$GITHUB_WORKSPACE/tap"
+          brew style "quwisky/trinity/$CASK"
+          brew audit --cask --strict --online "quwisky/trinity/$CASK"
+          git -C tap push
