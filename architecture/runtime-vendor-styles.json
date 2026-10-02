@@ -128,7 +128,7 @@
     {
       "id": "brain-sonner-component",
       "package": "@spartan-ng/brain",
-      "version": "1.3.0",
+      "version": "1.5.0",
       "mechanism": "Brain Sonner injects its global Angular component stylesheet and writes layout and swipe custom properties inline",
       "seam": "libs/components/overlay/src/lib/toast/trn-toaster.component.ts",
       "importPrefixes": ["@spartan-ng/brain/sonner"],

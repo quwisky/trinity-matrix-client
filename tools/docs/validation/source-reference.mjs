@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parse } from 'yaml';
+import { parseAllDocuments } from 'yaml';
 
 const IGNORED_DIRECTORIES = new Set([
   '.astro',
@@ -50,9 +50,13 @@ export const buildSourceReference = (root, options = {}) => {
   const manifest = json(join(workspaceRoot, 'package.json'));
   const electronManifest = json(join(workspaceRoot, 'electron/package.json'));
   const tsconfig = json(join(workspaceRoot, 'tsconfig.base.json'));
-  const lockfile = parse(
+  // pnpm 12 prefixes the project lockfile with a package-manager lockfile document,
+  // so the project's lockfile is the last YAML document in the file.
+  const lockfile = parseAllDocuments(
     readFileSync(join(workspaceRoot, 'pnpm-lock.yaml'), 'utf8'),
-  );
+  )
+    .at(-1)
+    ?.toJS();
 
   const configuredProjects = projectFiles(workspaceRoot)
     .map((path) => ({ path, project: json(path) }))
@@ -90,7 +94,7 @@ export const buildSourceReference = (root, options = {}) => {
     aliases: sortedObject(tsconfig.compilerOptions?.paths),
     buildCommit:
       options.commit ?? process.env.GITHUB_SHA ?? gitCommit(workspaceRoot),
-    lockfileVersion: String(lockfile.lockfileVersion),
+    lockfileVersion: String(lockfile?.lockfileVersion),
     node: manifest.engines?.node,
     packageManager: manifest.packageManager,
     packages: sortedObject({

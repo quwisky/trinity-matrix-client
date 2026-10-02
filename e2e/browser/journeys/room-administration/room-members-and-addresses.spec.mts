@@ -49,6 +49,12 @@ async function openSpaceSettings(
 ): Promise<void> {
   const space = page.getByRole('button', { name: spaceName, exact: true });
   await space.waitFor({ state: 'visible', timeout: 30_000 });
+  // A fresh account resolves its crypto state just after sign-in, and the resulting
+  // banner pushes the rail down. Tapping before it mounts can land on the rail button
+  // that slides under the old coordinates (Rooms) instead of the Space.
+  await expect(
+    page.locator('trn-banner').getByText('Set up encryption'),
+  ).toBeVisible({ timeout: 20_000 });
   await touchPlatform.tap(page, space);
   const room = page.locator('.channel', { hasText: roomName }).first();
   await room.waitFor({ state: 'visible', timeout: 30_000 });
@@ -323,6 +329,10 @@ test.describe('Room settings', () => {
     await kickConfirmation
       .getByRole('button', { name: 'Remove' })
       .press('Enter');
+    // The roster is not rendered while the detail is open, so `row` alone cannot prove the
+    // write landed. The detail closes and focus returns to the filter only once it has.
+    await expect(detail).toHaveCount(0, { timeout: 20_000 });
+    await expect(page.getByTestId('member-filter')).toBeFocused();
     await expect(row).toHaveCount(0, { timeout: 20_000 });
 
     // Rejoin the same exact Room and ban through Members so both moderation commands are
@@ -349,6 +359,9 @@ test.describe('Room settings', () => {
     await expect(banConfirmation).toContainText(roomName);
     await expect(banConfirmation).toContainText(`Account ${adminId}`);
     await banConfirmation.getByRole('button', { name: 'Ban' }).press('Enter');
+    // Wait for that focus move before pressing Banned, or it can steal the Enter.
+    await expect(detail).toHaveCount(0, { timeout: 20_000 });
+    await expect(page.getByTestId('member-filter')).toBeFocused();
     await expect(row).toHaveCount(0, { timeout: 20_000 });
 
     await page.getByTestId('members-settings-banned').focus();

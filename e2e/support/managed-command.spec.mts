@@ -63,8 +63,8 @@ describe('managed E2E commands', () => {
         [
           '-e',
           `const { writeFileSync } = require('node:fs');
-           writeFileSync(${JSON.stringify(ready)}, 'ready');
            process.on('SIGINT', () => { writeFileSync(${JSON.stringify(flushed)}, 'flushed'); process.exit(0); });
+           writeFileSync(${JSON.stringify(ready)}, 'ready');
            setInterval(() => undefined, 1000);`,
         ],
         {
