@@ -1,5 +1,5 @@
 /** The Homebrew cask is generated whole, so its exact shape is the contract. */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { renderCask } from './homebrew-cask.mjs';
 
@@ -29,7 +29,7 @@ describe('Homebrew cask', () => {
   app "Trinity.app"
 
   zap trash: [
-    "~/Library/Application Support/trinity-desktop",
+    "~/Library/Application Support/Trinity",
     "~/Library/Preferences/eu.qwky.trinity.plist",
     "~/Library/Saved Application State/eu.qwky.trinity.savedState",
   ]
@@ -81,5 +81,19 @@ end
     expect(out).toBe(
       renderCask({ cask: 'trinity', version: '0.2.0', sha256: SHA }),
     );
+  });
+
+  it('can be imported without a script entry point', () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `const m = await import(${JSON.stringify(resolve(import.meta.dirname, 'homebrew-cask.mjs'))}); process.stdout.write(typeof m.renderCask);`,
+      ],
+      { encoding: 'utf8' },
+    );
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('function');
   });
 });

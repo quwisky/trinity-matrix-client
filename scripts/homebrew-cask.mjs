@@ -59,7 +59,7 @@ ${spec.livecheck}  end
   app "Trinity.app"
 
   zap trash: [
-    "~/Library/Application Support/trinity-desktop",
+    "~/Library/Application Support/Trinity",
     "~/Library/Preferences/eu.qwky.trinity.plist",
     "~/Library/Saved Application State/eu.qwky.trinity.savedState",
   ]
@@ -67,7 +67,10 @@ end
 `;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   const { values } = parseArgs({
     options: {
       cask: { type: 'string' },
