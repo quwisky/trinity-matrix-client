@@ -47,15 +47,62 @@ export async function login(user: string, pass: string): Promise<void> {
 }
 
 /**
+ * Wait until `element` holds still and is what a tap at its centre would hit: the same
+ * client rect across two animation frames, and its centre hit-tests to itself or a
+ * descendant. This is Playwright's "stable" and "receives events" actionability. Banners
+ * that arrive after sign-in push the whole layout down, so a tap aimed at a row's old
+ * position otherwise lands on whatever moved there.
+ */
+async function waitUntilTappable(
+  element: WebdriverIO.Element,
+  selector: string,
+): Promise<void> {
+  await browser.waitUntil(
+    () =>
+      browser.execute(
+        (target: HTMLElement) =>
+          new Promise<boolean>((resolve) => {
+            const first = target.getBoundingClientRect();
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() => {
+                const second = target.getBoundingClientRect();
+                const still =
+                  first.x === second.x &&
+                  first.y === second.y &&
+                  first.width === second.width &&
+                  first.height === second.height;
+                const hit = document.elementFromPoint(
+                  second.x + second.width / 2,
+                  second.y + second.height / 2,
+                );
+                resolve(
+                  still && second.width > 0 && !!hit && target.contains(hit),
+                );
+              }),
+            );
+          }),
+        element as unknown as HTMLElement,
+      ),
+    {
+      timeout: 20_000,
+      timeoutMsg: `${selector} never held still under its own tap point`,
+    },
+  );
+}
+
+/**
  * One W3C touch tap, which reaches the WebView as a gesture (a plain click does not
- * raise the IME). Lists re-render as sync updates arrive, so an element found by
- * `selector` can go stale before the pointer action lands; re-query and retry then.
+ * raise the IME). It waits for the target to be tappable first (see
+ * {@link waitUntilTappable}). Lists re-render as sync updates arrive, so an element
+ * found by `selector` can go stale before the pointer action lands; re-query and
+ * retry then.
  */
 export async function tap(selector: string): Promise<void> {
   for (let attempt = 1; ; attempt += 1) {
     try {
       const target = $(selector);
       await target.scrollIntoView({ block: 'center' });
+      await waitUntilTappable(await target.getElement(), selector);
       await browser
         .action('pointer', { parameters: { pointerType: 'touch' } })
         .move({ origin: target })

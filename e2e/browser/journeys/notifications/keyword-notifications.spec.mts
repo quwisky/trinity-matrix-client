@@ -240,15 +240,15 @@ test.describe('Keyword notifications', () => {
     await expect(page.getByTestId('room-notify-mute')).toBeVisible({
       timeout: 10_000,
     });
-    await Promise.all([
-      page.waitForResponse(
-        (r) =>
-          /\/pushrules\/?$/.test(new URL(r.url()).pathname) &&
-          r.request().method() === 'GET',
-        { timeout: 15_000 },
-      ),
-      page.getByTestId('room-notify-mute').click(),
-    ]);
+    await page.getByTestId('room-notify-mute').click();
+    // The mute reads the rules, writes them, then reads them back; the row only shows
+    // "fully muted" from that read-back. Waiting on the first /pushrules GET let the
+    // message below reach the homeserver before the mute rule existed.
+    await expect(
+      row.getByRole('img', { name: 'Room fully muted' }),
+    ).toBeVisible({
+      timeout: 15_000,
+    });
 
     const sent = await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/kwm-${runId}`,
