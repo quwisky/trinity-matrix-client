@@ -21,9 +21,12 @@ function setup(
     readonly dialogOpen?: boolean;
     readonly activeOwnsTopmostOverlay?: boolean;
     readonly routedOwnsActive?: boolean;
+    readonly outcome?: 'dismissed' | 'unhandled';
   },
 ) {
-  const back = vi.fn(() => of({ kind: 'dismissed' } as const));
+  const back = vi.fn(() =>
+    of({ kind: options.outcome ?? 'dismissed' } as const),
+  );
   const closeTopmost = vi.fn();
   TestBed.configureTestingModule({
     providers: [
@@ -102,6 +105,16 @@ describe('workspaceBrowserBackGuard', () => {
 
     expect(TestBed.runInInjectionContext(workspaceBrowserBackGuard)).toBe(true);
     lifetime.unsubscribe();
+  });
+
+  it('lets browser history through when no surface handles Back after all', async () => {
+    const { back, result } = setup('popstate', {
+      active: true,
+      outcome: 'unhandled',
+    });
+
+    expect(await firstValueFrom(result as Observable<boolean>)).toBe(true);
+    expect(back).toHaveBeenCalledOnce();
   });
 
   it('leaves imperative navigation alone', () => {

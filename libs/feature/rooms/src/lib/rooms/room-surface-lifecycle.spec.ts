@@ -50,8 +50,10 @@ function stubMedia(initial: Record<string, boolean> = {}) {
     removeListener: () => undefined,
     dispatchEvent: () => false,
   }));
-  return (query: string, value: boolean) => {
+  // `notify: false` models a resize whose `change` event the browser has not delivered yet.
+  return (query: string, value: boolean, notify = true) => {
     matches.set(query, value);
+    if (!notify) return;
     for (const listener of listeners.get(query) ?? []) {
       listener({ matches: value });
     }
@@ -441,6 +443,21 @@ describe('RoomSurfaceLifecycle', () => {
       kind: 'list',
       origin: 'workspace-back',
     });
+  });
+
+  it('stops offering the compact Conversation once the viewport is wide, before its change event', async () => {
+    const setMedia = stubMedia({ [BELOW_MD_QUERY]: true });
+    const { back, navigate } = build();
+    expect(back.activeSurface()).toMatchObject({ layer: 'conversation' });
+
+    // A busy main thread can run a popstate before the rendering step that reports the
+    // media query change. Back must follow the viewport, not the event that lags it.
+    setMedia(BELOW_MD_QUERY, false, false);
+
+    await expect(firstValueFrom(back.back())).resolves.toEqual({
+      kind: 'unhandled',
+    });
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('rejects opening a surface without an active Conversation', () => {

@@ -75,6 +75,10 @@ function firstOrder(fn: { mock: { invocationCallOrder: number[] } }): number {
 }
 
 describe('main bootstrap', () => {
+  // main.ts bootstraps once, as an import side effect, and every test below asserts on that
+  // one run. Vitest 5 clears mock calls before each test by default, which would erase it.
+  vi.setConfig({ clearMocks: false });
+
   beforeAll(async () => {
     // Importing runs the top-level side effects and captures the ready callback.
     await import('./main');
