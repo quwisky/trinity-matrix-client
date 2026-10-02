@@ -16,6 +16,10 @@ import type { ClassValue } from 'clsx';
  * element, so either attribute placed on `hlm-select-trigger` lands on a
  * role-less host instead.
  *
+ * Trinity drives `aria-invalid` through `forceInvalid` and `HlmSelectExplicitInvalid`;
+ * upstream's `aria-invalid` input is intentionally not carried, because that
+ * directive would overwrite it anyway.
+ *
  * The override is registered in the developer UI and theming guide and pinned
  * by the public select wrapper test.
  * └──────────────────────────────────────────────────────────────────────────┘
@@ -60,7 +64,6 @@ export class HlmSelectExplicitInvalid {
 			[forceInvalid]="forceInvalid()"
 			[id]="buttonId()"
 			[class]="_computedClass()"
-			[aria-invalid]="ariaInvalidInput()"
 			[attr.data-size]="size()"
 			[attr.aria-labelledby]="ariaLabelledby()"
 			data-slot="select-trigger"
@@ -90,10 +93,4 @@ export class HlmSelectTrigger {
 
 	/** Whether to force the trigger into an invalid state. */
 	public readonly forceInvalid = input<boolean, BooleanInput>(false, { transform: booleanAttribute });
-
-	/** Manual override for aria-invalid. When not set, auto-detects from the parent autocomplete error state. */
-	public readonly ariaInvalidInput = input<boolean | undefined, BooleanInput>(undefined, {
-		transform: (v: BooleanInput) => (v === '' || v === undefined ? undefined : booleanAttribute(v)),
-		alias: 'aria-invalid',
-	});
 }
