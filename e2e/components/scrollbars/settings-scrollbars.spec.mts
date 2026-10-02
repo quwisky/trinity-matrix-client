@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '../../fixtures.mts';
-import { isAndroidE2E, login, synapseSession } from '../../support/app.mts';
+import { login, synapseSession } from '../../support/app.mts';
 import { openSettingsFromRooms } from '../../support/journeys/navigation.mts';
 
 // One scrollbar in Settings, never two.
@@ -16,9 +16,7 @@ import { openSettingsFromRooms } from '../../support/journeys/navigation.mts';
 const session = synapseSession();
 
 function settingsShell(page: Page): Locator {
-  return page.locator(
-    isAndroidE2E ? 'trn-settings' : '[data-testid="settings-dialog"]',
-  );
+  return page.locator('[data-testid="settings-dialog"]');
 }
 
 /**
@@ -146,7 +144,7 @@ test.describe('Settings scrollbars', () => {
     await login(page, session);
     const roomUrl = page.url();
     await openSettingsFromRooms(page);
-    if (!isAndroidE2E) await expect(page).toHaveURL(roomUrl);
+    await expect(page).toHaveURL(roomUrl);
 
     for (const viewport of viewports) {
       await page.setViewportSize(viewport);
@@ -183,11 +181,9 @@ test.describe('Settings scrollbars', () => {
         expect(geometry.frame.right).toBeLessThanOrEqual(viewport.width + 1);
         expect(geometry.frame.top).toBeGreaterThanOrEqual(0);
         expect(geometry.frame.bottom).toBeLessThanOrEqual(viewport.height + 1);
-        if (!isAndroidE2E) {
-          expect(geometry.frame.left).toBeGreaterThan(0);
-          expect(geometry.frame.right).toBeLessThan(viewport.width);
-          expect(geometry.frame.top).toBeGreaterThan(0);
-        }
+        expect(geometry.frame.left).toBeGreaterThan(0);
+        expect(geometry.frame.right).toBeLessThan(viewport.width);
+        expect(geometry.frame.top).toBeGreaterThan(0);
       }
     }
   });

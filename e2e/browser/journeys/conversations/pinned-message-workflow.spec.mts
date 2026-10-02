@@ -6,9 +6,7 @@ import {
 } from '../../../fixtures.mts';
 import {
   clickRowMenuItem,
-  isAndroidE2E,
   login,
-  openMessageActionSheet,
   synapseSession,
   type SynapseSession,
 } from '../../../support/app.mts';
@@ -222,12 +220,7 @@ test.describe('Pin messages', () => {
     // under the cursor: re-hover per attempt rather than clicking once.
     // The ⋯ overlay menu renders at page root (CDK overlay), not nested under
     // the row — select its "Pin message" item at page scope.
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, targetRow.first());
-      await sheet.getByTestId('sheet-pin').click();
-    } else {
-      await clickRowMenuItem(targetRow.first(), page.getByTestId('msg-pin'));
-    }
+    await clickRowMenuItem(targetRow.first(), page.getByTestId('msg-pin'));
 
     // Assert the toolbar's pin button now carries a count badge of 1 — wait on
     // this app state (the pin round-tripping through sendStateEvent →

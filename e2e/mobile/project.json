@@ -1,20 +1,16 @@
 {
-  "name": "trinity-e2e-android",
+  "name": "trinity-e2e-mobile",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
-  "sourceRoot": "e2e/android",
-  "tags": ["type:e2e", "scope:trinity", "environment:android"],
-  "implicitDependencies": [
-    "trinity",
-    "trinity-android",
-    "trinity-e2e-support"
-  ],
+  "sourceRoot": "e2e/mobile",
+  "tags": ["type:e2e", "scope:trinity", "environment:mobile"],
+  "implicitDependencies": ["trinity", "trinity-android", "trinity-e2e-support"],
   "targets": {
     "e2e": {
-      "//": "Owns the API 36 emulator, installed applications, adb bridge and support-owned disposable Synapse lifecycle.",
+      "//": "Owns the API 36 emulator, installed applications, adb bridge, repo-local Appium home and support-owned disposable Synapse lifecycle.",
       "cache": false,
       "parallelism": false,
-      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-mobile"],
       "executor": "nx:run-commands",
       "options": {
         "command": "node run.mts",

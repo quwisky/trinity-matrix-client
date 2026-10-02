@@ -129,8 +129,15 @@ describe('e2e harness constants', () => {
     // `mobile-nav.spec.mts` is NOT among them any more. It used to be, on the stated
     // grounds that `beforeAll` has no `request` fixture; that was simply false — Playwright
     // provisions one for the hook and only forbids reusing it inside a test.
-    const local = specs.filter((file) =>
-      /\b(?:function registerUser\(|const registerUser\s*=)/.test(read(file)),
+    //
+    // `e2e/mobile/support/matrix.mts` is the exception: the shared helper takes Playwright's
+    // `APIRequestContext`, which the WebdriverIO mobile suite does not have, so it registers
+    // over global `fetch` while still importing the secret and endpoint from `start.mjs`.
+    const MOBILE_FETCH_REGISTRATION = 'e2e/mobile/support/matrix.mts';
+    const local = specs.filter(
+      (file) =>
+        file !== MOBILE_FETCH_REGISTRATION &&
+        /\b(?:function registerUser\(|const registerUser\s*=)/.test(read(file)),
     );
 
     expect(local).toEqual([]);

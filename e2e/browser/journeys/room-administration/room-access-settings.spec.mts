@@ -1,4 +1,3 @@
-import { captureScreenshot } from '../../../support/screenshot.mts';
 import { expect, test, testResourceId } from '../../../fixtures.mts';
 import {
   login,
@@ -85,7 +84,7 @@ test.describe('Room settings', () => {
     });
     await expect(page.getByTestId('room-settings-save')).toBeVisible();
     await test.info().attach('room-access-admin-light-text-scale', {
-      body: await captureScreenshot(page, () => settings.screenshot()),
+      body: await settings.screenshot(),
       contentType: 'image/png',
     });
     await page.evaluate(() => {
@@ -93,7 +92,7 @@ test.describe('Room settings', () => {
       document.documentElement.setAttribute('data-theme', 'amethyst');
     });
     await test.info().attach('room-access-admin-dark-amethyst', {
-      body: await captureScreenshot(page, () => settings.screenshot()),
+      body: await settings.screenshot(),
       contentType: 'image/png',
     });
     await page.evaluate(({ dark, theme, fontSize }) => {
@@ -382,9 +381,7 @@ test.describe('Room settings', () => {
       0,
     );
     await test.info().attach('room-access-member-read-only', {
-      body: await captureScreenshot(page, () =>
-        page.getByTestId('room-settings').screenshot(),
-      ),
+      body: await page.getByTestId('room-settings').screenshot(),
       contentType: 'image/png',
     });
   });

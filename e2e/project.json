@@ -10,7 +10,7 @@
       "//": "Declared, not inferred: @nx/eslint only infers a lint target for projects with .ts/.js sources, and every file here is .mts — so removing 'e2e' from globalIgnores would otherwise have changed nothing about what `pnpm lint` actually runs.",
       "executor": "nx:run-commands",
       "options": {
-        "command": "eslint \"**/*.mts\" --ignore-pattern \"android/**\" --ignore-pattern \"browser/**\" --ignore-pattern \"components/**\" --ignore-pattern \"electron/**\" --ignore-pattern \"protocol/**\" --ignore-pattern \"support/**\" --ignore-pattern \"web/**\"",
+        "command": "eslint \"**/*.mts\" --ignore-pattern \"browser/**\" --ignore-pattern \"components/**\" --ignore-pattern \"electron/**\" --ignore-pattern \"mobile/**\" --ignore-pattern \"protocol/**\" --ignore-pattern \"support/**\" --ignore-pattern \"web/**\"",
         "cwd": "{projectRoot}"
       }
     },
@@ -54,16 +54,6 @@
       "executor": "nx:run-commands",
       "options": {
         "command": "pnpm exec nx run trinity-e2e-components:scrollbars",
-        "cwd": "{workspaceRoot}"
-      }
-    },
-    "android-e2e": {
-      "//": "Compatibility alias; lifecycle ownership is trinity-e2e-android:e2e.",
-      "cache": false,
-      "parallelism": false,
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "pnpm exec nx run trinity-e2e-android:e2e",
         "cwd": "{workspaceRoot}"
       }
     },
@@ -131,12 +121,12 @@
         "command": "node scripts/e2e-suite-registry.mjs run e2e-web"
       }
     },
-    "e2e-android": {
+    "e2e-mobile": {
       "cache": false,
       "parallelism": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "node scripts/e2e-suite-registry.mjs run e2e-android"
+        "command": "node scripts/e2e-suite-registry.mjs run e2e-mobile"
       }
     },
     "synapse-up": {

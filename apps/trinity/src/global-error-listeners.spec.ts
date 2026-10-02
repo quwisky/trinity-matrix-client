@@ -16,13 +16,20 @@ import { describe, expect, it, vi } from 'vitest';
  */
 describe('global error listeners', () => {
   function dispatchHandled(event: Event, expectedError: Error): void {
-    const virtualConsole = (
-      window as unknown as {
-        _virtualConsole: {
-          emit(event: string, ...args: unknown[]): boolean;
-        };
-      }
-    )._virtualConsole;
+    // jsdom's private VirtualConsole slot: `_settings.virtualConsole` since jsdom
+    // 30.1.1, `_virtualConsole` before (same lookup as test-setup.base.ts).
+    type JsdomVirtualConsole = {
+      emit(event: string, ...args: unknown[]): boolean;
+    };
+    const jsdomWindow = window as unknown as {
+      _settings?: { virtualConsole?: JsdomVirtualConsole };
+      _virtualConsole?: JsdomVirtualConsole;
+    };
+    const virtualConsole =
+      jsdomWindow._settings?.virtualConsole ?? jsdomWindow._virtualConsole;
+    if (!virtualConsole) {
+      throw new Error('jsdom VirtualConsole not found; update the lookup.');
+    }
     const emit = virtualConsole.emit;
     const captured: unknown[] = [];
     virtualConsole.emit = function (

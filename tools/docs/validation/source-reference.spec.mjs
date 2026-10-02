@@ -108,33 +108,39 @@ describe('source-derived documentation reference', () => {
     });
   });
 
-  it('matches current workspace manifests, projects, and aliases', () => {
-    const packageManifest = JSON.parse(
-      readFileSync(join(workspaceRoot, 'package.json'), 'utf8'),
-    );
-    const tsconfig = JSON.parse(
-      readFileSync(join(workspaceRoot, 'tsconfig.base.json'), 'utf8'),
-    );
-    const first = buildSourceReference(workspaceRoot, {
-      commit: 'test-commit',
-    });
-    const second = buildSourceReference(workspaceRoot, {
-      commit: 'test-commit',
-    });
+  // Builds the reference from the whole workspace twice, synchronously; on a loaded CI
+  // runner that exceeds the default 5 s budget.
+  it(
+    'matches current workspace manifests, projects, and aliases',
+    { timeout: 30_000 },
+    () => {
+      const packageManifest = JSON.parse(
+        readFileSync(join(workspaceRoot, 'package.json'), 'utf8'),
+      );
+      const tsconfig = JSON.parse(
+        readFileSync(join(workspaceRoot, 'tsconfig.base.json'), 'utf8'),
+      );
+      const first = buildSourceReference(workspaceRoot, {
+        commit: 'test-commit',
+      });
+      const second = buildSourceReference(workspaceRoot, {
+        commit: 'test-commit',
+      });
 
-    expect(serializeSourceReference(first)).toBe(
-      serializeSourceReference(second),
-    );
-    expect(first.node).toBe(packageManifest.engines.node);
-    expect(first.packageManager).toBe(packageManifest.packageManager);
-    expect(first.aliases).toEqual(tsconfig.compilerOptions.paths);
-    expect(first.projects.map(({ name }) => name)).toContain('trinity');
-    expect(first.projects.map(({ name }) => name)).toContain('docs-site');
-    expect(() =>
-      validatePublishedSourceReference(
-        join(workspaceRoot, 'apps/docs-developers/src/content/docs'),
-        first,
-      ),
-    ).not.toThrow();
-  });
+      expect(serializeSourceReference(first)).toBe(
+        serializeSourceReference(second),
+      );
+      expect(first.node).toBe(packageManifest.engines.node);
+      expect(first.packageManager).toBe(packageManifest.packageManager);
+      expect(first.aliases).toEqual(tsconfig.compilerOptions.paths);
+      expect(first.projects.map(({ name }) => name)).toContain('trinity');
+      expect(first.projects.map(({ name }) => name)).toContain('docs-site');
+      expect(() =>
+        validatePublishedSourceReference(
+          join(workspaceRoot, 'apps/docs-developers/src/content/docs'),
+          first,
+        ),
+      ).not.toThrow();
+    },
+  );
 });
