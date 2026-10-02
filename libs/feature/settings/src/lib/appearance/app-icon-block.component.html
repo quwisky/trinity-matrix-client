@@ -1,0 +1,47 @@
+<div trnSettingsFieldRow>
+  <span class="min-w-0">
+    <strong
+      id="appearance-app-icon-heading"
+      class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
+      >{{ model.editor.label }}</strong
+    >
+    <small class="block text-13 text-[var(--trinity-text-muted)]">{{
+      model.editor.description
+    }}</small>
+    <small
+      class="block text-13 text-[var(--trinity-text-muted)]"
+      data-testid="app-icon-help"
+      >{{ help }}</small
+    >
+  </span>
+  <div class="min-w-0">
+    <trn-select
+      data-testid="app-icon-select"
+      aria-labelledby="appearance-app-icon-heading"
+      placeholder="Select app icon"
+      [options]="options()"
+      [value]="value()"
+      [disabled]="hydrationBusy() || status.busy()"
+      (valueChange)="update($event)"
+    />
+    @if (status.failed()) {
+      <div
+        role="alert"
+        class="mt-2 flex flex-wrap items-center justify-end gap-2 text-13 text-danger"
+        data-testid="app-icon-select-failure"
+      >
+        <span>This choice could not be saved.</span>
+        <button
+          trnBtn
+          type="button"
+          presentation="outline"
+          size="sm"
+          data-testid="app-icon-select-retry"
+          (click)="retry()"
+        >
+          Retry
+        </button>
+      </div>
+    }
+  </div>
+</div>
