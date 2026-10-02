@@ -266,6 +266,11 @@ The workflow recognizes these secret names only:
   `APPLE_TEAM_ID`
 
 Without the applicable credentials, packaging can produce unsigned artifacts.
+
+An unsigned Windows installer may be published. Windows SmartScreen shows
+"Windows protected your PC" until the user chooses **More info → Run anyway**,
+and SmartScreen reputation does not carry over to a later signed build. Say in
+the release notes that the Windows installer is unsigned.
 The notarization hook skips when no complete credential set is available and
 fails when supplied credentials are rejected. The local hook also supports an
 API-key credential form, while the committed release workflow supplies the

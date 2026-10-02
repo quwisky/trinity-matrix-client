@@ -111,7 +111,8 @@ mac:
 win:
   target:
     - nsis
-  # TODO(signing): configure code signing (Authenticode / Azure Trusted Signing).
+  # Unsigned NSIS installers may be published; SmartScreen warns on first run (see the
+  # private release guide). TODO(signing): Authenticode / Azure Trusted Signing.
   #   e.g. signtoolOptions / azureSignOptions, or CSC_LINK + CSC_KEY_PASSWORD env.
 
 nsis:
