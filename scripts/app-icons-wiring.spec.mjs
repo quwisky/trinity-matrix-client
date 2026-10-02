@@ -116,6 +116,56 @@ describe('icon wiring', () => {
     expect(swift).toContain('bridge?.registerPluginInstance(AppIconPlugin())');
     expect(swift).toContain('let jsName = "AppIcon"');
   });
+
+  it('gives Android a blurple and a dark launcher alias with exactly one enabled', () => {
+    const manifest = read('android/app/src/main/AndroidManifest.xml');
+    const main = manifest.match(/<activity\b[\s\S]*?<\/activity>/)[0];
+    expect(main).toContain('android:name=".MainActivity"');
+    expect(main).toContain('android:exported="true"');
+    expect(main).not.toContain('android.intent.category.LAUNCHER');
+    expect(main).toContain('android:scheme="eu.qwky.trinity"');
+    const aliases = [
+      ...manifest.matchAll(/<activity-alias\b[\s\S]*?<\/activity-alias>/g),
+    ].map((m) => m[0]);
+    expect(aliases).toHaveLength(2);
+    const [blurple, dark] = aliases;
+    expect(blurple).toContain('android:name=".LauncherBlurple"');
+    expect(blurple).toContain('android:enabled="true"');
+    expect(blurple).toContain('android:icon="@mipmap/ic_launcher"');
+    expect(dark).toContain('android:name=".LauncherDark"');
+    expect(dark).toContain('android:enabled="false"');
+    expect(dark).toContain('android:icon="@mipmap/ic_launcher_dark"');
+    expect(dark).toContain(
+      'android:roundIcon="@mipmap/ic_launcher_dark_round"',
+    );
+    for (const alias of aliases) {
+      expect(alias).toContain('android:targetActivity=".MainActivity"');
+      expect(alias).toContain('android.intent.category.LAUNCHER');
+    }
+    for (const file of ['ic_launcher_dark.xml', 'ic_launcher_dark_round.xml']) {
+      const xml = read(`${RES}/mipmap-anydpi-v26/${file}`);
+      expect(xml).toContain(
+        '<background android:drawable="@mipmap/ic_launcher_dark_background"/>',
+      );
+      expect(xml).toContain(
+        '<foreground android:drawable="@mipmap/ic_launcher_dark_foreground"/>',
+      );
+      expect(xml).toContain(
+        '<monochrome android:drawable="@mipmap/ic_launcher_monochrome"/>',
+      );
+    }
+    const plugin = read(
+      'android/app/src/main/java/eu/qwky/trinity/AppIconPlugin.java',
+    );
+    expect(plugin).toContain('@CapacitorPlugin(name = "AppIcon")');
+    // Enable before disable, so Trinity never has zero launcher entries.
+    expect(plugin.indexOf('COMPONENT_ENABLED_STATE_ENABLED,')).toBeLessThan(
+      plugin.indexOf('COMPONENT_ENABLED_STATE_DISABLED,'),
+    );
+    expect(
+      read('android/app/src/main/java/eu/qwky/trinity/MainActivity.java'),
+    ).toContain('registerPlugin(AppIconPlugin.class);');
+  });
 });
 
 describe('desktop icon wiring', () => {
