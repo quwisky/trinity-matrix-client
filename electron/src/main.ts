@@ -19,6 +19,7 @@ import { registerCorsIpc } from './cors-ipc';
 import { registerGeolocationIpc } from './geolocation-ipc';
 import { registerDockBadge } from './dock-badge';
 import { registerHostCapabilityHandshake } from './host-capabilities';
+import { startUpdateChecks } from './update-check';
 import {
   deepLinkFromArgv,
   deliverDeepLink,
@@ -107,6 +108,8 @@ if (!app.requestSingleInstanceLock()) {
     registerDockBadge();
     createWindow();
     createTray();
+    // "A new version is available" notices (packaged builds only; see update-check.ts).
+    startUpdateChecks();
     registerNotificationIpc();
     registerSecureStoreIpc();
     registerCorsIpc();
