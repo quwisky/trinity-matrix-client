@@ -1,5 +1,6 @@
 import { Menu, shell } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
+import { checkForUpdates } from './update-check';
 
 export function buildMenu(): void {
   const isMac = process.platform === 'darwin';
@@ -26,8 +27,16 @@ export function buildMenu(): void {
       role: 'help',
       submenu: [
         {
-          label: 'Learn More',
-          click: () => void shell.openExternal('https://ionicframework.com/'),
+          label: 'Check for Updates…',
+          click: () => void checkForUpdates({ manual: true }),
+        },
+        { type: 'separator' },
+        {
+          label: 'Trinity on GitHub',
+          click: () =>
+            void shell.openExternal(
+              'https://github.com/quwisky/trinity-matrix-client',
+            ),
         },
       ],
     },

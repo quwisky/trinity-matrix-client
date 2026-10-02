@@ -49,6 +49,19 @@ describe('afterPack fuse hardening', () => {
     expect(options[FuseV1Options.OnlyLoadAppFromAsar]).toBe(true);
   });
 
+  it('encrypts cookies at rest and withholds file:// privileges on every platform', () => {
+    for (const platform of ['darwin', 'win32', 'linux']) {
+      const options = afterPack.fuseOptions(platform);
+      expect(options[FuseV1Options.EnableCookieEncryption], platform).toBe(
+        true,
+      );
+      expect(
+        options[FuseV1Options.GrantFileProtocolExtraPrivileges],
+        platform,
+      ).toBe(false);
+    }
+  });
+
   it('validates the embedded asar header only where one is emitted', () => {
     for (const platform of ['darwin', 'win32']) {
       expect(

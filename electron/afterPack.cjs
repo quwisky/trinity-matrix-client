@@ -34,6 +34,11 @@ function fuseOptions(electronPlatformName) {
     // can write to the install dir reaches the same privileged main process the three
     // fuses above deny, and Windows/Linux ship unsigned today.
     [FuseV1Options.OnlyLoadAppFromAsar]: true,
+    // Encrypt the cookie store at rest with the OS-held key, from the first release so no
+    // user ever has a plaintext store to migrate.
+    [FuseV1Options.EnableCookieEncryption]: true,
+    // The renderer is served from the privileged trinity:// scheme, never file://.
+    [FuseV1Options.GrantFileProtocolExtraPrivileges]: false,
     // Verify the asar against the header electron-builder embeds (Info.plist on
     // macOS, the PE resource on Windows). Linux has no such header, so asking for
     // validation there would only make the app refuse to start.

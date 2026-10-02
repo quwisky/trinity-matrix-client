@@ -54,6 +54,7 @@ vi.mock('./dock-badge', () => ({ registerDockBadge: vi.fn() }));
 vi.mock('./host-capabilities', () => ({
   registerHostCapabilityHandshake: vi.fn(),
 }));
+vi.mock('./update-check', () => ({ startUpdateChecks: vi.fn() }));
 vi.mock('./deep-link', () => ({
   deepLinkFromArgv: vi.fn(),
   deliverDeepLink: vi.fn(),
@@ -67,6 +68,7 @@ import { installMatrixCors } from './cors';
 import { createWindow } from './window';
 import { registerDockBadge } from './dock-badge';
 import { registerHostCapabilityHandshake } from './host-capabilities';
+import { startUpdateChecks } from './update-check';
 
 /** First invocation-order tick of a mock (a global monotonic counter in vitest,
  * so it's comparable ACROSS different mocks). */
@@ -121,6 +123,13 @@ describe('main bootstrap', () => {
     );
     expect(firstOrder(vi.mocked(installMatrixCors))).toBeLessThan(
       firstOrder(vi.mocked(createWindow)),
+    );
+  });
+
+  it('starts the update check once the window exists', () => {
+    expect(startUpdateChecks).toHaveBeenCalledTimes(1);
+    expect(firstOrder(vi.mocked(createWindow))).toBeLessThan(
+      firstOrder(vi.mocked(startUpdateChecks)),
     );
   });
 });

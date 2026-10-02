@@ -1,9 +1,10 @@
 {
   "name": "trinity-desktop",
+  "productName": "Trinity",
   "version": "0.1.0",
   "license": "MIT",
   "private": true,
-  "description": "Hand-rolled, hardened Electron desktop shell for Trinity. Serves the Angular www/ build over a custom privileged scheme (no Capacitor desktop bridge).",
+  "description": "End-to-end encrypted Matrix client",
   "author": "Trinity",
   "nx": {
     "includedScripts": []
