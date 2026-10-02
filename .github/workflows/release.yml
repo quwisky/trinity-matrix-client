@@ -19,9 +19,11 @@ on:
         description: 'Existing vX.Y.Z or vX.Y.Z-next.N tag to package'
         required: true
 
-# Never cancel a release mid-flight: a half-uploaded draft is worse than a slow one.
+# One group for every release run. Never cancel mid-flight: a half-uploaded draft is
+# worse than a slow one, and a push and a dispatch for the same tag must not both
+# --clobber one draft. A newer queued push replaces an older one, losing nothing.
 concurrency:
-  group: release-${{ inputs.tag || github.ref_name }}
+  group: release
   cancel-in-progress: false
 
 permissions:
