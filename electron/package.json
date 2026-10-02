@@ -1,5 +1,6 @@
 {
   "name": "trinity-desktop",
+  "productName": "Trinity",
   "version": "0.1.0",
   "license": "MIT",
   "private": true,
