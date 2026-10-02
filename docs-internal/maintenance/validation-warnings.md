@@ -47,7 +47,6 @@ are not evidence of a current native compilation run.
 | `@capacitor/filesystem` 8.1.2                 | Kotlin diagnostics for legacy `downloadFile` and its nullable-string mismatch.                                            | The package or method changes.                                                  |
 | `@capacitor/camera` 8.2.2                     | The always-false condition in `IonCameraFlow.kt` and unchecked-operation notes in `CameraBottomSheetDialogFragment.java`. | The package or named source changes.                                            |
 | Shared local Kotlin compiler service          | `Detected multiple Kotlin daemon sessions` when other worktrees use another Kotlin version.                               | The message accompanies a daemon failure or repository diagnostic.              |
-| Local Android SDK metadata                    | SDK XML version 4 read by tooling supporting version 3.                                                                   | The SDK or Android Gradle Plugin changes, or native verification fails.         |
 
 Any warning naming `android/app`, an unknown stripping library, or a compiler,
 repository, or deprecation message outside this table is unclassified. Keep the
