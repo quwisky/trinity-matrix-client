@@ -15,7 +15,7 @@ These versions are checked against the root and Electron manifests. The site foo
 | Tool       | Version    |
 | ---------- | ---------- |
 | Node.js    | `^24.15.0` |
-| pnpm       | `11.27.1`  |
+| pnpm       | `12.8.1`   |
 | Nx         | `23.2.1`   |
 | TypeScript | `6.0.3`    |
 

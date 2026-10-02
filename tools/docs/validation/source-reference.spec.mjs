@@ -72,6 +72,21 @@ afterEach(() => {
 });
 
 describe('source-derived documentation reference', () => {
+  it('reads the project lockfile from a pnpm 12 multi-document lockfile', () => {
+    const root = fixture();
+    // pnpm 12 writes its package-manager lockfile as a first YAML document and the
+    // project lockfile as the last one.
+    writeFileSync(
+      join(root, 'pnpm-lock.yaml'),
+      "---\nlockfileVersion: 'env-1'\n\n---\nlockfileVersion: '9.0'\n",
+      'utf8',
+    );
+
+    expect(buildSourceReference(root, { commit: 'c' }).lockfileVersion).toBe(
+      '9.0',
+    );
+  });
+
   it('sorts repository facts into stable JSON', () => {
     const root = fixture();
     const first = serializeSourceReference(
