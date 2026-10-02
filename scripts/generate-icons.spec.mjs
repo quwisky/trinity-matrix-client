@@ -7,10 +7,12 @@ import { encodePng, OUTPUTS, renderIcons } from './generate-icons.mjs';
 
 let out;
 let icons;
+// Rendering every icon (three 2732² splashes among them) takes ~7 s alone and twice
+// that beside the rest of the scripts project, past Vitest's 10 s hook default.
 beforeAll(() => {
   out = mkdtempSync(join(tmpdir(), 'trinity-icons-'));
   icons = renderIcons(out);
-});
+}, 120_000);
 afterAll(() => rmSync(out, { recursive: true, force: true }));
 
 const pixels = (icon) => {
@@ -149,7 +151,7 @@ describe('generator module', () => {
       [
         '--input-type=module',
         '-e',
-        `const m = await import(${JSON.stringify(resolve(import.meta.dirname, 'generate-icons.mjs'))}); console.log(m.OUTPUTS.length);`,
+        `const m = await import(${JSON.stringify(resolve(import.meta.dirname, 'generate-icons.mjs'))}); process.stdout.write(String(m.OUTPUTS.length));`,
       ],
       { encoding: 'utf8' },
     );
