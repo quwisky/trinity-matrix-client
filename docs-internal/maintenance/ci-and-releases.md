@@ -187,23 +187,29 @@ reads them on both lines, so one footer tries to cut the same version twice.
 
 ### Promote to stable
 
-1. Open a pull request from `develop` to `master` and merge it with a **merge
+1. Close any release PR still open on `develop`. Merging it after the promotion
+   would cut a `-next` prerelease of a version that is already stable; release-please
+   opens a fresh one after the back-merge.
+2. Open a pull request from `develop` to `master` and merge it with a **merge
    commit** (not squash), so `master` keeps the individual commits release-please
    reads.
-2. release-please opens the stable release PR on `master`. Review its version and
+3. release-please opens the stable release PR on `master`. Review its version and
    `CHANGELOG.md` entry, then merge it. The draft release and packages follow.
-3. Open a pull request from `master` back to `develop` and merge it with a merge
+4. Open a pull request from `master` back to `develop` and merge it with a merge
    commit. The stable release PR already wrote the stable version into
    `.release-please-manifest.next.json`, so the merge needs no edits and the next
-   prerelease becomes `<next minor>-next.0`. Only if a prerelease was merged on
+   prerelease starts a new `-next.0` series above the stable version: the next
+   minor after a `feat`, the next patch after only fixes. Only if a prerelease was merged on
    `develop` between promotion and back-merge do the version files conflict;
    resolve them to `master`'s values.
 
 ### First release
 
-`0.1.0` predates release-please. After the migration merge, `master` is created
-from the migration commit, `v0.1.0` is pushed on it, and `release.yml` is
-dispatched with `tag: v0.1.0` to build its draft. Both configs carry a
+`0.1.0` predates release-please. After the migration merge, push the `v0.1.0`
+tag on the migration commit **first**, then create `master` from that commit, and
+dispatch `release.yml` with `tag: v0.1.0` to build its draft. In the other order,
+`master`'s first run finds no `v0.1.0` release and proposes a stable release for
+whatever reached `develop` after the bootstrap commit. Both configs carry a
 `bootstrap-sha` so release-please's first runs do not read the project's whole
 history; once the `v0.1.0` release exists it no longer matters.
 
@@ -221,7 +227,7 @@ The verifier runs lint, Stylelint, format checking, `pnpm test`, a production
 web build, and Electron typecheck and unit tests. It does **not** run the
 workspace-wide typecheck, Storybook, production-renderer, browser E2E, Android
 or iOS E2E, or launched Electron E2E. Select extra evidence according to the
-change before the tag is created, following [testing](../../apps/docs-developers/src/content/docs/testing/testing-strategy.md).
+change before merging the release PR, following [testing](../../apps/docs-developers/src/content/docs/testing/testing-strategy.md).
 
 ## Package and review the draft
 
@@ -283,8 +289,11 @@ and [iOS](../../apps/docs-developers/src/content/docs/platforms/ios.md) guides.
 | release-please fails or opens no release PR                                       | Read the `Release PR and tag` job log. Only `feat`, `fix`, `perf`, `revert` and breaking commits produce a release; `chore`, `ci`, `docs`, `test`, `build`, `refactor` and `style` alone do not.                                          |
 | The release is already published                                                  | The workflow refuses to replace its assets. Release the next version instead.                                                                                                                                                             |
 
-Release runs intentionally do not cancel each other: an incomplete draft is
-worse than a slower package run. A manual dispatch re-packages an existing tag;
+Release runs share one concurrency group and never cancel each other: an
+incomplete draft is worse than a slower package run, and two runs must not upload
+to the same draft at once. A push queued behind a running release waits; a newer
+push replaces an older queued one, which loses nothing because each run reads the
+branch as it is. A manual dispatch re-packages an existing tag;
 it is not a way to bypass the tag-format, version or ancestry checks. It rebuilds
 the tagged source, so a source or manifest correction needs a new release.
 
