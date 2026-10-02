@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell } from 'electron';
 import * as path from 'node:path';
 import { isAppUrl, START_URL } from './scheme';
 import { processDeepLinkQueue } from './deep-link';
+import { resolveIconFile } from './icons';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -107,6 +108,11 @@ export function createWindow(): void {
     minHeight: 600,
     show: false,
     backgroundColor: '#1e1f22',
+    // Windows/Linux taskbar and window icon (packaged builds also embed it; dev runs
+    // would otherwise show Electron's default). macOS uses the bundle's .icns.
+    ...(process.platform === 'darwin'
+      ? {}
+      : { icon: resolveIconFile('icon.png') }),
     autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

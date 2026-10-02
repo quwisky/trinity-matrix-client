@@ -1,4 +1,5 @@
 import { app } from 'electron';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 /**
@@ -17,4 +18,11 @@ export function iconCandidatePaths(fileName: string): string[] {
     path.join(__dirname, '..', 'build', fileName), // dist/ -> build/
     path.join(__dirname, fileName), // alongside compiled main
   ];
+}
+
+/** First existing candidate for an `electron/build/` asset, or `undefined`. */
+export function resolveIconFile(fileName: string): string | undefined {
+  return iconCandidatePaths(fileName).find((candidate) =>
+    fs.existsSync(candidate),
+  );
 }

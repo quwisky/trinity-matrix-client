@@ -52,6 +52,17 @@ extraResources:
   # src/dock-badge.ts. macOS/Linux ignore it (they use app.setBadgeCount).
   - from: build/unreadOverlay.png
     to: build/unreadOverlay.png
+  # Window icon on Windows/Linux (window.ts), the @2x tray variants that
+  # nativeImage.createFromPath picks up beside the 1x files, and the 256 px
+  # notification icon (notifications.ts).
+  - from: build/icon.png
+    to: build/icon.png
+  - from: build/trinityTray@2x.png
+    to: build/trinityTray@2x.png
+  - from: build/trinityTrayTemplate@2x.png
+    to: build/trinityTrayTemplate@2x.png
+  - from: build/notificationIcon.png
+    to: build/notificationIcon.png
 
 directories:
   output: release

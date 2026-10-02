@@ -80,3 +80,30 @@ describe('icon wiring', () => {
     }
   });
 });
+
+describe('desktop icon wiring', () => {
+  it('sets the window icon outside macOS and uses the dedicated notification icon', () => {
+    expect(read('electron/src/window.ts')).toMatch(
+      /process\.platform === 'darwin'\s*\?\s*{}\s*:\s*{\s*icon: resolveIconFile\('icon\.png'\)/,
+    );
+    expect(read('electron/src/notifications.ts')).toContain(
+      "iconCandidatePaths('notificationIcon.png')",
+    );
+  });
+
+  it('ships every runtime icon through extraResources', () => {
+    const config = read('electron/electron-builder.yml');
+    for (const file of [
+      'icon.png',
+      'trinityTray.png',
+      'trinityTray@2x.png',
+      'trinityTrayTemplate.png',
+      'trinityTrayTemplate@2x.png',
+      'notificationIcon.png',
+      'unreadOverlay.png',
+    ]) {
+      expect(config, file).toContain(`from: build/${file}`);
+      expect(existsSync(join(root, 'electron/build', file)), file).toBe(true);
+    }
+  });
+});
