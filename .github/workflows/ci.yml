@@ -62,7 +62,21 @@ jobs:
       - run: pnpm nx test docs-site
       - run: pnpm nx run docs-site:check
       - run: pnpm nx run docs-site:assemble
-      - run: pnpm nx run docs-site:e2e
+      - id: docs-e2e
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          pnpm nx run docs-site:e2e
+      # Not a registry suite, so not the registry-validated diagnostics action; same
+      # artifact conventions. `.playwright` is a dot-directory, hence the hidden files.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() && steps.docs-e2e.outputs.started == 'true' }}
+        with:
+          name: playwright-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.job }}-docs-site
+          path: |
+            dist/.playwright/docs-site/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
 
   # E2E tier contract: pull-request suites run in the existing host/browser jobs,
   # scheduled suites run only in scheduled-e2e, and local-only suites never run here.

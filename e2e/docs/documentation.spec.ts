@@ -103,6 +103,9 @@ test('navigates developer onboarding and exposes the develop channel', async ({
   ).toBeFocused();
 });
 
+/** Upper bound for a search on a freshly loaded page; see the search test. */
+const PAGEFIND_COLD_SEARCH_MS = 20_000;
+
 test('keeps each Starlight search inside its content channel', async ({
   page,
 }) => {
@@ -110,7 +113,12 @@ test('keeps each Starlight search inside its content channel', async ({
   await page.getByRole('button', { name: 'Search' }).click();
   await page.getByRole('textbox', { name: 'Search' }).fill('Nx');
   const developerResults = page.locator('#starlight__search a');
-  await expect(developerResults.first()).toBeVisible();
+  // Each page's first search is a cold start: Pagefind fetches its bundle, WASM and
+  // index chunks, then one fragment per result. That has overrun the 5 s default on a
+  // loaded CI runner although the same search takes ~2 s locally under full CPU load.
+  await expect(developerResults.first()).toBeVisible({
+    timeout: PAGEFIND_COLD_SEARCH_MS,
+  });
   for (const href of await developerResults.evaluateAll((links) =>
     links.map((link) => link.getAttribute('href')),
   )) {
@@ -122,6 +130,7 @@ test('keeps each Starlight search inside its content channel', async ({
   await page.getByRole('textbox', { name: 'Search' }).fill('Nx');
   await expect(page.locator('#starlight__search')).toContainText(
     /No results|zero results/i,
+    { timeout: PAGEFIND_COLD_SEARCH_MS },
   );
   await expect(page.locator('#starlight__search a')).toHaveCount(0);
 });
