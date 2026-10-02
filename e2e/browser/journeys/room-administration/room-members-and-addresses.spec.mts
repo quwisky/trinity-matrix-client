@@ -49,6 +49,12 @@ async function openSpaceSettings(
 ): Promise<void> {
   const space = page.getByRole('button', { name: spaceName, exact: true });
   await space.waitFor({ state: 'visible', timeout: 30_000 });
+  // A fresh account resolves its crypto state just after sign-in, and the resulting
+  // banner pushes the rail down. Tapping before it mounts can land on the rail button
+  // that slides under the old coordinates (Rooms) instead of the Space.
+  await expect(
+    page.locator('trn-banner').getByText('Set up encryption'),
+  ).toBeVisible({ timeout: 20_000 });
   await touchPlatform.tap(page, space);
   const room = page.locator('.channel', { hasText: roomName }).first();
   await room.waitFor({ state: 'visible', timeout: 30_000 });
