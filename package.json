@@ -5,7 +5,7 @@
   "type": "module",
   "author": "quwisky <quwisky@qwky.eu>",
   "scripts": {
-    "preinstall": "node -e \"if (!String(process.env.npm_config_user_agent).startsWith('pnpm')) { console.error('Use pnpm for this project \u2014 run: corepack enable && pnpm install'); process.exit(1); }\"",
+    "preinstall": "node -e \"if (!String(process.env.npm_config_user_agent).startsWith('pnpm')) { console.error('Use pnpm for this project — run: corepack enable && pnpm install'); process.exit(1); }\"",
     "prepare": "husky",
     "nx": "node scripts/nx.mjs",
     "format": "node scripts/nx.mjs format:write --all",
@@ -81,7 +81,7 @@
   },
   "private": true,
   "packageManager": "pnpm@12.8.1",
-  "//engines": "The `>= 26` half of this range was removed rather than gaining a CI leg: nothing has ever built, tested or packaged this workspace on Node 26, so the range was advertising support that no gate backed. Widening it again is a deliberate act \u2014 add the matrix leg first (the Electron job alone rebuilds a native binary), then the range.",
+  "//engines": "The `>= 26` half of this range was removed rather than gaining a CI leg: nothing has ever built, tested or packaged this workspace on Node 26, so the range was advertising support that no gate backed. Widening it again is a deliberate act — add the matrix leg first (the Electron job alone rebuilds a native binary), then the range.",
   "engines": {
     "node": "^24.15.0",
     "pnpm": ">=11"
@@ -123,8 +123,8 @@
     "@lezer/common": "^1.5.2",
     "@lezer/highlight": "^1.2.3",
     "@matrix-org/matrix-sdk-crypto-wasm": "^18.4.0",
-    "@ng-icons/core": "^36.0.0",
     "@ng-icons/lucide": "^36.0.0",
+    "@ng-icons/core": "^36.0.0",
     "@sanity/diff-match-patch": "^3.2.0",
     "@shikijs/core": "4.4.3",
     "@shikijs/engine-javascript": "4.4.3",
@@ -219,5 +219,5 @@
     "vitest": "5.0.2",
     "yaml": "^2.9.0"
   },
-  "description": "Trinity \u2014 a cross-platform Matrix client with end-to-end encryption (Angular, spartan.ng, Capacitor, Electron)"
+  "description": "Trinity — a cross-platform Matrix client with end-to-end encryption (Angular, spartan.ng, Capacitor, Electron)"
 }

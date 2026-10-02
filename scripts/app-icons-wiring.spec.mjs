@@ -91,6 +91,12 @@ describe('desktop icon wiring', () => {
     );
   });
 
+  it('gives macOS its Apple-grid icon and everything else the full-bleed one', () => {
+    const config = read('electron/electron-builder.yml');
+    expect(config).toMatch(/^mac:\n(?:  .*\n)*?  icon: build\/icon-mac\.png$/m);
+    expect(existsSync(join(root, 'electron/build/icon-mac.png'))).toBe(true);
+  });
+
   it('ships every runtime icon through extraResources', () => {
     const config = read('electron/electron-builder.yml');
     for (const file of [

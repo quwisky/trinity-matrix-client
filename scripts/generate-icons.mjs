@@ -88,8 +88,10 @@ const out = (path, width, height, svg, extra = {}) => ({
 
 /** Every committed icon, in write order. `svg` builds the document; `rule`/`safeRadius` feed the spec. */
 export const OUTPUTS = [
-  // Desktop (electron-builder derives .icns, .ico and Linux sizes from icon.png)
-  out('electron/build/icon.png', 1024, 1024, () => macGrid(1024)),
+  // Desktop: electron-builder derives .ico and Linux sizes from icon.png, .icns from icon-mac.png
+  out('electron/build/icon.png', 1024, 1024, () => plated(1024)),
+  // macOS only: Apple's grid insets the tile (electron-builder mac.icon).
+  out('electron/build/icon-mac.png', 1024, 1024, () => macGrid(1024)),
   out(
     'electron/build/trinityTrayTemplate.png',
     16,
