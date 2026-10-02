@@ -93,6 +93,6 @@ expanding always-loaded instructions.
 | [Code quality](rules/code-quality.md)                     | Split responsibilities while treating file size as a soft signal. |
 | [Branch protection](rules/git/branch-protection.md)       | Choose the authorized base and publication workflow.              |
 | [Conventional commits](rules/git/conventional-commits.md) | Prepare an authorized commit.                                     |
-| [Semantic versioning](rules/git/semver.md)                | Prepare a coordinated release version change.                     |
-| [Changelog](rules/docs/changelog.md)                      | Record meaningful impact before final validation.                 |
+| [Semantic versioning](rules/git/semver.md)                | Leave versions to release-please; never add `Release-As` footers. |
+| [Changelog](rules/docs/changelog.md)                      | Write user-facing commit subjects; release-please owns the log.   |
 | [README accuracy](rules/docs/readme-accuracy.md)          | Update affected entry-point claims and navigation.                |

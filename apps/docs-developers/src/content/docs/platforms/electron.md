@@ -34,7 +34,7 @@ Unit and type checks exercise Node-side shell code. The static verifier checks h
 
 Renderer code uses the validated preload API, not direct Node or Electron access. IPC is protocol-versioned, sender-validated, and capability-scoped. Secure storage accepts only a usable operating-system encryption backend and keeps diagnostic payloads free of secrets.
 
-Packaging targets produce host-specific artifacts and may require native toolchains or signing configuration. Do not describe an unsigned development package as a release artifact. Read [host capabilities](../../architecture/host-capabilities/) and [desktop and native tests](../../testing/desktop-and-native-tests/).
+Packaging targets produce host-specific artifacts and may require native toolchains or signing configuration. Do not describe a locally built development package as a release artifact. Release artifacts come from the release workflow; its Windows installer may be published unsigned, and Windows SmartScreen then warns about an unknown publisher on first run. Read [host capabilities](../../architecture/host-capabilities/) and [desktop and native tests](../../testing/desktop-and-native-tests/).
 
 ## Application icons {#application-icons}
 
