@@ -20,7 +20,7 @@ result proves.
 | Production Web renderer behavior                            | `pnpm e2e:web`                                           |
 | Matrix protocol flow, verification, media, rooms, or search | `pnpm e2e:protocol` or focused `pnpm e2e:<flow>`         |
 | Live login discovery smoke                                  | `pnpm smoke:login`                                       |
-| Installed Android WebView behavior                          | `pnpm e2e:android`                                       |
+| Installed Android app behavior                              | `pnpm e2e:mobile`                                        |
 | Launched Electron shell behavior                            | `pnpm electron:e2e`                                      |
 
 Install browser binaries before a browser suite:
@@ -32,9 +32,9 @@ pnpm exec playwright install chromium webkit
 ## Before running a suite
 
 Check its prerequisites. Docker is required by Synapse-backed suites. Android requires a
-dedicated API 36 x86_64 emulator and its SDK; Electron needs its separately installed
-shell dependencies and a display; iOS needs macOS and Xcode but has no installed-WebView
-Playwright runner. The aggregate preflights selected suites.
+dedicated API 36 x86_64 emulator, its SDK and JDK 21; Electron needs its separately installed
+shell dependencies and a display; iOS needs macOS and Xcode but has no installed-app
+runner. The aggregate preflights selected suites.
 
 The disposable Synapse stack uses fixed ports and shared state. Run Synapse-backed commands
 sequentially, never in parallel. Lifecycle targets and aggregates are uncached and serialized;
@@ -52,30 +52,19 @@ pnpm nx run trinity-e2e-browser:e2e -- --grep "message link"
 ```
 
 The browser suite uses a development build and disposable Synapse. It cannot prove a
-production service worker, Android, or Electron boundary; choose the matching task above
+production service worker, installed Android app, or Electron boundary; choose the matching task above
 when that boundary matters. Browser journeys are cataloged by one capability and one primary
 contract type; add or move a spec with its `e2e/browser/journey-catalog.mts` entry.
 
-## Android WebView journeys
-
-`pnpm e2e:android` builds the production Capacitor app, installs it on a validated
-dedicated emulator, and runs shared browser journeys in the app's WebView plus Android-only
-checks. It can clear the test application and change ADB reverse mappings. Set
-`TRINITY_ANDROID_SERIAL` only for a disposable dedicated emulator. See
-[E2E architecture](../apps/docs-developers/src/content/docs/testing/testing-strategy.md)
-for ownership and cleanup limits.
-
-Shared message-action journeys must use Android's long-press action sheet through
-`openMessageActionSheet`; the desktop hover toolbar is intentionally absent on Android,
-even in a wide WebView. The thread-preview quote journey exercises Reply through each
-platform's action surface before checking quote content and jump behavior.
-
 ## Mobile (Android)
 
-`pnpm e2e:mobile` runs the WebdriverIO and Appium suite in `e2e/mobile` against the
-installed Capacitor app. A test belongs there only when it needs the installed app (a
-native plugin, OS UI, a hardware or system event, a deep link); everything else stays in
-`e2e/browser`.
+Playwright owns renderer journeys (`e2e/browser`, including touch and mobile viewport
+profiles) and Electron. `pnpm e2e:mobile` runs the WebdriverIO and Appium suite in
+`e2e/mobile`, which owns installed-app behavior. It builds the production Capacitor app,
+installs it on a validated dedicated emulator, and can clear the test application and change
+ADB reverse mappings. Set `TRINITY_ANDROID_SERIAL` only for a disposable dedicated emulator.
+
+Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed app (native plugin, OS UI, hardware or system event, deep link). Everything else stays in `e2e/browser`.
 
 - Prerequisites: Android SDK, the `Trinity_API_36` AVD, JDK 21 and Docker (Synapse).
 - `pnpm e2e:mobile` installs the pinned UiAutomator2 driver into the repo-local `.appium`
@@ -84,11 +73,11 @@ native plugin, OS UI, a hardware or system event, a deep link); everything else 
 - Artifacts land in `dist/.playwright/trinity-e2e-mobile/<run-id>/mobile.android/wdio`
   (Appium log, JUnit, failure screenshots and native hierarchies). Text artifacts are
   scrubbed of Matrix ids, tokens and passwords when the run completes.
-- CI runs this as the `mobile-e2e` job beside the `android-e2e` shards, with no retries.
+- CI runs this as the `mobile-e2e` job, with no retries.
 
 ## MSC2545 image-pack management
 
-The image-pack journey is shared by browser, Android WebView, and Electron wrappers. It
+The image-pack journey is shared by browser and Electron wrappers. It
 covers finding a pack, adding and removing an account reference, selecting it in a room,
 and sending its sticker against disposable Synapse. Run its browser copy through the owner:
 
@@ -96,7 +85,7 @@ and sending its sticker against disposable Synapse. Run its browser copy through
 pnpm nx run trinity-e2e-browser:e2e -- conversations/stickers-custom-emoji.spec.mts
 ```
 
-Use Android or Electron when the host boundary is part of the change. Their prerequisites
+Use Electron when the host boundary is part of the change. Their prerequisites
 and cleanup rules still apply.
 
 ## Protocol suites and remote mode

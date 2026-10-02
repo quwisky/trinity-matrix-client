@@ -17,7 +17,6 @@ interface Arguments {
   readonly resources: readonly string[];
   readonly buildTarget?: string;
   readonly bundleManifest: boolean;
-  readonly platform?: string;
   readonly forwarded: readonly string[];
 }
 
@@ -32,7 +31,6 @@ interface WebBundlePreparation {
 function parseArguments(argv: readonly string[]): Arguments {
   let config: string | undefined;
   let buildTarget: string | undefined;
-  let platform: string | undefined;
   let bundleManifest = false;
   const resources: string[] = [];
   const separator = argv.indexOf('--');
@@ -41,7 +39,6 @@ function parseArguments(argv: readonly string[]): Arguments {
   for (const argument of ownArguments) {
     if (argument.startsWith('--config=')) config = argument.slice(9);
     else if (argument.startsWith('--build=')) buildTarget = argument.slice(8);
-    else if (argument.startsWith('--platform=')) platform = argument.slice(11);
     else if (argument === '--bundle-manifest') bundleManifest = true;
     else if (argument.startsWith('--resource='))
       resources.push(argument.slice(11));
@@ -58,7 +55,6 @@ function parseArguments(argv: readonly string[]): Arguments {
     resources,
     buildTarget,
     bundleManifest,
-    platform,
     forwarded,
   };
 }
@@ -131,7 +127,6 @@ export async function runPlaywright(
     });
     const invocationEnvironment: NodeJS.ProcessEnv = {
       ...invocation.environment,
-      ...(options.platform ? { TRINITY_E2E_PLATFORM: options.platform } : {}),
     };
     const reusingPrebuiltBundle =
       options.bundleManifest && environment['TRINITY_E2E_PREBUILT_WWW'] === '1';

@@ -13,7 +13,6 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { passwordLogin, registerUser } from '../../../support/account.mts';
-import { captureScreenshot } from '../../../support/screenshot.mts';
 
 /**
  * Rendered Phase 2 shell contract.
@@ -368,7 +367,7 @@ async function expectAccountMenuAboveDock(page: Page): Promise<void> {
       .attach(
         `account-menu-${dark ? 'dark' : 'light'}-${viewport?.width ?? 'unknown'}-${viewport?.height ?? 'unknown'}`,
         {
-          body: await captureScreenshot(page, () => page.screenshot()),
+          body: await page.screenshot(),
           contentType: 'image/png',
         },
       );
@@ -512,11 +511,8 @@ test.describe('Modern room shell layout', () => {
   test('keeps overflowing panes and long identities safe in both densities', async ({
     page,
     request,
-    authPlatform,
-    touchPlatform,
   }) => {
-    const activate = (target: Locator): Promise<void> =>
-      authPlatform.isNative ? touchPlatform.tap(page, target) : target.click();
+    const activate = (target: Locator): Promise<void> => target.click();
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}sh`;
     const readerName = `shell-${runId}`;

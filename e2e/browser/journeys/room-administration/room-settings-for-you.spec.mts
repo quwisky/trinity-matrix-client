@@ -1,4 +1,3 @@
-import { captureScreenshot } from '../../../support/screenshot.mts';
 import {
   expect,
   test,
@@ -213,7 +212,7 @@ test.describe('Room settings · For you', () => {
       alertBox!.y + alertBox!.height,
     );
     await test.info().attach('room-preferences-load-failure', {
-      body: await captureScreenshot(page, () => panel.screenshot()),
+      body: await panel.screenshot(),
       contentType: 'image/png',
     });
     failReads = false;
@@ -356,9 +355,7 @@ test.describe('Room settings · For you', () => {
       .scrollIntoViewIfNeeded();
     await expect(page.getByTestId('room-settings-for-you-form')).toBeVisible();
     await test.info().attach('room-settings-for-you-desktop', {
-      body: await captureScreenshot(page, () =>
-        page.getByTestId('room-settings').screenshot(),
-      ),
+      body: await page.getByTestId('room-settings').screenshot(),
       contentType: 'image/png',
     });
     await page.evaluate(({ dark, theme, fontSize }) => {

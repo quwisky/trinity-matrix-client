@@ -34,6 +34,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Leaving Settings on a phone now returns keyboard focus to Rooms instead of dropping it, so
+  keyboard and screen-reader users keep their place.
+
 - A message's author no longer appears in that message's "Seen by" receipts.
 
 - Images sent without size or type details now show as images instead of file downloads.

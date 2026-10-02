@@ -1,4 +1,3 @@
-import { captureScreenshot } from '../../../support/screenshot.mts';
 import { devices, expect, test, testResourceId } from '../../../fixtures.mts';
 import { login, type SynapseSession } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
@@ -109,7 +108,7 @@ test.describe('Room settings · For you on a phone', () => {
       page.getByTestId('room-settings-for-you-feedback'),
     ).toContainText('saved for the opening Account', { timeout: 30_000 });
     await test.info().attach('room-settings-for-you-mobile-member', {
-      body: await captureScreenshot(page, () => settings.screenshot()),
+      body: await settings.screenshot(),
       contentType: 'image/png',
     });
   });

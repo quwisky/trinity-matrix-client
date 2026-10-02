@@ -42,7 +42,6 @@
     "e2e:rooms": "node scripts/nx.mjs run trinity-e2e-protocol:rooms",
     "e2e:search": "node scripts/nx.mjs run trinity-e2e-protocol:search",
     "e2e:emoji": "node scripts/nx.mjs run trinity-e2e-protocol:emoji",
-    "e2e:android": "node scripts/nx.mjs run trinity-e2e:e2e-android",
     "e2e:mobile": "node scripts/nx.mjs run trinity-e2e:e2e-mobile",
     "e2e:ui:shipped": "node scripts/nx.mjs run trinity-e2e-web:production-renderer",
     "bundle:manifest:write": "node scripts/web-bundle-manifest.mjs write www",
