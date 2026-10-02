@@ -36,7 +36,7 @@ All notable changes to this project are documented here. The format is based on
 
 - Escape now dismisses an open or pending tooltip. Open select menus tell screen readers
   which list they control and which option is active, and toast action buttons match
-  Trinity's other buttons. Tooltip timing is unchanged.
+  Trinity's other buttons.
 
 - Leaving Settings on a phone now returns keyboard focus to Rooms instead of dropping it, so
   keyboard and screen-reader users keep their place.
