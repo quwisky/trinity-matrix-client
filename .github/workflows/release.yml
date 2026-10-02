@@ -133,6 +133,9 @@ jobs:
   package:
     name: Package (${{ matrix.platform }})
     needs: verify
+    # Explicit, not the default success(): that also requires release-please, which a
+    # dispatch skips, and would skip packaging on every manual re-package.
+    if: ${{ !cancelled() && needs.verify.result == 'success' }}
     runs-on: ${{ matrix.os }}
     # Gates the signing secrets behind an environment. Until you configure required
     # reviewers on it in repo settings this is a no-op; once secrets exist it is what
