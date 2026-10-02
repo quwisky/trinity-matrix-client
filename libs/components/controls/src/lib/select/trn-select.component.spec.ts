@@ -1,6 +1,6 @@
 import { Component, signal } from '@angular/core';
-import { render } from '@trinity/testing';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render } from '@trinity/testing';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import {
   TrnSelectComponent,
   type TrnSelectOption,
@@ -66,6 +66,33 @@ describe('TrnSelectComponent', () => {
     expect(host?.getAttribute('data-invalid')).toBe('true');
     expect(button?.getAttribute('data-size')).toBe('sm');
     expect(button?.getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('wires the open trigger to its listbox and active option for screen readers', async () => {
+    // Brain sets `aria-controls` and `aria-activedescendant` only while expanded, and the
+    // active descendant only once its key manager has an active item (ArrowDown here).
+    // jsdom has no scrollIntoView, which Brain calls when an option becomes active.
+    Element.prototype.scrollIntoView = vi.fn();
+    onTestFinished(() => {
+      Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+    });
+    const { container, fixture } = await render(HostComponent);
+    const button = container.querySelector('[role=combobox]') as HTMLElement;
+    expect(button.getAttribute('aria-controls')).toBeNull();
+
+    fireEvent.click(button);
+    fixture.detectChanges();
+    fireEvent.keyDown(button, { key: 'ArrowDown' });
+    fixture.detectChanges();
+
+    const listbox = document.querySelector('[role=listbox]');
+    expect(listbox?.id).toBeTruthy();
+    expect(button.getAttribute('aria-controls')).toBe(listbox?.id);
+    const active = button.getAttribute('aria-activedescendant');
+    expect(active).toBeTruthy();
+    expect(
+      document.getElementById(active as string)?.getAttribute('role'),
+    ).toBe('option');
   });
 
   it('keeps the shared coarse-pointer target floor on the trigger', async () => {
