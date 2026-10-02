@@ -296,8 +296,16 @@ install `Trinity.app`.
 The job refuses any app that is not signed with a Developer ID, notarized, and
 stapled (`codesign`, `spctl`, `stapler` in the step "App is signed, notarized and
 stapled"). It audits the generated cask with `brew style` and `brew audit` before
-pushing, and pushes nothing when the cask is unchanged. To rewrite a cask, for
-example after fixing the tap, dispatch `homebrew.yml` with the published tag.
+pushing, and pushes nothing when the cask is unchanged. It also checks that the
+app's minimum macOS is still 13.0, because `brew audit` requires the cask to match
+it exactly. The job maintains `audit_exceptions/github_prerelease_allowlist.json` in
+the tap, which `trinity@next` needs because it points at GitHub prereleases.
+
+To rewrite a cask, for example after fixing the tap, dispatch `homebrew.yml` with the
+published tag. Only the latest release of each line can be repaired: the audit's
+livecheck rejects a cask whose version is older than the newest matching release.
+Releases are tagged on the commit release-please merged, so a release whose tagged
+commit predates `homebrew.yml` never triggers it; dispatch it from `develop` instead.
 
 ### One-off setup
 
@@ -306,17 +314,21 @@ example after fixing the tap, dispatch `homebrew.yml` with the published tag.
    secrets `MAC_CSC_LINK` (base64 of the `.p12`), `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`,
    `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`. `release.yml` fails the macOS
    build when only some of them are set.
-2. Create the public repository `quwisky/homebrew-trinity`.
-3. Run `ssh-keygen -t ed25519 -C homebrew-trinity -f homebrew-trinity`. Add
+2. Create the public repository `quwisky/homebrew-trinity` **with an initial commit**
+   (a README is enough); checkout and push fail on an empty repository.
+3. Create the environment `homebrew` in this repository. Under deployment branches
+   and tags, allow only `develop`, `master` and tags matching `v*`.
+4. Run `ssh-keygen -t ed25519 -C homebrew-trinity -f homebrew-trinity`. Add
    `homebrew-trinity.pub` to the tap as a deploy key **with write access**, and store
-   the private key in this repository as the secret `HOMEBREW_TAP_DEPLOY_KEY`.
+   the private key as the **environment** secret `HOMEBREW_TAP_DEPLOY_KEY` in
+   `homebrew`. Delete the local key files afterwards.
 
-| Failure                                                    | Recovery                                                                                                    |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| "is not a published release" (step "Release is published") | Publish the draft first; drafts never reach the tap.                                                        |
-| Missing `-arm64-mac.zip` asset                             | The macOS package failed. Re-package the tag with `release.yml`, then dispatch `homebrew.yml`.              |
-| Signing gate fails                                         | The app is unsigned or not notarized. Set all macOS signing secrets, release a new version, and publish it. |
-| `brew style` / `brew audit` fails                          | Fix `scripts/homebrew-cask.mjs` and its test, merge, then dispatch `homebrew.yml` with the tag.             |
+| Failure                                                    | Recovery                                                                                                                                                                                                                                          |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "is not a published release" (step "Release is published") | Publish the draft first; drafts never reach the tap.                                                                                                                                                                                              |
+| Missing `-arm64-mac.zip` asset                             | The macOS package failed. `release.yml` refuses to change a published release, so either cut a new version, or run `gh release edit <tag> --draft=true`, re-package the tag with `release.yml`, and publish it again (which runs `homebrew.yml`). |
+| Signing gate fails                                         | The app is unsigned or not notarized. Set all macOS signing secrets, release a new version, and publish it.                                                                                                                                       |
+| `brew style` / `brew audit` fails                          | Fix `scripts/homebrew-cask.mjs` and its test, merge, then dispatch `homebrew.yml` with the tag.                                                                                                                                                   |
 
 ## Recover a release run
 

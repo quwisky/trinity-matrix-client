@@ -27,9 +27,14 @@ jobs:
     name: Update the Homebrew tap
     runs-on: macos-latest
     timeout-minutes: 20
+    # The deploy key writes what every Homebrew user installs. The environment's
+    # deployment rule limits which refs may run this job with it.
+    environment: homebrew
     env:
       HOMEBREW_NO_AUTO_UPDATE: '1'
       HOMEBREW_NO_INSTALL_CLEANUP: '1'
+      # brew audit queries GitHub; unauthenticated calls from shared runners hit rate limits.
+      HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
     steps:
       - id: release
         name: Resolve the release
@@ -88,6 +93,12 @@ jobs:
           codesign --verify --deep --strict --verbose=2 unpacked/Trinity.app
           spctl --assess --type execute --verbose unpacked/Trinity.app
           xcrun stapler validate unpacked/Trinity.app
+          # brew audit compares the cask's depends_on macos with this exact value.
+          min=$(/usr/libexec/PlistBuddy -c 'Print LSMinimumSystemVersion' unpacked/Trinity.app/Contents/Info.plist)
+          if [ "$min" != '13.0' ]; then
+            echo "::error::Trinity.app requires macOS $min; update depends_on macos in scripts/homebrew-cask.mjs and this check."
+            exit 1
+          fi
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -102,15 +113,18 @@ jobs:
           ASSET: ${{ steps.release.outputs.asset }}
         run: |
           sha=$(shasum -a 256 "$RUNNER_TEMP/release/$ASSET" | cut -d ' ' -f 1)
-          mkdir -p tap/Casks
+          mkdir -p tap/Casks tap/audit_exceptions
           node scripts/homebrew-cask.mjs --cask "$CASK" --version "$VERSION" --sha256 "$sha" > "tap/Casks/$CASK.rb"
-          if [ -z "$(git -C tap status --porcelain -- "Casks/$CASK.rb")" ]; then
+          # trinity@next deliberately points at GitHub prereleases, which brew audit
+          # rejects unless the tap allowlists the cask.
+          echo '{ "trinity@next": "all" }' > tap/audit_exceptions/github_prerelease_allowlist.json
+          if [ -z "$(git -C tap status --porcelain -- "Casks/$CASK.rb" audit_exceptions)" ]; then
             echo "Casks/$CASK.rb already describes $VERSION; nothing to push."
             exit 0
           fi
           git -C tap config user.name 'github-actions[bot]'
           git -C tap config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git -C tap add "Casks/$CASK.rb"
+          git -C tap add "Casks/$CASK.rb" audit_exceptions
           git -C tap commit -m "$CASK $VERSION"
           # Audit the committed cask through a local tap before anything leaves the runner.
           brew tap quwisky/trinity "$GITHUB_WORKSPACE/tap"

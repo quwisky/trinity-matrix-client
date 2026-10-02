@@ -5,12 +5,24 @@ import { parseArgs } from 'node:util';
 const REPO = 'https://github.com/quwisky/trinity-matrix-client';
 const STABLE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const NEXT = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-next\.(0|[1-9]\d*)$/;
+// Each cask watches only its own line; without these, Homebrew's livecheck would read every
+// git tag and compare a stable cask against -next tags (or the reverse).
+const LIVECHECK = {
+  stable: '    url :url\n    strategy :github_latest\n',
+  next: '    url :url\n    regex(/^v?(\\d+(?:\\.\\d+)+-next\\.\\d+)$/i)\n    strategy :git\n',
+};
 const CASKS = {
-  trinity: { name: 'Trinity', conflicts: 'trinity@next', version: STABLE },
+  trinity: {
+    name: 'Trinity',
+    conflicts: 'trinity@next',
+    version: STABLE,
+    livecheck: LIVECHECK.stable,
+  },
   'trinity@next': {
     name: 'Trinity (next)',
     conflicts: 'trinity',
     version: NEXT,
+    livecheck: LIVECHECK.next,
   },
 };
 
@@ -36,6 +48,9 @@ export function renderCask({ cask, version, sha256 }) {
   name "${spec.name}"
   desc "End-to-end encrypted Matrix client"
   homepage "${REPO}"
+
+  livecheck do
+${spec.livecheck}  end
 
   conflicts_with cask: "${spec.conflicts}"
   depends_on arch: :arm64

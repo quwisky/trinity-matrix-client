@@ -56,6 +56,27 @@ describe('Homebrew tap workflow', () => {
     );
   });
 
+  it('holds the deploy key in a protected environment and authenticates brew', () => {
+    expect(job.environment).toBe('homebrew');
+    expect(job.env.HOMEBREW_GITHUB_API_TOKEN).toBe('${{ github.token }}');
+  });
+
+  it('allowlists trinity@next for the GitHub prerelease audit in the tap', () => {
+    const run = job.steps[stepIndex('Write, check and push the cask')].run;
+    expect(run).toContain('audit_exceptions/github_prerelease_allowlist.json');
+    expect(run).toContain('{ "trinity@next": "all" }');
+    expect(run.indexOf('github_prerelease_allowlist')).toBeLessThan(
+      run.indexOf('brew audit --cask'),
+    );
+  });
+
+  it('requires the app minimum macOS to match the cask before writing', () => {
+    const run =
+      job.steps[stepIndex('App is signed, notarized and stapled')].run;
+    expect(run).toContain('LSMinimumSystemVersion');
+    expect(run).toContain('13.0');
+  });
+
   it('pins every action by commit SHA', () => {
     for (const step of job.steps.filter((s) => s.uses)) {
       expect(step.uses).toMatch(/@[0-9a-f]{40}$/);

@@ -17,6 +17,11 @@ describe('Homebrew cask', () => {
   desc "End-to-end encrypted Matrix client"
   homepage "https://github.com/quwisky/trinity-matrix-client"
 
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
   conflicts_with cask: "trinity@next"
   depends_on arch: :arm64
   depends_on macos: ">= :ventura"
@@ -42,6 +47,10 @@ end
     expect(cask).toContain('  version "0.2.0-next.3"\n');
     expect(cask).toContain('  name "Trinity (next)"\n');
     expect(cask).toContain('  conflicts_with cask: "trinity"\n');
+    // Without its own livecheck, Homebrew would compare against stable tags too.
+    expect(cask).toContain(
+      '  livecheck do\n    url :url\n    regex(/^v?(\\d+(?:\\.\\d+)+-next\\.\\d+)$/i)\n    strategy :git\n  end\n',
+    );
   });
 
   it.each([
