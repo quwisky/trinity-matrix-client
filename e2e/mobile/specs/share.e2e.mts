@@ -12,6 +12,8 @@ import { native, resetApp, webview } from '../support/session.mts';
 const CHOOSER_PACKAGE = 'com.android.intentresolver';
 
 const uiSelector = (selector: string) => $(`android=${selector}`);
+const chooser = () =>
+  uiSelector(`new UiSelector().packageName("${CHOOSER_PACKAGE}")`);
 
 /** Upload a small text file and post it to the room as an unencrypted `m.file`. */
 async function sendFile(
@@ -82,22 +84,14 @@ describe('Android share sheet', () => {
     await tap(card);
 
     await native();
-    await expect(
-      uiSelector(
-        `new UiSelector().resourceIdMatches("${CHOOSER_PACKAGE.replace(/\./g, '\\\\.')}:id/.*")`,
-      ),
-    ).toBeDisplayed({ wait: 30_000 });
+    await expect(chooser()).toBeDisplayed({ wait: 30_000 });
     // The chooser previews a shared file by its name.
     await expect(
       uiSelector(`new UiSelector().textContains("${filename}")`),
     ).toBeDisplayed();
 
     await browser.pressKeyCode(4);
-    await expect(
-      uiSelector(
-        `new UiSelector().resourceIdMatches("${CHOOSER_PACKAGE.replace(/\./g, '\\\\.')}:id/.*")`,
-      ),
-    ).not.toExist({ wait: 10_000 });
+    await expect(chooser()).not.toExist({ wait: 10_000 });
 
     await webview();
     expect(new URL(await browser.getUrl()).pathname).toBe(roomUrl);
