@@ -291,7 +291,7 @@ describe('committed icons', () => {
 });
 
 describe('Icon Composer source', () => {
-  it('gives macOS the blurple gradient, a dark tile and a white glass mark', () => {
+  it('gives macOS a white mark on the blurple gradient and a blurple mark on the dark tile', () => {
     const icon = JSON.parse(
       ICON_COMPOSER['electron/build/Trinity.icon/icon.json'],
     );
@@ -315,7 +315,18 @@ describe('Icon Composer source', () => {
       },
     ]);
     expect(icon.groups[0].layers).toEqual([
-      { glass: true, 'image-name': 'Mark.svg', name: 'Mark' },
+      {
+        'fill-specializations': [
+          { value: { solid: 'srgb:1.00000,1.00000,1.00000,1.00000' } },
+          {
+            appearance: 'dark',
+            value: { solid: 'srgb:0.53333,0.56863,0.96863,1.00000' },
+          },
+        ],
+        glass: true,
+        'image-name': 'Mark.svg',
+        name: 'Mark',
+      },
     ]);
     expect(icon['supported-platforms']).toEqual({ squares: ['macOS'] });
     const mark = ICON_COMPOSER['electron/build/Trinity.icon/Assets/Mark.svg'];

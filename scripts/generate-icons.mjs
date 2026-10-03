@@ -292,7 +292,18 @@ export const ICON_COMPOSER = {
       ],
       groups: [
         {
-          layers: [{ glass: true, 'image-name': 'Mark.svg', name: 'Mark' }],
+          layers: [
+            {
+              // Same as the iOS dark appearance: DARK_MARK on DARK_TILE.
+              'fill-specializations': [
+                { value: { solid: srgb('#ffffff') } },
+                { appearance: 'dark', value: { solid: srgb(DARK_MARK) } },
+              ],
+              glass: true,
+              'image-name': 'Mark.svg',
+              name: 'Mark',
+            },
+          ],
           shadow: { kind: 'neutral', opacity: 0.5 },
           translucency: { enabled: true, value: 0.5 },
         },

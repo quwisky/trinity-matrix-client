@@ -22,6 +22,19 @@
     {
       "layers": [
         {
+          "fill-specializations": [
+            {
+              "value": {
+                "solid": "srgb:1.00000,1.00000,1.00000,1.00000"
+              }
+            },
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "srgb:0.53333,0.56863,0.96863,1.00000"
+              }
+            }
+          ],
           "glass": true,
           "image-name": "Mark.svg",
           "name": "Mark"
