@@ -112,6 +112,8 @@ jobs:
           for name in "${names[@]}"; do tags+=(--tag "$IMAGE:$name"); done
           node scripts/web-container.mjs stage dist/web-image-context
           # The Dockerfile only copies files onto a multi-arch base, so no emulation is needed.
+          # GHCR links a multi-arch package to this repository from the index annotations,
+          # not the per-platform labels.
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
             "${tags[@]}" \
@@ -119,6 +121,9 @@ jobs:
             --label org.opencontainers.image.revision="$(git rev-parse HEAD)" \
             --label org.opencontainers.image.source="https://github.com/$GITHUB_REPOSITORY" \
             --label org.opencontainers.image.created="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --annotation "index:org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --annotation "index:org.opencontainers.image.description=Trinity Matrix client static web host" \
+            --annotation "index:org.opencontainers.image.licenses=MIT" \
             --metadata-file dist/web-image-metadata.json \
             --provenance=false \
             --push \

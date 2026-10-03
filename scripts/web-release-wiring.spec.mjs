@@ -144,3 +144,15 @@ describe('release package timeouts', () => {
     );
   });
 });
+
+describe('GHCR repository link', () => {
+  it('annotates the multi-arch index so GitHub links the package to the repository', () => {
+    const container = read('.github/workflows/container.yml');
+    // GHCR reads org.opencontainers.image.source from the index annotations for a
+    // multi-arch image; per-platform config labels alone leave the package unlinked.
+    for (const key of ['source', 'description', 'licenses'])
+      expect(container).toContain(
+        `--annotation "index:org.opencontainers.image.${key}=`,
+      );
+  });
+});
