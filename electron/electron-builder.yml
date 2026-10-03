@@ -67,7 +67,9 @@ extraResources:
     to: build/trinityTrayTemplate@2x.png
   - from: build/notificationIcon.png
     to: build/notificationIcon.png
-  # Dark twins for the App icon preference (app-icon.ts).
+  # Both macOS Dock icons and the dark twins for the App icon preference (app-icon.ts).
+  - from: build/icon-mac.png
+    to: build/icon-mac.png
   - from: build/icon-dark.png
     to: build/icon-dark.png
   - from: build/icon-mac-dark.png
