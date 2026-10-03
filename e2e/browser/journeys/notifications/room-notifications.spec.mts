@@ -7,22 +7,22 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 // End-to-end for the per-room notification level: the room's ⋮ menu in the channel list
 // has a Notifications submenu (All / Mentions / Mute); picking one writes push rules, and
 // reopening the submenu shows the persisted selection. Needs a Synapse homeserver (Docker).
-const session = synapseSession();
+const session = homeserverSession();
 
 async function seedRoom(
   request: APIRequestContext,
   hs: string,
   runId: string,
 ): Promise<{
-  user: SynapseSession;
+  user: HomeserverSession;
   roomName: string;
   roomId: string;
   accessToken: string;

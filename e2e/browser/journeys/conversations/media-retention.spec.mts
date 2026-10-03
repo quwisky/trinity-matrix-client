@@ -8,12 +8,12 @@ import {
 import type { TestInfo } from '@playwright/test';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
-const session = synapseSession();
+const session = homeserverSession();
 const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
@@ -66,7 +66,7 @@ async function encryptAttachmentForTest(
 }
 
 interface SeededRooms {
-  credentials: SynapseSession;
+  credentials: HomeserverSession;
   roomA: string;
   roomB: string;
 }

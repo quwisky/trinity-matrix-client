@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '../../fixtures.mts';
-import { login, synapseSession } from '../../support/app.mts';
+import { login, homeserverSession } from '../../support/app.mts';
 import { openSettingsFromRooms } from '../../support/journeys/navigation.mts';
 
 // One scrollbar in Settings, never two.
@@ -13,7 +13,7 @@ import { openSettingsFromRooms } from '../../support/journeys/navigation.mts';
 // has carried `no-scrollbar` on its select panel since it was vendored, and it compiled to
 // nothing at all — the preset defining it was never imported. A DOM assertion would have
 // been green throughout.
-const session = synapseSession();
+const session = homeserverSession();
 
 function settingsShell(page: Page): Locator {
   return page.locator('[data-testid="settings-dialog"]');

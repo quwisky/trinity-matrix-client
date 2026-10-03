@@ -13,7 +13,7 @@
       "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-browser"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "node e2e/support/run-playwright.mts --config=e2e/browser/playwright.config.mts --build=trinity:build:development --resource=synapse",
+        "command": "node e2e/support/run-playwright.mts --config=e2e/browser/playwright.config.mts --build=trinity:build:development --resource=homeserver",
         "cwd": "{workspaceRoot}"
       }
     },

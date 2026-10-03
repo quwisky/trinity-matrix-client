@@ -2,16 +2,16 @@ import { expect, test, testResourceId } from '../../fixtures.mts';
 import { registerUser } from '../../support/account.mts';
 import {
   login,
-  synapseSession,
+  homeserverSession,
   waitForSent,
-  type SynapseSession,
+  type HomeserverSession,
 } from '../../support/app.mts';
 import {
   openNamedRoom,
   sendComposerLines,
 } from '../../support/message-composer.mts';
 
-const session = synapseSession();
+const session = homeserverSession();
 
 test.describe('Code block rendering', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
@@ -42,7 +42,7 @@ test.describe('Code block rendering', () => {
       data: { name: roomName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openNamedRoom(page, roomName);
 
     const source = `def greet(n): return "${'scrollbar-proof-'.repeat(16)}"`;

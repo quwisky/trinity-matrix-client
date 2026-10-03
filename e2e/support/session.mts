@@ -12,7 +12,7 @@ import { processIsAlive } from './process-lock.mts';
 export const E2E_SESSION_ENV = 'TRINITY_E2E_SESSION_FILE';
 export const E2E_SESSION_VERSION = 1;
 
-export interface SynapseSessionDescriptor {
+export interface HomeserverSessionDescriptor {
   readonly available: boolean;
   readonly hs?: string;
   readonly user?: string;
@@ -50,7 +50,7 @@ export interface E2ESessionDescriptor {
     readonly report: string;
   };
   readonly artifactsRoot: string;
-  readonly synapse?: SynapseSessionDescriptor;
+  readonly homeserver?: HomeserverSessionDescriptor;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -72,9 +72,9 @@ function isLoopbackOrigin(value: unknown): value is string {
   }
 }
 
-function assertSynapse(
+function assertHomeserver(
   value: unknown,
-): asserts value is SynapseSessionDescriptor {
+): asserts value is HomeserverSessionDescriptor {
   if (!isObject(value) || typeof value['available'] !== 'boolean') {
     throw new Error('E2E session has an invalid Synapse capability');
   }
@@ -114,7 +114,7 @@ export function validateSession(value: unknown): E2ESessionDescriptor {
   ) {
     throw new Error('E2E session descriptor failed structural validation');
   }
-  if (value['synapse'] !== undefined) assertSynapse(value['synapse']);
+  if (value['homeserver'] !== undefined) assertHomeserver(value['homeserver']);
   return value as unknown as E2ESessionDescriptor;
 }
 
@@ -208,11 +208,11 @@ export function sessionEnvironment(
     TRINITY_E2E_STORYBOOK_URL: descriptor.endpoints.storybook,
     TRINITY_E2E_REPORT_URL: descriptor.endpoints.report,
   };
-  if (descriptor.synapse?.available) {
+  if (descriptor.homeserver?.available) {
     environment['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
-    environment['TRINITY_HS'] = descriptor.synapse.hs;
-    environment['TRINITY_USER'] = descriptor.synapse.user;
-    environment['TRINITY_PASS'] = descriptor.synapse.pass;
+    environment['TRINITY_HS'] = descriptor.homeserver.hs;
+    environment['TRINITY_USER'] = descriptor.homeserver.user;
+    environment['TRINITY_PASS'] = descriptor.homeserver.pass;
   }
   return environment;
 }
@@ -224,7 +224,7 @@ export function sessionSummary(descriptor: E2ESessionDescriptor): string {
     `owner=${descriptor.owner.pid}`,
     `resources=${descriptor.resources.join(',') || 'none'}`,
     `app=${descriptor.endpoints.application}`,
-    `synapse=${descriptor.synapse?.available ? 'available' : 'not-requested'}`,
+    `homeserver=${descriptor.homeserver?.available ? 'available' : 'not-requested'}`,
   ].join(' ');
 }
 

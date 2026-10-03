@@ -35,15 +35,18 @@ function dependencies(
 ): InvocationDependencies {
   return {
     serveDirectory: vi.fn(() => listeningServer()),
-    startSynapse: vi.fn(async () => ({
+    startHomeserver: vi.fn(async () => ({
       available: true,
       hs: 'https://localhost:8448',
       user: 'test-user',
       pass: 'secret-value',
     })),
-    stopSynapse: vi.fn(async () => undefined),
-    acquireSynapse: vi.fn(async () => ({ file: 'synapse', owner: 'owner' })),
-    releaseSynapse: vi.fn(),
+    stopHomeserver: vi.fn(async () => undefined),
+    acquireHomeserver: vi.fn(async () => ({
+      file: 'homeserver',
+      owner: 'owner',
+    })),
+    releaseHomeserver: vi.fn(),
     acquireLock: vi.fn((file): ProcessLock => ({
       file,
       owner: `owner-${file}`,
@@ -64,7 +67,7 @@ describe('E2E invocation ownership', () => {
     const workspaceRoot = temporaryWorkspace();
     const adapters = dependencies();
     const owner = await openE2EInvocation(
-      { resources: ['synapse'], workspaceRoot, environment: {} },
+      { resources: ['homeserver'], workspaceRoot, environment: {} },
       adapters,
     );
     const ports = Object.values(owner.descriptor.endpoints).map(
@@ -75,7 +78,7 @@ describe('E2E invocation ownership', () => {
 
     const child = await openE2EInvocation(
       {
-        resources: ['synapse'],
+        resources: ['homeserver'],
         workspaceRoot,
         environment: owner.environment,
       },
@@ -83,12 +86,12 @@ describe('E2E invocation ownership', () => {
     );
     expect(child.owned).toBe(false);
     expect(child.descriptor.id).toBe(owner.descriptor.id);
-    expect(adapters.startSynapse).toHaveBeenCalledTimes(1);
+    expect(adapters.startHomeserver).toHaveBeenCalledTimes(1);
     await child.close();
-    expect(adapters.stopSynapse).not.toHaveBeenCalled();
+    expect(adapters.stopHomeserver).not.toHaveBeenCalled();
 
     await owner.close();
-    expect(adapters.stopSynapse).toHaveBeenCalledTimes(1);
+    expect(adapters.stopHomeserver).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a child that asks its parent for an unowned resource', async () => {
@@ -99,7 +102,7 @@ describe('E2E invocation ownership', () => {
     );
     await expect(
       openE2EInvocation({
-        resources: ['synapse'],
+        resources: ['homeserver'],
         workspaceRoot,
         environment: owner.environment,
       }),
@@ -124,13 +127,13 @@ describe('E2E invocation ownership', () => {
     expect(cancelledAdapters.serveDirectory).not.toHaveBeenCalled();
 
     const failingAdapters = dependencies({
-      stopSynapse: vi.fn(async () => {
+      stopHomeserver: vi.fn(async () => {
         throw new Error('compose down failed');
       }),
     });
     const owner = await openE2EInvocation(
       {
-        resources: ['synapse'],
+        resources: ['homeserver'],
         workspaceRoot: temporaryWorkspace(),
         environment: {},
         teardownTimeoutMs: 500,
@@ -142,40 +145,40 @@ describe('E2E invocation ownership', () => {
 
   it('stops Synapse when startup fails after Compose may have created containers', async () => {
     const adapters = dependencies({
-      startSynapse: vi.fn(async () => {
+      startHomeserver: vi.fn(async () => {
         throw new Error('readiness failed');
       }),
     });
     await expect(
       openE2EInvocation(
         {
-          resources: ['synapse'],
+          resources: ['homeserver'],
           workspaceRoot: temporaryWorkspace(),
           environment: {},
         },
         adapters,
       ),
     ).rejects.toThrow('readiness failed');
-    expect(adapters.stopSynapse).toHaveBeenCalledTimes(1);
-    expect(adapters.releaseSynapse).toHaveBeenCalledTimes(1);
+    expect(adapters.stopHomeserver).toHaveBeenCalledTimes(1);
+    expect(adapters.releaseHomeserver).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a competing live Synapse owner', async () => {
     const workspaceRoot = temporaryWorkspace();
-    const leaseFile = join(workspaceRoot, 'synapse.lock');
+    const leaseFile = join(workspaceRoot, 'homeserver.lock');
     const adapters = dependencies({
-      acquireSynapse: async () =>
+      acquireHomeserver: async () =>
         acquireProcessLock(leaseFile, 'test Synapse owner'),
-      releaseSynapse: releaseProcessLock,
+      releaseHomeserver: releaseProcessLock,
     });
     const owner = await openE2EInvocation(
-      { resources: ['synapse'], workspaceRoot, environment: {} },
+      { resources: ['homeserver'], workspaceRoot, environment: {} },
       adapters,
     );
 
     await expect(
       openE2EInvocation(
-        { resources: ['synapse'], workspaceRoot, environment: {} },
+        { resources: ['homeserver'], workspaceRoot, environment: {} },
         adapters,
       ),
     ).rejects.toThrow(/already running/);
@@ -185,7 +188,7 @@ describe('E2E invocation ownership', () => {
   it('cancels and settles timed-out Synapse teardown before releasing its lease', async () => {
     const events: string[] = [];
     const adapters = dependencies({
-      stopSynapse: vi.fn(
+      stopHomeserver: vi.fn(
         ({ signal }) =>
           new Promise<void>((_resolve, reject) => {
             signal?.addEventListener(
@@ -201,11 +204,11 @@ describe('E2E invocation ownership', () => {
             );
           }),
       ),
-      releaseSynapse: vi.fn(() => events.push('released')),
+      releaseHomeserver: vi.fn(() => events.push('released')),
     });
     const owner = await openE2EInvocation(
       {
-        resources: ['synapse'],
+        resources: ['homeserver'],
         workspaceRoot: temporaryWorkspace(),
         environment: {},
         teardownTimeoutMs: 10,
@@ -223,7 +226,7 @@ describe('E2E invocation ownership', () => {
     process.env['BASE_URL'] = 'http://127.0.0.1:49999';
     process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '1';
     const adapters = dependencies({
-      startSynapse: vi.fn(async () => {
+      startHomeserver: vi.fn(async () => {
         expect(process.env['BASE_URL']).toMatch(/^http:\/\/127\.0\.0\.1:/);
         expect(process.env['NODE_TLS_REJECT_UNAUTHORIZED']).toBe('0');
         return {
@@ -237,7 +240,7 @@ describe('E2E invocation ownership', () => {
     try {
       const owner = await openE2EInvocation(
         {
-          resources: ['synapse'],
+          resources: ['homeserver'],
           workspaceRoot: temporaryWorkspace(),
           environment: {},
         },

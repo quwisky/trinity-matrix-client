@@ -8,8 +8,8 @@ import {
 import {
   login,
   openSettingsTab,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { installWidgetFixture } from '../../support/widget.mts';
@@ -18,7 +18,7 @@ import { installWidgetFixture } from '../../support/widget.mts';
 // desktop dialog path and would not prove that the mobile settings surface stays usable.
 test.use({ ...devices['Pixel 5'] });
 
-const session = synapseSession();
+const session = homeserverSession();
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -84,7 +84,7 @@ test.describe('Room settings widgets on a phone', () => {
       },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
     await page.getByTestId('room-actions-overflow').click();
     await page.getByTestId('overflow-open-room-settings').click();

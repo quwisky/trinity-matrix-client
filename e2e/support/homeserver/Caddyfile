@@ -6,7 +6,7 @@
 #  - /.well-known/matrix/client is served inline so matrix-js-sdk AutoDiscovery
 #    (https://localhost:8448/.well-known/matrix/client) resolves the homeserver to
 #    THIS origin. base_url must be the externally reachable https URL, not the
-#    container's http://synapse:8008.
+#    container's http://homeserver:8008.
 #  - Everything else proxies to the Synapse HTTP listener.
 {
 	# Quieter logs; internal CA so no ACME/public DNS needed.
@@ -30,7 +30,7 @@ https://localhost:8448 {
 	# Default is the compose-network hostname. When the stack shares a job container's
 	# network namespace there is no compose network and no DNS for it, but Synapse is on
 	# the same loopback — see docker-compose.netns.yml.
-	reverse_proxy {$TRINITY_E2E_SYNAPSE_UPSTREAM:synapse:8008}
+	reverse_proxy {$TRINITY_E2E_HOMESERVER_UPSTREAM:homeserver:8008}
 }
 
 # Internal default federation port for the primary server name `localhost`. The
@@ -38,7 +38,7 @@ https://localhost:8448 {
 # requests. It is intentionally not published to the host.
 https://localhost {
 	tls internal
-	reverse_proxy {$TRINITY_E2E_SYNAPSE_UPSTREAM:synapse:8008}
+	reverse_proxy {$TRINITY_E2E_HOMESERVER_UPSTREAM:homeserver:8008}
 }
 
 # Federation front for the secondary Synapse. In the ordinary compose network its
@@ -46,7 +46,7 @@ https://localhost {
 # signatures and discovery correct in either topology.
 https://caddy:9448, https://localhost:9448 {
 	tls internal
-	reverse_proxy {$TRINITY_E2E_REMOTE_SYNAPSE_UPSTREAM:localhost:8009}
+	reverse_proxy {$TRINITY_E2E_REMOTE_HOMESERVER_UPSTREAM:localhost:8009}
 }
 
 # Plain-HTTP Open-Graph page for the link-preview e2e. Synapse (on this docker

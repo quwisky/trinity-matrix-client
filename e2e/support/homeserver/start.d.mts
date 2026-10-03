@@ -8,7 +8,7 @@
 //
 // Keep in sync with the `return` at the end of `start()` and the exported constants.
 
-export declare const SYNAPSE_HTTP: string;
+export declare const HOMESERVER_HTTP: string;
 export declare const SECONDARY_HTTP: string;
 export declare const HS_TLS: string;
 export declare const SERVER_NAME: string;
@@ -23,14 +23,14 @@ export declare const SSO_RESET_EMAIL: string;
 export declare const SSO_RESET_USER: string;
 
 /** A Dex-backed account: Synapse creates it on the first completed round-trip. */
-export interface SynapseSsoAccount {
+export interface HomeserverSsoAccount {
   user: string;
   email: string;
   pass: string;
 }
 
 /** What `start()` hands back once the whole stack is up and healthy. */
-export interface SynapseHarness {
+export interface HomeserverHarness {
   /** Base URL of the TLS-terminating Caddy in front of Synapse. */
   hs: string;
   user: string;
@@ -43,11 +43,11 @@ export interface SynapseHarness {
     serverName: string;
     registrationSecret: string;
   };
-  sso: SynapseSsoAccount;
+  sso: HomeserverSsoAccount;
   /** A second SSO account, permanently seeded for the recovery-reset spec. */
-  ssoReset: SynapseSsoAccount;
+  ssoReset: HomeserverSsoAccount;
 }
 
 export declare function start(options?: {
   signal?: AbortSignal;
-}): Promise<SynapseHarness>;
+}): Promise<HomeserverHarness>;

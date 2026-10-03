@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { prepareWebBundle, runPlaywright } from './run-playwright.mts';
 import { recoverResourceLock, resourceLockFile } from './recover-lock.mts';
-import { synapseLockFile } from './synapse/lease.mts';
+import { homeserverLockFile } from './homeserver/lease.mts';
 
 describe('E2E runner boundaries', () => {
   it('rejects malformed runner arguments before acquiring resources', async () => {
@@ -9,10 +9,10 @@ describe('E2E runner boundaries', () => {
   });
 
   it('maps explicit recovery to the same support-owned Synapse lease', () => {
-    expect(resourceLockFile('synapse')).toBe(synapseLockFile);
+    expect(resourceLockFile('homeserver')).toBe(homeserverLockFile);
     const recover = vi.fn(() => true);
-    expect(recoverResourceLock('synapse', recover)).toBe(true);
-    expect(recover).toHaveBeenCalledWith(synapseLockFile);
+    expect(recoverResourceLock('homeserver', recover)).toBe(true);
+    expect(recover).toHaveBeenCalledWith(homeserverLockFile);
     expect(() => resourceLockFile('not-a-resource')).toThrow(
       /Unknown E2E resource/,
     );

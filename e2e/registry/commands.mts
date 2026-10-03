@@ -232,13 +232,13 @@ export const E2E_PACKAGE_SCRIPTS = [
   },
   {
     name: 'e2e:verify:up',
-    command: 'nx run trinity-e2e:synapse-up',
+    command: 'nx run trinity-e2e:homeserver-up',
     kind: 'maintenance',
     suiteIds: [],
   },
   {
     name: 'e2e:verify:down',
-    command: 'nx run trinity-e2e:synapse-down',
+    command: 'nx run trinity-e2e:homeserver-down',
     kind: 'maintenance',
     suiteIds: [],
   },

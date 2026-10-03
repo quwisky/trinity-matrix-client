@@ -9,8 +9,8 @@ import {
 import { devices } from '@playwright/test';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -24,7 +24,7 @@ const { defaultBrowserType: _pixelBrowser, ...pixel5 } = devices['Pixel 5'];
 // Synapse room whose members carry distinct power levels, so it proves the whole
 // path — SDK power levels → data-access projection → the grouped member list.
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   userId: string;
@@ -105,7 +105,7 @@ async function seedRoleRoom(
   runId: string,
   powers: number[],
 ): Promise<{
-  reader: SynapseSession;
+  reader: HomeserverSession;
   roomName: string;
   roomId: string;
   admin: Participant;
@@ -331,7 +331,7 @@ test.describe('Member role sections', () => {
       hs,
       user: meUser,
       pass: mePass,
-    } as SynapseSession);
+    } as HomeserverSession);
 
     // The DM is listed by the counterpart's display name in the default view.
     const row = page.locator('.channel', { hasText: themName });

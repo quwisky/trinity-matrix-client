@@ -8,8 +8,8 @@ import {
 import {
   clickRowMenuItem,
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -24,7 +24,7 @@ import { registerUser } from '../../../support/account.mts';
 // then redacts). The member posts over the API so the flow under test is purely
 // the admin's UI redaction. Unencrypted room so the member can post via the API
 // and the admin reads plaintext. Needs a Synapse homeserver (Docker); self-skips.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   userId: string;
@@ -113,7 +113,7 @@ test.describe('Moderator redaction', () => {
       hs,
       user: adminUser,
       pass: adminPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
 
     // The member's message is present.

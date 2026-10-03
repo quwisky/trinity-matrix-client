@@ -19,7 +19,7 @@
       "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-electron"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "node e2e/support/run-playwright.mts --config=e2e/electron/playwright.full.config.mts --resource=electron --resource=synapse",
+        "command": "node e2e/support/run-playwright.mts --config=e2e/electron/playwright.full.config.mts --resource=electron --resource=homeserver",
         "cwd": "{workspaceRoot}"
       }
     },
@@ -67,7 +67,7 @@
       "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-electron"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json electron/www && node e2e/support/run-playwright.mts --config=e2e/electron/playwright.full.config.mts --resource=electron --resource=synapse",
+        "command": "node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json electron/www && node e2e/support/run-playwright.mts --config=e2e/electron/playwright.full.config.mts --resource=electron --resource=homeserver",
         "cwd": "{workspaceRoot}"
       }
     },

@@ -7,8 +7,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
@@ -17,7 +17,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // profile changes, room changes) from the timeline. Two users so a real
 // "X joined the room" line exists, plus a message that must survive the filtering.
 // Needs a Synapse homeserver (Docker); self-skips.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   userId: string;
@@ -109,7 +109,7 @@ test.describe('Hide system messages', () => {
       hs,
       user: hostUser,
       pass: hostPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
 
     // Everything is shown by default, so the join line is there to begin with.

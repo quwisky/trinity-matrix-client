@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
  * A spec must not restate the harness's registration secret or endpoint.
  *
  * Eighty-two specs each carried their own `registerUser`, their own
- * `SYNAPSE_HTTP = 'http://localhost:8008'` and their own
+ * `HOMESERVER_HTTP = 'http://localhost:8008'` and their own
  * `REG_SECRET = 'trinity-e2e-shared-secret'`. Copy eighty-two is written by copying
  * eighty-one, so the whole set drifts together or not at all — and the failure when it does
  * drift is the quiet kind: `register_new_matrix_user` computes its HMAC with one secret
@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
  * than "user exists" was silent and the spec failed later, somewhere else, for a reason that
  * had nothing to do with the cause.
  *
- * The values now come from `e2e/support/synapse/start.mjs`, which patches them into
+ * The values now come from `e2e/support/homeserver/start.mjs`, which patches them into
  * `homeserver.yaml` — one definition, on the side that actually configures Synapse.
  *
  * `compact-room-routing.spec.mts` keeps a registration routine of its own, and is allowed to: it
@@ -42,10 +42,10 @@ const RESTATED = [
 ];
 
 /** The one file allowed to define them: the harness that writes them into homeserver.yaml. */
-const DEFINITION = 'e2e/support/synapse/start.mjs';
+const DEFINITION = 'e2e/support/homeserver/start.mjs';
 
 /** Where the shared helpers live — `registerUser`'s home, not a copy of it. */
-const EXEMPT = ['e2e/support/account.mts', 'e2e/support/synapse/'];
+const EXEMPT = ['e2e/support/account.mts', 'e2e/support/homeserver/'];
 
 /**
  * The whole e2e tree, not just the Playwright specs.

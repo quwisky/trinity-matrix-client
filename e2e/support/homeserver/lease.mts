@@ -8,17 +8,20 @@ import {
 } from '../process-lock.mts';
 
 const workspaceRoot = resolve(import.meta.dirname, '../../..');
-export const synapseLockFile = join(
+export const homeserverLockFile = join(
   workspaceRoot,
-  'dist/.playwright/synapse.lock',
+  'dist/.playwright/homeserver.lock',
 );
 const composeFile = join(import.meta.dirname, 'docker-compose.yml');
 const exec = promisify(execFile);
 
-export async function acquireSynapseLease(
+export async function acquireHomeserverLease(
   signal?: AbortSignal,
 ): Promise<ProcessLock> {
-  const lease = acquireProcessLock(synapseLockFile, 'Synapse E2E harness');
+  const lease = acquireProcessLock(
+    homeserverLockFile,
+    'Homeserver E2E harness',
+  );
   try {
     const { stdout } = await exec(
       'docker',
@@ -46,10 +49,10 @@ export async function acquireSynapseLease(
 }
 
 /** Claim teardown without rejecting the running stack that teardown is meant to stop. */
-export function acquireSynapseTeardownLease(): ProcessLock {
-  return acquireProcessLock(synapseLockFile, 'Synapse E2E harness');
+export function acquireHomeserverTeardownLease(): ProcessLock {
+  return acquireProcessLock(homeserverLockFile, 'Homeserver E2E harness');
 }
 
-export function releaseSynapseLease(lease: ProcessLock | undefined): void {
+export function releaseHomeserverLease(lease: ProcessLock | undefined): void {
   releaseProcessLock(lease);
 }

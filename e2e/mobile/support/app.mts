@@ -1,5 +1,5 @@
 import { browser, expect } from '@wdio/globals';
-import { HS_TLS } from '../../support/synapse/start.mjs';
+import { HS_TLS } from '../../support/homeserver/start.mjs';
 import { APP_PACKAGE, native, webview } from './session.mts';
 
 /** Fill an input through its `<label for>`, like the browser suite's fillLabeledInput. */

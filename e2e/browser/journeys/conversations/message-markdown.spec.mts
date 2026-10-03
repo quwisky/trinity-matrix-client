@@ -6,9 +6,9 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
+  homeserverSession,
   waitForSent,
-  type SynapseSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
@@ -22,7 +22,7 @@ import {
 //   - a plain multi-line message still goes as plain text, not formatted_body
 //   - task lists arrive as ☑/☐ rather than being silently dropped
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 /** Every message event in the room, oldest first, straight from the homeserver. */
 async function roomEvents(
@@ -76,7 +76,7 @@ test.describe('Message markdown', () => {
       .then((r) => r.json())
       .then((j) => j.room_id as string);
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openNamedRoom(page, roomName);
 
     // 1. A plain multi-line message.
@@ -148,7 +148,7 @@ test.describe('Message markdown', () => {
       data: { name: roomName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openNamedRoom(page, roomName);
 
     // Only the first marker is typed. Shift+Enter carries the whole marker onto the next
@@ -191,7 +191,7 @@ test.describe('Message markdown', () => {
       data: { name: roomName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openNamedRoom(page, roomName);
 
     // A leading message makes the block a CONTINUATION row — no author header to push it

@@ -2,7 +2,7 @@ import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
   seedPreference,
-  synapseSession,
+  homeserverSession,
 } from '../../../support/app.mts';
 
 // Seeds a long room over the CS API, turns on the virtualized-timeline flag, and
@@ -11,7 +11,7 @@ import {
 // reachable (oldest at the top, newest at the bottom). This is the real-browser
 // check the unit tests can't do (jsdom has no layout). Needs a Synapse homeserver
 // (Docker) and self-skips otherwise, like the other web e2e specs.
-const session = synapseSession();
+const session = homeserverSession();
 const SEED = 200;
 /** Upper bound on rows kept in the DOM at once — comfortably above the window,
  * far below SEED, so a bounded DOM is unambiguous. */

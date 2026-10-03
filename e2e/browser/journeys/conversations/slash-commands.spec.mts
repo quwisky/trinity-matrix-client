@@ -1,15 +1,15 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 // Covers composer slash commands (TimelineService.send → slashCommandContent):
 // /shrug appends the kaomoji, and /plain sends its argument literally (no markdown).
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -50,7 +50,7 @@ test.describe('Slash commands', () => {
       data: { name: roomName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
     const composer = page.getByTestId('composer-input');
     const sendDraft = async () => {

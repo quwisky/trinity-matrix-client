@@ -56,7 +56,7 @@ export const COMPONENT_E2E_SUITES = defineSuites([
     availabilityPolicy: 'required',
     ciTier: 'scheduled',
     cachePolicy: 'never',
-    serializationKeys: ['synapse'],
+    serializationKeys: ['homeserver'],
     timeoutClass: 'long',
     canonicalScript: 'e2e:components',
     currentArtifactRoot: 'dist/.playwright/trinity-e2e-components/<run-id>',

@@ -61,7 +61,7 @@ export interface SsoAccount {
   pass: string;
 }
 
-export interface SynapseSession {
+export interface HomeserverSession {
   available: boolean;
   hs?: string;
   user?: string;
@@ -76,14 +76,14 @@ export interface SynapseSession {
   /**
    * A second Dex identity, for the one spec that leaves permanent state on the account
    * it uses and asserts that nothing else moved. Kept apart from `sso` because
-   * `fullyParallel` runs the two SSO specs in different workers — see e2e/support/synapse/dex.yaml.
+   * `fullyParallel` runs the two SSO specs in different workers — see e2e/support/homeserver/dex.yaml.
    */
   ssoReset?: SsoAccount;
 }
 
 /** Read the homeserver session published by the invocation owner. */
-export function synapseSession(): SynapseSession {
-  return readSession().synapse ?? { available: false };
+export function homeserverSession(): HomeserverSession {
+  return readSession().homeserver ?? { available: false };
 }
 
 /**
@@ -179,7 +179,7 @@ export async function openSettingsTab(
 /** Log in through the UI (homeserver → Continue → credentials → Sign in) → /rooms. */
 export async function login(
   page: Page,
-  s: SynapseSession,
+  s: HomeserverSession,
   navigate: Navigate = webNavigate,
 ): Promise<void> {
   await navigate(page, '/login');

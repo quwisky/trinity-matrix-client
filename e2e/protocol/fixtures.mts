@@ -119,8 +119,8 @@ export const test = protocolTest.extend<ProtocolCredentialFixtures>({
       return;
     }
 
-    const synapse = readSession().synapse;
-    if (!synapse?.available || !synapse.hs) {
+    const homeserver = readSession().homeserver;
+    if (!homeserver?.available || !homeserver.hs) {
       throw new Error(
         `${id} requires the disposable Synapse invocation in disposable mode`,
       );
@@ -139,7 +139,7 @@ export const test = protocolTest.extend<ProtocolCredentialFixtures>({
     }
     await use({
       mode: 'disposable',
-      hs: synapse.hs,
+      hs: homeserver.hs,
       user,
       pass,
       secondary,

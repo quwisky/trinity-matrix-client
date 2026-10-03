@@ -7,8 +7,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -27,7 +27,7 @@ import { registerUser } from '../../../support/account.mts';
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise, like the other
 // authenticated web e2e specs.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   token: string;
@@ -66,7 +66,7 @@ async function seedTwoRooms(
   hs: string,
   runId: string,
 ): Promise<{
-  reader: SynapseSession;
+  reader: HomeserverSession;
   cafeName: string;
   warehouseName: string;
 }> {

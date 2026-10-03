@@ -9,15 +9,15 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { AA_NORMAL_TEXT, measureContrast } from '../../support/contrast.mts';
 
 // End-to-end for matrix.to link navigation: a message linking to another room routes
 // in-app (switches rooms) rather than leaving to matrix.to. Needs Synapse (Docker).
-const session = synapseSession();
+const session = homeserverSession();
 
 type Auth = { accessToken: string; userId: string };
 
@@ -194,7 +194,7 @@ test.describe('Matrix room links', () => {
       hs,
       user: username,
       pass: password,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, sourceName);
 
     // Information opens first; even a joined room does not navigate on link click.
@@ -258,7 +258,7 @@ test.describe('Matrix room links', () => {
       hs: local.hs,
       user: local.username,
       pass: local.password,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, local.sourceName);
     await page.getByRole('link', { name: 'open the federated room' }).click();
 
@@ -341,7 +341,7 @@ test.describe('Matrix room links', () => {
       hs: local.hs,
       user: local.username,
       pass: local.password,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, local.sourceName);
     await page
       .getByRole('link', { name: 'open a private remote room' })
@@ -382,7 +382,7 @@ test.describe('Matrix room links', () => {
       hs: local.hs,
       user: local.username,
       pass: local.password,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, local.sourceName);
     await page
       .getByRole('link', { name: 'open a room whose join will fail' })
@@ -447,7 +447,7 @@ test.describe('Matrix room links', () => {
         hs: local.hs,
         user: local.username,
         pass: local.password,
-      } as SynapseSession);
+      } as HomeserverSession);
       await openRoom(page, local.sourceName);
       await page
         .getByRole('link', { name: 'open the portrait target' })
@@ -554,7 +554,7 @@ test.describe('Matrix room links', () => {
       },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     // Clicking the mention opens a user card — it does not navigate anywhere.

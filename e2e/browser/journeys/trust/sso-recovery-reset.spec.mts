@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from '../../../fixtures.mts';
-import { synapseSession, type SsoAccount } from '../../../support/app.mts';
+import { homeserverSession, type SsoAccount } from '../../../support/app.mts';
 import {
   keyBackupVersion,
   masterKey,
@@ -22,14 +22,14 @@ import {
 //
 // This used to be unit-tested only, against a fabricated 401. It is now driven against a
 // real password-less account, courtesy of the harness's Dex provider — see
-// e2e/support/synapse/dex.yaml. Needs Docker; self-skips otherwise like the other web specs.
+// e2e/support/homeserver/dex.yaml. Needs Docker; self-skips otherwise like the other web specs.
 //
 // It runs on `session.ssoReset`, NOT the general `session.sso`: everything it seeds is
 // permanent (a cross-signing master key can be replaced but never removed, and a
 // key-backup version outlives the run), and everything it asserts is that those did not
 // change. Both only mean something on an account no other worker is signing into, and
 // `fullyParallel` puts sso-login.spec.mts in a second worker against the same homeserver.
-const session = synapseSession();
+const session = homeserverSession();
 
 test.describe('Recovery reset on an SSO account', () => {
   test.skip(!session.available, 'needs the Synapse + Dex harness (Docker)');
@@ -40,7 +40,7 @@ test.describe('Recovery reset on an SSO account', () => {
   test.beforeAll(() => {
     if (session.available && !session.ssoReset) {
       throw new Error(
-        'the harness came up without the reset SSO account; e2e/support/synapse/start.mjs should never allow this',
+        'the harness came up without the reset SSO account; e2e/support/homeserver/start.mjs should never allow this',
       );
     }
   });

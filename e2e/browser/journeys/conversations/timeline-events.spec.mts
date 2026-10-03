@@ -1,8 +1,8 @@
 import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -10,7 +10,7 @@ import { registerUser } from '../../../support/account.mts';
 // state change (here an m.room.name rename) renders as a compact human-readable line
 // between messages (TimelineService projects it via describeTimelineEvent). Needs a
 // Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 test.describe('Timeline system events', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
@@ -52,7 +52,7 @@ test.describe('Timeline system events', () => {
       { headers: auth, data: { name: renamed } },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await page.getByTestId('rail-rooms').click();
     const channel = page.locator('.channel', { hasText: renamed });
     await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
@@ -126,7 +126,7 @@ test.describe('Timeline system events', () => {
       hs,
       user: owner,
       pass: pass(owner),
-    } as SynapseSession);
+    } as HomeserverSession);
     await page.getByTestId('rail-rooms').click();
     const channel = page.locator('.channel', { hasText: `Members ${runId}` });
     await channel.first().waitFor({ state: 'visible', timeout: 30_000 });

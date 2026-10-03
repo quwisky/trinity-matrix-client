@@ -7,8 +7,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -16,7 +16,7 @@ import { registerUser } from '../../../support/account.mts';
 // (data-testid="member-info-ignore") ignores the user account-wide
 // (IgnoredUsersService → setIgnoredUsers) and the button flips to "Unblock". Needs a
 // Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   userId: string;
@@ -99,7 +99,7 @@ test.describe('Block a member', () => {
       hs,
       user: adminUser,
       pass: adminPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
     await expect(page.locator('.chat-members')).toBeHidden();
     await page.getByTestId('toggle-members').click();

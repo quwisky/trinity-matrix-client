@@ -8,8 +8,8 @@ import {
 import {
   login,
   openSettingsTab,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { nextTestResourceId } from '../../../support/namespace.mts';
@@ -31,7 +31,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise, like the other authenticated
 // web e2e specs.
-const session = synapseSession();
+const session = homeserverSession();
 
 const HS_SERVER_NAME = 'localhost';
 
@@ -81,7 +81,7 @@ async function seedOrderedSpace(
   hs: string,
   runId: string,
 ): Promise<{
-  reader: SynapseSession;
+  reader: HomeserverSession;
   spaceName: string;
   zulu: SeededChild;
   alpha: SeededChild;

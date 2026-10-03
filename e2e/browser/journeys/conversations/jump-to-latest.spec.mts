@@ -7,8 +7,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -18,7 +18,7 @@ import { registerUser } from '../../../support/account.mts';
 // (SimpleMessageListComponent.scrollToLatest / the notAtBottom signal). Seeds a room
 // with enough long messages that the loaded timeline overflows the viewport, so
 // scrolling up is actually possible. Needs a Synapse homeserver (Docker); self-skips.
-const session = synapseSession();
+const session = homeserverSession();
 
 // The initial /sync caps the timeline at ~20 events, so seed 20 tall (wrapping)
 // messages — comfortably past a 1280x720 viewport's worth of rows once loaded.
@@ -55,7 +55,7 @@ async function seedBusyRoom(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ reader: SynapseSession; roomName: string }> {
+): Promise<{ reader: HomeserverSession; roomName: string }> {
   const readerUser = `jump-reader-${runId}`;
   const readerPass = `${readerUser}-pass`;
   await registerUser(request, readerUser, readerPass);

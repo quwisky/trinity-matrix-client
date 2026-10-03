@@ -7,15 +7,15 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 // Regression for #282: a failed outbound invite or incoming room join must release
 // request state, show actionable guidance, and allow the same action to be retried
 // without reloading Trinity. Needs the disposable Synapse homeserver.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   userId: string;
@@ -91,7 +91,7 @@ test.describe('Room HTTP error recovery', () => {
       hs,
       user: owner,
       pass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
 
     let inviteAttempts = 0;
@@ -156,7 +156,7 @@ test.describe('Room HTTP error recovery', () => {
       hs,
       user: joiner,
       pass: joinerPass,
-    } as SynapseSession);
+    } as HomeserverSession);
 
     let joinAttempts = 0;
     await page.route('**/_matrix/client/**/join/**', async (route) => {

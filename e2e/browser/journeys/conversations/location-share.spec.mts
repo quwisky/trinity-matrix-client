@@ -2,9 +2,9 @@ import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   clickRowToolbar,
   login,
-  synapseSession,
+  homeserverSession,
   waitForSent,
-  type SynapseSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -12,7 +12,7 @@ import { registerUser } from '../../../support/account.mts';
 // (data-testid="location-card") shows the coordinates + an OpenStreetMap link. The
 // browser's geolocation is overridden so the position is deterministic offline.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 // Override the device location so getCurrentPosition resolves deterministically.
 test.use({
@@ -59,7 +59,7 @@ test.describe('Share location', () => {
       data: { name: roomName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     await page.getByTestId('composer-insert').click();

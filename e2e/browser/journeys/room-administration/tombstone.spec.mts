@@ -1,8 +1,8 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -10,7 +10,7 @@ import { registerUser } from '../../../support/account.mts';
 // with an m.room.tombstone shows a banner whose "Go to the new room" (tombstone-go) joins
 // and opens the successor. Uses distinctly-named old/new rooms so each is identifiable.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -71,7 +71,7 @@ test.describe('Room tombstone', () => {
       },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, oldName);
 
     // The old room shows the upgrade banner.

@@ -18,7 +18,7 @@ export const BROWSER_E2E_SUITES = [
     ciTier: 'pull-request',
     ciRetries: 1,
     cachePolicy: 'never',
-    serializationKeys: ['synapse'],
+    serializationKeys: ['homeserver'],
     timeoutClass: 'long',
     canonicalScript: 'e2e:browser',
     currentArtifactRoot: 'dist/.playwright/trinity-e2e-browser/<run-id>',

@@ -13,12 +13,15 @@ import {
   composeFiles,
   resolveNetworkContainer,
 } from './paths.mjs';
-import { acquireSynapseTeardownLease, releaseSynapseLease } from './lease.mts';
+import {
+  acquireHomeserverTeardownLease,
+  releaseHomeserverLease,
+} from './lease.mts';
 import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
-const log = (m) => console.log(`[synapse] ${m}`);
+const log = (m) => console.log(`[homeserver] ${m}`);
 
 export async function stop({ keepData = false, signal } = {}) {
   const failures = [];
@@ -68,12 +71,12 @@ export async function stop({ keepData = false, signal } = {}) {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   let lease;
   try {
-    lease = acquireSynapseTeardownLease();
+    lease = acquireHomeserverTeardownLease();
     await stop({ keepData: process.argv.includes('--keep-data') });
   } catch (err) {
-    console.error('[synapse] stop failed:', err);
+    console.error('[homeserver] stop failed:', err);
     process.exitCode = 1;
   } finally {
-    releaseSynapseLease(lease);
+    releaseHomeserverLease(lease);
   }
 }

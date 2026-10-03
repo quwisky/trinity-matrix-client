@@ -35,14 +35,14 @@ function descriptor(workspaceRoot: string): E2ESessionDescriptor {
       nonce: 'nonce-12345678',
       createdAt: new Date().toISOString(),
     },
-    resources: ['synapse'],
+    resources: ['homeserver'],
     endpoints: {
       application: 'http://127.0.0.1:43101',
       storybook: 'http://127.0.0.1:43102',
       report: 'http://127.0.0.1:43103',
     },
     artifactsRoot: join(workspaceRoot, 'dist/.playwright/session-12345678'),
-    synapse: {
+    homeserver: {
       available: true,
       hs: 'https://localhost:8448',
       user: 'user',

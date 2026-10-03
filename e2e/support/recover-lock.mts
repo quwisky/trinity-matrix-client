@@ -2,13 +2,13 @@
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { recoverStaleProcessLock } from './process-lock.mts';
-import { synapseLockFile } from './synapse/lease.mts';
+import { homeserverLockFile } from './homeserver/lease.mts';
 
 const workspaceRoot = resolve(import.meta.dirname, '../..');
 const resourceFiles: Readonly<Record<string, string>> = {
   'android-avd': join(workspaceRoot, 'dist/.playwright/locks/android-avd.lock'),
   electron: join(workspaceRoot, 'dist/.playwright/locks/electron.lock'),
-  synapse: synapseLockFile,
+  homeserver: homeserverLockFile,
 };
 
 export function resourceLockFile(resource: string): string {

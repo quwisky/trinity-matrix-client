@@ -1,11 +1,14 @@
 import { createHmac } from 'node:crypto';
 import type { APIRequestContext } from '@playwright/test';
-import { REGISTRATION_SHARED_SECRET, SYNAPSE_HTTP } from './synapse/start.mjs';
+import {
+  REGISTRATION_SHARED_SECRET,
+  HOMESERVER_HTTP,
+} from './homeserver/start.mjs';
 
 // The server-side view of a harness account: how to create one, and the three pieces of
 // crypto state the recovery-reset specs assert on.
 //
-// The constants come from e2e/support/synapse/start.mjs rather than being restated here. A local
+// The constants come from e2e/support/homeserver/start.mjs rather than being restated here. A local
 // copy of the shared secret that drifts from the one start.mjs patches into
 // homeserver.yaml does not fail loudly: register_new_matrix_user computes its HMAC with
 // one secret while Synapse validates against the other, and all a spec sees is
@@ -25,7 +28,7 @@ const bearer = ({ accessToken }: AccountSession): Record<string, string> => ({
  * Register a throwaway account through Synapse's shared-secret admin API.
  *
  * The harness has a registration routine of its own (`registerUser` in
- * e2e/support/synapse/start.mjs) but it is not reusable from a spec: it shells into the Synapse
+ * e2e/support/homeserver/start.mjs) but it is not reusable from a spec: it shells into the Synapse
  * container with `docker compose exec`, which needs the compose context the harness owns.
  * The secret both sign with is the part that must not be duplicated, and is imported.
  *
@@ -38,14 +41,17 @@ export async function registerUser(
   password: string,
 ): Promise<void> {
   const { nonce } = await request
-    .get(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`)
+    .get(`${HOMESERVER_HTTP}/_synapse/admin/v1/register`)
     .then((r) => r.json());
   const mac = createHmac('sha1', REGISTRATION_SHARED_SECRET)
     .update(`${nonce}\0${username}\0${password}\0notadmin`)
     .digest('hex');
-  const res = await request.post(`${SYNAPSE_HTTP}/_synapse/admin/v1/register`, {
-    data: { nonce, username, password, admin: false, mac },
-  });
+  const res = await request.post(
+    `${HOMESERVER_HTTP}/_synapse/admin/v1/register`,
+    {
+      data: { nonce, username, password, admin: false, mac },
+    },
+  );
   if (!res.ok()) {
     const text = await res.text();
     if (!/already.*exists|user.*taken/i.test(text)) {

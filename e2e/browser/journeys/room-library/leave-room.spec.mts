@@ -7,8 +7,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -22,13 +22,13 @@ import { registerUser } from '../../../support/account.mts';
 // Seeds one reader with two plain rooms so leaving one leaves a non-empty list
 // to assert against. Needs a Synapse homeserver (Docker) and self-skips
 // otherwise, like the other authenticated web e2e specs.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function seedTwoRooms(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ reader: SynapseSession; leaveName: string; keepName: string }> {
+): Promise<{ reader: HomeserverSession; leaveName: string; keepName: string }> {
   const readerUser = `leaver-${runId}`;
   const readerPass = `leaver-pass-${runId}`;
   const leaveName = `Leave Me ${runId}`;

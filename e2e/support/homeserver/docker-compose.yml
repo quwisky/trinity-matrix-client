@@ -10,9 +10,9 @@
 # Everything here is throwaway: `homeserver.yaml`, the signing key, and the sqlite
 # DB are generated into ./data on first run and removed by stop.sh.
 services:
-  synapse:
+  homeserver:
     image: matrixdotorg/synapse:v1.161.0
-    container_name: trinity-e2e-synapse
+    container_name: trinity-e2e-homeserver
     restart: 'no'
     environment:
       SYNAPSE_SERVER_NAME: localhost
@@ -37,9 +37,9 @@ services:
 
   # A second homeserver for federation-sensitive journeys. It listens on a distinct
   # internal port too, so the netns CI override can run both Synapses on one loopback.
-  synapse-remote:
+  homeserver-remote:
     image: matrixdotorg/synapse:v1.161.0
-    container_name: trinity-e2e-synapse-remote
+    container_name: trinity-e2e-homeserver-remote
     restart: 'no'
     environment:
       SYNAPSE_SERVER_NAME: caddy:9448
@@ -72,7 +72,7 @@ services:
     container_name: trinity-e2e-caddy
     restart: 'no'
     depends_on:
-      - synapse
+      - homeserver
     volumes:
       - ${TRINITY_E2E_STATE_DIR:-.}/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

@@ -23,7 +23,7 @@
       "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-web"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "node e2e/support/run-playwright.mts --config=e2e/web/playwright.production-renderer.config.mts --build=trinity:build:production --bundle-manifest --resource=synapse",
+        "command": "node e2e/support/run-playwright.mts --config=e2e/web/playwright.production-renderer.config.mts --build=trinity:build:production --bundle-manifest --resource=homeserver",
         "cwd": "{workspaceRoot}"
       }
     },

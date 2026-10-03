@@ -10,15 +10,15 @@ import {
 import {
   clickRowToolbar,
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 // Covers the rendered thread summary on a real timeline: keyboard activation on desktop,
 // touch activation on a Pixel 5, and the long-preview layout in the browser engine.
 // Needs a Synapse homeserver (Docker) and self-skips when it is unavailable.
-const session = synapseSession();
+const session = homeserverSession();
 const { defaultBrowserType: pixel5BrowserType, ...pixel5 } = devices['Pixel 5'];
 void pixel5BrowserType;
 const PNG_1X1 = Buffer.from(
@@ -32,7 +32,7 @@ interface ApiUser {
 }
 
 interface SeededThread {
-  reader: SynapseSession;
+  reader: HomeserverSession;
   roomName: string;
   rootBody: string;
   latestBody: string;

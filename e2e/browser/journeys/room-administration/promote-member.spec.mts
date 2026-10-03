@@ -7,8 +7,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -18,7 +18,7 @@ import { registerUser } from '../../../support/account.mts';
 // (RoomModerationService.setPowerLevel → client.setPowerLevel → sync), moving them
 // into the Moderator section of the member list. Needs a Synapse homeserver
 // (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   userId: string;
@@ -98,7 +98,7 @@ test.describe('Promote a member', () => {
       hs,
       user: adminUser,
       pass: adminPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
     await expect(page.locator('.chat-members')).toBeHidden();
     await page.getByTestId('toggle-members').click();

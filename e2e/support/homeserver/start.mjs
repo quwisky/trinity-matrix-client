@@ -27,7 +27,7 @@ import {
   prepareStateDir,
   resolveNetworkContainer,
 } from './paths.mjs';
-import { acquireSynapseLease, releaseSynapseLease } from './lease.mts';
+import { acquireHomeserverLease, releaseHomeserverLease } from './lease.mts';
 
 const exec = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -45,8 +45,8 @@ const REMOTE_CONFIG = join(REMOTE_DATA, 'homeserver.yaml');
  * file the moment its static user list changes under a stack someone left up.
  */
 const MOUNTED_CONFIG = {
-  synapse: CONFIG,
-  'synapse-remote': REMOTE_CONFIG,
+  homeserver: CONFIG,
+  'homeserver-remote': REMOTE_CONFIG,
   dex: join(STATE_DIR, 'dex.yaml'),
   caddy: join(STATE_DIR, 'Caddyfile'),
 };
@@ -61,7 +61,7 @@ const MOUNTED_CONFIG = {
  */
 const APPLIED_CONFIG = join(DATA, '.applied-config.json');
 
-export const SYNAPSE_HTTP = 'http://localhost:8008';
+export const HOMESERVER_HTTP = 'http://localhost:8008';
 export const SECONDARY_HTTP = 'http://localhost:8009';
 export const HS_TLS = 'https://localhost:8448';
 export const SERVER_NAME = 'localhost';
@@ -73,7 +73,7 @@ export const TEST_PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
 
 // The Dex-backed SSO account. It has no Matrix password by construction — Synapse
 // creates it through `oidc_providers` — which is exactly what the specs need it for.
-// These must match e2e/support/synapse/dex.yaml.
+// These must match e2e/support/homeserver/dex.yaml.
 export const DEX_ISSUER = 'http://localhost:5556/dex';
 export const SSO_EMAIL = 'sso-e2e@trinity.test';
 export const SSO_PASS = 'sso-e2e-pass-123';
@@ -88,7 +88,7 @@ export const SSO_USER = 'sso-e2e';
 export const SSO_RESET_EMAIL = 'sso-reset-e2e@trinity.test';
 export const SSO_RESET_USER = 'sso-reset-e2e';
 
-const log = (m) => console.log(`[synapse] ${m}`);
+const log = (m) => console.log(`[homeserver] ${m}`);
 
 async function exists(p) {
   try {
@@ -335,7 +335,7 @@ async function ensureConfig() {
   const trustedKeysChanged = yaml !== beforeTrustedKeys;
 
   if (additions.length) {
-    yaml += `\n\n# === appended by e2e/support/synapse/start.mjs ===\n${additions.join('\n')}\n`;
+    yaml += `\n\n# === appended by e2e/support/homeserver/start.mjs ===\n${additions.join('\n')}\n`;
   }
 
   // Unlike the blocks above, the OIDC region is torn out and rewritten every time —
@@ -496,7 +496,7 @@ async function registerUser() {
     await compose([
       'exec',
       '-T',
-      'synapse',
+      'homeserver',
       'register_new_matrix_user',
       '-u',
       TEST_USER,
@@ -561,14 +561,14 @@ export async function start({ signal } = {}) {
     'utf8',
   );
 
-  await waitFor('synapse /health', async () => {
-    const res = await fetch(`${SYNAPSE_HTTP}/health`, {
+  await waitFor('homeserver /health', async () => {
+    const res = await fetch(`${HOMESERVER_HTTP}/health`, {
       signal: operationSignal,
     });
     return res.ok;
   });
 
-  await waitFor('secondary synapse /health', async () => {
+  await waitFor('secondary homeserver /health', async () => {
     const res = await fetch(`${SECONDARY_HTTP}/health`, {
       signal: operationSignal,
     });
@@ -588,8 +588,8 @@ export async function start({ signal } = {}) {
   // The one poll that reads SYNAPSE's view of the provider rather than Dex's own. Synapse
   // only advertises `m.login.sso` when it has loaded an SSO provider, so this is what
   // turns "we wrote an oidc_providers block" into "the running server has one".
-  await waitFor('synapse sso login flow', async () => {
-    const res = await fetch(`${SYNAPSE_HTTP}/_matrix/client/v3/login`, {
+  await waitFor('homeserver sso login flow', async () => {
+    const res = await fetch(`${HOMESERVER_HTTP}/_matrix/client/v3/login`, {
       signal: operationSignal,
     });
     if (!res.ok) return false;
@@ -642,12 +642,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
   let lease;
   try {
-    lease = await acquireSynapseLease();
+    lease = await acquireHomeserverLease();
     await start();
   } catch (err) {
-    console.error('[synapse] start failed:', err);
+    console.error('[homeserver] start failed:', err);
     process.exitCode = 1;
   } finally {
-    releaseSynapseLease(lease);
+    releaseHomeserverLease(lease);
   }
 }
