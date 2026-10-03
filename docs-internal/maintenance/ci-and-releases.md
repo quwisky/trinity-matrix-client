@@ -32,9 +32,8 @@ unavailable diffs, branch creation, ambiguous merge bases, and every other path
 select the full code graph. Configuration, scripts, lockfiles, root documents,
 private documentation, and documentation-site code therefore retain full validation.
 
-The classifier emits its reason and expected jobs. The tested required-result
-evaluator rejects failed, cancelled, missing, or skipped expected jobs; wiring
-that aggregate status into branch rules belongs to the later protection slice
+The classifier emits its reason and expected jobs. Wiring an aggregate required-result
+status into branch rules belongs to the later protection slice
 of [#462](https://github.com/quwisky/trinity-matrix-client/issues/462).
 
 ### Configure GitHub Pages
@@ -104,15 +103,6 @@ before checking KVM access. Its Playwright download cache is separate from Gradl
 A failed Renovate run separately uploads `renovate-log.ndjson` for seven days. Renovate writes
 that file through the runner's `/tmp` mount because its container does not share the checked-out
 workspace with the host-side health check.
-
-To exercise diagnostic failure handling explicitly after installing Chromium, run
-`node scripts/ci-diagnostics-proof.mjs` with `always-fail`, `retry`, `soft-timeout`,
-or `missing-report`. These disposable browser fixtures use the shared reporting
-policy through pnpm, Nx and the invocation owner. Successful proof intentionally
-returns a nonzero status and records `verified: true` in its ignored
-`dist/.playwright/ci-proof/evidence/` summary. The timeout case must interrupt a
-running test; a normal test timeout or a hang after reporting does not qualify.
-These real-browser proofs are separate from the browser-free scripts test gate.
 
 ### The verified renderer artifact
 

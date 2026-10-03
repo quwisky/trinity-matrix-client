@@ -3,17 +3,7 @@ import { disabled } from '@angular/forms/signals';
 import type { SchemaPath } from '@angular/forms/signals';
 import type { JoinRule } from '@trinity/data-access/room-administration';
 
-/**
- * The three fields the room and space settings dialogs both have. Each dialog's own model
- * extends this — the room adds `historyVisibility`, the space deliberately does not.
- */
-export interface RoomBasics {
-  name: string;
-  topic: string;
-  joinRule: JoinRule;
-}
-
-/** The power-level answers that decide which of those fields the viewer may change. */
+/** The power-level answers that decide which of name, topic and join rule the viewer may change. */
 export interface RoomBasicsGates {
   canEditName: Signal<boolean>;
   canEditTopic: Signal<boolean>;

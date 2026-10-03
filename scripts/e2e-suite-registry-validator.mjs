@@ -397,9 +397,7 @@ const validatePackageScripts = (
   }
   for (const scriptName of Object.keys(packageScripts)) {
     if (
-      /^(?:e2e(?::|$)|electron:e2e(?::|$)|spike:(?:chromium|webkit)$|smoke:login$)/.test(
-        scriptName,
-      ) &&
+      /^(?:e2e(?::|$)|electron:e2e(?::|$)|smoke:login$)/.test(scriptName) &&
       !contractNames.has(scriptName)
     ) {
       errors.push(`package script ${scriptName} is unregistered`);

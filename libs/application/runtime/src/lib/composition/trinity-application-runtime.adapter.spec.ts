@@ -146,9 +146,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         accounts: [],
         metrics: {
           durationMs: 0,
-          activeTerminalMs: null,
-          terminalAccounts: 0,
-          totalAccounts: 0,
         },
       }),
     );
@@ -583,9 +580,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         ],
         metrics: {
           durationMs: 1,
-          activeTerminalMs: 1,
-          terminalAccounts: 2,
-          totalAccounts: 2,
         },
       }),
     );
@@ -622,9 +616,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         accounts: [],
         metrics: {
           durationMs: 1,
-          activeTerminalMs: 1,
-          terminalAccounts: 1,
-          totalAccounts: 1,
         },
       }),
     );

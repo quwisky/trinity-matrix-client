@@ -116,9 +116,6 @@ describe('protocol runtime configuration', () => {
     expect(
       protocolResources('protocol.verify-sas', 'remote', remoteEnvironment()),
     ).toEqual([]);
-    expect(
-      protocolResources('protocol.crypto-spike-chromium', 'disposable'),
-    ).toEqual(['crypto-spike']);
   });
 
   it('does not allow non-mutating network checks to enter remote mutation mode', () => {
@@ -128,10 +125,10 @@ describe('protocol runtime configuration', () => {
   });
 
   it('declares one executable case for every protocol suite', () => {
-    expect(Object.keys(PROTOCOL_CASES)).toHaveLength(13);
+    expect(Object.keys(PROTOCOL_CASES)).toHaveLength(11);
     expect(
       new Set(Object.values(PROTOCOL_CASES).map(({ spec }) => spec)).size,
-    ).toBe(12);
+    ).toBe(11);
   });
 
   it('keeps non-mutating protocol cases on the credential-free fixture', () => {

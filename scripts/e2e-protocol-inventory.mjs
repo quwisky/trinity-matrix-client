@@ -6,14 +6,14 @@ import ts from 'typescript';
 const DEFAULT_PATTERN = 'e2e/protocol/**/*.spec.mjs';
 const ASSERTION_METHODS = new Set(['waitFor', 'waitForFunction', 'waitForURL']);
 const EXPECTED_INVENTORY = {
-  files: 12,
-  assertions: 189,
+  files: 11,
+  assertions: 187,
   // Space creation checks the current parent-only policy: unsuggested child,
   // no reverse parent state. Both legacy assertion slots remain covered.
   fingerprint:
-    'd85391975eb6b4df49ea947fd430ed4d1b9e609d2b095252f61206c08058309d',
+    'cc5e793b2c57d6da9d5ef956aeb3b1e559aa5d473bf15e0e6ca475f9953fb52d',
 };
-const PRE_MIGRATION_ASSERTIONS = 209;
+const PRE_MIGRATION_ASSERTIONS = 207;
 const APPROVED_POST_MIGRATION_ASSERTIONS = 1;
 const CENTRALIZED_SHARED_CHECKS = 21;
 const EXPECTED_SHARED_OWNER_FINGERPRINT =

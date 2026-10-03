@@ -40,7 +40,6 @@ interface PreferenceStartupProducerPolicy {
   readonly invalidCode: string;
   readonly timeoutCode: string;
   readonly safeDefault: PreferenceSafeDefaultKey;
-  readonly consequence: PreferenceFallbackConsequenceKey;
 }
 
 export type PreferenceSafeDefaultKey =
@@ -56,23 +55,9 @@ export type PreferenceSafeDefaultKey =
   | 'account-scope-active-only'
   | 'push-gateway-build-default';
 
-export type PreferenceFallbackConsequenceKey =
-  | 'appearance-fallback'
-  | 'shell-layout-fallback'
-  | 'feature-flags-fallback'
-  | 'privacy-fallback'
-  | 'system-lines-fallback'
-  | 'gestures-fallback'
-  | 'date-time-fallback'
-  | 'shortcuts-fallback'
-  | 'gifs-fallback'
-  | 'account-scope-fallback'
-  | 'push-gateway-fallback';
-
 function policy(
   producer: PreferenceStartupProducer,
   safeDefault: PreferenceSafeDefaultKey,
-  consequence: PreferenceFallbackConsequenceKey,
 ): PreferenceStartupProducerPolicy {
   return {
     operation: `hydrate-${producer}`,
@@ -83,79 +68,20 @@ function policy(
     invalidCode: `${producer}-stored-value-invalid`,
     timeoutCode: `${producer}-hydration-timeout`,
     safeDefault,
-    consequence,
   };
 }
 
 /** Exhaustive identity, scope, storage and deadline ledger for preference preparation. */
 export const PREFERENCE_STARTUP_PRODUCER_POLICIES = {
-  appearance: policy(
-    'appearance',
-    'appearance-declared-defaults',
-    'appearance-fallback',
-  ),
-  'shell-layout': policy(
-    'shell-layout',
-    'shell-layout-standard-widths',
-    'shell-layout-fallback',
-  ),
-  'feature-flags': policy(
-    'feature-flags',
-    'feature-flags-shipping-defaults',
-    'feature-flags-fallback',
-  ),
-  privacy: policy('privacy', 'privacy-declared-defaults', 'privacy-fallback'),
-  'system-lines': policy(
-    'system-lines',
-    'system-lines-visible',
-    'system-lines-fallback',
-  ),
-  gestures: policy('gestures', 'message-swipe-off', 'gestures-fallback'),
-  'date-time': policy(
-    'date-time',
-    'date-time-system-format',
-    'date-time-fallback',
-  ),
-  shortcuts: policy(
-    'shortcuts',
-    'shortcuts-built-in-bindings',
-    'shortcuts-fallback',
-  ),
-  gifs: policy('gifs', 'gifs-klipy-unconfigured', 'gifs-fallback'),
-  'account-scope': policy(
-    'account-scope',
-    'account-scope-active-only',
-    'account-scope-fallback',
-  ),
-  'push-gateway': policy(
-    'push-gateway',
-    'push-gateway-build-default',
-    'push-gateway-fallback',
-  ),
+  appearance: policy('appearance', 'appearance-declared-defaults'),
+  'shell-layout': policy('shell-layout', 'shell-layout-standard-widths'),
+  'feature-flags': policy('feature-flags', 'feature-flags-shipping-defaults'),
+  privacy: policy('privacy', 'privacy-declared-defaults'),
+  'system-lines': policy('system-lines', 'system-lines-visible'),
+  gestures: policy('gestures', 'message-swipe-off'),
+  'date-time': policy('date-time', 'date-time-system-format'),
+  shortcuts: policy('shortcuts', 'shortcuts-built-in-bindings'),
+  gifs: policy('gifs', 'gifs-klipy-unconfigured'),
+  'account-scope': policy('account-scope', 'account-scope-active-only'),
+  'push-gateway': policy('push-gateway', 'push-gateway-build-default'),
 } satisfies Record<PreferenceStartupProducer, PreferenceStartupProducerPolicy>;
-
-const FALLBACK_MESSAGES = {
-  'appearance-fallback':
-    'Appearance is using its built-in theme, size, and density defaults.',
-  'shell-layout-fallback': 'Panels are using their standard widths.',
-  'feature-flags-fallback':
-    'Experimental features use their shipping defaults.',
-  'privacy-fallback': 'Privacy controls are using their declared defaults.',
-  'system-lines-fallback': 'Timeline system lines are shown by default.',
-  'gestures-fallback': 'Message swipe actions are turned off.',
-  'date-time-fallback': 'Dates and times use the system format.',
-  'shortcuts-fallback': 'Keyboard shortcuts use their built-in bindings.',
-  'gifs-fallback':
-    'The GIF picker uses KLIPY; without a restored key it remains unavailable.',
-  'account-scope-fallback': 'Only the active Account is shown.',
-  'push-gateway-fallback':
-    'Push uses the build configuration or remains disabled.',
-} satisfies Record<PreferenceFallbackConsequenceKey, string>;
-
-/** Value-free presentation selected by the stable hydration operation identity. */
-export function preferenceFallbackMessage(operation: string): string | null {
-  const policy = Object.values(PREFERENCE_STARTUP_PRODUCER_POLICIES).find(
-    (candidate) => candidate.operation === operation,
-  );
-  return policy ? FALLBACK_MESSAGES[policy.consequence] : null;
-}

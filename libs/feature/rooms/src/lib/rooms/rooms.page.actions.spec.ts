@@ -13,6 +13,7 @@ import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import {
+  ACCOUNT_REMOVAL_CONSEQUENCES,
   AccountRuntimeService,
   type AccountSwitchCoordination,
 } from '@trinity/data-access/accounts';
@@ -46,7 +47,6 @@ import { UserCardService } from '../user-card/user-card.service';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { RoomLinkPreviewComponent } from '../room-link-preview/room-link-preview.component';
-import { ACCOUNT_REMOVAL_CONSEQUENCES } from './session-actions.service';
 
 // The open room lives in the URL, and the harness's route is module state that outlives a
 // single TestBed — so a room one test opens is still in the URL when the next one builds.
@@ -144,11 +144,6 @@ describe('RoomsPage space actions', () => {
                 map(() => ({
                   kind: 'ready' as const,
                   accountId,
-                  metrics: {
-                    durationMs: 0,
-                    projectionDurationMs: 0,
-                    projectionCount: 0,
-                  },
                 })),
               ),
           ),

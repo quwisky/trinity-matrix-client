@@ -54,7 +54,6 @@ export class AccountSwitchWorkflow {
     publish: (state: AccountRuntimeState) => void,
   ): Observable<AccountSwitchOutcome> {
     return defer(() => {
-      const startedAt = performance.now();
       if (this.attempt) {
         return this.attempt.accountId === accountId
           ? this.attempt.outcome
@@ -68,11 +67,6 @@ export class AccountSwitchWorkflow {
         return of({
           kind: 'ready',
           accountId,
-          metrics: {
-            durationMs: performance.now() - startedAt,
-            projectionDurationMs: 0,
-            projectionCount: 0,
-          },
         } as const);
       }
       if (blockingOperation) {
@@ -99,7 +93,7 @@ export class AccountSwitchWorkflow {
           }
           onCommitStarted();
           commitStarted = true;
-          const committed = this.commit(accountId, startedAt).pipe(
+          const committed = this.commit(accountId).pipe(
             tap((outcome) => {
               settled = true;
               publish({ phase: 'switch-settled', outcome });
@@ -136,10 +130,7 @@ export class AccountSwitchWorkflow {
     });
   }
 
-  private commit(
-    accountId: string,
-    startedAt: number,
-  ): Observable<AccountSwitchOutcome> {
+  private commit(accountId: string): Observable<AccountSwitchOutcome> {
     return this.adapter.commitActiveAccount(accountId).pipe(
       take(1),
       throwIfEmpty(
@@ -147,18 +138,9 @@ export class AccountSwitchWorkflow {
       ),
       switchMap((commit) => {
         if (commit.kind === 'failed') return of(this.failed(accountId, commit));
-        const projectionStartedAt = performance.now();
-        return this.projections.transition({ kind: 'active-account' }).pipe(
-          map((readiness) => ({
-            kind: 'ready' as const,
-            accountId,
-            metrics: {
-              durationMs: performance.now() - startedAt,
-              projectionDurationMs: performance.now() - projectionStartedAt,
-              projectionCount: readiness.projectionCount,
-            },
-          })),
-        );
+        return this.projections
+          .transition({ kind: 'active-account' })
+          .pipe(map(() => ({ kind: 'ready' as const, accountId })));
       }),
     );
   }

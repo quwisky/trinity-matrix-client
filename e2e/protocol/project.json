@@ -106,26 +106,6 @@
         "cwd": "{workspaceRoot}"
       }
     },
-    "crypto-spike-chromium": {
-      "cache": false,
-      "parallelism": false,
-      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-protocol"],
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "node e2e/protocol/run.mts --suite=protocol.crypto-spike-chromium",
-        "cwd": "{workspaceRoot}"
-      }
-    },
-    "crypto-spike-webkit": {
-      "cache": false,
-      "parallelism": false,
-      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-protocol"],
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "node e2e/protocol/run.mts --suite=protocol.crypto-spike-webkit",
-        "cwd": "{workspaceRoot}"
-      }
-    },
     "login-smoke": {
       "cache": false,
       "parallelism": false,

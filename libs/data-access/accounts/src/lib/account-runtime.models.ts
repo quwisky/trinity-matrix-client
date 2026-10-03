@@ -44,9 +44,6 @@ export type AccountRestoreOutcome =
 
 export interface AccountRestoreMetrics {
   readonly durationMs: number;
-  readonly activeTerminalMs: number | null;
-  readonly terminalAccounts: number;
-  readonly totalAccounts: number;
 }
 
 interface AccountRestoreResultBase {
@@ -127,17 +124,10 @@ export type AccountSwitchFailure =
   | 'local-state-unavailable'
   | 'workspace-transition-failed';
 
-export interface AccountSwitchMetrics {
-  readonly durationMs: number;
-  readonly projectionDurationMs: number;
-  readonly projectionCount: number;
-}
-
 export type AccountSwitchOutcome =
   | {
       readonly kind: 'ready';
       readonly accountId: string;
-      readonly metrics: AccountSwitchMetrics;
     }
   | {
       readonly kind: 'failed';

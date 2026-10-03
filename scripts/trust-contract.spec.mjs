@@ -70,14 +70,6 @@ describe('Trust production boundary', () => {
     expect(projectionConfig).not.toMatch(
       /\b(?:MatrixClient|CryptoApi|ProjectFromClientConfig)\b/,
     );
-    expect(
-      existsSync(
-        join(
-          workspaceRoot,
-          'libs/data-access/matrix-client/src/lib/crypto-spike.service.ts',
-        ),
-      ),
-    ).toBe(true);
   });
 
   it('keeps commands cold and exposes typed recovery meaning', () => {

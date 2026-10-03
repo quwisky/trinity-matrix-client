@@ -79,12 +79,7 @@ describe('authGuard', () => {
 });
 
 function result(kind: 'restored' | 'no-accounts'): AccountRestoreResult {
-  const metrics = {
-    durationMs: 1,
-    activeTerminalMs: kind === 'restored' ? 1 : null,
-    terminalAccounts: kind === 'restored' ? 1 : 0,
-    totalAccounts: kind === 'restored' ? 1 : 0,
-  };
+  const metrics = { durationMs: 1 };
   return kind === 'restored'
     ? {
         kind,

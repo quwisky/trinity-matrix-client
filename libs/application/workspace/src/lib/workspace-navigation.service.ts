@@ -18,7 +18,6 @@ import {
   type WorkspaceEventTarget,
   WorkspaceNavigationIntent,
   WorkspaceNavigationOutcome,
-  type WorkspaceTransitionMetrics,
   type WorkspaceView,
 } from './workspace-navigation.models';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
@@ -69,15 +68,12 @@ export class WorkspaceNavigationService {
   private readonly destroyRef = inject(DestroyRef);
   private readonly compact = mediaQuerySignal(BELOW_MD_QUERY, this.destroyRef);
   private readonly workspaceView = signal<WorkspaceView>(this.seedView());
-  private readonly transitionMetrics =
-    signal<WorkspaceTransitionMetrics | null>(null);
   private readonly eventTargetState = signal<WorkspaceEventTarget | null>(null);
   private hierarchySubscription: Subscription | null = null;
   private projectionsActive = false;
   private hasProjected = false;
 
   readonly view = this.workspaceView.asReadonly();
-  readonly lastTransition = this.transitionMetrics.asReadonly();
   readonly eventTarget = this.eventTargetState.asReadonly();
   readonly activeAccountId = computed(() => this.view().accountId);
   readonly activeSpaceId = computed(() => {
@@ -141,11 +137,10 @@ export class WorkspaceNavigationService {
           this.hasProjected = true;
           this.project(view);
         },
-        commit: (view, metrics, committedOptions) => {
+        commit: (view, committedOptions) => {
           const changed = !sameWorkspaceDestination(this.view(), view);
           const needsProjection = changed || !this.projectionsActive;
           this.workspaceView.set(view);
-          this.transitionMetrics.set(metrics);
           if (Object.hasOwn(committedOptions, 'eventId')) {
             this.publishEventTarget(
               view.roomId && committedOptions.eventId

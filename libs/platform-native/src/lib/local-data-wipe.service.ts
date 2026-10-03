@@ -100,8 +100,8 @@ export class LocalDataWipeService {
         names.add(name);
       }
     }
-    // A migrated pre-multi-account session sits on the SDK-default prefix, and the crypto
-    // spike creates the same pair — neither is named by any record.
+    // A migrated pre-multi-account session sits on the SDK-default prefix and is not
+    // named by any record.
     for (const name of rustCryptoStoreDbNames(undefined)) {
       names.add(name);
     }

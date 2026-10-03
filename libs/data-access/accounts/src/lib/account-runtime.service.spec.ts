@@ -423,10 +423,6 @@ describe('AccountRuntimeService', () => {
       '@active:hs',
       '@inactive:hs',
     ]);
-    expect(result.metrics).toMatchObject({
-      terminalAccounts: 2,
-      totalAccounts: 2,
-    });
     expect(runtime.hasActiveAccount()).toBe(true);
     expect(runtime.state()).toEqual({ phase: 'settled', result });
   });
@@ -841,7 +837,6 @@ describe('AccountRuntimeService', () => {
     expect(result).toMatchObject({
       kind: 'ready',
       accountId: '@next:hs',
-      metrics: { projectionCount: 0 },
     });
     expect(runtime.activeAccountId()).toBe('@next:hs');
     expect(runtime.state()).toEqual({
@@ -1007,11 +1002,9 @@ describe('AccountRuntimeService', () => {
 
     await expect(first).resolves.toMatchObject({
       kind: 'ready',
-      metrics: { projectionCount: 1 },
     });
     await expect(repeated).resolves.toMatchObject({
       kind: 'ready',
-      metrics: { projectionCount: 1 },
     });
   });
 
