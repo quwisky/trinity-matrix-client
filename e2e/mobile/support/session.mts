@@ -93,7 +93,10 @@ async function executeCdp(
   }
 }
 
-async function shell(command: string, args: string[] = []): Promise<string> {
+export async function shell(
+  command: string,
+  args: string[] = [],
+): Promise<string> {
   return String(await browser.execute('mobile: shell', { command, args }));
 }
 
