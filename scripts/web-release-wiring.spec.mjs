@@ -137,10 +137,10 @@ describe('container workflow robustness', () => {
 });
 
 describe('release package timeouts', () => {
-  it('gives the macOS package 90 minutes for notarization and the others 45', () => {
+  it('gives the macOS package 120 minutes for notarization and the others 45', () => {
     const release = read('.github/workflows/release.yml');
     expect(release).toContain(
-      "timeout-minutes: ${{ matrix.platform == 'mac' && 90 || 45 }}",
+      "timeout-minutes: ${{ matrix.platform == 'mac' && 120 || 45 }}",
     );
   });
 });
