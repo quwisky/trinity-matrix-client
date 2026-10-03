@@ -40,6 +40,15 @@ describe('E2E homeserver selection', () => {
   });
 });
 
+describe('PR E2E job', () => {
+  it('names the homeserver generically, since the default is no longer Synapse', () => {
+    const ci = parse(read('.github/workflows/ci.yml'));
+    const names = Object.values(ci.jobs).map((job) => job.name);
+    expect(names).toContain('E2E (Playwright + homeserver)');
+    expect(names).not.toContain('E2E (Playwright + Synapse)');
+  });
+});
+
 describe('Tuwunel E2E configuration', () => {
   it.each(TOMLS)(
     '%s keeps the harness-only federation and registration settings',

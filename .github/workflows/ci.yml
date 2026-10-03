@@ -190,7 +190,7 @@ jobs:
   e2e:
     needs: [classify, renderer]
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' }}
-    name: E2E (Playwright + Synapse)
+    name: E2E (Playwright + homeserver)
     runs-on: ubuntu-latest
     permissions:
       contents: read
