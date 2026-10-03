@@ -1,6 +1,6 @@
 import { ApplicationRef, WritableSignal, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ClientEvent, RoomEvent } from 'matrix-js-sdk';
+import { ClientEvent, MatrixEventEvent, RoomEvent } from 'matrix-js-sdk';
 import { describe, expect, it } from 'vitest';
 import { UnreadAggregatorService } from './unread-aggregator.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
@@ -124,6 +124,26 @@ describe('UnreadAggregatorService', () => {
     await flush();
 
     expect(svc.totalUnread()).toBe(9);
+  });
+
+  it('recomputes when an encrypted message decrypts after its sync', async () => {
+    // matrix-js-sdk ignores the server count in encrypted rooms and raises the room's
+    // count itself on decryption, after the Sync that carried the ciphertext. The
+    // system notification fires then too, so the dock badge must not wait for the
+    // next sync.
+    const { svc, accountIds, clients, flush } = harness();
+    const room = fakeRoom(0);
+    const client = fakeClient([room]);
+    clients.set('@a:hs', client);
+    accountIds.set(['@a:hs']);
+    await flush();
+    expect(svc.totalUnread()).toBe(0);
+
+    room.unread = 1;
+    client.emit(MatrixEventEvent.Decrypted);
+    await flush();
+
+    expect(svc.totalUnread()).toBe(1);
   });
 
   it('rebuilds the totals once for a burst of events fired within one task', async () => {
