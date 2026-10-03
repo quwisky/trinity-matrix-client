@@ -12,6 +12,7 @@ export * from './lib/markdown-edit';
 export * from './lib/voice';
 export * from './lib/typing';
 export * from './lib/matrix-to';
+export * from './lib/trinity-link';
 export * from './lib/poll';
 export * from './lib/transient-errors';
 export * from './lib/request-failure';

@@ -62,6 +62,25 @@ describe('CapacitorHostOperationAdapter event streams', () => {
     ).rejects.toBe(failure);
   });
 
+  it('delivers the cold-start launch URL once across listener re-attachments', async () => {
+    app.addListener.mockResolvedValue({
+      remove: vi.fn(() => Promise.resolve()),
+    });
+    app.getLaunchUrl.mockResolvedValue({
+      url: 'eu.qwky.trinity://matrix.to/#/!a:b.c',
+    });
+    const adapter = new CapacitorHostOperationAdapter();
+    const urls: string[] = [];
+
+    const first = adapter.received.subscribe(({ url }) => urls.push(url));
+    await new Promise((resolve) => setTimeout(resolve));
+    first.unsubscribe();
+    adapter.received.subscribe(({ url }) => urls.push(url));
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(urls).toEqual(['eu.qwky.trinity://matrix.to/#/!a:b.c']);
+  });
+
   it('removes a Back listener that resolves after teardown', async () => {
     let resolveListener!: (value: { remove: () => Promise<void> }) => void;
     const remove = vi.fn(() => Promise.resolve());
