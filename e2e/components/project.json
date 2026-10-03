@@ -11,7 +11,7 @@
   ],
   "targets": {
     "storybook": {
-      "//": "Static component-browser contracts; no application server or Synapse is required.",
+      "//": "Static component-browser contracts; no application server or homeserver is required.",
       "cache": false,
       "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-components"],
       "executor": "nx:run-commands",
@@ -31,7 +31,7 @@
       }
     },
     "scrollbars": {
-      "//": "Chromium, Firefox and WebKit renderer contract against disposable Synapse.",
+      "//": "Chromium, Firefox and WebKit renderer contract against the disposable homeserver.",
       "cache": false,
       "parallelism": false,
       "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-components"],

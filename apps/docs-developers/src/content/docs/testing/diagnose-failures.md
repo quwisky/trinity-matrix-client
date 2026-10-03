@@ -25,7 +25,7 @@ Read a failing source-shape guard before changing it. Its assertion often protec
 
 Reduce a unit failure by file or test title. For browser failures, inspect the retained trace, DOM snapshot, console, and network timeline before choosing a narrower locator or readiness condition. Replace arbitrary waits with a retrying assertion on the state the user needs.
 
-For Synapse, determine whether the failure belongs to Docker startup, server readiness, fixture ownership, Matrix behavior, or the browser journey. For a native host, separate build/toolchain failure, launch failure, bridge negotiation, and product behavior.
+For the disposable homeserver, determine whether the failure belongs to Docker startup, server readiness, fixture ownership, Matrix behavior, or the browser journey. For a native host, separate build/toolchain failure, launch failure, bridge negotiation, and product behavior.
 
 ## Reproduce without laundering the result {#reproduce-result}
 

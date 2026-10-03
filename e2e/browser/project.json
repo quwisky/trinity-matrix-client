@@ -7,7 +7,7 @@
   "implicitDependencies": ["trinity", "trinity-e2e", "trinity-e2e-support"],
   "targets": {
     "e2e": {
-      "//": "The support invocation owns the application server and serialized Synapse lifecycle; focused capability and test-name arguments are forwarded to Playwright.",
+      "//": "The support invocation owns the application server and serialized homeserver lifecycle; focused capability and test-name arguments are forwarded to Playwright.",
       "cache": false,
       "parallelism": false,
       "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-browser"],

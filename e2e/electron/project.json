@@ -7,7 +7,7 @@
   "implicitDependencies": ["trinity-desktop", "trinity-e2e-support"],
   "targets": {
     "full": {
-      "//": "Owns the launched desktop shell and joins the support-owned Electron and disposable Synapse lifecycle.",
+      "//": "Owns the launched desktop shell and joins the support-owned Electron and disposable homeserver lifecycle.",
       "cache": false,
       "parallelism": false,
       "dependsOn": [
@@ -55,7 +55,7 @@
       }
     },
     "full-prebuilt": {
-      "//": "Owns the launched desktop shell and joins the support-owned Electron and disposable Synapse lifecycle.",
+      "//": "Owns the launched desktop shell and joins the support-owned Electron and disposable homeserver lifecycle.",
       "cache": false,
       "parallelism": false,
       "dependsOn": [

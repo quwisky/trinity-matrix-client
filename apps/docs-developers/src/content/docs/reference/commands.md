@@ -37,14 +37,14 @@ Inspect targets before forwarding runner-specific arguments.
 
 ## Hosts and journeys {#host-journeys}
 
-| Command                | Purpose                                                |
-| ---------------------- | ------------------------------------------------------ |
-| `pnpm electron:start`  | Build and launch Electron                              |
-| `pnpm electron:verify` | Check the Electron host contract                       |
-| `pnpm android:run`     | Build, sync, and launch Android                        |
-| `pnpm ios:run`         | Build, sync, and launch iOS                            |
-| `pnpm e2e:browser`     | Run canonical browser journeys with disposable Synapse |
-| `pnpm e2e:components`  | Run component browser suites                           |
-| `pnpm e2e:all`         | Run every available registered E2E suite               |
+| Command                | Purpose                                                       |
+| ---------------------- | ------------------------------------------------------------- |
+| `pnpm electron:start`  | Build and launch Electron                                     |
+| `pnpm electron:verify` | Check the Electron host contract                              |
+| `pnpm android:run`     | Build, sync, and launch Android                               |
+| `pnpm ios:run`         | Build, sync, and launch iOS                                   |
+| `pnpm e2e:browser`     | Run canonical browser journeys with the disposable homeserver |
+| `pnpm e2e:components`  | Run component browser suites                                  |
+| `pnpm e2e:all`         | Run every available registered E2E suite                      |
 
-Synapse-backed commands share fixed ports and run sequentially. See the relevant [testing strategy](../../testing/testing-strategy/) or platform guide before interpreting a result.
+Homeserver-backed commands share fixed ports and run sequentially. See the relevant [testing strategy](../../testing/testing-strategy/) or platform guide before interpreting a result.

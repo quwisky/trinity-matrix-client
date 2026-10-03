@@ -182,7 +182,7 @@ jobs:
           surface: electron
           report-path: dist/.playwright/trinity-e2e-electron/*/electron.full/**
 
-      # The app journeys, driven against a disposable Synapse + Caddy stack in Docker.
+      # The app journeys, driven against a disposable homeserver (Tuwunel) + Caddy stack in Docker.
       - name: Verify Desktop left the worktree unchanged
         if: ${{ !cancelled() }}
         run: git diff --exit-code
@@ -223,7 +223,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      # Separate from the Synapse suite: this builds and serves the component Storybook, then
+      # Separate from the homeserver suite: this builds and serves the component Storybook, then
       # verifies its palette × mode canvas and focused text contrast in the installed browser.
       - id: storybook
         run: |
@@ -256,7 +256,7 @@ jobs:
           surface: renderer
           report-path: dist/.playwright/trinity-e2e-web/*/web.production-renderer/**
 
-      # Separate from the Synapse suite: this serves the already-built app and checks CSS
+      # Separate from the homeserver suite: this serves the already-built app and checks CSS
       # capability queries in desktop and real mobile-device browser profiles.
       - id: styling
         run: |
@@ -282,7 +282,7 @@ jobs:
           surface: browser
           report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
 
-      # The QR protocol harness owns the same fixed Synapse stack, so run it only after
+      # The QR protocol harness owns the same fixed homeserver stack, so run it only after
       # the main suite has completed and torn its stack down. Its synthetic camera feeds
       # a real SDK payload through production rendering, decoding and reciprocation.
       - id: qr

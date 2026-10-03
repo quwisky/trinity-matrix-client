@@ -36,6 +36,8 @@ dedicated API 36 x86_64 emulator, its SDK and JDK 21; Electron needs its separat
 shell dependencies and a display; iOS needs macOS and Xcode but has no installed-app
 runner. The aggregate preflights selected suites.
 
+The disposable homeserver is Tuwunel unless `TRINITY_E2E_HOMESERVER=synapse` selects Synapse
+(see the [Matrix E2E guide](../apps/docs-developers/src/content/docs/testing/matrix-e2e-tests.md#choose-homeserver)).
 The disposable homeserver stack uses fixed ports and shared state. Run homeserver-backed commands
 sequentially, never in parallel. Lifecycle targets and aggregates are uncached and serialized;
 let them start and stop their own services. Do not start a competing Docker stack, server,
