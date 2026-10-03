@@ -79,7 +79,6 @@ describe('authGuard', () => {
 });
 
 function result(kind: 'restored' | 'no-accounts'): AccountRestoreResult {
-  const metrics = { durationMs: 1 };
   return kind === 'restored'
     ? {
         kind,
@@ -89,10 +88,8 @@ function result(kind: 'restored' | 'no-accounts'): AccountRestoreResult {
             kind: 'ready',
             accountId: '@me:hs',
             role: 'active',
-            durationMs: 1,
           },
         ],
-        metrics,
       }
-    : { kind, accounts: [], metrics };
+    : { kind, accounts: [] };
 }

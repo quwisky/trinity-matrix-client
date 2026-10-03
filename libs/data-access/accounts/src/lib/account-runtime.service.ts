@@ -77,15 +77,9 @@ export class AccountRuntimeService {
 
   restoreSavedAccounts(): Observable<AccountRestoreResult> {
     return defer(() => {
-      const startedAt = performance.now();
       const operation = this.currentOperation();
       if (operation) {
-        return of(
-          accountRestoreTransitionResult(
-            performance.now() - startedAt,
-            operation,
-          ),
-        );
+        return of(accountRestoreTransitionResult(operation));
       }
       let termination: 'pending' | 'settled' | 'failed' = 'pending';
       let activeAccountId: string | null = null;
@@ -104,17 +98,12 @@ export class AccountRuntimeService {
         switchMap(() => this.adapter.readSavedAccounts()),
         switchMap((snapshot) => {
           if (snapshot.kind === 'corrupt-local-state') {
-            return of(
-              emptyAccountRestoreResult(
-                'local-state-unavailable',
-                performance.now() - startedAt,
-              ),
-            );
+            return of(emptyAccountRestoreResult('local-state-unavailable'));
           }
           activeAccountId = snapshot.activeAccountId;
           totalAccounts = snapshot.accountIds.length;
           this.publishProgress(activeAccountId, totalAccounts, outcomes);
-          return this.restoreSnapshot(snapshot, startedAt, outcomes);
+          return this.restoreSnapshot(snapshot, outcomes);
         }),
         tap((result) => {
           termination = 'settled';
@@ -321,35 +310,23 @@ export class AccountRuntimeService {
     );
     this.runtimeState.set({
       phase: 'settled',
-      result: accountRestoreResultFor(
-        result.activeAccountId,
-        accounts,
-        result.metrics.durationMs + outcome.durationMs,
-      ),
+      result: accountRestoreResultFor(result.activeAccountId, accounts),
     });
   }
 
   private restoreSnapshot(
     snapshot: Extract<SavedAccountsSnapshot, { kind: 'available' }>,
-    startedAt: number,
     outcomes: Map<string, AccountRestoreOutcome>,
   ): Observable<AccountRestoreResult> {
     if (snapshot.accountIds.length === 0) {
-      return of(
-        emptyAccountRestoreResult('no-accounts', performance.now() - startedAt),
-      );
+      return of(emptyAccountRestoreResult('no-accounts'));
     }
     if (
       !snapshot.activeAccountId ||
       !snapshot.accountIds.includes(snapshot.activeAccountId) ||
       new Set(snapshot.accountIds).size !== snapshot.accountIds.length
     ) {
-      return of(
-        emptyAccountRestoreResult(
-          'local-state-unavailable',
-          performance.now() - startedAt,
-        ),
-      );
+      return of(emptyAccountRestoreResult('local-state-unavailable'));
     }
 
     const activeAccountId = snapshot.activeAccountId;
@@ -383,11 +360,7 @@ export class AccountRuntimeService {
         const orderedOutcomes = orderedAccountIds.map((accountId) =>
           outcomes.get(accountId)!,
         );
-        return accountRestoreResultFor(
-          activeAccountId,
-          orderedOutcomes,
-          performance.now() - startedAt,
-        );
+        return accountRestoreResultFor(activeAccountId, orderedOutcomes);
       }),
     );
   }

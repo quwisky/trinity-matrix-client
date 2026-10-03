@@ -27,7 +27,6 @@ export function restoreAccountWithinPolicy(
   role: AccountRestoreRole,
 ): Observable<AccountRestoreOutcome> {
   return new Observable<AccountRestoreOutcome>((subscriber) => {
-    const startedAt = performance.now();
     return adapter
       .restoreAccount(accountId, role)
       .pipe(
@@ -35,14 +34,7 @@ export function restoreAccountWithinPolicy(
         throwIfEmpty(
           () => new Error('Account Runtime adapter emitted no outcome.'),
         ),
-        map((outcome) =>
-          accountRestoreOutcomeFor(
-            accountId,
-            role,
-            performance.now() - startedAt,
-            outcome,
-          ),
-        ),
+        map((outcome) => accountRestoreOutcomeFor(accountId, role, outcome)),
         timeout({ first: policy.timeoutMs }),
         catchError((error: unknown) =>
           error instanceof TimeoutError
@@ -50,7 +42,6 @@ export function restoreAccountWithinPolicy(
                 kind: 'timed-out' as const,
                 accountId,
                 role,
-                durationMs: performance.now() - startedAt,
               })
             : throwError(() => error),
         ),
