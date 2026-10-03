@@ -12,22 +12,20 @@ import {
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
-import { saveFields, type FieldWrite } from '../../shared/save-fields';
+import {
+  saveFields,
+  unsavedRemainderMessage,
+  type FieldWrite,
+  type PreferenceFeedback,
+  type PreferenceLoadState,
+} from '../../shared/save-fields';
 import { sentenceList } from '../room-settings-draft.models';
 import { RoomSettingsDraftService } from '../room-settings-draft.service';
-
-export type RoomForYouLoadState =
-  'idle' | 'loading' | 'ready' | 'unavailable' | 'failed';
 
 export interface RoomForYouModel {
   readonly notificationMode: RoomNotifyMode;
   readonly favourite: boolean;
   readonly lowPriority: boolean;
-}
-
-export interface RoomForYouFeedback {
-  readonly tone: 'pending' | 'success' | 'danger';
-  readonly message: string;
 }
 
 interface RoomForYouTarget {
@@ -50,11 +48,11 @@ export class RoomSettingsForYouDraftService {
   private readonly destroyRef = inject(DestroyRef);
 
   private readonly target = signal<RoomForYouTarget | null>(null);
-  private readonly loadStateState = signal<RoomForYouLoadState>('idle');
+  private readonly loadStateState = signal<PreferenceLoadState>('idle');
   private readonly baselineState = signal<RoomForYouModel>(EMPTY_MODEL);
   private readonly modelState = signal<RoomForYouModel>(EMPTY_MODEL);
   private readonly savingState = signal(false);
-  private readonly feedbackState = signal<RoomForYouFeedback | null>(null);
+  private readonly feedbackState = signal<PreferenceFeedback | null>(null);
 
   readonly loadState = this.loadStateState.asReadonly();
   readonly model = this.modelState.asReadonly();
@@ -173,7 +171,7 @@ export class RoomSettingsForYouDraftService {
           return;
         }
         const message = saved.length
-          ? `${sentenceList(saved)} saved. ${sentenceList(failed)} ${failed.length === 1 ? 'is' : 'are'} still unsaved; retry saves only what remains.`
+          ? unsavedRemainderMessage(saved, failed)
           : `${sentenceList(failed)} could not be saved. Your changes are still here.`;
         this.feedbackState.set({ tone: 'danger', message });
       });

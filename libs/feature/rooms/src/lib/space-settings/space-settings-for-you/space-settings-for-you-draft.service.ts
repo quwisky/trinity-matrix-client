@@ -14,11 +14,13 @@ import {
   type RoomSortMode,
   type SpaceRoomOrderSnapshot,
 } from '@trinity/data-access/room-library';
+import type {
+  PreferenceFeedback,
+  PreferenceLoadState,
+} from '../../shared/save-fields';
 import { SpaceSettingsDraftService } from '../space-settings-draft.service';
 
 export type SpaceOrderSelection = 'default' | RoomSortMode;
-export type SpaceOrderLoadState =
-  'idle' | 'loading' | 'ready' | 'unavailable' | 'failed';
 
 interface SpaceOrderModel {
   readonly mode: SpaceOrderSelection;
@@ -27,11 +29,6 @@ interface SpaceOrderModel {
 interface SpaceOrderTarget {
   readonly accountId: string;
   readonly spaceId: string;
-}
-
-export interface SpaceOrderFeedback {
-  readonly tone: 'pending' | 'success' | 'danger';
-  readonly message: string;
 }
 
 const EMPTY_MODEL: SpaceOrderModel = { mode: 'default' };
@@ -44,11 +41,11 @@ export class SpaceSettingsForYouDraftService {
   private readonly destroyRef = inject(DestroyRef);
 
   private readonly targetState = signal<SpaceOrderTarget | null>(null);
-  private readonly loadStateState = signal<SpaceOrderLoadState>('idle');
+  private readonly loadStateState = signal<PreferenceLoadState>('idle');
   private readonly baselineState = signal<SpaceOrderModel>(EMPTY_MODEL);
   private readonly modelState = signal<SpaceOrderModel>(EMPTY_MODEL);
   private readonly savingState = signal(false);
-  private readonly feedbackState = signal<SpaceOrderFeedback | null>(null);
+  private readonly feedbackState = signal<PreferenceFeedback | null>(null);
 
   readonly loadState = this.loadStateState.asReadonly();
   readonly model = this.modelState.asReadonly();

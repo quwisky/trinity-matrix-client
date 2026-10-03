@@ -3,6 +3,7 @@ import {
   JoinRule,
   type RoomSettingsPermissions,
 } from '@trinity/data-access/room-administration';
+import { sentenceList as sharedSentenceList } from '../shared/save-fields';
 
 export interface RoomSettingsModel {
   name: string;
@@ -116,9 +117,5 @@ export function withCurrentHistory(
 }
 
 export function sentenceList(fields: readonly string[]): string {
-  if (fields.length === 0) return 'Room details';
-  const sentence = new Intl.ListFormat('en', { type: 'conjunction' }).format(
-    fields,
-  );
-  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+  return sharedSentenceList(fields, 'Room details');
 }
