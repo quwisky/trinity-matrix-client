@@ -28,9 +28,9 @@ const bearer = ({ accessToken }: AccountSession): Record<string, string> => ({
  * Register a throwaway account through Synapse's shared-secret admin API.
  *
  * The harness has a registration routine of its own (`registerUser` in
- * e2e/support/homeserver/start.mjs) but it is not reusable from a spec: it shells into the Synapse
- * container with `docker compose exec`, which needs the compose context the harness owns.
- * The secret both sign with is the part that must not be duplicated, and is imported.
+ * e2e/support/homeserver/start.mjs) but it is not reusable from a spec: it registers the
+ * fixed harness user with Node's fetch, outside Playwright's request fixture. The secret
+ * both sign with is the part that must not be duplicated, and is imported.
  *
  * Tolerates an account that already exists, so a Playwright retry can reuse whatever the
  * previous attempt registered.
@@ -54,7 +54,9 @@ export async function registerUser(
   );
   if (!res.ok()) {
     const text = await res.text();
-    if (!/already.*exists|user.*taken/i.test(text)) {
+    // Synapse says "User ID already taken"; Tuwunel only "User ID is not available". Both
+    // send the spec's M_USER_IN_USE.
+    if (!/already.*exists|user.*taken|M_USER_IN_USE/i.test(text)) {
       throw new Error(`register ${username} → ${res.status()} ${text}`);
     }
   }

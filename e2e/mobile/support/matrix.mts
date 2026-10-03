@@ -28,7 +28,10 @@ export async function registerUser(
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ nonce, username, password, admin: false, mac }),
   });
-  if (!res.ok && !/already.*exists|user.*taken/i.test(await res.text())) {
+  if (
+    !res.ok &&
+    !/already.*exists|user.*taken|M_USER_IN_USE/i.test(await res.text())
+  ) {
     throw new Error(`register ${username} → ${res.status}`);
   }
 }

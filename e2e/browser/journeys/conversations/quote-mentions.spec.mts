@@ -162,6 +162,7 @@ test.describe('Quoting does not notify the people it quotes', () => {
 
     // The plain "poke" (asserted above) proves the room notifies at all, so a zero
     // highlight here is a decision rather than a room that happened to be silent.
-    expect(counts.highlight_count).toBe(0);
+    // Tuwunel omits a zero highlight_count from incremental syncs; absent means zero.
+    expect(counts.highlight_count ?? 0).toBe(0);
   });
 });
