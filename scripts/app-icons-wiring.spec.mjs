@@ -199,6 +199,7 @@ describe('desktop icon wiring', () => {
       'trinityTrayTemplate@2x.png',
       'notificationIcon.png',
       'unreadOverlay.png',
+      'icon-mac.png',
       'icon-dark.png',
       'icon-mac-dark.png',
       'trinityTray-dark.png',
@@ -208,6 +209,17 @@ describe('desktop icon wiring', () => {
     ]) {
       expect(config, file).toContain(`from: build/${file}`);
       expect(existsSync(join(root, 'electron/build', file)), file).toBe(true);
+    }
+  });
+
+  it('strips both launcher aliases from the secondary E2E package', () => {
+    const overlay = read('android/app/src/secondaryDebug/AndroidManifest.xml');
+    for (const alias of ['LauncherBlurple', 'LauncherDark']) {
+      expect(overlay, alias).toMatch(
+        new RegExp(
+          `<activity-alias[^>]*android:name="eu\\.qwky\\.trinity\\.${alias}"[^>]*tools:node="remove"`,
+        ),
+      );
     }
   });
 });
