@@ -47,23 +47,28 @@ describe(`iOS WKWebView probe (${phase})`, () => {
     }));
     record('page', page);
 
-    const tls = await browser.executeAsync((done) => {
-      fetch('https://localhost:8448/_matrix/client/versions')
-        .then(async (r) =>
-          done({
-            ok: r.ok,
-            status: r.status,
-            body: (await r.text()).slice(0, 200),
-          }),
-        )
-        .catch((e) => done({ ok: false, error: String(e) }));
-    });
-    record('tls', tls);
-    const plain = await browser.executeAsync((done) => {
-      fetch('http://localhost:8008/_matrix/client/versions')
-        .then((r) => done({ ok: r.ok, status: r.status }))
-        .catch((e) => done({ ok: false, error: String(e) }));
-    });
-    record('plain-http', plain);
+    const probe = (url) =>
+      browser
+        .execute(async (target) => {
+          try {
+            const r = await fetch(target);
+            return {
+              ok: r.ok,
+              status: r.status,
+              body: (await r.text()).slice(0, 120),
+            };
+          } catch (e) {
+            return { ok: false, error: String(e) };
+          }
+        }, url)
+        .catch((e) => ({ ok: false, driverError: String(e).slice(0, 300) }));
+    record(
+      'tls',
+      await probe('https://localhost:8448/_matrix/client/versions'),
+    );
+    record(
+      'plain-http',
+      await probe('http://localhost:8008/_matrix/client/versions'),
+    );
   });
 });
