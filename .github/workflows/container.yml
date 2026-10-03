@@ -1,0 +1,118 @@
+name: Container
+
+# Publishes the self-hostable web app to ghcr.io/quwisky/trinity-web when a release is
+# published. Publishing is a maintainer action, so drafts never reach GHCR. The image is
+# built from the release's own Trinity-Web-<version>.zip, verified against the tag commit
+# and smoke-tested before anything is pushed. workflow_dispatch republishes a release.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Published vX.Y.Z or vX.Y.Z-next.N release to push to GHCR'
+        required: true
+
+# One registry writer at a time; never cancel a half-pushed manifest.
+concurrency:
+  group: container
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    name: Publish the web image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/quwisky/trinity-web
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: release
+        name: Resolve the release
+        env:
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: |
+          if ! [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-next\.(0|[1-9][0-9]*))?$ ]]; then
+            echo "::error::'$TAG' is not a vX.Y.Z or vX.Y.Z-next.N tag."
+            exit 1
+          fi
+          if [ "$(gh release view "$TAG" --json isDraft -q .isDraft)" != "false" ]; then
+            echo "::error::$TAG is not a published release."
+            exit 1
+          fi
+          {
+            echo "tag=$TAG"
+            echo "version=${TAG#v}"
+            echo "asset=Trinity-Web-${TAG#v}.zip"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ steps.release.outputs.tag }}
+          persist-credentials: false
+
+      - name: Restore the released web app
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          ASSET: ${{ steps.release.outputs.asset }}
+        run: |
+          if ! gh release download "$TAG" -p "$ASSET" -D release-web; then
+            echo "::error::$TAG has no $ASSET release asset; the draft was published without the web zip."
+            exit 1
+          fi
+          unzip -q "release-web/$ASSET" -d release-web
+          rm -rf www
+          mv release-web/trinity-web/www www
+          mkdir -p dist
+          mv release-web/trinity-web/web-bundle-manifest.json dist/web-bundle-manifest.json
+
+      - uses: ./.github/actions/setup
+      # Bound to the checked-out tag commit: a zip from another commit stops here.
+      - run: node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www
+      - uses: ./.github/actions/setup-playwright
+        with:
+          browsers: chromium
+      # Builds the amd64 image locally and proves the HTTP, routing and offline PWA contract.
+      - run: pnpm nx run trinity-web-container:smoke
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Push linux/amd64 and linux/arm64
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          PUBLISHED_TAGS=$(gh release list --limit 200 --json tagName,isDraft -q '.[] | select(.isDraft | not) | .tagName')
+          export PUBLISHED_TAGS
+          mapfile -t names < <(node scripts/web-image-tags.mjs --tag "$TAG")
+          tags=()
+          for name in "${names[@]}"; do tags+=(--tag "$IMAGE:$name"); done
+          node scripts/web-container.mjs stage dist/web-image-context
+          # The Dockerfile only copies files onto a multi-arch base, so no emulation is needed.
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            "${tags[@]}" \
+            --label org.opencontainers.image.version="$VERSION" \
+            --label org.opencontainers.image.revision="$(git rev-parse HEAD)" \
+            --label org.opencontainers.image.source="https://github.com/$GITHUB_REPOSITORY" \
+            --label org.opencontainers.image.created="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --metadata-file dist/web-image-metadata.json \
+            --push \
+            dist/web-image-context
+          {
+            echo "### Pushed $IMAGE"
+            for name in "${names[@]}"; do echo "- \`$name\`"; done
+            echo "Digest: \`$(node -p "require('./dist/web-image-metadata.json')['containerimage.digest']")\`"
+          } >> "$GITHUB_STEP_SUMMARY"

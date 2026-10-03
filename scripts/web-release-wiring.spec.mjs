@@ -37,3 +37,43 @@ describe('release workflow web zip', () => {
     );
   });
 });
+
+describe('container workflow', () => {
+  const container = read('.github/workflows/container.yml');
+
+  it('runs only for published releases or an explicit republish', () => {
+    expect(container).toMatch(
+      /on:\n  release:\n    types: \[published\]\n  workflow_dispatch:/,
+    );
+    expect(container).toContain('group: container');
+    expect(container).toContain('cancel-in-progress: false');
+    expect(container).toMatch(/permissions:\n  contents: read\n/);
+    expect(container).toMatch(
+      /permissions:\n      contents: read\n      packages: write/,
+    );
+  });
+
+  it('fails clearly without the web zip and verifies before any login or push', () => {
+    expect(container).toContain('::error::$TAG has no $ASSET release asset');
+    const order = [
+      'gh release download',
+      'node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www',
+      'pnpm nx run trinity-web-container:smoke',
+      'docker/login-action@',
+      'docker buildx build',
+    ].map((marker) => container.indexOf(marker));
+    expect(order.every((index) => index > -1)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it('pushes both architectures to GHCR with computed tags and OCI labels', () => {
+    expect(container).toContain('IMAGE: ghcr.io/quwisky/trinity-web');
+    expect(container).toContain('--platform linux/amd64,linux/arm64');
+    expect(container).toContain('--push');
+    expect(container).toContain('node scripts/web-image-tags.mjs --tag "$TAG"');
+    expect(container).toContain('node scripts/web-container.mjs stage');
+    for (const label of ['version', 'revision', 'source', 'created'])
+      expect(container).toContain(`--label org.opencontainers.image.${label}=`);
+    expect(container).not.toContain('setup-qemu-action');
+  });
+});

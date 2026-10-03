@@ -211,9 +211,16 @@ function main() {
       verifyContainerInputs(),
     );
     run(process.execPath, ['container/smoke.mjs', '--image', imageId]);
+  } else if (process.argv[2] === 'stage' && process.argv[3]) {
+    // Release publishing: the same verified context build-prebuilt uses, for Buildx.
+    const identity = stageContainerContext(
+      workspaceRoot,
+      resolve(process.argv[3]),
+    );
+    console.log('[web container] staged ' + identity.manifest.commitSha);
   } else {
     throw new Error(
-      'Usage: node scripts/web-container.mjs <verify|build-prebuilt|smoke>',
+      'Usage: node scripts/web-container.mjs <verify|build-prebuilt|smoke|stage <dir>>',
     );
   }
 }
