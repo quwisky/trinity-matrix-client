@@ -80,7 +80,7 @@ export const validateArtifact = (root) => {
   }
 };
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (import.meta.main) {
   const workspaceRoot = fileURLToPath(new URL('../../../', import.meta.url));
   validateArtifact(join(workspaceRoot, 'dist/docs-site'));
   console.log('Assembled documentation artifact is valid.');

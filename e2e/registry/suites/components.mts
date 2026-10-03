@@ -1,4 +1,4 @@
-import { defineSuites } from '../types.mts';
+import { defineSuites } from '../../support/e2e-registry.types.mts';
 
 export const COMPONENT_E2E_SUITES = defineSuites([
   {

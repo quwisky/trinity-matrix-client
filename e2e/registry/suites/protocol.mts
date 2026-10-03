@@ -1,4 +1,4 @@
-import { defineSuites } from '../types.mts';
+import { defineSuites } from '../../support/e2e-registry.types.mts';
 
 const artifactRoot = 'dist/.playwright/trinity-e2e-protocol/<run-id>';
 

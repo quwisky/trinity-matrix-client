@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { recoverStaleProcessLock } from './process-lock.mts';
 import { homeserverLockFile } from './homeserver/lease.mts';
 
@@ -28,7 +27,7 @@ export function recoverResourceLock(
   return recover(resourceLockFile(resource));
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (import.meta.main) {
   try {
     const resource = process.argv[2];
     if (!resource) throw new Error('Usage: recover-lock.mts <resource>');

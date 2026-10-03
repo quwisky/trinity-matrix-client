@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { isDirectRun, resultExitCode, runCommand } from './ci-run-command.mjs';
+import { resultExitCode, runCommand } from './ci-run-command.mjs';
 import { resolveHomeserverKind } from '../e2e/support/homeserver/kind.mts';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -88,4 +88,4 @@ async function main() {
   process.exitCode = controller.signal.aborted ? 143 : result.exitCode;
 }
 
-if (isDirectRun(import.meta.url, process.argv)) await main();
+if (import.meta.main) await main();

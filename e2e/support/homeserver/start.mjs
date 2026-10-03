@@ -18,7 +18,6 @@
 import { execFile } from 'node:child_process';
 import { createHash, createHmac } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import {
@@ -396,7 +395,7 @@ export async function start({ signal } = {}) {
 }
 
 // Allow `node start.mjs` as a standalone bring-up for manual debugging.
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (import.meta.main) {
   // The well-known poll uses Node's fetch, which rejects Caddy's self-signed cert
   // unless we relax TLS verification for this process only.
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';

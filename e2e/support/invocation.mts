@@ -299,15 +299,3 @@ export async function openE2EInvocation(
     throw error;
   }
 }
-
-export async function withE2EInvocation<T>(
-  options: OpenInvocationOptions,
-  operation: (invocation: E2EInvocation) => Promise<T>,
-): Promise<T> {
-  const invocation = await openE2EInvocation(options);
-  try {
-    return await operation(invocation);
-  } finally {
-    await invocation.close();
-  }
-}

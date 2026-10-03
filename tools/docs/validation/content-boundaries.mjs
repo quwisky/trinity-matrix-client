@@ -68,7 +68,7 @@ export const validateContentBoundaries = ({ userRoot, developerRoot }) => {
   }
 };
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (import.meta.main) {
   const workspaceRoot = fileURLToPath(new URL('../../../', import.meta.url));
   validateContentBoundaries({
     userRoot: join(workspaceRoot, 'apps/docs-users/src/content/docs'),

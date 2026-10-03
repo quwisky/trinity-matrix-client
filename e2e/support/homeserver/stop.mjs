@@ -80,7 +80,7 @@ export async function stop({ keepData = false, signal } = {}) {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (import.meta.main) {
   let lease;
   try {
     lease = acquireHomeserverTeardownLease();
