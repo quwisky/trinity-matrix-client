@@ -22,6 +22,16 @@ async function seedPicture(name: string): Promise<void> {
     remotePath: path,
     payload: PNG_BASE64,
   });
+  const query = () =>
+    shell('content', [
+      'query',
+      '--uri',
+      'content://media/external/images/media',
+      '--projection',
+      '_display_name',
+    ]);
+  // The legacy broadcast is ignored on some images; MediaProvider's scan_file call is the
+  // current equivalent. Issue both, then poll the index itself.
   await shell('am', [
     'broadcast',
     '-a',
@@ -29,21 +39,20 @@ async function seedPicture(name: string): Promise<void> {
     '-d',
     `file://${path}`,
   ]);
-  await browser.waitUntil(
-    async () =>
-      (
-        await shell('content', [
-          'query',
-          '--uri',
-          'content://media/external/images/media',
-          '--projection',
-          '_display_name',
-          '--where',
-          `_display_name='${name}'`,
-        ])
-      ).includes(name),
-    { timeout: 30_000, timeoutMsg: `MediaStore never indexed ${name}` },
-  );
+  await shell('content', [
+    'call',
+    '--uri',
+    'content://media/',
+    '--method',
+    'scan_file',
+    '--arg',
+    path,
+  ]);
+  let last = '';
+  await browser.waitUntil(async () => (last = await query()).includes(name), {
+    timeout: 30_000,
+    timeoutMsg: `MediaStore never indexed ${name}; last query: ${last.slice(0, 300)}; ls: ${await shell('ls', ['-l', path])}`,
+  });
 }
 
 describe('Android attachments', () => {
