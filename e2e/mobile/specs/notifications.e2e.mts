@@ -113,7 +113,9 @@ describe('Android local notifications', () => {
         `/rooms/${roomSegment(roomId)}`,
       { timeout: 30_000, timeoutMsg: `the tap never opened room ${roomId}` },
     );
-    await expect($(`//*[normalize-space()="${text}"]`)).toBeDisplayed({
+    await expect(
+      $(`//*[contains(@class,"msg")][contains(.,"${text}")]`),
+    ).toBeDisplayed({
       wait: 30_000,
     });
   });
