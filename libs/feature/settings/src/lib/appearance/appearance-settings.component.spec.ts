@@ -50,8 +50,6 @@ describe('AppearanceSettingsComponent', () => {
       density: 'cosy',
       codeSize: 'default',
       codeLinePresentation: 'auto',
-      appIcon: 'blurple',
-      appIconPreference: 'system',
     });
     storageRead = vi.fn(() => of({ kind: 'missing' }));
     storageWrite = vi.fn(() => of({ kind: 'completed' }));
@@ -149,8 +147,6 @@ describe('AppearanceSettingsComponent', () => {
       density: 'compact',
       codeSize: 'default',
       codeLinePresentation: 'auto',
-      appIcon: 'blurple',
-      appIconPreference: 'system',
     });
     fixture.componentInstance.appearance.update('theme', 'onyx');
     fixture.componentInstance.appearance.update('density', 'compact');

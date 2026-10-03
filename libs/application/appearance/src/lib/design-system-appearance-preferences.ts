@@ -7,7 +7,6 @@ import {
   type PreferenceValue,
   type StoredPreference,
 } from '@trinity/runtime/preferences';
-import type { AppIconPreference } from '@trinity/platform-native';
 import {
   THEME_CATALOG,
   type ThemeId,
@@ -138,47 +137,8 @@ export const DENSITY_PREFERENCE = definePreference({
   ),
 } satisfies PreferenceDescriptor<AppearanceDensity>);
 
-export const APP_ICON_OPTIONS = Object.freeze([
-  Object.freeze({ id: 'system', label: 'Match system' }),
-  Object.freeze({ id: 'blurple', label: 'Blurple' }),
-  Object.freeze({ id: 'dark', label: 'Dark' }),
-] as const satisfies readonly { id: AppIconPreference; label: string }[]);
-
-export const APP_ICON_PREFERENCE = definePreference({
-  id: 'design-system.appearance.app-icon',
-  owner: 'design-system',
-  section: 'appearance',
-  order: 50,
-  scope: 'installation',
-  defaultValue: 'system',
-  sensitivity: 'public',
-  storage: 'device-preferences',
-  export: 'portable',
-  editor: {
-    kind: 'select',
-    label: 'App icon',
-    description: 'Choose the icon Trinity shows outside the app.',
-    testId: 'app-icon-select',
-    options: APP_ICON_OPTIONS.map(({ id, label }) => ({ value: id, label })),
-  },
-  persistence: {
-    key: 'trinity.appearance.app-icon',
-    migration: closedStringMigration(isAppIconPreference),
-  },
-  validate: closedStringValidation(
-    isAppIconPreference,
-    'appearance-app-icon-invalid',
-  ),
-} satisfies PreferenceDescriptor<AppIconPreference>);
-
 export const DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS: readonly PreferenceDescriptor<PreferenceValue>[] =
-  [
-    MODE_PREFERENCE,
-    THEME_PREFERENCE,
-    TEXT_SIZE_PREFERENCE,
-    DENSITY_PREFERENCE,
-    APP_ICON_PREFERENCE,
-  ];
+  [MODE_PREFERENCE, THEME_PREFERENCE, TEXT_SIZE_PREFERENCE, DENSITY_PREFERENCE];
 
 export function provideDesignSystemAppearancePreferences(): EnvironmentProviders {
   return providePreferenceDescriptors(
@@ -200,10 +160,6 @@ function isTextSize(value: unknown): value is TextSize {
 
 function isAppearanceDensity(value: unknown): value is AppearanceDensity {
   return DENSITY_OPTIONS.some(({ id }) => id === value);
-}
-
-function isAppIconPreference(value: unknown): value is AppIconPreference {
-  return APP_ICON_OPTIONS.some(({ id }) => id === value);
 }
 
 function closedStringValidation<T extends string>(

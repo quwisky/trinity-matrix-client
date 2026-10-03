@@ -36,8 +36,6 @@ const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
 // Mirrors dock-badge.ts's SET_BADGE_COUNT_CHANNEL (kept in sync by string value,
 // as with SHOW_NOTIFICATION_CHANNEL / NOTIFICATION_CLICK_CHANNEL above).
 const SET_BADGE_COUNT_CHANNEL = 'trinity:host:v1:badge:set';
-// Mirrors app-icon.ts's SET_APP_ICON_CHANNEL (kept in sync by string value).
-const SET_APP_ICON_CHANNEL = 'trinity:app-icon:set';
 const HOST_NEGOTIATE_CHANNEL = 'trinity:host:v1:negotiate';
 
 /** Payload accepted by `showNotification`; mirrors core's `DesktopNotification`. */
@@ -268,13 +266,6 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
         if (!negotiationAccepted) return;
         ipcRenderer.send('trinity:cors:allow-origin', origin);
       },
-    },
-    appIcon: {
-      /** Apply the resolved App icon preference; main validates the name. */
-      set: (name: string): Promise<boolean> =>
-        negotiationAccepted
-          ? (ipcRenderer.invoke(SET_APP_ICON_CHANNEL, name) as Promise<boolean>)
-          : Promise.resolve(false),
     },
     location: {
       approximate: (): Promise<{ lat: number; lng: number } | null> =>

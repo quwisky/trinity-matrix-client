@@ -94,7 +94,6 @@ describe('preload host capabilities', () => {
 
   it('exposes required grouped capabilities without legacy flat methods', () => {
     expect(Object.keys(bridge.capabilities).sort()).toEqual([
-      'appIcon',
       'badge',
       'deepLinks',
       'location',

@@ -17,6 +17,11 @@
             android:launchMode="singleTask"
             android:exported="true">
 
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
             <!-- Auth callback deep links. Two shapes must match:
                    legacy SSO: eu.qwky.trinity://sso-callback?loginToken=…
                    OIDC:       eu.qwky.trinity:/sso-callback?code=…
@@ -32,37 +37,6 @@
             </intent-filter>
 
         </activity>
-
-        <!-- Launcher entries for the App icon preference (AppIconPlugin). Exactly one is
-             enabled; the plugin enables the chosen one before disabling the other. The
-             activity itself stays exported for deep links and explicit launches. -->
-        <activity-alias
-            android:name=".LauncherBlurple"
-            android:targetActivity=".MainActivity"
-            android:enabled="true"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher"
-            android:roundIcon="@mipmap/ic_launcher_round"
-            android:label="@string/title_activity_main">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity-alias
-            android:name=".LauncherDark"
-            android:targetActivity=".MainActivity"
-            android:enabled="false"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher_dark"
-            android:roundIcon="@mipmap/ic_launcher_dark_round"
-            android:label="@string/title_activity_main">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
 
         <!-- Route FCM notifications to the "messages" channel created at runtime
              by PushService (Android O+ drops notifications without a channel). -->

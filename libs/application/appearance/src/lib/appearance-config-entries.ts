@@ -14,14 +14,13 @@ import {
   type AppearanceAxis,
 } from './appearance-preferences';
 import {
-  APP_ICON_PREFERENCE,
   DENSITY_PREFERENCE,
   MODE_PREFERENCE,
   TEXT_SIZE_PREFERENCE,
   THEME_PREFERENCE,
 } from './design-system-appearance-preferences';
 
-/** Register the seven portable Appearance axes under one descriptor-backed config group. */
+/** Register the six portable Appearance axes under one descriptor-backed config group. */
 export function provideAppearanceConfigEntries(): EnvironmentProviders {
   return provideConfigEntries(() => {
     const appearance = inject(AppearancePreferences);
@@ -51,11 +50,6 @@ export function provideAppearanceConfigEntries(): EnvironmentProviders {
         'appearance.codeLinePresentation',
         CODE_LINE_PRESENTATION_PREFERENCE,
         appearance.axes.codeLinePresentation,
-      ),
-      appearanceEntry(
-        'appearance.appIcon',
-        APP_ICON_PREFERENCE,
-        appearance.axes.appIcon,
       ),
     ];
   });

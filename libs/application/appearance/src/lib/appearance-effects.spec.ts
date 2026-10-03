@@ -35,7 +35,6 @@ const defaults = (): AppearanceValue => ({
   density: 'cosy',
   codeSize: 'default',
   codeLinePresentation: 'auto',
-  appIcon: 'system',
 });
 
 describe('AppearanceEffects', () => {
@@ -61,22 +60,14 @@ describe('AppearanceEffects', () => {
     TestBed.flushEffects();
     expect(effects.resolved()?.mode).toBe('light');
     expect(documentAdapter.apply).toHaveBeenCalledTimes(1);
-    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({
-      mode: 'light',
-      appIcon: 'blurple',
-      appIconPreference: 'system',
-    });
+    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({ mode: 'light' });
 
     systemMode.next('dark');
     expect(effects.resolved()?.mode).toBe('dark');
     expect(documentAdapter.apply).toHaveBeenCalledTimes(2);
-    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({
-      mode: 'dark',
-      appIcon: 'dark',
-      appIconPreference: 'system',
-    });
+    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({ mode: 'dark' });
 
-    committed.set({ ...committed(), mode: 'light', appIcon: 'blurple' });
+    committed.set({ ...committed(), mode: 'light' });
     TestBed.flushEffects();
     expect(effects.resolved()?.mode).toBe('light');
     expect(documentAdapter.apply).toHaveBeenCalledTimes(3);
@@ -97,38 +88,6 @@ describe('AppearanceEffects', () => {
     committed.set({ ...committed(), mode: 'dark' });
     TestBed.flushEffects();
     expect(documentAdapter.apply).toHaveBeenCalledTimes(4);
-  });
-
-  it('sends native chrome on an app icon change but not on unrelated axes', () => {
-    const committed = signal(defaults());
-    const systemMode = new BehaviorSubject<'light' | 'dark'>('light');
-    const documentAdapter: AppearanceDocumentAdapter = { apply: vi.fn() };
-    const nativeAdapter: AppearanceNativeChromeAdapter = {
-      apply: vi.fn(() => of(void 0)),
-    };
-    configureEffects(
-      { value: committed.asReadonly() },
-      systemMode,
-      documentAdapter,
-      nativeAdapter,
-    );
-    const subscription = TestBed.inject(AppearanceEffects).run().subscribe();
-    TestBed.flushEffects();
-    expect(nativeAdapter.apply).toHaveBeenCalledTimes(1);
-
-    committed.set({ ...defaults(), textSize: 'large' });
-    TestBed.flushEffects();
-    expect(nativeAdapter.apply).toHaveBeenCalledTimes(1);
-
-    committed.set({ ...defaults(), textSize: 'large', appIcon: 'dark' });
-    TestBed.flushEffects();
-    expect(nativeAdapter.apply).toHaveBeenCalledTimes(2);
-    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({
-      mode: 'light',
-      appIcon: 'dark',
-      appIconPreference: 'dark',
-    });
-    subscription.unsubscribe();
   });
 
   it('keeps the document effect alive without a native adapter', () => {

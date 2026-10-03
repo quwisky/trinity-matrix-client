@@ -37,5 +37,3 @@ Keep plugin access in `libs/platform-native` adapters and consume shared host op
 Record iOS checks as unavailable when the required Apple environment is missing. Read [host capabilities](../../architecture/host-capabilities/) and [desktop and native tests](../../testing/desktop-and-native-tests/).
 
 App icons and splash screens are generated from shared sources; see [application icons](../electron/#application-icons).
-
-The App icon preference switches to the dark icon through iOS alternate icons (`setAlternateIconName`).
