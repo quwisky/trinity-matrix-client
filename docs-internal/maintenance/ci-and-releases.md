@@ -178,7 +178,9 @@ Releases come from two lines, each managed by release-please through
 | Stable     | `main`    | `X.Y.Z`        | `release-please-config.json` / `.release-please-manifest.json`           | GitHub release and `CHANGELOG.md` |
 
 On every push to either branch, release-please updates that branch's release PR
-from the Conventional Commits since the last release. Merging the release PR bumps
+from the Conventional Commits since the last release. Release PRs on both lines are titled
+`release: cut the vX.Y.Z release` (`pull-request-title-pattern` in both configs), and
+the squash merge keeps that title as the commit; commitlint allows the `release` type. Merging the release PR bumps
 `package.json`, `electron/package.json` and the manifest, and release-please then
 tags the merge commit and creates a **draft** GitHub release. The same workflow run
 verifies the tag and attaches the desktop packages to that draft. Nothing is
