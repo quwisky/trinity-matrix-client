@@ -8,7 +8,7 @@ pageType: how-to
 platforms: [web]
 ---
 
-Trinity publishes two English Starlight sites. The user guide describes only the latest published release; the developer guide describes `develop`. Until the first release, the user site contains only its work-in-progress page.
+Trinity publishes two English Starlight sites. The user guide describes only the latest published release; the developer guide describes `develop`.
 
 ## Choose the channel {#choose-channel}
 

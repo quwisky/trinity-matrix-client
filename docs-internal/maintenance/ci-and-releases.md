@@ -216,9 +216,9 @@ whatever reached `develop` after the bootstrap commit. Both configs carry a
 `bootstrap-sha` so release-please's first runs do not read the project's whole
 history; once the `v0.1.0` release exists it no longer matters.
 
-When the first release is published, also switch `apps/docs-users/release.json`
-to `published` and update the README's "has not published its first release"
-notice.
+When a stable release is published, set `version` in `apps/docs-users/release.json`
+and `productVersion` on every user guide page to that version; the docs check
+rejects pages that name another version.
 
 The release verifier checks the tag format, ancestry and both manifest versions.
 Ancestry shows that the commit is contained in `develop` or `main`; it does not
