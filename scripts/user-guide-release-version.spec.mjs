@@ -56,20 +56,19 @@ describe('user guide release version', () => {
       );
     });
 
-    it('deploys only while the user guide version is a published release', () => {
-      const check = workflow.jobs.build.steps.find(
-        (step) => step.id === 'release',
-      );
-      expect(check.run).toContain(
-        'jq -r .version apps/docs-users/release.json',
-      );
+    it('builds the user guide from its last published version and deploys develop', () => {
+      const { steps } = workflow.jobs.build;
+      expect(steps[0].with).toEqual({ 'fetch-depth': 0 });
+      const index = steps.findIndex((step) => step.id === 'release');
+      const check = steps[index];
       expect(check.run).toContain('gh release view "v$version"');
       expect(check.run).toContain('isDraft');
-      expect(workflow.jobs.build.outputs.publish).toBe(
-        '${{ steps.release.outputs.publish }}',
-      );
-      expect(workflow.jobs.deploy.if).toContain(
-        "needs.build.outputs.publish == 'true'",
+      expect(check.run).toContain('git checkout "$ref" -- apps/docs-users');
+      // The checks before it still validate develop's own user guide.
+      expect(steps[index + 1].run).toBe('pnpm nx run docs-site:check');
+      expect(workflow.jobs.build.outputs).toBeUndefined();
+      expect(workflow.jobs.deploy.if).toBe(
+        "github.ref == 'refs/heads/develop'",
       );
     });
   });

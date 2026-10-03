@@ -221,10 +221,10 @@ The stable release PR also bumps the user guide: `version` in
 a page with `x-release-please-version` on its line, or wrap the body in
 `x-release-please-start-version` / `x-release-please-end` comments; the updater replaces
 only the first version on each line. `scripts/user-guide-release-version.spec.mjs`
-rejects unmarked versions. Prereleases leave the user guide alone. The docs
-site deploys from `develop` only while that version is a published release: after the
-back-merge, `docs-pages.yml` builds and checks but keeps the live site until the
-release is published, and publishing it re-runs the workflow on `develop`.
+rejects unmarked versions. Prereleases leave the user guide alone. The developer
+guide always deploys from `develop`. Between the back-merge and publishing the release,
+`docs-pages.yml` builds the user guide from the newest commit whose version is
+published, and publishing the release re-runs the workflow on `develop` to switch it.
 
 The release verifier checks the tag format, ancestry and both manifest versions.
 Ancestry shows that the commit is contained in `develop` or `main`; it does not
