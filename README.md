@@ -6,9 +6,9 @@ Trinity is an end-to-end encrypted [Matrix](https://matrix.org) client for Web/P
 Android, iOS, and Electron desktop. One Angular application supplies the shared
 renderer; host capabilities handle platform-specific behavior.
 
-The desktop app is available from
+The desktop app and the self-hostable web app (PWA) are available from
 [the latest release](https://github.com/quwisky/trinity-matrix-client/releases/latest);
-the web (PWA), Android and iOS apps are still in development. The
+the Android and iOS apps are still in development. The
 [user guide](https://quwisky.github.io/trinity-matrix-client/users/) is a
 work-in-progress notice for now. The
 [developer guide](https://quwisky.github.io/trinity-matrix-client/developers/) follows
@@ -77,7 +77,7 @@ or from the `Trinity-Web-X.Y.Z.zip` attached to each
 
 | Platforms               | Trinity  | Element Web/Desktop | Element X | FluffyChat | Cinny |
 | ----------------------- | -------- | ------------------- | --------- | ---------- | ----- |
-| Web                     | 🚧 (PWA) | ✅                  | —         | ✅         | ✅    |
+| Web                     | ✅ (PWA) | ✅                  | —         | ✅         | ✅    |
 | Windows / macOS / Linux | ✅       | ✅                  | —         | Linux      | ✅    |
 | Android / iOS           | 🚧       | —                   | ✅        | ✅         | —     |
 
