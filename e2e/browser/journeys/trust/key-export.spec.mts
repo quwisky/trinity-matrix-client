@@ -1,8 +1,8 @@
 import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
@@ -12,7 +12,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // with the same passphrase round-trips through TrustService.export/importRoomKeys. A fresh
 // account exports an empty key set, which still exercises the file format + UI plumbing
 // end-to-end. Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 const PASSPHRASE = 'test-export-passphrase';
 
@@ -29,7 +29,7 @@ test.describe('Encrypted key export', () => {
     const pass = `${user}-pass`;
 
     await registerUser(request, user, pass);
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
 
     await openSettingsSection(page, 'security');
     await expect(page.getByTestId('security-key-export')).toBeVisible({

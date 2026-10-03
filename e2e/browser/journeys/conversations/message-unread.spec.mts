@@ -7,8 +7,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -16,7 +16,7 @@ import { registerUser } from '../../../support/account.mts';
 // whose fully-read marker sits at an old message sees a divider before the first
 // unread one, and — with the divider scrolled off the top — a jump pill that brings it
 // back into view. Needs a Synapse homeserver (Docker).
-const session = synapseSession();
+const session = homeserverSession();
 
 async function apiToken(
   request: APIRequestContext,
@@ -160,7 +160,7 @@ test.describe('Unread divider + jump-to-unread', () => {
       hs,
       user: readerUser,
       pass: `${readerUser}-pass`,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
 
     // The "New messages" divider is rendered before the first unread message.

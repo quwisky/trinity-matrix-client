@@ -1,0 +1,49 @@
+# Synapse adapter (TRINITY_E2E_HOMESERVER=synapse), layered on ../docker-compose.yml.
+# Paths resolve against the shared file's directory. start.mjs generates and patches
+# homeserver.yaml into ./data and ./remote-data before `up` (see synapse/adapter.mjs).
+services:
+  homeserver:
+    image: matrixdotorg/synapse:v1.161.0
+    container_name: trinity-e2e-homeserver
+    restart: 'no'
+    environment:
+      SYNAPSE_SERVER_NAME: localhost
+      SYNAPSE_REPORT_STATS: 'no'
+      # Run as the invoking user so the bind-mounted ./data (config, signing key, sqlite
+      # DB) stays writable by us — the image otherwise runs as 991 and chowns it, which
+      # breaks the next start.mjs config patch and stop.mjs's cleanup on any filesystem
+      # that does NOT remap ownership (i.e. every plain Linux CI runner). start.mjs
+      # supplies these; the defaults keep a bare `docker compose up` behaving as before.
+      UID: ${TRINITY_E2E_UID:-991}
+      GID: ${TRINITY_E2E_GID:-991}
+    volumes:
+      # ${TRINITY_E2E_STATE_DIR:-.} keeps this as ./data everywhere it already works;
+      # see paths.mjs for the one environment where it must move.
+      - ${TRINITY_E2E_STATE_DIR:-.}/data:/data
+    # Bind Synapse's HTTP listener to the host too, so the harness can register users
+    # through the shared-secret admin API directly.
+    ports:
+      - '127.0.0.1:8008:8008'
+    networks:
+      - trinity-e2e
+
+  # A second homeserver for federation-sensitive journeys. It listens on a distinct
+  # internal port too, so the netns CI override can run both servers on one loopback.
+  homeserver-remote:
+    image: matrixdotorg/synapse:v1.161.0
+    container_name: trinity-e2e-homeserver-remote
+    restart: 'no'
+    environment:
+      SYNAPSE_SERVER_NAME: caddy:9448
+      SYNAPSE_REPORT_STATS: 'no'
+      UID: ${TRINITY_E2E_UID:-991}
+      GID: ${TRINITY_E2E_GID:-991}
+    volumes:
+      - ${TRINITY_E2E_STATE_DIR:-.}/remote-data:/data
+    # Share Caddy's namespace so this server can authenticate requests from the
+    # primary server name `localhost`: its signing key is available at localhost:443.
+    network_mode: 'service:caddy'
+
+  caddy:
+    depends_on:
+      - homeserver

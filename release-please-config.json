@@ -69,6 +69,16 @@
       "type": "json",
       "path": ".release-please-manifest.next.json",
       "jsonpath": "$['.']"
+    },
+    {
+      "type": "json",
+      "path": "apps/docs-users/release.json",
+      "jsonpath": "$.version"
+    },
+    {
+      "type": "generic",
+      "path": "apps/docs-users/src/content/docs/**/*.{md,mdx}",
+      "glob": true
     }
   ],
   "packages": {

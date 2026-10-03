@@ -1,8 +1,8 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -18,7 +18,7 @@ import { registerUser } from '../../../support/account.mts';
  *
  * Needs a Synapse homeserver (Docker) and self-skips otherwise.
  */
-const session = synapseSession();
+const session = homeserverSession();
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -59,7 +59,7 @@ test.describe('The open room lives in the URL', () => {
       data: { name: roomName },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
 
     // Workspace canonicalizes the login redirect to an exact Account coordinate.
     await expect

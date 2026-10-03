@@ -7,15 +7,15 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 // End-to-end for the full emoji reaction picker: hover a message, open the quick
 // reactions, escalate to the full emoji-mart picker via "+", search and pick an
 // emoji, and see it land as a reaction on the message. Needs Synapse (Docker).
-const session = synapseSession();
+const session = homeserverSession();
 
 /** Register a user and create a room they own; returns a login session + room name. */
 async function seedRoom(
@@ -23,7 +23,7 @@ async function seedRoom(
   hs: string,
   runId: string,
 ): Promise<{
-  user: SynapseSession;
+  user: HomeserverSession;
   roomName: string;
   roomId: string;
   headers: { Authorization: string };

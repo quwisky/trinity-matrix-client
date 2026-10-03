@@ -1,0 +1,50 @@
+# Primary Tuwunel for the disposable e2e stack (server_name `localhost`, set by the
+# compose file). Test-only settings: never copy any of this to a real server.
+#
+# Mounted read-only at /etc/tuwunel/tuwunel.toml; see docker-compose.yml beside it.
+
+[global]
+address = ["0.0.0.0"]
+port = 8008
+database_path = "/var/lib/tuwunel"
+
+# Open registration (the registration spec signs up through the UI) plus the shared
+# secret behind the Synapse-compatible /_synapse/admin/v1/register that the harness and
+# ~80 specs use to mint accounts.
+allow_registration = true
+yes_i_am_very_very_sure_i_want_an_open_registration_server_prone_to_abuse = true
+registration_shared_secret = "trinity-e2e-shared-secret"
+# The verify-e2e user is created first; the suites never need it to be an admin.
+grant_admin_to_first_user = false
+
+# Real federation with the remote server, over Caddy's self-signed TLS, on Docker-private
+# addresses. No notary: the peers fetch each other's keys directly.
+allow_federation = true
+trusted_servers = []
+allow_invalid_tls_certificates = true
+ip_range_denylist = []
+# Recommended by Tuwunel behind Docker's embedded DNS resolver.
+query_over_tcp_only = true
+
+# Link previews for the harness Open-Graph page on the private network (http://caddy:8080/og).
+url_preview_domain_contains_allowlist = ["*"]
+
+allow_public_room_directory_over_federation = true
+allow_public_room_directory_without_auth = true
+
+# Room v12 makes creators implicit owners, which the room-administration specs (written
+# against power levels that list the creator) do not model. Pin the long-standing default.
+default_room_version = "10"
+
+# Legacy SSO through Dex (see ../dex.yaml). The issuer is reachable at the same URL from the
+# browser and from here because this container shares Dex's network namespace.
+[[global.identity_provider]]
+brand = "dex"
+client_id = "trinity-e2e"
+client_secret = "trinity-e2e-secret"
+issuer_url = "http://localhost:5556/dex"
+callback_url = "https://localhost:8448/_matrix/client/unstable/login/sso/callback/trinity-e2e"
+# Dex's userinfo has no preferred_username; the email's localpart is the stable identity
+# the specs expect (@sso-e2e:localhost).
+userid_claims = ["email"]
+default = true

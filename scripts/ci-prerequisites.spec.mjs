@@ -120,4 +120,31 @@ describe('runPrerequisites', () => {
     expect(outcomes.playwright.exitCode).toBe(23);
     expect(outcomes.build.exitCode).toBe(0);
   });
+
+  it.each([
+    [{}, 'tuwunel'],
+    [{ TRINITY_E2E_HOMESERVER: 'synapse' }, 'synapse'],
+  ])(
+    'pre-pulls the images of the selected homeserver (%o)',
+    async (env, kind) => {
+      const calls = [];
+      await runPrerequisites({
+        logDir: makeLogDir(),
+        env,
+        run: async (spec) => {
+          calls.push(spec);
+          return { label: spec.label, exitCode: 0, signal: null };
+        },
+      });
+      const pull = calls.find(({ label }) => label === 'docker-pull');
+      const files = pull.args.filter((_, i) => pull.args[i - 1] === '-f');
+      expect(files).toEqual([
+        'e2e/support/homeserver/docker-compose.yml',
+        `e2e/support/homeserver/${kind}/docker-compose.yml`,
+      ]);
+      for (const file of files) {
+        expect(existsSync(join(import.meta.dirname, '..', file))).toBe(true);
+      }
+    },
+  );
 });

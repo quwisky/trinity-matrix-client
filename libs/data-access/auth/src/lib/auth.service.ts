@@ -289,8 +289,15 @@ export class AuthService {
       };
       return from(
         runPasswordUia(
+          // The probe sends no `auth` at all: an empty dict is malformed UIA data that
+          // ruma-based servers reject with M_BAD_JSON instead of the 401 challenge. The
+          // SDK types the dict as required but serialises an undefined one away.
           (auth) =>
-            client.setPassword(auth ?? ({} as AuthDict), newPassword, false),
+            client.setPassword(
+              auth ?? (undefined as unknown as AuthDict),
+              newPassword,
+              false,
+            ),
           promptPassword,
           client.getUserId() ?? '',
         ),

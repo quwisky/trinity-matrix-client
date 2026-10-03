@@ -7,10 +7,6 @@ import {
   output,
 } from '@angular/core';
 import {
-  type TrnChoiceSize,
-  type TrnChoiceVariant,
-} from '../choice-control/trn-choice-control-recipe';
-import {
   trnRadioGroupRecipe,
   trnRadioIndicatorDotRecipe,
   trnRadioIndicatorRecipe,
@@ -18,9 +14,7 @@ import {
   type TrnRadioGroupLayout,
 } from './trn-radio-group-recipe';
 
-export type TrnRadioGroupVariant = TrnChoiceVariant;
 export type { TrnRadioGroupLayout } from './trn-radio-group-recipe';
-export type TrnRadioGroupSize = TrnChoiceSize;
 
 let nextRadioGroupId = 0;
 
@@ -81,8 +75,6 @@ export interface TrnRadioOption<T> {
     '[attr.aria-label]': 'null',
     '[attr.aria-labelledby]': 'null',
     '[attr.data-layout]': 'layout()',
-    '[attr.data-size]': 'size()',
-    '[attr.data-variant]': 'variant()',
     '[attr.data-invalid]': 'invalid() ? "true" : null',
   },
   template: `
@@ -133,18 +125,18 @@ export interface TrnRadioOption<T> {
 export class TrnRadioGroupComponent<T> {
   protected readonly controlName = `trn-radio-${nextRadioGroupId++}`;
   protected readonly groupClass = computed(() =>
-    trnRadioGroupRecipe(this.layout(), this.size()),
+    trnRadioGroupRecipe(this.layout()),
   );
   protected readonly indicatorClass = computed(() =>
-    trnRadioIndicatorRecipe(this.layout(), this.size(), this.invalid()),
+    trnRadioIndicatorRecipe(this.layout(), this.invalid()),
   );
 
   protected optionClass(): string {
-    return trnRadioOptionRecipe(this.layout(), this.size(), this.variant());
+    return trnRadioOptionRecipe(this.layout());
   }
 
   protected indicatorDotClass(selected: boolean): string {
-    return trnRadioIndicatorDotRecipe(selected, this.size(), this.variant());
+    return trnRadioIndicatorDotRecipe(selected);
   }
 
   /** Native change events always identify the concrete option that was chosen. */
@@ -152,10 +144,7 @@ export class TrnRadioGroupComponent<T> {
     this.valueChange.emit(value);
   }
 
-  /** Semantic tone. */
-  readonly variant = input<TrnRadioGroupVariant>('neutral');
   readonly layout = input<TrnRadioGroupLayout>('list');
-  readonly size = input<TrnChoiceSize>('md');
   readonly options = input.required<readonly TrnRadioOption<T>[]>();
   readonly value = input<T | null>(null);
   readonly disabled = input(false, { transform: booleanAttribute });

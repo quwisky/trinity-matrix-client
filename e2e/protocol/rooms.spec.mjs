@@ -411,10 +411,11 @@ async function main(protocolBrowser) {
     );
     log(`"${DECLINE_ROOM_NAME}" removed from Invites section ✓`);
 
-    // CS-API: alice's membership in the DeclineRoom is now 'leave'.
+    // CS-API: alice's membership in the DeclineRoom is now 'leave'. Read through BOB, who is
+    // still joined: Tuwunel refuses room state to a user who left without ever joining.
     await poll(async () => {
       const { body } = await csGet(
-        aliceToken,
+        bobToken,
         `/_matrix/client/v3/rooms/${encodeURIComponent(declineRoomId)}/state/m.room.member/${encodeURIComponent(aliceId)}`,
       );
       return body?.membership === 'leave' ? true : null;

@@ -2,7 +2,7 @@ import { expect, test, testResourceId } from '../../../fixtures.mts';
 import {
   login,
   openSettingsTab,
-  type SynapseSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
@@ -43,7 +43,7 @@ test.describe('Room settings', () => {
       })
       .then((r) => r.json());
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     await page.getByTestId('open-room-settings').click();
@@ -164,7 +164,7 @@ test.describe('Room settings', () => {
       room_id as string,
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     // Via the space pill, NOT openRoom's flat Rooms view: linking the room into a space
     // takes it out of that list by design (room-filter-spaceless.spec.mts covers exactly
     // that), so the room the whole test is about is only reachable under its space.
@@ -272,7 +272,7 @@ test.describe('Room settings', () => {
       },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const pill = page.getByRole('button', {
       name: `Kept ${runId}`,
       exact: true,
@@ -360,7 +360,7 @@ test.describe('Room settings', () => {
       hs,
       user: member,
       pass: memberPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
     await page.getByTestId('open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'access');

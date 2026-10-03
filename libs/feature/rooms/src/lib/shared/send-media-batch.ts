@@ -2,19 +2,27 @@ import {
   Observable,
   catchError,
   concatMap,
+  filter,
   finalize,
   from,
   map,
+  mergeMap,
   of,
+  take,
+  tap,
+  throwError,
   toArray,
 } from 'rxjs';
-import { type StagedMediaReference } from '@trinity/data-access/media';
+import {
+  type MediaTransferEvent,
+  type StagedMediaReference,
+} from '@trinity/data-access/media';
 
 /** One file in a batch, carrying the id the composer knows it by. */
 export interface BatchItem {
   readonly id: string;
   readonly file: File;
-  readonly media?: StagedMediaReference;
+  readonly media: StagedMediaReference;
 }
 
 /** What the composer shows while a batch is going out: "2 of 5", plus that file's fraction. */
@@ -36,8 +44,8 @@ export interface BatchOutcome {
 export type SendOneMedia = (
   file: File,
   caption: string,
-  progress?: (fraction: number) => void,
-  media?: StagedMediaReference,
+  progress: (fraction: number) => void,
+  media: StagedMediaReference,
 ) => Observable<void>;
 
 /**
@@ -88,4 +96,53 @@ export function sendMediaBatch(
     toArray(),
     finalize(() => onProgress(null)),
   );
+}
+
+/**
+ * Drive one capability `media.send(...)` stream to a single outcome: progress events feed
+ * `progress`, the first terminal event ends it, and anything but `sent` becomes an error.
+ * `onFailure` sees the failure code first, so a host can count it as abandoned.
+ */
+export function sendViaCapability(
+  events: Observable<MediaTransferEvent>,
+  progress?: (fraction: number) => void,
+  onFailure?: (failure: string) => void,
+): Observable<void> {
+  return events.pipe(
+    tap((event) => {
+      if (event.kind === 'progress') progress?.(event.fraction);
+    }),
+    filter((event) => event.kind !== 'progress'),
+    take(1),
+    mergeMap((event) => {
+      if (event.kind === 'sent') return of(void 0);
+      onFailure?.(event.failure);
+      return throwError(() => new Error(event.failure));
+    }),
+  );
+}
+
+function plural(count: number, one: string, many: string): string {
+  return count === 1 ? one : many;
+}
+
+/**
+ * The toast for a batch with failures. Two fates are counted apart: the composer drops its
+ * staging on leaving `place`, so "still in the composer" is true for a failed upload and false
+ * for one abandoned by leaving.
+ */
+export function batchFailureToast(
+  failed: number,
+  abandoned: number,
+  place: 'room' | 'thread',
+): string {
+  const upload = failed - abandoned;
+  const left = `you left the ${place} before they went out`;
+  return abandoned && upload
+    ? `${abandoned} ${plural(abandoned, 'attachment', 'attachments')} not sent — ${left} — and ${upload} could not be uploaded.`
+    : abandoned
+      ? `${abandoned} ${plural(abandoned, 'attachment was', 'attachments were')} not sent — ${left}.`
+      : upload === 1
+        ? 'One attachment could not be sent. It is still in the composer.'
+        : `${upload} attachments could not be sent. They are still in the composer.`;
 }

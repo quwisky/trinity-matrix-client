@@ -11,11 +11,7 @@ export type {
   TrnButtonSize,
   TrnButtonVariant,
 } from './lib/button/trn-button-recipe';
-export {
-  TrnCheckboxComponent,
-  type TrnCheckboxSize,
-  type TrnCheckboxVariant,
-} from './lib/checkbox/trn-checkbox.component';
+export { TrnCheckboxComponent } from './lib/checkbox/trn-checkbox.component';
 export { TrnEmojiIndex } from './lib/emoji-picker/trn-emoji-index.service';
 export {
   TrnEmojiPickerComponent,
@@ -36,8 +32,6 @@ export { QrScannerComponent } from './lib/qr-scanner/qr-scanner/qr-scanner.compo
 export {
   TrnRadioGroupComponent,
   type TrnRadioGroupLayout,
-  type TrnRadioGroupSize,
-  type TrnRadioGroupVariant,
   type TrnRadioOption,
 } from './lib/radio-group/trn-radio-group.component';
 export {
@@ -45,11 +39,7 @@ export {
   type TrnSelectOption,
   type TrnSelectSize,
 } from './lib/select/trn-select.component';
-export {
-  TrnSwitchComponent,
-  type TrnSwitchSize,
-  type TrnSwitchVariant,
-} from './lib/switch/trn-switch.component';
+export { TrnSwitchComponent } from './lib/switch/trn-switch.component';
 export { TrnTextarea } from './lib/textarea/trn-textarea';
 
 import { TrnFieldComponent } from './lib/field/field/trn-field.component';

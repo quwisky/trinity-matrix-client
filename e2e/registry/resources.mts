@@ -15,7 +15,7 @@ export const E2E_SERIALIZATION_RESOURCES = [
     description: 'One launched Electron application and user-data lifecycle.',
   },
   {
-    key: 'synapse',
+    key: 'homeserver',
     owner: 'trinity-e2e-support',
     description:
       'The fixed-port disposable Synapse, remote Synapse, Dex and Caddy stack.',

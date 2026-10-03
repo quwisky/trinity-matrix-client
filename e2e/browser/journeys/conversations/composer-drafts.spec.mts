@@ -8,15 +8,15 @@ import {
 import {
   login,
   readPreference,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 // End-to-end for per-conversation composer drafts: a half-typed message is kept per
 // room while switching between rooms, and survives a reload (persisted to Capacitor
 // Preferences and restored at startup). Needs a Synapse homeserver (Docker).
-const session = synapseSession();
+const session = homeserverSession();
 
 const DRAFTS_KEY = 'trinity.composer.drafts';
 
@@ -25,7 +25,7 @@ async function seedTwoRooms(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ reader: SynapseSession; roomA: string; roomB: string }> {
+): Promise<{ reader: HomeserverSession; roomA: string; roomB: string }> {
   const user = `drafts-${runId}`;
   const pass = `drafts-${runId}-pass`;
   const roomA = `Drafts A ${runId}`;

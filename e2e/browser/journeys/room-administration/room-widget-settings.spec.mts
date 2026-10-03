@@ -2,7 +2,7 @@ import { expect, test, testResourceId } from '../../../fixtures.mts';
 import {
   login,
   openSettingsTab,
-  type SynapseSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { installWidgetFixture } from '../../support/widget.mts';
@@ -62,7 +62,7 @@ test.describe('Room settings', () => {
       })
       .then((r) => r.json());
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
     await page.getByTestId('open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'widgets');
@@ -288,7 +288,7 @@ test.describe('Room settings', () => {
       { headers: { Authorization: `Bearer ${memberAccessToken}` } },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await addAccountViaUi(page, hs, member, memberPass);
     await page.getByTestId('user-menu-trigger').click();
     await page
@@ -481,7 +481,7 @@ test.describe('Room settings', () => {
       hs,
       user: member,
       pass: memberPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
     await page.getByTestId('open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'widgets');

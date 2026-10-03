@@ -6,7 +6,7 @@ import {
 } from '../../fixtures.mts';
 import {
   fillLabeledInput,
-  synapseSession,
+  homeserverSession,
   waitForRooms,
 } from '../../support/app.mts';
 import { registerUser } from '../../support/account.mts';
@@ -17,7 +17,7 @@ import type { MatrixTestResources } from '../../support/test-resources.mts';
 // confirm per-account encryption status reaches the UI, and prove the app badge sums
 // unread across accounts (switch-invariant). Uses the same throwaway-user registration
 // trick as unread-badges / notifications specs; needs Synapse (Docker), self-skips otherwise.
-export const session = synapseSession();
+export const session = homeserverSession();
 
 export async function expectWorkspaceAccount(
   page: Page,

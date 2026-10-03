@@ -3,7 +3,7 @@ import {
   login,
   preferenceKeys,
   seedPreference,
-  synapseSession,
+  homeserverSession,
 } from '../../../support/app.mts';
 import {
   AA_NORMAL_TEXT,
@@ -31,7 +31,7 @@ import {
 //      WebView's localStorage, so it is pinned in local-data-wipe.service.spec.ts instead.
 //
 // Both were found by injecting the defect and watching this spec pass anyway.
-const session = synapseSession();
+const session = homeserverSession();
 
 /** Every CapacitorStorage-namespaced key currently in localStorage. */
 function storageKeys(page: Page): Promise<string[]> {

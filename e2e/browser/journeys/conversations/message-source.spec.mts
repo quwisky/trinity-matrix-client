@@ -2,15 +2,15 @@ import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   clickRowMenuItem,
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
   waitForSent,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 // Covers the message "View source" context action (msg-more → msg-view-source): a dialog
 // (data-testid="message-source") shows the event's raw JSON. Needs Synapse (Docker).
-const session = synapseSession();
+const session = homeserverSession();
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -52,7 +52,7 @@ test.describe('Message source', () => {
       data: { name: roomName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     const composer = page.getByTestId('composer-input');

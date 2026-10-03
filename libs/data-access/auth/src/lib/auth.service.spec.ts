@@ -417,9 +417,11 @@ describe('AuthService', () => {
         firstValueFrom(auth.changePassword('old-pw', 'new-secret-pw')),
       ).resolves.toBeUndefined();
 
-      // First attempt carries no auth; other sessions stay signed in (false).
+      // First attempt carries no auth at all — an empty `auth: {}` is a malformed UIA
+      // dict that ruma-based servers (Tuwunel, Conduit) reject with M_BAD_JSON instead
+      // of the 401 challenge. Other sessions stay signed in (false).
       expect(client.setPassword).toHaveBeenCalledWith(
-        {},
+        undefined,
         'new-secret-pw',
         false,
       );

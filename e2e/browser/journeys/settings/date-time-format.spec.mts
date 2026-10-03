@@ -5,7 +5,7 @@ import {
   type APIRequestContext,
   type Page,
 } from '../../../fixtures.mts';
-import { login, synapseSession } from '../../../support/app.mts';
+import { login, homeserverSession } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 
@@ -14,7 +14,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // the CDK-overlay round-trip (open the dropdown, pick an option) and that the choice reaches
 // an already-rendered timeline and survives a reload.
 // Needs a Synapse homeserver (Docker); self-skips.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   userId: string;

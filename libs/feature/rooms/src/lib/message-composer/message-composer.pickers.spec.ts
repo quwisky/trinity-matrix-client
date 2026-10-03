@@ -253,12 +253,12 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
 
     cmp.pickerOpen.set(true);
     cmp.toggleGifPicker();
-    expect(cmp.gifPickerOpen()).toBe(true);
+    expect(cmp['attachments'].gifPickerOpen()).toBe(true);
     expect(cmp.pickerOpen()).toBe(false);
 
     cmp.toggleEmojiPicker();
     expect(cmp.pickerOpen()).toBe(true);
-    expect(cmp.gifPickerOpen()).toBe(false);
+    expect(cmp['attachments'].gifPickerOpen()).toBe(false);
   });
 
   it('opens image-pack settings with the active room as context', async () => {
@@ -292,7 +292,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     );
     const { fixture } = await renderComposer({}, gifProviders(download));
     const cmp = fixture.componentInstance;
-    cmp.gifPickerOpen.set(true);
+    cmp['attachments'].gifPickerOpen.set(true);
 
     let emitted: { items: readonly BatchItem[]; caption: string } | undefined;
     cmp.submitMedia.subscribe((e) => {
@@ -305,8 +305,8 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     expect(download).toHaveBeenCalledWith(gifResult);
     expect(emitted?.items[0]?.file.type).toBe('image/gif');
     expect(emitted?.caption).toBe('');
-    expect(cmp.gifPickerOpen()).toBe(false);
-    expect(cmp.gifDownloading()).toBe(false);
+    expect(cmp['attachments'].gifPickerOpen()).toBe(false);
+    expect(cmp['attachments'].gifDownloading()).toBe(false);
   });
 
   it('ends an active reply when a GIF is sent (media carries no reply relation)', async () => {
@@ -338,7 +338,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
       expect.stringContaining('Could not load'),
       expect.objectContaining({ variant: 'danger' }),
     );
-    expect(cmp.gifDownloading()).toBe(false);
+    expect(cmp['attachments'].gifDownloading()).toBe(false);
   });
 
   describe('insert tray', () => {
@@ -526,7 +526,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     // from a non-textarea element to prove the handler is not textarea-scoped.
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
-    cmp.gifPickerOpen.set(true);
+    cmp['attachments'].gifPickerOpen.set(true);
 
     fixture.nativeElement
       .querySelector('[data-testid=composer-insert]')
@@ -534,7 +534,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
         new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
       );
 
-    expect(cmp.gifPickerOpen()).toBe(false);
+    expect(cmp['attachments'].gifPickerOpen()).toBe(false);
   });
 
   it('always renders the send button, at every width and pointer type', async () => {
@@ -604,7 +604,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
 
       await cmp.startVoiceRecording();
 
-      expect(cmp.recordingVoice()).toBe(true);
+      expect(cmp['attachments'].recordingVoice()).toBe(true);
     });
 
     it('stops recording and sends the clip as a voice message', async () => {
@@ -618,7 +618,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
       await Promise.resolve();
 
       expect(sendVoiceMessage).toHaveBeenCalledWith(recording);
-      expect(cmp.recordingVoice()).toBe(false);
+      expect(cmp['attachments'].recordingVoice()).toBe(false);
     });
 
     it('ignores a second start while the mic is still being acquired', async () => {
@@ -644,7 +644,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
       await Promise.all([first, second]);
 
       expect(start).toHaveBeenCalledTimes(1); // only one mic stream opened
-      expect(cmp.recordingVoice()).toBe(true);
+      expect(cmp['attachments'].recordingVoice()).toBe(true);
     });
 
     it('cancels an in-progress recording when the room switches', async () => {
@@ -652,13 +652,13 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
       const { fixture } = await renderComposer({ roomId: '!a:hs' }, providers);
       const cmp = fixture.componentInstance;
       await cmp.startVoiceRecording();
-      expect(cmp.recordingVoice()).toBe(true);
+      expect(cmp['attachments'].recordingVoice()).toBe(true);
 
       fixture.componentRef.setInput('roomId', '!b:hs');
       fixture.detectChanges();
 
       expect(cancel).toHaveBeenCalled();
-      expect(cmp.recordingVoice()).toBe(false);
+      expect(cmp['attachments'].recordingVoice()).toBe(false);
     });
 
     it('cancels a recording without sending', async () => {
@@ -670,7 +670,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
       cmp.cancelVoiceRecording();
 
       expect(cancel).toHaveBeenCalled();
-      expect(cmp.recordingVoice()).toBe(false);
+      expect(cmp['attachments'].recordingVoice()).toBe(false);
       expect(sendVoiceMessage).not.toHaveBeenCalled();
     });
 
@@ -683,7 +683,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
 
       await cmp.startVoiceRecording();
 
-      expect(cmp.recordingVoice()).toBe(false);
+      expect(cmp['attachments'].recordingVoice()).toBe(false);
       expect(TestBed.inject(TrnToastService).show).toHaveBeenCalledWith(
         expect.stringContaining('microphone'),
         expect.objectContaining({ variant: 'danger' }),

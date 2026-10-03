@@ -157,10 +157,11 @@ describe('GitHub Pages documentation publication', () => {
   const workflowPath = join(workspaceRoot, '.github/workflows/docs-pages.yml');
   const workflow = () => parse(readFileSync(workflowPath, 'utf8'));
 
-  it('defines a dedicated develop and manual Pages workflow', () => {
+  it('defines a dedicated develop, release and manual Pages workflow', () => {
     expect(existsSync(workflowPath)).toBe(true);
     expect(workflow().on).toEqual({
       push: { branches: ['develop'] },
+      release: { types: ['published'] },
       workflow_dispatch: null,
     });
     expect(workflow().permissions).toEqual({ contents: 'read' });
@@ -169,16 +170,18 @@ describe('GitHub Pages documentation publication', () => {
   it('validates, assembles, and uploads exactly one Pages artifact', () => {
     const build = workflow().jobs.build;
     expect(build.permissions).toEqual({ contents: 'read' });
-    expect(build.steps.flatMap((step) => (step.run ? [step.run] : []))).toEqual(
-      [
-        'pnpm format:check',
-        'pnpm nx test scripts',
-        'pnpm nx test docs-site',
-        'pnpm nx run docs-site:check',
-        'pnpm nx run docs-site:assemble',
-        'pnpm nx run docs-site:e2e',
-      ],
-    );
+    expect(
+      build.steps.flatMap((step) =>
+        step.run && step.id !== 'release' ? [step.run] : [],
+      ),
+    ).toEqual([
+      'pnpm format:check',
+      'pnpm nx test scripts',
+      'pnpm nx test docs-site',
+      'pnpm nx run docs-site:check',
+      'pnpm nx run docs-site:assemble',
+      'pnpm nx run docs-site:e2e',
+    ]);
 
     const configured = build.steps.filter((step) =>
       step.uses?.startsWith('actions/configure-pages@'),

@@ -24,7 +24,7 @@ Commands remain cold and finite. Preserve local echo only where the product expl
 
 ## Prove protocol and presentation {#prove-feature}
 
-Unit-test normalization, permissions, account isolation, cancellation, errors, and cleanup. Add a disposable-Synapse journey when interoperability, federation-independent server state, encryption, multiple clients, or event ordering is part of the claim. Add browser evidence for the user-visible flow.
+Unit-test normalization, permissions, account isolation, cancellation, errors, and cleanup. Add a disposable-homeserver journey when interoperability, federation-independent server state, encryption, multiple clients, or event ordering is part of the claim. Add browser evidence for the user-visible flow.
 
 Never place real tokens, recovery keys, server databases, or private room content in fixtures or diagnostics. Test accounts and homeservers belong to the suite that creates and destroys them.
 

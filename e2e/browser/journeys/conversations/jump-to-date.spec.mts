@@ -1,8 +1,8 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -17,7 +17,7 @@ import { registerUser } from '../../../support/account.mts';
 // whether or not the loop exists.
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -91,7 +91,7 @@ test.describe('Jump to date', () => {
       );
     }
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     // The newest messages are on screen; the marker is not.
@@ -144,7 +144,7 @@ test.describe('Jump to date', () => {
       data: { name: roomName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     await page.getByTestId('room-actions-overflow').click();

@@ -1,0 +1,62 @@
+import { execFile } from 'node:child_process';
+import { join, resolve } from 'node:path';
+import { promisify } from 'node:util';
+import {
+  acquireProcessLock,
+  releaseProcessLock,
+  type ProcessLock,
+} from '../process-lock.mts';
+import { resolveHomeserverKind } from './kind.mts';
+
+const workspaceRoot = resolve(import.meta.dirname, '../../..');
+export const homeserverLockFile = join(
+  workspaceRoot,
+  'dist/.playwright/homeserver.lock',
+);
+const composeFile = join(import.meta.dirname, 'docker-compose.yml');
+const exec = promisify(execFile);
+
+export async function acquireHomeserverLease(
+  signal?: AbortSignal,
+): Promise<ProcessLock> {
+  // Every path to the stack takes this lease first, so a bad selection fails here,
+  // before a lock file or a container exists.
+  resolveHomeserverKind();
+  const lease = acquireProcessLock(
+    homeserverLockFile,
+    'Homeserver E2E harness',
+  );
+  try {
+    const { stdout } = await exec(
+      'docker',
+      ['compose', '-f', composeFile, 'ps', '--status', 'running', '--services'],
+      { cwd: import.meta.dirname, signal },
+    );
+    if (stdout.trim()) {
+      releaseProcessLock(lease);
+      throw new Error(
+        `An E2E homeserver stack is already running (${stdout.trim().replaceAll('\n', ', ')}); stop it before starting another harness`,
+      );
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('already running (')) {
+      throw error;
+    }
+    if (signal?.aborted) {
+      releaseProcessLock(lease);
+      throw signal.reason;
+    }
+    // Let start.mjs report Docker availability/configuration errors with richer
+    // context. The lease still prevents another harness from racing that attempt.
+  }
+  return lease;
+}
+
+/** Claim teardown without rejecting the running stack that teardown is meant to stop. */
+export function acquireHomeserverTeardownLease(): ProcessLock {
+  return acquireProcessLock(homeserverLockFile, 'Homeserver E2E harness');
+}
+
+export function releaseHomeserverLease(lease: ProcessLock | undefined): void {
+  releaseProcessLock(lease);
+}

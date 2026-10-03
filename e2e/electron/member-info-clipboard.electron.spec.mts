@@ -1,10 +1,10 @@
 import { testResourceId, expect, test, type Page } from './fixtures.mts';
 
-import { login, synapseSession, type Navigate } from '../support/app.mts';
+import { login, homeserverSession, type Navigate } from '../support/app.mts';
 import { passwordLogin, registerUser } from '../support/account.mts';
 import { launchApp } from './support/launch.mts';
 
-const session = synapseSession();
+const session = homeserverSession();
 
 const electronNavigate: Navigate = async (page: Page, path: string) => {
   const baseUrl = page.url() === 'about:blank' ? 'trinity://app/' : page.url();

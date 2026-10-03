@@ -8,8 +8,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -28,7 +28,7 @@ import { registerUser } from '../../../support/account.mts';
 //
 // A unit test cannot make either claim: jsdom applies no CSS, so both elements carry exactly
 // the classes the author wrote and every assertion about them passes.
-const session = synapseSession();
+const session = homeserverSession();
 
 /** A throwaway account with one room, logged in and open. */
 async function openRoom(
@@ -57,7 +57,7 @@ async function openRoom(
     data: { name: roomName, preset: 'private_chat' },
   });
 
-  await login(page, { available: true, hs, user, pass } as SynapseSession);
+  await login(page, { available: true, hs, user, pass } as HomeserverSession);
   await page.getByTestId('rail-rooms').click();
   const channel = page.locator('.channel', { hasText: roomName });
   await channel.first().waitFor({ state: 'visible', timeout: 30_000 });

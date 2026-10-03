@@ -1,5 +1,5 @@
 import { devices, expect, test, testResourceId } from '../../../fixtures.mts';
-import { login, type SynapseSession } from '../../../support/app.mts';
+import { login, type HomeserverSession } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { apiLogin } from '../../support/multi-account-journey.mts';
 import {
@@ -51,7 +51,7 @@ test.describe('Room settings · For you on a phone', () => {
       hs,
       user: member,
       pass: memberPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
     await touchPlatform.tap(page, page.getByTestId('room-actions-overflow'));
     await touchPlatform.tap(

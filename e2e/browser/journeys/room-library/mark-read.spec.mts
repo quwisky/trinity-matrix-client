@@ -6,15 +6,15 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 // Covers "Mark all as read" (data-testid="mark-all-read"): with an unread room the header
 // action appears; clicking it acks every room (RoomsService.markAllRead) so it disappears.
 // Another user sends a message so there's something unread. Needs Synapse (Docker).
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   userId: string;
@@ -87,7 +87,7 @@ test.describe('Mark as read', () => {
       hs,
       user: me,
       pass: mePass,
-    } as SynapseSession);
+    } as HomeserverSession);
     // The room is a regular (non-DM) room — switch to the Rooms view so it's listed.
     await page.getByTestId('rail-rooms').click();
     await expect(

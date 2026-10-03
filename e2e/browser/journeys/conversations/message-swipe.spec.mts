@@ -9,8 +9,8 @@ import {
 import {
   login,
   seedPreference,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
@@ -29,7 +29,7 @@ import { cdpSwipe as swipe } from '../../../support/touch-platform.mts';
 // spec records: a `PointerEvent` constructed inside the page never passes hit-testing and
 // never consults `touch-action`, so it would stay green with the `swipe-through` claim
 // deleted from `.scroll` — which is the one thing that makes this gesture reach the page.
-const session = synapseSession();
+const session = homeserverSession();
 
 // Capacitor Preferences namespaces its localStorage keys; seeding the bare key writes
 // something the app never reads.
@@ -103,7 +103,7 @@ async function openRoom(
     await seedPreference(page, SWIPE_KEY, direction);
   }
 
-  await login(page, { available: true, hs, user, pass } as SynapseSession);
+  await login(page, { available: true, hs, user, pass } as HomeserverSession);
   await page.getByTestId('rail-rooms').click();
   const channel = page.locator('.channel', { hasText: roomName });
   await channel.first().waitFor({ state: 'visible', timeout: 30_000 });

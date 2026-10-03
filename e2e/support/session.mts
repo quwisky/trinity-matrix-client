@@ -7,16 +7,21 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { HOMESERVER_KINDS, type HomeserverKind } from './homeserver/kind.mts';
 import { processIsAlive } from './process-lock.mts';
 
 export const E2E_SESSION_ENV = 'TRINITY_E2E_SESSION_FILE';
 export const E2E_SESSION_VERSION = 1;
 
-export interface SynapseSessionDescriptor {
+export interface HomeserverSessionDescriptor {
   readonly available: boolean;
   readonly hs?: string;
   readonly user?: string;
   readonly pass?: string;
+  /** Which server answered, so specs can branch where Matrix servers legitimately differ. */
+  readonly kind?: HomeserverKind;
+  /** The server's own version string from `/_matrix/federation/v1/version`. */
+  readonly version?: string;
   readonly secondary?: {
     readonly hs: string;
     readonly serverName: string;
@@ -50,7 +55,7 @@ export interface E2ESessionDescriptor {
     readonly report: string;
   };
   readonly artifactsRoot: string;
-  readonly synapse?: SynapseSessionDescriptor;
+  readonly homeserver?: HomeserverSessionDescriptor;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -72,17 +77,25 @@ function isLoopbackOrigin(value: unknown): value is string {
   }
 }
 
-function assertSynapse(
+function assertHomeserver(
   value: unknown,
-): asserts value is SynapseSessionDescriptor {
+): asserts value is HomeserverSessionDescriptor {
   if (!isObject(value) || typeof value['available'] !== 'boolean') {
-    throw new Error('E2E session has an invalid Synapse capability');
+    throw new Error('E2E session has an invalid homeserver capability');
   }
   if (value['available']) {
     for (const key of ['hs', 'user', 'pass'] as const) {
       if (typeof value[key] !== 'string' || value[key].length === 0) {
-        throw new Error(`E2E session is missing required Synapse field ${key}`);
+        throw new Error(
+          `E2E session is missing required homeserver field ${key}`,
+        );
       }
+    }
+    if (!(HOMESERVER_KINDS as readonly unknown[]).includes(value['kind'])) {
+      throw new Error('E2E session has an unknown homeserver kind');
+    }
+    if (typeof value['version'] !== 'string' || !value['version']) {
+      throw new Error('E2E session is missing the homeserver version');
     }
   }
 }
@@ -114,7 +127,7 @@ export function validateSession(value: unknown): E2ESessionDescriptor {
   ) {
     throw new Error('E2E session descriptor failed structural validation');
   }
-  if (value['synapse'] !== undefined) assertSynapse(value['synapse']);
+  if (value['homeserver'] !== undefined) assertHomeserver(value['homeserver']);
   return value as unknown as E2ESessionDescriptor;
 }
 
@@ -208,11 +221,11 @@ export function sessionEnvironment(
     TRINITY_E2E_STORYBOOK_URL: descriptor.endpoints.storybook,
     TRINITY_E2E_REPORT_URL: descriptor.endpoints.report,
   };
-  if (descriptor.synapse?.available) {
+  if (descriptor.homeserver?.available) {
     environment['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
-    environment['TRINITY_HS'] = descriptor.synapse.hs;
-    environment['TRINITY_USER'] = descriptor.synapse.user;
-    environment['TRINITY_PASS'] = descriptor.synapse.pass;
+    environment['TRINITY_HS'] = descriptor.homeserver.hs;
+    environment['TRINITY_USER'] = descriptor.homeserver.user;
+    environment['TRINITY_PASS'] = descriptor.homeserver.pass;
   }
   return environment;
 }
@@ -224,7 +237,7 @@ export function sessionSummary(descriptor: E2ESessionDescriptor): string {
     `owner=${descriptor.owner.pid}`,
     `resources=${descriptor.resources.join(',') || 'none'}`,
     `app=${descriptor.endpoints.application}`,
-    `synapse=${descriptor.synapse?.available ? 'available' : 'not-requested'}`,
+    `homeserver=${descriptor.homeserver?.available ? `${descriptor.homeserver.kind} ${descriptor.homeserver.version}` : 'not-requested'}`,
   ].join(' ');
 }
 

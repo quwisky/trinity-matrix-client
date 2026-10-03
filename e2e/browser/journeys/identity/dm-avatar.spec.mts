@@ -6,8 +6,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -22,7 +22,7 @@ import { registerUser } from '../../../support/account.mts';
 // visible exercises the whole chain: the SDK's heroes/member fallback, the projection,
 // the authenticated-media fetch with a bearer token, the blob URL, and the decode.
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
-const session = synapseSession();
+const session = homeserverSession();
 
 // A 1x1 transparent PNG — a valid image the homeserver accepts as an avatar.
 const PNG_1x1 = Buffer.from(
@@ -84,7 +84,7 @@ async function seedDmAndGroup(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ reader: SynapseSession; groupName: string; partner: string }> {
+): Promise<{ reader: HomeserverSession; groupName: string; partner: string }> {
   const readerUser = `dmav-reader-${runId}`;
   const readerPass = `dmav-reader-pass-${runId}`;
   const partnerUser = `dmav-partner-${runId}`;

@@ -1,8 +1,8 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -10,7 +10,7 @@ import { registerUser } from '../../../support/account.mts';
 // m.audio with the MSC3245 voice marker), rendered in the timeline as a voice player
 // (data-testid="voice-message"). Chromium is launched with a fake microphone so
 // getUserMedia + MediaRecorder work headless. Needs Synapse (Docker); self-skips.
-const session = synapseSession();
+const session = homeserverSession();
 
 // A fake audio device (a tone) so getUserMedia/MediaRecorder produce real bytes
 // offline, and auto-accept the mic permission prompt.
@@ -60,7 +60,7 @@ test.describe('Voice messages', () => {
       data: { name: roomName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
     const restingFieldHeight =
       (await page.getByTestId('composer-field').boundingBox())?.height ?? 0;

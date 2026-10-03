@@ -7,15 +7,15 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 // End-to-end for @-mention autocomplete: typing `@` opens a member menu, picking one
 // inserts a pill, and the sent message carries a matrix.to mention link (so it pings
 // via m.mentions). Needs a Synapse homeserver (Docker).
-const session = synapseSession();
+const session = homeserverSession();
 
 async function apiToken(
   request: APIRequestContext,
@@ -44,7 +44,7 @@ async function seedRoomWithMember(
   hs: string,
   runId: string,
 ): Promise<{
-  reader: SynapseSession;
+  reader: HomeserverSession;
   roomName: string;
   memberName: string;
   memberId: string;

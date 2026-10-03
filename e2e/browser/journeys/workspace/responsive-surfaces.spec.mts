@@ -10,20 +10,20 @@ import {
 import {
   fillLabeledInput,
   seedPreference,
-  synapseSession,
+  homeserverSession,
   waitForRooms,
-  type SynapseSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
-const session = synapseSession();
+const session = homeserverSession();
 const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
 );
 
 interface SeededRoom {
-  credentials: SynapseSession;
+  credentials: HomeserverSession;
   roomName: string;
 }
 
@@ -99,7 +99,7 @@ async function seedImageRoom(
 
 async function signInFromPasswordStage(
   page: Page,
-  credentials: SynapseSession,
+  credentials: HomeserverSession,
 ): Promise<void> {
   await fillLabeledInput(page, 'Username', credentials.user as string);
   await fillLabeledInput(page, 'Password', credentials.pass as string);

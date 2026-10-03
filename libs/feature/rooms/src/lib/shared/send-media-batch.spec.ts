@@ -1,8 +1,11 @@
 import { Observable, firstValueFrom, of, throwError, timer } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { describe, expect, it, vi } from 'vitest';
+import type { StagedMediaReference } from '@trinity/data-access/media';
 import {
+  batchFailureToast,
   sendMediaBatch,
+  sendViaCapability,
   type BatchItem,
   type BatchProgress,
 } from './send-media-batch';
@@ -10,6 +13,7 @@ import {
 const item = (name: string): BatchItem => ({
   id: `id-${name}`,
   file: new File(['x'], name, { type: 'image/png' }),
+  media: { id: `staged-${name}` } as unknown as StagedMediaReference,
 });
 
 /** A sender whose per-file duration is scripted, so ordering can actually be observed. */
@@ -186,5 +190,61 @@ describe('sendMediaBatch', () => {
 
     await firstValueFrom(batch);
     expect(send).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('sendViaCapability', () => {
+  it('forwards progress and resolves on the sent event', async () => {
+    const fractions: number[] = [];
+    const events = of(
+      { kind: 'progress' as const, phase: 'uploading' as const, fraction: 0.4 },
+      { kind: 'sent' as const, eventId: '$e' },
+    );
+
+    await firstValueFrom(sendViaCapability(events, (f) => fractions.push(f)));
+
+    expect(fractions).toEqual([0.4]);
+  });
+
+  it('fails on a rejection and reports its failure code', async () => {
+    const seen: string[] = [];
+    const events = of({
+      kind: 'rejected' as const,
+      failure: 'conversation-unavailable' as const,
+      retryable: false,
+    });
+
+    await expect(
+      firstValueFrom(
+        sendViaCapability(events, undefined, (failure) => seen.push(failure)),
+      ),
+    ).rejects.toThrow('conversation-unavailable');
+    expect(seen).toEqual(['conversation-unavailable']);
+  });
+});
+
+describe('batchFailureToast', () => {
+  it('says the files are still in the composer when they only failed', () => {
+    expect(batchFailureToast(1, 0, 'room')).toBe(
+      'One attachment could not be sent. It is still in the composer.',
+    );
+    expect(batchFailureToast(3, 0, 'room')).toBe(
+      '3 attachments could not be sent. They are still in the composer.',
+    );
+  });
+
+  it('names the place left when files were abandoned', () => {
+    expect(batchFailureToast(1, 1, 'thread')).toBe(
+      '1 attachment was not sent — you left the thread before they went out.',
+    );
+    expect(batchFailureToast(2, 2, 'room')).toBe(
+      '2 attachments were not sent — you left the room before they went out.',
+    );
+  });
+
+  it('separates abandoned from failed uploads in one batch', () => {
+    expect(batchFailureToast(3, 2, 'room')).toBe(
+      '2 attachments not sent — you left the room before they went out — and 1 could not be uploaded.',
+    );
   });
 });

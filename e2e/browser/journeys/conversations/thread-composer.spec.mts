@@ -2,9 +2,9 @@ import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   clickRowToolbar,
   login,
-  synapseSession,
+  homeserverSession,
   waitForSent,
-  type SynapseSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -12,7 +12,7 @@ import { registerUser } from '../../../support/account.mts';
 // (poll/location/voice) are hidden there because they post to the main room,
 // not the thread; and a slash command typed in a thread is parsed (`/me waves` sends an
 // emote "waves", not the literal text). Needs a Synapse homeserver (Docker); self-skips.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -54,7 +54,7 @@ test.describe('Thread composer', () => {
       data: { name: roomName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     // Send a message, then open a thread off it via the hover toolbar.
@@ -142,7 +142,7 @@ test.describe('Thread composer', () => {
       data: { name: roomName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     const composer = page.getByTestId('composer-input');

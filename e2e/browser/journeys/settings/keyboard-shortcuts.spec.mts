@@ -1,8 +1,8 @@
 import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
@@ -13,7 +13,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // brings the original binding back. Exercises the registry end to end via the hop shortcut.
 //
 // Needs a Synapse homeserver (Docker); self-skips otherwise. CI is Linux → Control.
-const session = synapseSession();
+const session = homeserverSession();
 
 test.describe('Keyboard shortcuts settings', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
@@ -47,7 +47,7 @@ test.describe('Keyboard shortcuts settings', () => {
       });
     }
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
 
     const active = page.locator('trn-channel-sidebar .channel.active');
     const open = async (name: string): Promise<void> => {

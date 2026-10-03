@@ -26,9 +26,9 @@ const OPTIONS: readonly TrnRadioOption<string>[] = [
     TrnSwitchComponent,
         ],
   template: \`
-    <trn-checkbox variant="neutral" size="sm" invalid />
-    <trn-switch variant="accent" size="md" />
-    <trn-radio-group layout="segmented" variant="accent" size="md" [options]="options" />
+    <trn-checkbox invalid />
+    <trn-switch />
+    <trn-radio-group layout="segmented" [options]="options" />
   \`,
 })
 export class ValidControlRecipeHost {
@@ -36,30 +36,10 @@ export class ValidControlRecipeHost {
 }
 
 @Component({
-  imports: [TrnCheckboxComponent],
-  template: \`<trn-checkbox variant="danger" size="lg" />\`,
-})
-export class InvalidCheckboxHost {}
-
-@Component({
-  imports: [TrnSwitchComponent],
-  template: \`<trn-switch variant="warning" size="lg" />\`,
-})
-export class InvalidSwitchHost {}
-
-@Component({
   imports: [TrnRadioGroupComponent],
-  template: \`<trn-radio-group layout="grid" variant="danger" size="lg" [options]="options" />\`,
+  template: \`<trn-radio-group layout="grid" [options]="options" />\`,
 })
 export class InvalidRadioHost {
-  protected readonly options = OPTIONS;
-}
-
-@Component({
-  imports: [TrnRadioGroupComponent],
-  template: \`<trn-radio-group variant="segmented" [options]="options" />\`,
-})
-export class InvalidLegacyControlHost {
   protected readonly options = OPTIONS;
 }
 `;
@@ -110,9 +90,9 @@ describe('control recipe strict-template contract', () => {
     const messages = errors.map((diagnostic) =>
       ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
     );
-    expect(errors.map(({ code }) => code)).toEqual(Array(8).fill(2322));
+    expect(errors.map(({ code }) => code)).toEqual(Array(1).fill(2322));
 
-    for (const unsupported of ['danger', 'warning', 'grid', 'segmented']) {
+    for (const unsupported of ['grid']) {
       expect(messages, unsupported).toEqual(
         expect.arrayContaining([expect.stringContaining(`"${unsupported}"`)]),
       );

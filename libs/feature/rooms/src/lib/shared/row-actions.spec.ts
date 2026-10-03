@@ -1,0 +1,138 @@
+import { DestroyRef } from '@angular/core';
+import { of, Subject } from 'rxjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MessageSourceComponent } from '../message-source/message-source.component';
+import { ReactionPickerComponent } from '../reaction-picker/reaction-picker.component';
+import { type MessageRow } from '../message-row/message-row.component';
+import {
+  dispatchSharedRowAction,
+  type SharedRowActionContext,
+} from './row-actions';
+
+const row = { id: '$e', body: 'hello' } as MessageRow;
+
+function setup(overrides: Partial<SharedRowActionContext> = {}) {
+  const ctx = {
+    roomId: '!r:hs',
+    destroyRef: { onDestroy: () => () => undefined } as unknown as DestroyRef,
+    dialog: {
+      open: vi.fn(),
+      openAndWait$: vi.fn(() => of('🎉')),
+    },
+    timeline: { rawEvent: vi.fn(() => ({ type: 'm.room.message' })) },
+    forward: { forward$: vi.fn(() => of(undefined)) },
+    report: { report$: vi.fn(() => of(undefined)) },
+    reactions: { open$: vi.fn(() => of(undefined)) },
+    editHistory: { openHistory$: vi.fn(() => of(null)) },
+    react: vi.fn(),
+    quote: vi.fn(),
+    ...overrides,
+  };
+  return ctx as typeof ctx & SharedRowActionContext;
+}
+
+describe('dispatchSharedRowAction', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('leaves host-specific actions unhandled', () => {
+    const ctx = setup();
+
+    expect(dispatchSharedRowAction({ type: 'reply' }, row, ctx)).toBe(false);
+    expect(dispatchSharedRowAction({ type: 'delete' }, row, ctx)).toBe(false);
+  });
+
+  it('copies the body and a permalink', () => {
+    const writeText = vi.fn();
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    const ctx = setup();
+
+    expect(dispatchSharedRowAction({ type: 'copy' }, row, ctx)).toBe(true);
+    dispatchSharedRowAction({ type: 'copy-link' }, row, ctx);
+
+    expect(writeText).toHaveBeenNthCalledWith(1, 'hello');
+    expect(writeText).toHaveBeenNthCalledWith(
+      2,
+      'https://matrix.to/#/!r%3Ahs/%24e?via=hs',
+    );
+  });
+
+  it('hands quote and react to the host', () => {
+    const ctx = setup();
+
+    dispatchSharedRowAction({ type: 'quote' }, row, ctx);
+    dispatchSharedRowAction({ type: 'react', key: '👍' }, row, ctx);
+
+    expect(ctx.quote).toHaveBeenCalledWith(row);
+    expect(ctx.react).toHaveBeenCalledWith('$e', '👍');
+  });
+
+  it('reacts with the emoji picked from the full picker', () => {
+    const ctx = setup();
+
+    dispatchSharedRowAction({ type: 'react-more' }, row, ctx);
+
+    expect(ctx.react).toHaveBeenCalledWith('$e', '🎉');
+    // The ariaLabel is the assertion: the CDK container is the dialog, so without a name a
+    // screen reader announces the most-used picker in the app as just "dialog".
+    expect(ctx.dialog.openAndWait$).toHaveBeenCalledWith(
+      ReactionPickerComponent,
+      { ariaLabel: 'Pick a reaction' },
+    );
+  });
+
+  it('does not react when the picker is dismissed', () => {
+    const picked = new Subject<string | null>();
+    const ctx = setup({
+      dialog: { open: vi.fn(), openAndWait$: () => picked } as never,
+    });
+
+    dispatchSharedRowAction({ type: 'react-more' }, row, ctx);
+    picked.next(null);
+
+    expect(ctx.react).not.toHaveBeenCalled();
+  });
+
+  it('shows the raw event JSON, and does nothing when it is not loaded', () => {
+    const ctx = setup();
+    dispatchSharedRowAction({ type: 'view-source' }, row, ctx);
+    expect(ctx.dialog.open).toHaveBeenCalledWith(
+      MessageSourceComponent,
+      expect.objectContaining({
+        inputs: {
+          source: JSON.stringify({ type: 'm.room.message' }, null, 2),
+        },
+      }),
+    );
+
+    const missing = setup({ timeline: { rawEvent: () => null } as never });
+    dispatchSharedRowAction({ type: 'view-source' }, row, missing);
+    expect(missing.dialog.open).not.toHaveBeenCalled();
+  });
+
+  it('opens forward, report, reactors and edit history for the room', () => {
+    const ctx = setup();
+
+    dispatchSharedRowAction({ type: 'forward' }, row, ctx);
+    dispatchSharedRowAction({ type: 'report' }, row, ctx);
+    dispatchSharedRowAction({ type: 'reactors' }, row, ctx);
+    dispatchSharedRowAction({ type: 'edit-history' }, row, ctx);
+
+    expect(ctx.forward.forward$).toHaveBeenCalledWith('!r:hs', '$e');
+    expect(ctx.report.report$).toHaveBeenCalledWith('!r:hs', '$e');
+    expect(ctx.reactions.open$).toHaveBeenCalledWith('$e');
+    expect(ctx.editHistory.openHistory$).toHaveBeenCalledWith('!r:hs', '$e');
+  });
+
+  it('reports a permalink followed out of the edit history', () => {
+    const target = { kind: 'user', userId: '@a:hs' } as never;
+    const followed = vi.fn();
+    const ctx = setup({
+      editHistory: { openHistory$: () => of(target) } as never,
+      onHistoryLink: followed,
+    });
+
+    dispatchSharedRowAction({ type: 'edit-history' }, row, ctx);
+
+    expect(followed).toHaveBeenCalledWith(target);
+  });
+});

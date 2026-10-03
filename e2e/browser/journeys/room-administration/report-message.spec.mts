@@ -2,8 +2,8 @@ import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   clickRowMenuItem,
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -12,7 +12,7 @@ import { registerUser } from '../../../support/account.mts';
 // (data-testid="alert-confirm") and reports it to the room's server admins
 // (ReportService → RoomModerationService.reportMessage → client.reportEvent),
 // surfacing a success toast. Needs a Synapse homeserver (Docker); self-skips.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -57,7 +57,7 @@ test.describe('Report a message', () => {
       },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     const row = page.locator('.scroll .msg[data-mid]', { hasText: body });

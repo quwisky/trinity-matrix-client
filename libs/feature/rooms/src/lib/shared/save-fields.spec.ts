@@ -1,6 +1,8 @@
 import { Observable, defer, firstValueFrom, of, throwError } from 'rxjs';
+import { signal, type DestroyRef } from '@angular/core';
+import { type TrnToastService } from '@trinity/components/overlay';
 import { describe, expect, it, vi } from 'vitest';
-import { saveFields } from './save-fields';
+import { saveFields, sectionSaver, type SettingsFeedback } from './save-fields';
 
 /**
  * A write that records WHEN it is subscribed, not when it is constructed. Every op here is
@@ -72,5 +74,71 @@ describe('saveFields', () => {
 
     await firstValueFrom(action);
     expect(subscribed).toHaveBeenCalled();
+  });
+});
+
+describe('sectionSaver', () => {
+  function setup() {
+    const saving = signal<'general' | 'access' | null>(null);
+    const feedback = {
+      general: signal<SettingsFeedback | null>(null),
+      access: signal<SettingsFeedback | null>(null),
+    };
+    const toast = { show: vi.fn() };
+    const save = sectionSaver({
+      emptyLabel: 'Space details',
+      destroyRef: { onDestroy: () => () => undefined } as unknown as DestroyRef,
+      toast: toast as unknown as TrnToastService,
+      saving,
+      feedback,
+    });
+    return { save, saving, feedback, toast };
+  }
+
+  it('says nothing could be saved when every change is blocked', () => {
+    const { save, saving, feedback } = setup();
+
+    save('access', [], ['join rule'], vi.fn());
+
+    expect(feedback.access()?.message).toBe(
+      'Join rule could not be saved with your current permissions. Your edits are still here.',
+    );
+    expect(saving()).toBeNull();
+  });
+
+  it('commits what landed and reports success on the given section', () => {
+    const { save, saving, feedback, toast } = setup();
+    const commit = vi.fn();
+
+    save('general', [{ field: 'name', op: of(undefined) }], [], commit);
+
+    expect(commit).toHaveBeenCalledWith(new Set(['name']));
+    expect(feedback.general()).toEqual({
+      tone: 'success',
+      message: 'Name saved.',
+    });
+    expect(feedback.access()).toBeNull();
+    expect(saving()).toBeNull();
+    expect(toast.show).not.toHaveBeenCalled();
+  });
+
+  it('keeps a failed write unsaved and toasts the remainder', () => {
+    const { save, feedback, toast } = setup();
+    const commit = vi.fn();
+
+    save(
+      'general',
+      [
+        { field: 'name', op: of(undefined) },
+        { field: 'topic', op: throwError(() => new Error('no')) },
+      ],
+      [],
+      commit,
+    );
+
+    expect(commit).toHaveBeenCalledWith(new Set(['name']));
+    expect(feedback.general()?.tone).toBe('danger');
+    expect(feedback.general()?.message).toContain('Topic is still unsaved');
+    expect(toast.show).toHaveBeenCalledOnce();
   });
 });

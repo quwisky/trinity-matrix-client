@@ -68,7 +68,7 @@ export class TrnCardContent {}
 /**
  * Every card directive, for a call site that composes the whole thing.
  *
- * Mirrors the kit's own `HlmCardImports` convention: a card is four cooperating attributes,
+ * A card is four cooperating attributes,
  * and listing them one by one in a component's `imports` is noise at every call site.
  */
 export const TrnCardImports = [

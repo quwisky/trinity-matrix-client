@@ -54,29 +54,28 @@ test('routes readers from the Pages root with keyboard-visible choices', async (
   await expect(page).toHaveURL(`${pagesBase}/users/`);
 });
 
-test('keeps release users on the WIP page and links across the Pages base', async ({
+test('shows release users the install guide and links across the Pages base', async ({
   page,
 }) => {
   await page.goto('users/');
 
   await expect(
     page.getByRole('complementary', { name: 'Documentation channel' }),
-  ).toContainText('Work in progress');
+  ).toContainText(/Release \d+\.\d+\.\d+/);
   await expect(
-    page.getByRole('heading', {
-      level: 1,
-      name: 'Trinity is still in development',
-    }),
+    page.getByRole('heading', { level: 1, name: 'Install Trinity' }),
   ).toBeVisible();
-  const developerGuide = page
+  const selfHost = page
     .getByRole('main')
-    .getByRole('link', { name: 'developer guide' });
-  await expect(developerGuide).toHaveAttribute(
+    .getByRole('link', { name: 'Self-host a release' });
+  await expect(selfHost).toHaveAttribute(
     'href',
-    `${pagesBase}/developers/`,
+    `${pagesBase}/developers/platforms/web-and-pwa/#self-host-release`,
   );
-  await developerGuide.click();
-  await expect(page).toHaveURL(`${pagesBase}/developers/`);
+  await selfHost.click();
+  await expect(page).toHaveURL(
+    `${pagesBase}/developers/platforms/web-and-pwa/#self-host-release`,
+  );
 });
 
 test('navigates developer onboarding and exposes the develop channel', async ({

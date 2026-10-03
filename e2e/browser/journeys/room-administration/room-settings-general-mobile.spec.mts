@@ -1,5 +1,5 @@
 import { devices, expect, test, testResourceId } from '../../../fixtures.mts';
-import { login, type SynapseSession } from '../../../support/app.mts';
+import { login, type HomeserverSession } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
   configureRoomSettingsSuite,
@@ -40,7 +40,7 @@ test.describe('Room settings on a phone', () => {
       data: { name: roomName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
     await page.getByTestId('room-actions-overflow').click();
     await page.getByTestId('overflow-open-room-settings').click();

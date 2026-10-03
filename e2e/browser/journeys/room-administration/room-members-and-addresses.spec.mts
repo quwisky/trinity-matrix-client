@@ -9,7 +9,7 @@ import {
 import {
   login,
   openSettingsTab,
-  type SynapseSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import type { TouchPlatform } from '../../../support/platform-contracts.mts';
@@ -135,7 +135,7 @@ test.describe('Room settings', () => {
       hs,
       user: admin,
       pass: adminPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
 
     await page.getByTestId('open-room-settings').click();
@@ -249,7 +249,7 @@ test.describe('Room settings', () => {
       hs,
       user: admin,
       pass: adminPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
     await page.getByTestId('open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'members');
@@ -441,7 +441,7 @@ test.describe('Room settings', () => {
       })
       .then((r) => r.json());
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     await page.getByTestId('open-room-settings').click();
@@ -597,7 +597,7 @@ test.describe('Space member and address settings on a phone', () => {
       hs,
       user: owner,
       pass: ownerPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     const space = page.getByRole('button', { name: spaceName, exact: true });
     await space.waitFor({ state: 'visible', timeout: 30_000 });
     await touchPlatform.tap(page, space);
@@ -747,7 +747,7 @@ test.describe('Space member and address settings on a phone', () => {
       return response.ok() ? (await response.json()).alias : undefined;
     };
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSpaceSettings(page, spaceName, roomName, touchPlatform);
     await openSettingsTab(page, 'space-settings', 'addresses');
     await expect(
