@@ -34,11 +34,6 @@ export async function installBadgeRecorder(page: Page): Promise<void> {
   await page.addInitScript(install);
   await page.evaluate(install);
 }
-
-export async function recordedBadgeCount(page: Page): Promise<number> {
-  return page.evaluate(() => window.__appBadgeCount ?? 0);
-}
-
 export async function recordedBadgeCalls(page: Page): Promise<unknown[][]> {
   return page.evaluate(() => window.__appBadgeCalls ?? []);
 }

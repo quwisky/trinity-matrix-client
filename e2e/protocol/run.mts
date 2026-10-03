@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { fileURLToPath } from 'node:url';
 import { runPlaywright } from '../support/run-playwright.mts';
 import {
   PROTOCOL_MODE_ENV,
@@ -38,7 +37,7 @@ export async function runProtocol(
   );
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (import.meta.main) {
   try {
     process.exitCode = await runProtocol(process.argv.slice(2));
   } catch (error) {

@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   mkdirSync,
   readFileSync,
@@ -231,17 +231,4 @@ export function sessionSummary(descriptor: E2ESessionDescriptor): string {
 /** Resolve the app endpoint only through a validated, live invocation descriptor. */
 export function applicationOrigin(): string {
   return readSession().endpoints.application;
-}
-
-/** Stable unique id for one non-Playwright driver within an invocation. */
-export function invocationResourceId(purpose: string): string {
-  const descriptor = readSession();
-  const digest = createHash('sha256')
-    .update(`${descriptor.id}:${purpose}`)
-    .digest('hex')
-    .slice(0, 12);
-  return `${purpose
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .slice(0, 20)}-${digest}`;
 }

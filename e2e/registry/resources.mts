@@ -1,4 +1,7 @@
-import type { E2EQuarantineEntry, E2ESerializationResource } from './types.mts';
+import type {
+  E2EQuarantineEntry,
+  E2ESerializationResource,
+} from '../support/e2e-registry.types.mts';
 
 export const E2E_SERIALIZATION_RESOURCES = [
   {

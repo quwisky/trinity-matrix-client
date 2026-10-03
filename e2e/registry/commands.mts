@@ -2,7 +2,7 @@ import type {
   E2EAggregateTarget,
   E2ECiEntrypoint,
   E2EPackageScriptContract,
-} from './types.mts';
+} from '../support/e2e-registry.types.mts';
 
 const compatibilityRelease =
   'after one released changelog cycle with documented replacements, zero repository or CI references, and no reported migration failures';

@@ -1,8 +1,9 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { readSession } from './session.mts';
-import { navigateApplication } from './navigation.mts';
 import type { Navigate } from './platform-contracts.mts';
-export const webNavigate = navigateApplication;
+export const webNavigate: Navigate = async (page, path) => {
+  await page.goto(path, { waitUntil: 'networkidle' });
+};
 export type { Navigate };
 const capacitorStoragePrefix = 'CapacitorStorage.';
 

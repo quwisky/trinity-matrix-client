@@ -95,4 +95,4 @@ export {
   E2E_TIMEOUTS_MS,
 };
 
-export type * from './types.mts';
+export type * from '../support/e2e-registry.types.mts';
