@@ -22,6 +22,8 @@ import { TrustService } from './trust.service';
 import { TrustVerificationService } from './trust-verification.service';
 
 const PROJECTIONS = ['trust.health', 'crypto.verification-requests'] as const;
+/** Quiet retries for Trust's first preparation, whose reads can fail while startup settles. */
+const STARTUP_RETRY_DELAYS = [1_000, 3_000] as const;
 type TrustProjectionId = (typeof PROJECTIONS)[number];
 
 export type TrustLifetimeEvent =
@@ -56,6 +58,8 @@ export class TrustLifetime {
       let observations = new Subscription();
       let projections = new Subscription();
       let watchdog: ReturnType<typeof setTimeout> | undefined;
+      let startupRetries = 0;
+      let startupRetry: ReturnType<typeof setTimeout> | undefined;
       let ownsProjections = false;
       let applying = false;
 
@@ -98,13 +102,29 @@ export class TrustLifetime {
           ownsProjections = false;
           publish('degraded', 'trust-ownership-released', 'failed');
         } else if (PROJECTIONS.some((id) => states.get(id) === 'failed')) {
-          publish('degraded', 'trust-reconciliation-failed', 'failed');
+          const delay = prepared
+            ? undefined
+            : STARTUP_RETRY_DELAYS[startupRetries];
+          if (delay === undefined) {
+            publish('degraded', 'trust-reconciliation-failed', 'failed');
+          } else if (!startupRetry) {
+            startupRetries += 1;
+            startupRetry = setTimeout(() => {
+              startupRetry = undefined;
+              if (states.get('trust.health') === 'failed')
+                this.health.retryProjection();
+              if (states.get('crypto.verification-requests') === 'failed')
+                this.verification.retryProjection();
+            }, delay);
+          }
         } else if (PROJECTIONS.every((id) => states.get(id) === 'available')) {
           publish('available', 'trust-ready', 'acknowledged');
         }
       };
       const disconnect = (): void => {
         clearWatchdog();
+        clearTimeout(startupRetry);
+        startupRetry = undefined;
         observations.unsubscribe();
         observations = new Subscription();
         projections.unsubscribe();

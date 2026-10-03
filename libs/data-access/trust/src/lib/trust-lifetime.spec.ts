@@ -132,9 +132,33 @@ describe('TrustLifetime', () => {
     subscription.unsubscribe();
   });
 
-  it('reports an initial refresh failure and repairs the retained failed projection only', async () => {
+  it('retries a failed first preparation quietly and reports nothing once it recovers', async () => {
+    vi.useFakeTimers();
     healthFailure = true;
     const subscription = run();
+    expect(latest().condition).not.toBe('degraded');
+
+    healthFailure = false;
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(latest()).toMatchObject({
+      condition: 'available',
+      preparation: 'acknowledged',
+    });
+    expect(
+      events.some(
+        (event) =>
+          event.kind === 'health' && event.fact.condition === 'degraded',
+      ),
+    ).toBe(false);
+    subscription.unsubscribe();
+  });
+
+  it('reports an initial refresh failure and repairs the retained failed projection only', async () => {
+    vi.useFakeTimers();
+    healthFailure = true;
+    const subscription = run();
+    await vi.advanceTimersByTimeAsync(4_000);
     const failed = latest();
 
     expect(failed).toMatchObject({
@@ -148,7 +172,8 @@ describe('TrustLifetime', () => {
     await expect(
       firstValueFrom(service.recover(failed.context, failed.generation)),
     ).resolves.toEqual({ kind: 'success' });
-    expect(healthRetries).toBe(1);
+    // Two quiet startup retries, then the explicit recovery.
+    expect(healthRetries).toBe(3);
     expect(verificationRetries).toBe(0);
     expect(healthConnections).toBe(1);
     expect(latest().condition).toBe('available');
@@ -174,15 +199,18 @@ describe('TrustLifetime', () => {
   });
 
   it('targets a retained verification projection failure without restarting Trust health', async () => {
+    vi.useFakeTimers();
     verificationFailure = true;
     const subscription = run();
+    await vi.advanceTimersByTimeAsync(4_000);
     const failed = latest();
+    expect(failed.condition).toBe('degraded');
     verificationFailure = false;
 
     await expect(
       firstValueFrom(service.recover(failed.context, failed.generation)),
     ).resolves.toEqual({ kind: 'success' });
-    expect(verificationRetries).toBe(1);
+    expect(verificationRetries).toBe(3);
     expect(healthRetries).toBe(0);
     expect(healthConnections).toBe(1);
     expect(verificationConnections).toBe(1);
