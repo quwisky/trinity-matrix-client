@@ -63,8 +63,12 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
           ASSET: ${{ steps.release.outputs.asset }}
         run: |
-          if ! gh release download "$TAG" -p "$ASSET" -D release-web; then
+          if ! gh release view "$TAG" --json assets -q '.assets[].name' | grep -xF "$ASSET" >/dev/null; then
             echo "::error::$TAG has no $ASSET release asset; the draft was published without the web zip."
+            exit 1
+          fi
+          if ! gh release download "$TAG" -p "$ASSET" -D release-web; then
+            echo "::error::Could not download $ASSET for $TAG; re-run the job."
             exit 1
           fi
           unzip -q "release-web/$ASSET" -d release-web
@@ -94,9 +98,16 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
           VERSION: ${{ steps.release.outputs.version }}
         run: |
-          PUBLISHED_TAGS=$(gh release list --limit 200 --json tagName,isDraft -q '.[] | select(.isDraft | not) | .tagName')
+          # Every published release, so an old stable never falls out of the comparison.
+          PUBLISHED_TAGS=$(gh api --paginate "repos/$GH_REPO/releases" --jq '.[] | select(.draft | not) | .tag_name')
           export PUBLISHED_TAGS
-          mapfile -t names < <(node scripts/web-image-tags.mjs --tag "$TAG")
+          # An assignment keeps the script's exit status, so a failure stops the job here.
+          out=$(node scripts/web-image-tags.mjs --tag "$TAG")
+          mapfile -t names < <(printf '%s\n' "$out" | grep .)
+          if [ ${#names[@]} -eq 0 ]; then
+            echo "::error::No image tags computed for $TAG."
+            exit 1
+          fi
           tags=()
           for name in "${names[@]}"; do tags+=(--tag "$IMAGE:$name"); done
           node scripts/web-container.mjs stage dist/web-image-context
@@ -109,10 +120,13 @@ jobs:
             --label org.opencontainers.image.source="https://github.com/$GITHUB_REPOSITORY" \
             --label org.opencontainers.image.created="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --metadata-file dist/web-image-metadata.json \
+            --provenance=false \
             --push \
             dist/web-image-context
+          # Fails the job rather than printing "undefined" if Buildx omits the digest.
+          digest=$(node -e "const d = require('./dist/web-image-metadata.json')['containerimage.digest']; if (!d) process.exit(1); console.log(d)")
           {
             echo "### Pushed $IMAGE"
             for name in "${names[@]}"; do echo "- \`$name\`"; done
-            echo "Digest: \`$(node -p "require('./dist/web-image-metadata.json')['containerimage.digest']")\`"
+            echo "Digest: \`$digest\`"
           } >> "$GITHUB_STEP_SUMMARY"

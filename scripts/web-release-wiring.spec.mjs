@@ -94,3 +94,44 @@ describe('web release docs', () => {
     expect(readme).toContain('ghcr.io/quwisky/trinity-web:next');
   });
 });
+
+describe('container workflow robustness', () => {
+  const container = read('.github/workflows/container.yml');
+
+  it('stops when the tag script fails or yields no tags', () => {
+    expect(container).not.toContain('< <(node scripts/web-image-tags.mjs');
+    expect(container).toContain(
+      'out=$(node scripts/web-image-tags.mjs --tag "$TAG")',
+    );
+    expect(container).toContain('if [ ${#names[@]} -eq 0 ]; then');
+  });
+
+  it('reads every published release, not only the newest 200', () => {
+    expect(container).not.toContain('--limit 200');
+    expect(container).toContain('gh api --paginate "repos/$GH_REPO/releases"');
+  });
+
+  it('tells a missing zip apart from a failed download', () => {
+    const listed = container.indexOf(
+      'gh release view "$TAG" --json assets -q \'.assets[].name\'',
+    );
+    const missing = container.indexOf(
+      '::error::$TAG has no $ASSET release asset',
+    );
+    const download = container.indexOf('gh release download');
+    expect(listed).toBeGreaterThan(-1);
+    expect(listed).toBeLessThan(missing);
+    expect(missing).toBeLessThan(download);
+    expect(container).toContain('::error::Could not download $ASSET for $TAG');
+  });
+
+  it('fails instead of printing an undefined digest, and pushes no provenance platform', () => {
+    expect(container).toContain(
+      "digest=$(node -e \"const d = require('./dist/web-image-metadata.json')['containerimage.digest']; if (!d) process.exit(1); console.log(d)\")",
+    );
+    expect(container).not.toContain(
+      "node -p \"require('./dist/web-image-metadata.json')",
+    );
+    expect(container).toContain('--provenance=false');
+  });
+});
