@@ -47,21 +47,36 @@ describe(`iOS WKWebView probe (${phase})`, () => {
     }));
     record('page', page);
 
-    const probe = (url) =>
-      browser
-        .execute(async (target) => {
-          try {
-            const r = await fetch(target);
-            return {
+    // XCUITest's execute does not await promises: start the fetch synchronously,
+    // park the outcome on window, then poll for it with more synchronous calls.
+    const probe = async (url) => {
+      await browser.execute((target) => {
+        window.__spike = undefined;
+        fetch(target)
+          .then(async (r) => {
+            window.__spike = {
               ok: r.ok,
               status: r.status,
               body: (await r.text()).slice(0, 120),
             };
-          } catch (e) {
-            return { ok: false, error: String(e) };
-          }
-        }, url)
-        .catch((e) => ({ ok: false, driverError: String(e).slice(0, 300) }));
+          })
+          .catch((e) => {
+            window.__spike = { ok: false, error: String(e) };
+          });
+      }, url);
+      let outcome;
+      await browser
+        .waitUntil(
+          async () => (outcome = await browser.execute(() => window.__spike)),
+          {
+            timeout: 30_000,
+          },
+        )
+        .catch(
+          () => (outcome = { ok: false, error: 'no outcome within 30 s' }),
+        );
+      return outcome;
+    };
     record(
       'tls',
       await probe('https://localhost:8448/_matrix/client/versions'),
