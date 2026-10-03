@@ -1,0 +1,105 @@
+name: E2E (Synapse nightly)
+
+# Pull-request CI runs the E2E suites against Tuwunel, the default e2e homeserver. This
+# workflow keeps them honest against Synapse: the same browser, Electron full and protocol
+# suites with TRINITY_E2E_HOMESERVER=synapse, once a day and on demand. A failure turns the
+# run red. Kept out of ci.yml so the E2E registry's ci.yml entrypoint checks stay about PRs.
+on:
+  schedule:
+    - cron: '47 2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TRINITY_E2E_HOMESERVER: synapse
+
+jobs:
+  browser:
+    name: Browser E2E (Synapse)
+    runs-on: ubuntu-latest
+    # Same ceiling as the pull-request E2E job: hang containment, not an expected duration.
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/setup-playwright
+        with:
+          install: 'false'
+      # Installs browsers, pre-pulls the selected homeserver's images and builds the app.
+      - name: Prepare e2e prerequisites
+        id: prerequisites
+        run: node scripts/ci-prerequisites.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
+        with:
+          name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: dist/.ci/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+      - id: browser
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.browser.outputs.started == 'true' }}
+        with:
+          surface: browser-synapse
+          report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
+
+  electron:
+    name: Electron E2E (Synapse)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/electron
+          key: electron-${{ runner.os }}-${{ hashFiles('electron/pnpm-lock.yaml') }}
+          restore-keys: electron-${{ runner.os }}-
+      - run: pnpm electron:install
+      # `full` builds the renderer and the desktop host itself; no verified renderer here.
+      - id: electron
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- xvfb-run -a pnpm nx run trinity-e2e-electron:full
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.electron.outputs.started == 'true' }}
+        with:
+          surface: electron-synapse
+          report-path: dist/.playwright/trinity-e2e-electron/*/electron.full/**
+
+  protocol:
+    name: Protocol E2E (Synapse)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/setup-playwright
+        with:
+          browsers: chromium
+      # Every protocol suite in sequence; each builds the app and owns the fixed-port stack.
+      - id: protocol
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:protocol
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.protocol.outputs.started == 'true' }}
+        with:
+          surface: protocol-synapse
+          report-path: dist/.playwright/trinity-e2e-protocol/**

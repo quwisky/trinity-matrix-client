@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { isDirectRun, resultExitCode, runCommand } from './ci-run-command.mjs';
+import { resolveHomeserverKind } from '../e2e/support/homeserver/kind.mts';
 
 const ROOT = join(import.meta.dirname, '..');
 const LOG_DIR = join(ROOT, 'dist', '.ci');
@@ -12,7 +13,11 @@ export async function runPrerequisites({
   timeoutMs,
   run = runCommand,
   abortSignal,
+  env = process.env,
 } = {}) {
+  // The images of the homeserver this job will actually start (TRINITY_E2E_HOMESERVER).
+  const homeserver = 'e2e/support/homeserver';
+  const kind = resolveHomeserverKind(env);
   const commands = [
     {
       label: 'playwright-install',
@@ -30,7 +35,15 @@ export async function runPrerequisites({
     {
       label: 'docker-pull',
       command: 'docker',
-      args: ['compose', '-f', 'e2e/synapse/docker-compose.yml', 'pull', '-q'],
+      args: [
+        'compose',
+        '-f',
+        `${homeserver}/docker-compose.yml`,
+        '-f',
+        `${homeserver}/${kind}/docker-compose.yml`,
+        'pull',
+        '-q',
+      ],
       mandatory: false,
     },
     {

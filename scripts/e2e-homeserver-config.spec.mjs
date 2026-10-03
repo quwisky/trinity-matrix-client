@@ -105,3 +105,36 @@ describe('Tuwunel E2E configuration', () => {
     ]);
   });
 });
+
+describe('Nightly Synapse workflow', () => {
+  const path = '.github/workflows/e2e-synapse-nightly.yml';
+  const workflow = () => parse(read(path));
+  const commands = (job) => job.steps.map((step) => step.run ?? '').join('\n');
+
+  it('runs daily and on demand, outside ci.yml', () => {
+    const { on } = workflow();
+    expect(on.schedule).toEqual([{ cron: '47 2 * * *' }]);
+    expect(on).toHaveProperty('workflow_dispatch');
+    expect(read('.github/workflows/ci.yml')).not.toContain(
+      'TRINITY_E2E_HOMESERVER',
+    );
+  });
+
+  it('runs the browser, Electron full and protocol suites against Synapse', () => {
+    const { env, jobs } = workflow();
+    expect(env.TRINITY_E2E_HOMESERVER).toBe('synapse');
+    const all = Object.values(jobs).map(commands).join('\n');
+    expect(all).toContain('pnpm exec nx run trinity-e2e-browser:e2e');
+    expect(all).toContain('xvfb-run -a pnpm nx run trinity-e2e-electron:full');
+    expect(all).toContain('pnpm e2e:protocol');
+    for (const job of Object.values(jobs)) {
+      expect(job['timeout-minutes']).toBeGreaterThan(0);
+      expect(
+        job.steps.some(
+          (step) =>
+            step.uses === './.github/actions/upload-playwright-diagnostics',
+        ),
+      ).toBe(true);
+    }
+  });
+});
