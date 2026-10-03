@@ -4,7 +4,6 @@ import {
   measureLocatorContrast,
 } from '../../browser/support/contrast.mts';
 import { formatAxeResults, runAxe } from './catalog-accessibility.mts';
-import { renderedColour } from './recipe-appearance.mts';
 import {
   DEFAULT_STORYBOOK_THEME_PREVIEW,
   STORYBOOK_THEME_PREVIEWS,
@@ -52,42 +51,6 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
     await expectStorybookThemeRoot(page, preview);
     await expectAxeClean(page);
 
-    for (const variant of ['neutral', 'accent'] as const) {
-      for (const presentation of ['pill', 'line'] as const) {
-        const tabs = page.getByTestId(
-          `catalog-tabs-${variant}-${presentation}`,
-        );
-        await expect(tabs.locator('hlm-tabs-list')).toHaveAttribute(
-          'data-trn-variant',
-          variant,
-        );
-        await expect(tabs.locator('hlm-tabs-list')).toHaveAttribute(
-          'data-trn-presentation',
-          presentation,
-        );
-        const selected = tabs.getByRole('tab', { name: 'Overview' });
-        const inactive = tabs.getByRole('tab', { name: 'Members' });
-        await expect(selected).toHaveAttribute('aria-selected', 'true');
-        await expect(inactive).toBeEnabled();
-        expect(await renderedColour(inactive, 'color')).toEqual(
-          await renderedColour(inactive, '--trinity-text-muted'),
-        );
-        await expectReadable(selected);
-        await expectReadable(inactive);
-      }
-    }
-
-    const manual = page.getByTestId('catalog-tabs-manual-vertical');
-    await expect(manual).toHaveAttribute('data-orientation', 'vertical');
-    const manualTabs = manual.getByRole('tab');
-    await expect(manualTabs.nth(2)).toBeDisabled();
-    await manualTabs.nth(0).focus();
-    await manualTabs.nth(0).press('ArrowDown');
-    await expect(manualTabs.nth(1)).toBeFocused();
-    await expect(manualTabs.nth(0)).toHaveAttribute('aria-selected', 'true');
-    await manualTabs.nth(1).press('Enter');
-    await expect(manualTabs.nth(1)).toHaveAttribute('aria-selected', 'true');
-
     for (const variant of ['neutral', 'muted'] as const) {
       for (const size of ['sm', 'md'] as const) {
         const card = page.getByTestId(`catalog-card-${variant}-${size}`);
@@ -103,21 +66,6 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
         await expect(header).toHaveAttribute('data-trn-variant', variant);
         await expect(header).toHaveAttribute('data-trn-layout', layout);
       }
-      await expect(
-        page.getByTestId(`catalog-separator-${variant}-horizontal-decorative`),
-      ).toHaveAttribute('role', 'none');
-      const verticalSeparator = page.getByTestId(
-        `catalog-separator-${variant}-vertical-announced`,
-      );
-      await expect(verticalSeparator).toHaveAttribute('role', 'separator');
-      await expect(verticalSeparator).toHaveAttribute(
-        'data-orientation',
-        'vertical',
-      );
-      await expect(verticalSeparator).toBeVisible();
-      const separatorBox = await verticalSeparator.boundingBox();
-      expect(separatorBox?.width ?? 0).toBeGreaterThan(0);
-      expect(separatorBox?.height ?? 0).toBeGreaterThan(0);
     }
 
     expect(

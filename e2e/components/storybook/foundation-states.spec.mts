@@ -277,7 +277,6 @@ test.describe('semantic design foundations', () => {
 
   for (const [story, label] of [
     ['components-input--default', 'Room name'],
-    ['components-input--direct-helm-prompt', 'Prompt response'],
     ['components-textarea--default', 'Room topic'],
   ] as const) {
     test(`${label} wrapper renders one owned focus indicator`, async ({

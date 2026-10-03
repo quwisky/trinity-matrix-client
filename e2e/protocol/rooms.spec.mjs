@@ -151,7 +151,7 @@ async function fillUserPickerAndConfirm(page, mxid, confirmLabelText) {
   const modal = page.locator('.cdk-dialog-container');
   await modal.waitFor({ state: 'visible', timeout: 15_000 });
 
-  // UserPickerComponent's free-text field — a native <input hlmInput> with a
+  // UserPickerComponent's free-text field — a native <input> with a
   // fixed default placeholder (no ion-searchbar shadow DOM to pierce anymore).
   const searchInput = modal.getByPlaceholder('@user:server or a name');
   await searchInput.waitFor({ state: 'visible', timeout: 10_000 });

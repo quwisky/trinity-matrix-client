@@ -14,9 +14,6 @@ import {
   type TrnRadioOption,
 } from '../radio-group/trn-radio-group.component';
 import { TrnSwitchComponent } from '../switch/trn-switch.component';
-import { TrnToggleDirective } from '../toggle/trn-toggle.directive';
-import { TrnToggleGroupItemDirective } from '../toggle-group/trn-toggle-group-item.directive';
-import { TrnToggleGroupComponent } from '../toggle-group/trn-toggle-group.component';
 
 const OPTIONS: readonly TrnRadioOption<string>[] = [
   { value: 'system', label: 'System', testId: 'radio-system' },
@@ -35,9 +32,6 @@ const meta: Meta<TrnCheckboxComponent> = {
         TrnIconComponent,
         TrnRadioGroupComponent,
         TrnSwitchComponent,
-        TrnToggleDirective,
-        TrnToggleGroupComponent,
-        TrnToggleGroupItemDirective,
       ],
     }),
   ],
@@ -45,7 +39,7 @@ const meta: Meta<TrnCheckboxComponent> = {
     docs: {
       description: {
         component:
-          'Binary, exclusive and pressed-state controls use Trinity semantic tones and ' +
+          'Binary and exclusive controls use Trinity semantic tones and ' +
           'ordinal sizes. Layout, presentation and semantic variant stay separate axes.',
       },
     },
@@ -120,36 +114,6 @@ export const CanonicalStates: Story = {
             (valueChange)="selected = $event"
           />
         </section>
-
-        <div class="flex flex-wrap items-center gap-3">
-          <button data-testid="toggle-idle" trnToggle variant="neutral" size="sm">
-            Idle
-          </button>
-          <button data-testid="toggle-selected" trnToggle variant="accent" size="md" [pressed]="true">
-            Selected
-          </button>
-          <button data-testid="toggle-readonly" trnToggle variant="neutral" size="md" [pressed]="true" readOnly>
-            Read only
-          </button>
-          <button data-testid="toggle-disabled" trnToggle variant="neutral" size="lg" disabled>
-            Disabled
-          </button>
-        </div>
-
-        <trn-toggle-group
-          data-testid="toggle-group-canonical"
-          type="single"
-          value="grid"
-          variant="neutral"
-          presentation="outline"
-          size="md"
-          arrangement="joined"
-          aria-label="Layout"
-        >
-          <button trnToggleGroupItem value="list">List</button>
-          <button trnToggleGroupItem value="grid">Grid</button>
-          <button trnToggleGroupItem value="compact" disabled>Compact</button>
-        </trn-toggle-group>
       </div>
     `,
   }),

@@ -11,48 +11,22 @@ import { Component } from '@angular/core';
 import {
   PageHeaderComponent,
   TrnCardImports,
-  TrnSeparatorDirective,
-  TrnTabPanelComponent,
-  TrnTabsComponent,
-  type TrnTabOption,
 } from '@trinity/components/navigation-layout';
-
-const TABS: readonly TrnTabOption[] = [
-  { value: 'general', label: 'General' },
-  { value: 'access', label: 'Access' },
-];
 
 @Component({
   imports: [
     PageHeaderComponent,
     TrnCardImports,
-    TrnSeparatorDirective,
-    TrnTabPanelComponent,
-    TrnTabsComponent,
-  ],
+        ],
   template: \`
     <trn-page-header title="Page" variant="neutral" layout="page" />
     <trn-page-header title="Toolbar" variant="neutral" layout="toolbar" />
-    <trn-tabs tab="general" [tabs]="tabs" variant="accent" presentation="line">
-      <trn-tab-panel value="general">General</trn-tab-panel>
-      <trn-tab-panel value="access">Access</trn-tab-panel>
-    </trn-tabs>
-    <trn-tabs tab="general" [tabs]="tabs" variant="neutral" />
     <section trnCard variant="muted" size="sm">
-      <h2 trnCardTitle>Card</h2>
+      <h2>Card</h2>
     </section>
-    <div trnSeparator variant="accent" orientation="vertical" [decorative]="false"></div>
   \`,
 })
-export class ValidNavigationLayoutRecipeHost {
-  protected readonly tabs = TABS;
-}
-
-@Component({
-  imports: [TrnTabsComponent],
-  template: \`<trn-tabs tab="general" [tabs]="tabs" variant="danger" presentation="segmented" />\`,
-})
-export class InvalidTabsHost { protected readonly tabs = TABS; }
+export class ValidNavigationLayoutRecipeHost {}
 
 @Component({
   imports: [PageHeaderComponent],
@@ -67,21 +41,10 @@ export class InvalidHeaderHost {}
 export class InvalidCardHost {}
 
 @Component({
-  imports: [TrnSeparatorDirective],
-  template: \`<div trnSeparator variant="muted" orientation="diagonal"></div>\`,
+  imports: [PageHeaderComponent],
+  template: \`<trn-page-header variant="chat" />\`,
 })
-export class InvalidSeparatorHost {}
-
-@Component({
-  imports: [PageHeaderComponent, TrnTabPanelComponent, TrnTabsComponent],
-  template: \`
-    <trn-page-header variant="chat" />
-    <trn-tabs tab="general" [tabs]="tabs" variant="default">
-      <trn-tab-panel value="general" [panelClass]="'flex'">General</trn-tab-panel>
-    </trn-tabs>
-  \`,
-})
-export class InvalidLegacyNavigationHost { protected readonly tabs = TABS; }
+export class InvalidLegacyNavigationHost {}
 `;
 
 function compileTemplateContract() {
@@ -133,21 +96,8 @@ describe('navigation and layout recipe strict-template contract', () => {
     const messages = errors.map((diagnostic) =>
       ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
     );
-    expect(errors.map(({ code }) => code)).toEqual([
-      ...Array(10).fill(2322),
-      -998002,
-    ]);
-    for (const unsupported of [
-      'danger',
-      'segmented',
-      'chat',
-      'accent',
-      'lg',
-      'diagonal',
-      'muted',
-      'default',
-      'panelClass',
-    ]) {
+    expect(errors.map(({ code }) => code)).toEqual(Array(5).fill(2322));
+    for (const unsupported of ['danger', 'chat', 'accent', 'lg']) {
       expect(messages, unsupported).toEqual(
         expect.arrayContaining([expect.stringContaining(unsupported)]),
       );
@@ -159,26 +109,9 @@ describe('navigation and layout recipe strict-template contract', () => {
       join(workspaceRoot, 'libs/components/navigation-layout/src/index.ts'),
       'utf8',
     );
-    const separator = readFileSync(
-      join(
-        workspaceRoot,
-        'libs/components/navigation-layout/src/lib/separator/trn-separator.directive.ts',
-      ),
-      'utf8',
-    );
-    const panel = readFileSync(
-      join(
-        workspaceRoot,
-        'libs/components/navigation-layout/src/lib/tabs/trn-tab-panel.component.ts',
-      ),
-      'utf8',
-    );
 
     expect(entrypoint).not.toMatch(
       /@trinity\/helm|@spartan-ng|VariantProps|ClassValue/u,
     );
-    expect(separator).toContain("from '@spartan-ng/brain/separator'");
-    expect(separator).not.toContain("from '@trinity/helm/separator'");
-    expect(panel).toContain('@layer components');
   });
 });

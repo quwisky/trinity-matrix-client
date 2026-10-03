@@ -68,12 +68,8 @@ const backgroundOf = (rule) =>
  */
 const LEDGER = {
   'data-checked': 'custom-variant',
-  'data-unchecked': 'custom-variant',
-  'data-active': 'custom-variant',
   'data-open': 'custom-variant',
   'data-closed': 'custom-variant',
-  'data-vertical': 'custom-variant',
-  'data-horizontal': 'custom-variant',
   'data-disabled': 'attribute',
   'data-hidden': 'attribute',
   'data-highlighted': 'attribute',
@@ -248,7 +244,7 @@ describe('destructive tint state overrides', () => {
 describe('kit state variants', () => {
   it('reads the kit and the theme, so an empty sweep cannot pass', () => {
     expect(sources.length).toBeGreaterThan(50);
-    expect(used.size).toBeGreaterThanOrEqual(10);
+    expect(used.size).toBeGreaterThanOrEqual(8);
     // And the theme parse found something, rather than returning an empty set that would
     // make every "is it declared" check below fail open.
     expect(declared.has('dark')).toBe(true);

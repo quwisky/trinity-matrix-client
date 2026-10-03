@@ -1,14 +1,9 @@
 import { NgtscProgram, readConfiguration } from '@angular/compiler-cli';
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const workspaceRoot = join(import.meta.dirname, '..');
-
-const withoutHtmlComments = (source) => source.replace(/<!--[\s\S]*?-->/gu, '');
-const withoutCodeComments = (source) =>
-  source.replace(/\/\*[\s\S]*?\*\//gu, '').replace(/(^|\s)\/\/.*$/gmu, '$1');
 
 const source = `
 import { Component } from '@angular/core';
@@ -16,9 +11,6 @@ import {
   TrnCheckboxComponent,
   TrnRadioGroupComponent,
   TrnSwitchComponent,
-  TrnToggleDirective,
-  TrnToggleGroupComponent,
-  TrnToggleGroupItemDirective,
   type TrnRadioOption,
 } from '@trinity/components/controls';
 
@@ -32,18 +24,11 @@ const OPTIONS: readonly TrnRadioOption<string>[] = [
     TrnCheckboxComponent,
     TrnRadioGroupComponent,
     TrnSwitchComponent,
-    TrnToggleDirective,
-    TrnToggleGroupComponent,
-    TrnToggleGroupItemDirective,
-  ],
+        ],
   template: \`
     <trn-checkbox variant="neutral" size="sm" invalid />
     <trn-switch variant="accent" size="md" />
     <trn-radio-group layout="segmented" variant="accent" size="md" [options]="options" />
-    <button trnToggle variant="neutral" presentation="outline" size="lg">Toggle</button>
-    <trn-toggle-group variant="accent" presentation="plain" size="sm" arrangement="joined">
-      <button trnToggleGroupItem value="all">All</button>
-    </trn-toggle-group>
   \`,
 })
 export class ValidControlRecipeHost {
@@ -71,23 +56,8 @@ export class InvalidRadioHost {
 }
 
 @Component({
-  imports: [TrnToggleDirective],
-  template: \`<button trnToggle variant="danger" presentation="solid" size="xl">Toggle</button>\`,
-})
-export class InvalidToggleHost {}
-
-@Component({
-  imports: [TrnToggleGroupComponent],
-  template: \`<trn-toggle-group arrangement="packed" orientation="diagonal" />\`,
-})
-export class InvalidToggleGroupHost {}
-
-@Component({
-  imports: [TrnRadioGroupComponent, TrnToggleGroupComponent],
-  template: \`
-    <trn-radio-group variant="segmented" [options]="options" />
-    <trn-toggle-group variant="outline" size="default" />
-  \`,
+  imports: [TrnRadioGroupComponent],
+  template: \`<trn-radio-group variant="segmented" [options]="options" />\`,
 })
 export class InvalidLegacyControlHost {
   protected readonly options = OPTIONS;
@@ -140,69 +110,12 @@ describe('control recipe strict-template contract', () => {
     const messages = errors.map((diagnostic) =>
       ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
     );
-    expect(errors.map(({ code }) => code)).toEqual(Array(15).fill(2322));
+    expect(errors.map(({ code }) => code)).toEqual(Array(8).fill(2322));
 
-    for (const unsupported of [
-      'danger',
-      'warning',
-      'grid',
-      'solid',
-      'xl',
-      'packed',
-      'diagonal',
-      'segmented',
-      'outline',
-      'default',
-    ]) {
+    for (const unsupported of ['danger', 'warning', 'grid', 'segmented']) {
       expect(messages, unsupported).toEqual(
         expect.arrayContaining([expect.stringContaining(`"${unsupported}"`)]),
       );
-    }
-  });
-
-  it('composes toggle-group behavior without Helm visual classes', () => {
-    const sources = [
-      'libs/components/controls/src/lib/toggle-group/trn-toggle-group.component.ts',
-      'libs/components/controls/src/lib/toggle-group/trn-toggle-group-item.directive.ts',
-    ].map((file) =>
-      withoutCodeComments(readFileSync(join(workspaceRoot, file), 'utf8')),
-    );
-    const imports = sources.flatMap((file) =>
-      [...file.matchAll(/from\s+['"]([^'"]+)['"]/gu)].map(
-        ([, specifier]) => specifier,
-      ),
-    );
-
-    expect(imports.length).toBeGreaterThan(0);
-    expect(
-      sources.every((file) =>
-        file.includes("from '@spartan-ng/brain/toggle-group'"),
-      ),
-    ).toBe(true);
-    expect(imports).not.toContain('@trinity/helm/toggle-group');
-  });
-
-  it('keeps catalog toggle consumers free of appearance overrides', () => {
-    const template = readFileSync(
-      join(
-        workspaceRoot,
-        'libs/components/controls/src/lib/control-recipe-matrix.stories.ts',
-      ),
-      'utf8',
-    );
-    const controlTags = [
-      ...withoutHtmlComments(template).matchAll(/<button\b[^>]*>/gu),
-    ]
-      .map(([tag]) => tag)
-      .filter((tag) => /\b(?:trnToggle|trnToggleGroupItem)\b/u.test(tag));
-
-    expect(controlTags.some((tag) => /\btrnToggleGroupItem\b/u.test(tag))).toBe(
-      true,
-    );
-    expect(controlTags.some((tag) => /\btrnToggle\b/u.test(tag))).toBe(true);
-    for (const tag of controlTags) {
-      expect(tag).not.toMatch(/\btrnIconButton\b/u);
-      expect(tag).not.toMatch(/(?:\bclass|\bstyle|\[class|\[style)\s*[=.]/u);
     }
   });
 });

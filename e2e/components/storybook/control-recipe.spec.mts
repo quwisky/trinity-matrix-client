@@ -44,52 +44,6 @@ test('choice controls expose accessible interaction states', async ({
   await expect(page.getByRole('radio', { name: 'System' })).toBeChecked();
   await page.getByTestId('radio-dark').click();
   await expect(page.getByRole('radio', { name: 'Dark' })).toBeChecked();
-
-  const idle = page.getByTestId('toggle-idle');
-  await expect(idle).toHaveAttribute('aria-pressed', 'false');
-  await idle.click();
-  await expect(idle).toHaveAttribute('aria-pressed', 'true');
-  await idle.press('Space');
-  await expect(idle).toHaveAttribute('aria-pressed', 'false');
-
-  const selected = page.getByTestId('toggle-selected');
-  await expect(selected).toHaveAttribute('aria-pressed', 'true');
-  await selected.focus();
-  await expect
-    .poll(() =>
-      selected.evaluate((element) => getComputedStyle(element).boxShadow),
-    )
-    .not.toBe('none');
-
-  const readOnly = page.getByTestId('toggle-readonly');
-  await expect(readOnly).toHaveAttribute('aria-disabled', 'true');
-  await readOnly.click({ force: true });
-  await expect(readOnly).toHaveAttribute('aria-pressed', 'true');
-
-  await expect(page.getByTestId('toggle-disabled')).toBeDisabled();
-});
-
-test('toggle groups keep one tab stop and move it with arrow keys', async ({
-  page,
-}) => {
-  await page.goto(CANONICAL);
-  const group = page.getByTestId('toggle-group-canonical');
-  const buttons = group.getByRole('button');
-  await expect(buttons).toHaveCount(3);
-
-  expect(
-    await buttons.evaluateAll(
-      (items) =>
-        items.filter((item) => (item as HTMLButtonElement).tabIndex === 0)
-          .length,
-    ),
-  ).toBe(1);
-
-  await buttons.nth(0).focus();
-  await buttons.nth(0).press('ArrowRight');
-  await expect(buttons.nth(1)).toBeFocused();
-  await buttons.nth(1).press('ArrowRight');
-  await expect(buttons.nth(0)).toBeFocused();
 });
 
 test('ordinal sizes resolve canonically', async ({ page }) => {

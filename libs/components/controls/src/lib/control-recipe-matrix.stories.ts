@@ -54,15 +54,6 @@ import {
   type TrnSwitchVariant,
 } from './switch/trn-switch.component';
 import { TrnTextarea } from './textarea/trn-textarea';
-import { TrnToggleGroupItemDirective } from './toggle-group/trn-toggle-group-item.directive';
-import { TrnToggleGroupComponent } from './toggle-group/trn-toggle-group.component';
-import { TrnToggleDirective } from './toggle/trn-toggle.directive';
-import type {
-  TrnToggleArrangement,
-  TrnTogglePresentation,
-  TrnToggleSize,
-  TrnToggleVariant,
-} from './toggle/trn-toggle-recipe';
 
 const completeCatalog =
   <Union>() =>
@@ -93,19 +84,6 @@ const CHOICE_SIZES = completeCatalog<
 const RADIO_LAYOUTS = completeCatalog<TrnRadioGroupLayout>()([
   'list',
   'segmented',
-]);
-const TOGGLE_VARIANTS = completeCatalog<TrnToggleVariant>()([
-  'neutral',
-  'accent',
-]);
-const TOGGLE_SIZES = completeCatalog<TrnToggleSize>()(['sm', 'md', 'lg']);
-const TOGGLE_PRESENTATIONS = completeCatalog<TrnTogglePresentation>()([
-  'plain',
-  'outline',
-]);
-const TOGGLE_ARRANGEMENTS = completeCatalog<TrnToggleArrangement>()([
-  'joined',
-  'separated',
 ]);
 const FIELD_LABEL_EMPHASES = completeCatalog<TrnFieldLabelEmphasis>()([
   'normal',
@@ -212,9 +190,6 @@ const meta: Meta = {
         TrnSelectComponent,
         TrnSwitchComponent,
         TrnTextarea,
-        TrnToggleDirective,
-        TrnToggleGroupComponent,
-        TrnToggleGroupItemDirective,
       ],
     }),
   ],
@@ -239,10 +214,6 @@ export const CompleteCatalog: Story = {
       selectOptions: SELECT_OPTIONS,
       selectSizes: SELECT_SIZES,
       textControlSizes: TEXT_CONTROL_SIZES,
-      toggleArrangements: TOGGLE_ARRANGEMENTS,
-      togglePresentations: TOGGLE_PRESENTATIONS,
-      toggleSizes: TOGGLE_SIZES,
-      toggleVariants: TOGGLE_VARIANTS,
     },
     template: `
       <main class="grid min-w-0 gap-10 p-6" data-testid="complete-controls-catalog">
@@ -390,63 +361,6 @@ export const CompleteCatalog: Story = {
             value="system"
             disabled
           />
-        </section>
-
-        <section class="grid gap-4" aria-labelledby="catalog-toggles">
-          <h2 id="catalog-toggles" class="text-lg font-semibold">Toggles and toolbars</h2>
-          <div class="flex flex-wrap items-center gap-3">
-            @for (variant of toggleVariants; track variant) {
-              @for (presentation of togglePresentations; track presentation) {
-                @for (size of toggleSizes; track size) {
-                  <button
-                    [attr.data-testid]="'catalog-toggle-' + variant + '-' + presentation + '-' + size"
-                    data-catalog-touch
-                    trnToggle
-                    [variant]="variant"
-                    [presentation]="presentation"
-                    [size]="size"
-                    [pressed]="variant === 'accent'"
-                  >
-                    {{ variant }} {{ presentation }} {{ size }}
-                  </button>
-                }
-              }
-            }
-          </div>
-          <div class="flex flex-wrap items-center gap-3">
-            <button data-testid="catalog-toggle-rest" data-catalog-touch trnToggle>Rest</button>
-            <button data-testid="catalog-toggle-selected" data-catalog-touch trnToggle [pressed]="true">Selected</button>
-            <button data-testid="catalog-toggle-readonly" data-catalog-touch trnToggle [pressed]="true" readOnly>Read only</button>
-            <button data-testid="catalog-toggle-disabled" data-catalog-touch trnToggle disabled>Disabled</button>
-          </div>
-
-          @for (arrangement of toggleArrangements; track arrangement) {
-            <trn-toggle-group
-              [attr.data-testid]="'catalog-toggle-group-' + arrangement"
-              type="multiple"
-              [arrangement]="arrangement"
-              aria-label="Formatting"
-            >
-              <button data-catalog-touch trnToggleGroupItem value="bold">Bold</button>
-              <button data-catalog-touch trnToggleGroupItem value="italic" disabled>Italic</button>
-              <button data-catalog-touch trnToggleGroupItem value="code">Code</button>
-            </trn-toggle-group>
-          }
-          <trn-toggle-group
-            data-testid="catalog-toggle-group-vertical"
-            type="single"
-            value="list"
-            orientation="vertical"
-            arrangement="joined"
-            presentation="outline"
-            variant="accent"
-            size="lg"
-            aria-label="Layout"
-          >
-            <button data-catalog-touch trnToggleGroupItem value="list">List</button>
-            <button data-catalog-touch trnToggleGroupItem value="grid">Grid</button>
-            <button data-catalog-touch trnToggleGroupItem value="compact">Compact</button>
-          </trn-toggle-group>
         </section>
 
         <section class="grid gap-4" aria-labelledby="catalog-fields">

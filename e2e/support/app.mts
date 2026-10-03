@@ -87,7 +87,7 @@ export function synapseSession(): SynapseSession {
 }
 
 /**
- * Fill a native `<input hlmInput>` by its associated `<label hlmLabel for="…">`
+ * Fill a native `<input>` by its associated `<label hlmLabel for="…">`
  * (post-Ionic replacement for the old `<ion-input label="…">` targeting — every
  * current call site (login's Homeserver/Username/Password, settings' Display
  * name) has a real `<label for>` pointing at the input).

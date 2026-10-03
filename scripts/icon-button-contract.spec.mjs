@@ -11,8 +11,7 @@ const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
  * `trnBtn shape="icon"` owns standard square geometry and uses `presentation="ghost"`
  * independently from its semantic variant. `trnIconButton` is the explicit
  * opt-in for a purpose-built control whose shape communicates context (for example a reaction
- * chip or server-rail pill). `trnToggle` and `trnToggleGroupItem` own pressed actions; when
- * their content is an icon, they belong to this contract too. All receive the same cursor,
+ * chip or server-rail pill). Both receive the same cursor,
  * state feedback and inner-glyph motion. Exact per-file counts make additions and removals
  * reviewable even in an already inventoried file.
  */
@@ -53,11 +52,8 @@ const publicIconButtons = controlBlocks.filter(
     (/\bshape="icon"/.test(openingTag) || /\[shape\]=/.test(openingTag)),
 );
 
-const iconActionControls = controlBlocks.filter(
-  ({ source, openingTag }) =>
-    /\btrnIconButton\b/.test(openingTag) ||
-    (/\b(?:trnToggle|trnToggleGroupItem)\b/.test(openingTag) &&
-      /<trn-icon(?:\s|>)/.test(source)),
+const iconActionControls = controlBlocks.filter(({ source, openingTag }) =>
+  /\btrnIconButton\b/.test(openingTag),
 );
 
 const expectedBespokeCounts = {
@@ -73,9 +69,6 @@ const expectedBespokeCounts = {
   'libs/feature/rooms/src/lib/voice-message/voice-message.component.html': 1,
   'libs/feature/settings/src/lib/profile/profile-settings.component.html': 1,
   'libs/components/controls/src/lib/button/trn-icon-motion.stories.ts#template-3': 1,
-  'libs/components/controls/src/lib/toggle-group/trn-toggle-group.component.stories.ts#template-1': 7,
-  'libs/components/controls/src/lib/toggle-group/trn-toggle-group.component.stories.ts#template-4': 3,
-  'libs/components/controls/src/lib/toggle-group/trn-toggle-group.component.stories.ts#template-5': 2,
 };
 
 const expectedCompositeCounts = {
@@ -164,9 +157,8 @@ describe('icon-button contract', () => {
   it('keeps composite icon-and-text controls out of the icon-only contract', () => {
     const composites = controlBlocks.filter(
       ({ source, openingTag }) =>
-        !/(?:\btrnBtn\b|\btrnIconButton\b|\btrnToggle\b|\btrnToggleGroupItem\b)/.test(
-          openingTag,
-        ) && /<trn-icon(?:\s|>)/.test(source),
+        !/(?:\btrnBtn\b|\btrnIconButton\b)/.test(openingTag) &&
+        /<trn-icon(?:\s|>)/.test(source),
     );
 
     expect(countsByFile(composites)).toEqual(expectedCompositeCounts);

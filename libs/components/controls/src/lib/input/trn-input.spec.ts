@@ -17,11 +17,7 @@ describe('TrnInput', () => {
   it('keeps the consumer’s aria-describedby, which the kit silently wiped once', async () => {
     // #153: BrnFieldControlDescribedBy owns [attr.aria-describedby] as a host binding, so a
     // consumer's value is computed as null and removed unless the composed entry publishes
-    // the input. Publication CHAINS: Angular flattens nested hostDirectives before
-    // registering them, so `HlmInput` publishing it reaches this element too and the wrapper
-    // deliberately owns nothing. (What does not chain is RE-declaring the same input one
-    // level up, which throws NG0311 — see the label wrapper.) This asserts the kit's entry
-    // still reaches this host, and fails the day someone drops it from `hlm-input.ts`.
+    // the input. This asserts `trnInput` still lists it in its `hostDirectives` entry.
     const { container } = await render(HostComponent);
 
     expect(

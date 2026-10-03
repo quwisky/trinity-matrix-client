@@ -31,7 +31,7 @@ type Story = StoryObj<TrnCard>;
 const card = (variant: TrnCardVariant, size: TrnCardSize) => `
   <section trnCard variant="${variant}" size="${size}" data-testid="card-${variant}-${size}" class="w-80">
     <div trnCardHeader>
-      <h2 trnCardTitle>${variant === 'neutral' ? 'Account' : 'Workspace'}</h2>
+      <h2>${variant === 'neutral' ? 'Account' : 'Workspace'}</h2>
       <p trnCardDescription>${size === 'sm' ? 'Compact supporting content.' : 'Standard supporting content.'}</p>
     </div>
     <div trnCardContent>Card content stays in the call site's semantic section.</div>

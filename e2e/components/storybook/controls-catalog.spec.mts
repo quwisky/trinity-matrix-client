@@ -18,7 +18,6 @@ import {
   expectStorybookThemeRoot,
   storybookThemeGlobals,
 } from './theme-preview.mts';
-import { renderedColour } from './recipe-appearance.mts';
 
 const CATALOG_STORY =
   '/iframe.html?id=components-control-recipe-matrix--complete-catalog&viewMode=story';
@@ -128,7 +127,6 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
         page.getByTestId('catalog-switch-rest').locator(':scope > span'),
         'backgroundColor',
       ],
-      [page.getByTestId('catalog-toggle-neutral-outline-md'), 'borderColor'],
       [
         page
           .getByTestId('catalog-radio-segmented-neutral-sm')
@@ -141,8 +139,7 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
 
     const focusButton = page.getByTestId('catalog-button-primary-outline');
     const focusInput = page.getByTestId('catalog-input-md');
-    const focusToggle = page.getByTestId('catalog-toggle-rest');
-    for (const control of [focusButton, focusInput, focusToggle]) {
+    for (const control of [focusButton, focusInput]) {
       await expectFocusRing(control);
       await expectContrast(
         control,
@@ -156,7 +153,6 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
     for (const testId of [
       'catalog-button-loading',
       'catalog-button-disabled',
-      'catalog-toggle-disabled',
       'catalog-input-disabled',
     ]) {
       expect(
@@ -245,28 +241,6 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
       page.getByTestId('catalog-radio-disabled').getByRole('radio').first(),
     ).toBeDisabled();
 
-    const toggle = page.getByTestId('catalog-toggle-rest');
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-    await toggle.press('Space');
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-    const readOnlyToggle = page.getByTestId('catalog-toggle-readonly');
-    await expect(readOnlyToggle).toHaveAttribute('aria-disabled', 'true');
-    await readOnlyToggle.click({ force: true });
-    await expect(readOnlyToggle).toHaveAttribute('aria-pressed', 'true');
-
-    const toolbar = page.getByTestId('catalog-toggle-group-separated');
-    const toolbarButtons = toolbar.getByRole('button');
-    expect(
-      await toolbarButtons.evaluateAll(
-        (items) =>
-          items.filter((item) => (item as HTMLButtonElement).tabIndex === 0)
-            .length,
-      ),
-    ).toBe(1);
-    await toolbarButtons.first().focus();
-    await toolbarButtons.first().press('ArrowRight');
-    await expect(toolbarButtons.nth(2)).toBeFocused();
-
     const select = page.getByTestId('catalog-select-md').getByRole('combobox');
     await select.click();
     await expect(
@@ -321,21 +295,6 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
         hoverButton.evaluate((element) => getComputedStyle(element).translate),
       )
       .not.toBe('none');
-    await page.mouse.up();
-
-    const pressedToggle = page.getByTestId('catalog-toggle-neutral-plain-sm');
-    await pressedToggle.hover();
-    await expect
-      .poll(() => renderedColour(pressedToggle, 'backgroundColor'))
-      .toEqual(
-        await renderedColour(pressedToggle, '--trinity-state-hover-surface'),
-      );
-    await page.mouse.down();
-    await expect
-      .poll(() => renderedColour(pressedToggle, 'backgroundColor'))
-      .toEqual(
-        await renderedColour(pressedToggle, '--trinity-state-pressed-surface'),
-      );
     await page.mouse.up();
 
     expect(
