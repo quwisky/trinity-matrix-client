@@ -10,9 +10,9 @@ import {
   login,
   readPreference,
   seedPreference,
-  synapseSession,
+  homeserverSession,
   waitForRooms,
-  type SynapseSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
@@ -22,7 +22,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // external GIF provider (KLIPY) + its CDN are stubbed with page.route, so the
 // suite stays offline of any third-party API and needs no real API key. Requires
 // the Synapse homeserver, so it self-skips when Docker is absent.
-const session = synapseSession();
+const session = homeserverSession();
 
 // The admin API + shared-secret used to register throwaway users (hardcoded in
 // every spec — there is no shared module for them).
@@ -72,8 +72,8 @@ async function seedRoom(
   hs: string,
   runId: string,
 ): Promise<{
-  // seedRoom always registers a user, so narrow away SynapseSession's optionals.
-  reader: SynapseSession & { user: string; pass: string };
+  // seedRoom always registers a user, so narrow away HomeserverSession's optionals.
+  reader: HomeserverSession & { user: string; pass: string };
   roomName: string;
   roomId: string;
   api: ApiUser;

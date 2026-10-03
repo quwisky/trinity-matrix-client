@@ -1,8 +1,8 @@
 import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
@@ -12,7 +12,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // Toggling "When someone posts @room" (the intentional-mention rule .m.rule.is_room_mention)
 // must flip that rule's enabled flag on the homeserver. Needs a Synapse homeserver (Docker);
 // self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 const RULE_ID = '.m.rule.is_room_mention';
 
@@ -71,7 +71,7 @@ test.describe('Notification settings', () => {
     };
     const before = await ruleEnabled();
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSettingsSection(page, 'notifications');
 
     const checkbox = page.getByTestId(`notif-${RULE_ID}`).locator('trn-switch');
@@ -90,7 +90,7 @@ test.describe('Notification settings', () => {
     const user = `notif-health-${testResourceId('run')}`;
     const pass = `${user}-pass`;
     await registerUser(request, user, pass);
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const startupBlocked = page.getByTestId('app-startup-blocked');
     const runtimePhase = () =>
       page.evaluate(() => {

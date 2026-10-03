@@ -4,6 +4,7 @@ import { By } from '@angular/platform-browser';
 import {
   TrnAlertService,
   TrnActionSheetService,
+  TrnDialogService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
@@ -55,7 +56,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThreadViewComponent } from './thread-view.component';
 import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
-import { MessageSourceService } from '../message-source/message-source.service';
+import { MessageSourceComponent } from '../message-source/message-source.component';
 import type { MessageRow } from '../message-row/message-row.component';
 
 function msg(id: string, senderId: string, body: string): MessageView {
@@ -168,6 +169,7 @@ async function build(
         // out, `typingNames` is undefined and the typing row throws on every render here.
         typingNames: signal<string[]>(state.typingNames ?? []).asReadonly(),
         setTyping: setTypingCalls,
+        rawEvent: vi.fn(() => ({ type: 'm.room.message' })),
       }),
       {
         provide: ConversationRuntime,
@@ -245,7 +247,7 @@ async function build(
       },
       MockProvider(TimelineActionsService),
       MockProvider(RoomMembersService, { membersFor }),
-      MockProvider(MessageSourceService, { open: sourceOpen }),
+      MockProvider(TrnDialogService, { open: sourceOpen }),
       MockProvider(TrnAlertService, { confirm$ }),
       MockProvider(TrnToastService, { show: toastShow }),
       { provide: TrnActionSheetService, useValue: { open: sheetOpen } },
@@ -483,7 +485,10 @@ describe('ThreadViewComponent', () => {
       type: 'view-source',
     });
 
-    expect(sourceOpen).toHaveBeenCalledWith('!r:hs', '$r1');
+    expect(sourceOpen).toHaveBeenCalledWith(
+      MessageSourceComponent,
+      expect.objectContaining({ ariaLabel: 'Message source' }),
+    );
   });
 
   it('lets a moderator delete another member’s thread message', async () => {

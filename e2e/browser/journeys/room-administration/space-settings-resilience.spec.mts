@@ -8,13 +8,13 @@ import {
 import {
   login,
   openSettingsTab,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { addAccountViaUi } from '../../support/multi-account-journey.mts';
 
-const session = synapseSession();
+const session = homeserverSession();
 
 async function tokenFor(
   request: APIRequestContext,
@@ -99,7 +99,7 @@ test.describe('Space settings resilience', () => {
     const token = await tokenFor(request, hs, user, pass);
     await createSpace(request, hs, token, spaceName);
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSpaceSettings(page, spaceName);
 
     let nameWrites = 0;
@@ -183,7 +183,7 @@ test.describe('Space settings resilience', () => {
       hs,
       user: owner,
       pass: ownerPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await addAccountViaUi(page, hs, member, memberPass);
     await page.getByTestId('user-menu-trigger').click();
     await page

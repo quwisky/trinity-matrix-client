@@ -39,8 +39,8 @@ const meta: Meta<TrnCheckboxComponent> = {
     docs: {
       description: {
         component:
-          'Binary and exclusive controls use Trinity semantic tones and ' +
-          'ordinal sizes. Layout, presentation and semantic variant stay separate axes.',
+          'Binary and exclusive controls use a single Trinity treatment. ' +
+          'Radio layout is the only structural axis.',
       },
     },
   },
@@ -64,8 +64,6 @@ export const CanonicalStates: Story = {
           <label class="flex items-center gap-2">
             <trn-checkbox
               data-testid="checkbox-accent"
-              variant="accent"
-              size="md"
               [checked]="checkboxChecked"
               (checkedChange)="checkboxChecked = $event"
             />
@@ -74,8 +72,6 @@ export const CanonicalStates: Story = {
           <label class="flex items-center gap-2">
             <trn-checkbox
               data-testid="checkbox-invalid"
-              variant="neutral"
-              size="sm"
               invalid
               aria-describedby="checkbox-error"
             />
@@ -88,15 +84,13 @@ export const CanonicalStates: Story = {
           <label class="flex items-center gap-2">
             <trn-switch
               data-testid="switch-accent"
-              variant="accent"
-              size="md"
               [checked]="switchChecked"
               (checkedChange)="switchChecked = $event"
             />
             Accent switch
           </label>
           <label class="flex items-center gap-2">
-            <trn-switch data-testid="switch-disabled" disabled variant="neutral" size="sm" />
+            <trn-switch data-testid="switch-disabled" disabled />
             Disabled switch
           </label>
         </div>
@@ -106,8 +100,6 @@ export const CanonicalStates: Story = {
           <trn-radio-group
             data-testid="radio-canonical"
             layout="segmented"
-            variant="accent"
-            size="md"
             aria-labelledby="theme-choice"
             [options]="options"
             [value]="selected"

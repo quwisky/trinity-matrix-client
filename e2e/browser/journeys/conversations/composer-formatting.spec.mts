@@ -10,8 +10,8 @@ import {
   login,
   readPreference,
   seedPreference,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
@@ -22,7 +22,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // These assert on the TEXTAREA's value rather than on a sent message — the point is what the
 // composer does to what you are writing. Needs a Synapse homeserver (Docker); self-skips
 // otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 const mobile = devices['Pixel 5'];
 const DRAFTS_KEY = 'trinity.composer.drafts';
 
@@ -74,7 +74,7 @@ async function openComposer(
     );
   }
 
-  await login(page, { available: true, hs, user, pass } as SynapseSession);
+  await login(page, { available: true, hs, user, pass } as HomeserverSession);
   /** Open the seeded room from the rail, returning the composer once it is up. */
   const openRoom = async () => {
     await page.getByTestId('rail-rooms').click();

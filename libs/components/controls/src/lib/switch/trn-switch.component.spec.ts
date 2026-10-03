@@ -1,11 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { render } from '@trinity/testing';
-import { describe, expect, expectTypeOf, it } from 'vitest';
-import {
-  TrnSwitchComponent,
-  type TrnSwitchSize,
-  type TrnSwitchVariant,
-} from './trn-switch.component';
+import { describe, expect, it } from 'vitest';
+import { TrnSwitchComponent } from './trn-switch.component';
 
 @Component({
   imports: [TrnSwitchComponent],
@@ -13,8 +9,6 @@ import {
     <trn-switch
       [checked]="checked()"
       [disabled]="disabled()"
-      variant="neutral"
-      size="sm"
       aria-label="Send read receipts"
       aria-describedby="receipt-help"
       (checkedChange)="last.set($event)"
@@ -31,13 +25,6 @@ const box = (container: Element) =>
   container.querySelector<HTMLInputElement>('[role="switch"]');
 
 describe('TrnSwitchComponent', () => {
-  it('limits the public recipe to implemented variants and sizes', () => {
-    expectTypeOf<TrnSwitchVariant>().toEqualTypeOf<'neutral' | 'accent'>();
-    expectTypeOf<'danger'>().not.toExtend<TrnSwitchVariant>();
-    expectTypeOf<TrnSwitchSize>().toEqualTypeOf<'sm' | 'md'>();
-    expectTypeOf<'lg'>().not.toExtend<TrnSwitchSize>();
-  });
-
   it('reflects the bound state onto the rendered control', async () => {
     // Assert through the native input's ARIA state rather than a presentation class, because
     // ARIA is what both a screen reader and the e2e suite read
@@ -60,17 +47,6 @@ describe('TrnSwitchComponent', () => {
     );
     expect(box(container)?.getAttribute('aria-describedby')).toBe(
       'receipt-help',
-    );
-  });
-
-  it('maps the ordinal size and semantic tone without publishing Helm names', async () => {
-    const { container } = await render(HostComponent);
-    const host = container.querySelector('trn-switch');
-
-    expect(host?.getAttribute('data-size')).toBe('sm');
-    expect(host?.getAttribute('data-variant')).toBe('neutral');
-    expect(container.querySelector('trn-switch > span')?.className).toContain(
-      'h-3.5',
     );
   });
 

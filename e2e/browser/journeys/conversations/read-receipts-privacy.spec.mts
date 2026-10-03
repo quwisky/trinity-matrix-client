@@ -7,8 +7,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
@@ -18,7 +18,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // privately (`m.read.private`), so the sender never sees a public `m.read`
 // receipt from them. Two users: the sender posts, the reader (toggle off) reads,
 // and we check what each side's sync reports. Needs Synapse (Docker); self-skips.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   userId: string;
@@ -134,7 +134,7 @@ test.describe('Read-receipt privacy', () => {
       hs,
       user: readerUser,
       pass: readerPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openSettingsSection(page, 'privacy');
     const toggle = page
       .getByTestId('privacy-send-read-receipts')

@@ -1,11 +1,12 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { TrnDialogService } from '@trinity/components/overlay';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { runWithBusy } from '@trinity/util/ui';
-import { MemberInfoService } from '../member-info/member-info.service';
+import { MemberInfoComponent } from '../member-info/member-info.component';
 import { type ExactRoomSelection } from '../shared/exact-selection';
-import { UserCardService } from '../user-card/user-card.service';
+import { UserCardComponent } from '../user-card/user-card.component';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { ShellStatusService } from './shell-status.service';
@@ -25,8 +26,7 @@ export class MemberActionsService {
   private readonly nav = inject(RoomShellNavigationService);
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomLibraryService);
-  private readonly memberInfo = inject(MemberInfoService);
-  private readonly userCard = inject(UserCardService);
+  private readonly dialog = inject(TrnDialogService);
   private readonly destroyRef = inject(DestroyRef);
 
   /** Member-list row: open the member's info panel; "Message" opens/reuses a DM. */
@@ -68,8 +68,17 @@ export class MemberActionsService {
       return;
     }
 
-    this.memberInfo
-      .open$(member, owner.roomId, direct)
+    this.dialog
+      .openAndWait$<string, MemberInfoComponent>(MemberInfoComponent, {
+        ariaLabel: 'Member info',
+        inputs: {
+          member,
+          roomId: owner.roomId,
+          direct,
+          surfaceSize: 'sm',
+          surfaceLayout: 'dialog',
+        },
+      })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((messageUserId) => {
         if (messageUserId) this.startDirectMessage(messageUserId);
@@ -105,10 +114,22 @@ export class MemberActionsService {
     );
   }
 
-  /** Show the user card; if they pick "Message", open (or reuse) a DM with the user. */
+  /**
+   * Show the user card; if they pick "Message", open (or reuse) a DM with the user.
+   *
+   * With an `anchor` the card is a popover pinned beside the element the reader clicked —
+   * a mention sits inside the sentence it is part of, and a centred modal over that
+   * sentence hides the context the card is being read against. Without one (an edit-history
+   * permalink, whose dialog has already closed) it stays centred, and so does every touch
+   * pointer: see `DialogOptions.anchor`.
+   */
   openUserCard(userId: string, anchor?: HTMLElement): void {
-    this.userCard
-      .open$(userId, anchor)
+    this.dialog
+      .openAndWait$<string, UserCardComponent>(UserCardComponent, {
+        ariaLabel: 'User',
+        inputs: { userId },
+        anchor,
+      })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((messageUserId) => {
         if (messageUserId) this.startDirectMessage(messageUserId);

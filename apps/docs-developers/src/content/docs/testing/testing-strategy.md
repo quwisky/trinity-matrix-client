@@ -20,7 +20,7 @@ Validation is evidence about a specific claim. Choose the smallest check that ca
 | Import or ownership boundary                 | Architecture and source-shape guards             |
 | CSS syntax                                   | Stylelint                                        |
 | Responsive layout, focus, scrolling, overlay | Real-browser component or application journey    |
-| Matrix protocol behavior                     | Disposable-Synapse E2E journey                   |
+| Matrix protocol behavior                     | Disposable-homeserver E2E journey                |
 | Electron, Android, or iOS behavior           | Launched target host on a suitable machine       |
 
 Playwright owns renderer journeys and Electron. `e2e/mobile` (WebdriverIO and Appium) owns installed-app behavior on Android. Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed app (native plugin, OS UI, hardware or system event, deep link). Everything else stays in `e2e/browser`.

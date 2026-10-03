@@ -6,8 +6,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
@@ -21,7 +21,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // observed from Playwright, but the red `.channel__badge` is driven by the same
 // `highlight` tweak the rule sets, through the same server-side scoring.
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
-const session = synapseSession();
+const session = homeserverSession();
 
 /** A word no other rule could match, so the highlight can only come from our keyword. */
 const KEYWORD = 'zarquon';
@@ -101,7 +101,7 @@ test.describe('Keyword notifications', () => {
       hs,
       user: readerUser,
       pass: readerPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openSettingsSection(page, 'notifications');
 
     const input = page.getByTestId('keyword-input');
@@ -221,7 +221,7 @@ test.describe('Keyword notifications', () => {
       hs,
       user: readerUser,
       pass: readerPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openSettingsSection(page, 'notifications');
     const input = page.getByTestId('keyword-input');
     await expect(input).toBeVisible({ timeout: 15_000 });

@@ -2,12 +2,12 @@ import { defineSuites } from '../types.mts';
 
 const artifactRoot = 'dist/.playwright/trinity-e2e-protocol/<run-id>';
 
-const synapseProtocol = {
+const homeserverProtocol = {
   environment: 'protocol',
   prerequisites: ['docker', 'playwright-chromium'],
   availabilityPolicy: 'required',
   cachePolicy: 'never',
-  serializationKeys: ['synapse'],
+  serializationKeys: ['homeserver'],
   timeoutClass: 'long',
   canonicalScript: 'e2e:protocol',
   currentArtifactRoot: artifactRoot,
@@ -28,7 +28,7 @@ const standaloneProtocol = {
 
 export const PROTOCOL_E2E_SUITES = defineSuites([
   {
-    ...synapseProtocol,
+    ...homeserverProtocol,
     id: 'protocol.verify-sas',
     capabilities: ['trust'],
     contractTypes: ['protocol', 'security'],
@@ -40,7 +40,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     ],
   },
   {
-    ...synapseProtocol,
+    ...homeserverProtocol,
     id: 'protocol.verify-qr',
     capabilities: ['trust'],
     contractTypes: ['protocol', 'security'],
@@ -49,7 +49,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     sourceEntrypoints: ['e2e/protocol/verify-qr.spec.mjs'],
   },
   {
-    ...synapseProtocol,
+    ...homeserverProtocol,
     id: 'protocol.media',
     capabilities: ['conversations', 'media'],
     contractTypes: ['journey', 'protocol', 'security'],
@@ -58,7 +58,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     sourceEntrypoints: ['e2e/protocol/send-media.spec.mjs'],
   },
   {
-    ...synapseProtocol,
+    ...homeserverProtocol,
     id: 'protocol.threads',
     capabilities: ['conversations'],
     contractTypes: ['journey', 'protocol'],
@@ -67,7 +67,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     sourceEntrypoints: ['e2e/protocol/threads.spec.mjs'],
   },
   {
-    ...synapseProtocol,
+    ...homeserverProtocol,
     id: 'protocol.reply',
     capabilities: ['conversations'],
     contractTypes: ['journey', 'protocol'],
@@ -76,7 +76,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     sourceEntrypoints: ['e2e/protocol/reply.spec.mjs'],
   },
   {
-    ...synapseProtocol,
+    ...homeserverProtocol,
     id: 'protocol.spaces',
     capabilities: ['room-library'],
     contractTypes: ['journey', 'protocol'],
@@ -85,7 +85,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     sourceEntrypoints: ['e2e/protocol/spaces.spec.mjs'],
   },
   {
-    ...synapseProtocol,
+    ...homeserverProtocol,
     id: 'protocol.rooms',
     capabilities: ['room-library'],
     contractTypes: ['journey', 'protocol'],
@@ -94,7 +94,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     sourceEntrypoints: ['e2e/protocol/rooms.spec.mjs'],
   },
   {
-    ...synapseProtocol,
+    ...homeserverProtocol,
     id: 'protocol.search',
     capabilities: ['conversations', 'search'],
     contractTypes: ['journey', 'protocol'],
@@ -103,7 +103,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
     sourceEntrypoints: ['e2e/protocol/search.spec.mjs'],
   },
   {
-    ...synapseProtocol,
+    ...homeserverProtocol,
     id: 'protocol.emoji',
     capabilities: ['conversations'],
     contractTypes: ['journey', 'protocol'],

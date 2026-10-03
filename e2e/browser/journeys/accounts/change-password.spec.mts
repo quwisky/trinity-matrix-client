@@ -7,8 +7,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
@@ -19,7 +19,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // stage with the supplied current password. A wrong current password surfaces an
 // inline error; a correct one changes the password server-side (proven by logging
 // in again with the new one). Needs a Synapse homeserver (Docker); self-skips.
-const session = synapseSession();
+const session = homeserverSession();
 
 /** The HTTP status a password login returns — 200 when the password is accepted. */
 async function loginStatus(
@@ -65,7 +65,7 @@ test.describe('Change password', () => {
       hs,
       user,
       pass: oldPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openAccountSection(page);
 
     // A wrong current password fails the UIA stage and surfaces an inline error —

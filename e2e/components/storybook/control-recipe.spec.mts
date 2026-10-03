@@ -1,13 +1,7 @@
-import { expect, test, type Locator } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 const story = (id: string) => `/iframe.html?id=${id}&viewMode=story`;
 const CANONICAL = story('components-choice-controls--canonical-states');
-
-const box = (locator: Locator) =>
-  locator.evaluate((element) => {
-    const bounds = element.getBoundingClientRect();
-    return { height: bounds.height, width: bounds.width };
-  });
 
 test('choice controls expose accessible interaction states', async ({
   page,
@@ -44,18 +38,6 @@ test('choice controls expose accessible interaction states', async ({
   await expect(page.getByRole('radio', { name: 'System' })).toBeChecked();
   await page.getByTestId('radio-dark').click();
   await expect(page.getByRole('radio', { name: 'Dark' })).toBeChecked();
-});
-
-test('ordinal sizes resolve canonically', async ({ page }) => {
-  await page.goto(CANONICAL);
-  const smallCheckbox = page
-    .getByTestId('checkbox-invalid')
-    .locator(':scope > span');
-  const mediumCheckbox = page
-    .getByTestId('checkbox-accent')
-    .locator(':scope > span');
-  expect(await box(smallCheckbox)).toEqual({ height: 14, width: 14 });
-  expect(await box(mediumCheckbox)).toEqual({ height: 16, width: 16 });
 });
 
 test('buttons announce loading while native disabled remains authoritative', async ({

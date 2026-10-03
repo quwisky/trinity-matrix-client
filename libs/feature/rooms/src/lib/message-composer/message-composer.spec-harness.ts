@@ -50,7 +50,7 @@ vi.mock('@capacitor/preferences', () => ({
 
 /** The staged files, in order — the list equivalent of the old scalar `pendingFile()`. */
 export const stagedFiles = (cmp: MessageComposerComponent): readonly File[] =>
-  cmp.staged().map((attachment) => attachment.file);
+  cmp['attachments'].staged().map((attachment) => attachment.file);
 
 /**
  * Subscribe to `submitMedia`, record the filenames dispatched, and report every item as

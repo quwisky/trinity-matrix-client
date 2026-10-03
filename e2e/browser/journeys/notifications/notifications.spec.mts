@@ -7,8 +7,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
@@ -29,7 +29,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 // admin endpoint, same trick as unread-badges.spec.mts. Needs a Synapse
 // homeserver (Docker) and self-skips otherwise, like the other authenticated web
 // e2e specs (see timeline-virtualization.spec.mts).
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   token: string;
@@ -73,7 +73,7 @@ async function seedNotifyRoom(
   hs: string,
   runId: string,
 ): Promise<{
-  reader: SynapseSession;
+  reader: HomeserverSession;
   readerUserId: string;
   sender: ApiUser;
   roomId: string;
@@ -293,7 +293,7 @@ async function storedReactionPreference(
 }
 
 interface ReactionFixture {
-  reader: SynapseSession;
+  reader: HomeserverSession;
   readerApi: ApiUser;
   reactors: ApiUser[];
   roomId: string;

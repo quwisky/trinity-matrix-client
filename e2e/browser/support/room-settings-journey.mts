@@ -4,7 +4,7 @@ import {
   type APIRequestContext,
   type Page,
 } from '../../fixtures.mts';
-import { synapseSession } from '../../support/app.mts';
+import { homeserverSession } from '../../support/app.mts';
 
 // Covers editing a room's settings: the room header's ⚙ button
 // (data-testid="open-room-settings") opens a dialog (data-testid="room-settings")
@@ -12,7 +12,7 @@ import { synapseSession } from '../../support/app.mts';
 // (admin), the reader renames the room; the new name round-trips through
 // RoomSettingsService.setName → setRoomName → sync and re-labels the room.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
-export const session = synapseSession();
+export const session = homeserverSession();
 
 /** Log in over the API and return the access token. */
 export async function tokenFor(

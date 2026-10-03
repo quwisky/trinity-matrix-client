@@ -1,15 +1,15 @@
 import { expect, test } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import {
   openImagePackJourneyRoom,
   runImagePackManagementJourney,
 } from '../../../support/image-pack-management-journey.mts';
 
-const session = synapseSession();
+const session = homeserverSession();
 
 test.describe('MSC2545 stickers and custom emoji', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
@@ -33,7 +33,7 @@ test.describe('MSC2545 stickers and custom emoji', () => {
           hs,
           user,
           pass,
-        } as SynapseSession);
+        } as HomeserverSession);
         await openImagePackJourneyRoom(deviceB, roomName);
         await deviceB.getByTestId('composer-insert').click();
         await expect(deviceB.getByTestId('insert-sticker')).toBeVisible({

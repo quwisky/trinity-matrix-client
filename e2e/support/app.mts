@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { readSession } from './session.mts';
+import type { HomeserverKind } from './homeserver/kind.mts';
 import { navigateApplication } from './navigation.mts';
 import type { Navigate } from './platform-contracts.mts';
 export const webNavigate = navigateApplication;
@@ -61,11 +62,17 @@ export interface SsoAccount {
   pass: string;
 }
 
-export interface SynapseSession {
+export interface HomeserverSession {
   available: boolean;
   hs?: string;
   user?: string;
   pass?: string;
+  /**
+   * The running server (`TRINITY_E2E_HOMESERVER`). Branch on it only where Matrix servers
+   * legitimately differ, and keep both expectations.
+   */
+  kind?: HomeserverKind;
+  version?: string;
   secondary?: {
     hs: string;
     serverName: string;
@@ -76,14 +83,14 @@ export interface SynapseSession {
   /**
    * A second Dex identity, for the one spec that leaves permanent state on the account
    * it uses and asserts that nothing else moved. Kept apart from `sso` because
-   * `fullyParallel` runs the two SSO specs in different workers — see e2e/support/synapse/dex.yaml.
+   * `fullyParallel` runs the two SSO specs in different workers — see e2e/support/homeserver/dex.yaml.
    */
   ssoReset?: SsoAccount;
 }
 
 /** Read the homeserver session published by the invocation owner. */
-export function synapseSession(): SynapseSession {
-  return readSession().synapse ?? { available: false };
+export function homeserverSession(): HomeserverSession {
+  return readSession().homeserver ?? { available: false };
 }
 
 /**
@@ -179,7 +186,7 @@ export async function openSettingsTab(
 /** Log in through the UI (homeserver → Continue → credentials → Sign in) → /rooms. */
 export async function login(
   page: Page,
-  s: SynapseSession,
+  s: HomeserverSession,
   navigate: Navigate = webNavigate,
 ): Promise<void> {
   await navigate(page, '/login');

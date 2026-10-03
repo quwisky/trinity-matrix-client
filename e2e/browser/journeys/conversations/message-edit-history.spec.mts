@@ -8,8 +8,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -23,7 +23,7 @@ const { defaultBrowserType: _pixelBrowser, ...pixel5 } = devices['Pixel 5'];
 // chain by hand keeps the versions and their order deterministic. Also asserts the
 // deleted-message rule, which is the one case where the marker must NOT be offered.
 // Needs a Synapse homeserver (Docker); self-skips.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function seedHistory(
   request: APIRequestContext,
@@ -99,7 +99,7 @@ async function openSeededHistory(
     hs,
     user: seeded.user,
     pass: seeded.pass,
-  } as SynapseSession);
+  } as HomeserverSession);
   await page.getByTestId('rail-rooms').click();
   const channel = page
     .locator('.channel', { hasText: seeded.roomName })
@@ -224,7 +224,7 @@ test.describe('Edit history', () => {
       hs,
       user,
       pass,
-    } as SynapseSession);
+    } as HomeserverSession);
     // A named, non-DM room is listed under the Rooms view rather than Home's DMs.
     await page.getByTestId('rail-rooms').click();
     const channel = page.locator('.channel', { hasText: roomName }).first();

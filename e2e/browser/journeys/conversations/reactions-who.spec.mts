@@ -8,8 +8,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
@@ -25,7 +25,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 // A large reaction snapshot is sent straight over the CS API so the browser can verify
 // grouped hints, long lists and overflow without making the UI perform setup work.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function loginApi(
   request: APIRequestContext,
@@ -81,7 +81,7 @@ async function joinWithRetry(
 }
 
 interface Seeded {
-  reader: SynapseSession;
+  reader: HomeserverSession;
   roomName: string;
   /** Display name of the second reactor, as the room shows it. */
   otherName: string;

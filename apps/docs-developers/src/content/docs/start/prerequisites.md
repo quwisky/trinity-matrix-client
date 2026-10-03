@@ -27,13 +27,13 @@ You also need Git and a modern browser. Treat the versions in the root `package.
 
 ## Add tools for the work you are doing {#optional-tools}
 
-| Work                           | Additional prerequisite                                                   |
-| ------------------------------ | ------------------------------------------------------------------------- |
-| Browser automation             | Playwright browser binaries                                               |
-| Synapse-backed Matrix journeys | Docker available to the current user                                      |
-| Electron                       | The separate `electron/` dependency tree and host packaging prerequisites |
-| Android                        | Android Studio, Android SDK, Java, and an emulator or device              |
-| iOS                            | macOS, Xcode, CocoaPods, and a simulator or device                        |
+| Work                              | Additional prerequisite                                                   |
+| --------------------------------- | ------------------------------------------------------------------------- |
+| Browser automation                | Playwright browser binaries                                               |
+| Homeserver-backed Matrix journeys | Docker available to the current user                                      |
+| Electron                          | The separate `electron/` dependency tree and host packaging prerequisites |
+| Android                           | Android Studio, Android SDK, Java, and an emulator or device              |
+| iOS                               | macOS, Xcode, CocoaPods, and a simulator or device                        |
 
 A missing native SDK, signing identity, emulator, browser, or Docker daemon makes that check unavailable. Record the gap instead of treating an unrun host check as passed.
 

@@ -8,8 +8,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -17,7 +17,7 @@ import { registerUser } from '../../../support/account.mts';
 // an icon left of Settings on desktop and in the room header's mobile overflow when the sidebar page is
 // not present. These checks need a real conversation because a login-page status button can hide
 // both placement and composer regressions.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function openRoom(
   page: Page,
@@ -49,7 +49,7 @@ async function openRoom(
   );
   expect(roomResponse.ok()).toBe(true);
 
-  await login(page, { available: true, hs, user, pass } as SynapseSession);
+  await login(page, { available: true, hs, user, pass } as HomeserverSession);
   await page.getByTestId('rail-rooms').click();
   const channel = page.locator('.channel', { hasText: roomName }).first();
   await channel.waitFor({ state: 'visible', timeout: 30_000 });

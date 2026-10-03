@@ -1,5 +1,5 @@
 import { test, expect, type Locator } from '../../../fixtures.mts';
-import { login, synapseSession } from '../../../support/app.mts';
+import { login, homeserverSession } from '../../../support/app.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 
 // A switch has to LOOK like the value it holds, and that claim can only be made in a
@@ -13,7 +13,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // The public control keeps semantics on a native checkbox with `role="switch"`; its
 // following presentational span owns track paint, and that span's child owns thumb travel.
 // Measure those exact owners while asserting state through the native control.
-const session = synapseSession();
+const session = homeserverSession();
 
 /** The native control that owns checked, disabled, focus and keyboard semantics. */
 const control = (row: Locator): Locator => row.getByRole('switch');

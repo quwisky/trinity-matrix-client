@@ -111,7 +111,7 @@ describe('protocol runtime configuration', () => {
 
   it('drops only the local Synapse lease in explicit remote mode', () => {
     expect(protocolResources('protocol.verify-sas', 'disposable')).toEqual([
-      'synapse',
+      'homeserver',
     ]);
     expect(
       protocolResources('protocol.verify-sas', 'remote', remoteEnvironment()),
@@ -198,7 +198,7 @@ describe('protocol runtime configuration', () => {
       [
         '--config=e2e/protocol/playwright.config.mts',
         '--build=trinity:build:development',
-        '--resource=synapse',
+        '--resource=homeserver',
         '--',
         '--headed',
         '--grep=SAS',

@@ -1,6 +1,6 @@
 import { test, expect } from '../../../fixtures.mts';
 import { openSettingsFromRooms } from '../../../support/journeys/navigation.mts';
-import { login, synapseSession } from '../../../support/app.mts';
+import { login, homeserverSession } from '../../../support/app.mts';
 
 // Historical context: this file used to guard the IonRouterOutlet transition lock
 // (ionic-framework#30240) — a route transition had to relocate focus INTO the
@@ -19,7 +19,7 @@ import { login, synapseSession } from '../../../support/app.mts';
 // config — moving focus INTO the entering page on each navigation — is reintroduced
 // by NavigationFocusService (apps/trinity/src/app/navigation-focus.service.ts), wired
 // via provideAppInitializer in main.ts; the second test asserts it.
-const session = synapseSession();
+const session = homeserverSession();
 
 test.describe('Route transitions', () => {
   test.skip(

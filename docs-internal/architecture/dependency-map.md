@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **68 Nx projects** and **258 dependencies**. No project cycles detected.
+This snapshot contains **67 Nx projects** and **255 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -36,7 +36,7 @@ Capability-to-capability dependencies are valid only inside the same named capab
 | `role:capability`    |       14 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
 | `role:kernel`        |        5 | `role:kernel`                                                                                          |
 | `role:adapter`       |        3 | `role:adapter`, `role:kernel`                                                                          |
-| `role:design-system` |       20 | `role:design-system`, `role:kernel`, `role:adapter`                                                    |
+| `role:design-system` |       19 | `role:design-system`, `role:kernel`, `role:adapter`                                                    |
 
 ## Frozen dependency exceptions
 
@@ -87,7 +87,6 @@ Every classified library has exactly one explicit primary entrypoint. Additional
 | `feature-rooms`                   | `@trinity/feature/rooms`                   | `./libs/feature/rooms/src/index.ts`                   |
 | `feature-settings`                | `@trinity/feature/settings`                | `./libs/feature/settings/src/index.ts`                |
 | `avatar`                          | `@trinity/helm/avatar`                     | `./libs/spartan/avatar/src/index.ts`                  |
-| `badge`                           | `@trinity/helm/badge`                      | `./libs/spartan/badge/src/index.ts`                   |
 | `button`                          | `@trinity/helm/button`                     | `./libs/spartan/button/src/index.ts`                  |
 | `card`                            | `@trinity/helm/card`                       | `./libs/spartan/card/src/index.ts`                    |
 | `dropdown-menu`                   | `@trinity/helm/dropdown-menu`              | `./libs/spartan/dropdown-menu/src/index.ts`           |
@@ -124,12 +123,11 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `application-search`              | `libs/application/search`              | role:application; capability:search             |                   5 |
 | `application-workspace`           | `libs/application/workspace`           | role:application; capability:workspace          |                   6 |
 | `avatar`                          | `libs/spartan/avatar`                  | role:design-system; capability:design-system    |                   1 |
-| `badge`                           | `libs/spartan/badge`                   | role:design-system; capability:design-system    |                   1 |
 | `button`                          | `libs/spartan/button`                  | role:design-system; capability:design-system    |                   1 |
 | `card`                            | `libs/spartan/card`                    | role:design-system; capability:design-system    |                   1 |
 | `components-controls`             | `libs/components/controls`             | role:design-system; capability:design-system    |                   7 |
 | `components-foundations`          | `libs/components/foundations`          | role:design-system; capability:design-system    |                   1 |
-| `components-generic-content`      | `libs/components/generic-content`      | role:design-system; capability:design-system    |                  10 |
+| `components-generic-content`      | `libs/components/generic-content`      | role:design-system; capability:design-system    |                   9 |
 | `components-navigation-layout`    | `libs/components/navigation-layout`    | role:design-system; capability:design-system    |                   4 |
 | `components-overlay`              | `libs/components/overlay`              | role:design-system; capability:design-system    |                   6 |
 | `components-storybook-host`       | `libs/components/storybook-host`       | role:design-system; capability:design-system    |                   1 |
@@ -165,7 +163,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `scripts`                         | `scripts`                              | unmanaged tooling/test                          |                   4 |
 | `select`                          | `libs/spartan/select`                  | role:design-system; capability:design-system    |                   1 |
 | `sonner`                          | `libs/spartan/sonner`                  | role:design-system; capability:design-system    |                   2 |
-| `spartan-tests`                   | `libs/spartan/tests`                   | role:design-system; capability:design-system    |                   5 |
+| `spartan-tests`                   | `libs/spartan/tests`                   | role:design-system; capability:design-system    |                   4 |
 | `spinner`                         | `libs/spartan/spinner`                 | role:design-system; capability:design-system    |                   1 |
 | `testing`                         | `libs/testing`                         | unmanaged tooling/test                          |                   0 |
 | `theme-foundation`                | `libs/theme-foundation`                | role:kernel; capability:design-system           |                   0 |

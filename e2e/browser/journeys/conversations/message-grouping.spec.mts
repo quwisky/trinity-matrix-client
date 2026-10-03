@@ -6,8 +6,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -19,7 +19,7 @@ import { registerUser } from '../../../support/account.mts';
 // This can only be caught in a real browser — the regression was a *layout* one (a flex
 // item's automatic minimum size overriding its declared basis), and jsdom does no
 // layout, so a component spec cannot see it. Needs Synapse (Docker).
-const session = synapseSession();
+const session = homeserverSession();
 
 /** The avatar size a header row reserves; the grouped gutter must match it. */
 const LEAD_WIDTH = 40;
@@ -91,7 +91,7 @@ test.describe('Message grouping', () => {
       hs,
       user: me,
       pass: mePass,
-    } as SynapseSession);
+    } as HomeserverSession);
     // A named, non-DM room is listed under the Rooms view rather than Home's DMs.
     await page.getByTestId('rail-rooms').click();
     const channel = page.locator('.channel', { hasText: roomName }).first();

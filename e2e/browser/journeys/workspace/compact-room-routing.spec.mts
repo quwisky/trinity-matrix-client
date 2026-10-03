@@ -1,8 +1,8 @@
 import { test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -13,7 +13,7 @@ import { registerUser } from '../../../support/account.mts';
 // worker process inherits the main process's later `process.env` mutations.
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
-const session = synapseSession();
+const session = homeserverSession();
 
 // Below Tailwind's `md` breakpoint (768px) the shell's server-rail + channel
 // sidebar — `<aside class="shell-side">` in rooms.page.html — and the chat become
@@ -32,7 +32,7 @@ let ROOM_NAME = '';
 // the root cause of this file's flakiness. A fresh user syncs a single room, fast.
 let MOBILE_USER = '';
 let MOBILE_PASS = '';
-let mobileSession: SynapseSession;
+let mobileSession: HomeserverSession;
 const ROOM_ATTACH_TIMEOUT = 30_000;
 
 /** CS-API password login (bypasses the UI) — returns the access token + user id. */

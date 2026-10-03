@@ -1,8 +1,8 @@
 import { test, expect, testResourceId } from '../../../fixtures.mts';
-import { fillLabeledInput, synapseSession } from '../../../support/app.mts';
+import { fillLabeledInput, homeserverSession } from '../../../support/app.mts';
 import { passwordLogin } from '../../../support/account.mts';
 
-const session = synapseSession();
+const session = homeserverSession();
 
 test.describe('Legacy Matrix registration', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');

@@ -13,13 +13,11 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnAlertService } from '@trinity/components/overlay';
+import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
 import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
-import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { ForwardService } from '../forward/forward.service';
 import { ReportService } from '../report/report.service';
-import { MessageSourceService } from '../message-source/message-source.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 import {
@@ -32,7 +30,6 @@ import {
 import {
   dayLabel,
   hasUsableTimestamp,
-  messagePermalink,
   quoteBlock,
   startOfLocalDay,
   type Mention,
@@ -49,6 +46,7 @@ import {
   type BatchOutcome,
   type BatchProgress,
 } from '../shared/send-media-batch';
+import { dispatchSharedRowAction } from '../shared/row-actions';
 import {
   type MessageLongPressContext,
   type MessageRow,
@@ -238,6 +236,7 @@ export abstract class MessageListBase {
 
   protected readonly compose = inject(ConversationRuntime).compose;
   protected readonly messageCommands = inject(ConversationRuntime).messages;
+  private readonly timeline = inject(ConversationRuntime).timeline;
   readonly editingId = computed(() => {
     const intent = this.compose.intent();
     return intent.kind === 'edit' ? intent.eventId : null;
@@ -271,10 +270,9 @@ export abstract class MessageListBase {
   protected readonly alert = inject(TrnAlertService);
   private readonly dayBoundary = inject(DayBoundaryService);
   private readonly dateFormat = inject(DateTimeFormatService);
-  private readonly reactionPicker = inject(ReactionPickerService);
+  private readonly dialog = inject(TrnDialogService);
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
-  private readonly sourceSvc = inject(MessageSourceService);
   private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly messageSheet = inject(MessageActionSheetService);
@@ -543,31 +541,15 @@ export abstract class MessageListBase {
     this.composer()?.insertQuote(quoteBlock(row.body));
   }
 
-  /** A message the current user can still edit (own, confirmed, text — not media). */
-  isEditable(m: MessageView): boolean {
-    return isEditableMessage(m);
-  }
-
   /** Edit the most recent editable message of the current user (Up-arrow shortcut). */
   editLastOwn(): void {
     const msgs = this.messages();
     for (let i = msgs.length - 1; i >= 0; i--) {
-      if (this.isEditable(msgs[i])) {
+      if (isEditableMessage(msgs[i])) {
         this.messageCommands.beginEdit(msgs[i].id, msgs[i].body);
         return;
       }
     }
-  }
-
-  onCopy(row: MessageRow): void {
-    void navigator.clipboard?.writeText(row.body);
-  }
-
-  /** Copy a matrix.to permalink to this message. */
-  onCopyLink(row: MessageRow): void {
-    void navigator.clipboard?.writeText(
-      messagePermalink(this.roomId() ?? '', row.id),
-    );
   }
 
   /**
@@ -677,7 +659,7 @@ export abstract class MessageListBase {
       // room state. Both wait for the remote echo to swap in the real event id.
       const unsent = !!message.status;
       const next: MessageRowCaps = {
-        editable: this.isEditable(message),
+        editable: isEditableMessage(message),
         // Own messages are always deletable; a moderator can also redact others'.
         deletable: (message.isOwn || canRedactOthers) && !unsent,
         canPin: canPin && !unsent,
@@ -740,39 +722,28 @@ export abstract class MessageListBase {
 
   /** Route a single row action to its handler / upward output. */
   onRowAction(row: MessageRow, action: MessageRowAction): void {
+    if (
+      dispatchSharedRowAction(action, row, {
+        roomId: this.roomId() ?? '',
+        destroyRef: this.listDestroyRef,
+        dialog: this.dialog,
+        timeline: this.timeline,
+        forward: this.forwardSvc,
+        report: this.reportSvc,
+        reactions: this.reactionsDialog,
+        editHistory: this.editHistorySvc,
+        react: (id, key) => this.react.emit({ id, key }),
+        quote: (r) => this.startQuote(r),
+        // No anchor: the dialog that held the link has already closed, so a user card from
+        // here is centred rather than pinned to an element that no longer exists.
+        onHistoryLink: (target) => this.matrixLink.emit({ target }),
+      })
+    ) {
+      return;
+    }
     switch (action.type) {
-      case 'react':
-        this.react.emit({ id: row.id, key: action.key });
-        break;
-      case 'react-more':
-        void this.pickReaction(row.id);
-        break;
       case 'reply':
         this.startReply(row);
-        break;
-      case 'quote':
-        this.startQuote(row);
-        break;
-      case 'copy':
-        this.onCopy(row);
-        break;
-      case 'copy-link':
-        this.onCopyLink(row);
-        break;
-      case 'view-source':
-        this.sourceSvc.open(this.roomId() ?? '', row.id);
-        break;
-      case 'forward':
-        this.forwardSvc
-          .forward$(this.roomId() ?? '', row.id)
-          .pipe(takeUntilDestroyed(this.listDestroyRef))
-          .subscribe();
-        break;
-      case 'report':
-        this.reportSvc
-          .report$(this.roomId() ?? '', row.id)
-          .pipe(takeUntilDestroyed(this.listDestroyRef))
-          .subscribe();
         break;
       case 'edit':
         this.startEdit(row);
@@ -792,15 +763,6 @@ export abstract class MessageListBase {
       case 'thread':
         this.openThread.emit(row.id);
         break;
-      case 'edit-history':
-        this.showEditHistory(row.id);
-        break;
-      case 'reactors':
-        this.reactionsDialog
-          .open$(row.id)
-          .pipe(takeUntilDestroyed(this.listDestroyRef))
-          .subscribe({ error: () => undefined });
-        break;
       default: {
         // Exhaustiveness guard: adding a MessageRowAction variant without a case
         // here becomes a compile error rather than a silently-dropped action.
@@ -809,32 +771,6 @@ export abstract class MessageListBase {
         break;
       }
     }
-  }
-
-  /**
-   * Show a message's earlier versions. A permalink followed inside the dialog comes back
-   * here rather than being routed there, so it travels the same path as one clicked in
-   * the timeline itself.
-   */
-  private showEditHistory(id: string): void {
-    this.editHistorySvc
-      .openHistory$(this.roomId() ?? '', id)
-      .pipe(takeUntilDestroyed(this.listDestroyRef))
-      .subscribe((followed) => {
-        if (followed) {
-          // No anchor: the dialog that held the link has already closed, so a user card from
-          // here is centred rather than pinned to an element that no longer exists.
-          this.matrixLink.emit({ target: followed });
-        }
-      });
-  }
-
-  /** Open the full emoji picker and, on a pick, react to the message with it. */
-  private pickReaction(id: string): void {
-    this.reactionPicker
-      .pick$()
-      .pipe(takeUntilDestroyed(this.listDestroyRef))
-      .subscribe((key) => this.react.emit({ id, key }));
   }
 
   onDelete(row: MessageRow): void {

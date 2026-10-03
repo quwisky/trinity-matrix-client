@@ -31,7 +31,6 @@ import {
   type RoomSummary,
   type SpaceSummary,
 } from '@trinity/data-access/room-library';
-import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
   TrnAlertService,
   TrnDialogService,
@@ -55,7 +54,6 @@ beforeEach(() => setRouteRoom(null));
 
 describe('RoomsPage action error feedback', () => {
   let toastShow: Mock;
-  let sendMedia: Mock;
   let setNotifyMode: Mock;
   let leaveRoom: Mock;
   let alertConfirm: Mock;
@@ -81,7 +79,6 @@ describe('RoomsPage action error feedback', () => {
 
   function build() {
     toastShow = vi.fn();
-    sendMedia = vi.fn(() => of(undefined));
     setNotifyMode = vi.fn(() => of(undefined));
     leaveRoom = vi.fn(() => of(undefined));
     alertConfirm = vi.fn(() => of(true));
@@ -175,7 +172,6 @@ describe('RoomsPage action error feedback', () => {
           confirm$: alertConfirm,
           prompt$: alertPrompt,
         }),
-        MockProvider(TimelineActionsService, { sendMedia }),
         MockProvider(MediaPipeline),
         MockProvider(MatrixClientService, {
           isInitialized: true,

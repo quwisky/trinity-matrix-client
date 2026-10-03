@@ -3,7 +3,7 @@ import {
   login,
   waitForSent,
   type Navigate,
-  type SynapseSession,
+  type HomeserverSession,
 } from './app.mts';
 import { registerUser } from './account.mts';
 import { testResourceId } from './namespace.mts';
@@ -54,7 +54,7 @@ export interface InstalledImagePackContext {
 export interface ImagePackManagementJourneyOptions {
   page: Page;
   request: APIRequestContext;
-  session: SynapseSession;
+  session: HomeserverSession;
   navigate?: Navigate;
   verifyInstalledOnSecondClient?: (
     context: InstalledImagePackContext,
@@ -193,7 +193,7 @@ export async function runImagePackManagementJourney({
     },
   );
 
-  const loginSession = { available: true, hs, user, pass } as SynapseSession;
+  const loginSession = { available: true, hs, user, pass } as HomeserverSession;
   if (navigate) {
     await login(page, loginSession, navigate);
   } else {

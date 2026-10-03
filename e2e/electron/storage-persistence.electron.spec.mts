@@ -1,9 +1,9 @@
 import { expect, test } from './fixtures.mts';
-import { login, synapseSession, waitForRooms } from '../support/app.mts';
+import { login, homeserverSession, waitForRooms } from '../support/app.mts';
 import { registerUser } from '../support/account.mts';
 import { createElectronProfile, launchApp } from './support/launch.mts';
 
-const session = synapseSession();
+const session = homeserverSession();
 
 test('restores a signed-in Account without a storage warning after restart', async ({
   request,

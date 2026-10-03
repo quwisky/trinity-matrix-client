@@ -291,30 +291,13 @@ export class MessageComposerComponent {
 
   /**
    * Every way something other than typed text gets into the message: a picked, pasted or
-   * dropped-in file, a GIF, a poll, a location, a voice clip. The signals and methods below
-   * that carry an attachment meaning are this service's, surfaced under their long-standing
-   * names so the template and the consumers of this component see one composer.
+   * dropped-in file, a GIF, a poll, a location, a voice clip. Its signals are bound from the
+   * template as `attachments.x`; its methods are wrapped below where they need composer state.
    */
-  private readonly attachments = inject(ComposerAttachmentsService);
+  protected readonly attachments = inject(ComposerAttachmentsService);
 
-  /** Everything staged for the next submit, in the order it will be sent. */
-  readonly staged = this.attachments.staged;
-  /** Whether anything is staged. */
-  readonly hasStaged = this.attachments.hasStaged;
   readonly pickerOpen = signal(false);
   readonly stickerPickerOpen = signal(false);
-  /** Whether the GIF search grid is open (mutually exclusive with the emoji picker). */
-  readonly gifPickerOpen = this.attachments.gifPickerOpen;
-  /** True while a voice message is being recorded. */
-  readonly recordingVoice = this.attachments.recordingVoice;
-  /** `m:ss` label for the running recording timer. */
-  readonly voiceTimeLabel = this.attachments.voiceTimeLabel;
-  /** True while a chosen GIF is being fetched, before its media upload starts. */
-  readonly gifDownloading = this.attachments.gifDownloading;
-  /** The GIF affordance is offered only once a provider + API key are configured. */
-  readonly gifEnabled = this.attachments.gifEnabled;
-  /** True while a location is being resolved and sent (drives the button's busy state). */
-  readonly locationSharing = this.attachments.locationSharing;
   /**
    * Whether the narrow-layout `+` opens the insert tray rather than the file picker
    * directly. With only one insert action left to offer — the thread composer with no
@@ -327,7 +310,10 @@ export class MessageComposerComponent {
     ),
   );
   readonly hasInsertMenu = computed(
-    () => this.richActions() || this.gifEnabled() || this.stickerEnabled(),
+    () =>
+      this.richActions() ||
+      this.attachments.gifEnabled() ||
+      this.stickerEnabled(),
   );
   /**
    * The three autocomplete menus: `:shortcode`, `@mention` and `/command`.
@@ -363,7 +349,8 @@ export class MessageComposerComponent {
    * an attachment caption never do.
    */
   private readonly parsesCommands = computed(
-    () => !this.editing() && !this.replyingTo() && !this.hasStaged(),
+    () =>
+      !this.editing() && !this.replyingTo() && !this.attachments.hasStaged(),
   );
 
   private readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('ta');
@@ -378,10 +365,6 @@ export class MessageComposerComponent {
   private readonly injector = inject(Injector);
   private readonly emojiIndex = inject(TrnEmojiIndex);
 
-  /** Whether this device can record voice (mic + MediaRecorder present). */
-  get voiceSupported(): boolean {
-    return this.attachments.voiceSupported;
-  }
   private readonly drafts = inject(DraftStoreService);
   private formatSelection: FormatSelection | null = null;
   protected readonly composing = signal(false);
@@ -470,7 +453,7 @@ export class MessageComposerComponent {
           // A recording belongs to the room it was started in — cancel it on a
           // room/thread switch so the mic doesn't stay open and a later Send can't
           // post the clip to the wrong room.
-          if (this.recordingVoice()) {
+          if (this.attachments.recordingVoice()) {
             this.cancelVoiceRecording();
           }
           this.menus.clearChosen(); // they belong to the old conversation
@@ -806,7 +789,7 @@ export class MessageComposerComponent {
   submit(): void {
     // A staged attachment sends as media with the text as its caption. Never mixes
     // with an edit (attach is disabled while editing), so edit mode ignores it.
-    const batch = this.editing() ? [] : this.staged();
+    const batch = this.editing() ? [] : this.attachments.staged();
     if (batch.length) {
       // Emptied BEFORE the dispatch, not after. A send can settle synchronously — a 0-byte
       // file never reaches the network — and `onBatchOutcomes` gives the caption back when
@@ -870,7 +853,7 @@ export class MessageComposerComponent {
     // items call `sendMedia` directly, and unlike the input button they are not disabled
     // while an upload runs. `dispatchMedia` refuses it either way; closing the grid means the
     // user does not lose a chosen GIF to that refusal.
-    this.gifPickerOpen.set(false);
+    this.attachments.gifPickerOpen.set(false);
     // Leaving the preview on is a trap rather than a preference: it hides the textarea, so a
     // composer that lands in preview mode after a send or a room switch looks broken — an
     // empty box that swallows typing until you notice the eye button.
@@ -950,7 +933,7 @@ export class MessageComposerComponent {
 
   /** Toggle the emoji picker, closing the other overlays (only one at a time). */
   toggleEmojiPicker(): void {
-    this.gifPickerOpen.set(false);
+    this.attachments.gifPickerOpen.set(false);
     this.stickerPickerOpen.set(false);
     this.pickerOpen.set(!this.pickerOpen());
   }
@@ -964,7 +947,7 @@ export class MessageComposerComponent {
 
   toggleStickerPicker(): void {
     this.pickerOpen.set(false);
-    this.gifPickerOpen.set(false);
+    this.attachments.gifPickerOpen.set(false);
     this.stickerPickerOpen.update((open) => !open);
   }
 
@@ -996,7 +979,7 @@ export class MessageComposerComponent {
   /** Begin recording a voice message; toasts and resets if the mic is unavailable. */
   async startVoiceRecording(): Promise<void> {
     await this.attachments.startVoiceRecording();
-    if (this.recordingVoice()) {
+    if (this.attachments.recordingVoice()) {
       afterNextRender(() => this.voiceCancel()?.nativeElement.focus(), {
         injector: this.injector,
       });
@@ -1005,7 +988,7 @@ export class MessageComposerComponent {
 
   /** Stop recording and send the clip as a voice message. */
   stopVoiceRecording(): void {
-    const wasRecording = this.recordingVoice();
+    const wasRecording = this.attachments.recordingVoice();
     this.attachments.stopVoiceRecording();
     if (wasRecording) {
       this.field.focusAfterRender();
@@ -1014,7 +997,7 @@ export class MessageComposerComponent {
 
   /** Abort the recording, discarding the clip. */
   cancelVoiceRecording(): void {
-    const wasRecording = this.recordingVoice();
+    const wasRecording = this.attachments.recordingVoice();
     this.attachments.cancelVoiceRecording();
     if (wasRecording) {
       this.field.focusAfterRender();
@@ -1123,8 +1106,8 @@ export class MessageComposerComponent {
       this.pickerOpen.set(false);
       return;
     }
-    if (this.gifPickerOpen()) {
-      this.gifPickerOpen.set(false);
+    if (this.attachments.gifPickerOpen()) {
+      this.attachments.gifPickerOpen.set(false);
       return;
     }
     if (this.stickerPickerOpen()) {
@@ -1134,7 +1117,7 @@ export class MessageComposerComponent {
     // Not while a batch is going out: those rows are what its outcomes will report on, and
     // clearing them means a failure has nowhere to land — the toast would then promise files
     // are "still in the composer" that are not.
-    if (this.hasStaged() && !this.batches.inFlight()) {
+    if (this.attachments.hasStaged() && !this.batches.inFlight()) {
       this.clearStaged();
       return;
     }
@@ -1170,7 +1153,11 @@ export class MessageComposerComponent {
     }
     // Empty composer + Up arrow → edit the last message (Discord-style).
     // Otherwise (editing, typed text, or a staged attachment) move the cursor.
-    if (this.editing() || this.text().length > 0 || this.hasStaged()) {
+    if (
+      this.editing() ||
+      this.text().length > 0 ||
+      this.attachments.hasStaged()
+    ) {
       return;
     }
     event.preventDefault();

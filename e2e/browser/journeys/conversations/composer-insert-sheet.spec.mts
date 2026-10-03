@@ -6,17 +6,17 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
 
-const session = synapseSession();
+const session = homeserverSession();
 let user = '';
 let pass = '';
-let isolatedSession: SynapseSession;
+let isolatedSession: HomeserverSession;
 let roomName = '';
 const pixel = devices['Pixel 5'];
 

@@ -7,8 +7,8 @@ import {
 import {
   clickRowMenuItem,
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -33,7 +33,7 @@ import { registerUser } from '../../../support/account.mts';
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise, like the other
 // authenticated web e2e specs.
-const session = synapseSession();
+const session = homeserverSession();
 
 const OTHER_BODY = 'just chatting';
 const PIN_BODY = 'pin me please';
@@ -90,7 +90,7 @@ async function seedPinRoom(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ reader: SynapseSession; roomName: string }> {
+): Promise<{ reader: HomeserverSession; roomName: string }> {
   const readerUser = `pin-reader-${runId}`;
   const readerPass = `reader-pass-${runId}`;
   const roomName = `Pin E2E ${runId}`;
@@ -137,7 +137,7 @@ async function seedRepeatJumpPinRoom(
   hs: string,
   runId: string,
 ): Promise<{
-  reader: SynapseSession;
+  reader: HomeserverSession;
   roomName: string;
   roomId: string;
   api: ApiUser;

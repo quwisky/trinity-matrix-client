@@ -1,0 +1,53 @@
+# Tuwunel adapter (TRINITY_E2E_HOMESERVER=tuwunel, the default), layered on
+# ../docker-compose.yml. Paths resolve against the shared file's directory.
+#
+# Configuration is the committed tuwunel.toml / tuwunel-remote.toml; only the values
+# that vary with the topology come from the environment (TUWUNEL_* overrides TOML).
+# The image is pinned by version AND digest — bump both together, never `latest`.
+#
+# RocksDB lives on disk in ./data/tuwunel and ./remote-data/tuwunel, which stop.mjs
+# deletes: a Tuwunel database is bound to its server_name for life, so every run must
+# start empty. The containers run as the invoking user so that deletion is possible.
+services:
+  # Shares Dex's network namespace so the issuer http://localhost:5556/dex is the same
+  # URL for the browser (published port) and for Tuwunel's own back-channel calls:
+  # Tuwunel follows the discovery document, which can only carry one issuer address.
+  homeserver:
+    image: ghcr.io/matrix-construct/tuwunel:v1.9.3@sha256:678b7f5350e06a41614444497c587da9dddf66767e4068a27480402f3c1367d0
+    container_name: trinity-e2e-homeserver
+    restart: 'no'
+    network_mode: 'service:dex'
+    user: '${TRINITY_E2E_UID:-1000}:${TRINITY_E2E_GID:-1000}'
+    environment:
+      TUWUNEL_CONFIG: /etc/tuwunel/tuwunel.toml
+      TUWUNEL_SERVER_NAME: localhost
+    volumes:
+      - ${TRINITY_E2E_STATE_DIR:-.}/tuwunel/tuwunel.toml:/etc/tuwunel/tuwunel.toml:ro
+      - ${TRINITY_E2E_STATE_DIR:-.}/data/tuwunel:/var/lib/tuwunel
+
+  # The federated second server. Shares Caddy's namespace like the Synapse adapter's, so
+  # it reaches the primary's federation front at localhost:443.
+  homeserver-remote:
+    image: ghcr.io/matrix-construct/tuwunel:v1.9.3@sha256:678b7f5350e06a41614444497c587da9dddf66767e4068a27480402f3c1367d0
+    container_name: trinity-e2e-homeserver-remote
+    restart: 'no'
+    network_mode: 'service:caddy'
+    user: '${TRINITY_E2E_UID:-1000}:${TRINITY_E2E_GID:-1000}'
+    environment:
+      TUWUNEL_CONFIG: /etc/tuwunel/tuwunel.toml
+      # caddy:9448 on the compose network, localhost:9448 under the netns override.
+      TUWUNEL_SERVER_NAME: ${TRINITY_E2E_REMOTE_SERVER_NAME:-caddy:9448}
+    volumes:
+      - ${TRINITY_E2E_STATE_DIR:-.}/tuwunel/tuwunel-remote.toml:/etc/tuwunel/tuwunel.toml:ro
+      - ${TRINITY_E2E_STATE_DIR:-.}/remote-data/tuwunel:/var/lib/tuwunel
+
+  dex:
+    ports:
+      # The primary Tuwunel lives in this namespace, so its listener is published here.
+      - '127.0.0.1:8008:8008'
+
+  caddy:
+    depends_on:
+      - homeserver
+    environment:
+      TRINITY_E2E_HOMESERVER_UPSTREAM: dex:8008

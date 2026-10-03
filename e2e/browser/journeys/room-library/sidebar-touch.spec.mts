@@ -1,8 +1,8 @@
 import { testResourceId, test, expect, devices } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -19,7 +19,7 @@ import { registerUser } from '../../../support/account.mts';
 // `.channel__menu` directly and never consult a media query, so nothing caught it.
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 // A mobile descriptor, which is what makes Chromium report `hover: none` and
 // `pointer: coarse` — the two media features the rules under test key off.
@@ -54,7 +54,7 @@ test.describe('Sidebar on a touch device', () => {
       data: { name: roomName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
 
     // Confirm the emulation actually took, or every assertion below would be about the
     // desktop rules and the spec would pass while proving nothing.

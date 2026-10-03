@@ -1,8 +1,8 @@
 import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
@@ -13,7 +13,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // unverified session, so the section offers "Set up recovery" (routes to /encryption/setup)
 // and "Verify with another device". A fresh user keeps the crypto state deterministic.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface TrustFaultWindow extends Window {
   ng: {
@@ -56,7 +56,7 @@ test.describe('Security settings', () => {
     const pass = `${user}-pass`;
 
     await registerUser(request, user, pass);
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
 
     await openSettingsSection(page, 'security');
 
@@ -92,7 +92,7 @@ test.describe('Security settings', () => {
 
     await page.setViewportSize({ width: 700, height: 760 });
     await registerUser(request, user, pass);
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const roomUrl = page.url();
 
     await openSettingsSection(page, 'security');
@@ -124,7 +124,7 @@ test.describe('Security settings', () => {
     const pass = `${user}-pass`;
 
     await registerUser(request, user, pass);
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSettingsSection(page, 'security');
     await expect(page.getByTestId('security-setup')).toBeVisible({
       timeout: 20_000,

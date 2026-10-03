@@ -6,8 +6,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -20,7 +20,7 @@ import { registerUser } from '../../../support/account.mts';
 //
 // CI is Linux, so the accelerator is Control (the app binds both Control and Meta).
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   token: string;
@@ -109,7 +109,7 @@ test.describe('Keyboard room switching', () => {
       );
     }
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
 
     // The active room is the one carrying `.channel.active` in the sidebar.
     const active = page.locator('trn-channel-sidebar .channel.active');

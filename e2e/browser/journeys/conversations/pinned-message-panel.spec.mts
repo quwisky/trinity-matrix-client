@@ -6,8 +6,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -24,7 +24,7 @@ import { registerUser } from '../../../support/account.mts';
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise, like the other
 // authenticated web e2e specs.
-const session = synapseSession();
+const session = homeserverSession();
 
 /**
  * A room containing two messages, both pinned via `m.room.pinned_events` (pin order =
@@ -36,7 +36,7 @@ async function seedPinnedRoom(
   hs: string,
   runId: string,
 ): Promise<{
-  reader: SynapseSession;
+  reader: HomeserverSession;
   roomName: string;
   keepBody: string;
   unpinBody: string;

@@ -7,14 +7,14 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 // End-to-end for "seen by" read receipts: when another member reads a message, their
 // avatar appears on it in the reader's timeline. Needs Synapse (Docker).
-const session = synapseSession();
+const session = homeserverSession();
 
 async function apiToken(
   request: APIRequestContext,
@@ -114,7 +114,7 @@ test.describe('Read receipts (seen by)', () => {
       hs,
       user: `rcpt-reader-${runId}`,
       pass: 'pass-reader',
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
 
     // The seer's read receipt renders as a "seen by" avatar group on the message.
