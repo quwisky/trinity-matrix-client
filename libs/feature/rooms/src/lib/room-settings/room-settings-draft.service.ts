@@ -15,7 +15,11 @@ import {
   type RoomSettingsSnapshot,
   type RoomSettingsTarget,
 } from '@trinity/data-access/room-administration';
-import { saveFields, type FieldWrite } from '../shared/save-fields';
+import {
+  runSave,
+  type FieldWrite,
+  type SettingsFeedback,
+} from '../shared/save-fields';
 import { applyRoomBasicsGates } from '../shared/room-basics-form';
 import {
   type AccessBaseline,
@@ -25,16 +29,10 @@ import {
   ROOM_HISTORY_OPTIONS,
   type RoomSettingsModel,
   sameMembers,
-  sentenceList,
   withCurrentHistory,
   withCurrentRule,
 } from './room-settings-draft.models';
 import type { ParentSpace } from './room-settings.models';
-
-export interface RoomSettingsFeedback {
-  readonly tone: 'success' | 'danger';
-  readonly message: string;
-}
 
 /** Owns Room-settings drafts independently of Workspace and authoritative sync updates. */
 @Injectable()
@@ -64,12 +62,8 @@ export class RoomSettingsDraftService {
     historyVisibility: HistoryVisibility.Shared,
   });
   private readonly savingState = signal<'general' | 'access' | null>(null);
-  private readonly generalFeedbackState = signal<RoomSettingsFeedback | null>(
-    null,
-  );
-  private readonly accessFeedbackState = signal<RoomSettingsFeedback | null>(
-    null,
-  );
+  private readonly generalFeedbackState = signal<SettingsFeedback | null>(null);
+  private readonly accessFeedbackState = signal<SettingsFeedback | null>(null);
 
   readonly snapshot = this.snapshotState.asReadonly();
   readonly model = this.modelState.asReadonly();
@@ -351,44 +345,20 @@ export class RoomSettingsDraftService {
     blocked: readonly string[],
     commit: (saved: ReadonlySet<string>) => void,
   ): void {
-    if (writes.length === 0) {
-      this.setFeedback(section, {
-        tone: 'danger',
-        message: `${sentenceList(blocked)} could not be saved with your current permissions. Your edits are still here.`,
-      });
-      return;
-    }
-    this.savingState.set(section);
-    this.setFeedback(section, null);
-    saveFields(writes)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(({ saved, failed }) => {
-        this.savingState.set(null);
-        commit(new Set(saved));
-        const remaining = [...failed, ...blocked];
-        if (remaining.length === 0) {
-          this.setFeedback(section, {
-            tone: 'success',
-            message: `${sentenceList(saved)} saved.`,
-          });
-          return;
-        }
-        const message = saved.length
-          ? `${sentenceList(saved)} saved. ${sentenceList(remaining)} ${remaining.length === 1 ? 'is' : 'are'} still unsaved; retry saves only what remains.`
-          : `${sentenceList(remaining)} could not be saved. Your edits are still here.`;
-        this.setFeedback(section, { tone: 'danger', message });
-        this.toast.show(message, { duration: 5000, variant: 'danger' });
-      });
-  }
-
-  private setFeedback(
-    section: 'general' | 'access',
-    feedback: RoomSettingsFeedback | null,
-  ): void {
-    (section === 'general'
-      ? this.generalFeedbackState
-      : this.accessFeedbackState
-    ).set(feedback);
+    runSave({
+      writes,
+      blocked,
+      emptyLabel: 'Room details',
+      destroyRef: this.destroyRef,
+      toast: this.toast,
+      setSaving: (on) => this.savingState.set(on ? section : null),
+      setFeedback: (feedback) =>
+        (section === 'general'
+          ? this.generalFeedbackState
+          : this.accessFeedbackState
+        ).set(feedback),
+      commit,
+    });
   }
 
   private commitGeneral(

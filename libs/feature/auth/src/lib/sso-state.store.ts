@@ -2,24 +2,13 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { type LoginMode } from '@trinity/data-access/auth';
 import { DevicePreferenceStorageService } from '@trinity/platform-native';
+import { isFresh } from './stash-freshness';
 
 const STATE_KEY = 'sso.state';
 const BASE_URL_KEY = 'sso.baseUrl';
 const STARTED_KEY = 'sso.startedAt';
 const MODE_KEY = 'sso.mode';
 const DEVICE_ID_KEY = 'sso.deviceId';
-
-/** SSO round-trips are short; reject a stash older than this to limit replay. */
-const TTL_MS = 10 * 60 * 1000; // 10 minutes
-/**
- * How far the stash may appear to have been written in the FUTURE before it is rejected.
- * The lower bound exists so a clock nudged forward cannot mint a stash that never expires
- * — but a zero-tolerance version fails an ordinary login, because the same event class
- * (a clock stepped backwards: NITZ/NTP after airplane mode, a laptop resuming from sleep,
- * w32time) can land mid-round-trip while the user is typing at the provider. A minute
- * survives normal clock discipline and still bins a stash written hours ahead.
- */
-const CLOCK_SKEW_MS = 60 * 1000;
 
 /** The single-use SSO stash read back on the callback (each field may be absent). */
 export interface SsoStateStash {
@@ -84,14 +73,7 @@ export class SsoStateStore {
       ]),
     );
 
-    const started = Number(startedAt);
-    const age = Date.now() - started;
-    // Two-sided, matching {@link OidcStateStore.peek}. `age <= TTL_MS` alone treats a
-    // FUTURE timestamp as fresh, so a stash written before the clock was corrected
-    // backwards would never expire — and the TTL is what bounds the window in which a
-    // leaked `sso_state` nonce still buys an attacker a forged callback.
-    const fresh =
-      Number.isFinite(started) && age >= -CLOCK_SKEW_MS && age <= TTL_MS;
+    const fresh = isFresh(startedAt);
     if (!fresh) {
       return { state: null, baseUrl: null, mode: 'replace', deviceId: null };
     }
