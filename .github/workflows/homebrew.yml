@@ -116,8 +116,13 @@ jobs:
           mkdir -p tap/Casks tap/audit_exceptions
           node scripts/homebrew-cask.mjs --cask "$CASK" --version "$VERSION" --sha256 "$sha" > "tap/Casks/$CASK.rb"
           # trinity@next deliberately points at GitHub prereleases, which brew audit
-          # rejects unless the tap allowlists the cask.
-          echo '{ "trinity@next": "all" }' > tap/audit_exceptions/github_prerelease_allowlist.json
+          # rejects unless the tap allowlists the cask. The allowlist may only name casks
+          # the tap contains, so it exists only once the prerelease cask does.
+          if [ -f tap/Casks/trinity@next.rb ]; then
+            echo '{ "trinity@next": "all" }' > tap/audit_exceptions/github_prerelease_allowlist.json
+          else
+            rm -f tap/audit_exceptions/github_prerelease_allowlist.json
+          fi
           if [ -z "$(git -C tap status --porcelain -- "Casks/$CASK.rb" audit_exceptions)" ]; then
             echo "Casks/$CASK.rb already describes $VERSION; nothing to push."
             exit 0

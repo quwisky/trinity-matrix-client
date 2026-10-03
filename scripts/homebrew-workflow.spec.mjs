@@ -61,10 +61,15 @@ describe('Homebrew tap workflow', () => {
     expect(job.env.HOMEBREW_GITHUB_API_TOKEN).toBe('${{ github.token }}');
   });
 
-  it('allowlists trinity@next for the GitHub prerelease audit in the tap', () => {
+  it('allowlists trinity@next for the GitHub prerelease audit only while the tap has it', () => {
     const run = job.steps[stepIndex('Write, check and push the cask')].run;
     expect(run).toContain('audit_exceptions/github_prerelease_allowlist.json');
     expect(run).toContain('{ "trinity@next": "all" }');
+    // brew audit rejects an allowlist naming a cask the tap does not contain, which broke
+    // the first stable release before any prerelease cask existed.
+    expect(run).toMatch(
+      /if \[ -f tap\/Casks\/trinity@next\.rb \]; then\n\s+echo '\{ "trinity@next": "all" \}' > tap\/audit_exceptions\/github_prerelease_allowlist\.json\n\s*else\n\s+rm -f tap\/audit_exceptions\/github_prerelease_allowlist\.json\n\s*fi/,
+    );
     expect(run.indexOf('github_prerelease_allowlist')).toBeLessThan(
       run.indexOf('brew audit --cask'),
     );

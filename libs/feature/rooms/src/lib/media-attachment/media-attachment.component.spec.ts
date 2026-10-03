@@ -108,6 +108,31 @@ describe('MediaAttachmentComponent', () => {
     expect(fixture.componentInstance.src()).toBeNull();
   });
 
+  it.each([
+    ['video', 'clip.mp4', 'video/mp4'],
+    ['audio', 'note.ogg', 'audio/ogg'],
+  ])(
+    'plays a %s from its full source, never the bundled thumbnail',
+    async (kind, filename, mimeType) => {
+      mediaService.resolveMedia.mockReturnValue(of('blob:full'));
+      const media = {
+        ...imageMedia(),
+        kind,
+        filename,
+        mimeType,
+      } as PresentedMediaReference;
+      const { fixture } = await renderMedia(media);
+
+      // A <video>/<audio> src must be the media itself: the thumbnail is a still image.
+      expect(mediaService.resolveMedia).toHaveBeenCalledWith(media, 'full');
+      expect(mediaService.resolveMedia).not.toHaveBeenCalledWith(
+        media,
+        'thumbnail',
+      );
+      expect(fixture.componentInstance.src()).toBe('blob:full');
+    },
+  );
+
   it('does not resolve a thumbnail for a file attachment (download-only card)', async () => {
     const media: PresentedMediaReference = {
       ...imageMedia(),
