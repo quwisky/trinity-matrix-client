@@ -312,6 +312,12 @@ test('applies production Appearance through the custom protocol', async () => {
     await expect(page.locator('html')).not.toHaveAttribute('data-density');
 
     await page.emulateMedia({ colorScheme: 'dark' });
+    // Separates "the page never saw dark" from "the app ignored it".
+    await expect
+      .poll(() =>
+        page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches),
+      )
+      .toBe(true);
     await expect(page.locator('html')).toHaveClass(/\bdark\b/);
 
     await setAppearance({
