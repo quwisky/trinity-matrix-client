@@ -20,7 +20,7 @@ export async function fillByLabel(label: string, value: string): Promise<void> {
 }
 
 /** Wait for the stable, account-qualified Rooms destination (mirrors the browser suite). */
-export async function waitForRooms(): Promise<void> {
+export async function waitForRooms(timeout = 30_000): Promise<void> {
   await browser.waitUntil(
     async () => {
       const url = new URL(await browser.getUrl());
@@ -29,7 +29,7 @@ export async function waitForRooms(): Promise<void> {
         (url.searchParams.get('account')?.length ?? 0) > 0
       );
     },
-    { timeout: 30_000, timeoutMsg: 'never reached /rooms?account=…' },
+    { timeout, timeoutMsg: 'never reached /rooms?account=…' },
   );
 }
 
