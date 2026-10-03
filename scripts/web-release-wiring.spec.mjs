@@ -91,7 +91,7 @@ describe('web release docs', () => {
   it('cover the first publish and a dropped container run', () => {
     expect(guide).toContain('package visibility to **Public**');
     expect(guide).toMatch(/Container run cancelled[^\n]*dispatch/i);
-    expect(readme).toContain('ghcr.io/quwisky/trinity-web:next');
+    expect(readme).toContain('ghcr.io/quwisky/trinity-web:latest');
   });
 });
 
