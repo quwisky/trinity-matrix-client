@@ -13,7 +13,7 @@ public developer guide.
 | Workflow                                                   | Starts when                                                          | What it provides                                                                                         |
 | ---------------------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | [`ci.yml`](../../.github/workflows/ci.yml)                 | A pull request, selected pushes, or its weekly schedule              | Branch checks and browser, desktop, and Android evidence                                                 |
-| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml) | A `develop` push or manual dispatch from `develop`                   | Validated user and developer sites deployed to GitHub Pages                                              |
+| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml) | A `develop` push, a published stable release, or a manual dispatch   | Validated user and developer sites deployed to GitHub Pages                                              |
 | [`release.yml`](../../.github/workflows/release.yml)       | A push to `develop` or `main`, or a manual dispatch with a tag input | release-please release PRs and tags, then tag verification, desktop packages, and a draft GitHub release |
 | [`homebrew.yml`](../../.github/workflows/homebrew.yml)     | A release is published, or a manual dispatch with a tag input        | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                       |
 | [`renovate.yml`](../../.github/workflows/renovate.yml)     | Daily at 00:00 UTC or a manual dispatch                              | Dependency update maintenance through a GitHub App token                                                 |
@@ -216,9 +216,15 @@ whatever reached `develop` after the bootstrap commit. Both configs carry a
 `bootstrap-sha` so release-please's first runs do not read the project's whole
 history; once the `v0.1.0` release exists it no longer matters.
 
-When the first release is published, also switch `apps/docs-users/release.json`
-to `published` and update the README's "has not published its first release"
-notice.
+The stable release PR also bumps the user guide: `version` in
+`apps/docs-users/release.json` and every version string on its pages. Mark a version on
+a page with `x-release-please-version` on its line, or wrap the body in
+`x-release-please-start-version` / `x-release-please-end` comments; the updater replaces
+only the first version on each line. `scripts/user-guide-release-version.spec.mjs`
+rejects unmarked versions. Prereleases leave the user guide alone. The developer
+guide always deploys from `develop`. Between the back-merge and publishing the release,
+`docs-pages.yml` builds the user guide from the newest commit whose version is
+published, and publishing the release re-runs the workflow on `develop` to switch it.
 
 The release verifier checks the tag format, ancestry and both manifest versions.
 Ancestry shows that the commit is contained in `develop` or `main`; it does not
