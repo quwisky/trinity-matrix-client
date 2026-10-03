@@ -7,15 +7,13 @@ import { describe, expect, it } from 'vitest';
 // directory with a Vitest target; the helm component libs themselves are
 // lint/build-only. (They used to live in the overlay library, which has since moved
 // out to `libs/components/overlay` and is no longer part of the kit at all.)
-import { badgeVariants } from '@trinity/helm/badge';
 import { buttonVariants, HlmButton } from '@trinity/helm/button';
 import { HlmSpinner } from '@trinity/helm/spinner';
 
 // The generated helm libs (libs/spartan/*) shipped with no specs of their own, and
 // the old Trn* wrapper specs were deleted when the app swapped to these directly.
 // This restores focused coverage for the pieces most likely to regress silently:
-// our badge cva customization (success/warning tokens), the button cva contract,
-// and a render smoke test proving each directive/component instantiates.
+// the button cva contract, and a render smoke test proving each directive/component instantiates.
 //
 // NOTE: helm components style their host via the async `classes()` manager (an
 // `effect()` + a global `MutationObserver`, see libs/spartan/utils/src/lib/hlm.ts).
@@ -23,37 +21,6 @@ import { HlmSpinner } from '@trinity/helm/spinner';
 // asserting exact host className text here would be flaky. Instead we assert the
 // cva functions directly (pure, synchronous) and that components render without
 // throwing — never the applied host classes.
-
-describe('badgeVariants (hlm-badge cva)', () => {
-  it('uses the invariant pill radius instead of Tailwind radius steps', () => {
-    const classes = badgeVariants({ variant: 'default' });
-    expect(classes).toContain('rounded-full');
-    expect(classes).not.toMatch(/\brounded-(?:2xl|3xl|4xl)\b/u);
-  });
-
-  it('maps the success status variant to the success token classes', () => {
-    const classes = badgeVariants({ variant: 'success' });
-    expect(classes).toContain('bg-success');
-    expect(classes).toContain('text-success-foreground');
-  });
-
-  it('maps the warning status variant to the warning token classes', () => {
-    const classes = badgeVariants({ variant: 'warning' });
-    expect(classes).toContain('bg-warning');
-    expect(classes).toContain('text-warning-foreground');
-  });
-
-  it('still resolves the stock default variant', () => {
-    const classes = badgeVariants({ variant: 'default' });
-    expect(classes).toContain('bg-primary');
-    expect(classes).toContain('text-primary-foreground');
-  });
-
-  it('still resolves the stock destructive variant', () => {
-    const classes = badgeVariants({ variant: 'destructive' });
-    expect(classes).toContain('text-destructive');
-  });
-});
 
 describe('buttonVariants (hlm-button cva)', () => {
   it('combines the default variant with the default size', () => {

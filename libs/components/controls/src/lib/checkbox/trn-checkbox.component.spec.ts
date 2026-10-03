@@ -1,11 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { render } from '@trinity/testing';
-import { describe, expect, expectTypeOf, it } from 'vitest';
-import {
-  TrnCheckboxComponent,
-  type TrnCheckboxSize,
-  type TrnCheckboxVariant,
-} from './trn-checkbox.component';
+import { describe, expect, it } from 'vitest';
+import { TrnCheckboxComponent } from './trn-checkbox.component';
 
 @Component({
   imports: [TrnCheckboxComponent],
@@ -15,8 +11,6 @@ import {
       [disabled]="disabled()"
       [indeterminate]="indeterminate()"
       [invalid]="invalid()"
-      variant="neutral"
-      size="sm"
       aria-label="Send read receipts"
       aria-describedby="receipt-help"
       (checkedChange)="last.set($event)"
@@ -35,13 +29,6 @@ const box = (container: Element) =>
   container.querySelector<HTMLInputElement>('[role="checkbox"]');
 
 describe('TrnCheckboxComponent', () => {
-  it('limits the public recipe to implemented variants and sizes', () => {
-    expectTypeOf<TrnCheckboxVariant>().toEqualTypeOf<'neutral' | 'accent'>();
-    expectTypeOf<'danger'>().not.toExtend<TrnCheckboxVariant>();
-    expectTypeOf<TrnCheckboxSize>().toEqualTypeOf<'sm' | 'md'>();
-    expectTypeOf<'lg'>().not.toExtend<TrnCheckboxSize>();
-  });
-
   it('reflects the bound state onto the rendered control', async () => {
     // Assert through the native input's ARIA state rather than a presentation class, because
     // ARIA is what both a screen reader and the e2e suite read
@@ -67,15 +54,13 @@ describe('TrnCheckboxComponent', () => {
     );
   });
 
-  it('maps size, tone, indeterminate and invalid state onto the real control', async () => {
+  it('maps indeterminate and invalid state onto the real control', async () => {
     const { container, fixture } = await render(HostComponent);
     fixture.componentInstance.indeterminate.set(true);
     fixture.componentInstance.invalid.set(true);
     await fixture.whenStable();
 
     const host = container.querySelector('trn-checkbox');
-    expect(host?.getAttribute('data-size')).toBe('sm');
-    expect(host?.getAttribute('data-variant')).toBe('neutral');
     expect(host?.getAttribute('data-invalid')).toBe('true');
     expect(box(container)?.getAttribute('aria-checked')).toBe('mixed');
     expect(box(container)?.getAttribute('aria-invalid')).toBe('true');
@@ -105,8 +90,6 @@ describe('TrnCheckboxComponent', () => {
     fixture.componentInstance.disabled.set(true);
     fixture.detectChanges();
 
-    const host = container.querySelector('trn-checkbox');
-    expect(host?.getAttribute('data-size')).toBe('sm');
     expect(box(container)?.disabled).toBe(true);
   });
 });

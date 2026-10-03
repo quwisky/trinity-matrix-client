@@ -4,8 +4,6 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   TrnRadioGroupComponent,
   type TrnRadioGroupLayout,
-  type TrnRadioGroupSize,
-  type TrnRadioGroupVariant,
   type TrnRadioOption,
 } from './trn-radio-group.component';
 
@@ -45,8 +43,6 @@ class HostComponent {
   template: `
     <trn-radio-group
       layout="segmented"
-      variant="accent"
-      size="sm"
       invalid
       aria-labelledby="mode-heading"
       [options]="options"
@@ -59,22 +55,16 @@ class CanonicalHostComponent {
 }
 
 describe('TrnRadioGroupComponent', () => {
-  it('separates semantic variants, ordinal sizes and structural layout', () => {
-    expectTypeOf<TrnRadioGroupVariant>().toEqualTypeOf<'neutral' | 'accent'>();
-    expectTypeOf<'danger'>().not.toExtend<TrnRadioGroupVariant>();
-    expectTypeOf<TrnRadioGroupSize>().toEqualTypeOf<'sm' | 'md'>();
-    expectTypeOf<'lg'>().not.toExtend<TrnRadioGroupSize>();
+  it('limits the structural layout', () => {
     expectTypeOf<TrnRadioGroupLayout>().toEqualTypeOf<'list' | 'segmented'>();
   });
 
-  it('renders canonical style inputs and invalid state on the radiogroup', async () => {
+  it('renders the layout and invalid state on the radiogroup', async () => {
     const { container } = await render(CanonicalHostComponent);
     const host = container.querySelector('trn-radio-group');
     const group = container.querySelector('[role=radiogroup]');
 
     expect(host?.getAttribute('data-layout')).toBe('segmented');
-    expect(host?.getAttribute('data-variant')).toBe('accent');
-    expect(host?.getAttribute('data-size')).toBe('sm');
     expect(group?.getAttribute('aria-invalid')).toBe('true');
   });
   it('renders one label per option, and wraps the radio in it', async () => {
@@ -137,7 +127,6 @@ describe('TrnRadioGroupComponent', () => {
     const selected = container.querySelector('[data-testid=theme-system]');
 
     expect(host?.getAttribute('data-layout')).toBe('segmented');
-    expect(host?.getAttribute('data-variant')).toBe('neutral');
     expect(selected?.getAttribute('data-state')).toBe('selected');
   });
 });

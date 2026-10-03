@@ -9,12 +9,7 @@ import {
 import {
   trnSwitchRecipe,
   trnSwitchThumbRecipe,
-  type TrnChoiceSize,
-  type TrnChoiceVariant,
 } from '../choice-control/trn-choice-control-recipe';
-
-export type TrnSwitchSize = TrnChoiceSize;
-export type TrnSwitchVariant = TrnChoiceVariant;
 
 /**
  * Trinity's switch: a preference that takes effect as you set it.
@@ -54,10 +49,6 @@ export type TrnSwitchVariant = TrnChoiceVariant;
   styles: [
     '@layer components { :host { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: var(--trinity-interaction-target-min-size); min-height: var(--trinity-interaction-target-min-size); } }',
   ],
-  host: {
-    '[attr.data-size]': 'size()',
-    '[attr.data-variant]': 'variant()',
-  },
   template: `
     <input
       class="peer absolute inset-0 z-10 size-full cursor-pointer opacity-0 disabled:cursor-default"
@@ -73,7 +64,7 @@ export type TrnSwitchVariant = TrnChoiceVariant;
     />
     <span
       aria-hidden="true"
-      [class]="controlClass()"
+      [class]="controlClass"
       [attr.data-checked]="checked()"
     >
       <span [class]="thumbClass()"></span>
@@ -81,11 +72,9 @@ export type TrnSwitchVariant = TrnChoiceVariant;
   `,
 })
 export class TrnSwitchComponent {
-  protected readonly controlClass = computed(() =>
-    trnSwitchRecipe(this.variant(), this.size()),
-  );
+  protected readonly controlClass = trnSwitchRecipe();
   protected readonly thumbClass = computed(() =>
-    trnSwitchThumbRecipe(this.checked(), this.size(), this.variant()),
+    trnSwitchThumbRecipe(this.checked()),
   );
 
   protected onCheckedChange(event: Event): void {
@@ -94,8 +83,6 @@ export class TrnSwitchComponent {
 
   readonly checked = input(false, { transform: booleanAttribute });
   readonly disabled = input(false, { transform: booleanAttribute });
-  readonly variant = input<TrnChoiceVariant>('accent');
-  readonly size = input<TrnChoiceSize>('md');
 
   /** For a switch with no visible label of its own. */
   readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });

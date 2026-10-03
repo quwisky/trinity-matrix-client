@@ -2,18 +2,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   booleanAttribute,
-  computed,
   input,
   output,
 } from '@angular/core';
-import {
-  trnCheckboxRecipe,
-  type TrnChoiceSize,
-  type TrnChoiceVariant,
-} from '../choice-control/trn-choice-control-recipe';
-
-export type TrnCheckboxSize = TrnChoiceSize;
-export type TrnCheckboxVariant = TrnChoiceVariant;
+import { trnCheckboxRecipe } from '../choice-control/trn-choice-control-recipe';
 
 /**
  * Trinity's checkbox.
@@ -37,8 +29,6 @@ export type TrnCheckboxVariant = TrnChoiceVariant;
     '@layer components { :host { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: var(--trinity-interaction-target-min-size); min-height: var(--trinity-interaction-target-min-size); } }',
   ],
   host: {
-    '[attr.data-size]': 'size()',
-    '[attr.data-variant]': 'variant()',
     '[attr.data-invalid]': 'invalid() ? "true" : null',
   },
   template: `
@@ -57,7 +47,7 @@ export type TrnCheckboxVariant = TrnChoiceVariant;
     />
     <span
       aria-hidden="true"
-      [class]="controlClass()"
+      [class]="controlClass"
       [attr.data-checked]="checked() || indeterminate() ? '' : null"
       [attr.data-invalid]="invalid() ? 'true' : null"
     >
@@ -70,9 +60,7 @@ export type TrnCheckboxVariant = TrnChoiceVariant;
   `,
 })
 export class TrnCheckboxComponent {
-  protected readonly controlClass = computed(() =>
-    trnCheckboxRecipe(this.variant(), this.size()),
-  );
+  protected readonly controlClass = trnCheckboxRecipe();
 
   protected onCheckedChange(event: Event): void {
     const control = event.currentTarget as HTMLInputElement;
@@ -86,8 +74,6 @@ export class TrnCheckboxComponent {
   readonly indeterminate = input(false, { transform: booleanAttribute });
   readonly disabled = input(false, { transform: booleanAttribute });
   readonly invalid = input(false, { transform: booleanAttribute });
-  readonly variant = input<TrnChoiceVariant>('accent');
-  readonly size = input<TrnChoiceSize>('md');
 
   /** For a checkbox with no visible label of its own. */
   readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });

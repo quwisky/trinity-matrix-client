@@ -143,12 +143,8 @@ describe('cascade layer contract', () => {
     ]);
     expect(topLevelStyleBlocks(adapter).map(({ prelude }) => prelude)).toEqual([
       '@custom-variant data-checked',
-      '@custom-variant data-unchecked',
-      '@custom-variant data-active',
       '@custom-variant data-open',
       '@custom-variant data-closed',
-      '@custom-variant data-horizontal',
-      '@custom-variant data-vertical',
       '@utility no-scrollbar',
       '@theme inline',
       '@layer theme',

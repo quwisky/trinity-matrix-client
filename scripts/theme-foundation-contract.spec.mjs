@@ -200,7 +200,11 @@ describe('Theme Foundation repository contract', () => {
         'shadow-overlay',
         1,
       ],
-      ['libs/spartan/badge/src/lib/hlm-badge.ts', 'rounded-full', 1],
+      [
+        'libs/components/generic-content/src/lib/badge/trn-badge-recipe.ts',
+        'rounded-full',
+        1,
+      ],
       ['libs/spartan/avatar/src/lib/hlm-avatar.ts', '--trn-avatar-radius', 4],
     ];
 
