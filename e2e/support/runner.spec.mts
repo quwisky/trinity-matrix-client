@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { prepareWebBundle, runPlaywright } from './run-playwright.mts';
 import { recoverResourceLock, resourceLockFile } from './recover-lock.mts';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   acquireHomeserverLease,
   homeserverLockFile,
@@ -14,11 +14,19 @@ describe('E2E runner boundaries', () => {
 
   it('rejects an unknown homeserver kind before taking the lease', async () => {
     vi.stubEnv('TRINITY_E2E_HOMESERVER', 'dendrite');
+    // Compare, not assume: a harness running elsewhere may legitimately hold the lease.
+    const before = existsSync(homeserverLockFile)
+      ? readFileSync(homeserverLockFile, 'utf8')
+      : null;
     try {
       await expect(acquireHomeserverLease()).rejects.toThrow(
         /expected one of: tuwunel, synapse/,
       );
-      expect(existsSync(homeserverLockFile)).toBe(false);
+      expect(
+        existsSync(homeserverLockFile)
+          ? readFileSync(homeserverLockFile, 'utf8')
+          : null,
+      ).toBe(before);
     } finally {
       vi.unstubAllEnvs();
     }
