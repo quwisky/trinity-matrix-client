@@ -1,3 +1,4 @@
+import { writeFile } from 'node:fs/promises';
 import {
   expect,
   test as environmentTest,
@@ -12,9 +13,11 @@ import {
 } from '../support/namespace.mts';
 import { readSession } from '../support/session.mts';
 import { MatrixTestResources } from '../support/test-resources.mts';
+import { electronDiagnostics } from './support/launch.mts';
 
 /** Electron owns its runner adapter while reusing only support-level test resources. */
 export const test = environmentTest.extend<{
+  electronFailureDiagnostics: void;
   matrixResources: MatrixTestResources;
   resourceCleanup: void;
   resourceNamespace: TestResourceNamespace;
@@ -37,6 +40,21 @@ export const test = environmentTest.extend<{
       void request;
       await use();
       await resourceNamespace.cleanup();
+    },
+    { auto: true },
+  ],
+  // CI keeps no renderer output for an attached Electron page, so a failure records it.
+  electronFailureDiagnostics: [
+    async ({}, use, testInfo) => {
+      await use();
+      if (testInfo.status === testInfo.expectedStatus) return;
+      // A file, not a body: reporters truncate inline text and the DOM is the point.
+      const path = testInfo.outputPath('electron-diagnostics.txt');
+      await writeFile(path, await electronDiagnostics());
+      await testInfo.attach('electron-diagnostics', {
+        path,
+        contentType: 'text/plain',
+      });
     },
     { auto: true },
   ],
