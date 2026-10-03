@@ -164,10 +164,11 @@ test.describe('Settings', () => {
   test('shows the app version and commit in the settings footer', async ({
     page,
   }) => {
-    // "Trinity v<semver> · <short commit>" — the version + a real git short hash
-    // regenerated at build time (a `-dirty` suffix may follow on a modified tree).
+    // "Trinity v<semver> · <short commit>" — the version (a `-next.N` prerelease on
+    // develop) + a real git short hash regenerated at build time (a `-dirty` suffix
+    // may follow on a modified tree).
     await expect(page.getByTestId('settings-build')).toHaveText(
-      /Trinity v\d+\.\d+\.\d+ · [0-9a-f]{7}/,
+      /Trinity v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)? · [0-9a-f]{7}/,
     );
   });
 
