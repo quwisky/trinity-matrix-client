@@ -219,13 +219,14 @@ describe('notification-presentation IPC', () => {
     ).toHaveBeenCalledExactlyOnceWith(NOTIFICATION_CLICK_CHANNEL, destination);
   });
 
-  it('adds the colored icon on Windows/Linux but leaves macOS to its themed bundle icon', async () => {
+  it('adds the colored icon only on Linux; macOS and Windows already show the app icon', async () => {
     const platform = process.platform;
     mocks.iconPaths = ['/res/notificationIcon.png'];
     try {
       for (const [host, hasIcon] of [
         ['linux', true],
         ['darwin', false],
+        ['win32', false],
       ] as const) {
         Object.defineProperty(process, 'platform', { value: host });
         vi.resetModules();

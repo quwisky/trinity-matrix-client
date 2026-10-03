@@ -23,17 +23,18 @@ export const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
 // replaces the previous still-open one (mirrors the Web Notification `tag`).
 const activeNotifications = new Map<string, Electron.Notification>();
 // Lazily resolved 256 px app icon for notifications. `undefined` => not yet
-// resolved; `null` => none found. Never used on macOS (see resolveNotificationIcon).
+// resolved; `null` => none found. Linux only (see resolveNotificationIcon).
 let notificationIconCache: Electron.NativeImage | null | undefined;
 
 /**
- * Colored app icon for native notifications on Windows/Linux. macOS already shows the
- * bundle icon, which it themes, and would add `icon` as a second, unthemed image on the
- * right. Resolved once, lazily; returns `undefined` when the asset can't be found so we
- * omit the option rather than pass a blank image.
+ * Colored app icon for Linux notifications, whose daemons show no app icon unless the
+ * desktop-entry hint matches an installed .desktop file. macOS and Windows already show
+ * the app icon (themed on macOS) and would add `icon` as a second image. Resolved once,
+ * lazily; returns `undefined` when the asset can't be found so we omit the option rather
+ * than pass a blank image.
  */
 function resolveNotificationIcon(): Electron.NativeImage | undefined {
-  if (process.platform === 'darwin') return undefined;
+  if (process.platform !== 'linux') return undefined;
   if (notificationIconCache === undefined) {
     let found: Electron.NativeImage | null = null;
     for (const candidate of iconCandidatePaths('notificationIcon.png')) {
