@@ -294,7 +294,7 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
 
       pickFiles(cmp, [png('shot.png')]);
       fixture.detectChanges();
-      expect(cmp.hasStaged()).toBe(true);
+      expect(cmp['attachments'].hasStaged()).toBe(true);
 
       typeSlash(cmp, ta, '/');
 

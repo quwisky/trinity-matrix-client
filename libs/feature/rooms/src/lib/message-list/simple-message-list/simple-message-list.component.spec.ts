@@ -7,13 +7,12 @@ import {
   ConversationRuntime,
   type MessageView,
 } from '@trinity/data-access/timeline';
-import { TrnAlertService } from '@trinity/components/overlay';
+import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
 import { By } from '@angular/platform-browser';
 import { SimpleMessageListComponent } from './simple-message-list.component';
 import { MessageComposerComponent } from '../../message-composer/message-composer.component';
 import { DayBoundaryService } from '../day-boundary.service';
-import { ReactionPickerService } from '../../reaction-picker/reaction-picker.service';
-import { MessageSourceService } from '../../message-source/message-source.service';
+import { MessageSourceComponent } from '../../message-source/message-source.component';
 import { EMPTY, of } from 'rxjs';
 import {
   ConversationComposeStub,
@@ -107,6 +106,7 @@ describe('SimpleMessageListComponent', () => {
       useValue: {
         compose,
         messages: new ConversationMessagesStub(compose),
+        timeline: { rawEvent: vi.fn(() => ({ type: 'm.room.message' })) },
       },
     });
   });
@@ -693,8 +693,8 @@ describe('SimpleMessageListComponent', () => {
       const { fixture } = await render(SimpleMessageListComponent, {
         providers: [
           MockProvider(TrnAlertService),
-          MockProvider(ReactionPickerService, {
-            pick$: () => of('🚀'),
+          MockProvider(TrnDialogService, {
+            openAndWait$: (() => of('🚀')) as never,
           }),
         ],
       });
@@ -711,8 +711,8 @@ describe('SimpleMessageListComponent', () => {
       const { fixture } = await render(SimpleMessageListComponent, {
         providers: [
           MockProvider(TrnAlertService),
-          MockProvider(ReactionPickerService, {
-            pick$: () => EMPTY,
+          MockProvider(TrnDialogService, {
+            openAndWait$: (() => EMPTY) as never,
           }),
         ],
       });
@@ -863,7 +863,7 @@ describe('SimpleMessageListComponent', () => {
         value: { writeText },
         configurable: true,
       });
-      cmp.onCopy(row('$1'));
+      cmp.onRowAction(row('$1'), { type: 'copy' });
       expect(writeText).toHaveBeenCalledWith('body $1');
     });
 
@@ -892,7 +892,7 @@ describe('SimpleMessageListComponent', () => {
         inputs: { roomId: '!a:hs' },
         providers: [
           MockProvider(TrnAlertService),
-          MockProvider(MessageSourceService, { open }),
+          MockProvider(TrnDialogService, { open }),
         ],
       });
 
@@ -900,7 +900,10 @@ describe('SimpleMessageListComponent', () => {
         type: 'view-source',
       });
 
-      expect(open).toHaveBeenCalledWith('!a:hs', '$1');
+      expect(open).toHaveBeenCalledWith(
+        MessageSourceComponent,
+        expect.objectContaining({ ariaLabel: 'Message source' }),
+      );
     });
   });
 

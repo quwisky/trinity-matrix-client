@@ -10,7 +10,6 @@ import { MediaService, type ImagePackImage } from '@trinity/data-access/media';
 import { type VoiceRecording } from '@trinity/platform-native';
 import {
   locationMessageContent,
-  mediaCaptionFields,
   pollEndContent,
   pollResponseContent,
   pollStartContent,
@@ -217,42 +216,6 @@ export class TimelineActionsService {
           M_POLL_END.name as never,
           pollEndContent(pollId) as never,
         ),
-      );
-    }).pipe(map(() => void 0));
-  }
-
-  /**
-   * Upload a picked file and send it as an `m.image`/`m.file`/`m.video`/`m.audio`
-   * message — encrypting the bytes first when the room is E2EE. The upload phase has
-   * no echo (failures surface via this Observable); once `sendMessage` runs the SDK
-   * creates a local echo that renders through the existing media bubble, with the
-   * usual failed/retry handling. `progress` reports an upload fraction in [0, 1].
-   */
-  sendMedia(
-    file: File,
-    caption: string,
-    progress?: (fraction: number) => void,
-  ): Observable<void> {
-    return defer(() => {
-      const ctx = this.actionContext.resolve();
-      if (!ctx || !file || file.size === 0) {
-        return of(void 0);
-      }
-      const { client, room } = ctx;
-      // Read on subscribe too: a room can become encrypted while an unsent action
-      // is held, and uploading plaintext bytes into an E2EE room is not recoverable.
-      const encrypt = room.hasEncryptionStateEvent();
-      return this.mediaSvc.uploadMedia(file, encrypt, progress).pipe(
-        switchMap((media) => {
-          const content = {
-            msgtype: media.msgtype,
-            ...mediaCaptionFields(media.body, caption),
-            info: media.info,
-            ...(media.file ? { file: media.file } : { url: media.mxc }),
-          };
-          // A valid media payload; the SDK's content union doesn't model it.
-          return from(client.sendMessage(room.roomId, content as never));
-        }),
       );
     }).pipe(map(() => void 0));
   }
