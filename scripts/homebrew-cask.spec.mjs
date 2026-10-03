@@ -24,7 +24,7 @@ describe('Homebrew cask', () => {
 
   conflicts_with cask: "trinity@next"
   depends_on arch: :arm64
-  depends_on macos: ">= :ventura"
+  depends_on macos: :ventura
 
   app "Trinity.app"
 
