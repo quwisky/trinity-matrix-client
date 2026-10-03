@@ -31,24 +31,14 @@ async function answerDexInCustomTab(
     'Advanced',
     'Proceed to localhost (unsafe)',
   ];
+  // Chrome can raise the first-run screen over a page that already loaded, so dismiss
+  // hurdles on every attempt and retry the fill (the page also re-renders once).
   await browser.waitUntil(
     async () => {
-      if (await field(0).isExisting()) return true;
       for (const text of hurdles) {
         const button = uiSelector(`new UiSelector().textStartsWith("${text}")`);
         if (await button.isExisting()) await button.click().catch(() => {});
       }
-      return false;
-    },
-    {
-      timeout: 90_000,
-      interval: 1_000,
-      timeoutMsg: 'the identity provider page never opened in the Custom Tab',
-    },
-  );
-  // The page can re-render once as it settles; retry the fill on a stale element.
-  await browser.waitUntil(
-    async () => {
       try {
         await field(0).setValue(email);
         await field(1).setValue(pass);
@@ -58,11 +48,13 @@ async function answerDexInCustomTab(
       }
     },
     {
-      timeout: 30_000,
+      timeout: 90_000,
       interval: 1_000,
-      timeoutMsg: 'could not fill Dex login',
+      timeoutMsg:
+        'could not fill the identity provider login in the Custom Tab',
     },
   );
+  // Enter submits the form without dismissing the soft keyboard first.
   await browser.pressKeyCode(66);
 }
 
