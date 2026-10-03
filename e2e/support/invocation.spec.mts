@@ -40,6 +40,8 @@ function dependencies(
       hs: 'https://localhost:8448',
       user: 'test-user',
       pass: 'secret-value',
+      kind: 'tuwunel' as const,
+      version: '1.9.3',
     })),
     stopHomeserver: vi.fn(async () => undefined),
     acquireHomeserver: vi.fn(async () => ({
@@ -234,6 +236,8 @@ describe('E2E invocation ownership', () => {
           hs: 'https://localhost:8448',
           user: 'test-user',
           pass: 'secret-value',
+          kind: 'synapse' as const,
+          version: '1.161.0',
         };
       }),
     });

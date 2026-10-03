@@ -1,14 +1,30 @@
 import { describe, expect, it, vi } from 'vitest';
 import { prepareWebBundle, runPlaywright } from './run-playwright.mts';
 import { recoverResourceLock, resourceLockFile } from './recover-lock.mts';
-import { homeserverLockFile } from './homeserver/lease.mts';
+import { existsSync } from 'node:fs';
+import {
+  acquireHomeserverLease,
+  homeserverLockFile,
+} from './homeserver/lease.mts';
 
 describe('E2E runner boundaries', () => {
   it('rejects malformed runner arguments before acquiring resources', async () => {
     await expect(runPlaywright([])).rejects.toThrow(/requires --config/);
   });
 
-  it('maps explicit recovery to the same support-owned Synapse lease', () => {
+  it('rejects an unknown homeserver kind before taking the lease', async () => {
+    vi.stubEnv('TRINITY_E2E_HOMESERVER', 'dendrite');
+    try {
+      await expect(acquireHomeserverLease()).rejects.toThrow(
+        /expected one of: tuwunel, synapse/,
+      );
+      expect(existsSync(homeserverLockFile)).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('maps explicit recovery to the same support-owned homeserver lease', () => {
     expect(resourceLockFile('homeserver')).toBe(homeserverLockFile);
     const recover = vi.fn(() => true);
     expect(recoverResourceLock('homeserver', recover)).toBe(true);

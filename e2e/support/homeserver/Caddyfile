@@ -1,4 +1,4 @@
-# TLS front for the e2e Synapse.
+# TLS front for the e2e homeserver.
 #
 # Listens on https://localhost:8448 with Caddy's internal (self-signed) CA — the
 # Playwright contexts launch with ignoreHTTPSErrors so the untrusted cert is fine.
@@ -7,7 +7,7 @@
 #    (https://localhost:8448/.well-known/matrix/client) resolves the homeserver to
 #    THIS origin. base_url must be the externally reachable https URL, not the
 #    container's http://homeserver:8008.
-#  - Everything else proxies to the Synapse HTTP listener.
+#  - Everything else proxies to the homeserver HTTP listener.
 {
 	# Quieter logs; internal CA so no ACME/public DNS needed.
 	auto_https disable_redirects
@@ -28,20 +28,20 @@ https://localhost:8448 {
 	}
 
 	# Default is the compose-network hostname. When the stack shares a job container's
-	# network namespace there is no compose network and no DNS for it, but Synapse is on
+	# network namespace there is no compose network and no DNS for it, but the homeserver is on
 	# the same loopback — see docker-compose.netns.yml.
 	reverse_proxy {$TRINITY_E2E_HOMESERVER_UPSTREAM:homeserver:8008}
 }
 
 # Internal default federation port for the primary server name `localhost`. The
-# secondary Synapse uses this to retrieve the primary signing key and authenticate its
+# secondary homeserver uses this to retrieve the primary signing key and authenticate its
 # requests. It is intentionally not published to the host.
 https://localhost {
 	tls internal
 	reverse_proxy {$TRINITY_E2E_HOMESERVER_UPSTREAM:homeserver:8008}
 }
 
-# Federation front for the secondary Synapse. In the ordinary compose network its
+# Federation front for the secondary homeserver. In the ordinary compose network its
 # server name is caddy:9448; in netns CI it is localhost:9448. Serving both names keeps
 # signatures and discovery correct in either topology.
 https://caddy:9448, https://localhost:9448 {
@@ -49,7 +49,7 @@ https://caddy:9448, https://localhost:9448 {
 	reverse_proxy {$TRINITY_E2E_REMOTE_HOMESERVER_UPSTREAM:localhost:8009}
 }
 
-# Plain-HTTP Open-Graph page for the link-preview e2e. Synapse (on this docker
+# Plain-HTTP Open-Graph page for the link-preview e2e. The homeserver (on this docker
 # network, with url previews enabled + an empty IP blacklist) fetches
 # http://caddy:8080/og server-side and returns the OG metadata; the browser never
 # touches it. Not exposed to the host — only reachable inside the trinity-e2e network.

@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { readSession } from './session.mts';
+import type { HomeserverKind } from './homeserver/kind.mts';
 import { navigateApplication } from './navigation.mts';
 import type { Navigate } from './platform-contracts.mts';
 export const webNavigate = navigateApplication;
@@ -66,6 +67,12 @@ export interface HomeserverSession {
   hs?: string;
   user?: string;
   pass?: string;
+  /**
+   * The running server (`TRINITY_E2E_HOMESERVER`). Branch on it only where Matrix servers
+   * legitimately differ, and keep both expectations.
+   */
+  kind?: HomeserverKind;
+  version?: string;
   secondary?: {
     hs: string;
     serverName: string;

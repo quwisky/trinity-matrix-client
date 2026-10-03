@@ -1,38 +1,58 @@
-// Brings up the disposable Synapse + Caddy stack and registers the e2e test user.
+// Brings up the disposable e2e homeserver stack and registers the e2e test user.
 //
-// Steps:
-//   1. Generate a fresh homeserver.yaml (Synapse's --generate-config) into ./data,
-//      then patch in the bits the SAS e2e needs: a registration shared secret, the
-//      public https base URL (Caddy), and permissive CORS so the browser app can
-//      hit the API cross-origin.
-//   2. docker compose up -d (Synapse + Dex + Caddy), restarting Synapse if the config
-//      it is already running with is not the one just rendered.
-//   3. Poll Synapse /health, Dex's discovery document, and Synapse's own login flows.
-//   4. Register the test user via register_new_matrix_user (shared-secret).
-//   5. Poll the Caddy TLS front + well-known until reachable.
+// TRINITY_E2E_HOMESERVER picks the homeserver (`tuwunel`, the default, or `synapse`);
+// anything else fails before Docker runs. The selected adapter (tuwunel/ or synapse/)
+// owns its compose services and config; this driver owns everything they share:
+//   1. Let the adapter write its config (Synapse generates and patches homeserver.yaml;
+//      Tuwunel's TOML is committed) and prepare its state directories.
+//   2. docker compose up -d (homeserver, remote homeserver, Dex, Caddy), restarting any
+//      service whose bind-mounted config changed under a running container.
+//   3. Poll /_matrix/client/versions on both servers, Dex's discovery document, the
+//      primary's own `m.login.sso` flow, and Caddy's TLS well-known. A timeout prints the
+//      failing service's log tail.
+//   4. Register the test user through the shared-secret admin API both servers serve.
+//   5. Read the server's software and version, and check it is the one selected.
 //
-// Idempotent-ish: re-running reuses the generated config but re-registers the user
+// Idempotent-ish: re-running reuses the generated state but re-registers the user
 // (ignoring "user already exists"). Tear down with stop.mjs.
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
+import { createHash, createHmac } from 'node:crypto';
+import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import {
   DATA,
-  REMOTE_DATA,
+  HERE,
   STATE_DIR,
   composeFiles,
   prepareStateDir,
   resolveNetworkContainer,
 } from './paths.mjs';
+import {
+  DEX_ISSUER,
+  HOMESERVER_HTTP,
+  HS_TLS,
+  REGISTRATION_SHARED_SECRET,
+  SECONDARY_HTTP,
+  SERVER_NAME,
+  SSO_EMAIL,
+  SSO_PASS,
+  SSO_RESET_EMAIL,
+  SSO_RESET_USER,
+  SSO_USER,
+  TEST_PASS,
+  TEST_USER,
+} from './constants.mjs';
+import { resolveHomeserverKind } from './kind.mts';
 import { acquireHomeserverLease, releaseHomeserverLease } from './lease.mts';
+import { synapse } from './synapse/adapter.mjs';
+import { tuwunel } from './tuwunel/adapter.mjs';
+
+export * from './constants.mjs';
 
 const exec = promisify(execFile);
-const HERE = dirname(fileURLToPath(import.meta.url));
-const CONFIG = join(DATA, 'homeserver.yaml');
-const REMOTE_CONFIG = join(REMOTE_DATA, 'homeserver.yaml');
+const ADAPTERS = { synapse, tuwunel };
 
 /**
  * The config files the stack bind-mounts, by the service that reads one at startup.
@@ -44,12 +64,13 @@ const REMOTE_CONFIG = join(REMOTE_DATA, 'homeserver.yaml');
  * OIDC region is rewritten per start (see oidcBlock), and dex.yaml is the same class of
  * file the moment its static user list changes under a stack someone left up.
  */
-const MOUNTED_CONFIG = {
-  homeserver: CONFIG,
-  'homeserver-remote': REMOTE_CONFIG,
-  dex: join(STATE_DIR, 'dex.yaml'),
-  caddy: join(STATE_DIR, 'Caddyfile'),
-};
+function mountedConfig(adapter) {
+  return {
+    ...adapter.mountedConfig,
+    dex: join(STATE_DIR, 'dex.yaml'),
+    caddy: join(STATE_DIR, 'Caddyfile'),
+  };
+}
 
 /**
  * Fingerprints of the config each service was last actually (re)started with.
@@ -61,47 +82,12 @@ const MOUNTED_CONFIG = {
  */
 const APPLIED_CONFIG = join(DATA, '.applied-config.json');
 
-export const HOMESERVER_HTTP = 'http://localhost:8008';
-export const SECONDARY_HTTP = 'http://localhost:8009';
-export const HS_TLS = 'https://localhost:8448';
-export const SERVER_NAME = 'localhost';
-export const REGISTRATION_SHARED_SECRET = 'trinity-e2e-shared-secret';
-
-// Test credentials the verify-sas runner logs in with on both contexts.
-export const TEST_USER = process.env.TRINITY_USER ?? 'verify-e2e';
-export const TEST_PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
-
-// The Dex-backed SSO account. It has no Matrix password by construction — Synapse
-// creates it through `oidc_providers` — which is exactly what the specs need it for.
-// These must match e2e/support/homeserver/dex.yaml.
-export const DEX_ISSUER = 'http://localhost:5556/dex';
-export const SSO_EMAIL = 'sso-e2e@trinity.test';
-export const SSO_PASS = 'sso-e2e-pass-123';
-/** Localpart Synapse derives from the Dex identity, via `localpart_template` below. */
-export const SSO_USER = 'sso-e2e';
-
-// A second Dex identity, reserved for the recovery-reset spec. It is the only SSO spec
-// that leaves permanent state on its account (a cross-signing master key and a key-backup
-// version, neither removable), and its assertions are all "this did not change" — which
-// only means anything on an account no other worker is touching. Dex's static user list
-// is fixed at container start, so this is the finest isolation available: see dex.yaml.
-export const SSO_RESET_EMAIL = 'sso-reset-e2e@trinity.test';
-export const SSO_RESET_USER = 'sso-reset-e2e';
-
 const log = (m) => console.log(`[homeserver] ${m}`);
-
-async function exists(p) {
-  try {
-    await access(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /** Resolved once per run by start(); '' means "publish ports", the normal case. */
 let networkContainer = '';
 let operationSignal;
+let kind;
 
 function secondaryServerName() {
   return networkContainer ? 'localhost:9448' : 'caddy:9448';
@@ -110,15 +96,14 @@ function secondaryServerName() {
 async function compose(args, opts = {}) {
   return exec(
     'docker',
-    ['compose', ...composeFiles(networkContainer), ...args],
+    ['compose', ...composeFiles(kind, networkContainer), ...args],
     {
       cwd: HERE,
       signal: operationSignal,
       ...opts,
-      // Same reason as `containerUser` below: the long-running Synapse must own its
-      // sqlite DB and media_store as *us*, or the next run cannot rewrite the config
-      // and stop.mjs cannot remove ./data. The compose file defaults these to the
-      // image's own 991 when unset.
+      // The long-running homeserver must own its database and media as *us*, or the
+      // next run cannot rewrite its config and stop.mjs cannot remove ./data. The
+      // compose files default these when unset.
       env: {
         ...process.env,
         ...(typeof process.getuid === 'function'
@@ -129,309 +114,17 @@ async function compose(args, opts = {}) {
           : {}),
         // The netns override file interpolates this; it may have been detected, not set.
         TRINITY_E2E_NETWORK_CONTAINER: networkContainer,
+        TRINITY_E2E_REMOTE_SERVER_NAME: secondaryServerName(),
         ...opts.env,
       },
     },
   );
 }
 
-/**
- * The uid/gid to run the Synapse container as, passed through to the image's start.py.
- *
- * Without this the container runs as its built-in 991:991 and chowns the bind-mounted
- * ./data to match — after which *we* cannot rewrite homeserver.yaml (EACCES in
- * ensureConfig) and stop.mjs cannot delete ./data. That never shows up on a filesystem
- * that remaps ownership to the calling user (virtiofs, Docker Desktop's gRPC-FUSE), which
- * is why this went unnoticed locally and would fail every time on a plain Linux CI runner.
- *
- * Empty on Windows, where process.getuid is undefined and bind-mount ownership is moot.
- */
-const containerUser =
-  typeof process.getuid === 'function'
-    ? ['-e', `UID=${process.getuid()}`, '-e', `GID=${process.getgid()}`]
-    : [];
-
-const OIDC_START = '# === trinity-e2e-oidc (regenerated every start) ===';
-const OIDC_END = '# === end trinity-e2e-oidc ===';
-
-/**
- * The Dex provider block, plus the SSO redirect whitelist that lets Synapse hand the
- * login token back to the app's origin.
- *
- * Rewritten in full on every start rather than appended once, because two values in it
- * vary with how the stack was brought up — how *Synapse* addresses Dex, and the app
- * origin it is allowed to hand a login token back to — and a config left over from a
- * previous run fails at the token exchange with nothing useful in the logs. The
- * browser-facing `authorization_endpoint` is the published port either way; only the
- * server-to-server endpoints move.
- *
- * Rewriting it is not by itself enough to make Synapse serve it: the file is a bind
- * mount, so a container that is already up keeps the block it started with. start()
- * restarts Synapse whenever the two have diverged.
- */
-function oidcBlock() {
-  // No compose network under the netns override, so no `dex` DNS name — but everything
-  // shares one loopback there, so the published port is reachable as localhost.
-  const internal = networkContainer ? 'localhost:5556' : 'dex:5556';
-  const appOrigin =
-    process.env.TRINITY_E2E_APP_URL ??
-    process.env.BASE_URL ??
-    'http://127.0.0.1:0';
-  // The invocation can serve browser and Android children sequentially. Publishing
-  // the native callback unconditionally keeps one owner/session valid for both without
-  // restarting Synapse between environment adapters.
-  const clientWhitelist = [
-    `${appOrigin.replace(/\/$/, '')}/`,
-    'eu.qwky.trinity://sso-callback',
-  ];
-  return [
-    OIDC_START,
-    // Synapse refuses to redirect a login token anywhere it was not told to.
-    'sso:',
-    '  client_whitelist:',
-    ...clientWhitelist.map((url) => `    - "${url}"`),
-    'oidc_providers:',
-    '  - idp_id: dex',
-    '    idp_name: "Dex"',
-    // `discover: false` + explicit endpoints is what lets the browser and Synapse reach
-    // the same provider under two different names; a discovery document can only carry
-    // one. `skip_verification` then allows the plain-http issuer.
-    '    discover: false',
-    `    issuer: "${DEX_ISSUER}"`,
-    '    skip_verification: true',
-    '    client_id: "trinity-e2e"',
-    '    client_secret: "trinity-e2e-secret"',
-    '    scopes: ["openid", "profile", "email"]',
-    // Browser-facing: the user's own navigation, so it must be the published port.
-    `    authorization_endpoint: "${DEX_ISSUER}/auth"`,
-    // Server-facing: Synapse calls these itself, from inside the network.
-    `    token_endpoint: "http://${internal}/dex/token"`,
-    `    jwks_uri: "http://${internal}/dex/keys"`,
-    `    userinfo_endpoint: "http://${internal}/dex/userinfo"`,
-    '    user_mapping_provider:',
-    '      config:',
-    '        subject_claim: "sub"',
-    // Dex puts the static user's `username` in `name`; mapping it straight through
-    // gives a deterministic localpart and skips Synapse's pick-a-username page.
-    '        localpart_template: "{{ user.name }}"',
-    '        display_name_template: "{{ user.name }}"',
-    OIDC_END,
-  ].join('\n');
-}
-
-/** Generate homeserver.yaml on first run, then patch in the e2e settings. */
-async function ensureConfig() {
-  await prepareStateDir();
-  if (!(await exists(CONFIG))) {
-    log('generating homeserver.yaml…');
-    // One-shot container to scaffold the config into the mounted ./data volume.
-    await exec(
-      'docker',
-      [
-        'run',
-        '--rm',
-        '-v',
-        `${DATA}:/data`,
-        '-e',
-        `SYNAPSE_SERVER_NAME=${SERVER_NAME}`,
-        '-e',
-        'SYNAPSE_REPORT_STATS=no',
-        ...containerUser,
-        'matrixdotorg/synapse:v1.119.0',
-        'generate',
-      ],
-      { signal: operationSignal },
-    );
-  }
-
-  let yaml = await readFile(CONFIG, 'utf8');
-
-  // Patch idempotently: only append blocks we haven't added yet.
-  const additions = [];
-  // Synapse's `generate` emits a *random* registration_shared_secret into the
-  // config (since ~v1.119), so we can't just append ours — register_new_matrix_user
-  // would compute its HMAC with our secret while Synapse validates against the
-  // random one (403 "HMAC incorrect"). Force our known secret: replace the
-  // generated line in place if present, otherwise append it below.
-  let replacedSecret = false;
-  if (/^registration_shared_secret:.*$/m.test(yaml)) {
-    const next = yaml.replace(
-      /^registration_shared_secret:.*$/m,
-      `registration_shared_secret: "${REGISTRATION_SHARED_SECRET}"`,
-    );
-    replacedSecret = next !== yaml;
-    yaml = next;
-  } else {
-    additions.push(
-      `registration_shared_secret: "${REGISTRATION_SHARED_SECRET}"`,
-    );
-  }
-  if (!yaml.includes('public_baseurl:')) {
-    additions.push(`public_baseurl: "${HS_TLS}/"`);
-  }
-  if (!yaml.includes('# trinity-e2e-extras')) {
-    additions.push(
-      '# trinity-e2e-extras',
-      'enable_registration_without_verification: true',
-      'enable_registration: true',
-      // Loosen rate limits so two near-simultaneous logins + the SAS to-device
-      // traffic don't get throttled mid-flow.
-      'rc_login:',
-      '  address:',
-      '    per_second: 100',
-      '    burst_count: 100',
-      '  account:',
-      '    per_second: 100',
-      '    burst_count: 100',
-      'rc_message:',
-      '  per_second: 100',
-      '  burst_count: 100',
-      // Link previews for the URL-preview e2e. The empty IP blacklist lets Synapse
-      // fetch the harness OG page (http://caddy:8080/og) on the private docker network
-      // — safe here because this homeserver is disposable and network-isolated.
-      'url_preview_enabled: true',
-      'url_preview_ip_range_blacklist: []',
-      // Permissive CORS isn't a Synapse config knob; matrix endpoints already send
-      // Access-Control-Allow-Origin: *. Listed here only as a reminder.
-    );
-  }
-
-  // Newer Synapse defaults room_list_publication_rules to deny-all, and it fails
-  // *silently*: createRoom with visibility "public" still answers 200, but the room is
-  // recorded private and never reaches /publicRooms (an explicit PUT to the directory
-  // is what admits it, with 403 M_UNKNOWN "Not allowed to publish room"). That is why
-  // the two directory specs broke on their assertion rather than on their setup when
-  // the image moved v1.119 -> v1.157.2, and why nothing in the harness logs said so.
-  //
-  // Guarded on its own key rather than folded into the extras block above: that block
-  // is written once and skipped forever after, so a stack someone already has running
-  // would never pick this up. Here the rewrite trips the fingerprint check below, which
-  // restarts Synapse so the new rule is actually loaded.
-  if (!yaml.includes('room_list_publication_rules')) {
-    additions.push('room_list_publication_rules:', '  - "action": "allow"');
-  }
-  if (!/^federation_verify_certificates:/m.test(yaml)) {
-    // The harness Caddy uses its own disposable CA. Federation is still real — only
-    // certificate-chain verification is relaxed inside this isolated test network.
-    additions.push('federation_verify_certificates: false');
-  }
-  if (!/^federation_ip_range_blacklist:/m.test(yaml)) {
-    // Both homeservers live on Docker-private addresses in this disposable stack.
-    additions.push('federation_ip_range_blacklist: []');
-  }
-  // These disposable server names cannot be known by a public key notary. A slow
-  // matrix.org lookup delays signature verification and can make local alias
-  // resolution return 502 before Synapse falls back to fetching the peer's key.
-  // Replace the generated notary list, including an older harness's insecure-key
-  // override, so federation verifies signatures directly against the local peer.
-  const beforeTrustedKeys = yaml;
-  yaml = yaml.replace(
-    /^trusted_key_servers:[^\n]*(?:\n[ \t]+[^\n]*)*/m,
-    'trusted_key_servers: []',
-  );
-  if (!/^trusted_key_servers:/m.test(yaml)) {
-    additions.push('trusted_key_servers: []');
-  }
-  const trustedKeysChanged = yaml !== beforeTrustedKeys;
-
-  if (additions.length) {
-    yaml += `\n\n# === appended by e2e/support/homeserver/start.mjs ===\n${additions.join('\n')}\n`;
-  }
-
-  // Unlike the blocks above, the OIDC region is torn out and rewritten every time —
-  // see oidcBlock() for why it cannot simply be appended once.
-  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const region = new RegExp(
-    `\\n*${escape(OIDC_START)}[\\s\\S]*?${escape(OIDC_END)}\\n*`,
-  );
-  const patched = `${yaml.replace(region, '\n').replace(/\s+$/, '')}\n\n${oidcBlock()}\n`;
-  const oidcChanged = patched !== yaml;
-  yaml = patched;
-
-  if (additions.length || replacedSecret || oidcChanged || trustedKeysChanged) {
-    await writeFile(CONFIG, yaml, 'utf8');
-    log(
-      'patched homeserver.yaml (shared secret, public_baseurl, rate limits, dex sso)',
-    );
-  }
-}
-
-/** Generate and patch the second Synapse used by cross-server room-link journeys. */
-async function ensureSecondaryConfig() {
-  const serverName = secondaryServerName();
-  if (!(await exists(REMOTE_CONFIG))) {
-    log(`generating secondary homeserver.yaml for ${serverName}…`);
-    await exec(
-      'docker',
-      [
-        'run',
-        '--rm',
-        '-v',
-        `${REMOTE_DATA}:/data`,
-        '-e',
-        `SYNAPSE_SERVER_NAME=${serverName}`,
-        '-e',
-        'SYNAPSE_REPORT_STATS=no',
-        ...containerUser,
-        'matrixdotorg/synapse:v1.157.2',
-        'generate',
-      ],
-      { signal: operationSignal },
-    );
-  }
-
-  let yaml = await readFile(REMOTE_CONFIG, 'utf8');
-  yaml = yaml.replace(/^server_name:.*$/m, `server_name: "${serverName}"`);
-  yaml = yaml.replace(/^registration_shared_secret:.*$/m, (line) =>
-    line.startsWith('#')
-      ? line
-      : `registration_shared_secret: "${REGISTRATION_SHARED_SECRET}"`,
-  );
-  if (!/^registration_shared_secret:/m.test(yaml)) {
-    yaml += `\nregistration_shared_secret: "${REGISTRATION_SHARED_SECRET}"\n`;
-  }
-
-  // The remote listener is deliberately distinct from the primary's even inside the
-  // container, because netns CI puts both processes on one loopback.
-  yaml = yaml.replace(/(^\s+- port:) \d+$/m, '$1 8009');
-  // The secondary verifies the primary's signatures through the same local-only
-  // key lookup policy; the generated matrix.org notary must not delay this path.
-  yaml = yaml.replace(
-    /^trusted_key_servers:[^\n]*(?:\n[ \t]+[^\n]*)*/m,
-    'trusted_key_servers: []',
-  );
-  const additions = [];
-  if (!/^trusted_key_servers:/m.test(yaml)) {
-    additions.push('trusted_key_servers: []');
-  }
-  if (!/^enable_registration:/m.test(yaml)) {
-    additions.push('enable_registration: true');
-  }
-  if (!/^enable_registration_without_verification:/m.test(yaml)) {
-    additions.push('enable_registration_without_verification: true');
-  }
-  if (!/^federation_verify_certificates:/m.test(yaml)) {
-    additions.push('federation_verify_certificates: false');
-  }
-  if (!/^federation_ip_range_blacklist:/m.test(yaml)) {
-    additions.push('federation_ip_range_blacklist: []');
-  }
-  if (!/^allow_public_rooms_over_federation:/m.test(yaml)) {
-    additions.push('allow_public_rooms_over_federation: true');
-  }
-  if (!/^room_list_publication_rules:/m.test(yaml)) {
-    additions.push('room_list_publication_rules:', '  - "action": "allow"');
-  }
-  if (additions.length) {
-    yaml += `\n# === appended by Trinity federation e2e ===\n${additions.join('\n')}\n`;
-  }
-  await writeFile(REMOTE_CONFIG, yaml, 'utf8');
-}
-
 /** sha256 of every mounted config file as it now sits on disk, keyed by service. */
-async function configFingerprints() {
+async function configFingerprints(files) {
   const entries = await Promise.all(
-    Object.entries(MOUNTED_CONFIG).map(async ([service, file]) => [
+    Object.entries(files).map(async ([service, file]) => [
       service,
       createHash('sha256')
         .update(await readFile(file))
@@ -448,9 +141,9 @@ async function configFingerprints() {
  * afterwards a container it just created and one it left untouched look identical, and
  * only the second can be serving a stale config.
  */
-async function runningServices() {
+async function runningServices(services) {
   const up = await Promise.all(
-    Object.keys(MOUNTED_CONFIG).map(async (service) => {
+    services.map(async (service) => {
       try {
         const { stdout } = await compose(['ps', '-q', service]);
         return stdout.trim() ? service : '';
@@ -471,7 +164,28 @@ async function appliedConfig() {
   }
 }
 
-async function waitFor(label, fn, { tries = 60, delayMs = 1000 } = {}) {
+/** The last lines a service logged — the evidence a readiness timeout is missing. */
+async function logTail(service) {
+  try {
+    const { stdout, stderr } = await compose([
+      'logs',
+      '--no-color',
+      '--tail',
+      '80',
+      service,
+    ]);
+    return `${stdout}${stderr}`.trim();
+  } catch (error) {
+    return `(could not read logs: ${error.message ?? error})`;
+  }
+}
+
+async function waitFor(
+  label,
+  service,
+  fn,
+  { tries = 60, delayMs = 1000 } = {},
+) {
   for (let i = 0; i < tries; i++) {
     operationSignal?.throwIfAborted();
     try {
@@ -485,60 +199,91 @@ async function waitFor(label, fn, { tries = 60, delayMs = 1000 } = {}) {
     }
     await new Promise((r) => setTimeout(r, delayMs));
   }
+  console.error(`[homeserver] ${service} logs:\n${await logTail(service)}`);
   throw new Error(`timed out waiting for ${label}`);
 }
 
+/** Shared-secret registration (`/_synapse/admin/v1/register`), served by both kinds. */
 async function registerUser() {
   log(`registering test user @${TEST_USER}:${SERVER_NAME}…`);
-  try {
-    // Run register_new_matrix_user inside the Synapse container against its local
-    // HTTP listener, using the shared secret.
-    await compose([
-      'exec',
-      '-T',
-      'homeserver',
-      'register_new_matrix_user',
-      '-u',
-      TEST_USER,
-      '-p',
-      TEST_PASS,
-      '--no-admin',
-      '-k',
-      REGISTRATION_SHARED_SECRET,
-      'http://localhost:8008',
-    ]);
-    log('user registered');
-  } catch (err) {
-    const msg = `${err.stdout ?? ''}${err.stderr ?? ''}${err.message ?? ''}`;
-    if (/already.*exists|User ID already taken/i.test(msg)) {
-      log('user already exists — reusing');
-    } else {
-      throw err;
-    }
+  const url = `${HOMESERVER_HTTP}/_synapse/admin/v1/register`;
+  const nonceResponse = await fetch(url, { signal: operationSignal });
+  if (!nonceResponse.ok) {
+    throw new Error(`registration nonce failed: ${nonceResponse.status}`);
   }
+  const { nonce } = await nonceResponse.json();
+  const mac = createHmac('sha1', REGISTRATION_SHARED_SECRET)
+    .update(`${nonce}\0${TEST_USER}\0${TEST_PASS}\0notadmin`)
+    .digest('hex');
+  const res = await fetch(url, {
+    method: 'POST',
+    signal: operationSignal,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      nonce,
+      username: TEST_USER,
+      password: TEST_PASS,
+      admin: false,
+      mac,
+    }),
+  });
+  if (res.ok) return log('user registered');
+  const text = await res.text();
+  if (/already.*exists|taken|M_USER_IN_USE/i.test(text)) {
+    return log('user already exists — reusing');
+  }
+  throw new Error(`registering the test user failed: ${res.status} ${text}`);
+}
+
+/**
+ * The running server's software version, after checking it is the selected kind — a
+ * stack of the other kind left running would otherwise pass every readiness poll.
+ */
+async function serverVersion() {
+  const res = await fetch(`${HOMESERVER_HTTP}/_matrix/federation/v1/version`, {
+    signal: operationSignal,
+  });
+  const { server } = await res.json();
+  if (server?.name?.toLowerCase() !== kind) {
+    throw new Error(
+      `TRINITY_E2E_HOMESERVER is ${kind}, but ${HOMESERVER_HTTP} runs ${server?.name ?? 'an unknown server'}`,
+    );
+  }
+  return String(server.version);
 }
 
 export async function start({ signal } = {}) {
   operationSignal = signal;
+  kind = resolveHomeserverKind();
+  const adapter = ADAPTERS[kind];
   networkContainer = await resolveNetworkContainer();
   log(
-    networkContainer
-      ? `sharing the network namespace of container ${networkContainer.slice(0, 12)} (ports not published)`
-      : 'publishing ports on the docker host',
+    `${kind}, ${
+      networkContainer
+        ? `sharing the network namespace of container ${networkContainer.slice(0, 12)} (ports not published)`
+        : 'publishing ports on the docker host'
+    }`,
   );
-  await ensureConfig();
-  await ensureSecondaryConfig();
-  const fingerprints = await configFingerprints();
-  const wasRunning = await runningServices();
+  await prepareStateDir(adapter.configFiles);
+  await adapter.prepare({
+    networkContainer,
+    signal: operationSignal,
+    log,
+    secondaryServerName: secondaryServerName(),
+  });
+  const mounted = mountedConfig(adapter);
+  const fingerprints = await configFingerprints(mounted);
+  const wasRunning = await runningServices(Object.keys(mounted));
   log('docker compose up…');
   await compose(['up', '-d']);
 
   // Make the rewrite above mean something. `up -d` is a no-op for a service whose
   // definition has not changed, and a bind-mounted config file is not part of that
   // definition — so a stack left up by `pnpm e2e:verify:up` would go on serving the
-  // previous run's OIDC block. None of the readiness polls below would notice: they read
-  // Synapse's /health, Dex's discovery document and Caddy's well-known, and the only one
-  // that reads Synapse's own view of the provider cannot tell one issuer from another.
+  // previous run's SSO configuration. None of the readiness polls below would notice: they read
+  // the homeserver's /versions, Dex's discovery document and Caddy's well-known, and the
+  // only one that reads the server's own view of the provider cannot tell one issuer from
+  // another.
   // The mismatch would surface much later as an opaque token-exchange failure mid-login,
   // which is the exact failure the rewrite exists to prevent.
   //
@@ -547,10 +292,18 @@ export async function start({ signal } = {}) {
   // would pay the same reboot on every start including the fresh ones. Redundant only in
   // the rare case where `up -d` recreated the service anyway (an image or environment
   // change); one extra reboot there is cheaper than a second query to rule it out.
+  //
+  // A container that lives in another service's network namespace loses its network when
+  // that service restarts, so it restarts too (adapter.restartWith).
   const applied = await appliedConfig();
   const stale = wasRunning.filter(
     (service) => applied[service] !== fingerprints[service],
   );
+  for (const service of [...stale]) {
+    for (const dependent of adapter.restartWith[service] ?? []) {
+      if (!stale.includes(dependent)) stale.push(dependent);
+    }
+  }
   if (stale.length) {
     log(`config changed under running ${stale.join(', ')} — restarting`);
     await compose(['restart', ...stale]);
@@ -561,34 +314,38 @@ export async function start({ signal } = {}) {
     'utf8',
   );
 
-  await waitFor('homeserver /health', async () => {
-    const res = await fetch(`${HOMESERVER_HTTP}/health`, {
+  await waitFor('homeserver client versions', 'homeserver', async () => {
+    const res = await fetch(`${HOMESERVER_HTTP}/_matrix/client/versions`, {
       signal: operationSignal,
     });
     return res.ok;
   });
 
-  await waitFor('secondary homeserver /health', async () => {
-    const res = await fetch(`${SECONDARY_HTTP}/health`, {
-      signal: operationSignal,
-    });
-    return res.ok;
-  });
+  await waitFor(
+    'secondary homeserver client versions',
+    'homeserver-remote',
+    async () => {
+      const res = await fetch(`${SECONDARY_HTTP}/_matrix/client/versions`, {
+        signal: operationSignal,
+      });
+      return res.ok;
+    },
+  );
 
-  // Discovery rather than /healthz: it also proves the issuer Dex serves is the one
-  // Synapse was configured with, which is the mismatch that would otherwise only
+  // Discovery rather than /healthz: it also proves the issuer Dex serves is the one the
+  // homeserver was configured with, which is the mismatch that would otherwise only
   // surface as an opaque token-exchange failure mid-login.
-  await waitFor('dex discovery', async () => {
+  await waitFor('dex discovery', 'dex', async () => {
     const res = await fetch(`${DEX_ISSUER}/.well-known/openid-configuration`, {
       signal: operationSignal,
     });
     return res.ok && (await res.json()).issuer === DEX_ISSUER;
   });
 
-  // The one poll that reads SYNAPSE's view of the provider rather than Dex's own. Synapse
-  // only advertises `m.login.sso` when it has loaded an SSO provider, so this is what
-  // turns "we wrote an oidc_providers block" into "the running server has one".
-  await waitFor('homeserver sso login flow', async () => {
+  // The one poll that reads the HOMESERVER's view of the provider rather than Dex's own.
+  // It only advertises `m.login.sso` when it has loaded an SSO provider, so this is what
+  // turns "we configured a provider" into "the running server has one".
+  await waitFor('homeserver sso login flow', 'homeserver', async () => {
     const res = await fetch(`${HOMESERVER_HTTP}/_matrix/client/v3/login`, {
       signal: operationSignal,
     });
@@ -599,7 +356,7 @@ export async function start({ signal } = {}) {
 
   await registerUser();
 
-  await waitFor('caddy well-known (https)', async () => {
+  await waitFor('caddy well-known (https)', 'caddy', async () => {
     const res = await fetch(`${HS_TLS}/.well-known/matrix/client`, {
       // Node fetch must accept the self-signed cert; toggled via env below.
       signal: operationSignal,
@@ -609,23 +366,26 @@ export async function start({ signal } = {}) {
     return body['m.homeserver']?.base_url === HS_TLS;
   });
 
+  const version = await serverVersion();
   log(
-    `up. homeserver=${HS_TLS} secondary=${secondaryServerName()} user=@${TEST_USER}:${SERVER_NAME}`,
+    `up. ${kind} ${version} homeserver=${HS_TLS} secondary=${secondaryServerName()} user=@${TEST_USER}:${SERVER_NAME}`,
   );
   return {
     hs: HS_TLS,
     user: TEST_USER,
     pass: TEST_PASS,
     serverName: SERVER_NAME,
+    kind,
+    version,
     secondary: {
       hs: SECONDARY_HTTP,
       serverName: secondaryServerName(),
       registrationSecret: REGISTRATION_SHARED_SECRET,
     },
-    // The SSO accounts are not registered here: Synapse creates each the first time
-    // someone completes the Dex round-trip, and they have no Matrix password to register
-    // with. Two of them, because the reset spec permanently seeds the one it uses — see
-    // SSO_RESET_USER above and dex.yaml.
+    // The SSO accounts are not registered here: the homeserver creates each the first
+    // time someone completes the Dex round-trip, and they have no Matrix password to
+    // register with. Two of them, because the reset spec permanently seeds the one it
+    // uses — see SSO_RESET_USER and dex.yaml.
     sso: { user: SSO_USER, email: SSO_EMAIL, pass: SSO_PASS },
     ssoReset: {
       user: SSO_RESET_USER,

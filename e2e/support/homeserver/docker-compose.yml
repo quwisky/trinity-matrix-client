@@ -1,60 +1,20 @@
-# Disposable Synapse + Caddy + Dex stack for the e2e suites.
+# Shared half of the disposable e2e stack: Dex and Caddy. The homeserver itself comes
+# from the adapter selected by TRINITY_E2E_HOMESERVER — synapse/docker-compose.yml or
+# tuwunel/docker-compose.yml, layered on top of this file by paths.mjs.
 #
 # Why Caddy:
-#  - Synapse speaks plain HTTP on :8008 (no TLS config needed inside the container).
+#  - The homeserver speaks plain HTTP on :8008 (no TLS config needed inside the container).
 #  - The Trinity app's CSP only allows https:/wss: for connect-src, and matrix-js-sdk
 #    AutoDiscovery fetches https://<domain>/.well-known/matrix/client. So Caddy
 #    terminates TLS on :8448 with an internal (self-signed) cert, serves the client
-#    well-known pointing back at itself, and reverse-proxies the Matrix API to Synapse.
+#    well-known pointing back at itself, and reverse-proxies the Matrix API.
 #
-# Everything here is throwaway: `homeserver.yaml`, the signing key, and the sqlite
-# DB are generated into ./data on first run and removed by stop.sh.
+# Everything here is throwaway: generated config, signing keys and databases live in
+# ./data and ./remote-data and are removed by stop.mjs.
 services:
-  homeserver:
-    image: matrixdotorg/synapse:v1.161.0
-    container_name: trinity-e2e-homeserver
-    restart: 'no'
-    environment:
-      SYNAPSE_SERVER_NAME: localhost
-      SYNAPSE_REPORT_STATS: 'no'
-      # Run as the invoking user so the bind-mounted ./data (config, signing key, sqlite
-      # DB) stays writable by us — the image otherwise runs as 991 and chowns it, which
-      # breaks the next start.mjs config patch and stop.mjs's cleanup on any filesystem
-      # that does NOT remap ownership (i.e. every plain Linux CI runner). start.mjs
-      # supplies these; the defaults keep a bare `docker compose up` behaving as before.
-      UID: ${TRINITY_E2E_UID:-991}
-      GID: ${TRINITY_E2E_GID:-991}
-    volumes:
-      # ${TRINITY_E2E_STATE_DIR:-.} keeps this as ./data everywhere it already works;
-      # see paths.mjs for the one environment where it must move.
-      - ${TRINITY_E2E_STATE_DIR:-.}/data:/data
-    # Bind Synapse's HTTP listener to the host too, so register_new_matrix_user
-    # (run from stop/setup scripts on the host) can reach it directly.
-    ports:
-      - '127.0.0.1:8008:8008'
-    networks:
-      - trinity-e2e
-
-  # A second homeserver for federation-sensitive journeys. It listens on a distinct
-  # internal port too, so the netns CI override can run both Synapses on one loopback.
-  homeserver-remote:
-    image: matrixdotorg/synapse:v1.161.0
-    container_name: trinity-e2e-homeserver-remote
-    restart: 'no'
-    environment:
-      SYNAPSE_SERVER_NAME: caddy:9448
-      SYNAPSE_REPORT_STATS: 'no'
-      UID: ${TRINITY_E2E_UID:-991}
-      GID: ${TRINITY_E2E_GID:-991}
-    volumes:
-      - ${TRINITY_E2E_STATE_DIR:-.}/remote-data:/data
-    # Share Caddy's namespace so this server can authenticate requests from the
-    # primary server name `localhost`: its signing key is available at localhost:443.
-    network_mode: 'service:caddy'
-
   # Throwaway OpenID Connect provider, so the suite can hold a Matrix account with no
-  # password (see dex.yaml). Synapse reaches it over the compose network; the browser
-  # reaches the published port. Memory storage, so there is nothing to clean up.
+  # password (see dex.yaml). The browser reaches the published port. Memory storage, so
+  # there is nothing to clean up.
   dex:
     image: ghcr.io/dexidp/dex:v2.45.1-alpine
     container_name: trinity-e2e-dex
@@ -71,8 +31,6 @@ services:
     image: caddy:2.11-alpine
     container_name: trinity-e2e-caddy
     restart: 'no'
-    depends_on:
-      - homeserver
     volumes:
       - ${TRINITY_E2E_STATE_DIR:-.}/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -80,7 +38,7 @@ services:
     ports:
       - '127.0.0.1:8448:8448'
       - '127.0.0.1:9448:9448'
-      # The remote Synapse shares this namespace and owns the listener itself.
+      # The remote homeserver shares this namespace and owns the listener itself.
       - '127.0.0.1:8009:8009'
     networks:
       - trinity-e2e

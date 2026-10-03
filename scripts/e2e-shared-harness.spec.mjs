@@ -18,8 +18,8 @@ import { describe, expect, it } from 'vitest';
  * than "user exists" was silent and the spec failed later, somewhere else, for a reason that
  * had nothing to do with the cause.
  *
- * The values now come from `e2e/support/homeserver/start.mjs`, which patches them into
- * `homeserver.yaml` — one definition, on the side that actually configures Synapse.
+ * The values now come from `e2e/support/homeserver/constants.mjs` (re-exported by
+ * `start.mjs`) — one definition, beside the adapters that configure the homeserver.
  *
  * `compact-room-routing.spec.mts` keeps a registration routine of its own, and is allowed to: it
  * registers in `beforeAll`, where Playwright's test-scoped `request` fixture does not exist,
@@ -38,11 +38,14 @@ const RESTATED = [
     what: 'the registration shared secret',
     pattern: /trinity-e2e-shared-secret/,
   },
-  { what: "Synapse's base URL", pattern: /(?:localhost|127\.0\.0\.1):8008/ },
+  {
+    what: "the homeserver's base URL",
+    pattern: /(?:localhost|127\.0\.0\.1):8008/,
+  },
 ];
 
-/** The one file allowed to define them: the harness that writes them into homeserver.yaml. */
-const DEFINITION = 'e2e/support/homeserver/start.mjs';
+/** The one file allowed to define them, beside the adapters that configure the server. */
+const DEFINITION = 'e2e/support/homeserver/constants.mjs';
 
 /** Where the shared helpers live — `registerUser`'s home, not a copy of it. */
 const EXEMPT = ['e2e/support/account.mts', 'e2e/support/homeserver/'];
@@ -67,8 +70,8 @@ const specs = globSync('e2e/**/*.{mts,mjs}', { cwd: workspaceRoot })
 /**
  * Every E2E module is an intentional target-input superset for this guard.
  *
- * The current checks exclude shared helpers and most Synapse modules after globbing, then read
- * `start.mjs` directly. Declaring the whole source corpus documents both paths and means a future
+ * The current checks exclude shared helpers and most homeserver modules after globbing, then read
+ * `constants.mjs` directly. Declaring the whole source corpus documents both paths and means a future
  * check cannot silently read outside the target's model merely because it starts using another
  * helper. The target itself is uncached because another guard reads the Git index.
  */

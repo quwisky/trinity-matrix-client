@@ -7,6 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { HOMESERVER_KINDS, type HomeserverKind } from './homeserver/kind.mts';
 import { processIsAlive } from './process-lock.mts';
 
 export const E2E_SESSION_ENV = 'TRINITY_E2E_SESSION_FILE';
@@ -17,6 +18,10 @@ export interface HomeserverSessionDescriptor {
   readonly hs?: string;
   readonly user?: string;
   readonly pass?: string;
+  /** Which server answered, so specs can branch where Matrix servers legitimately differ. */
+  readonly kind?: HomeserverKind;
+  /** The server's own version string from `/_matrix/federation/v1/version`. */
+  readonly version?: string;
   readonly secondary?: {
     readonly hs: string;
     readonly serverName: string;
@@ -76,13 +81,21 @@ function assertHomeserver(
   value: unknown,
 ): asserts value is HomeserverSessionDescriptor {
   if (!isObject(value) || typeof value['available'] !== 'boolean') {
-    throw new Error('E2E session has an invalid Synapse capability');
+    throw new Error('E2E session has an invalid homeserver capability');
   }
   if (value['available']) {
     for (const key of ['hs', 'user', 'pass'] as const) {
       if (typeof value[key] !== 'string' || value[key].length === 0) {
-        throw new Error(`E2E session is missing required Synapse field ${key}`);
+        throw new Error(
+          `E2E session is missing required homeserver field ${key}`,
+        );
       }
+    }
+    if (!(HOMESERVER_KINDS as readonly unknown[]).includes(value['kind'])) {
+      throw new Error('E2E session has an unknown homeserver kind');
+    }
+    if (typeof value['version'] !== 'string' || !value['version']) {
+      throw new Error('E2E session is missing the homeserver version');
     }
   }
 }
@@ -224,7 +237,7 @@ export function sessionSummary(descriptor: E2ESessionDescriptor): string {
     `owner=${descriptor.owner.pid}`,
     `resources=${descriptor.resources.join(',') || 'none'}`,
     `app=${descriptor.endpoints.application}`,
-    `homeserver=${descriptor.homeserver?.available ? 'available' : 'not-requested'}`,
+    `homeserver=${descriptor.homeserver?.available ? `${descriptor.homeserver.kind} ${descriptor.homeserver.version}` : 'not-requested'}`,
   ].join(' ');
 }
 

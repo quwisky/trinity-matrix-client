@@ -1,8 +1,10 @@
-// Tears the disposable Synapse + Caddy + Dex stack down and removes generated state.
+// Tears the disposable homeserver + Caddy + Dex stack down and removes generated state.
 //
-// `docker compose down -v` stops every container and drops the named volumes
-// (Caddy CA/data). The generated ./data (homeserver.yaml, signing key, sqlite DB)
-// is removed too so the next run starts from a clean slate.
+// `docker compose down -v --remove-orphans` stops every container of the project — also
+// one of the other homeserver kind, left by a run with a different TRINITY_E2E_HOMESERVER
+// — and drops the named volumes (Caddy CA/data). ./data and ./remote-data (generated
+// config, signing keys, databases) are removed too, so the next run starts from a clean
+// slate: a Tuwunel database is bound to its server_name for life.
 import { execFile } from 'node:child_process';
 import { rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +15,7 @@ import {
   composeFiles,
   resolveNetworkContainer,
 } from './paths.mjs';
+import { HOMESERVER_KINDS, resolveHomeserverKind } from './kind.mts';
 import {
   acquireHomeserverTeardownLease,
   releaseHomeserverLease,
@@ -22,6 +25,15 @@ import { promisify } from 'node:util';
 const exec = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const log = (m) => console.log(`[homeserver] ${m}`);
+
+/** The selected kind's file set; a bad selection must not strand a running stack. */
+function teardownKind() {
+  try {
+    return resolveHomeserverKind();
+  } catch {
+    return HOMESERVER_KINDS[0];
+  }
+}
 
 export async function stop({ keepData = false, signal } = {}) {
   const failures = [];
@@ -33,7 +45,7 @@ export async function stop({ keepData = false, signal } = {}) {
       'docker',
       [
         'compose',
-        ...composeFiles(networkContainer),
+        ...composeFiles(teardownKind(), networkContainer),
         'down',
         '-v',
         '--remove-orphans',
@@ -64,7 +76,7 @@ export async function stop({ keepData = false, signal } = {}) {
   }
   log('down.');
   if (failures.length > 0) {
-    throw new AggregateError(failures, 'Synapse teardown failed');
+    throw new AggregateError(failures, 'Homeserver teardown failed');
   }
 }
 

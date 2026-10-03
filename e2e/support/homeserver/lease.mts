@@ -6,6 +6,7 @@ import {
   releaseProcessLock,
   type ProcessLock,
 } from '../process-lock.mts';
+import { resolveHomeserverKind } from './kind.mts';
 
 const workspaceRoot = resolve(import.meta.dirname, '../../..');
 export const homeserverLockFile = join(
@@ -18,6 +19,9 @@ const exec = promisify(execFile);
 export async function acquireHomeserverLease(
   signal?: AbortSignal,
 ): Promise<ProcessLock> {
+  // Every path to the stack takes this lease first, so a bad selection fails here,
+  // before a lock file or a container exists.
+  resolveHomeserverKind();
   const lease = acquireProcessLock(
     homeserverLockFile,
     'Homeserver E2E harness',
@@ -31,7 +35,7 @@ export async function acquireHomeserverLease(
     if (stdout.trim()) {
       releaseProcessLock(lease);
       throw new Error(
-        `A Synapse E2E stack is already running (${stdout.trim().replaceAll('\n', ', ')}); stop it before starting another harness`,
+        `An E2E homeserver stack is already running (${stdout.trim().replaceAll('\n', ', ')}); stop it before starting another harness`,
       );
     }
   } catch (error) {
