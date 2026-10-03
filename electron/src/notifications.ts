@@ -22,6 +22,9 @@ export const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
 // Per-room collapse for desktop notifications: a fresh notification for a room
 // replaces the previous still-open one (mirrors the Web Notification `tag`).
 const activeNotifications = new Map<string, Electron.Notification>();
+// Settles a still-pending notification as completed when a newer one for the same
+// room replaces it: it never shows, but nothing failed.
+const supersede = new Map<Electron.Notification, () => void>();
 // Lazily resolved 256 px app icon for notifications. `undefined` => not yet
 // resolved; `null` => none found. Linux only (see resolveNotificationIcon).
 let notificationIconCache: Electron.NativeImage | null | undefined;
@@ -80,7 +83,11 @@ export function showOsNotification(
   // per account (and the same room on two accounts stays two toasts); fall back to
   // the room id for legacy single-account payloads.
   const collapseKey = payload.tag || payload.destination.roomId;
-  activeNotifications.get(collapseKey)?.close();
+  const previous = activeNotifications.get(collapseKey);
+  if (previous) {
+    supersede.get(previous)?.();
+    previous.close();
+  }
 
   let notification: Electron.Notification;
   try {
@@ -120,6 +127,7 @@ export function showOsNotification(
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      supersede.delete(notification);
       notification.removeListener('show', onShow);
       notification.removeListener('failed', onFailed);
       resolve(outcome);
@@ -144,6 +152,7 @@ export function showOsNotification(
         }),
       5_000,
     );
+    supersede.set(notification, () => finish({ kind: 'completed' }));
     notification.once('show', onShow);
     notification.once('failed', onFailed);
     try {

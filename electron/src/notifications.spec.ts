@@ -193,6 +193,23 @@ describe('notification-presentation IPC', () => {
     });
   });
 
+  it('completes a notification that a newer one for the same room replaced before it showed', async () => {
+    vi.useFakeTimers();
+    mocks.FakeNotification.mode = 'pending';
+    const tag = '@me:example.org|!room:example.org';
+
+    const first = present({ title: 'Alice', body: 'One', destination, tag });
+    const second = present({ title: 'Alice', body: 'Two', destination, tag });
+    expect(mocks.FakeNotification.instances[0].close).toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(first).resolves.toEqual({ kind: 'completed' });
+    await expect(second).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'notification-host-timeout' },
+    });
+  });
+
   it('rejects foreign senders and malformed payloads before native access', async () => {
     await expect(
       present({ title: 'Alice', body: 'Hello', destination }, { id: 99 }),
