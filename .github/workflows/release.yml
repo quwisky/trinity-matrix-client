@@ -145,9 +145,10 @@ jobs:
     # the asset worth protecting: electron-builder runs repo-controlled hooks
     # (afterPack.cjs, build/notarize.cjs) in the same process that holds CSC_KEY_PASSWORD.
     environment: release
-    # Without this the job inherits the 6-hour default on two platforms that have never
-    # run, and a wedged @electron/get download would hold the release all day.
-    timeout-minutes: 45
+    # Without this the job inherits the 6-hour default, and a wedged @electron/get download
+    # would hold the release all day. macOS gets 90 minutes: Apple's notary queue alone
+    # can take most of an hour, and the first signed release outlasted 45.
+    timeout-minutes: ${{ matrix.platform == 'mac' && 90 || 45 }}
     strategy:
       # One platform's toolchain breaking should not deny you the other two.
       fail-fast: false
