@@ -324,6 +324,42 @@ export function encodePng(width, height, rgba, alpha) {
   ]);
 }
 
+/** `#rrggbb` as an Icon Composer colour. */
+const srgb = (hex) =>
+  `srgb:${[1, 3, 5].map((i) => (parseInt(hex.slice(i, i + 2), 16) / 255).toFixed(5)).join(',')},1.00000`;
+const [PLATE_FROM, PLATE_TO] = [
+  ...PLATED.matchAll(/stop-color="(#[0-9a-f]{6})"/g),
+].map((match) => match[1]);
+
+/**
+ * The macOS 26 Icon Composer source. macOS renders its Default, Dark, Clear and Tinted
+ * styles from it, also while Trinity is not running; electron-builder compiles it.
+ */
+export const ICON_COMPOSER = {
+  'electron/build/Trinity.icon/icon.json': `${JSON.stringify(
+    {
+      'fill-specializations': [
+        { value: { 'linear-gradient': [srgb(PLATE_FROM), srgb(PLATE_TO)] } },
+        {
+          appearance: 'dark',
+          value: { 'linear-gradient': [srgb(DARK_TILE), srgb(DARK_TILE)] },
+        },
+      ],
+      groups: [
+        {
+          layers: [{ glass: true, 'image-name': 'Mark.svg', name: 'Mark' }],
+          shadow: { kind: 'neutral', opacity: 0.5 },
+          translucency: { enabled: true, value: 0.5 },
+        },
+      ],
+      'supported-platforms': { squares: ['macOS'] },
+    },
+    null,
+    2,
+  )}\n`,
+  'electron/build/Trinity.icon/Assets/Mark.svg': `${markOnly(1024, '#ffffff', 0.66)}\n`,
+};
+
 /** Render every output under `outRoot` and return them (rendered ones with pixels). */
 export function renderIcons(outRoot = ROOT) {
   const rendered = [];
@@ -356,6 +392,11 @@ export function renderIcons(outRoot = ROOT) {
     writeFileSync(target, png);
     const { svg: _svg, ...meta } = output;
     rendered.push({ ...meta, rgba, png });
+  }
+  for (const [path, text] of Object.entries(ICON_COMPOSER)) {
+    const target = join(outRoot, path);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, text);
   }
   return rendered;
 }

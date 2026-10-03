@@ -10,6 +10,7 @@ const desktop = vi.hoisted(() => ({
   set: vi.fn(() => Promise.resolve(true)),
   present: false,
   noIcon: false,
+  platform: 'linux',
 }));
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
@@ -23,6 +24,7 @@ vi.mock('./trinity-desktop-bridge', () => ({
   getTrinityDesktopBridge: () =>
     desktop.present
       ? {
+          platform: desktop.platform,
           capabilities: desktop.noIcon ? {} : { appIcon: { set: desktop.set } },
         }
       : undefined,
@@ -37,6 +39,7 @@ describe('AppIconAdapter', () => {
     desktop.set.mockClear();
     desktop.present = false;
     desktop.noIcon = false;
+    desktop.platform = 'linux';
     platform.mockReturnValue('web');
   });
 
@@ -105,6 +108,18 @@ describe('AppIconAdapter', () => {
     await firstValueFrom(adapter.apply('dark', 'system'));
     expect(desktop.set).toHaveBeenCalledWith('dark');
     expect(plugin.set).not.toHaveBeenCalled();
+  });
+
+  it('leaves Match system to macOS and still overrides an explicit choice', async () => {
+    desktop.present = true;
+    desktop.platform = 'darwin';
+    const adapter = TestBed.inject(AppIconAdapter);
+    await firstValueFrom(adapter.apply('dark', 'system'));
+    expect(desktop.set).toHaveBeenLastCalledWith('system');
+    await firstValueFrom(adapter.apply('blurple', 'system'));
+    expect(desktop.set).toHaveBeenCalledTimes(1);
+    await firstValueFrom(adapter.apply('dark', 'dark'));
+    expect(desktop.set).toHaveBeenLastCalledWith('dark');
   });
 
   it('swaps and restores the web favicons', async () => {

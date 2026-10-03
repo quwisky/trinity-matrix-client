@@ -5,8 +5,11 @@ import type { AppIconName } from './icons';
 
 const STATE_FILE = 'app-icon.json';
 
-export function isAppIconName(value: unknown): value is AppIconName {
-  return value === 'blurple' || value === 'dark';
+/** What the renderer sends: an icon, or 'system' to leave the macOS icon to macOS. */
+export type AppIconChoice = AppIconName | 'system';
+
+export function isAppIconChoice(value: unknown): value is AppIconChoice {
+  return value === 'blurple' || value === 'dark' || value === 'system';
 }
 
 /**
@@ -14,6 +17,11 @@ export function isAppIconName(value: unknown): value is AppIconName {
  * user never sees the blurple icon flash at startup.
  */
 export function storedAppIcon(): AppIconName {
+  const choice = storedAppIconChoice();
+  return choice === 'system' ? 'blurple' : choice;
+}
+
+export function storedAppIconChoice(): AppIconChoice {
   try {
     const state: unknown = JSON.parse(
       fs.readFileSync(path.join(app.getPath('userData'), STATE_FILE), 'utf8'),
@@ -21,7 +29,7 @@ export function storedAppIcon(): AppIconName {
     return typeof state === 'object' &&
       state !== null &&
       'icon' in state &&
-      isAppIconName(state.icon)
+      isAppIconChoice(state.icon)
       ? state.icon
       : 'blurple';
   } catch {
@@ -29,7 +37,7 @@ export function storedAppIcon(): AppIconName {
   }
 }
 
-export function saveAppIcon(icon: AppIconName): void {
+export function saveAppIcon(icon: AppIconChoice): void {
   try {
     fs.writeFileSync(
       path.join(app.getPath('userData'), STATE_FILE),

@@ -95,10 +95,10 @@ describe('persistAppIcon', () => {
     );
 
     persistAppIcon('blurple');
-    expect(mocks.execFile.mock.calls[1][1].slice(-2)).toEqual([
-      '/Applications/Trinity.app',
-      '',
-    ]);
+    persistAppIcon('system');
+    for (const call of mocks.execFile.mock.calls.slice(1)) {
+      expect(call[1].slice(-2)).toEqual(['/Applications/Trinity.app', '']);
+    }
   });
 
   it("points only Trinity's own Windows shortcuts at a dark .ico, and back at the exe", () => {

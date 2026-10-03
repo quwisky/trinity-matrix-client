@@ -30,9 +30,9 @@ export interface TrinityDesktopBridge {
 
   /** Protocol-v1 operations are grouped by capability and gated by negotiated grants. */
   capabilities: {
-    /** Apply the resolved App icon preference (Dock / window / tray while running). */
+    /** Apply the resolved App icon, or 'system' to leave the macOS icon to macOS. */
     appIcon?: {
-      set: (name: 'blurple' | 'dark') => Promise<boolean>;
+      set: (name: 'blurple' | 'dark' | 'system') => Promise<boolean>;
     };
     deepLinks: {
       /** Subscribe to validated OS deep links, replaying any buffered cold-start URL. */

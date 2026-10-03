@@ -111,7 +111,9 @@ linux:
 # macOS
 # ---------------------------------------------------------------------------
 mac:
-  icon: build/icon-mac.png
+  # Icon Composer source (scripts/generate-icons.mjs): macOS 26 themes it; electron-builder
+  # compiles it with Xcode 26's actool and derives the legacy .icns from it.
+  icon: build/Trinity.icon
   target:
     - dmg
     - zip

@@ -47,7 +47,7 @@ import {
   applyAppIcon,
   registerAppIconIpc,
 } from './app-icon';
-import { storedAppIcon } from './app-icon-state';
+import { storedAppIcon, storedAppIconChoice } from './app-icon-state';
 
 const platform = (value: NodeJS.Platform) =>
   Object.defineProperty(process, 'platform', { value, configurable: true });
@@ -113,5 +113,27 @@ describe('app icon', () => {
     mocks.persistAppIcon.mockClear();
     registerAppIconIpc();
     expect(mocks.persistAppIcon).toHaveBeenCalledWith('dark');
+  });
+
+  it('hands the macOS icon back to the system for Match system, elsewhere refuses it', async () => {
+    registerAppIconIpc();
+    const handle = mocks.handlers.get(SET_APP_ICON_CHANNEL)!;
+    expect(await handle({ sender: mocks.win.webContents }, 'system')).toBe(
+      false,
+    );
+
+    platform('darwin');
+    expect(await handle({ sender: mocks.win.webContents }, 'system')).toBe(
+      true,
+    );
+    expect(mocks.dockSetIcon).toHaveBeenCalledWith(null);
+    expect(mocks.persistAppIcon).toHaveBeenCalledWith('system');
+    expect(storedAppIconChoice()).toBe('system');
+    expect(storedAppIcon()).toBe('blurple');
+
+    vi.clearAllMocks();
+    registerAppIconIpc();
+    expect(mocks.dockSetIcon).not.toHaveBeenCalled();
+    expect(mocks.persistAppIcon).not.toHaveBeenCalled();
   });
 });

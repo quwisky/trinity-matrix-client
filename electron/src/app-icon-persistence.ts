@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { app, nativeImage, shell } from 'electron';
-import { dockIconFile, resolveIconFile, type AppIconName } from './icons';
+import type { AppIconChoice } from './app-icon-state';
+import { dockIconFile, resolveIconFile } from './icons';
 
 /** Marks the per-user .desktop copy this module wrote, so Blurple never deletes the user's own. */
 const LINUX_MARK = 'X-Trinity-App-Icon=dark';
@@ -18,9 +19,10 @@ function run([bundle, file]) {
 /**
  * Keep the App icon on the surfaces that show Trinity while it is not running: the macOS
  * bundle (Dock, Finder), Trinity's Windows shortcuts and a Linux deb's .desktop entry.
- * Packaged builds only. A failure leaves the shipped Blurple icon in place.
+ * Blurple and 'system' restore the shipped icon, which macOS 26 themes itself.
+ * Packaged builds only. A failure leaves the shipped icon in place.
  */
-export function persistAppIcon(icon: AppIconName): void {
+export function persistAppIcon(icon: AppIconChoice): void {
   if (!app.isPackaged) return;
   try {
     if (process.platform === 'darwin') persistMac(icon);
@@ -33,7 +35,7 @@ export function persistAppIcon(icon: AppIconName): void {
 }
 
 /** Rewrites the signed bundle (an unsealed custom icon); an update replaces the bundle, so startup re-applies it. */
-function persistMac(icon: AppIconName): void {
+function persistMac(icon: AppIconChoice): void {
   // …/Trinity.app/Contents/MacOS/Trinity → …/Trinity.app
   const bundle = path.resolve(app.getPath('exe'), '../../..');
   const file =
@@ -48,7 +50,7 @@ function persistMac(icon: AppIconName): void {
   );
 }
 
-function persistWindows(icon: AppIconName): void {
+function persistWindows(icon: AppIconChoice): void {
   const appData = app.getPath('appData');
   // The NSIS per-user shortcuts, plus the user's taskbar pin.
   const shortcuts = [
@@ -97,7 +99,7 @@ function darkIco(): string {
 }
 
 // ponytail: the user copy outlives an uninstall of the deb; remove it there if that ever matters.
-function persistLinux(icon: AppIconName): void {
+function persistLinux(icon: AppIconChoice): void {
   const dataHome =
     process.env['XDG_DATA_HOME'] || path.join(os.homedir(), '.local/share');
   const dataDirs = (
@@ -123,7 +125,7 @@ function persistLinux(icon: AppIconName): void {
   if (!entry) return;
   // A same-named file in the user's data home overrides the system entry.
   const override = path.join(dataHome, 'applications', path.basename(entry));
-  if (icon === 'blurple') {
+  if (icon !== 'dark') {
     if (
       fs.existsSync(override) &&
       String(fs.readFileSync(override, 'utf8')).includes(LINUX_MARK)

@@ -56,6 +56,12 @@ export class AppIconAdapter {
     icon: AppIconName,
     preference: AppIconPreference,
   ): string {
+    if (host === 'desktop')
+      // macOS 26 themes the bundle icon itself; elsewhere Match system is resolved here.
+      return preference === 'system' &&
+        getTrinityDesktopBridge()?.platform === 'darwin'
+        ? 'system'
+        : icon;
     if (host !== 'ios') return icon;
     if (preference === 'system') return 'primary';
     return icon === 'dark' ? 'AppIconDark' : 'AppIconBlurple';
@@ -75,7 +81,7 @@ export class AppIconAdapter {
         {
           // An absent capability (older preload) is unsupported, not a failure to retry.
           const set = getTrinityDesktopBridge()?.capabilities.appIcon?.set;
-          if (set && !(await set(target as AppIconName))) {
+          if (set && !(await set(target as AppIconName | 'system'))) {
             throw new Error('App icon was not applied');
           }
         }

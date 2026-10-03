@@ -4,7 +4,12 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { crc32, deflateSync, inflateSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { encodePng, OUTPUTS, renderIcons } from './generate-icons.mjs';
+import {
+  encodePng,
+  ICON_COMPOSER,
+  OUTPUTS,
+  renderIcons,
+} from './generate-icons.mjs';
 
 let out;
 let icons;
@@ -275,6 +280,47 @@ describe('committed icons', () => {
     expect(stale, 'run `pnpm icons:generate` and commit the results').toEqual(
       [],
     );
+  });
+
+  it('include the current Icon Composer source', () => {
+    for (const [path, text] of Object.entries(ICON_COMPOSER)) {
+      expect(readFileSync(join(out, path), 'utf8'), path).toBe(text);
+      expect(committed(path).toString(), path).toBe(text);
+    }
+  });
+});
+
+describe('Icon Composer source', () => {
+  it('gives macOS the blurple gradient, a dark tile and a white glass mark', () => {
+    const icon = JSON.parse(
+      ICON_COMPOSER['electron/build/Trinity.icon/icon.json'],
+    );
+    expect(icon['fill-specializations']).toEqual([
+      {
+        value: {
+          'linear-gradient': [
+            'srgb:0.43137,0.47451,0.96078,1.00000',
+            'srgb:0.27843,0.32157,0.76863,1.00000',
+          ],
+        },
+      },
+      {
+        appearance: 'dark',
+        value: {
+          'linear-gradient': [
+            'srgb:0.11765,0.12157,0.13333,1.00000',
+            'srgb:0.11765,0.12157,0.13333,1.00000',
+          ],
+        },
+      },
+    ]);
+    expect(icon.groups[0].layers).toEqual([
+      { glass: true, 'image-name': 'Mark.svg', name: 'Mark' },
+    ]);
+    expect(icon['supported-platforms']).toEqual({ squares: ['macOS'] });
+    const mark = ICON_COMPOSER['electron/build/Trinity.icon/Assets/Mark.svg'];
+    expect(mark).toContain('#ffffff');
+    expect(mark).not.toContain('#5865f2');
   });
 });
 

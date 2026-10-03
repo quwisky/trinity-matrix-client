@@ -183,8 +183,15 @@ describe('desktop icon wiring', () => {
 
   it('gives macOS its Apple-grid icon and everything else the full-bleed one', () => {
     const config = read('electron/electron-builder.yml');
-    expect(config).toMatch(/^mac:\n(?:  .*\n)*?  icon: build\/icon-mac\.png$/m);
-    expect(existsSync(join(root, 'electron/build/icon-mac.png'))).toBe(true);
+    // Icon Composer: macOS 26 themes it (Default, Dark, Clear, Tinted); electron-builder
+    // compiles it with Xcode 26's actool and derives the legacy .icns from it.
+    expect(config).toMatch(/^mac:\n(?:  .*\n)*?  icon: build\/Trinity\.icon$/m);
+    expect(
+      existsSync(join(root, 'electron/build/Trinity.icon/icon.json')),
+    ).toBe(true);
+    expect(read('.github/workflows/release.yml')).toMatch(
+      /- os: macos-26\n\s+platform: mac\n/,
+    );
   });
 
   it('ships every runtime icon through extraResources', () => {
