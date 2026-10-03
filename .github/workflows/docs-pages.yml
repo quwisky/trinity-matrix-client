@@ -3,6 +3,10 @@ name: Documentation Pages
 on:
   push:
     branches: [develop]
+  # The user guide waits for its release to be published. Pages only accepts develop,
+  # so a published stable release re-runs this workflow there.
+  release:
+    types: [published]
   workflow_dispatch:
 
 concurrency:
@@ -13,14 +17,42 @@ permissions:
   contents: read
 
 jobs:
+  redeploy:
+    name: Redeploy for the published release
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run docs-pages.yml --ref develop
+
   build:
     name: Build documentation
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Between a stable release PR's back-merge and publishing the release, develop's
+      # user guide names a draft version: build and check, but keep the live site.
+      - name: Check the user guide release is published
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(jq -r .version apps/docs-users/release.json)
+          if [ "$(gh release view "v$version" --json isDraft -q .isDraft 2>/dev/null)" = false ]; then
+            echo publish=true >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::v$version is not published yet; deploying after its release is published."
+            echo publish=false >> "$GITHUB_OUTPUT"
+          fi
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/setup-playwright
         with:
@@ -40,7 +72,7 @@ jobs:
 
   deploy:
     name: Deploy documentation
-    if: github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/develop' && needs.build.outputs.publish == 'true'
     needs: build
     runs-on: ubuntu-latest
     permissions:

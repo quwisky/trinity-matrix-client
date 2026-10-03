@@ -1,13 +1,15 @@
 ---
 title: Install Trinity
-description: Install Trinity 0.1.0 on macOS, Windows or Linux, or self-host the web app.
+description: Install Trinity on macOS, Windows or Linux, or self-host the web app.
 audience: user
 contentChannel: release
-productVersion: '0.1.0'
+productVersion: '0.1.0' # x-release-please-version
 canonicalTopic: user-home
 pageType: how-to
 platforms: [web, desktop]
 ---
+
+<!-- x-release-please-start-version -->
 
 Trinity is an end-to-end encrypted [Matrix](https://matrix.org) client. Release 0.1.0 is
 available for macOS, Windows and Linux, and as a self-hostable web app (PWA). Android and
@@ -40,7 +42,8 @@ the sandbox they rely on.
 
 ```bash
 sudo apt install ./trinity-desktop_0.1.0_amd64.deb             # Debian and Ubuntu
-chmod +x Trinity-0.1.0.AppImage && ./Trinity-0.1.0.AppImage    # AppImage
+chmod +x Trinity-0.1.0.AppImage                               # AppImage
+./Trinity-0.1.0.AppImage
 ```
 
 ## Web {#web}
@@ -59,3 +62,5 @@ in the developer guide.
 ## Get help {#get-help}
 
 Report problems on [GitHub Issues](https://github.com/quwisky/trinity-matrix-client/issues).
+
+<!-- x-release-please-end -->
