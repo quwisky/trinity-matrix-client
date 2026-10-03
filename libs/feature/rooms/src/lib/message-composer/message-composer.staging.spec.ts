@@ -436,7 +436,7 @@ describe('MessageComposerComponent — staging files for the next send', () => {
       new File(['x'], 'notes.pdf', { type: 'application/pdf' }),
     ]);
 
-    const previews = cmp.staged().map((a) => a.previewUrl);
+    const previews = cmp['attachments'].staged().map((a) => a.previewUrl);
     expect(previews[0]).toMatch(/^blob:preview-/);
     expect(previews[1]).toBeNull();
     expect(createObjectURL).toHaveBeenCalledTimes(1); // not for the PDF
@@ -446,11 +446,11 @@ describe('MessageComposerComponent — staging files for the next send', () => {
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
     pickFiles(cmp, [png('one.png')]);
-    const before = cmp.staged();
+    const before = cmp['attachments'].staged();
 
     cmp.removeStaged('attachment-does-not-exist');
 
-    expect(cmp.staged()).toBe(before); // same array, so the strip does not re-render
+    expect(cmp['attachments'].staged()).toBe(before); // same array, so the strip does not re-render
     expect(revokeObjectURL).not.toHaveBeenCalled();
   });
 
@@ -460,18 +460,18 @@ describe('MessageComposerComponent — staging files for the next send', () => {
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
     pickFiles(cmp, [png('one.png')]);
-    const before = cmp.staged();
+    const before = cmp['attachments'].staged();
 
     pickFiles(cmp, []);
 
-    expect(cmp.staged()).toBe(before);
+    expect(cmp['attachments'].staged()).toBe(before);
   });
 
   it('removes one staged attachment and revokes only its preview', async () => {
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
     pickFiles(cmp, [png('one.png'), png('two.png'), png('three.png')]);
-    const doomed = cmp.staged()[1];
+    const doomed = cmp['attachments'].staged()[1];
 
     cmp.removeStaged(doomed.id);
 
@@ -489,7 +489,7 @@ describe('MessageComposerComponent — staging files for the next send', () => {
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
     pickFiles(cmp, [png('one.png'), png('two.png'), png('three.png')]);
-    const urls = cmp.staged().map((a) => a.previewUrl);
+    const urls = cmp['attachments'].staged().map((a) => a.previewUrl);
 
     cmp.clearStaged();
 

@@ -13,21 +13,16 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { throwError, type Observable } from 'rxjs';
 import {
-  filter,
-  mergeMap,
-  of,
-  take,
-  tap,
-  throwError,
-  type Observable,
-} from 'rxjs';
-import {
+  batchFailureToast,
   sendMediaBatch,
+  sendViaCapability,
   type BatchItem,
   type BatchOutcome,
   type BatchProgress,
 } from '../shared/send-media-batch';
+import { dispatchSharedRowAction } from '../shared/row-actions';
 import {
   HapticsService,
   MessageGestureSettingsService,
@@ -42,6 +37,7 @@ import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TypingIndicatorComponent } from '../message-list/typing-indicator/typing-indicator.component';
 import {
   TrnAlertService,
+  TrnDialogService,
   TrnOverlaySurfaceDirective,
   TrnToastService,
 } from '@trinity/components/overlay';
@@ -54,10 +50,9 @@ import {
   isQuotableMessage,
   type ConversationThread,
   type ConversationThreadOutcome,
-  type MessageView,
 } from '@trinity/data-access/timeline';
 import { RoomMembersService } from '@trinity/data-access/room-administration';
-import { messagePermalink, quoteBlock } from '@trinity/util/matrix';
+import { quoteBlock } from '@trinity/util/matrix';
 import {
   MessageRowComponent,
   type MessageLongPressContext,
@@ -69,10 +64,8 @@ import {
   MessageComposerComponent,
   type ComposerSubmit,
 } from '../message-composer/message-composer.component';
-import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
 import { ForwardService } from '../forward/forward.service';
 import { ReportService } from '../report/report.service';
-import { MessageSourceService } from '../message-source/message-source.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 import { TrnIconComponent } from '@trinity/components/foundations';
@@ -132,10 +125,9 @@ export class ThreadViewComponent implements OnDestroy {
   private readonly openedThread = signal<ConversationThread | null>(null);
   private readonly messageSheet = inject(MessageActionSheetService);
   private readonly roomMembers = inject(RoomMembersService);
-  private readonly reactionPicker = inject(ReactionPickerService);
+  private readonly dialog = inject(TrnDialogService);
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
-  private readonly sourceSvc = inject(MessageSourceService);
   private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly timeline = this.conversations.timeline;
@@ -412,21 +404,16 @@ export class ThreadViewComponent implements OnDestroy {
       items,
       caption,
       (_file, itemCaption, progress, media) => {
-        if (!pinnedThread || this.openedThread() !== pinnedThread || !media) {
+        if (!pinnedThread || this.openedThread() !== pinnedThread) {
           abandoned++;
           return throwError(() => new Error('thread changed mid-batch'));
         }
-        return pinnedThread.media.send(media, itemCaption).pipe(
-          tap((event) => {
-            if (event.kind === 'progress') progress?.(event.fraction);
-          }),
-          filter((event) => event.kind !== 'progress'),
-          take(1),
-          mergeMap((event) => {
-            if (event.kind === 'sent') return of(void 0);
-            if (event.failure === 'conversation-unavailable') abandoned++;
-            return throwError(() => new Error(event.failure));
-          }),
+        return sendViaCapability(
+          pinnedThread.media.send(media, itemCaption),
+          progress,
+          (failure) => {
+            if (failure === 'conversation-unavailable') abandoned++;
+          },
         );
       },
       reportProgress,
@@ -438,13 +425,7 @@ export class ThreadViewComponent implements OnDestroy {
         if (!failed) {
           return;
         }
-        void this.showError(
-          abandoned
-            ? `${failed} ${failed === 1 ? 'attachment was' : 'attachments were'} not sent — you left the thread before they went out.`
-            : failed === 1
-              ? 'One attachment could not be sent. It is still in the composer.'
-              : `${failed} attachments could not be sent. They are still in the composer.`,
-        );
+        void this.showError(batchFailureToast(failed, abandoned, 'thread'));
       });
   }
 
@@ -464,31 +445,15 @@ export class ThreadViewComponent implements OnDestroy {
     this.composer()?.insertQuote(quoteBlock(row.body));
   }
 
-  /** A thread message the current user can still edit (own, confirmed, text). */
-  isEditable(m: MessageView): boolean {
-    return isEditableMessage(m);
-  }
-
   /** Edit the most recent editable own message in the thread (Up-arrow shortcut). */
   editLastOwn(): void {
     const msgs = this.openedThread()?.messages() ?? [];
     for (let i = msgs.length - 1; i >= 0; i--) {
-      if (this.isEditable(msgs[i])) {
+      if (isEditableMessage(msgs[i])) {
         this.editingId.set(msgs[i].id);
         return;
       }
     }
-  }
-
-  onCopy(row: MessageRow): void {
-    void navigator.clipboard?.writeText(row.body);
-  }
-
-  /** Copy a matrix.to permalink to this message. */
-  onCopyLink(row: MessageRow): void {
-    void navigator.clipboard?.writeText(
-      messagePermalink(this.roomId() ?? '', row.id),
-    );
   }
 
   onReact(messageId: string, key: string): void {
@@ -521,14 +486,6 @@ export class ThreadViewComponent implements OnDestroy {
       this.timelineActions.endPoll(pollId),
       'Could not end the poll.',
     );
-  }
-
-  /** Open the full emoji picker and, on a pick, react to the thread message with it. */
-  private pickReaction(messageId: string): void {
-    this.reactionPicker
-      .pick$()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((key) => this.onReact(messageId, key));
   }
 
   onRetry(messageId: string): void {
@@ -565,7 +522,7 @@ export class ThreadViewComponent implements OnDestroy {
     const caps = new Map<string, MessageRowCaps>();
     for (const row of this.rows()) {
       caps.set(row.id, {
-        editable: this.isEditable(row),
+        editable: isEditableMessage(row),
         // Own messages are always deletable; a moderator can also redact others'.
         deletable: (row.isOwn || canRedactOthers) && !row.status,
         canPin: false,
@@ -585,39 +542,27 @@ export class ThreadViewComponent implements OnDestroy {
 
   /** Route a single row action to its thread handler. */
   onRowAction(row: MessageRow, action: MessageRowAction): void {
+    if (
+      dispatchSharedRowAction(action, row, {
+        roomId: this.roomId(),
+        destroyRef: this.destroyRef,
+        dialog: this.dialog,
+        timeline: this.timeline,
+        forward: this.forwardSvc,
+        report: this.reportSvc,
+        reactions: this.reactionsDialog,
+        editHistory: this.editHistorySvc,
+        react: (id, key) => this.onReact(id, key),
+        quote: (r) => this.startQuote(r),
+        // The thread panel routes no permalinks (its rows don't bind matrixLink either),
+        // so a link followed out of the edit-history dialog just closes it.
+      })
+    ) {
+      return;
+    }
     switch (action.type) {
-      case 'react':
-        this.onReact(row.id, action.key);
-        break;
-      case 'react-more':
-        void this.pickReaction(row.id);
-        break;
       case 'reply':
         this.startReply(row);
-        break;
-      case 'quote':
-        this.startQuote(row);
-        break;
-      case 'copy':
-        this.onCopy(row);
-        break;
-      case 'copy-link':
-        this.onCopyLink(row);
-        break;
-      case 'view-source':
-        this.sourceSvc.open(this.roomId(), row.id);
-        break;
-      case 'forward':
-        this.forwardSvc
-          .forward$(this.roomId(), row.id)
-          .pipe(takeUntilDestroyed(this.destroyRef))
-          .subscribe();
-        break;
-      case 'report':
-        this.reportSvc
-          .report$(this.roomId(), row.id)
-          .pipe(takeUntilDestroyed(this.destroyRef))
-          .subscribe();
         break;
       case 'edit':
         this.startEdit(row);
@@ -630,20 +575,6 @@ export class ThreadViewComponent implements OnDestroy {
         break;
       case 'jump':
         this.jumpTo(action.id);
-        break;
-      case 'reactors':
-        this.reactionsDialog
-          .open$(row.id)
-          .pipe(takeUntilDestroyed(this.destroyRef))
-          .subscribe({ error: () => undefined });
-        break;
-      case 'edit-history':
-        // The thread panel routes no permalinks (its rows don't bind matrixLink either),
-        // so a link followed out of the dialog just closes it.
-        this.editHistorySvc
-          .openHistory$(this.roomId(), row.id)
-          .pipe(takeUntilDestroyed(this.destroyRef))
-          .subscribe();
         break;
       // Pin/thread are not offered inside a thread (caps.canPin/canThread false).
       case 'pin':

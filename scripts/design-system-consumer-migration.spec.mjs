@@ -369,7 +369,7 @@ describe('migrated application design-system consumers', () => {
     expect(memberInfoPanel[0]?.[1]).toMatch(/\bsurfaceSize="lg"/u);
     expect(memberInfoPanel[0]?.[1]).toMatch(/\bsurfaceLayout="panel"/u);
     const memberInfoService = source(
-      'libs/feature/rooms/src/lib/member-info/member-info.service.ts',
+      'libs/feature/rooms/src/lib/rooms/member-actions.service.ts',
     );
     expect(memberInfoService).toMatch(
       /surfaceSize:\s*['"]sm['"][\s\S]{0,80}surfaceLayout:\s*['"]dialog['"]/u,

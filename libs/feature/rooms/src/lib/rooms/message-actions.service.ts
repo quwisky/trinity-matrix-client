@@ -10,16 +10,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { type Mention } from '@trinity/util/matrix';
 import type { ImagePackImage } from '@trinity/data-access/media';
-import {
-  Observable,
-  filter,
-  mergeMap,
-  of,
-  switchMap,
-  take,
-  tap,
-  throwError,
-} from 'rxjs';
+import { Observable, filter, switchMap, throwError } from 'rxjs';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import {
@@ -32,7 +23,9 @@ import { MemberActionsService } from './member-actions.service';
 import { ShellStatusService } from './shell-status.service';
 import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 import {
+  batchFailureToast,
   sendMediaBatch,
+  sendViaCapability,
   type BatchItem,
   type BatchOutcome,
   type BatchProgress,
@@ -322,21 +315,11 @@ export class MessageActionsService {
     // on SUBSCRIBE — right for a single press, but item N subscribes minutes later. Room id alone
     // is insufficient because two Accounts can share the same Matrix room id.
     const pinnedConversation = this.conversations.focused();
-    const pinnedRoomId = this.timeline.openRoomId;
     let abandoned = 0;
     sendMediaBatch(
       items,
       caption,
-      (file, itemCaption, progress, media) => {
-        if (!media) {
-          // Transitional compatibility for pre-pipeline callers. Production composer
-          // batches always carry `media`; the File path disappears with thread migration #309.
-          if (this.timeline.openRoomId !== pinnedRoomId) {
-            abandoned++;
-            return throwError(() => new Error('room changed mid-batch'));
-          }
-          return this.timelineActions.sendMedia(file, itemCaption, progress);
-        }
+      (_file, itemCaption, progress, media) => {
         if (
           !pinnedConversation ||
           this.conversations.focused() !== pinnedConversation
@@ -344,17 +327,9 @@ export class MessageActionsService {
           abandoned++;
           return throwError(() => new Error('conversation changed mid-batch'));
         }
-        return pinnedConversation.media.send(media, itemCaption).pipe(
-          tap((event) => {
-            if (event.kind === 'progress') progress?.(event.fraction);
-          }),
-          filter((event) => event.kind !== 'progress'),
-          take(1),
-          mergeMap((event) =>
-            event.kind === 'sent'
-              ? of(void 0)
-              : throwError(() => new Error(event.failure)),
-          ),
+        return sendViaCapability(
+          pinnedConversation.media.send(media, itemCaption),
+          progress,
         );
       },
       reportProgress,
@@ -370,20 +345,8 @@ export class MessageActionsService {
         if (!failed) {
           return;
         }
-        // Two different fates, and they are counted separately rather than lumped under
-        // whichever happened to occur: the composer drops its staging on a room change, so
-        // "still in the composer" is true for an upload that failed and false for one
-        // abandoned by leaving. Blaming a network failure on the room switch would send the
-        // user looking for a file that is not there.
-        const upload = failed - abandoned;
         void this.status.showError(
-          abandoned && upload
-            ? `${abandoned} ${plural(abandoned, 'attachment', 'attachments')} not sent — you left the room before they went out — and ${upload} could not be uploaded.`
-            : abandoned
-              ? `${abandoned} ${plural(abandoned, 'attachment was', 'attachments were')} not sent — you left the room before they went out.`
-              : upload === 1
-                ? 'One attachment could not be sent. It is still in the composer.'
-                : `${upload} attachments could not be sent. They are still in the composer.`,
+          batchFailureToast(failed, abandoned, 'room'),
         );
       });
   }
@@ -489,8 +452,3 @@ const JUMP_FAILURE_MESSAGE = {
   unsupported: 'This homeserver cannot jump to a date.',
   failed: 'Could not reach your homeserver. Try that date again.',
 } as const;
-
-/** Pick the singular or plural wording for a count. */
-function plural(count: number, one: string, many: string): string {
-  return count === 1 ? one : many;
-}

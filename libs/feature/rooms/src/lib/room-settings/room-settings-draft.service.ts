@@ -16,7 +16,7 @@ import {
   type RoomSettingsTarget,
 } from '@trinity/data-access/room-administration';
 import {
-  runSave,
+  sectionSaver,
   type FieldWrite,
   type SettingsFeedback,
 } from '../shared/save-fields';
@@ -64,6 +64,16 @@ export class RoomSettingsDraftService {
   private readonly savingState = signal<'general' | 'access' | null>(null);
   private readonly generalFeedbackState = signal<SettingsFeedback | null>(null);
   private readonly accessFeedbackState = signal<SettingsFeedback | null>(null);
+  private readonly saveSection = sectionSaver({
+    emptyLabel: 'Room details',
+    destroyRef: this.destroyRef,
+    toast: this.toast,
+    saving: this.savingState,
+    feedback: {
+      general: this.generalFeedbackState,
+      access: this.accessFeedbackState,
+    },
+  });
 
   readonly snapshot = this.snapshotState.asReadonly();
   readonly model = this.modelState.asReadonly();
@@ -294,7 +304,7 @@ export class RoomSettingsDraftService {
         blocked.push('topic');
       }
     }
-    this.runSave('general', writes, blocked, (saved) => {
+    this.saveSection('general', writes, blocked, (saved) => {
       this.commitGeneral(saved, candidate);
     });
   }
@@ -334,30 +344,8 @@ export class RoomSettingsDraftService {
         blocked.push('history visibility');
       }
     }
-    this.runSave('access', writes, blocked, (saved) => {
+    this.saveSection('access', writes, blocked, (saved) => {
       this.commitAccess(saved, model, allow);
-    });
-  }
-
-  private runSave(
-    section: 'general' | 'access',
-    writes: readonly FieldWrite[],
-    blocked: readonly string[],
-    commit: (saved: ReadonlySet<string>) => void,
-  ): void {
-    runSave({
-      writes,
-      blocked,
-      emptyLabel: 'Room details',
-      destroyRef: this.destroyRef,
-      toast: this.toast,
-      setSaving: (on) => this.savingState.set(on ? section : null),
-      setFeedback: (feedback) =>
-        (section === 'general'
-          ? this.generalFeedbackState
-          : this.accessFeedbackState
-        ).set(feedback),
-      commit,
     });
   }
 

@@ -65,7 +65,7 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
 
     cmp.submit();
     expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['bad.png']);
-    expect(cmp.staged().map((a) => a.failed)).toEqual([true]);
+    expect(cmp['attachments'].staged().map((a) => a.failed)).toEqual([true]);
 
     // The row is not stuck failed: a successful retry clears the flag by leaving. No
     // `uploadProgress` round-trip — outcomes landing is what releases the latch.
@@ -94,7 +94,8 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     cmp.submit();
     pickFiles(cmp, [png('later.png')]); // added after the failure
 
-    const failedId = cmp.staged().find((a) => a.failed)?.id ?? '';
+    const failedId =
+      cmp['attachments'].staged().find((a) => a.failed)?.id ?? '';
     cmp['retryStaged'](failedId);
 
     expect(batches).toEqual([
@@ -290,7 +291,9 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     cmp.submit();
 
     cmp.text.set('second thoughts');
-    finish[0]?.([{ id: cmp.staged()[0]?.id ?? '', failed: true }]);
+    finish[0]?.([
+      { id: cmp['attachments'].staged()[0]?.id ?? '', failed: true },
+    ]);
 
     expect(cmp.text()).toBe('second thoughts');
   });
@@ -307,7 +310,7 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     cmp.submit();
 
     cmp.text.set('trying again');
-    cmp['retryStaged'](cmp.staged()[0]?.id ?? '');
+    cmp['retryStaged'](cmp['attachments'].staged()[0]?.id ?? '');
 
     expect(captions).toEqual(['', 'trying again']);
   });
@@ -328,16 +331,23 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     });
     pickFiles(cmp, [png('one.png'), png('two.png'), png('three.png')]);
     cmp.submit();
-    expect(cmp.staged().map((a) => a.failed)).toEqual([true, true, true]);
+    expect(cmp['attachments'].staged().map((a) => a.failed)).toEqual([
+      true,
+      true,
+      true,
+    ]);
 
     failNames = []; // the retry succeeds
-    cmp['retryStaged'](cmp.staged()[0]?.id ?? '');
+    cmp['retryStaged'](cmp['attachments'].staged()[0]?.id ?? '');
 
-    expect(cmp.staged().map((a) => a.file.name)).toEqual([
+    expect(cmp['attachments'].staged().map((a) => a.file.name)).toEqual([
       'two.png',
       'three.png',
     ]);
-    expect(cmp.staged().map((a) => a.failed)).toEqual([true, true]);
+    expect(cmp['attachments'].staged().map((a) => a.failed)).toEqual([
+      true,
+      true,
+    ]);
   });
 
   it('leaves the failed rows marked when a GIF is sent past them', async () => {
@@ -355,16 +365,22 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     });
     pickFiles(cmp, [png('one.png')]);
     cmp.submit();
-    expect(cmp.staged().map((a) => a.failed)).toEqual([true]);
+    expect(cmp['attachments'].staged().map((a) => a.failed)).toEqual([true]);
 
     // Exactly the call the attachments service's `sendMedia` hook makes for a chosen GIF.
     cmp['batches'].dispatch(
-      [{ id: 'direct-cat.gif', file: png('cat.gif') }],
+      [
+        {
+          id: 'direct-cat.gif',
+          file: png('cat.gif'),
+          media: cmp['attachments'].staged()[0].media,
+        },
+      ],
       '',
       [],
     );
 
-    expect(cmp.staged().map((a) => a.failed)).toEqual([true]);
+    expect(cmp['attachments'].staged().map((a) => a.failed)).toEqual([true]);
   });
 
   it('stops showing a retried file as failed while its retry is in flight', async () => {
@@ -381,13 +397,19 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     });
     pickFiles(cmp, [png('one.png'), png('two.png')]);
     cmp.submit();
-    expect(cmp.staged().map((a) => a.failed)).toEqual([true, true]);
+    expect(cmp['attachments'].staged().map((a) => a.failed)).toEqual([
+      true,
+      true,
+    ]);
 
     hold = true;
-    cmp['retryStaged'](cmp.staged()[0]?.id ?? '');
+    cmp['retryStaged'](cmp['attachments'].staged()[0]?.id ?? '');
 
     // The retried one is uploading; its sibling has not been touched.
-    expect(cmp.staged().map((a) => a.failed)).toEqual([false, true]);
+    expect(cmp['attachments'].staged().map((a) => a.failed)).toEqual([
+      false,
+      true,
+    ]);
   });
 
   it('sends a batch caption as its own message, after the files', async () => {
@@ -583,7 +605,9 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     cmp.submit();
     expect(sent).toEqual(['one.png']); // the bar clearing is NOT what releases it
 
-    finish[0]?.([{ id: cmp.staged()[0]?.id ?? '', failed: true }]);
+    finish[0]?.([
+      { id: cmp['attachments'].staged()[0]?.id ?? '', failed: true },
+    ]);
     cmp.submit();
 
     expect(sent).toEqual(['one.png', 'one.png']); // failed, so still staged and resendable
@@ -629,12 +653,12 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
     cmp.submitMedia.subscribe(() => undefined);
-    cmp.gifPickerOpen.set(true);
+    cmp['attachments'].gifPickerOpen.set(true);
     pickFiles(cmp, [png('one.png')]);
 
     cmp.submit();
 
-    expect(cmp.gifPickerOpen()).toBe(false);
+    expect(cmp['attachments'].gifPickerOpen()).toBe(false);
   });
 
   it('releases the latch when a send finishes without the bar ever appearing', async () => {

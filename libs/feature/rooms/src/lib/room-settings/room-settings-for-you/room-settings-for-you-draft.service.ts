@@ -19,7 +19,7 @@ import {
   type PreferenceFeedback,
   type PreferenceLoadState,
 } from '../../shared/save-fields';
-import { sentenceList } from '../room-settings-draft.models';
+import { sentenceList } from '../../shared/save-fields';
 import { RoomSettingsDraftService } from '../room-settings-draft.service';
 
 export interface RoomForYouModel {
@@ -166,13 +166,13 @@ export class RoomSettingsForYouDraftService {
         if (failed.length === 0) {
           this.feedbackState.set({
             tone: 'success',
-            message: `${sentenceList(saved)} saved for the opening Account.`,
+            message: `${sentenceList(saved, 'Room details')} saved for the opening Account.`,
           });
           return;
         }
         const message = saved.length
           ? unsavedRemainderMessage(saved, failed)
-          : `${sentenceList(failed)} could not be saved. Your changes are still here.`;
+          : `${sentenceList(failed, 'Room details')} could not be saved. Your changes are still here.`;
         this.feedbackState.set({ tone: 'danger', message });
       });
   }
