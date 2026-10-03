@@ -6,9 +6,9 @@ Trinity is an end-to-end encrypted [Matrix](https://matrix.org) client for Web/P
 Android, iOS, and Electron desktop. One Angular application supplies the shared
 renderer; host capabilities handle platform-specific behavior.
 
-The desktop app is available from
+The desktop app and the self-hostable web app (PWA) are available from
 [the latest release](https://github.com/quwisky/trinity-matrix-client/releases/latest);
-the web (PWA), Android and iOS apps are still in development. The
+the Android and iOS apps are still in development. The
 [user guide](https://quwisky.github.io/trinity-matrix-client/users/) is a
 work-in-progress notice for now. The
 [developer guide](https://quwisky.github.io/trinity-matrix-client/developers/) follows
@@ -59,10 +59,17 @@ pre-releases, for testing. On macOS, once a `-next` prerelease has been publishe
 `brew install --cask quwisky/trinity/trinity@next`. The two casks conflict because both
 install `Trinity.app`; run `brew uninstall --cask trinity` first.
 
-### Web, Android and iOS
+### Web
+
+Self-host the web app from the release image, `docker run -d -p 8080:8080 ghcr.io/quwisky/trinity-web:next`
+(`:latest` once the first stable release is out),
+or from the `Trinity-Web-X.Y.Z.zip` attached to each
+[release](https://github.com/quwisky/trinity-matrix-client/releases). See
+[Self-host a release](https://quwisky.github.io/trinity-matrix-client/developers/platforms/web-and-pwa/#self-host-release).
+
+### Android and iOS
 
 🚧 In development. Build them from source with the developer guide:
-[web and PWA](https://quwisky.github.io/trinity-matrix-client/developers/platforms/web-and-pwa/),
 [Android](https://quwisky.github.io/trinity-matrix-client/developers/platforms/android/),
 [iOS](https://quwisky.github.io/trinity-matrix-client/developers/platforms/ios/).
 
@@ -70,7 +77,7 @@ install `Trinity.app`; run `brew uninstall --cask trinity` first.
 
 | Platforms               | Trinity  | Element Web/Desktop | Element X | FluffyChat | Cinny |
 | ----------------------- | -------- | ------------------- | --------- | ---------- | ----- |
-| Web                     | 🚧 (PWA) | ✅                  | —         | ✅         | ✅    |
+| Web                     | ✅ (PWA) | ✅                  | —         | ✅         | ✅    |
 | Windows / macOS / Linux | ✅       | ✅                  | —         | Linux      | ✅    |
 | Android / iOS           | 🚧       | —                   | ✅        | ✅         | —     |
 

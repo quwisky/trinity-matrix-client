@@ -242,9 +242,37 @@ jobs:
           # "409 Conflict: an artifact with this name already exists".
           overwrite: true
 
+  # The self-hostable web app: the verified production renderer as a zip on the draft.
+  # container.yml builds the GHCR image from this exact zip once the release is published.
+  package-web:
+    name: Package (web)
+    needs: verify
+    if: ${{ !cancelled() && needs.verify.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.verify.outputs.tag }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: pnpm nx run trinity:build
+      # Records www/ hashes bound to the tag commit; container.yml verifies them again.
+      - run: node scripts/web-bundle-manifest.mjs write www
+      - name: Pack the web zip
+        env:
+          TAG: ${{ needs.verify.outputs.tag }}
+        run: node scripts/web-release-zip.mjs --version "${TAG#v}" --out release-web
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trinity-web
+          path: release-web/Trinity-Web-*.zip
+          if-no-files-found: error
+          retention-days: 7
+
   draft-release:
     name: Draft the release
-    needs: [verify, package]
+    needs: [verify, package, package-web]
     # NOT the default `success()`. A matrix job reports failure if ANY leg fails, even
     # with fail-fast off — so the default would skip this entirely when one platform
     # breaks, throwing away the installers that did build. That is the exact opposite of
@@ -273,8 +301,9 @@ jobs:
           ls artifacts/*.AppImage >/dev/null 2>&1 || missing="$missing linux"
           ls artifacts/*.dmg >/dev/null 2>&1 || missing="$missing mac"
           ls artifacts/*.exe >/dev/null 2>&1 || missing="$missing win"
+          ls artifacts/Trinity-Web-*.zip >/dev/null 2>&1 || missing="$missing web"
           if [ -n "$missing" ]; then
-            echo "::warning::No installer for:$missing — drafting a PARTIAL release. Re-run the workflow once fixed."
+            echo "::warning::No artifact for:$missing — drafting a PARTIAL release. Re-run the workflow once fixed."
           fi
           if ! ls artifacts/* >/dev/null 2>&1; then
             echo "::error::Every platform failed; nothing to attach."
@@ -308,6 +337,6 @@ jobs:
                 --draft $prerelease \
                 --verify-tag \
                 --title "Trinity $TAG" \
-                --notes "Desktop builds for $TAG. Artifacts are unsigned unless signing secrets were configured — see https://quwisky.github.io/trinity-matrix-client/developers/platforms/electron/"
+                --notes "Desktop and web builds for $TAG. Artifacts are unsigned unless signing secrets were configured — see https://quwisky.github.io/trinity-matrix-client/developers/platforms/electron/"
               ;;
           esac
