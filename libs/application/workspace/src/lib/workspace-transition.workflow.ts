@@ -14,7 +14,6 @@ import {
   map,
   of,
   switchMap,
-  tap,
   throwError,
 } from 'rxjs';
 import {
@@ -23,7 +22,6 @@ import {
   type WorkspaceDestination,
   type WorkspaceOpenOptions,
   type WorkspaceOpenOutcome,
-  type WorkspaceTransitionMetrics,
   type WorkspaceView,
   workspaceViewOf,
 } from './workspace.models';
@@ -43,24 +41,8 @@ interface ResolvedWorkspaceDestination {
 export interface WorkspaceTransitionCallbacks {
   readonly release: () => void;
   readonly restore: (view: WorkspaceView) => void;
-  readonly commit: (
-    view: WorkspaceView,
-    metrics: WorkspaceTransitionMetrics,
-    options: WorkspaceOpenOptions,
-  ) => void;
+  readonly commit: (view: WorkspaceView, options: WorkspaceOpenOptions) => void;
 }
-
-const ZERO_ACCOUNT_METRICS = {
-  durationMs: 0,
-  projectionDurationMs: 0,
-  projectionCount: 0,
-} as const;
-
-const NOOP_TRANSITION_METRICS = {
-  durationMs: 0,
-  accountDurationMs: 0,
-  routeDurationMs: 0,
-} as const satisfies WorkspaceTransitionMetrics;
 
 class WorkspaceNavigationRejected extends Error {}
 
@@ -105,10 +87,6 @@ export class WorkspaceTransitionWorkflow {
     previous: WorkspaceView,
     callbacks: WorkspaceTransitionCallbacks,
   ): Observable<WorkspaceOpenOutcome> {
-    const startedAt = performance.now();
-    let accountSettledAt = startedAt;
-    let routeStartedAt = startedAt;
-    let routeDurationMs = 0;
     let accountCommitStarted = false;
     let routeProjectionStarted = false;
     let released = false;
@@ -129,33 +107,24 @@ export class WorkspaceTransitionWorkflow {
         kind: 'ready',
         view: previous,
         repaired: false,
-        metrics: NOOP_TRANSITION_METRICS,
       });
     }
 
     const projectRequestedUrl = () => {
-      routeStartedAt = performance.now();
       // A canonical inbound Router destination is already in the address bar. Asking
       // Angular to navigate to that same URL resolves `false`; that means "unchanged",
       // not "rejected", and must not prevent Workspace from committing the restored view.
       if (options.source === 'restore' && !resolved.repaired) {
-        routeDurationMs = 0;
         return of(true);
       }
       routeProjectionStarted = true;
-      return this.location
-        .project(resolved.destination, {
-          history:
-            options.history === 'replace' || resolved.repaired
-              ? 'replace'
-              : 'push',
-          eventId: options.eventId,
-        })
-        .pipe(
-          tap(() => {
-            routeDurationMs = performance.now() - routeStartedAt;
-          }),
-        );
+      return this.location.project(resolved.destination, {
+        history:
+          options.history === 'replace' || resolved.repaired
+            ? 'replace'
+            : 'push',
+        eventId: options.eventId,
+      });
     };
 
     const source = this.activateAccount(
@@ -179,9 +148,6 @@ export class WorkspaceTransitionWorkflow {
         accountCommitStarted = true;
       },
     ).pipe(
-      tap(() => {
-        accountSettledAt = performance.now();
-      }),
       switchMap((accountOutcome) => {
         if (accountOutcome.kind !== 'ready') {
           return this.restoreUrlIfNeeded(previous, routeProjectionStarted).pipe(
@@ -203,19 +169,12 @@ export class WorkspaceTransitionWorkflow {
               };
             }
             const view = workspaceViewOf(resolved.destination);
-            const finishedAt = performance.now();
-            const metrics = {
-              durationMs: finishedAt - startedAt,
-              accountDurationMs: accountSettledAt - startedAt,
-              routeDurationMs,
-            } satisfies WorkspaceTransitionMetrics;
             committed = true;
-            callbacks.commit(view, metrics, options);
+            callbacks.commit(view, options);
             return {
               kind: 'ready',
               view,
               repaired: resolved.repaired,
-              metrics,
             };
           }),
         );
@@ -258,7 +217,6 @@ export class WorkspaceTransitionWorkflow {
       return of({
         kind: 'ready',
         accountId,
-        metrics: ZERO_ACCOUNT_METRICS,
       });
     }
     return this.accounts.switchActiveAccount(accountId, {

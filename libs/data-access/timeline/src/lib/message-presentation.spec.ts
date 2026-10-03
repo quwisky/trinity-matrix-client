@@ -4,7 +4,6 @@ import {
   isEditableMessage,
   isQuotableMessage,
   presentNormalizedTimelineEvent,
-  presentNormalizedTimelineEvents,
   type MessageView,
   type NormalizedTimelineEvent,
 } from './message-presentation';
@@ -188,31 +187,6 @@ describe('Message Presentation', () => {
     });
 
     expect(presentation?.body).toBe('Readable custom reply');
-  });
-
-  it('reports content-free per-event and batch timing evidence', () => {
-    const event: NormalizedTimelineEvent = {
-      ...BASE,
-      type: 'text',
-      messageKind: 'text',
-      body: 'secret body that diagnostics must not retain',
-      formattedBody: null,
-      replyFallback: false,
-      addressesViewer: false,
-      roomEncrypted: false,
-    };
-
-    const batch = presentNormalizedTimelineEvents([event, event]);
-
-    expect(batch.messages).toHaveLength(2);
-    expect(batch.metrics.eventCount).toBe(2);
-    expect(batch.metrics.durationMs).toBeGreaterThanOrEqual(0);
-    expect(batch.metrics.averageEventDurationMs).toBe(
-      batch.metrics.durationMs / 2,
-    );
-    expect(JSON.stringify(batch.metrics)).not.toContain(event.body);
-    expect(Object.isFrozen(batch.metrics)).toBe(true);
-    expect(Object.isFrozen(batch.messages)).toBe(true);
   });
 
   it('uses the normalized mention fact without reconstructing Matrix content', () => {

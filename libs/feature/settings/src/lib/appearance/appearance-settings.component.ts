@@ -24,6 +24,7 @@ import {
   isRoomSortMode,
 } from '@trinity/data-access/room-library';
 import { isDateFormat, isTimeFormat } from '@trinity/util/matrix';
+import { AppIconBlockComponent } from './app-icon-block.component';
 import { CodeAppearanceBlockComponent } from './code-appearance-block.component';
 import {
   AppearancePreferenceFieldComponent,
@@ -55,6 +56,7 @@ import { SettingsGroupComponent } from '../shared/settings-group/settings-group.
     TrnRadioGroupComponent,
     TrnSelectComponent,
     TrnSwitchComponent,
+    AppIconBlockComponent,
     CodeAppearanceBlockComponent,
     AppearancePreferenceFieldComponent,
     MessageGesturesBlockComponent,

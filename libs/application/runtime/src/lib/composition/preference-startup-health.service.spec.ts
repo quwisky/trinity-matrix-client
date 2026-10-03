@@ -43,7 +43,6 @@ describe('PreferenceStartupHealthService', () => {
           storage: producerPolicy.storage,
           budgetMs: producerPolicy.budgetMs,
           safeDefault: producerPolicy.safeDefault,
-          consequence: producerPolicy.consequence,
         }),
       ),
     ).toEqual(
@@ -54,20 +53,12 @@ describe('PreferenceStartupHealthService', () => {
         storage: 'device-preferences',
         budgetMs: 10_000,
         safeDefault: expect.any(String),
-        consequence: expect.any(String),
       })),
     );
     expect(
       new Set(
         Object.values(PREFERENCE_STARTUP_PRODUCER_POLICIES).map(
           (producerPolicy) => producerPolicy.safeDefault,
-        ),
-      ).size,
-    ).toBe(PREFERENCE_STARTUP_PRODUCERS.length);
-    expect(
-      new Set(
-        Object.values(PREFERENCE_STARTUP_PRODUCER_POLICIES).map(
-          (producerPolicy) => producerPolicy.consequence,
         ),
       ).size,
     ).toBe(PREFERENCE_STARTUP_PRODUCERS.length);

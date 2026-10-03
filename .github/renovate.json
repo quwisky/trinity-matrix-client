@@ -71,7 +71,6 @@
       "groupName": "angular",
       "matchPackageNames": [
         "@angular/**",
-        "@angular-devkit/**",
         "@schematics/angular",
         "angular-eslint",
         "ng-packagr",

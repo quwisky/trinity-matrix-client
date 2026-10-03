@@ -7,10 +7,6 @@ import { synapseLockFile } from './synapse/lease.mts';
 const workspaceRoot = resolve(import.meta.dirname, '../..');
 const resourceFiles: Readonly<Record<string, string>> = {
   'android-avd': join(workspaceRoot, 'dist/.playwright/locks/android-avd.lock'),
-  'crypto-spike': join(
-    workspaceRoot,
-    'dist/.playwright/locks/crypto-spike.lock',
-  ),
   electron: join(workspaceRoot, 'dist/.playwright/locks/electron.lock'),
   synapse: synapseLockFile,
 };

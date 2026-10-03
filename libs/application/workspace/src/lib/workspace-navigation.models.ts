@@ -155,9 +155,3 @@ export type WorkspacePlacement = 'list' | 'conversation' | 'split';
 export interface WorkspaceEventTarget {
   readonly eventId: string;
 }
-
-export interface WorkspaceTransitionMetrics {
-  readonly durationMs: number;
-  readonly accountDurationMs: number;
-  readonly routeDurationMs: number;
-}

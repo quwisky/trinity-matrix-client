@@ -1,3 +1,6 @@
+import type { DestroyRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import type { TrnToastService } from '@trinity/components/overlay';
 import { Observable, catchError, forkJoin, map, of } from 'rxjs';
 
 /** One field's write, named so a failure can say which field it was. */
@@ -48,3 +51,83 @@ export function saveFields(
     })),
   );
 }
+
+/** Outcome line shown beside a settings section: the saved result or why it was not. */
+export interface SettingsFeedback {
+  readonly tone: 'success' | 'danger';
+  readonly message: string;
+}
+
+/** Capitalised "a, b and c"; `whenEmpty` names the subject when nothing is listed. */
+export function sentenceList(
+  fields: readonly string[],
+  whenEmpty: string,
+): string {
+  if (fields.length === 0) return whenEmpty;
+  const sentence = new Intl.ListFormat('en', { type: 'conjunction' }).format(
+    fields,
+  );
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
+/** The partial-failure line: what landed and what a retry will still write. */
+export function unsavedRemainderMessage(
+  saved: readonly string[],
+  remaining: readonly string[],
+): string {
+  return `${sentenceList(saved, '')} saved. ${sentenceList(remaining, '')} ${remaining.length === 1 ? 'is' : 'are'} still unsaved; retry saves only what remains.`;
+}
+
+export interface RunSaveOptions {
+  writes: readonly FieldWrite[];
+  /** Fields the user changed but may not write; they stay unsaved. */
+  blocked: readonly string[];
+  /** Subject used when no field name is available, e.g. `'Room details'`. */
+  emptyLabel: string;
+  destroyRef: DestroyRef;
+  toast: TrnToastService;
+  setSaving: (saving: boolean) => void;
+  setFeedback: (feedback: SettingsFeedback | null) => void;
+  commit: (saved: ReadonlySet<string>) => void;
+}
+
+/** Run a settings section's writes and publish the outcome as feedback (and a toast on failure). */
+export function runSave(o: RunSaveOptions): void {
+  if (o.writes.length === 0) {
+    o.setFeedback({
+      tone: 'danger',
+      message: `${sentenceList(o.blocked, o.emptyLabel)} could not be saved with your current permissions. Your edits are still here.`,
+    });
+    return;
+  }
+  o.setSaving(true);
+  o.setFeedback(null);
+  saveFields(o.writes)
+    .pipe(takeUntilDestroyed(o.destroyRef))
+    .subscribe(({ saved, failed }) => {
+      o.setSaving(false);
+      o.commit(new Set(saved));
+      const remaining = [...failed, ...o.blocked];
+      if (remaining.length === 0) {
+        o.setFeedback({
+          tone: 'success',
+          message: `${sentenceList(saved, o.emptyLabel)} saved.`,
+        });
+        return;
+      }
+      const message = saved.length
+        ? unsavedRemainderMessage(saved, remaining)
+        : `${sentenceList(remaining, o.emptyLabel)} could not be saved. Your edits are still here.`;
+      o.setFeedback({ tone: 'danger', message });
+      o.toast.show(message, { duration: 5000, variant: 'danger' });
+    });
+}
+
+/** Feedback line of a per-user preference form, which also has a pending state. */
+export interface PreferenceFeedback {
+  readonly tone: 'pending' | 'success' | 'danger';
+  readonly message: string;
+}
+
+export type PreferenceLoadState =
+  'idle' | 'loading' | 'ready' | 'unavailable' | 'failed';

@@ -27,15 +27,32 @@ export function resolveIconFile(fileName: string): string | undefined {
   );
 }
 
-/** The tray image for a platform: a template on macOS, a larger icon for Linux AppIndicators. */
-export function trayIconFile(platform: NodeJS.Platform): string {
+/** The App icon preference as the desktop host applies it ("Match system" resolves in the renderer). */
+export type AppIconName = 'blurple' | 'dark';
+
+const suffix = (icon: AppIconName): string => (icon === 'dark' ? '-dark' : '');
+
+/** The tray image for a platform: a template on macOS (tinted by the OS, so never dark), a larger icon for Linux AppIndicators. */
+export function trayIconFile(
+  platform: NodeJS.Platform,
+  icon: AppIconName = 'blurple',
+): string {
   if (platform === 'darwin') return 'trinityTrayTemplate.png';
-  return platform === 'linux' ? 'trinityTrayLinux.png' : 'trinityTray.png';
+  const base = platform === 'linux' ? 'trinityTrayLinux' : 'trinityTray';
+  return `${base}${suffix(icon)}.png`;
 }
 
 /** BrowserWindow icon options: the generated icon on Windows/Linux, the bundle icon on macOS. */
-export function windowIconOptions(platform: NodeJS.Platform): {
-  icon?: string;
-} {
-  return platform === 'darwin' ? {} : { icon: resolveIconFile('icon.png') };
+export function windowIconOptions(
+  platform: NodeJS.Platform,
+  icon: AppIconName = 'blurple',
+): { icon?: string } {
+  return platform === 'darwin'
+    ? {}
+    : { icon: resolveIconFile(`icon${suffix(icon)}.png`) };
+}
+
+/** The macOS Dock icon (Apple-grid inset) for `app.dock.setIcon`. */
+export function dockIconFile(icon: AppIconName): string {
+  return `icon-mac${suffix(icon)}.png`;
 }

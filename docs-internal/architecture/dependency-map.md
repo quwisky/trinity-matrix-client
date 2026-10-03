@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **69 Nx projects** and **263 dependencies**. No project cycles detected.
+This snapshot contains **68 Nx projects** and **258 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -32,7 +32,7 @@ Capability-to-capability dependencies are valid only inside the same named capab
 | Source role          | Projects | May depend on                                                                                          |
 | -------------------- | -------: | ------------------------------------------------------------------------------------------------------ |
 | `role:app`           |        5 | `role:app`, `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system` |
-| `role:application`   |        8 | `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`             |
+| `role:application`   |        7 | `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`             |
 | `role:capability`    |       14 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
 | `role:kernel`        |        5 | `role:kernel`                                                                                          |
 | `role:adapter`       |        3 | `role:adapter`, `role:kernel`                                                                          |
@@ -86,7 +86,6 @@ Every classified library has exactly one explicit primary entrypoint. Additional
 | `feature-crypto`                  | `@trinity/feature/crypto`                  | `./libs/feature/crypto/src/index.ts`                  |
 | `feature-rooms`                   | `@trinity/feature/rooms`                   | `./libs/feature/rooms/src/index.ts`                   |
 | `feature-settings`                | `@trinity/feature/settings`                | `./libs/feature/settings/src/index.ts`                |
-| `feature-shell`                   | `@trinity/feature/shell`                   | `./libs/feature/shell/src/index.ts`                   |
 | `avatar`                          | `@trinity/helm/avatar`                     | `./libs/spartan/avatar/src/index.ts`                  |
 | `badge`                           | `@trinity/helm/badge`                      | `./libs/spartan/badge/src/index.ts`                   |
 | `button`                          | `@trinity/helm/button`                     | `./libs/spartan/button/src/index.ts`                  |
@@ -157,7 +156,6 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `feature-crypto`                  | `libs/feature/crypto`                  | role:capability; capability:trust               |                  11 |
 | `feature-rooms`                   | `libs/feature/rooms`                   | role:application; capability:workspace          |                  24 |
 | `feature-settings`                | `libs/feature/settings`                | role:application; capability:settings           |                  23 |
-| `feature-shell`                   | `libs/feature/shell`                   | role:application; capability:trust              |                   4 |
 | `label`                           | `libs/spartan/label`                   | role:design-system; capability:design-system    |                   1 |
 | `platform-native`                 | `libs/platform-native`                 | role:adapter; capability:host                   |                   5 |
 | `progress`                        | `libs/spartan/progress`                | role:design-system; capability:design-system    |                   1 |
@@ -172,7 +170,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `testing`                         | `libs/testing`                         | unmanaged tooling/test                          |                   0 |
 | `theme-foundation`                | `libs/theme-foundation`                | role:kernel; capability:design-system           |                   0 |
 | `tooltip`                         | `libs/spartan/tooltip`                 | role:design-system; capability:design-system    |                   1 |
-| `trinity`                         | `apps/trinity`                         | role:app; capability:composition                |                   9 |
+| `trinity`                         | `apps/trinity`                         | role:app; capability:composition                |                   8 |
 | `trinity-android`                 | `android`                              | role:app; capability:composition                |                   1 |
 | `trinity-desktop`                 | `electron`                             | role:app; capability:composition                |                   1 |
 | `trinity-e2e`                     | `e2e`                                  | unmanaged tooling/test                          |                   2 |

@@ -30,6 +30,10 @@ export interface TrinityDesktopBridge {
 
   /** Protocol-v1 operations are grouped by capability and gated by negotiated grants. */
   capabilities: {
+    /** Apply the resolved App icon preference (Dock / window / tray while running). */
+    appIcon?: {
+      set: (name: 'blurple' | 'dark') => Promise<boolean>;
+    };
     deepLinks: {
       /** Subscribe to validated OS deep links, replaying any buffered cold-start URL. */
       subscribe: (callback: (url: string) => void) => () => void;

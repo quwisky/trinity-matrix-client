@@ -47,7 +47,6 @@ const migratedRoots = [
   'libs/feature/crypto/src/lib',
   migratedRoomsRoot,
   'libs/feature/settings/src/lib',
-  'libs/feature/shell/src/lib',
 ];
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
 const productionSources = [

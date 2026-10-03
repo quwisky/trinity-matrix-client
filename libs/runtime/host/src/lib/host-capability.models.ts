@@ -94,25 +94,9 @@ export interface HostNotificationDestination {
   readonly eventId: string;
 }
 
-export interface HostLocationOperation {
-  locate(request: {
-    readonly accuracy: 'precise' | 'approximate';
-  }): Observable<
-    | { readonly kind: 'located'; readonly lat: number; readonly lng: number }
-    | Exclude<HostOperationOutcome, { readonly kind: 'completed' }>
-  >;
-}
-
 export interface HostBadgeOperation {
   support(): Observable<HostCapabilitySupport>;
   set(count: number): Observable<HostOperationOutcome>;
-}
-
-export interface HostSecureStoreOperation {
-  available(): Observable<HostCapabilitySupport>;
-  get(key: string): Observable<string | null>;
-  set(key: string, value: string): Observable<HostOperationOutcome>;
-  remove(key: string): Observable<HostOperationOutcome>;
 }
 
 export interface HostLifecycleOperation {
@@ -123,20 +107,6 @@ export interface HostLifecycleOperation {
 
 export interface HostUpdatesOperation {
   check(): Observable<HostOperationOutcome>;
-}
-
-/** Compile-time catalogue: every agreed operation has one narrow interface. */
-export interface HostOperationContracts {
-  readonly 'authentication-handoff': HostAuthenticationHandoffOperation;
-  readonly 'deep-links': HostDeepLinksOperation;
-  readonly back: HostBackOperation;
-  readonly 'file-export': HostFileExportOperation;
-  readonly 'notification-presentation': HostNotificationPresentationOperation;
-  readonly location: HostLocationOperation;
-  readonly badge: HostBadgeOperation;
-  readonly 'secure-store': HostSecureStoreOperation;
-  readonly lifecycle: HostLifecycleOperation;
-  readonly updates: HostUpdatesOperation;
 }
 
 export function unavailableHostManifest(

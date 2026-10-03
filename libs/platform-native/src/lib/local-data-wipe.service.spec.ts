@@ -104,8 +104,8 @@ describe('LocalDataWipeService', () => {
       expect(deleted).toContain(
         'trinity-crypto:@alice:hs:DEV1::matrix-sdk-crypto-meta',
       );
-      // A migrated pre-multi-account session (and the crypto spike) sits on the default
-      // prefix, which no account record names.
+      // A migrated pre-multi-account session sits on the default prefix, which no
+      // account record names.
       expect(deleted).toContain('matrix-js-sdk::matrix-sdk-crypto');
       expect(deleted).toContain('matrix-js-sdk::matrix-sdk-crypto-meta');
     });

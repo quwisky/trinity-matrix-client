@@ -12,12 +12,6 @@ export const E2E_SERIALIZATION_RESOURCES = [
     description: 'One launched Electron application and user-data lifecycle.',
   },
   {
-    key: 'crypto-spike',
-    owner: 'trinity-e2e-support',
-    description:
-      'The shared crypto-spike driver and mutable renderer artifact used by both browser engines.',
-  },
-  {
     key: 'synapse',
     owner: 'trinity-e2e-support',
     description:

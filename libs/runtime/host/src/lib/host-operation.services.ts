@@ -3,11 +3,11 @@ import { EMPTY, Observable, defer, of } from 'rxjs';
 import {
   type HostAuthenticationHandoffOperation,
   type HostBackOperation,
-  type HostCapabilitySupport,
   type HostDeepLinksOperation,
+  type HostNotificationPresentationOperation,
+  type HostCapabilitySupport,
   type HostFileExportOperation,
   type HostLifecycleOperation,
-  type HostNotificationPresentationOperation,
   type HostOperationOutcome,
   type HostUpdatesOperation,
 } from './host-capability.models';
@@ -66,7 +66,7 @@ export class HostAuthenticationHandoffService implements HostAuthenticationHando
 }
 
 @Injectable({ providedIn: 'root' })
-export class HostDeepLinksService implements HostDeepLinksOperation {
+export class HostDeepLinksService {
   private readonly adapter = inject(HOST_DEEP_LINKS_OPERATION, {
     optional: true,
   });
@@ -75,10 +75,6 @@ export class HostDeepLinksService implements HostDeepLinksOperation {
     return (
       this.adapter?.deepLinkSupport() ?? defer(() => of(unavailableSupport()))
     );
-  }
-
-  deepLinkSupport(): Observable<HostCapabilitySupport> {
-    return this.support();
   }
 
   readonly received = defer(() => this.adapter?.received ?? EMPTY);
@@ -92,15 +88,11 @@ export class HostDeepLinksService implements HostDeepLinksOperation {
 }
 
 @Injectable({ providedIn: 'root' })
-export class HostBackService implements HostBackOperation {
+export class HostBackService {
   private readonly adapter = inject(HOST_BACK_OPERATION, { optional: true });
 
   support(): Observable<HostCapabilitySupport> {
     return this.adapter?.backSupport() ?? defer(() => of(unavailableSupport()));
-  }
-
-  backSupport(): Observable<HostCapabilitySupport> {
-    return this.support();
   }
 
   readonly intents = defer(() => this.adapter?.intents ?? EMPTY);
@@ -128,7 +120,7 @@ export class HostFileExportService implements HostFileExportOperation {
 }
 
 @Injectable({ providedIn: 'root' })
-export class HostNotificationPresentationService implements HostNotificationPresentationOperation {
+export class HostNotificationPresentationService {
   private readonly adapter = inject(HOST_NOTIFICATION_PRESENTATION_OPERATION, {
     optional: true,
   });
@@ -138,10 +130,6 @@ export class HostNotificationPresentationService implements HostNotificationPres
       this.adapter?.presentationSupport() ??
       defer(() => of(unavailableSupport()))
     );
-  }
-
-  presentationSupport(): Observable<HostCapabilitySupport> {
-    return this.support();
   }
 
   readonly activated = defer(() => this.adapter?.activated ?? EMPTY);

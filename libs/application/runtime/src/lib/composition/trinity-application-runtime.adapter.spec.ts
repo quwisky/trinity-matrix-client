@@ -146,19 +146,16 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         accounts: [],
         metrics: {
           durationMs: 0,
-          activeTerminalMs: null,
-          terminalAccounts: 0,
-          totalAccounts: 0,
         },
       }),
     );
     retryInactiveAccount = vi.fn(() => of({ kind: 'unavailable' as const }));
     hostManifest = new Subject<HostCapabilityManifest>();
     appearanceHydrate = vi.fn<() => Observable<AppearanceHydrationOutcome>>(
-      () => of({ kind: 'ready', hydrated: 6 }),
+      () => of({ kind: 'ready', hydrated: 7 }),
     );
     appearanceRecover = vi.fn<AppearancePreferences['recoverHydration']>(() =>
-      of({ kind: 'ready', hydrated: 6 }),
+      of({ kind: 'ready', hydrated: 7 }),
     );
     badgeSession = new Subject<HostOperationOutcome>();
     appearanceSession = new Subject<never>();
@@ -583,9 +580,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         ],
         metrics: {
           durationMs: 1,
-          activeTerminalMs: 1,
-          terminalAccounts: 2,
-          totalAccounts: 2,
         },
       }),
     );
@@ -622,9 +616,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         accounts: [],
         metrics: {
           durationMs: 1,
-          activeTerminalMs: 1,
-          terminalAccounts: 1,
-          totalAccounts: 1,
         },
       }),
     );

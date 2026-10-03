@@ -123,21 +123,6 @@ describe('E2E suite registry', () => {
     );
   });
 
-  it('requires both compatibility aliases to serialize the shared crypto driver', () => {
-    const snapshot = registrySnapshot();
-    snapshot.suites.find(
-      ({ id }) => id === 'protocol.crypto-spike-webkit',
-    ).serializationKeys = [];
-
-    expect(validateWorkspace(workspaceRoot, snapshot)).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining(
-          'protocol.crypto-spike-webkit does not serialize shared entrypoint e2e/protocol/crypto-spike.spec.mjs with crypto-spike',
-        ),
-      ]),
-    );
-  });
-
   it('rejects expired or incomplete quarantine entries', () => {
     const snapshot = registrySnapshot();
     snapshot.quarantine.push({

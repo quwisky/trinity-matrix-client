@@ -75,12 +75,7 @@ export const E2E_INVENTORY = {
     'e2e/mobile/run.mts',
     'e2e/**/wdio*.conf.mts',
   ],
-  sharedEntrypoints: [
-    {
-      path: 'e2e/protocol/crypto-spike.spec.mjs',
-      serializationKey: 'crypto-spike',
-    },
-  ],
+  sharedEntrypoints: [],
 } as const;
 
 export function registeredE2ESuite(

@@ -6,12 +6,12 @@
         <!-- The second package is an E2E-only data-isolation peer launched by explicit
              component name. It must not compete with the primary package for launcher
              or auth callback intents, otherwise a provider redirect opens Android's app
-             chooser instead of proving Trinity's registered deep-link round trip. -->
+             chooser instead of proving Trinity's registered deep-link round trip. The
+             launcher entries live on the two icon aliases, so both are removed outright;
+             MainActivity stays launchable by component name. -->
+        <activity-alias android:name="eu.qwky.trinity.LauncherBlurple" tools:node="remove" />
+        <activity-alias android:name="eu.qwky.trinity.LauncherDark" tools:node="remove" />
         <activity android:name="eu.qwky.trinity.MainActivity">
-            <intent-filter tools:node="remove">
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
             <intent-filter tools:node="remove">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

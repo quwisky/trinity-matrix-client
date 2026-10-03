@@ -128,11 +128,6 @@ describe('RoomsPage mixed-account view', () => {
             return of({
               kind: 'ready' as const,
               accountId,
-              metrics: {
-                durationMs: 0,
-                projectionDurationMs: 0,
-                projectionCount: 0,
-              },
             });
           }),
         ),

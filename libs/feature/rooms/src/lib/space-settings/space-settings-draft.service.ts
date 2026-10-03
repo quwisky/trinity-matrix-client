@@ -16,7 +16,11 @@ import {
   type RoomSettingsTarget,
 } from '@trinity/data-access/room-administration';
 import { applyRoomBasicsGates } from '../shared/room-basics-form';
-import { saveFields, type FieldWrite } from '../shared/save-fields';
+import {
+  runSave,
+  type FieldWrite,
+  type SettingsFeedback,
+} from '../shared/save-fields';
 
 interface SpaceSettingsModel {
   name: string;
@@ -27,11 +31,6 @@ interface SpaceSettingsModel {
 interface GeneralBaseline {
   readonly name: string;
   readonly topic: string;
-}
-
-export interface SpaceSettingsFeedback {
-  readonly tone: 'success' | 'danger';
-  readonly message: string;
 }
 
 const DENIED_SPACE_SETTINGS: RoomSettingsPermissions = {
@@ -72,12 +71,8 @@ export class SpaceSettingsDraftService {
     joinRule: JoinRule.Invite,
   });
   private readonly savingState = signal<'general' | 'access' | null>(null);
-  private readonly generalFeedbackState = signal<SpaceSettingsFeedback | null>(
-    null,
-  );
-  private readonly accessFeedbackState = signal<SpaceSettingsFeedback | null>(
-    null,
-  );
+  private readonly generalFeedbackState = signal<SettingsFeedback | null>(null);
+  private readonly accessFeedbackState = signal<SettingsFeedback | null>(null);
   private started = false;
 
   readonly snapshot = this.snapshotState.asReadonly();
@@ -281,34 +276,20 @@ export class SpaceSettingsDraftService {
     blocked: readonly string[],
     commit: (saved: ReadonlySet<string>) => void,
   ): void {
-    if (writes.length === 0) {
-      this.setFeedback(section, {
-        tone: 'danger',
-        message: `${sentenceList(blocked)} could not be saved with your current permissions. Your edits are still here.`,
-      });
-      return;
-    }
-    this.savingState.set(section);
-    this.setFeedback(section, null);
-    saveFields(writes)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(({ saved, failed }) => {
-        this.savingState.set(null);
-        commit(new Set(saved));
-        const remaining = [...failed, ...blocked];
-        if (remaining.length === 0) {
-          this.setFeedback(section, {
-            tone: 'success',
-            message: `${sentenceList(saved)} saved.`,
-          });
-          return;
-        }
-        const message = saved.length
-          ? `${sentenceList(saved)} saved. ${sentenceList(remaining)} ${remaining.length === 1 ? 'is' : 'are'} still unsaved; retry saves only what remains.`
-          : `${sentenceList(remaining)} could not be saved. Your edits are still here.`;
-        this.setFeedback(section, { tone: 'danger', message });
-        this.toast.show(message, { duration: 5000, variant: 'danger' });
-      });
+    runSave({
+      writes,
+      blocked,
+      emptyLabel: 'Space details',
+      destroyRef: this.destroyRef,
+      toast: this.toast,
+      setSaving: (on) => this.savingState.set(on ? section : null),
+      setFeedback: (feedback) =>
+        (section === 'general'
+          ? this.generalFeedbackState
+          : this.accessFeedbackState
+        ).set(feedback),
+      commit,
+    });
   }
 
   private commitGeneral(
@@ -331,16 +312,6 @@ export class SpaceSettingsDraftService {
           ? candidate.topic
           : current.topic,
     }));
-  }
-
-  private setFeedback(
-    section: 'general' | 'access',
-    feedback: SpaceSettingsFeedback | null,
-  ): void {
-    (section === 'general'
-      ? this.generalFeedbackState
-      : this.accessFeedbackState
-    ).set(feedback);
   }
 
   private reconcile(snapshot: RoomSettingsSnapshot): void {
@@ -378,12 +349,4 @@ export class SpaceSettingsDraftService {
     this.baseline.set(next);
     this.accessBaseline.set(snapshot.access.joinRule);
   }
-}
-
-function sentenceList(fields: readonly string[]): string {
-  if (fields.length === 0) return 'Space details';
-  const sentence = new Intl.ListFormat('en', { type: 'conjunction' }).format(
-    fields,
-  );
-  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
 }
