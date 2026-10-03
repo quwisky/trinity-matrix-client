@@ -33,15 +33,6 @@ jobs:
             xcrun --sdk iphonesimulator --show-sdk-version
             xcrun simctl list runtimes
           } | tee "$SPIKE_OUT/versions.txt"
-      - name: Probe Colima
-        continue-on-error: true
-        timeout-minutes: 12
-        run: |
-          brew install colima docker >/dev/null 2>&1
-          t0=$(date +%s)
-          colima start --vm-type vz 2>&1 | tail -20 | tee -a "$SPIKE_OUT/docker.txt" || true
-          echo "colima_exit after $(( $(date +%s) - t0 ))s" | tee -a "$SPIKE_OUT/docker.txt"
-          docker run --rm hello-world 2>&1 | tail -3 | tee -a "$SPIKE_OUT/docker.txt"
       - name: Start native Synapse behind Caddy TLS
         run: spike/863/homeserver.sh "$SPIKE_OUT"
       - name: Build the simulator app

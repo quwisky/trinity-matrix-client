@@ -29,6 +29,12 @@ describe(`iOS WKWebView probe (${phase})`, () => {
     if (!webview)
       throw new Error(`no WEBVIEW context: ${JSON.stringify(contexts)}`);
     await browser.switchContext(webview.id ?? webview);
+    await browser.setTimeout({ script: 30_000 });
+    await browser.waitUntil(
+      async () =>
+        (await browser.execute(() => location.href)).startsWith('capacitor://'),
+      { timeout: 60_000, timeoutMsg: 'app page never loaded' },
+    );
 
     const page = await browser.execute(() => ({
       href: location.href,
