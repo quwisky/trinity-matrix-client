@@ -78,14 +78,14 @@ describe('Android attachments', () => {
     await tap('[data-testid="insert-attach"]');
 
     // Capacitor's gallery picker is the OS photo picker (no READ_MEDIA_* grant needed on
-    // API 33+). The newest item is the file seeded above; multi-select needs "Add".
+    // API 33+). The newest item is the file seeded above; multi-select confirms with "Done".
     await native();
     const thumbnail = uiSelector(
       'new UiSelector().descriptionStartsWith("Photo taken on")',
     );
     await expect(thumbnail).toBeDisplayed({ wait: 30_000 });
     await thumbnail.click();
-    const add = uiSelector('new UiSelector().textStartsWith("Add")');
+    const add = uiSelector('new UiSelector().text("Done")');
     await expect(add).toBeDisplayed({ wait: 10_000 });
     await add.click();
 
