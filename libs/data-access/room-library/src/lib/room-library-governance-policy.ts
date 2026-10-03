@@ -31,7 +31,7 @@ export const ROOM_LIBRARY_GOVERNANCE_POLICY =
     'ROOM_LIBRARY_GOVERNANCE_POLICY',
   );
 
-export class RoomLibraryGovernanceError extends Error {
+class RoomLibraryGovernanceError extends Error {
   constructor(
     readonly decision: Extract<
       RoomLibraryGovernanceDecision,

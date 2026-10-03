@@ -25,7 +25,7 @@ const SCOPE_KEY = 'trinity.accounts.mixed';
 type AccountScopePreference = readonly string[];
 
 /** Capability-owned policy for the device-local selected Account set. */
-export const ACCOUNT_SCOPE_PREFERENCE = definePreference({
+const ACCOUNT_SCOPE_PREFERENCE = definePreference({
   id: 'room-library.selected-accounts',
   owner: 'room-library',
   section: 'room-library',

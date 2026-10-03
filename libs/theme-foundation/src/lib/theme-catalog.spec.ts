@@ -90,7 +90,6 @@ describe('Theme Foundation catalog', () => {
         THEME_CATALOG.preview,
         THEME_CATALOG.preview.combinations,
         ...THEME_CATALOG.preview.combinations,
-        THEME_CATALOG.preview.swatches,
         THEME_CATALOG.authoring,
         THEME_CATALOG.authoring.colorRoles,
         THEME_CATALOG.authoring.elevationRoles,

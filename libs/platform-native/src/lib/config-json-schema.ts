@@ -39,7 +39,7 @@ export const CONFIG_SCHEMA_DIALECT =
 export const CONFIG_SCHEMA_ID = `https://qwky.eu/trinity/config-v${CONFIG_EXPORT_VERSION}.schema.json`;
 
 /** The document's `title`. */
-export const CONFIG_SCHEMA_TITLE = 'Trinity configuration export';
+const CONFIG_SCHEMA_TITLE = 'Trinity configuration export';
 
 /**
  * One node of the generated schema — the subset of JSON Schema this generator emits, spelled

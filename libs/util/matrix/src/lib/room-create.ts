@@ -6,7 +6,7 @@ import {
 } from 'matrix-js-sdk';
 
 /** Megolm group-encryption algorithm enabled on every room we create (E2EE-first). */
-export const MEGOLM_ALGORITHM = 'm.megolm.v1.aes-sha2';
+const MEGOLM_ALGORITHM = 'm.megolm.v1.aes-sha2';
 
 /**
  * The `m.room.encryption` (Megolm) entry to drop into a `createRoom`

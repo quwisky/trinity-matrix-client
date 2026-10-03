@@ -10,7 +10,7 @@ import type {
   PreferenceValue,
 } from './preference.models';
 
-export const PREFERENCE_DESCRIPTORS = new InjectionToken<
+const PREFERENCE_DESCRIPTORS = new InjectionToken<
   readonly (readonly PreferenceDescriptor<PreferenceValue>[])[]
 >('PREFERENCE_DESCRIPTORS');
 
