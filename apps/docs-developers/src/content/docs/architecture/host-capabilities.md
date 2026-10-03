@@ -26,6 +26,8 @@ Electron renderer code crosses a validated preload bridge. Capacitor adapters wr
 
 Pass a semantic destination to deep-link, notification, and Back flows. Treat values received from a host as untrusted input and validate them before applying them to Workspace or a Matrix operation. A host diagnostic contains a stable code, never a URL, token, file content, account ID, or native exception payload.
 
+The app opens a room from `eu.qwky.trinity://matrix.to/#/<room id or alias>[/<event id>][?via=...]`, which is a matrix.to link behind the app scheme. The session adapter validates it with `parseTrinityRoomLink` and leaves it in `InboundRoomLinkService`; the Rooms shell then opens it as it opens a tapped matrix.to link, with the `deep-link` origin. A link that arrives while signed out waits for the Rooms shell. Android cannot route https `matrix.to` links to the app, because App Link verification needs assetlinks on that domain.
+
 ## Add or change an operation {#change-operation}
 
 Update the shared contract first, then each host adapter and its contract tests. Keep the application consumer host-neutral. Run the host architecture guards in addition to the affected unit and launched-host checks:
