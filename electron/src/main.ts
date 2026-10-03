@@ -16,7 +16,6 @@ import {
 } from './notifications';
 import { registerSecureStoreIpc } from './secure-store-ipc';
 import { registerCorsIpc } from './cors-ipc';
-import { registerAppIconIpc } from './app-icon';
 import { registerGeolocationIpc } from './geolocation-ipc';
 import { registerDockBadge } from './dock-badge';
 import { registerHostCapabilityHandshake } from './host-capabilities';
@@ -114,7 +113,6 @@ if (!app.requestSingleInstanceLock()) {
     registerNotificationIpc();
     registerSecureStoreIpc();
     registerCorsIpc();
-    registerAppIconIpc();
     // Approximate (IP-based) location lookup for the desktop location-share dialog;
     // Chromium's navigator.geolocation can't resolve without an embedded Google key.
     registerGeolocationIpc();

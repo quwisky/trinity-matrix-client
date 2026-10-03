@@ -83,26 +83,6 @@ describe('Design System Appearance preference descriptors', () => {
           testId: 'density-select',
         }),
       }),
-      expect.objectContaining({
-        id: 'design-system.appearance.app-icon',
-        owner: 'design-system',
-        section: 'appearance',
-        order: 50,
-        scope: 'installation',
-        defaultValue: 'system',
-        sensitivity: 'public',
-        storage: 'device-preferences',
-        export: 'portable',
-        editor: expect.objectContaining({
-          kind: 'select',
-          testId: 'app-icon-select',
-          options: [
-            { value: 'system', label: 'Match system' },
-            { value: 'blurple', label: 'Blurple' },
-            { value: 'dark', label: 'Dark' },
-          ],
-        }),
-      }),
     ]);
   });
 
@@ -162,17 +142,12 @@ describe('Design System Appearance preference descriptors', () => {
         legacyKeys: ['trinity.density'],
         version: 1,
       },
-      {
-        key: 'trinity.appearance.app-icon',
-        legacyKeys: undefined,
-        version: 1,
-      },
     ]);
   });
 });
 
 describe('AppearancePreferences', () => {
-  it('composes seven independently persisted axes and one recoverable warning', async () => {
+  it('composes six independently persisted axes and one recoverable warning', async () => {
     const read = vi.fn<PreferenceStorageAdapter['read']>((request) => {
       if (request.key === THEME_PREFERENCE.persistence.key) {
         return of({
@@ -206,14 +181,13 @@ describe('AppearancePreferences', () => {
       'density',
       'codeSize',
       'codeLinePresentation',
-      'appIcon',
     ]);
 
     const outcome = await firstValueFrom(appearance.hydrate());
 
     expect(outcome).toEqual({
       kind: 'partial',
-      hydrated: 6,
+      hydrated: 5,
       failures: [
         {
           preferenceId: THEME_PREFERENCE.id,
@@ -243,7 +217,6 @@ describe('AppearancePreferences', () => {
       density: 'cosy',
       codeSize: 'larger',
       codeLinePresentation: 'auto',
-      appIcon: 'system',
     });
     expect(write).toHaveBeenCalledOnce();
     expect(write.mock.calls[0]?.[0]).toEqual(
@@ -251,7 +224,7 @@ describe('AppearancePreferences', () => {
     );
   });
 
-  it('contributes all seven descriptors once and returns no warning when ready', async () => {
+  it('contributes all six descriptors once and returns no warning when ready', async () => {
     const adapter: PreferenceStorageAdapter = {
       read: () => of({ kind: 'missing' }),
       write: () => of({ kind: 'completed' }),
@@ -266,12 +239,12 @@ describe('AppearancePreferences', () => {
 
     await expect(firstValueFrom(appearance.hydrate())).resolves.toEqual({
       kind: 'ready',
-      hydrated: 7,
+      hydrated: 6,
     });
     expect([
       ...DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS,
       ...CONVERSATION_APPEARANCE_PREFERENCE_DESCRIPTORS,
-    ]).toHaveLength(7);
+    ]).toHaveLength(6);
   });
 
   it('exposes descriptor editors and commits an axis only after persistence succeeds', async () => {
@@ -352,7 +325,7 @@ describe('AppearancePreferences', () => {
 
     await expect(
       firstValueFrom(appearance.recoverHydration(outcome.failures)),
-    ).resolves.toEqual({ kind: 'ready', hydrated: 7 });
+    ).resolves.toEqual({ kind: 'ready', hydrated: 6 });
     expect(appearance.axes.theme.value()).toBe(THEME_PREFERENCE.defaultValue);
     expect(appearance.axes.mode.value()).toBe('light');
   });

@@ -159,9 +159,10 @@ jobs:
             assets: |
               electron/release/*.AppImage
               electron/release/*.deb
-          # macos-latest is Apple Silicon, and electron-builder defaults to the host
-          # architecture — this produces arm64 artifacts only, by choice.
-          - os: macos-latest
+          # Apple Silicon, and electron-builder defaults to the host architecture — this
+          # produces arm64 artifacts only, by choice. macos-26 brings Xcode 26's actool,
+          # which compiles the Icon Composer app icon.
+          - os: macos-26
             platform: mac
             flag: '--mac'
             assets: |

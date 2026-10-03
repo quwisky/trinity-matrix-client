@@ -4,7 +4,12 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { crc32, deflateSync, inflateSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { encodePng, OUTPUTS, renderIcons } from './generate-icons.mjs';
+import {
+  encodePng,
+  ICON_COMPOSER,
+  OUTPUTS,
+  renderIcons,
+} from './generate-icons.mjs';
 
 let out;
 let icons;
@@ -173,7 +178,7 @@ describe('generated icons', () => {
       const cy = icon.height / 2;
       const limit = icon.safeRadius * icon.width;
       const mark = pixels(icon).filter((p) =>
-        icon.rule === 'white-alpha' || !icon.rule
+        icon.rule === 'white-alpha'
           ? p.a > 0
           : p.r > 240 && p.g > 240 && p.b > 240,
       );
@@ -276,6 +281,58 @@ describe('committed icons', () => {
       [],
     );
   });
+
+  it('include the current Icon Composer source', () => {
+    for (const [path, text] of Object.entries(ICON_COMPOSER)) {
+      expect(readFileSync(join(out, path), 'utf8'), path).toBe(text);
+      expect(committed(path).toString(), path).toBe(text);
+    }
+  });
+});
+
+describe('Icon Composer source', () => {
+  it('gives macOS a white mark on the blurple gradient and a blurple mark on the dark tile', () => {
+    const icon = JSON.parse(
+      ICON_COMPOSER['electron/build/Trinity.icon/icon.json'],
+    );
+    expect(icon['fill-specializations']).toEqual([
+      {
+        value: {
+          'linear-gradient': [
+            'srgb:0.43137,0.47451,0.96078,1.00000',
+            'srgb:0.27843,0.32157,0.76863,1.00000',
+          ],
+        },
+      },
+      {
+        appearance: 'dark',
+        value: {
+          'linear-gradient': [
+            'srgb:0.11765,0.12157,0.13333,1.00000',
+            'srgb:0.11765,0.12157,0.13333,1.00000',
+          ],
+        },
+      },
+    ]);
+    expect(icon.groups[0].layers).toEqual([
+      {
+        'fill-specializations': [
+          { value: { solid: 'srgb:1.00000,1.00000,1.00000,1.00000' } },
+          {
+            appearance: 'dark',
+            value: { solid: 'srgb:0.53333,0.56863,0.96863,1.00000' },
+          },
+        ],
+        glass: true,
+        'image-name': 'Mark.svg',
+        name: 'Mark',
+      },
+    ]);
+    expect(icon['supported-platforms']).toEqual({ squares: ['macOS'] });
+    const mark = ICON_COMPOSER['electron/build/Trinity.icon/Assets/Mark.svg'];
+    expect(mark).toContain('#ffffff');
+    expect(mark).not.toContain('#5865f2');
+  });
 });
 
 describe('generator module', () => {
@@ -291,86 +348,5 @@ describe('generator module', () => {
     );
     expect(result.stderr).toBe('');
     expect(Number(result.stdout.trim())).toBeGreaterThan(0);
-  });
-
-  const at = (icon, x, y) => {
-    const i = (y * icon.width + x) * 4;
-    return [...icon.rgba.subarray(i, i + 4)];
-  };
-  const find = (path) => icons.find((icon) => icon.path === path);
-
-  it('renders a dark twin, on the dark tile, for every runtime desktop and web icon', () => {
-    for (const [path, size] of [
-      ['electron/build/icon-dark.png', 1024],
-      ['electron/build/trinityTray-dark.png', 16],
-      ['electron/build/trinityTray-dark@2x.png', 32],
-      ['electron/build/trinityTrayLinux-dark.png', 32],
-      ['electron/build/trinityTrayLinux-dark@2x.png', 64],
-      ['apps/trinity/src/assets/icon/favicon-dark.png', 256],
-    ]) {
-      const icon = find(path);
-      expect(icon, path).toBeDefined();
-      expect([icon.width, icon.height], path).toEqual([size, size]);
-      // Centre-left of the tile, between the nodes: plain tile colour.
-      expect(
-        at(icon, Math.round(size * 0.12), Math.round(size / 2)),
-        path,
-      ).toEqual([0x1e, 0x1f, 0x22, 255]);
-    }
-    const mac = find('electron/build/icon-mac-dark.png');
-    expect(at(mac, 0, 0)[3]).toBe(0);
-    // The drop-shadow filter round-trips the opaque tile through linearRGB, shifting it by a few levels.
-    const [r, g, b, alpha] = at(mac, 512, 900);
-    expect([r, g, b]).toEqual([
-      expect.closeTo(0x1e, -1),
-      expect.closeTo(0x1f, -1),
-      expect.closeTo(0x22, -1),
-    ]);
-    expect(alpha).toBe(255);
-  });
-
-  it('gives Android dark launcher layers at every density', () => {
-    for (const [dpi, k] of Object.entries({
-      mdpi: 1,
-      hdpi: 1.5,
-      xhdpi: 2,
-      xxhdpi: 3,
-      xxxhdpi: 4,
-    })) {
-      const res = 'android/app/src/main/res';
-      const fg = find(`${res}/mipmap-${dpi}/ic_launcher_dark_foreground.png`);
-      expect([fg.width, fg.height]).toEqual([108 * k, 108 * k]);
-      expect(fg.safeRadius).toBe(0.3056);
-      const opaque = pixels(fg).filter((p) => p.a === 255);
-      expect(opaque.length).toBeGreaterThan(0);
-      for (const p of opaque)
-        expect([p.r, p.g, p.b]).toEqual([0x88, 0x91, 0xf7]);
-      const bg = find(`${res}/mipmap-${dpi}/ic_launcher_dark_background.png`);
-      expect(at(bg, 0, 0)).toEqual([0x1e, 0x1f, 0x22, 255]);
-      expect(find(`${res}/mipmap-${dpi}/ic_launcher_dark.png`).width).toBe(
-        48 * k,
-      );
-      const round = find(`${res}/mipmap-${dpi}/ic_launcher_dark_round.png`);
-      expect(at(round, 0, 0)[3]).toBe(0);
-    }
-  });
-
-  it('copies the iOS light and dark icons into the alternate icon sets', () => {
-    const ios = 'ios/App/App/Assets.xcassets';
-    expect(OUTPUTS).toContainEqual({
-      path: `${ios}/AppIconBlurple.appiconset/AppIcon.png`,
-      copyOf: `${ios}/AppIcon.appiconset/AppIcon-light.png`,
-      fromOutput: true,
-    });
-    expect(OUTPUTS).toContainEqual({
-      path: `${ios}/AppIconDark.appiconset/AppIcon.png`,
-      copyOf: `${ios}/AppIcon.appiconset/AppIcon-dark.png`,
-      fromOutput: true,
-    });
-    expect(
-      readFileSync(join(out, `${ios}/AppIconDark.appiconset/AppIcon.png`)),
-    ).toEqual(
-      readFileSync(join(out, `${ios}/AppIcon.appiconset/AppIcon-dark.png`)),
-    );
   });
 });

@@ -276,11 +276,6 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     key: 'trinity.appearance.density',
     owner: 'application/appearance',
   },
-  {
-    disposition: 'exported',
-    key: 'trinity.appearance.app-icon',
-    owner: 'application/appearance',
-  },
 
   // — data-access/timeline —
   {

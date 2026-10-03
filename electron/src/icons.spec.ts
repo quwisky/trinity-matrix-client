@@ -6,7 +6,6 @@ vi.mock('electron', () => ({ app: { getAppPath: () => '/app' } }));
 
 import {
   iconCandidatePaths,
-  dockIconFile,
   resolveIconFile,
   trayIconFile,
   windowIconOptions,
@@ -39,16 +38,6 @@ describe('trayIconFile', () => {
     expect(trayIconFile('darwin')).toBe('trinityTrayTemplate.png');
     expect(trayIconFile('linux')).toBe('trinityTrayLinux.png');
     expect(trayIconFile('win32')).toBe('trinityTray.png');
-  });
-});
-
-describe('dark app icon files', () => {
-  it('picks dark twins, except the macOS template tray', () => {
-    expect(trayIconFile('win32', 'dark')).toBe('trinityTray-dark.png');
-    expect(trayIconFile('linux', 'dark')).toBe('trinityTrayLinux-dark.png');
-    expect(trayIconFile('darwin', 'dark')).toBe('trinityTrayTemplate.png');
-    expect(dockIconFile('dark')).toBe('icon-mac-dark.png');
-    expect(dockIconFile('blurple')).toBe('icon-mac.png');
   });
 });
 

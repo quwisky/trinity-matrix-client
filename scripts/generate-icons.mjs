@@ -47,25 +47,20 @@ const mark = (w, h, color, fraction) => {
   return `<svg x="${(w - mw) / 2}" y="${(h - mh) / 2}" width="${mw}" height="${mh}" viewBox="${MARK_BOX.x} ${MARK_BOX.y} ${MARK_BOX.width} ${MARK_BOX.height}">${MARK.replaceAll(BRAND, color)}</svg>`;
 };
 
-/** The dark plate in the same 1024 space as PLATED: DARK_MARK on a DARK_TILE tile. */
-const DARK_MARK_LAYER = mark(1024, 1024, DARK_MARK, 0.66);
-const DARK_PLATED = `<rect width="1024" height="1024" rx="224" fill="${DARK_TILE}"/>${DARK_MARK_LAYER}`;
-const DARK_SQUARE = `<rect width="1024" height="1024" fill="${DARK_TILE}"/>${DARK_MARK_LAYER}`;
-
-const plated = (s, body = PLATED) => doc(s, s, plate(0, 0, s, body));
+const plated = (s) => doc(s, s, plate(0, 0, s));
 const platedSquare = (s) => doc(s, s, plate(0, 0, s, PLATED_SQUARE));
-const platedRound = (s, body = PLATED_SQUARE) =>
+const platedRound = (s) =>
   doc(
     s,
     s,
-    `<clipPath id="c"><circle cx="${s / 2}" cy="${s / 2}" r="${s / 2}"/></clipPath><g clip-path="url(#c)">${plate(0, 0, s, body)}</g>`,
+    `<clipPath id="c"><circle cx="${s / 2}" cy="${s / 2}" r="${s / 2}"/></clipPath><g clip-path="url(#c)">${plate(0, 0, s, PLATED_SQUARE)}</g>`,
   );
 /** Apple's macOS grid: an 824 tile centred on a transparent 1024 canvas. */
-const macGrid = (s, body = PLATED) =>
+const macGrid = (s) =>
   doc(
     s,
     s,
-    `<defs><filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="${s * 0.0098}" stdDeviation="${s * 0.0098}" flood-color="#000000" flood-opacity="0.3"/></filter></defs><g filter="url(#shadow)">${plate(s * 0.0977, s * 0.0977, s * 0.8047, body)}</g>`,
+    `<defs><filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="${s * 0.0098}" stdDeviation="${s * 0.0098}" flood-color="#000000" flood-opacity="0.3"/></filter></defs><g filter="url(#shadow)">${plate(s * 0.0977, s * 0.0977, s * 0.8047)}</g>`,
   );
 const markOnly = (s, color, fraction) => doc(s, s, mark(s, s, color, fraction));
 const markOnTile = (s, tile, color, fraction) =>
@@ -119,25 +114,6 @@ export const OUTPUTS = [
   out('electron/build/trinityTrayLinux.png', 32, 32, () => plated(32)),
   out('electron/build/trinityTrayLinux@2x.png', 64, 64, () => plated(64)),
   out('electron/build/notificationIcon.png', 256, 256, () => plated(256)),
-  // Dark twins, swapped in at runtime by the App icon preference (electron/src/app-icon.ts).
-  out('electron/build/icon-dark.png', 1024, 1024, () =>
-    plated(1024, DARK_PLATED),
-  ),
-  out('electron/build/icon-mac-dark.png', 1024, 1024, () =>
-    macGrid(1024, DARK_PLATED),
-  ),
-  out('electron/build/trinityTray-dark.png', 16, 16, () =>
-    plated(16, DARK_PLATED),
-  ),
-  out('electron/build/trinityTray-dark@2x.png', 32, 32, () =>
-    plated(32, DARK_PLATED),
-  ),
-  out('electron/build/trinityTrayLinux-dark.png', 32, 32, () =>
-    plated(32, DARK_PLATED),
-  ),
-  out('electron/build/trinityTrayLinux-dark@2x.png', 64, 64, () =>
-    plated(64, DARK_PLATED),
-  ),
   // Web and PWA
   out(`${ICON_DIR}/icon-1024.png`, 1024, 1024, () => plated(1024)),
   out(`${ICON_DIR}/icon-192.png`, 192, 192, () => plated(192)),
@@ -158,7 +134,6 @@ export const OUTPUTS = [
     { rule: 'white-alpha' },
   ),
   out(`${ICON_DIR}/favicon.png`, 256, 256, () => plated(256)),
-  out(`${ICON_DIR}/favicon-dark.png`, 256, 256, () => plated(256, DARK_PLATED)),
   out(`${ICON_DIR}/apple-touch-icon.png`, 180, 180, () => platedSquare(180), {
     alpha: false,
   }),
@@ -196,25 +171,6 @@ export const OUTPUTS = [
       24 * k,
       () => markOnly(24 * k, '#ffffff', 0.83),
       { rule: 'white-alpha' },
-    ),
-    out(
-      `${RES}/mipmap-${dpi}/ic_launcher_dark_foreground.png`,
-      108 * k,
-      108 * k,
-      () => markOnly(108 * k, DARK_MARK, 0.42),
-      { safeRadius: 0.3056 },
-    ),
-    out(
-      `${RES}/mipmap-${dpi}/ic_launcher_dark_background.png`,
-      108 * k,
-      108 * k,
-      () => doc(108 * k, 108 * k, rect(108 * k, 108 * k, DARK_TILE)),
-    ),
-    out(`${RES}/mipmap-${dpi}/ic_launcher_dark.png`, 48 * k, 48 * k, () =>
-      plated(48 * k, DARK_PLATED),
-    ),
-    out(`${RES}/mipmap-${dpi}/ic_launcher_dark_round.png`, 48 * k, 48 * k, () =>
-      platedRound(48 * k, DARK_SQUARE),
     ),
   ]),
   // Android splash (existing sizes)
@@ -257,17 +213,6 @@ export const OUTPUTS = [
     () => markOnly(1024, TINT_MARK, 0.66),
     { rule: 'mark-on-transparent' },
   ),
-  // Alternate icons for the App icon preference (MainViewController.swift AppIconPlugin).
-  {
-    path: `${IOS}/AppIconBlurple.appiconset/AppIcon.png`,
-    copyOf: `${IOS}/AppIcon.appiconset/AppIcon-light.png`,
-    fromOutput: true,
-  },
-  {
-    path: `${IOS}/AppIconDark.appiconset/AppIcon.png`,
-    copyOf: `${IOS}/AppIcon.appiconset/AppIcon-dark.png`,
-    fromOutput: true,
-  },
   out(
     `${IOS}/Splash.imageset/splash-2732x2732.png`,
     2732,
@@ -324,6 +269,53 @@ export function encodePng(width, height, rgba, alpha) {
   ]);
 }
 
+/** `#rrggbb` as an Icon Composer colour. */
+const srgb = (hex) =>
+  `srgb:${[1, 3, 5].map((i) => (parseInt(hex.slice(i, i + 2), 16) / 255).toFixed(5)).join(',')},1.00000`;
+const [PLATE_FROM, PLATE_TO] = [
+  ...PLATED.matchAll(/stop-color="(#[0-9a-f]{6})"/g),
+].map((match) => match[1]);
+
+/**
+ * The macOS 26 Icon Composer source. macOS renders its Default, Dark, Clear and Tinted
+ * styles from it, also while Trinity is not running; electron-builder compiles it.
+ */
+export const ICON_COMPOSER = {
+  'electron/build/Trinity.icon/icon.json': `${JSON.stringify(
+    {
+      'fill-specializations': [
+        { value: { 'linear-gradient': [srgb(PLATE_FROM), srgb(PLATE_TO)] } },
+        {
+          appearance: 'dark',
+          value: { 'linear-gradient': [srgb(DARK_TILE), srgb(DARK_TILE)] },
+        },
+      ],
+      groups: [
+        {
+          layers: [
+            {
+              // Same as the iOS dark appearance: DARK_MARK on DARK_TILE.
+              'fill-specializations': [
+                { value: { solid: srgb('#ffffff') } },
+                { appearance: 'dark', value: { solid: srgb(DARK_MARK) } },
+              ],
+              glass: true,
+              'image-name': 'Mark.svg',
+              name: 'Mark',
+            },
+          ],
+          shadow: { kind: 'neutral', opacity: 0.5 },
+          translucency: { enabled: true, value: 0.5 },
+        },
+      ],
+      'supported-platforms': { squares: ['macOS'] },
+    },
+    null,
+    2,
+  )}\n`,
+  'electron/build/Trinity.icon/Assets/Mark.svg': `${markOnly(1024, '#ffffff', 0.66)}\n`,
+};
+
 /** Render every output under `outRoot` and return them (rendered ones with pixels). */
 export function renderIcons(outRoot = ROOT) {
   const rendered = [];
@@ -356,6 +348,11 @@ export function renderIcons(outRoot = ROOT) {
     writeFileSync(target, png);
     const { svg: _svg, ...meta } = output;
     rendered.push({ ...meta, rgba, png });
+  }
+  for (const [path, text] of Object.entries(ICON_COMPOSER)) {
+    const target = join(outRoot, path);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, text);
   }
   return rendered;
 }

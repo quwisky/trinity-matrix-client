@@ -23,7 +23,7 @@ type AppearanceAttempt =
 const IDLE_ATTEMPT: AppearanceAttempt = Object.freeze({ kind: 'idle' });
 
 /**
- * Screen-scoped command and recovery model for the seven Appearance axes.
+ * Screen-scoped command and recovery model for the six Appearance axes.
  *
  * Application Runtime owns hydration and projection. This routed model only owns user
  * commands and recovery initiated from the Appearance screen.
@@ -42,7 +42,6 @@ export class AppearanceSettingsController {
     density: IDLE_ATTEMPT,
     codeSize: IDLE_ATTEMPT,
     codeLinePresentation: IDLE_ATTEMPT,
-    appIcon: IDLE_ATTEMPT,
   });
   private readonly _hydrationBusy = signal(false);
   private readonly _hydrationWarning =
@@ -63,7 +62,6 @@ export class AppearanceSettingsController {
     density: this.statusFor('density'),
     codeSize: this.statusFor('codeSize'),
     codeLinePresentation: this.statusFor('codeLinePresentation'),
-    appIcon: this.statusFor('appIcon'),
   });
 
   update(key: AppearanceAxisKey, candidate: unknown): void {

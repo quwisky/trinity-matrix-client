@@ -25,11 +25,9 @@ import {
   type PreferenceState,
   type PreferenceValue,
 } from '@trinity/runtime/preferences';
-import type { AppIconPreference } from '@trinity/platform-native';
 import type { ThemeId, ThemeMode } from '@trinity/theme-foundation';
 import { map, tap, type Observable } from 'rxjs';
 import {
-  APP_ICON_PREFERENCE,
   DENSITY_PREFERENCE,
   DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS,
   MODE_PREFERENCE,
@@ -53,7 +51,6 @@ export interface AppearanceValue {
   readonly density: AppearanceDensity;
   readonly codeSize: CodeSize;
   readonly codeLinePresentation: CodeLinePresentation;
-  readonly appIcon: AppIconPreference;
 }
 
 export interface AppearanceAxis<T extends PreferenceValue> {
@@ -69,7 +66,7 @@ export interface AppearanceStartupWarning {
 }
 
 export type AppearanceHydrationOutcome =
-  | { readonly kind: 'ready'; readonly hydrated: 7 }
+  | { readonly kind: 'ready'; readonly hydrated: 6 }
   | {
       readonly kind: 'partial';
       readonly hydrated: number;
@@ -78,7 +75,7 @@ export type AppearanceHydrationOutcome =
     };
 
 /**
- * Application-level read model over seven capability-owned preference cells.
+ * Application-level read model over six capability-owned preference cells.
  *
  * Persistence remains in PreferenceStoreService and in each descriptor. This projection only
  * groups their committed values, preserves per-axis failure state, and reduces any partial
@@ -96,7 +93,6 @@ export class AppearancePreferences {
     density: this.axis(DENSITY_PREFERENCE),
     codeSize: this.axis(CODE_SIZE_PREFERENCE),
     codeLinePresentation: this.axis(CODE_LINE_PRESENTATION_PREFERENCE),
-    appIcon: this.axis(APP_ICON_PREFERENCE),
   });
 
   readonly value = computed<AppearanceValue>(() => ({
@@ -106,7 +102,6 @@ export class AppearancePreferences {
     density: this.axes.density.value(),
     codeSize: this.axes.codeSize.value(),
     codeLinePresentation: this.axes.codeLinePresentation.value(),
-    appIcon: this.axes.appIcon.value(),
   }));
 
   /** Last completed aggregate hydration, retained for recovery-capable consumers. */
@@ -121,7 +116,7 @@ export class AppearancePreferences {
       .pipe(
         map((outcome): AppearanceHydrationOutcome =>
           outcome.kind === 'ready'
-            ? { kind: 'ready', hydrated: 7 }
+            ? { kind: 'ready', hydrated: 6 }
             : {
                 ...outcome,
                 warning: {
@@ -143,7 +138,7 @@ export class AppearancePreferences {
       .pipe(
         map((outcome): AppearanceHydrationOutcome =>
           outcome.kind === 'ready'
-            ? { kind: 'ready', hydrated: 7 }
+            ? { kind: 'ready', hydrated: 6 }
             : {
                 ...outcome,
                 warning: {
@@ -183,7 +178,7 @@ export class AppearancePreferences {
   }
 }
 
-/** Contributes all seven descriptors without moving their capability ownership. */
+/** Contributes all six descriptors without moving their capability ownership. */
 export function provideAppearancePreferences(): EnvironmentProviders {
   return makeEnvironmentProviders([
     provideDesignSystemAppearancePreferences(),

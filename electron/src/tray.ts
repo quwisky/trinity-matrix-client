@@ -1,7 +1,6 @@
 import { Menu, nativeImage, Tray } from 'electron';
 import * as fs from 'node:fs';
-import { storedAppIcon } from './app-icon-state';
-import { iconCandidatePaths, trayIconFile, type AppIconName } from './icons';
+import { iconCandidatePaths, trayIconFile } from './icons';
 import { focusMainWindow, requestQuit } from './window';
 
 // The reference is held in module scope so the tray is not garbage-collected
@@ -15,8 +14,9 @@ let tray: Tray | null = null;
  * the system recolors for light/dark menubars; Windows uses a 16 px colored PNG and
  * Linux a 32 px one (AppIndicators draw larger), each with an @2x sibling. Never throws if the asset is missing.
  */
-function resolveTrayIcon(fileName: string): Electron.NativeImage {
+function resolveTrayIcon(): Electron.NativeImage {
   const isMac = process.platform === 'darwin';
+  const fileName = trayIconFile(process.platform);
 
   for (const candidate of iconCandidatePaths(fileName)) {
     try {
@@ -42,12 +42,6 @@ function resolveTrayIcon(fileName: string): Electron.NativeImage {
   return nativeImage.createEmpty();
 }
 
-/** Swap the Windows/Linux tray image for the App icon preference; macOS keeps its template. */
-export function setTrayIcon(icon: AppIconName): void {
-  if (!tray || process.platform === 'darwin') return;
-  tray.setImage(resolveTrayIcon(trayIconFile(process.platform, icon)));
-}
-
 /**
  * System tray so the app keeps running (and syncing, and notifying) in the
  * background after the window is closed to tray. Click / double-click reveals
@@ -59,8 +53,7 @@ export function createTray(): void {
     return;
   }
 
-  const icon = storedAppIcon();
-  tray = new Tray(resolveTrayIcon(trayIconFile(process.platform, icon)));
+  tray = new Tray(resolveTrayIcon());
   tray.setToolTip('Trinity');
 
   const contextMenu = Menu.buildFromTemplate([

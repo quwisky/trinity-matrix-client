@@ -53,14 +53,13 @@ async function setup() {
 }
 
 describe('Appearance config entries', () => {
-  it('derives seven portable paths, keys, choices, and defaults from descriptors', async () => {
+  it('derives six portable paths, keys, choices, and defaults from descriptors', async () => {
     const { config } = await setup();
     const descriptorKeys = APPEARANCE_PREFERENCE_DESCRIPTORS.map(
       ({ persistence }) => persistence.key,
     ).sort();
 
     expect(config.entries.map(({ path }) => path)).toEqual([
-      'appearance.appIcon',
       'appearance.codeLinePresentation',
       'appearance.codeSize',
       'appearance.density',
@@ -83,7 +82,6 @@ describe('Appearance config entries', () => {
 
     expect(config.settings()).toEqual({
       appearance: {
-        appIcon: 'system',
         codeLinePresentation: 'auto',
         codeSize: 'default',
         density: 'cosy',
@@ -107,7 +105,6 @@ describe('Appearance config entries', () => {
           density: 'compact',
           codeSize: 'larger',
           codeLinePresentation: 'always',
-          appIcon: 'dark',
         },
       },
     });
@@ -123,7 +120,6 @@ describe('Appearance config entries', () => {
       density: 'compact',
       codeSize: 'larger',
       codeLinePresentation: 'always',
-      appIcon: 'dark',
     });
     expect(write.mock.calls.map(([request]) => request.key).sort()).toEqual(
       APPEARANCE_PREFERENCE_DESCRIPTORS.map(
@@ -175,7 +171,6 @@ describe('Appearance config entries', () => {
       density: 'compact',
       codeSize: 'larger',
       codeLinePresentation: 'always',
-      appIcon: 'system',
     });
   });
 

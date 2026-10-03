@@ -39,5 +39,3 @@ Use an installed-host journey for permissions, system Back, app lifecycle, nativ
 Read [platform integrations](../../development/platform-integrations/) and [desktop and native tests](../../testing/desktop-and-native-tests/).
 
 App icons and splash screens are generated from shared sources; see [application icons](../electron/#application-icons).
-
-The launcher icon is chosen at runtime: `MainActivity` has two `activity-alias` launcher entries, `.LauncherBlurple` and `.LauncherDark`, and the App icon preference enables one and disables the other. The `.secondary` E2E flavor removes both aliases and is launched by component name.

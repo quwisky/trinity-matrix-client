@@ -67,21 +67,6 @@ extraResources:
     to: build/trinityTrayTemplate@2x.png
   - from: build/notificationIcon.png
     to: build/notificationIcon.png
-  # Both macOS Dock icons and the dark twins for the App icon preference (app-icon.ts).
-  - from: build/icon-mac.png
-    to: build/icon-mac.png
-  - from: build/icon-dark.png
-    to: build/icon-dark.png
-  - from: build/icon-mac-dark.png
-    to: build/icon-mac-dark.png
-  - from: build/trinityTray-dark.png
-    to: build/trinityTray-dark.png
-  - from: build/trinityTray-dark@2x.png
-    to: build/trinityTray-dark@2x.png
-  - from: build/trinityTrayLinux-dark.png
-    to: build/trinityTrayLinux-dark.png
-  - from: build/trinityTrayLinux-dark@2x.png
-    to: build/trinityTrayLinux-dark@2x.png
 
 directories:
   output: release
@@ -111,7 +96,9 @@ linux:
 # macOS
 # ---------------------------------------------------------------------------
 mac:
-  icon: build/icon-mac.png
+  # Icon Composer source (scripts/generate-icons.mjs): macOS 26 themes it; electron-builder
+  # compiles it with Xcode 26's actool and derives the legacy .icns from it.
+  icon: build/Trinity.icon
   target:
     - dmg
     - zip
