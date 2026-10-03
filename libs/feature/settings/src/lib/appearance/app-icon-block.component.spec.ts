@@ -64,7 +64,7 @@ describe('AppIconBlockComponent', () => {
       'dark',
     ]);
     expect(screen.getByTestId('app-icon-help').textContent).toContain(
-      'Changes the Dock / taskbar icon while Trinity is running.',
+      'Changes the Dock, taskbar and shortcut icons, also after Trinity quits.',
     );
     block.update('dark');
     expect(controller.update).toHaveBeenCalledWith('appIcon', 'dark');

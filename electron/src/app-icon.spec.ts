@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
     win,
     dockSetIcon: vi.fn(),
     setTrayIcon: vi.fn(),
+    persistAppIcon: vi.fn(),
   };
 });
 
@@ -34,6 +35,9 @@ vi.mock('./icons', () => ({
   windowIconOptions: (_p: string, icon: string) => ({
     icon: `/res/${icon === 'dark' ? 'icon-dark.png' : 'icon.png'}`,
   }),
+}));
+vi.mock('./app-icon-persistence', () => ({
+  persistAppIcon: mocks.persistAppIcon,
 }));
 vi.mock('./tray', () => ({ setTrayIcon: mocks.setTrayIcon }));
 vi.mock('./window', () => ({ getMainWindow: () => mocks.win }));
@@ -97,5 +101,17 @@ describe('app icon', () => {
     mocks.win.setIcon.mockClear();
     expect(await handle({ sender: mocks.win.webContents }, 'dark')).toBe(true);
     expect(mocks.win.setIcon).not.toHaveBeenCalled();
+  });
+
+  it('keeps a changed icon after quit, and re-applies a stored Dark one at startup', async () => {
+    registerAppIconIpc();
+    expect(mocks.persistAppIcon).not.toHaveBeenCalled();
+    const handle = mocks.handlers.get(SET_APP_ICON_CHANNEL)!;
+    await handle({ sender: mocks.win.webContents }, 'dark');
+    expect(mocks.persistAppIcon).toHaveBeenCalledWith('dark');
+
+    mocks.persistAppIcon.mockClear();
+    registerAppIconIpc();
+    expect(mocks.persistAppIcon).toHaveBeenCalledWith('dark');
   });
 });

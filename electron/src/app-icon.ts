@@ -1,4 +1,5 @@
 import { app, ipcMain } from 'electron';
+import { persistAppIcon } from './app-icon-persistence';
 import { isAppIconName, saveAppIcon, storedAppIcon } from './app-icon-state';
 import {
   dockIconFile,
@@ -26,11 +27,14 @@ export function applyAppIcon(icon: AppIconName): void {
   setTrayIcon(icon);
 }
 
-/** Wire the IPC; also applies a stored Dark Dock icon, which the bundle icon cannot express. */
+/** Wire the IPC; also applies a stored Dark icon, which the shipped icons cannot express. */
 export function registerAppIconIpc(): void {
   current = storedAppIcon();
-  if (process.platform === 'darwin' && current === 'dark')
-    applyAppIcon(current);
+  if (current === 'dark') {
+    if (process.platform === 'darwin') applyAppIcon(current);
+    // An update or reinstall restores the shipped bundle, shortcuts and .desktop entry.
+    persistAppIcon(current);
+  }
   ipcMain.handle(SET_APP_ICON_CHANNEL, (event, raw: unknown) => {
     const win = getMainWindow();
     if (!win || event.sender !== win.webContents || !isAppIconName(raw)) {
@@ -40,6 +44,7 @@ export function registerAppIconIpc(): void {
     current = raw;
     saveAppIcon(raw);
     applyAppIcon(raw);
+    persistAppIcon(raw);
     return true;
   });
 }

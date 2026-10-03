@@ -23,7 +23,8 @@ const ANDROID_WARNING =
 const HELP: Readonly<Record<AppIconHost, string>> = {
   ios: 'iOS confirms the change with a system alert.',
   android: ANDROID_WARNING,
-  desktop: 'Changes the Dock / taskbar icon while Trinity is running.',
+  desktop:
+    'Changes the Dock, taskbar and shortcut icons, also after Trinity quits.',
   web: 'Changes the browser tab icon.',
 };
 
