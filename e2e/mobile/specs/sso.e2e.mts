@@ -18,22 +18,51 @@ async function answerDexInCustomTab(
   email: string,
   pass: string,
 ): Promise<void> {
-  const login = uiSelector(
-    'new UiSelector().className("android.widget.EditText").instance(0)',
+  const field = (n: number) =>
+    uiSelector(
+      `new UiSelector().className("android.widget.EditText").instance(${n})`,
+    );
+  // Chrome may put a first-run screen or the certificate interstitial in front of Dex.
+  const hurdles = [
+    'Use without an account',
+    'Accept & continue',
+    'No thanks',
+    'Got it',
+    'Advanced',
+    'Proceed to localhost (unsafe)',
+  ];
+  await browser.waitUntil(
+    async () => {
+      if (await field(0).isExisting()) return true;
+      for (const text of hurdles) {
+        const button = uiSelector(`new UiSelector().textStartsWith("${text}")`);
+        if (await button.isExisting()) await button.click().catch(() => {});
+      }
+      return false;
+    },
+    {
+      timeout: 90_000,
+      interval: 1_000,
+      timeoutMsg: 'the identity provider page never opened in the Custom Tab',
+    },
   );
-  await browser.waitUntil(async () => login.isExisting(), {
-    timeout: 60_000,
-    interval: 1_000,
-    timeoutMsg: 'the identity provider page never opened in the Custom Tab',
-  });
-  await login.click();
-  await login.setValue(email);
-  const password = uiSelector(
-    'new UiSelector().className("android.widget.EditText").instance(1)',
+  // The page can re-render once as it settles; retry the fill on a stale element.
+  await browser.waitUntil(
+    async () => {
+      try {
+        await field(0).setValue(email);
+        await field(1).setValue(pass);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    {
+      timeout: 30_000,
+      interval: 1_000,
+      timeoutMsg: 'could not fill Dex login',
+    },
   );
-  await password.click();
-  await password.setValue(pass);
-  // Enter submits the form without needing the soft keyboard dismissed first.
   await browser.pressKeyCode(66);
 }
 
