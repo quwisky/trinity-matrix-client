@@ -393,6 +393,6 @@ The executable contracts are [`ci.yml`](../../.github/workflows/ci.yml),
 [`docs-pages.yml`](../../.github/workflows/docs-pages.yml),
 [`release.yml`](../../.github/workflows/release.yml),
 [`renovate.yml`](../../.github/workflows/renovate.yml),
-[`electron-builder.yml`](../../electron/electron-builder.yml), and the
-[notarization hook](../../electron/build/notarize.cjs). Keep this guide aligned
+and [`electron-builder.yml`](../../electron/electron-builder.yml), which notarizes signed macOS
+builds with electron-builder's built-in notarization. Keep this guide aligned
 with those files when a trigger, job, artifact, or credential name changes.
