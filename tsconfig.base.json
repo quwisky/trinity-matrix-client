@@ -60,7 +60,6 @@
       "@trinity/helm/button": ["./libs/spartan/button/src/index.ts"],
       "@trinity/helm/utils": ["./libs/spartan/utils/src/index.ts"],
       "@trinity/helm/label": ["./libs/spartan/label/src/index.ts"],
-      "@trinity/helm/badge": ["./libs/spartan/badge/src/index.ts"],
       "@trinity/helm/progress": ["./libs/spartan/progress/src/index.ts"],
       "@trinity/helm/spinner": ["./libs/spartan/spinner/src/index.ts"],
       "@trinity/helm/sonner": ["./libs/spartan/sonner/src/index.ts"],

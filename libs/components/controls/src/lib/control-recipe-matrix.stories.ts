@@ -22,11 +22,7 @@ import type {
   TrnButtonSize,
   TrnButtonVariant,
 } from './button/trn-button-recipe';
-import {
-  TrnCheckboxComponent,
-  type TrnCheckboxSize,
-  type TrnCheckboxVariant,
-} from './checkbox/trn-checkbox.component';
+import { TrnCheckboxComponent } from './checkbox/trn-checkbox.component';
 import { TrnEmojiPickerComponent } from './emoji-picker/trn-emoji-picker/trn-emoji-picker.component';
 import type { TrnEmojiPickerSize } from './emoji-picker/trn-emoji-picker/trn-emoji-picker-recipe';
 import { TrnFieldLabelComponent } from './field/field-label/trn-field-label.component';
@@ -38,8 +34,6 @@ import { TrnLabel } from './label/trn-label';
 import { QrScannerComponent } from './qr-scanner/qr-scanner/qr-scanner.component';
 import {
   TrnRadioGroupComponent,
-  type TrnRadioGroupSize,
-  type TrnRadioGroupVariant,
   type TrnRadioOption,
 } from './radio-group/trn-radio-group.component';
 import type { TrnRadioGroupLayout } from './radio-group/trn-radio-group-recipe';
@@ -48,11 +42,7 @@ import {
   type TrnSelectOption,
   type TrnSelectSize,
 } from './select/trn-select.component';
-import {
-  TrnSwitchComponent,
-  type TrnSwitchSize,
-  type TrnSwitchVariant,
-} from './switch/trn-switch.component';
+import { TrnSwitchComponent } from './switch/trn-switch.component';
 import { TrnTextarea } from './textarea/trn-textarea';
 
 const completeCatalog =
@@ -75,12 +65,6 @@ const BUTTON_PRESENTATIONS = completeCatalog<TrnButtonPresentation>()([
   'link',
 ]);
 const BUTTON_SHAPES = completeCatalog<TrnButtonShape>()(['label', 'icon']);
-const CHOICE_VARIANTS = completeCatalog<
-  TrnCheckboxVariant | TrnRadioGroupVariant | TrnSwitchVariant
->()(['neutral', 'accent']);
-const CHOICE_SIZES = completeCatalog<
-  TrnCheckboxSize | TrnRadioGroupSize | TrnSwitchSize
->()(['sm', 'md']);
 const RADIO_LAYOUTS = completeCatalog<TrnRadioGroupLayout>()([
   'list',
   'segmented',
@@ -206,8 +190,6 @@ export const CompleteCatalog: Story = {
       buttonShapes: BUTTON_SHAPES,
       buttonSizes: BUTTON_SIZES,
       buttonVariants: BUTTON_VARIANTS,
-      choiceSizes: CHOICE_SIZES,
-      choiceVariants: CHOICE_VARIANTS,
       fieldLabelEmphases: FIELD_LABEL_EMPHASES,
       radioLayouts: RADIO_LAYOUTS,
       radioOptions: RADIO_OPTIONS,
@@ -280,30 +262,14 @@ export const CompleteCatalog: Story = {
         <section class="grid gap-4" aria-labelledby="catalog-choice-controls">
           <h2 id="catalog-choice-controls" class="text-lg font-semibold">Choice controls</h2>
           <div class="flex flex-wrap items-center gap-4">
-            @for (variant of choiceVariants; track variant) {
-              @for (size of choiceSizes; track size) {
-                <label class="flex items-center gap-2">
-                  <trn-checkbox
-                    [attr.data-testid]="'catalog-checkbox-' + variant + '-' + size"
-                    data-catalog-touch
-                    [variant]="variant"
-                    [size]="size"
-                    checked
-                  />
-                  {{ variant }} {{ size }} checkbox
-                </label>
-                <label class="flex items-center gap-2">
-                  <trn-switch
-                    [attr.data-testid]="'catalog-switch-' + variant + '-' + size"
-                    data-catalog-touch
-                    [variant]="variant"
-                    [size]="size"
-                    checked
-                  />
-                  {{ variant }} {{ size }} switch
-                </label>
-              }
-            }
+            <label class="flex items-center gap-2">
+              <trn-checkbox data-testid="catalog-checkbox-checked" data-catalog-touch checked />
+              Checked checkbox
+            </label>
+            <label class="flex items-center gap-2">
+              <trn-switch data-testid="catalog-switch-checked" data-catalog-touch checked />
+              Checked switch
+            </label>
           </div>
           <div class="flex flex-wrap items-center gap-4">
             <label class="flex items-center gap-2">
@@ -334,19 +300,13 @@ export const CompleteCatalog: Story = {
           </div>
 
           @for (layout of radioLayouts; track layout) {
-            @for (variant of choiceVariants; track variant) {
-              @for (size of choiceSizes; track size) {
-                <trn-radio-group
-                  [attr.data-testid]="'catalog-radio-' + layout + '-' + variant + '-' + size"
-                  [attr.aria-label]="layout + ' ' + variant + ' ' + size + ' mode'"
-                  [layout]="layout"
-                  [variant]="variant"
-                  [size]="size"
-                  [options]="radioOptions"
-                  value="system"
-                />
-              }
-            }
+            <trn-radio-group
+              [attr.data-testid]="'catalog-radio-' + layout"
+              [attr.aria-label]="layout + ' mode'"
+              [layout]="layout"
+              [options]="radioOptions"
+              value="system"
+            />
           }
           <trn-radio-group
             data-testid="catalog-radio-invalid"

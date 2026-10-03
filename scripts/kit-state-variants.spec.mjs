@@ -274,12 +274,8 @@ describe('kit state variants', () => {
     const theme = read(THEME);
     const PAIRS = {
       'data-checked': ['data-state', 'checked'],
-      'data-unchecked': ['data-state', 'unchecked'],
-      'data-active': ['data-state', 'active'],
       'data-open': ['data-state', 'open'],
       'data-closed': ['data-state', 'closed'],
-      'data-vertical': ['data-orientation', 'vertical'],
-      'data-horizontal': ['data-orientation', 'horizontal'],
     };
 
     // The DECLARATION BODY is what is asserted, not one spelling of it. Pinning the
@@ -313,7 +309,7 @@ describe('kit state variants', () => {
     // branch turns off every tick mark and radio dot in the app's own menus — with jsdom
     // unable to see it, because it applies no CSS.
     const theme = read(THEME);
-    const missing = ['checked', 'unchecked', 'active', 'open', 'closed'].filter(
+    const missing = ['checked', 'open', 'closed'].filter(
       (name) =>
         !new RegExp(
           `\\[data-${name}\\]:not\\(\\[data-${name}=['"]false['"]\\]\\)`,
