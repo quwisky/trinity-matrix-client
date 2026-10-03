@@ -40,9 +40,16 @@ x86-64 only. Download the `.deb` or the AppImage from the latest release. On Deb
 Ubuntu, prefer the `.deb`: AppImages need `libfuse2`, and recent Ubuntu releases restrict
 the sandbox they rely on.
 
+On Debian and Ubuntu:
+
 ```bash
-sudo apt install ./trinity-desktop_0.1.0_amd64.deb             # Debian and Ubuntu
-chmod +x Trinity-0.1.0.AppImage                               # AppImage
+sudo apt install ./trinity-desktop_0.1.0_amd64.deb
+```
+
+With the AppImage:
+
+```bash
+chmod +x Trinity-0.1.0.AppImage
 ./Trinity-0.1.0.AppImage
 ```
 
