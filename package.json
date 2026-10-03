@@ -20,8 +20,6 @@
     "stylelint": "stylelint \"{apps,libs,e2e}/**/*.{scss,css}\"",
     "storybook": "node scripts/nx.mjs storybook components-storybook-host",
     "storybook:build": "node scripts/nx.mjs build-storybook components-storybook-host",
-    "spike:chromium": "node scripts/nx.mjs run trinity-e2e-protocol:crypto-spike-chromium",
-    "spike:webkit": "node scripts/nx.mjs run trinity-e2e-protocol:crypto-spike-webkit",
     "smoke:login": "node scripts/nx.mjs run trinity-e2e-protocol:login-smoke",
     "e2e": "node scripts/nx.mjs run trinity-e2e:e2e-pr",
     "e2e:all": "node scripts/nx.mjs run trinity-e2e:e2e-all",

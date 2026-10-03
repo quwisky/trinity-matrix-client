@@ -108,11 +108,6 @@ function harness(options: HarnessOptions = {}) {
           ? of({
               kind: 'ready' as const,
               accountId,
-              metrics: {
-                durationMs: 4,
-                projectionDurationMs: 2,
-                projectionCount: 3,
-              },
             })
           : of({
               kind: 'failed' as const,
@@ -1192,11 +1187,6 @@ describe('WorkspaceNavigationService', () => {
     accountOutcome.next({
       kind: 'ready',
       accountId: BOB,
-      metrics: {
-        durationMs: 4,
-        projectionDurationMs: 2,
-        projectionCount: 3,
-      },
     });
     accountOutcome.complete();
 
@@ -1225,11 +1215,6 @@ describe('WorkspaceNavigationService', () => {
         map(() => ({
           kind: 'ready' as const,
           accountId,
-          metrics: {
-            durationMs: 4,
-            projectionDurationMs: 2,
-            projectionCount: 3,
-          },
         })),
       ),
     );

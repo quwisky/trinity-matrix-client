@@ -65,18 +65,6 @@ export const PROTOCOL_CASES = {
     remoteMutation: false,
     secondaryAccount: false,
   },
-  'protocol.crypto-spike-chromium': {
-    spec: 'crypto-spike.spec.mjs',
-    browserName: 'chromium',
-    remoteMutation: false,
-    secondaryAccount: false,
-  },
-  'protocol.crypto-spike-webkit': {
-    spec: 'crypto-spike.spec.mjs',
-    browserName: 'webkit',
-    remoteMutation: false,
-    secondaryAccount: false,
-  },
   'protocol.login-smoke': {
     spec: 'smoke-login.spec.mjs',
     browserName: 'chromium',

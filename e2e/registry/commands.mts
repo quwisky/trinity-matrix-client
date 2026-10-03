@@ -81,8 +81,6 @@ export const E2E_PACKAGE_SCRIPTS = [
       'protocol.rooms',
       'protocol.search',
       'protocol.emoji',
-      'protocol.crypto-spike-chromium',
-      'protocol.crypto-spike-webkit',
     ],
   },
   {
@@ -116,8 +114,6 @@ export const E2E_PACKAGE_SCRIPTS = [
       'protocol.search',
       'protocol.emoji',
       'protocol.verify-sas-selfcheck',
-      'protocol.crypto-spike-chromium',
-      'protocol.crypto-spike-webkit',
       'protocol.login-smoke',
     ],
   },
@@ -228,20 +224,6 @@ export const E2E_PACKAGE_SCRIPTS = [
     removalAfterRelease: compatibilityRelease,
   },
   {
-    name: 'spike:chromium',
-    command: 'nx run trinity-e2e-protocol:crypto-spike-chromium',
-    kind: 'compatibility',
-    suiteIds: ['protocol.crypto-spike-chromium'],
-    removalAfterRelease: compatibilityRelease,
-  },
-  {
-    name: 'spike:webkit',
-    command: 'nx run trinity-e2e-protocol:crypto-spike-webkit',
-    kind: 'compatibility',
-    suiteIds: ['protocol.crypto-spike-webkit'],
-    removalAfterRelease: compatibilityRelease,
-  },
-  {
     name: 'smoke:login',
     command: 'nx run trinity-e2e-protocol:login-smoke',
     kind: 'compatibility',
@@ -310,8 +292,6 @@ export const E2E_CI_ENTRYPOINTS = [
       'protocol.rooms',
       'protocol.search',
       'protocol.emoji',
-      'protocol.crypto-spike-chromium',
-      'protocol.crypto-spike-webkit',
     ],
   },
 ] as const satisfies readonly E2ECiEntrypoint[];

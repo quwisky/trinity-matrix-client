@@ -8,4 +8,3 @@ export * from './lib/coalesce';
 export * from './lib/project-from-client';
 export * from './lib/trust-crypto.port';
 export * from './lib/identity-matrix.port';
-export * from './lib/crypto-spike.service';

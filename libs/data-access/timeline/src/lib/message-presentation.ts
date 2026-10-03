@@ -271,17 +271,6 @@ export type NormalizedTimelineEvent =
   | NormalizedPollEvent
   | NormalizedUnsupportedEvent;
 
-export interface MessagePresentationMetrics {
-  readonly eventCount: number;
-  readonly durationMs: number;
-  readonly averageEventDurationMs: number;
-}
-
-export interface MessagePresentationBatch {
-  readonly messages: readonly MessageView[];
-  readonly metrics: MessagePresentationMetrics;
-}
-
 interface SystemLine {
   readonly text: string;
   readonly category: SystemLineCategory;
@@ -628,32 +617,5 @@ export function presentNormalizedTimelineEvent(
     previewEncrypted: true,
     summary: null,
     systemCategory: null,
-  });
-}
-
-/**
- * Present a representative batch and report content-free timing evidence. Diagnostics
- * intentionally contain counts and durations only: message bodies and Matrix identifiers
- * must never enter telemetry.
- */
-export function presentNormalizedTimelineEvents(
-  events: readonly NormalizedTimelineEvent[],
-): MessagePresentationBatch {
-  const startedAt = performance.now();
-  const messages = Object.freeze(
-    events.flatMap((event) => {
-      const message = presentNormalizedTimelineEvent(event);
-      return message ? [message] : [];
-    }),
-  );
-  const durationMs = performance.now() - startedAt;
-  return Object.freeze({
-    messages,
-    metrics: Object.freeze({
-      eventCount: events.length,
-      durationMs,
-      averageEventDurationMs:
-        events.length === 0 ? 0 : durationMs / events.length,
-    }),
   });
 }

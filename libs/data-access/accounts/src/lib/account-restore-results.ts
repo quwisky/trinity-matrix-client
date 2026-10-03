@@ -22,7 +22,7 @@ export function accountRestoreResultFor(
   accounts: readonly AccountRestoreOutcome[],
   durationMs: number,
 ): AccountRestoreResult {
-  const metrics = accountRestoreMetrics(accounts, durationMs);
+  const metrics = { durationMs };
   const active = accounts.find((account) => account.role === 'active')!;
   if (active.kind !== 'ready') {
     return {
@@ -66,24 +66,6 @@ export function accountRestoreTransitionResult(
   };
 }
 
-function accountRestoreMetrics(
-  accounts: readonly AccountRestoreOutcome[],
-  durationMs: number,
-): AccountRestoreMetrics {
-  return {
-    durationMs,
-    activeTerminalMs:
-      accounts.find((account) => account.role === 'active')?.durationMs ?? null,
-    terminalAccounts: accounts.length,
-    totalAccounts: accounts.length,
-  };
-}
-
 function emptyMetrics(durationMs: number): AccountRestoreMetrics {
-  return {
-    durationMs,
-    activeTerminalMs: null,
-    terminalAccounts: 0,
-    totalAccounts: 0,
-  };
+  return { durationMs };
 }

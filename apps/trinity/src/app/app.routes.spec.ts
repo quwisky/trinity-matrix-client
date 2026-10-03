@@ -94,7 +94,7 @@ describe('app routes', () => {
  */
 describe('app route guards', () => {
   /** The routes that are deliberately reachable signed out, by path. */
-  const PUBLIC_PATHS = ['login', 'register', 'sso-callback', 'spike'];
+  const PUBLIC_PATHS = ['login', 'register', 'sso-callback'];
   /** Pure redirects — they carry no component, so there is nothing to guard. */
   const isRedirect = (route: (typeof routes)[number]): boolean =>
     route.redirectTo !== undefined;
@@ -115,7 +115,6 @@ describe('app route guards', () => {
     // The other half: authGuard on /login would redirect a signed-out user to /login.
     for (const path of PUBLIC_PATHS) {
       const route = routes.find((candidate) => candidate.path === path);
-      // `spike` is dev-only and absent from a production table.
       if (!route) continue;
       expect(route.canActivate ?? [], `${path} must stay public`).toEqual([]);
     }

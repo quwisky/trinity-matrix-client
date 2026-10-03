@@ -316,11 +316,6 @@ export const SHARED_MOCKS: Provider[] = [
                 return of({
                   kind: 'ready' as const,
                   accountId,
-                  metrics: {
-                    durationMs: 0,
-                    projectionDurationMs: 0,
-                    projectionCount: 0,
-                  },
                 });
               }),
             ),

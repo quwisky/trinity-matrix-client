@@ -9,7 +9,6 @@ import type {
   EncryptionSetupPage,
   EncryptionUnlockPage,
 } from '@trinity/feature/crypto';
-import { environment } from '../environments/environment';
 
 export const routes: Routes = [
   {
@@ -94,19 +93,6 @@ export const routes: Routes = [
     loadComponent: () =>
       import('@trinity/feature/crypto').then((m) => m.DeviceVerificationPage),
   },
-  // Dev-only E2EE crypto spike (Milestone 1 harness; driven by `pnpm spike:chromium`).
-  // The route stays lazy and development-only. esbuild does not constant-fold
-  // `environment.production`, so the ternary removes the route at runtime while the
-  // dynamic import keeps the crypto harness out of the eager application chunk.
-  ...(environment.production
-    ? []
-    : [
-        {
-          path: 'spike',
-          loadComponent: () =>
-            import('@trinity/feature/shell').then((m) => m.HomePage),
-        },
-      ]),
   {
     path: '',
     redirectTo: 'rooms',

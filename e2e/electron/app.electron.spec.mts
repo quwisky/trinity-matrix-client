@@ -41,7 +41,7 @@ test('grants persistent storage to the trusted app renderer', async () => {
 test('boots the shell without renderer errors', async () => {
   // Deliberately NOT a WASM assertion, despite what this test used to be called.
   // `preloadCryptoWasm()` is only reached from an authenticated session
-  // (matrix-client.service.ts and crypto-spike.service.ts), and this spec never
+  // (matrix-client.service.ts), and this spec never
   // leaves the login screen — so nothing here instantiates WebAssembly. The real
   // WASM gate is the next test. This one is worth keeping for what it does check:
   // that the shell boots far enough to be interactive with a clean console.

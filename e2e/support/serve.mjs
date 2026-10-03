@@ -1,6 +1,5 @@
 // Minimal static server with SPA fallback: serves files from `www/`, and returns
-// index.html for any path without a file extension so deep links (e.g. /spike,
-// /login) resolve to the Angular app instead of 404ing.
+// index.html for any path without a file extension so deep links (e.g. /login) resolve to the Angular app instead of 404ing.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';

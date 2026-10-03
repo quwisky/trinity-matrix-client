@@ -1,13 +1,11 @@
 import type {
   WorkspaceNavigationScope,
-  WorkspaceTransitionMetrics,
   WorkspaceView,
 } from './workspace-navigation.models';
 
 export type {
   WorkspaceEventTarget,
   WorkspacePlacement,
-  WorkspaceTransitionMetrics,
   WorkspaceView,
 } from './workspace-navigation.models';
 
@@ -40,7 +38,6 @@ export type WorkspaceOpenOutcome =
       readonly kind: 'ready';
       readonly view: WorkspaceView;
       readonly repaired: boolean;
-      readonly metrics: WorkspaceTransitionMetrics;
     }
   | {
       readonly kind: 'failed';

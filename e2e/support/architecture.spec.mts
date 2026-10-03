@@ -84,7 +84,7 @@ describe('E2E support architecture', () => {
 
   it('keeps protocol journeys inside the Playwright Test lifecycle', () => {
     const specs = globSync('e2e/protocol/*.spec.mjs', { cwd: workspaceRoot });
-    expect(specs).toHaveLength(12);
+    expect(specs).toHaveLength(11);
     for (const spec of specs) {
       const source = read(spec);
       expect(source).toContain("from './fixtures.mts'");

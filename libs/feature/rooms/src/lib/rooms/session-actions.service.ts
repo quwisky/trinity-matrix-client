@@ -14,8 +14,6 @@ import { TrnAlertService } from '@trinity/components/overlay';
 import { ShellStatusService } from './shell-status.service';
 import { filter, switchMap } from 'rxjs';
 
-export { ACCOUNT_REMOVAL_CONSEQUENCES } from '@trinity/data-access/accounts';
-
 /**
  * Session-level actions reachable from the account menu: switching account, adding one,
  * re-authenticating a soft-logged-out one, signing out, and leaving for settings.
