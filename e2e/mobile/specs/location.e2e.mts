@@ -80,6 +80,20 @@ async function shareLocationAndWaitForPrompt(): Promise<void> {
   await expect(permissionButton('permission_deny_button')).toBeDisplayed();
 }
 
+/** Press a prompt button and retry until the dialog is gone (a click can miss while it animates). */
+async function answerPrompt(id: string): Promise<void> {
+  await browser.waitUntil(
+    async () => {
+      const button = permissionButton(id);
+      if (!(await button.isExisting())) return true;
+      await button.click().catch(() => undefined);
+      await browser.pause(1_000);
+      return !(await button.isExisting());
+    },
+    { timeout: 20_000, timeoutMsg: `the permission prompt stayed after ${id}` },
+  );
+}
+
 async function sentGeoUri(token: string, roomId: string): Promise<string> {
   const url = `${HOMESERVER_HTTP}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/messages?dir=b&limit=10`;
   const res = await fetch(url, {
@@ -100,7 +114,7 @@ describe('Android location', () => {
   it('prompts for location, then sends the mocked position as an m.location message', async () => {
     const { token, roomId } = await seedLocationRoom();
     await shareLocationAndWaitForPrompt();
-    await permissionButton('permission_allow_foreground_only_button').click();
+    await answerPrompt('permission_allow_foreground_only_button');
     await webview();
 
     const card = $('[data-testid="location-card"]');
@@ -134,7 +148,7 @@ describe('Android location', () => {
   it('reports a denied location prompt without sending or crashing', async () => {
     const { token, roomId } = await seedLocationRoom();
     await shareLocationAndWaitForPrompt();
-    await permissionButton('permission_deny_button').click();
+    await answerPrompt('permission_deny_button');
     await webview();
 
     await expect(
