@@ -1,0 +1,120 @@
+# Throwaway spike for #863. Never merged.
+name: Spike 863 iOS Appium
+
+on:
+  push:
+    branches: [spike/863-ios-appium]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  webview:
+    name: XCUITest reaches the WKWebView
+    runs-on: macos-26
+    timeout-minutes: 75
+    env:
+      SPIKE_OUT: ${{ github.workspace }}/dist/spike
+      APPIUM_HOME: ${{ github.workspace }}/.appium-ios
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Record versions
+        run: |
+          mkdir -p "$SPIKE_OUT"
+          {
+            sw_vers
+            uname -m
+            sysctl -n hw.ncpu hw.memsize
+            xcodebuild -version
+            xcrun --sdk iphonesimulator --show-sdk-version
+            xcrun simctl list runtimes
+          } | tee "$SPIKE_OUT/versions.txt"
+      - name: Probe Docker and Colima
+        continue-on-error: true
+        run: |
+          { docker info 2>&1 | head -5 || echo "docker: not available"; } | tee "$SPIKE_OUT/docker.txt"
+          brew install colima docker >/dev/null 2>&1
+          t0=$(date +%s)
+          if timeout 600 colima start --vm-type vz 2>&1 | tail -20 | tee -a "$SPIKE_OUT/docker.txt"; then
+            echo "colima_start=ok in $(( $(date +%s) - t0 ))s" | tee -a "$SPIKE_OUT/docker.txt"
+            docker run --rm hello-world 2>&1 | tail -3 | tee -a "$SPIKE_OUT/docker.txt"
+          else
+            echo "colima_start=failed after $(( $(date +%s) - t0 ))s" | tee -a "$SPIKE_OUT/docker.txt"
+          fi
+      - name: Start native Synapse behind Caddy TLS
+        run: spike/863/homeserver.sh "$SPIKE_OUT"
+      - name: Build the simulator app
+        run: |
+          t0=$(date +%s)
+          pnpm nx run trinity-ios:sync
+          cd ios
+          xcodebuild -project App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug \
+            -derivedDataPath ../dist/ios-spike build CODE_SIGNING_ALLOWED=NO > ../dist/spike/xcodebuild.log 2>&1
+          echo "app_build_s=$(( $(date +%s) - t0 ))" | tee -a "$SPIKE_OUT/timings.txt"
+      - name: Boot a simulator and install the app
+        run: |
+          udid=$(xcrun simctl list devices available --json \
+            | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .value[] | select(.name | test("^iPhone"))] | last | .udid')
+          xcrun simctl list devices available | grep "$udid" | tee -a "$SPIKE_OUT/versions.txt"
+          echo "SPIKE_UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" dist/ios-spike/Build/Products/Debug-iphonesimulator/App.app
+      - name: Install the XCUITest driver
+        run: |
+          t0=$(date +%s)
+          pnpm exec appium driver install xcuitest 2>&1 | tail -5
+          pnpm exec appium driver list --installed 2>&1 | tee -a "$SPIKE_OUT/versions.txt"
+          echo "driver_install_s=$(( $(date +%s) - t0 ))" | tee -a "$SPIKE_OUT/timings.txt"
+      - name: Start Appium
+        run: |
+          pnpm exec appium --address 127.0.0.1 --port 4723 --log "$SPIKE_OUT/appium.log" --log-level debug &
+          for _ in $(seq 60); do curl -fsS http://127.0.0.1:4723/status >/dev/null && break; sleep 1; done
+      - name: Probe without trusting Caddy's root
+        id: untrusted
+        continue-on-error: true
+        env:
+          SPIKE_PHASE: untrusted
+        run: |
+          t0=$(date +%s)
+          pnpm exec wdio run spike/863/wdio.conf.mjs
+          echo "untrusted_session_s=$(( $(date +%s) - t0 ))" | tee -a "$SPIKE_OUT/timings.txt"
+      - name: Probe after trusting Caddy's root in the simulator
+        continue-on-error: true
+        env:
+          SPIKE_PHASE: trusted
+        run: |
+          xcrun simctl keychain "$SPIKE_UDID" add-root-cert "$SPIKE_OUT/caddy-root.crt"
+          xcrun simctl terminate "$SPIKE_UDID" eu.qwky.trinity || true
+          t0=$(date +%s)
+          pnpm exec wdio run spike/863/wdio.conf.mjs
+          echo "trusted_session_s=$(( $(date +%s) - t0 ))" | tee -a "$SPIKE_OUT/timings.txt"
+      - name: Summarize
+        if: ${{ !cancelled() }}
+        run: |
+          for f in "$SPIKE_OUT"/*.json "$SPIKE_OUT"/*.txt; do echo "== $(basename "$f")"; cat "$f"; done | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: spike-863-webview
+          path: dist/spike
+          retention-days: 7
+
+  tuwunel-build:
+    name: Time a native Tuwunel build
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - name: Build Tuwunel v1.9.3 from source
+        run: |
+          git clone -q --depth 1 --branch v1.9.3 https://github.com/matrix-construct/tuwunel
+          cd tuwunel
+          rustc --version; cargo --version
+          t0=$(date +%s)
+          cargo build --release 2>&1 | tail -20
+          echo "tuwunel_build_s=$(( $(date +%s) - t0 ))" | tee -a "$GITHUB_STEP_SUMMARY"
+          ls -la target/release/tuwunel && ./target/release/tuwunel --version | tee -a "$GITHUB_STEP_SUMMARY"

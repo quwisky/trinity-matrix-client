@@ -1,0 +1,8 @@
+{
+	skip_install_trust
+}
+
+https://localhost:8448 {
+	tls internal
+	reverse_proxy localhost:8008
+}
