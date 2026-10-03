@@ -81,13 +81,11 @@ describe('Android attachments', () => {
     // API 33+). The newest item is the file seeded above; multi-select needs "Add".
     await native();
     const thumbnail = uiSelector(
-      'new UiSelector().resourceIdMatches(".*:id/icon_thumbnail")',
+      'new UiSelector().descriptionStartsWith("Photo taken on")',
     );
     await expect(thumbnail).toBeDisplayed({ wait: 30_000 });
     await thumbnail.click();
-    const add = uiSelector(
-      'new UiSelector().resourceIdMatches(".*:id/button_add")',
-    );
+    const add = uiSelector('new UiSelector().textStartsWith("Add")');
     await expect(add).toBeDisplayed({ wait: 10_000 });
     await add.click();
 
