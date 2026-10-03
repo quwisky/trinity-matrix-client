@@ -153,6 +153,7 @@ test('negotiates the grouped protocol-v1 bridge without exposing Node', async ()
     'protocolVersion',
   ]);
   expect(exposure.capabilityGroups).toEqual([
+    'appIcon',
     'badge',
     'deepLinks',
     'location',

@@ -173,7 +173,7 @@ describe('generated icons', () => {
       const cy = icon.height / 2;
       const limit = icon.safeRadius * icon.width;
       const mark = pixels(icon).filter((p) =>
-        icon.rule === 'white-alpha'
+        icon.rule === 'white-alpha' || !icon.rule
           ? p.a > 0
           : p.r > 240 && p.g > 240 && p.b > 240,
       );
@@ -291,5 +291,86 @@ describe('generator module', () => {
     );
     expect(result.stderr).toBe('');
     expect(Number(result.stdout.trim())).toBeGreaterThan(0);
+  });
+
+  const at = (icon, x, y) => {
+    const i = (y * icon.width + x) * 4;
+    return [...icon.rgba.subarray(i, i + 4)];
+  };
+  const find = (path) => icons.find((icon) => icon.path === path);
+
+  it('renders a dark twin, on the dark tile, for every runtime desktop and web icon', () => {
+    for (const [path, size] of [
+      ['electron/build/icon-dark.png', 1024],
+      ['electron/build/trinityTray-dark.png', 16],
+      ['electron/build/trinityTray-dark@2x.png', 32],
+      ['electron/build/trinityTrayLinux-dark.png', 32],
+      ['electron/build/trinityTrayLinux-dark@2x.png', 64],
+      ['apps/trinity/src/assets/icon/favicon-dark.png', 256],
+    ]) {
+      const icon = find(path);
+      expect(icon, path).toBeDefined();
+      expect([icon.width, icon.height], path).toEqual([size, size]);
+      // Centre-left of the tile, between the nodes: plain tile colour.
+      expect(
+        at(icon, Math.round(size * 0.12), Math.round(size / 2)),
+        path,
+      ).toEqual([0x1e, 0x1f, 0x22, 255]);
+    }
+    const mac = find('electron/build/icon-mac-dark.png');
+    expect(at(mac, 0, 0)[3]).toBe(0);
+    // The drop-shadow filter round-trips the opaque tile through linearRGB, shifting it by a few levels.
+    const [r, g, b, alpha] = at(mac, 512, 900);
+    expect([r, g, b]).toEqual([
+      expect.closeTo(0x1e, -1),
+      expect.closeTo(0x1f, -1),
+      expect.closeTo(0x22, -1),
+    ]);
+    expect(alpha).toBe(255);
+  });
+
+  it('gives Android dark launcher layers at every density', () => {
+    for (const [dpi, k] of Object.entries({
+      mdpi: 1,
+      hdpi: 1.5,
+      xhdpi: 2,
+      xxhdpi: 3,
+      xxxhdpi: 4,
+    })) {
+      const res = 'android/app/src/main/res';
+      const fg = find(`${res}/mipmap-${dpi}/ic_launcher_dark_foreground.png`);
+      expect([fg.width, fg.height]).toEqual([108 * k, 108 * k]);
+      expect(fg.safeRadius).toBe(0.3056);
+      const opaque = pixels(fg).filter((p) => p.a === 255);
+      expect(opaque.length).toBeGreaterThan(0);
+      for (const p of opaque)
+        expect([p.r, p.g, p.b]).toEqual([0x88, 0x91, 0xf7]);
+      const bg = find(`${res}/mipmap-${dpi}/ic_launcher_dark_background.png`);
+      expect(at(bg, 0, 0)).toEqual([0x1e, 0x1f, 0x22, 255]);
+      expect(find(`${res}/mipmap-${dpi}/ic_launcher_dark.png`).width).toBe(
+        48 * k,
+      );
+      const round = find(`${res}/mipmap-${dpi}/ic_launcher_dark_round.png`);
+      expect(at(round, 0, 0)[3]).toBe(0);
+    }
+  });
+
+  it('copies the iOS light and dark icons into the alternate icon sets', () => {
+    const ios = 'ios/App/App/Assets.xcassets';
+    expect(OUTPUTS).toContainEqual({
+      path: `${ios}/AppIconBlurple.appiconset/AppIcon.png`,
+      copyOf: `${ios}/AppIcon.appiconset/AppIcon-light.png`,
+      fromOutput: true,
+    });
+    expect(OUTPUTS).toContainEqual({
+      path: `${ios}/AppIconDark.appiconset/AppIcon.png`,
+      copyOf: `${ios}/AppIcon.appiconset/AppIcon-dark.png`,
+      fromOutput: true,
+    });
+    expect(
+      readFileSync(join(out, `${ios}/AppIconDark.appiconset/AppIcon.png`)),
+    ).toEqual(
+      readFileSync(join(out, `${ios}/AppIcon.appiconset/AppIcon-dark.png`)),
+    );
   });
 });

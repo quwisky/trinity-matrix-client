@@ -84,15 +84,97 @@ describe('icon wiring', () => {
       );
     }
   });
+
+  it('ships iOS alternate icons the build includes and the plugin can name', () => {
+    const catalog = 'ios/App/App/Assets.xcassets';
+    for (const set of ['AppIconBlurple', 'AppIconDark']) {
+      const images = JSON.parse(
+        read(`${catalog}/${set}.appiconset/Contents.json`),
+      ).images;
+      expect(images).toEqual([
+        {
+          filename: 'AppIcon.png',
+          idiom: 'universal',
+          platform: 'ios',
+          size: '1024x1024',
+        },
+      ]);
+      expect(
+        existsSync(join(root, catalog, `${set}.appiconset/AppIcon.png`)),
+      ).toBe(true);
+    }
+    const project = read('ios/App/App.xcodeproj/project.pbxproj');
+    expect(
+      project.match(
+        /ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "AppIconBlurple AppIconDark";/g,
+      ),
+    ).toHaveLength(2);
+    expect(
+      project.match(/ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;/g),
+    ).toHaveLength(2);
+    const swift = read('ios/App/App/MainViewController.swift');
+    expect(swift).toContain('bridge?.registerPluginInstance(AppIconPlugin())');
+    expect(swift).toContain('let jsName = "AppIcon"');
+  });
+
+  it('gives Android a blurple and a dark launcher alias with exactly one enabled', () => {
+    const manifest = read('android/app/src/main/AndroidManifest.xml');
+    const main = manifest.match(/<activity\b[\s\S]*?<\/activity>/)[0];
+    expect(main).toContain('android:name=".MainActivity"');
+    expect(main).toContain('android:exported="true"');
+    expect(main).not.toContain('android.intent.category.LAUNCHER');
+    expect(main).toContain('android:scheme="eu.qwky.trinity"');
+    const aliases = [
+      ...manifest.matchAll(/<activity-alias\b[\s\S]*?<\/activity-alias>/g),
+    ].map((m) => m[0]);
+    expect(aliases).toHaveLength(2);
+    const [blurple, dark] = aliases;
+    expect(blurple).toContain('android:name=".LauncherBlurple"');
+    expect(blurple).toContain('android:enabled="true"');
+    expect(blurple).toContain('android:icon="@mipmap/ic_launcher"');
+    expect(dark).toContain('android:name=".LauncherDark"');
+    expect(dark).toContain('android:enabled="false"');
+    expect(dark).toContain('android:icon="@mipmap/ic_launcher_dark"');
+    expect(dark).toContain(
+      'android:roundIcon="@mipmap/ic_launcher_dark_round"',
+    );
+    for (const alias of aliases) {
+      expect(alias).toContain('android:targetActivity=".MainActivity"');
+      expect(alias).toContain('android.intent.category.LAUNCHER');
+    }
+    for (const file of ['ic_launcher_dark.xml', 'ic_launcher_dark_round.xml']) {
+      const xml = read(`${RES}/mipmap-anydpi-v26/${file}`);
+      expect(xml).toContain(
+        '<background android:drawable="@mipmap/ic_launcher_dark_background"/>',
+      );
+      expect(xml).toContain(
+        '<foreground android:drawable="@mipmap/ic_launcher_dark_foreground"/>',
+      );
+      expect(xml).toContain(
+        '<monochrome android:drawable="@mipmap/ic_launcher_monochrome"/>',
+      );
+    }
+    const plugin = read(
+      'android/app/src/main/java/eu/qwky/trinity/AppIconPlugin.java',
+    );
+    expect(plugin).toContain('@CapacitorPlugin(name = "AppIcon")');
+    // Enable before disable, so Trinity never has zero launcher entries.
+    expect(plugin.indexOf('COMPONENT_ENABLED_STATE_ENABLED,')).toBeLessThan(
+      plugin.indexOf('COMPONENT_ENABLED_STATE_DISABLED,'),
+    );
+    expect(
+      read('android/app/src/main/java/eu/qwky/trinity/MainActivity.java'),
+    ).toContain('registerPlugin(AppIconPlugin.class);');
+  });
 });
 
 describe('desktop icon wiring', () => {
   it('takes window and tray icons from the tested icon helpers and the dedicated notification icon', () => {
     expect(read('electron/src/window.ts')).toContain(
-      '...windowIconOptions(process.platform)',
+      '...windowIconOptions(process.platform, storedAppIcon())',
     );
     expect(read('electron/src/tray.ts')).toContain(
-      'trayIconFile(process.platform)',
+      'trayIconFile(process.platform, icon)',
     );
     expect(read('electron/src/notifications.ts')).toContain(
       "iconCandidatePaths('notificationIcon.png')",
@@ -117,9 +199,27 @@ describe('desktop icon wiring', () => {
       'trinityTrayTemplate@2x.png',
       'notificationIcon.png',
       'unreadOverlay.png',
+      'icon-mac.png',
+      'icon-dark.png',
+      'icon-mac-dark.png',
+      'trinityTray-dark.png',
+      'trinityTray-dark@2x.png',
+      'trinityTrayLinux-dark.png',
+      'trinityTrayLinux-dark@2x.png',
     ]) {
       expect(config, file).toContain(`from: build/${file}`);
       expect(existsSync(join(root, 'electron/build', file)), file).toBe(true);
+    }
+  });
+
+  it('strips both launcher aliases from the secondary E2E package', () => {
+    const overlay = read('android/app/src/secondaryDebug/AndroidManifest.xml');
+    for (const alias of ['LauncherBlurple', 'LauncherDark']) {
+      expect(overlay, alias).toMatch(
+        new RegExp(
+          `<activity-alias[^>]*android:name="eu\\.qwky\\.trinity\\.${alias}"[^>]*tools:node="remove"`,
+        ),
+      );
     }
   });
 });
