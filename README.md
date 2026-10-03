@@ -61,7 +61,8 @@ install `Trinity.app`; run `brew uninstall --cask trinity` first.
 
 ### Web
 
-Self-host the web app from the release image, `docker run -d -p 8080:8080 ghcr.io/quwisky/trinity-web`,
+Self-host the web app from the release image, `docker run -d -p 8080:8080 ghcr.io/quwisky/trinity-web:next`
+(`:latest` once the first stable release is out),
 or from the `Trinity-Web-X.Y.Z.zip` attached to each
 [release](https://github.com/quwisky/trinity-matrix-client/releases). See
 [Self-host a release](https://quwisky.github.io/trinity-matrix-client/developers/platforms/web-and-pwa/#self-host-release).

@@ -42,8 +42,10 @@ Every Trinity release ships the web app in two forms. Both contain the same file
 ### Container image {#self-host-container}
 
 ```sh
-docker run -d -p 8080:8080 ghcr.io/quwisky/trinity-web
+docker run -d -p 8080:8080 ghcr.io/quwisky/trinity-web:next
 ```
+
+Use `:next` until the first stable release is published; from then on `latest` follows stable releases.
 
 Open `http://localhost:8080`. The image runs as a non-root user, listens on port 8080 and
 answers `/health` for health checks. It supports `linux/amd64` and `linux/arm64`.

@@ -77,3 +77,20 @@ describe('container workflow', () => {
     expect(container).not.toContain('setup-qemu-action');
   });
 });
+
+describe('web release docs', () => {
+  const guide = read('docs-internal/maintenance/ci-and-releases.md');
+  const readme = read('README.md');
+
+  it('describe the shipped flow, not the old gaps', () => {
+    expect(guide).not.toContain('does not yet invoke this consumer');
+    expect(guide).not.toContain('generate Web ZIPs, push container images');
+    expect(guide).toMatch(/\| Web +\| `Trinity-Web-<version>\.zip`/);
+  });
+
+  it('cover the first publish and a dropped container run', () => {
+    expect(guide).toContain('package visibility to **Public**');
+    expect(guide).toMatch(/Container run cancelled[^\n]*dispatch/i);
+    expect(readme).toContain('ghcr.io/quwisky/trinity-web:next');
+  });
+});

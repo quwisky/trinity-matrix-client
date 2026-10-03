@@ -148,7 +148,7 @@ unavailable prerequisite and the evidence that did run.
 The local `trinity-web-container` host exposes `verify`, `build-prebuilt`, and `smoke`
 Nx targets for the next CI fan-out step. It checks the existing production renderer manifest
 before building the pinned rootless SWS image and proves its HTTP and offline PWA contract
-without registry credentials. The current workflow does not yet invoke this consumer.
+without registry credentials.
 See [container validation](../../apps/docs-developers/src/content/docs/platforms/web-and-pwa.md) for commands,
 Docker/browser prerequisites, and the native architecture limit. Trinity's existing root and
 Electron package licenses remain MIT, with matching OCI metadata and preserved third-party
@@ -158,8 +158,13 @@ notices. Releases publish it: `release.yml`'s `package-web` job attaches `Trinit
 verifies that zip against the tag commit, runs `trinity-web-container:smoke`, then pushes
 `linux/amd64` and `linux/arm64` to `ghcr.io/quwisky/trinity-web` with `X.Y.Z`, `X.Y` and `latest`
 (stable) or `X.Y.Z-next.N` and `next` (prerelease). Moving tags only follow the newest release on
-their line. To republish, run the Container workflow with the tag. A release published without the
-zip fails that workflow; cut a new version.
+their line. To republish, run the Container workflow with the tag; recovery for a cancelled run or a
+missing zip is under [Recover a release run](#recover-a-release-run).
+
+The first push creates the package as private. Once, open the repository's **Packages** →
+`trinity-web` → **Package settings** and change the package visibility to **Public**; until then
+anonymous `docker pull` fails. `latest` exists only after the first stable release is published;
+before that, self-hosters use `next`.
 
 ## Releases
 
@@ -232,18 +237,18 @@ change before merging the release PR, following [testing](../../apps/docs-develo
 After verification, the package matrix builds the desktop shell with publishing
 disabled. It uploads these artifacts for 30 days:
 
-| Host    | Current artifacts                                                                 | Distribution boundary                                                                                         |
-| ------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Linux   | AppImage and `.deb`                                                               | The workflow packages them; it does not publish them to a download service.                                   |
-| macOS   | `.dmg` and `.zip`, using the current `macos-latest` runner's default architecture | Signing and notarization depend on configured credentials. Verify the archive architecture before publishing. |
-| Windows | NSIS `.exe`                                                                       | The workflow packages the installer; distribution remains a maintainer action.                                |
+| Host    | Current artifacts                                                             | Distribution boundary                                                                                         |
+| ------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Linux   | AppImage and `.deb`                                                           | The workflow packages them; it does not publish them to a download service.                                   |
+| macOS   | `.dmg` and `.zip`, using the current `macos-26` runner's default architecture | Signing and notarization depend on configured credentials. Verify the archive architecture before publishing. |
+| Windows | NSIS `.exe`                                                                   | The workflow packages the installer; distribution remains a maintainer action.                                |
+| Web     | `Trinity-Web-<version>.zip` from the `package-web` job                        | Publishing the release runs `container.yml`, which pushes the image built from this zip to GHCR.              |
 
 The final workflow job creates or updates a **draft** GitHub release. A partial
 package matrix can still produce a draft containing the successful platform
 artifacts and a partial-release warning. Inspect each available artifact and
 the failed platform before publishing the draft. The workflow does not publish
-the release for you, generate Web ZIPs, push container images, update an
-auto-updater feed, upload to mobile stores, or finalize a public download.
+the release for you, update an auto-updater feed, upload to mobile stores, or finalize a public download.
 
 > [!WARNING]
 > Draft publication is an external action. Confirm authorization, the release
@@ -334,6 +339,8 @@ commit predates `homebrew.yml` never triggers it; dispatch it from `develop` ins
 | Tag is not reachable from `develop` or `main`, or does not match both manifests | Fix the cause through a normal pull request; release-please then proposes a new version. Do not retarget or reuse an existing tag.                                                                                                        |
 | A platform package fails but other packages succeed                             | Inspect the failed matrix log and the draft's partial warning. After a transient runner, credential, or service fix, dispatch `release.yml` with the same tag; `--clobber` replaces the draft's assets. A source fix needs a new release. |
 | Every package fails                                                             | For a transient failure, dispatch the same tag again. For a source or manifest failure, fix it through a normal pull request and release the next version.                                                                                |
+| Container run cancelled (a newer publish queued behind it)                      | A third run queued in the `container` group cancels the pending one, so that release has no image. Dispatch the Container workflow with its tag once the queue is clear.                                                                  |
+| Container workflow: no `Trinity-Web-<version>.zip` asset                        | `package-web` failed and the draft was published anyway. Run `gh release edit <tag> --draft=true`, dispatch `release.yml` with the tag, then publish it again (which runs `container.yml`).                                               |
 | A draft-release upload fails                                                    | Dispatch `release.yml` with the same tag after diagnosing the failure.                                                                                                                                                                    |
 | release-please fails or opens no release PR                                     | Read the `Release PR and tag` job log. Only `feat`, `fix`, `perf`, `revert` and breaking commits produce a release; `chore`, `ci`, `docs`, `test`, `build`, `refactor` and `style` alone do not.                                          |
 | The release is already published                                                | The workflow refuses to replace its assets. Release the next version instead.                                                                                                                                                             |
