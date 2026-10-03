@@ -55,7 +55,7 @@ const rejected = (code: string): HostOperationOutcome => ({
 const HOST_UPDATE_CHECK_TIMEOUT_MS = 5_000;
 
 @Injectable({ providedIn: 'root' })
-export class WebHostOperationAdapter implements HostOperationsAdapter {
+class WebHostOperationAdapter implements HostOperationsAdapter {
   callback(request: { readonly webUrl: string; readonly appUrl: string }) {
     return { url: request.webUrl, applicationType: 'web' as const };
   }
@@ -175,7 +175,7 @@ export class CapacitorHostOperationAdapter implements HostOperationsAdapter {
 }
 
 @Injectable({ providedIn: 'root' })
-export class ElectronHostOperationAdapter implements HostOperationsAdapter {
+class ElectronHostOperationAdapter implements HostOperationsAdapter {
   private readonly capabilities = inject(HostCapabilitiesService);
 
   callback(request: { readonly webUrl: string; readonly appUrl: string }) {

@@ -50,10 +50,6 @@ export type {
   ConversationTextSender,
 } from './conversation-compose';
 
-export const CONVERSATION_RUNTIME_BASELINE = {
-  retainedHandlesPerAccount: 2,
-} as const;
-
 function composeDraftKey(key: ConversationKey): string {
   return `conversation:${JSON.stringify([key.accountId, key.roomId])}`;
 }
@@ -243,7 +239,7 @@ export const CONVERSATION_RETENTION_LIMIT = new InjectionToken<number>(
   'conversation-runtime.retained-handles-per-account',
   {
     providedIn: 'root',
-    factory: () => CONVERSATION_RUNTIME_BASELINE.retainedHandlesPerAccount,
+    factory: () => 2,
   },
 );
 

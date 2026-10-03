@@ -18,7 +18,7 @@ const HEADER = '-----BEGIN MEGOLM SESSION DATA-----';
 const TRAILER = '-----END MEGOLM SESSION DATA-----';
 
 /** PBKDF2 rounds for a fresh export — matches the interoperable default. */
-export const DEFAULT_KEY_FILE_ITERATIONS = 500_000;
+const DEFAULT_KEY_FILE_ITERATIONS = 500_000;
 
 /**
  * Upper bound on the iteration count we'll honor from an *imported* file. The count is

@@ -8,9 +8,9 @@
 
 export const NOTIFICATION_TITLE_LIMIT = 120;
 export const NOTIFICATION_BODY_LIMIT = 300;
-export const NOTIFICATION_ROOM_ID_LIMIT = 256;
-export const NOTIFICATION_ACCOUNT_ID_LIMIT = 256;
-export const NOTIFICATION_EVENT_ID_LIMIT = 256;
+const NOTIFICATION_ROOM_ID_LIMIT = 256;
+const NOTIFICATION_ACCOUNT_ID_LIMIT = 256;
+const NOTIFICATION_EVENT_ID_LIMIT = 256;
 
 /** Validated, clamped notification request derived from an untrusted IPC payload. */
 export interface NotificationRequest {

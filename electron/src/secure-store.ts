@@ -63,7 +63,7 @@ const defaultIo: SecureStoreIo = {
  * Read + parse the on-disk secret map. Returns an empty map for a missing file,
  * non-JSON garbage, or a non-object payload — never throws.
  */
-export function readSecureStore(
+function readSecureStore(
   filePath: string,
   io: SecureStoreIo = defaultIo,
 ): Record<string, string> {
@@ -78,7 +78,7 @@ export function readSecureStore(
 }
 
 /** Persist the secret map as JSON. */
-export function writeSecureStore(
+function writeSecureStore(
   filePath: string,
   data: Record<string, string>,
   io: SecureStoreIo = defaultIo,

@@ -14,7 +14,7 @@ export type IdbDeleteOutcome =
   | 'failed';
 
 /** Default bound for one delete. Deletes run in parallel, so this bounds the whole phase. */
-export const IDB_DELETE_TIMEOUT_MS = 5_000;
+const IDB_DELETE_TIMEOUT_MS = 5_000;
 
 export interface IdbDeleteAttempt {
   /** Bounded first observation; `blocked` does not claim the request was cancelled. */

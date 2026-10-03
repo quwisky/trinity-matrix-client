@@ -65,7 +65,7 @@ export function initialOf(name: string): string {
  * messages are skipped. `getLiveTimeline` is called optionally — not every Room stub
  * (unit fakes) exposes it.
  */
-export function lastMessageOf(room: Room): string {
+function lastMessageOf(room: Room): string {
   const events = room.getLiveTimeline?.()?.getEvents() ?? [];
   for (let i = events.length - 1; i >= 0; i--) {
     if (events[i].getType() === EventType.RoomMessage) {

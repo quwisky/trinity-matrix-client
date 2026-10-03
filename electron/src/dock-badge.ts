@@ -31,7 +31,7 @@ let overlayIconCache: Electron.NativeImage | null | undefined;
  * `[0, MAX_BADGE_COUNT]`. Returns `null` for anything malformed (non-number,
  * `NaN`, `Infinity`) so the caller leaves the current badge untouched.
  */
-export function coerceBadgeCount(raw: unknown): number | null {
+function coerceBadgeCount(raw: unknown): number | null {
   if (typeof raw !== 'number' || !Number.isFinite(raw)) {
     return null;
   }
@@ -43,7 +43,7 @@ export function coerceBadgeCount(raw: unknown): number | null {
  * overlay description — a taskbar overlay can only convey ~3 characters, so
  * anything past 99 collapses to `99+`.
  */
-export function formatBadgeText(count: number): string {
+function formatBadgeText(count: number): string {
   return count > 99 ? '99+' : String(count);
 }
 
@@ -88,7 +88,7 @@ function resolveOverlayIcon(): Electron.NativeImage | undefined {
  *             description); clears the overlay at 0; no-ops if no window exists.
  *   other  -> `app.setBadgeCount` (macOS dock / Linux Unity launcher count).
  */
-export function applyBadgeCount(count: number): void {
+function applyBadgeCount(count: number): void {
   if (process.platform === 'win32') {
     const win = getMainWindow();
     if (!win) {

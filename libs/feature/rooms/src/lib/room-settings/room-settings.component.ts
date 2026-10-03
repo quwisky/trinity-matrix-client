@@ -24,8 +24,6 @@ import { RoomSettingsGeneralComponent } from './room-settings-general.component'
 import type { ParentSpace } from './room-settings.models';
 import { RoomWidgetsComponent } from './room-widgets.component';
 
-export type { ParentSpace } from './room-settings.models';
-
 type RoomSettingsSection =
   'general' | 'for-you' | 'access' | 'members' | 'addresses' | 'widgets';
 

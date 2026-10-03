@@ -1,5 +1,4 @@
 import type {
-  AccountRestoreMetrics,
   AccountRestoreOutcome,
   AccountRestoreResult,
   AccountRuntimeOperation,
@@ -9,28 +8,20 @@ import type { AdapterAccountRestoreOutcome } from './account-runtime.adapter';
 export function accountRestoreOutcomeFor(
   accountId: string,
   role: AccountRestoreOutcome['role'],
-  durationMs: number,
   outcome: AdapterAccountRestoreOutcome,
 ): AccountRestoreOutcome {
   return outcome.kind === 'failed'
-    ? { ...outcome, accountId, role, durationMs }
-    : { kind: outcome.kind, accountId, role, durationMs };
+    ? { ...outcome, accountId, role }
+    : { kind: outcome.kind, accountId, role };
 }
 
 export function accountRestoreResultFor(
   activeAccountId: string,
   accounts: readonly AccountRestoreOutcome[],
-  durationMs: number,
 ): AccountRestoreResult {
-  const metrics = { durationMs };
   const active = accounts.find((account) => account.role === 'active')!;
   if (active.kind !== 'ready') {
-    return {
-      kind: 'active-account-unavailable',
-      activeAccountId,
-      accounts,
-      metrics,
-    };
+    return { kind: 'active-account-unavailable', activeAccountId, accounts };
   }
   if (
     accounts.some(
@@ -41,31 +32,19 @@ export function accountRestoreResultFor(
       kind: 'restored-with-inactive-failures',
       activeAccountId,
       accounts,
-      metrics,
     };
   }
-  return { kind: 'restored', activeAccountId, accounts, metrics };
+  return { kind: 'restored', activeAccountId, accounts };
 }
 
 export function emptyAccountRestoreResult(
   kind: 'no-accounts' | 'local-state-unavailable',
-  durationMs: number,
 ): AccountRestoreResult {
-  return { kind, accounts: [], metrics: emptyMetrics(durationMs) };
+  return { kind, accounts: [] };
 }
 
 export function accountRestoreTransitionResult(
-  durationMs: number,
   operation: AccountRuntimeOperation = 'establishing-account',
 ): AccountRestoreResult {
-  return {
-    kind: 'transition-in-progress',
-    operation,
-    accounts: [],
-    metrics: emptyMetrics(durationMs),
-  };
-}
-
-function emptyMetrics(durationMs: number): AccountRestoreMetrics {
-  return { durationMs };
+  return { kind: 'transition-in-progress', operation, accounts: [] };
 }

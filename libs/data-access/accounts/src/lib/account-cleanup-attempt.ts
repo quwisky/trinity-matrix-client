@@ -63,6 +63,19 @@ export class AccountCleanupAttempt<TOutcome> {
     private readonly uncertain: UncertainOutcome<TOutcome>,
   ) {}
 
+  /** Run one step whose value is ignored, for sequencing in a cleanup chain. */
+  capture(
+    source: Observable<unknown>,
+    scope: AccountCleanupScope,
+    recovery: AccountCleanupRecovery,
+    budgetMs: number,
+    onSettled?: () => void,
+  ): Observable<void> {
+    return this.step(source, { budgetMs, scope, recovery, onSettled }).pipe(
+      map(() => void 0),
+    );
+  }
+
   /** Run one step, allowing the cleanup sequence to continue at its observation bound. */
   step<T>(
     source: Observable<T>,

@@ -28,7 +28,6 @@ export type AccountRestoreRole = 'active' | 'inactive';
 interface AccountRestoreOutcomeBase {
   readonly accountId: string;
   readonly role: AccountRestoreRole;
-  readonly durationMs: number;
 }
 
 export type AccountRestoreOutcome =
@@ -42,13 +41,8 @@ export type AccountRestoreOutcome =
       readonly failure: AccountRestoreFailure;
     });
 
-export interface AccountRestoreMetrics {
-  readonly durationMs: number;
-}
-
 interface AccountRestoreResultBase {
   readonly accounts: readonly AccountRestoreOutcome[];
-  readonly metrics: AccountRestoreMetrics;
 }
 
 export type AccountRestoreResult =

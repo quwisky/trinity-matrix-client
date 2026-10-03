@@ -541,11 +541,6 @@ export abstract class MessageListBase {
     this.composer()?.insertQuote(quoteBlock(row.body));
   }
 
-  /** Whether a row's event id is currently pinned. */
-  isPinned(id: string): boolean {
-    return this.pinnedIds().includes(id);
-  }
-
   /** Edit the most recent editable message of the current user (Up-arrow shortcut). */
   editLastOwn(): void {
     const msgs = this.messages();

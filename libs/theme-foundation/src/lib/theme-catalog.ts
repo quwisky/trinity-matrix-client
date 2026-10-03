@@ -170,11 +170,6 @@ export const THEME_CATALOG = Object.freeze({
   defaults: Object.freeze({ theme: 'trinity', mode: 'system' } as const),
   preview: Object.freeze({
     combinations: previewCombinations,
-    swatches: Object.freeze([
-      '--trinity-surface-workspace',
-      '--trinity-accent',
-      '--trinity-text',
-    ] as const),
   }),
   authoring: Object.freeze({ colorRoles, elevationRoles }),
 });

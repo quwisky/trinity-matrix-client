@@ -26,8 +26,6 @@ import {
 } from './account-sign-out-retry.workflow';
 import type {
   AccountCleanupIssue,
-  AccountCleanupRecovery,
-  AccountCleanupScope,
   AccountSignOutOutcome,
   InstallationResetOutcome,
 } from './account-runtime.models';
@@ -192,8 +190,7 @@ export class AccountLifecycleAdapter {
       .pipe(
         switchMap((session) =>
           from([
-            this.capture(
-              attempt,
+            attempt.capture(
               remainingAccountIds.length === 0
                 ? this.lifecycle.unregisterNotifications()
                 : this.lifecycle.unregisterNotifications(accountId),
@@ -203,8 +200,7 @@ export class AccountLifecycleAdapter {
             ),
             ...(session?.oidc
               ? [
-                  this.capture(
-                    attempt,
+                  attempt.capture(
                     this.lifecycle.revokeProviderSession(session),
                     'provider-session',
                     'retry-sign-out',
@@ -212,8 +208,7 @@ export class AccountLifecycleAdapter {
                   ),
                 ]
               : []),
-            this.capture(
-              attempt,
+            attempt.capture(
               serverLogout$,
               'matrix-session',
               'retry-sign-out',
@@ -234,25 +229,25 @@ export class AccountLifecycleAdapter {
     attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
     accountId: string,
   ): Observable<void> {
-    return this.capture(
-      attempt,
-      this.matrix.remove(accountId),
-      'crypto-and-cache',
-      'restart-application',
-      ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
-    ).pipe(
-      tap(() => this.clearSharedAccountState(attempt)),
-      concatMap(() =>
-        this.capture(
-          attempt,
-          this.storage.clear(),
-          'account-registry',
-          'retry-sign-out',
-          ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
-          () => attempt.resolveIssue('secure-storage'),
+    return attempt
+      .capture(
+        this.matrix.remove(accountId),
+        'crypto-and-cache',
+        'restart-application',
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
+      )
+      .pipe(
+        tap(() => this.clearSharedAccountState(attempt)),
+        concatMap(() =>
+          attempt.capture(
+            this.storage.clear(),
+            'account-registry',
+            'retry-sign-out',
+            ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
+            () => attempt.resolveIssue('secure-storage'),
+          ),
         ),
-      ),
-    );
+      );
   }
 
   private removeOneAccount(
@@ -260,48 +255,47 @@ export class AccountLifecycleAdapter {
     accountId: string,
     remainingAccountIds: readonly string[],
   ): Observable<void> {
-    return this.capture(
-      attempt,
-      this.matrix.remove(accountId),
-      'crypto-and-cache',
-      'restart-application',
-      ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
-    ).pipe(
-      tap(() => this.clearDrafts(attempt)),
-      concatMap(() =>
-        this.capture(
-          attempt,
-          this.storage.remove(accountId),
-          'account-registry',
-          'retry-sign-out',
-          ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
-          () => attempt.resolveIssue('secure-storage'),
+    return attempt
+      .capture(
+        this.matrix.remove(accountId),
+        'crypto-and-cache',
+        'restart-application',
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
+      )
+      .pipe(
+        tap(() => this.clearDrafts(attempt)),
+        concatMap(() =>
+          attempt.capture(
+            this.storage.remove(accountId),
+            'account-registry',
+            'retry-sign-out',
+            ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
+            () => attempt.resolveIssue('secure-storage'),
+          ),
         ),
-      ),
-      concatMap(() => {
-        const currentActive = this.matrix.activeUserId();
-        const active =
-          currentActive && remainingAccountIds.includes(currentActive)
-            ? currentActive
-            : (remainingAccountIds[0] ?? null);
-        if (
-          active &&
-          active !== currentActive &&
-          this.matrix.clientFor(active)
-        ) {
-          this.matrix.setActive(active);
-        }
-        return active
-          ? this.capture(
-              attempt,
-              this.storage.setActive(active),
-              'account-registry',
-              'retry-sign-out',
-              ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
-            )
-          : of(void 0);
-      }),
-    );
+        concatMap(() => {
+          const currentActive = this.matrix.activeUserId();
+          const active =
+            currentActive && remainingAccountIds.includes(currentActive)
+              ? currentActive
+              : (remainingAccountIds[0] ?? null);
+          if (
+            active &&
+            active !== currentActive &&
+            this.matrix.clientFor(active)
+          ) {
+            this.matrix.setActive(active);
+          }
+          return active
+            ? attempt.capture(
+                this.storage.setActive(active),
+                'account-registry',
+                'retry-sign-out',
+                ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
+              )
+            : of(void 0);
+        }),
+      );
   }
 
   private clearSharedAccountState(
@@ -323,24 +317,5 @@ export class AccountLifecycleAdapter {
     } catch {
       attempt.addIssue('drafts', 'retry-sign-out');
     }
-  }
-
-  private capture<TOutcome>(
-    attempt: AccountCleanupAttempt<TOutcome>,
-    source: Observable<unknown>,
-    scope: AccountCleanupScope,
-    recovery: AccountCleanupRecovery,
-    budgetMs: number,
-    onSettled?: () => void,
-  ): Observable<void> {
-    return attempt
-      .step(source, {
-        budgetMs,
-        scope,
-        recovery,
-        fallback: undefined,
-        onSettled,
-      })
-      .pipe(map(() => void 0));
   }
 }

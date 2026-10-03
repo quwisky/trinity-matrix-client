@@ -74,7 +74,7 @@ export function sameWorkspaceDestination(
   );
 }
 
-export function sameWorkspaceScope(
+function sameWorkspaceScope(
   left: WorkspaceScope,
   right: WorkspaceScope,
 ): boolean {
