@@ -68,12 +68,13 @@ const mocks = vi.hoisted(() => {
       } | null,
     },
     focusMainWindow: vi.fn(),
+    iconPaths: [] as string[],
   };
 });
 
 vi.mock('electron', () => ({
   Notification: mocks.FakeNotification,
-  nativeImage: { createFromPath: vi.fn() },
+  nativeImage: { createFromPath: () => ({ isEmpty: () => false }) },
   ipcMain: {
     handle: (
       channel: string,
@@ -81,8 +82,10 @@ vi.mock('electron', () => ({
     ) => mocks.handlers.set(channel, handler),
   },
 }));
-vi.mock('node:fs', () => ({ existsSync: () => false }));
-vi.mock('./icons', () => ({ iconCandidatePaths: () => [] }));
+vi.mock('node:fs', () => ({
+  existsSync: (path: string) => mocks.iconPaths.includes(path),
+}));
+vi.mock('./icons', () => ({ iconCandidatePaths: () => mocks.iconPaths }));
 vi.mock('./window', () => ({
   focusMainWindow: mocks.focusMainWindow,
   getMainWindow: () => mocks.mainWindow.current,
@@ -214,5 +217,30 @@ describe('notification-presentation IPC', () => {
     expect(
       mocks.mainWindow.current?.webContents.send,
     ).toHaveBeenCalledExactlyOnceWith(NOTIFICATION_CLICK_CHANNEL, destination);
+  });
+
+  it('adds the colored icon on Windows/Linux but leaves macOS to its themed bundle icon', async () => {
+    const platform = process.platform;
+    mocks.iconPaths = ['/res/notificationIcon.png'];
+    try {
+      for (const [host, hasIcon] of [
+        ['linux', true],
+        ['darwin', false],
+      ] as const) {
+        Object.defineProperty(process, 'platform', { value: host });
+        vi.resetModules();
+        mocks.handlers.clear();
+        mocks.FakeNotification.instances = [];
+        (await import('./notifications')).registerNotificationIpc();
+        await present({ title: 'Alice', body: 'Hi', destination });
+        expect(
+          'icon' in mocks.FakeNotification.instances[0].options,
+          host,
+        ).toBe(hasIcon);
+      }
+    } finally {
+      Object.defineProperty(process, 'platform', { value: platform });
+      mocks.iconPaths = [];
+    }
   });
 });
