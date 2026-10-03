@@ -7,7 +7,7 @@
   "implicitDependencies": ["trinity-desktop", "trinity-e2e-support"],
   "targets": {
     "full": {
-      "//": "Owns the launched desktop shell and joins the support-owned Electron and disposable Synapse lifecycle.",
+      "//": "Owns the launched desktop shell and joins the support-owned Electron and disposable homeserver lifecycle.",
       "cache": false,
       "parallelism": false,
       "dependsOn": [
@@ -19,7 +19,7 @@
       "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-electron"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "node e2e/support/run-playwright.mts --config=e2e/electron/playwright.full.config.mts --resource=electron --resource=synapse",
+        "command": "node e2e/support/run-playwright.mts --config=e2e/electron/playwright.full.config.mts --resource=electron --resource=homeserver",
         "cwd": "{workspaceRoot}"
       }
     },
@@ -55,7 +55,7 @@
       }
     },
     "full-prebuilt": {
-      "//": "Owns the launched desktop shell and joins the support-owned Electron and disposable Synapse lifecycle.",
+      "//": "Owns the launched desktop shell and joins the support-owned Electron and disposable homeserver lifecycle.",
       "cache": false,
       "parallelism": false,
       "dependsOn": [
@@ -67,7 +67,7 @@
       "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-electron"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json electron/www && node e2e/support/run-playwright.mts --config=e2e/electron/playwright.full.config.mts --resource=electron --resource=synapse",
+        "command": "node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json electron/www && node e2e/support/run-playwright.mts --config=e2e/electron/playwright.full.config.mts --resource=electron --resource=homeserver",
         "cwd": "{workspaceRoot}"
       }
     },

@@ -1,15 +1,15 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 // End-to-end for clickable links: a bare URL sent as a plain-text message renders as a
 // real <a> link (linkified on render), not inert text. Needs a Synapse homeserver
 // (Docker).
-const session = synapseSession();
+const session = homeserverSession();
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -53,7 +53,7 @@ test.describe('Clickable links', () => {
       hs,
       user: username,
       pass: password,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
 
     const composer = page.getByTestId('composer-input');

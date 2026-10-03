@@ -16,7 +16,7 @@ when version compatibility matters.
 - Select checks from [validation policy](apps/docs-developers/src/content/docs/contributing/validate-a-change.md).
   Report commands, exit status and unavailable checks. Unit tests do not prove type
   safety or browser layout; run those checks separately. Read failing source-shape
-  guards before changing them. Run Synapse-backed E2E sequentially because ports are shared.
+  guards before changing them. Run homeserver-backed E2E sequentially because ports are shared.
 - Keep prototypes, screenshots, GIF proof and pixel baselines in ignored output,
   never in commits, including throwaway branches. Attach proof to authorized PRs;
   tracked application assets belong in their platform/app asset directories.

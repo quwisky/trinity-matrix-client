@@ -14,7 +14,7 @@ describe('Electron Playwright image-pack coverage', () => {
     expect(config).not.toContain('globalTeardown');
     expect(config).toContain('ignoreHTTPSErrors: true');
     expect(project).toContain('support/run-playwright.mts');
-    expect(project).toContain('--resource=electron --resource=synapse');
+    expect(project).toContain('--resource=electron --resource=homeserver');
     expect(hostProject).toContain('trinity-e2e-electron:full');
   });
 

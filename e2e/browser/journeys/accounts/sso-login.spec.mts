@@ -1,13 +1,13 @@
 import { test, expect } from '../../../fixtures.mts';
 import {
   fillLabeledInput,
-  synapseSession,
+  homeserverSession,
   waitForRooms,
 } from '../../../support/app.mts';
 import { redeemLoginToken, ssoLoginToken } from '../../support/sso.mts';
 
 // End-to-end for signing in through an identity provider, against the harness's own Dex
-// (see e2e/support/synapse/dex.yaml) rather than a mocked one.
+// (see e2e/support/homeserver/dex.yaml) rather than a mocked one.
 //
 // `oidc-login.spec.mts` covers the MSC3861 "next-gen auth" screens with page.route stubs
 // and needs no homeserver. This is the other half: the legacy SSO round-trip that a
@@ -18,7 +18,7 @@ import { redeemLoginToken, ssoLoginToken } from '../../support/sso.mts';
 // spec about something else.
 //
 // Needs Docker; self-skips otherwise like the other web specs.
-const session = synapseSession();
+const session = homeserverSession();
 
 /** The callback the app routes, with whatever query a caller wants to arrive with. */
 const callback = (query: string): string => `/sso-callback?${query}`;

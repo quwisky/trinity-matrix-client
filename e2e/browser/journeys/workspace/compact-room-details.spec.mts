@@ -8,8 +8,8 @@ import {
 import { devices } from '@playwright/test';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -25,7 +25,7 @@ import { registerUser } from '../../../support/account.mts';
 // Runs at a phone viewport so the width-based breakpoints (max-md / max-members /
 // matchMedia) engage. Drives a real Synapse room with a second member; self-skips
 // without Docker like the other authenticated web specs.
-const session = synapseSession();
+const session = homeserverSession();
 
 // A phone viewport: below md (768) so the header uses the kebab, and below the
 // `members` breakpoint (1100) so
@@ -79,7 +79,7 @@ async function seedRoom(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ reader: SynapseSession; roomName: string; buddyName: string }> {
+): Promise<{ reader: HomeserverSession; roomName: string; buddyName: string }> {
   const readerUser = `mob-reader-${runId}`;
   const readerPass = `${readerUser}-pass`;
   await registerUser(request, readerUser, readerPass);

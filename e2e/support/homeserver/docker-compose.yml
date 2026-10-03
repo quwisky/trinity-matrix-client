@@ -1,0 +1,52 @@
+# Shared half of the disposable e2e stack: Dex and Caddy. The homeserver itself comes
+# from the adapter selected by TRINITY_E2E_HOMESERVER — synapse/docker-compose.yml or
+# tuwunel/docker-compose.yml, layered on top of this file by paths.mjs.
+#
+# Why Caddy:
+#  - The homeserver speaks plain HTTP on :8008 (no TLS config needed inside the container).
+#  - The Trinity app's CSP only allows https:/wss: for connect-src, and matrix-js-sdk
+#    AutoDiscovery fetches https://<domain>/.well-known/matrix/client. So Caddy
+#    terminates TLS on :8448 with an internal (self-signed) cert, serves the client
+#    well-known pointing back at itself, and reverse-proxies the Matrix API.
+#
+# Everything here is throwaway: generated config, signing keys and databases live in
+# ./data and ./remote-data and are removed by stop.mjs.
+services:
+  # Throwaway OpenID Connect provider, so the suite can hold a Matrix account with no
+  # password (see dex.yaml). The browser reaches the published port. Memory storage, so
+  # there is nothing to clean up.
+  dex:
+    image: ghcr.io/dexidp/dex:v2.45.1-alpine
+    container_name: trinity-e2e-dex
+    restart: 'no'
+    command: ['dex', 'serve', '/etc/dex/trinity-e2e.yaml']
+    volumes:
+      - ${TRINITY_E2E_STATE_DIR:-.}/dex.yaml:/etc/dex/trinity-e2e.yaml:ro
+    ports:
+      - '127.0.0.1:5556:5556'
+    networks:
+      - trinity-e2e
+
+  caddy:
+    image: caddy:2.11-alpine
+    container_name: trinity-e2e-caddy
+    restart: 'no'
+    volumes:
+      - ${TRINITY_E2E_STATE_DIR:-.}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - '127.0.0.1:8448:8448'
+      - '127.0.0.1:9448:9448'
+      # The remote homeserver shares this namespace and owns the listener itself.
+      - '127.0.0.1:8009:8009'
+    networks:
+      - trinity-e2e
+
+networks:
+  trinity-e2e:
+    name: trinity-e2e
+
+volumes:
+  caddy-data:
+  caddy-config:

@@ -129,20 +129,20 @@
         "command": "node scripts/e2e-suite-registry.mjs run e2e-mobile"
       }
     },
-    "synapse-up": {
+    "homeserver-up": {
       "cache": false,
       "parallelism": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "node e2e/support/synapse/start.mjs"
+        "command": "node e2e/support/homeserver/start.mjs"
       }
     },
-    "synapse-down": {
+    "homeserver-down": {
       "cache": false,
       "parallelism": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "node e2e/support/synapse/stop.mjs"
+        "command": "node e2e/support/homeserver/stop.mjs"
       }
     }
   }

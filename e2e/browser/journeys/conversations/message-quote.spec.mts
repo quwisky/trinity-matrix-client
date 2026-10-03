@@ -3,8 +3,8 @@ import {
   clickRowMenuItem,
   clickRowToolbar,
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
   waitForSent,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
@@ -21,7 +21,7 @@ import { registerUser } from '../../../support/account.mts';
 // second paragraph outside the quote — the rendered HTML is what proves it did not.
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -64,7 +64,7 @@ test.describe('Quote a message', () => {
       data: { name: roomName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     // Two paragraphs, sent with Shift+Enter so the body carries a real blank line.
@@ -160,7 +160,7 @@ test.describe('Quote a message', () => {
       },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     // A text message in the same room, as the control: the menu itself is fine, it is the

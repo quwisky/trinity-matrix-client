@@ -8,8 +8,8 @@ import {
 import {
   login,
   openSettingsTab,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -23,7 +23,7 @@ import { registerUser } from '../../../support/account.mts';
 // that closes having written nothing looks identical from the UI, and that is exactly the
 // failure this spec exists to catch.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function apiLogin(
   request: APIRequestContext,
@@ -215,7 +215,7 @@ test.describe('Space settings', () => {
       },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const pill = page.getByRole('button', { name: originalName, exact: true });
     await pill.waitFor({ state: 'visible', timeout: 30_000 });
     await pill.click();
@@ -391,7 +391,7 @@ test.describe('Space settings', () => {
       },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-settings').click();
 
@@ -438,7 +438,7 @@ test.describe('Space settings', () => {
     );
     await putChildLink(request, hs, token, spaceId, linkedId);
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-settings').click();
     await openSettingsTab(page, 'space-settings', 'contents');
@@ -723,7 +723,7 @@ test.describe('Space settings', () => {
       hs,
       user: member,
       pass: memberPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-settings').click();
 
@@ -825,7 +825,7 @@ test.describe('Space settings', () => {
       hs,
       user: member,
       pass: memberPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-settings').click();
     const topic = page.getByTestId('space-settings-topic');
@@ -867,7 +867,7 @@ test.describe('Space settings', () => {
     const localpart = `space-addr-${runId}`;
     const alias = `#${localpart}:localhost`;
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-settings').click();
     await openSettingsTab(page, 'space-settings', 'addresses');
@@ -977,7 +977,7 @@ test.describe('Space settings', () => {
       hs,
       user: owner,
       pass: ownerPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-members').click();
     await expect(page.getByTestId('space-settings')).toBeVisible({

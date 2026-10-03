@@ -6,8 +6,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
@@ -24,7 +24,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 //    → setPusher new) leaves no orphan. Those are unit-tested against a stateful mock;
 //    this pins the mock to the real homeserver so a Synapse/spec change can't drift it
 //    out from under the unit tests silently.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function apiLogin(
   request: APIRequestContext,
@@ -68,7 +68,7 @@ test.describe('Push gateway', () => {
     const pass = `${user}-pass`;
     await registerUser(request, user, pass);
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSettingsSection(page, 'notifications');
 
     // The block composes into the section...

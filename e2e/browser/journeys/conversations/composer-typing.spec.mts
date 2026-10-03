@@ -8,8 +8,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -17,7 +17,7 @@ import { registerUser } from '../../../support/account.mts';
 // typing, the app shows an "X is typing" row under the timeline, and clears it once
 // they stop. The other member's typing is driven straight through the Matrix API, so
 // this exercises our sync → signal → render path. Needs a Synapse homeserver (Docker).
-const session = synapseSession();
+const session = homeserverSession();
 
 async function apiToken(
   request: APIRequestContext,
@@ -47,7 +47,7 @@ async function seedRoomWithMember(
   runId: string,
   displayName?: string,
 ): Promise<{
-  reader: SynapseSession;
+  reader: HomeserverSession;
   roomName: string;
   roomId: string;
   memberName: string;

@@ -1,8 +1,8 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -22,7 +22,7 @@ import { registerUser } from '../../../support/account.mts';
  *
  * Needs a Synapse homeserver (Docker) and self-skips otherwise.
  */
-const session = synapseSession();
+const session = homeserverSession();
 
 /** Comfortably more than one page, so scrolling to the top pages in real history. */
 const MESSAGE_COUNT = 45;
@@ -90,7 +90,12 @@ test.describe('Timeline anchoring', () => {
         await historyGate;
         if (!page.isClosed()) await route.continue();
       });
-      await login(page, { available: true, hs, user, pass } as SynapseSession);
+      await login(page, {
+        available: true,
+        hs,
+        user,
+        pass,
+      } as HomeserverSession);
       await openRoom(page, roomName);
 
       const scroll = page.locator('.scroll').first();

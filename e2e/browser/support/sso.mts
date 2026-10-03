@@ -7,11 +7,11 @@ import {
   fillLabeledInput,
   waitForRooms,
   type SsoAccount,
-  type SynapseSession,
+  type HomeserverSession,
 } from '../../support/app.mts';
 
 // Helpers for the harness's SSO accounts — Matrix users Synapse created through the
-// throwaway Dex provider (e2e/support/synapse/dex.yaml), and which therefore have no password.
+// throwaway Dex provider (e2e/support/homeserver/dex.yaml), and which therefore have no password.
 //
 // That is the point of them. Trinity's password user-interactive auth can never be
 // satisfied by such an account, which is the only way to drive the "your identity
@@ -41,7 +41,7 @@ async function answerDexForm(page: Page, sso: SsoAccount): Promise<void> {
 /** Sign in to the app as an SSO account: homeserver → Continue with SSO → Dex → /rooms. */
 export async function ssoLogin(
   page: Page,
-  s: SynapseSession,
+  s: HomeserverSession,
   authPlatform: AuthPlatform,
   account: SsoAccount = s.sso as SsoAccount,
 ): Promise<void> {
@@ -71,7 +71,7 @@ export async function ssoLogin(
  */
 export async function ssoLoginToken(
   authPlatform: AuthPlatform,
-  s: SynapseSession,
+  s: HomeserverSession,
   account: SsoAccount = s.sso as SsoAccount,
 ): Promise<string> {
   const lease = await authPlatform.openIsolatedPage();
@@ -126,7 +126,7 @@ export async function redeemLoginToken(
 export async function ssoApiSession(
   authPlatform: AuthPlatform,
   request: APIRequestContext,
-  s: SynapseSession,
+  s: HomeserverSession,
   account: SsoAccount = s.sso as SsoAccount,
 ): Promise<AccountSession> {
   return redeemLoginToken(

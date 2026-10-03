@@ -1,9 +1,9 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
+  homeserverSession,
   waitForRooms,
-  type SynapseSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { passwordLogin, registerUser } from '../../../support/account.mts';
 
@@ -17,7 +17,7 @@ import { passwordLogin, registerUser } from '../../../support/account.mts';
 // unit tests can assert the mapping and the tooltip, but only a live pair of devices
 // proves the SDK actually raises a shield here at all.
 // Needs a Synapse homeserver (Docker); self-skips.
-const session = synapseSession();
+const session = homeserverSession();
 
 /**
  * Bootstrap cross-signing + recovery on the first device. Without an own identity the
@@ -121,7 +121,7 @@ test.describe('Message authenticity shields', () => {
       hs,
       user: reader,
       pass: readerPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await page.getByTestId('rail-rooms').click();
     const channel = page.locator('.channel', { hasText: roomName });
     await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
@@ -198,7 +198,7 @@ test.describe('Message authenticity shields', () => {
     );
 
     // Device A: owns the cross-signing identity every other device is judged against.
-    const asSession = { available: true, hs, user, pass } as SynapseSession;
+    const asSession = { available: true, hs, user, pass } as HomeserverSession;
     await login(page, asSession);
     await setUpEncryption(page, pass);
 

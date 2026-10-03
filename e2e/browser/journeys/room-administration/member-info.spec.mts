@@ -7,8 +7,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -17,7 +17,7 @@ import { registerUser } from '../../../support/account.mts';
 // (data-testid="member-info") with the member's name, id, role, and a Message /
 // Copy user ID action. Two users so there's a member to click that isn't the
 // viewer. Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   userId: string;
@@ -114,7 +114,7 @@ test.describe('Member info panel', () => {
       hs,
       user: adminUser,
       pass: adminPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
     await expect(page.locator('.chat-members')).toBeHidden();
     await openMembers(page);

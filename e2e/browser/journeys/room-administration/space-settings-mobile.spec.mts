@@ -8,13 +8,13 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import type { TouchPlatform } from '../../../support/platform-contracts.mts';
 
-const session = synapseSession();
+const session = homeserverSession();
 
 async function tokenFor(
   request: APIRequestContext,
@@ -138,7 +138,7 @@ test.describe('Space settings on a phone', () => {
       },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSpaceSettings(page, spaceName, touchPlatform, roomName);
 
     const settings = page.getByTestId('space-settings');
@@ -445,7 +445,7 @@ test.describe('Space settings on a phone', () => {
     const token = await tokenFor(request, hs, user, pass);
     await createSpace(request, hs, token, spaceName);
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const pill = page.getByRole('button', { name: spaceName, exact: true });
     await touchPlatform.tap(page, pill);
     await touchPlatform.tap(page, page.getByTestId('space-actions-overflow'));
@@ -505,7 +505,7 @@ test.describe('Space settings on a phone', () => {
       hs,
       user: member,
       pass: memberPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openSpaceSettings(page, spaceName, touchPlatform);
 
     await touchPlatform.tap(

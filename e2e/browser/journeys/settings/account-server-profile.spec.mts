@@ -7,6 +7,9 @@ import {
   session,
 } from '../../support/settings-journey.mts';
 
+/** The software row for the homeserver this run selected (`TRINITY_E2E_HOMESERVER`). */
+const SOFTWARE = session.kind === 'tuwunel' ? 'Tuwunel' : 'Synapse';
+
 test.describe('Settings', () => {
   configureSettingsSuite();
 
@@ -23,9 +26,9 @@ test.describe('Settings', () => {
     await expect(block).toBeVisible({ timeout: 20_000 });
 
     // The shape, not the number: hardcoding the version would make this a second place the
-    // Synapse image pin has to be bumped, and it would fail for a reason that is not a bug.
+    // homeserver image pin has to be bumped, and it would fail for a reason that is not a bug.
     await expect(block.getByTestId('hs-software')).toHaveText(
-      /^\s*Synapse \d+\.\d+/,
+      new RegExp(`^\\s*${SOFTWARE} \\d+\\.\\d+`),
       { timeout: 20_000 },
     );
     await expect(block.getByTestId('hs-url')).toHaveText(session.hs as string);
@@ -77,6 +80,7 @@ test.describe('Settings', () => {
         }
         return {
           overflows: pane.scrollHeight > pane.clientHeight + 1,
+          scrolls: /^(auto|scroll)$/.test(getComputedStyle(pane).overflowY),
           ancestorScrollbars,
           documentOverflow: document.scrollingElement
             ? document.scrollingElement.scrollHeight -
@@ -97,8 +101,15 @@ test.describe('Settings', () => {
     expect(expanded.contained).toBe(true);
     expect(expanded.horizontalOverflow).toBeLessThanOrEqual(1);
     // Native Settings is routed, with host chrome above the detail pane. Its one
-    // content scroller may be needed; the fixed-height desktop dialog still fits.
-    expect(expanded.overflows).toBe(false);
+    // content scroller may be needed. Synapse's short flag list still fits the
+    // fixed-height desktop dialog; Tuwunel advertises ~40 flags, which wrap compactly
+    // (below) but cannot fit 600px, so the detail pane must be the one scroller.
+    if (session.kind === 'tuwunel') {
+      expect(expanded.overflows).toBe(true);
+      expect(expanded.scrolls).toBe(true);
+    } else {
+      expect(expanded.overflows).toBe(false);
+    }
     const flagRows = await page
       .getByTestId('hs-unstable')
       .locator('li')
@@ -124,7 +135,9 @@ test.describe('Settings', () => {
       .getByTestId('server-block')
       .first()
       .getByTestId('hs-software');
-    await expect(software).toHaveText(/^\s*Synapse/, { timeout: 20_000 });
+    await expect(software).toHaveText(new RegExp(`^\\s*${SOFTWARE}`), {
+      timeout: 20_000,
+    });
 
     const versions = page.waitForResponse(
       (res) => res.url().includes('/_matrix/federation/v1/version'),
@@ -133,7 +146,7 @@ test.describe('Settings', () => {
     await page.getByTestId('server-check-again').click();
     await versions;
 
-    await expect(software).toHaveText(/^\s*Synapse/);
+    await expect(software).toHaveText(new RegExp(`^\\s*${SOFTWARE}`));
   });
 
   test('edits and saves the display name', async ({ page }) => {

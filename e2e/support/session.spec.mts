@@ -35,18 +35,20 @@ function descriptor(workspaceRoot: string): E2ESessionDescriptor {
       nonce: 'nonce-12345678',
       createdAt: new Date().toISOString(),
     },
-    resources: ['synapse'],
+    resources: ['homeserver'],
     endpoints: {
       application: 'http://127.0.0.1:43101',
       storybook: 'http://127.0.0.1:43102',
       report: 'http://127.0.0.1:43103',
     },
     artifactsRoot: join(workspaceRoot, 'dist/.playwright/session-12345678'),
-    synapse: {
+    homeserver: {
       available: true,
       hs: 'https://localhost:8448',
       user: 'user',
       pass: 'do-not-print',
+      kind: 'tuwunel',
+      version: '1.9.3',
     },
   };
 }
@@ -61,6 +63,23 @@ describe('E2E session contract', () => {
     expect(readSession(file)).toEqual(value);
     expect(sessionSummary(value)).not.toContain('do-not-print');
     expect(readFileSync(file, 'utf8')).toContain('do-not-print');
+  });
+
+  it('requires a known homeserver kind and its version when available', () => {
+    const value = descriptor('/workspace');
+    expect(() =>
+      validateSession({
+        ...value,
+        homeserver: { ...value.homeserver, kind: 'conduit' },
+      }),
+    ).toThrow(/homeserver kind/);
+    expect(() =>
+      validateSession({
+        ...value,
+        homeserver: { ...value.homeserver, version: '' },
+      }),
+    ).toThrow(/version/);
+    expect(sessionSummary(value)).toContain('homeserver=tuwunel 1.9.3');
   });
 
   it('rejects invalid endpoints and dead owners', () => {

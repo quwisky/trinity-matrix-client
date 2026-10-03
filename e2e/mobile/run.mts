@@ -680,7 +680,7 @@ async function execute(): Promise<void> {
   let failure: unknown;
   try {
     invocation = await openE2EInvocation({
-      resources: ['android-avd', 'synapse'],
+      resources: ['android-avd', 'homeserver'],
       workspaceRoot,
       signal: abortController.signal,
     });

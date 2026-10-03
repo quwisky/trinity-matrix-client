@@ -1,15 +1,15 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
+  homeserverSession,
   waitForSent,
-  type SynapseSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 // End-to-end for polls (MSC3381): create a poll from the composer, vote, see the tally
 // update, and end it. Needs a Synapse homeserver (Docker).
-const session = synapseSession();
+const session = homeserverSession();
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -50,7 +50,7 @@ test.describe('Polls', () => {
       hs,
       user: username,
       pass: password,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
 
     // This runs at the desktop viewport: the composer uses the `+` tray here too, with no

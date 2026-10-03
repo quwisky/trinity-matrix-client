@@ -7,8 +7,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -26,7 +26,7 @@ import { registerUser } from '../../../support/account.mts';
 // synthetic `dispatchEvent` too — see `swipe` below.
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 // Centre of DrawerSwipeDirective's 24px opening band, which begins after the 32px strip
 // reserved for native history gestures. This spec cannot make Chromium perform iOS Forward,
@@ -99,7 +99,7 @@ test.describe('Drawer swipe on a touch device', () => {
       data: { name: roomName },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await page.getByTestId('rail-rooms').click();
     const channel = page.locator('.channel', { hasText: roomName });
     await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
@@ -161,7 +161,7 @@ test.describe('Drawer swipe on a touch device', () => {
       data: { name: roomName },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await page.getByTestId('rail-rooms').click();
     const channel = page.locator('.channel', { hasText: roomName });
     await channel.first().waitFor({ state: 'visible', timeout: 30_000 });

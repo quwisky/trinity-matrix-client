@@ -1,4 +1,4 @@
-// Type declarations for the JavaScript Synapse harness (start.mjs).
+// Type declarations for the JavaScript homeserver harness (start.mjs).
 //
 // The harness is deliberately plain `.mjs`: it is also run standalone with bare `node`
 // (`pnpm e2e:verify:up`, and the `node start.mjs` branch at the bottom of the file), so
@@ -8,7 +8,9 @@
 //
 // Keep in sync with the `return` at the end of `start()` and the exported constants.
 
-export declare const SYNAPSE_HTTP: string;
+import type { HomeserverKind } from './kind.mts';
+
+export declare const HOMESERVER_HTTP: string;
 export declare const SECONDARY_HTTP: string;
 export declare const HS_TLS: string;
 export declare const SERVER_NAME: string;
@@ -22,32 +24,36 @@ export declare const SSO_USER: string;
 export declare const SSO_RESET_EMAIL: string;
 export declare const SSO_RESET_USER: string;
 
-/** A Dex-backed account: Synapse creates it on the first completed round-trip. */
-export interface SynapseSsoAccount {
+/** A Dex-backed account: the homeserver creates it on the first completed round-trip. */
+export interface HomeserverSsoAccount {
   user: string;
   email: string;
   pass: string;
 }
 
 /** What `start()` hands back once the whole stack is up and healthy. */
-export interface SynapseHarness {
-  /** Base URL of the TLS-terminating Caddy in front of Synapse. */
+export interface HomeserverHarness {
+  /** Base URL of the TLS-terminating Caddy in front of the homeserver. */
   hs: string;
   user: string;
   pass: string;
   serverName: string;
+  /** The server TRINITY_E2E_HOMESERVER selected, confirmed against the running one. */
+  kind: HomeserverKind;
+  /** Its version from `/_matrix/federation/v1/version`. */
+  version: string;
   secondary: {
     /** Host-reachable Client-Server API for setup requests. */
     hs: string;
-    /** Matrix server name reachable by the primary Synapse over federation. */
+    /** Matrix server name reachable by the primary over federation. */
     serverName: string;
     registrationSecret: string;
   };
-  sso: SynapseSsoAccount;
+  sso: HomeserverSsoAccount;
   /** A second SSO account, permanently seeded for the recovery-reset spec. */
-  ssoReset: SynapseSsoAccount;
+  ssoReset: HomeserverSsoAccount;
 }
 
 export declare function start(options?: {
   signal?: AbortSignal;
-}): Promise<SynapseHarness>;
+}): Promise<HomeserverHarness>;

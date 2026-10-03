@@ -21,7 +21,7 @@ import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
 
-/** The support-owned Synapse directory: compose files, Caddyfile, and adapters. */
+/** The support-owned homeserver directory: compose files, Caddyfile, and adapters. */
 export const HERE = dirname(fileURLToPath(import.meta.url));
 
 /**
@@ -38,7 +38,7 @@ export const STATE_DIR = process.env['TRINITY_E2E_STATE_DIR']
   ? resolve(process.env['TRINITY_E2E_STATE_DIR'])
   : HERE;
 
-/** Generated Synapse state: homeserver.yaml, the signing key, the sqlite DB, media. */
+/** Primary homeserver state: generated config, signing key, database, media. */
 export const DATA = join(STATE_DIR, 'data');
 /** Generated state for the genuinely federated secondary homeserver. */
 export const REMOTE_DATA = join(STATE_DIR, 'remote-data');
@@ -81,7 +81,7 @@ async function selfContainerCandidates() {
  * Publishing only works when the job and the Docker daemon share a loopback — true on a
  * developer machine and on a GitHub-hosted runner, false when the job is a container
  * talking to a separate daemon (Forgejo's act_runner with a dind sidecar). There, compose
- * publishes to the daemon's loopback and the job cannot reach Synapse at all: the symptom
+ * publishes to the daemon's loopback and the job cannot reach the homeserver at all: the symptom
  * is a `/health` timeout after a successful `compose up`.
  *
  * Detection rather than configuration, because the id is per-job and cannot be a static
@@ -111,14 +111,19 @@ export async function resolveNetworkContainer() {
   }
   throw new Error(
     'Running inside a container, but could not work out which one to share a network ' +
-      'namespace with — so the published ports would be unreachable and Synapse would ' +
+      'namespace with — so the published ports would be unreachable and the homeserver would ' +
       'time out. Set TRINITY_E2E_NETWORK_CONTAINER to this job container id or name.',
   );
 }
 
-/** `-f` arguments for docker compose, in override order. */
-export function composeFiles(networkContainer) {
-  const files = ['-f', join(HERE, 'docker-compose.yml')];
+/** `-f` arguments for docker compose, in override order: shared, adapter, netns. */
+export function composeFiles(kind, networkContainer) {
+  const files = [
+    '-f',
+    join(HERE, 'docker-compose.yml'),
+    '-f',
+    join(HERE, kind, 'docker-compose.yml'),
+  ];
   if (networkContainer) {
     files.push('-f', join(HERE, 'docker-compose.netns.yml'));
   }
@@ -127,26 +132,26 @@ export function composeFiles(networkContainer) {
 
 /**
  * Make the state directory usable: create it, and put the config files the compose
- * mounts expect where they expect them. Caddy and Dex each bind-mount a single file, so
+ * mounts expect where they expect them (`configFiles` are the adapter's, relative to
+ * this directory). Caddy, Dex and Tuwunel each bind-mount single files, so
  * those have to live beside the state rather than in the repo whenever the two are
  * different places — and they must exist first, or the daemon helpfully creates a
  * *directory* at the mount point and the container fails to parse its config.
  */
-export async function prepareStateDir() {
+export async function prepareStateDir(configFiles = []) {
   await Promise.all([
     mkdir(DATA, { recursive: true }),
     mkdir(REMOTE_DATA, { recursive: true }),
   ]);
+  const files = ['Caddyfile', 'dex.yaml', ...configFiles];
   if (STATE_DIR !== HERE) {
-    for (const file of ['Caddyfile', 'dex.yaml']) {
+    for (const file of files) {
+      await mkdir(dirname(join(STATE_DIR, file)), { recursive: true });
       await copyFile(join(HERE, file), join(STATE_DIR, file));
     }
   }
-  // Dex runs unprivileged and must be able to read the bind-mounted config even when
-  // the checkout inherited a restrictive umask (some worktree/copy setups use 0600).
-  await Promise.all(
-    ['Caddyfile', 'dex.yaml'].map((file) =>
-      chmod(join(STATE_DIR, file), 0o644),
-    ),
-  );
+  // Dex and Tuwunel run unprivileged and must be able to read the bind-mounted config
+  // even when the checkout inherited a restrictive umask (some worktree/copy setups use
+  // 0600).
+  await Promise.all(files.map((file) => chmod(join(STATE_DIR, file), 0o644)));
 }

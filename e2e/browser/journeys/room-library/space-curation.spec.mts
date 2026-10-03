@@ -8,8 +8,8 @@ import {
 import {
   login,
   openSettingsTab,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -20,7 +20,7 @@ import { registerUser } from '../../../support/account.mts';
 // Asserted against the `m.space.child` state event over the CS API, because that event is
 // the whole feature: a UI that reordered a list locally and wrote nothing looks identical.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function apiLogin(
   request: APIRequestContext,
@@ -114,7 +114,7 @@ test.describe('Space curation', () => {
       preset: 'private_chat',
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const pill = page.getByRole('button', { name: spaceName, exact: true });
     await pill.waitFor({ state: 'visible', timeout: 30_000 });
     await pill.click();
@@ -156,7 +156,7 @@ test.describe('Space curation', () => {
       creation_content: { type: 'm.space' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const pill = page.getByRole('button', { name: parentName, exact: true });
     await pill.waitFor({ state: 'visible', timeout: 30_000 });
     await pill.click();
@@ -257,7 +257,7 @@ test.describe('Space curation', () => {
       );
     }
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const pill = page.getByRole('button', { name: spaceName, exact: true });
     await pill.waitFor({ state: 'visible', timeout: 30_000 });
     await pill.click();
@@ -435,7 +435,7 @@ test.describe('Space curation', () => {
       hs,
       user: owner,
       pass,
-    } as SynapseSession);
+    } as HomeserverSession);
     const pill = page.getByRole('button', { name: spaceName, exact: true });
     await pill.waitFor({ state: 'visible', timeout: 30_000 });
     await pill.click();

@@ -1,8 +1,8 @@
 import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -12,7 +12,7 @@ import { registerUser } from '../../../support/account.mts';
 // at http://caddy:8080/og that Synapse (url previews enabled) can fetch server-side, so
 // the card is deterministic and offline. In E2EE rooms previews are suppressed (unit-
 // tested) to avoid disclosing the URL. Needs a Synapse homeserver (Docker); self-skips.
-const session = synapseSession();
+const session = homeserverSession();
 
 // Reachable by Synapse on the docker network; the browser never fetches it.
 // Fetched by Synapse server-side. On the compose network that is the `caddy` hostname;
@@ -60,7 +60,7 @@ test.describe('Link previews', () => {
       { headers: auth, data: { msgtype: 'm.text', body: `look: ${OG_URL}` } },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await page.getByTestId('rail-rooms').click();
     const channel = page.locator('.channel', { hasText: roomName });
     await channel.first().waitFor({ state: 'visible', timeout: 30_000 });

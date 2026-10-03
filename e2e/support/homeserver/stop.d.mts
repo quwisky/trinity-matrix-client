@@ -1,7 +1,7 @@
 // Type declarations for stop.mjs — see start.d.mts for why the harness stays plain JS.
 
 /**
- * Tear the disposable Synapse stack down.
+ * Tear the disposable homeserver stack down.
  *
  * @param opts.keepData keep the compose volumes, so the next `start()` reuses the
  *   already-registered accounts instead of re-seeding them.

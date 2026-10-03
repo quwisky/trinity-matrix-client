@@ -1,5 +1,5 @@
 import { expect, test, testResourceId } from '../../../fixtures.mts';
-import { login, type SynapseSession } from '../../../support/app.mts';
+import { login, type HomeserverSession } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { addAccountViaUi } from '../../support/multi-account-journey.mts';
 import {
@@ -48,7 +48,7 @@ test.describe('Room settings', () => {
       data: { name: originalName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, priorName);
     await openRoom(page, originalName);
 
@@ -171,7 +171,7 @@ test.describe('Room settings', () => {
       data: { name: roomName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     await page.getByTestId('open-room-settings').click();
@@ -211,7 +211,7 @@ test.describe('Room settings', () => {
       data: { name: roomName, preset: 'private_chat' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
     await page.getByTestId('open-room-settings').click();
 
@@ -293,7 +293,7 @@ test.describe('Room settings', () => {
       hs,
       user: userA,
       pass: passA,
-    } as SynapseSession);
+    } as HomeserverSession);
     await addAccountViaUi(page, hs, userB, passB);
     await page.getByTestId('user-menu-trigger').click();
     await page

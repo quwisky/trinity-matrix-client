@@ -1,12 +1,12 @@
 import { devices, expect, test, type Page } from '../../fixtures.mts';
-import { login, synapseSession } from '../../support/app.mts';
+import { login, homeserverSession } from '../../support/app.mts';
 import { openSettingsFromRooms } from '../../support/journeys/navigation.mts';
 
 // Authenticated journeys through Settings — theme switching, profile editing,
 // device management, and the responsive section submenu (two-pane on desktop,
 // list → sub-page on mobile). They need a live homeserver, so the suite skips
 // itself when the disposable Synapse wasn't available (no Docker).
-export const session = synapseSession();
+export const session = homeserverSession();
 export const PIXEL_5 = devices['Pixel 5'];
 
 export const SECTIONS = [

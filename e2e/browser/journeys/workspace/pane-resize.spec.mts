@@ -2,7 +2,7 @@ import { test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
   readPreference,
-  synapseSession,
+  homeserverSession,
 } from '../../../support/app.mts';
 
 /**
@@ -21,7 +21,7 @@ import {
  *
  * Needs a Synapse homeserver (Docker) and self-skips otherwise.
  */
-const session = synapseSession();
+const session = homeserverSession();
 
 /** The server rail is a fixed column; everything the drag adds goes to the room list. */
 const RAIL_WIDTH = 72;

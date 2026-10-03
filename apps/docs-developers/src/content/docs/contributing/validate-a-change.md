@@ -21,7 +21,7 @@ Confirm the affected comparison base when the branch workflow is unusual. Tests,
 
 ## Add behavior-specific proof {#behavior-proof}
 
-Run a focused unit test for policy, a component test for Angular interaction, a real browser for layout, disposable Synapse for Matrix behavior, and the actual host for Electron or native behavior. Run Synapse-backed suites sequentially because they share fixed ports.
+Run a focused unit test for policy, a component test for Angular interaction, a real browser for layout, the disposable homeserver for Matrix behavior, and the actual host for Electron or native behavior. Run homeserver-backed suites sequentially because they share fixed ports.
 
 For a product change, a typical wider set is:
 

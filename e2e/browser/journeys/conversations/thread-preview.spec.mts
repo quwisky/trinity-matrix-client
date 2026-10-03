@@ -10,15 +10,15 @@ import {
 import {
   clickRowToolbar,
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 // Covers the rendered thread summary on a real timeline: keyboard activation on desktop,
 // touch activation on a Pixel 5, and the long-preview layout in the browser engine.
 // Needs a Synapse homeserver (Docker) and self-skips when it is unavailable.
-const session = synapseSession();
+const session = homeserverSession();
 const { defaultBrowserType: pixel5BrowserType, ...pixel5 } = devices['Pixel 5'];
 void pixel5BrowserType;
 const PNG_1X1 = Buffer.from(
@@ -32,7 +32,7 @@ interface ApiUser {
 }
 
 interface SeededThread {
-  reader: SynapseSession;
+  reader: HomeserverSession;
   roomName: string;
   rootBody: string;
   latestBody: string;
@@ -282,7 +282,13 @@ async function assertPreview(
   await expect(previewText).toHaveCSS('white-space', 'nowrap');
   await expect(previewText).toHaveCSS('overflow', 'hidden');
   await expect(previewText).toHaveCSS('text-overflow', 'ellipsis');
-  await expect(summary.locator('.msg__thread-badge')).toContainText('2');
+  if (session.kind === 'synapse') {
+    await expect(summary.locator('.msg__thread-badge')).toContainText('2');
+  }
+  // Tuwunel: no badge expectation. It sends `unread_thread_notifications` only in the
+  // first sync, and matrix-js-sdk zeroes every thread count on any later sync of the
+  // room that omits the key, so the badge vanishes as soon as a receipt syncs. The reply
+  // count asserted above still comes from the server's thread summary on both servers.
 
   const measurements = await summary.evaluate((element) => {
     const button = element as HTMLElement;

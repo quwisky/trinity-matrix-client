@@ -6,19 +6,26 @@ import {
   releaseProcessLock,
   type ProcessLock,
 } from '../process-lock.mts';
+import { resolveHomeserverKind } from './kind.mts';
 
 const workspaceRoot = resolve(import.meta.dirname, '../../..');
-export const synapseLockFile = join(
+export const homeserverLockFile = join(
   workspaceRoot,
-  'dist/.playwright/synapse.lock',
+  'dist/.playwright/homeserver.lock',
 );
 const composeFile = join(import.meta.dirname, 'docker-compose.yml');
 const exec = promisify(execFile);
 
-export async function acquireSynapseLease(
+export async function acquireHomeserverLease(
   signal?: AbortSignal,
 ): Promise<ProcessLock> {
-  const lease = acquireProcessLock(synapseLockFile, 'Synapse E2E harness');
+  // Every path to the stack takes this lease first, so a bad selection fails here,
+  // before a lock file or a container exists.
+  resolveHomeserverKind();
+  const lease = acquireProcessLock(
+    homeserverLockFile,
+    'Homeserver E2E harness',
+  );
   try {
     const { stdout } = await exec(
       'docker',
@@ -28,7 +35,7 @@ export async function acquireSynapseLease(
     if (stdout.trim()) {
       releaseProcessLock(lease);
       throw new Error(
-        `A Synapse E2E stack is already running (${stdout.trim().replaceAll('\n', ', ')}); stop it before starting another harness`,
+        `An E2E homeserver stack is already running (${stdout.trim().replaceAll('\n', ', ')}); stop it before starting another harness`,
       );
     }
   } catch (error) {
@@ -46,10 +53,10 @@ export async function acquireSynapseLease(
 }
 
 /** Claim teardown without rejecting the running stack that teardown is meant to stop. */
-export function acquireSynapseTeardownLease(): ProcessLock {
-  return acquireProcessLock(synapseLockFile, 'Synapse E2E harness');
+export function acquireHomeserverTeardownLease(): ProcessLock {
+  return acquireProcessLock(homeserverLockFile, 'Homeserver E2E harness');
 }
 
-export function releaseSynapseLease(lease: ProcessLock | undefined): void {
+export function releaseHomeserverLease(lease: ProcessLock | undefined): void {
   releaseProcessLock(lease);
 }

@@ -6,8 +6,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
@@ -34,7 +34,7 @@ import {
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise, like the other
 // authenticated web e2e specs (see timeline-virtualization.spec.mts).
-const session = synapseSession();
+const session = homeserverSession();
 
 const SEED = 3;
 
@@ -76,7 +76,7 @@ async function seedUnreadRoom(
   hs: string,
   runId: string,
   seed: number,
-): Promise<{ reader: SynapseSession; roomId: string; roomName: string }> {
+): Promise<{ reader: HomeserverSession; roomId: string; roomName: string }> {
   const readerUser = `reader-${runId}`;
   const readerPass = `reader-pass-${runId}`;
   const senderUser = `sender-${runId}`;
