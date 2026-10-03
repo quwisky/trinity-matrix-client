@@ -33,18 +33,15 @@ jobs:
             xcrun --sdk iphonesimulator --show-sdk-version
             xcrun simctl list runtimes
           } | tee "$SPIKE_OUT/versions.txt"
-      - name: Probe Docker and Colima
+      - name: Probe Colima
         continue-on-error: true
+        timeout-minutes: 12
         run: |
-          { docker info 2>&1 | head -5 || echo "docker: not available"; } | tee "$SPIKE_OUT/docker.txt"
           brew install colima docker >/dev/null 2>&1
           t0=$(date +%s)
-          if timeout 600 colima start --vm-type vz 2>&1 | tail -20 | tee -a "$SPIKE_OUT/docker.txt"; then
-            echo "colima_start=ok in $(( $(date +%s) - t0 ))s" | tee -a "$SPIKE_OUT/docker.txt"
-            docker run --rm hello-world 2>&1 | tail -3 | tee -a "$SPIKE_OUT/docker.txt"
-          else
-            echo "colima_start=failed after $(( $(date +%s) - t0 ))s" | tee -a "$SPIKE_OUT/docker.txt"
-          fi
+          colima start --vm-type vz 2>&1 | tail -20 | tee -a "$SPIKE_OUT/docker.txt" || true
+          echo "colima_exit after $(( $(date +%s) - t0 ))s" | tee -a "$SPIKE_OUT/docker.txt"
+          docker run --rm hello-world 2>&1 | tail -3 | tee -a "$SPIKE_OUT/docker.txt"
       - name: Start native Synapse behind Caddy TLS
         run: spike/863/homeserver.sh "$SPIKE_OUT"
       - name: Build the simulator app
@@ -103,18 +100,3 @@ jobs:
           name: spike-863-webview
           path: dist/spike
           retention-days: 7
-
-  tuwunel-build:
-    name: Time a native Tuwunel build
-    runs-on: macos-26
-    timeout-minutes: 90
-    steps:
-      - name: Build Tuwunel v1.9.3 from source
-        run: |
-          git clone -q --depth 1 --branch v1.9.3 https://github.com/matrix-construct/tuwunel
-          cd tuwunel
-          rustc --version; cargo --version
-          t0=$(date +%s)
-          cargo build --release 2>&1 | tail -20
-          echo "tuwunel_build_s=$(( $(date +%s) - t0 ))" | tee -a "$GITHUB_STEP_SUMMARY"
-          ls -la target/release/tuwunel && ./target/release/tuwunel --version | tee -a "$GITHUB_STEP_SUMMARY"

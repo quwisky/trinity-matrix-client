@@ -23,6 +23,8 @@ export const config = {
       'appium:showXcodeLog': true,
       'appium:webviewConnectTimeout': 60_000,
       'appium:includeSafariInWebviews': false,
+      // Web Inspector lists the Capacitor app by process name, not bundle id.
+      'appium:additionalWebviewBundleIds': ['process-App'],
     },
   ],
   framework: 'mocha',
