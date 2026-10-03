@@ -697,6 +697,6 @@ export const main = async (argv, { executeSelection = runSelection } = {}) => {
   return 1;
 };
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (import.meta.main) {
   process.exitCode = await main(process.argv.slice(2));
 }

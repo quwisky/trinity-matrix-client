@@ -1,7 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { format } from 'prettier';
 
 const workspaceRoot = join(import.meta.dirname, '..');
@@ -582,9 +581,6 @@ async function runCli(command) {
   }
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (import.meta.main) {
   await runCli(process.argv[2]);
 }

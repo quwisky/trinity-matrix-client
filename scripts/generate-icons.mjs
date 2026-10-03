@@ -8,7 +8,6 @@
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { crc32, deflateSync } from 'node:zlib';
 import { Resvg } from '@resvg/resvg-js';
@@ -357,10 +356,7 @@ export function renderIcons(outRoot = ROOT) {
   return rendered;
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (import.meta.main) {
   const { values } = parseArgs({ options: { out: { type: 'string' } } });
   const written = renderIcons(values.out ? resolve(values.out) : ROOT);
   console.log(

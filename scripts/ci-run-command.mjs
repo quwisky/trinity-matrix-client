@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { basename, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { parseArgs } from 'node:util';
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_KILL_GRACE_MS = 2000;
@@ -134,19 +134,13 @@ export function resultExitCode(result) {
   return 1;
 }
 
-export function isDirectRun(meta, argv = process.argv) {
-  return meta === pathToFileURL(argv[1] ?? '').href;
-}
-
 async function main() {
-  const args = process.argv.slice(2);
-  if (
-    args[0] !== '--timeout-ms' ||
-    !Number.isFinite(Number(args[1])) ||
-    Number(args[1]) <= 0 ||
-    args[2] !== '--' ||
-    !args[3]
-  ) {
+  const { values, positionals } = parseArgs({
+    allowPositionals: true,
+    options: { 'timeout-ms': { type: 'string' } },
+  });
+  const timeoutMs = Number(values['timeout-ms']);
+  if (!(timeoutMs > 0) || !Number.isFinite(timeoutMs) || !positionals[0]) {
     console.error(
       'usage: node scripts/ci-run-command.mjs --timeout-ms N -- <executable> [args...]',
     );
@@ -162,10 +156,10 @@ async function main() {
   process.once('SIGTERM', () => onSignal('SIGTERM'));
   process.once('SIGINT', () => onSignal('SIGINT'));
   const result = await runCommand({
-    command: args[3],
-    args: args.slice(4),
+    command: positionals[0],
+    args: positionals.slice(1),
     label: 'suite',
-    timeoutMs: Number(args[1]),
+    timeoutMs,
     killGraceMs: CLI_KILL_GRACE_MS,
     abortSignal: controller.signal,
   });
@@ -182,4 +176,4 @@ async function main() {
   process.exitCode = Number(output.exit_code);
 }
 
-if (isDirectRun(import.meta.url)) await main();
+if (import.meta.main) await main();

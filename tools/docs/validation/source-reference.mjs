@@ -217,7 +217,7 @@ export const validatePublishedSourceReference = (contentRoot, reference) => {
   );
 };
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (import.meta.main) {
   const workspaceRoot = fileURLToPath(new URL('../../../', import.meta.url));
   const projectNames = JSON.parse(
     execFileSync(

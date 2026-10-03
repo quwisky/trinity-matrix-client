@@ -1,6 +1,5 @@
 import { globSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 const ROOT = join(import.meta.dirname, '..');
 
@@ -68,4 +67,4 @@ function main() {
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) main();
+if (import.meta.main) main();

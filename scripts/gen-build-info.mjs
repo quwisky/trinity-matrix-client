@@ -5,7 +5,7 @@
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'apps/trinity/src/app/build-info.ts');
@@ -80,7 +80,7 @@ export function generate({
 }
 
 // Run only when invoked directly (not when imported by a test).
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+if (import.meta.main) {
   const { version, commit, wrote } = generate({ root: ROOT, outFile: OUT });
   if (wrote) {
     console.log(`[build-info] ${version} (${commit})`);

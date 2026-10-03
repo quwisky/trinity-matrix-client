@@ -10,8 +10,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { join } from 'node:path';
 import {
   currentCommit,
   readWebBundleManifest,
@@ -208,10 +207,7 @@ async function main() {
   );
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(resolve(process.argv[1])).href
-) {
+if (import.meta.main) {
   main().catch((error) => {
     console.error(error.message);
     process.exitCode = 1;

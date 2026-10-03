@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { globSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import ts from 'typescript';
 
 const DEFAULT_PATTERN = 'e2e/protocol/**/*.spec.mjs';
@@ -171,16 +171,4 @@ export function validateProtocolAssertionInventory(errors, workspaceRoot) {
       `protocol centralized-check owners drifted: expected ${EXPECTED_SHARED_OWNER_FINGERPRINT}, found ${centralized.fingerprint}`,
     );
   }
-}
-
-if (process.argv[1] === import.meta.filename) {
-  const workspaceRoot = resolve(import.meta.dirname, '..');
-  const pattern = process.argv[2] ?? DEFAULT_PATTERN;
-  console.log(
-    JSON.stringify(
-      captureProtocolAssertionInventory(workspaceRoot, pattern),
-      undefined,
-      2,
-    ),
-  );
 }

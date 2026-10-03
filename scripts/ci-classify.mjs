@@ -164,5 +164,4 @@ export const main = ({ env = process.env, cwd = process.cwd() } = {}) => {
   return { classification, exitCode: 0 };
 };
 
-if (import.meta.url === `file://${process.argv[1]}`)
-  process.exitCode = main().exitCode;
+if (import.meta.main) process.exitCode = main().exitCode;
