@@ -51,15 +51,6 @@ export {
   type TrnSwitchVariant,
 } from './lib/switch/trn-switch.component';
 export { TrnTextarea } from './lib/textarea/trn-textarea';
-export { TrnToggleGroupComponent } from './lib/toggle-group/trn-toggle-group.component';
-export { TrnToggleGroupItemDirective } from './lib/toggle-group/trn-toggle-group-item.directive';
-export { TrnToggleDirective } from './lib/toggle/trn-toggle.directive';
-export type {
-  TrnToggleArrangement,
-  TrnTogglePresentation,
-  TrnToggleSize,
-  TrnToggleVariant,
-} from './lib/toggle/trn-toggle-recipe';
 
 import { TrnFieldComponent } from './lib/field/field/trn-field.component';
 import { TrnFieldLabelComponent } from './lib/field/field-label/trn-field-label.component';

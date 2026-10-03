@@ -166,7 +166,6 @@ const INLINE_STYLE_LEDGER = [
   'libs/components/controls/src/lib/checkbox/trn-checkbox.component.ts',
   'libs/components/controls/src/lib/radio-group/trn-radio-group.component.ts',
   'libs/components/controls/src/lib/switch/trn-switch.component.ts',
-  'libs/components/navigation-layout/src/lib/tabs/trn-tab-panel.component.ts',
   'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',
 ];
 

@@ -13,7 +13,7 @@ import { trnCardRecipe } from './trn-card-recipe';
   template: `
     <section trnCard variant="muted" size="sm" class="w-full">
       <div trnCardHeader>
-        <h2 trnCardTitle>Sign in</h2>
+        <h2>Sign in</h2>
         <p trnCardDescription>Pick a homeserver</p>
       </div>
       <div trnCardContent>body</div>
@@ -42,9 +42,6 @@ describe('TrnCard', () => {
     // outline depends on keeping them. An element wrapper would have replaced all three.
     expect(container.querySelector('section')?.getAttribute('data-slot')).toBe(
       'card',
-    );
-    expect(container.querySelector('h2')?.getAttribute('data-slot')).toBe(
-      'card-title',
     );
     expect(container.querySelector('p')?.getAttribute('data-slot')).toBe(
       'card-description',

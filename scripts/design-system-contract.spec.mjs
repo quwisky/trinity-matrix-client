@@ -235,10 +235,7 @@ describe('design-system contract', () => {
     for (const retired of [
       'TrnButtonVariantInput',
       'TrnButtonSizeInput',
-      'TrnToggleVariantInput',
-      'TrnToggleSizeInput',
       'TrnFieldLabelVariant',
-      'TrnTabsVariantInput',
       'TrnPageHeaderVariantInput',
       'TrnIconSizeInput',
       'TrnAvatarSizeInput',

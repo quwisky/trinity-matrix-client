@@ -13,10 +13,6 @@ test('choice-control recipes keep touch targets at least 44 pixels', async ({
     'checkbox-invalid',
     'switch-accent',
     'switch-disabled',
-    'toggle-idle',
-    'toggle-selected',
-    'toggle-readonly',
-    'toggle-disabled',
   ]) {
     const bounds = await page.getByTestId(testId).evaluate((element) => {
       const rect = element.getBoundingClientRect();

@@ -200,12 +200,6 @@ describe('Theme Foundation repository contract', () => {
         'shadow-overlay',
         1,
       ],
-      [
-        'libs/spartan/radio-group/src/lib/hlm-radio-indicator.ts',
-        'shadow-raised',
-        1,
-      ],
-      ['libs/spartan/tabs/src/lib/hlm-tabs-trigger.ts', 'shadow-raised', 1],
       ['libs/spartan/badge/src/lib/hlm-badge.ts', 'rounded-full', 1],
       ['libs/spartan/avatar/src/lib/hlm-avatar.ts', '--trn-avatar-radius', 4],
     ];

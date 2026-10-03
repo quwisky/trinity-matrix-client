@@ -24,11 +24,6 @@ test('Navigation catalog remains operable without clipping on a real mobile prof
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(await page.evaluate(() => window.innerWidth));
-
-  const tabs = page.getByTestId('catalog-tabs-neutral-pill');
-  const members = tabs.getByRole('tab', { name: 'Members' });
-  await members.tap();
-  await expect(members).toHaveAttribute('aria-selected', 'true');
 });
 
 test('Overlay catalog keeps portal and structural surfaces inside the mobile viewport', async ({

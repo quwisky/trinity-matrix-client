@@ -5,7 +5,6 @@ export {
   TrnCardDescription,
   TrnCardHeader,
   TrnCardImports,
-  TrnCardTitle,
   type TrnCardSize,
   type TrnCardVariant,
 } from './lib/card/trn-card';
@@ -14,14 +13,3 @@ export {
   type TrnPageHeaderLayout,
   type TrnPageHeaderVariant,
 } from './lib/page-header/page-header.component';
-export {
-  TrnSeparatorDirective,
-  type TrnSeparatorVariant,
-} from './lib/separator/trn-separator.directive';
-export { TrnTabPanelComponent } from './lib/tabs/trn-tab-panel.component';
-export {
-  TrnTabsComponent,
-  type TrnTabOption,
-  type TrnTabsPresentation,
-  type TrnTabsVariant,
-} from './lib/tabs/trn-tabs.component';

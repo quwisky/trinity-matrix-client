@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **77 Nx projects** and **276 dependencies**. No project cycles detected.
+This snapshot contains **68 Nx projects** and **258 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -36,7 +36,7 @@ Capability-to-capability dependencies are valid only inside the same named capab
 | `role:capability`    |       14 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
 | `role:kernel`        |        5 | `role:kernel`                                                                                          |
 | `role:adapter`       |        3 | `role:adapter`, `role:kernel`                                                                          |
-| `role:design-system` |       29 | `role:design-system`, `role:kernel`, `role:adapter`                                                    |
+| `role:design-system` |       20 | `role:design-system`, `role:kernel`, `role:adapter`                                                    |
 
 ## Frozen dependency exceptions
 
@@ -90,21 +90,12 @@ Every classified library has exactly one explicit primary entrypoint. Additional
 | `badge`                           | `@trinity/helm/badge`                      | `./libs/spartan/badge/src/index.ts`                   |
 | `button`                          | `@trinity/helm/button`                     | `./libs/spartan/button/src/index.ts`                  |
 | `card`                            | `@trinity/helm/card`                       | `./libs/spartan/card/src/index.ts`                    |
-| `checkbox`                        | `@trinity/helm/checkbox`                   | `./libs/spartan/checkbox/src/index.ts`                |
 | `dropdown-menu`                   | `@trinity/helm/dropdown-menu`              | `./libs/spartan/dropdown-menu/src/index.ts`           |
-| `input`                           | `@trinity/helm/input`                      | `./libs/spartan/input/src/index.ts`                   |
 | `label`                           | `@trinity/helm/label`                      | `./libs/spartan/label/src/index.ts`                   |
 | `progress`                        | `@trinity/helm/progress`                   | `./libs/spartan/progress/src/index.ts`                |
-| `radio-group`                     | `@trinity/helm/radio-group`                | `./libs/spartan/radio-group/src/index.ts`             |
 | `select`                          | `@trinity/helm/select`                     | `./libs/spartan/select/src/index.ts`                  |
-| `separator`                       | `@trinity/helm/separator`                  | `./libs/spartan/separator/src/index.ts`               |
 | `sonner`                          | `@trinity/helm/sonner`                     | `./libs/spartan/sonner/src/index.ts`                  |
 | `spinner`                         | `@trinity/helm/spinner`                    | `./libs/spartan/spinner/src/index.ts`                 |
-| `switch`                          | `@trinity/helm/switch`                     | `./libs/spartan/switch/src/index.ts`                  |
-| `tabs`                            | `@trinity/helm/tabs`                       | `./libs/spartan/tabs/src/index.ts`                    |
-| `textarea`                        | `@trinity/helm/textarea`                   | `./libs/spartan/textarea/src/index.ts`                |
-| `toggle`                          | `@trinity/helm/toggle`                     | `./libs/spartan/toggle/src/index.ts`                  |
-| `toggle-group`                    | `@trinity/helm/toggle-group`               | `./libs/spartan/toggle-group/src/index.ts`            |
 | `tooltip`                         | `@trinity/helm/tooltip`                    | `./libs/spartan/tooltip/src/index.ts`                 |
 | `utils`                           | `@trinity/helm/utils`                      | `./libs/spartan/utils/src/index.ts`                   |
 | `platform-native`                 | `@trinity/platform-native`                 | `./libs/platform-native/src/index.ts`                 |
@@ -136,11 +127,10 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `badge`                           | `libs/spartan/badge`                   | role:design-system; capability:design-system    |                   1 |
 | `button`                          | `libs/spartan/button`                  | role:design-system; capability:design-system    |                   1 |
 | `card`                            | `libs/spartan/card`                    | role:design-system; capability:design-system    |                   1 |
-| `checkbox`                        | `libs/spartan/checkbox`                | role:design-system; capability:design-system    |                   1 |
-| `components-controls`             | `libs/components/controls`             | role:design-system; capability:design-system    |                   9 |
+| `components-controls`             | `libs/components/controls`             | role:design-system; capability:design-system    |                   7 |
 | `components-foundations`          | `libs/components/foundations`          | role:design-system; capability:design-system    |                   1 |
 | `components-generic-content`      | `libs/components/generic-content`      | role:design-system; capability:design-system    |                  10 |
-| `components-navigation-layout`    | `libs/components/navigation-layout`    | role:design-system; capability:design-system    |                   5 |
+| `components-navigation-layout`    | `libs/components/navigation-layout`    | role:design-system; capability:design-system    |                   4 |
 | `components-overlay`              | `libs/components/overlay`              | role:design-system; capability:design-system    |                   6 |
 | `components-storybook-host`       | `libs/components/storybook-host`       | role:design-system; capability:design-system    |                   1 |
 | `data-access-accounts`            | `libs/data-access/accounts`            | role:capability; capability:accounts            |                   4 |
@@ -166,27 +156,19 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `feature-crypto`                  | `libs/feature/crypto`                  | role:capability; capability:trust               |                  11 |
 | `feature-rooms`                   | `libs/feature/rooms`                   | role:application; capability:workspace          |                  24 |
 | `feature-settings`                | `libs/feature/settings`                | role:application; capability:settings           |                  23 |
-| `input`                           | `libs/spartan/input`                   | role:design-system; capability:design-system    |                   1 |
 | `label`                           | `libs/spartan/label`                   | role:design-system; capability:design-system    |                   1 |
 | `platform-native`                 | `libs/platform-native`                 | role:adapter; capability:host                   |                   5 |
 | `progress`                        | `libs/spartan/progress`                | role:design-system; capability:design-system    |                   1 |
 | `projection-runtime`              | `libs/runtime/projection`              | role:kernel; capability:shared                  |                   0 |
-| `radio-group`                     | `libs/spartan/radio-group`             | role:design-system; capability:design-system    |                   1 |
 | `runtime-host`                    | `libs/runtime/host`                    | role:kernel; capability:host                    |                   0 |
 | `runtime-preferences`             | `libs/runtime/preferences`             | role:kernel; capability:preferences             |                   0 |
 | `scripts`                         | `scripts`                              | unmanaged tooling/test                          |                   4 |
 | `select`                          | `libs/spartan/select`                  | role:design-system; capability:design-system    |                   1 |
-| `separator`                       | `libs/spartan/separator`               | role:design-system; capability:design-system    |                   1 |
 | `sonner`                          | `libs/spartan/sonner`                  | role:design-system; capability:design-system    |                   2 |
-| `spartan-tests`                   | `libs/spartan/tests`                   | role:design-system; capability:design-system    |                  10 |
+| `spartan-tests`                   | `libs/spartan/tests`                   | role:design-system; capability:design-system    |                   5 |
 | `spinner`                         | `libs/spartan/spinner`                 | role:design-system; capability:design-system    |                   1 |
-| `switch`                          | `libs/spartan/switch`                  | role:design-system; capability:design-system    |                   1 |
-| `tabs`                            | `libs/spartan/tabs`                    | role:design-system; capability:design-system    |                   1 |
 | `testing`                         | `libs/testing`                         | unmanaged tooling/test                          |                   0 |
-| `textarea`                        | `libs/spartan/textarea`                | role:design-system; capability:design-system    |                   1 |
 | `theme-foundation`                | `libs/theme-foundation`                | role:kernel; capability:design-system           |                   0 |
-| `toggle`                          | `libs/spartan/toggle`                  | role:design-system; capability:design-system    |                   1 |
-| `toggle-group`                    | `libs/spartan/toggle-group`            | role:design-system; capability:design-system    |                   2 |
 | `tooltip`                         | `libs/spartan/tooltip`                 | role:design-system; capability:design-system    |                   1 |
 | `trinity`                         | `apps/trinity`                         | role:app; capability:composition                |                   8 |
 | `trinity-android`                 | `android`                              | role:app; capability:composition                |                   1 |

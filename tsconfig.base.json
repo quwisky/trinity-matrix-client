@@ -59,11 +59,8 @@
       "@trinity/feature/settings": ["./libs/feature/settings/src/index.ts"],
       "@trinity/helm/button": ["./libs/spartan/button/src/index.ts"],
       "@trinity/helm/utils": ["./libs/spartan/utils/src/index.ts"],
-      "@trinity/helm/input": ["./libs/spartan/input/src/index.ts"],
       "@trinity/helm/label": ["./libs/spartan/label/src/index.ts"],
       "@trinity/helm/badge": ["./libs/spartan/badge/src/index.ts"],
-      "@trinity/helm/checkbox": ["./libs/spartan/checkbox/src/index.ts"],
-      "@trinity/helm/radio-group": ["./libs/spartan/radio-group/src/index.ts"],
       "@trinity/helm/progress": ["./libs/spartan/progress/src/index.ts"],
       "@trinity/helm/spinner": ["./libs/spartan/spinner/src/index.ts"],
       "@trinity/helm/sonner": ["./libs/spartan/sonner/src/index.ts"],
@@ -72,17 +69,9 @@
         "./libs/spartan/dropdown-menu/src/index.ts"
       ],
       "@trinity/helm/avatar": ["./libs/spartan/avatar/src/index.ts"],
-      "@trinity/helm/textarea": ["./libs/spartan/textarea/src/index.ts"],
       "@trinity/helm/card": ["./libs/spartan/card/src/index.ts"],
       "@trinity/helm/select": ["./libs/spartan/select/src/index.ts"],
       "@trinity/components/overlay": ["./libs/components/overlay/src/index.ts"],
-      "@trinity/helm/toggle-group": [
-        "./libs/spartan/toggle-group/src/index.ts"
-      ],
-      "@trinity/helm/toggle": ["./libs/spartan/toggle/src/index.ts"],
-      "@trinity/helm/separator": ["./libs/spartan/separator/src/index.ts"],
-      "@trinity/helm/tabs": ["./libs/spartan/tabs/src/index.ts"],
-      "@trinity/helm/switch": ["./libs/spartan/switch/src/index.ts"],
       "@trinity/data-access/widgets": [
         "./libs/data-access/widgets/src/index.ts"
       ],

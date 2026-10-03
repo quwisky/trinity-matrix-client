@@ -108,7 +108,6 @@
       "importPrefixes": ["@ng-icons/core", "@ng-icons/lucide"],
       "allowedSourcePrefixes": [
         "libs/components/foundations/src/lib/icon/",
-        "libs/spartan/checkbox/src/lib/hlm-checkbox.ts",
         "libs/spartan/dropdown-menu/src/lib/hlm-dropdown-menu.ts",
         "libs/spartan/select/src/lib/",
         "libs/spartan/sonner/src/lib/hlm-toaster.ts",
