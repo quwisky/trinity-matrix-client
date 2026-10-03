@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -154,5 +154,16 @@ describe('GHCR repository link', () => {
       expect(container).toContain(
         `--annotation "index:org.opencontainers.image.${key}=`,
       );
+  });
+});
+
+describe('macOS notarization', () => {
+  it("notarizes once, through electron-builder's built-in notarization", () => {
+    const config = read('electron/electron-builder.yml');
+    // A second afterSign notarization resubmitted the already-notarized app and
+    // doubled the wait on Apple's notary queue.
+    expect(config).not.toMatch(/^afterSign:/m);
+    expect(config).not.toMatch(/^\s+notarize:\s*false/m);
+    expect(existsSync(join(root, 'electron/build/notarize.cjs'))).toBe(false);
   });
 });

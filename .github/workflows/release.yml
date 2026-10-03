@@ -143,7 +143,7 @@ jobs:
     # reviewers on it in repo settings this is a no-op; once secrets exist it is what
     # stops a pushed tag from minting a signed installer unattended. The certificate is
     # the asset worth protecting: electron-builder runs repo-controlled hooks
-    # (afterPack.cjs, build/notarize.cjs) in the same process that holds CSC_KEY_PASSWORD.
+    # (afterPack.cjs) in the same process that holds CSC_KEY_PASSWORD.
     environment: release
     # Without this the job inherits the 6-hour default, and a wedged @electron/get download
     # would hold the release all day. macOS gets 120 minutes: Apple's notary queue alone
@@ -223,8 +223,8 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CSC_LINK != '' }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          # Notarization (macOS). build/notarize.cjs no-ops unless all three are present.
-          # The App Store Connect API-key style it also supports needs APPLE_API_KEY to be
+          # Notarization (macOS). electron-builder notarizes the signed app when all three are
+          # present and skips it otherwise. The App Store Connect API-key style it also supports needs APPLE_API_KEY to be
           # a path to a .p8 file, which a secret cannot be directly — hence the Apple ID
           # style here, whose three values are all plain strings.
           APPLE_ID: ${{ secrets.APPLE_ID }}

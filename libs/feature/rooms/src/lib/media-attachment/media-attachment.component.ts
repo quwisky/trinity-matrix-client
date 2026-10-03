@@ -91,8 +91,13 @@ export class MediaAttachmentComponent {
       if (media.kind === 'file') {
         return;
       }
+      // Only an image may stand in with its thumbnail. A <video>/<audio> plays its src, and a
+      // bundled thumbnail is a still JPEG — binding it left videos with a thumbnail unplayable.
       this.thumbnailSub = runWithBusy(
-        this.mediaPipeline.resolveMedia(media, 'thumbnail'),
+        this.mediaPipeline.resolveMedia(
+          media,
+          media.kind === 'image' ? 'thumbnail' : 'full',
+        ),
         {
           busy: this.loading,
           error: this.errorMsg,
