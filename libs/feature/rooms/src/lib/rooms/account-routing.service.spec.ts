@@ -9,8 +9,9 @@ import {
   SelectedRoomLibraryService,
   type SelectedRoomLibraryView,
 } from '@trinity/data-access/room-library';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import {
   afterEach,
   beforeEach,
@@ -33,11 +34,13 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
   let navigate: Mock;
   let showError: Mock;
   let transition: Mock;
+  let loadEvent: Mock;
 
   function build(): AccountRoutingService {
     navigate = vi.fn(() => of({ kind: 'ready' }));
     showError = vi.fn();
     transition = vi.fn();
+    loadEvent = vi.fn(() => of(true));
     TestBed.configureTestingModule({
       providers: [
         AccountRoutingService,
@@ -53,6 +56,9 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
           activeAccountId: signal<string | null>('@me:hs'),
         }),
         MockProvider(RoomSurfaceLifecycle, { transition }),
+        MockProvider(ConversationRuntime, {
+          timeline: { loadEvent } as never,
+        }),
         MockProvider(SelectedRoomLibraryService, { view }),
         MockProvider(MatrixClientService, { syncState }),
       ],
@@ -126,5 +132,35 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     expect(showError).toHaveBeenCalledTimes(1);
     expect(showError).not.toHaveBeenCalledWith("You're not in that room.");
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('pages the event in before revealing it, since a cold start loads only the newest messages', () => {
+    const routing = build();
+    sync([joined], 'SYNCING' as SyncState);
+    const loaded = new Subject<boolean>();
+    loadEvent.mockReturnValue(loaded);
+
+    routing.openLinkedRoom(joined.id, '$old', 'deep-link');
+
+    expect(loadEvent).toHaveBeenCalledWith('$old');
+    expect(transition).not.toHaveBeenCalled();
+    loaded.next(true);
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'reveal-message',
+      eventId: '$old',
+    });
+  });
+
+  it('says so when the linked event cannot be loaded', () => {
+    const routing = build();
+    sync([joined], 'SYNCING' as SyncState);
+    loadEvent.mockReturnValue(of(false));
+
+    routing.openLinkedRoom(joined.id, '$gone', 'deep-link');
+
+    expect(transition).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledExactlyOnceWith(
+      'Could not load that message.',
+    );
   });
 });

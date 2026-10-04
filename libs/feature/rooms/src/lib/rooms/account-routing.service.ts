@@ -11,6 +11,7 @@ import {
   WorkspaceNavigationService,
   type WorkspaceRoomNavigationOrigin,
 } from '@trinity/application/workspace';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   ROOM_READINESS_TIMEOUT_MS,
@@ -47,6 +48,7 @@ export class AccountRoutingService {
   private readonly selected = inject(SelectedRoomLibraryService);
   private readonly matrix = inject(MatrixClientService);
   private readonly injector = inject(Injector);
+  private readonly conversations = inject(ConversationRuntime);
   private readonly destroyRef = inject(DestroyRef);
   private readonly firstSyncDone = computed(() => {
     // String compare: components and features never import the SDK's SyncState enum.
@@ -180,16 +182,30 @@ export class AccountRoutingService {
       this.openRoom(
         { roomId, accountId: room.accountId },
         origin,
-        eventId
-          ? () =>
-              this.roomSurfaces.transition({ kind: 'reveal-message', eventId })
-          : undefined,
+        eventId ? () => this.revealLoadedEvent(eventId) : undefined,
       );
       return;
     }
     if (eventId) {
-      this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
+      this.revealLoadedEvent(eventId);
     }
+  }
+
+  /**
+   * Reveal an event of the focused room. The list scrolls by DOM lookup, and a cold start
+   * loads only the newest messages, so an older linked event is paged in first.
+   */
+  private revealLoadedEvent(eventId: string): void {
+    this.conversations.timeline
+      .loadEvent(eventId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((loaded) => {
+        if (loaded) {
+          this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
+        } else {
+          void this.status.showError('Could not load that message.');
+        }
+      });
   }
 
   /**
