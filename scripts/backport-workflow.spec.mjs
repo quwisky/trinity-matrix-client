@@ -26,7 +26,7 @@ describe('Backport workflow', () => {
   });
 
   it('holds the release App key and checks out main only', () => {
-    expect(job.environment).toBe('release');
+    expect(job.environment).toBe('release-app');
     const token = job.steps.find((step) => step.id === 'app-token');
     expect(token.with['client-id']).toBe('${{ vars.RELEASE_APP_CLIENT_ID }}');
     expect(token.with['private-key']).toBe(
@@ -46,6 +46,15 @@ describe('Backport workflow', () => {
     expect(script.run).toContain('--title="$TITLE"');
     expect(script.env.TITLE).toBe('${{ github.event.pull_request.title }}');
     expect(script.env.LABELS).toContain('pull_request.labels');
+  });
+
+  it('processes only the label just added on a labeled event', () => {
+    const script =
+      job.steps[at((step) => step.run?.includes('scripts/backport.mjs'))];
+    expect(script.env.LABEL).toBe('${{ github.event.label.name }}');
+    expect(script.env.ACTION).toBe('${{ github.event.action }}');
+    expect(script.run).toContain('[ "$ACTION" = labeled ]');
+    expect(script.run).toContain('--only="$LABEL"');
   });
 
   it('sets up node before running the script', () => {

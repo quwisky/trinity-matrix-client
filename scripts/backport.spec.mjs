@@ -8,8 +8,10 @@ import {
   cherryPickArgs,
   cherryPickOnto,
   parentCount,
+  pickNotice,
   pickPlan,
   planBackport,
+  selectTargets,
 } from './backport.mjs';
 
 describe('backport', () => {
@@ -83,6 +85,14 @@ describe('pickPlan', () => {
       pickPlan({ ...base, prHeadlines: ['a', 'b'], mainSubjects: ['a', 'b'] }),
     ).toEqual({ kind: 'range', args: ['cherry-pick', '-x', 'abc~2..abc'] });
   });
+  it('matches full subjects longer than GitHub truncates headlines', () => {
+    const long = `fix(release): ${'keep the whole subject line '.repeat(3)}intact`;
+    expect(long.length).toBeGreaterThan(72);
+    expect(
+      pickPlan({ ...base, prHeadlines: [long, 'b'], mainSubjects: [long, 'b'] })
+        .kind,
+    ).toBe('range');
+  });
   it('picks a squash commit alone', () => {
     expect(
       pickPlan({ ...base, prHeadlines: ['a', 'b'], mainSubjects: ['x', 'b'] }),
@@ -105,6 +115,43 @@ describe('pickPlan', () => {
       kind: 'single',
       args: ['cherry-pick', '-x', '-m', '1', 'abc'],
     });
+  });
+});
+
+describe('pickNotice', () => {
+  const single = { kind: 'single', args: [] };
+  it('notes a multi-commit PR picked as one non-merge commit', () => {
+    expect(
+      pickNotice({ plan: single, parents: 1, prHeadlines: ['a', 'b'] }),
+    ).toMatch(/^::notice::/);
+  });
+  it('stays quiet for ranges, merge commits and one-commit PRs', () => {
+    expect(
+      pickNotice({
+        plan: { kind: 'range', args: [] },
+        parents: 1,
+        prHeadlines: ['a', 'b'],
+      }),
+    ).toBeNull();
+    expect(
+      pickNotice({ plan: single, parents: 2, prHeadlines: ['a', 'b'] }),
+    ).toBeNull();
+    expect(
+      pickNotice({ plan: single, parents: 1, prHeadlines: ['a'] }),
+    ).toBeNull();
+  });
+});
+
+describe('selectTargets', () => {
+  const labels = ['backport release/0.1.x', 'backport release/0.2.x', 'bug'];
+  it('takes every backport label when the PR closes', () => {
+    expect(selectTargets(labels)).toEqual(['release/0.1.x', 'release/0.2.x']);
+  });
+  it('takes only the label just added', () => {
+    expect(selectTargets(labels, 'backport release/0.2.x')).toEqual([
+      'release/0.2.x',
+    ]);
+    expect(selectTargets(labels, 'bug')).toEqual([]);
   });
 });
 

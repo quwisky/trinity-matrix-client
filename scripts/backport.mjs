@@ -11,6 +11,10 @@ export const backportTargets = (labels) => [
   ...new Set(labels.map((label) => LABEL.exec(label)?.[1]).filter(Boolean)),
 ];
 
+/** On a `labeled` event only the label just added is processed; `closed` takes them all. */
+export const selectTargets = (labels, only) =>
+  backportTargets(only === undefined ? labels : [only]);
+
 export const backportBranch = (pr, target) =>
   `backport/${pr}-${target.replace('/', '-')}`;
 
@@ -59,6 +63,12 @@ export function pickPlan({ sha, parents, prHeadlines, mainSubjects }) {
   }
   return { kind: 'single', args: cherryPickArgs(sha, parents) };
 }
+
+/** Diagnostics only: a squash merge is expected to land as one commit. */
+export const pickNotice = ({ plan, parents, prHeadlines }) =>
+  plan.kind === 'single' && parents === 1 && prHeadlines.length > 1
+    ? `::notice::PR has ${prHeadlines.length} commits but main has one for it (squash merge, or the rebase was not detected); cherry-picking that single commit.`
+    : null;
 
 export function planPick({ sha, prHeadlines = [], cwd = process.cwd() }) {
   const n = prHeadlines.length;
@@ -181,22 +191,28 @@ if (import.meta.main) {
       title: { type: 'string' },
       sha: { type: 'string' },
       'labels-json': { type: 'string' },
+      only: { type: 'string' },
     },
   });
-  const { pr, title, sha } = values;
+  const { pr, title, sha, only } = values;
+  // Full first lines: `gh pr view`'s messageHeadline truncates long subjects with "…".
   const prHeadlines = run('gh', [
-    'pr',
-    'view',
-    pr,
-    '--json',
-    'commits',
-    '-q',
-    '.commits[].messageHeadline',
+    'api',
+    '--paginate',
+    `repos/{owner}/{repo}/pulls/${pr}/commits`,
+    '--jq',
+    '.[].commit.message | split("\\n")[0]',
   ])
     .split('\n')
     .filter(Boolean);
+  const notice = pickNotice({
+    plan: planPick({ sha, prHeadlines }),
+    parents: parentCount(sha),
+    prHeadlines,
+  });
+  if (notice) console.log(notice);
   const failed = [];
-  for (const target of backportTargets(JSON.parse(values['labels-json']))) {
+  for (const target of selectTargets(JSON.parse(values['labels-json']), only)) {
     const result = backportOne({ pr, title, sha, target, prHeadlines });
     const detail = result.url ?? result.reason ?? '';
     console.log(`${target}: ${result.status} ${detail}`.trimEnd());
