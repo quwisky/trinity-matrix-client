@@ -52,6 +52,7 @@ function teardownRuntime() {
 
 export async function stop({ keepData = false, signal } = {}) {
   const failures = [];
+  let nativeFailed = false;
   // Whatever the selection, native processes named in a PID file are this harness's.
   try {
     await stopNativeServices(
@@ -62,6 +63,7 @@ export async function stop({ keepData = false, signal } = {}) {
   } catch (err) {
     log(`native stop failed: ${err.message ?? err}`);
     failures.push(err);
+    nativeFailed = true;
   }
   if (teardownRuntime() === 'docker') {
     try {
@@ -91,7 +93,9 @@ export async function stop({ keepData = false, signal } = {}) {
       failures.push(err);
     }
   }
-  if (!keepData) {
+  // ./data holds the PID file: keep it while a native stop failed, so the processes it
+  // names stay tracked (and the lease keeps refusing) instead of silently orphaned.
+  if (!keepData && !nativeFailed) {
     try {
       await Promise.all([
         rm(DATA, { recursive: true, force: true }),
