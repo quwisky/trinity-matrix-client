@@ -53,25 +53,39 @@ describe('Release stable workflow', () => {
   it('stops after the checks on a dry run', () => {
     for (const name of [
       'Mint the App token',
+      'Check out the prerelease',
+      'Pin the stable version',
       'Create the release branch',
-      'Open the stable release PR',
     ]) {
       expect(job.steps[index(name)].if).toBe('${{ !inputs.dry_run }}');
     }
   });
 
-  it('pushes and opens the PR with the App token and an exact version', () => {
+  it('creates the branch in one push whose commit pins the stable version', () => {
     const token = job.steps[index('Mint the App token')];
     expect(token.uses).toBe(
       'actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1',
     );
-    const pr = job.steps[index('Open the stable release PR')].run;
-    expect(pr).toContain('release-please@17.11.2 release-pr');
-    expect(pr).toContain('--release-as "$VERSION"');
-    expect(pr).toContain('--path .');
-    expect(pr).toContain('--target-branch "$BRANCH"');
-    expect(pr).toContain('--config-file release-please-config.json');
-    expect(pr).toContain('--manifest-file .release-please-manifest.json');
-    expect(source).not.toMatch(/--force\b|push -f/);
+    const checkout = job.steps[index('Check out the prerelease')];
+    expect(checkout.uses).toBe(
+      'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+    );
+    expect(checkout.with).toMatchObject({
+      ref: '${{ steps.from.outputs.sha }}',
+      token: '${{ steps.app-token.outputs.token }}',
+    });
+    const pin = job.steps[index('Pin the stable version')].run;
+    expect(pin).toContain('.packages["."]["release-as"] = $version');
+    expect(pin).toContain('release-please-config.json');
+    expect(pin).toContain('trinity-release[bot]');
+    expect(pin).toContain('chore(release): release v$VERSION from this branch');
+    const push = job.steps[index('Create the release branch')].run;
+    expect(push).toContain('git push origin "HEAD:refs/heads/$BRANCH"');
+    expect(index('Pin the stable version')).toBeLessThan(
+      index('Create the release branch'),
+    );
+    // release.yml opens the stable release PR from the push; no CLI call may race it.
+    expect(source).not.toContain('release-please@');
+    expect(source).not.toMatch(/--force\b|push -f|\+HEAD:/);
   });
 });

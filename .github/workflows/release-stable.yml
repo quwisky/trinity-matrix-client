@@ -1,7 +1,8 @@
 name: Release stable
 
-# Cuts a stable line: creates release/X.Y at a tested, published vX.Y.Z-next.N prerelease
-# and opens its first stable release PR with version X.Y.Z. Merging that PR tags vX.Y.Z on
+# Cuts a stable line: creates release/X.Y at a tested, published vX.Y.Z-next.N prerelease,
+# plus one commit that pins release-as X.Y.Z. That push runs release.yml on the branch,
+# which opens the first stable release PR with version X.Y.Z. Merging that PR tags vX.Y.Z on
 # the branch (release.yml), packages the draft and opens the back-merge PR into main.
 # Later fixes land on release/X.Y through PRs and release as X.Y.Z+1 patch releases.
 on:
@@ -124,24 +125,33 @@ jobs:
           client-id: ${{ vars.RENOVATE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
 
+      - name: Check out the prerelease
+        if: ${{ !inputs.dry_run }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.from.outputs.sha }}
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 1
+
+      # The branch's first push already carries release-as: release.yml runs release-please on
+      # every push to the branch, and without the pin it would open (or rewrite) the release
+      # PR as a patch of the last stable. release.yml drops the pin once vX.Y.Z is tagged.
+      - name: Pin the stable version
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.from.outputs.version }}
+        run: |
+          jq --indent 2 --arg version "$VERSION" '.packages["."]["release-as"] = $version' \
+            release-please-config.json > "$RUNNER_TEMP/release-please-config.json"
+          mv "$RUNNER_TEMP/release-please-config.json" release-please-config.json
+          git config user.name 'trinity-release[bot]'
+          git config user.email 'trinity-release[bot]@users.noreply.github.com'
+          git commit --quiet -m "chore(release): release v$VERSION from this branch" -- release-please-config.json
+
+      # A plain push of a new ref: it fails rather than overwrite a branch created meanwhile.
+      # The push runs release.yml on the branch, which opens the stable release PR.
       - name: Create the release branch
         if: ${{ !inputs.dry_run }}
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ${{ steps.from.outputs.branch }}
-          SHA: ${{ steps.from.outputs.sha }}
-        run: gh api "repos/$GH_REPO/git/refs" -f "ref=refs/heads/$BRANCH" -f "sha=$SHA"
-
-      - name: Open the stable release PR
-        if: ${{ !inputs.dry_run }}
-        env:
-          TOKEN: ${{ steps.app-token.outputs.token }}
-          BRANCH: ${{ steps.from.outputs.branch }}
-          VERSION: ${{ steps.from.outputs.version }}
-        run: |
-          npx --yes release-please@17.11.2 release-pr \
-            --token "$TOKEN" --repo-url "$GH_REPO" \
-            --target-branch "$BRANCH" \
-            --config-file release-please-config.json \
-            --manifest-file .release-please-manifest.json \
-            --path . --release-as "$VERSION"
+        run: git push origin "HEAD:refs/heads/$BRANCH"

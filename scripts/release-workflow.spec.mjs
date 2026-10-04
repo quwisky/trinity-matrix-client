@@ -117,6 +117,33 @@ describe('release branches', () => {
       expect(run.env.GH_TOKEN).toBe('\${{ steps.app-token.outputs.token }}');
     });
 
+    it('drops the one-time release-as on the release branch before back-merging', () => {
+      const steps = job().steps;
+      const checkout = steps.find((s) =>
+        s.uses?.startsWith('actions/checkout@'),
+      );
+      expect(checkout.with).toMatchObject({
+        ref: '\${{ github.ref_name }}',
+        'fetch-depth': 0,
+        token: '\${{ steps.app-token.outputs.token }}',
+      });
+      const drop = steps.findIndex(
+        (s) => s.name === 'Drop the one-time release-as',
+      );
+      const run = steps.findIndex((s) => s.run?.includes('back-merge.mjs'));
+      expect(drop).toBeGreaterThanOrEqual(0);
+      expect(drop).toBeLessThan(run);
+      const script = steps[drop].run;
+      expect(script).toContain('del(.packages["."]["release-as"])');
+      expect(script).toContain(
+        'chore(release): drop the one-time release-as after $TAG',
+      );
+      expect(script.match(/git push[^\n]*/g)).toEqual([
+        'git push origin "HEAD:refs/heads/$BRANCH"',
+      ]);
+      expect(steps[drop].env.BRANCH).toBe('\${{ github.ref_name }}');
+    });
+
     it('sets up Node before running the script', () => {
       const steps = job().steps;
       const node = steps.findIndex((s) =>
