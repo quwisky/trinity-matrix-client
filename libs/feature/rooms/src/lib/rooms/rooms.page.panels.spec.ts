@@ -637,6 +637,25 @@ describe('RoomsPage panels, pins and media', () => {
     expect(shell.surfaces.renderedSurface()).toBeNull();
   });
 
+  it('does not jump, and says so, when the picked message cannot be paged in', async () => {
+    const shell = build();
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+    vi.mocked(TestBed.inject(RoomsTimelineStub).loadEvent).mockReturnValue(
+      of(false),
+    );
+
+    shell.messages.openPinnedPanel();
+    shell.messages.onPanelJump('$old:hs');
+    flushPanelJump();
+
+    expect(shell.surfaces.jumpTarget()).toBeNull();
+    expect(toastShow).toHaveBeenCalledWith(
+      'Could not load that message.',
+      expect.objectContaining({ variant: 'danger' }),
+    );
+  });
+
   it('jumpToDate scrolls to the event the date resolved to', async () => {
     const shell = build();
     setRouteRoom('!a:hs'); // jumpToDate is a no-op with no room open

@@ -53,6 +53,7 @@ function timeline(
     roomEncrypted: false,
     loadOlder: () => of(void 0),
     jumpToDate: () => of({ kind: 'no-event' }),
+    loadEvent: () => of(true),
     setTyping: vi.fn(),
     rawEvent: () => null,
     reactionDetails: () => [],
