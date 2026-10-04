@@ -17,7 +17,7 @@ public developer guide.
 | [`release.yml`](../../.github/workflows/release.yml)               | A push to `main` or `release/**`, or a manual dispatch with a tag input | release-please release PRs and tags, then tag verification, desktop packages, a draft GitHub release, and the back-merge PR after a stable tag |
 | [`homebrew.yml`](../../.github/workflows/homebrew.yml)             | A release is published, or a manual dispatch with a tag input           | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                                                             |
 | [`renovate.yml`](../../.github/workflows/renovate.yml)             | Daily at 00:00 UTC or a manual dispatch                                 | Dependency update maintenance through a GitHub App token                                                                                       |
-| [`release-stable.yml`](../../.github/workflows/release-stable.yml) | A manual dispatch with `from` and `dry_run` inputs                      | Creates `release/X.Y` at a published prerelease and opens its stable release PR, through a GitHub App token                                    |
+| [`release-stable.yml`](../../.github/workflows/release-stable.yml) | A manual dispatch with `from` and `dry_run` inputs                      | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                  |
 
 The branch workflow accepts pushes to `main`, `release/**`, and
 `renovate/patch-**`; pull requests are its usual review path. A newer run for
@@ -171,13 +171,13 @@ before that, self-hosters use `next`.
 ## Releases
 
 `main` is the only integration branch. Prereleases are cut from it; a stable line lives on
-a `release/X.Y` branch cut from a tested prerelease. Both are managed by release-please
+a `release/X.Y.x` branch cut from a tested prerelease. Both are managed by release-please
 through [`release.yml`](../../.github/workflows/release.yml):
 
-| Line       | Branch        | Versions                | Config / manifest                                                        | Notes                                                  |
-| ---------- | ------------- | ----------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------ |
-| Prerelease | `main`        | `X.Y.Z-next.N`          | `release-please-config.next.json` / `.release-please-manifest.next.json` | GitHub release only (prerelease)                       |
-| Stable     | `release/X.Y` | `X.Y.Z`, then `X.Y.Z+1` | `release-please-config.json` / `.release-please-manifest.json`           | GitHub release and `CHANGELOG.md`; patch releases only |
+| Line       | Branch          | Versions                | Config / manifest                                                        | Notes                                                  |
+| ---------- | --------------- | ----------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------ |
+| Prerelease | `main`          | `X.Y.Z-next.N`          | `release-please-config.next.json` / `.release-please-manifest.next.json` | GitHub release only (prerelease)                       |
+| Stable     | `release/X.Y.x` | `X.Y.Z`, then `X.Y.Z+1` | `release-please-config.json` / `.release-please-manifest.json`           | GitHub release and `CHANGELOG.md`; patch releases only |
 
 On every push to either kind of branch, release-please updates that branch's release PR
 from the Conventional Commits since the last release. Release PRs on both lines are titled
@@ -201,7 +201,7 @@ to cut the same version twice.
    `Release stable` workflow (Actions tab, manual dispatch) with `from` set to that tag
    (empty means the newest published prerelease) and `dry_run` enabled. It runs the checks
    and prints the branch, version and commit it would use, and pushes nothing.
-2. Run it again with `dry_run` disabled. It pushes `release/X.Y` as the prerelease's
+2. Run it again with `dry_run` disabled. It pushes `release/X.Y.x` as the prerelease's
    commit plus one commit, `chore(release): release vX.Y.Z from this branch`, that sets
    `"release-as": "X.Y.Z"` for the root package in `release-please-config.json`. That push
    runs `release.yml` on the branch, whose release-please run opens the stable release PR
@@ -212,7 +212,7 @@ to cut the same version twice.
 3. Review the stable release PR (version and `CHANGELOG.md` entry) and merge it. The tag,
    draft release and packages follow. Publish the draft.
 4. Once `vX.Y.Z` is tagged, the `Open the back-merge PR` job pushes
-   `chore(release): drop the one-time release-as after vX.Y.Z` to `release/X.Y`, so later
+   `chore(release): drop the one-time release-as after vX.Y.Z` to `release/X.Y.x`, so later
    fixes release as patches, then opens the back-merge PR. Merge it (see below).
 
 Prerequisites for a cut:
@@ -220,14 +220,14 @@ Prerequisites for a cut:
 - The prerelease must be cut after the release-branch workflows landed on `main` (the
   workflow refuses older ones), and its minor line must not have a release branch yet. In
   practice the first cut is a `0.2.0-next.N` prerelease after a `feat`; `0.1.x` fixes go
-  through `release/0.1` (see [Migrating from develop](#migrating-from-develop)). A dry run
+  through `release/0.1.x` (see [Migrating from develop](#migrating-from-develop)). A dry run
   before such a prerelease exists is expected to refuse.
 - Merge the previous line's back-merge PR first. The new branch's changelog starts from
   the last stable tag, which release-please finds only when that tag is in the branch's
   history.
 
 The workflow refuses, and creates nothing, when `from` is not a published prerelease on
-`main`'s history, when `release/X.Y` already exists (land fixes on it; its next stable
+`main`'s history, when `release/X.Y.x` already exists (land fixes on it; its next stable
 release is a patch release), or when a `vX.Y.Z` tag exists. It also refuses a prerelease
 whose commit predates `release-stable.yml`, because a release branch inherits the
 workflows of the commit it is cut from: cut a new prerelease from `main` first.
@@ -241,14 +241,14 @@ Pushing the branch is the workflow's last step; a failure before it creates noth
 rerun it. Once the branch exists, rerunning is refused, and the branch already carries the
 `release-as` commit. If no stable release PR appears on it, read the `Release PR and tag`
 job of the `release.yml` run for that push and re-run it. If that run is gone, merge any
-pull request into `release/X.Y` (an empty commit is enough) to trigger a new one. Never
+pull request into `release/X.Y.x` (an empty commit is enough) to trigger a new one. Never
 force-push.
 
 ### Release a fix
 
-1. Open a pull request into `release/X.Y` with the fix. Also open the same fix against
+1. Open a pull request into `release/X.Y.x` with the fix. Also open the same fix against
    `main`, or let the back-merge carry it there.
-2. release-please opens a release PR on `release/X.Y` for `X.Y.Z+1`. Merge it, then
+2. release-please opens a release PR on `release/X.Y.x` for `X.Y.Z+1`. Merge it, then
    publish the draft.
 3. Merge the back-merge PR.
 
@@ -289,7 +289,7 @@ git add -A && git commit --no-edit
 git push -u origin back-merge/vX.Y.Z
 gh pr create --base main --head back-merge/vX.Y.Z \
   --title "chore: back-merge vX.Y.Z into main" \
-  --body "Merges release/X.Y at vX.Y.Z back into main; conflicts resolved by hand."
+  --body "Merges release/X.Y.x at vX.Y.Z back into main; conflicts resolved by hand."
 ```
 
 Push through a pull request and merge it with a merge commit; never force-push.
@@ -306,7 +306,7 @@ run release-please.
 
 1. Close the open release-please PRs on `develop` and `main` and delete their
    `release-please--*` branches.
-2. In Settings → Branches, rename `main` to `release/0.1`, then `develop` to `main`.
+2. In Settings → Branches, rename `main` to `release/0.1.x`, then `develop` to `main`.
    GitHub retargets open pull requests and keeps `main` as the default branch.
 3. Back-merge `v0.1.1` into the new `main` before any other pull request merges into it. `develop`
    never received the old `main` → `develop` back-merge, so without it `main`'s next
@@ -315,7 +315,7 @@ run release-please.
 
    ```bash
    git fetch origin --tags
-   node scripts/back-merge.mjs --tag v0.1.1 --branch release/0.1
+   node scripts/back-merge.mjs --tag v0.1.1 --branch release/0.1.x
    ```
 
    Review the PR it opens and merge it with a merge commit.
@@ -336,12 +336,12 @@ run release-please.
    git remote set-head origin -a
    ```
 
-7. Before a fix release on 0.1: the renamed `release/0.1` still has the old workflows.
+7. Before a fix release on 0.1: the renamed `release/0.1.x` still has the old workflows.
    Port `release.yml`, `release-please-config.json` (with
-   `"versioning": "always-bump-patch"`) and `scripts/back-merge.mjs` to `release/0.1` through a pull
+   `"versioning": "always-bump-patch"`) and `scripts/back-merge.mjs` to `release/0.1.x` through a pull
    request first.
 8. Verify with a `dry_run` of `Release stable`, then the first real cut, and the first fix
-   on `release/0.1`, each followed by its back-merge PR.
+   on `release/0.1.x`, each followed by its back-merge PR.
 
 ### First release
 

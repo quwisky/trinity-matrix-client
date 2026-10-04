@@ -1,10 +1,10 @@
 name: Release
 
 # release-please runs on every push to main (prerelease line: vX.Y.Z-next.N) and to each
-# release/X.Y branch (stable line: vX.Y.Z and its patch releases). It keeps one release PR
+# release/X.Y.x branch (stable line: vX.Y.Z and its patch releases). It keeps one release PR
 # open per branch; merging that PR makes release-please tag the merge commit and create a
 # DRAFT GitHub release, and the jobs below package the desktop installers into that draft
-# in the same run. A stable tag also opens the back-merge PR from release/X.Y into main.
+# in the same run. A stable tag also opens the back-merge PR from release/X.Y.x into main.
 #
 # Tags created with GITHUB_TOKEN never trigger other workflows, which is why packaging
 # lives here instead of behind a tag trigger.

@@ -1,10 +1,10 @@
 name: Release stable
 
-# Cuts a stable line: creates release/X.Y at a tested, published vX.Y.Z-next.N prerelease,
+# Cuts a stable line: creates release/X.Y.x at a tested, published vX.Y.Z-next.N prerelease,
 # plus one commit that pins release-as X.Y.Z. That push runs release.yml on the branch,
 # which opens the first stable release PR with version X.Y.Z. Merging that PR tags vX.Y.Z on
 # the branch (release.yml), packages the draft and opens the back-merge PR into main.
-# Later fixes land on release/X.Y through PRs and release as X.Y.Z+1 patch releases.
+# Later fixes land on release/X.Y.x through PRs and release as X.Y.Z+1 patch releases.
 on:
   workflow_dispatch:
     inputs:
@@ -74,7 +74,7 @@ jobs:
           {
             echo "tag=$FROM"
             echo "version=$major.$minor.$patch"
-            echo "branch=release/$major.$minor"
+            echo "branch=release/$major.$minor.x"
             echo "sha=$sha"
           } >> "$GITHUB_OUTPUT"
 

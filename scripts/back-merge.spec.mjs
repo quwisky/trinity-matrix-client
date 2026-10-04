@@ -54,7 +54,7 @@ function conflictedRepo({ extraConflict = false } = {}) {
     'src/other.ts': 'export const a = 0;\n',
   });
   commit('base');
-  git('switch', '-qc', 'release/0.1');
+  git('switch', '-qc', 'release/0.1.x');
   write({
     [PAGE]: page('0.1.2', 'footer'),
     'package.json': pkg('0.1.2', '1.0.1'),
@@ -79,7 +79,7 @@ function conflictedRepo({ extraConflict = false } = {}) {
       'merge',
       '--no-ff',
       '--no-commit',
-      'release/0.1',
+      'release/0.1.x',
     );
   } catch {
     // The version files conflict by design.
@@ -223,7 +223,7 @@ describe('back-merge', () => {
       };
       write(base);
       sh('commit', '-qm', 'base');
-      sh('switch', '-qc', 'release/0.1');
+      sh('switch', '-qc', 'release/0.1.x');
       write(release.files);
       for (const path of release.remove ?? []) sh('rm', '-q', path);
       sh('commit', '-qm', 'release');

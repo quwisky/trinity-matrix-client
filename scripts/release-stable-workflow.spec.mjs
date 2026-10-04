@@ -39,6 +39,7 @@ describe('Release stable workflow', () => {
     );
     expect(resolveRun).toContain('predates the release-branch workflows');
     expect(resolveRun).toContain('compare/$FROM...main');
+    expect(resolveRun).toContain('echo "branch=release/$major.$minor.x"');
     expect(index('Resolve the prerelease')).toBeLessThan(
       index('Create the release branch'),
     );
