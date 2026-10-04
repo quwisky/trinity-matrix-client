@@ -124,8 +124,8 @@ export class MessageToolbarComponent {
    * pointer, which is deliberate: the menu keeps one predictable position however it was
    * summoned, and on touch it does not land under the finger that opened it.
    */
-  openMoreMenu(): void {
-    this.moreTrigger()?.open();
+  openMoreMenu(options: { focusFirstItem?: boolean } = {}): void {
+    this.moreTrigger()?.open(options);
   }
 
   /**

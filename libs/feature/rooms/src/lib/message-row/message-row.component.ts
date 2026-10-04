@@ -246,15 +246,17 @@ export class MessageRowComponent {
       return; // read-only rows and system events have no actions to offer
     }
     event.preventDefault();
+    // Shift+F10 or the context-menu key: focus goes into the menu so arrows and Escape work.
+    const options = { focusFirstItem: event instanceof KeyboardEvent };
     const bar = this.toolbar();
     if (bar) {
-      bar.openMoreMenu();
+      bar.openMoreMenu(options);
       return;
     }
-    // Not mounted yet (a keyboard or programmatic context menu with no hover first): mount
-    // it, then open the menu once it exists.
+    // Not mounted yet (a context menu with no hover or focus first): mount it, then open
+    // the menu once it exists.
     this.toolbarActive.set(true);
-    afterNextRender(() => this.toolbar()?.openMoreMenu(), {
+    afterNextRender(() => this.toolbar()?.openMoreMenu(options), {
       injector: this.injector,
     });
   }

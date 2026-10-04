@@ -822,6 +822,8 @@ describe('MessageRowComponent', () => {
 
       expect(event.defaultPrevented).toBe(true);
       expect(menuOpen()).toBe(true);
+      // Keyboard users land in the menu, so arrows and Escape work straight away.
+      expect(document.activeElement?.closest('[role=menu]')).not.toBeNull();
     });
   });
 

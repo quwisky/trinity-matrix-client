@@ -89,6 +89,10 @@ test.describe('Message actions from the keyboard', () => {
       });
     const last = rowFor(SEED - 1);
     const previous = rowFor(SEED - 2);
+    // A key press first, as a keyboard user's would be: Chromium shows `:focus-visible` for
+    // programmatic focus only after keyboard input, not after the mouse click that opened
+    // the room.
+    await page.keyboard.press('Shift');
     await last.focus();
     await expect(last).toBeFocused();
     await expect(last.locator('.msg__toolbar')).toHaveCSS('opacity', '1');
@@ -118,7 +122,9 @@ test.describe('Message actions from the keyboard', () => {
     );
 
     // Shift+F10 on a focused message opens its action menu.
-    await rowFor(SEED - 3).focus();
+    const menuRow = rowFor(SEED - 3);
+    await menuRow.focus();
+    await expect(menuRow).toBeFocused();
     await page.keyboard.press('Shift+F10');
     await expect(page.getByTestId('msg-copy')).toBeVisible();
     await page.keyboard.press('Escape');
