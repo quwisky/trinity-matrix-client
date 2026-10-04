@@ -43,6 +43,7 @@ jobs:
         run: |
           { sw_vers; xcodebuild -version; xcrun --sdk iphonesimulator --show-sdk-version; xcrun simctl list runtimes; python3 --version; } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Install pinned Caddy
+        shell: bash
         run: |
           dir="$HOME/.cache/trinity-caddy/$CADDY_VERSION"
           if [ ! -x "$dir/caddy" ]; then
@@ -65,7 +66,7 @@ jobs:
           TRINITY_MOBILE_SPECS: ${{ inputs.specs || './specs/smoke.e2e.mts' }}
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
-          node scripts/ci-run-command.mjs --timeout-ms 4800000 -- pnpm e2e:mobile:ios
+          node scripts/ci-run-command.mjs --timeout-ms 3900000 -- pnpm e2e:mobile:ios
       # Also covers dist/.ci (full run stdout) and a run killed before its own cleanup.
       - name: Scrub identifiers from mobile artifacts
         id: mobile-scrub
