@@ -131,6 +131,29 @@ async function generateWithDocker(ctx) {
   );
 }
 
+/** Synapse's sample-config recommendation; Synapse itself ships no default list. */
+const NATIVE_URL_PREVIEW_BLACKLIST = [
+  '127.0.0.0/8',
+  '10.0.0.0/8',
+  '172.16.0.0/12',
+  '192.168.0.0/16',
+  '100.64.0.0/10',
+  '192.0.0.0/24',
+  '169.254.0.0/16',
+  '192.88.99.0/24',
+  '198.18.0.0/15',
+  '192.0.2.0/24',
+  '198.51.100.0/24',
+  '203.0.113.0/24',
+  '224.0.0.0/4',
+  '::1/128',
+  'fe80::/10',
+  'fc00::/7',
+  '2001:db8::/32',
+  'ff00::/8',
+  'fec0::/10',
+];
+
 /**
  * Generate homeserver.yaml on first run, then patch in the e2e settings.
  *
@@ -190,9 +213,15 @@ export async function ensureConfig(ctx) {
       // fetch the harness OG page (http://caddy:8080/og) on the private docker network
       // — safe here because this homeserver is disposable and network-isolated. The
       // native runtime (sso: false) serves no OG page and shares the host's network,
-      // so it keeps Synapse's default blocklist.
+      // so it lists Synapse's recommended private and reserved ranges: Synapse has no
+      // default blocklist and refuses to start with previews enabled and none given.
       'url_preview_enabled: true',
-      ...(ctx.sso === false ? [] : ['url_preview_ip_range_blacklist: []']),
+      ...(ctx.sso === false
+        ? [
+            'url_preview_ip_range_blacklist:',
+            ...NATIVE_URL_PREVIEW_BLACKLIST.map((range) => `  - '${range}'`),
+          ]
+        : ['url_preview_ip_range_blacklist: []']),
       // Permissive CORS isn't a Synapse config knob; matrix endpoints already send
       // Access-Control-Allow-Origin: *. Listed here only as a reminder.
     );

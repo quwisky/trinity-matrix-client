@@ -214,7 +214,12 @@ describe('Synapse adapter config generation', () => {
     );
     expect(yaml).toContain('public_baseurl: "https://localhost:8448/"');
     expect(yaml).toContain('url_preview_enabled: true');
-    expect(yaml).not.toContain('url_preview_ip_range_blacklist');
+    // Synapse refuses to start with previews enabled and no explicit blocklist.
+    const block = yaml.match(
+      /url_preview_ip_range_blacklist:\n((?:\s+- .*\n?)+)/,
+    );
+    expect(block?.[1]).toContain('127.0.0.0/8');
+    expect(block?.[1]).toContain('::1/128');
     expect(yaml).not.toContain('trinity-e2e-oidc');
     expect(yaml).not.toContain('oidc_providers');
   });
