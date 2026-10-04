@@ -1,6 +1,7 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
+import { TrustService, type TrustStatus } from '@trinity/data-access/trust';
 import { BUILD_INFO } from '@trinity/platform-native';
 import type { CapabilityRecovery } from '@trinity/runtime/projection';
 import { firstValueFrom, of, toArray } from 'rxjs';
@@ -18,13 +19,16 @@ describe('CapabilityStatusService', () => {
   let health: CapabilityHealthService;
   let status: CapabilityStatusService;
   let runtimeState: WritableSignal<ApplicationRuntimeState>;
+  let trust: WritableSignal<TrustStatus>;
 
   beforeEach(() => {
     runtimeState = signal({ phase: 'ready', attempt: 7, settlements: [] });
+    trust = signal<TrustStatus>('ready');
     TestBed.configureTestingModule({
       providers: [
         CapabilityHealthService,
         CapabilityStatusService,
+        { provide: TrustService, useValue: { status: trust } },
         {
           provide: ApplicationRuntimeService,
           useValue: {
@@ -292,6 +296,64 @@ describe('CapabilityStatusService', () => {
       () => of({ kind: 'success' as const }),
     );
     expect(status.recoveryAnnouncement()).toBe('Accounts recovered.');
+  });
+
+  describe('global banner slot', () => {
+    it('is empty when nothing is limited and encryption needs nothing', () => {
+      expect(status.bannerSlot()).toBeNull();
+      expect(status.bannerMessage()).toBe('');
+    });
+
+    it('offers the encryption prompt when it is the only thing to say', () => {
+      trust.set('needs-setup');
+      expect(status.bannerSlot()).toBe('encryption');
+      trust.set('needs-recovery');
+      expect(status.bannerSlot()).toBe('encryption');
+    });
+
+    it('lets the encryption prompt outrank a limited capability but not a blocking one', () => {
+      report('@a:hs', 'accounts', 'restore');
+      expect(status.bannerSlot()).toBe('status');
+
+      trust.set('needs-setup');
+      expect(status.bannerSlot()).toBe('encryption');
+
+      health.report(
+        {
+          capability: 'host',
+          operation: 'contract',
+          context: Symbol('host'),
+          generation: 1,
+          demanded: true,
+          preparation: 'failed',
+          ownership: 'retained',
+          condition: 'blocked',
+          code: 'host-contract-unavailable',
+        },
+        () => of({ kind: 'success' as const }),
+      );
+      expect(status.hasBlocking()).toBe(true);
+      expect(status.bannerSlot()).toBe('status');
+    });
+
+    it('names the limited capability instead of counting it', () => {
+      report('@a:hs', 'accounts', 'restore');
+      expect(status.bannerMessage()).toBe(
+        'A background Account needs attention.',
+      );
+
+      report('@a:hs', 'room-library', 'hydrate-order');
+      expect(status.bannerMessage()).toBe('Limited: Accounts and Rooms.');
+    });
+
+    it('abbreviates three or more capabilities', () => {
+      report('@a:hs', 'accounts', 'restore');
+      report('@a:hs', 'room-library', 'hydrate-order');
+      report('@a:hs', 'identity', 'presence');
+      expect(status.bannerMessage()).toBe(
+        'Limited: Accounts, Rooms and 1 more.',
+      );
+    });
   });
 
   function report(

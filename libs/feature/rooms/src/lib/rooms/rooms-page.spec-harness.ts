@@ -150,7 +150,11 @@ export const ROUTE_PROVIDER: Provider = {
 
 export const SYSTEM_STATUS_PROVIDER: Provider = {
   provide: WORKSPACE_SYSTEM_STATUS,
-  useFactory: () => ({ hasProblems: signal(false), show: vi.fn() }),
+  useFactory: () => ({
+    hasProblems: signal(false),
+    show: vi.fn(),
+    bannerSlot: signal<'status' | 'encryption' | null>('encryption'),
+  }),
 };
 
 /**

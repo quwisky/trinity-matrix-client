@@ -6,7 +6,10 @@ import {
   inject,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
+import {
+  WORKSPACE_SYSTEM_STATUS,
+  WorkspaceApplicationSurfaceService,
+} from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
 import { TrustService } from '@trinity/data-access/trust';
 import { BannerComponent } from '@trinity/components/generic-content';
@@ -43,14 +46,18 @@ export class EncryptionBannerComponent {
   private readonly applicationSurfaces = inject(
     WorkspaceApplicationSurfaceService,
   );
+  private readonly systemStatus = inject(WORKSPACE_SYSTEM_STATUS);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly status = this.crypto.status;
 
-  /** Only prompt for the two actionable states. */
+  /** Only prompt for the two actionable states, and only while it owns the global banner slot. */
   readonly visible = computed(() => {
     const status = this.status();
-    return status === 'needs-setup' || status === 'needs-recovery';
+    return (
+      (status === 'needs-setup' || status === 'needs-recovery') &&
+      this.systemStatus.bannerSlot() === 'encryption'
+    );
   });
 
   readonly message = computed(() =>

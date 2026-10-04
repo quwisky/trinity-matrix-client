@@ -70,9 +70,10 @@ export interface ActionSheetData {
  * clipped and `elementFromPoint` returning null on it. It never showed because the only
  * call site passed four.
  *
- * `80svh` and not `80vh`: on mobile Safari `vh` is the LARGEST viewport, so a sheet sized
- * against it is partly behind the address bar until the page is scrolled — which a modal
- * cannot do.
+ * The sheet recipe caps the height at `100dvh` minus the safe-area insets, so the box can
+ * never run behind the notch or home indicator, and the list scrolls inside it. `dvh` and
+ * not `vh`: on mobile Safari `vh` is the LARGEST viewport, so a sheet sized against it is
+ * partly behind the address bar until the page is scrolled — which a modal cannot do.
  */
 @Component({
   selector: 'trn-action-sheet',

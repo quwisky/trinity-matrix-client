@@ -14,7 +14,10 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnSpinnerComponent } from '@trinity/components/generic-content';
+import {
+  BannerComponent,
+  TrnSpinnerComponent,
+} from '@trinity/components/generic-content';
 import { TrnToasterComponent } from '@trinity/components/overlay';
 import { filter, map, take } from 'rxjs';
 import { ApplicationRuntimeService } from '../application-runtime.service';
@@ -36,6 +39,7 @@ import { TrinityApplicationSessionAdapter } from '../composition/trinity-applica
   imports: [
     RouterOutlet,
     TrnButton,
+    BannerComponent,
     VerificationHostComponent,
     TrnToasterComponent,
     TrnSpinnerComponent,

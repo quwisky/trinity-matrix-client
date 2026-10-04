@@ -7,7 +7,11 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
-import { TrustVerificationService } from '@trinity/data-access/trust';
+import {
+  TrustService,
+  TrustVerificationService,
+  type TrustStatus,
+} from '@trinity/data-access/trust';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
@@ -32,6 +36,7 @@ class RouteProbeComponent {}
 describe('ApplicationRootComponent', () => {
   async function setup(initial: ApplicationRuntimeState, routes: Routes = []) {
     const state = signal(initial);
+    const trust = signal<TrustStatus>('ready');
     const recover = vi.fn<() => Observable<ApplicationRecoveryOutcome>>(() =>
       of({ kind: 'accepted' }),
     );
@@ -55,6 +60,7 @@ describe('ApplicationRootComponent', () => {
             avatarMxc: null,
           }),
         }),
+        MockProvider(TrustService, { status: trust.asReadonly() }),
         MockProvider(TrustVerificationService, { active: signal(null) }),
         MockProvider(TrnDialogService, { hasOpen: hasOpenDialog }),
         MockProvider(TrnAlertService, { prompt$: prompt, confirm$: confirm }),
@@ -67,6 +73,7 @@ describe('ApplicationRootComponent', () => {
     return {
       ...rendered,
       state,
+      trust,
       recover,
       prompt,
       confirm,
@@ -261,8 +268,11 @@ describe('ApplicationRootComponent', () => {
     );
     fixture.detectChanges();
 
+    expect(
+      getByTestId('app-capability-summary').closest('trn-banner'),
+    ).toBeTruthy();
     expect(getByTestId('app-capability-summary').textContent).toContain(
-      '1 limited capability',
+      'A background Account needs attention.',
     );
     const button = [...fixture.nativeElement.querySelectorAll('button')].find(
       (item: HTMLButtonElement) => item.textContent?.includes('System Status'),
@@ -274,6 +284,38 @@ describe('ApplicationRootComponent', () => {
     expect(status.textContent).toContain('Alice');
     expect(status.textContent).not.toContain('@private:example.org');
     expect(status.textContent).toContain('1 actionable scope');
+  });
+
+  it('shows one banner at a time and yields the slot to the encryption prompt', async () => {
+    const { fixture, health, trust, getByTestId, queryByTestId } = await setup({
+      phase: 'ready',
+      attempt: 1,
+      settlements: [],
+    });
+    health.report(
+      {
+        capability: 'accounts',
+        operation: 'restore',
+        context: Symbol('account'),
+        generation: 1,
+        demanded: true,
+        preparation: 'failed',
+        ownership: 'retained',
+        condition: 'degraded',
+        code: 'account-restore-transient-network',
+      },
+      () => of({ kind: 'success' as const }),
+    );
+    fixture.detectChanges();
+    expect(getByTestId('app-capability-summary')).toBeTruthy();
+
+    trust.set('needs-setup');
+    fixture.detectChanges();
+    expect(queryByTestId('app-capability-summary')).toBeNull();
+
+    trust.set('ready');
+    fixture.detectChanges();
+    expect(getByTestId('app-capability-summary')).toBeTruthy();
   });
 
   it('opens Overview and navigates to safe Support details without leaving startup', async () => {

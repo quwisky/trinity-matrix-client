@@ -21,9 +21,9 @@
     flex: 0 0 auto;
     align-items: center;
     gap: var(--trinity-space-2);
-    padding: max(var(--trinity-space-2), env(safe-area-inset-top))
+    padding: max(var(--trinity-space-4), env(safe-area-inset-top))
       max(var(--trinity-space-3), env(safe-area-inset-right))
-      var(--trinity-space-2)
+      var(--trinity-space-3)
       max(var(--trinity-space-3), env(safe-area-inset-left));
     border-bottom: 1px solid var(--trinity-border-subtle);
     background: var(--trinity-surface-floating);
