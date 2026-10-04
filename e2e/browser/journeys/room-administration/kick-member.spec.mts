@@ -235,9 +235,9 @@ test.describe('Remove a member', () => {
 
     await page
       .getByTestId('app-capability-summary')
-      .getByRole('button', { name: 'System Status' })
+      .getByRole('button', { name: 'System status' })
       .click();
-    const status = page.getByRole('dialog', { name: 'System Status' });
+    const status = page.getByRole('dialog', { name: 'System status' });
     const memberHealth = status
       .locator('article')
       .filter({ hasText: 'The current Room member list is unavailable' });

@@ -21,31 +21,31 @@ interface SystemStatusDebugWindow extends Window {
 async function openStatus(page: Page): Promise<Locator> {
   await page.goto('/login');
   const trigger = page
-    .getByRole('button', { name: 'System Status', exact: true })
+    .getByRole('button', { name: 'System status', exact: true })
     .first();
   await expect(trigger).toBeVisible();
   await trigger.click();
   await expect(
-    page.getByRole('dialog', { name: 'System Status' }),
+    page.getByRole('dialog', { name: 'System status' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'System Status', level: 1 }),
+    page.getByRole('heading', { name: 'System status', level: 1 }),
   ).toBeFocused();
   return trigger;
 }
 
-test.describe('System Status on desktop', () => {
+test.describe('System status on desktop', () => {
   test('retains the route, protects support details and rejoins recovery', async ({
     page,
   }, testInfo) => {
     const initialTrigger = await openStatus(page);
-    const dialog = page.getByRole('dialog', { name: 'System Status' });
+    const dialog = page.getByRole('dialog', { name: 'System status' });
     await expect(page.locator('trn-system-status')).not.toHaveClass(
       /system-status--mobile/,
     );
 
     const directory = dialog.getByRole('navigation', {
-      name: 'System Status sections',
+      name: 'System status sections',
     });
     const detail = dialog.getByTestId('system-status-detail');
     await expect(directory).toBeVisible();
@@ -84,7 +84,7 @@ test.describe('System Status on desktop', () => {
       .toBe(true);
 
     await page
-      .getByRole('button', { name: 'Close System Status', exact: true })
+      .getByRole('button', { name: 'Close System status', exact: true })
       .click();
     await expect(dialog).toBeHidden();
     await expect(initialTrigger).toBeFocused();
@@ -122,7 +122,7 @@ test.describe('System Status on desktop', () => {
     ).toBeVisible();
     await page
       .getByTestId('app-capability-summary')
-      .getByRole('button', { name: 'System Status' })
+      .getByRole('button', { name: 'System status' })
       .click();
     const unknownEntry = dialog
       .locator('article')
@@ -156,7 +156,7 @@ test.describe('System Status on desktop', () => {
     await expect(dialog).toBeHidden();
     await page
       .getByTestId('app-capability-summary')
-      .getByRole('button', { name: 'System Status' })
+      .getByRole('button', { name: 'System status' })
       .click();
     await expect(recovering).toBeDisabled();
     await expect(dialog).toContainText(
@@ -234,7 +234,7 @@ test.describe('System Status on desktop', () => {
   });
 });
 
-test.describe('System Status on a touch-capable desktop', () => {
+test.describe('System status on a touch-capable desktop', () => {
   test.use({ hasTouch: true });
 
   test('keeps the desktop interaction model', async ({ page }) => {
@@ -245,7 +245,7 @@ test.describe('System Status on a touch-capable desktop', () => {
   });
 });
 
-test.describe('System Status on a mobile OS', () => {
+test.describe('System status on a mobile OS', () => {
   const profile = devices['Pixel 5'];
   test.use({
     viewport: profile.viewport,
@@ -260,7 +260,7 @@ test.describe('System Status on a mobile OS', () => {
   }, testInfo) => {
     await openStatus(page);
     const host = page.locator('trn-system-status');
-    const dialog = page.getByRole('dialog', { name: 'System Status' });
+    const dialog = page.getByRole('dialog', { name: 'System status' });
     await expect(host).toHaveClass(/system-status--mobile/);
     await expect(dialog.locator('[data-trn-layout="sheet"]')).toHaveCSS(
       'border-bottom-left-radius',
@@ -273,7 +273,7 @@ test.describe('System Status on a mobile OS', () => {
     ).toBeLessThanOrEqual(1);
     const back = dialog.getByRole('button', { name: 'Back to sections' });
     const directory = dialog.getByRole('navigation', {
-      name: 'System Status sections',
+      name: 'System status sections',
     });
     await expect(directory).toBeHidden();
     await expect(
@@ -303,7 +303,7 @@ test.describe('System Status on a mobile OS', () => {
     );
     await expect(back).toBeVisible();
     await expect(
-      dialog.getByRole('button', { name: 'Close System Status' }),
+      dialog.getByRole('button', { name: 'Close System status' }),
     ).toBeInViewport();
     expect(
       await dialog.evaluate(

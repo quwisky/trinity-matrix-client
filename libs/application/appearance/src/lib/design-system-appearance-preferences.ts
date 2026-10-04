@@ -68,7 +68,7 @@ export const THEME_PREFERENCE = definePreference({
     kind: 'select',
     label: 'Theme',
     description:
-      'Choose the visual token set independently from light or dark Mode.',
+      'Choose the visual token set independently from light or dark mode.',
     testId: 'theme-select',
     options: THEME_CATALOG.themes.map(({ id, label }) => ({
       value: id,

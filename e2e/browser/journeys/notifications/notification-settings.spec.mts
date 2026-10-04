@@ -121,9 +121,9 @@ test.describe('Notification settings', () => {
 
     await page
       .getByTestId('app-capability-summary')
-      .getByRole('button', { name: 'System Status' })
+      .getByRole('button', { name: 'System status' })
       .click();
-    const status = page.getByRole('dialog', { name: 'System Status' });
+    const status = page.getByRole('dialog', { name: 'System status' });
     const health = status
       .locator('article')
       .filter({ hasText: 'Room notification settings are unavailable' });

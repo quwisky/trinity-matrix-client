@@ -296,9 +296,9 @@ for (const mobile of [false, true]) {
         });
         await page
           .getByTestId('app-capability-summary')
-          .getByRole('button', { name: 'System Status' })
+          .getByRole('button', { name: 'System status' })
           .click();
-        const status = page.getByRole('dialog', { name: 'System Status' });
+        const status = page.getByRole('dialog', { name: 'System status' });
         const problem = status
           .locator('article')
           .filter({ hasText: 'Presence is unavailable' });

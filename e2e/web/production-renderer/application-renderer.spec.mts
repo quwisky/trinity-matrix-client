@@ -405,11 +405,11 @@ test.describe('@production-renderer application surface', () => {
     await openRoom(page, roomName);
     if (testInfo.project.name === 'small-light-large') {
       const systemStatus = page.getByRole('button', {
-        name: 'System Status',
+        name: 'System status',
         exact: true,
       });
       await expect(systemStatus).toBeVisible();
-      await expect(systemStatus).toHaveAccessibleName('System Status');
+      await expect(systemStatus).toHaveAccessibleName('System status');
       await expectInsideViewport(
         page,
         systemStatus,
