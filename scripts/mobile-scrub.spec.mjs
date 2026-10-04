@@ -46,6 +46,31 @@ describe('mobile E2E scrub on disk', () => {
     });
   });
 
+  it('scrubs a .webview.html DOM capture', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'scrub-'));
+    const file = join(tmp, 'x.webview.html');
+    writeFileSync(
+      file,
+      '<a title="@alice:localhost">@alice:localhost</a><i data-t="syt_abc_def"></i>',
+    );
+    scrubDirectory(tmp);
+    expect(readFileSync(file, 'utf8')).toBe(
+      '<a title="@<user>">@<user></a><i data-t="<token>"></i>',
+    );
+  });
+
+  it('keeps WebView console text but still scrubs ids and tokens in it', () => {
+    const line =
+      '[SafariConsole] {"level":"error","text":"Failed to fetch @alice:localhost syt_abc"}';
+    expect(scrub(line)).toBe(
+      '[SafariConsole] {"level":"error","text":"Failed to fetch @<user> <token>"}',
+    );
+    expect(scrub('[HTTP] {"text":"secret"}')).toBe('[HTTP] {"text":"<typed>"}');
+    expect(scrub(`${line}\n{"text":"secret"}`)).toContain(
+      '\n{"text":"<typed>"}',
+    );
+  });
+
   it('redacts escaped JSON forms', () => {
     expect(scrub('{\\"password\\":\\"hunter2\\",\\"text\\":\\"abc\\"}')).toBe(
       '{\\"password\\":\\"<redacted>\\",\\"text\\":\\"<typed>\\"}',

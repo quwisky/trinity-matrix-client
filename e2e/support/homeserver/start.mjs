@@ -308,7 +308,10 @@ async function startNative() {
   });
   await writeFile(
     paths.caddyfile,
-    nativeCaddyfile(await readFile(join(STATE_DIR, 'Caddyfile'), 'utf8')),
+    nativeCaddyfile(
+      await readFile(join(STATE_DIR, 'Caddyfile'), 'utf8'),
+      paths.caddyAccessLog,
+    ),
     'utf8',
   );
   startNativeServices(paths, nodeProcessApi, process.env);

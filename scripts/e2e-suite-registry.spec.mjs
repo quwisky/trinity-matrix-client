@@ -8,6 +8,13 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { E2E_SUITES } from '../e2e/registry/index.mts';
+import {
+  ELECTRON_FULL_SUITE,
+  ELECTRON_SMOKE_SUITE,
+  MOBILE_ANDROID_SUITE,
+  MOBILE_IOS_SUITE,
+} from '../e2e/support/host-suites.mts';
 import {
   BROWSER_ASSERTION_BASELINE,
   captureBrowserAssertionInventory,
@@ -16,6 +23,7 @@ import CapabilityCoverageReporter, {
   browserJourneyPath,
 } from '../e2e/browser/capability-coverage.reporter.mts';
 import {
+  CI_WORKFLOW_BY_TIER,
   registrySnapshot,
   validateDurableE2ENames,
   validateRegistry,
@@ -53,6 +61,72 @@ const runnerSuite = (overrides = {}) => ({
 });
 
 describe('E2E suite registry', () => {
+  it('validates each CI tier against the workflow that runs it', () => {
+    expect(CI_WORKFLOW_BY_TIER).toEqual({
+      'pull-request': '.github/workflows/ci.yml',
+      scheduled: '.github/workflows/ci.yml',
+      nightly: '.github/workflows/e2e-ios-nightly.yml',
+    });
+    const snapshot = registrySnapshot();
+    snapshot.ciEntrypoints.push({
+      command: 'pnpm e2e:nightly-probe',
+      tier: 'nightly',
+      suiteIds: [],
+    });
+    snapshot.ciEntrypoints.push({
+      command: 'pnpm e2e:weekly-probe',
+      tier: 'weekly',
+      suiteIds: [],
+    });
+    const errors = validateWorkspace(workspaceRoot, snapshot);
+    expect(errors).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('.github/workflows/e2e-ios-nightly.yml'),
+        'pnpm e2e:weekly-probe uses CI tier weekly, which no workflow runs',
+      ]),
+    );
+    expect(errors).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          'absent from .github/workflows/ci.yml: pnpm e2e:nightly-probe',
+        ),
+      ]),
+    );
+  }, 120_000);
+
+  it('requires report paths only in the workflow that runs the suite', () => {
+    const snapshot = registrySnapshot();
+    const errors = [];
+    validateCiReportPaths(errors, 'steps: []', snapshot, []);
+    expect(errors).toEqual([]);
+    validateCiReportPaths(
+      errors,
+      'steps: []',
+      snapshot,
+      snapshot.ciEntrypoints.filter(({ suiteIds }) =>
+        suiteIds.includes('browser.canonical'),
+      ),
+    );
+    expect(errors).toEqual([
+      'CI report path is missing suite browser.canonical',
+    ]);
+  });
+
+  it('owns the iOS environment by the mobile lifecycle project', () => {
+    const snapshot = registrySnapshot();
+    const android = snapshot.suites.find(({ id }) => id === 'mobile.android');
+    snapshot.suites.push({
+      ...structuredClone(android),
+      id: 'mobile.probe',
+      environment: 'mobile-ios',
+      currentTarget: 'trinity-e2e-mobile:probe',
+      delegatingTargets: [],
+    });
+    expect(validateRegistry(snapshot)).not.toContain(
+      'mobile.probe targets the wrong lifecycle project',
+    );
+  });
+
   // Resolves every owned Nx project on a cold hosted runner. The first public
   // run exceeded 30 seconds; this is a graph contract, not a performance budget.
   it('matches the current workspace entrypoints, targets, commands and CI', () => {
@@ -412,6 +486,93 @@ steps:
 });
 
 describe('E2E suite registry runner', () => {
+  it('reports a missing macOS, Xcode or simulator for the iOS suite', async () => {
+    const failures = await checkPrerequisites(
+      [{ prerequisites: ['ios-simulator', 'macos', 'xcode'] }],
+      {
+        platform: 'linux',
+        environment: {},
+        execute: () => ({ status: null, stdout: '' }),
+      },
+    );
+    expect(failures).toEqual([
+      'macOS is required',
+      'Xcode is unavailable',
+      'iOS simulator unavailable: xcrun simctl is unavailable',
+    ]);
+  });
+
+  it('accepts the pinned simulator on macOS', async () => {
+    const devices = JSON.stringify({
+      devices: {
+        'com.apple.CoreSimulator.SimRuntime.iOS-26-5': [
+          {
+            udid: 'A-1',
+            name: 'iPhone 17',
+            state: 'Shutdown',
+            isAvailable: true,
+          },
+        ],
+      },
+    });
+    expect(
+      await checkPrerequisites(
+        [{ prerequisites: ['ios-simulator', 'macos', 'xcode'] }],
+        {
+          platform: 'darwin',
+          environment: {},
+          execute: (command) => ({
+            status: 0,
+            stdout: command === 'xcrun' ? devices : 'Xcode 26.6',
+          }),
+        },
+      ),
+    ).toEqual([]);
+  });
+
+  it('keeps e2e:mobile on Android and gives iOS its own selection', () => {
+    expect(selectSuites('e2e-mobile').map(({ id }) => id)).toEqual([
+      'mobile.android',
+    ]);
+    expect(selectSuites('e2e-mobile-ios').map(({ id }) => id)).toEqual([
+      'mobile.ios',
+    ]);
+    expect(
+      [
+        ELECTRON_FULL_SUITE,
+        ELECTRON_SMOKE_SUITE,
+        MOBILE_ANDROID_SUITE,
+        MOBILE_IOS_SUITE,
+      ].map(({ id }) => id),
+    ).toEqual([
+      'electron.full',
+      'electron.smoke',
+      'mobile.android',
+      'mobile.ios',
+    ]);
+  });
+
+  it('skips the iOS suite in e2e-all where its preflight fails', async () => {
+    const ios = E2E_SUITES.find(({ id }) => id === 'mobile.ios');
+    const executeSuite = vi.fn(async () => 0);
+    const writeReport = vi.fn(() => undefined);
+    expect(
+      await runSelection('e2e-all', {
+        validate: () => [],
+        select: () => [ios],
+        preflight: async () => ['macOS is required'],
+        executeSuite,
+        writeReport,
+        reportError: () => undefined,
+        reportOutput: () => undefined,
+      }),
+    ).toBe(0);
+    expect(executeSuite).not.toHaveBeenCalled();
+    expect(writeReport.mock.calls[0][1].suites).toContainEqual(
+      expect.objectContaining({ id: 'mobile.ios', outcome: 'unavailable' }),
+    );
+  });
+
   it('selects environment suites and rejects unknown aggregates', () => {
     expect(selectSuites('e2e-web').map(({ id }) => id)).toEqual([
       'web.production-pwa',

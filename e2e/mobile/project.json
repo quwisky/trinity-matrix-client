@@ -17,6 +17,17 @@
         "cwd": "{projectRoot}"
       }
     },
+    "e2e-ios": {
+      "//": "macOS only. Owns one iOS Simulator, the installed simulator app and its keychain trust, the repo-local Appium home and the support-owned native homeserver lifecycle.",
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-mobile"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node run-ios.mts",
+        "cwd": "{projectRoot}"
+      }
+    },
     "lint": {
       "executor": "nx:run-commands",
       "options": {

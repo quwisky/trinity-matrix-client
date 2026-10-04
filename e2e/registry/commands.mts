@@ -53,6 +53,11 @@ export const E2E_AGGREGATE_TARGETS = [
     unavailablePolicy: 'fail',
     selection: { kind: 'environment', value: 'mobile' },
   },
+  {
+    target: 'e2e-mobile-ios',
+    unavailablePolicy: 'fail',
+    selection: { kind: 'environment', value: 'mobile-ios' },
+  },
 ] as const satisfies readonly E2EAggregateTarget[];
 
 export const E2E_PACKAGE_SCRIPTS = [
@@ -138,6 +143,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     command: 'nx run trinity-e2e:e2e-mobile',
     kind: 'canonical',
     suiteIds: ['mobile.android'],
+  },
+  {
+    name: 'e2e:mobile:ios',
+    command: 'nx run trinity-e2e:e2e-mobile-ios',
+    kind: 'canonical',
+    suiteIds: ['mobile.ios'],
   },
   {
     name: 'e2e:verify',
@@ -279,6 +290,11 @@ export const E2E_CI_ENTRYPOINTS = [
     command: 'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:mobile',
     tier: 'pull-request',
     suiteIds: ['mobile.android'],
+  },
+  {
+    command: 'pnpm e2e:mobile:ios',
+    tier: 'nightly',
+    suiteIds: ['mobile.ios'],
   },
   {
     command: 'pnpm e2e:scheduled',

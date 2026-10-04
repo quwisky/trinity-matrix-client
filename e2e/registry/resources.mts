@@ -10,6 +10,12 @@ export const E2E_SERIALIZATION_RESOURCES = [
     description: 'One installed Android application, emulator and adb bridge.',
   },
   {
+    key: 'ios-simulator',
+    owner: 'trinity-e2e-support',
+    description:
+      'One booted iOS Simulator, its installed application and keychain trust.',
+  },
+  {
     key: 'electron',
     owner: 'trinity-e2e-support',
     description: 'One launched Electron application and user-data lifecycle.',

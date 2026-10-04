@@ -128,3 +128,34 @@ describe('CI execution contract', () => {
     ).toBe(true);
   });
 });
+
+describe('iOS nightly E2E workflow', () => {
+  const ios = yaml('.github/workflows/e2e-ios-nightly.yml');
+  const steps = ios.jobs.ios.steps;
+
+  it('runs the iOS suite on macOS against native Synapse', () => {
+    expect(ios.on).toHaveProperty('workflow_dispatch');
+    expect(ios.env).toMatchObject({
+      TRINITY_E2E_HOMESERVER: 'synapse',
+      TRINITY_E2E_HOMESERVER_RUNTIME: 'native',
+    });
+    expect(ios.jobs.ios['runs-on']).toBe('macos-26');
+    expect(ios.jobs.ios['timeout-minutes']).toBe(90);
+    const mobile = steps.find((step) => step.id === 'mobile');
+    expect(mobile.run).toContain('pnpm e2e:mobile:ios');
+    expect(mobile.env.TRINITY_E2E_PREBUILT_WWW).toBe('1');
+  });
+
+  it('uploads iOS diagnostics only after the identifier scrub succeeded', () => {
+    const scrub = steps.find((step) => step.id === 'mobile-scrub');
+    expect(scrub.if).toContain('!cancelled()');
+    const upload = steps.find(
+      (step) => step.uses === './.github/actions/upload-playwright-diagnostics',
+    );
+    expect(upload.if).toContain("steps.mobile-scrub.outcome == 'success'");
+    expect(upload.with['report-path']).toBe(
+      'dist/.playwright/trinity-e2e-mobile/*/mobile.ios/**',
+    );
+    expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(scrub));
+  });
+});

@@ -160,7 +160,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `projection-runtime`              | `libs/runtime/projection`              | role:kernel; capability:shared                  |                   0 |
 | `runtime-host`                    | `libs/runtime/host`                    | role:kernel; capability:host                    |                   0 |
 | `runtime-preferences`             | `libs/runtime/preferences`             | role:kernel; capability:preferences             |                   0 |
-| `scripts`                         | `scripts`                              | unmanaged tooling/test                          |                   5 |
+| `scripts`                         | `scripts`                              | unmanaged tooling/test                          |                   6 |
 | `select`                          | `libs/spartan/select`                  | role:design-system; capability:design-system    |                   1 |
 | `sonner`                          | `libs/spartan/sonner`                  | role:design-system; capability:design-system    |                   2 |
 | `spartan-tests`                   | `libs/spartan/tests`                   | role:design-system; capability:design-system    |                   4 |
