@@ -12,6 +12,7 @@ import {
 import { appiumLogPath } from './artifacts.mts';
 import {
   chromedriverFromAppiumLog,
+  isAppNotYetKnown,
   parseWebViewVersion,
   webviewSwitchError,
 } from './versions.mts';
@@ -167,6 +168,7 @@ export async function resetApp(): Promise<void> {
     const app = requiredEnv('TRINITY_IOS_APP');
     await browser.removeApp(APP_PACKAGE);
     await browser.installApp(app);
+    await activateWhenKnown();
   } else {
     const cleared = await shell('pm', ['clear', APP_PACKAGE]);
     if (!cleared.includes('Success'))
@@ -180,9 +182,23 @@ export async function resetApp(): Promise<void> {
     ]);
     if (granted.trim())
       throw new Error(`pm grant POST_NOTIFICATIONS failed: ${granted}`);
+    await browser.activateApp(APP_PACKAGE);
   }
-  await browser.activateApp(APP_PACKAGE);
   await webview();
+}
+
+/** FrontBoard lags a fresh install by a moment: retry only its NotFound, for up to 15 s. */
+async function activateWhenKnown(): Promise<void> {
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    try {
+      await browser.activateApp(APP_PACKAGE);
+      return;
+    } catch (error) {
+      if (!isAppNotYetKnown(error) || Date.now() > deadline) throw error;
+      await browser.pause(500);
+    }
+  }
 }
 
 export async function restartApp(): Promise<void> {

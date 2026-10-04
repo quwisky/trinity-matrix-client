@@ -103,16 +103,33 @@ async function main(invocation: E2EInvocation): Promise<void> {
   process.env['TRINITY_IOS_APP'] = appPath;
   mkdirSync(artifactsDir(), { recursive: true });
   // Keychain access needs entitlements; keep the evidence whatever the next run does.
-  try {
-    const { stdout, stderr } = await exec(
-      'codesign',
-      ['-d', '--entitlements', '-', appPath],
-      { signal: commandSignal() },
-    );
-    writeFileSync(join(artifactsDir(), 'app-codesign.txt'), stdout + stderr);
-  } catch (error) {
-    writeFileSync(join(artifactsDir(), 'app-codesign.txt'), String(error));
-  }
+  // Simulator builds embed them in the Mach-O __TEXT,__entitlements section, which
+  // codesign does not print, so read both.
+  const inspect = async (file: string, args: string[]): Promise<string> => {
+    try {
+      const { stdout, stderr } = await exec(file, args, {
+        signal: commandSignal(),
+      });
+      return stdout + stderr;
+    } catch (error) {
+      return String(error);
+    }
+  };
+  writeFileSync(
+    join(artifactsDir(), 'app-codesign.txt'),
+    [
+      '# codesign -d --entitlements :-',
+      await inspect('codesign', ['-d', '--entitlements', ':-', appPath]),
+      '# otool -s __TEXT __entitlements',
+      await inspect('xcrun', [
+        'otool',
+        '-s',
+        '__TEXT',
+        '__entitlements',
+        join(appPath, 'App'),
+      ]),
+    ].join('\n'),
+  );
   await run(process.execPath, ['scripts/setup-appium.mjs', 'xcuitest']);
   process.env['APPIUM_HOME'] = join(workspaceRoot, '.appium');
   await run('pnpm', [

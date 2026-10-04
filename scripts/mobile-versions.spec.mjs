@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   chromedriverFromAppiumLog,
+  isAppNotYetKnown,
   parseWebViewVersion,
   webviewSwitchError,
 } from '../e2e/mobile/support/versions.mts';
@@ -56,5 +57,19 @@ describe('mobile E2E version reporting', () => {
         'No Chromedriver found that can automate Chrome 133',
     );
     expect(error.cause).toBe(cause);
+  });
+});
+
+describe('iOS launch race classifier', () => {
+  it('retries only FrontBoard not-found errors', () => {
+    expect(
+      isAppNotYetKnown(
+        new Error(
+          'FBSOpenApplicationErrorDomain Code=4 "Application "eu.qwky.trinity" is unknown to FrontBoard." (NotFound)',
+        ),
+      ),
+    ).toBe(true);
+    expect(isAppNotYetKnown(new Error('socket hang up'))).toBe(false);
+    expect(isAppNotYetKnown('is unknown to FrontBoard')).toBe(true);
   });
 });
