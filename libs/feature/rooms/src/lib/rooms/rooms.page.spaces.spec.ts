@@ -154,7 +154,7 @@ describe('RoomsPage space filtering', () => {
     // Only '!a:hs' is a DM (see directRoomIds in build()).
     expect(shell.store.recentView()).toBe(false);
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!a:hs']);
-    expect(shell.vm.sidebarTitle()).toBe('Direct Messages');
+    expect(shell.vm.sidebarTitle()).toBe('Direct messages');
   });
 
   it('a selected space shows only its joined children, in space order', async () => {
@@ -221,7 +221,7 @@ describe('RoomsPage space filtering', () => {
     await settleWorkspace();
     expect(shell.store.roomsView()).toBe(false);
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!a:hs']); // DMs
-    expect(shell.vm.sidebarTitle()).toBe('Direct Messages');
+    expect(shell.vm.sidebarTitle()).toBe('Direct messages');
   });
 
   it('returns to Recent activity from another view', async () => {
