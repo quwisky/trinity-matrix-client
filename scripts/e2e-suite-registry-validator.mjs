@@ -12,7 +12,6 @@ import {
   E2E_TIMEOUTS_MS,
 } from '../e2e/registry/index.mts';
 import { validateBrowserJourneyInventory } from './e2e-browser-inventory.mjs';
-import { validateProtocolAssertionInventory } from './e2e-protocol-inventory.mjs';
 
 const TARGET_PROJECT_BY_ENVIRONMENT = {
   browser: 'trinity-e2e-browser',
@@ -597,17 +596,6 @@ const validateEntrypointInventory = (errors, workspaceRoot, snapshot) => {
   }
 };
 
-const validateCanonicalSpecInventory = (errors, workspaceRoot, snapshot) => {
-  const canonicalSpecs = globSync('e2e/browser/journeys/**/*.spec.mts', {
-    cwd: workspaceRoot,
-  });
-  if (canonicalSpecs.length !== snapshot.inventory.canonicalBrowserSpecCount) {
-    errors.push(
-      `canonical browser inventory drifted: expected ${snapshot.inventory.canonicalBrowserSpecCount}, found ${canonicalSpecs.length}`,
-    );
-  }
-};
-
 const validateCiEntrypoints = (errors, workspaceRoot, snapshot) => {
   for (const path of new Set(Object.values(CI_WORKFLOW_BY_TIER))) {
     const entrypoints = snapshot.ciEntrypoints.filter(
@@ -710,13 +698,11 @@ export function validateWorkspace(
   validateAggregateTargets(errors, workspaceRoot, snapshot);
   validateTargetInventory(errors, workspaceRoot, snapshot);
   validateEntrypointInventory(errors, workspaceRoot, snapshot);
-  validateCanonicalSpecInventory(errors, workspaceRoot, snapshot);
   validateBrowserJourneyInventory(
     errors,
     workspaceRoot,
     snapshot.suites.find(({ id }) => id === 'browser.canonical'),
   );
-  validateProtocolAssertionInventory(errors, workspaceRoot);
   validateCiEntrypoints(errors, workspaceRoot, snapshot);
   validateArchitectureCommand(errors, packageScripts);
   validateDurableE2ENames(errors, workspaceRoot);

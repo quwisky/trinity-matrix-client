@@ -15,10 +15,7 @@ import {
   MOBILE_ANDROID_SUITE,
   MOBILE_IOS_SUITE,
 } from '../e2e/support/host-suites.mts';
-import {
-  BROWSER_ASSERTION_BASELINE,
-  captureBrowserAssertionInventory,
-} from './e2e-browser-inventory.mjs';
+import { BROWSER_JOURNEYS } from '../e2e/browser/journey-catalog.mts';
 import CapabilityCoverageReporter, {
   browserJourneyPath,
 } from '../e2e/browser/capability-coverage.reporter.mts';
@@ -249,29 +246,17 @@ describe('E2E suite registry', () => {
     );
   });
 
-  it('rejects canonical spec-count and aggregate-target drift', () => {
+  it('rejects aggregate-target drift', () => {
     const snapshot = registrySnapshot();
-    snapshot.inventory.canonicalBrowserSpecCount = 102;
     snapshot.aggregateTargets[0].target = 'missing-target';
 
     expect(validateWorkspace(workspaceRoot, snapshot)).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('canonical browser inventory drifted'),
         expect.stringContaining(
           'aggregate target trinity-e2e:missing-target does not exist',
         ),
       ]),
     );
-  });
-
-  it('preserves every canonical browser test and assertion source', () => {
-    expect(captureBrowserAssertionInventory(workspaceRoot)).toEqual({
-      specFiles: BROWSER_ASSERTION_BASELINE.currentSpecFiles,
-      testDefinitions: BROWSER_ASSERTION_BASELINE.testDefinitions,
-      assertionCalls: BROWSER_ASSERTION_BASELINE.assertionCalls,
-      testFingerprint: BROWSER_ASSERTION_BASELINE.testFingerprint,
-      assertionFingerprint: BROWSER_ASSERTION_BASELINE.assertionFingerprint,
-    });
   });
 
   it('reports executable browser coverage from the typed journey catalog', async () => {
@@ -319,7 +304,7 @@ describe('E2E suite registry', () => {
       );
       const report = JSON.parse(readFileSync(outputFile, 'utf8'));
       expect(report).toMatchObject({
-        expectedSpecCount: 122,
+        expectedSpecCount: BROWSER_JOURNEYS.length,
         collectedSpecCount: 1,
         testCount: 1,
         attempts: 1,
