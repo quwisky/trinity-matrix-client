@@ -131,7 +131,7 @@ export const HOST_E2E_SUITES = defineSuites([
     prerequisites: ['ios-simulator', 'macos', 'xcode'],
     // Optional so `pnpm e2e:all` skips iOS off macOS; `pnpm e2e:mobile:ios` still fails.
     availabilityPolicy: 'optional',
-    ciTier: 'local-only',
+    ciTier: 'nightly',
     cachePolicy: 'never',
     serializationKeys: ['homeserver', 'ios-simulator'],
     timeoutClass: 'host',

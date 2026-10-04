@@ -1,0 +1,81 @@
+name: E2E (iOS nightly)
+
+# The installed iOS app on the Simulator through Appium's XCUITest driver, against native
+# Synapse behind Caddy: the macOS runner has no Docker. iOS runs nightly, never on pull
+# requests, so it stays out of ci.yml; the E2E registry validates this file's `nightly`
+# entrypoint and report path.
+on:
+  # Draft only (#863): GitHub dispatches only workflows on the default branch, so the
+  # branch exercises itself on push. Part 3 replaces this with the nightly schedule.
+  push:
+    branches: [test/863-ios-mobile-runner]
+  workflow_dispatch:
+    inputs:
+      specs:
+        description: Comma-separated spec paths relative to e2e/mobile (default all)
+        required: false
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TRINITY_E2E_HOMESERVER: synapse
+  TRINITY_E2E_HOMESERVER_RUNTIME: native
+  CADDY_VERSION: 2.11.4
+
+jobs:
+  ios:
+    name: Mobile E2E (iOS)
+    runs-on: macos-26
+    # First session builds WebDriverAgent (~7 min); hang containment, not an expected duration.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Record toolchain
+        run: |
+          { sw_vers; xcodebuild -version; xcrun --sdk iphonesimulator --show-sdk-version; xcrun simctl list runtimes; python3 --version; } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Install pinned Caddy
+        run: |
+          dir="$HOME/.cache/trinity-caddy/$CADDY_VERSION"
+          if [ ! -x "$dir/caddy" ]; then
+            mkdir -p "$dir"
+            base="https://github.com/caddyserver/caddy/releases/download/v$CADDY_VERSION"
+            archive="caddy_${CADDY_VERSION}_mac_arm64.tar.gz"
+            curl -fsSLo "$dir/$archive" "$base/$archive"
+            curl -fsSLo "$dir/checksums.txt" "$base/caddy_${CADDY_VERSION}_checksums.txt"
+            (cd "$dir" && grep " $archive\$" checksums.txt | shasum -a 512 -c -)
+            tar -xzf "$dir/$archive" -C "$dir" caddy
+          fi
+          echo "$dir" >> "$GITHUB_PATH"
+          "$dir/caddy" version | tee -a "$GITHUB_STEP_SUMMARY"
+      # No renderer job in this workflow: build the production renderer here and record it.
+      - run: pnpm nx build trinity --configuration=production --skipNxCache
+      - run: node scripts/web-bundle-manifest.mjs write www
+      - id: mobile
+        env:
+          TRINITY_E2E_PREBUILT_WWW: '1'
+          TRINITY_MOBILE_SPECS: ${{ inputs.specs || './specs/smoke.e2e.mts' }}
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 4800000 -- pnpm e2e:mobile:ios
+      # Also covers dist/.ci (full run stdout) and a run killed before its own cleanup.
+      - name: Scrub identifiers from mobile artifacts
+        id: mobile-scrub
+        if: ${{ !cancelled() && steps.mobile.outputs.started == 'true' }}
+        run: node e2e/mobile/scrub-cli.mts dist/.ci dist/.playwright
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.mobile.outputs.started == 'true' && steps.mobile-scrub.outcome == 'success' }}
+        with:
+          surface: mobile-ios
+          report-path: dist/.playwright/trinity-e2e-mobile/*/mobile.ios/**
+      - name: Verify iOS E2E left the worktree unchanged
+        if: ${{ !cancelled() }}
+        run: git diff --exit-code

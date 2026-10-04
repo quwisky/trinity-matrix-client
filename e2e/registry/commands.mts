@@ -292,6 +292,11 @@ export const E2E_CI_ENTRYPOINTS = [
     suiteIds: ['mobile.android'],
   },
   {
+    command: 'pnpm e2e:mobile:ios',
+    tier: 'nightly',
+    suiteIds: ['mobile.ios'],
+  },
+  {
     command: 'pnpm e2e:scheduled',
     tier: 'scheduled',
     suiteIds: [
