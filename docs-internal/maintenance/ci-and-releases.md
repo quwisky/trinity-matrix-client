@@ -246,8 +246,11 @@ The release App is a GitHub App (for example "Trinity Release") installed only o
 repository with Contents, Pull requests and Issues: read & write (labels and pull request
 comments use the issues API). Its
 `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret live in the
-`release` environment, whose deployment branch policy allows `main` and `release/**`;
-the jobs that mint the token declare `environment: release`. The release App, not
+`release-app` environment, whose deployment branch policy allows `main` and `release/**`;
+the jobs that mint the token (`back-merge` and `publish` in `release.yml`, `cut` in
+`release-stable.yml`, and `backport.yml`) declare `environment: release-app`. Give
+`release-app` no required reviewers: they would stall every cut, publish, back-merge and
+backport. Reviewers belong on `release`, where they gate packaging only. The release App, not
 Renovate, is the only bypass actor for `release/**` in the ruleset. Renovate keeps its
 own App and credentials.
 
@@ -279,10 +282,13 @@ one or more `backport release/X.Y.x` labels. It never checks out the pull reques
 checks out `main` and cherry-picks the merged commit (with `-x`) onto a branch
 `backport/<pr>-release-X.Y.x` cut from the release branch, then opens a pull request titled
 `<original title> (backport to release/X.Y.x)`. It mints the release App token in the
-`release` environment. [`scripts/backport.mjs`](../../scripts/backport.mjs) does the work.
+`release-app` environment. Adding a label to an already merged pull request backports to
+that line only; merging backports to every labelled line. [`scripts/backport.mjs`](../../scripts/backport.mjs) does the work.
 
-- A rebase-merged pull request is picked as its full commit range when its commits appear
-  in order at the merge point; a squash or merge commit is picked as one commit.
+- A rebase-merged pull request is picked as its full commit range when its commits' full
+  subjects appear in order at the merge point; a squash or merge commit is picked as one
+  commit. A multi-commit pull request picked as one commit logs a `::notice::`, expected
+  for a squash merge.
 - A pick that would be empty (the fix is already on the branch) gets a "nothing to backport"
   comment on the original pull request.
 - A conflict, or a label naming a branch that does not exist, opens nothing and comments on
@@ -293,7 +299,7 @@ checks out `main` and cherry-picks the merged commit (with `-x`) onto a branch
 
 `pull_request_target` always uses the default branch's copy of the workflow, so backports
 start working only after the `develop` to `main` rename (see
-[Migrating from develop](#migrating-from-develop)), and the `release` environment must
+[Migrating from develop](#migrating-from-develop)), and the `release-app` environment must
 allow `main`.
 
 ### Automatic publishing
@@ -383,8 +389,9 @@ run release-please.
 
 4. Create the release App (see [Release a stable version](#release-a-stable-version)):
    install it only on this repository with Contents, Pull requests and Issues read & write, and add
-   the `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret to the
-   `release` environment.
+   the `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret to a new
+   `release-app` environment. Limit its deployment branches to `main` and `release/**` and
+   do not add required reviewers to it.
 5. Update the ruleset to protect `main` and `release/**` with the rules `develop` and
    `main` had, and restrict who can create `release/**` branches to maintainers and the
    release App: the release verifier trusts any commit contained in a `release/*` branch.
@@ -392,7 +399,7 @@ run release-please.
 6. Change the deployment rules of the environments: `github-pages`, `homebrew` and `apt`
    (if present) to `main`, plus `release/**` where a job runs from a release tag. The
    `release` environment, which gates packaging in `release.yml`, must allow `main` and
-   `release/**`.
+   `release/**`; it may have required reviewers, which gate packaging only.
 7. Update each local clone:
 
    ```bash
@@ -414,9 +421,9 @@ run release-please.
     - Require the CI status checks on `main`, so auto-merge waits for green.
     - Create the label `backport release/0.1.x`
       (`gh label create "backport release/0.1.x" --force`); `Release stable` creates the
-      label for later lines.
-    - Confirm the release App has Issues read & write and the `release` environment allows
-      `main`; backports run only once the default branch carries `backport.yml`.
+      label for later lines (if that step fails it only warns; create the label by hand).
+    - Confirm the release App has Issues read & write and the `release-app` environment
+      allows `main` and has no required reviewers; backports run only once the default branch carries `backport.yml`.
 
 ### First release
 
@@ -478,9 +485,10 @@ stores, or check signing status for you.
 
 ### Signing and notarization
 
-The package jobs use the GitHub `release` environment. Its presence in YAML
-does not prove that required reviewers or environment protections are configured;
-maintainers must check the repository settings before relying on them.
+The package jobs use the GitHub `release` environment, which holds the signing secrets.
+Its presence in YAML does not prove that required reviewers or environment protections
+are configured; maintainers must check the repository settings before relying on them.
+Reviewers on `release` gate packaging only: the release App jobs run in `release-app`.
 
 The workflow recognizes these secret names only:
 
@@ -511,7 +519,9 @@ and [iOS](../../apps/docs-developers/src/content/docs/platforms/ios.md) guides.
 
 Publishing a release runs [`homebrew.yml`](../../.github/workflows/homebrew.yml),
 which writes the cask to the `quwisky/homebrew-trinity` tap: `trinity` for stable
-releases and `trinity@next` for `-next` prereleases. Users install with
+releases and `trinity@next` for `-next` prereleases. The stable cask follows only the
+repository's latest release: a patch on an older line (for example `v0.1.3` after
+`v0.2.0`) ends with a notice and leaves `trinity` untouched. Users install with
 `brew install --cask quwisky/trinity/trinity` (or `…/trinity@next`). The casks are
 Apple Silicon only and require macOS 13; each conflicts with the other because both
 install `Trinity.app`.

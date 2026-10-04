@@ -41,6 +41,6 @@ Use a body when the motivation or behavior change is not self-evident. Mark brea
 
 Never edit versions or `CHANGELOG.md` by hand, and do not add `Release-As` footers: every release line reads them. Maintainers cut release branches and merge release pull requests; publishing and the back-merge to `main` then happen automatically.
 
-To get a merged `main` fix onto a release line, add the label `backport release/X.Y.x` to its pull request. Once the pull request is merged, a workflow opens a backport pull request into that branch automatically; review and merge it. If the fix cannot be cherry-picked cleanly, the workflow comments on your pull request with the commands to backport it by hand.
+To get a merged `main` fix onto a release line, ask a maintainer to add the label `backport release/X.Y.x` to its pull request. Once the pull request is merged, a workflow opens a backport pull request into that branch automatically; review and merge it. If the fix cannot be cherry-picked cleanly, the workflow comments on your pull request with the commands to backport it by hand.
 
 Do not rewrite pushed history without explicit coordination. Continue with [prepare a pull request](../prepare-a-pull-request/).
