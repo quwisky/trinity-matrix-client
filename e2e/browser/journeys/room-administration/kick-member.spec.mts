@@ -11,6 +11,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { openSystemStatusFromRooms } from '../../../support/journeys/navigation.mts';
 
 // Covers kick and ban projection recovery. The roster must be visible again before the
 // removed row assertion: opening member info replaces the roster, so asserting only that
@@ -233,11 +234,8 @@ test.describe('Remove a member', () => {
       members.retryProjection();
     });
 
-    await page
-      .getByTestId('app-capability-summary')
-      .getByRole('button', { name: 'System Status' })
-      .click();
-    const status = page.getByRole('dialog', { name: 'System Status' });
+    await openSystemStatusFromRooms(page);
+    const status = page.getByRole('dialog', { name: 'System status' });
     const memberHealth = status
       .locator('article')
       .filter({ hasText: 'The current Room member list is unavailable' });

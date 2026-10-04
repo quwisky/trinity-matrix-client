@@ -122,7 +122,7 @@
       (committed)="layout.setSidebarWidth($event)"
     />
 
-    <div #mainView tabindex="-1" class="main">
+    <main #mainView tabindex="-1" class="main">
       <trn-page-header variant="neutral" layout="toolbar">
         <button
           trnHeaderLeading
@@ -234,18 +234,18 @@
               presentation="ghost"
               size="md"
               shape="icon"
-              class="header-pin max-md:hidden"
+              class="max-md:hidden"
               (click)="messageActions.openPinnedPanel()"
-              trnTooltip="Pinned messages"
-              aria-label="Pinned messages"
+              [trnTooltip]="pinnedLabel()"
+              [attr.aria-label]="pinnedLabel()"
               data-testid="open-pinned"
             >
-              <trn-icon size="lg" name="pin" motion="nudge-up" />
-              @if (pinned.messages().length > 0) {
-                <span class="header-pin__badge" aria-hidden="true">{{
-                  pinned.messages().length
-                }}</span>
-              }
+              <trn-icon
+                size="lg"
+                name="pin"
+                motion="nudge-up"
+                [variant]="pinned.messages().length > 0 ? 'accent' : null"
+              />
             </button>
             <button
               trnBtn
@@ -272,7 +272,6 @@
               presentation="ghost"
               size="md"
               shape="icon"
-              class="header-pin"
               [trnDropdownMenuTrigger]="roomActionsMenu"
               align="end"
               aria-label="More actions"
@@ -280,11 +279,6 @@
               #roomActionsOverflow
             >
               <trn-icon size="lg" name="ellipsis-vertical" motion="pop" />
-              @if (pinned.messages().length > 0) {
-                <span class="header-pin__badge" aria-hidden="true">{{
-                  pinned.messages().length
-                }}</span>
-              }
             </button>
             <ng-template #roomActionsMenu>
               <div trnDropdownMenu>
@@ -317,13 +311,11 @@
                   (triggered)="messageActions.openPinnedPanel()"
                   data-testid="overflow-open-pinned"
                 >
-                  <trn-icon name="pin" />
-                  Pinned messages
-                  @if (pinned.messages().length > 0) {
-                    <span class="ml-auto tabular-nums">{{
-                      pinned.messages().length
-                    }}</span>
-                  }
+                  <trn-icon
+                    name="pin"
+                    [variant]="pinned.messages().length > 0 ? 'accent' : null"
+                  />
+                  {{ pinnedLabel() }}
                 </button>
                 <button
                   trnDropdownMenuItem
@@ -354,7 +346,7 @@
                   data-testid="overflow-open-system-status"
                 >
                   <trn-icon name="shield-alert" />
-                  System Status
+                  System status
                   @if (systemStatus.hasProblems()) {
                     <span
                       class="ml-auto text-danger"
@@ -596,12 +588,12 @@
               titleAs="h2"
               badge="#"
               [title]="vm.syncLabel()"
-              body="Select a channel on the left to get started."
+              body="Select a room on the left to get started."
               data-testid="chat-empty"
             />
           </div>
         }
       </div>
-    </div>
+    </main>
   </div>
 </div>

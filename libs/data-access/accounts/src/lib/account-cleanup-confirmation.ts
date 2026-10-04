@@ -1,6 +1,6 @@
 /** Account-removal consequences shared by every presentation that can dispatch it. */
 export const ACCOUNT_REMOVAL_CONSEQUENCES =
-  'Remove this Account from Trinity on this device? Trinity will try to remove its push registration and sign out from its homeserver and identity provider, then delete its credentials, drafts, cached messages and local encryption keys. Other devices, the server Account, rooms and messages are not deleted.';
+  'Remove this account from Trinity on this device? Trinity will try to remove its push registration and sign out from its homeserver and identity provider, then delete its credentials, drafts, cached messages and local encryption keys. Other devices, the server account, rooms and messages are not deleted.';
 
 /** Deliberately distinct from the narrower encryption-reset confirmation word. */
 export const CLEAR_DATA_CONFIRMATION_WORD = 'RESET TRINITY';

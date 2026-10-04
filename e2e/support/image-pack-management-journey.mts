@@ -1,4 +1,9 @@
-import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import {
+  expect,
+  type APIRequestContext,
+  type Page,
+  type Route,
+} from '@playwright/test';
 import {
   login,
   waitForSent,
@@ -42,6 +47,65 @@ async function openStickerSettings(page: Page): Promise<void> {
   await expect(page.getByTestId('image-pack-source')).toBeVisible({
     timeout: 20_000,
   });
+}
+
+/**
+ * Change room state while none of `page`'s /sync requests is waiting at the server.
+ *
+ * Tuwunel 1.9.3 makes a new state event visible to /sync and wakes waiting syncs
+ * (`append_pdu`) before it moves the room's current state onto it (`set_room_state`).
+ * MSC4222 `state_after` for the last timeline event reads that current state, so a
+ * sync woken in between carries the new event in its timeline but the old state in
+ * `state_after`. Clients must not apply timeline state under MSC4222, so the update
+ * is lost until that state key changes again. On Tuwunel, hold the next /sync at the
+ * browser, wake and finish the one already waiting, and release it after the PUT
+ * returns. The app still receives the change through an ordinary incremental sync.
+ * Synapse keeps the unfenced write, so the nightly Synapse run still covers a sync
+ * that a state change wakes.
+ */
+async function putRoomState(
+  page: Page,
+  request: APIRequestContext,
+  session: HomeserverSession,
+  url: string,
+  headers: Record<string, string>,
+  data: Record<string, unknown>,
+  userId: string,
+): Promise<void> {
+  if (session.kind !== 'tuwunel') {
+    await request.put(url, { headers, data });
+    return;
+  }
+  const sync = '**/_matrix/client/v3/sync?*';
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  let gated = false;
+  let atGate!: () => void;
+  // The SDK syncs one request at a time, so a request at the gate means none is
+  // waiting at the server.
+  const reachedGate = new Promise<void>((resolve) => (atGate = resolve));
+  const hold = async (route: Route): Promise<void> => {
+    gated = true;
+    atGate();
+    await released;
+    await route.continue();
+  };
+  // Hold only the next request; the route then removes itself, so no unroute can race
+  // the held request.
+  await page.route(sync, hold, { times: 1 });
+  try {
+    // Account data wakes the sync that is already waiting, so it returns.
+    await request.put(
+      `${session.hs as string}/_matrix/client/v3/user/${encodeURIComponent(userId)}/account_data/eu.qwky.trinity.e2e.sync_fence`,
+      { headers, data: { at: Date.now() } },
+    );
+    await reachedGate;
+    const response = await request.put(url, { headers, data });
+    expect(response.ok()).toBe(true);
+  } finally {
+    release();
+    if (!gated) await page.unroute(sync, hold);
+  }
 }
 
 export interface InstalledImagePackContext {
@@ -282,21 +346,24 @@ export async function runImagePackManagementJourney({
 
   // Publish a second pack in the active chat so the same picker proves the
   // distinction between globally installed and room-scoped sources.
-  await request.put(
-    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(chatRoomId)}/state/m.room.image_pack/local`,
+  const localPackUrl = `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(chatRoomId)}/state/m.room.image_pack/local`;
+  await putRoomState(
+    page,
+    request,
+    session,
+    localPackUrl,
+    headers,
     {
-      headers,
-      data: {
-        pack: { display_name: 'Local pack', usage: ['sticker'] },
-        images: {
-          local: {
-            url: mxc,
-            body: 'Local pixel',
-            info: { mimetype: 'image/png', w: 1, h: 1 },
-          },
+      pack: { display_name: 'Local pack', usage: ['sticker'] },
+      images: {
+        local: {
+          url: mxc,
+          body: 'Local pixel',
+          info: { mimetype: 'image/png', w: 1, h: 1 },
         },
       },
     },
+    auth.user_id as string,
   );
 
   await page.getByTestId('composer-insert').click();
@@ -319,9 +386,14 @@ export async function runImagePackManagementJourney({
     { timeout: 20_000 },
   );
 
-  await request.put(
-    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(chatRoomId)}/state/m.room.image_pack/local`,
-    { headers, data: {} },
+  await putRoomState(
+    page,
+    request,
+    session,
+    localPackUrl,
+    headers,
+    {},
+    auth.user_id as string,
   );
   await expect(localPack).toHaveCount(0, { timeout: 20_000 });
   await page.getByTestId('sticker-party').click();

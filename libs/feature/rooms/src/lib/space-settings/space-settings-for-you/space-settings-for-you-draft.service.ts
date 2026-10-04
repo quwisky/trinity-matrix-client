@@ -75,7 +75,7 @@ export class SpaceSettingsForYouDraftService {
         {
           value: 'default',
           label: 'Use my default',
-          description: `Follow ${defaultLabel} now and any later change to this Account’s default.`,
+          description: `Follow ${defaultLabel} now and any later change to this account’s default.`,
           testId: 'space-settings-order-default',
         },
         ...TRINITY_ROOM_SORTS.map((mode) => ({
@@ -135,7 +135,7 @@ export class SpaceSettingsForYouDraftService {
     this.savingState.set(true);
     this.feedbackState.set({
       tone: 'pending',
-      message: 'Saving this Account’s device preference…',
+      message: 'Saving this account’s device preference…',
     });
     command.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
@@ -143,7 +143,7 @@ export class SpaceSettingsForYouDraftService {
         this.savingState.set(false);
         this.feedbackState.set({
           tone: 'success',
-          message: 'Room order saved for this Account on this device.',
+          message: 'Room order saved for this account on this device.',
         });
       },
       error: () => {

@@ -156,7 +156,7 @@ test.describe('Room settings', () => {
     });
     await expect(confirmation).toContainText(targetName);
     await expect(confirmation).toContainText(roomName);
-    await expect(confirmation).toContainText(`Account ${adminId}`);
+    await expect(confirmation).toContainText(`account ${adminId}`);
     await confirmation.getByRole('button', { name: 'Unban' }).click();
     await expect(
       page
@@ -267,7 +267,7 @@ test.describe('Room settings', () => {
     await page.getByTestId('member-info-role-50').click();
     const roleConfirmation = page.getByRole('dialog', { name: 'Change role' });
     await expect(roleConfirmation).toContainText(roomName);
-    await expect(roleConfirmation).toContainText(`Account ${adminId}`);
+    await expect(roleConfirmation).toContainText(`account ${adminId}`);
     await roleConfirmation.getByRole('button', { name: 'Change' }).click();
 
     await expect(roster).toBeVisible({ timeout: 20_000 });
@@ -318,11 +318,11 @@ test.describe('Room settings', () => {
     await kick.focus();
     await kick.press('Enter');
     const kickConfirmation = page.getByRole('dialog', {
-      name: 'Remove from Room',
+      name: 'Remove from room',
     });
     await expect(kickConfirmation).toContainText(memberName);
     await expect(kickConfirmation).toContainText(roomName);
-    await expect(kickConfirmation).toContainText(`Account ${adminId}`);
+    await expect(kickConfirmation).toContainText(`account ${adminId}`);
     await kickConfirmation
       .getByPlaceholder('Reason (optional)')
       .fill('cleanup');
@@ -353,11 +353,11 @@ test.describe('Room settings', () => {
     await ban.focus();
     await ban.press('Enter');
     const banConfirmation = page.getByRole('dialog', {
-      name: 'Ban from Room',
+      name: 'Ban from room',
     });
     await expect(banConfirmation).toContainText(memberName);
     await expect(banConfirmation).toContainText(roomName);
-    await expect(banConfirmation).toContainText(`Account ${adminId}`);
+    await expect(banConfirmation).toContainText(`account ${adminId}`);
     await banConfirmation.getByRole('button', { name: 'Ban' }).press('Enter');
     // Wait for that focus move before pressing Banned, or it can steal the Enter.
     await expect(detail).toHaveCount(0, { timeout: 20_000 });
@@ -373,11 +373,11 @@ test.describe('Room settings', () => {
     await bannedRow.getByTestId('banned-member-unban').focus();
     await bannedRow.getByTestId('banned-member-unban').press('Enter');
     const unbanConfirmation = page.getByRole('dialog', {
-      name: 'Unban from Room',
+      name: 'Unban from room',
     });
     await expect(unbanConfirmation).toContainText(memberName);
     await expect(unbanConfirmation).toContainText(roomName);
-    await expect(unbanConfirmation).toContainText(`Account ${adminId}`);
+    await expect(unbanConfirmation).toContainText(`account ${adminId}`);
     await unbanConfirmation
       .getByRole('button', { name: 'Unban' })
       .press('Enter');
@@ -506,7 +506,7 @@ test.describe('Room settings', () => {
     await expect(confirmation).toContainText(
       `People will no longer be able to join or link to this room with ${alias}.`,
     );
-    await expect(confirmation).toContainText('This does not delete the Room.');
+    await expect(confirmation).toContainText('This does not delete the room.');
     await confirmation.getByRole('button', { name: 'Keep address' }).click();
     await expect(row).toBeVisible();
 
@@ -796,7 +796,7 @@ test.describe('Space member and address settings on a phone', () => {
     const confirmation = page.getByRole('dialog', {
       name: `Remove ${alias}?`,
     });
-    await expect(confirmation).toContainText('does not delete the Space');
+    await expect(confirmation).toContainText('does not delete the space');
     await touchPlatform.tap(
       page,
       confirmation.getByRole('button', { name: 'Keep address' }),
@@ -893,7 +893,7 @@ test.describe('Space member and address settings on a phone', () => {
       },
     });
     await expect(page.getByTestId('room-aliases-read-only')).toContainText(
-      "The opening Account cannot currently manage this Space's addresses.",
+      "This account cannot currently manage this space's addresses.",
       { timeout: 20_000 },
     );
     await expect(row).toBeVisible();

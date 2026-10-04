@@ -15,7 +15,6 @@ The root workspace uses pnpm. Electron deliberately keeps a separate dependency 
 ```bash
 git clone https://github.com/quwisky/trinity-matrix-client.git
 cd trinity-matrix-client
-git switch develop
 corepack enable
 pnpm install
 ```

@@ -16,7 +16,7 @@ import { registerUser } from '../../../support/account.mts';
 // menu (`data-testid="msg-more"`) offers "Pin message" (`data-testid="msg-pin"`),
 // which writes `m.room.pinned_events` through the exact Conversation pins child.
 // The room toolbar's pin button (`data-testid="open-pinned"`)
-// shows a count badge (`.header-pin__badge`) and opens the pinned-messages side
+// exposes the pin count in its accessible name and opens the pinned-messages side
 // panel (PinnedMessagesPanelComponent), whose rows (`.pin-item`) list each pin's
 // body/sender/time, jump the timeline to that message on click
 // (`.pin-item__main`), and offer an inline Unpin (`.pin-item__unpin`).
@@ -222,12 +222,15 @@ test.describe('Pin messages', () => {
     // the row — select its "Pin message" item at page scope.
     await clickRowMenuItem(targetRow.first(), page.getByTestId('msg-pin'));
 
-    // Assert the toolbar's pin button now carries a count badge of 1 — wait on
+    // Assert the toolbar's pin button now names a count of 1 — wait on
     // this app state (the pin round-tripping through sendStateEvent →
     // RoomStateEvent.Events → readRoomState), not a fixed sleep.
     const pinButton = page.getByTestId('open-pinned');
-    const badge = pinButton.locator('.header-pin__badge');
-    await expect(badge).toHaveText('1', { timeout: 30_000 });
+    await expect(pinButton).toHaveAttribute(
+      'aria-label',
+      'Pinned messages (1)',
+      { timeout: 30_000 },
+    );
 
     // Open the pinned-messages panel and confirm it lists the pinned message.
     await pinButton.click();
@@ -272,14 +275,16 @@ test.describe('Pin messages', () => {
     pinRow = page.locator('.pin-item', { hasText: PIN_BODY });
     await pinRow.locator('.pin-item__unpin').click();
 
-    // The panel empties and/or the count badge drops to 0 — again waiting on
+    // The panel empties and/or the pin button's name drops its count — again waiting on
     // the state round trip rather than a fixed sleep.
     await expect(
-      page.getByText('No pinned messages in this channel yet.'),
+      page.getByText('No pinned messages in this room yet.'),
     ).toBeVisible({ timeout: 30_000 });
 
     await page.getByRole('button', { name: 'Close pinned messages' }).click();
-    await expect(badge).toHaveCount(0, { timeout: 30_000 });
+    await expect(pinButton).toHaveAttribute('aria-label', 'Pinned messages', {
+      timeout: 30_000,
+    });
   });
 
   // Regression for a fixed bug: clicking a pinned row jumped the timeline the

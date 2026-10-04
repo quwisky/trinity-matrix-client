@@ -10,7 +10,7 @@ when version compatibility matters.
 - Continue authorized work and reuse accepted plans and current evidence. Ask only
   for unresolved decisions or material scope changes; refresh evidence when its inputs change.
 - Before editing or publishing, read [branch and publication policy](apps/docs-developers/src/content/docs/contributing/branches-and-commits.md).
-  Use `develop` as the default base; temporary integration bases require task instructions.
+  Use `main` as the default base; temporary integration bases require task instructions.
   Isolate unrelated work in a separate worktree. Stage only task-owned files;
   commits, pushes and PRs require authorization, and merging belongs to the user.
 - Select checks from [validation policy](apps/docs-developers/src/content/docs/contributing/validate-a-change.md).

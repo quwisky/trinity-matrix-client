@@ -3,22 +3,22 @@
     @case ('loading') {
       <trn-settings-load-state-card
         state="loading"
-        heading="Loading your Room preferences…"
-        description="Reading the opening Account’s current Matrix settings."
+        heading="Loading your room preferences…"
+        description="Reading this account’s current Matrix settings."
       />
     }
     @case ('unavailable') {
       <trn-settings-load-state-card
         state="unavailable"
         heading="Room preferences unavailable"
-        description="This Room is no longer available to the opening Account. No default values have been substituted."
+        description="This room is no longer available to this account. No default values have been substituted."
       />
     }
     @case ('failed') {
       <trn-settings-load-state-card
         state="failed"
-        heading="Couldn’t read Room preferences"
-        description="Trinity could not confirm the opening Account’s current notification rules. Try again before making changes."
+        heading="Couldn’t read room preferences"
+        description="Trinity could not confirm this account’s current notification rules. Try again before making changes."
         retryTestid="room-settings-for-you-retry"
         (retry)="draft.retryLoad()"
       />
@@ -39,9 +39,10 @@
               Notifications
             </h3>
             <p>
-              All messages leaves this Room without specific suppression, so
-              Account-wide rules decide. Mentions and keywords quiets ordinary
-              messages. Mute silences everything, including mentions.
+              “All messages” leaves this room without specific rules, so your
+              account-wide notification settings decide. “Mentions and keywords”
+              quiets ordinary messages. “Mute” silences everything, including
+              mentions.
             </p>
           </div>
           <trn-radio-group
@@ -56,7 +57,7 @@
         <section class="room-settings__card room-settings__fields">
           <div class="room-settings__field">
             <h3 class="room-settings__label">Organisation</h3>
-            <p>Choose where this Room appears for the opening Account.</p>
+            <p>Choose where this room appears for this account.</p>
           </div>
           <label class="room-settings__choice">
             <trn-checkbox
@@ -69,7 +70,7 @@
             <span>
               <strong>Favourite</strong>
               <small id="room-settings-favourite-help">
-                Keep this Room in the Favourites group near the top of the list.
+                Keep this room in the favourites group near the top of the list.
               </small>
             </span>
           </label>
@@ -84,23 +85,23 @@
             <span>
               <strong>Low priority</strong>
               <small id="room-settings-low-priority-help">
-                Move this Room below ordinary Rooms. A Favourite still stays in
-                Favourites.
+                Move this room below ordinary rooms. A favourite still stays in
+                favourites.
               </small>
             </span>
           </label>
         </section>
 
         <section class="room-settings__card room-settings__scope">
-          <h3>Opening Account only</h3>
+          <h3>This account only</h3>
           <p>
-            Changes here apply only to the Account named above. A shortcut in a
-            combined sidebar row still applies to every Account represented by
+            Changes here apply only to the account named above. A shortcut in a
+            combined sidebar row still applies to every account represented by
             that row.
           </p>
           <p>
             Read receipts and link previews remain installation-wide Privacy
-            settings and are not overridden per Room.
+            settings and are not overridden per room.
           </p>
         </section>
 

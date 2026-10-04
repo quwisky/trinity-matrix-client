@@ -12,6 +12,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { openSystemStatusFromRooms } from '../../../support/journeys/navigation.mts';
 
 // End-to-end for member online-status (presence): the room member list renders a
 // presence indicators from the SDK's User.presence through IdentityPresenceService.
@@ -294,11 +295,8 @@ for (const mobile of [false, true]) {
           };
           presence.projection.schedule();
         });
-        await page
-          .getByTestId('app-capability-summary')
-          .getByRole('button', { name: 'System Status' })
-          .click();
-        const status = page.getByRole('dialog', { name: 'System Status' });
+        await openSystemStatusFromRooms(page);
+        const status = page.getByRole('dialog', { name: 'System status' });
         const problem = status
           .locator('article')
           .filter({ hasText: 'Presence is unavailable' });

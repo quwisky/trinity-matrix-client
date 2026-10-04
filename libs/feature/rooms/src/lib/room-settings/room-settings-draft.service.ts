@@ -165,14 +165,14 @@ export class RoomSettingsDraftService {
   readonly generalSaveUnavailableReason = computed(() => {
     if (this.targetUnavailableReason()) return this.targetUnavailableReason();
     if (!this.mayEditName() && !this.mayEditTopic()) {
-      return 'Your role cannot change this Room’s name or topic.';
+      return 'Your role cannot change this room’s name or topic.';
     }
     return null;
   });
   readonly accessSaveUnavailableReason = computed(() => {
     if (this.targetUnavailableReason()) return this.targetUnavailableReason();
     if (!this.mayEditJoinRule() && !this.mayEditHistory()) {
-      return 'Your role cannot change this Room’s access settings.';
+      return 'Your role cannot change this room’s access settings.';
     }
     return null;
   });

@@ -57,6 +57,42 @@ const LOCAL_STACKING = [
  */
 const LITERAL_ANIMATIONS = [];
 
+/**
+ * Stylesheets that still size text in literal `px`. A px font-size ignores Settings →
+ * Appearance → Text size (a % on the root), so at 200% that text stays small while the rest of
+ * the UI grows and the layout breaks (WCAG 1.4.4 and 1.4.10). Use a `--trinity-text-*` or
+ * `--trinity-type-*` role, or a `rem` value. A frozen ledger of the files not migrated yet
+ * (#928): it may only shrink, and a migrated file must leave it.
+ */
+const LITERAL_FONT_SIZES = [
+  'apps/trinity/src/rendered-markdown.scss',
+  'libs/feature/crypto/src/lib/recovery-key-display/recovery-key-display.component.scss',
+  'libs/feature/crypto/src/lib/verification/device-verification.page.scss',
+  'libs/feature/crypto/src/lib/verification/sas-compare.component.scss',
+  'libs/feature/rooms/src/lib/add-to-space/add-to-space.component.scss',
+  'libs/feature/rooms/src/lib/jump-to-date/jump-to-date.component.scss',
+  'libs/feature/rooms/src/lib/link-preview/link-preview.component.scss',
+  'libs/feature/rooms/src/lib/location-share/location.component.scss',
+  'libs/feature/rooms/src/lib/member-info/member-info.component.scss',
+  'libs/feature/rooms/src/lib/member-list/member-list.component.scss',
+  'libs/feature/rooms/src/lib/message-composer/composer-attachment-strip/composer-attachment-strip.component.scss',
+  'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.scss',
+  'libs/feature/rooms/src/lib/message-composer/composer-suggestions/composer-suggestions.component.scss',
+  'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
+  'libs/feature/rooms/src/lib/message-list/drop-overlay/drop-overlay.component.scss',
+  'libs/feature/rooms/src/lib/message-row/message-row.component.scss',
+  'libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.scss',
+  'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.scss',
+  'libs/feature/rooms/src/lib/pinned/pinned-messages-panel.component.scss',
+  'libs/feature/rooms/src/lib/poll/poll.component.scss',
+  'libs/feature/rooms/src/lib/shared/avatar-field/avatar-field.component.scss',
+  'libs/feature/rooms/src/lib/styles/_mixins.scss',
+  'libs/feature/rooms/src/lib/thread/threads-list.component.scss',
+  'libs/feature/rooms/src/lib/user-card/user-card.component.scss',
+  'libs/feature/rooms/src/lib/voice-message/voice-message.component.scss',
+  'libs/feature/settings/src/lib/server/homeserver-block.component.scss',
+];
+
 const files = ['libs/**/*.scss', 'apps/**/*.scss']
   .flatMap((pattern) => globSync(pattern, { cwd: workspaceRoot }))
   .filter((file) => !file.includes('node_modules'))
@@ -127,6 +163,14 @@ describe('styling tokens', () => {
     );
 
     expect(raw).toEqual([]);
+  });
+
+  it('keeps px font sizes to the recorded ledger so text scales with the Text size setting', () => {
+    const raw = files.filter((file) =>
+      /font-size:\s*[\d.]+px/.test(code(file)),
+    );
+
+    expect(raw).toEqual([...LITERAL_FONT_SIZES].sort());
   });
 
   it('keeps the literal keyframe durations to the recorded ledger', () => {

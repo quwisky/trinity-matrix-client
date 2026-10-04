@@ -7,7 +7,7 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import {
   DEFAULT_AVD,
@@ -23,21 +23,28 @@ import {
   nextAdbFailureCount,
   startAndroidInfrastructureWatchdog,
 } from './health.mts';
-import {
-  openE2EInvocation,
-  type E2EInvocation,
-} from '../support/invocation.mts';
 import { e2eArtifactPath } from '../support/playwright-config.mts';
 import { MOBILE_ANDROID_SUITE } from '../support/host-suites.mts';
 import { appiumLogPath } from './support/artifacts.mts';
-import { scrubDirectory } from './support/scrub.mts';
+import {
+  activeChildPid,
+  commandSignal,
+  isCleaningUp,
+  run,
+  runAborted,
+  startMobileRun,
+  terminateProcessGroup,
+  throwIfAborted,
+  waitForProcessExit,
+  waitUntil,
+  workspaceRoot,
+} from './support/runner.mts';
 import {
   chromedriverFromAppiumLog,
   parseWebViewVersion,
 } from './support/versions.mts';
 
 const exec = promisify(execFile);
-const workspaceRoot = join(import.meta.dirname, '../..');
 const packageName = 'eu.qwky.trinity';
 const ownedEmulatorLaunchArgs = [
   '-no-window',
@@ -49,7 +56,6 @@ const ownedEmulatorLaunchArgs = [
   '-feature',
   '-Vulkan',
 ] as const;
-const abortController = new AbortController();
 
 let serial = '';
 let emulatorLogFd: number | undefined;
@@ -63,23 +69,26 @@ const changedReverseMappings: Array<{
   local: string;
   previous: string | undefined;
 }> = [];
-let activeChild: ChildProcess | undefined;
-let cleanupPromise: Promise<void> | undefined;
-let invocation: E2EInvocation | undefined;
-let baselineWorktree: string | undefined;
-let cleaningUp = false;
-let requestedExitCode: number | undefined;
-let signalCount = 0;
 let adbFailureCount = 0;
 
-const sdkRoot = process.env['ANDROID_HOME'] ?? process.env['ANDROID_SDK_ROOT'];
-if (!sdkRoot) {
-  throw new Error(
-    'ANDROID_HOME or ANDROID_SDK_ROOT must point at the Android SDK',
-  );
+let androidSdk: { readonly adb: string; readonly emulator: string } | undefined;
+
+/** Resolved on first use, so importing this runner needs no Android SDK. */
+function androidTools(): { readonly adb: string; readonly emulator: string } {
+  if (androidSdk) return androidSdk;
+  const sdkRoot =
+    process.env['ANDROID_HOME'] ?? process.env['ANDROID_SDK_ROOT'];
+  if (!sdkRoot) {
+    throw new Error(
+      'ANDROID_HOME or ANDROID_SDK_ROOT must point at the Android SDK',
+    );
+  }
+  androidSdk = {
+    adb: join(sdkRoot, 'platform-tools/adb'),
+    emulator: join(sdkRoot, 'emulator/emulator'),
+  };
+  return androidSdk;
 }
-const adb = join(sdkRoot, 'platform-tools/adb');
-const emulator = join(sdkRoot, 'emulator/emulator');
 
 const artifactsDir = (): string =>
   e2eArtifactPath(
@@ -88,45 +97,32 @@ const artifactsDir = (): string =>
     'host-output',
   );
 
-function commandSignal(): AbortSignal | undefined {
-  return cleaningUp ? undefined : abortController.signal;
-}
-
 async function adbRun(...args: string[]): Promise<string> {
-  const { stdout } = await exec(adb, serial ? ['-s', serial, ...args] : args, {
-    cwd: workspaceRoot,
-    maxBuffer: 20 * 1024 * 1024,
-    signal: commandSignal(),
-    timeout: cleaningUp ? 15_000 : undefined,
-  });
+  const { stdout } = await exec(
+    androidTools().adb,
+    serial ? ['-s', serial, ...args] : args,
+    {
+      cwd: workspaceRoot,
+      maxBuffer: 20 * 1024 * 1024,
+      signal: commandSignal(),
+      timeout: isCleaningUp() ? 15_000 : undefined,
+    },
+  );
   return stdout.trim();
 }
 
 async function adbFor(target: string, ...args: string[]): Promise<string> {
-  const { stdout } = await exec(adb, ['-s', target, ...args], {
+  const { stdout } = await exec(androidTools().adb, ['-s', target, ...args], {
     cwd: workspaceRoot,
     maxBuffer: 20 * 1024 * 1024,
     signal: commandSignal(),
-    timeout: cleaningUp ? 15_000 : 10_000,
+    timeout: isCleaningUp() ? 15_000 : 10_000,
   });
   return stdout.trim();
 }
 
-function terminateProcessGroup(
-  child: ChildProcess | undefined,
-  signal: NodeJS.Signals,
-): void {
-  if (!child?.pid) return;
-  try {
-    if (process.platform === 'win32') child.kill(signal);
-    else process.kill(-child.pid, signal);
-  } catch {
-    child.kill(signal);
-  }
-}
-
 async function inspectAndroidInfrastructure(): Promise<Error | undefined> {
-  if (abortController.signal.aborted) return undefined;
+  if (runAborted()) return undefined;
   if (emulatorSpawnError) {
     return new Error(
       `${ANDROID_INFRASTRUCTURE_FAILURE}: emulator-process: ${emulatorSpawnError.message}; ` +
@@ -156,52 +152,12 @@ async function inspectAndroidInfrastructure(): Promise<Error | undefined> {
   return undefined;
 }
 
-async function run(
-  command: string,
-  args: string[],
-  monitorAndroid = false,
-): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd: workspaceRoot,
-      env: process.env,
-      stdio: 'inherit',
-      detached: process.platform !== 'win32',
-    });
-    activeChild = child;
-    const watchdog = monitorAndroid
-      ? startAndroidInfrastructureWatchdog({
-          inspect: inspectAndroidInfrastructure,
-          terminate: (signal) => {
-            if (activeChild === child) terminateProcessGroup(child, signal);
-          },
-        })
-      : undefined;
-    const finish = (): void => {
-      watchdog?.stop();
-      if (activeChild === child) activeChild = undefined;
-    };
-    child.once('error', (error) => {
-      finish();
-      reject(watchdog?.failure ?? error);
-    });
-    child.once('exit', (code, signalName) => {
-      finish();
-      if (watchdog?.failure) reject(watchdog.failure);
-      else if (code === 0) resolve();
-      else reject(new Error(`${command} exited with ${code ?? signalName}`));
-    });
+/** Fails the wdio run as soon as the emulator process or adb transport is gone. */
+const androidWatchdog = (terminate: (signal: NodeJS.Signals) => void) =>
+  startAndroidInfrastructureWatchdog({
+    inspect: inspectAndroidInfrastructure,
+    terminate,
   });
-}
-
-async function gitStatus(): Promise<string> {
-  const { stdout } = await exec(
-    'git',
-    ['status', '--porcelain=v1', '--untracked-files=all'],
-    { cwd: workspaceRoot },
-  );
-  return stdout;
-}
 
 async function assertJava21(): Promise<void> {
   const { stdout, stderr } = await exec('java', ['-version'], {
@@ -214,7 +170,7 @@ async function assertJava21(): Promise<void> {
 }
 
 async function adbDevicesOutput(): Promise<string> {
-  const { stdout } = await exec(adb, ['devices'], {
+  const { stdout } = await exec(androidTools().adb, ['devices'], {
     cwd: workspaceRoot,
     signal: commandSignal(),
   });
@@ -228,20 +184,6 @@ async function onlineDevices(): Promise<string[]> {
 async function runningAvdName(target: string): Promise<string> {
   const output = await adbFor(target, 'emu', 'avd', 'name');
   return output.split(/\r?\n/, 1)[0]?.trim() ?? '';
-}
-
-async function waitUntil(
-  description: string,
-  predicate: () => Promise<boolean>,
-  timeout = 180_000,
-): Promise<void> {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    abortController.signal.throwIfAborted();
-    if (await predicate().catch(() => false)) return;
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
-  }
-  throw new Error(`Timed out waiting for ${description}`);
 }
 
 async function selectOrStartDevice(): Promise<void> {
@@ -273,7 +215,7 @@ async function selectOrStartDevice(): Promise<void> {
     return;
   }
 
-  const { stdout: avds } = await exec(emulator, ['-list-avds'], {
+  const { stdout: avds } = await exec(androidTools().emulator, ['-list-avds'], {
     cwd: workspaceRoot,
     signal: commandSignal(),
   });
@@ -291,7 +233,7 @@ async function selectOrStartDevice(): Promise<void> {
   mkdirSync(outputDirectory, { recursive: true });
   emulatorLogFd = openSync(join(outputDirectory, 'emulator.log'), 'w');
   spawnedEmulator = spawn(
-    emulator,
+    androidTools().emulator,
     ['-avd', DEFAULT_AVD, '-port', String(port), ...ownedEmulatorLaunchArgs],
     {
       cwd: workspaceRoot,
@@ -308,11 +250,11 @@ async function selectOrStartDevice(): Promise<void> {
 
   const deadline = Date.now() + 180_000;
   while (Date.now() < deadline) {
-    abortController.signal.throwIfAborted();
+    throwIfAborted();
     if (emulatorSpawnError) throw emulatorSpawnError;
     if (emulatorExit) {
       throw new Error(
-        `${emulator} exited before ${serial} booted (${emulatorExit.code ?? emulatorExit.signal})`,
+        `${androidTools().emulator} exited before ${serial} booted (${emulatorExit.code ?? emulatorExit.signal})`,
       );
     }
     if ((await onlineDevices().catch((): string[] => [])).includes(serial)) {
@@ -398,7 +340,7 @@ async function captureDiagnostics(): Promise<void> {
         emulatorPid: spawnedEmulator?.pid ?? null,
         emulatorExit: emulatorExit ?? null,
         emulatorSpawnError: emulatorSpawnError?.message ?? null,
-        activeChildPid: activeChild?.pid ?? null,
+        activeChildPid: activeChildPid() ?? null,
         ownedEmulatorLaunchArgs,
       },
       null,
@@ -429,7 +371,7 @@ async function captureDiagnostics(): Promise<void> {
     return `${line}\n`;
   });
   await writeDiagnostic('adb-devices.txt', async () => {
-    const { stdout } = await exec(adb, ['devices', '-l'], {
+    const { stdout } = await exec(androidTools().adb, ['devices', '-l'], {
       cwd: workspaceRoot,
       timeout: 15_000,
     });
@@ -505,99 +447,37 @@ async function captureDiagnostics(): Promise<void> {
   }
 }
 
-async function waitForProcessExit(
-  child: ChildProcess,
-  timeout: number,
-): Promise<boolean> {
-  if (child.exitCode !== null || child.signalCode !== null) return true;
-  return Promise.race([
-    new Promise<true>((resolve) => child.once('exit', () => resolve(true))),
-    new Promise<false>((resolve) => setTimeout(() => resolve(false), timeout)),
-  ]);
-}
-
-async function cleanup(): Promise<void> {
-  if (cleanupPromise) return cleanupPromise;
-  cleanupPromise = (async () => {
-    cleaningUp = true;
-    let scrubError: unknown;
-    try {
-      await captureDiagnostics().catch(() => undefined);
-      if (serial) {
-        await adbRun('shell', 'am', 'force-stop', packageName).catch(
-          () => undefined,
-        );
-        for (const { local, previous } of changedReverseMappings.reverse()) {
-          await adbRun('reverse', '--remove', local).catch(() => undefined);
-          if (previous) {
-            await adbRun('reverse', local, previous).catch(() => undefined);
-          }
+async function releaseDevice(): Promise<void> {
+  try {
+    await captureDiagnostics().catch(() => undefined);
+    if (serial) {
+      await adbRun('shell', 'am', 'force-stop', packageName).catch(
+        () => undefined,
+      );
+      for (const { local, previous } of changedReverseMappings.reverse()) {
+        await adbRun('reverse', '--remove', local).catch(() => undefined);
+        if (previous) {
+          await adbRun('reverse', local, previous).catch(() => undefined);
         }
       }
-      if (ownsEmulator && serial) {
-        await adbRun('emu', 'kill').catch(() => undefined);
-      } else if (spawnedEmulator && !emulatorExit) {
-        terminateProcessGroup(spawnedEmulator, 'SIGTERM');
-      }
-      if (
-        spawnedEmulator &&
-        !(await waitForProcessExit(spawnedEmulator, 5_000))
-      ) {
-        terminateProcessGroup(spawnedEmulator, 'SIGKILL');
-        await waitForProcessExit(spawnedEmulator, 2_000);
-      }
-      // Appium flushes its log after wdio's onComplete, so scrub once everything is
-      // written, after device cleanup so a scrub failure cannot skip it. Uploaded CI
-      // artifacts must not carry Matrix ids, tokens or passwords.
-      try {
-        scrubDirectory(dirname(artifactsDir()));
-      } catch (error) {
-        scrubError = error;
-        console.error(
-          'Artifact scrub failed; artifacts may hold identifiers',
-          error,
-        );
-      }
-    } finally {
-      try {
-        if (emulatorLogFd !== undefined) {
-          closeSync(emulatorLogFd);
-          emulatorLogFd = undefined;
-        }
-      } finally {
-        await invocation?.close();
-        invocation = undefined;
-      }
     }
-
-    if (baselineWorktree !== undefined) {
-      const finalWorktree = await gitStatus();
-      if (finalWorktree !== baselineWorktree) {
-        throw new Error(
-          `Android E2E changed the worktree:\n${finalWorktree || '<clean>'}\n` +
-            `Before the run:\n${baselineWorktree || '<clean>'}`,
-        );
-      }
+    if (ownsEmulator && serial) {
+      await adbRun('emu', 'kill').catch(() => undefined);
+    } else if (spawnedEmulator && !emulatorExit) {
+      terminateProcessGroup(spawnedEmulator, 'SIGTERM');
     }
-    if (scrubError) throw scrubError;
-  })();
-  return cleanupPromise;
-}
-
-function registerSignals(): void {
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-    process.on(signal, () => {
-      signalCount += 1;
-      if (signalCount > 1) process.exit(signal === 'SIGINT' ? 130 : 143);
-      requestedExitCode = signal === 'SIGINT' ? 130 : 143;
-      abortController.abort(new Error(`Received ${signal}`));
-      const child = activeChild;
-      terminateProcessGroup(child, signal);
-      const killTimer = setTimeout(() => {
-        if (activeChild === child) terminateProcessGroup(child, 'SIGKILL');
-      }, 10_000);
-      killTimer.unref();
-    });
+    if (
+      spawnedEmulator &&
+      !(await waitForProcessExit(spawnedEmulator, 5_000))
+    ) {
+      terminateProcessGroup(spawnedEmulator, 'SIGKILL');
+      await waitForProcessExit(spawnedEmulator, 2_000);
+    }
+  } finally {
+    if (emulatorLogFd !== undefined) {
+      closeSync(emulatorLogFd);
+      emulatorLogFd = undefined;
+    }
   }
 }
 
@@ -659,7 +539,7 @@ async function main(): Promise<void> {
   process.env['TRINITY_ANDROID_SERIAL'] = serial;
   const outputDirectory = artifactsDir();
   mkdirSync(outputDirectory, { recursive: true });
-  await run(process.execPath, ['scripts/setup-appium.mjs']);
+  await run(process.execPath, ['scripts/setup-appium.mjs', 'uiautomator2']);
   process.env['APPIUM_HOME'] = join(workspaceRoot, '.appium');
   await run(
     'pnpm',
@@ -670,37 +550,14 @@ async function main(): Promise<void> {
       'e2e/mobile/wdio.conf.mts',
       ...process.argv.slice(2),
     ],
-    true,
+    androidWatchdog,
   );
 }
 
-async function execute(): Promise<void> {
-  registerSignals();
-
-  let failure: unknown;
-  try {
-    invocation = await openE2EInvocation({
-      resources: ['android-avd', 'homeserver'],
-      workspaceRoot,
-      signal: abortController.signal,
-    });
-    Object.assign(process.env, invocation.environment);
-    baselineWorktree = await gitStatus();
-    await main();
-  } catch (error) {
-    failure = error;
-  }
-  try {
-    await cleanup();
-  } catch (error) {
-    failure = failure ? new AggregateError([failure, error]) : error;
-  }
-
-  if (requestedExitCode) process.exitCode = requestedExitCode;
-  if (failure) throw failure;
-}
-
-execute().catch((error: unknown) => {
-  console.error(error);
-  if (!process.exitCode) process.exitCode = 1;
+startMobileRun({
+  platform: 'Android',
+  resources: ['android-avd', 'homeserver'],
+  artifactsDir,
+  main,
+  releaseDevice,
 });

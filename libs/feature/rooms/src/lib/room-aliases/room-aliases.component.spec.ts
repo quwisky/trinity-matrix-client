@@ -242,9 +242,7 @@ describe('RoomAliasesComponent', () => {
     expect(
       container.querySelector('[data-testid=room-aliases-read-only]')
         ?.textContent,
-    ).toContain(
-      "The opening Account cannot currently manage this Space's addresses.",
-    );
+    ).toContain("This account cannot currently manage this space's addresses.");
   });
 
   it('keeps the alias listed and toasts when removal fails', async () => {
@@ -316,7 +314,7 @@ describe('RoomAliasesComponent', () => {
       expect.objectContaining({
         header: 'Remove #community:hs.example?',
         message: expect.stringMatching(
-          /join or link to this space.*does not delete the Space/,
+          /join or link to this space.*does not delete the space/,
         ),
       }),
     );

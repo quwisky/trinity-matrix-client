@@ -14,7 +14,10 @@ import {
   RouterOutlet,
 } from '@angular/router';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnSpinnerComponent } from '@trinity/components/generic-content';
+import {
+  BannerComponent,
+  TrnSpinnerComponent,
+} from '@trinity/components/generic-content';
 import { TrnToasterComponent } from '@trinity/components/overlay';
 import { filter, map, take } from 'rxjs';
 import { ApplicationRuntimeService } from '../application-runtime.service';
@@ -36,6 +39,7 @@ import { TrinityApplicationSessionAdapter } from '../composition/trinity-applica
   imports: [
     RouterOutlet,
     TrnButton,
+    BannerComponent,
     VerificationHostComponent,
     TrnToasterComponent,
     TrnSpinnerComponent,
@@ -117,7 +121,7 @@ function startupStep(stage: ApplicationStartupStage): string {
     case 'preference-hydration':
       return 'Restoring your preferences…';
     case 'account-restoration':
-      return 'Restoring your Accounts…';
+      return 'Restoring your accounts…';
     case 'session-capabilities':
       return 'Preparing messaging…';
     case 'workspace-restoration':
@@ -136,7 +140,7 @@ function recoveryAction(recovery: ApplicationStartupRecovery): {
       return {
         label: 'Sign in again',
         detail:
-          'The required Account session is unavailable. Remove it and return to sign in.',
+          'The required account session is unavailable. Remove it and return to sign in.',
       };
     case 'reset-installation':
       return {

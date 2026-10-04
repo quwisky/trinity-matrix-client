@@ -5,7 +5,10 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
-import { openSettingsSection } from '../../../support/journeys/navigation.mts';
+import {
+  openSettingsSection,
+  openSystemStatusFromRooms,
+} from '../../../support/journeys/navigation.mts';
 
 // Covers the global Notifications settings (Settings → Notifications): each toggle maps
 // to a predefined push rule and writes via PushRulesService.setOn → setPushRuleEnabled.
@@ -119,11 +122,8 @@ test.describe('Notification settings', () => {
       rules.retryProjection();
     });
 
-    await page
-      .getByTestId('app-capability-summary')
-      .getByRole('button', { name: 'System Status' })
-      .click();
-    const status = page.getByRole('dialog', { name: 'System Status' });
+    await openSystemStatusFromRooms(page);
+    const status = page.getByRole('dialog', { name: 'System status' });
     const health = status
       .locator('article')
       .filter({ hasText: 'Room notification settings are unavailable' });

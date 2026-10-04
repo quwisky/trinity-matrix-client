@@ -31,10 +31,10 @@ pnpm exec playwright install chromium webkit
 
 ## Before running a suite
 
-Check its prerequisites. Docker is required by homeserver-backed suites. Android requires a
+Check its prerequisites. Docker is required by homeserver-backed suites unless `TRINITY_E2E_HOMESERVER_RUNTIME=native` runs Synapse and Caddy as host processes (see the Matrix E2E guide). Android requires a
 dedicated API 36 x86_64 emulator, its SDK and JDK 21; Electron needs its separately installed
-shell dependencies and a display; iOS needs macOS and Xcode but has no installed-app
-runner. The aggregate preflights selected suites.
+shell dependencies and a display; iOS needs macOS, Xcode, an iOS Simulator and the native homeserver runtime
+(`pnpm e2e:mobile:ios`; in progress, #863). The aggregate preflights selected suites.
 
 The disposable homeserver is Tuwunel unless `TRINITY_E2E_HOMESERVER=synapse` selects Synapse
 (see the [Matrix E2E guide](../apps/docs-developers/src/content/docs/testing/matrix-e2e-tests.md#choose-homeserver)).
@@ -42,7 +42,7 @@ The disposable homeserver stack uses fixed ports and shared state. Run homeserve
 sequentially, never in parallel. Lifecycle targets and aggregates are uncached and serialized;
 let them start and stop their own services. Do not start a competing Docker stack, server,
 emulator, or Playwright process. A missing prerequisite is unavailable validation, not a pass.
-Every current registered suite is required by the full local gate.
+Every current registered suite except `mobile.ios` is required by the full local gate; `pnpm e2e:all` skips iOS where its preflight fails.
 
 ## Focus a canonical browser journey
 

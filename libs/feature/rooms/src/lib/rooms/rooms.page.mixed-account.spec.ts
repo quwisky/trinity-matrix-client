@@ -276,7 +276,7 @@ describe('RoomsPage mixed-account view', () => {
       '!dm-mine:hs',
       '!dm-theirs:hs',
     ]);
-    expect(shell.vm.sidebarTitle()).toBe('Direct Messages');
+    expect(shell.vm.sidebarTitle()).toBe('Direct messages');
   });
 
   it('Rooms shows every account’s non-DM, non-space rooms in mixed mode', async () => {

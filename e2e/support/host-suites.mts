@@ -121,8 +121,44 @@ export const HOST_E2E_SUITES = defineSuites([
     targetArtifactRoot: 'dist/.playwright/trinity-e2e-mobile/<run-id>',
     sourceEntrypoints: ['e2e/mobile/run.mts', 'e2e/mobile/wdio.conf.mts'],
   },
+  {
+    id: 'mobile.ios',
+    environment: 'mobile-ios',
+    capabilities: ['composition', 'host'],
+    contractTypes: ['host', 'journey'],
+    currentTarget: 'trinity-e2e-mobile:e2e-ios',
+    targetProject: 'trinity-e2e-mobile',
+    prerequisites: ['ios-simulator', 'macos', 'xcode'],
+    // Optional so `pnpm e2e:all` skips iOS off macOS; `pnpm e2e:mobile:ios` still fails.
+    availabilityPolicy: 'optional',
+    ciTier: 'nightly',
+    cachePolicy: 'never',
+    serializationKeys: ['homeserver', 'ios-simulator'],
+    timeoutClass: 'host',
+    canonicalScript: 'e2e:mobile:ios',
+    currentArtifactRoot: 'dist/.playwright/trinity-e2e-mobile/<run-id>',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-mobile/<run-id>',
+    sourceEntrypoints: [
+      'e2e/mobile/run-ios.mts',
+      'e2e/mobile/wdio.ios.conf.mts',
+    ],
+  },
 ]);
 
-export const ELECTRON_FULL_SUITE = HOST_E2E_SUITES[3];
-export const ELECTRON_SMOKE_SUITE = HOST_E2E_SUITES[4];
-export const MOBILE_ANDROID_SUITE = HOST_E2E_SUITES[5];
+type HostSuite = (typeof HOST_E2E_SUITES)[number];
+
+function hostSuite<const Id extends HostSuite['id']>(
+  id: Id,
+): Extract<HostSuite, { readonly id: Id }> {
+  const suite = HOST_E2E_SUITES.find(
+    (candidate): candidate is Extract<HostSuite, { readonly id: Id }> =>
+      candidate.id === id,
+  );
+  if (!suite) throw new Error(`Unknown host E2E suite: ${id}`);
+  return suite;
+}
+
+export const ELECTRON_FULL_SUITE = hostSuite('electron.full');
+export const ELECTRON_SMOKE_SUITE = hostSuite('electron.smoke');
+export const MOBILE_ANDROID_SUITE = hostSuite('mobile.android');
+export const MOBILE_IOS_SUITE = hostSuite('mobile.ios');

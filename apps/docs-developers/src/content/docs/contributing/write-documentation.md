@@ -1,6 +1,6 @@
 ---
 title: Write documentation
-description: Maintain the separate release user guide and develop-branch developer guide without publishing private material.
+description: Maintain the separate release user guide and main-branch developer guide without publishing private material.
 audience: developer
 contentChannel: develop
 canonicalTopic: contributing-write-documentation
@@ -8,7 +8,7 @@ pageType: how-to
 platforms: [web]
 ---
 
-Trinity publishes two English Starlight sites. The user guide describes only the latest published release; the developer guide describes `develop`.
+Trinity publishes two English Starlight sites. The user guide describes only the latest published release; the developer guide describes `main`.
 
 ## Choose the channel {#choose-channel}
 

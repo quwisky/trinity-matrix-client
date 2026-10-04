@@ -5,7 +5,10 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
-import { openSettingsSection } from '../../../support/journeys/navigation.mts';
+import {
+  openSettingsSection,
+  openSystemStatusFromRooms,
+} from '../../../support/journeys/navigation.mts';
 
 // Covers the Security settings section (Settings → Security): it surfaces this account's
 // encryption posture from TrustService and launches the existing setup/verify flows. A
@@ -160,11 +163,8 @@ test.describe('Security settings', () => {
     await expect(page.getByTestId('security-unlock')).toHaveCount(0);
     await expect(page.getByTestId('security-verify')).toHaveCount(0);
     await page.getByRole('button', { name: 'Close settings' }).click();
-    await page
-      .getByTestId('app-capability-summary')
-      .getByRole('button', { name: 'System Status' })
-      .click();
-    const status = page.getByRole('dialog', { name: 'System Status' });
+    await openSystemStatusFromRooms(page);
+    const status = page.getByRole('dialog', { name: 'System status' });
     const problem = status
       .locator('article')
       .filter({ hasText: 'Encryption trust status is unavailable' });

@@ -12,10 +12,16 @@ import { dirname } from 'node:path';
 import {
   DATA,
   REMOTE_DATA,
+  STATE_DIR,
   composeFiles,
   resolveNetworkContainer,
 } from './paths.mjs';
-import { HOMESERVER_KINDS, resolveHomeserverKind } from './kind.mts';
+import {
+  HOMESERVER_KINDS,
+  resolveHomeserverKind,
+  resolveHomeserverRuntime,
+} from './kind.mts';
+import { nativePaths, nodeProcessApi, stopNativeServices } from './native.mts';
 import {
   acquireHomeserverTeardownLease,
   releaseHomeserverLease,
@@ -35,35 +41,61 @@ function teardownKind() {
   }
 }
 
+/** A bad selection must not strand a running stack: fall back to Docker's teardown. */
+function teardownRuntime() {
+  try {
+    return resolveHomeserverRuntime();
+  } catch {
+    return 'docker';
+  }
+}
+
 export async function stop({ keepData = false, signal } = {}) {
   const failures = [];
+  let nativeFailed = false;
+  // Whatever the selection, native processes named in a PID file are this harness's.
   try {
-    // Detection failing must not strand the stack: fall back to the default file set.
-    const networkContainer = await resolveNetworkContainer().catch(() => '');
-    log('docker compose down…');
-    await exec(
-      'docker',
-      [
-        'compose',
-        ...composeFiles(teardownKind(), networkContainer),
-        'down',
-        '-v',
-        '--remove-orphans',
-      ],
-      {
-        cwd: HERE,
-        signal,
-        env: {
-          ...process.env,
-          TRINITY_E2E_NETWORK_CONTAINER: networkContainer,
-        },
-      },
+    await stopNativeServices(
+      nativePaths(STATE_DIR, DATA).pidFile,
+      nodeProcessApi,
+      { signal, log },
     );
   } catch (err) {
-    log(`compose down failed: ${err.message ?? err}`);
+    log(`native stop failed: ${err.message ?? err}`);
     failures.push(err);
+    nativeFailed = true;
   }
-  if (!keepData) {
+  if (teardownRuntime() === 'docker') {
+    try {
+      // Detection failing must not strand the stack: fall back to the default file set.
+      const networkContainer = await resolveNetworkContainer().catch(() => '');
+      log('docker compose down…');
+      await exec(
+        'docker',
+        [
+          'compose',
+          ...composeFiles(teardownKind(), networkContainer),
+          'down',
+          '-v',
+          '--remove-orphans',
+        ],
+        {
+          cwd: HERE,
+          signal,
+          env: {
+            ...process.env,
+            TRINITY_E2E_NETWORK_CONTAINER: networkContainer,
+          },
+        },
+      );
+    } catch (err) {
+      log(`compose down failed: ${err.message ?? err}`);
+      failures.push(err);
+    }
+  }
+  // ./data holds the PID file: keep it while a native stop failed, so the processes it
+  // names stay tracked (and the lease keeps refusing) instead of silently orphaned.
+  if (!keepData && !nativeFailed) {
     try {
       await Promise.all([
         rm(DATA, { recursive: true, force: true }),

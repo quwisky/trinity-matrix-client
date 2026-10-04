@@ -90,7 +90,7 @@ test.describe('Room settings on a phone', () => {
       page.getByTestId('room-settings-mobile-back'),
     );
     const discard = page.getByRole('dialog', {
-      name: 'Discard Room settings changes?',
+      name: 'Discard room settings changes?',
     });
     await discard.getByRole('button', { name: 'Keep editing' }).click();
     await expect(topic).toHaveValue('A mobile draft');

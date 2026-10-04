@@ -8,7 +8,7 @@ recommended: true
 
 # Changelog Maintenance
 
-release-please writes `CHANGELOG.md` when a stable release PR merges on `main`; do
+release-please writes `CHANGELOG.md` when a stable release PR merges on a [`release/X.Y.x` branch](../../../docs-internal/maintenance/ci-and-releases.md#releases); do
 not edit it by hand. `feat`, `fix`, `perf` and `revert` subjects and `BREAKING CHANGE:`
 footers become the release notes, so write them for users. Follow the
 [private release guide](../../../docs-internal/maintenance/ci-and-releases.md) for

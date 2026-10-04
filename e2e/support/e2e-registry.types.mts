@@ -1,5 +1,11 @@
 export type E2EEnvironment =
-  'browser' | 'components' | 'electron' | 'mobile' | 'protocol' | 'web';
+  | 'browser'
+  | 'components'
+  | 'electron'
+  | 'mobile'
+  | 'mobile-ios'
+  | 'protocol'
+  | 'web';
 
 export type E2EContractType =
   'accessibility' | 'host' | 'journey' | 'protocol' | 'security' | 'visual';
@@ -25,7 +31,7 @@ export type E2ECapability =
   | 'trust'
   | 'workspace';
 
-export type E2ECiTier = 'local-only' | 'pull-request' | 'scheduled';
+export type E2ECiTier = 'local-only' | 'nightly' | 'pull-request' | 'scheduled';
 export type E2ETimeoutClass = 'short' | 'medium' | 'long' | 'host';
 
 export type E2EPrerequisite =
@@ -33,12 +39,15 @@ export type E2EPrerequisite =
   | 'android-sdk'
   | 'docker'
   | 'electron'
+  | 'ios-simulator'
   | 'java-21'
   | 'kvm'
+  | 'macos'
   | 'network'
   | 'playwright-chromium'
   | 'playwright-firefox'
   | 'playwright-webkit'
+  | 'xcode'
   | 'xvfb';
 
 export interface E2ESuiteDefinition {

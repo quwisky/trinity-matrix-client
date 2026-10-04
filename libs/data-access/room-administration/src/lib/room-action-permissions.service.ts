@@ -327,7 +327,7 @@ export class RoomActionPermissionsService {
       'coherent'
       ? null
       : denied(
-          'Current room permissions are unavailable. Retry Room administration before making changes.',
+          'Current room permissions are unavailable. Retry room administration before making changes.',
         );
   }
 

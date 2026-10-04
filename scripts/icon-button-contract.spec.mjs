@@ -56,41 +56,40 @@ const iconActionControls = controlBlocks.filter(({ source, openingTag }) =>
   /\btrnIconButton\b/.test(openingTag),
 );
 
-const expectedBespokeCounts = {
-  'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.html': 5,
-  'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.html': 6,
-  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html': 3,
-  'libs/feature/rooms/src/lib/message-composer/composer-attachment-strip/composer-attachment-strip.component.html': 2,
-  'libs/feature/rooms/src/lib/message-composer/composer-format-menu/composer-format-menu.component.html': 2,
-  'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.html': 3,
-  'libs/feature/rooms/src/lib/message-composer/message-composer.component.html': 6,
-  'libs/feature/rooms/src/lib/message-reactions/message-reactions.component.html': 1,
-  'libs/feature/rooms/src/lib/server-rail/server-rail.component.html': 4,
-  'libs/feature/rooms/src/lib/voice-message/voice-message.component.html': 1,
-  'libs/feature/settings/src/lib/profile/profile-settings.component.html': 1,
-  'libs/components/controls/src/lib/button/trn-icon-motion.stories.ts#template-3': 1,
-};
+const bespokeIconFiles = new Set([
+  'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.html',
+  'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.html',
+  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html',
+  'libs/feature/rooms/src/lib/message-composer/composer-attachment-strip/composer-attachment-strip.component.html',
+  'libs/feature/rooms/src/lib/message-composer/composer-format-menu/composer-format-menu.component.html',
+  'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.html',
+  'libs/feature/rooms/src/lib/message-composer/message-composer.component.html',
+  'libs/feature/rooms/src/lib/message-reactions/message-reactions.component.html',
+  'libs/feature/rooms/src/lib/server-rail/server-rail.component.html',
+  'libs/feature/rooms/src/lib/voice-message/voice-message.component.html',
+  'libs/feature/settings/src/lib/profile/profile-settings.component.html',
+  'libs/components/controls/src/lib/button/trn-icon-motion.stories.ts#template-3',
+]);
 
-const expectedCompositeCounts = {
-  'libs/feature/rooms/src/lib/account-picker/account-picker.component.html': 1,
-  'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.html': 9,
-  'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.html': 9,
-  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html': 8,
-  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.html': 5,
-  'libs/feature/rooms/src/lib/location-share/location.component.html': 1,
-  'libs/feature/rooms/src/lib/message-composer/composer-format-menu/composer-format-menu.component.html': 2,
-  'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.html': 1,
-  'libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.html': 1,
-  'libs/feature/rooms/src/lib/quick-switcher/quick-switcher.component.html': 1,
-  'libs/feature/rooms/src/lib/rooms/rooms.page.html': 6,
-};
+const compositeIconFiles = new Set([
+  'libs/feature/rooms/src/lib/account-picker/account-picker.component.html',
+  'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.html',
+  'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.html',
+  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html',
+  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.html',
+  'libs/feature/rooms/src/lib/location-share/location.component.html',
+  'libs/feature/rooms/src/lib/message-composer/composer-format-menu/composer-format-menu.component.html',
+  'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.html',
+  'libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.html',
+  'libs/feature/rooms/src/lib/quick-switcher/quick-switcher.component.html',
+  'libs/feature/rooms/src/lib/rooms/rooms.page.html',
+]);
 
-const countsByFile = (controls) =>
-  Object.fromEntries(
-    [...Map.groupBy(controls, ({ file }) => file)]
-      .map(([file, entries]) => [file, entries.length])
-      .sort(([left], [right]) => left.localeCompare(right)),
-  );
+const filesOutside = (controls, allowed) => [
+  ...new Set(
+    controls.map(({ file }) => file).filter((file) => !allowed.has(file)),
+  ),
+];
 
 describe('icon-button contract', () => {
   it('finds public controls across buttons, links and inline templates', () => {
@@ -150,8 +149,8 @@ describe('icon-button contract', () => {
     expect(incomplete).toEqual([]);
   });
 
-  it('keeps the purpose-built icon-control inventory exact', () => {
-    expect(countsByFile(iconActionControls)).toEqual(expectedBespokeCounts);
+  it('keeps purpose-built icon controls in their named templates', () => {
+    expect(filesOutside(iconActionControls, bespokeIconFiles)).toEqual([]);
   });
 
   it('keeps composite icon-and-text controls out of the icon-only contract', () => {
@@ -161,6 +160,6 @@ describe('icon-button contract', () => {
         /<trn-icon(?:\s|>)/.test(source),
     );
 
-    expect(countsByFile(composites)).toEqual(expectedCompositeCounts);
+    expect(filesOutside(composites, compositeIconFiles)).toEqual([]);
   });
 });

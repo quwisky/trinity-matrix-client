@@ -31,7 +31,7 @@
       border-radius: var(--trinity-radius-sm);
       background: var(--trinity-surface-frame);
       font-family: inherit;
-      font-size: 11px;
+      font-size: var(--trinity-text-xs);
     }
 
     strong {
@@ -47,7 +47,7 @@
     border-radius: var(--trinity-shape-control-radius);
     background: none;
     color: var(--trinity-text-muted);
-    font-size: 12px;
+    font-size: 0.75rem;
     cursor: pointer;
 
     &:hover:where(:not(:disabled)) {
@@ -226,7 +226,7 @@
     border-radius: var(--trinity-shape-control-radius);
     background: none;
     color: var(--trinity-text-muted);
-    font-size: 18px;
+    font-size: 1.125rem;
     cursor: pointer;
 
     &:hover {
@@ -260,7 +260,7 @@
   .composer__recording-time {
     flex: 1;
     color: var(--trinity-text-bright);
-    font-size: 14px;
+    font-size: 0.875rem;
     font-variant-numeric: tabular-nums;
   }
 
@@ -291,7 +291,7 @@
     border-radius: var(--trinity-shape-control-radius);
     background: none;
     color: var(--trinity-text-muted);
-    font-size: 20px;
+    font-size: var(--trinity-text-lg);
     cursor: pointer;
 
     &:hover:where(:not(:disabled)) {
@@ -361,9 +361,17 @@
       color: var(--trinity-text-muted);
     }
 
-    // A long room name may wrap below the resting row, but an empty input must not scroll.
+    // A long room name stays on one line: an empty input never wraps its placeholder or
+    // scrolls, so nothing is clipped on a narrow phone. A textarea cannot draw
+    // `text-overflow: ellipsis` on its placeholder, so the cut edge fades out instead.
     &:placeholder-shown {
-      overflow-y: hidden;
+      overflow: hidden;
+      white-space: nowrap;
+      mask-image: linear-gradient(
+        to right,
+        black calc(100% - 1.5rem),
+        transparent
+      );
     }
 
     // The ring is the FIELD's now (see its `:has(…:focus-visible)` above). Suppress the native

@@ -58,8 +58,9 @@ export class SpaceActionsService {
     this.alert
       .prompt$({
         header: 'Create a space',
-        message: 'A space groups related rooms, like a Discord server.',
+        message: 'A space groups related rooms.',
         placeholder: 'Space name',
+        inputLabel: 'Space name',
         confirmText: 'Create',
         maxLength: 100,
       })
@@ -86,6 +87,7 @@ export class SpaceActionsService {
         header: 'Create a space inside',
         message: `The new space will sit inside “${this.vm.activeSpaceName()}”.`,
         placeholder: 'Space name',
+        inputLabel: 'Space name',
         confirmText: 'Create',
         maxLength: 100,
       })
@@ -110,9 +112,9 @@ export class SpaceActionsService {
     this.status.error.set(null);
     this.alert
       .prompt$({
-        header: 'Create a channel',
-        message: `New channels are end-to-end encrypted and added to “${this.vm.activeSpaceName()}”.`,
-        placeholder: 'Channel name',
+        header: 'Create a room',
+        message: `New rooms are end-to-end encrypted and added to “${this.vm.activeSpaceName()}”.`,
+        placeholder: 'Room name',
         confirmText: 'Create',
         maxLength: 100,
       })
@@ -140,7 +142,7 @@ export class SpaceActionsService {
     this.alert
       .confirm$({
         header: 'Leave space',
-        message: `Leave “${spaceName}” as ${accountName}? You remain a member of its Rooms; only the Space itself is left.`,
+        message: `Leave “${spaceName}” as ${accountName}? You remain a member of its rooms; only the space itself is left.`,
         confirmText: 'Leave',
         variant: 'danger',
       })
@@ -252,7 +254,7 @@ export class SpaceActionsService {
     }
     this.status.error.set(null);
     const name =
-      this.rooms.rooms().find((r) => r.id === roomId)?.name ?? 'this channel';
+      this.rooms.rooms().find((r) => r.id === roomId)?.name ?? 'this room';
     this.alert
       .confirm$({
         header: 'Remove from space',

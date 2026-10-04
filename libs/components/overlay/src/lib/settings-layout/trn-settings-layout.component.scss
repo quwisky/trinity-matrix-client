@@ -29,6 +29,14 @@
     background: var(--trinity-surface-floating);
   }
 
+  // A phone header gets more room above the title than the desktop frame, which keeps
+  // the same header height for Room, Space and app settings.
+  @media (max-width: 47.9375rem) {
+    .settings-layout__header {
+      padding-top: max(var(--trinity-space-4), env(safe-area-inset-top));
+    }
+  }
+
   .settings-layout__heading {
     min-width: 0;
     flex: 1;

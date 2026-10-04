@@ -456,7 +456,7 @@ describe('RoomSettingsComponent', () => {
       roomSnapshot({
         availability: 'account-unavailable',
         unavailableReason:
-          'This Account is no longer available. Your unfinished edits are still here.',
+          'This account is no longer available. Your unfinished edits are still here.',
         openingAccountActive: false,
         identity: { name: '', topic: '', avatarMxc: null },
         encrypted: null,
@@ -760,7 +760,7 @@ describe('RoomSettingsComponent', () => {
 
     cmp.selectSection('general');
     expect(confirm).toHaveBeenCalledWith(
-      expect.objectContaining({ header: 'Discard Room settings changes?' }),
+      expect.objectContaining({ header: 'Discard room settings changes?' }),
     );
     confirmResult.next(false);
     await fixture.whenStable();

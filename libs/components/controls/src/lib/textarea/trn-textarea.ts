@@ -50,9 +50,13 @@ export class TrnTextarea {
   private readonly fieldControl = inject(BrnFieldControl);
 
   readonly size = input<TrnTextControlSize>('md');
-  readonly invalid = input(false, { transform: booleanAttribute });
+  /**
+   * Explicitly marks the control invalid. Not named `invalid`: Signal Forms writes the field's
+   * raw `invalid` state into any `invalid` input, which would show errors before interaction.
+   */
+  readonly explicitInvalid = input(false, { transform: booleanAttribute });
   protected readonly resolvedInvalid = computed(
-    () => this.invalid() || Boolean(this.fieldControl.invalid()),
+    () => this.explicitInvalid() || Boolean(this.fieldControl.spartanInvalid()),
   );
 
   constructor() {

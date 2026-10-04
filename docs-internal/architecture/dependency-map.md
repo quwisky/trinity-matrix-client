@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **67 Nx projects** and **255 dependencies**. No project cycles detected.
+This snapshot contains **67 Nx projects** and **258 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -150,7 +150,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `docs-site`                       | `tools/docs`                           | unmanaged tooling/test                          |                   0 |
 | `docs-users`                      | `apps/docs-users`                      | unmanaged tooling/test                          |                   1 |
 | `dropdown-menu`                   | `libs/spartan/dropdown-menu`           | role:design-system; capability:design-system    |                   1 |
-| `feature-auth`                    | `libs/feature/auth`                    | role:capability; capability:accounts            |                  11 |
+| `feature-auth`                    | `libs/feature/auth`                    | role:capability; capability:accounts            |                  12 |
 | `feature-crypto`                  | `libs/feature/crypto`                  | role:capability; capability:trust               |                  11 |
 | `feature-rooms`                   | `libs/feature/rooms`                   | role:application; capability:workspace          |                  24 |
 | `feature-settings`                | `libs/feature/settings`                | role:application; capability:settings           |                  23 |
@@ -160,7 +160,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `projection-runtime`              | `libs/runtime/projection`              | role:kernel; capability:shared                  |                   0 |
 | `runtime-host`                    | `libs/runtime/host`                    | role:kernel; capability:host                    |                   0 |
 | `runtime-preferences`             | `libs/runtime/preferences`             | role:kernel; capability:preferences             |                   0 |
-| `scripts`                         | `scripts`                              | unmanaged tooling/test                          |                   4 |
+| `scripts`                         | `scripts`                              | unmanaged tooling/test                          |                   6 |
 | `select`                          | `libs/spartan/select`                  | role:design-system; capability:design-system    |                   1 |
 | `sonner`                          | `libs/spartan/sonner`                  | role:design-system; capability:design-system    |                   2 |
 | `spartan-tests`                   | `libs/spartan/tests`                   | role:design-system; capability:design-system    |                   4 |

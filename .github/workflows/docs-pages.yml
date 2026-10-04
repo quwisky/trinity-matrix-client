@@ -2,8 +2,8 @@ name: Documentation Pages
 
 on:
   push:
-    branches: [develop]
-  # A published stable release re-runs this workflow on develop (the only branch Pages
+    branches: [main]
+  # A published stable release re-runs this workflow on main (the only branch Pages
   # accepts) so the user guide moves to that release.
   release:
     types: [published]
@@ -27,11 +27,11 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh workflow run docs-pages.yml --ref develop
+        run: gh workflow run docs-pages.yml --ref main
 
   build:
     name: Build documentation
-    if: github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -46,9 +46,10 @@ jobs:
       - run: pnpm format:check
       - run: pnpm nx test scripts
       - run: pnpm nx test docs-site
-      # The developer guide always deploys from develop. Between a stable release PR's
-      # back-merge and publishing that release, the user guide names a draft version, so
-      # build it from the newest commit whose version is published.
+      # The developer guide always deploys from main. After a back-merge PR brings a
+      # stable release's version into main and before that release is published, the user
+      # guide names a draft version, so build it from the newest commit whose version is
+      # published.
       - name: Use the user guide of the latest published release
         id: release
         env:
@@ -77,7 +78,7 @@ jobs:
 
   deploy:
     name: Deploy documentation
-    if: github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     permissions:

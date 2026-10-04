@@ -24,8 +24,8 @@
           (click)="createRoom.emit()"
           [trnActionAllowed]="canCurateSpace()"
           [trnActionDisabledReason]="curateSpaceReason()"
-          aria-label="Create a channel"
-          [trnTooltip]="curateSpaceReason() ?? 'Create a channel'"
+          aria-label="Create a room"
+          [trnTooltip]="curateSpaceReason() ?? 'Create a room'"
         >
           <trn-icon name="plus" motion="rotate" />
         </button>
@@ -142,16 +142,16 @@
         <!-- Pending and failed, not empty — the same line in the same place, which is why the
              one rule styled all three. `variant="danger"` is what makes the failure read as one
              without reaching for `--destructive`, whose dark value is a near-black maroon. -->
-        <trn-empty-state layout="line" body="Loading channels…" />
+        <trn-empty-state layout="line" body="Loading rooms…" />
       } @else if (childrenError()) {
         <trn-empty-state
           layout="line"
           variant="danger"
-          body="Couldn’t load this space’s channels."
+          body="Couldn’t load this space’s rooms."
         />
       } @else {
         @if (filteredJoinableRooms().length) {
-          <div class="category">More Channels</div>
+          <div class="category">More rooms</div>
           @for (child of filteredJoinableRooms(); track child.roomId) {
             <div class="joinable">
               <span class="joinable__hash">#</span>

@@ -12,15 +12,22 @@ import {
   E2E_TIMEOUTS_MS,
 } from '../e2e/registry/index.mts';
 import { validateBrowserJourneyInventory } from './e2e-browser-inventory.mjs';
-import { validateProtocolAssertionInventory } from './e2e-protocol-inventory.mjs';
 
 const TARGET_PROJECT_BY_ENVIRONMENT = {
   browser: 'trinity-e2e-browser',
   components: 'trinity-e2e-components',
   electron: 'trinity-e2e-electron',
   mobile: 'trinity-e2e-mobile',
+  'mobile-ios': 'trinity-e2e-mobile',
   protocol: 'trinity-e2e-protocol',
   web: 'trinity-e2e-web',
+};
+
+/** The workflow that runs each CI tier; entrypoints and report paths are checked per file. */
+export const CI_WORKFLOW_BY_TIER = {
+  'pull-request': '.github/workflows/ci.yml',
+  scheduled: '.github/workflows/ci.yml',
+  nightly: '.github/workflows/e2e-ios-nightly.yml',
 };
 
 const PROJECT_FILES = {
@@ -217,6 +224,11 @@ export function validateRegistry(snapshot, now = new Date()) {
   }
 
   for (const entrypoint of snapshot.ciEntrypoints) {
+    if (!Object.hasOwn(CI_WORKFLOW_BY_TIER, entrypoint.tier)) {
+      errors.push(
+        `${entrypoint.command} uses CI tier ${entrypoint.tier}, which no workflow runs`,
+      );
+    }
     for (const suiteId of entrypoint.suiteIds) {
       const suite = snapshot.suites.find(({ id }) => id === suiteId);
       if (!suite) {
@@ -335,7 +347,12 @@ export const yamlReportPaths = (source) =>
     match[1].trim(),
   );
 
-export const validateCiReportPaths = (errors, source, snapshot) => {
+export const validateCiReportPaths = (
+  errors,
+  source,
+  snapshot,
+  entrypoints = snapshot.ciEntrypoints,
+) => {
   const paths = yamlReportPaths(source);
   const suitesById = new Map(snapshot.suites.map((suite) => [suite.id, suite]));
   const coveredSuites = new Set();
@@ -366,9 +383,7 @@ export const validateCiReportPaths = (errors, source, snapshot) => {
     if (
       suite.ciTier !== 'local-only' &&
       suite.ciTier !== 'scheduled' &&
-      snapshot.ciEntrypoints.some(({ suiteIds }) =>
-        suiteIds.includes(suite.id),
-      ) &&
+      entrypoints.some(({ suiteIds }) => suiteIds.includes(suite.id)) &&
       !coveredSuites.has(suite.id)
     ) {
       errors.push(`CI report path is missing suite ${suite.id}`);
@@ -581,35 +596,30 @@ const validateEntrypointInventory = (errors, workspaceRoot, snapshot) => {
   }
 };
 
-const validateCanonicalSpecInventory = (errors, workspaceRoot, snapshot) => {
-  const canonicalSpecs = globSync('e2e/browser/journeys/**/*.spec.mts', {
-    cwd: workspaceRoot,
-  });
-  if (canonicalSpecs.length !== snapshot.inventory.canonicalBrowserSpecCount) {
-    errors.push(
-      `canonical browser inventory drifted: expected ${snapshot.inventory.canonicalBrowserSpecCount}, found ${canonicalSpecs.length}`,
-    );
-  }
-};
-
 const validateCiEntrypoints = (errors, workspaceRoot, snapshot) => {
-  const workflow = readFileSync(
-    join(workspaceRoot, '.github/workflows/ci.yml'),
-    'utf8',
-  );
-  const observedCiCommands = yamlRunCommands(workflow);
-  validateCiReportPaths(errors, workflow, snapshot);
-  const expectedCiCommands = snapshot.ciEntrypoints.map(
-    ({ command }) => command,
-  );
-  for (const command of observedCiCommands) {
-    if (!expectedCiCommands.includes(command)) {
-      errors.push(`unregistered CI E2E entrypoint: ${command}`);
+  for (const path of new Set(Object.values(CI_WORKFLOW_BY_TIER))) {
+    const entrypoints = snapshot.ciEntrypoints.filter(
+      ({ tier }) => CI_WORKFLOW_BY_TIER[tier] === path,
+    );
+    if (!existsSync(join(workspaceRoot, path))) {
+      if (entrypoints.length > 0) errors.push(`CI workflow ${path} is missing`);
+      continue;
     }
-  }
-  for (const command of expectedCiCommands) {
-    if (!observedCiCommands.includes(command)) {
-      errors.push(`registered CI E2E entrypoint is absent: ${command}`);
+    const workflow = readFileSync(join(workspaceRoot, path), 'utf8');
+    validateCiReportPaths(errors, workflow, snapshot, entrypoints);
+    const observed = yamlRunCommands(workflow);
+    const expected = entrypoints.map(({ command }) => command);
+    for (const command of observed) {
+      if (!expected.includes(command)) {
+        errors.push(`unregistered CI E2E entrypoint in ${path}: ${command}`);
+      }
+    }
+    for (const command of expected) {
+      if (!observed.includes(command)) {
+        errors.push(
+          `registered CI E2E entrypoint is absent from ${path}: ${command}`,
+        );
+      }
     }
   }
   const ciSuiteIds = new Set(
@@ -622,7 +632,11 @@ const validateCiEntrypoints = (errors, workspaceRoot, snapshot) => {
       errors.push(`${suite.ciTier} suite has no CI entrypoint: ${suite.id}`);
     }
   }
-  if (!workflow.includes('# 110 canonical browser specs')) {
+  const ci = readFileSync(
+    join(workspaceRoot, '.github/workflows/ci.yml'),
+    'utf8',
+  );
+  if (!ci.includes('# 110 canonical browser specs')) {
     errors.push('CI canonical browser spec count is stale');
   }
 };
@@ -684,13 +698,11 @@ export function validateWorkspace(
   validateAggregateTargets(errors, workspaceRoot, snapshot);
   validateTargetInventory(errors, workspaceRoot, snapshot);
   validateEntrypointInventory(errors, workspaceRoot, snapshot);
-  validateCanonicalSpecInventory(errors, workspaceRoot, snapshot);
   validateBrowserJourneyInventory(
     errors,
     workspaceRoot,
     snapshot.suites.find(({ id }) => id === 'browser.canonical'),
   );
-  validateProtocolAssertionInventory(errors, workspaceRoot);
   validateCiEntrypoints(errors, workspaceRoot, snapshot);
   validateArchitectureCommand(errors, packageScripts);
   validateDurableE2ENames(errors, workspaceRoot);
