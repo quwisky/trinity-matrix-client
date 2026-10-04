@@ -632,17 +632,13 @@ export class VirtualMessageListComponent extends MessageListBase {
    */
   jumpTo(messageId: string): void {
     const el = this.scrollEl()?.nativeElement;
-    console.warn('REVEAL918 jumpTo called', !!el, messageId);
     if (!el) {
       return;
     }
     const idx = this.ids().indexOf(messageId);
-    console.warn('REVEAL918 jumpTo', idx, this.ids().length, el.scrollTop);
     if (idx < 0) {
       return; // not loaded → no-op
     }
-    setTimeout(() => console.warn('REVEAL918 +500ms scrollTop', el.scrollTop, el.scrollHeight), 500);
-    setTimeout(() => console.warn('REVEAL918 +3000ms scrollTop', el.scrollTop, el.scrollHeight), 3000);
     // Remembered so a width change can re-aim it: every branch below ends in a measurement
     // that is only correct for the layout at this instant. See `notePendingJump`.
     this.notePendingJump(messageId);

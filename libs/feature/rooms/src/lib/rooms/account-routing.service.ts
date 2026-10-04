@@ -196,12 +196,10 @@ export class AccountRoutingService {
    * loads only the newest messages, so an older linked event is paged in first.
    */
   private revealLoadedEvent(eventId: string): void {
-    console.warn('REVEAL918 revealLoadedEvent start', eventId);
     this.conversations.timeline
       .loadEvent(eventId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((loaded) => {
-        console.warn('REVEAL918 loadEvent result', loaded);
         if (loaded) {
           this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
         } else {
