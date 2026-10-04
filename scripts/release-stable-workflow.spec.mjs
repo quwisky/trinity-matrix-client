@@ -34,6 +34,13 @@ describe('Release stable workflow', () => {
     expect(resolveRun).toContain('-next\\.(0|[1-9][0-9]*)$');
     expect(resolveRun).toContain('isDraft');
     expect(resolveRun).toContain('isPrerelease');
+    expect(resolveRun).toContain(
+      'contents/.github/workflows/release-stable.yml?ref=$FROM',
+    );
+    expect(resolveRun).toContain('predates the release-branch workflows');
+    expect(index('Resolve the prerelease')).toBeLessThan(
+      index('Create the release branch'),
+    );
     const refuse = job.steps[index('Refuse an existing line')].run;
     expect(refuse).toContain('refs/heads/$BRANCH');
     expect(refuse).toContain('refs/tags/');

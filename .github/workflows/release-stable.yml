@@ -50,11 +50,25 @@ jobs:
             echo "::error::$FROM is not a published prerelease."
             exit 1
           fi
+          # The branch inherits the tag's workflows, so a tag cut before these workflows existed could never release.
+          if ! err=$(gh api "repos/$GH_REPO/contents/.github/workflows/release-stable.yml?ref=$FROM" 2>&1 >/dev/null); then
+            if [[ "$err" == *"HTTP 404"* ]]; then
+              echo "::error::$FROM predates the release-branch workflows; cut a new prerelease from main first."
+            else
+              echo "::error::Could not look up the workflows at $FROM: $err"
+            fi
+            exit 1
+          fi
+          sha=$(gh api "repos/$GH_REPO/commits/$FROM" -q .sha)
+          if [ -z "$sha" ]; then
+            echo "::error::Could not resolve the commit of $FROM."
+            exit 1
+          fi
           {
             echo "tag=$FROM"
             echo "version=$major.$minor.$patch"
             echo "branch=release/$major.$minor"
-            echo "sha=$(gh api "repos/$GH_REPO/commits/$FROM" -q .sha)"
+            echo "sha=$sha"
           } >> "$GITHUB_OUTPUT"
 
       - name: Refuse an existing line
