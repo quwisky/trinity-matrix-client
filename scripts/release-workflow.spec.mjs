@@ -8,6 +8,8 @@ const root = resolve(import.meta.dirname, '..');
 const workflow = parse(
   readFileSync(resolve(root, '.github/workflows/release.yml'), 'utf8'),
 );
+const readJson = (name) =>
+  JSON.parse(readFileSync(resolve(root, name), 'utf8'));
 const SECRETS = [
   'MAC_CSC_LINK',
   'MAC_CSC_KEY_PASSWORD',
@@ -51,5 +53,79 @@ describe('release macOS signing', () => {
     expect(runWith(['MAC_CSC_LINK'])).not.toBe(0);
     expect(runWith(['APPLE_ID', 'APPLE_TEAM_ID'])).not.toBe(0);
     expect(runWith(SECRETS.slice(0, 4))).not.toBe(0);
+  });
+});
+
+describe('release branches', () => {
+  const ref = "startsWith(github.ref_name, 'release/')";
+  const releasePlease = () =>
+    workflow.jobs['release-please'].steps.find((s) => s.id === 'release');
+
+  it('runs on main and release/** pushes', () => {
+    expect(workflow.on.push.branches).toEqual(['main', 'release/**']);
+  });
+
+  it('picks the release-please config and manifest by branch', () => {
+    const { with: w } = releasePlease();
+    expect(w['config-file']).toBe(
+      `\${{ ${ref} && 'release-please-config.json' || 'release-please-config.next.json' }}`,
+    );
+    expect(w['manifest-file']).toBe(
+      `\${{ ${ref} && '.release-please-manifest.json' || '.release-please-manifest.next.json' }}`,
+    );
+  });
+
+  it('requires the tagged commit on main or a release branch', () => {
+    const run = workflow.jobs.verify.steps.find((s) =>
+      s.name?.startsWith('Tagged commit'),
+    ).run;
+    expect(run).toContain('origin/main');
+    expect(run).toContain('refs/remotes/origin/release/');
+    expect(run).not.toContain('origin/develop');
+  });
+
+  it('configures versioning per line', () => {
+    expect(readJson('release-please-config.json').versioning).toBe(
+      'always-bump-patch',
+    );
+    expect(readJson('release-please-config.next.json').versioning).toBe(
+      'prerelease',
+    );
+  });
+
+  describe('back-merge job', () => {
+    const job = () => workflow.jobs['back-merge'];
+
+    it('runs only after a release-please release on a release branch', () => {
+      expect(job().needs).toContain('release-please');
+      expect(job().needs).not.toContain('verify');
+      expect(job().needs).not.toContain('package');
+      expect(job().if).toBe(
+        `\${{ needs.release-please.outputs.created == 'true' && ${ref} }}`,
+      );
+    });
+
+    it('mints the pinned App token and runs the script with it', () => {
+      const mint = job().steps.find((s) => s.id === 'app-token');
+      expect(mint.uses).toMatch(
+        /^actions\/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1$/,
+      );
+      const run = job().steps.find((s) => s.run?.includes('back-merge.mjs'));
+      expect(run.run).toContain(
+        'node scripts/back-merge.mjs --tag "$TAG" --branch "$BRANCH"',
+      );
+      expect(run.env.GH_TOKEN).toBe('\${{ steps.app-token.outputs.token }}');
+    });
+
+    it('sets up Node before running the script', () => {
+      const steps = job().steps;
+      const node = steps.findIndex((s) =>
+        s.uses?.startsWith('actions/setup-node@'),
+      );
+      const run = steps.findIndex((s) => s.run?.includes('back-merge.mjs'));
+      expect(node).toBeGreaterThanOrEqual(0);
+      expect(node).toBeLessThan(run);
+      expect(steps[node].with['node-version-file']).toBe('.nvmrc');
+    });
   });
 });
