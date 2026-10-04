@@ -88,7 +88,7 @@ test.describe('Room settings · For you on a phone', () => {
       page.getByTestId('room-settings-mobile-back'),
     );
     const discard = page.getByRole('dialog', {
-      name: 'Discard Room settings changes?',
+      name: 'Discard room settings changes?',
     });
     await touchPlatform.tap(
       page,
@@ -106,7 +106,7 @@ test.describe('Room settings · For you on a phone', () => {
     );
     await expect(
       page.getByTestId('room-settings-for-you-feedback'),
-    ).toContainText('saved for the opening Account', { timeout: 30_000 });
+    ).toContainText('saved for this account', { timeout: 30_000 });
     await test.info().attach('room-settings-for-you-mobile-member', {
       body: await settings.screenshot(),
       contentType: 'image/png',

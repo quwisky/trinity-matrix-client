@@ -106,7 +106,7 @@ export class SessionActionsService {
           outcome.kind !== 'ready' &&
           outcome.kind !== 'partial-cleanup'
         ) {
-          this.status.showError('Unable to remove this Account right now.');
+          this.status.showError('Unable to remove this account right now.');
         }
       });
   }

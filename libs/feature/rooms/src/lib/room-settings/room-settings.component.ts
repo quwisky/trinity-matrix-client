@@ -63,7 +63,7 @@ const SECTIONS: readonly (SettingsHubSection & {
     icon: 'link',
     group: 'Manage',
     label: 'Addresses',
-    description: 'Published Room links',
+    description: 'Published room links',
   },
   {
     value: 'widgets',

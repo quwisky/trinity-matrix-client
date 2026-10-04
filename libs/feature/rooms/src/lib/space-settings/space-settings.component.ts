@@ -49,14 +49,14 @@ const SECTIONS: readonly (SettingsHubSection & {
     icon: 'lock',
     group: 'Manage',
     label: 'Access',
-    description: 'Who can join this Space',
+    description: 'Who can join this space',
   },
   {
     value: 'contents',
     icon: 'layers',
     group: 'Manage',
     label: 'Rooms & spaces',
-    description: 'Linked Rooms and nested Spaces',
+    description: 'Linked rooms and nested spaces',
   },
   {
     value: 'members',
@@ -70,7 +70,7 @@ const SECTIONS: readonly (SettingsHubSection & {
     icon: 'link',
     group: 'Manage',
     label: 'Addresses',
-    description: 'Published Space links',
+    description: 'Published space links',
   },
 ];
 

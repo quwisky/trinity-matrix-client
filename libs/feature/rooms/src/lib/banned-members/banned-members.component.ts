@@ -36,7 +36,7 @@ import { filter } from 'rxjs';
 export class BannedMembersComponent {
   readonly accountId = input<string | null>(null);
   readonly roomId = input.required<string>();
-  readonly targetName = input('this Room');
+  readonly targetName = input('this room');
   readonly noun = input<'Room' | 'Space'>('Room');
   readonly bannedMembers = input<readonly BannedMember[] | null>(null);
   readonly exactAvailability = input<'available' | 'unavailable'>('available');
@@ -109,7 +109,7 @@ export class BannedMembersComponent {
     this.alert
       .confirm$({
         header: `Unban from ${this.noun().toLowerCase()}`,
-        message: `Unban ${member.roomDisplayName} from ${this.targetName()} using Account ${this.accountId() ?? 'currently active'}? They may be invited or join again according to this ${this.noun().toLowerCase()}'s access policy.`,
+        message: `Unban ${member.roomDisplayName} from ${this.targetName()} using account ${this.accountId() ?? 'currently active'}? They may be invited or join again according to this ${this.noun().toLowerCase()}'s access policy.`,
         confirmText: 'Unban',
         variant: 'neutral',
       })

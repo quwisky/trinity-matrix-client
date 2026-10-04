@@ -85,7 +85,7 @@ export class MemberInfoComponent {
   readonly accountId = input<string | null>(null);
   /** Whether the immutable Account-and-Room target can still supply live authority. */
   readonly exactTargetAvailable = input(true);
-  readonly targetName = input('this Room');
+  readonly targetName = input('this room');
   readonly noun = input<'Room' | 'Space'>('Room');
   /** Exact-target observers bump this when membership or power policy changes. */
   readonly authorityRevision = input(0);
@@ -319,8 +319,8 @@ export class MemberInfoComponent {
     }
     this.alert
       .prompt$({
-        header: `Remove from ${this.noun()}`,
-        message: `Remove ${this.member().roomDisplayName} from ${this.targetName()} using Account ${this.accountId() ?? 'currently active'}? They can rejoin if invited or if this ${this.noun().toLowerCase()} is public.`,
+        header: `Remove from ${this.noun().toLowerCase()}`,
+        message: `Remove ${this.member().roomDisplayName} from ${this.targetName()} using account ${this.accountId() ?? 'currently active'}? They can rejoin if invited or if this ${this.noun().toLowerCase()} is public.`,
         confirmText: 'Remove',
         variant: 'danger',
         placeholder: 'Reason (optional)',
@@ -348,8 +348,8 @@ export class MemberInfoComponent {
     }
     this.alert
       .prompt$({
-        header: `Ban from ${this.noun()}`,
-        message: `Ban ${this.member().roomDisplayName} from ${this.targetName()} using Account ${this.accountId() ?? 'currently active'}? They won't be able to rejoin until they're unbanned.`,
+        header: `Ban from ${this.noun().toLowerCase()}`,
+        message: `Ban ${this.member().roomDisplayName} from ${this.targetName()} using account ${this.accountId() ?? 'currently active'}? They won't be able to rejoin until they're unbanned.`,
         confirmText: 'Ban',
         variant: 'danger',
         placeholder: 'Reason (optional)',
@@ -378,7 +378,7 @@ export class MemberInfoComponent {
     this.alert
       .confirm$({
         header: 'Change role',
-        message: `Change ${this.member().roomDisplayName}'s role in ${this.targetName()} to ${option.label} using Account ${this.accountId() ?? 'currently active'}?`,
+        message: `Change ${this.member().roomDisplayName}'s role in ${this.targetName()} to ${option.label} using account ${this.accountId() ?? 'currently active'}?`,
         confirmText: 'Change',
         // A demotion is the weightier direction.
         variant:

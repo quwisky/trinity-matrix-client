@@ -7,7 +7,7 @@
     <div>
       <h3 id="space-contents-title">Rooms &amp; spaces</h3>
       <p>
-        Everything linked directly inside this Space. Shared order and Suggested
+        Everything linked directly inside this space. Shared order and Suggested
         changes save immediately for everyone.
       </p>
     </div>
@@ -32,7 +32,7 @@
           (click)="create('room')"
           data-testid="space-contents-create-room"
         >
-          {{ pending() === 'create:room' ? 'Creating…' : 'Create Room' }}
+          {{ pending() === 'create:room' ? 'Creating…' : 'Create room' }}
         </button>
         <button
           trnBtn
@@ -41,7 +41,7 @@
           (click)="create('space')"
           data-testid="space-contents-create-space"
         >
-          {{ pending() === 'create:space' ? 'Creating…' : 'Create Space' }}
+          {{ pending() === 'create:space' ? 'Creating…' : 'Create space' }}
         </button>
       </div>
     }
@@ -86,7 +86,7 @@
 
   @if (pickerOpen() && snapshot()?.canManage) {
     <div class="space-contents__picker" data-testid="space-contents-picker">
-      <label for="space-contents-search">Find a joined Room or Space</label>
+      <label for="space-contents-search">Find a joined room or space</label>
       <input
         trnInput
         id="space-contents-search"
@@ -127,8 +127,8 @@
               layout="line"
               [body]="
                 snapshot()?.candidates?.length
-                  ? 'No joined Rooms or Spaces match that search.'
-                  : 'Every joined Room and Space is already linked here.'
+                  ? 'No joined rooms or spaces match that search.'
+                  : 'Every joined room and space is already linked here.'
               "
             />
           </li>
@@ -160,7 +160,7 @@
   }
 
   @if (loading()) {
-    <p class="space-contents__state" role="status">Loading Space contents…</p>
+    <p class="space-contents__state" role="status">Loading space contents…</p>
   } @else if (snapshot(); as state) {
     @if (showUnavailableReason() && state.unavailableReason) {
       <p

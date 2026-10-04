@@ -100,7 +100,7 @@ test.describe('Room settings widgets on a phone', () => {
       page.getByTestId('room-settings-mobile-back'),
     );
     const discard = page.locator('trn-alert-dialog');
-    await expect(discard).toContainText('unsaved Room details');
+    await expect(discard).toContainText('unsaved room details');
     await touchPlatform.tap(
       page,
       discard.getByRole('button', { name: 'Keep editing' }),

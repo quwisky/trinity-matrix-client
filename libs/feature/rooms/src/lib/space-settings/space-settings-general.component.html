@@ -58,7 +58,7 @@
         </p>
       }
       <span id="space-settings-name-help" class="space-settings__hint">
-        Shown in the Space rail and anywhere this Space is linked.
+        Shown in the space rail and anywhere this space is linked.
       </span>
       @if (draft.nameHasPermissionBlockedEdit()) {
         <span
@@ -70,7 +70,7 @@
           Discard it to return to the saved value.
         </span>
       } @else if (draft.nameEmpty()) {
-        <span class="space-settings__restriction">A Space needs a name.</span>
+        <span class="space-settings__restriction">A space needs a name.</span>
       } @else if (!draft.mayEditName()) {
         <span class="space-settings__restriction">
           {{ draft.permissions().name.reason }}

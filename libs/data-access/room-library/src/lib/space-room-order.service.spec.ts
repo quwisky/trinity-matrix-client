@@ -297,7 +297,7 @@ describe('SpaceRoomOrderService', () => {
 
       await expect(
         firstValueFrom(svc.setForAccountSpace(ME, SPACE, 'space')),
-      ).rejects.toThrow('opening Account is no longer available');
+      ).rejects.toThrow('account is no longer available');
 
       expect(store.get(overridesKey(ME))).toBeUndefined();
       expect(svc.snapshotFor(ME, SPACE).overrideMode).toBeNull();

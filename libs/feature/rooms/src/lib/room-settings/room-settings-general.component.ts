@@ -51,7 +51,7 @@ export class RoomSettingsGeneralComponent {
       return 'Encryption status is unavailable.';
     }
     return encrypted
-      ? 'Messages in this Room are end-to-end encrypted.'
-      : 'Messages in this Room are not end-to-end encrypted.';
+      ? 'Messages in this room are end-to-end encrypted.'
+      : 'Messages in this room are not end-to-end encrypted.';
   });
 }

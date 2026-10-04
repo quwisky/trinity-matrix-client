@@ -193,7 +193,7 @@ test.describe('Room settings · For you', () => {
     const panel = page.getByTestId('room-settings-panel-for-you');
     await expect(
       panel.getByRole('alert').getByRole('heading', {
-        name: 'Couldn’t read Room preferences',
+        name: 'Couldn’t read room preferences',
       }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(panel.getByRole('alert')).not.toHaveAttribute('aria-live');
