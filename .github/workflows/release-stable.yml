@@ -59,6 +59,12 @@ jobs:
             fi
             exit 1
           fi
+          # The tag must be an ancestor of main (compare status ahead or identical).
+          status=$(gh api "repos/$GH_REPO/compare/$FROM...main" -q .status)
+          if [ "$status" != ahead ] && [ "$status" != identical ]; then
+            echo "::error::$FROM is not on main's history."
+            exit 1
+          fi
           sha=$(gh api "repos/$GH_REPO/commits/$FROM" -q .sha)
           if [ -z "$sha" ]; then
             echo "::error::Could not resolve the commit of $FROM."

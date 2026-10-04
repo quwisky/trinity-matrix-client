@@ -290,13 +290,15 @@ run release-please.
    ```
 
 6. Before a fix release on 0.1: the renamed `release/0.1` still has the old workflows.
-   Port `release.yml`, `release-please-config.json` (with `"versioning":
-"always-bump-patch"`) and `scripts/back-merge.mjs` to `release/0.1` through a pull
+   Port `release.yml`, `release-please-config.json` (with
+   `"versioning": "always-bump-patch"`) and `scripts/back-merge.mjs` to `release/0.1` through a pull
    request first.
 7. Verify with a `dry_run` of `Release stable`, then the first real cut, and the first fix
    on `release/0.1`, each followed by its back-merge PR.
 
 ### First release
+
+This describes the original bootstrap under the old develop/main model.
 
 `0.1.0` predates release-please. After the migration merge, push the `v0.1.0`
 tag on the migration commit **first**, then create `main` from that commit, and

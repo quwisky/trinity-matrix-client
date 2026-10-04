@@ -38,6 +38,7 @@ describe('Release stable workflow', () => {
       'contents/.github/workflows/release-stable.yml?ref=$FROM',
     );
     expect(resolveRun).toContain('predates the release-branch workflows');
+    expect(resolveRun).toContain('compare/$FROM...main');
     expect(index('Resolve the prerelease')).toBeLessThan(
       index('Create the release branch'),
     );
