@@ -179,6 +179,12 @@ test.describe('Message grouping', () => {
     // The hover toolbar floats over the trailing row boundary instead of reserving a permanent
     // action gutter. Measure a CONTINUATION row specifically: it has no author header or group
     // padding to disguise either a lost strip of message width or excessive vertical overlap.
+    // The bar is mounted only on the hovered or focused row (#958), so hover one first.
+    await page
+      .locator('.msg--cont')
+      .first()
+      .dispatchEvent('pointerenter', { pointerType: 'mouse' });
+    await expect(page.locator('.msg--cont .msg__toolbar')).toHaveCount(1);
     const containment = await page.evaluate(() => {
       const row = [...document.querySelectorAll('.msg--cont')].find(
         (candidate) => candidate.querySelector('.msg__toolbar'),
@@ -331,9 +337,9 @@ test.describe('Message grouping', () => {
       )
       .toBeLessThanOrEqual(1);
     await firstActionRow.evaluate((row) => row.classList.add('msg--revealed'));
-    await firstActionRow
-      .locator('.msg__toolbar')
-      .dispatchEvent('pointerenter', { pointerType: 'mouse' });
+    await firstActionRow.dispatchEvent('pointerenter', {
+      pointerType: 'mouse',
+    });
     await expect(firstActionRow.locator('.msg__toolbar')).toHaveCSS(
       'opacity',
       '1',
@@ -441,9 +447,9 @@ test.describe('Message grouping', () => {
       html.setAttribute('data-density', 'compact');
     });
     await expect(page.locator('.msg').first()).toHaveCSS('column-gap', '8px');
-    await restingActionRow
-      .locator('.msg__toolbar')
-      .dispatchEvent('pointerenter', { pointerType: 'mouse' });
+    await restingActionRow.dispatchEvent('pointerenter', {
+      pointerType: 'mouse',
+    });
 
     const compact = await page.evaluate((restingBody) => {
       const rows = [...document.querySelectorAll<HTMLElement>('.msg')].filter(
@@ -549,8 +555,8 @@ test.describe('Message grouping', () => {
     await restingActionRow.evaluate((row) =>
       row.classList.add('msg--revealed'),
     );
-    await restingActionRow.locator('.msg__toolbar').evaluate((bar) => {
-      bar.dispatchEvent(
+    await restingActionRow.evaluate((row) => {
+      row.dispatchEvent(
         new PointerEvent('pointerenter', { pointerType: 'mouse' }),
       );
     });

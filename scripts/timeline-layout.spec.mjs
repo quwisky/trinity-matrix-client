@@ -73,9 +73,9 @@ describe('modern timeline layout contracts', () => {
       threadSummaryCss.match(/var\(--message-body-indent\)/g)?.length,
     ).toBe(2);
     // Precise-pointer floating actions do not consume the message's inline width or measured
-    // height. The sole `:has()` track is scoped to the hybrid-touch accessibility override.
+    // height. The action track is scoped to the hybrid-touch accessibility override.
     expect(rowCss).toMatch(
-      /@media \(any-pointer: coarse\)\s*\{\s*\.msg:has\(\.msg__toolbar\)\s*\{[^}]*padding-inline-end:[^}]*\}\s*\.msg__toolbar\s*\{[^}]*translate:\s*none;[^}]*\}\s*\}/s,
+      /@media \(any-pointer: coarse\)\s*\{\s*\.msg--actions\s*\{[^}]*padding-inline-end:[^}]*\}\s*\.msg__toolbar\s*\{[^}]*translate:\s*none;[^}]*\}\s*\}/s,
     );
     expect(rowCss).not.toMatch(/\.msg\s*\{[^}]*min-height:/s);
   });

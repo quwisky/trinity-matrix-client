@@ -3,6 +3,8 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  Injector,
+  afterNextRender,
   computed,
   inject,
   input,
@@ -171,6 +173,7 @@ export class MessageRowComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   private readonly host = inject(ElementRef<HTMLElement>);
+  private readonly injector = inject(Injector);
 
   private readonly toolbar = viewChild(MessageToolbarComponent);
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
@@ -180,6 +183,12 @@ export class MessageRowComponent {
     anchor: HTMLElement;
   } | null = null;
   private dismissReveal: (() => void) | null = null;
+  /** Plain fields, not signals: they only gate {@link releaseToolbar}, never the template. */
+  private pointerInside = false;
+  private menuOpen = false;
+
+  /** Whether the pointer or focus is on this row, which is what mounts its toolbar. */
+  readonly toolbarActive = signal(false);
 
   /**
    * Whether this row's action bar is pinned open, which is how touch reaches it.
@@ -213,7 +222,7 @@ export class MessageRowComponent {
    * for Copy, and taking that menu away to offer our own would be a downgrade. The native
    * menu is only prevented where this row actually handles the event.
    */
-  onContextMenu(event: MouseEvent): void {
+  onContextMenu(event: Event): void {
     if (this.hasTextSelection()) {
       return;
     }
@@ -233,12 +242,21 @@ export class MessageRowComponent {
       event.preventDefault();
       return;
     }
-    const bar = this.toolbar();
-    if (!bar) {
+    if (!this.hasToolbar()) {
       return; // read-only rows and system events have no actions to offer
     }
     event.preventDefault();
-    bar.openMoreMenu();
+    const bar = this.toolbar();
+    if (bar) {
+      bar.openMoreMenu();
+      return;
+    }
+    // Not mounted yet (a keyboard or programmatic context menu with no hover first): mount
+    // it, then open the menu once it exists.
+    this.toolbarActive.set(true);
+    afterNextRender(() => this.toolbar()?.openMoreMenu(), {
+      injector: this.injector,
+    });
   }
 
   /**
@@ -595,9 +613,49 @@ export class MessageRowComponent {
     this.revealed.set(false);
   }
 
-  /** Place floating actions against the live scrollport before hover reveals them. */
-  placeToolbar(): void {
+  /**
+   * Mount the toolbar on hover. A toolbar that already exists is re-placed against the live
+   * scrollport; a new one places itself after its first render.
+   */
+  onPointerEnter(): void {
+    this.pointerInside = true;
+    this.toolbarActive.set(true);
     this.toolbar()?.placeToolbar();
+  }
+
+  onPointerLeave(): void {
+    this.cancelLongPress();
+    this.pointerInside = false;
+    this.releaseToolbar(document.activeElement);
+  }
+
+  onFocusOut(event: FocusEvent): void {
+    this.releaseToolbar(event.relatedTarget);
+  }
+
+  onMenuOpenChange(open: boolean): void {
+    this.menuOpen = open;
+    if (!open) {
+      // Closing may hand focus back to the "⋯" trigger in the same turn; decide after it has.
+      queueMicrotask(() => this.releaseToolbar(document.activeElement));
+    }
+  }
+
+  /**
+   * Unmount the toolbar unless something still needs it: the pointer, focus inside the row
+   * (`focus` is where focus is going or now sits), or its overflow menu, which lives in an
+   * overlay outside the row and would close under the user. `revealed()` keeps it mounted
+   * through the template on its own.
+   */
+  private releaseToolbar(focus: EventTarget | null): void {
+    if (
+      this.pointerInside ||
+      this.menuOpen ||
+      (focus instanceof Node && this.host.nativeElement.contains(focus))
+    ) {
+      return;
+    }
+    this.toolbarActive.set(false);
   }
 
   /** An action was chosen, so the bar has done its job. */
@@ -721,6 +779,20 @@ export class MessageRowComponent {
   readonly showEditedMarker = computed(() => {
     const row = this.row();
     return row.edited && row.kind !== 'redacted' && !row.decryptionFailed;
+  });
+
+  /** Whether this row offers the desktop toolbar at all; it is then also a tab stop. */
+  readonly hasToolbar = computed(
+    () => !this.mobileActions && this.hasMessageActions(),
+  );
+
+  /** The focusable row's accessible name: who, when, and the start of what was said. */
+  readonly rowLabel = computed(() => {
+    const r = this.row();
+    const text = (r.body ?? '').trim().replace(/\s+/g, ' ');
+    const excerpt = text.length > 80 ? `${text.slice(0, 80)}…` : text;
+    const head = `${r.senderName}, ${this.fmt.dateTime(r.timestamp)}`;
+    return excerpt ? `${head}: ${excerpt}` : head;
   });
 
   /** Capabilities the overflow toolbar needs, projected from {@link caps}. */
