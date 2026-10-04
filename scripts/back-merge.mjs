@@ -74,6 +74,14 @@ export function planBackMerge({ mainContainsTag, existingPr }) {
   return existingPr === null ? 'create' : 'update';
 }
 
+export const autoMergeArgs = (pr) => [
+  'pr',
+  'merge',
+  String(pr),
+  '--auto',
+  '--merge',
+];
+
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
 const gh = (...args) => execFileSync('gh', args, { encoding: 'utf8' }).trim();
 const succeeds = (command, args) => {
@@ -258,24 +266,35 @@ function run({ tag, branch }) {
           '',
           `Drops the one-time \`release-as\` that \`${STABLE_CONFIG}\` carries on the release branch.`,
         ]),
+    '',
+    'Merges itself (merge commit) once CI is green.',
   ].join('\n');
+  let number;
   if (plan === 'update') {
+    number = existing;
     gh('pr', 'edit', existing, '--body', body);
     console.log(`Updated back-merge PR #${existing}.`);
   } else {
+    const url = gh(
+      'pr',
+      'create',
+      '--base',
+      'main',
+      '--head',
+      head,
+      '--title',
+      `chore: back-merge ${tag} into main`,
+      '--body',
+      body,
+    );
+    console.log(url);
+    number = url.split('/').pop();
+  }
+  try {
+    gh(...autoMergeArgs(number));
+  } catch (error) {
     console.log(
-      gh(
-        'pr',
-        'create',
-        '--base',
-        'main',
-        '--head',
-        head,
-        '--title',
-        `chore: back-merge ${tag} into main`,
-        '--body',
-        body,
-      ),
+      `::warning::Could not enable auto-merge on #${number} (is "Allow auto-merge" on?): ${error.message}`,
     );
   }
 }

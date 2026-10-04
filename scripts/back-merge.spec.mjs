@@ -9,6 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import {
+  autoMergeArgs,
   compareVersions,
   higherVersion,
   mergeNextManifest,
@@ -303,6 +304,16 @@ describe('back-merge', () => {
     expect(leaseFor('back-merge/v0.1.2', '')).toBe(
       '--force-with-lease=back-merge/v0.1.2:',
     );
+  });
+
+  it('enables auto-merge with a merge commit', () => {
+    expect(autoMergeArgs(17)).toEqual([
+      'pr',
+      'merge',
+      '17',
+      '--auto',
+      '--merge',
+    ]);
   });
 
   it('strips the one-time release-as without reformatting the config', () => {
