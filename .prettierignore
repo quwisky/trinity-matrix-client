@@ -14,6 +14,8 @@ ios
 
 # Generated / binary
 pnpm-lock.yaml
+# Written by release-please on each stable release; never edited by hand.
+CHANGELOG.md
 *.wasm
 
 # Agent skills + tool-managed config (vendored / generated — don't reformat)
