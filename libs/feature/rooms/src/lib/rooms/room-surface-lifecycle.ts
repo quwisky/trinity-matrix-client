@@ -319,9 +319,18 @@ export class RoomSurfaceLifecycle {
     eventId: string,
     generation: number,
   ): void {
+    console.warn('REVEAL918 scheduleReveal', eventId, generation);
     afterNextRender(
       () => {
         const current = this.writableState();
+        console.warn(
+          'REVEAL918 reveal callback',
+          !!current,
+          current?.conversation === conversation,
+          !!current?.surface,
+          generation,
+          this.revealGeneration,
+        );
         if (
           current?.conversation !== conversation ||
           current.surface ||
