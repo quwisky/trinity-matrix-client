@@ -44,7 +44,7 @@ describe('user guide release version', () => {
       readFileSync(resolve(root, '.github/workflows/docs-pages.yml'), 'utf8'),
     );
 
-    it('redeploys from develop when a stable release is published', () => {
+    it('redeploys from main when a stable release is published', () => {
       expect(workflow.on.release.types).toEqual(['published']);
       const job = workflow.jobs.redeploy;
       expect(job.if).toBe(
@@ -52,11 +52,11 @@ describe('user guide release version', () => {
       );
       expect(job.permissions).toEqual({ actions: 'write' });
       expect(job.steps.at(-1).run).toBe(
-        'gh workflow run docs-pages.yml --ref develop',
+        'gh workflow run docs-pages.yml --ref main',
       );
     });
 
-    it('builds the user guide from its last published version and deploys develop', () => {
+    it('builds the user guide from its last published version and deploys main', () => {
       const { steps } = workflow.jobs.build;
       expect(steps[0].with).toEqual({ 'fetch-depth': 0 });
       const index = steps.findIndex((step) => step.id === 'release');
@@ -64,12 +64,10 @@ describe('user guide release version', () => {
       expect(check.run).toContain('gh release view "v$version"');
       expect(check.run).toContain('isDraft');
       expect(check.run).toContain('git checkout "$ref" -- apps/docs-users');
-      // The checks before it still validate develop's own user guide.
+      // The checks before it still validate main's own user guide.
       expect(steps[index + 1].run).toBe('pnpm nx run docs-site:check');
       expect(workflow.jobs.build.outputs).toBeUndefined();
-      expect(workflow.jobs.deploy.if).toBe(
-        "github.ref == 'refs/heads/develop'",
-      );
+      expect(workflow.jobs.deploy.if).toBe("github.ref == 'refs/heads/main'");
     });
   });
 
