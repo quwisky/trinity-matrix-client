@@ -211,8 +211,9 @@ export function readNativePids(
   let text: string;
   try {
     text = readFileSync(pidFile, 'utf8');
-  } catch {
-    return {};
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
+    throw unreadable(pidFile);
   }
   let parsed: unknown;
   try {

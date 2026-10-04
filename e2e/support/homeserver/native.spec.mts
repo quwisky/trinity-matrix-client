@@ -14,6 +14,7 @@ import {
   ensureSynapseVenv,
   nativeCaddyfile,
   nativePaths,
+  readNativePids,
   runningNativeServices,
   startNativeServices,
   stopNativeServices,
@@ -191,6 +192,18 @@ describe('native homeserver runtime', () => {
     writeFileSync(paths.pidFile, JSON.stringify({ homeserver: -3 }));
     expect(() => runningNativeServices(paths.pidFile, fake.api)).toThrow(
       /unreadable native PID file/,
+    );
+  });
+
+  it('rejects a PID file that exists but cannot be read', () => {
+    const paths = layout();
+    const fake = fakeProcesses();
+    mkdirSync(paths.pidFile); // reading a directory fails with EISDIR, not ENOENT
+    expect(() => readNativePids(paths.pidFile)).toThrow(
+      /unreadable native PID file/,
+    );
+    expect(() => runningNativeServices(paths.pidFile, fake.api)).toThrow(
+      paths.pidFile,
     );
   });
 
