@@ -50,11 +50,14 @@ export class AccountRoutingService {
   private readonly injector = inject(Injector);
   private readonly conversations = inject(ConversationRuntime);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly firstSyncDone = computed(() => {
+  /**
+   * A sync from the server has completed. Not PREPARED: the SDK also reports that for the
+   * sync it restores from its cache, whose timelines a gappy live sync later replaces.
+   */
+  private readonly firstSyncDone = computed(
     // String compare: components and features never import the SDK's SyncState enum.
-    const state = String(this.matrix.syncState() ?? '');
-    return state === 'PREPARED' || state === 'SYNCING';
-  });
+    () => String(this.matrix.syncState() ?? '') === 'SYNCING',
+  );
 
   /** An account's display name for user-facing copy, falling back to its user id. */
   accountLabel(accountId: string): string {
@@ -201,21 +204,27 @@ export class AccountRoutingService {
    * Reveal an event of a room. The list scrolls by DOM lookup, and a cold start loads only
    * the newest messages, so an older linked event is paged in first. Navigation reports
    * ready before the Conversation Runtime moves focus, and `loadEvent` pages whichever
-   * conversation holds it, so wait for the target room to be focused.
+   * conversation holds it, so wait for the target room to be focused. A cold start opens
+   * the room from the cached sync, so also wait for a live sync: a gappy one replaces the
+   * cached timeline and would drop the paged-in event.
    */
   private revealLoadedEvent(room: ExactRoomSelection, eventId: string): void {
-    const isFocused = (): boolean => {
+    const isReady = (): boolean => {
       const key = this.conversations.focused()?.key;
-      return key?.roomId === room.roomId && key.accountId === room.accountId;
+      return (
+        this.firstSyncDone() &&
+        key?.roomId === room.roomId &&
+        key.accountId === room.accountId
+      );
     };
-    const focused$ = isFocused()
+    const ready$ = isReady()
       ? of(true)
-      : toObservable(computed(isFocused), { injector: this.injector }).pipe(
+      : toObservable(computed(isReady), { injector: this.injector }).pipe(
           filter(Boolean),
           take(1),
           timeout({ first: ROOM_READINESS_TIMEOUT_MS }),
         );
-    focused$
+    ready$
       .pipe(
         switchMap(() => this.conversations.timeline.loadEvent(eventId)),
         takeUntilDestroyed(this.destroyRef),

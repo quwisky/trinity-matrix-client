@@ -116,7 +116,9 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     const routing = build();
 
     routing.openLinkedRoom('!other:hs', '$e', 'deep-link');
-    sync([joined], 'PREPARED' as SyncState);
+    sync([joined], 'PREPARED' as SyncState); // the cached sync: the room may be newly joined
+    expect(showError).not.toHaveBeenCalled();
+    sync([joined], 'SYNCING' as SyncState);
 
     expect(showError).toHaveBeenCalledExactlyOnceWith(
       "You're not in that room.",
@@ -174,6 +176,24 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     expect(showError).toHaveBeenCalledExactlyOnceWith(
       'Could not load that message.',
     );
+  });
+
+  it('pages the event in only after a live sync, since a gappy one replaces the cached timeline', () => {
+    const routing = build();
+    // The SDK reports PREPARED for the sync it restores from its cache, before any request.
+    sync([joined], 'PREPARED' as SyncState);
+
+    routing.openLinkedRoom(joined.id, '$old', 'deep-link');
+    TestBed.tick();
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(loadEvent).not.toHaveBeenCalled();
+
+    sync([joined], 'SYNCING' as SyncState);
+    expect(loadEvent).toHaveBeenCalledExactlyOnceWith('$old');
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'reveal-message',
+      eventId: '$old',
+    });
   });
 
   it('waits for the room to be the focused conversation before paging its history', () => {
