@@ -109,6 +109,29 @@ describe('Homebrew tap workflow', () => {
     expect(resolveTag('0.2.0').status).not.toBe(0);
   });
 
+  it('writes the stable cask only for the latest release, before touching the tap', () => {
+    const check = stepIndex('Stable cask follows the latest release');
+    expect(check).toBeGreaterThan(stepIndex('Resolve the release'));
+    const step = job.steps[check];
+    expect(step.run).toContain('[ "$CASK" = trinity ] || exit 0');
+    expect(step.run).toContain(
+      'latest=$(gh api "repos/$GH_REPO/releases/latest" -q .tag_name)',
+    );
+    expect(step.run).toContain('if [ "$latest" != "$TAG" ]');
+    expect(step.run).toContain('::notice::');
+    expect(step.run).toContain('echo "skip=true" >> "$GITHUB_OUTPUT"');
+    const tap = job.steps.findIndex(
+      (s) => s.with?.repository === 'quwisky/homebrew-trinity',
+    );
+    for (const later of job.steps.slice(check + 1)) {
+      expect(later.if, later.name ?? later.uses).toBe(
+        "${{ steps.latest.outputs.skip != 'true' }}",
+      );
+    }
+    expect(check).toBeLessThan(tap);
+    expect(step.id).toBe('latest');
+  });
+
   it('refuses drafts before downloading', () => {
     const check = stepIndex('Release is published');
     expect(check).toBeGreaterThan(stepIndex('Resolve the release'));

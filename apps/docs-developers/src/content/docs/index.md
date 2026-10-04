@@ -1,6 +1,6 @@
 ---
 title: Develop Trinity
-description: Start contributing to the current Trinity develop branch.
+description: Start contributing to the current Trinity main branch.
 audience: developer
 contentChannel: develop
 canonicalTopic: developer-home
@@ -8,7 +8,7 @@ pageType: tutorial
 platforms: [web, desktop, android, ios]
 ---
 
-This guide describes the current `develop` branch. It can change before Trinity's next published release.
+This guide describes the current `main` branch. It can change before Trinity's next published release.
 
 ## Set up your workspace {#set-up}
 

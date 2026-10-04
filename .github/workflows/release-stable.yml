@@ -1,0 +1,172 @@
+name: Release stable
+
+# Cuts a stable line: creates release/X.Y.x at a tested, published vX.Y.Z-next.N prerelease,
+# plus one commit that pins release-as X.Y.Z. That push runs release.yml on the branch,
+# which opens the first stable release PR with version X.Y.Z. Merging that PR tags vX.Y.Z on
+# the branch (release.yml), packages the draft and opens the back-merge PR into main.
+# Later fixes land on release/X.Y.x through PRs and release as X.Y.Z+1 patch releases.
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: 'Published vX.Y.Z-next.N prerelease to release (empty: the newest)'
+        required: false
+      dry_run:
+        description: 'Only check and report what would be cut'
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  cut:
+    name: Cut the release branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The release App's private key lives only in this environment. It has no required
+    # reviewers, so the automation never waits for a maintainer.
+    environment: release-app
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: from
+        name: Resolve the prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FROM: ${{ inputs.from }}
+        run: |
+          if [ -z "$FROM" ]; then
+            FROM=$(gh release list --exclude-drafts --json tagName,isPrerelease,createdAt \
+              -q '[.[] | select(.isPrerelease)] | sort_by(.createdAt) | last | .tagName // empty')
+          fi
+          if ! [[ "$FROM" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-next\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::'$FROM' is not a vX.Y.Z-next.N prerelease tag."
+            exit 1
+          fi
+          major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}" patch="${BASH_REMATCH[3]}"
+          view=$(gh release view "$FROM" --json isDraft,isPrerelease)
+          if [ "$(jq -r .isDraft <<<"$view")" != false ] || [ "$(jq -r .isPrerelease <<<"$view")" != true ]; then
+            echo "::error::$FROM is not a published prerelease."
+            exit 1
+          fi
+          # The branch inherits the tag's workflows, so a tag cut before these workflows existed could never release.
+          if ! err=$(gh api "repos/$GH_REPO/contents/.github/workflows/release-stable.yml?ref=$FROM" 2>&1 >/dev/null); then
+            if [[ "$err" == *"HTTP 404"* ]]; then
+              echo "::error::$FROM predates the release-branch workflows; cut a new prerelease from main first."
+            else
+              echo "::error::Could not look up the workflows at $FROM: $err"
+            fi
+            exit 1
+          fi
+          # The tag must be an ancestor of main (compare status ahead or identical).
+          status=$(gh api "repos/$GH_REPO/compare/$FROM...main" -q .status)
+          if [ "$status" != ahead ] && [ "$status" != identical ]; then
+            echo "::error::$FROM is not on main's history."
+            exit 1
+          fi
+          sha=$(gh api "repos/$GH_REPO/commits/$FROM" -q .sha)
+          if [ -z "$sha" ]; then
+            echo "::error::Could not resolve the commit of $FROM."
+            exit 1
+          fi
+          {
+            echo "tag=$FROM"
+            echo "version=$major.$minor.$patch"
+            echo "branch=release/$major.$minor.x"
+            echo "sha=$sha"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Refuse an existing line
+        env:
+          BRANCH: ${{ steps.from.outputs.branch }}
+          VERSION: ${{ steps.from.outputs.version }}
+        run: |
+          # ls-remote --exit-code: 0 = found, 2 = absent, anything else = the lookup itself failed.
+          lookup() {
+            rc=0
+            git ls-remote --exit-code "https://github.com/$GH_REPO" "$1" >/dev/null || rc=$?
+            [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || { echo "::error::Could not look up $1."; exit 1; }
+            return "$rc"
+          }
+          if lookup "refs/heads/$BRANCH"; then
+            echo "::error::$BRANCH already exists. Land fixes on it through PRs; its next stable release is a patch release."
+            exit 1
+          fi
+          if lookup "refs/tags/v$VERSION"; then
+            echo "::error::v$VERSION is already tagged."
+            exit 1
+          fi
+
+      - name: Summary
+        env:
+          TAG: ${{ steps.from.outputs.tag }}
+          BRANCH: ${{ steps.from.outputs.branch }}
+          VERSION: ${{ steps.from.outputs.version }}
+          SHA: ${{ steps.from.outputs.sha }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          {
+            echo "### Release stable"
+            echo "- From: \`$TAG\` (\`${SHA:0:8}\`)"
+            echo "- Branch: \`$BRANCH\`"
+            echo "- Version: \`v$VERSION\`"
+            [ "$DRY_RUN" = true ] && echo "- Dry run: nothing was created."
+            true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # GITHUB_TOKEN pushes trigger no workflows, so release.yml would never run on the
+      # branch. The token comes from the release App.
+      - name: Mint the App token
+        if: ${{ !inputs.dry_run }}
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Check out the prerelease
+        if: ${{ !inputs.dry_run }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.from.outputs.sha }}
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 1
+
+      # The branch's first push already carries release-as: release.yml runs release-please on
+      # every push to the branch, and without the pin it would open (or rewrite) the release
+      # PR as a patch of the last stable. release.yml drops the pin once vX.Y.Z is tagged.
+      - name: Pin the stable version
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.from.outputs.version }}
+        run: |
+          jq --indent 2 --arg version "$VERSION" '.packages["."]["release-as"] = $version' \
+            release-please-config.json > "$RUNNER_TEMP/release-please-config.json"
+          mv "$RUNNER_TEMP/release-please-config.json" release-please-config.json
+          git config user.name 'trinity-release[bot]'
+          git config user.email 'trinity-release[bot]@users.noreply.github.com'
+          git commit --quiet -m "chore(release): release v$VERSION from this branch" -- release-please-config.json
+
+      # A plain push of a new ref: it fails rather than overwrite a branch created meanwhile.
+      # The push runs release.yml on the branch, which opens the stable release PR.
+      - name: Create the release branch
+        if: ${{ !inputs.dry_run }}
+        env:
+          BRANCH: ${{ steps.from.outputs.branch }}
+        run: git push origin "HEAD:refs/heads/$BRANCH"
+
+      # Merged PRs carry this label to be cherry-picked onto the new line (backport.yml).
+      - name: Create the backport label
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BRANCH: ${{ steps.from.outputs.branch }}
+        # The branch is already pushed, so a failure here only warns.
+        run: |
+          gh label create "backport $BRANCH" --color 0E8A16 --description "Cherry-pick this merged PR onto $BRANCH" --force \
+            || echo "::warning::Create the label by hand: gh label create \"backport $BRANCH\" --color 0E8A16 --description \"Cherry-pick this merged PR onto $BRANCH\""

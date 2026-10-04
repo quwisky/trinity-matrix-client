@@ -12,7 +12,7 @@ the Android and iOS apps are still in development. The
 [user guide](https://quwisky.github.io/trinity-matrix-client/users/) covers installing
 the latest release. The
 [developer guide](https://quwisky.github.io/trinity-matrix-client/developers/) follows
-the `develop` branch and documents the current source tree.
+the `main` branch and documents the current source tree.
 
 ## Install
 

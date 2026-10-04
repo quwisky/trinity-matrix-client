@@ -1,6 +1,6 @@
 ---
 title: Technology stack
-description: Current runtime, framework, host, and test versions used on Trinity's develop branch.
+description: Current runtime, framework, host, and test versions used on Trinity's main branch.
 audience: developer
 contentChannel: develop
 canonicalTopic: reference-technology-stack

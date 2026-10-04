@@ -157,10 +157,10 @@ describe('GitHub Pages documentation publication', () => {
   const workflowPath = join(workspaceRoot, '.github/workflows/docs-pages.yml');
   const workflow = () => parse(readFileSync(workflowPath, 'utf8'));
 
-  it('defines a dedicated develop, release and manual Pages workflow', () => {
+  it('defines a dedicated main, release and manual Pages workflow', () => {
     expect(existsSync(workflowPath)).toBe(true);
     expect(workflow().on).toEqual({
-      push: { branches: ['develop'] },
+      push: { branches: ['main'] },
       release: { types: ['published'] },
       workflow_dispatch: null,
     });
@@ -200,10 +200,10 @@ describe('GitHub Pages documentation publication', () => {
     }
   });
 
-  it('deploys only develop through a least-privilege protected job', () => {
+  it('deploys only main through a least-privilege protected job', () => {
     const deploy = workflow().jobs.deploy;
     expect(deploy.needs).toBe('build');
-    expect(deploy.if).toContain("github.ref == 'refs/heads/develop'");
+    expect(deploy.if).toContain("github.ref == 'refs/heads/main'");
     expect(deploy.permissions).toEqual({
       pages: 'write',
       'id-token': 'write',

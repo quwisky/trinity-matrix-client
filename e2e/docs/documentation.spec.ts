@@ -85,7 +85,7 @@ test('navigates developer onboarding and exposes the develop channel', async ({
 
   await expect(
     page.getByRole('complementary', { name: 'Documentation channel' }),
-  ).toContainText('Develop branch');
+  ).toContainText('Main branch');
   await page
     .getByRole('main')
     .getByRole('link', { name: 'Prerequisites' })
