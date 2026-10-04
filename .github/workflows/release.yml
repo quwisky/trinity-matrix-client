@@ -83,6 +83,8 @@ jobs:
         run: |
           git config user.name 'trinity-release[bot]'
           git config user.email 'trinity-release[bot]@users.noreply.github.com'
+          # A fix may have landed on the branch since checkout; rebase first so the push is not rejected.
+          git pull --rebase origin "$BRANCH"
           if [ "$(jq '.packages["."] | has("release-as")' release-please-config.json)" = true ]; then
             jq --indent 2 'del(.packages["."]["release-as"])' release-please-config.json > "$RUNNER_TEMP/release-please-config.json"
             mv "$RUNNER_TEMP/release-please-config.json" release-please-config.json

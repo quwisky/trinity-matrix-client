@@ -66,6 +66,10 @@ describe('Release stable workflow', () => {
     expect(token.uses).toBe(
       'actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1',
     );
+    expect(token.with).toEqual({
+      'client-id': '${{ vars.RENOVATE_APP_CLIENT_ID }}',
+      'private-key': '${{ secrets.RENOVATE_APP_PRIVATE_KEY }}',
+    });
     const checkout = job.steps[index('Check out the prerelease')];
     expect(checkout.uses).toBe(
       'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',

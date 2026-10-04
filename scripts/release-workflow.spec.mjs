@@ -107,6 +107,10 @@ describe('release branches', () => {
 
     it('mints the pinned App token and runs the script with it', () => {
       const mint = job().steps.find((s) => s.id === 'app-token');
+      expect(mint.with).toEqual({
+        'client-id': '\${{ vars.RENOVATE_APP_CLIENT_ID }}',
+        'private-key': '\${{ secrets.RENOVATE_APP_PRIVATE_KEY }}',
+      });
       expect(mint.uses).toMatch(
         /^actions\/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1$/,
       );
@@ -141,6 +145,11 @@ describe('release branches', () => {
       expect(script.match(/git push[^\n]*/g)).toEqual([
         'git push origin "HEAD:refs/heads/$BRANCH"',
       ]);
+      // A fix may land on the branch after checkout: rebase onto it, and skip if the pin is gone.
+      const pull = script.indexOf('git pull --rebase origin "$BRANCH"');
+      expect(pull).toBeGreaterThan(0);
+      expect(pull).toBeLessThan(script.indexOf('has("release-as")'));
+      expect(pull).toBeLessThan(script.indexOf('git commit'));
       expect(steps[drop].env.BRANCH).toBe('\${{ github.ref_name }}');
     });
 

@@ -10,14 +10,13 @@ const files = [
   'nx.json',
   'package.json',
 ];
-// Branch-like uses: origin/develop, 'develop', "develop", `develop`, [develop, branches: develop, --base develop, ref=develop.
-const BRANCH_USE =
-  /origin\/develop|['"`]develop['"`]|\[develop\b|branches:\s*develop|--base[= ]develop|ref[=:]\s*develop|\bdevelop\.\.\.|\.\.\.develop\b|\bdevelop\b branch|on `develop`|from `develop`|to `develop`/;
+// These files are automation and rules, not prose about developers: any bare "develop" is the old branch.
+const DEVELOP = /\bdevelop\b/;
 
 describe('branch names', () => {
   it('names main, not develop, as the integration branch', () => {
     const offenders = files.filter((path) =>
-      BRANCH_USE.test(readFileSync(resolve(root, path), 'utf8')),
+      DEVELOP.test(readFileSync(resolve(root, path), 'utf8')),
     );
     expect(offenders).toEqual([]);
   });
