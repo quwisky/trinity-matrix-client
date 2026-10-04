@@ -7,6 +7,10 @@ import {
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConversationSearchController } from './conversation-search.service';
+import { scrollbackLive } from './live-scrollback';
+
+// Paging itself is covered against the real SDK in live-scrollback.spec.
+vi.mock('./live-scrollback', () => ({ scrollbackLive: vi.fn() }));
 
 function message(over: {
   id: string;
@@ -42,7 +46,6 @@ describe('ConversationSearchController', () => {
   let service: ConversationSearchController;
   const getRoom = vi.fn();
   const search = vi.fn();
-  const scrollback = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -50,7 +53,6 @@ describe('ConversationSearchController', () => {
     service.attach({ accountId: '@me:hs', roomId: '!r:hs' }, {
       getRoom,
       search,
-      scrollback,
     } as unknown as MatrixClient);
   });
 
@@ -120,10 +122,16 @@ describe('ConversationSearchController', () => {
   it('loads older history through a cold scrollback action', async () => {
     const target = room({ events: [message({ id: '$1', body: 'one' })] });
     getRoom.mockReturnValue(target);
-    scrollback.mockResolvedValue(target);
+    vi.mocked(scrollbackLive).mockResolvedValue();
 
-    await expect(firstValueFrom(service.loadOlder(20))).resolves.toBe(1);
-    expect(scrollback).toHaveBeenCalledWith(target, 20);
+    const loaded = service.loadOlder(20);
+    expect(scrollbackLive).not.toHaveBeenCalled();
+    await expect(firstValueFrom(loaded)).resolves.toBe(1);
+    expect(scrollbackLive).toHaveBeenCalledWith(
+      expect.objectContaining({ getRoom }),
+      target,
+      20,
+    );
   });
 
   it('fails closed after its exact Conversation handle retires', async () => {
