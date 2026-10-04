@@ -46,6 +46,7 @@ import {
 import { resolveShieldsInto, shieldKey } from './shields';
 import { projectMessage } from './project-message';
 import { isPresentableSystemEvent } from './normalize-timeline-event';
+import { scrollbackLive } from './live-scrollback';
 import type {
   MessageShield,
   MessageView,
@@ -556,7 +557,7 @@ export class TimelineService {
     );
   }
 
-  /** Page in older history (backward pagination via `scrollback`). */
+  /** Page in older history (backward pagination of the live timeline). */
   loadOlder(): Observable<void> {
     return defer(() => {
       const room = this.room;
@@ -565,7 +566,7 @@ export class TimelineService {
         return of(void 0);
       }
       this._loadingOlder.set(true);
-      return from(client.scrollback(room, SCROLLBACK)).pipe(
+      return from(scrollbackLive(client, room, SCROLLBACK)).pipe(
         tap(() => this.refresh()),
         // Reset the flag on success *or* error — otherwise a failed scrollback
         // would leave it stuck true and permanently disable pagination.
@@ -686,7 +687,7 @@ export class TimelineService {
   ): Promise<boolean> {
     for (let page = 0; page < MAX_JUMP_PAGES; page++) {
       const before = room.getLiveTimeline().getEvents().length;
-      await client.scrollback(room, SCROLLBACK);
+      await scrollbackLive(client, room, SCROLLBACK);
       // The user can leave while up to 20 sequential requests are in flight. Nothing
       // unsubscribes this — the subscription is tied to the PAGE, not the open room — so
       // without this check the loop keeps paginating a room nobody is looking at and its

@@ -9,6 +9,7 @@ import {
 import { Observable, catchError, defer, from, map, of } from 'rxjs';
 import { isDisplayableMessage } from '@trinity/util/matrix';
 import type { ConversationKey } from './conversation-messages';
+import { scrollbackLive } from './live-scrollback';
 
 /** A single message that matched an in-conversation search. */
 export interface MessageHit {
@@ -154,8 +155,8 @@ export class ConversationSearchController {
       if (!room) {
         return of(0);
       }
-      return from(client.scrollback(room, count)).pipe(
-        map((paged) => paged.getLiveTimeline().getEvents().length),
+      return from(scrollbackLive(client, room, count)).pipe(
+        map(() => room.getLiveTimeline().getEvents().length),
       );
     });
   }
