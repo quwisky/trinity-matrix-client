@@ -109,39 +109,37 @@ describe('Android room deep links', () => {
     await openPreviewedRoom(roomB.id);
   });
 
-  // TEMP: repeat to measure flakiness; reverted before merge.
-  for (let attempt = 0; attempt < 6; attempt += 1)
-    it(`opens a cold-start event link on that message once the room list has synced #${attempt}`, async () => {
-      const accountId = new URL(await browser.getUrl()).searchParams.get(
-        'account',
-      );
-      if (!accountId) throw new Error('no active account before the restart');
-      await waitForDurableActiveAccount(accountId);
-      // The target is the oldest of many messages, so it is off-screen unless the link jumps to it.
-      const target = `target ${uniqueId('msg')}`;
-      const eventId = await sendMessage(token, roomB.id, target);
-      for (let i = 0; i < 40; i += 1) {
-        await sendMessage(token, roomB.id, `filler ${i}`);
-      }
+  it('opens a cold-start event link on that message once the room list has synced', async () => {
+    const accountId = new URL(await browser.getUrl()).searchParams.get(
+      'account',
+    );
+    if (!accountId) throw new Error('no active account before the restart');
+    await waitForDurableActiveAccount(accountId);
+    // The target is the oldest of many messages, so it is off-screen unless the link jumps to it.
+    const target = `target ${uniqueId('msg')}`;
+    const eventId = await sendMessage(token, roomB.id, target);
+    for (let i = 0; i < 40; i += 1) {
+      await sendMessage(token, roomB.id, `filler ${i}`);
+    }
 
-      await native();
-      await shell('am', ['force-stop', APP_PACKAGE]);
-      await openLink(
-        `eu.qwky.trinity://matrix.to/#/${encodeURIComponent(roomB.id)}/${encodeURIComponent(eventId)}`,
-      );
-      await browser.waitUntil(
-        async () => (await pathname()) === `/rooms/${roomSegment(roomB.id)}`,
-        {
-          timeout: 90_000,
-          timeoutMsg: `never opened room ${roomB.id} from the event link`,
-        },
-      );
-      await expect(
-        $(`//*[contains(text(),"${target}")]`),
-      ).toBeDisplayedInViewport({
-        wait: 30_000,
-      });
+    await native();
+    await shell('am', ['force-stop', APP_PACKAGE]);
+    await openLink(
+      `eu.qwky.trinity://matrix.to/#/${encodeURIComponent(roomB.id)}/${encodeURIComponent(eventId)}`,
+    );
+    await browser.waitUntil(
+      async () => (await pathname()) === `/rooms/${roomSegment(roomB.id)}`,
+      {
+        timeout: 90_000,
+        timeoutMsg: `never opened room ${roomB.id} from the event link`,
+      },
+    );
+    await expect(
+      $(`//*[contains(text(),"${target}")]`),
+    ).toBeDisplayedInViewport({
+      wait: 30_000,
     });
+  });
 
   it('opens a room linked by alias', async () => {
     const alias = `#${uniqueId('alias')}:${SERVER_NAME}`;
