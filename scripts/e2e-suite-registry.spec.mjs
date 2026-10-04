@@ -16,6 +16,7 @@ import CapabilityCoverageReporter, {
   browserJourneyPath,
 } from '../e2e/browser/capability-coverage.reporter.mts';
 import {
+  CI_WORKFLOW_BY_TIER,
   registrySnapshot,
   validateDurableE2ENames,
   validateRegistry,
@@ -53,6 +54,72 @@ const runnerSuite = (overrides = {}) => ({
 });
 
 describe('E2E suite registry', () => {
+  it('validates each CI tier against the workflow that runs it', () => {
+    expect(CI_WORKFLOW_BY_TIER).toEqual({
+      'pull-request': '.github/workflows/ci.yml',
+      scheduled: '.github/workflows/ci.yml',
+      nightly: '.github/workflows/e2e-ios-nightly.yml',
+    });
+    const snapshot = registrySnapshot();
+    snapshot.ciEntrypoints.push({
+      command: 'pnpm e2e:nightly-probe',
+      tier: 'nightly',
+      suiteIds: [],
+    });
+    snapshot.ciEntrypoints.push({
+      command: 'pnpm e2e:weekly-probe',
+      tier: 'weekly',
+      suiteIds: [],
+    });
+    const errors = validateWorkspace(workspaceRoot, snapshot);
+    expect(errors).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('.github/workflows/e2e-ios-nightly.yml'),
+        'pnpm e2e:weekly-probe uses CI tier weekly, which no workflow runs',
+      ]),
+    );
+    expect(errors).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          'absent from .github/workflows/ci.yml: pnpm e2e:nightly-probe',
+        ),
+      ]),
+    );
+  }, 120_000);
+
+  it('requires report paths only in the workflow that runs the suite', () => {
+    const snapshot = registrySnapshot();
+    const errors = [];
+    validateCiReportPaths(errors, 'steps: []', snapshot, []);
+    expect(errors).toEqual([]);
+    validateCiReportPaths(
+      errors,
+      'steps: []',
+      snapshot,
+      snapshot.ciEntrypoints.filter(({ suiteIds }) =>
+        suiteIds.includes('browser.canonical'),
+      ),
+    );
+    expect(errors).toEqual([
+      'CI report path is missing suite browser.canonical',
+    ]);
+  });
+
+  it('owns the iOS environment by the mobile lifecycle project', () => {
+    const snapshot = registrySnapshot();
+    const android = snapshot.suites.find(({ id }) => id === 'mobile.android');
+    snapshot.suites.push({
+      ...structuredClone(android),
+      id: 'mobile.probe',
+      environment: 'mobile-ios',
+      currentTarget: 'trinity-e2e-mobile:probe',
+      delegatingTargets: [],
+    });
+    expect(validateRegistry(snapshot)).not.toContain(
+      'mobile.probe targets the wrong lifecycle project',
+    );
+  });
+
   // Resolves every owned Nx project on a cold hosted runner. The first public
   // run exceeded 30 seconds; this is a graph contract, not a performance budget.
   it('matches the current workspace entrypoints, targets, commands and CI', () => {
