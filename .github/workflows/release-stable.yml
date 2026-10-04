@@ -28,8 +28,9 @@ jobs:
     name: Cut the release branch
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # The release App's private key lives only in this environment.
-    environment: release
+    # The release App's private key lives only in this environment. It has no required
+    # reviewers, so the automation never waits for a maintainer.
+    environment: release-app
     env:
       GH_REPO: ${{ github.repository }}
     steps:
@@ -165,4 +166,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           BRANCH: ${{ steps.from.outputs.branch }}
-        run: gh label create "backport $BRANCH" --color 0E8A16 --description "Cherry-pick this merged PR onto $BRANCH" --force
+        # The branch is already pushed, so a failure here only warns.
+        run: |
+          gh label create "backport $BRANCH" --color 0E8A16 --description "Cherry-pick this merged PR onto $BRANCH" --force \
+            || echo "::warning::Create the label by hand: gh label create \"backport $BRANCH\" --color 0E8A16 --description \"Cherry-pick this merged PR onto $BRANCH\""

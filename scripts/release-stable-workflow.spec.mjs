@@ -62,8 +62,8 @@ describe('Release stable workflow', () => {
     }
   });
 
-  it('runs in the release environment that holds the release App key', () => {
-    expect(job.environment).toBe('release');
+  it('runs in the release-app environment that holds the release App key', () => {
+    expect(job.environment).toBe('release-app');
   });
 
   it('creates the branch in one push whose commit pins the stable version', () => {
@@ -103,6 +103,10 @@ describe('Release stable workflow', () => {
     expect(label.if).toBe('${{ !inputs.dry_run }}');
     expect(label.env.GH_TOKEN).toBe('${{ steps.app-token.outputs.token }}');
     expect(label.run).toContain('gh label create "backport $BRANCH"');
+    // The branch is already pushed: a missing label must not fail the cut.
+    expect(label.run).toMatch(
+      /\|\| echo "::warning::Create the label by hand: gh label create/,
+    );
     expect(index('Create the release branch')).toBeLessThan(
       index('Create the backport label'),
     );

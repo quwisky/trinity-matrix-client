@@ -105,8 +105,8 @@ describe('release branches', () => {
       );
     });
 
-    it('runs in the release environment that holds the release App key', () => {
-      expect(job().environment).toBe('release');
+    it('runs in the release-app environment that holds the release App key', () => {
+      expect(job().environment).toBe('release-app');
     });
 
     it('mints the pinned App token and runs the script with it', () => {
@@ -169,6 +169,24 @@ describe('release branches', () => {
     });
   });
 
+  it('mints the release App token only in the reviewer-free release-app environment', () => {
+    // Required reviewers on `release` gate packaging; they must not stall the automation.
+    for (const name of ['release.yml', 'release-stable.yml', 'backport.yml']) {
+      const { jobs } = parse(
+        readFileSync(resolve(root, '.github/workflows', name), 'utf8'),
+      );
+      const minting = Object.entries(jobs).filter(([, job]) =>
+        job.steps?.some((s) =>
+          s.uses?.startsWith('actions/create-github-app-token@'),
+        ),
+      );
+      expect(minting.length, name).toBeGreaterThan(0);
+      for (const [id, job] of minting) {
+        expect(job.environment, `${name} ${id}`).toBe('release-app');
+      }
+    }
+  });
+
   it('does not use the Renovate App in any release workflow', () => {
     for (const name of ['release.yml', 'release-stable.yml']) {
       expect(
@@ -185,7 +203,7 @@ describe('release publishing job', () => {
     expect(job.needs).toEqual(
       expect.arrayContaining(['verify', 'draft-release']),
     );
-    expect(job.environment).toBe('release');
+    expect(job.environment).toBe('release-app');
   });
 
   it('mints the release App token and runs the script after Node setup', () => {
