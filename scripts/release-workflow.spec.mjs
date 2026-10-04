@@ -177,3 +177,36 @@ describe('release branches', () => {
     }
   });
 });
+
+describe('release publishing job', () => {
+  const job = workflow.jobs.publish;
+
+  it('waits for the draft and reads the tag from verify', () => {
+    expect(job.needs).toEqual(
+      expect.arrayContaining(['verify', 'draft-release']),
+    );
+    expect(job.environment).toBe('release');
+  });
+
+  it('mints the release App token and runs the script after Node setup', () => {
+    const { steps } = job;
+    const token = steps.find((s) =>
+      s.uses?.startsWith('actions/create-github-app-token@'),
+    );
+    expect(token.with['client-id']).toBe('\${{ vars.RELEASE_APP_CLIENT_ID }}');
+    expect(token.with['private-key']).toBe(
+      '\${{ secrets.RELEASE_APP_PRIVATE_KEY }}',
+    );
+    const node = steps.findIndex((s) =>
+      s.uses?.startsWith('actions/setup-node@'),
+    );
+    const run = steps.findIndex((s) =>
+      s.run?.includes('scripts/release-publish.mjs'),
+    );
+    expect(node).toBeGreaterThanOrEqual(0);
+    expect(node).toBeLessThan(run);
+    expect(steps[run].env.GH_TOKEN).toBe(
+      '\${{ steps.app-token.outputs.token }}',
+    );
+  });
+});
