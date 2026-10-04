@@ -171,6 +171,17 @@ describe('RoomsPage space actions', () => {
     await vi.waitFor(() => expect(shell.store.activeSpaceId()).toBe('!new:hs'));
   });
 
+  it('gives the space name prompt an accessible name, not only a placeholder', () => {
+    const shell = build();
+    alertPrompt.mockReturnValue(of(null));
+
+    shell.spaces.onCreateSpace();
+
+    expect(alertPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ inputLabel: 'Space name' }),
+    );
+  });
+
   it('waits for a created space to enter the Account SDK graph before selecting it', async () => {
     const shell = build();
     const ready = new Subject<void>();
