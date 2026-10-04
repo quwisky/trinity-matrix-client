@@ -274,7 +274,11 @@ the PR body flags it for review.
 | `package.json`, `electron/package.json`                                                           | `main`'s side                                                                                                               |
 | `.release-please-manifest.next.json`                                                              | The higher version by semver precedence (`0.1.1` beats `0.1.1-next.3`), so `main` continues at the next patch's prereleases |
 
-Any other conflicted path fails the job and lists the paths. Resolve it by hand:
+The merged `package.json` and `electron/package.json` always keep `main`'s `version`, even when
+they merge without a conflict. Any other conflicted path fails the job and lists the paths, as
+does a file deleted on one line and changed on the other. A conflict in
+`release-please-config.json` (for example `main` edited near `packages["."]` while the release
+branch carried the one-time `release-as` pin) takes the same manual path. Resolve it by hand:
 
 ```bash
 git fetch origin
@@ -289,6 +293,10 @@ gh pr create --base main --head back-merge/vX.Y.Z \
 ```
 
 Push through a pull request and merge it with a merge commit; never force-push.
+
+The job first drops the one-time `release-as` from the release branch with a plain push. If a
+fix landed on the branch at that moment and the push was rejected, rerun the `Open the
+back-merge PR` job; it rebases onto the branch, sees whether the pin is still there, and goes on.
 
 ### Migrating from develop
 
