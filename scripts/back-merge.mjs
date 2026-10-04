@@ -85,7 +85,52 @@ const succeeds = (command, args) => {
   }
 };
 
-export function resolveConflicts(tag, cwd = process.cwd()) {
+/** Leases the bot's own back-merge branch on the sha ls-remote saw; empty when it doesn't exist yet. */
+export const leaseFor = (head, lsRemote) =>
+  `--force-with-lease=${head}:${lsRemote.split('\t')[0].trim()}`;
+
+const VERSIONED = ['package.json', 'electron/package.json'];
+
+/** Merges the tag into the checked-out branch without committing; returns the rule-resolved files. */
+export function mergeTag(tag, cwd = process.cwd()) {
+  const at = (...args) =>
+    execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
+  let resolved = [];
+  try {
+    at(
+      'merge',
+      '--no-ff',
+      '--no-commit',
+      '-m',
+      `chore: back-merge ${tag} into main`,
+      tag,
+    );
+  } catch (error) {
+    resolved = resolveConflicts(
+      tag,
+      cwd,
+      `${error.stderr}${error.stdout}`.trim(),
+    );
+  }
+  // The release branch's version is never main's, conflicted or not.
+  for (const path of VERSIONED) {
+    const file = join(cwd, path);
+    let mainVersion;
+    try {
+      mainVersion = JSON.parse(at('show', `origin/main:${path}`)).version;
+    } catch {
+      continue;
+    }
+    const json = JSON.parse(readFileSync(file, 'utf8'));
+    if (json.version === mainVersion) continue;
+    json.version = mainVersion;
+    writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`);
+    at('add', '--', path);
+  }
+  return resolved;
+}
+
+export function resolveConflicts(tag, cwd = process.cwd(), mergeOutput = '') {
   const at = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8' });
   const stage = (n, path) => {
     try {
@@ -97,6 +142,9 @@ export function resolveConflicts(tag, cwd = process.cwd()) {
   const conflicted = at('diff', '--name-only', '--diff-filter=U')
     .split('\n')
     .filter(Boolean);
+  if (conflicted.length === 0) {
+    throw new Error(`merge of ${tag} failed without conflicts: ${mergeOutput}`);
+  }
   const unknown = conflicted.filter((path) => resolutionFor(path) === null);
   if (unknown.length > 0) {
     throw new Error(
@@ -110,6 +158,11 @@ export function resolveConflicts(tag, cwd = process.cwd()) {
     const main = stage(2, path);
     const release = stage(3, path);
     const base = stage(1, path);
+    if (main === null || release === null) {
+      throw new Error(
+        `Back-merging ${tag}: ${path} was deleted on one line and changed on the other. Merge ${tag} into main by hand.`,
+      );
+    }
     let text;
     let wholeFile = false;
     if (rule === 'higher') {
@@ -180,26 +233,19 @@ function run({ tag, branch }) {
     return;
   }
   git('switch', '-C', head, 'origin/main');
-  let resolved = [];
-  if (
-    !succeeds('git', [
-      'merge',
-      '--no-ff',
-      '--no-commit',
-      '-m',
-      `chore: back-merge ${tag} into main`,
-      tag,
-    ])
-  ) {
-    resolved = resolveConflicts(tag);
-  }
+  const resolved = mergeTag(tag);
   const config = withoutReleaseAs(readFileSync(STABLE_CONFIG, 'utf8'));
   if (config !== null) {
     writeFileSync(STABLE_CONFIG, config);
     git('add', '--', STABLE_CONFIG);
   }
   git('commit', '--no-edit');
-  git('push', '--force-with-lease', 'origin', `${head}:${head}`);
+  // Lease on what the remote has now: no local tracking ref for the branch is needed.
+  const lease = leaseFor(
+    head,
+    git('ls-remote', 'origin', `refs/heads/${head}`),
+  );
+  git('push', lease, 'origin', `${head}:${head}`);
   const body = [
     `Merges \`${branch}\` at \`${tag}\` back into \`main\`: its changelog, version files and any fixes made on the release branch.`,
     '',

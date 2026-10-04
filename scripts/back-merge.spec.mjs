@@ -14,8 +14,10 @@ import {
   mergeNextManifest,
   planBackMerge,
   resolutionFor,
+  mergeTag,
   resolveConflicts,
   withoutReleaseAs,
+  leaseFor,
 } from './back-merge.mjs';
 
 const PAGE = 'apps/docs-users/src/content/docs/index.md';
@@ -192,6 +194,115 @@ describe('back-merge', () => {
         /outside the version files:\n {2}src\/other\.ts\n/,
       );
     });
+  });
+
+  describe('merging a tag', () => {
+    let dir;
+    afterEach(() => rmSync(dir, { recursive: true, force: true }));
+    const sh = (...args) =>
+      execFileSync(
+        'git',
+        ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args],
+        {
+          cwd: dir,
+          encoding: 'utf8',
+          stdio: 'pipe',
+        },
+      );
+    const setup = (base, release, main) => {
+      dir = mkdtempSync(join(tmpdir(), 'back-merge-'));
+      sh('init', '-q', '-b', 'main');
+      sh('config', 'user.name', 't');
+      sh('config', 'user.email', 't@t');
+      const write = (files) => {
+        for (const [path, text] of Object.entries(files)) {
+          mkdirSync(dirname(join(dir, path)), { recursive: true });
+          writeFileSync(join(dir, path), text);
+        }
+        sh('add', '-A');
+      };
+      write(base);
+      sh('commit', '-qm', 'base');
+      sh('switch', '-qc', 'release/0.1');
+      write(release.files);
+      for (const path of release.remove ?? []) sh('rm', '-q', path);
+      sh('commit', '-qm', 'release');
+      sh('tag', 'v0.1.2');
+      sh('switch', '-q', 'main');
+      write(main.files);
+      for (const path of main.remove ?? []) sh('rm', '-q', path);
+      sh('commit', '-qm', 'main');
+      sh('update-ref', 'refs/remotes/origin/main', 'main');
+    };
+    const read = (path) => readFileSync(join(dir, path), 'utf8');
+
+    it("keeps main's version when the version files merge cleanly", () => {
+      setup(
+        {
+          'package.json': pkg('0.1.1', '1.0.0'),
+          'electron/package.json': pkg('0.1.1', '1.0.0'),
+        },
+        {
+          files: {
+            'package.json': pkg('0.1.2', '1.0.0'),
+            'electron/package.json': pkg('0.1.2', '1.0.0'),
+          },
+        },
+        {
+          files: {
+            'package.json': pkg('0.1.1', '1.0.0').replace(
+              '"a": "1.0.0"',
+              '"a": "1.0.9"',
+            ),
+            'electron/package.json': pkg('0.1.1', '1.0.0'),
+          },
+        },
+      );
+      expect(mergeTag('v0.1.2', dir)).toEqual([]);
+      expect(read('package.json')).toBe(pkg('0.1.1', '1.0.9'));
+      expect(read('electron/package.json')).toBe(pkg('0.1.1', '1.0.0'));
+    });
+
+    it("keeps main's version after a conflicted merge too", () => {
+      setup(
+        { 'package.json': pkg('0.1.1', '1.0.0') },
+        { files: { 'package.json': pkg('0.1.2', '1.0.1') } },
+        { files: { 'package.json': pkg('0.1.2-next.1', '1.0.0') } },
+      );
+      mergeTag('v0.1.2', dir);
+      expect(read('package.json')).toBe(pkg('0.1.2-next.1', '1.0.1'));
+    });
+
+    it('explains a delete/modify conflict', () => {
+      setup(
+        { 'CHANGELOG.md': '# a\n', 'x.txt': '1\n' },
+        { files: { 'CHANGELOG.md': '# b\n' } },
+        { files: { 'x.txt': '2\n' }, remove: ['CHANGELOG.md'] },
+      );
+      expect(() => mergeTag('v0.1.2', dir)).toThrow(
+        /CHANGELOG\.md.*[Mm]erge.*by hand/s,
+      );
+    });
+
+    it('explains a merge that fails without conflicts', () => {
+      setup(
+        { 'a.txt': '1\n' },
+        { files: { 'a.txt': '2\n' } },
+        { files: { 'b.txt': '1\n' } },
+      );
+      expect(() => mergeTag('v0.1.9', dir)).toThrow(
+        /merge of v0\.1\.9 failed without conflicts: .*not something we can merge/s,
+      );
+    });
+  });
+
+  it('leases the back-merge branch on the sha the remote has', () => {
+    expect(
+      leaseFor('back-merge/v0.1.2', 'abc123\trefs/heads/back-merge/v0.1.2\n'),
+    ).toBe('--force-with-lease=back-merge/v0.1.2:abc123');
+    expect(leaseFor('back-merge/v0.1.2', '')).toBe(
+      '--force-with-lease=back-merge/v0.1.2:',
+    );
   });
 
   it('strips the one-time release-as without reformatting the config', () => {
