@@ -88,3 +88,25 @@ export async function createRoomAlias(
     ),
   );
 }
+
+/** Send a plain-text message into a room the user is in; resolves its event id. */
+export async function sendMessage(
+  token: string,
+  roomId: string,
+  body: string,
+): Promise<string> {
+  const response = await json(
+    await fetch(
+      `${HOMESERVER_HTTP}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${uniqueId('txn')}`,
+      {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ msgtype: 'm.text', body }),
+      },
+    ),
+  );
+  return response['event_id'] as string;
+}

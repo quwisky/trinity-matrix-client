@@ -1,11 +1,23 @@
-import { DestroyRef, Injectable, inject } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  DestroyRef,
+  Injectable,
+  computed,
+  inject,
+  Injector,
+} from '@angular/core';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
   type WorkspaceNavigationIntent,
   WorkspaceNavigationService,
   type WorkspaceRoomNavigationOrigin,
 } from '@trinity/application/workspace';
-import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  ROOM_READINESS_TIMEOUT_MS,
+  SelectedRoomLibraryService,
+} from '@trinity/data-access/room-library';
+import { filter, of, switchMap, take, timeout } from 'rxjs';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { ShellStatusService } from './shell-status.service';
@@ -34,7 +46,18 @@ export class AccountRoutingService {
   private readonly workspace = inject(WorkspaceNavigationService);
   private readonly roomSurfaces = inject(RoomSurfaceLifecycle);
   private readonly selected = inject(SelectedRoomLibraryService);
+  private readonly matrix = inject(MatrixClientService);
+  private readonly injector = inject(Injector);
+  private readonly conversations = inject(ConversationRuntime);
   private readonly destroyRef = inject(DestroyRef);
+  /**
+   * A sync from the server has completed. Not PREPARED: the SDK also reports that for the
+   * sync it restores from its cache, whose timelines a gappy live sync later replaces.
+   */
+  private readonly firstSyncDone = computed(
+    // String compare: components and features never import the SDK's SyncState enum.
+    () => String(this.matrix.syncState() ?? '') === 'SYNCING',
+  );
 
   /** An account's display name for user-facing copy, falling back to its user id. */
   accountLabel(accountId: string): string {
@@ -108,11 +131,44 @@ export class AccountRoutingService {
     );
   }
 
-  /** Open a resolved room if joined (jumping to `eventId` when given), else toast. */
+  /**
+   * Open a resolved room if joined (jumping to `eventId` when given), else toast. A link
+   * that launches the app can arrive before the first sync, when the room list is still
+   * empty, so a room not yet listed waits for that sync rather than looking unjoined.
+   */
   openLinkedRoom(
     roomId: string,
     eventId?: string,
     origin: WorkspaceRoomNavigationOrigin = 'room-action',
+  ): void {
+    if (this.isListed(roomId) || this.firstSyncDone()) {
+      this.openSyncedRoom(roomId, eventId, origin);
+      return;
+    }
+    toObservable(this.firstSyncDone, { injector: this.injector })
+      .pipe(
+        filter(Boolean),
+        take(1),
+        timeout({ first: ROOM_READINESS_TIMEOUT_MS }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: () => this.openSyncedRoom(roomId, eventId, origin),
+        error: () =>
+          void this.status.showError(
+            'Could not open that room yet. Try the link again once Trinity has connected.',
+          ),
+      });
+  }
+
+  private isListed(roomId: string): boolean {
+    return this.selected.view().rooms.some((room) => room.id === roomId);
+  }
+
+  private openSyncedRoom(
+    roomId: string,
+    eventId: string | undefined,
+    origin: WorkspaceRoomNavigationOrigin,
   ): void {
     const room = this.selected
       .view()
@@ -131,14 +187,58 @@ export class AccountRoutingService {
         origin,
         eventId
           ? () =>
-              this.roomSurfaces.transition({ kind: 'reveal-message', eventId })
+              this.revealLoadedEvent(
+                { roomId, accountId: room.accountId },
+                eventId,
+              )
           : undefined,
       );
       return;
     }
     if (eventId) {
-      this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
+      this.revealLoadedEvent({ roomId, accountId: room.accountId }, eventId);
     }
+  }
+
+  /**
+   * Reveal an event of a room. The list scrolls by DOM lookup, and a cold start loads only
+   * the newest messages, so an older linked event is paged in first. Navigation reports
+   * ready before the Conversation Runtime moves focus, and `loadEvent` pages whichever
+   * conversation holds it, so wait for the target room to be focused. A cold start opens
+   * the room from the cached sync, so also wait for a live sync: a gappy one replaces the
+   * cached timeline and would drop the paged-in event.
+   */
+  private revealLoadedEvent(room: ExactRoomSelection, eventId: string): void {
+    const isReady = (): boolean => {
+      const key = this.conversations.focused()?.key;
+      return (
+        this.firstSyncDone() &&
+        key?.roomId === room.roomId &&
+        key.accountId === room.accountId
+      );
+    };
+    const ready$ = isReady()
+      ? of(true)
+      : toObservable(computed(isReady), { injector: this.injector }).pipe(
+          filter(Boolean),
+          take(1),
+          timeout({ first: ROOM_READINESS_TIMEOUT_MS }),
+        );
+    ready$
+      .pipe(
+        switchMap(() => this.conversations.timeline.loadEvent(eventId)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (loaded) => {
+          if (loaded) {
+            this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
+          } else {
+            void this.status.showError('Could not load that message.');
+          }
+        },
+        error: () => void this.status.showError('Could not load that message.'),
+      });
   }
 
   /**
