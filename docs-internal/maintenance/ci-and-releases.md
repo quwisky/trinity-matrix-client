@@ -186,8 +186,9 @@ from the Conventional Commits since the last release. Release PRs on both lines 
 the squash merge keeps that title as the commit; commitlint allows the `release` type. Merging the release PR bumps
 `package.json`, `electron/package.json` and the manifest, and release-please then
 tags the merge commit and creates a **draft** GitHub release. The same workflow run
-verifies the tag and attaches the desktop packages to that draft. Nothing is
-published automatically.
+verifies the tag and attaches the desktop packages to that draft. The `publish`
+job then publishes it once every package is attached; see
+[Automatic publishing](#automatic-publishing).
 
 Versions: before 1.0, `feat` and breaking changes bump the minor version and `fix`
 the patch version on `main`. The prerelease line counts `0.2.0-next.0`, `0.2.0-next.1`, …
@@ -265,8 +266,8 @@ force-push.
    `release/X.Y.x` that cherry-picks it. Review and merge that backport PR.
 2. release-please opens a release PR on `release/X.Y.x` for `X.Y.Z+1`. Merge it. The
    release publishes itself and the back-merge PR follows and merges itself, as for a
-   stable version. A fix release on an older line is never marked "latest" when a higher
-   stable version is published.
+   stable version. A fix release on an older line is published with `--latest=false`, never marked "latest", when a
+   higher stable version is published.
 
 A fix that only applies to the release branch can still be opened as a pull request into
 `release/X.Y.x` directly; the back-merge then carries it to `main`.
@@ -456,12 +457,12 @@ change before merging the release PR, following [testing](../../apps/docs-develo
 After verification, the package matrix builds the desktop shell with publishing
 disabled. It uploads these artifacts for 30 days:
 
-| Host    | Current artifacts                                                             | Distribution boundary                                                                                         |
-| ------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Linux   | AppImage and `.deb`                                                           | The workflow packages them; it does not publish them to a download service.                                   |
-| macOS   | `.dmg` and `.zip`, using the current `macos-26` runner's default architecture | Signing and notarization depend on configured credentials. Verify the archive architecture before publishing. |
-| Windows | NSIS `.exe`                                                                   | The workflow packages the installer; distribution remains a maintainer action.                                |
-| Web     | `Trinity-Web-<version>.zip` from the `package-web` job                        | Publishing the release runs `container.yml`, which pushes the image built from this zip to GHCR.              |
+| Host    | Current artifacts                                                             | Distribution boundary                                                                                                                                                    |
+| ------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Linux   | AppImage and `.deb`                                                           | The workflow packages them; it does not publish them to a download service.                                                                                              |
+| macOS   | `.dmg` and `.zip`, using the current `macos-26` runner's default architecture | Signing and notarization depend on configured credentials. Verify the archive architecture before merging the release PR; `publish` only checks that assets are present. |
+| Windows | NSIS `.exe`                                                                   | The workflow packages the installer; distribution remains a maintainer action.                                                                                           |
+| Web     | `Trinity-Web-<version>.zip` from the `package-web` job                        | Publishing the release runs `container.yml`, which pushes the image built from this zip to GHCR.                                                                         |
 
 The `draft-release` job creates or updates a **draft** GitHub release, and the `publish`
 job then publishes it when every expected asset is attached (see
@@ -545,25 +546,25 @@ commit predates `homebrew.yml` never triggers it; dispatch it from `main` instea
    the private key as the **environment** secret `HOMEBREW_TAP_DEPLOY_KEY` in
    `homebrew`. Delete the local key files afterwards.
 
-| Failure                                                    | Recovery                                                                                                                                                                                                                                          |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| "is not a published release" (step "Release is published") | Publish the draft first; drafts never reach the tap.                                                                                                                                                                                              |
-| Missing `-arm64-mac.zip` asset                             | The macOS package failed. `release.yml` refuses to change a published release, so either cut a new version, or run `gh release edit <tag> --draft=true`, re-package the tag with `release.yml`, and publish it again (which runs `homebrew.yml`). |
-| Signing gate fails                                         | The app is unsigned or not notarized. Set all macOS signing secrets, release a new version, and publish it.                                                                                                                                       |
-| `brew style` / `brew audit` fails                          | Fix `scripts/homebrew-cask.mjs` and its test, merge, then dispatch `homebrew.yml` with the tag.                                                                                                                                                   |
+| Failure                                                    | Recovery                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "is not a published release" (step "Release is published") | The release is still a draft, so `publish` found missing assets (its warning names them). Re-package the tag with `release.yml`; `publish` then completes it.                                                                                                                                           |
+| Missing `-arm64-mac.zip` asset                             | The macOS package failed. `release.yml` refuses to change a published release, so either cut a new version, or set the release back to draft (`gh release edit <tag> --draft=true`) and dispatch `release.yml` with the tag; the `publish` job republishes it once complete, which runs `homebrew.yml`. |
+| Signing gate fails                                         | The app is unsigned or not notarized. Set all macOS signing secrets, and release a new version; it publishes itself.                                                                                                                                                                                    |
+| `brew style` / `brew audit` fails                          | Fix `scripts/homebrew-cask.mjs` and its test, merge, then dispatch `homebrew.yml` with the tag.                                                                                                                                                                                                         |
 
 ## Recover a release run
 
-| Situation                                                                                  | Recovery                                                                                                                                                                                                                                  |
-| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tag is not reachable from `main` or a `release/*` branch, or does not match both manifests | Fix the cause through a normal pull request; release-please then proposes a new version. Do not retarget or reuse an existing tag.                                                                                                        |
-| A platform package fails but other packages succeed                                        | Inspect the failed matrix log and the draft's partial warning. After a transient runner, credential, or service fix, dispatch `release.yml` with the same tag; `--clobber` replaces the draft's assets. A source fix needs a new release. |
-| Every package fails                                                                        | For a transient failure, dispatch the same tag again. For a source or manifest failure, fix it through a normal pull request and release the next version.                                                                                |
-| Container run cancelled (a newer publish queued behind it)                                 | A third run queued in the `container` group cancels the pending one, so that release has no image. Dispatch the Container workflow with its tag once the queue is clear.                                                                  |
-| Container workflow: no `Trinity-Web-<version>.zip` asset                                   | `package-web` failed and the draft was published anyway. Run `gh release edit <tag> --draft=true`, dispatch `release.yml` with the tag, then publish it again (which runs `container.yml`).                                               |
-| A draft-release upload fails                                                               | Dispatch `release.yml` with the same tag after diagnosing the failure.                                                                                                                                                                    |
-| release-please fails or opens no release PR                                                | Read the `Release PR and tag` job log. Only `feat`, `fix`, `perf`, `revert` and breaking commits produce a release; `chore`, `ci`, `docs`, `test`, `build`, `refactor` and `style` alone do not.                                          |
-| The release is already published                                                           | The workflow refuses to replace its assets. Release the next version instead.                                                                                                                                                             |
+| Situation                                                                                  | Recovery                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tag is not reachable from `main` or a `release/*` branch, or does not match both manifests | Fix the cause through a normal pull request; release-please then proposes a new version. Do not retarget or reuse an existing tag.                                                                                                                                                                   |
+| A platform package fails but other packages succeed                                        | Inspect the failed matrix log and the `publish` job's warning, which names the missing assets. After a transient runner, credential, or service fix, dispatch `release.yml` with the same tag; `--clobber` replaces the draft's assets and `publish` completes it. A source fix needs a new release. |
+| Every package fails                                                                        | For a transient failure, dispatch the same tag again. For a source or manifest failure, fix it through a normal pull request and release the next version.                                                                                                                                           |
+| Container run cancelled (a newer publish queued behind it)                                 | A third run queued in the `container` group cancels the pending one, so that release has no image. Dispatch the Container workflow with its tag once the queue is clear.                                                                                                                             |
+| Container workflow: no `Trinity-Web-<version>.zip` asset                                   | `package-web` failed and the draft was published anyway. Set the release back to draft (`gh release edit <tag> --draft=true`) and dispatch `release.yml` with the tag; the `publish` job republishes it once complete, which runs `container.yml`.                                                   |
+| A draft-release upload fails                                                               | Dispatch `release.yml` with the same tag after diagnosing the failure.                                                                                                                                                                                                                               |
+| release-please fails or opens no release PR                                                | Read the `Release PR and tag` job log. Only `feat`, `fix`, `perf`, `revert` and breaking commits produce a release; `chore`, `ci`, `docs`, `test`, `build`, `refactor` and `style` alone do not.                                                                                                     |
+| The release is already published                                                           | The workflow refuses to replace its assets. Release the next version instead.                                                                                                                                                                                                                        |
 
 Release runs share one concurrency group and never cancel each other: an
 incomplete draft is worse than a slower package run, and two runs must not upload
