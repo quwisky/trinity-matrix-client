@@ -10,6 +10,7 @@ const CHROME = 'com.android.chrome';
 // otherwise stop at its first-run screen and at the certificate interstitial.
 const CHROME_FLAGS =
   '_ --ignore-certificate-errors --no-first-run --disable-fre --no-default-browser-check';
+const CHROME_FLAGS_FILE = '/data/local/tmp/chrome-command-line';
 
 const uiSelector = (selector: string) => $(`android=${selector}`);
 
@@ -22,7 +23,8 @@ async function answerDexInCustomTab(
     uiSelector(
       `new UiSelector().className("android.widget.EditText").instance(${n})`,
     );
-  // Chrome may put a first-run screen or the certificate interstitial in front of Dex.
+  // Fallback for a Chrome that ignores the command-line file: it may put a first-run screen
+  // or the certificate interstitial in front of Dex.
   const hurdles = [
     'Use without an account',
     'Accept & continue',
@@ -33,27 +35,37 @@ async function answerDexInCustomTab(
   ];
   // Chrome can raise the first-run screen over a page that already loaded, so dismiss
   // hurdles on every attempt and retry the fill (the page also re-renders once).
-  await browser.waitUntil(
-    async () => {
-      for (const text of hurdles) {
-        const button = uiSelector(`new UiSelector().textStartsWith("${text}")`);
-        if (await button.isExisting()) await button.click().catch(() => {});
-      }
-      try {
-        await field(0).setValue(email);
-        await field(1).setValue(pass);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    {
-      timeout: 90_000,
-      interval: 1_000,
-      timeoutMsg:
-        'could not fill the identity provider login in the Custom Tab',
-    },
-  );
+  let lastError: unknown;
+  await browser
+    .waitUntil(
+      async () => {
+        for (const text of hurdles) {
+          const button = uiSelector(
+            `new UiSelector().textStartsWith("${text}")`,
+          );
+          if (await button.isExisting()) await button.click().catch(() => {});
+        }
+        try {
+          await field(0).setValue(email);
+          await field(1).setValue(pass);
+          return true;
+        } catch (error) {
+          lastError = error;
+          return false;
+        }
+      },
+      {
+        timeout: 90_000,
+        interval: 1_000,
+        timeoutMsg:
+          'could not fill the identity provider login in the Custom Tab',
+      },
+    )
+    .catch((error: unknown) => {
+      throw new Error(
+        `${String(error)}; last fill error: ${String(lastError)}`,
+      );
+    });
   // Enter submits the form without dismissing the soft keyboard first.
   await browser.pressKeyCode(66);
 }
@@ -61,10 +73,12 @@ async function answerDexInCustomTab(
 describe('Android SSO sign-in', () => {
   beforeEach(async () => {
     await native();
-    await shell('sh', [
-      '-c',
-      `echo '${CHROME_FLAGS}' > /data/local/tmp/chrome-command-line`,
-    ]);
+    // `adb shell` joins its arguments into one device command line, so pass the whole
+    // script as the command: split into `sh -c` arguments, the redirect wrote an empty file.
+    await shell(`echo '${CHROME_FLAGS}' > ${CHROME_FLAGS_FILE}`);
+    const written = (await shell(`cat ${CHROME_FLAGS_FILE}`)).trim();
+    if (written !== CHROME_FLAGS)
+      throw new Error(`Chrome flags not written: ${JSON.stringify(written)}`);
     await shell('am', ['force-stop', CHROME]);
     await resetApp();
   });
