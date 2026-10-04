@@ -1,6 +1,6 @@
 ---
 title: Branches and commits
-description: Base contributions on develop and create small Conventional Commits without disturbing unrelated work.
+description: Base contributions on main and create small Conventional Commits without disturbing unrelated work.
 audience: developer
 contentChannel: develop
 canonicalTopic: contributing-branches-commits
@@ -8,14 +8,14 @@ pageType: how-to
 platforms: [web, desktop, android, ios]
 ---
 
-Use `develop` as the normal branch base and pull-request target. A different integration base applies only when the task explicitly requires it.
+Use `main` as the normal branch base and pull-request target. A different integration base applies only when the task explicitly requires it.
 
 ## Create a scoped branch {#create-branch}
 
 ```bash
 git fetch origin
-git switch develop
-git pull --ff-only origin develop
+git switch main
+git pull --ff-only origin main
 git switch -c docs/short-description
 ```
 
@@ -37,8 +37,8 @@ Use a body when the motivation or behavior change is not self-evident. Mark brea
 
 ## Release lines {#release-lines}
 
-`develop` is also the prerelease line and `main` the stable line. release-please keeps a release pull request open on each: merging it on `develop` cuts an `X.Y.Z-next.N` prerelease, and merging it on `main` cuts a stable release and updates `CHANGELOG.md`. `feat`, `fix`, `perf` and `revert` subjects become the release notes, so write them for users.
+`main` is the integration branch: pull requests target it and prereleases are cut from it. A stable line lives on a `release/X.Y` branch, cut by a maintainer from a tested prerelease. Release branches accept only fixes, through pull requests; open the same fix against `main` too, or let the automatic back-merge pull request carry it. release-please keeps a release pull request open on each branch: merging it on `main` cuts an `X.Y.Z-next.N` prerelease, and merging it on `release/X.Y` cuts a stable patch release and updates `CHANGELOG.md`. `feat`, `fix`, `perf` and `revert` subjects become the release notes, so write them for users.
 
-Never edit versions or `CHANGELOG.md` by hand, and do not add `Release-As` footers: both release lines read them. Maintainers promote `develop` to `main` and publish releases.
+Never edit versions or `CHANGELOG.md` by hand, and do not add `Release-As` footers: every release line reads them. Maintainers cut release branches and publish releases.
 
 Do not rewrite pushed history without explicit coordination. Continue with [prepare a pull request](../prepare-a-pull-request/).

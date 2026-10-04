@@ -46,9 +46,10 @@ jobs:
       - run: pnpm format:check
       - run: pnpm nx test scripts
       - run: pnpm nx test docs-site
-      # The developer guide always deploys from main. Between a stable release PR's
-      # back-merge and publishing that release, the user guide names a draft version, so
-      # build it from the newest commit whose version is published.
+      # The developer guide always deploys from main. After a back-merge PR brings a
+      # stable release's version into main and before that release is published, the user
+      # guide names a draft version, so build it from the newest commit whose version is
+      # published.
       - name: Use the user guide of the latest published release
         id: release
         env:

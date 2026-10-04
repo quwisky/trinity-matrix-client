@@ -15,4 +15,4 @@ stable" workflow from a published prerelease, with a back-merge PR opened automa
 Do not add `Release-As` footers: both lines read them and would cut the same version
 twice. Follow the
 [private release guide](../../../docs-internal/maintenance/ci-and-releases.md) for
-promotion and publishing.
+cutting release branches and publishing.
