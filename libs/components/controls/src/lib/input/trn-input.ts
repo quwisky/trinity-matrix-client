@@ -24,7 +24,7 @@ export type { TrnTextControlSize } from './trn-text-control-recipe';
  * The exact native-input selector keeps focus, value, autofill and Signal Forms behavior on
  * the element the browser operates. Brain supplies field state and description wiring while
  * this directive owns the public size and validation vocabulary plus every appearance class.
- * The vendor's `forceInvalid` input is intentionally not published.
+ * Validation shows only once the user touched the control or tried to submit (`spartanInvalid`).
  *
  * `aria-describedby` is published explicitly because `BrnFieldControlDescribedBy` otherwise
  * writes `null` over a consumer attribute. The unit and browser contracts pin the resulting
@@ -56,9 +56,13 @@ export class TrnInput {
   private readonly fieldControl = inject(BrnFieldControl);
 
   readonly size = input<TrnTextControlSize>('md');
-  readonly invalid = input(false, { transform: booleanAttribute });
+  /**
+   * Explicitly marks the control invalid. Not named `invalid`: Signal Forms writes the field's
+   * raw `invalid` state into any `invalid` input, which would show errors before interaction.
+   */
+  readonly explicitInvalid = input(false, { transform: booleanAttribute });
   protected readonly resolvedInvalid = computed(
-    () => this.invalid() || Boolean(this.fieldControl.invalid()),
+    () => this.explicitInvalid() || Boolean(this.fieldControl.spartanInvalid()),
   );
 
   constructor() {

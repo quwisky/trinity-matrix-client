@@ -43,7 +43,7 @@
   .invite__name {
     @include ellipsis;
 
-    font-size: 14px;
+    font-size: 0.875rem;
     font-weight: 600;
     color: var(--trinity-text-bright);
   }
@@ -51,7 +51,7 @@
   .invite__meta {
     @include ellipsis;
 
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--trinity-text-muted);
   }
 
@@ -72,7 +72,7 @@
     height: 28px;
     min-width: var(--trinity-interaction-target-min-size);
     min-height: var(--trinity-interaction-target-min-size);
-    font-size: 18px;
+    font-size: 1.125rem;
 
     &.accept:hover {
       color: var(--trinity-success);
@@ -115,9 +115,18 @@
       background: var(--trinity-state-selected-surface);
       color: var(--trinity-state-selected-foreground);
 
+      // The preview is muted at rest but must stay readable on the selected ground.
+      .channel__preview {
+        color: var(--trinity-state-selected-foreground);
+      }
+
       &:hover {
         background: var(--trinity-state-selected-hover-surface);
         color: var(--trinity-state-selected-hover-foreground);
+
+        .channel__preview {
+          color: var(--trinity-state-selected-hover-foreground);
+        }
       }
     }
 
@@ -150,14 +159,14 @@
     @include ellipsis;
 
     min-width: 0;
-    font-size: 15px;
+    font-size: var(--trinity-text-base);
   }
 
   .channel__preview {
     @include ellipsis;
 
     min-width: 0;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--trinity-text-muted);
   }
 
@@ -184,18 +193,18 @@
 
   .channel__badge {
     flex: 0 0 auto;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 5px;
+    min-width: 1rem;
+    height: 1rem;
+    padding: 0 0.3125rem;
     border-radius: var(--trinity-radius-pill);
 
     // Filled badge, so this takes the solid pair — `--trinity-danger` is the
     // text/icon role and is too light to carry white on it.
     background: var(--trinity-danger-solid);
     color: var(--trinity-danger-solid-foreground);
-    font-size: 11px;
+    font-size: var(--trinity-text-xs);
     font-weight: 700;
-    line-height: 16px;
+    line-height: 1rem;
     text-align: center;
 
     // Ordinary unread (no mention) reads as a neutral count, not the red alert.
@@ -228,7 +237,7 @@
     height: 26px;
     min-width: var(--trinity-interaction-target-min-size);
     min-height: var(--trinity-interaction-target-min-size);
-    font-size: 18px;
+    font-size: 1.125rem;
     opacity: 0;
 
     &:hover {

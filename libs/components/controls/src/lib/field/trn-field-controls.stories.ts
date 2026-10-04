@@ -71,7 +71,7 @@ export const CanonicalStates: Story = {
             trnInput
             id="server-name"
             size="md"
-            invalid
+            explicitInvalid
             aria-describedby="server-name-error"
             value="not a server"
             data-testid="field-input-invalid"

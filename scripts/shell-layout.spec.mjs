@@ -62,6 +62,11 @@ describe('modern room shell layout contracts', () => {
     );
   });
 
+  it('exposes the conversation column as the page main landmark', () => {
+    expect(roomsHtml).toMatch(/<main\b[^>]*#mainView[^>]*class="main"/);
+    expect(roomsHtml).not.toContain('<div #mainView');
+  });
+
   it('recesses the workspace without changing or clipping shell geometry', () => {
     expect(roomsHtml).toMatch(/class="rooms-workspace flex min-h-0 flex-1"/);
     expect(roomsCss).toMatch(

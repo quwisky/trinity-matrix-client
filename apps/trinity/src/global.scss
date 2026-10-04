@@ -275,13 +275,14 @@
 
 @layer overrides {
   /* Touch targets. On coarse-pointer (touch) devices only, lift every Helm button to
- * the ~44px minimum tap size. Keyed on the directive's host [data-slot="button"],
- * so it covers all size="icon" call sites with no markup changes. `(pointer: coarse)`
+ * the ~44px minimum tap size. Keyed on the trnBtn attribute rather than [data-slot="button"]:
+ * a menu trigger (`hlmDropdownMenuTrigger`) overwrites the slot with "dropdown-menu-trigger".
+ * It covers all size="icon" call sites with no markup changes. `(pointer: coarse)`
  * is false for a mouse — including a narrow Electron window — so the desktop layout
  * is untouched (icon buttons stay 32×32 there). */
   @media (pointer: coarse) {
-    button[trnBtn][data-slot='button'],
-    a[trnBtn][data-slot='button'] {
+    button[trnBtn],
+    a[trnBtn] {
       min-width: var(--trinity-interaction-target-min-size);
       min-height: var(--trinity-interaction-target-min-size);
     }

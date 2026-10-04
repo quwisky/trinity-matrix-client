@@ -42,7 +42,7 @@ const OPTIONS: readonly TrnSelectOption<string>[] = [
   template: \`
     <trn-field invalid>
       <trn-field-label controlId="name" emphasis="strong" invalid>Name</trn-field-label>
-      <input trnInput id="name" size="sm" invalid aria-describedby="name-error" />
+      <input trnInput id="name" size="sm" explicitInvalid aria-describedby="name-error" />
       <span id="name-error">Required.</span>
     </trn-field>
     <label trnLabel emphasis="normal" invalid for="topic">Topic</label>

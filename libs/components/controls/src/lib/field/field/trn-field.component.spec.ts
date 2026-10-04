@@ -16,7 +16,7 @@ import { TrnFieldComponent } from './trn-field.component';
         trnInput
         id="email"
         type="email"
-        invalid
+        explicitInvalid
         aria-describedby="email-error"
       />
       <p id="email-error">Enter a valid address.</p>

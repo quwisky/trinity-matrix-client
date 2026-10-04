@@ -60,6 +60,7 @@ export class SpaceActionsService {
         header: 'Create a space',
         message: 'A space groups related rooms, like a Discord server.',
         placeholder: 'Space name',
+        inputLabel: 'Space name',
         confirmText: 'Create',
         maxLength: 100,
       })
@@ -86,6 +87,7 @@ export class SpaceActionsService {
         header: 'Create a space inside',
         message: `The new space will sit inside “${this.vm.activeSpaceName()}”.`,
         placeholder: 'Space name',
+        inputLabel: 'Space name',
         confirmText: 'Create',
         maxLength: 100,
       })

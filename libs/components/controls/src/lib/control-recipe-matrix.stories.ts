@@ -357,12 +357,12 @@ export const CompleteCatalog: Story = {
           <div class="grid gap-4 md:grid-cols-3">
             <label class="grid gap-2">
               Invalid input
-              <input data-testid="catalog-input-invalid" data-catalog-touch trnInput invalid aria-describedby="catalog-input-error" value="not a server" />
+              <input data-testid="catalog-input-invalid" data-catalog-touch trnInput explicitInvalid aria-describedby="catalog-input-error" value="not a server" />
             </label>
             <p id="catalog-input-error" class="text-danger">Enter a valid server name.</p>
             <label class="grid gap-2">
               Invalid textarea
-              <textarea data-testid="catalog-textarea-invalid" data-catalog-touch trnTextarea invalid aria-describedby="catalog-input-error">not a valid description</textarea>
+              <textarea data-testid="catalog-textarea-invalid" data-catalog-touch trnTextarea explicitInvalid aria-describedby="catalog-input-error">not a valid description</textarea>
             </label>
             <label class="grid gap-2">
               Read-only input
