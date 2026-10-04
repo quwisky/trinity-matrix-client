@@ -4,7 +4,9 @@
  * so a maintainer merges by hand.
  */
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
 const RELEASE_SIDE = new Set([
@@ -14,6 +16,7 @@ const RELEASE_SIDE = new Set([
 ]);
 const MAIN_SIDE = new Set(['package.json', 'electron/package.json']);
 const NEXT_MANIFEST = '.release-please-manifest.next.json';
+const STABLE_CONFIG = 'release-please-config.json';
 const USER_GUIDE_PAGE = /^apps\/docs-users\/src\/content\/docs\/.+\.mdx?$/;
 const VERSION =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-next\.(0|[1-9]\d*))?$/;
@@ -58,6 +61,14 @@ export function mergeNextManifest(mainText, releaseText) {
   return `${JSON.stringify({ '.': version }, null, 2)}\n`;
 }
 
+/** Release stable's one-time pin belongs to the release branch only; main never keeps it. */
+export function withoutReleaseAs(configText) {
+  const config = JSON.parse(configText);
+  if (!Object.hasOwn(config.packages['.'], 'release-as')) return null;
+  delete config.packages['.']['release-as'];
+  return `${JSON.stringify(config, null, 2)}\n`;
+}
+
 export function planBackMerge({ mainContainsTag, existingPr }) {
   if (mainContainsTag) return 'skip';
   return existingPr === null ? 'create' : 'update';
@@ -74,8 +85,16 @@ const succeeds = (command, args) => {
   }
 };
 
-export function resolveConflicts(tag) {
-  const conflicted = git('diff', '--name-only', '--diff-filter=U')
+export function resolveConflicts(tag, cwd = process.cwd()) {
+  const at = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8' });
+  const stage = (n, path) => {
+    try {
+      return at('show', `:${n}:${path}`);
+    } catch {
+      return null;
+    }
+  };
+  const conflicted = at('diff', '--name-only', '--diff-filter=U')
     .split('\n')
     .filter(Boolean);
   const unknown = conflicted.filter((path) => resolutionFor(path) === null);
@@ -85,19 +104,45 @@ export function resolveConflicts(tag) {
         `Merge ${tag} into main locally, resolve these files, and open the PR by hand. Do not force-push.`,
     );
   }
+  const resolved = [];
   for (const path of conflicted) {
     const rule = resolutionFor(path);
-    if (rule === 'release') git('checkout', '--theirs', '--', path);
-    if (rule === 'main') git('checkout', '--ours', '--', path);
+    const main = stage(2, path);
+    const release = stage(3, path);
+    const base = stage(1, path);
+    let text;
+    let wholeFile = false;
     if (rule === 'higher') {
-      writeFileSync(
-        path,
-        mergeNextManifest(git('show', `:2:${path}`), git('show', `:3:${path}`)),
-      );
+      text = mergeNextManifest(main, release);
+    } else if (base === null) {
+      // Added on both lines: no common ancestor to merge hunks against.
+      text = rule === 'release' ? release : main;
+      wholeFile = true;
+    } else {
+      // Per hunk: only the conflicting hunks take the rule's side; other edits on either side stay.
+      const dir = mkdtempSync(join(tmpdir(), 'back-merge-'));
+      try {
+        const files = { main, base, release };
+        for (const [name, content] of Object.entries(files)) {
+          writeFileSync(join(dir, name), content);
+        }
+        text = at(
+          'merge-file',
+          '-p',
+          rule === 'release' ? '--theirs' : '--ours',
+          join(dir, 'main'),
+          join(dir, 'base'),
+          join(dir, 'release'),
+        );
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
     }
-    git('add', '--', path);
+    writeFileSync(join(cwd, path), text);
+    at('add', '--', path);
+    resolved.push({ path, rule, wholeFile });
   }
-  return conflicted;
+  return resolved;
 }
 
 function run({ tag, branch }) {
@@ -140,22 +185,33 @@ function run({ tag, branch }) {
     !succeeds('git', [
       'merge',
       '--no-ff',
-      '--no-edit',
+      '--no-commit',
       '-m',
       `chore: back-merge ${tag} into main`,
       tag,
     ])
   ) {
     resolved = resolveConflicts(tag);
-    git('commit', '--no-edit');
   }
+  const config = withoutReleaseAs(readFileSync(STABLE_CONFIG, 'utf8'));
+  if (config !== null) {
+    writeFileSync(STABLE_CONFIG, config);
+    git('add', '--', STABLE_CONFIG);
+  }
+  git('commit', '--no-edit');
   git('push', '--force-with-lease', 'origin', `${head}:${head}`);
   const body = [
     `Merges \`${branch}\` at \`${tag}\` back into \`main\`: its changelog, version files and any fixes made on the release branch.`,
     '',
     resolved.length > 0
-      ? `Conflicts resolved by rule (see \`scripts/back-merge.mjs\`):\n${resolved.map((path) => `- \`${path}\` → ${resolutionFor(path)}`).join('\n')}`
+      ? `Conflicting hunks resolved by rule (see \`scripts/back-merge.mjs\`):\n${resolved.map(({ path, rule, wholeFile }) => `- \`${path}\` → ${rule}${wholeFile ? ' (whole file: added on both lines, review it)' : ''}`).join('\n')}`
       : 'Merged without conflicts.',
+    ...(config === null
+      ? []
+      : [
+          '',
+          `Drops the one-time \`release-as\` that \`${STABLE_CONFIG}\` carries on the release branch.`,
+        ]),
   ].join('\n');
   if (plan === 'update') {
     gh('pr', 'edit', existing, '--body', body);
