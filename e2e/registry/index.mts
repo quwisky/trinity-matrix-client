@@ -72,7 +72,7 @@ export const E2E_INVENTORY = {
   trackedEntrypointPatterns: [
     'e2e/**/playwright*.config.mts',
     'e2e/protocol/*.spec.mjs',
-    'e2e/mobile/run.mts',
+    'e2e/mobile/run*.mts',
     'e2e/**/wdio*.conf.mts',
   ],
   sharedEntrypoints: [],

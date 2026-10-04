@@ -8,6 +8,13 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { E2E_SUITES } from '../e2e/registry/index.mts';
+import {
+  ELECTRON_FULL_SUITE,
+  ELECTRON_SMOKE_SUITE,
+  MOBILE_ANDROID_SUITE,
+  MOBILE_IOS_SUITE,
+} from '../e2e/support/host-suites.mts';
 import {
   BROWSER_ASSERTION_BASELINE,
   captureBrowserAssertionInventory,
@@ -521,6 +528,49 @@ describe('E2E suite registry runner', () => {
         },
       ),
     ).toEqual([]);
+  });
+
+  it('keeps e2e:mobile on Android and gives iOS its own selection', () => {
+    expect(selectSuites('e2e-mobile').map(({ id }) => id)).toEqual([
+      'mobile.android',
+    ]);
+    expect(selectSuites('e2e-mobile-ios').map(({ id }) => id)).toEqual([
+      'mobile.ios',
+    ]);
+    expect(
+      [
+        ELECTRON_FULL_SUITE,
+        ELECTRON_SMOKE_SUITE,
+        MOBILE_ANDROID_SUITE,
+        MOBILE_IOS_SUITE,
+      ].map(({ id }) => id),
+    ).toEqual([
+      'electron.full',
+      'electron.smoke',
+      'mobile.android',
+      'mobile.ios',
+    ]);
+  });
+
+  it('skips the iOS suite in e2e-all where its preflight fails', async () => {
+    const ios = E2E_SUITES.find(({ id }) => id === 'mobile.ios');
+    const executeSuite = vi.fn(async () => 0);
+    const writeReport = vi.fn(() => undefined);
+    expect(
+      await runSelection('e2e-all', {
+        validate: () => [],
+        select: () => [ios],
+        preflight: async () => ['macOS is required'],
+        executeSuite,
+        writeReport,
+        reportError: () => undefined,
+        reportOutput: () => undefined,
+      }),
+    ).toBe(0);
+    expect(executeSuite).not.toHaveBeenCalled();
+    expect(writeReport.mock.calls[0][1].suites).toContainEqual(
+      expect.objectContaining({ id: 'mobile.ios', outcome: 'unavailable' }),
+    );
   });
 
   it('selects environment suites and rejects unknown aggregates', () => {
