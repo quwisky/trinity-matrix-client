@@ -59,14 +59,17 @@ jobs:
     if: ${{ needs.release-please.outputs.created == 'true' && startsWith(github.ref_name, 'release/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # The release App's private key lives only in this environment.
+    environment: release
     steps:
       # GITHUB_TOKEN pushes trigger no workflows, so CI would never run on the PR.
+      # The token comes from the release App.
       - name: Mint the App token
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          client-id: ${{ vars.RENOVATE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
       # The release branch, not main: the drop step below commits to it. back-merge.mjs
       # fetches main and branches from origin/main itself.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

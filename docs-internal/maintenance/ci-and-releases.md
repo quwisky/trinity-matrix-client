@@ -232,10 +232,15 @@ release is a patch release), or when a `vX.Y.Z` tag exists. It also refuses a pr
 whose commit predates `release-stable.yml`, because a release branch inherits the
 workflows of the commit it is cut from: cut a new prerelease from `main` first.
 
-It pushes with the Renovate GitHub App's installation token (`RENOVATE_APP_CLIENT_ID`
-variable, `RENOVATE_APP_PRIVATE_KEY` secret), not `GITHUB_TOKEN`: pushes made with
+It pushes with the release App's installation token, not `GITHUB_TOKEN`: pushes made with
 `GITHUB_TOKEN` trigger no workflows, so `release.yml` would never run on the new branch.
-The App needs Contents and Pull requests write access.
+The release App is a GitHub App (for example "Trinity Release") installed only on this
+repository with Contents: read & write and Pull requests: read & write. Its
+`RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret live in the
+`release` environment, whose deployment branch policy allows `main` and `release/**`;
+the jobs that mint the token declare `environment: release`. The release App, not
+Renovate, is the only bypass actor for `release/**` in the ruleset. Renovate keeps its
+own App and credentials.
 
 Pushing the branch is the workflow's last step; a failure before it creates nothing, so
 rerun it. Once the branch exists, rerunning is refused, and the branch already carries the
@@ -320,14 +325,19 @@ run release-please.
 
    Review the PR it opens and merge it with a merge commit.
 
-4. Update the ruleset to protect `main` and `release/**` with the rules `develop` and
+4. Create the release App (see [Release a stable version](#release-a-stable-version)):
+   install it only on this repository with Contents and Pull requests read & write, and add
+   the `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret to the
+   `release` environment.
+5. Update the ruleset to protect `main` and `release/**` with the rules `develop` and
    `main` had, and restrict who can create `release/**` branches to maintainers and the
    release App: the release verifier trusts any commit contained in a `release/*` branch.
-5. Change the deployment rules of the environments: `github-pages`, `homebrew` and `apt`
+   Make the release App, not Renovate, the only bypass actor for `release/**`.
+6. Change the deployment rules of the environments: `github-pages`, `homebrew` and `apt`
    (if present) to `main`, plus `release/**` where a job runs from a release tag. The
    `release` environment, which gates packaging in `release.yml`, must allow `main` and
    `release/**`.
-6. Update each local clone:
+7. Update each local clone:
 
    ```bash
    git branch -m develop main
@@ -336,11 +346,11 @@ run release-please.
    git remote set-head origin -a
    ```
 
-7. Before a fix release on 0.1: the renamed `release/0.1.x` still has the old workflows.
+8. Before a fix release on 0.1: the renamed `release/0.1.x` still has the old workflows.
    Port `release.yml`, `release-please-config.json` (with
    `"versioning": "always-bump-patch"`) and `scripts/back-merge.mjs` to `release/0.1.x` through a pull
    request first.
-8. Verify with a `dry_run` of `Release stable`, then the first real cut, and the first fix
+9. Verify with a `dry_run` of `Release stable`, then the first real cut, and the first fix
    on `release/0.1.x`, each followed by its back-merge PR.
 
 ### First release

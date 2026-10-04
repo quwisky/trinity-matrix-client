@@ -62,14 +62,18 @@ describe('Release stable workflow', () => {
     }
   });
 
+  it('runs in the release environment that holds the release App key', () => {
+    expect(job.environment).toBe('release');
+  });
+
   it('creates the branch in one push whose commit pins the stable version', () => {
     const token = job.steps[index('Mint the App token')];
     expect(token.uses).toBe(
       'actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1',
     );
     expect(token.with).toEqual({
-      'client-id': '${{ vars.RENOVATE_APP_CLIENT_ID }}',
-      'private-key': '${{ secrets.RENOVATE_APP_PRIVATE_KEY }}',
+      'client-id': '${{ vars.RELEASE_APP_CLIENT_ID }}',
+      'private-key': '${{ secrets.RELEASE_APP_PRIVATE_KEY }}',
     });
     const checkout = job.steps[index('Check out the prerelease')];
     expect(checkout.uses).toBe(

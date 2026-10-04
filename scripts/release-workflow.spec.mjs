@@ -105,11 +105,15 @@ describe('release branches', () => {
       );
     });
 
+    it('runs in the release environment that holds the release App key', () => {
+      expect(job().environment).toBe('release');
+    });
+
     it('mints the pinned App token and runs the script with it', () => {
       const mint = job().steps.find((s) => s.id === 'app-token');
       expect(mint.with).toEqual({
-        'client-id': '\${{ vars.RENOVATE_APP_CLIENT_ID }}',
-        'private-key': '\${{ secrets.RENOVATE_APP_PRIVATE_KEY }}',
+        'client-id': '\${{ vars.RELEASE_APP_CLIENT_ID }}',
+        'private-key': '\${{ secrets.RELEASE_APP_PRIVATE_KEY }}',
       });
       expect(mint.uses).toMatch(
         /^actions\/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1$/,
@@ -163,5 +167,13 @@ describe('release branches', () => {
       expect(node).toBeLessThan(run);
       expect(steps[node].with['node-version-file']).toBe('.nvmrc');
     });
+  });
+
+  it('does not use the Renovate App in any release workflow', () => {
+    for (const name of ['release.yml', 'release-stable.yml']) {
+      expect(
+        readFileSync(resolve(root, '.github/workflows', name), 'utf8'),
+      ).not.toContain('RENOVATE_APP');
+    }
   });
 });
