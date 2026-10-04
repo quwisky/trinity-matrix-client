@@ -46,6 +46,19 @@ describe('mobile E2E scrub on disk', () => {
     });
   });
 
+  it('scrubs a .webview.html DOM capture', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'scrub-'));
+    const file = join(tmp, 'x.webview.html');
+    writeFileSync(
+      file,
+      '<a title="@alice:localhost">@alice:localhost</a><i data-t="syt_abc_def"></i>',
+    );
+    scrubDirectory(tmp);
+    expect(readFileSync(file, 'utf8')).toBe(
+      '<a title="@<user>">@<user></a><i data-t="<token>"></i>',
+    );
+  });
+
   it('redacts escaped JSON forms', () => {
     expect(scrub('{\\"password\\":\\"hunter2\\",\\"text\\":\\"abc\\"}')).toBe(
       '{\\"password\\":\\"<redacted>\\",\\"text\\":\\"<typed>\\"}',

@@ -20,14 +20,15 @@ export function scrub(text: string): string {
   );
 }
 
-/** Scrub every text artifact (.log, .xml, .txt, .json) under a directory, in place. */
+/** Scrub every text artifact (.log, .xml, .txt, .json, .html) under a directory, in place. */
 export function scrubDirectory(dir: string): void {
   if (!existsSync(dir)) return;
   for (const entry of readdirSync(dir, {
     recursive: true,
     withFileTypes: true,
   })) {
-    if (!entry.isFile() || !/\.(log|xml|txt|json)$/u.test(entry.name)) continue;
+    if (!entry.isFile() || !/\.(log|xml|txt|json|html)$/u.test(entry.name))
+      continue;
     const file = join(entry.parentPath, entry.name);
     writeFileSync(file, scrub(readFileSync(file, 'utf8')));
   }
