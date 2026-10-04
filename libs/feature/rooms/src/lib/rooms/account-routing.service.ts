@@ -17,7 +17,7 @@ import {
   ROOM_READINESS_TIMEOUT_MS,
   SelectedRoomLibraryService,
 } from '@trinity/data-access/room-library';
-import { filter, take, timeout } from 'rxjs';
+import { filter, of, switchMap, take, timeout } from 'rxjs';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { ShellStatusService } from './shell-status.service';
@@ -182,29 +182,53 @@ export class AccountRoutingService {
       this.openRoom(
         { roomId, accountId: room.accountId },
         origin,
-        eventId ? () => this.revealLoadedEvent(eventId) : undefined,
+        eventId
+          ? () =>
+              this.revealLoadedEvent(
+                { roomId, accountId: room.accountId },
+                eventId,
+              )
+          : undefined,
       );
       return;
     }
     if (eventId) {
-      this.revealLoadedEvent(eventId);
+      this.revealLoadedEvent({ roomId, accountId: room.accountId }, eventId);
     }
   }
 
   /**
-   * Reveal an event of the focused room. The list scrolls by DOM lookup, and a cold start
-   * loads only the newest messages, so an older linked event is paged in first.
+   * Reveal an event of a room. The list scrolls by DOM lookup, and a cold start loads only
+   * the newest messages, so an older linked event is paged in first. Navigation reports
+   * ready before the Conversation Runtime moves focus, and `loadEvent` pages whichever
+   * conversation holds it, so wait for the target room to be focused.
    */
-  private revealLoadedEvent(eventId: string): void {
-    this.conversations.timeline
-      .loadEvent(eventId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((loaded) => {
-        if (loaded) {
-          this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
-        } else {
-          void this.status.showError('Could not load that message.');
-        }
+  private revealLoadedEvent(room: ExactRoomSelection, eventId: string): void {
+    const isFocused = (): boolean => {
+      const key = this.conversations.focused()?.key;
+      return key?.roomId === room.roomId && key.accountId === room.accountId;
+    };
+    const focused$ = isFocused()
+      ? of(true)
+      : toObservable(computed(isFocused), { injector: this.injector }).pipe(
+          filter(Boolean),
+          take(1),
+          timeout({ first: ROOM_READINESS_TIMEOUT_MS }),
+        );
+    focused$
+      .pipe(
+        switchMap(() => this.conversations.timeline.loadEvent(eventId)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (loaded) => {
+          if (loaded) {
+            this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
+          } else {
+            void this.status.showError('Could not load that message.');
+          }
+        },
+        error: () => void this.status.showError('Could not load that message.'),
       });
   }
 

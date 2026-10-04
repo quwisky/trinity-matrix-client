@@ -9,7 +9,10 @@ import {
   SelectedRoomLibraryService,
   type SelectedRoomLibraryView,
 } from '@trinity/data-access/room-library';
-import { ConversationRuntime } from '@trinity/data-access/timeline';
+import {
+  ConversationRuntime,
+  type ConversationHandle,
+} from '@trinity/data-access/timeline';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of } from 'rxjs';
 import {
@@ -35,6 +38,13 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
   let showError: Mock;
   let transition: Mock;
   let loadEvent: Mock;
+  const focused = signal<ConversationHandle | null>(null);
+  const focus = (roomId: string | null): void =>
+    focused.set(
+      roomId
+        ? ({ key: { accountId: '@me:hs', roomId } } as ConversationHandle)
+        : null,
+    );
 
   function build(): AccountRoutingService {
     navigate = vi.fn(() => of({ kind: 'ready' }));
@@ -57,6 +67,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
         }),
         MockProvider(RoomSurfaceLifecycle, { transition }),
         MockProvider(ConversationRuntime, {
+          focused: focused.asReadonly(),
           timeline: { loadEvent } as never,
         }),
         MockProvider(SelectedRoomLibraryService, { view }),
@@ -75,6 +86,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
   beforeEach(() => {
     view.set({ rooms: [] } as unknown as SelectedRoomLibraryView);
     syncState.set(null);
+    focus(joined.id);
   });
   afterEach(() => vi.useRealTimers());
 
@@ -162,5 +174,23 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     expect(showError).toHaveBeenCalledExactlyOnceWith(
       'Could not load that message.',
     );
+  });
+
+  it('waits for the room to be the focused conversation before paging its history', () => {
+    const routing = build();
+    sync([joined], 'SYNCING' as SyncState);
+    focus('!previous:hs'); // navigation is ready, but the old room still holds the focus
+
+    routing.openLinkedRoom(joined.id, '$old', 'deep-link');
+    TestBed.tick();
+    expect(loadEvent).not.toHaveBeenCalled();
+
+    focus(joined.id);
+    TestBed.tick();
+    expect(loadEvent).toHaveBeenCalledExactlyOnceWith('$old');
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'reveal-message',
+      eventId: '$old',
+    });
   });
 });
