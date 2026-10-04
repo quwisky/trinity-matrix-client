@@ -178,7 +178,7 @@ test.describe('Message actions on a phone', () => {
 
     // Every row is REACHABLE — which for a list this long means reachable by scrolling
     // INSIDE the sheet, not all visible at once. Two things to hold: the sheet itself sits
-    // within the viewport (it is bounded by 100dvh minus the safe-area insets, so it cannot run off the screen), and
+    // within the viewport (it is bounded by 80svh and the safe-area insets, so it cannot run off the screen), and
     // the last row can be scrolled to. Asserting that every row fits unscrolled was the
     // earlier version of this check, and it started failing the moment a row was added —
     // which is the behaviour the scroller exists to provide, not a regression.

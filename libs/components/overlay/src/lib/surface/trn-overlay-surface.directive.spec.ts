@@ -35,9 +35,8 @@ describe('Trinity overlay surface recipe', () => {
     expect(accent).toContain('var(--trinity-state-attention-surface)');
     expect(neutral).toContain('--trn-overlay-inline-size:20rem');
     expect(sheet).toContain(
-      'max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))]',
+      'max-h-[min(80svh,calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)))]',
     );
-    expect(sheet).not.toContain('80svh');
     expect(sheet).toContain('w-screen');
     expect(sheet).toContain('max-w-[100vw]');
     expect(sheet).toContain('rounded-b-none');

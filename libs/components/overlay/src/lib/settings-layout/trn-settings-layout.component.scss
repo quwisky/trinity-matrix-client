@@ -21,12 +21,20 @@
     flex: 0 0 auto;
     align-items: center;
     gap: var(--trinity-space-2);
-    padding: max(var(--trinity-space-4), env(safe-area-inset-top))
+    padding: max(var(--trinity-space-2), env(safe-area-inset-top))
       max(var(--trinity-space-3), env(safe-area-inset-right))
-      var(--trinity-space-3)
+      var(--trinity-space-2)
       max(var(--trinity-space-3), env(safe-area-inset-left));
     border-bottom: 1px solid var(--trinity-border-subtle);
     background: var(--trinity-surface-floating);
+  }
+
+  // A phone header gets more room above the title than the desktop frame, which keeps
+  // the same header height for Room, Space and app settings.
+  @media (max-width: 47.9375rem) {
+    .settings-layout__header {
+      padding-top: max(var(--trinity-space-4), env(safe-area-inset-top));
+    }
   }
 
   .settings-layout__heading {
