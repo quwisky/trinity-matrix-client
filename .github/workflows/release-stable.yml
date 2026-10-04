@@ -1,0 +1,127 @@
+name: Release stable
+
+# Cuts a stable line: creates release/X.Y at a tested, published vX.Y.Z-next.N prerelease
+# and opens its first stable release PR with version X.Y.Z. Merging that PR tags vX.Y.Z on
+# the branch (release.yml), packages the draft and opens the back-merge PR into main.
+# Later fixes land on release/X.Y through PRs and release as X.Y.Z+1 patch releases.
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: 'Published vX.Y.Z-next.N prerelease to release (empty: the newest)'
+        required: false
+      dry_run:
+        description: 'Only check and report what would be cut'
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  cut:
+    name: Cut the release branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - id: from
+        name: Resolve the prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FROM: ${{ inputs.from }}
+        run: |
+          if [ -z "$FROM" ]; then
+            FROM=$(gh release list --exclude-drafts --json tagName,isPrerelease,createdAt \
+              -q '[.[] | select(.isPrerelease)] | sort_by(.createdAt) | last | .tagName // empty')
+          fi
+          if ! [[ "$FROM" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-next\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::'$FROM' is not a vX.Y.Z-next.N prerelease tag."
+            exit 1
+          fi
+          major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}" patch="${BASH_REMATCH[3]}"
+          view=$(gh release view "$FROM" --json isDraft,isPrerelease)
+          if [ "$(jq -r .isDraft <<<"$view")" != false ] || [ "$(jq -r .isPrerelease <<<"$view")" != true ]; then
+            echo "::error::$FROM is not a published prerelease."
+            exit 1
+          fi
+          {
+            echo "tag=$FROM"
+            echo "version=$major.$minor.$patch"
+            echo "branch=release/$major.$minor"
+            echo "sha=$(gh api "repos/$GH_REPO/commits/$FROM" -q .sha)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Refuse an existing line
+        env:
+          BRANCH: ${{ steps.from.outputs.branch }}
+          VERSION: ${{ steps.from.outputs.version }}
+        run: |
+          # ls-remote --exit-code: 0 = found, 2 = absent, anything else = the lookup itself failed.
+          lookup() {
+            rc=0
+            git ls-remote --exit-code "https://github.com/$GH_REPO" "$1" >/dev/null || rc=$?
+            [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || { echo "::error::Could not look up $1."; exit 1; }
+            return "$rc"
+          }
+          if lookup "refs/heads/$BRANCH"; then
+            echo "::error::$BRANCH already exists. Land fixes on it through PRs; its next stable release is a patch release."
+            exit 1
+          fi
+          if lookup "refs/tags/v$VERSION"; then
+            echo "::error::v$VERSION is already tagged."
+            exit 1
+          fi
+
+      - name: Summary
+        env:
+          TAG: ${{ steps.from.outputs.tag }}
+          BRANCH: ${{ steps.from.outputs.branch }}
+          VERSION: ${{ steps.from.outputs.version }}
+          SHA: ${{ steps.from.outputs.sha }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          {
+            echo "### Release stable"
+            echo "- From: \`$TAG\` (\`${SHA:0:8}\`)"
+            echo "- Branch: \`$BRANCH\`"
+            echo "- Version: \`v$VERSION\`"
+            [ "$DRY_RUN" = true ] && echo "- Dry run: nothing was created."
+            true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # GITHUB_TOKEN pushes trigger no workflows, so release.yml would never run on the branch.
+      - name: Mint the App token
+        if: ${{ !inputs.dry_run }}
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RENOVATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+
+      - name: Create the release branch
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BRANCH: ${{ steps.from.outputs.branch }}
+          SHA: ${{ steps.from.outputs.sha }}
+        run: gh api "repos/$GH_REPO/git/refs" -f "ref=refs/heads/$BRANCH" -f "sha=$SHA"
+
+      - name: Open the stable release PR
+        if: ${{ !inputs.dry_run }}
+        env:
+          TOKEN: ${{ steps.app-token.outputs.token }}
+          BRANCH: ${{ steps.from.outputs.branch }}
+          VERSION: ${{ steps.from.outputs.version }}
+        run: |
+          npx --yes release-please@17.11.2 release-pr \
+            --token "$TOKEN" --repo-url "$GH_REPO" \
+            --target-branch "$BRANCH" \
+            --config-file release-please-config.json \
+            --manifest-file .release-please-manifest.json \
+            --path . --release-as "$VERSION"
