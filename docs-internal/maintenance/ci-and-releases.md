@@ -10,14 +10,15 @@ public developer guide.
 
 ## Know what ran
 
-| Workflow                                                           | Starts when                                                             | What it provides                                                                                                                               |
-| ------------------------------------------------------------------ | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`ci.yml`](../../.github/workflows/ci.yml)                         | A pull request, selected pushes, or its weekly schedule                 | Branch checks and browser, desktop, and Android evidence                                                                                       |
-| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml)         | A `main` push, a published stable release, or a manual dispatch         | Validated user and developer sites deployed to GitHub Pages                                                                                    |
-| [`release.yml`](../../.github/workflows/release.yml)               | A push to `main` or `release/**`, or a manual dispatch with a tag input | release-please release PRs and tags, then tag verification, desktop packages, a draft GitHub release, and the back-merge PR after a stable tag |
-| [`homebrew.yml`](../../.github/workflows/homebrew.yml)             | A release is published, or a manual dispatch with a tag input           | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                                                             |
-| [`renovate.yml`](../../.github/workflows/renovate.yml)             | Daily at 00:00 UTC or a manual dispatch                                 | Dependency update maintenance through a GitHub App token                                                                                       |
-| [`release-stable.yml`](../../.github/workflows/release-stable.yml) | A manual dispatch with `from` and `dry_run` inputs                      | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                  |
+| Workflow                                                           | Starts when                                                                | What it provides                                                                                                                                                               |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`ci.yml`](../../.github/workflows/ci.yml)                         | A pull request, selected pushes, or its weekly schedule                    | Branch checks and browser, desktop, and Android evidence                                                                                                                       |
+| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml)         | A `main` push, a published stable release, or a manual dispatch            | Validated user and developer sites deployed to GitHub Pages                                                                                                                    |
+| [`release.yml`](../../.github/workflows/release.yml)               | A push to `main` or `release/**`, or a manual dispatch with a tag input    | release-please release PRs and tags, then tag verification, desktop packages, a draft GitHub release, its publication, and the back-merge PR (auto-merging) after a stable tag |
+| [`homebrew.yml`](../../.github/workflows/homebrew.yml)             | A release is published, or a manual dispatch with a tag input              | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                                                                                             |
+| [`renovate.yml`](../../.github/workflows/renovate.yml)             | Daily at 00:00 UTC or a manual dispatch                                    | Dependency update maintenance through a GitHub App token                                                                                                                       |
+| [`release-stable.yml`](../../.github/workflows/release-stable.yml) | A manual dispatch with `from` and `dry_run` inputs                         | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                                                  |
+| [`backport.yml`](../../.github/workflows/backport.yml)             | A merged `main` pull request is closed or labeled `backport release/X.Y.x` | Opens a PR that cherry-picks the fix onto each labeled release branch, through a GitHub App token                                                                              |
 
 The branch workflow accepts pushes to `main`, `release/**`, and
 `renovate/patch-**`; pull requests are its usual review path. A newer run for
@@ -209,11 +210,17 @@ to cut the same version twice.
    stable config's `always-bump-patch` would propose a patch of the last stable release;
    every later push to the branch before the release (a fix merged first, say) keeps the
    PR at `X.Y.Z` because the pin stays in the config.
-3. Review the stable release PR (version and `CHANGELOG.md` entry) and merge it. The tag,
-   draft release and packages follow. Publish the draft.
+3. Review the stable release PR (version and `CHANGELOG.md` entry) and merge it. That is
+   the last manual step: the tag, draft release and packages follow, and the `publish`
+   job publishes the release once every package is attached (see
+   [Automatic publishing](#automatic-publishing)).
 4. Once `vX.Y.Z` is tagged, the `Open the back-merge PR` job pushes
    `chore(release): drop the one-time release-as after vX.Y.Z` to `release/X.Y.x`, so later
-   fixes release as patches, then opens the back-merge PR. Merge it (see below).
+   fixes release as patches, then opens the back-merge PR and enables auto-merge on it. It
+   merges itself when `main`'s checks pass; step in only for conflicts or when auto-merge
+   is off (see [Back-merge conflicts](#back-merge-conflicts)).
+
+The same run creates the label `backport release/X.Y.x` for the new line.
 
 Prerequisites for a cut:
 
@@ -235,7 +242,8 @@ workflows of the commit it is cut from: cut a new prerelease from `main` first.
 It pushes with the release App's installation token, not `GITHUB_TOKEN`: pushes made with
 `GITHUB_TOKEN` trigger no workflows, so `release.yml` would never run on the new branch.
 The release App is a GitHub App (for example "Trinity Release") installed only on this
-repository with Contents: read & write and Pull requests: read & write. Its
+repository with Contents, Pull requests and Issues: read & write (labels and pull request
+comments use the issues API). Its
 `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret live in the
 `release` environment, whose deployment branch policy allows `main` and `release/**`;
 the jobs that mint the token declare `environment: release`. The release App, not
@@ -251,11 +259,56 @@ force-push.
 
 ### Release a fix
 
-1. Open a pull request into `release/X.Y.x` with the fix. Also open the same fix against
-   `main`, or let the back-merge carry it there.
-2. release-please opens a release PR on `release/X.Y.x` for `X.Y.Z+1`. Merge it, then
-   publish the draft.
-3. Merge the back-merge PR.
+1. Merge the fix into `main` through its normal pull request and add the label
+   `backport release/X.Y.x` (before or after merging).
+   [`backport.yml`](../../.github/workflows/backport.yml) opens a pull request into
+   `release/X.Y.x` that cherry-picks it. Review and merge that backport PR.
+2. release-please opens a release PR on `release/X.Y.x` for `X.Y.Z+1`. Merge it. The
+   release publishes itself and the back-merge PR follows and merges itself, as for a
+   stable version. A fix release on an older line is never marked "latest" when a higher
+   stable version is published.
+
+A fix that only applies to the release branch can still be opened as a pull request into
+`release/X.Y.x` directly; the back-merge then carries it to `main`.
+
+### Backports
+
+`backport.yml` runs on `pull_request_target` for merged pull requests into `main` that carry
+one or more `backport release/X.Y.x` labels. It never checks out the pull request's code: it
+checks out `main` and cherry-picks the merged commit (with `-x`) onto a branch
+`backport/<pr>-release-X.Y.x` cut from the release branch, then opens a pull request titled
+`<original title> (backport to release/X.Y.x)`. It mints the release App token in the
+`release` environment. [`scripts/backport.mjs`](../../scripts/backport.mjs) does the work.
+
+- A rebase-merged pull request is picked as its full commit range when its commits appear
+  in order at the merge point; a squash or merge commit is picked as one commit.
+- A pick that would be empty (the fix is already on the branch) gets a "nothing to backport"
+  comment on the original pull request.
+- A conflict, or a label naming a branch that does not exist, opens nothing and comments on
+  the original pull request with the manual commands. Other labels still proceed.
+- An existing backport branch or pull request is left as is; the job log gives that skip
+  reason. A branch that was pushed without a pull request (`gh pr create` failed) is not
+  retried: delete it by hand, then re-run the job or re-apply the label.
+
+`pull_request_target` always uses the default branch's copy of the workflow, so backports
+start working only after the `develop` to `main` rename (see
+[Migrating from develop](#migrating-from-develop)), and the `release` environment must
+allow `main`.
+
+### Automatic publishing
+
+After `draft-release`, the `publish` job of `release.yml` runs
+[`scripts/release-publish.mjs`](../../scripts/release-publish.mjs) with the release App
+token (a release published with `GITHUB_TOKEN` would not start the Homebrew, container,
+docs or apt workflows). It publishes the draft only when it holds every expected asset: the
+arm64 `.dmg` and `-arm64-mac.zip`, the `.exe`, the `.AppImage`, the `.deb` and the
+`Trinity-Web-*.zip`. Prereleases publish as prereleases, never "latest"; a stable release
+is "latest" only when it is the highest published stable version. It runs for push and
+dispatch runs alike and leaves an already published release alone.
+
+A partial draft stays a draft: the job succeeds and prints a warning naming the missing
+assets. Fix the cause and dispatch `release.yml` with the same tag; the re-package completes
+the draft and the `publish` job publishes it.
 
 ### Back-merge conflicts
 
@@ -264,8 +317,10 @@ After a stable tag is created on a `release/**` branch, the `Open the back-merge
 tag into a new `back-merge/vX.Y.Z` branch from `main` and opens a pull request titled
 `chore: back-merge vX.Y.Z into main`; the body lists the files it resolved. The merge
 also removes the release branch's one-time `release-as` from `release-please-config.json`,
-so `main` never carries it. Merge it with a
-merge commit, not a squash. Rerunning updates an existing PR and does nothing when `main`
+so `main` never carries it. The script then runs `gh pr merge --auto --merge`, so the PR
+merges itself with a merge commit once `main`'s required checks pass; never squash it.
+If "Allow auto-merge" is off, the PR stays open and the job log carries a warning: merge it
+by hand with a merge commit. Rerunning updates an existing PR and does nothing when `main`
 already contains the tag. The job does not affect the release itself.
 
 It resolves conflicts in only these files, hunk by hunk with `git merge-file`: a
@@ -326,7 +381,7 @@ run release-please.
    Review the PR it opens and merge it with a merge commit.
 
 4. Create the release App (see [Release a stable version](#release-a-stable-version)):
-   install it only on this repository with Contents and Pull requests read & write, and add
+   install it only on this repository with Contents, Pull requests and Issues read & write, and add
    the `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret to the
    `release` environment.
 5. Update the ruleset to protect `main` and `release/**` with the rules `develop` and
@@ -348,10 +403,19 @@ run release-please.
 
 8. Before a fix release on 0.1: the renamed `release/0.1.x` still has the old workflows.
    Port `release.yml`, `release-please-config.json` (with
-   `"versioning": "always-bump-patch"`) and `scripts/back-merge.mjs` to `release/0.1.x` through a pull
-   request first.
+   `"versioning": "always-bump-patch"`), `scripts/back-merge.mjs` and
+   `scripts/release-publish.mjs` to `release/0.1.x` through a pull request first.
 9. Verify with a `dry_run` of `Release stable`, then the first real cut, and the first fix
    on `release/0.1.x`, each followed by its back-merge PR.
+10. Settings for automatic publishing, back-merges and backports:
+    - Enable "Allow auto-merge" and keep merge commits allowed (back-merge PRs merge with a
+      merge commit).
+    - Require the CI status checks on `main`, so auto-merge waits for green.
+    - Create the label `backport release/0.1.x`
+      (`gh label create "backport release/0.1.x" --force`); `Release stable` creates the
+      label for later lines.
+    - Confirm the release App has Issues read & write and the `release` environment allows
+      `main`; backports run only once the default branch carries `backport.yml`.
 
 ### First release
 
@@ -399,16 +463,17 @@ disabled. It uploads these artifacts for 30 days:
 | Windows | NSIS `.exe`                                                                   | The workflow packages the installer; distribution remains a maintainer action.                                |
 | Web     | `Trinity-Web-<version>.zip` from the `package-web` job                        | Publishing the release runs `container.yml`, which pushes the image built from this zip to GHCR.              |
 
-The final workflow job creates or updates a **draft** GitHub release. A partial
-package matrix can still produce a draft containing the successful platform
-artifacts and a partial-release warning. Inspect each available artifact and
-the failed platform before publishing the draft. The workflow does not publish
-the release for you, update an auto-updater feed, upload to mobile stores, or finalize a public download.
+The `draft-release` job creates or updates a **draft** GitHub release, and the `publish`
+job then publishes it when every expected asset is attached (see
+[Automatic publishing](#automatic-publishing)). A partial package matrix produces a draft
+containing the successful platform artifacts and a partial-release warning, and the draft
+stays a draft. Inspect each available artifact and the failed platform, fix the cause and
+re-package the tag. The workflow does not update an auto-updater feed, upload to mobile
+stores, or check signing status for you.
 
 > [!WARNING]
-> Draft publication is an external action. Confirm authorization, the release
-> notes, artifact completeness, signing status, and the intended audience
-> before changing a draft to published.
+> Merging a release PR now publishes the release without a further confirmation. Confirm
+> authorization, the release notes and signing status before merging it.
 
 ### Signing and notarization
 
