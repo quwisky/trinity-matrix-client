@@ -93,7 +93,7 @@
       "dependsOn": ["sync-prebuilt"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "mkdir -p ../dist/ios-native && xcodebuild -project App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath ../dist/ios-native/DerivedData -resultBundlePath \"$(mktemp -d ../dist/ios-native/run.XXXXXX)/build.xcresult\" build CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_ENTITLEMENTS=App/App.e2e.entitlements",
+        "command": "mkdir -p ../dist/ios-native && xcodebuild -project App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath ../dist/ios-native/DerivedData -resultBundlePath \"$(mktemp -d ../dist/ios-native/run.XXXXXX)/build.xcresult\" build CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_ENTITLEMENTS=\"$PWD/App/App/App.e2e.entitlements\"",
         "cwd": "{projectRoot}"
       }
     }
