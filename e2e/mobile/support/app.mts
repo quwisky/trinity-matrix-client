@@ -1,6 +1,6 @@
 import { browser, expect } from '@wdio/globals';
 import { HS_TLS } from '../../support/homeserver/start.mjs';
-import { APP_PACKAGE, native, webview } from './session.mts';
+import { APP_PACKAGE, iosPreferences, native, webview } from './session.mts';
 
 /** Fill an input through its `<label for>`, like the browser suite's fillLabeledInput. */
 export async function fillByLabel(label: string, value: string): Promise<void> {
@@ -66,28 +66,25 @@ async function waitUntilTappable(
 ): Promise<void> {
   await browser.waitUntil(
     () =>
-      browser.execute(
-        (target: HTMLElement) =>
-          new Promise<boolean>((resolve) => {
-            const first = target.getBoundingClientRect();
-            requestAnimationFrame(() =>
-              requestAnimationFrame(() => {
-                const second = target.getBoundingClientRect();
-                const still =
-                  first.x === second.x &&
-                  first.y === second.y &&
-                  first.width === second.width &&
-                  first.height === second.height;
-                const hit = document.elementFromPoint(
-                  second.x + second.width / 2,
-                  second.y + second.height / 2,
-                );
-                resolve(
-                  still && second.width > 0 && !!hit && target.contains(hit),
-                );
-              }),
-            );
-          }),
+      browser.executeAsync(
+        (target: HTMLElement, done: (tappable: boolean) => void) => {
+          const first = target.getBoundingClientRect();
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => {
+              const second = target.getBoundingClientRect();
+              const still =
+                first.x === second.x &&
+                first.y === second.y &&
+                first.width === second.width &&
+                first.height === second.height;
+              const hit = document.elementFromPoint(
+                second.x + second.width / 2,
+                second.y + second.height / 2,
+              );
+              done(still && second.width > 0 && !!hit && target.contains(hit));
+            }),
+          );
+        },
         element as unknown as HTMLElement,
       ),
     {
@@ -131,6 +128,21 @@ export async function tap(selector: string): Promise<void> {
 export async function waitForDurableActiveAccount(
   accountId: string,
 ): Promise<void> {
+  if (browser.isIOS) {
+    // UserDefaults reaches its plist through cfprefsd; wait for the file, as Android waits
+    // for SharedPreferences, so a restart test proves restoration rather than a race.
+    const expectedIos = `activeUserId":"${accountId}`;
+    await browser.waitUntil(
+      async () =>
+        (await iosPreferences().catch(() => '')).includes(expectedIos),
+      {
+        timeout: 10_000,
+        interval: 250,
+        timeoutMsg: `Active Account ${accountId} was not durable before process restart`,
+      },
+    );
+    return;
+  }
   const expected = `activeUserId&quot;:&quot;${accountId}`;
   await native();
   try {
