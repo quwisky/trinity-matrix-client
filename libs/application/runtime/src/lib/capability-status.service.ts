@@ -1,5 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
+import { TrustService } from '@trinity/data-access/trust';
 import {
   BUILD_INFO,
   isElectronRenderer,
@@ -74,6 +75,7 @@ export class CapabilityStatusService {
   private readonly identities = inject(AccountIdentitiesService);
   private readonly build = inject(BUILD_INFO);
   private readonly visibility = inject(SystemStatusVisibilityService);
+  private readonly trust = inject(TrustService);
   private readonly dismissed = signal<ReadonlyMap<string, string>>(new Map());
   private readonly copied = signal(false);
 
@@ -90,6 +92,32 @@ export class CapabilityStatusService {
           occurrenceSignature(problem, recovery),
     ),
   );
+  /**
+   * The single global banner slot, by priority: a blocking capability error, then the
+   * encryption prompt, then a limited capability. A limited capability is non-blocking
+   * and reachable from System Status, while the encryption prompt is the user's one
+   * pending setup step. Per-room banners (offline, tombstone) sit outside this slot.
+   */
+  readonly bannerSlot = computed<'status' | 'encryption' | null>(() => {
+    if (this.hasBlocking()) return 'status';
+    const trust = this.trust.status();
+    if (trust === 'needs-setup' || trust === 'needs-recovery')
+      return 'encryption';
+    return this.visibleEntries().length > 0 ? 'status' : null;
+  });
+  /** Names what is limited: the one problem's heading, or up to two capability names. */
+  readonly bannerMessage = computed(() => {
+    const entries = this.visibleEntries();
+    if (entries.length === 0) return '';
+    if (entries.length === 1) return `${entries[0]!.copy.heading}.`;
+    const names = [...new Set(entries.map(({ copy }) => copy.capability))].sort(
+      (a, b) => orderOf(a) - orderOf(b),
+    );
+    const rest = names.length - 2;
+    return rest > 0
+      ? `Limited: ${names[0]}, ${names[1]} and ${rest} more.`
+      : `Limited: ${names.join(' and ')}.`;
+  });
   readonly groups = computed(() => {
     const groups = new Map<string, CapabilityStatusEntry[]>();
     for (const entry of this.entries()) {

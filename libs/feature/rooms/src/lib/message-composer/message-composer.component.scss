@@ -361,9 +361,17 @@
       color: var(--trinity-text-muted);
     }
 
-    // A long room name may wrap below the resting row, but an empty input must not scroll.
+    // A long room name stays on one line: an empty input never wraps its placeholder or
+    // scrolls, so nothing is clipped on a narrow phone. A textarea cannot draw
+    // `text-overflow: ellipsis` on its placeholder, so the cut edge fades out instead.
     &:placeholder-shown {
-      overflow-y: hidden;
+      overflow: hidden;
+      white-space: nowrap;
+      mask-image: linear-gradient(
+        to right,
+        black calc(100% - 1.5rem),
+        transparent
+      );
     }
 
     // The ring is the FIELD's now (see its `:has(…:focus-visible)` above). Suppress the native

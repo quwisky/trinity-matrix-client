@@ -3,29 +3,9 @@
     display: block;
   }
 
-  .runtime-status {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-  }
-
-  .runtime-status__actions {
-    display: flex;
-    flex: 0 0 auto;
-    gap: 0.5rem;
-  }
-
   .system-status-access {
     align-self: flex-end;
     flex: 0 0 auto;
     margin: var(--trinity-space-2);
-  }
-
-  @media (max-width: 32rem) {
-    .runtime-status {
-      align-items: flex-start;
-      flex-direction: column;
-    }
   }
 }

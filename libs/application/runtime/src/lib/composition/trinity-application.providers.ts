@@ -40,6 +40,7 @@ import { applicationCapabilityProviders } from './application-capability.provide
 import { TrinityApplicationRuntimeAdapter } from './trinity-application-runtime.adapter';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { CapabilityHealthService } from '../capability-health.service';
+import { CapabilityStatusService } from '../capability-status.service';
 import { SystemStatusVisibilityService } from '../system-status-visibility.service';
 
 export interface TrinityApplicationDialogLoaders {
@@ -93,8 +94,10 @@ export function provideTrinityApplication(
       useFactory: (): WorkspaceSystemStatus => {
         const health = inject(CapabilityHealthService);
         const visibility = inject(SystemStatusVisibilityService);
+        const status = inject(CapabilityStatusService);
         return {
           hasProblems: computed(() => health.problems().length > 0),
+          bannerSlot: status.bannerSlot,
           show: (restoreFocus) => visibility.show(restoreFocus),
         };
       },

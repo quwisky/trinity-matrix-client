@@ -46,3 +46,18 @@ export async function closeSettings(page: Page): Promise<void> {
   await page.getByTestId('close-settings').click();
   await expect(page.getByRole('dialog', { name: 'Settings' })).toBeHidden();
 }
+
+/**
+ * Open System Status from the rooms shell. The global banner slot shows one banner at a
+ * time, so a limited-capability summary can be hidden behind the encryption prompt; the
+ * sidebar button (or the room overflow menu on a phone) is always reachable.
+ */
+export async function openSystemStatusFromRooms(page: Page): Promise<void> {
+  const sidebar = page.getByTestId('open-system-status');
+  if (await sidebar.isVisible()) {
+    await sidebar.click();
+    return;
+  }
+  await page.getByTestId('room-actions-overflow').click();
+  await page.getByTestId('overflow-open-system-status').click();
+}

@@ -51,40 +51,36 @@
       >
     </main>
   } @else {
-    @if (status.visibleEntries().length > 0) {
-      <aside
-        class="runtime-status border-b border-border bg-muted px-4 py-3 text-sm text-foreground"
-        [attr.role]="status.hasBlocking() ? 'alert' : 'status'"
-        [attr.aria-live]="status.hasBlocking() ? 'assertive' : 'polite'"
-        data-testid="app-capability-summary"
-      >
+    @if (status.bannerSlot() === 'status') {
+      <trn-banner variant="neutral" data-testid="app-capability-summary">
         <span
-          >Trinity is usable with {{ status.visibleEntries().length }} limited
-          {{
-            status.visibleEntries().length === 1
-              ? 'capability'
-              : 'capabilities'
-          }}.</span
+          [attr.role]="status.hasBlocking() ? 'alert' : 'status'"
+          [attr.aria-live]="status.hasBlocking() ? 'assertive' : 'polite'"
+          >{{ status.bannerMessage() }}</span
         >
-        <span class="runtime-status__actions">
+        <span trnBannerActions>
           <button
             trnBtn
             presentation="outline"
+            size="sm"
             type="button"
             (click)="status.show()"
           >
             System status
           </button>
-          <button
-            trnBtn
-            presentation="ghost"
-            type="button"
-            (click)="dismissSummary()"
-          >
-            Dismiss
-          </button>
+          @if (!status.hasBlocking()) {
+            <button
+              trnBtn
+              presentation="ghost"
+              size="sm"
+              type="button"
+              (click)="dismissSummary()"
+            >
+              Dismiss
+            </button>
+          }
         </span>
-      </aside>
+      </trn-banner>
     } @else if (!isShellRoute()) {
       <button
         trnBtn

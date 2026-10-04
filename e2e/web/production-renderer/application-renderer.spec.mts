@@ -404,17 +404,19 @@ test.describe('@production-renderer application surface', () => {
     }
     await openRoom(page, roomName);
     if (testInfo.project.name === 'small-light-large') {
-      const systemStatus = page.getByRole('button', {
-        name: 'System status',
-        exact: true,
-      });
+      // One global banner slot: the encryption prompt outranks the limited-capability
+      // summary, so System Status stays reachable from the room overflow menu instead.
+      await expect(page.getByTestId('app-capability-summary')).toHaveCount(0);
+      await page.getByTestId('room-actions-overflow').click();
+      const systemStatus = page.getByTestId('overflow-open-system-status');
       await expect(systemStatus).toBeVisible();
-      await expect(systemStatus).toHaveAccessibleName('System status');
       await expectInsideViewport(
         page,
         systemStatus,
         'mobile system status access',
       );
+      await page.keyboard.press('Escape');
+      await expect(systemStatus).toBeHidden();
       await expectInsideViewport(
         page,
         page.getByRole('heading', { name: roomName }),
