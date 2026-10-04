@@ -20,6 +20,7 @@ import { describe, expect, it, type Mock, vi } from 'vitest';
 import { LoginPage } from './login.page';
 import { SsoStateStore } from '../sso-state.store';
 import { OidcStateStore } from '../oidc-state.store';
+import { ConnectionError, MatrixError } from '@trinity/util/matrix';
 
 const READY_OUTCOME = {
   kind: 'ready',
@@ -279,18 +280,42 @@ describe('LoginPage', () => {
     expect(cmp.ssoSupported()).toBe(false);
   });
 
-  it('surfaces a discovery error and stays on step 1', async () => {
-    const { cmp } = await renderLogin({
+  it('explains a failed homeserver discovery next to the homeserver field', async () => {
+    const { cmp, fixture } = await renderLogin({
       discoverHomeserver: vi.fn(() =>
-        throwError(() => new Error('no .well-known')),
+        throwError(() => new Error('Invalid homeserver discovery response')),
       ),
       getSupportedFlows: vi.fn(),
     } as unknown as Partial<AuthService>);
 
     cmp.discover();
+    fixture.detectChanges();
 
-    expect(cmp.error()).toBe('no .well-known');
     expect(cmp.baseUrl()).toBeNull();
+    expect(cmp.homeserverError()).toBe(
+      "We couldn't find a homeserver at that address. Check it and try again.",
+    );
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector<HTMLInputElement>('#homeserver');
+    const described = root.querySelector(
+      `#${input?.getAttribute('aria-describedby')}`,
+    );
+    expect(described?.textContent).toContain("We couldn't find a homeserver");
+    expect(root.querySelector('trn-field')?.contains(described ?? null)).toBe(
+      true,
+    );
+  });
+
+  it('says the homeserver is unreachable when discovery hits a network error', async () => {
+    const { cmp } = await renderLogin({
+      discoverHomeserver: vi.fn(() =>
+        throwError(() => new ConnectionError('fetch failed')),
+      ),
+    } as unknown as Partial<AuthService>);
+
+    cmp.discover();
+
+    expect(cmp.homeserverError()).toBe('Check your connection and try again.');
   });
 
   it('logs in with a password and navigates to rooms', async () => {
@@ -376,16 +401,62 @@ describe('LoginPage', () => {
     );
   });
 
-  it('surfaces a password-login error without navigating', async () => {
-    const { cmp, router } = await renderLogin({
-      loginWithPassword: vi.fn(() => throwError(() => new Error('bad creds'))),
+  it('reads a wrong password in plain language, linked to the password field', async () => {
+    const { cmp, router, fixture } = await renderLogin({
+      loginWithPassword: vi.fn(() =>
+        throwError(
+          () =>
+            new MatrixError(
+              { errcode: 'M_FORBIDDEN', error: 'Invalid username or password' },
+              403,
+              'https://hs.example/_matrix/client/v3/login',
+            ),
+        ),
+      ),
+    } as unknown as Partial<AuthService>);
+    cmp.baseUrl.set('https://hs.example');
+    cmp.passwordSupported.set(true);
+
+    cmp.loginPassword();
+    fixture.detectChanges();
+
+    expect(cmp.credentialsError()).toBe('Incorrect username or password.');
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector<HTMLInputElement>('#password');
+    const described = root.querySelector(
+      `#${input?.getAttribute('aria-describedby')}`,
+    );
+    expect(described?.textContent).toContain('Incorrect username or password.');
+    expect(root.textContent).not.toContain('M_FORBIDDEN');
+  });
+
+  it('says the homeserver is unreachable when password sign-in hits a network error', async () => {
+    const { cmp } = await renderLogin({
+      loginWithPassword: vi.fn(() =>
+        throwError(() => new ConnectionError('fetch failed')),
+      ),
     } as unknown as Partial<AuthService>);
     cmp.baseUrl.set('https://hs.example');
 
     cmp.loginPassword();
 
-    expect(cmp.error()).toBe('bad creds');
-    expect(router.navigateByUrl).not.toHaveBeenCalled();
+    expect(cmp.credentialsError()).toBe('Check your connection and try again.');
+  });
+
+  it('never shows an unrecognised sign-in error verbatim', async () => {
+    const { cmp } = await renderLogin({
+      loginWithPassword: vi.fn(() =>
+        throwError(
+          () => new Error('MatrixError: [500] boom (https://hs/login)'),
+        ),
+      ),
+    } as unknown as Partial<AuthService>);
+    cmp.baseUrl.set('https://hs.example');
+
+    cmp.loginPassword();
+
+    expect(cmp.credentialsError()).toBe("We couldn't sign you in. Try again.");
   });
 
   it('surfaces an expected Account Runtime failure without navigating', async () => {
@@ -403,7 +474,7 @@ describe('LoginPage', () => {
 
     cmp.loginPassword();
 
-    expect(cmp.error()).toMatch(/local account storage/i);
+    expect(cmp.credentialsError()).toMatch(/local account storage/i);
     expect(router.navigateByUrl).not.toHaveBeenCalled();
   });
 

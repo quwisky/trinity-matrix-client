@@ -34,8 +34,12 @@
 
   @if (!baseUrl() && !reauthUserId()) {
     <!-- ── Step 1: Homeserver (skipped in re-auth: the HS is known) ── -->
-    <trn-field class="login-card__field">
-      <trn-field-label controlId="homeserver" emphasis="strong">
+    <trn-field class="login-card__field" [invalid]="!!homeserverError()">
+      <trn-field-label
+        controlId="homeserver"
+        emphasis="strong"
+        [invalid]="!!homeserverError()"
+      >
         Homeserver
       </trn-field-label>
       <input
@@ -46,8 +50,18 @@
         autocorrect="off"
         placeholder="matrix.org"
         [formField]="homeserverForm.homeserver"
+        [aria-describedby]="homeserverError() ? 'login-homeserver-error' : null"
         (keyup.enter)="discover()"
       />
+      @if (homeserverError(); as message) {
+        <p
+          id="login-homeserver-error"
+          class="login-card__field-error text-danger"
+          role="alert"
+        >
+          {{ message }}
+        </p>
+      }
     </trn-field>
 
     <button
@@ -78,8 +92,12 @@
         />
       </trn-field>
 
-      <trn-field class="login-card__field">
-        <trn-field-label controlId="password" emphasis="strong">
+      <trn-field class="login-card__field" [invalid]="!!credentialsError()">
+        <trn-field-label
+          controlId="password"
+          emphasis="strong"
+          [invalid]="!!credentialsError()"
+        >
           Password
         </trn-field-label>
         <div class="flex items-center gap-2">
@@ -89,6 +107,9 @@
             [type]="passwordVisible() ? 'text' : 'password'"
             class="min-w-0 flex-1"
             [formField]="credentialsForm.password"
+            [aria-describedby]="
+              credentialsError() ? 'login-credentials-error' : null
+            "
             (keyup.enter)="loginPassword()"
           />
           <button
@@ -110,6 +131,15 @@
             />
           </button>
         </div>
+        @if (credentialsError(); as message) {
+          <p
+            id="login-credentials-error"
+            class="login-card__field-error text-danger"
+            role="alert"
+          >
+            {{ message }}
+          </p>
+        }
       </trn-field>
 
       <button
