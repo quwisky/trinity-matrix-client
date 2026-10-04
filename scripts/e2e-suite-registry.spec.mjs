@@ -479,6 +479,50 @@ steps:
 });
 
 describe('E2E suite registry runner', () => {
+  it('reports a missing macOS, Xcode or simulator for the iOS suite', async () => {
+    const failures = await checkPrerequisites(
+      [{ prerequisites: ['ios-simulator', 'macos', 'xcode'] }],
+      {
+        platform: 'linux',
+        environment: {},
+        execute: () => ({ status: null, stdout: '' }),
+      },
+    );
+    expect(failures).toEqual([
+      'macOS is required',
+      'Xcode is unavailable',
+      'iOS simulator unavailable: xcrun simctl is unavailable',
+    ]);
+  });
+
+  it('accepts the pinned simulator on macOS', async () => {
+    const devices = JSON.stringify({
+      devices: {
+        'com.apple.CoreSimulator.SimRuntime.iOS-26-5': [
+          {
+            udid: 'A-1',
+            name: 'iPhone 16e',
+            state: 'Shutdown',
+            isAvailable: true,
+          },
+        ],
+      },
+    });
+    expect(
+      await checkPrerequisites(
+        [{ prerequisites: ['ios-simulator', 'macos', 'xcode'] }],
+        {
+          platform: 'darwin',
+          environment: {},
+          execute: (command) => ({
+            status: 0,
+            stdout: command === 'xcrun' ? devices : 'Xcode 26.6',
+          }),
+        },
+      ),
+    ).toEqual([]);
+  });
+
   it('selects environment suites and rejects unknown aggregates', () => {
     expect(selectSuites('e2e-web').map(({ id }) => id)).toEqual([
       'web.production-pwa',
