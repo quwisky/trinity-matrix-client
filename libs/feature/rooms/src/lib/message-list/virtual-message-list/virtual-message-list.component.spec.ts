@@ -901,6 +901,74 @@ describe('VirtualMessageListComponent', () => {
       },
     );
 
+    // The page lands in the same frame as a scroll whose event has not reached Angular yet
+    // (seen in the browser: a jump's smooth scroll near the top asks for history, then the
+    // reader scrolls back down before the empty page answers). The restore must anchor on
+    // where the reader went, not drag them back to where the request was made.
+    it.each([
+      ['an empty page', 0],
+      ['a page of history', 5],
+    ])(
+      'keeps a scroll made while %s was loading when it lands',
+      (_label, prepended) => {
+        TestBed.overrideComponent(VirtualMessageListComponent, {
+          remove: { imports: [MessageComposerComponent] },
+          add: { imports: [MockComponent(MessageComposerComponent)] },
+        });
+        const fixture = TestBed.createComponent(VirtualMessageListComponent);
+        fixture.componentRef.setInput('canLoadOlder', true);
+        fixture.componentRef.setInput('messages', many(30));
+        fixture.detectChanges();
+        const container = fixture.nativeElement as HTMLElement;
+        const cmp = fixture.componentInstance;
+        const scroll = container.querySelector('.scroll') as HTMLElement;
+
+        let st = 100;
+        Object.defineProperties(scroll, {
+          scrollTop: { get: () => st, set: (value: number) => (st = value) },
+          clientHeight: { value: 600 },
+          scrollHeight: { value: 30 * EST },
+        });
+        scroll.getBoundingClientRect = () => rect(0);
+        (scroll.querySelector('.vpad') as HTMLElement).getBoundingClientRect =
+          () => rect(-st);
+        for (const id of ['$0', '$1', '$2', '$3', '$4']) {
+          (
+            scroll.querySelector(`[data-mid="${id}"]`) as HTMLElement
+          ).getBoundingClientRect = () => rect(-100, -50);
+        }
+        // $5 sits 40px below the top at scrollTop 100; each rendered 22px prepended row
+        // pushes it down.
+        const anchor = scroll.querySelector('[data-mid="$5"]') as HTMLElement;
+        const anchorTop = () =>
+          40 +
+          22 * scroll.querySelectorAll('[data-mid^="$p"]').length -
+          (st - 100);
+        anchor.getBoundingClientRect = () =>
+          rect(anchorTop(), anchorTop() + EST);
+
+        cmp.onScroll(); // near the top: captures $5 at 40px and asks for history
+        fixture.componentRef.setInput('loadingOlder', true);
+        fixture.detectChanges();
+
+        // The reader moves; the browser has not delivered that scroll event yet.
+        st = 130;
+        const offsetBeforePage = anchorTop();
+
+        fixture.componentRef.setInput('loadingOlder', false);
+        fixture.componentRef.setInput('messages', [
+          ...Array.from({ length: prepended }, (_, i) =>
+            msg(`$p${i}`, '@a:hs', 'A', 1 + i),
+          ),
+          ...many(30),
+        ]);
+        fixture.detectChanges();
+
+        expect(st).toBe(130 + 22 * prepended);
+        expect(anchorTop()).toBe(offsetBeforePage);
+      },
+    );
+
     it('falls back to prefix offsets when a large prepend windows the anchor out', () => {
       TestBed.overrideComponent(VirtualMessageListComponent, {
         remove: { imports: [MessageComposerComponent] },

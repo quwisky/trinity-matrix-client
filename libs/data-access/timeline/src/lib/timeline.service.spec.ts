@@ -36,6 +36,18 @@ import {
   systemLinesProvider,
 } from './timeline.spec-harness';
 
+// The fake clients here model one page of history as `client.scrollback`. The real paging
+// (and its race with gappy syncs) is covered against the SDK in live-scrollback.spec.
+vi.mock('./live-scrollback', () => ({
+  scrollbackLive: async (
+    client: { scrollback: (room: unknown, limit: number) => Promise<unknown> },
+    room: unknown,
+    limit: number,
+  ) => {
+    await client.scrollback(room, limit);
+  },
+}));
+
 beforeEach(() => {
   TestBed.configureTestingModule({ providers: [privacyProvider(true)] });
 });

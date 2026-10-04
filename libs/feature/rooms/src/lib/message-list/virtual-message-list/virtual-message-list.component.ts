@@ -200,11 +200,14 @@ export class VirtualMessageListComponent extends MessageListBase {
 
       if (this.pendingPrepend) {
         // The viewport moves before the browser delivers its scroll event. Capture
-        // that movement before the loading strip changes the row geometry.
+        // that movement before the loading strip or the landed page changes the row
+        // geometry: this effect runs before the view renders either, so the current
+        // position is still the reader's. Recapturing only while loading would let a
+        // page that lands in the same frame as a scroll drag the reader back to where
+        // the request was made.
         if (
-          this.loadingOlder() &&
           el.scrollTop !==
-            (this.expectedProgrammaticScrollTop ?? this.prevScrollTop)
+          (this.expectedProgrammaticScrollTop ?? this.prevScrollTop)
         ) {
           this.prevScrollHeight = el.scrollHeight;
           this.prevScrollTop = el.scrollTop;
