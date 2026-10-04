@@ -19,6 +19,10 @@ describe('Backport workflow', () => {
       branches: ['main'],
     });
     expect(job.if).toContain('merged == true');
+    expect(job.if).toContain("github.event.action == 'closed'");
+    expect(job.if).toContain(
+      "startsWith(github.event.label.name, 'backport release/')",
+    );
   });
 
   it('holds the release App key and checks out main only', () => {
@@ -39,6 +43,7 @@ describe('Backport workflow', () => {
     const script =
       job.steps[at((step) => step.run?.includes('scripts/backport.mjs'))];
     expect(script.run).not.toContain('${{');
+    expect(script.run).toContain('--title="$TITLE"');
     expect(script.env.TITLE).toBe('${{ github.event.pull_request.title }}');
     expect(script.env.LABELS).toContain('pull_request.labels');
   });

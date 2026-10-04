@@ -7,6 +7,8 @@ import {
   backportTargets,
   cherryPickArgs,
   cherryPickOnto,
+  parentCount,
+  pickPlan,
   planBackport,
 } from './backport.mjs';
 
@@ -74,6 +76,38 @@ describe('backport', () => {
   });
 });
 
+describe('pickPlan', () => {
+  const base = { sha: 'abc', parents: 1 };
+  it('picks the whole range of a rebase-merged PR', () => {
+    expect(
+      pickPlan({ ...base, prHeadlines: ['a', 'b'], mainSubjects: ['a', 'b'] }),
+    ).toEqual({ kind: 'range', args: ['cherry-pick', '-x', 'abc~2..abc'] });
+  });
+  it('picks a squash commit alone', () => {
+    expect(
+      pickPlan({ ...base, prHeadlines: ['a', 'b'], mainSubjects: ['x', 'b'] }),
+    ).toEqual({ kind: 'single', args: ['cherry-pick', '-x', 'abc'] });
+  });
+  it('picks a one-commit PR alone', () => {
+    expect(
+      pickPlan({ ...base, prHeadlines: ['a'], mainSubjects: [] }).kind,
+    ).toBe('single');
+  });
+  it('picks a merge commit against its first parent', () => {
+    expect(
+      pickPlan({
+        sha: 'abc',
+        parents: 2,
+        prHeadlines: ['a', 'b'],
+        mainSubjects: ['a', 'b'],
+      }),
+    ).toEqual({
+      kind: 'single',
+      args: ['cherry-pick', '-x', '-m', '1', 'abc'],
+    });
+  });
+});
+
 describe('cherryPickOnto', () => {
   let dir;
   const git = (...args) =>
@@ -103,7 +137,6 @@ describe('cherryPickOnto', () => {
     commit('a.txt', 'base\n', 'base');
     git('branch', 'release/0.1.x');
     git('push', '-q', 'origin', 'main', 'release/0.1.x');
-    return origin;
   };
   afterEach(() => rmSync(join(dir, '..'), { recursive: true, force: true }));
 
@@ -133,5 +166,40 @@ describe('cherryPickOnto', () => {
     ).toBe('conflict');
     expect(git('branch', '--list', 'backport/*')).toBe('');
     expect(git('branch', '--show-current')).toBe('main');
+  });
+
+  it('picks every commit of a rebase-merged PR', () => {
+    setup();
+    commit('b.txt', 'one\n', 'feat: one');
+    commit('c.txt', 'two\n', 'feat: two');
+    const sha = git('rev-parse', 'HEAD');
+    const branch = 'backport/3-release-0.1.x';
+    expect(
+      cherryPickOnto({
+        sha,
+        target: 'release/0.1.x',
+        branch,
+        prHeadlines: ['feat: one', 'feat: two'],
+        cwd: dir,
+      }),
+    ).toBe('picked');
+    expect(git('show', `${branch}:b.txt`)).toBe('one');
+    expect(git('show', `${branch}:c.txt`)).toBe('two');
+    expect(parentCount(branch, dir)).toBe(1);
+  });
+
+  it('reports an empty pick when the fix is already on the branch', () => {
+    setup();
+    const sha = commit('b.txt', 'fix\n', 'fix: b');
+    git('push', '-q', 'origin', 'main:release/0.1.x');
+    expect(
+      cherryPickOnto({
+        sha,
+        target: 'release/0.1.x',
+        branch: 'backport/4-x',
+        cwd: dir,
+      }),
+    ).toBe('empty');
+    expect(git('branch', '--list', 'backport/*')).toBe('');
   });
 });
