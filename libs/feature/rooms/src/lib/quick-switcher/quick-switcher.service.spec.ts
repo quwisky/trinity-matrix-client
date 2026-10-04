@@ -31,7 +31,7 @@ describe('QuickSwitcherService', () => {
 
     expect(dialog.openAndWait$).toHaveBeenCalledWith(QuickSwitcherComponent, {
       ariaLabel: 'Jump to a room',
-      // Names the search field so CDK doesn't focus the Cancel button instead.
+      // Names the search field so CDK doesn't focus the Close button instead.
       autoFocus: '[data-autofocus]',
       inputs: { activeAccountOnly: false },
     });
