@@ -642,6 +642,12 @@ export class VirtualMessageListComponent extends MessageListBase {
     // Remembered so a width change can re-aim it: every branch below ends in a measurement
     // that is only correct for the layout at this instant. See `notePendingJump`.
     this.notePendingJump(messageId);
+    // The jump is the reader's new position. A correction queued for the history restore
+    // before it (a date jump pages history in right before jumping) would otherwise scroll
+    // back to the old anchor and cancel the smooth scroll below.
+    this.prependAnchorActive = false;
+    this.prependAnchorGeneration++;
+    this.expectedProgrammaticScrollTop = null;
     this.atBottomSig.set(false);
     const existing = el.querySelector(`[data-mid="${messageId}"]`);
     if (existing) {
