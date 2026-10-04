@@ -10,8 +10,8 @@ import {
 const LIST = JSON.stringify({
   devices: {
     'com.apple.CoreSimulator.SimRuntime.iOS-26-5': [
-      { udid: 'A', name: 'iPhone 16e', state: 'Shutdown', isAvailable: true },
-      { udid: 'B', name: 'iPhone 16e', state: 'Booted', isAvailable: true },
+      { udid: 'A', name: 'iPhone 17', state: 'Shutdown', isAvailable: true },
+      { udid: 'B', name: 'iPhone 17', state: 'Booted', isAvailable: true },
       {
         udid: 'C',
         name: 'iPhone 17 Pro',
@@ -20,8 +20,8 @@ const LIST = JSON.stringify({
       },
     ],
     'com.apple.CoreSimulator.SimRuntime.iOS-18-6': [
-      { udid: 'D', name: 'iPhone 16e', state: 'Shutdown', isAvailable: true },
-      { udid: 'E', name: 'iPhone 16e', state: 'Shutdown', isAvailable: false },
+      { udid: 'D', name: 'iPhone 17', state: 'Shutdown', isAvailable: true },
+      { udid: 'E', name: 'iPhone 17', state: 'Shutdown', isAvailable: false },
     ],
   },
 });
@@ -62,11 +62,11 @@ describe('iOS E2E simulator selection', () => {
   it('names what is available when the pin is missing', () => {
     expect(() =>
       selectSimulator(parseSimulators(LIST), {
-        device: 'iPhone 16e',
+        device: 'iPhone 17',
         runtime: 'iOS 27.0',
       }),
     ).toThrow(
-      /No available iPhone 16e simulator on iOS 27.0; available: iPhone 16e \(iOS-26-5\)/,
+      /No available iPhone 17 simulator on iOS 27.0; available: iPhone 17 \(iOS-26-5\)/,
     );
   });
 });

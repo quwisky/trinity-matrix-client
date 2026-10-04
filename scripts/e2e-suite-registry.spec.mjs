@@ -508,7 +508,7 @@ describe('E2E suite registry runner', () => {
         'com.apple.CoreSimulator.SimRuntime.iOS-26-5': [
           {
             udid: 'A-1',
-            name: 'iPhone 16e',
+            name: 'iPhone 17',
             state: 'Shutdown',
             isAvailable: true,
           },

@@ -1,7 +1,7 @@
 /** Pure helpers that choose the iOS Simulator the mobile suite runs on. */
 
-/** The spike's device and runtime on macos-26 (Xcode 26.6, simulator SDK 26.5). */
-export const DEFAULT_IOS_DEVICE = 'iPhone 16e';
+/** The device and runtime the macos-26 runner image ships (Xcode 26.6, simulator SDK 26.5). */
+export const DEFAULT_IOS_DEVICE = 'iPhone 17';
 export const DEFAULT_IOS_RUNTIME = 'iOS 26.5';
 
 export interface Simulator {
