@@ -32,6 +32,8 @@ TRINITY_E2E_HOMESERVER=synapse pnpm e2e:protocol
 
 Only `tuwunel` and `synapse` are accepted; any other value fails before Docker starts. The stack lives in `e2e/support/homeserver/`: Dex, Caddy and the driver are shared, and each server has an adapter directory with its compose services and configuration. Tuwunel is pinned by version and image digest in `tuwunel/docker-compose.yml`; update both together and never use `latest`. Stopping the stack deletes every homeserver database, because a Tuwunel database is bound to its server name for life.
 
+Set `TRINITY_E2E_HOMESERVER_RUNTIME=native` (with `TRINITY_E2E_HOMESERVER=synapse`) on a host without Docker. The harness then installs the pinned Synapse into `e2e/support/homeserver/native-venv` with the host's `python3` and runs it and `caddy` from `PATH` as background processes, recorded in a PID file that `pnpm e2e:verify:down` uses. The native runtime serves only the primary server: Dex SSO and the federated secondary server are unavailable, and the session descriptor lists them under `unavailable`. The iOS suite uses it because the macOS runner has no Docker.
+
 Pull requests run against Tuwunel. The `E2E (Synapse nightly)` workflow runs the browser, Electron full and protocol suites against Synapse every day at 02:47 UTC and on demand.
 
 When the two servers legitimately differ, branch the expectation on `homeserverSession().kind` and keep both expectations. Never delete the Synapse expectation to make Tuwunel pass.

@@ -17,6 +17,7 @@
 // (ignoring "user already exists"). Tear down with stop.mjs.
 import { execFile } from 'node:child_process';
 import { createHash, createHmac } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -43,7 +44,16 @@ import {
   TEST_PASS,
   TEST_USER,
 } from './constants.mjs';
-import { resolveHomeserverKind } from './kind.mts';
+import { resolveHomeserverKind, resolveHomeserverRuntime } from './kind.mts';
+import {
+  ensureSynapseVenv,
+  generateSynapseConfig,
+  nativeCaddyfile,
+  nativeLogTail,
+  nativePaths,
+  nodeProcessApi,
+  startNativeServices,
+} from './native.mts';
 import { acquireHomeserverLease, releaseHomeserverLease } from './lease.mts';
 import { synapse } from './synapse/adapter.mjs';
 import { tuwunel } from './tuwunel/adapter.mjs';
@@ -87,6 +97,7 @@ const log = (m) => console.log(`[homeserver] ${m}`);
 let networkContainer = '';
 let operationSignal;
 let kind;
+let runtime;
 
 function secondaryServerName() {
   return networkContainer ? 'localhost:9448' : 'caddy:9448';
@@ -165,6 +176,8 @@ async function appliedConfig() {
 
 /** The last lines a service logged — the evidence a readiness timeout is missing. */
 async function logTail(service) {
+  if (runtime === 'native')
+    return nativeLogTail(nativePaths(STATE_DIR, DATA), service);
   try {
     const { stdout, stderr } = await compose([
       'logs',
@@ -251,9 +264,88 @@ async function serverVersion() {
   return String(server.version);
 }
 
+const clientVersionsReady = async () =>
+  (
+    await fetch(`${HOMESERVER_HTTP}/_matrix/client/versions`, {
+      signal: operationSignal,
+    })
+  ).ok;
+
+async function wellKnownReady() {
+  // Node fetch must accept the self-signed cert; the caller relaxes TLS for this process.
+  const res = await fetch(`${HS_TLS}/.well-known/matrix/client`, {
+    signal: operationSignal,
+  });
+  if (!res.ok) return false;
+  const body = await res.json();
+  return body['m.homeserver']?.base_url === HS_TLS;
+}
+
+/**
+ * Native runtime: Synapse from a venv and Caddy as host processes, primary server only.
+ * Dex, the secondary server and the `m.login.sso` poll are skipped, and the session says
+ * so (`unavailable`) instead of inventing values.
+ */
+async function startNative() {
+  const paths = nativePaths(STATE_DIR, DATA);
+  log(`${kind}, native runtime (host processes, primary server only)`);
+  await prepareStateDir();
+  await ensureSynapseVenv(paths, nodeProcessApi, {
+    signal: operationSignal,
+    log,
+  });
+  await synapse.preparePrimary({
+    signal: operationSignal,
+    log,
+    sso: false,
+    generate: () =>
+      generateSynapseConfig(
+        paths,
+        SERVER_NAME,
+        nodeProcessApi,
+        operationSignal,
+      ),
+  });
+  await writeFile(
+    paths.caddyfile,
+    nativeCaddyfile(await readFile(join(STATE_DIR, 'Caddyfile'), 'utf8')),
+    'utf8',
+  );
+  startNativeServices(paths, nodeProcessApi, process.env);
+  await waitFor(
+    'homeserver client versions',
+    'homeserver',
+    clientVersionsReady,
+  );
+  await registerUser();
+  await waitFor('caddy well-known (https)', 'caddy', wellKnownReady);
+  const version = await serverVersion();
+  if (!existsSync(paths.caddyRoot)) {
+    throw new Error(
+      `Caddy did not create its root certificate at ${paths.caddyRoot}`,
+    );
+  }
+  log(
+    `up. ${kind} ${version} (native) homeserver=${HS_TLS} user=@${TEST_USER}:${SERVER_NAME}`,
+  );
+  return {
+    hs: HS_TLS,
+    user: TEST_USER,
+    pass: TEST_PASS,
+    serverName: SERVER_NAME,
+    kind,
+    version,
+    runtime,
+    unavailable: ['remote', 'sso'],
+    caddyRoot: paths.caddyRoot,
+  };
+}
+
 export async function start({ signal } = {}) {
   operationSignal = signal;
   kind = resolveHomeserverKind();
+  runtime = resolveHomeserverRuntime();
+  if (runtime === 'native') return startNative();
   const adapter = ADAPTERS[kind];
   networkContainer = await resolveNetworkContainer();
   log(
@@ -313,12 +405,11 @@ export async function start({ signal } = {}) {
     'utf8',
   );
 
-  await waitFor('homeserver client versions', 'homeserver', async () => {
-    const res = await fetch(`${HOMESERVER_HTTP}/_matrix/client/versions`, {
-      signal: operationSignal,
-    });
-    return res.ok;
-  });
+  await waitFor(
+    'homeserver client versions',
+    'homeserver',
+    clientVersionsReady,
+  );
 
   await waitFor(
     'secondary homeserver client versions',
@@ -355,15 +446,7 @@ export async function start({ signal } = {}) {
 
   await registerUser();
 
-  await waitFor('caddy well-known (https)', 'caddy', async () => {
-    const res = await fetch(`${HS_TLS}/.well-known/matrix/client`, {
-      // Node fetch must accept the self-signed cert; toggled via env below.
-      signal: operationSignal,
-    });
-    if (!res.ok) return false;
-    const body = await res.json();
-    return body['m.homeserver']?.base_url === HS_TLS;
-  });
+  await waitFor('caddy well-known (https)', 'caddy', wellKnownReady);
 
   const version = await serverVersion();
   log(
@@ -376,6 +459,8 @@ export async function start({ signal } = {}) {
     serverName: SERVER_NAME,
     kind,
     version,
+    runtime,
+    unavailable: [],
     secondary: {
       hs: SECONDARY_HTTP,
       serverName: secondaryServerName(),
