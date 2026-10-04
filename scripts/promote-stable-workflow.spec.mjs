@@ -5,7 +5,7 @@ import { parse } from 'yaml';
 
 const root = resolve(import.meta.dirname, '..');
 const source = readFileSync(
-  resolve(root, '.github/workflows/release-stable.yml'),
+  resolve(root, '.github/workflows/promote-stable.yml'),
   'utf8',
 );
 const workflow = parse(source);
@@ -13,9 +13,9 @@ const job = workflow.jobs.release;
 const step = (name) => job.steps.find((s) => s.name === name);
 const index = (name) => job.steps.findIndex((s) => s.name === name);
 
-describe('Release stable workflow', () => {
+describe('Promote to stable workflow', () => {
   it('is a manual choice between promote and back-merge', () => {
-    expect(workflow.name).toBe('Release stable');
+    expect(workflow.name).toBe('Promote to stable');
     expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch']);
     const input = workflow.on.workflow_dispatch.inputs.step;
     expect(input.type).toBe('choice');
@@ -26,7 +26,7 @@ describe('Release stable workflow', () => {
   it('is serialized and read-only unless it holds the App token', () => {
     expect(workflow.permissions).toEqual({ contents: 'read' });
     expect(workflow.concurrency).toEqual({
-      group: 'release-stable',
+      group: 'promote-stable',
       'cancel-in-progress': false,
     });
     expect(Object.keys(workflow.jobs)).toEqual(['release']);

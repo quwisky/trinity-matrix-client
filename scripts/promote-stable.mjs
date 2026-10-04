@@ -1,9 +1,9 @@
 /**
- * Summary for the `Release stable` workflow's promote step: what `develop` adds over the
+ * Summary for the `Promote to stable` workflow's promote step: what `develop` adds over the
  * last stable tag, and the version release-please will then propose on `main`
  * (`bump-minor-pre-major: true`, so a breaking change or a feat is a minor bump before 1.0).
  *
- * CLI: node scripts/release-stable.mjs <ref>  (prints Markdown; needs full history and tags)
+ * CLI: node scripts/promote-stable.mjs <ref>  (prints Markdown; needs full history and tags)
  */
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';

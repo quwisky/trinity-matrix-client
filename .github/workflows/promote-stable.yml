@@ -1,4 +1,4 @@
-name: Release stable
+name: Promote to stable
 
 # Automates the mechanical steps of "Promote to stable" in
 # docs-internal/maintenance/ci-and-releases.md. Run it twice per stable release:
@@ -16,7 +16,7 @@ on:
         options: [promote, back-merge]
 
 concurrency:
-  group: release-stable
+  group: promote-stable
   cancel-in-progress: false
 
 # Every write goes through the App token below, never GITHUB_TOKEN.
@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   release:
-    name: Release stable (${{ inputs.step }})
+    name: Promote to stable (${{ inputs.step }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # actions: read lets the CI gate list workflow runs with the default token.
@@ -91,7 +91,7 @@ jobs:
       - name: Summarize the promotion
         if: inputs.step == 'promote' && steps.diff.outputs.changed == 'true'
         run: |
-          node scripts/release-stable.mjs HEAD | tee "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          node scripts/promote-stable.mjs HEAD | tee "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Close the open release PR on develop
         if: inputs.step == 'promote' && steps.diff.outputs.changed == 'true'

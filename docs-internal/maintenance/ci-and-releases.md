@@ -17,7 +17,7 @@ public developer guide.
 | [`release.yml`](../../.github/workflows/release.yml)               | A push to `develop` or `main`, or a manual dispatch with a tag input | release-please release PRs and tags, then tag verification, desktop packages, and a draft GitHub release |
 | [`homebrew.yml`](../../.github/workflows/homebrew.yml)             | A release is published, or a manual dispatch with a tag input        | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                       |
 | [`renovate.yml`](../../.github/workflows/renovate.yml)             | Daily at 00:00 UTC or a manual dispatch                              | Dependency update maintenance through a GitHub App token                                                 |
-| [`release-stable.yml`](../../.github/workflows/release-stable.yml) | A manual dispatch with a `step` choice (`promote` or `back-merge`)   | The mechanical merges of promoting `develop` to stable, through a GitHub App token                       |
+| [`promote-stable.yml`](../../.github/workflows/promote-stable.yml) | A manual dispatch with a `step` choice (`promote` or `back-merge`)   | The mechanical merges of promoting `develop` to stable, through a GitHub App token                       |
 
 The branch workflow accepts pushes to `develop`, `main`, and
 `renovate/patch-**`; pull requests are its usual review path. A newer run for
@@ -194,7 +194,7 @@ reads them on both lines, so one footer tries to cut the same version twice.
 
 ### Promote to stable
 
-Run the `Release stable` workflow (Actions tab, manual dispatch) twice per stable release.
+Run the `Promote to stable` workflow (Actions tab, manual dispatch) twice per stable release.
 `step=promote` does steps 1 and 2 below; `step=back-merge` does step 4. Step 3 stays
 manual.
 

@@ -5,7 +5,7 @@ import {
   nextVersion,
   parseCommit,
   summary,
-} from './release-stable.mjs';
+} from './promote-stable.mjs';
 
 const c = (subject, body = '') => parseCommit(subject, body);
 
