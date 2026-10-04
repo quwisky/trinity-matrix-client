@@ -19,7 +19,10 @@ import {
   type AccountSwitchCoordination,
 } from '@trinity/data-access/accounts';
 import { type PendingInvite } from '@trinity/data-access/room-library';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  type SyncState,
+} from '@trinity/data-access/matrix-client';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
   RoomLibraryService,
@@ -111,6 +114,9 @@ describe('RoomsPage space actions', () => {
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
+          syncState: signal<SyncState | null>(
+            'SYNCING' as SyncState,
+          ).asReadonly(),
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
           activeUserId: activeAccountId.asReadonly(),
           accountIds: signal<readonly string[]>(accountIds).asReadonly(),
@@ -518,6 +524,9 @@ describe('RoomsPage room / DM / invite actions', () => {
         MockProvider(MediaPipeline),
         MockProvider(MatrixClientService, {
           isInitialized: true,
+          syncState: signal<SyncState | null>(
+            'SYNCING' as SyncState,
+          ).asReadonly(),
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
           activeUserId: signal<string | null>('@me:hs').asReadonly(),
           accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),
@@ -1496,6 +1505,9 @@ describe('RoomsPage space hierarchy actions', () => {
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
+          syncState: signal<SyncState | null>(
+            'SYNCING' as SyncState,
+          ).asReadonly(),
           instance: { getUserId: () => '@me:hs', getUser: () => null } as never,
           activeUserId: signal<string | null>('@me:hs').asReadonly(),
           accountIds: signal<readonly string[]>(['@me:hs']).asReadonly(),

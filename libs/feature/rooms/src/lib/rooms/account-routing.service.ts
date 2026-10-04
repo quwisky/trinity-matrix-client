@@ -1,11 +1,22 @@
-import { DestroyRef, Injectable, inject } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  DestroyRef,
+  Injectable,
+  computed,
+  inject,
+  Injector,
+} from '@angular/core';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
   type WorkspaceNavigationIntent,
   WorkspaceNavigationService,
   type WorkspaceRoomNavigationOrigin,
 } from '@trinity/application/workspace';
-import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  ROOM_READINESS_TIMEOUT_MS,
+  SelectedRoomLibraryService,
+} from '@trinity/data-access/room-library';
+import { filter, take, timeout } from 'rxjs';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { ShellStatusService } from './shell-status.service';
@@ -34,7 +45,14 @@ export class AccountRoutingService {
   private readonly workspace = inject(WorkspaceNavigationService);
   private readonly roomSurfaces = inject(RoomSurfaceLifecycle);
   private readonly selected = inject(SelectedRoomLibraryService);
+  private readonly matrix = inject(MatrixClientService);
+  private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly firstSyncDone = computed(() => {
+    // String compare: components and features never import the SDK's SyncState enum.
+    const state = String(this.matrix.syncState() ?? '');
+    return state === 'PREPARED' || state === 'SYNCING';
+  });
 
   /** An account's display name for user-facing copy, falling back to its user id. */
   accountLabel(accountId: string): string {
@@ -108,11 +126,44 @@ export class AccountRoutingService {
     );
   }
 
-  /** Open a resolved room if joined (jumping to `eventId` when given), else toast. */
+  /**
+   * Open a resolved room if joined (jumping to `eventId` when given), else toast. A link
+   * that launches the app can arrive before the first sync, when the room list is still
+   * empty, so a room not yet listed waits for that sync rather than looking unjoined.
+   */
   openLinkedRoom(
     roomId: string,
     eventId?: string,
     origin: WorkspaceRoomNavigationOrigin = 'room-action',
+  ): void {
+    if (this.isListed(roomId) || this.firstSyncDone()) {
+      this.openSyncedRoom(roomId, eventId, origin);
+      return;
+    }
+    toObservable(this.firstSyncDone, { injector: this.injector })
+      .pipe(
+        filter(Boolean),
+        take(1),
+        timeout({ first: ROOM_READINESS_TIMEOUT_MS }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: () => this.openSyncedRoom(roomId, eventId, origin),
+        error: () =>
+          void this.status.showError(
+            'Could not open that room yet. Try the link again once Trinity has connected.',
+          ),
+      });
+  }
+
+  private isListed(roomId: string): boolean {
+    return this.selected.view().rooms.some((room) => room.id === roomId);
+  }
+
+  private openSyncedRoom(
+    roomId: string,
+    eventId: string | undefined,
+    origin: WorkspaceRoomNavigationOrigin,
   ): void {
     const room = this.selected
       .view()
