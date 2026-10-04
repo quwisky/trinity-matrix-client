@@ -201,12 +201,30 @@ to cut the same version twice.
    `Release stable` workflow (Actions tab, manual dispatch) with `from` set to that tag
    (empty means the newest published prerelease) and `dry_run` enabled. It runs the checks
    and prints the branch, version and commit it would use, and pushes nothing.
-2. Run it again with `dry_run` disabled. It creates `release/X.Y` at the prerelease's
-   commit and opens the stable release PR on it with version `X.Y.Z`, so stable ships
-   exactly the tested code.
+2. Run it again with `dry_run` disabled. It pushes `release/X.Y` as the prerelease's
+   commit plus one commit, `chore(release): release vX.Y.Z from this branch`, that sets
+   `"release-as": "X.Y.Z"` for the root package in `release-please-config.json`. That push
+   runs `release.yml` on the branch, whose release-please run opens the stable release PR
+   with version `X.Y.Z`, so stable ships exactly the tested code. Without the pin, the
+   stable config's `always-bump-patch` would propose a patch of the last stable release;
+   every later push to the branch before the release (a fix merged first, say) keeps the
+   PR at `X.Y.Z` because the pin stays in the config.
 3. Review the stable release PR (version and `CHANGELOG.md` entry) and merge it. The tag,
    draft release and packages follow. Publish the draft.
-4. Merge the back-merge PR that `release.yml` opened (see below).
+4. Once `vX.Y.Z` is tagged, the `Open the back-merge PR` job pushes
+   `chore(release): drop the one-time release-as after vX.Y.Z` to `release/X.Y`, so later
+   fixes release as patches, then opens the back-merge PR. Merge it (see below).
+
+Prerequisites for a cut:
+
+- The prerelease must be cut after the release-branch workflows landed on `main` (the
+  workflow refuses older ones), and its minor line must not have a release branch yet. In
+  practice the first cut is a `0.2.0-next.N` prerelease after a `feat`; `0.1.x` fixes go
+  through `release/0.1` (see [Migrating from develop](#migrating-from-develop)). A dry run
+  before such a prerelease exists is expected to refuse.
+- Merge the previous line's back-merge PR first. The new branch's changelog starts from
+  the last stable tag, which release-please finds only when that tag is in the branch's
+  history.
 
 The workflow refuses, and creates nothing, when `from` is not a published prerelease on
 `main`'s history, when `release/X.Y` already exists (land fixes on it; its next stable
@@ -219,13 +237,12 @@ variable, `RENOVATE_APP_PRIVATE_KEY` secret), not `GITHUB_TOKEN`: pushes made wi
 `GITHUB_TOKEN` trigger no workflows, so `release.yml` would never run on the new branch.
 The App needs Contents and Pull requests write access.
 
-If the run fails after creating the branch but before opening the PR, rerunning is
-refused because the branch exists. Open the stable release PR by running the
-release-please command from the workflow's "Open the stable release PR" step by hand
-(`release-pr --target-branch release/X.Y --config-file release-please-config.json
---manifest-file .release-please-manifest.json --path . --release-as X.Y.Z`, with a token
-whose pushes trigger workflows). If nothing has landed on the branch, delete the empty
-branch and rerun instead. Never force-push.
+Pushing the branch is the workflow's last step; a failure before it creates nothing, so
+rerun it. Once the branch exists, rerunning is refused, and the branch already carries the
+`release-as` commit. If no stable release PR appears on it, read the `Release PR and tag`
+job of the `release.yml` run for that push and re-run it. If that run is gone, merge any
+pull request into `release/X.Y` (an empty commit is enough) to trigger a new one. Never
+force-push.
 
 ### Release a fix
 
@@ -240,11 +257,16 @@ branch and rerun instead. Never force-push.
 After a stable tag is created on a `release/**` branch, the `Open the back-merge PR` job in
 `release.yml` runs [`scripts/back-merge.mjs`](../../scripts/back-merge.mjs). It merges the
 tag into a new `back-merge/vX.Y.Z` branch from `main` and opens a pull request titled
-`chore: back-merge vX.Y.Z into main`; the body lists the files it resolved. Merge it with a
+`chore: back-merge vX.Y.Z into main`; the body lists the files it resolved. The merge
+also removes the release branch's one-time `release-as` from `release-please-config.json`,
+so `main` never carries it. Merge it with a
 merge commit, not a squash. Rerunning updates an existing PR and does nothing when `main`
 already contains the tag. The job does not affect the release itself.
 
-It resolves only these conflicts:
+It resolves conflicts in only these files, hunk by hunk with `git merge-file`: a
+conflicting hunk takes the side below, and every non-conflicting edit from either side is
+kept. A file added on both lines has no common ancestor, so it takes the whole side below;
+the PR body flags it for review.
 
 | Path                                                                                              | Resolution                                                                                                                  |
 | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
@@ -258,10 +280,12 @@ Any other conflicted path fails the job and lists the paths. Resolve it by hand:
 git fetch origin
 git switch -c back-merge/vX.Y.Z origin/main
 git merge --no-ff vX.Y.Z
-# resolve the conflicts, then
-git add -A && git commit
+# resolve the conflicts and remove any "release-as" from release-please-config.json, then
+git add -A && git commit --no-edit
 git push -u origin back-merge/vX.Y.Z
-gh pr create --base main --title "chore: back-merge vX.Y.Z into main"
+gh pr create --base main --head back-merge/vX.Y.Z \
+  --title "chore: back-merge vX.Y.Z into main" \
+  --body "Merges release/X.Y at vX.Y.Z back into main; conflicts resolved by hand."
 ```
 
 Push through a pull request and merge it with a merge commit; never force-push.
@@ -276,11 +300,26 @@ run release-please.
    `release-please--*` branches.
 2. In Settings → Branches, rename `main` to `release/0.1`, then `develop` to `main`.
    GitHub retargets open pull requests and keeps `main` as the default branch.
-3. Update the ruleset to protect `main` and `release/**` with the rules `develop` and
-   `main` had.
-4. Change the deployment rules of the `github-pages`, `homebrew` and `apt` (if present)
-   environments to `main`, plus `release/**` where a job runs from a release tag.
-5. Update each local clone:
+3. Back-merge `v0.1.1` into the new `main` before any other pull request merges into it. `develop`
+   never received the old `main` → `develop` back-merge, so without it `main`'s next
+   prerelease would be `0.1.1-next.3` rather than one after `0.1.1`. From an up-to-date
+   clone, with Node 24 or newer and `gh auth` able to push:
+
+   ```bash
+   git fetch origin --tags
+   node scripts/back-merge.mjs --tag v0.1.1 --branch release/0.1
+   ```
+
+   Review the PR it opens and merge it with a merge commit.
+
+4. Update the ruleset to protect `main` and `release/**` with the rules `develop` and
+   `main` had, and restrict who can create `release/**` branches to maintainers and the
+   release App: the release verifier trusts any commit contained in a `release/*` branch.
+5. Change the deployment rules of the environments: `github-pages`, `homebrew` and `apt`
+   (if present) to `main`, plus `release/**` where a job runs from a release tag. The
+   `release` environment, which gates packaging in `release.yml`, must allow `main` and
+   `release/**`.
+6. Update each local clone:
 
    ```bash
    git branch -m develop main
@@ -289,11 +328,11 @@ run release-please.
    git remote set-head origin -a
    ```
 
-6. Before a fix release on 0.1: the renamed `release/0.1` still has the old workflows.
+7. Before a fix release on 0.1: the renamed `release/0.1` still has the old workflows.
    Port `release.yml`, `release-please-config.json` (with
    `"versioning": "always-bump-patch"`) and `scripts/back-merge.mjs` to `release/0.1` through a pull
    request first.
-7. Verify with a `dry_run` of `Release stable`, then the first real cut, and the first fix
+8. Verify with a `dry_run` of `Release stable`, then the first real cut, and the first fix
    on `release/0.1`, each followed by its back-merge PR.
 
 ### First release
