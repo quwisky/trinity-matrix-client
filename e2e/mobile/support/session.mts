@@ -164,8 +164,9 @@ export async function resetApp(): Promise<void> {
   if (browser.isIOS) {
     // A reinstall is the Simulator's only route to an empty app container. The
     // notification prompt at first launch is accepted by appium:autoAcceptAlerts.
+    const app = requiredEnv('TRINITY_IOS_APP');
     await browser.removeApp(APP_PACKAGE);
-    await browser.installApp(requiredEnv('TRINITY_IOS_APP'));
+    await browser.installApp(app);
   } else {
     const cleared = await shell('pm', ['clear', APP_PACKAGE]);
     if (!cleared.includes('Success'))

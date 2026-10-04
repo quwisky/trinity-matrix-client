@@ -12,13 +12,13 @@ on:
   workflow_dispatch:
     inputs:
       specs:
-        description: Comma-separated spec paths relative to e2e/mobile (default all)
+        description: Comma-separated spec paths relative to e2e/mobile (default smoke only)
         required: false
         default: ''
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: read

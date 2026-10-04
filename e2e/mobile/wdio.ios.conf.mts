@@ -31,4 +31,10 @@ export const config = mobileWdioConfig({
   capabilities: iosCapabilities as WebdriverIO.Capabilities,
   // Session creation waits for the WebDriverAgent build.
   connectionRetryTimeout: 900_000,
+  // One hung request must fail once, not 3 x 15 min.
+  connectionRetryCount: 0,
+  // XCUITest's default script timeout is 0; executeAsync needs one. Set per session here.
+  async before() {
+    await browser.setTimeout({ script: 30_000 });
+  },
 });

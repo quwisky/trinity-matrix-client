@@ -26,9 +26,16 @@ describe('mobile smoke', () => {
     const composer = $('[data-testid="composer-input"]');
     await expect(composer).toBeDisplayed();
     const body = `hello from ${user}`;
-    await composer.click();
-    await browser.keys(body);
-    await browser.keys('Enter');
+    if (browser.isIOS) {
+      // XCUITest `keys` types natively, and an atom click gives WKWebView no keyboard
+      // session: type through atoms and send with the button (Enter is a keydown listener).
+      await composer.addValue(body);
+      await $('[data-testid="composer-send"]').click();
+    } else {
+      await composer.click();
+      await browser.keys(body);
+      await browser.keys('Enter');
+    }
     const row = $(
       `//*[contains(@class,"scroll")]//*[contains(@class,"msg")][contains(.,"${body}")]`,
     );

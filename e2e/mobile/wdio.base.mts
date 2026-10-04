@@ -27,6 +27,8 @@ export function mobileWdioConfig(options: {
   readonly capabilities: WebdriverIO.Capabilities;
   readonly appiumArgs?: Record<string, string>;
   readonly connectionRetryTimeout?: number;
+  readonly connectionRetryCount?: number;
+  readonly before?: WebdriverIO.Config['before'];
 }): WebdriverIO.Config {
   const { suite } = options;
   const startedAt = Date.now();
@@ -42,6 +44,10 @@ export function mobileWdioConfig(options: {
     ...(options.connectionRetryTimeout
       ? { connectionRetryTimeout: options.connectionRetryTimeout }
       : {}),
+    ...(options.connectionRetryCount === undefined
+      ? {}
+      : { connectionRetryCount: options.connectionRetryCount }),
+    ...(options.before ? { before: options.before } : {}),
     capabilities: [options.capabilities],
     services: [
       [
@@ -74,6 +80,15 @@ export function mobileWdioConfig(options: {
       await browser
         .saveScreenshot(join(outputDir, `${name}.png`))
         .catch(() => undefined);
+      // Still in the WebView context here; native() switches away from the DOM.
+      try {
+        writeFileSync(
+          join(outputDir, `${name}.webview.html`),
+          await browser.getPageSource(),
+        );
+      } catch {
+        // diagnostics only; never mask the test failure
+      }
       await native().catch(() => undefined);
       const hierarchy = await browser.getPageSource().catch(() => '');
       writeFileSync(join(outputDir, `${name}.native.xml`), hierarchy);

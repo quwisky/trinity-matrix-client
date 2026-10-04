@@ -12,6 +12,9 @@ import {
   selectSimulator,
   type Simulator,
 } from './simulator.mts';
+import { DATA, STATE_DIR } from '../support/homeserver/paths.mjs';
+import { nativePaths } from '../support/homeserver/native.mts';
+import { copyHomeserverLogs } from './support/artifacts.mts';
 import { APP_PACKAGE } from './support/session.mts';
 import {
   commandSignal,
@@ -117,6 +120,8 @@ async function captureDiagnostics(): Promise<void> {
     join(outputDirectory, 'runner-state.json'),
     `${JSON.stringify({ simulator: simulator ?? null, ownsBoot, appPath }, null, 2)}\n`,
   );
+  // stop.mjs deletes ./data at teardown; the runner scrubs host-output afterwards.
+  copyHomeserverLogs(nativePaths(STATE_DIR, DATA).logs, outputDirectory);
   if (!simulator) return;
   const { udid } = simulator;
   const capture = async (file: string, args: string[]): Promise<void> => {
@@ -143,7 +148,7 @@ async function captureDiagnostics(): Promise<void> {
     '--style',
     'compact',
     '--predicate',
-    'process == "App" OR subsystem == "com.apple.WebKit"',
+    'process == "App" OR process BEGINSWITH "com.apple.WebKit" OR subsystem == "com.apple.WebKit" OR subsystem == "com.apple.network"',
   ]);
 }
 
