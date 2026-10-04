@@ -10,13 +10,14 @@ public developer guide.
 
 ## Know what ran
 
-| Workflow                                                   | Starts when                                                          | What it provides                                                                                         |
-| ---------------------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| [`ci.yml`](../../.github/workflows/ci.yml)                 | A pull request, selected pushes, or its weekly schedule              | Branch checks and browser, desktop, and Android evidence                                                 |
-| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml) | A `develop` push, a published stable release, or a manual dispatch   | Validated user and developer sites deployed to GitHub Pages                                              |
-| [`release.yml`](../../.github/workflows/release.yml)       | A push to `develop` or `main`, or a manual dispatch with a tag input | release-please release PRs and tags, then tag verification, desktop packages, and a draft GitHub release |
-| [`homebrew.yml`](../../.github/workflows/homebrew.yml)     | A release is published, or a manual dispatch with a tag input        | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                       |
-| [`renovate.yml`](../../.github/workflows/renovate.yml)     | Daily at 00:00 UTC or a manual dispatch                              | Dependency update maintenance through a GitHub App token                                                 |
+| Workflow                                                           | Starts when                                                          | What it provides                                                                                         |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [`ci.yml`](../../.github/workflows/ci.yml)                         | A pull request, selected pushes, or its weekly schedule              | Branch checks and browser, desktop, and Android evidence                                                 |
+| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml)         | A `develop` push, a published stable release, or a manual dispatch   | Validated user and developer sites deployed to GitHub Pages                                              |
+| [`release.yml`](../../.github/workflows/release.yml)               | A push to `develop` or `main`, or a manual dispatch with a tag input | release-please release PRs and tags, then tag verification, desktop packages, and a draft GitHub release |
+| [`homebrew.yml`](../../.github/workflows/homebrew.yml)             | A release is published, or a manual dispatch with a tag input        | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                       |
+| [`renovate.yml`](../../.github/workflows/renovate.yml)             | Daily at 00:00 UTC or a manual dispatch                              | Dependency update maintenance through a GitHub App token                                                 |
+| [`release-stable.yml`](../../.github/workflows/release-stable.yml) | A manual dispatch with a `step` choice (`promote` or `back-merge`)   | The mechanical merges of promoting `develop` to stable, through a GitHub App token                       |
 
 The branch workflow accepts pushes to `develop`, `main`, and
 `renovate/patch-**`; pull requests are its usual review path. A newer run for
@@ -193,21 +194,41 @@ reads them on both lines, so one footer tries to cut the same version twice.
 
 ### Promote to stable
 
+Run the `Release stable` workflow (Actions tab, manual dispatch) twice per stable release.
+`step=promote` does steps 1 and 2 below; `step=back-merge` does step 4. Step 3 stays
+manual.
+
 1. Close any release PR still open on `develop`. Merging it after the promotion
    would cut a `-next` prerelease of a version that is already stable; release-please
-   opens a fresh one after the back-merge.
+   opens a fresh one after the back-merge. The workflow first requires a successful
+   `ci.yml` run for `develop`'s head, then closes that PR with a comment, and writes
+   the commits since the last stable tag and the expected version to the run summary.
 2. Open a pull request from `develop` to `main` and merge it with a **merge
    commit** (not squash), so `main` keeps the individual commits release-please
    reads.
 3. release-please opens the stable release PR on `main`. Review its version and
-   `CHANGELOG.md` entry, then merge it. The draft release and packages follow.
+   `CHANGELOG.md` entry, then merge it. The draft release and packages follow. Publish
+   the draft before the back-merge.
 4. Open a pull request from `main` back to `develop` and merge it with a merge
-   commit. The stable release PR already wrote the stable version into
+   commit. The workflow refuses to run until the release in `main`'s
+   `.release-please-manifest.json` is published, not a draft. The stable release PR
+   already wrote the stable version into
    `.release-please-manifest.next.json`, so the merge needs no edits and the next
    prerelease starts a new `-next.0` series above the stable version: the next
    minor after a `feat`, the next patch after only fixes. Only if a prerelease was merged on
    `develop` between promotion and back-merge do the version files conflict;
-   resolve them to `main`'s values.
+   resolve them to `main`'s values. The workflow fails on a conflict and changes
+   nothing; resolve it by hand.
+
+The workflow merges with the Renovate GitHub App's installation token
+(`RENOVATE_APP_CLIENT_ID` variable, `RENOVATE_APP_PRIVATE_KEY` secret), not
+`GITHUB_TOKEN`: a merge made with `GITHUB_TOKEN` triggers no workflows, so `release.yml`
+would never run on `main` and release-please would never open the stable release PR.
+The App needs Contents and Pull requests write access to merge. To use a dedicated App,
+create one with the same permissions and point those two settings at it.
+
+The manual steps above remain the fallback: do them with `gh pr create` and
+`gh pr merge --merge` (never `--squash`) as a user whose pushes trigger workflows.
 
 ### First release
 
