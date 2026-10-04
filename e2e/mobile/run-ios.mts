@@ -25,7 +25,7 @@ import {
 } from './support/runner.mts';
 
 const exec = promisify(execFile);
-/** Where trinity-ios:build-prebuilt leaves the unsigned simulator app. */
+/** Where trinity-ios:build-e2e leaves the ad-hoc signed simulator app. */
 const appPath = join(
   workspaceRoot,
   'dist/ios-native/DerivedData/Build/Products/Debug-iphonesimulator/App.app',
@@ -95,13 +95,24 @@ async function main(invocation: E2EInvocation): Promise<void> {
     ]);
   }
   // sync-prebuilt verifies www against the manifest before and after `cap sync ios`.
-  await run('pnpm', ['exec', 'nx', 'run', 'trinity-ios:build-prebuilt']);
+  await run('pnpm', ['exec', 'nx', 'run', 'trinity-ios:build-e2e']);
   await simctl('install', udid, appPath);
   // WKWebView has no certificate-bypass hook: trust this run's Caddy CA in the Simulator.
   await simctl('keychain', udid, 'add-root-cert', caddyRoot);
   process.env['TRINITY_IOS_UDID'] = udid;
   process.env['TRINITY_IOS_APP'] = appPath;
   mkdirSync(artifactsDir(), { recursive: true });
+  // Keychain access needs entitlements; keep the evidence whatever the next run does.
+  try {
+    const { stdout, stderr } = await exec(
+      'codesign',
+      ['-d', '--entitlements', '-', appPath],
+      { signal: commandSignal() },
+    );
+    writeFileSync(join(artifactsDir(), 'app-codesign.txt'), stdout + stderr);
+  } catch (error) {
+    writeFileSync(join(artifactsDir(), 'app-codesign.txt'), String(error));
+  }
   await run(process.execPath, ['scripts/setup-appium.mjs', 'xcuitest']);
   process.env['APPIUM_HOME'] = join(workspaceRoot, '.appium');
   await run('pnpm', [
@@ -121,7 +132,11 @@ async function captureDiagnostics(): Promise<void> {
     `${JSON.stringify({ simulator: simulator ?? null, ownsBoot, appPath }, null, 2)}\n`,
   );
   // stop.mjs deletes ./data at teardown; the runner scrubs host-output afterwards.
-  copyHomeserverLogs(nativePaths(STATE_DIR, DATA).logs, outputDirectory);
+  const paths = nativePaths(STATE_DIR, DATA);
+  copyHomeserverLogs(
+    [...Object.values(paths.logs), paths.homeserverLog],
+    outputDirectory,
+  );
   if (!simulator) return;
   const { udid } = simulator;
   const capture = async (file: string, args: string[]): Promise<void> => {

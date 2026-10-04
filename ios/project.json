@@ -86,6 +86,16 @@
         "command": "mkdir -p ../dist/ios-native && xcodebuild -project App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath ../dist/ios-native/DerivedData -resultBundlePath \"$(mktemp -d ../dist/ios-native/run.XXXXXX)/build.xcresult\" build CODE_SIGNING_ALLOWED=NO",
         "cwd": "{projectRoot}"
       }
+    },
+    "build-e2e": {
+      "//": "The E2E simulator build, ad-hoc signed: Keychain access (secure storage) needs the entitlements that CODE_SIGNING_ALLOWED=NO drops. build-prebuilt stays unsigned for compile-only CI.",
+      "cache": false,
+      "dependsOn": ["sync-prebuilt"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mkdir -p ../dist/ios-native && xcodebuild -project App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath ../dist/ios-native/DerivedData -resultBundlePath \"$(mktemp -d ../dist/ios-native/run.XXXXXX)/build.xcresult\" build CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO",
+        "cwd": "{projectRoot}"
+      }
     }
   }
 }

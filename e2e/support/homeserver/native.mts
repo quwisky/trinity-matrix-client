@@ -28,6 +28,8 @@ export interface NativePaths {
   readonly caddyfile: string;
   readonly pidFile: string;
   readonly logs: Readonly<Record<NativeService, string>>;
+  /** Synapse's own file log (its generated log config), beside homeserver.yaml. */
+  readonly homeserverLog: string;
   readonly caddyData: string;
   readonly caddyConfig: string;
   readonly caddyRoot: string;
@@ -51,6 +53,7 @@ export function nativePaths(stateDir: string, dataDir: string): NativePaths {
       homeserver: join(dataDir, 'synapse.out.log'),
       caddy: join(dataDir, 'caddy.log'),
     },
+    homeserverLog: join(dataDir, 'homeserver.log'),
     caddyData,
     caddyConfig: join(dataDir, 'caddy-config'),
     // Caddy honours XDG_DATA_HOME on every OS; its local CA lives under it.

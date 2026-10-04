@@ -16,16 +16,16 @@ export const wdioOutputDir = (
 export const appiumLogPath = (): string => join(wdioOutputDir(), 'appium.log');
 
 /**
- * Copy the native homeserver's two log files (when they exist) into a diagnostics
+ * Copy the native homeserver's log files (when they exist) into a diagnostics
  * directory; stop.mjs deletes ./data at teardown. Never copy anything else from ./data:
  * caddy-data holds the CA private key.
  */
 export function copyHomeserverLogs(
-  logs: Readonly<Record<string, string>>,
+  logs: readonly string[],
   destination: string,
 ): void {
   mkdirSync(destination, { recursive: true });
-  for (const file of Object.values(logs)) {
+  for (const file of logs) {
     if (existsSync(file)) copyFileSync(file, join(destination, basename(file)));
   }
 }
