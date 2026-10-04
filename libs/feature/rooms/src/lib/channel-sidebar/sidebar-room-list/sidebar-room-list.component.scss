@@ -115,9 +115,18 @@
       background: var(--trinity-state-selected-surface);
       color: var(--trinity-state-selected-foreground);
 
+      // The preview is muted at rest but must stay readable on the selected ground.
+      .channel__preview {
+        color: var(--trinity-state-selected-foreground);
+      }
+
       &:hover {
         background: var(--trinity-state-selected-hover-surface);
         color: var(--trinity-state-selected-hover-foreground);
+
+        .channel__preview {
+          color: var(--trinity-state-selected-hover-foreground);
+        }
       }
     }
 
