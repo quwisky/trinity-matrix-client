@@ -148,8 +148,8 @@ export class SettingsHubController<Section extends string> {
     this.confirmingDiscard.set(true);
     this.alert
       .confirm$({
-        header: `Discard ${this.config.noun} settings changes?`,
-        message: `Your unsaved ${this.config.noun} details will be discarded. Changes already saved, including a photo update, stay applied.`,
+        header: `Discard ${this.config.noun.toLowerCase()} settings changes?`,
+        message: `Your unsaved ${this.config.noun.toLowerCase()} details will be discarded. Changes already saved, including a photo update, stay applied.`,
         confirmText: 'Discard changes',
         cancelText: 'Keep editing',
         variant: 'danger',

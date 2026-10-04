@@ -324,9 +324,7 @@ describe('ChannelSidebarComponent', () => {
     const { container } = await renderSidebar();
 
     // Space-only actions are hidden on Home; the new-room/DM "+" is present.
-    expect(
-      container.querySelector('[aria-label="Create a channel"]'),
-    ).toBeNull();
+    expect(container.querySelector('[aria-label="Create a room"]')).toBeNull();
     // Invite and Leave live in the space overflow, which Home does not render at all.
     expect(
       container.querySelector('[data-testid="space-actions-overflow"]'),
@@ -433,7 +431,7 @@ describe('ChannelSidebarComponent', () => {
 
     // Create stays out on the header; invite and leave moved into the overflow.
     container
-      .querySelector<HTMLElement>('[aria-label="Create a channel"]')!
+      .querySelector<HTMLElement>('[aria-label="Create a room"]')!
       .click();
     container
       .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
@@ -1379,7 +1377,7 @@ describe('ChannelSidebarComponent', () => {
       inputs: { spaceActive: true },
       childrenLoading: true,
     });
-    expect(container.textContent).toContain('Loading channels');
+    expect(container.textContent).toContain('Loading rooms');
 
     signals.childrenLoading.set(false);
     signals.childrenError.set('nope');
@@ -1388,7 +1386,7 @@ describe('ChannelSidebarComponent', () => {
     // `text-danger`, never `text-destructive` — the latter is a fill token whose dark
     // value is a near-black maroon, so as a foreground it hides the error it announces.
     expect(container.textContent).toContain(
-      'Couldn’t load this space’s channels.',
+      'Couldn’t load this space’s rooms.',
     );
     expect(container.querySelector('.text-danger')).not.toBeNull();
     expect(container.querySelector('.text-destructive')).toBeNull();
@@ -1733,7 +1731,7 @@ describe('ChannelSidebarComponent room filter', () => {
 
     expect(
       container.querySelector('[data-testid=room-list-empty]')!.textContent,
-    ).toContain('No channels here yet');
+    ).toContain('No rooms here yet');
   });
 
   it('offers a clear button only while filtering, and clearing publishes the empty query', async () => {
@@ -1802,7 +1800,7 @@ describe('ChannelSidebarComponent room filter', () => {
 
   it('still says the space is empty under an unrelated pending invite', async () => {
     // Regression: the empty state was gated on invites too, so one invite to an unrelated
-    // room silenced "No channels here yet." for a space you had joined no channels in.
+    // room silenced "No rooms here yet." for a space you had joined no channels in.
     const { container } = await renderSidebar({
       inputs: { rooms: [] },
       invites: [invite({ roomId: '!i1:hs', name: 'somewhere else' })],
@@ -1810,7 +1808,7 @@ describe('ChannelSidebarComponent room filter', () => {
 
     expect(
       container.querySelector('[data-testid=room-list-empty]')!.textContent,
-    ).toContain('No channels here yet');
+    ).toContain('No rooms here yet');
   });
 
   it('says nothing about matching while an invite still matches', async () => {

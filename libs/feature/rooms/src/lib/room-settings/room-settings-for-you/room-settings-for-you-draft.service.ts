@@ -156,7 +156,7 @@ export class RoomSettingsForYouDraftService {
     this.savingState.set(true);
     this.feedbackState.set({
       tone: 'pending',
-      message: 'Saving preferences for the opening Account…',
+      message: 'Saving preferences for this account…',
     });
     saveFields(writes)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -166,7 +166,7 @@ export class RoomSettingsForYouDraftService {
         if (failed.length === 0) {
           this.feedbackState.set({
             tone: 'success',
-            message: `${sentenceList(saved, 'Room details')} saved for the opening Account.`,
+            message: `${sentenceList(saved, 'Room details')} saved for this account.`,
           });
           return;
         }

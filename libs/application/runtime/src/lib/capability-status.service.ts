@@ -207,7 +207,7 @@ export class CapabilityStatusService {
     const attempt = 'attempt' in state ? state.attempt : 0;
     return JSON.stringify(
       {
-        generatedBy: 'Trinity System Status',
+        generatedBy: 'Trinity System status',
         diagnostics: this.health.diagnostics(
           stage,
           attempt,

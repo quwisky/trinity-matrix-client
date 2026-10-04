@@ -67,7 +67,7 @@ describe('ReactionsDialogComponent', () => {
       container
         .querySelector('[data-testid=close-reactions]')
         ?.getAttribute('aria-label'),
-    ).toBe('Close Reactions');
+    ).toBe('Close reactions');
   });
 
   it('switches sections when another key is picked', async () => {

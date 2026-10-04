@@ -173,7 +173,7 @@ describe('TrustDevicesService', () => {
     const prompt = vi.fn();
 
     await expect(firstValueFrom(svc.delete('A', prompt))).rejects.toThrow(
-      /log out/i,
+      /remove this account/i,
     );
     expect(client.deleteDevice).not.toHaveBeenCalled();
     expect(prompt).not.toHaveBeenCalled();

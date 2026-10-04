@@ -296,7 +296,7 @@ for (const mobile of [false, true]) {
           presence.projection.schedule();
         });
         await openSystemStatusFromRooms(page);
-        const status = page.getByRole('dialog', { name: 'System Status' });
+        const status = page.getByRole('dialog', { name: 'System status' });
         const problem = status
           .locator('article')
           .filter({ hasText: 'Presence is unavailable' });

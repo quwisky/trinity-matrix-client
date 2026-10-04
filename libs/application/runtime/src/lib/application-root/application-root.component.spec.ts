@@ -146,7 +146,7 @@ describe('ApplicationRootComponent', () => {
       settlements: [],
     });
     expect(getByTestId('app-startup-blocked').textContent).toContain(
-      'required Account session',
+      'required account session',
     );
     getByTestId('app-startup-recovery').click();
     fixture.detectChanges();
@@ -199,7 +199,7 @@ describe('ApplicationRootComponent', () => {
     );
   });
 
-  it('keeps System Status open when Escape dismisses a recovery confirmation', async () => {
+  it('keeps System status open when Escape dismisses a recovery confirmation', async () => {
     const { fixture, getByTestId, queryByTestId, confirm, hasOpenDialog } =
       await setup({
         phase: 'blocked',
@@ -213,7 +213,7 @@ describe('ApplicationRootComponent', () => {
       });
     [...fixture.nativeElement.querySelectorAll('button')]
       .find((item: HTMLButtonElement) =>
-        item.textContent?.includes('System Status'),
+        item.textContent?.includes('System status'),
       )
       .click();
     fixture.detectChanges();
@@ -244,7 +244,7 @@ describe('ApplicationRootComponent', () => {
     expect(queryByTestId('system-status')).toBeNull();
   });
 
-  it('keeps routed content while grouping scoped problems in System Status', async () => {
+  it('keeps routed content while grouping scoped problems in System status', async () => {
     const { fixture, health, getByTestId } = await setup({
       phase: 'ready',
       attempt: 1,
@@ -275,7 +275,7 @@ describe('ApplicationRootComponent', () => {
       'A background Account needs attention.',
     );
     const button = [...fixture.nativeElement.querySelectorAll('button')].find(
-      (item: HTMLButtonElement) => item.textContent?.includes('System Status'),
+      (item: HTMLButtonElement) => item.textContent?.includes('System status'),
     );
     button.click();
     fixture.detectChanges();
@@ -330,10 +330,10 @@ describe('ApplicationRootComponent', () => {
       settlements: [],
     });
     // The startup entry point is available independently of a ready Workspace.
-    getByRole('button', { name: 'System Status' }).click();
+    getByRole('button', { name: 'System status' }).click();
     fixture.detectChanges();
     const navigation = getByRole('navigation', {
-      name: 'System Status sections',
+      name: 'System status sections',
     });
     expect(navigation).toBeTruthy();
     expect(getByRole('button', { name: 'Overview' })).toHaveAttribute(
@@ -373,7 +373,7 @@ describe('ApplicationRootComponent', () => {
     };
     health.report(fact, () => of({ kind: 'success' as const }));
     fixture.detectChanges();
-    getByRole('button', { name: 'System Status' }).click();
+    getByRole('button', { name: 'System status' }).click();
     fixture.detectChanges();
     getByRole('button', { name: 'Accounts' }).click();
     fixture.detectChanges();
@@ -393,7 +393,7 @@ describe('ApplicationRootComponent', () => {
     expect(getByTestId('system-status-all-working')).toBeTruthy();
   });
 
-  it('returns mobile Back to sections before dismissing System Status', async () => {
+  it('returns mobile Back to sections before dismissing System status', async () => {
     const width = Object.getOwnPropertyDescriptor(window, 'innerWidth')!;
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
@@ -438,7 +438,7 @@ describe('ApplicationRootComponent', () => {
     }
   });
 
-  it('keeps an all-working System Status entry point available', async () => {
+  it('keeps an all-working System status entry point available', async () => {
     const { fixture, getByTestId } = await setup({
       phase: 'ready',
       attempt: 1,
@@ -474,7 +474,7 @@ describe('ApplicationRootComponent', () => {
     fixture.detectChanges();
     [...fixture.nativeElement.querySelectorAll('button')]
       .find((item: HTMLButtonElement) =>
-        item.textContent?.includes('System Status'),
+        item.textContent?.includes('System status'),
       )
       .click();
     fixture.detectChanges();

@@ -199,4 +199,22 @@ describe('TrnButton', () => {
         ?.textContent,
     ).toBe('Only room admins can do this.');
   });
+
+  it('shares the global focus ring across every presentation and variant', () => {
+    for (const presentation of ['solid', 'outline', 'ghost', 'link'] as const) {
+      for (const variant of ['primary', 'secondary', 'danger'] as const) {
+        const recipe = trnButtonRecipe({
+          presentation,
+          shape: 'icon',
+          size: 'md',
+          variant,
+        });
+
+        expect(recipe).toContain(
+          'focus-visible:ring-[color:var(--trinity-focus-ring)]',
+        );
+        expect(recipe).not.toMatch(/focus-visible:ring-(ring|destructive)/);
+      }
+    }
+  });
 });

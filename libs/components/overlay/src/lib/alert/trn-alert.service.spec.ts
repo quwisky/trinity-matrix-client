@@ -21,13 +21,16 @@ function clickButton(text: string): void {
 describe('TrnAlertService', () => {
   it('keeps the reactive confirmation command cold', async () => {
     const svc = TestBed.inject(TrnAlertService);
-    const command = svc.confirm$({ header: 'Leave space?' });
+    const command = svc.confirm$({
+      header: 'Leave space?',
+      confirmText: 'Leave',
+    });
 
     expect(document.querySelector('trn-alert-dialog')).toBeNull();
     const result = firstValueFrom(command);
     render();
     expect(document.querySelector('trn-alert-dialog')).not.toBeNull();
-    clickButton('OK');
+    clickButton('Leave');
 
     expect(await result).toBe(true);
   });
@@ -46,7 +49,11 @@ describe('TrnAlertService', () => {
   it('confirm resolves false when cancelled', async () => {
     const svc = TestBed.inject(TrnAlertService);
     const result = firstValueFrom(
-      svc.confirm$({ header: 'Leave?', cancelText: 'Cancel' }),
+      svc.confirm$({
+        header: 'Leave?',
+        confirmText: 'Leave',
+        cancelText: 'Cancel',
+      }),
     );
     render();
     clickButton('Cancel');
@@ -59,6 +66,7 @@ describe('TrnAlertService', () => {
     const result = firstValueFrom(
       TestBed.inject(TrnAlertService).confirm$({
         header: 'Discard changes?',
+        confirmText: 'Discard',
         closeOnNavigation: false,
       }),
     );
@@ -88,7 +96,11 @@ describe('TrnAlertService', () => {
   it('prompt resolves null on cancel', async () => {
     const svc = TestBed.inject(TrnAlertService);
     const result = firstValueFrom(
-      svc.prompt$({ header: 'Name', cancelText: 'Cancel' }),
+      svc.prompt$({
+        header: 'Name',
+        confirmText: 'Create',
+        cancelText: 'Cancel',
+      }),
     );
     render();
     clickButton('Cancel');
@@ -103,6 +115,7 @@ describe('TrnAlertService', () => {
     const result = firstValueFrom(
       svc.prompt$({
         header: 'Reset encryption',
+        confirmText: 'Reset',
         placeholder: 'RESET',
         inputLabel: 'Type RESET to confirm',
       }),
@@ -119,7 +132,11 @@ describe('TrnAlertService', () => {
   it('leaves the input unlabelled when the header already says it', () => {
     const svc = TestBed.inject(TrnAlertService);
     const result = firstValueFrom(
-      svc.prompt$({ header: 'New display name', placeholder: 'Name' }),
+      svc.prompt$({
+        header: 'New display name',
+        placeholder: 'Name',
+        confirmText: 'Save',
+      }),
     );
     render();
 
@@ -138,6 +155,7 @@ describe('TrnAlertService', () => {
     const result = firstValueFrom(
       svc.confirm$({
         header: 'Reset encryption',
+        confirmText: 'Reset',
         message: 'first\n\nsecond',
       }),
     );
@@ -157,7 +175,11 @@ describe('TrnAlertService', () => {
     const svc = TestBed.inject(TrnAlertService);
 
     const canonical = firstValueFrom(
-      svc.confirm$({ header: 'Canonical danger', variant: 'danger' }),
+      svc.confirm$({
+        header: 'Canonical danger',
+        confirmText: 'Delete',
+        variant: 'danger',
+      }),
     );
     render();
     const canonicalButton = document.querySelector<HTMLElement>(

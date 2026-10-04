@@ -171,6 +171,17 @@ describe('RoomsPage space actions', () => {
     await vi.waitFor(() => expect(shell.store.activeSpaceId()).toBe('!new:hs'));
   });
 
+  it('gives the space name prompt an accessible name, not only a placeholder', () => {
+    const shell = build();
+    alertPrompt.mockReturnValue(of(null));
+
+    shell.spaces.onCreateSpace();
+
+    expect(alertPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ inputLabel: 'Space name' }),
+    );
+  });
+
   it('waits for a created space to enter the Account SDK graph before selecting it', async () => {
     const shell = build();
     const ready = new Subject<void>();
@@ -255,7 +266,7 @@ describe('RoomsPage space actions', () => {
     expect(alertConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringMatching(
-          /Leave .* as .*You remain a member of its Rooms/,
+          /Leave .* as .*You remain a member of its rooms/,
         ),
       }),
     );
@@ -351,7 +362,7 @@ describe('RoomsPage space actions', () => {
 
   it('drops the sidebar filter when switching accounts', async () => {
     // The filter resets itself on a VIEW change, and resetViewScope deliberately leaves
-    // Recent / Direct Messages / Rooms alone — so on those three the view key never
+    // Recent / Direct messages / Rooms alone — so on those three the view key never
     // changes and a query typed against one account's rooms would silently narrow the
     // next account's list.
     const shell = build();

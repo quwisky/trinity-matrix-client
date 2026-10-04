@@ -235,7 +235,7 @@ test.describe('Remove a member', () => {
     });
 
     await openSystemStatusFromRooms(page);
-    const status = page.getByRole('dialog', { name: 'System Status' });
+    const status = page.getByRole('dialog', { name: 'System status' });
     const memberHealth = status
       .locator('article')
       .filter({ hasText: 'The current Room member list is unavailable' });

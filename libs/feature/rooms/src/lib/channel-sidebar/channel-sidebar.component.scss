@@ -60,7 +60,7 @@
     height: 30px;
     min-width: var(--trinity-interaction-target-min-size);
     min-height: var(--trinity-interaction-target-min-size);
-    font-size: 20px;
+    font-size: var(--trinity-text-lg);
 
     &:hover {
       color: var(--trinity-text-bright);
@@ -90,7 +90,7 @@
     height: 22px;
     min-width: var(--trinity-interaction-target-min-size);
     min-height: var(--trinity-interaction-target-min-size);
-    font-size: 14px;
+    font-size: 0.875rem;
 
     &:hover {
       color: var(--trinity-text-bright);
@@ -132,7 +132,7 @@
   }
 
   .joinable__hash {
-    font-size: 18px;
+    font-size: 1.125rem;
   }
 
   .joinable__text {
@@ -146,13 +146,13 @@
   .joinable__name {
     @include ellipsis;
 
-    font-size: 14px;
+    font-size: 0.875rem;
     min-width: 0;
   }
 
   .joinable__tag {
     flex: 0 0 auto;
-    font-size: 10px;
+    font-size: 0.625rem;
     font-weight: 700;
     text-transform: uppercase;
   }
@@ -163,7 +163,7 @@
     flex: 0 0 auto;
     min-height: var(--trinity-interaction-target-min-size);
     padding: 3px 10px;
-    font-size: 12px;
+    font-size: 0.75rem;
     font-weight: 600;
     background: var(--trinity-hover);
 

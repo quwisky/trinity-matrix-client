@@ -101,7 +101,7 @@ test.describe('Leaving a Space', () => {
     await expect(confirmation).toContainText(spaceName);
     await expect(confirmation).toContainText(user);
     await expect(confirmation).toContainText(
-      'You remain a member of its Rooms',
+      'You remain a member of its rooms',
     );
     await confirmation.getByRole('button', { name: 'Cancel' }).click();
 

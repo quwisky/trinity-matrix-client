@@ -173,7 +173,7 @@ export class RoomSettingsService {
           defer(() => {
             if (this.clientFor(target) !== client) {
               throw new Error(
-                'The originating Account became unavailable before the photo uploaded.',
+                'The originating account became unavailable before the photo uploaded.',
               );
             }
             this.permissions.assert(this.permissionsFor(target).avatar);
@@ -391,9 +391,9 @@ export class RoomSettingsService {
       availability,
       unavailableReason:
         availability === 'account-unavailable'
-          ? 'This Account is no longer available. Your unfinished edits are still here.'
+          ? 'This account is no longer available. Your unfinished edits are still here.'
           : availability === 'room-unavailable'
-            ? 'This Room is no longer joined for the opening Account. Your unfinished edits are still here.'
+            ? 'This room is no longer joined for this account. Your unfinished edits are still here.'
             : null,
       openingAccountActive: this.matrix.activeUserId() === target.accountId,
       identity: this.currentIdentity(target),

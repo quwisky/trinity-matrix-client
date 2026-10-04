@@ -233,7 +233,7 @@ test.describe('Settings', () => {
     await expect(mode).toBeVisible();
     await expect(layout).toBeVisible();
     await expect(
-      page.getByRole('radiogroup', { name: 'Mode and Theme' }),
+      page.getByRole('radiogroup', { name: 'Mode and theme' }),
     ).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Theme' })).toBeVisible();
     await expect(

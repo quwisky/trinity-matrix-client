@@ -107,7 +107,7 @@ export class AvatarService {
     return defer(() => {
       const client = this.matrix.clientFor(accountId);
       if (!client) {
-        throw new Error('The owning Account is no longer available.');
+        throw new Error('The owning account is no longer available.');
       }
       return from(
         client.uploadContent(file, {

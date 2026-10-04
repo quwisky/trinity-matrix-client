@@ -37,6 +37,10 @@
     @include auth.busy;
   }
 
+  .login-card__field-error {
+    @include auth.error;
+  }
+
   .login-card__error {
     @include auth.error;
 

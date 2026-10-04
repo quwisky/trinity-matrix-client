@@ -180,7 +180,7 @@ export class TrustDevicesService {
         'delete-device',
         'stale-state',
         'none',
-        'Use “Log out” to sign out the device you are using.',
+        'To sign out the device you are using, remove this account from the account menu.',
       );
     }
     try {

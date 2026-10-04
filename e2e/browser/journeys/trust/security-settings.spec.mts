@@ -164,7 +164,7 @@ test.describe('Security settings', () => {
     await expect(page.getByTestId('security-verify')).toHaveCount(0);
     await page.getByRole('button', { name: 'Close settings' }).click();
     await openSystemStatusFromRooms(page);
-    const status = page.getByRole('dialog', { name: 'System Status' });
+    const status = page.getByRole('dialog', { name: 'System status' });
     const problem = status
       .locator('article')
       .filter({ hasText: 'Encryption trust status is unavailable' });

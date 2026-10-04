@@ -123,7 +123,7 @@ test.describe('Notification settings', () => {
     });
 
     await openSystemStatusFromRooms(page);
-    const status = page.getByRole('dialog', { name: 'System Status' });
+    const status = page.getByRole('dialog', { name: 'System status' });
     const health = status
       .locator('article')
       .filter({ hasText: 'Room notification settings are unavailable' });

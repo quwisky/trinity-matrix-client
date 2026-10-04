@@ -321,7 +321,7 @@ export class SpaceRoomOrderService {
     return defer(() => {
       if (!this.matrix.accountIds().includes(accountId)) {
         return throwError(
-          () => new Error('The opening Account is no longer available.'),
+          () => new Error('This account is no longer available.'),
         );
       }
       const next = change(this.byAccount().get(accountId) ?? EMPTY);

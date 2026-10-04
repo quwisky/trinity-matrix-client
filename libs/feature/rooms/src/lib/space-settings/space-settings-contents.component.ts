@@ -65,7 +65,7 @@ export class SpaceSettingsContentsComponent implements OnInit {
   private readonly recoveryState = signal<CreatedSpaceContent | null>(null);
 
   readonly target = input.required<SpaceContentsTarget>();
-  readonly spaceName = input('this Space');
+  readonly spaceName = input('this space');
   readonly search = form(this.searchModel);
   readonly snapshot = this.snapshotState.asReadonly();
   readonly pickerOpen = this.pickerOpenState.asReadonly();
@@ -162,15 +162,15 @@ export class SpaceSettingsContentsComponent implements OnInit {
 
   create(kind: CreatedSpaceContent['kind']): void {
     if (this.actionsBusy()) return;
-    const noun = kind === 'space' ? 'Space' : 'Room';
+    const noun = kind === 'space' ? 'space' : 'room';
     this.alert
       .prompt$({
         header: `Create ${noun}`,
         message:
           kind === 'space'
-            ? `Create a nested Space and add it to “${this.spaceName()}”.`
-            : `Create an encrypted Room and add it to “${this.spaceName()}”.`,
-        placeholder: `${noun} name`,
+            ? `Create a nested space and add it to “${this.spaceName()}”.`
+            : `Create an encrypted room and add it to “${this.spaceName()}”.`,
+        placeholder: kind === 'space' ? 'Space name' : 'Room name',
         confirmText: 'Create',
         maxLength: 100,
       })
@@ -185,7 +185,7 @@ export class SpaceSettingsContentsComponent implements OnInit {
     if (this.actionsBusy()) return;
     this.alert
       .confirm$({
-        header: `Remove ${item.kind === 'space' ? 'Space' : 'Room'} from Space`,
+        header: `Remove ${item.kind === 'space' ? 'space' : 'room'} from space`,
         message: `Remove “${item.name}” from “${this.spaceName()}”? This only unlinks it. You stay joined, and the ${item.kind === 'space' ? 'Space' : 'Room'} is not deleted.`,
         confirmText: 'Remove',
         variant: 'danger',
@@ -208,7 +208,7 @@ export class SpaceSettingsContentsComponent implements OnInit {
           this.recoveryState.set(null);
           this.feedbackState.set({
             tone: 'success',
-            message: `${item.name} added without creating another ${item.kind === 'space' ? 'Space' : 'Room'}.`,
+            message: `${item.name} added without creating another ${item.kind === 'space' ? 'space' : 'room'}.`,
           });
           this.refresh();
         },
@@ -216,7 +216,7 @@ export class SpaceSettingsContentsComponent implements OnInit {
           this.pendingState.set(null);
           this.feedbackState.set({
             tone: 'danger',
-            message: `The ${item.kind === 'space' ? 'Space' : 'Room'} still exists, but linking failed: ${messageOf(error)}`,
+            message: `The ${item.kind === 'space' ? 'space' : 'room'} still exists, but linking failed: ${messageOf(error)}`,
           });
         },
       });

@@ -147,7 +147,7 @@ export class RoomNotificationsService {
     return defer(() => {
       const client = this.matrix.clientFor(accountId);
       if (!client) {
-        return throwError(() => new Error('This Account is not available.'));
+        return throwError(() => new Error('This account is not available.'));
       }
       return from(this.refreshRules(client)).pipe(
         map(() => {

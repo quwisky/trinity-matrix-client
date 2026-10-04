@@ -485,7 +485,7 @@ test.describe('Message notifications', () => {
     await expect(
       page.locator('.channel', { hasText: roomName }).first(),
     ).toBeVisible({ timeout: 15_000 });
-    await page.getByRole('button', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Direct messages' }).click();
 
     const body = `hello from notify e2e ${runId}`;
     await postMessage(request, hs, sender, roomId, `notify-${runId}`, body);

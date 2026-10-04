@@ -121,7 +121,7 @@ function startupStep(stage: ApplicationStartupStage): string {
     case 'preference-hydration':
       return 'Restoring your preferences…';
     case 'account-restoration':
-      return 'Restoring your Accounts…';
+      return 'Restoring your accounts…';
     case 'session-capabilities':
       return 'Preparing messaging…';
     case 'workspace-restoration':
@@ -140,7 +140,7 @@ function recoveryAction(recovery: ApplicationStartupRecovery): {
       return {
         label: 'Sign in again',
         detail:
-          'The required Account session is unavailable. Remove it and return to sign in.',
+          'The required account session is unavailable. Remove it and return to sign in.',
       };
     case 'reset-installation':
       return {

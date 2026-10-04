@@ -16,9 +16,9 @@ export interface ConfirmOptions {
    * whose parts must be read one at a time can be joined with `\n\n`.
    */
   message?: string;
-  /** Confirm button label. Default 'OK'. */
-  confirmText?: string;
-  /** Cancel button label. Default 'Cancel'. */
+  /** Confirm button label. Name the action ("Leave", "Delete"), never a generic "OK". */
+  confirmText: string;
+  /** Label for abandoning the action. Default 'Cancel'. */
   cancelText?: string;
   /** Semantic treatment for the confirmation action. */
   variant?: TrnAlertVariant;
@@ -59,7 +59,7 @@ export class TrnAlertService {
       kind: 'confirm',
       header: opts.header,
       message: opts.message,
-      confirmText: opts.confirmText ?? 'OK',
+      confirmText: opts.confirmText,
       cancelText: opts.cancelText ?? 'Cancel',
       variant: opts.variant ?? 'neutral',
     };
@@ -83,7 +83,7 @@ export class TrnAlertService {
       kind: 'prompt',
       header: opts.header,
       message: opts.message,
-      confirmText: opts.confirmText ?? 'OK',
+      confirmText: opts.confirmText,
       cancelText: opts.cancelText ?? 'Cancel',
       variant: opts.variant ?? 'neutral',
       placeholder: opts.placeholder,

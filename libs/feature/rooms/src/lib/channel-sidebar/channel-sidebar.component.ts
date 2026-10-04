@@ -97,7 +97,7 @@ export class ChannelSidebarComponent {
   private readonly presence = inject(IdentityPresenceService);
   private readonly roomNotifications = inject(RoomNotificationsService);
 
-  readonly spaceName = input('Home');
+  readonly spaceName = input('Direct messages');
   /** Whether a space (not Home) is selected — gates the header space actions. */
   readonly spaceActive = input(false);
   /**

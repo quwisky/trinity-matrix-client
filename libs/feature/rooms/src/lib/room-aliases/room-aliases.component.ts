@@ -77,7 +77,7 @@ export class RoomAliasesComponent implements OnChanges {
   );
   readonly restrictionReason = computed(() =>
     this.noun() === 'Space'
-      ? "The opening Account cannot currently manage this Space's addresses."
+      ? "This account cannot currently manage this space's addresses."
       : this.availability().reason,
   );
   readonly aliasForm = form(this.aliasModel, (path) => {
@@ -218,7 +218,7 @@ export class RoomAliasesComponent implements OnChanges {
     this.alert
       .confirm$({
         header: `Remove ${alias}?`,
-        message: `People will no longer be able to join or link to this ${this.noun().toLowerCase()} with ${alias}. This does not delete the ${this.noun()}.`,
+        message: `People will no longer be able to join or link to this ${this.noun().toLowerCase()} with ${alias}. This does not delete the ${this.noun().toLowerCase()}.`,
         confirmText: 'Remove address',
         cancelText: 'Keep address',
         variant: 'danger',

@@ -614,7 +614,7 @@ describe('RoomSettingsService', () => {
       svc.snapshot({ accountId: '@me:hs', roomId: '!r:hs' }),
     ).toMatchObject({
       availability: 'account-unavailable',
-      unavailableReason: expect.stringContaining('Account'),
+      unavailableReason: expect.stringContaining('account'),
       identity: { name: '', topic: '', avatarMxc: null },
       encrypted: null,
     });
