@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import {
   HOMESERVER_KINDS,
+  HOMESERVER_RUNTIMES,
   resolveHomeserverKind,
+  resolveHomeserverRuntime,
 } from '../e2e/support/homeserver/kind.mts';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -144,6 +146,27 @@ describe('Nightly Synapse workflow', () => {
             step.uses === './.github/actions/upload-playwright-diagnostics',
         ),
       ).toBe(true);
+    }
+  });
+});
+
+describe('E2E homeserver runtime selection', () => {
+  it('defaults to docker and accepts native only for Synapse', () => {
+    expect(HOMESERVER_RUNTIMES).toEqual(['docker', 'native']);
+    expect(resolveHomeserverRuntime({})).toBe('docker');
+    expect(
+      resolveHomeserverRuntime({
+        TRINITY_E2E_HOMESERVER: 'synapse',
+        TRINITY_E2E_HOMESERVER_RUNTIME: 'native',
+      }),
+    ).toBe('native');
+    expect(() =>
+      resolveHomeserverRuntime({ TRINITY_E2E_HOMESERVER_RUNTIME: 'native' }),
+    ).toThrow(/native runs Synapse only/);
+    for (const value of ['Native', 'podman', ' docker']) {
+      expect(() =>
+        resolveHomeserverRuntime({ TRINITY_E2E_HOMESERVER_RUNTIME: value }),
+      ).toThrow(/expected one of: docker, native/);
     }
   });
 });
