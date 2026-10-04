@@ -7,7 +7,14 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { HOMESERVER_KINDS, type HomeserverKind } from './homeserver/kind.mts';
+import {
+  HOMESERVER_FEATURES,
+  HOMESERVER_KINDS,
+  HOMESERVER_RUNTIMES,
+  type HomeserverFeature,
+  type HomeserverKind,
+  type HomeserverRuntime,
+} from './homeserver/kind.mts';
 import { processIsAlive } from './process-lock.mts';
 
 export const E2E_SESSION_ENV = 'TRINITY_E2E_SESSION_FILE';
@@ -37,6 +44,12 @@ export interface HomeserverSessionDescriptor {
     readonly email: string;
     readonly pass: string;
   };
+  /** Docker Compose, or host processes when TRINITY_E2E_HOMESERVER_RUNTIME=native. */
+  readonly runtime?: HomeserverRuntime;
+  /** Harness features this runtime does not provide; specs needing one are excluded by name. */
+  readonly unavailable?: readonly HomeserverFeature[];
+  /** Caddy's local root certificate, for hosts that must trust it (the iOS Simulator). */
+  readonly caddyRoot?: string;
 }
 
 export interface E2ESessionDescriptor {
@@ -96,6 +109,43 @@ function assertHomeserver(
     }
     if (typeof value['version'] !== 'string' || !value['version']) {
       throw new Error('E2E session is missing the homeserver version');
+    }
+    if (
+      value['runtime'] !== undefined &&
+      !(HOMESERVER_RUNTIMES as readonly unknown[]).includes(value['runtime'])
+    ) {
+      throw new Error('E2E session has an unknown homeserver runtime');
+    }
+    const unavailable = value['unavailable'];
+    if (
+      unavailable !== undefined &&
+      (!Array.isArray(unavailable) ||
+        unavailable.some(
+          (feature) =>
+            !(HOMESERVER_FEATURES as readonly unknown[]).includes(feature),
+        ))
+    ) {
+      throw new Error(
+        'E2E session lists an unknown unavailable homeserver feature',
+      );
+    }
+    const withheld = new Set<unknown>(
+      Array.isArray(unavailable) ? unavailable : [],
+    );
+    if (
+      withheld.has('sso') &&
+      (value['sso'] !== undefined || value['ssoReset'] !== undefined)
+    ) {
+      throw new Error('E2E session both offers and withholds sso');
+    }
+    if (withheld.has('remote') && value['secondary'] !== undefined) {
+      throw new Error('E2E session both offers and withholds remote');
+    }
+    if (
+      value['caddyRoot'] !== undefined &&
+      typeof value['caddyRoot'] !== 'string'
+    ) {
+      throw new Error('E2E session has an invalid Caddy root certificate path');
     }
   }
 }
@@ -237,7 +287,13 @@ export function sessionSummary(descriptor: E2ESessionDescriptor): string {
     `owner=${descriptor.owner.pid}`,
     `resources=${descriptor.resources.join(',') || 'none'}`,
     `app=${descriptor.endpoints.application}`,
-    `homeserver=${descriptor.homeserver?.available ? `${descriptor.homeserver.kind} ${descriptor.homeserver.version}` : 'not-requested'}`,
+    `homeserver=${
+      descriptor.homeserver?.available
+        ? `${descriptor.homeserver.kind} ${descriptor.homeserver.version}${
+            descriptor.homeserver.runtime === 'native' ? ' (native)' : ''
+          }`
+        : 'not-requested'
+    }`,
   ].join(' ');
 }
 

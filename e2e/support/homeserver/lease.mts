@@ -6,7 +6,13 @@ import {
   releaseProcessLock,
   type ProcessLock,
 } from '../process-lock.mts';
-import { resolveHomeserverKind } from './kind.mts';
+import { resolveHomeserverKind, resolveHomeserverRuntime } from './kind.mts';
+import {
+  nativePaths,
+  nodeProcessApi,
+  runningNativeServices,
+} from './native.mts';
+import { DATA, STATE_DIR } from './paths.mjs';
 
 const workspaceRoot = resolve(import.meta.dirname, '../../..');
 export const homeserverLockFile = join(
@@ -22,10 +28,28 @@ export async function acquireHomeserverLease(
   // Every path to the stack takes this lease first, so a bad selection fails here,
   // before a lock file or a container exists.
   resolveHomeserverKind();
+  const runtime = resolveHomeserverRuntime();
   const lease = acquireProcessLock(
     homeserverLockFile,
     'Homeserver E2E harness',
   );
+  let native: string[];
+  try {
+    native = runningNativeServices(
+      nativePaths(STATE_DIR, DATA).pidFile,
+      nodeProcessApi,
+    );
+  } catch (error) {
+    releaseProcessLock(lease);
+    throw error;
+  }
+  if (native.length > 0) {
+    releaseProcessLock(lease);
+    throw new Error(
+      `An E2E homeserver stack is already running (${native.join(', ')}); stop it before starting another harness`,
+    );
+  }
+  if (runtime === 'native') return lease;
   try {
     const { stdout } = await exec(
       'docker',
