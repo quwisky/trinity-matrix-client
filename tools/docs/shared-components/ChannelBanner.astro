@@ -15,7 +15,7 @@ const detail = isUserGuide
   ? page.productVersion
     ? 'Documentation for the latest published Trinity release.'
     : 'Trinity does not have a published release yet.'
-  : 'Documentation tracks the current develop branch and may change.';
+  : 'Documentation tracks the current main branch and may change.';
 ---
 
 <aside class:list={['channel-banner', { 'is-develop': !isUserGuide }]} aria-label="Documentation channel" data-pagefind-ignore>

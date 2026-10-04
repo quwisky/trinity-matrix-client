@@ -12,7 +12,7 @@ A pull request should present one reviewable concern with evidence that matches 
 
 ## Prepare the branch {#prepare-branch}
 
-Rebase on the current `develop` branch before opening the pull request. Resolve conflicts by preserving current owners and contracts, then rerun checks affected by the resolution.
+Rebase on the current `main` branch before opening the pull request. Resolve conflicts by preserving current owners and contracts, then rerun checks affected by the resolution.
 
 Inspect the commit list, full diff, untracked files, generated changes, and artifact paths. Do not include screenshots, traces, local configuration, secrets, or unrelated working-tree changes.
 
