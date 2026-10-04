@@ -577,6 +577,26 @@ export class TimelineService {
   }
 
   /**
+   * Page history back until `eventId` is in the live timeline, so a jump to a pinned or
+   * searched message that was never loaded has an element to scroll to. Emits whether it
+   * is now loaded; bounded by {@link MAX_JUMP_PAGES}, like a date jump. Cold.
+   */
+  loadEvent(eventId: string): Observable<boolean> {
+    return defer(() => {
+      const ctx = this.openContext();
+      if (!ctx) return of(false);
+      const { client, room } = ctx;
+      const loaded = (): boolean => room.findEventById(eventId) !== undefined;
+      if (loaded()) return of(true);
+      this._loadingOlder.set(true);
+      return from(this.pageBackLoop(client, room, loaded)).pipe(
+        tap(() => this.refresh()),
+        finalize(() => this._loadingOlder.set(false)),
+      );
+    });
+  }
+
+  /**
    * Find the first message on or after `dayStartMs` and page history back until it is
    * loaded, so the caller can scroll to it. Cold — runs on subscribe.
    *

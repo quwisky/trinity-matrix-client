@@ -11,6 +11,7 @@ import { PinnedMessagesPanelComponent } from './pinned-messages-panel.component'
 function pin(over: Partial<PinnedMessageView> = {}): PinnedMessageView {
   return {
     id: '$a',
+    status: 'loaded',
     sender: '@a:hs',
     senderName: 'Alice',
     body: 'hello world',
@@ -84,6 +85,36 @@ describe('PinnedMessagesPanelComponent', () => {
     expect(container.textContent).toContain('second');
     expect(rows[0].textContent).toContain('Alice');
     expect(rows[1].textContent).toContain('Bob');
+  });
+
+  it('renders a loading row that cannot be jumped to', async () => {
+    const { container } = await renderPanel({
+      pinned: [
+        pin({ id: '$old', status: 'loading', senderName: '', body: '' }),
+      ],
+    });
+
+    const row = container.querySelector('[data-testid="pinned-loading"]');
+    expect(row?.textContent).toContain('Loading pinned message');
+    expect(container.querySelector('[data-testid="pinned-item"]')).toBeNull();
+  });
+
+  it('renders an unavailable row that can still be unpinned', async () => {
+    const { container, selected, unpin } = await renderPanel({
+      pinned: [
+        pin({ id: '$gone', status: 'unavailable', senderName: '', body: '' }),
+      ],
+    });
+
+    const row = container.querySelector('[data-testid="pinned-unavailable"]');
+    expect(row?.textContent).toContain('Message unavailable');
+    expect(selected).toEqual([]);
+    fireEvent.click(
+      container.querySelector<HTMLButtonElement>(
+        '[aria-label="Unpin unavailable message"]',
+      )!,
+    );
+    expect(unpin).toHaveBeenCalledWith('$gone');
   });
 
   it('shows an empty state when nothing is pinned', async () => {

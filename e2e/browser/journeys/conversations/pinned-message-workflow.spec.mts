@@ -49,9 +49,8 @@ const REPEAT_PIN_BODY = 'pin me twice please';
 // timeline-virtualization.spec.mts). Live sync is capped too, though: a burst that
 // outruns a sync's timeline limit comes back as a gappy (`limited`) sync, and the SDK
 // restarts the live timeline after the gap, unloading the target until history is
-// paged back in. The test pages back to the target explicitly for that reason, because
-// PinnedMessagesPanelComponent only lists loaded pins and MessageListBase.jumpTo() only
-// scrolls to an event already in the rendered DOM; it never fetches context for a jump.
+// paged back in. That is fine here: the panel fetches unloaded pins and a jump pages the
+// target back in, so the test no longer has to.
 const FILLER_COUNT = 32;
 
 interface ApiUser {
@@ -339,29 +338,17 @@ test.describe('Pin messages', () => {
       );
     }
 
-    // The flood lands via live sync and the list's stick-to-bottom effect (the user
-    // hasn't scrolled up, so it's still "at bottom") rides it down to the last filler.
+    // The flood lands via live sync. The list usually rides it to the last filler, but a
+    // gappy sync (Tuwunel) can leave it short of the bottom and unload the target. The panel
+    // lists the target either way and a jump pages it back in, so just rest at the bottom.
     const lastFillerRow = page.locator('.scroll .msg[data-mid]', {
       hasText: lastFillerBody,
     });
-    await expect(lastFillerRow.first()).toBeInViewport({ timeout: 30_000 });
-
-    // Whether the target is still loaded depends on how the homeserver batched the
-    // flood (see FILLER_COUNT): Tuwunel answers it with gappy syncs that unload it.
-    // Page back until it renders, then return to the bottom, so it is loaded but out
-    // of view whichever way the flood arrived.
     const scroll = page.locator('.scroll');
-    await expect
-      .poll(
-        async () => {
-          await scroll.evaluate((el) => (el.scrollTop = 0));
-          return targetRow.count();
-        },
-        { timeout: 30_000, intervals: [400] },
-      )
-      .toBeGreaterThan(0);
-    await scroll.evaluate((el) => el.scrollTo(0, el.scrollHeight));
-    await expect(lastFillerRow.first()).toBeInViewport({ timeout: 15_000 });
+    await expect(async () => {
+      await scroll.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+      await expect(lastFillerRow.first()).toBeInViewport({ timeout: 1_000 });
+    }).toPass({ timeout: 30_000 });
     await expect(targetRow.first()).not.toBeInViewport({ timeout: 15_000 });
 
     const pinButton = page.getByTestId('open-pinned');

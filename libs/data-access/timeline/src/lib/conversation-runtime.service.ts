@@ -72,6 +72,7 @@ export type ConversationTimeline = Pick<
   | 'roomEncrypted'
   | 'loadOlder'
   | 'jumpToDate'
+  | 'loadEvent'
   | 'setTyping'
   | 'rawEvent'
   | 'reactionDetails'
@@ -598,6 +599,8 @@ export class ConversationRuntime {
             focused()?.timeline.jumpToDate(dayStartMs) ??
             of({ kind: 'no-event' as const }),
         ),
+      loadEvent: (eventId) =>
+        defer(() => focused()?.timeline.loadEvent(eventId) ?? of(false)),
       setTyping: (typing, owner) =>
         focused()?.timeline.setTyping(typing, owner),
       rawEvent: (roomId, eventId) =>

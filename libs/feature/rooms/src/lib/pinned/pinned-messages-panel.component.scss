@@ -36,6 +36,10 @@
     }
   }
 
+  .pin-item__main--static {
+    cursor: default;
+  }
+
   .pin-item__head {
     display: flex;
     align-items: baseline;
