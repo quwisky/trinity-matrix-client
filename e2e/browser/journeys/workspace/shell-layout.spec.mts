@@ -9,8 +9,8 @@ import {
 import {
   login,
   seedPreference,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { passwordLogin, registerUser } from '../../../support/account.mts';
 
@@ -22,7 +22,7 @@ import { passwordLogin, registerUser } from '../../../support/account.mts';
  * of their columns. This deliberately seeds all four vertical panes and repeats the layout in
  * Cosy and Compact at the three phase-closing desktop viewports.
  */
-const session = synapseSession();
+const session = homeserverSession();
 const DENSITY_KEY = 'trinity.appearance.density';
 
 interface ApiAccount {
@@ -606,7 +606,7 @@ test.describe('Modern room shell layout', () => {
       hs,
       user: readerName,
       pass: readerPass,
-    } as SynapseSession);
+    } as HomeserverSession);
 
     for (const density of ['cosy', 'compact'] as const) {
       await seedPreference(page, DENSITY_KEY, density);

@@ -25,7 +25,6 @@ import { ACCOUNT_CLEANUP_STEP_BUDGET_MS } from './account-cleanup-policy';
 import { ACCOUNT_LIFECYCLE_PORT } from './account-lifecycle.port';
 import type {
   AccountCleanupIssue,
-  AccountCleanupRecovery,
   AccountCleanupScope,
   InstallationResetOutcome,
 } from './account-runtime.models';
@@ -78,18 +77,18 @@ export class InstallationResetWorkflow {
                 ),
               ),
               concatMap((records) =>
-                this.capture(
-                  attempt,
-                  this.matrix.stop(),
-                  'matrix-session',
-                  'restart-application',
-                  ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
-                ).pipe(map(() => records)),
+                attempt
+                  .capture(
+                    this.matrix.stop(),
+                    'matrix-session',
+                    'restart-application',
+                    ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
+                  )
+                  .pipe(map(() => records)),
               ),
               concatMap((records) => this.wipeIndexedDb(attempt, records)),
               concatMap(() =>
-                this.capture(
-                  attempt,
+                attempt.capture(
                   this.storage.clearAll().pipe(
                     catchError((error: unknown) => {
                       attempt.addIssue(
@@ -142,7 +141,6 @@ export class InstallationResetWorkflow {
                 budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
                 scope: 'account-registry',
                 recovery: 'retry-installation-reset',
-                fallback: undefined,
                 onSettled: () => attempt.resolveIssue('account-registry'),
               }),
             );
@@ -221,15 +219,13 @@ export class InstallationResetWorkflow {
     sessions: readonly (MatrixSession | null)[],
   ): Observable<unknown> {
     const operations = [
-      this.capture(
-        attempt,
+      attempt.capture(
         this.lifecycle.unregisterNotifications(),
         'notifications',
         'restart-application',
         ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
       ),
-      this.capture(
-        attempt,
+      attempt.capture(
         this.matrix.signOutAll(),
         'matrix-session',
         'restart-application',
@@ -244,8 +240,7 @@ export class InstallationResetWorkflow {
           } => Boolean(session?.oidc),
         )
         .map((session) =>
-          this.capture(
-            attempt,
+          attempt.capture(
             this.lifecycle.revokeProviderSession(session),
             'provider-session',
             'restart-application',
@@ -417,25 +412,6 @@ export class InstallationResetWorkflow {
   ): void {
     if (succeeded) attempt.resolveIssue(scope);
     if (!succeeded) attempt.addIssue(scope, 'retry-installation-reset');
-  }
-
-  private capture(
-    attempt: AccountCleanupAttempt<InstallationResetOutcome>,
-    source: Observable<unknown>,
-    scope: AccountCleanupScope,
-    recovery: AccountCleanupRecovery,
-    budgetMs: number,
-    onSettled?: () => void,
-  ): Observable<void> {
-    return attempt
-      .step(source, {
-        budgetMs,
-        scope,
-        recovery,
-        fallback: undefined,
-        onSettled,
-      })
-      .pipe(map(() => void 0));
   }
 
   private terminal(

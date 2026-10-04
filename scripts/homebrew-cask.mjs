@@ -1,5 +1,4 @@
 /** Render the Homebrew cask for one published Trinity release (see the release guide). */
-import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
 const REPO = 'https://github.com/quwisky/trinity-matrix-client';
@@ -54,7 +53,7 @@ ${spec.livecheck}  end
 
   conflicts_with cask: "${spec.conflicts}"
   depends_on arch: :arm64
-  depends_on macos: ">= :ventura"
+  depends_on macos: :ventura
 
   app "Trinity.app"
 
@@ -67,10 +66,7 @@ end
 `;
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (import.meta.main) {
   const { values } = parseArgs({
     options: {
       cask: { type: 'string' },

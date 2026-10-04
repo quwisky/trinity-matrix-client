@@ -7,12 +7,12 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
-const session = synapseSession();
+const session = homeserverSession();
 
 async function tokenFor(
   request: APIRequestContext,
@@ -94,14 +94,14 @@ test.describe('Leaving a Space', () => {
       },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('space-leave').click();
     const confirmation = page.getByRole('dialog', { name: 'Leave space' });
     await expect(confirmation).toContainText(spaceName);
     await expect(confirmation).toContainText(user);
     await expect(confirmation).toContainText(
-      'You remain a member of its Rooms',
+      'You remain a member of its rooms',
     );
     await confirmation.getByRole('button', { name: 'Cancel' }).click();
 

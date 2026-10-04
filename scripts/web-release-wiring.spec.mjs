@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -91,7 +91,7 @@ describe('web release docs', () => {
   it('cover the first publish and a dropped container run', () => {
     expect(guide).toContain('package visibility to **Public**');
     expect(guide).toMatch(/Container run cancelled[^\n]*dispatch/i);
-    expect(readme).toContain('ghcr.io/quwisky/trinity-web:next');
+    expect(readme).toContain('ghcr.io/quwisky/trinity-web:latest');
   });
 });
 
@@ -133,5 +133,37 @@ describe('container workflow robustness', () => {
       "node -p \"require('./dist/web-image-metadata.json')",
     );
     expect(container).toContain('--provenance=false');
+  });
+});
+
+describe('release package timeouts', () => {
+  it('gives the macOS package 120 minutes for notarization and the others 45', () => {
+    const release = read('.github/workflows/release.yml');
+    expect(release).toContain(
+      "timeout-minutes: ${{ matrix.platform == 'mac' && 120 || 45 }}",
+    );
+  });
+});
+
+describe('GHCR repository link', () => {
+  it('annotates the multi-arch index so GitHub links the package to the repository', () => {
+    const container = read('.github/workflows/container.yml');
+    // GHCR reads org.opencontainers.image.source from the index annotations for a
+    // multi-arch image; per-platform config labels alone leave the package unlinked.
+    for (const key of ['source', 'description', 'licenses'])
+      expect(container).toContain(
+        `--annotation "index:org.opencontainers.image.${key}=`,
+      );
+  });
+});
+
+describe('macOS notarization', () => {
+  it("notarizes once, through electron-builder's built-in notarization", () => {
+    const config = read('electron/electron-builder.yml');
+    // A second afterSign notarization resubmitted the already-notarized app and
+    // doubled the wait on Apple's notary queue.
+    expect(config).not.toMatch(/^afterSign:/m);
+    expect(config).not.toMatch(/^\s+notarize:\s*false/m);
+    expect(existsSync(join(root, 'electron/build/notarize.cjs'))).toBe(false);
   });
 });

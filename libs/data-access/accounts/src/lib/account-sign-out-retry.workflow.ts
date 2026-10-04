@@ -156,7 +156,6 @@ export class AccountSignOutRetryWorkflow {
       budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
       scope: 'account-registry',
       recovery: 'retry-sign-out',
-      fallback: undefined,
       onSettled: () => {
         attempt.resolveIssue('account-registry');
         attempt.resolveIssue('secure-storage');
@@ -174,7 +173,6 @@ export class AccountSignOutRetryWorkflow {
       budgetMs,
       scope,
       recovery: 'retry-sign-out',
-      fallback: undefined,
       onSettled: () => attempt.resolveIssue(scope),
     });
   }

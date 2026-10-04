@@ -59,6 +59,10 @@ const nonSolidTone = {
   },
 } as const;
 
+/** One keyboard-focus ring for every button, matching `trnInput` and the global baseline. */
+const focusRing =
+  'focus-visible:border-[color:var(--trinity-focus-ring)] focus-visible:ring-[color:var(--trinity-focus-ring)] dark:focus-visible:ring-[color:var(--trinity-focus-ring)]';
+
 /**
  * A private adapter from Trinity concepts to the current Helm class substrate.
  *
@@ -77,5 +81,5 @@ export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
       ? ''
       : nonSolidTone[options.variant][options.presentation];
 
-  return hlm(buttonVariants({ variant, size }), tone);
+  return hlm(buttonVariants({ variant, size }), tone, focusRing);
 }

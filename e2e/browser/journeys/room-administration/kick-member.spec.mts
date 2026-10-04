@@ -7,15 +7,16 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { openSystemStatusFromRooms } from '../../../support/journeys/navigation.mts';
 
 // Covers kick and ban projection recovery. The roster must be visible again before the
 // removed row assertion: opening member info replaces the roster, so asserting only that
 // the row disappeared can pass while the info panel is still covering the stale list.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   userId: string;
@@ -133,7 +134,7 @@ test.describe('Remove a member', () => {
         hs,
         user: adminUser,
         pass: adminPass,
-      } as SynapseSession);
+      } as HomeserverSession);
       await openRoom(page, roomName);
       await expect(page.locator('.chat-members')).toBeHidden();
       await page.getByTestId('toggle-members').click();
@@ -207,7 +208,7 @@ test.describe('Remove a member', () => {
       hs,
       user: adminUser,
       pass: adminPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
     await page.getByTestId('toggle-members').click();
     const roster = page.getByTestId('member-list');
@@ -233,11 +234,8 @@ test.describe('Remove a member', () => {
       members.retryProjection();
     });
 
-    await page
-      .getByTestId('app-capability-summary')
-      .getByRole('button', { name: 'System Status' })
-      .click();
-    const status = page.getByRole('dialog', { name: 'System Status' });
+    await openSystemStatusFromRooms(page);
+    const status = page.getByRole('dialog', { name: 'System status' });
     const memberHealth = status
       .locator('article')
       .filter({ hasText: 'The current Room member list is unavailable' });

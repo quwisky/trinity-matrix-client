@@ -59,7 +59,7 @@ const ROOM_MENTION = /(^|\W)@room(\W|$)/;
  * `m.mentions` is now always sent (see {@link mentionsBlock}). Lines beginning with `>` are
  * somebody else's words being carried along, so they are not the quoter's intent.
  */
-export function mentionsRoom(body: string): boolean {
+function mentionsRoom(body: string): boolean {
   return body
     .split('\n')
     .filter((line) => !line.trimStart().startsWith('>'))
@@ -443,7 +443,7 @@ export function locationMessageContent(
 }
 
 /** `m.text` spoiler content (`/spoiler`) — an `<span data-mx-spoiler>` formatted body. */
-export function spoilerMessageContent(text: string) {
+function spoilerMessageContent(text: string) {
   return {
     msgtype: MsgType.Text,
     body: text,

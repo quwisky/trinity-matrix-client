@@ -20,7 +20,7 @@ import {
  * Raised by {@link MediaPickerService.pickImages} when photo-library access is denied.
  * Carries a user-facing message so the composer can surface it verbatim.
  */
-export class GalleryPermissionDeniedError extends Error {
+class GalleryPermissionDeniedError extends Error {
   constructor() {
     super('Photo access is denied. Enable it in Settings to attach images.');
     this.name = 'GalleryPermissionDeniedError';

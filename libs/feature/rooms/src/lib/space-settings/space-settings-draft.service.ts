@@ -17,7 +17,7 @@ import {
 } from '@trinity/data-access/room-administration';
 import { applyRoomBasicsGates } from '../shared/room-basics-form';
 import {
-  runSave,
+  sectionSaver,
   type FieldWrite,
   type SettingsFeedback,
 } from '../shared/save-fields';
@@ -73,6 +73,16 @@ export class SpaceSettingsDraftService {
   private readonly savingState = signal<'general' | 'access' | null>(null);
   private readonly generalFeedbackState = signal<SettingsFeedback | null>(null);
   private readonly accessFeedbackState = signal<SettingsFeedback | null>(null);
+  private readonly saveSection = sectionSaver({
+    emptyLabel: 'Space details',
+    destroyRef: this.destroyRef,
+    toast: this.toast,
+    saving: this.savingState,
+    feedback: {
+      general: this.generalFeedbackState,
+      access: this.accessFeedbackState,
+    },
+  });
   private started = false;
 
   readonly snapshot = this.snapshotState.asReadonly();
@@ -92,10 +102,10 @@ export class SpaceSettingsDraftService {
   readonly targetUnavailableReason = computed(() => {
     const availability = this.snapshot()?.availability;
     if (availability === 'account-unavailable') {
-      return 'This Account is no longer available. Your unfinished edits are still here.';
+      return 'This account is no longer available. Your unfinished edits are still here.';
     }
     if (availability === 'room-unavailable') {
-      return 'This Space is no longer joined for the opening Account. Your unfinished edits are still here.';
+      return 'This space is no longer joined for this account. Your unfinished edits are still here.';
     }
     return null;
   });
@@ -160,7 +170,7 @@ export class SpaceSettingsDraftService {
   readonly generalSaveUnavailableReason = computed(() => {
     if (this.targetUnavailableReason()) return this.targetUnavailableReason();
     if (!this.mayEditName() && !this.mayEditTopic()) {
-      return 'Your role cannot change this Space’s name or topic.';
+      return 'Your role cannot change this space’s name or topic.';
     }
     return null;
   });
@@ -168,7 +178,7 @@ export class SpaceSettingsDraftService {
     if (this.targetUnavailableReason()) return this.targetUnavailableReason();
     return this.mayEditJoinRule()
       ? null
-      : 'Your role cannot change this Space’s access setting.';
+      : 'Your role cannot change this space’s access setting.';
   });
   readonly joinRuleOptions = computed(() => {
     const current = this.model().joinRule;
@@ -243,7 +253,7 @@ export class SpaceSettingsDraftService {
         blocked.push('topic');
       }
     }
-    this.runSave('general', writes, blocked, (saved) =>
+    this.saveSection('general', writes, blocked, (saved) =>
       this.commitGeneral(saved, candidate),
     );
   }
@@ -260,7 +270,7 @@ export class SpaceSettingsDraftService {
       });
       return;
     }
-    this.runSave(
+    this.saveSection(
       'access',
       [{ field: 'join rule', op: this.settings.setJoinRule(target, joinRule) }],
       [],
@@ -268,28 +278,6 @@ export class SpaceSettingsDraftService {
         if (saved.has('join rule')) this.accessBaseline.set(joinRule);
       },
     );
-  }
-
-  private runSave(
-    section: 'general' | 'access',
-    writes: readonly FieldWrite[],
-    blocked: readonly string[],
-    commit: (saved: ReadonlySet<string>) => void,
-  ): void {
-    runSave({
-      writes,
-      blocked,
-      emptyLabel: 'Space details',
-      destroyRef: this.destroyRef,
-      toast: this.toast,
-      setSaving: (on) => this.savingState.set(on ? section : null),
-      setFeedback: (feedback) =>
-        (section === 'general'
-          ? this.generalFeedbackState
-          : this.accessFeedbackState
-        ).set(feedback),
-      commit,
-    });
   }
 
   private commitGeneral(

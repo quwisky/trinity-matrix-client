@@ -73,7 +73,7 @@ type NotificationHostOutcome =
       readonly diagnostic: { readonly code: string };
     };
 
-export function showOsNotification(
+function showOsNotification(
   payload: NotificationRequest,
 ): Promise<NotificationHostOutcome> {
   if (!Notification.isSupported()) {

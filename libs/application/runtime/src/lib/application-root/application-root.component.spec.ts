@@ -7,7 +7,11 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
-import { TrustVerificationService } from '@trinity/data-access/trust';
+import {
+  TrustService,
+  TrustVerificationService,
+  type TrustStatus,
+} from '@trinity/data-access/trust';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
@@ -32,6 +36,7 @@ class RouteProbeComponent {}
 describe('ApplicationRootComponent', () => {
   async function setup(initial: ApplicationRuntimeState, routes: Routes = []) {
     const state = signal(initial);
+    const trust = signal<TrustStatus>('ready');
     const recover = vi.fn<() => Observable<ApplicationRecoveryOutcome>>(() =>
       of({ kind: 'accepted' }),
     );
@@ -55,6 +60,7 @@ describe('ApplicationRootComponent', () => {
             avatarMxc: null,
           }),
         }),
+        MockProvider(TrustService, { status: trust.asReadonly() }),
         MockProvider(TrustVerificationService, { active: signal(null) }),
         MockProvider(TrnDialogService, { hasOpen: hasOpenDialog }),
         MockProvider(TrnAlertService, { prompt$: prompt, confirm$: confirm }),
@@ -67,6 +73,7 @@ describe('ApplicationRootComponent', () => {
     return {
       ...rendered,
       state,
+      trust,
       recover,
       prompt,
       confirm,
@@ -139,7 +146,7 @@ describe('ApplicationRootComponent', () => {
       settlements: [],
     });
     expect(getByTestId('app-startup-blocked').textContent).toContain(
-      'required Account session',
+      'required account session',
     );
     getByTestId('app-startup-recovery').click();
     fixture.detectChanges();
@@ -192,7 +199,7 @@ describe('ApplicationRootComponent', () => {
     );
   });
 
-  it('keeps System Status open when Escape dismisses a recovery confirmation', async () => {
+  it('keeps System status open when Escape dismisses a recovery confirmation', async () => {
     const { fixture, getByTestId, queryByTestId, confirm, hasOpenDialog } =
       await setup({
         phase: 'blocked',
@@ -206,7 +213,7 @@ describe('ApplicationRootComponent', () => {
       });
     [...fixture.nativeElement.querySelectorAll('button')]
       .find((item: HTMLButtonElement) =>
-        item.textContent?.includes('System Status'),
+        item.textContent?.includes('System status'),
       )
       .click();
     fixture.detectChanges();
@@ -237,7 +244,7 @@ describe('ApplicationRootComponent', () => {
     expect(queryByTestId('system-status')).toBeNull();
   });
 
-  it('keeps routed content while grouping scoped problems in System Status', async () => {
+  it('keeps routed content while grouping scoped problems in System status', async () => {
     const { fixture, health, getByTestId } = await setup({
       phase: 'ready',
       attempt: 1,
@@ -261,11 +268,14 @@ describe('ApplicationRootComponent', () => {
     );
     fixture.detectChanges();
 
+    expect(
+      getByTestId('app-capability-summary').closest('trn-banner'),
+    ).toBeTruthy();
     expect(getByTestId('app-capability-summary').textContent).toContain(
-      '1 limited capability',
+      'A background Account needs attention.',
     );
     const button = [...fixture.nativeElement.querySelectorAll('button')].find(
-      (item: HTMLButtonElement) => item.textContent?.includes('System Status'),
+      (item: HTMLButtonElement) => item.textContent?.includes('System status'),
     );
     button.click();
     fixture.detectChanges();
@@ -274,6 +284,38 @@ describe('ApplicationRootComponent', () => {
     expect(status.textContent).toContain('Alice');
     expect(status.textContent).not.toContain('@private:example.org');
     expect(status.textContent).toContain('1 actionable scope');
+  });
+
+  it('shows one banner at a time and yields the slot to the encryption prompt', async () => {
+    const { fixture, health, trust, getByTestId, queryByTestId } = await setup({
+      phase: 'ready',
+      attempt: 1,
+      settlements: [],
+    });
+    health.report(
+      {
+        capability: 'accounts',
+        operation: 'restore',
+        context: Symbol('account'),
+        generation: 1,
+        demanded: true,
+        preparation: 'failed',
+        ownership: 'retained',
+        condition: 'degraded',
+        code: 'account-restore-transient-network',
+      },
+      () => of({ kind: 'success' as const }),
+    );
+    fixture.detectChanges();
+    expect(getByTestId('app-capability-summary')).toBeTruthy();
+
+    trust.set('needs-setup');
+    fixture.detectChanges();
+    expect(queryByTestId('app-capability-summary')).toBeNull();
+
+    trust.set('ready');
+    fixture.detectChanges();
+    expect(getByTestId('app-capability-summary')).toBeTruthy();
   });
 
   it('opens Overview and navigates to safe Support details without leaving startup', async () => {
@@ -288,10 +330,10 @@ describe('ApplicationRootComponent', () => {
       settlements: [],
     });
     // The startup entry point is available independently of a ready Workspace.
-    getByRole('button', { name: 'System Status' }).click();
+    getByRole('button', { name: 'System status' }).click();
     fixture.detectChanges();
     const navigation = getByRole('navigation', {
-      name: 'System Status sections',
+      name: 'System status sections',
     });
     expect(navigation).toBeTruthy();
     expect(getByRole('button', { name: 'Overview' })).toHaveAttribute(
@@ -331,7 +373,7 @@ describe('ApplicationRootComponent', () => {
     };
     health.report(fact, () => of({ kind: 'success' as const }));
     fixture.detectChanges();
-    getByRole('button', { name: 'System Status' }).click();
+    getByRole('button', { name: 'System status' }).click();
     fixture.detectChanges();
     getByRole('button', { name: 'Accounts' }).click();
     fixture.detectChanges();
@@ -351,7 +393,7 @@ describe('ApplicationRootComponent', () => {
     expect(getByTestId('system-status-all-working')).toBeTruthy();
   });
 
-  it('returns mobile Back to sections before dismissing System Status', async () => {
+  it('returns mobile Back to sections before dismissing System status', async () => {
     const width = Object.getOwnPropertyDescriptor(window, 'innerWidth')!;
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
@@ -396,7 +438,7 @@ describe('ApplicationRootComponent', () => {
     }
   });
 
-  it('keeps an all-working System Status entry point available', async () => {
+  it('keeps an all-working System status entry point available', async () => {
     const { fixture, getByTestId } = await setup({
       phase: 'ready',
       attempt: 1,
@@ -432,7 +474,7 @@ describe('ApplicationRootComponent', () => {
     fixture.detectChanges();
     [...fixture.nativeElement.querySelectorAll('button')]
       .find((item: HTMLButtonElement) =>
-        item.textContent?.includes('System Status'),
+        item.textContent?.includes('System status'),
       )
       .click();
     fixture.detectChanges();

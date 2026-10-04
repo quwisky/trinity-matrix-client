@@ -1,8 +1,8 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -13,7 +13,7 @@ import { registerUser } from '../../../support/account.mts';
 // The flag is asserted BOTH server-side and in the UI: the room's own notification counts
 // stay at zero throughout, so the account-data write is the only thing that could be
 // making the row look unread. Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 /** Open the room row's ⋮ menu in the channel list. */
 async function openRoomMenu(page: Page, roomName: string): Promise<void> {
@@ -70,7 +70,7 @@ test.describe('Mark as unread', () => {
       hs,
       user,
       pass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await page.getByTestId('rail-rooms').click();
 
     // The room is read and empty, so it carries no badge of any kind.
@@ -145,7 +145,7 @@ test.describe('Mark as unread', () => {
       hs,
       user,
       pass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await page.getByTestId('rail-rooms').click();
     const row = page.locator('.channel', { hasText: roomName }).first();
     await row.waitFor({ state: 'visible', timeout: 30_000 });

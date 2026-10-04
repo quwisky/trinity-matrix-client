@@ -556,9 +556,9 @@ describe('MemberInfoComponent', () => {
 
     expect(alertPrompt).toHaveBeenCalledWith(
       expect.objectContaining({
-        header: 'Remove from Space',
+        header: 'Remove from space',
         message: expect.stringContaining(
-          'Design Space using Account @opening:hs',
+          'Design Space using account @opening:hs',
         ),
       }),
     );
@@ -595,7 +595,7 @@ describe('MemberInfoComponent', () => {
     cmp.ban();
 
     expect(alertPrompt).toHaveBeenCalledWith(
-      expect.objectContaining({ header: 'Ban from Space' }),
+      expect.objectContaining({ header: 'Ban from space' }),
     );
   });
 

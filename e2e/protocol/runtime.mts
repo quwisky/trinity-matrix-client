@@ -189,7 +189,7 @@ export function protocolResources(
   const suite = protocolSuite(id);
   if (mode === 'remote') {
     remoteProtocolCredentials(id, environment);
-    return suite.serializationKeys.filter((key) => key !== 'synapse');
+    return suite.serializationKeys.filter((key) => key !== 'homeserver');
   }
   return suite.serializationKeys;
 }

@@ -773,4 +773,20 @@ describe('contrast matrix', () => {
 
     expect(failures).toEqual([]);
   });
+
+  it('colours the room preview on a selected row with the measured selected-state foreground', () => {
+    // A5: the preview used --trinity-text-muted on the selected surface (3.86:1 in dark). The
+    // matrix above measures the selected foreground on that surface, so the preview must use it.
+    const sheet = readFileSync(
+      join(
+        workspaceRoot,
+        'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.scss',
+      ),
+      'utf8',
+    );
+
+    expect(sheet).toMatch(
+      /&\.active\s*\{[^]*?\.channel__preview\s*\{\s*color:\s*var\(--trinity-state-selected-foreground\)/,
+    );
+  });
 });

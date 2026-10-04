@@ -7,22 +7,22 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 // End-to-end for spoiler reveal: a message carrying a `data-mx-spoiler` span renders
 // concealed, and clicking it uncovers it. The spoiler is injected through the Matrix
 // API (send-side spoiler syntax is a separate follow-up). Needs Synapse (Docker).
-const session = synapseSession();
+const session = homeserverSession();
 
 /** Register a user, create their room, and drop a spoiler message straight in. */
 async function seedRoomWithSpoiler(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ user: SynapseSession; roomName: string; secret: string }> {
+): Promise<{ user: HomeserverSession; roomName: string; secret: string }> {
   const username = `spoiler-user-${runId}`;
   const password = `${username}-pass`;
   const roomName = `Spoiler E2E ${runId}`;

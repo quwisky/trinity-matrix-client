@@ -81,11 +81,47 @@ function setup() {
     ...roomEmitter,
   };
   const clientEmitter = emitter();
+  // Events the server holds but the loaded timeline does not.
+  const remote = new Map<string, Record<string, unknown>>();
+  const fetchRoomEvent = vi.fn((_roomId: string, eventId: string) => {
+    const raw = remote.get(eventId);
+    return raw
+      ? Promise.resolve(raw)
+      : Promise.reject(
+          Object.assign(new Error('Not found'), { httpStatus: 404 }),
+        );
+  });
+  const decryptEventIfNeeded = vi.fn((event: { decrypt?: () => void }) => {
+    event.decrypt?.();
+    return Promise.resolve();
+  });
+  const getEventMapper = () => (raw: Record<string, unknown>) => {
+    const encrypted = raw['type'] === 'm.room.encrypted';
+    let clear: Record<string, unknown> | null = encrypted
+      ? null
+      : (raw['content'] as Record<string, unknown>);
+    return {
+      getId: () => raw['event_id'],
+      getSender: () => raw['sender'],
+      getContent: () => clear ?? {},
+      getClearContent: () => clear,
+      getTs: () => raw['origin_server_ts'],
+      isEncrypted: () => encrypted,
+      isDecryptionFailure: () => false,
+      isRedacted: () => raw['redacted'] === true,
+      decrypt: () => {
+        clear = { body: raw['clear_body'] };
+      },
+    };
+  };
   const sendStateEvent = vi.fn(() => Promise.resolve({ event_id: '$state' }));
   const client = {
     getUserId: () => KEY.accountId,
     getRoom: (roomId: string) => (roomId === KEY.roomId ? room : null),
     sendStateEvent,
+    fetchRoomEvent,
+    decryptEventIfNeeded,
+    getEventMapper,
     ...clientEmitter,
   };
   const policy: {
@@ -109,6 +145,8 @@ function setup() {
     room,
     policy,
     sendStateEvent,
+    remote,
+    fetchRoomEvent,
     setPinned: (next: string[]) => {
       pinned = next;
     },
@@ -129,6 +167,7 @@ describe('ConversationPinsController', () => {
         senderName: 'Bob',
         body: 'First pinned message',
         ts: 10,
+        status: 'loaded',
       },
     ]);
     expect(controller.canMutate()).toBe(true);
@@ -211,6 +250,137 @@ describe('ConversationPinsController', () => {
     ).resolves.toMatchObject({
       kind: 'rejected',
       failure: 'conversation-unavailable',
+    });
+  });
+
+  describe('pins outside the loaded timeline', () => {
+    const raw = (id: string, over: Record<string, unknown> = {}) => ({
+      event_id: id,
+      room_id: KEY.roomId,
+      sender: '@bob:example.org',
+      type: 'm.room.message',
+      origin_server_ts: 5,
+      content: { body: `Old ${id}` },
+      ...over,
+    });
+    const flush = () => new Promise((resolve) => setTimeout(resolve));
+
+    it('lists a loading row, then the fetched message, in pin order', async () => {
+      const { controller, remote, fetchRoomEvent, setPinned, room } = setup();
+      remote.set('$old', raw('$old'));
+      setPinned(['$old', '$one']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+
+      expect(controller.messages().map((m) => [m.id, m.status])).toEqual([
+        ['$old', 'loading'],
+        ['$one', 'loaded'],
+      ]);
+      await flush();
+
+      expect(fetchRoomEvent).toHaveBeenCalledWith(KEY.roomId, '$old');
+      expect(controller.messages()).toMatchObject([
+        { id: '$old', status: 'loaded', body: 'Old $old', senderName: 'Bob' },
+        { id: '$one', status: 'loaded' },
+      ]);
+    });
+
+    it('fetches each unloaded pin once, not on every recompute', async () => {
+      const { controller, remote, fetchRoomEvent, setPinned, room } = setup();
+      remote.set('$old', raw('$old'));
+      setPinned(['$old']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
+      room.emit(RoomEvent.Timeline);
+      await flush();
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPowerLevels,
+      });
+      await flush();
+
+      expect(fetchRoomEvent).toHaveBeenCalledTimes(1);
+      expect(controller.messages()[0]?.status).toBe('loaded');
+    });
+
+    it('shows an unavailable row when the server will not return the event', async () => {
+      const { controller, setPinned, room } = setup();
+      setPinned(['$gone', '$one']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
+
+      expect(controller.messages().map((m) => [m.id, m.status])).toEqual([
+        ['$gone', 'unavailable'],
+        ['$one', 'loaded'],
+      ]);
+    });
+
+    it('decrypts an encrypted pin before showing it', async () => {
+      const { controller, remote, setPinned, room } = setup();
+      remote.set(
+        '$secret',
+        raw('$secret', {
+          type: 'm.room.encrypted',
+          clear_body: 'Decrypted text',
+        }),
+      );
+      setPinned(['$secret']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
+
+      expect(controller.messages()[0]).toMatchObject({
+        status: 'loaded',
+        body: 'Decrypted text',
+      });
+    });
+
+    it('skips a redacted pin as before', async () => {
+      const { controller, remote, setPinned, room } = setup();
+      remote.set('$old', raw('$old', { redacted: true }));
+      setPinned(['$old']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
+
+      expect(controller.messages()).toEqual([]);
+    });
+
+    it('drops a fetch that resolves after the pin list changed', async () => {
+      const { controller, remote, fetchRoomEvent, setPinned, room } = setup();
+      remote.set('$old', raw('$old'));
+      remote.set('$newer', raw('$newer'));
+      setPinned(['$old']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      setPinned(['$newer']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
+
+      expect(fetchRoomEvent).toHaveBeenCalledTimes(2);
+      expect(controller.messages().map((m) => m.id)).toEqual(['$newer']);
+    });
+
+    it('drops results that resolve after the room was released', async () => {
+      const { controller, remote, setPinned, room } = setup();
+      remote.set('$old', raw('$old'));
+      setPinned(['$old']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      controller.release();
+      await flush();
+
+      expect(controller.messages()).toEqual([]);
     });
   });
 });

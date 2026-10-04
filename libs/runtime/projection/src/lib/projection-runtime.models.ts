@@ -1,10 +1,5 @@
 import type { Observable } from 'rxjs';
 
-/** One frame budget for an in-process barrier after its projections acknowledge. */
-export const PROJECTION_RUNTIME_BASELINE = {
-  maxLocalBarrierDurationMs: 16,
-} as const;
-
 export type ProjectionScope =
   | { readonly kind: 'active-account' }
   | { readonly kind: 'all-live-accounts' }
@@ -65,8 +60,4 @@ export interface ProjectionRuntimeDiagnostics {
   readonly activeProjections: number;
   readonly listenerCount: number;
   readonly retainedBytes: number;
-  readonly reconciliations: number;
-  readonly reconcileDurationMs: number;
-  readonly completedBarriers: number;
-  readonly lastBarrierDurationMs: number | null;
 }

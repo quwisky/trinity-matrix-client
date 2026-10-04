@@ -7,13 +7,24 @@
   "implicitDependencies": ["trinity", "trinity-android", "trinity-e2e-support"],
   "targets": {
     "e2e": {
-      "//": "Owns the API 36 emulator, installed applications, adb bridge, repo-local Appium home and support-owned disposable Synapse lifecycle.",
+      "//": "Owns the API 36 emulator, installed applications, adb bridge, repo-local Appium home and support-owned disposable homeserver lifecycle.",
       "cache": false,
       "parallelism": false,
       "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-mobile"],
       "executor": "nx:run-commands",
       "options": {
         "command": "node run.mts",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "e2e-ios": {
+      "//": "macOS only. Owns one iOS Simulator, the installed simulator app and its keychain trust, the repo-local Appium home and the support-owned native homeserver lifecycle.",
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-mobile"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node run-ios.mts",
         "cwd": "{projectRoot}"
       }
     },

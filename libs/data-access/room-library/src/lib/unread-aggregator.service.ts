@@ -1,6 +1,7 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import {
   ClientEvent,
+  MatrixEventEvent,
   NotificationCountType,
   RoomEvent,
   type MatrixClient,
@@ -146,6 +147,9 @@ export class UnreadAggregatorService {
     client.on(RoomEvent.MyMembership, handler);
     client.on(RoomEvent.Receipt, handler);
     client.on(RoomEvent.AccountData, handler); // carries the marked-unread flag
+    // Encrypted rooms count a message only once it decrypts, after its Sync; the
+    // client re-emits Decrypted then. Without it the badge waits for the next sync.
+    client.on(MatrixEventEvent.Decrypted, handler);
   }
 
   private detach(client: MatrixClient, handler: UnreadListener): void {
@@ -154,5 +158,6 @@ export class UnreadAggregatorService {
     client.off(RoomEvent.MyMembership, handler);
     client.off(RoomEvent.Receipt, handler);
     client.off(RoomEvent.AccountData, handler);
+    client.off(MatrixEventEvent.Decrypted, handler);
   }
 }

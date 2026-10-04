@@ -215,7 +215,7 @@ const MAX_WAVEFORM_BARS = 512;
  * User ids whose read receipt sits on this event, capped. Excludes the local user and
  * the event's author, whose receipt on their own message carries no information.
  */
-export function readReceiptUserIds(
+function readReceiptUserIds(
   client: MatrixClient,
   room: Room,
   event: MatrixEvent,

@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   mkdirSync,
   readFileSync,
@@ -7,16 +7,28 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import {
+  HOMESERVER_FEATURES,
+  HOMESERVER_KINDS,
+  HOMESERVER_RUNTIMES,
+  type HomeserverFeature,
+  type HomeserverKind,
+  type HomeserverRuntime,
+} from './homeserver/kind.mts';
 import { processIsAlive } from './process-lock.mts';
 
 export const E2E_SESSION_ENV = 'TRINITY_E2E_SESSION_FILE';
 export const E2E_SESSION_VERSION = 1;
 
-export interface SynapseSessionDescriptor {
+export interface HomeserverSessionDescriptor {
   readonly available: boolean;
   readonly hs?: string;
   readonly user?: string;
   readonly pass?: string;
+  /** Which server answered, so specs can branch where Matrix servers legitimately differ. */
+  readonly kind?: HomeserverKind;
+  /** The server's own version string from `/_matrix/federation/v1/version`. */
+  readonly version?: string;
   readonly secondary?: {
     readonly hs: string;
     readonly serverName: string;
@@ -32,6 +44,12 @@ export interface SynapseSessionDescriptor {
     readonly email: string;
     readonly pass: string;
   };
+  /** Docker Compose, or host processes when TRINITY_E2E_HOMESERVER_RUNTIME=native. */
+  readonly runtime?: HomeserverRuntime;
+  /** Harness features this runtime does not provide; specs needing one are excluded by name. */
+  readonly unavailable?: readonly HomeserverFeature[];
+  /** Caddy's local root certificate, for hosts that must trust it (the iOS Simulator). */
+  readonly caddyRoot?: string;
 }
 
 export interface E2ESessionDescriptor {
@@ -50,7 +68,7 @@ export interface E2ESessionDescriptor {
     readonly report: string;
   };
   readonly artifactsRoot: string;
-  readonly synapse?: SynapseSessionDescriptor;
+  readonly homeserver?: HomeserverSessionDescriptor;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -72,17 +90,62 @@ function isLoopbackOrigin(value: unknown): value is string {
   }
 }
 
-function assertSynapse(
+function assertHomeserver(
   value: unknown,
-): asserts value is SynapseSessionDescriptor {
+): asserts value is HomeserverSessionDescriptor {
   if (!isObject(value) || typeof value['available'] !== 'boolean') {
-    throw new Error('E2E session has an invalid Synapse capability');
+    throw new Error('E2E session has an invalid homeserver capability');
   }
   if (value['available']) {
     for (const key of ['hs', 'user', 'pass'] as const) {
       if (typeof value[key] !== 'string' || value[key].length === 0) {
-        throw new Error(`E2E session is missing required Synapse field ${key}`);
+        throw new Error(
+          `E2E session is missing required homeserver field ${key}`,
+        );
       }
+    }
+    if (!(HOMESERVER_KINDS as readonly unknown[]).includes(value['kind'])) {
+      throw new Error('E2E session has an unknown homeserver kind');
+    }
+    if (typeof value['version'] !== 'string' || !value['version']) {
+      throw new Error('E2E session is missing the homeserver version');
+    }
+    if (
+      value['runtime'] !== undefined &&
+      !(HOMESERVER_RUNTIMES as readonly unknown[]).includes(value['runtime'])
+    ) {
+      throw new Error('E2E session has an unknown homeserver runtime');
+    }
+    const unavailable = value['unavailable'];
+    if (
+      unavailable !== undefined &&
+      (!Array.isArray(unavailable) ||
+        unavailable.some(
+          (feature) =>
+            !(HOMESERVER_FEATURES as readonly unknown[]).includes(feature),
+        ))
+    ) {
+      throw new Error(
+        'E2E session lists an unknown unavailable homeserver feature',
+      );
+    }
+    const withheld = new Set<unknown>(
+      Array.isArray(unavailable) ? unavailable : [],
+    );
+    if (
+      withheld.has('sso') &&
+      (value['sso'] !== undefined || value['ssoReset'] !== undefined)
+    ) {
+      throw new Error('E2E session both offers and withholds sso');
+    }
+    if (withheld.has('remote') && value['secondary'] !== undefined) {
+      throw new Error('E2E session both offers and withholds remote');
+    }
+    if (
+      value['caddyRoot'] !== undefined &&
+      typeof value['caddyRoot'] !== 'string'
+    ) {
+      throw new Error('E2E session has an invalid Caddy root certificate path');
     }
   }
 }
@@ -114,7 +177,7 @@ export function validateSession(value: unknown): E2ESessionDescriptor {
   ) {
     throw new Error('E2E session descriptor failed structural validation');
   }
-  if (value['synapse'] !== undefined) assertSynapse(value['synapse']);
+  if (value['homeserver'] !== undefined) assertHomeserver(value['homeserver']);
   return value as unknown as E2ESessionDescriptor;
 }
 
@@ -208,11 +271,11 @@ export function sessionEnvironment(
     TRINITY_E2E_STORYBOOK_URL: descriptor.endpoints.storybook,
     TRINITY_E2E_REPORT_URL: descriptor.endpoints.report,
   };
-  if (descriptor.synapse?.available) {
+  if (descriptor.homeserver?.available) {
     environment['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
-    environment['TRINITY_HS'] = descriptor.synapse.hs;
-    environment['TRINITY_USER'] = descriptor.synapse.user;
-    environment['TRINITY_PASS'] = descriptor.synapse.pass;
+    environment['TRINITY_HS'] = descriptor.homeserver.hs;
+    environment['TRINITY_USER'] = descriptor.homeserver.user;
+    environment['TRINITY_PASS'] = descriptor.homeserver.pass;
   }
   return environment;
 }
@@ -224,24 +287,17 @@ export function sessionSummary(descriptor: E2ESessionDescriptor): string {
     `owner=${descriptor.owner.pid}`,
     `resources=${descriptor.resources.join(',') || 'none'}`,
     `app=${descriptor.endpoints.application}`,
-    `synapse=${descriptor.synapse?.available ? 'available' : 'not-requested'}`,
+    `homeserver=${
+      descriptor.homeserver?.available
+        ? `${descriptor.homeserver.kind} ${descriptor.homeserver.version}${
+            descriptor.homeserver.runtime === 'native' ? ' (native)' : ''
+          }`
+        : 'not-requested'
+    }`,
   ].join(' ');
 }
 
 /** Resolve the app endpoint only through a validated, live invocation descriptor. */
 export function applicationOrigin(): string {
   return readSession().endpoints.application;
-}
-
-/** Stable unique id for one non-Playwright driver within an invocation. */
-export function invocationResourceId(purpose: string): string {
-  const descriptor = readSession();
-  const digest = createHash('sha256')
-    .update(`${descriptor.id}:${purpose}`)
-    .digest('hex')
-    .slice(0, 12);
-  return `${purpose
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .slice(0, 20)}-${digest}`;
 }

@@ -31,7 +31,6 @@ interface ProjectionEntry {
 
 interface ReconciliationAttempt {
   readonly generation: number;
-  readonly startedAt: number;
   readonly subscription: Subscription;
   settled: boolean;
 }
@@ -49,10 +48,6 @@ const INITIAL_DIAGNOSTICS: ProjectionRuntimeDiagnostics = {
   activeProjections: 0,
   listenerCount: 0,
   retainedBytes: 0,
-  reconciliations: 0,
-  reconcileDurationMs: 0,
-  completedBarriers: 0,
-  lastBarrierDurationMs: null,
 };
 
 /**
@@ -68,10 +63,6 @@ export class ProjectionRuntime {
   private readonly runtimeChanges = new Subject<void>();
   private readonly runtimeDiagnostics = signal(INITIAL_DIAGNOSTICS);
   private nextGeneration = 0;
-  private reconciliations = 0;
-  private reconcileDurationMs = 0;
-  private completedBarriers = 0;
-  private lastBarrierDurationMs: number | null = null;
 
   readonly diagnostics = this.runtimeDiagnostics.asReadonly();
 
@@ -225,9 +216,6 @@ export class ProjectionRuntime {
               })),
             };
             finished = true;
-            this.completedBarriers += 1;
-            this.lastBarrierDurationMs = durationMs;
-            this.publishDiagnostics();
             subscriber.next(result);
             subscriber.complete();
           };
@@ -285,7 +273,6 @@ export class ProjectionRuntime {
     const generation = entry.generation;
     const attempt: ReconciliationAttempt = {
       generation,
-      startedAt: performance.now(),
       subscription: new Subscription(),
       settled: false,
     };
@@ -332,7 +319,6 @@ export class ProjectionRuntime {
     if (entry.reconciliation === attempt) {
       entry.reconciliation = null;
     }
-    this.recordReconciliation(attempt);
     if (!entry.active) return;
 
     if (entry.generation !== attempt.generation) {
@@ -357,12 +343,6 @@ export class ProjectionRuntime {
     attempt.settled = true;
     entry.reconciliation = null;
     attempt.subscription.unsubscribe();
-    this.recordReconciliation(attempt);
-  }
-
-  private recordReconciliation(attempt: ReconciliationAttempt): void {
-    this.reconciliations += 1;
-    this.reconcileDurationMs += performance.now() - attempt.startedAt;
   }
 
   private retire(entry: ProjectionEntry, options: RetirementOptions): void {
@@ -415,10 +395,6 @@ export class ProjectionRuntime {
     this.runtimeDiagnostics.set({
       activeProjections: this.entries.size,
       ...resources,
-      reconciliations: this.reconciliations,
-      reconcileDurationMs: this.reconcileDurationMs,
-      completedBarriers: this.completedBarriers,
-      lastBarrierDurationMs: this.lastBarrierDurationMs,
     });
   }
 }

@@ -8,8 +8,8 @@ import {
 import {
   login,
   openSettingsTab,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -23,7 +23,7 @@ import { registerUser } from '../../../support/account.mts';
 // that closes having written nothing looks identical from the UI, and that is exactly the
 // failure this spec exists to catch.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function apiLogin(
   request: APIRequestContext,
@@ -215,7 +215,7 @@ test.describe('Space settings', () => {
       },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const pill = page.getByRole('button', { name: originalName, exact: true });
     await pill.waitFor({ state: 'visible', timeout: 30_000 });
     await pill.click();
@@ -391,7 +391,7 @@ test.describe('Space settings', () => {
       },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-settings').click();
 
@@ -438,7 +438,7 @@ test.describe('Space settings', () => {
     );
     await putChildLink(request, hs, token, spaceId, linkedId);
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-settings').click();
     await openSettingsTab(page, 'space-settings', 'contents');
@@ -457,7 +457,7 @@ test.describe('Space settings', () => {
       document.documentElement.style.fontSize = '125%';
     });
     await expect(
-      panel.getByRole('button', { name: 'Create Space' }),
+      panel.getByRole('button', { name: 'Create space' }),
     ).toBeVisible();
     expect(
       await panel.evaluate(
@@ -469,7 +469,7 @@ test.describe('Space settings', () => {
     }, openingRootSize);
 
     await panel.getByRole('button', { name: 'Add existing' }).click();
-    await panel.getByLabel('Find a joined Room or Space').fill(`Candidate`);
+    await panel.getByLabel('Find a joined room or space').fill(`Candidate`);
     const candidateRoom = panel.getByTestId(
       `space-contents-pick-${candidateId}`,
     );
@@ -494,7 +494,7 @@ test.describe('Space settings', () => {
         response.url().endsWith('/createRoom') &&
         response.ok(),
     );
-    await panel.getByRole('button', { name: 'Create Space' }).click();
+    await panel.getByRole('button', { name: 'Create space' }).click();
     await page.getByPlaceholder('Space name').fill(createdSpaceName);
     await page.getByRole('button', { name: 'Create', exact: true }).click();
     const createdSpaceId = (
@@ -530,7 +530,7 @@ test.describe('Space settings', () => {
         }),
       }),
     );
-    await panel.getByRole('button', { name: 'Create Room' }).click();
+    await panel.getByRole('button', { name: 'Create room' }).click();
     await page.getByPlaceholder('Room name').fill(recoveredName);
     await page.getByRole('button', { name: 'Create', exact: true }).click();
     const recovery = panel.getByTestId('space-contents-recovery');
@@ -561,7 +561,7 @@ test.describe('Space settings', () => {
     const linkedRow = panel.getByTestId(`space-content-${linkedId}`);
     await linkedRow.getByRole('button', { name: 'Remove' }).click();
     const removeDialog = page.getByRole('dialog', {
-      name: 'Remove Room from Space',
+      name: 'Remove room from space',
     });
     await expect(removeDialog).toContainText(linkedName);
     await expect(removeDialog).toContainText(spaceName);
@@ -596,7 +596,7 @@ test.describe('Space settings', () => {
     );
     await createdSpaceRow.getByRole('button', { name: 'Remove' }).click();
     const removeSpaceDialog = page.getByRole('dialog', {
-      name: 'Remove Space from Space',
+      name: 'Remove space from space',
     });
     await expect(removeSpaceDialog).toContainText(createdSpaceName);
     await expect(removeSpaceDialog).toContainText(spaceName);
@@ -723,7 +723,7 @@ test.describe('Space settings', () => {
       hs,
       user: member,
       pass: memberPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-settings').click();
 
@@ -825,7 +825,7 @@ test.describe('Space settings', () => {
       hs,
       user: member,
       pass: memberPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-settings').click();
     const topic = page.getByTestId('space-settings-topic');
@@ -867,7 +867,7 @@ test.describe('Space settings', () => {
     const localpart = `space-addr-${runId}`;
     const alias = `#${localpart}:localhost`;
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-settings').click();
     await openSettingsTab(page, 'space-settings', 'addresses');
@@ -977,7 +977,7 @@ test.describe('Space settings', () => {
       hs,
       user: owner,
       pass: ownerPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-members').click();
     await expect(page.getByTestId('space-settings')).toBeVisible({

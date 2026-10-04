@@ -236,6 +236,11 @@ export class RoomsPage {
   readonly timeline = this.conversations.timeline;
   readonly threads = this.conversations.threads;
   readonly pinned = this.conversations.pins;
+  /** Doubles as tooltip, accessible name and phone menu label, so the count has no badge. */
+  protected readonly pinnedLabel = computed(() => {
+    const count = this.pinned.messages().length;
+    return count > 0 ? `Pinned messages (${count})` : 'Pinned messages';
+  });
   private readonly imagePackService = inject(ImagePackService);
   readonly flags = inject(FeatureFlagsService);
   private readonly matrix = inject(MatrixClientService);

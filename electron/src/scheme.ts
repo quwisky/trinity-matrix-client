@@ -15,8 +15,8 @@ import * as path from 'node:path';
  *   - the strict CSP in index.html (`'self'`) binds to a stable app origin.
  */
 
-export const APP_SCHEME = 'trinity';
-export const APP_HOST = 'app';
+const APP_SCHEME = 'trinity';
+const APP_HOST = 'app';
 export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}`;
 export const START_URL = `${APP_ORIGIN}/`;
 
@@ -26,7 +26,7 @@ export const START_URL = `${APP_ORIGIN}/`;
 export const WWW_ROOT = path.resolve(__dirname, '..', 'www');
 export const INDEX_HTML = path.join(WWW_ROOT, 'index.html');
 
-export const CONTENT_TYPES: Readonly<Record<string, string>> = {
+const CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
@@ -56,10 +56,7 @@ export function contentTypeFor(filePath: string): string {
   );
 }
 
-export async function fileResponse(
-  filePath: string,
-  status = 200,
-): Promise<Response> {
+async function fileResponse(filePath: string, status = 200): Promise<Response> {
   const data = await fs.promises.readFile(filePath);
   const headers: Record<string, string> = {
     'content-type': contentTypeFor(filePath),

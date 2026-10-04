@@ -184,7 +184,7 @@ export class SystemStatusComponent implements AfterViewInit {
       case 'unavailable':
         return 'Recovery is no longer available for this scope.';
       case 'transition-in-progress':
-        return 'Another Account transition is in progress. Try again after it settles.';
+        return 'Another account transition is in progress. Try again after it settles.';
       case 'timeout':
         return 'Recovery is still unresolved after its observation window. It was not cancelled.';
       case 'failure':

@@ -1,8 +1,8 @@
 import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -11,7 +11,7 @@ import { registerUser } from '../../../support/account.mts';
 // chosen room (data-testid="directory-join" → PublicRoomsService.join → joinRoom). One
 // user publishes a public room; another finds it in the directory and joins, and it lands
 // in their channel list. Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 test.describe('Room directory', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
@@ -52,7 +52,7 @@ test.describe('Room directory', () => {
       hs,
       user: joiner,
       pass: joinerPass,
-    } as SynapseSession);
+    } as HomeserverSession);
 
     // Home "+" → the new-message action sheet → Explore public rooms.
     await page.click('button[aria-label="New room or direct message"]');

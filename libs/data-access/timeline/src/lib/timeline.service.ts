@@ -46,6 +46,7 @@ import {
 import { resolveShieldsInto, shieldKey } from './shields';
 import { projectMessage } from './project-message';
 import { isPresentableSystemEvent } from './normalize-timeline-event';
+import { scrollbackLive } from './live-scrollback';
 import type {
   MessageShield,
   MessageView,
@@ -556,7 +557,7 @@ export class TimelineService {
     );
   }
 
-  /** Page in older history (backward pagination via `scrollback`). */
+  /** Page in older history (backward pagination of the live timeline). */
   loadOlder(): Observable<void> {
     return defer(() => {
       const room = this.room;
@@ -565,12 +566,32 @@ export class TimelineService {
         return of(void 0);
       }
       this._loadingOlder.set(true);
-      return from(client.scrollback(room, SCROLLBACK)).pipe(
+      return from(scrollbackLive(client, room, SCROLLBACK)).pipe(
         tap(() => this.refresh()),
         // Reset the flag on success *or* error — otherwise a failed scrollback
         // would leave it stuck true and permanently disable pagination.
         finalize(() => this._loadingOlder.set(false)),
         map(() => void 0),
+      );
+    });
+  }
+
+  /**
+   * Page history back until `eventId` is in the live timeline, so a jump to a pinned or
+   * searched message that was never loaded has an element to scroll to. Emits whether it
+   * is now loaded; bounded by {@link MAX_JUMP_PAGES}, like a date jump. Cold.
+   */
+  loadEvent(eventId: string): Observable<boolean> {
+    return defer(() => {
+      const ctx = this.openContext();
+      if (!ctx) return of(false);
+      const { client, room } = ctx;
+      const loaded = (): boolean => room.findEventById(eventId) !== undefined;
+      if (loaded()) return of(true);
+      this._loadingOlder.set(true);
+      return from(this.pageBackLoop(client, room, loaded)).pipe(
+        tap(() => this.refresh()),
+        finalize(() => this._loadingOlder.set(false)),
       );
     });
   }
@@ -686,7 +707,7 @@ export class TimelineService {
   ): Promise<boolean> {
     for (let page = 0; page < MAX_JUMP_PAGES; page++) {
       const before = room.getLiveTimeline().getEvents().length;
-      await client.scrollback(room, SCROLLBACK);
+      await scrollbackLive(client, room, SCROLLBACK);
       // The user can leave while up to 20 sequential requests are in flight. Nothing
       // unsubscribes this — the subscription is tied to the PAGE, not the open room — so
       // without this check the loop keeps paginating a room nobody is looking at and its

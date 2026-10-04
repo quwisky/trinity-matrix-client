@@ -1,9 +1,9 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
+  homeserverSession,
   waitForRooms,
-  type SynapseSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import {
   defaultKeyId,
@@ -22,7 +22,7 @@ import {
 // the account here is a throwaway registered per run.
 //
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
-const session = synapseSession();
+const session = homeserverSession();
 
 /** Answer the device-signing UIA prompt if the server asks for it. */
 async function answerUiaIfAsked(
@@ -95,7 +95,7 @@ test.describe('Recovery reset', () => {
       hs,
       user,
       pass,
-    } as SynapseSession);
+    } as HomeserverSession);
 
     const originalKey = await setUpEncryption(page, pass);
     expect(originalKey.length).toBeGreaterThan(0);
@@ -195,7 +195,7 @@ test.describe('Recovery reset', () => {
     await registerUser(request, user, pass);
     const account = await passwordLogin(request, hs, user, pass);
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await setUpEncryption(page, pass);
 
     const keyIdBefore = await defaultKeyId(request, hs, account);
@@ -259,7 +259,7 @@ test.describe('Recovery reset', () => {
     await registerUser(request, user, pass);
     const account = await passwordLogin(request, hs, user, pass);
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const originalKey = await setUpEncryption(page, pass);
     expect(originalKey.length).toBeGreaterThan(0);
 
@@ -331,7 +331,7 @@ test.describe('Recovery reset', () => {
       hs,
       user,
       pass,
-    } as SynapseSession;
+    } as HomeserverSession;
 
     await login(page, credentials);
     await setUpEncryption(page, pass);

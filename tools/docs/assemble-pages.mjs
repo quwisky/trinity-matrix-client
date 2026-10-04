@@ -64,7 +64,7 @@ export const assemblePages = ({
   validateArtifact(output);
 };
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (import.meta.main) {
   const workspaceRoot = fileURLToPath(new URL('../../', import.meta.url));
   assemblePages({
     portalRoot: join(workspaceRoot, 'tools/docs/portal'),

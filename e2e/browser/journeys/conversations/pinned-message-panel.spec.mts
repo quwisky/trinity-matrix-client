@@ -6,8 +6,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -24,7 +24,7 @@ import { registerUser } from '../../../support/account.mts';
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise, like the other
 // authenticated web e2e specs.
-const session = synapseSession();
+const session = homeserverSession();
 
 /**
  * A room containing two messages, both pinned via `m.room.pinned_events` (pin order =
@@ -36,7 +36,7 @@ async function seedPinnedRoom(
   hs: string,
   runId: string,
 ): Promise<{
-  reader: SynapseSession;
+  reader: HomeserverSession;
   roomName: string;
   keepBody: string;
   unpinBody: string;
@@ -157,5 +157,75 @@ test.describe('Pinned messages panel', () => {
     await expect(panel).toBeVisible();
     await expect(panel).toContainText(keepBody);
     await expect(panel).not.toContainText(unpinBody);
+  });
+
+  // A pin older than the client's initial-sync window (`initialSyncLimit: 20`, plus the viewport-fill backfill) is not in
+  // the loaded timeline, but `m.room.pinned_events` still names it: the panel has to
+  // fetch it, and jumping to it has to page it in.
+  test('lists a pin outside the loaded timeline and jumps to it', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}po`;
+    const user = `old-pinner-${runId}`;
+    const pass = `old-pinner-pass-${runId}`;
+    const roomName = `Old Pin Room ${runId}`;
+    const oldBody = `old-pin-${runId}`;
+
+    await registerUser(request, user, pass);
+    const { access_token } = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json());
+    const auth = { Authorization: `Bearer ${access_token}` };
+    const { room_id } = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: auth,
+        data: { name: roomName, preset: 'private_chat' },
+      })
+      .then((r) => r.json());
+    const send = async (txn: string, body: string): Promise<string> => {
+      const res = await request.put(
+        `${hs}/_matrix/client/v3/rooms/${room_id}/send/m.room.message/${txn}`,
+        { headers: auth, data: { msgtype: 'm.text', body } },
+      );
+      return (await res.json()).event_id as string;
+    };
+    const oldId = await send(`old-${runId}`, oldBody);
+    for (let i = 0; i < 100; i++) {
+      await send(`filler-${runId}-${i}`, `filler ${runId} ${i}`);
+    }
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${room_id}/state/m.room.pinned_events/`,
+      { headers: auth, data: { pinned: [oldId] } },
+    );
+
+    await login(page, { available: true, hs, user, pass });
+    await page.getByTestId('rail-rooms').click();
+    const room = page.locator('.channel', { hasText: roomName });
+    await room.first().waitFor({ state: 'visible', timeout: 30_000 });
+    await room.first().click();
+    await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
+
+    const oldRow = page.locator('.scroll .msg[data-mid]', {
+      hasText: oldBody,
+    });
+    // Precondition: the pin really is outside the loaded timeline.
+    await expect(oldRow).toHaveCount(0);
+
+    await page.getByTestId('open-pinned').click();
+    const item = page.getByTestId('pinned-item');
+    await expect(item).toHaveCount(1, { timeout: 30_000 });
+    await expect(item).toContainText(oldBody);
+    await expect(oldRow).toHaveCount(0);
+
+    await item.click();
+    await expect(oldRow.first()).toBeInViewport({ timeout: 30_000 });
   });
 });

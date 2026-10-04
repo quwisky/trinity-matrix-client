@@ -1,5 +1,5 @@
-import { CdkMenu, CdkMenuGroup, CdkMenuItem, CdkMenuItemCheckbox, CdkMenuItemRadio, CdkMenuItemSelectable, CdkMenuTrigger, CdkTargetMenuAim } from '@angular/cdk/menu';
-import { ChangeDetectionStrategy, Component, Directive, ElementRef, HOST_TAG_NAME, InjectionToken, booleanAttribute, computed, effect, forwardRef, inject, input, numberAttribute, signal, type ValueProvider } from '@angular/core';
+import { CdkMenu, CdkMenuItem, CdkMenuItemCheckbox, CdkMenuItemRadio, CdkMenuItemSelectable, CdkMenuTrigger, CdkTargetMenuAim } from '@angular/cdk/menu';
+import { ChangeDetectionStrategy, Component, Directive, ElementRef, HOST_TAG_NAME, InjectionToken, booleanAttribute, computed, effect, forwardRef, inject, input, numberAttribute, signal } from '@angular/core';
 import { InputModalityDetector } from '@angular/cdk/a11y';
 import { MENU_SIDE, createMenuPosition, deriveMenuSideFromTransformOrigin, type MenuAlign, type MenuSide } from '@spartan-ng/brain/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
@@ -141,19 +141,6 @@ export class HlmDropdownMenuCheckbox {
   }
 }
 
-
-@Directive({
-  selector: '[hlmDropdownMenuGroup],hlm-dropdown-menu-group',
-  hostDirectives: [
-    { directive: CdkMenuGroup, inputs: [], outputs: [] },
-  ],
-  host: { 'data-slot': 'dropdown-menu-group' },
-})
-export class HlmDropdownMenuGroup {
-  constructor() {
-    classes(() => 'block');
-  }
-}
 
 @Component({
   selector: 'hlm-dropdown-menu-item-sub-indicator',
@@ -302,16 +289,6 @@ export class HlmDropdownMenuSeparator {
 }
 
 @Directive({
-  selector: '[hlmDropdownMenuShortcut],hlm-dropdown-menu-shortcut',
-  host: { 'data-slot': 'dropdown-menu-shortcut' },
-})
-export class HlmDropdownMenuShortcut {
-  constructor() {
-    classes(() => 'text-muted-foreground group-focus/dropdown-menu-item:text-accent-foreground ms-auto text-xs tracking-widest');
-  }
-}
-
-@Directive({
   selector: '[hlmDropdownMenuSubTrigger]',
   providers: [{ provide: MENU_SIDE, useExisting: forwardRef(() => HlmDropdownMenuSubTrigger) }],
   hostDirectives: [
@@ -445,10 +422,6 @@ const defaultConfig: HlmDropdownMenuConfig = {
 
 const HlmDropdownMenuConfigToken = new InjectionToken<HlmDropdownMenuConfig>('HlmDropdownMenuConfig');
 
-export function provideHlmDropdownMenuConfig(config: Partial<HlmDropdownMenuConfig>): ValueProvider {
-  return { provide: HlmDropdownMenuConfigToken, useValue: { ...defaultConfig, ...config } };
-}
-
 export function injectHlmDropdownMenuConfig(): HlmDropdownMenuConfig {
   return inject(HlmDropdownMenuConfigToken, { optional: true }) ?? defaultConfig;
 }
@@ -534,20 +507,3 @@ export class HlmDropdownMenu {
     });
   }
 }
-
-export const HlmDropdownMenuImports = [
-  HlmDropdownMenu,
-  HlmDropdownMenuCheckbox,
-  HlmDropdownMenuCheckboxIndicator,
-  HlmDropdownMenuGroup,
-  HlmDropdownMenuItem,
-  HlmDropdownMenuItemSubIndicator,
-  HlmDropdownMenuLabel,
-  HlmDropdownMenuRadio,
-  HlmDropdownMenuRadioIndicator,
-  HlmDropdownMenuSeparator,
-  HlmDropdownMenuShortcut,
-  HlmDropdownMenuSub,
-  HlmDropdownMenuSubTrigger,
-  HlmDropdownMenuTrigger,
-] as const;

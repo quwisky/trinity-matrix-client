@@ -6,8 +6,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -18,7 +18,7 @@ import { registerUser } from '../../../support/account.mts';
 // the unfiltered RoomsService.rooms() for this view; Home/Rooms keep their scoping.
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 const HS_SERVER_NAME = 'localhost';
 
@@ -76,7 +76,7 @@ async function markDirect(
 }
 
 interface Seeded extends ApiUser {
-  reader: SynapseSession;
+  reader: HomeserverSession;
 }
 
 async function seedReader(
@@ -122,7 +122,7 @@ test.describe('Recent activity', () => {
     await expect(roomRow).toBeVisible();
 
     // Home scopes to direct messages: the DM stays, the plain room drops.
-    await page.getByRole('button', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Direct messages' }).click();
     await expect(page.getByTestId('rail-recent')).not.toHaveAttribute(
       'aria-current',
       'true',

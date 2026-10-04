@@ -8,17 +8,18 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { openSystemStatusFromRooms } from '../../../support/journeys/navigation.mts';
 
 // End-to-end for member online-status (presence): the room member list renders a
 // presence indicators from the SDK's User.presence through IdentityPresenceService.
 // Unknown presence has no online/offline dot. The current user's known presence
 // proves rendering, while injected read failure proves unknown state and targeted retry.
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   userId: string;
@@ -54,7 +55,7 @@ async function seedRoomWithMember(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ reader: SynapseSession; roomName: string }> {
+): Promise<{ reader: HomeserverSession; roomName: string }> {
   const readerUser = `presence-reader-${runId}`;
   const readerPass = `presence-reader-pass-${runId}`;
   const memberUser = `presence-member-${runId}`;
@@ -109,7 +110,7 @@ async function seedDirectMessage(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ reader: SynapseSession }> {
+): Promise<{ reader: HomeserverSession }> {
   const readerUser = `presence-dm-reader-${runId}`;
   const readerPass = `presence-dm-reader-pass-${runId}`;
   const partnerUser = `presence-dm-partner-${runId}`;
@@ -294,11 +295,8 @@ for (const mobile of [false, true]) {
           };
           presence.projection.schedule();
         });
-        await page
-          .getByTestId('app-capability-summary')
-          .getByRole('button', { name: 'System Status' })
-          .click();
-        const status = page.getByRole('dialog', { name: 'System Status' });
+        await openSystemStatusFromRooms(page);
+        const status = page.getByRole('dialog', { name: 'System status' });
         const problem = status
           .locator('article')
           .filter({ hasText: 'Presence is unavailable' });

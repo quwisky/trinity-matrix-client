@@ -33,10 +33,7 @@ import {
   type RoomSummary,
   type SpaceSummary,
 } from '@trinity/data-access/room-library';
-import {
-  ConversationRuntime,
-  TimelineActionsService,
-} from '@trinity/data-access/timeline';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import {
   TrnAlertService,
   TrnDialogService,
@@ -47,7 +44,6 @@ import { Subject, of, throwError } from 'rxjs';
 import { expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
-import { MemberInfoService } from '../member-info/member-info.service';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
 import { RoomDirectoryComponent } from '../room-directory/room-directory.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
@@ -61,7 +57,6 @@ beforeEach(() => setRouteRoom(null));
 
 describe('RoomsPage panels, pins and media', () => {
   let toastShow: Mock;
-  let sendMedia: Mock;
   let setNotifyMode: Mock;
   let leaveRoom: Mock;
   let alertConfirm: Mock;
@@ -74,7 +69,6 @@ describe('RoomsPage panels, pins and media', () => {
   let railSpacesSignal: ReturnType<typeof signal<SpaceSummary[]>>;
   let supportsRestricted: Mock;
   let canCurate: Mock;
-  let spaceMemberInfoOpen: Mock;
   let createSpace: Mock;
   let addExistingRoom: Mock;
   let currentIdentity: Mock;
@@ -86,7 +80,6 @@ describe('RoomsPage panels, pins and media', () => {
 
   function build() {
     toastShow = vi.fn();
-    sendMedia = vi.fn(() => of(undefined));
     setNotifyMode = vi.fn(() => of(undefined));
     leaveRoom = vi.fn(() => of(undefined));
     alertConfirm = vi.fn(() => of(true));
@@ -108,7 +101,6 @@ describe('RoomsPage panels, pins and media', () => {
     railSpacesSignal = signal<SpaceSummary[]>([]);
     supportsRestricted = vi.fn(() => false);
     canCurate = vi.fn(() => true);
-    spaceMemberInfoOpen = vi.fn(() => of(null));
     createSpace = vi.fn(() => of('!new-space:hs'));
     addExistingRoom = vi.fn(() => of(undefined));
     currentIdentity = vi.fn(() => ({
@@ -143,7 +135,6 @@ describe('RoomsPage panels, pins and media', () => {
           supportsRestricted,
           currentIdentity,
         }),
-        MockProvider(MemberInfoService, { open$: spaceMemberInfoOpen }),
         MockProvider(RoomAliasesService, { canManageAliases }),
         MockProvider(PublicRoomsService, { join: joinPublicRoom }),
         MockProvider(SpacesService, {
@@ -160,7 +151,6 @@ describe('RoomsPage panels, pins and media', () => {
         }),
         MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
         MockProvider(TrnAlertService, { confirm$: alertConfirm }),
-        MockProvider(TimelineActionsService, { sendMedia }),
         MockProvider(MediaPipeline),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -647,6 +637,25 @@ describe('RoomsPage panels, pins and media', () => {
     expect(shell.surfaces.renderedSurface()).toBeNull();
   });
 
+  it('does not jump, and says so, when the picked message cannot be paged in', async () => {
+    const shell = build();
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+    vi.mocked(TestBed.inject(RoomsTimelineStub).loadEvent).mockReturnValue(
+      of(false),
+    );
+
+    shell.messages.openPinnedPanel();
+    shell.messages.onPanelJump('$old:hs');
+    flushPanelJump();
+
+    expect(shell.surfaces.jumpTarget()).toBeNull();
+    expect(toastShow).toHaveBeenCalledWith(
+      'Could not load that message.',
+      expect.objectContaining({ variant: 'danger' }),
+    );
+  });
+
   it('jumpToDate scrolls to the event the date resolved to', async () => {
     const shell = build();
     setRouteRoom('!a:hs'); // jumpToDate is a no-op with no room open
@@ -755,21 +764,42 @@ describe('RoomsPage panels, pins and media', () => {
 
   const pngFile = () =>
     new File([new Uint8Array([1])], 'pic.png', { type: 'image/png' });
+  const staged = (id: string) =>
+    ({
+      id,
+      filename: 'pic.png',
+      mimeType: 'image/png',
+      size: 1,
+      previewUrl: null,
+    }) as unknown as StagedMediaReference;
+  const item = (id: string) => ({ id, file: pngFile(), media: staged(id) });
+  const sentEvent = { kind: 'sent' as const, eventId: '$media' };
+  const progressEvent = (fraction: number) => ({
+    kind: 'progress' as const,
+    phase: 'uploading' as const,
+    fraction,
+  });
+  /** Focus a room and hand back the capability's `send` mock the batch will drive. */
+  function focusRoom(roomId = '!first:hs') {
+    const runtime = TestBed.inject(ConversationRuntime);
+    const handle = runtime.focus({ accountId: '@me:hs', roomId });
+    return {
+      runtime,
+      mediaSend: handle.media.send as Mock,
+      leaveFor: (other: string) =>
+        runtime.focus({ accountId: '@me:hs', roomId: other }),
+    };
+  }
 
   it('drives uploadProgress 0 → fraction → null over a successful media send', () => {
-    const shell = build(); // build() (re)creates the sendMedia mock — set it after
-    const stream = new Subject<void>();
-    let progressCb: ((fraction: number) => void) | undefined;
-    sendMedia.mockImplementation(
-      (_file: File, _caption: string, cb?: (fraction: number) => void) => {
-        progressCb = cb;
-        return stream.asObservable();
-      },
-    );
+    const shell = build();
+    const { mediaSend } = focusRoom();
+    const stream = new Subject<unknown>();
+    mediaSend.mockReturnValue(stream.asObservable());
 
     const outcomes: unknown[] = [];
     shell.messages.onSendMedia({
-      items: [{ id: 'a', file: pngFile() }],
+      items: [item('a')],
       caption: '',
       onOutcomes: (result) => outcomes.push(...result),
     });
@@ -780,11 +810,10 @@ describe('RoomsPage panels, pins and media', () => {
       fraction: 0,
     });
 
-    progressCb?.(0.5);
+    stream.next(progressEvent(0.5));
     expect(shell.messages.uploadProgress()?.fraction).toBe(0.5);
 
-    stream.next();
-    stream.complete();
+    stream.next(sentEvent);
     expect(shell.messages.uploadProgress()).toBeNull(); // cleared when the batch ends
     expect(outcomes).toEqual([{ id: 'a', failed: false }]);
     expect(toastShow).not.toHaveBeenCalled(); // no error toast
@@ -792,43 +821,35 @@ describe('RoomsPage panels, pins and media', () => {
 
   it('ignores stale progress and cleanup from an older room batch', () => {
     const shell = build();
-    const streams = [new Subject<void>(), new Subject<void>()] as const;
-    const reports: (((fraction: number) => void) | undefined)[] = [];
+    const { mediaSend } = focusRoom();
+    const streams = [new Subject<unknown>(), new Subject<unknown>()] as const;
     let streamIndex = 0;
-    sendMedia.mockImplementation(
-      (_file: File, _caption: string, report?: (fraction: number) => void) => {
-        reports.push(report);
-        return streams[streamIndex++]?.asObservable() ?? of(undefined);
-      },
+    mediaSend.mockImplementation(
+      () => streams[streamIndex++]?.asObservable() ?? of(sentEvent),
     );
 
     shell.messages.onSendMedia({
-      items: [{ id: 'old', file: pngFile() }],
+      items: [item('old')],
       caption: '',
       onOutcomes: () => undefined,
     });
     shell.messages.onSendMedia({
-      items: [{ id: 'new', file: pngFile() }],
+      items: [item('new')],
       caption: '',
       onOutcomes: () => undefined,
     });
-    reports[1]?.(0.6);
+    streams[1].next(progressEvent(0.6));
     expect(shell.messages.uploadProgress()?.fraction).toBe(0.6);
 
-    reports[0]?.(0.9);
+    streams[0].next(progressEvent(0.9));
     expect(shell.messages.uploadProgress()?.fraction).toBe(0.6);
 
-    streams[0].next();
-    streams[0].complete();
+    streams[0].next(sentEvent);
     expect(shell.messages.uploadProgress()?.fraction).toBe(0.6);
 
-    reports[1]?.(0.75);
+    streams[1].next(progressEvent(0.75));
     expect(shell.messages.uploadProgress()?.fraction).toBe(0.75);
-    streams[1].next();
-    streams[1].complete();
-    expect(shell.messages.uploadProgress()).toBeNull();
-
-    reports[1]?.(0.95);
+    streams[1].next(sentEvent);
     expect(shell.messages.uploadProgress()).toBeNull();
   });
 
@@ -837,40 +858,37 @@ describe('RoomsPage panels, pins and media', () => {
     // survives the host at all — and a caption swallowed here is destroyed outright, since
     // the composer emptied the box at dispatch and only restores it when NOTHING landed.
     const shell = build();
-    sendMedia.mockReturnValue(of(undefined));
+    const { mediaSend } = focusRoom();
+    mediaSend.mockReturnValue(of(sentEvent));
 
     shell.messages.onSendMedia({
-      items: [{ id: 'a', file: pngFile() }],
+      items: [item('a')],
       caption: "here's the receipt",
       onOutcomes: () => undefined,
     });
-    expect(sendMedia.mock.calls[0]?.[1]).toBe("here's the receipt");
+    expect(mediaSend.mock.calls[0]?.[1]).toBe("here's the receipt");
 
-    sendMedia.mockClear();
+    mediaSend.mockClear();
     shell.messages.onSendMedia({
-      items: [
-        { id: 'a', file: pngFile() },
-        { id: 'b', file: pngFile() },
-      ],
+      items: [item('a'), item('b')],
       caption: 'both of these',
       onOutcomes: () => undefined,
     });
     // A batch caption has no file to belong to; the composer posts it as its own message.
-    expect(sendMedia.mock.calls.map((call) => call[1])).toEqual(['', '']);
+    expect(mediaSend.mock.calls.map((call) => call[1])).toEqual(['', '']);
   });
 
   it('reports outcomes even when every send completes synchronously', () => {
-    // What `TimelineActionsService.sendMedia` returns for a 0-byte file or a closed room
-    // context: `of(void 0)`, completing inside the subscribe — so `uploadProgress` goes
+    // A capability stream that emits `sent` inside the subscribe — so `uploadProgress` goes
     // non-null and back before anything downstream can observe it. `onOutcomes` is what
     // releases the composer's send latch, and it has to arrive on this path too, or the
     // composer is left unable to send anything for the rest of the room.
     const shell = build();
-    sendMedia.mockReturnValue(of(undefined));
+    focusRoom().mediaSend.mockReturnValue(of(sentEvent));
     let outcomes: readonly { id: string; failed: boolean }[] | null = null;
 
     shell.messages.onSendMedia({
-      items: [{ id: 'a', file: pngFile() }],
+      items: [item('a')],
       caption: '',
       onOutcomes: (result) => (outcomes = result),
     });
@@ -883,25 +901,19 @@ describe('RoomsPage panels, pins and media', () => {
     // Both happen in the same batch, and they have different remedies: one file is still in
     // the composer to retry, the other is gone with the staging the room change cleared.
     const shell = build();
-    const timeline = TestBed.inject(RoomsTimelineStub);
-    timeline.openRoomId = '!first:hs';
+    const { mediaSend, leaveFor } = focusRoom();
     let sent = 0;
-    sendMedia.mockImplementation(() => {
+    mediaSend.mockImplementation(() => {
       sent++;
       if (sent === 1) {
         return throwError(() => new Error('upload failed')); // a genuine failure
       }
-      timeline.openRoomId = '!second:hs';
-      return of(undefined);
+      leaveFor('!second:hs');
+      return of(sentEvent);
     });
 
     shell.messages.onSendMedia({
-      items: [
-        { id: 'a', file: pngFile() },
-        { id: 'b', file: pngFile() },
-        { id: 'c', file: pngFile() },
-        { id: 'd', file: pngFile() },
-      ],
+      items: [item('a'), item('b'), item('c'), item('d')],
       caption: '',
       onOutcomes: () => undefined,
     });
@@ -915,18 +927,14 @@ describe('RoomsPage panels, pins and media', () => {
 
   it('does not mention an upload failure when the batch was only abandoned', () => {
     const shell = build();
-    const timeline = TestBed.inject(RoomsTimelineStub);
-    timeline.openRoomId = '!first:hs';
-    sendMedia.mockImplementation(() => {
-      timeline.openRoomId = '!second:hs';
-      return of(undefined);
+    const { mediaSend, leaveFor } = focusRoom();
+    mediaSend.mockImplementation(() => {
+      leaveFor('!second:hs');
+      return of(sentEvent);
     });
 
     shell.messages.onSendMedia({
-      items: [
-        { id: 'a', file: pngFile() },
-        { id: 'b', file: pngFile() },
-      ],
+      items: [item('a'), item('b')],
       caption: '',
       onOutcomes: () => undefined,
     });
@@ -937,28 +945,24 @@ describe('RoomsPage panels, pins and media', () => {
   });
 
   it('abandons the rest of a batch when the room changes under it, and says so', () => {
-    // `sendMedia` resolves the open room on SUBSCRIBE, and a batch subscribes its Nth item
-    // long after the press. This service belongs to the page and survives a room switch, so
-    // without the pin the remaining files would be delivered into whatever room is open now.
+    // The batch subscribes its Nth item long after the press. This service belongs to the
+    // page and survives a room switch, so without the pin the remaining files would be
+    // delivered into whatever room is focused now.
     const shell = build();
-    const timeline = TestBed.inject(RoomsTimelineStub);
-    timeline.openRoomId = '!first:hs';
-    sendMedia.mockImplementation(() => {
-      timeline.openRoomId = '!second:hs';
-      return of(undefined); // the first file goes out, then the user navigates
+    const { mediaSend, leaveFor } = focusRoom();
+    mediaSend.mockImplementation(() => {
+      leaveFor('!second:hs');
+      return of(sentEvent); // the first file goes out, then the user navigates
     });
 
     let outcomes: readonly { id: string; failed: boolean }[] = [];
     shell.messages.onSendMedia({
-      items: [
-        { id: 'a', file: pngFile() },
-        { id: 'b', file: pngFile() },
-      ],
+      items: [item('a'), item('b')],
       caption: '',
       onOutcomes: (result) => (outcomes = result),
     });
 
-    expect(sendMedia).toHaveBeenCalledTimes(1); // the second was never attempted
+    expect(mediaSend).toHaveBeenCalledTimes(1); // the second was never attempted
     expect(outcomes).toEqual([
       { id: 'a', failed: false },
       { id: 'b', failed: true },
@@ -1011,12 +1015,13 @@ describe('RoomsPage panels, pins and media', () => {
 
   it('clears uploadProgress and toasts when a media send fails', () => {
     const shell = build();
-    const stream = new Subject<void>();
-    sendMedia.mockReturnValue(stream.asObservable());
+    const { mediaSend } = focusRoom();
+    const stream = new Subject<never>();
+    mediaSend.mockReturnValue(stream.asObservable());
 
     const outcomes: { id: string; failed: boolean }[] = [];
     shell.messages.onSendMedia({
-      items: [{ id: 'a', file: pngFile() }],
+      items: [item('a')],
       caption: '',
       onOutcomes: (result) => outcomes.push(...result),
     });

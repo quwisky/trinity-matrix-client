@@ -94,7 +94,7 @@ export class SpaceSettingsContentsListComponent {
   });
   readonly writeStatus = computed(() =>
     this.echoPendingState()
-      ? 'Waiting for the synced Space update…'
+      ? 'Waiting for the synced space update…'
       : this.busyChild()
         ? 'Saving for everyone…'
         : null,

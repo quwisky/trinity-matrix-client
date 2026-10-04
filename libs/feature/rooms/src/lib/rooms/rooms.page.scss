@@ -156,29 +156,8 @@
   .title-lock {
     margin-left: 6px;
     color: var(--trinity-text-muted);
-    font-size: 14px;
+    font-size: 0.875rem;
     vertical-align: middle;
-  }
-
-  // The pinned-messages header button carries a small count badge in its corner.
-  .header-pin {
-    position: relative;
-  }
-
-  .header-pin__badge {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
-    border-radius: var(--trinity-radius-pill);
-    background: var(--trinity-accent);
-    color: var(--trinity-accent-foreground);
-    font-size: 10px;
-    font-weight: 700;
-    line-height: 16px;
-    text-align: center;
   }
 
   // The chat area owns the drawer gesture, so a swipe that starts over the timeline is heard.
@@ -307,7 +286,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 12px;
+    font-size: 0.75rem;
     font-weight: 600;
     color: var(--trinity-text-muted);
   }

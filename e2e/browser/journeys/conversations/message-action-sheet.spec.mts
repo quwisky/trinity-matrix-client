@@ -9,8 +9,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { touchLongPress } from '../../../support/touch-platform.mts';
@@ -24,7 +24,7 @@ import { touchLongPress } from '../../../support/touch-platform.mts';
 // which reads the PLATFORM. A touch-emulated desktop Chromium keeps its desktop user agent
 // and would take the desktop path, so a spec written on the `composer-formatting.spec.mts`
 // phone pattern would silently assert nothing.
-const session = synapseSession();
+const session = homeserverSession();
 
 /** Press and hold past the 500ms threshold, the way a finger does. */
 async function longPress(page: Page, selector: string): Promise<void> {
@@ -79,7 +79,7 @@ async function openRoomWithMessage(
     { headers, data: { msgtype: 'm.text', body: `act on me ${runId}` } },
   );
 
-  await login(page, { available: true, hs, user, pass } as SynapseSession);
+  await login(page, { available: true, hs, user, pass } as HomeserverSession);
   await page.getByTestId('rail-rooms').click();
   const channel = page.locator('.channel', { hasText: roomName });
   await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
@@ -178,7 +178,7 @@ test.describe('Message actions on a phone', () => {
 
     // Every row is REACHABLE — which for a list this long means reachable by scrolling
     // INSIDE the sheet, not all visible at once. Two things to hold: the sheet itself sits
-    // within the viewport (it is bounded by 80svh, so it cannot run off the screen), and
+    // within the viewport (it is bounded by 80svh and the safe-area insets, so it cannot run off the screen), and
     // the last row can be scrolled to. Asserting that every row fits unscrolled was the
     // earlier version of this check, and it started failing the moment a row was added —
     // which is the behaviour the scroller exists to provide, not a regression.

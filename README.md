@@ -9,8 +9,8 @@ renderer; host capabilities handle platform-specific behavior.
 The desktop app and the self-hostable web app (PWA) are available from
 [the latest release](https://github.com/quwisky/trinity-matrix-client/releases/latest);
 the Android and iOS apps are still in development. The
-[user guide](https://quwisky.github.io/trinity-matrix-client/users/) is a
-work-in-progress notice for now. The
+[user guide](https://quwisky.github.io/trinity-matrix-client/users/) covers installing
+the latest release. The
 [developer guide](https://quwisky.github.io/trinity-matrix-client/developers/) follows
 the `develop` branch and documents the current source tree.
 
@@ -61,8 +61,8 @@ install `Trinity.app`; run `brew uninstall --cask trinity` first.
 
 ### Web
 
-Self-host the web app from the release image, `docker run -d -p 8080:8080 ghcr.io/quwisky/trinity-web:next`
-(`:latest` once the first stable release is out),
+Self-host the web app from the release image, `docker run -d -p 8080:8080 ghcr.io/quwisky/trinity-web:latest`
+(`:next` for prereleases),
 or from the `Trinity-Web-X.Y.Z.zip` attached to each
 [release](https://github.com/quwisky/trinity-matrix-client/releases). See
 [Self-host a release](https://quwisky.github.io/trinity-matrix-client/developers/platforms/web-and-pwa/#self-host-release).

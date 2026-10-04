@@ -3,8 +3,6 @@
  * (X.Y and latest for stable, next for prereleases) only for the newest published
  * release on that line, so republishing an older release never moves them back.
  */
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
 const TAG =
@@ -54,10 +52,7 @@ export function imageTags(tag, publishedTags) {
   return tags;
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (import.meta.main) {
   const { values } = parseArgs({ options: { tag: { type: 'string' } } });
   if (!values.tag)
     throw new Error('Usage: node scripts/web-image-tags.mjs --tag <vX.Y.Z>');

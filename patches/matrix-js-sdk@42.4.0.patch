@@ -1,0 +1,68 @@
+diff --git a/lib/models/thread.js b/lib/models/thread.js
+index 6e22f6f725f879a2aec3ea825ee23056dce2ddef..71749b976d9d9f6cf7653cc1ac9dd3197f8454e3 100644
+--- a/lib/models/thread.js
++++ b/lib/models/thread.js
+@@ -98,6 +98,8 @@ export class Thread extends ReadReceipt {
+     _defineProperty(this, "replyCount", 0);
+     _defineProperty(this, "lastPendingEvent", void 0);
+     _defineProperty(this, "pendingReplyCount", 0);
++    // Trinity patch: the reply the last root refetch already counted (bundled latest_event).
++    _defineProperty(this, "serverCountedReplyId", void 0);
+     _defineProperty(this, "room", void 0);
+     _defineProperty(this, "client", void 0);
+     _defineProperty(this, "pendingEventOrdering", void 0);
+@@ -158,7 +160,9 @@ export class Thread extends ReadReceipt {
+         if (sender && room && this.shouldSendLocalEchoReceipt(sender, event)) {
+           room.addLocalEchoReceipt(sender, event, ReceiptType.Read);
+         }
+-        if (event.getId() !== this.id && event.isRelation(THREAD_RELATION_TYPE.name)) {
++        // Trinity patch: a reply that reaches the timeline after a root refetch already
++        // counted it must not be counted again.
++        if (event.getId() !== this.id && event.getId() !== this.serverCountedReplyId && event.isRelation(THREAD_RELATION_TYPE.name)) {
+           this.replyCount++;
+         }
+       }
+@@ -462,6 +466,7 @@ export class Thread extends ReadReceipt {
+     const bundledRelationship = this.getRootEventBundledRelationship();
+     if (Thread.hasServerSideSupport && bundledRelationship) {
+       this.replyCount = bundledRelationship.count;
++      this.serverCountedReplyId = bundledRelationship.latest_event?.event_id;
+       this._currentUserParticipated = !!bundledRelationship.current_user_participated;
+       const mapper = this.client.getEventMapper();
+       // re-insert roomId
+diff --git a/src/models/thread.ts b/src/models/thread.ts
+index 151bff6d1155ee3ae928135aa9629c4a1b011917..160d8cde2ee355491f106656ae224f42e0a16c9f 100644
+--- a/src/models/thread.ts
++++ b/src/models/thread.ts
+@@ -119,6 +119,8 @@ export class Thread extends ReadReceipt<ThreadEmittedEvents, ThreadEventHandlerM
+     private replyCount = 0;
+     private lastPendingEvent: MatrixEvent | undefined;
+     private pendingReplyCount = 0;
++    // Trinity patch: the reply the last root refetch already counted (bundled latest_event).
++    private serverCountedReplyId: string | undefined;
+ 
+     public readonly room: Room;
+     public readonly client: MatrixClient;
+@@ -270,7 +272,13 @@ export class Thread extends ReadReceipt<ThreadEmittedEvents, ThreadEventHandlerM
+             if (sender && room && this.shouldSendLocalEchoReceipt(sender, event)) {
+                 room.addLocalEchoReceipt(sender, event, ReceiptType.Read);
+             }
+-            if (event.getId() !== this.id && event.isRelation(THREAD_RELATION_TYPE.name)) {
++            // Trinity patch: a reply that reaches the timeline after a root refetch already
++            // counted it must not be counted again.
++            if (
++                event.getId() !== this.id &&
++                event.getId() !== this.serverCountedReplyId &&
++                event.isRelation(THREAD_RELATION_TYPE.name)
++            ) {
+                 this.replyCount++;
+             }
+         }
+@@ -545,6 +553,7 @@ export class Thread extends ReadReceipt<ThreadEmittedEvents, ThreadEventHandlerM
+         const bundledRelationship = this.getRootEventBundledRelationship();
+         if (Thread.hasServerSideSupport && bundledRelationship) {
+             this.replyCount = bundledRelationship.count;
++            this.serverCountedReplyId = bundledRelationship.latest_event?.event_id;
+             this._currentUserParticipated = !!bundledRelationship.current_user_participated;
+ 
+             const mapper = this.client.getEventMapper();

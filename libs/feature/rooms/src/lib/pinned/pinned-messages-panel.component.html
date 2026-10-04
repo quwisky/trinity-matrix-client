@@ -27,41 +27,85 @@
 
   <div class="pinned flex-1 overflow-y-auto max-members:touch-pan-y">
     @for (p of pinned(); track p.id) {
-      <div class="pin-item">
-        <button
-          type="button"
-          class="pin-item__main"
-          data-testid="pinned-item"
-          (click)="jumpTo(p.id)"
-          [attr.aria-label]="'Jump to pinned message from ' + p.senderName"
-        >
-          <div class="pin-item__head">
-            <span class="pin-item__author">{{ p.senderName }}</span>
-            <span class="pin-item__time">{{ fmt.dateTime(p.ts) }}</span>
+      @switch (p.status) {
+        @case ('loading') {
+          <div class="pin-item">
+            <div
+              class="pin-item__main pin-item__main--static"
+              data-testid="pinned-loading"
+              role="status"
+            >
+              <div class="pin-item__body">Loading pinned message…</div>
+            </div>
           </div>
-          <div class="pin-item__body">{{ p.body }}</div>
-        </button>
-
-        @if (canPin()) {
-          <button
-            trnBtn
-            variant="secondary"
-            presentation="ghost"
-            shape="icon"
-            size="md"
-            class="pin-item__unpin"
-            data-testid="pinned-unpin"
-            (click)="unpin(p.id)"
-            trnTooltip="Unpin message"
-            [attr.aria-label]="'Unpin message from ' + p.senderName"
-          >
-            <trn-icon name="pin-off" motion="nudge-down" />
-          </button>
         }
-      </div>
+        @case ('unavailable') {
+          <div class="pin-item">
+            <div
+              class="pin-item__main pin-item__main--static"
+              data-testid="pinned-unavailable"
+            >
+              <div class="pin-item__body">
+                Message unavailable. It may have been deleted or you may not
+                have access to it.
+              </div>
+            </div>
+            @if (canPin()) {
+              <button
+                trnBtn
+                variant="secondary"
+                presentation="ghost"
+                shape="icon"
+                size="md"
+                class="pin-item__unpin"
+                data-testid="pinned-unpin"
+                (click)="unpin(p.id)"
+                trnTooltip="Unpin message"
+                aria-label="Unpin unavailable message"
+              >
+                <trn-icon name="pin-off" motion="nudge-down" />
+              </button>
+            }
+          </div>
+        }
+        @default {
+          <div class="pin-item">
+            <button
+              type="button"
+              class="pin-item__main"
+              data-testid="pinned-item"
+              (click)="jumpTo(p.id)"
+              [attr.aria-label]="'Jump to pinned message from ' + p.senderName"
+            >
+              <div class="pin-item__head">
+                <span class="pin-item__author">{{ p.senderName }}</span>
+                <span class="pin-item__time">{{ fmt.dateTime(p.ts) }}</span>
+              </div>
+              <div class="pin-item__body">{{ p.body }}</div>
+            </button>
+
+            @if (canPin()) {
+              <button
+                trnBtn
+                variant="secondary"
+                presentation="ghost"
+                shape="icon"
+                size="md"
+                class="pin-item__unpin"
+                data-testid="pinned-unpin"
+                (click)="unpin(p.id)"
+                trnTooltip="Unpin message"
+                [attr.aria-label]="'Unpin message from ' + p.senderName"
+              >
+                <trn-icon name="pin-off" motion="nudge-down" />
+              </button>
+            }
+          </div>
+        }
+      }
     } @empty {
       <trn-empty-state
-        body="No pinned messages in this channel yet."
+        body="No pinned messages in this room yet."
         data-testid="pinned-empty"
       />
     }

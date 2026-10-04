@@ -72,20 +72,7 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
 
     const canvas = page.locator('body');
     for (const testId of [
-      'catalog-checkbox-neutral-sm',
-      'catalog-checkbox-neutral-md',
-    ]) {
-      await expectContrast(
-        page.getByTestId(testId).locator(':scope > span'),
-        'borderColor',
-        canvas,
-        'backgroundColor',
-        3,
-      );
-    }
-    for (const testId of [
-      'catalog-checkbox-accent-sm',
-      'catalog-checkbox-accent-md',
+      'catalog-checkbox-checked',
       'catalog-checkbox-indeterminate',
     ]) {
       await expectContrast(
@@ -104,14 +91,14 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
       3,
     );
     await expectContrast(
-      page.getByTestId('catalog-switch-accent-md').locator(':scope > span'),
+      page.getByTestId('catalog-switch-checked').locator(':scope > span'),
       'backgroundColor',
       canvas,
       'backgroundColor',
       3,
     );
     const radioIndicator = page
-      .getByTestId('catalog-radio-list-neutral-sm')
+      .getByTestId('catalog-radio-list')
       .locator('label')
       .first()
       .locator('span[aria-hidden="true"]');
@@ -128,9 +115,7 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
         'backgroundColor',
       ],
       [
-        page
-          .getByTestId('catalog-radio-segmented-neutral-sm')
-          .getByRole('radiogroup'),
+        page.getByTestId('catalog-radio-segmented').getByRole('radiogroup'),
         'borderColor',
       ],
     ] as const) {

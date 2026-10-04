@@ -1,4 +1,7 @@
-import type { E2EQuarantineEntry, E2ESerializationResource } from './types.mts';
+import type {
+  E2EQuarantineEntry,
+  E2ESerializationResource,
+} from '../support/e2e-registry.types.mts';
 
 export const E2E_SERIALIZATION_RESOURCES = [
   {
@@ -7,12 +10,18 @@ export const E2E_SERIALIZATION_RESOURCES = [
     description: 'One installed Android application, emulator and adb bridge.',
   },
   {
+    key: 'ios-simulator',
+    owner: 'trinity-e2e-support',
+    description:
+      'One booted iOS Simulator, its installed application and keychain trust.',
+  },
+  {
     key: 'electron',
     owner: 'trinity-e2e-support',
     description: 'One launched Electron application and user-data lifecycle.',
   },
   {
-    key: 'synapse',
+    key: 'homeserver',
     owner: 'trinity-e2e-support',
     description:
       'The fixed-port disposable Synapse, remote Synapse, Dex and Caddy stack.',

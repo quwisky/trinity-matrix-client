@@ -28,7 +28,7 @@
 
 <trn-composer-attachment-strip
   [uploadProgress]="contextUploadProgress()"
-  [staged]="staged()"
+  [staged]="attachments.staged()"
   [uploadLabel]="uploadLabel()"
   [canRetry]="canSendMedia()"
   (removeStaged)="removeStaged($event)"
@@ -51,7 +51,7 @@
   </ng-template>
   <ng-template
     [trnAnchoredOverlay]="composerField"
-    [(open)]="gifPickerOpen"
+    [(open)]="attachments.gifPickerOpen"
     side="top"
     align="end"
   >
@@ -70,7 +70,7 @@
       (manage)="manageImagePacks()"
     />
   </ng-template>
-  @if (recordingVoice()) {
+  @if (attachments.recordingVoice()) {
     <div class="composer__recording" data-testid="composer-voice-recording">
       <span class="sr-only" role="status" aria-live="polite"
         >Voice recording started</span
@@ -88,7 +88,7 @@
       </button>
       <span class="composer__recording-dot" aria-hidden="true"></span>
       <span class="composer__recording-time" data-testid="composer-voice-time">
-        Recording {{ voiceTimeLabel() }}
+        Recording {{ attachments.voiceTimeLabel() }}
       </span>
       <button
         type="button"
@@ -147,12 +147,12 @@
       [hasMenu]="hasInsertMenu()"
       [editing]="editing()"
       [uploading]="contextUploadProgress() !== null"
-      [gifEnabled]="gifEnabled()"
-      [gifDownloading]="gifDownloading()"
+      [gifEnabled]="attachments.gifEnabled()"
+      [gifDownloading]="attachments.gifDownloading()"
       [richActions]="richActions()"
-      [voiceSupported]="voiceSupported"
-      [recording]="recordingVoice()"
-      [locationSharing]="locationSharing()"
+      [voiceSupported]="attachments.voiceSupported"
+      [recording]="attachments.recordingVoice()"
+      [locationSharing]="attachments.locationSharing()"
       [stickerEnabled]="stickerEnabled()"
       (attachFile)="onAttach()"
       (pickGif)="toggleGifPicker()"
@@ -191,7 +191,7 @@
       rows="1"
       [value]="text()"
       [placeholder]="
-        hasStaged()
+        attachments.hasStaged()
           ? 'Add a caption…'
           : editing()
             ? 'Edit message…'
@@ -234,7 +234,7 @@
         composing() ||
         textSending() ||
         contextUploadProgress() !== null ||
-        recordingVoice()
+        attachments.recordingVoice()
       "
       (beforeOpen)="captureFormatSelection()"
       (format)="onMenuFormat($event)"
@@ -257,7 +257,7 @@
        a pointer device it is still the discoverable way to send when Enter is ambiguous
        (a draft holding newlines, IME composition). Withheld only while recording, where
        the recording bar owns the send plane and two identical ones would be a coin-flip. -->
-    @if (!recordingVoice()) {
+    @if (!attachments.recordingVoice()) {
       <button
         type="button"
         trnIconButton
@@ -267,8 +267,8 @@
         data-testid="composer-send"
         [disabled]="
           textSending() ||
-          (!text().trim() && !hasStaged()) ||
-          (!editing() && hasStaged() && !canSendMedia())
+          (!text().trim() && !attachments.hasStaged()) ||
+          (!editing() && attachments.hasStaged() && !canSendMedia())
         "
         (click)="submit()"
       >

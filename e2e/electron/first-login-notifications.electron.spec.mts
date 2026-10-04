@@ -2,14 +2,14 @@ import { expect, test, type Page } from './fixtures.mts';
 
 import {
   login,
-  synapseSession,
+  homeserverSession,
   waitForRooms,
   type Navigate,
 } from '../support/app.mts';
 import { passwordLogin, registerUser } from '../support/account.mts';
 import { createElectronProfile, launchApp } from './support/launch.mts';
 
-const session = synapseSession();
+const session = homeserverSession();
 
 async function installRejectedNotificationCounter(
   app: Awaited<ReturnType<typeof launchApp>>,

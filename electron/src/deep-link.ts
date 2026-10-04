@@ -12,11 +12,11 @@ import { focusMainWindow, getMainWindow } from './window';
 // `www/` and is NOT registered with the OS. `eu.qwky.trinity` MUST be a real OS
 // protocol client (app.setAsDefaultProtocolClient) for the browser redirect to
 // route back into the app.
-export const DEEP_LINK_SCHEME = 'eu.qwky.trinity';
+const DEEP_LINK_SCHEME = 'eu.qwky.trinity';
 // Scheme-only, so both callback shapes route: legacy SSO redirects to the `//` form,
 // while OIDC uses the RFC 8252 §7.1 form (`eu.qwky.trinity:/sso-callback`) which has
 // no authority. Matching on `://` would silently drop every OIDC callback.
-export const DEEP_LINK_PREFIX = `${DEEP_LINK_SCHEME}:`;
+const DEEP_LINK_PREFIX = `${DEEP_LINK_SCHEME}:`;
 export const DEEP_LINK_CHANNEL = 'deep-link';
 
 // Deep-link URLs that arrived before the renderer was ready to receive them

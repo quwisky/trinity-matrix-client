@@ -1,11 +1,14 @@
 import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
-import { openSettingsSection } from '../../../support/journeys/navigation.mts';
+import {
+  openSettingsSection,
+  openSystemStatusFromRooms,
+} from '../../../support/journeys/navigation.mts';
 
 // Covers the Security settings section (Settings → Security): it surfaces this account's
 // encryption posture from TrustService and launches the existing setup/verify flows. A
@@ -13,7 +16,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // unverified session, so the section offers "Set up recovery" (routes to /encryption/setup)
 // and "Verify with another device". A fresh user keeps the crypto state deterministic.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface TrustFaultWindow extends Window {
   ng: {
@@ -56,7 +59,7 @@ test.describe('Security settings', () => {
     const pass = `${user}-pass`;
 
     await registerUser(request, user, pass);
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
 
     await openSettingsSection(page, 'security');
 
@@ -92,7 +95,7 @@ test.describe('Security settings', () => {
 
     await page.setViewportSize({ width: 700, height: 760 });
     await registerUser(request, user, pass);
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const roomUrl = page.url();
 
     await openSettingsSection(page, 'security');
@@ -124,7 +127,7 @@ test.describe('Security settings', () => {
     const pass = `${user}-pass`;
 
     await registerUser(request, user, pass);
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSettingsSection(page, 'security');
     await expect(page.getByTestId('security-setup')).toBeVisible({
       timeout: 20_000,
@@ -160,11 +163,8 @@ test.describe('Security settings', () => {
     await expect(page.getByTestId('security-unlock')).toHaveCount(0);
     await expect(page.getByTestId('security-verify')).toHaveCount(0);
     await page.getByRole('button', { name: 'Close settings' }).click();
-    await page
-      .getByTestId('app-capability-summary')
-      .getByRole('button', { name: 'System Status' })
-      .click();
-    const status = page.getByRole('dialog', { name: 'System Status' });
+    await openSystemStatusFromRooms(page);
+    const status = page.getByRole('dialog', { name: 'System status' });
     const problem = status
       .locator('article')
       .filter({ hasText: 'Encryption trust status is unavailable' });

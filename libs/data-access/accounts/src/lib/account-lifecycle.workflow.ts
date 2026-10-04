@@ -44,7 +44,7 @@ type InFlightLifecycle =
     });
 
 /** Finite caller observation; the accepted destructive attempt remains session-owned. */
-export const ACCOUNT_LIFECYCLE_OBSERVATION_BUDGET_MS = 10_000;
+const ACCOUNT_LIFECYCLE_OBSERVATION_BUDGET_MS = 10_000;
 
 /** Serializes destructive Account lifecycle commands and joins identical attempts. */
 @Injectable({ providedIn: 'root' })

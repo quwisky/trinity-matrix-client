@@ -7,8 +7,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -16,7 +16,7 @@ import { registerUser } from '../../../support/account.mts';
 // (data-testid="read-receipts") expands the names of who read it (seen-by-list).
 // Another user reads the message (via the receipts API) so a receipt appears.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   userId: string;
@@ -100,7 +100,7 @@ test.describe('Seen by', () => {
       hs,
       user: me,
       pass: mePass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
 
     const composer = page.getByTestId('composer-input');

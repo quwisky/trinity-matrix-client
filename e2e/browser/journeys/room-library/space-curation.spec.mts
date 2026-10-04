@@ -8,8 +8,8 @@ import {
 import {
   login,
   openSettingsTab,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -20,7 +20,7 @@ import { registerUser } from '../../../support/account.mts';
 // Asserted against the `m.space.child` state event over the CS API, because that event is
 // the whole feature: a UI that reordered a list locally and wrote nothing looks identical.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function apiLogin(
   request: APIRequestContext,
@@ -114,7 +114,7 @@ test.describe('Space curation', () => {
       preset: 'private_chat',
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const pill = page.getByRole('button', { name: spaceName, exact: true });
     await pill.waitFor({ state: 'visible', timeout: 30_000 });
     await pill.click();
@@ -156,7 +156,7 @@ test.describe('Space curation', () => {
       creation_content: { type: 'm.space' },
     });
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const pill = page.getByRole('button', { name: parentName, exact: true });
     await pill.waitFor({ state: 'visible', timeout: 30_000 });
     await pill.click();
@@ -257,7 +257,7 @@ test.describe('Space curation', () => {
       );
     }
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const pill = page.getByRole('button', { name: spaceName, exact: true });
     await pill.waitFor({ state: 'visible', timeout: 30_000 });
     await pill.click();
@@ -277,7 +277,7 @@ test.describe('Space curation', () => {
     await page.getByTestId('space-settings-for-you-save').click();
     await expect(
       page.getByTestId('space-settings-for-you-feedback'),
-    ).toContainText('saved for this Account on this device');
+    ).toContainText('saved for this account on this device');
     await openSettingsTab(page, 'space-settings', 'contents');
 
     // First refusal: the optimistic checkbox must roll back and preserve a retryable
@@ -389,13 +389,13 @@ test.describe('Space curation', () => {
     });
   });
 
-  test('a child moves out of More Channels the moment you join it', async ({
+  test('a child moves out of More rooms the moment you join it', async ({
     page,
     request,
   }) => {
     // The `joined` flag on a space's children is derived from sync, not from the
     // `/hierarchy` fetch that produced the list — so joining has to move a room from
-    // "More Channels" into the channel list with no re-fetch and no reload. That
+    // "More rooms" into the room list with no re-fetch and no reload. That
     // derivation is the whole reason SpacesService carried a bump counter.
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}jn`;
@@ -435,12 +435,12 @@ test.describe('Space curation', () => {
       hs,
       user: owner,
       pass,
-    } as SynapseSession);
+    } as HomeserverSession);
     const pill = page.getByRole('button', { name: spaceName, exact: true });
     await pill.waitFor({ state: 'visible', timeout: 30_000 });
     await pill.click();
 
-    // Not joined yet: offered under More Channels rather than listed as a channel.
+    // Not joined yet: offered under More rooms rather than listed as a channel.
     const join = page.getByTestId(`join-child-${childId}`);
     await expect(join).toBeVisible({ timeout: 30_000 });
 

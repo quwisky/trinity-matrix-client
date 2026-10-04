@@ -400,7 +400,7 @@ describe('SpaceSettingsComponent', () => {
     expect(topic?.readOnly).toBe(true);
     expect(topic?.disabled).toBe(false);
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(
-      'Space is no longer joined',
+      'space is no longer joined',
     );
   });
 

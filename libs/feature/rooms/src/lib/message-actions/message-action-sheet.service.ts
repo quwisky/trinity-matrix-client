@@ -179,7 +179,7 @@ export class MessageActionSheetService {
         handler: act('view-source'),
       },
       {
-        text: 'Report message',
+        text: 'Report',
         icon: 'flag',
         testId: 'sheet-report',
         handler: act('report'),
@@ -187,7 +187,7 @@ export class MessageActionSheetService {
     );
     if (caps.editable) {
       buttons.push({
-        text: 'Edit message',
+        text: 'Edit',
         icon: 'pencil',
         testId: 'sheet-edit',
         handler: act('edit'),
@@ -195,7 +195,7 @@ export class MessageActionSheetService {
     }
     if (caps.deletable) {
       buttons.push({
-        text: 'Delete message',
+        text: 'Delete',
         icon: 'trash-2',
         variant: 'danger',
         separatorBefore: true,

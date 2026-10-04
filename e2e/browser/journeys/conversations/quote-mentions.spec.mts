@@ -7,8 +7,8 @@ import {
 import {
   clickRowMenuItem,
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -32,7 +32,7 @@ import { registerUser } from '../../../support/account.mts';
 // but `.channel__badge` (not `--muted`) is driven by the same `highlight` tweak.
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 /** A display name nothing else could match, so a highlight can only be the mention rule. */
 const READER_DISPLAY_NAME = 'Zephyrine';
@@ -107,7 +107,7 @@ test.describe('Quoting does not notify the people it quotes', () => {
       hs,
       user: writer,
       pass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await page.getByTestId('rail-rooms').click();
     const channel = page.locator('.channel', { hasText: roomName });
     await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
@@ -162,6 +162,7 @@ test.describe('Quoting does not notify the people it quotes', () => {
 
     // The plain "poke" (asserted above) proves the room notifies at all, so a zero
     // highlight here is a decision rather than a room that happened to be silent.
-    expect(counts.highlight_count).toBe(0);
+    // Tuwunel omits a zero highlight_count from incremental syncs; absent means zero.
+    expect(counts.highlight_count ?? 0).toBe(0);
   });
 });

@@ -44,9 +44,9 @@ import {
 } from './application-runtime.models';
 
 /** Allows Account Runtime's ten-second destructive observation to report first. */
-export const APPLICATION_RECOVERY_OBSERVATION_BUDGET_MS = 11_000;
+const APPLICATION_RECOVERY_OBSERVATION_BUDGET_MS = 11_000;
 
-export class ApplicationRuntimeAlreadyRunningError extends Error {
+class ApplicationRuntimeAlreadyRunningError extends Error {
   constructor() {
     super('Application Runtime already has an active owner.');
   }

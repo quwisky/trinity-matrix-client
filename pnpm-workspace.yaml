@@ -36,6 +36,7 @@ allowBuilds:
 
 patchedDependencies:
   '@spartan-ng/brain@1.5.0': patches/@spartan-ng__brain@1.5.0.patch
+  matrix-js-sdk@42.4.0: patches/matrix-js-sdk@42.4.0.patch
   matrix-widget-api@1.19.0: patches/matrix-widget-api@1.19.0.patch
 minimumReleaseAgeExclude:
   # Renovate security update: @angular/common@22.1.5

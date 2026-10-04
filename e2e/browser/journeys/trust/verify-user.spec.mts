@@ -8,9 +8,9 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
+  homeserverSession,
   waitForRooms,
-  type SynapseSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -21,7 +21,7 @@ import { registerUser } from '../../../support/account.mts';
 // The other side never responds here (no second client), so this asserts the flow
 // *starts* — the SAS round-trip is covered by the crypto unit + e2e:verify suites.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   userId: string;
@@ -142,7 +142,7 @@ async function verifyUserFromMemberPanel({
     hs,
     user: me,
     pass: mePass,
-  } as SynapseSession);
+  } as HomeserverSession);
   await setUpEncryption(page, mePass);
 
   const identityRoute = '**/_matrix/client/v3/keys/query';
@@ -184,7 +184,7 @@ async function verifyUserFromMemberPanel({
       hs,
       user: other,
       pass: otherPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await setUpEncryption(otherPage, otherPass);
     await activatePrimary();
 

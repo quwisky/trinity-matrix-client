@@ -21,7 +21,6 @@ export const E2E_SUITES = [
 ] as const;
 
 export const E2E_INVENTORY = {
-  canonicalBrowserSpecCount: 122,
   trackedTargetProjects: [
     {
       project: 'trinity-e2e',
@@ -72,7 +71,7 @@ export const E2E_INVENTORY = {
   trackedEntrypointPatterns: [
     'e2e/**/playwright*.config.mts',
     'e2e/protocol/*.spec.mjs',
-    'e2e/mobile/run.mts',
+    'e2e/mobile/run*.mts',
     'e2e/**/wdio*.conf.mts',
   ],
   sharedEntrypoints: [],
@@ -95,4 +94,4 @@ export {
   E2E_TIMEOUTS_MS,
 };
 
-export type * from './types.mts';
+export type * from '../support/e2e-registry.types.mts';

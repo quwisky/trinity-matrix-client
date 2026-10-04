@@ -32,15 +32,11 @@
  * The kit's state variants, which Tailwind cannot infer.
  *
  * Most Brn controls publish state as `data-state="checked" | "unchecked"` — one attribute
- * with two values — while the Helm classes styling them are written `data-checked:bg-primary`
- * and `data-unchecked:bg-input`. Tailwind reads a bare `data-foo:` as an attribute PRESENCE
- * test and compiles `&[data-checked]`, which those controls never carry. Twelve such class
- * occurrences existed in the kit and matched nothing: a switch rendered identically on and
- * off, and a ticked checkbox never took its primary fill.
- *
- * `data-orientation` is a second attribute of the same shape, and `data-state` also carries
- * `active`/`inactive` and `open`/`closed` — so the open tab drew no underline and every
- * separator rendered `width: 0px`.
+ * with two values — while the Helm classes styling them are written `data-checked:bg-primary`.
+ * Tailwind reads a bare `data-foo:` as an attribute PRESENCE test and compiles
+ * `&[data-checked]`, which those controls never carry. Such class occurrences matched
+ * nothing: a ticked checkbox never took its primary fill. `data-state` also carries
+ * `open`/`closed`, which the same mismatch left unstyled.
  *
  * Upstream ships all of this in `@spartan-ng/brain/hlm-tailwind-preset.css`; vendoring the
  * components without it is what broke the pairing. Declared here rather than rewriting the
@@ -107,20 +103,6 @@
   }
 }
 
-@custom-variant data-unchecked {
-  &:where([data-state='unchecked']),
-  &:where([data-unchecked]:not([data-unchecked='false'])) {
-    @slot;
-  }
-}
-
-@custom-variant data-active {
-  &:where([data-state='active']),
-  &:where([data-active]:not([data-active='false'])) {
-    @slot;
-  }
-}
-
 @custom-variant data-open {
   &:where([data-state='open']),
   &:where([data-open]:not([data-open='false'])) {
@@ -131,19 +113,6 @@
 @custom-variant data-closed {
   &:where([data-state='closed']),
   &:where([data-closed]:not([data-closed='false'])) {
-    @slot;
-  }
-}
-
-/* Orientation has no presence spelling upstream either — one attribute, two values. */
-@custom-variant data-horizontal {
-  &:where([data-orientation='horizontal']) {
-    @slot;
-  }
-}
-
-@custom-variant data-vertical {
-  &:where([data-orientation='vertical']) {
     @slot;
   }
 }

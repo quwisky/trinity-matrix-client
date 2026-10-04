@@ -148,15 +148,15 @@ export class RoomShellViewModel {
   readonly activeSpaceName = computed(() => {
     const id = this.store.activeSpaceId();
     if (!id) {
-      return 'Home';
+      return 'Direct messages';
     }
     return (
       this.selectedLibrary.view().spaces.find((space) => space.id === id)
-        ?.name ?? 'Home'
+        ?.name ?? 'Direct messages'
     );
   });
 
-  /** Channel-sidebar header: Recent activity, the Rooms view, a selected space, else Home's DMs. */
+  /** Channel-sidebar header: Recent activity, the Rooms view, a selected space, else the direct messages. */
   readonly sidebarTitle = computed(() => {
     if (this.store.recentView()) {
       return 'Recent activity';
@@ -166,7 +166,7 @@ export class RoomShellViewModel {
     }
     return this.store.activeSpaceId()
       ? this.activeSpaceName()
-      : 'Direct Messages';
+      : 'Direct messages';
   });
 
   /**

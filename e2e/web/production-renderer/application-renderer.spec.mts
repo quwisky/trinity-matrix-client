@@ -9,8 +9,8 @@ import {
 import {
   fillLabeledInput,
   seedPreference,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../support/app.mts';
 import { passwordLogin, registerUser } from '../../support/account.mts';
 import {
@@ -18,7 +18,7 @@ import {
   measureContrast,
 } from '../../browser/support/contrast.mts';
 
-const session = synapseSession();
+const session = homeserverSession();
 const ROOM_MESSAGES = [
   'The production renderer keeps the conversation as the visual focus.',
   'Compact density and larger text remain independent choices.',
@@ -88,7 +88,7 @@ function slug(value: string): string {
 async function seedRoom(
   request: APIRequestContext,
   projectName: string,
-): Promise<{ credentials: SynapseSession; roomName: string }> {
+): Promise<{ credentials: HomeserverSession; roomName: string }> {
   const suffix = slug(projectName);
   const reader = `renderer-${suffix}-reader`;
   const readerPass = `${reader}-pass`;
@@ -205,7 +205,10 @@ async function seedAppearance(
   );
 }
 
-async function signIn(page: Page, credentials: SynapseSession): Promise<void> {
+async function signIn(
+  page: Page,
+  credentials: HomeserverSession,
+): Promise<void> {
   await fillLabeledInput(page, 'Username', credentials.user as string);
   await fillLabeledInput(page, 'Password', credentials.pass as string);
   await page.getByRole('button', { name: 'Sign in' }).click();
@@ -401,17 +404,19 @@ test.describe('@production-renderer application surface', () => {
     }
     await openRoom(page, roomName);
     if (testInfo.project.name === 'small-light-large') {
-      const systemStatus = page.getByRole('button', {
-        name: 'System Status',
-        exact: true,
-      });
+      // One global banner slot: the encryption prompt outranks the limited-capability
+      // summary, so System Status stays reachable from the room overflow menu instead.
+      await expect(page.getByTestId('app-capability-summary')).toHaveCount(0);
+      await page.getByTestId('room-actions-overflow').click();
+      const systemStatus = page.getByTestId('overflow-open-system-status');
       await expect(systemStatus).toBeVisible();
-      await expect(systemStatus).toHaveAccessibleName('System Status');
       await expectInsideViewport(
         page,
         systemStatus,
         'mobile system status access',
       );
+      await page.keyboard.press('Escape');
+      await expect(systemStatus).toBeHidden();
       await expectInsideViewport(
         page,
         page.getByRole('heading', { name: roomName }),

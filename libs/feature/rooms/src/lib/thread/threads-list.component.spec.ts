@@ -127,6 +127,6 @@ describe('ThreadsListComponent', () => {
 
     // The text, not the class: the panel is a `trn-empty-state` now, and what this test
     // has always been about is that the reader is told there is nothing here.
-    expect(container.textContent).toContain('No threads in this channel yet.');
+    expect(container.textContent).toContain('No threads in this room yet.');
   });
 });

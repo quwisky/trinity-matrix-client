@@ -110,6 +110,7 @@ export class ConversationTimelineStub implements ConversationTimeline {
   readonly jumpToDate: ConversationTimeline['jumpToDate'] = vi.fn(() =>
     of({ kind: 'no-event' as const }),
   );
+  readonly loadEvent: ConversationTimeline['loadEvent'] = vi.fn(() => of(true));
   readonly setTyping: ConversationTimeline['setTyping'] = vi.fn();
   readonly rawEvent: ConversationTimeline['rawEvent'] = vi.fn(() => null);
   readonly reactionDetails: ConversationTimeline['reactionDetails'] = vi.fn(

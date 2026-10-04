@@ -2,7 +2,7 @@ import type {
   E2EAggregateTarget,
   E2ECiEntrypoint,
   E2EPackageScriptContract,
-} from './types.mts';
+} from '../support/e2e-registry.types.mts';
 
 const compatibilityRelease =
   'after one released changelog cycle with documented replacements, zero repository or CI references, and no reported migration failures';
@@ -52,6 +52,11 @@ export const E2E_AGGREGATE_TARGETS = [
     target: 'e2e-mobile',
     unavailablePolicy: 'fail',
     selection: { kind: 'environment', value: 'mobile' },
+  },
+  {
+    target: 'e2e-mobile-ios',
+    unavailablePolicy: 'fail',
+    selection: { kind: 'environment', value: 'mobile-ios' },
   },
 ] as const satisfies readonly E2EAggregateTarget[];
 
@@ -138,6 +143,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     command: 'nx run trinity-e2e:e2e-mobile',
     kind: 'canonical',
     suiteIds: ['mobile.android'],
+  },
+  {
+    name: 'e2e:mobile:ios',
+    command: 'nx run trinity-e2e:e2e-mobile-ios',
+    kind: 'canonical',
+    suiteIds: ['mobile.ios'],
   },
   {
     name: 'e2e:verify',
@@ -232,13 +243,13 @@ export const E2E_PACKAGE_SCRIPTS = [
   },
   {
     name: 'e2e:verify:up',
-    command: 'nx run trinity-e2e:synapse-up',
+    command: 'nx run trinity-e2e:homeserver-up',
     kind: 'maintenance',
     suiteIds: [],
   },
   {
     name: 'e2e:verify:down',
-    command: 'nx run trinity-e2e:synapse-down',
+    command: 'nx run trinity-e2e:homeserver-down',
     kind: 'maintenance',
     suiteIds: [],
   },
@@ -279,6 +290,11 @@ export const E2E_CI_ENTRYPOINTS = [
     command: 'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:mobile',
     tier: 'pull-request',
     suiteIds: ['mobile.android'],
+  },
+  {
+    command: 'pnpm e2e:mobile:ios',
+    tier: 'nightly',
+    suiteIds: ['mobile.ios'],
   },
   {
     command: 'pnpm e2e:scheduled',

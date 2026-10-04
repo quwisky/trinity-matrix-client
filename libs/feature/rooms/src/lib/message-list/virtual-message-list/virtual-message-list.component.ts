@@ -200,11 +200,14 @@ export class VirtualMessageListComponent extends MessageListBase {
 
       if (this.pendingPrepend) {
         // The viewport moves before the browser delivers its scroll event. Capture
-        // that movement before the loading strip changes the row geometry.
+        // that movement before the loading strip or the landed page changes the row
+        // geometry: this effect runs before the view renders either, so the current
+        // position is still the reader's. Recapturing only while loading would let a
+        // page that lands in the same frame as a scroll drag the reader back to where
+        // the request was made.
         if (
-          this.loadingOlder() &&
           el.scrollTop !==
-            (this.expectedProgrammaticScrollTop ?? this.prevScrollTop)
+          (this.expectedProgrammaticScrollTop ?? this.prevScrollTop)
         ) {
           this.prevScrollHeight = el.scrollHeight;
           this.prevScrollTop = el.scrollTop;
@@ -639,6 +642,12 @@ export class VirtualMessageListComponent extends MessageListBase {
     // Remembered so a width change can re-aim it: every branch below ends in a measurement
     // that is only correct for the layout at this instant. See `notePendingJump`.
     this.notePendingJump(messageId);
+    // The jump is the reader's new position. A correction queued for the history restore
+    // before it (a date jump pages history in right before jumping) would otherwise scroll
+    // back to the old anchor and cancel the smooth scroll below.
+    this.prependAnchorActive = false;
+    this.prependAnchorGeneration++;
+    this.expectedProgrammaticScrollTop = null;
     this.atBottomSig.set(false);
     const existing = el.querySelector(`[data-mid="${messageId}"]`);
     if (existing) {

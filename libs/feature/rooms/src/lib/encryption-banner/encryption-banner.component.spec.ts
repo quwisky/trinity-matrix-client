@@ -1,5 +1,6 @@
 import { signal } from '@angular/core';
 import {
+  WORKSPACE_SYSTEM_STATUS,
   WorkspaceApplicationSurfaceService,
   type WorkspaceApplicationSurfaceRequest,
 } from '@trinity/application/workspace';
@@ -11,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionBannerComponent } from './encryption-banner.component';
 
 const status = signal<TrustStatus>('unknown');
+const slot = signal<'status' | 'encryption' | null>('encryption');
 const open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
   of({ kind: 'presented' as const, surface: request.surface }),
 );
@@ -21,12 +23,21 @@ function renderBanner() {
     providers: [
       MockProvider(TrustService, { status: status.asReadonly() }),
       MockProvider(WorkspaceApplicationSurfaceService, { open }),
+      {
+        provide: WORKSPACE_SYSTEM_STATUS,
+        useValue: {
+          hasProblems: signal(false),
+          show: vi.fn(),
+          bannerSlot: slot,
+        },
+      },
     ],
   });
 }
 
 beforeEach(() => {
   status.set('unknown');
+  slot.set('encryption');
   open.mockClear();
 });
 
@@ -61,6 +72,16 @@ describe('EncryptionBannerComponent', () => {
     fixture.detectChanges();
 
     expect(liveRegion()?.textContent).toContain('Set up encryption');
+  });
+
+  it('yields to the limited-capability banner so only one global banner shows', async () => {
+    status.set('needs-setup');
+    const { fixture, container } = await renderBanner();
+    expect(container.querySelector('trn-banner')).not.toBeNull();
+
+    slot.set('status');
+    fixture.detectChanges();
+    expect(container.querySelector('trn-banner')).toBeNull();
   });
 
   it('offers a single setup action as a semantic trust surface', async () => {

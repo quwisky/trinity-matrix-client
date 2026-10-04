@@ -8,13 +8,13 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import type { TouchPlatform } from '../../../support/platform-contracts.mts';
 
-const session = synapseSession();
+const session = homeserverSession();
 
 async function tokenFor(
   request: APIRequestContext,
@@ -138,7 +138,7 @@ test.describe('Space settings on a phone', () => {
       },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSpaceSettings(page, spaceName, touchPlatform, roomName);
 
     const settings = page.getByTestId('space-settings');
@@ -188,7 +188,7 @@ test.describe('Space settings on a phone', () => {
       page.getByTestId('space-settings-mobile-back'),
     );
     const discard = page.getByRole('dialog', {
-      name: 'Discard Space settings changes?',
+      name: 'Discard space settings changes?',
     });
     await touchPlatform.tap(
       page,
@@ -298,7 +298,7 @@ test.describe('Space settings on a phone', () => {
       contentsPanel.getByText(roomName, { exact: true }),
     ).toBeVisible({ timeout: 30_000 });
     const createRoom = contentsPanel.getByRole('button', {
-      name: 'Create Room',
+      name: 'Create room',
     });
     expect(
       (await createRoom.boundingBox())?.height ?? 0,
@@ -343,7 +343,7 @@ test.describe('Space settings on a phone', () => {
       contentsPanel.getByRole('button', { name: 'Add existing' }),
     );
     await contentsPanel
-      .getByLabel('Find a joined Room or Space')
+      .getByLabel('Find a joined room or space')
       .fill(candidateName);
     const candidatePick = contentsPanel.getByTestId(
       `space-contents-pick-${candidateId}`,
@@ -366,7 +366,7 @@ test.describe('Space settings on a phone', () => {
       .toEqual(expect.objectContaining({ via: expect.any(Array) }));
 
     await touchPlatform.tap(page, createRoom);
-    const createDialog = page.getByRole('dialog', { name: 'Create Room' });
+    const createDialog = page.getByRole('dialog', { name: 'Create room' });
     await touchPlatform.tap(
       page,
       createDialog.getByRole('button', { name: 'Cancel' }),
@@ -378,7 +378,7 @@ test.describe('Space settings on a phone', () => {
       candidateRow.getByRole('button', { name: 'Remove' }),
     );
     const removeDialog = page.getByRole('dialog', {
-      name: 'Remove Room from Space',
+      name: 'Remove room from space',
     });
     await touchPlatform.tap(
       page,
@@ -445,7 +445,7 @@ test.describe('Space settings on a phone', () => {
     const token = await tokenFor(request, hs, user, pass);
     await createSpace(request, hs, token, spaceName);
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const pill = page.getByRole('button', { name: spaceName, exact: true });
     await touchPlatform.tap(page, pill);
     await touchPlatform.tap(page, page.getByTestId('space-actions-overflow'));
@@ -505,7 +505,7 @@ test.describe('Space settings on a phone', () => {
       hs,
       user: member,
       pass: memberPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openSpaceSettings(page, spaceName, touchPlatform);
 
     await touchPlatform.tap(

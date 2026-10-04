@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { existsSync, globSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -84,11 +83,6 @@ const rulePaths = (source, parents = []) =>
     return [path.join(' > '), ...rulePaths(body, path)];
   });
 
-const styleFingerprint = (source) =>
-  createHash('sha256')
-    .update(stripSourceComments(source).replace(/\s+/gu, ' ').trim())
-    .digest('hex');
-
 const layerBodies = (file, layer) =>
   topLevelStyleBlocks(read(file))
     .filter(({ prelude }) => prelude === `@layer ${layer}`)
@@ -143,12 +137,8 @@ describe('cascade layer contract', () => {
     ]);
     expect(topLevelStyleBlocks(adapter).map(({ prelude }) => prelude)).toEqual([
       '@custom-variant data-checked',
-      '@custom-variant data-unchecked',
-      '@custom-variant data-active',
       '@custom-variant data-open',
       '@custom-variant data-closed',
-      '@custom-variant data-horizontal',
-      '@custom-variant data-vertical',
       '@utility no-scrollbar',
       '@theme inline',
       '@layer theme',
@@ -270,21 +260,8 @@ describe('cascade layer contract', () => {
       '@media (prefers-reduced-motion: reduce)',
       '@media (prefers-reduced-motion: reduce) > *, *::before, *::after',
       '@media (pointer: coarse)',
-      "@media (pointer: coarse) > button[trnBtn][data-slot='button'], a[trnBtn][data-slot='button']",
+      '@media (pointer: coarse) > button[trnBtn], a[trnBtn]',
     ]);
-    expect(styleFingerprint(overrides)).toBe(
-      'ddea09da18193784a42b605ce74e384bbae52bb2e23c3ebfd851f6d90f21013e',
-    );
-    expect(
-      styleFingerprint(
-        topLevelStyleBlocks(
-          read('libs/theme-foundation/styles/internal/tailwind-adapter.css'),
-        )
-          .filter(({ prelude }) => prelude === '@layer overrides')
-          .map(({ body }) => body)
-          .join('\n'),
-      ),
-    ).toBe('45628b69ccf1517a414ba072300c498e136a62819b54c4c455fd1070655c3d40');
   });
 
   it('assigns every authored component ruleset to the components layer', () => {

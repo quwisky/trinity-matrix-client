@@ -14,7 +14,6 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
 const VERSION =
@@ -61,10 +60,7 @@ export function packWebRelease({ root, version, outDir }) {
   }
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (import.meta.main) {
   const { values } = parseArgs({
     options: { version: { type: 'string' }, out: { type: 'string' } },
   });

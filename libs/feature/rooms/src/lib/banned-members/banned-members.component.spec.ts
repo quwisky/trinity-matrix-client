@@ -205,7 +205,7 @@ describe('BannedMembersComponent', () => {
 
     expect(confirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: expect.stringContaining('Account @opening:hs'),
+        message: expect.stringContaining('account @opening:hs'),
       }),
     );
     expect(unban).toHaveBeenCalledWith(

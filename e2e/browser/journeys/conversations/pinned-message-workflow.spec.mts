@@ -7,8 +7,8 @@ import {
 import {
   clickRowMenuItem,
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -16,7 +16,7 @@ import { registerUser } from '../../../support/account.mts';
 // menu (`data-testid="msg-more"`) offers "Pin message" (`data-testid="msg-pin"`),
 // which writes `m.room.pinned_events` through the exact Conversation pins child.
 // The room toolbar's pin button (`data-testid="open-pinned"`)
-// shows a count badge (`.header-pin__badge`) and opens the pinned-messages side
+// exposes the pin count in its accessible name and opens the pinned-messages side
 // panel (PinnedMessagesPanelComponent), whose rows (`.pin-item`) list each pin's
 // body/sender/time, jump the timeline to that message on click
 // (`.pin-item__main`), and offer an inline Unpin (`.pin-item__unpin`).
@@ -33,7 +33,7 @@ import { registerUser } from '../../../support/account.mts';
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise, like the other
 // authenticated web e2e specs.
-const session = synapseSession();
+const session = homeserverSession();
 
 const OTHER_BODY = 'just chatting';
 const PIN_BODY = 'pin me please';
@@ -43,14 +43,14 @@ const REPEAT_PIN_BODY = 'pin me twice please';
 // regression, below. Comfortably past whatever a 1280x720 viewport's worth of
 // compact message rows can show at once (real overflow, not a guess), and — more
 // importantly — pushed *after* the reader is already logged in and the room is
-// open, so every filler message lands as ordinary live sync traffic in the
-// client's already-open (uncapped) live timeline, rather than via the initial
+// open, so the filler lands as live sync traffic rather than via the initial
 // `/sync`, which `MatrixClientService` caps at `initialSyncLimit: 20` — history
 // beyond that window only loads via an explicit scroll-to-top backfill (see
-// timeline-virtualization.spec.mts). Seeding this many *before* login would put
-// the target outside that window — not just scrolled off, but genuinely unloaded
-// — and PinnedMessagesPanelComponent → MessageListBase.jumpTo() only scrolls to
-// an event already in the rendered DOM; it never fetches context for a jump.
+// timeline-virtualization.spec.mts). Live sync is capped too, though: a burst that
+// outruns a sync's timeline limit comes back as a gappy (`limited`) sync, and the SDK
+// restarts the live timeline after the gap, unloading the target until history is
+// paged back in. That is fine here: the panel fetches unloaded pins and a jump pages the
+// target back in, so the test no longer has to.
 const FILLER_COUNT = 32;
 
 interface ApiUser {
@@ -90,7 +90,7 @@ async function seedPinRoom(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ reader: SynapseSession; roomName: string }> {
+): Promise<{ reader: HomeserverSession; roomName: string }> {
   const readerUser = `pin-reader-${runId}`;
   const readerPass = `reader-pass-${runId}`;
   const roomName = `Pin E2E ${runId}`;
@@ -137,7 +137,7 @@ async function seedRepeatJumpPinRoom(
   hs: string,
   runId: string,
 ): Promise<{
-  reader: SynapseSession;
+  reader: HomeserverSession;
   roomName: string;
   roomId: string;
   api: ApiUser;
@@ -222,12 +222,15 @@ test.describe('Pin messages', () => {
     // the row — select its "Pin message" item at page scope.
     await clickRowMenuItem(targetRow.first(), page.getByTestId('msg-pin'));
 
-    // Assert the toolbar's pin button now carries a count badge of 1 — wait on
+    // Assert the toolbar's pin button now names a count of 1 — wait on
     // this app state (the pin round-tripping through sendStateEvent →
     // RoomStateEvent.Events → readRoomState), not a fixed sleep.
     const pinButton = page.getByTestId('open-pinned');
-    const badge = pinButton.locator('.header-pin__badge');
-    await expect(badge).toHaveText('1', { timeout: 30_000 });
+    await expect(pinButton).toHaveAttribute(
+      'aria-label',
+      'Pinned messages (1)',
+      { timeout: 30_000 },
+    );
 
     // Open the pinned-messages panel and confirm it lists the pinned message.
     await pinButton.click();
@@ -272,14 +275,16 @@ test.describe('Pin messages', () => {
     pinRow = page.locator('.pin-item', { hasText: PIN_BODY });
     await pinRow.locator('.pin-item__unpin').click();
 
-    // The panel empties and/or the count badge drops to 0 — again waiting on
+    // The panel empties and/or the pin button's name drops its count — again waiting on
     // the state round trip rather than a fixed sleep.
     await expect(
-      page.getByText('No pinned messages in this channel yet.'),
+      page.getByText('No pinned messages in this room yet.'),
     ).toBeVisible({ timeout: 30_000 });
 
     await page.getByRole('button', { name: 'Close pinned messages' }).click();
-    await expect(badge).toHaveCount(0, { timeout: 30_000 });
+    await expect(pinButton).toHaveAttribute('aria-label', 'Pinned messages', {
+      timeout: 30_000,
+    });
   });
 
   // Regression for a fixed bug: clicking a pinned row jumped the timeline the
@@ -338,13 +343,17 @@ test.describe('Pin messages', () => {
       );
     }
 
-    // The flood lands via live sync and the list's stick-to-bottom effect (the user
-    // hasn't scrolled up, so it's still "at bottom") rides it down — the last filler
-    // arrives on screen, and the target (now dozens of rows above) scrolls out.
+    // The flood lands via live sync. The list usually rides it to the last filler, but a
+    // gappy sync (Tuwunel) can leave it short of the bottom and unload the target. The panel
+    // lists the target either way and a jump pages it back in, so just rest at the bottom.
     const lastFillerRow = page.locator('.scroll .msg[data-mid]', {
       hasText: lastFillerBody,
     });
-    await expect(lastFillerRow.first()).toBeInViewport({ timeout: 30_000 });
+    const scroll = page.locator('.scroll');
+    await expect(async () => {
+      await scroll.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+      await expect(lastFillerRow.first()).toBeInViewport({ timeout: 1_000 });
+    }).toPass({ timeout: 30_000 });
     await expect(targetRow.first()).not.toBeInViewport({ timeout: 15_000 });
 
     const pinButton = page.getByTestId('open-pinned');
@@ -371,9 +380,7 @@ test.describe('Pin messages', () => {
 
     // --- Scroll back away from the target so it's out of view again, exactly as
     // it was before the first jump. ---
-    await page
-      .locator('.scroll')
-      .evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    await scroll.evaluate((el) => el.scrollTo(0, el.scrollHeight));
     await expect(targetRow.first()).not.toBeInViewport({ timeout: 15_000 });
 
     // --- Second jump to the SAME event id — the regression assertion. Before the

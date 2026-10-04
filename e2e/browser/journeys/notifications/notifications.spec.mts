@@ -7,8 +7,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
@@ -29,7 +29,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 // admin endpoint, same trick as unread-badges.spec.mts. Needs a Synapse
 // homeserver (Docker) and self-skips otherwise, like the other authenticated web
 // e2e specs (see timeline-virtualization.spec.mts).
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   token: string;
@@ -73,7 +73,7 @@ async function seedNotifyRoom(
   hs: string,
   runId: string,
 ): Promise<{
-  reader: SynapseSession;
+  reader: HomeserverSession;
   readerUserId: string;
   sender: ApiUser;
   roomId: string;
@@ -293,7 +293,7 @@ async function storedReactionPreference(
 }
 
 interface ReactionFixture {
-  reader: SynapseSession;
+  reader: HomeserverSession;
   readerApi: ApiUser;
   reactors: ApiUser[];
   roomId: string;
@@ -485,7 +485,7 @@ test.describe('Message notifications', () => {
     await expect(
       page.locator('.channel', { hasText: roomName }).first(),
     ).toBeVisible({ timeout: 15_000 });
-    await page.getByRole('button', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Direct messages' }).click();
 
     const body = `hello from notify e2e ${runId}`;
     await postMessage(request, hs, sender, roomId, `notify-${runId}`, body);

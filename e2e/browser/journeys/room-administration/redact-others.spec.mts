@@ -8,15 +8,15 @@ import {
 import {
   clickRowMenuItem,
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
 // Covers moderator redaction: a room admin (power 100, the creator) can delete
 // ANOTHER user's message. TimelineService.canRedactOthers compares the user's
 // power level to the room's `redact` requirement; when sufficient, the message
-// toolbar's ⋯ menu exposes "Delete message" (data-testid="msg-delete") on other
+// toolbar's ⋯ menu exposes "Delete" (data-testid="msg-delete") on other
 // people's rows (MessageListBase widens `deletable` beyond own messages). Deleting
 // redacts the event, so the row renders "(message deleted)".
 //
@@ -24,7 +24,7 @@ import { registerUser } from '../../../support/account.mts';
 // then redacts). The member posts over the API so the flow under test is purely
 // the admin's UI redaction. Unencrypted room so the member can post via the API
 // and the admin reads plaintext. Needs a Synapse homeserver (Docker); self-skips.
-const session = synapseSession();
+const session = homeserverSession();
 
 interface ApiUser {
   userId: string;
@@ -113,14 +113,14 @@ test.describe('Moderator redaction', () => {
       hs,
       user: adminUser,
       pass: adminPass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, roomName);
 
     // The member's message is present.
     const row = page.locator('.scroll .msg[data-mid]', { hasText: memberBody });
     await row.first().waitFor({ state: 'visible', timeout: 20_000 });
 
-    // Reveal the hover toolbar → ⋯ menu → "Delete message" (offered because the
+    // Reveal the hover toolbar → ⋯ menu → "Delete" (offered because the
     // admin has redact power over others), then confirm the destructive dialog.
     await clickRowMenuItem(row.first(), page.getByTestId('msg-delete'));
 

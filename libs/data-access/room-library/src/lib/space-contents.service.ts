@@ -344,8 +344,8 @@ export class SpaceContentsService {
       availability,
       unavailableReason:
         availability === 'account-unavailable'
-          ? 'This Account is no longer available.'
-          : 'This Space is no longer joined for the opening Account.',
+          ? 'This account is no longer available.'
+          : 'This space is no longer joined for this account.',
       items: [],
       curationLinks: [],
       candidates: [],

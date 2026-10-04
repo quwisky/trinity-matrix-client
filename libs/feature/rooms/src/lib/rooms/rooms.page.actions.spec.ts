@@ -43,8 +43,8 @@ import { MatrixError } from '@trinity/util/matrix';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
-import { UserCardService } from '../user-card/user-card.service';
-import { MemberInfoService } from '../member-info/member-info.service';
+import { UserCardComponent } from '../user-card/user-card.component';
+import { MemberInfoComponent } from '../member-info/member-info.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { RoomLinkPreviewComponent } from '../room-link-preview/room-link-preview.component';
 
@@ -171,6 +171,17 @@ describe('RoomsPage space actions', () => {
     await vi.waitFor(() => expect(shell.store.activeSpaceId()).toBe('!new:hs'));
   });
 
+  it('gives the space name prompt an accessible name, not only a placeholder', () => {
+    const shell = build();
+    alertPrompt.mockReturnValue(of(null));
+
+    shell.spaces.onCreateSpace();
+
+    expect(alertPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ inputLabel: 'Space name' }),
+    );
+  });
+
   it('waits for a created space to enter the Account SDK graph before selecting it', async () => {
     const shell = build();
     const ready = new Subject<void>();
@@ -255,7 +266,7 @@ describe('RoomsPage space actions', () => {
     expect(alertConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringMatching(
-          /Leave .* as .*You remain a member of its Rooms/,
+          /Leave .* as .*You remain a member of its rooms/,
         ),
       }),
     );
@@ -351,7 +362,7 @@ describe('RoomsPage space actions', () => {
 
   it('drops the sidebar filter when switching accounts', async () => {
     // The filter resets itself on a VIEW change, and resetViewScope deliberately leaves
-    // Recent / Direct Messages / Rooms alone — so on those three the view key never
+    // Recent / Direct messages / Rooms alone — so on those three the view key never
     // changes and a query typed against one account's rooms would silently narrow the
     // next account's list.
     const shell = build();
@@ -440,8 +451,6 @@ describe('RoomsPage room / DM / invite actions', () => {
   let inviteUser: Mock;
   let acceptInvite: Mock;
   let declineInvite: Mock;
-  let userCardOpen: Mock;
-  let memberInfoOpen: Mock;
   let canModerate: Mock;
   let dialogOpen: Mock;
   let resolveRoomId: Mock;
@@ -471,8 +480,6 @@ describe('RoomsPage room / DM / invite actions', () => {
     inviteUser = vi.fn(() => of(undefined));
     acceptInvite = vi.fn(() => of(undefined));
     declineInvite = vi.fn(() => of(undefined));
-    userCardOpen = vi.fn(() => of(null));
-    memberInfoOpen = vi.fn(() => of(null));
     canModerate = vi.fn(() => ({
       kick: false,
       ban: false,
@@ -515,8 +522,6 @@ describe('RoomsPage room / DM / invite actions', () => {
           declineInvite,
         }),
         MockProvider(UserPickerService, { pick$: pick }),
-        MockProvider(UserCardService, { open$: userCardOpen }),
-        MockProvider(MemberInfoService, { open$: memberInfoOpen }),
         MockProvider(RoomModerationService, { canModerate }),
         MockProvider(QuickSwitcherService),
         MockProvider(TimelineActionsService),
@@ -585,7 +590,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('shows a user card for a mention link, starting a DM only if messaged', async () => {
     const shell = build();
-    userCardOpen.mockReturnValue(of('@bob:hs')); // the viewer chose "Message"
+    dialogOpen.mockReturnValue(of('@bob:hs')); // the viewer chose "Message"
     const mention = document.createElement('a');
 
     shell.messages.onMatrixLink({
@@ -597,14 +602,18 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     // The anchor is forwarded, not dropped: it is what pins the card to the mention
     // instead of centring it over the sentence the mention is part of.
-    expect(userCardOpen).toHaveBeenCalledWith('@bob:hs', mention);
+    expect(dialogOpen).toHaveBeenCalledWith(UserCardComponent, {
+      ariaLabel: 'User',
+      inputs: { userId: '@bob:hs' },
+      anchor: mention,
+    });
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
     expect(shell.store.activeRoomId()).toBe('!dm:hs');
   });
 
   it('opens no conversation when the user card is dismissed', async () => {
     const shell = build();
-    userCardOpen.mockReturnValue(of(null)); // dismissed
+    dialogOpen.mockReturnValue(of(null)); // dismissed
 
     // No anchor — the edit-history route, where the dialog holding the link has closed.
     shell.messages.onMatrixLink({
@@ -613,7 +622,11 @@ describe('RoomsPage room / DM / invite actions', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(userCardOpen).toHaveBeenCalledWith('@bob:hs', undefined);
+    expect(dialogOpen).toHaveBeenCalledWith(UserCardComponent, {
+      ariaLabel: 'User',
+      inputs: { userId: '@bob:hs' },
+      anchor: undefined,
+    });
     expect(createDirectMessage).not.toHaveBeenCalled();
   });
 
@@ -746,7 +759,10 @@ describe('RoomsPage room / DM / invite actions', () => {
       member: bob,
       direct: false,
     });
-    expect(memberInfoOpen).not.toHaveBeenCalled();
+    expect(dialogOpen).not.toHaveBeenCalledWith(
+      MemberInfoComponent,
+      expect.anything(),
+    );
 
     // "Message" is announced by the panel's output rather than resolved by a dialog.
     shell.members.onMemberMessage('@bob:hs');
@@ -853,7 +869,10 @@ describe('RoomsPage room / DM / invite actions', () => {
       isCreator: false,
     });
 
-    expect(memberInfoOpen).not.toHaveBeenCalled();
+    expect(dialogOpen).not.toHaveBeenCalledWith(
+      MemberInfoComponent,
+      expect.anything(),
+    );
     expect(shell.surfaces.renderedSurface()).toBe(before);
   });
 
@@ -883,7 +902,10 @@ describe('RoomsPage room / DM / invite actions', () => {
       expect(shell.surfaces.renderedSurface()).toMatchObject({
         kind: 'member',
       });
-      expect(memberInfoOpen).not.toHaveBeenCalled();
+      expect(dialogOpen).not.toHaveBeenCalledWith(
+        MemberInfoComponent,
+        expect.anything(),
+      );
     } finally {
       restore();
     }
@@ -909,7 +931,10 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     expect(shell.surfaces.membersVisible()).toBe(false);
     expect(shell.surfaces.renderedSurface()).toMatchObject({ kind: 'member' });
-    expect(memberInfoOpen).not.toHaveBeenCalled();
+    expect(dialogOpen).not.toHaveBeenCalledWith(
+      MemberInfoComponent,
+      expect.anything(),
+    );
   });
 
   it('returns to the roster when the member panel closes, not to an empty slot', async () => {
@@ -968,7 +993,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     setRouteRoom('!r:hs');
     const before = shell.surfaces.renderedSurface();
-    memberInfoOpen.mockReturnValue(of(null));
+    dialogOpen.mockReturnValue(of(null));
 
     await shell.members.openMemberInfo(
       {
@@ -982,7 +1007,10 @@ describe('RoomsPage room / DM / invite actions', () => {
       { accountId: '@me:hs', roomId: '!space:hs' },
     );
 
-    expect(memberInfoOpen).toHaveBeenCalled();
+    expect(dialogOpen).toHaveBeenCalledWith(
+      MemberInfoComponent,
+      expect.anything(),
+    );
     // And the open room's slot is left exactly as it was.
     expect(shell.surfaces.renderedSurface()).toBe(before);
   });
@@ -1007,7 +1035,16 @@ describe('RoomsPage room / DM / invite actions', () => {
     });
     await Promise.resolve();
 
-    expect(memberInfoOpen).toHaveBeenCalledWith(bob, '!shared:hs', false);
+    expect(dialogOpen).toHaveBeenCalledWith(
+      MemberInfoComponent,
+      expect.objectContaining({
+        inputs: expect.objectContaining({
+          member: bob,
+          roomId: '!shared:hs',
+          direct: false,
+        }),
+      }),
+    );
     expect(shell.surfaces.renderedSurface()).toBe(before);
   });
 

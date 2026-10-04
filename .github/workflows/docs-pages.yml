@@ -3,6 +3,10 @@ name: Documentation Pages
 on:
   push:
     branches: [develop]
+  # A published stable release re-runs this workflow on develop (the only branch Pages
+  # accepts) so the user guide moves to that release.
+  release:
+    types: [published]
   workflow_dispatch:
 
 concurrency:
@@ -13,6 +17,18 @@ permissions:
   contents: read
 
 jobs:
+  redeploy:
+    name: Redeploy for the published release
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run docs-pages.yml --ref develop
+
   build:
     name: Build documentation
     if: github.ref == 'refs/heads/develop'
@@ -21,6 +37,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/setup-playwright
         with:
@@ -28,6 +46,25 @@ jobs:
       - run: pnpm format:check
       - run: pnpm nx test scripts
       - run: pnpm nx test docs-site
+      # The developer guide always deploys from develop. Between a stable release PR's
+      # back-merge and publishing that release, the user guide names a draft version, so
+      # build it from the newest commit whose version is published.
+      - name: Use the user guide of the latest published release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ref=HEAD
+          while :; do
+            version=$(git show "$ref:apps/docs-users/release.json" | jq -r .version)
+            [ "$(gh release view "v$version" --json isDraft -q .isDraft 2>/dev/null)" = false ] && break
+            echo "::notice::v$version is not published; building the user guide from before it."
+            ref="$(git log -1 --format=%H "$ref" -- apps/docs-users/release.json)^"
+          done
+          if [ "$ref" != HEAD ]; then
+            rm -rf apps/docs-users
+            git checkout "$ref" -- apps/docs-users
+          fi
       - run: pnpm nx run docs-site:check
       - run: pnpm nx run docs-site:assemble
       - run: pnpm nx run docs-site:e2e

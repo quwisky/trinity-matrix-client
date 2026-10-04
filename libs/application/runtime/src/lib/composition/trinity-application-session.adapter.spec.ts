@@ -370,7 +370,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     sessionOwner.unsubscribe();
   });
 
-  it('returns from a topmost confirmation to System Status before returning to the blocker', () => {
+  it('returns from a topmost confirmation to System status before returning to the blocker', () => {
     const test = setup();
     const owner = test.adapter.runInteractions().subscribe();
     test.statusVisibility.show();

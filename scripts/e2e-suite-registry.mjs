@@ -10,6 +10,12 @@ import {
   E2E_SUITES,
   E2E_TIMEOUTS_MS,
 } from '../e2e/registry/index.mts';
+import {
+  DEFAULT_IOS_DEVICE,
+  DEFAULT_IOS_RUNTIME,
+  parseSimulators,
+  selectSimulator,
+} from '../e2e/mobile/simulator.mts';
 import { validateWorkspace } from './e2e-suite-registry-validator.mjs';
 import { openE2EInvocation } from '../e2e/support/invocation.mts';
 import {
@@ -230,6 +236,36 @@ export const checkPrerequisites = async (
         requestedSerial
           ? `Android device ${requestedSerial} is not an online API 36 x86_64 emulator`
           : 'no validated API 36 x86_64 emulator or startable Trinity_API_36 AVD is available',
+      );
+    }
+  }
+  if (prerequisites.has('macos') && platform !== 'darwin') {
+    failures.push('macOS is required');
+  }
+  if (
+    prerequisites.has('xcode') &&
+    execute('xcodebuild', ['-version'], { capture: true }).status !== 0
+  ) {
+    failures.push('Xcode is unavailable');
+  }
+  if (prerequisites.has('ios-simulator')) {
+    const result = execute(
+      'xcrun',
+      ['simctl', 'list', '-j', 'devices', 'available'],
+      {
+        capture: true,
+      },
+    );
+    try {
+      if (result.status !== 0) throw new Error('xcrun simctl is unavailable');
+      selectSimulator(parseSimulators(result.stdout ?? ''), {
+        device: environment['TRINITY_IOS_DEVICE'] ?? DEFAULT_IOS_DEVICE,
+        runtime: environment['TRINITY_IOS_RUNTIME'] ?? DEFAULT_IOS_RUNTIME,
+        udid: environment['TRINITY_IOS_UDID'],
+      });
+    } catch (error) {
+      failures.push(
+        `iOS simulator unavailable: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -697,6 +733,6 @@ export const main = async (argv, { executeSelection = runSelection } = {}) => {
   return 1;
 };
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (import.meta.main) {
   process.exitCode = await main(process.argv.slice(2));
 }

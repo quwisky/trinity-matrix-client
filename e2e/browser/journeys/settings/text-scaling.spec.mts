@@ -1,8 +1,8 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
@@ -19,13 +19,11 @@ import {
 // component later hard-coded a size onto the message body, which is exactly the regression
 // this setting exists to avoid.
 //
-// It also pins the deliberate LIMIT: chrome that hard-codes px does not scale (147 such
-// declarations remain, to be converted surface by surface), so the setting's own note says
-// so. This asserts the sidebar room name stays fixed — if that ever changes, the note is
-// wrong and should be removed with it.
+// The room list scales too (#928): it is sized in rem, so the sidebar room name must grow
+// with the setting. Chrome that still hard-codes px is converted surface by surface.
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
@@ -90,7 +88,7 @@ async function expectColumnsMeet(page: Page, label = 'larger'): Promise<void> {
 test.describe('Text size', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('scales message text, persists, and leaves fixed chrome alone', async ({
+  test('scales message text and room list chrome, and persists', async ({
     page,
     request,
   }) => {
@@ -125,7 +123,7 @@ test.describe('Text size', () => {
       { headers, data: { msgtype: 'm.text', body } },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     const message = page.locator('.msg__text', { hasText: body }).first();
@@ -163,8 +161,11 @@ test.describe('Text size', () => {
     await expect(scaled).toBeVisible({ timeout: 20_000 });
     expect(await px(scaled)).toBeGreaterThan(before);
 
-    // The documented limit: sidebar chrome hard-codes px and deliberately does not scale.
-    expect(await px(page.locator('.channel__name').first())).toBe(chromeBefore);
+    // Sidebar chrome is rem-sized too (#928, WCAG 1.4.4), so the room list grows with the
+    // setting instead of staying at its px size while the conversation scales.
+    expect(await px(page.locator('.channel__name').first())).toBeGreaterThan(
+      chromeBefore,
+    );
 
     // The columns still MEET. Tailwind's `w-*` are rem, so the list column's slot scales
     // with the root while the rail (72px) and sidebar (280px) inside it do not — as
@@ -253,7 +254,7 @@ test.describe('Code size', () => {
       },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     const prose = page.locator('.msg__text--html p', { hasText: body }).first();
@@ -368,7 +369,7 @@ test.describe('Code line numbers', () => {
     await send(`${runId}a`, short);
     await send(`${runId}b`, long);
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     const shortBlock = page
@@ -486,7 +487,7 @@ test.describe('Code line numbers', () => {
       },
     );
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
     const block = page

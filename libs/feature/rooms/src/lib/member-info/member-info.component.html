@@ -110,7 +110,7 @@
               [trnTooltip]="permission.reason ?? 'Change role'"
               [attr.data-testid]="'member-info-role-' + option.level"
             >
-              Make {{ option.label }}
+              Make {{ option.label.toLowerCase() }}
             </button>
           }
         }

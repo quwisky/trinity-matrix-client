@@ -62,15 +62,17 @@ function isAllowedAppPermission(permission: string): boolean {
     permission === 'persistent-storage' ||
     permission === 'media' ||
     permission === 'geolocation' ||
-    permission === 'clipboard-sanitized-write'
+    permission === 'clipboard-sanitized-write' ||
+    permission === 'fullscreen'
   );
 }
 
 /**
  * Restrict renderer permission requests to the capabilities the app actually uses —
  * media (microphone for voice messages, camera for QR verification), geolocation
- * (location sharing), persistent storage (local data durability), and sanitized clipboard
- * writes for explicit copy actions. Electron's
+ * (location sharing), persistent storage (local data durability), sanitized clipboard
+ * writes for explicit copy actions, and element fullscreen (the video player's fullscreen
+ * button). Electron's
  * default grants requests that reach `whenReady`; without a handler, every other powerful
  * permission would be auto-approved too. Clipboard reads remain denied.
  */

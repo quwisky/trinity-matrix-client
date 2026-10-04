@@ -9,7 +9,7 @@ import { TrnTextarea } from './trn-textarea';
   template: `<textarea
     trnTextarea
     size="lg"
-    invalid
+    explicitInvalid
     rows="1"
     aria-describedby="hint"
   ></textarea>`,

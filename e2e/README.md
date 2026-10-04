@@ -31,16 +31,18 @@ pnpm exec playwright install chromium webkit
 
 ## Before running a suite
 
-Check its prerequisites. Docker is required by Synapse-backed suites. Android requires a
+Check its prerequisites. Docker is required by homeserver-backed suites unless `TRINITY_E2E_HOMESERVER_RUNTIME=native` runs Synapse and Caddy as host processes (see the Matrix E2E guide). Android requires a
 dedicated API 36 x86_64 emulator, its SDK and JDK 21; Electron needs its separately installed
-shell dependencies and a display; iOS needs macOS and Xcode but has no installed-app
-runner. The aggregate preflights selected suites.
+shell dependencies and a display; iOS needs macOS, Xcode, an iOS Simulator and the native homeserver runtime
+(`pnpm e2e:mobile:ios`; in progress, #863). The aggregate preflights selected suites.
 
-The disposable Synapse stack uses fixed ports and shared state. Run Synapse-backed commands
+The disposable homeserver is Tuwunel unless `TRINITY_E2E_HOMESERVER=synapse` selects Synapse
+(see the [Matrix E2E guide](../apps/docs-developers/src/content/docs/testing/matrix-e2e-tests.md#choose-homeserver)).
+The disposable homeserver stack uses fixed ports and shared state. Run homeserver-backed commands
 sequentially, never in parallel. Lifecycle targets and aggregates are uncached and serialized;
 let them start and stop their own services. Do not start a competing Docker stack, server,
 emulator, or Playwright process. A missing prerequisite is unavailable validation, not a pass.
-Every current registered suite is required by the full local gate.
+Every current registered suite except `mobile.ios` is required by the full local gate; `pnpm e2e:all` skips iOS where its preflight fails.
 
 ## Focus a canonical browser journey
 
@@ -51,7 +53,7 @@ pnpm nx run trinity-e2e-browser:e2e -- conversations/message-links.spec.mts
 pnpm nx run trinity-e2e-browser:e2e -- --grep "message link"
 ```
 
-The browser suite uses a development build and disposable Synapse. It cannot prove a
+The browser suite uses a development build and the disposable homeserver. It cannot prove a
 production service worker, installed Android app, or Electron boundary; choose the matching task above
 when that boundary matters. Browser journeys are cataloged by one capability and one primary
 contract type; add or move a spec with its `e2e/browser/journey-catalog.mts` entry.
@@ -66,7 +68,7 @@ ADB reverse mappings. Set `TRINITY_ANDROID_SERIAL` only for a disposable dedicat
 
 Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed app (native plugin, OS UI, hardware or system event, deep link). Everything else stays in `e2e/browser`.
 
-- Prerequisites: Android SDK, the `Trinity_API_36` AVD, JDK 21 and Docker (Synapse).
+- Prerequisites: Android SDK, the `Trinity_API_36` AVD, JDK 21 and Docker (homeserver).
 - `pnpm e2e:mobile` installs the pinned UiAutomator2 driver into the repo-local `.appium`
   (`node scripts/setup-appium.mjs` does that step alone), then runs every spec.
 - `pnpm e2e:mobile -- --spec e2e/mobile/specs/<file>.e2e.mts` runs one spec.
@@ -79,7 +81,7 @@ Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed
 
 The image-pack journey is shared by browser and Electron wrappers. It
 covers finding a pack, adding and removing an account reference, selecting it in a room,
-and sending its sticker against disposable Synapse. Run its browser copy through the owner:
+and sending its sticker against the disposable homeserver. Run its browser copy through the owner:
 
 ```bash
 pnpm nx run trinity-e2e-browser:e2e -- conversations/stickers-custom-emoji.spec.mts

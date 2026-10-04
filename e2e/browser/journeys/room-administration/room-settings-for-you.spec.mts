@@ -5,7 +5,7 @@ import {
   type APIRequestContext,
   type Page,
 } from '../../../fixtures.mts';
-import { login, type SynapseSession } from '../../../support/app.mts';
+import { login, type HomeserverSession } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
   addAccountViaUi,
@@ -162,7 +162,7 @@ test.describe('Room settings · For you', () => {
       hs,
       user: shared.accountA.user,
       pass: shared.accountA.pass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await openRoom(page, shared.roomName);
 
     let readAttempts = 0;
@@ -193,7 +193,7 @@ test.describe('Room settings · For you', () => {
     const panel = page.getByTestId('room-settings-panel-for-you');
     await expect(
       panel.getByRole('alert').getByRole('heading', {
-        name: 'Couldn’t read Room preferences',
+        name: 'Couldn’t read room preferences',
       }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(panel.getByRole('alert')).not.toHaveAttribute('aria-live');
@@ -239,7 +239,7 @@ test.describe('Room settings · For you', () => {
       hs,
       user: shared.accountA.user,
       pass: shared.accountA.pass,
-    } as SynapseSession);
+    } as HomeserverSession);
     await addAccountViaUi(page, hs, shared.accountB.user, shared.accountB.pass);
     await page.getByTestId('user-menu-trigger').click();
     await page

@@ -6,8 +6,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
@@ -25,7 +25,7 @@ import { registerUser } from '../../../support/account.mts';
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise, like the other
 // authenticated web e2e specs.
-const session = synapseSession();
+const session = homeserverSession();
 
 const PREVIEW_BODY = 'latest preview message';
 
@@ -71,7 +71,7 @@ async function seedPreviewRoom(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ reader: SynapseSession; roomName: string }> {
+): Promise<{ reader: HomeserverSession; roomName: string }> {
   const readerUser = `reader-${runId}`;
   const readerPass = `reader-pass-${runId}`;
   const senderUser = `sender-${runId}`;
@@ -131,7 +131,7 @@ async function seedUnreadRoom(
   hs: string,
   runId: string,
   seed: number,
-): Promise<{ reader: SynapseSession; roomName: string }> {
+): Promise<{ reader: HomeserverSession; roomName: string }> {
   const readerUser = `reader-${runId}`;
   const readerPass = `reader-pass-${runId}`;
   const senderUser = `sender-${runId}`;

@@ -3,23 +3,23 @@
     @case ('loading') {
       <trn-settings-load-state-card
         state="loading"
-        heading="Loading your Space preference…"
-        description="Reading the opening Account’s saved choice on this device."
+        heading="Loading your space preference…"
+        description="Reading this account’s saved choice on this device."
       />
     }
     @case ('unavailable') {
       <trn-settings-load-state-card
         state="unavailable"
         heading="Space preference unavailable"
-        description="This Account or Space is no longer available. No default value has been substituted."
+        description="This account or space is no longer available. No default value has been substituted."
       />
     }
     @case ('failed') {
       <trn-settings-load-state-card
         state="failed"
         failureLayout="grouped"
-        heading="Couldn’t read your Space preference"
-        description="Trinity could not confirm this Account’s saved room order on this device. Try again before making changes."
+        heading="Couldn’t read your space preference"
+        description="Trinity could not confirm this account’s saved room order on this device. Try again before making changes."
         retryTestid="space-settings-for-you-retry"
         (retry)="draft.retryLoad()"
       />
@@ -35,8 +35,8 @@
           <div class="space-settings__field">
             <h3 id="space-settings-room-order-heading">Room order</h3>
             <p>
-              Choose how this Space’s Rooms are arranged for the opening
-              Account. This never changes the order shared by the Space.
+              Choose how this space’s rooms are arranged for this account. This
+              never changes the order shared by the space.
             </p>
           </div>
           <trn-radio-group
@@ -51,12 +51,12 @@
         <section class="space-settings__card space-settings__scope">
           <h3>For this account on this device</h3>
           <p>
-            This preference is kept separately for each Account and Space on
-            this device. It does not follow the Account to another device.
+            This preference is kept separately for each account and space on
+            this device. It does not follow the account to another device.
           </p>
           <p>
-            Use my default removes this Space’s override, so later changes to
-            the Account default continue to apply here.
+            Use my default removes this space’s override, so later changes to
+            the account default continue to apply here.
           </p>
         </section>
 
@@ -95,7 +95,7 @@
               "
               data-testid="space-settings-for-you-save"
             >
-              {{ draft.saving() ? 'Saving…' : 'Save preference' }}
+              {{ draft.saving() ? 'Saving…' : 'Save preferences' }}
             </button>
           </div>
         }

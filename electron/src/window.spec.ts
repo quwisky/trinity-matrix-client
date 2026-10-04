@@ -125,6 +125,14 @@ describe('installPermissionPolicy', () => {
     expect(decide('media', { mediaTypes: ['audio', 'video'] })).toBe(true);
     expect(decide('geolocation')).toBe(true);
     expect(decide('clipboard-sanitized-write')).toBe(true);
+    expect(decide('fullscreen')).toBe(true); // video player's fullscreen button
+    expect(decide('fullscreen', { isMainFrame: false })).toBe(false);
+    expect(
+      decide('fullscreen', {
+        isMainFrame: true,
+        requestingUrl: 'https://widgets.example/',
+      }),
+    ).toBe(false);
     expect(decide('notifications')).toBe(false);
     expect(decide('clipboard-read')).toBe(false);
     expect(decide('openExternal')).toBe(false);

@@ -166,7 +166,7 @@ describe('RoomSettingsForYouComponent', () => {
       readMode: vi.fn(() => mode.asObservable()),
     });
 
-    expect(container.textContent).toContain('Loading your Room preferences');
+    expect(container.textContent).toContain('Loading your room preferences');
     expect(container.querySelector('trn-radio-group')).toBeNull();
     mode.next('all');
     mode.complete();
@@ -181,7 +181,7 @@ describe('RoomSettingsForYouComponent', () => {
       .mockReturnValueOnce(of('all'));
     const { fixture, container, draft } = await build({ readMode });
 
-    expect(container.textContent).toContain('Couldn’t read Room preferences');
+    expect(container.textContent).toContain('Couldn’t read room preferences');
     expect(container.querySelector('trn-radio-group')).toBeNull();
     draft.retryLoad();
     fixture.detectChanges();

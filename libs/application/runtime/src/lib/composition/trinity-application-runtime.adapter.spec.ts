@@ -144,9 +144,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       of({
         kind: 'no-accounts' as const,
         accounts: [],
-        metrics: {
-          durationMs: 0,
-        },
       }),
     );
     retryInactiveAccount = vi.fn(() => of({ kind: 'unavailable' as const }));
@@ -568,19 +565,14 @@ describe('TrinityApplicationRuntimeAdapter', () => {
             kind: 'ready',
             accountId: '@active:example.org',
             role: 'active',
-            durationMs: 1,
           },
           {
             kind: 'failed',
             failure: 'transient-network',
             accountId: '@private:example.org',
             role: 'inactive',
-            durationMs: 1,
           },
         ],
-        metrics: {
-          durationMs: 1,
-        },
       }),
     );
     await expect(firstValueFrom(adapter.restoreAccounts())).resolves.toEqual({
@@ -601,7 +593,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         kind: 'ready',
         accountId: '@private:example.org',
         role: 'inactive',
-        durationMs: 2,
       }),
     );
     await expect(
@@ -614,9 +605,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         kind: 'active-account-unavailable',
         activeAccountId: '@secret:example.org',
         accounts: [],
-        metrics: {
-          durationMs: 1,
-        },
       }),
     );
     const blocked = await firstValueFrom(adapter.restoreAccounts());

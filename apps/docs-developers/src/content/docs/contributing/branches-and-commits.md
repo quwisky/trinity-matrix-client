@@ -23,7 +23,7 @@ Use `type/short-kebab-description`, adding the issue number when one exists. Kee
 
 ## Commit one logical change {#commit-change}
 
-Use `type(scope): imperative subject`. The subject begins lowercase, has no trailing period, and stays within 72 characters. Common types include `feat`, `fix`, `docs`, `test`, `build`, `ci`, and `chore`.
+Use `type(scope): imperative subject`. The subject begins lowercase, has no trailing period, and stays within 72 characters. Common types include `feat`, `fix`, `docs`, `test`, `build`, `ci`, and `chore`. `release` is reserved for release-please's release pull requests, titled `release: cut the vX.Y.Z release`.
 
 Stage only task-owned files, inspect the staged diff, and commit after its relevant checks pass:
 

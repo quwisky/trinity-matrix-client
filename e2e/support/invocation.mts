@@ -16,14 +16,17 @@ import {
   sessionSummary,
   writeSession,
   type E2ESessionDescriptor,
-  type SynapseSessionDescriptor,
+  type HomeserverSessionDescriptor,
 } from './session.mts';
 // The HTTP server and Docker harness remain executable Node adapters; this module owns them.
 // @ts-expect-error The executable static-server adapter is intentionally plain ESM.
 import { serve, serverOrigin } from './serve.mjs';
-import { start as startSynapse } from './synapse/start.mjs';
-import { stop as stopSynapse } from './synapse/stop.mjs';
-import { acquireSynapseLease, releaseSynapseLease } from './synapse/lease.mts';
+import { start as startHomeserver } from './homeserver/start.mjs';
+import { stop as stopHomeserver } from './homeserver/stop.mjs';
+import {
+  acquireHomeserverLease,
+  releaseHomeserverLease,
+} from './homeserver/lease.mts';
 
 export interface E2EInvocation {
   readonly owned: boolean;
@@ -43,25 +46,25 @@ export interface OpenInvocationOptions {
 
 export interface InvocationDependencies {
   readonly serveDirectory: (root: string) => Promise<Server>;
-  readonly startSynapse: (options: {
+  readonly startHomeserver: (options: {
     signal?: AbortSignal;
-  }) => Promise<SynapseSessionDescriptor>;
-  readonly stopSynapse: (options: { signal?: AbortSignal }) => Promise<void>;
-  readonly acquireSynapse: (signal?: AbortSignal) => Promise<ProcessLock>;
-  readonly releaseSynapse: (lock: ProcessLock | undefined) => void;
+  }) => Promise<HomeserverSessionDescriptor>;
+  readonly stopHomeserver: (options: { signal?: AbortSignal }) => Promise<void>;
+  readonly acquireHomeserver: (signal?: AbortSignal) => Promise<ProcessLock>;
+  readonly releaseHomeserver: (lock: ProcessLock | undefined) => void;
   readonly acquireLock: (file: string, description: string) => ProcessLock;
   readonly releaseLock: (lock: ProcessLock | undefined) => void;
 }
 
 const defaultDependencies: InvocationDependencies = {
   serveDirectory: (root) => serve(root, 0) as Promise<Server>,
-  startSynapse: async (options) => ({
+  startHomeserver: async (options) => ({
     available: true,
-    ...(await startSynapse(options)),
+    ...(await startHomeserver(options)),
   }),
-  stopSynapse,
-  acquireSynapse: acquireSynapseLease,
-  releaseSynapse: releaseSynapseLease,
+  stopHomeserver,
+  acquireHomeserver: acquireHomeserverLease,
+  releaseHomeserver: releaseHomeserverLease,
   acquireLock: acquireProcessLock,
   releaseLock: releaseProcessLock,
 };
@@ -129,8 +132,8 @@ export async function openE2EInvocation(
   const artifactsRoot = join(workspaceRoot, 'dist/.playwright', id);
   const locks: ProcessLock[] = [];
   const servers: Server[] = [];
-  let synapseLease: ProcessLock | undefined;
-  let synapseStopRequired = false;
+  let homeserverLease: ProcessLock | undefined;
+  let homeserverStopRequired = false;
   let published = false;
   let closed = false;
   const teardownTimeoutMs = options.teardownTimeoutMs ?? 15_000;
@@ -139,13 +142,13 @@ export async function openE2EInvocation(
     if (closed) return;
     closed = true;
     const failures: Error[] = [];
-    if (synapseStopRequired) {
+    if (homeserverStopRequired) {
       const controller = new AbortController();
       const timeoutError = new Error(
         `Synapse teardown timed out after ${teardownTimeoutMs} ms`,
       );
       let timer: NodeJS.Timeout | undefined;
-      const teardown = dependencies.stopSynapse({
+      const teardown = dependencies.stopHomeserver({
         signal: controller.signal,
       });
       try {
@@ -185,7 +188,7 @@ export async function openE2EInvocation(
       }
     }
     if (published) removeSession(file);
-    dependencies.releaseSynapse(synapseLease);
+    dependencies.releaseHomeserver(homeserverLease);
     for (const lock of locks.reverse()) dependencies.releaseLock(lock);
     if (failures.length > 0) {
       throw new AggregateError(
@@ -196,7 +199,9 @@ export async function openE2EInvocation(
   };
 
   try {
-    for (const resource of resources.filter((value) => value !== 'synapse')) {
+    for (const resource of resources.filter(
+      (value) => value !== 'homeserver',
+    )) {
       locks.push(
         dependencies.acquireLock(
           join(workspaceRoot, 'dist/.playwright/locks', `${resource}.lock`),
@@ -204,8 +209,8 @@ export async function openE2EInvocation(
         ),
       );
     }
-    if (resources.includes('synapse')) {
-      synapseLease = await dependencies.acquireSynapse(options.signal);
+    if (resources.includes('homeserver')) {
+      homeserverLease = await dependencies.acquireHomeserver(options.signal);
     }
     options.signal?.throwIfAborted();
 
@@ -238,17 +243,19 @@ export async function openE2EInvocation(
       report: serverOrigin(reportServer),
     };
 
-    let synapse: SynapseSessionDescriptor | undefined;
-    if (resources.includes('synapse')) {
+    let homeserver: HomeserverSessionDescriptor | undefined;
+    if (resources.includes('homeserver')) {
       // From this point teardown is required even if readiness or registration fails:
-      // Compose may already have created containers before startSynapse rejects.
-      synapseStopRequired = true;
+      // Compose may already have created containers before startHomeserver rejects.
+      homeserverStopRequired = true;
       const previousBaseUrl = process.env['BASE_URL'];
       const previousTlsPolicy = process.env['NODE_TLS_REJECT_UNAUTHORIZED'];
       process.env['BASE_URL'] = endpoints.application;
       process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
       try {
-        synapse = await dependencies.startSynapse({ signal: options.signal });
+        homeserver = await dependencies.startHomeserver({
+          signal: options.signal,
+        });
       } finally {
         if (previousBaseUrl === undefined) delete process.env['BASE_URL'];
         else process.env['BASE_URL'] = previousBaseUrl;
@@ -270,7 +277,7 @@ export async function openE2EInvocation(
       resources,
       endpoints,
       artifactsRoot,
-      ...(synapse ? { synapse } : {}),
+      ...(homeserver ? { homeserver } : {}),
     };
     writeSession(file, descriptor);
     published = true;
@@ -290,17 +297,5 @@ export async function openE2EInvocation(
       );
     });
     throw error;
-  }
-}
-
-export async function withE2EInvocation<T>(
-  options: OpenInvocationOptions,
-  operation: (invocation: E2EInvocation) => Promise<T>,
-): Promise<T> {
-  const invocation = await openE2EInvocation(options);
-  try {
-    return await operation(invocation);
-  } finally {
-    await invocation.close();
   }
 }

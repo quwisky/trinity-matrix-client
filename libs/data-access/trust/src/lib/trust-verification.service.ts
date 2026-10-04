@@ -612,7 +612,7 @@ export class TrustVerificationService {
       'start-verification',
       'stale-state',
       'retry',
-      'The active Account changed. Start verification again.',
+      'The active account changed. Start verification again.',
     );
   }
 

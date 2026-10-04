@@ -37,3 +37,9 @@ export function webviewSwitchError(
     { cause },
   );
 }
+
+/** iOS launch race: FrontBoard has not registered a just-installed app yet. */
+export function isAppNotYetKnown(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('is unknown to FrontBoard');
+}

@@ -6,8 +6,8 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
-  synapseSession,
-  type SynapseSession,
+  homeserverSession,
+  type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
@@ -25,7 +25,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // own "notify without a sound" state, so restoring would have overwritten it.
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
-const session = synapseSession();
+const session = homeserverSession();
 
 /** The stored preference as the SERVER holds it, or undefined when never written. */
 async function storedSound(
@@ -69,7 +69,7 @@ test.describe('Notification sound', () => {
     // Nothing stored to begin with: the app defaults to audible without writing anything.
     expect(await storedSound(request, hs, userId, token)).toBeUndefined();
 
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openSettingsSection(page, 'notifications');
 
     const sound = page.getByTestId('notif-sound');

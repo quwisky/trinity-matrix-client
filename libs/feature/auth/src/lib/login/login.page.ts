@@ -10,6 +10,7 @@ import {
   inject,
   signal,
   viewChild,
+  type WritableSignal,
 } from '@angular/core';
 import { FormField, disabled, form } from '@angular/forms/signals';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -46,6 +47,11 @@ import {
   SessionStorageService,
 } from '@trinity/platform-native';
 import { TrnAlertService } from '@trinity/components/overlay';
+import {
+  HTTPError,
+  MatrixError,
+  describeMatrixRequestFailure,
+} from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import { SsoStateStore } from '../sso-state.store';
 import {
@@ -58,6 +64,32 @@ import { OidcStateStore } from '../oidc-state.store';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { accountEstablishmentError } from '../account-establishment-outcome';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
+
+const ACCOUNT_NOT_STORED = 'That account is no longer stored.';
+const DISCOVERY_FALLBACK =
+  "We couldn't find a homeserver at that address. Check it and try again.";
+const SIGN_IN_FALLBACK = "We couldn't sign you in. Try again.";
+
+/**
+ * Plain-language text for a failed discovery or sign-in request. A 401/403 from the
+ * login endpoint means the credentials were refused, not "no permission", so it is
+ * mapped here rather than by the shared formatter. Anything unrecognised gets the
+ * fallback: raw SDK messages carry status lines and request URLs.
+ */
+function describeSignInError(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message === ACCOUNT_NOT_STORED) {
+    return error.message;
+  }
+  if (
+    error instanceof HTTPError &&
+    (error.httpStatus === 401 ||
+      error.httpStatus === 403 ||
+      (error instanceof MatrixError && error.errcode === 'M_FORBIDDEN'))
+  ) {
+    return 'Incorrect username or password.';
+  }
+  return describeMatrixRequestFailure(error, fallback).message;
+}
 
 @Component({
   selector: 'trn-login',
@@ -143,15 +175,15 @@ export class LoginPage {
         this.storage.record(reauth).pipe(
           switchMap((record) => {
             if (!record) {
-              return throwError(
-                () => new Error('That account is no longer stored.'),
-              );
+              return throwError(() => new Error(ACCOUNT_NOT_STORED));
             }
             this.reauthDeviceId = record.deviceId;
             this.baseUrl.set(record.baseUrl);
             return this.discoverCapabilities(record.baseUrl);
           }),
         ),
+        this.error,
+        DISCOVERY_FALLBACK,
       ).subscribe(({ flows, oidc, registration }) =>
         this.applyFlows(flows, oidc, registration),
       );
@@ -192,7 +224,12 @@ export class LoginPage {
   );
 
   readonly busy = signal(false);
+  /** Page-level failures with no field to attach to (erase, re-auth loading). */
   readonly error = signal<string | null>(null);
+  /** Why discovery failed, shown beside the homeserver field. */
+  readonly homeserverError = signal<string | null>(null);
+  /** Why sign-in failed, shown beside the password field. */
+  readonly credentialsError = signal<string | null>(null);
   /**
    * The factory reset in flight, separate from {@link busy} on purpose.
    *
@@ -234,6 +271,8 @@ export class LoginPage {
             ),
           ),
         ),
+      this.homeserverError,
+      DISCOVERY_FALLBACK,
     ).subscribe(({ baseUrl, flows, oidc, registration }) => {
       this.baseUrl.set(baseUrl);
       this.applyFlows(flows, oidc, registration);
@@ -318,10 +357,12 @@ export class LoginPage {
         this.loginMode(),
         this.reauthDeviceId ?? undefined,
       ),
+      this.credentialsError,
+      SIGN_IN_FALLBACK,
     ).subscribe((outcome) => {
       const error = accountEstablishmentError(outcome);
       if (error) {
-        this.error.set(error);
+        this.credentialsError.set(error);
         return;
       }
       void this.router.navigateByUrl('/rooms', { replaceUrl: true });
@@ -395,6 +436,8 @@ export class LoginPage {
         // paths above.
         ...(this.reauthDeviceId ? { deviceId: this.reauthDeviceId } : {}),
       }),
+      this.error,
+      SIGN_IN_FALLBACK,
     ).subscribe((request) => {
       void this.stashAndRedirect(request, baseUrl, config.issuer, redirectUri);
     });
@@ -520,11 +563,15 @@ export class LoginPage {
   }
 
   /** Wrap a one-shot action with shared busy/error handling. */
-  private withBusy<T>(source: Observable<T>): Observable<T> {
-    return runWithBusy(source, {
-      busy: this.busy,
-      error: this.error,
-      destroyRef: this.destroyRef,
-    });
+  private withBusy<T>(
+    source: Observable<T>,
+    error: WritableSignal<string | null>,
+    fallback: string,
+  ): Observable<T> {
+    return runWithBusy(
+      source,
+      { busy: this.busy, error, destroyRef: this.destroyRef },
+      { formatError: (err) => describeSignInError(err, fallback) },
+    );
   }
 }

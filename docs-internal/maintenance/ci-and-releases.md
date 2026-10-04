@@ -10,13 +10,14 @@ public developer guide.
 
 ## Know what ran
 
-| Workflow                                                   | Starts when                                                          | What it provides                                                                                         |
-| ---------------------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| [`ci.yml`](../../.github/workflows/ci.yml)                 | A pull request, selected pushes, or its weekly schedule              | Branch checks and browser, desktop, and Android evidence                                                 |
-| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml) | A `develop` push or manual dispatch from `develop`                   | Validated user and developer sites deployed to GitHub Pages                                              |
-| [`release.yml`](../../.github/workflows/release.yml)       | A push to `develop` or `main`, or a manual dispatch with a tag input | release-please release PRs and tags, then tag verification, desktop packages, and a draft GitHub release |
-| [`homebrew.yml`](../../.github/workflows/homebrew.yml)     | A release is published, or a manual dispatch with a tag input        | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                       |
-| [`renovate.yml`](../../.github/workflows/renovate.yml)     | Daily at 00:00 UTC or a manual dispatch                              | Dependency update maintenance through a GitHub App token                                                 |
+| Workflow                                                           | Starts when                                                          | What it provides                                                                                         |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [`ci.yml`](../../.github/workflows/ci.yml)                         | A pull request, selected pushes, or its weekly schedule              | Branch checks and browser, desktop, and Android evidence                                                 |
+| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml)         | A `develop` push, a published stable release, or a manual dispatch   | Validated user and developer sites deployed to GitHub Pages                                              |
+| [`release.yml`](../../.github/workflows/release.yml)               | A push to `develop` or `main`, or a manual dispatch with a tag input | release-please release PRs and tags, then tag verification, desktop packages, and a draft GitHub release |
+| [`homebrew.yml`](../../.github/workflows/homebrew.yml)             | A release is published, or a manual dispatch with a tag input        | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                       |
+| [`renovate.yml`](../../.github/workflows/renovate.yml)             | Daily at 00:00 UTC or a manual dispatch                              | Dependency update maintenance through a GitHub App token                                                 |
+| [`promote-stable.yml`](../../.github/workflows/promote-stable.yml) | A manual dispatch with a `step` choice (`promote` or `back-merge`)   | The mechanical merges of promoting `develop` to stable, through a GitHub App token                       |
 
 The branch workflow accepts pushes to `develop`, `main`, and
 `renovate/patch-**`; pull requests are its usual review path. A newer run for
@@ -70,16 +71,17 @@ log. Do not infer repository-wide merge rules from the workflow YAML: branch
 protection and rulesets live in GitHub settings and may impose additional
 requirements.
 
-| Job                | Checks                                                                                                                          | First recovery step                                                                                                                                   |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `quality`          | `pnpm lint`, `pnpm stylelint`, and `pnpm format:check`                                                                          | Fix the reported rule or formatting issue. Stylelint is separate from lint.                                                                           |
-| `test`             | Workspace-wide typecheck, then `pnpm test`                                                                                      | Fix the type or unit failure; a passing Vitest run does not replace the typecheck.                                                                    |
-| `renderer`         | One verified production web renderer build, recorded as a SHA/configuration/file manifest artifact                              | Inspect the renderer workflow's build, manifest, or upload step. Downstream hosts must consume this artifact.                                         |
-| `desktop`          | Electron install, compile, typecheck, unit tests, and launched-shell E2E using the verified renderer                            | Use the [desktop guide](../../apps/docs-developers/src/content/docs/platforms/electron.md) to reproduce the matching shell or packaging step.         |
-| `e2e`              | Component Storybook, production renderer, styling, disposable-Synapse browser journeys, then QR verification                    | Read the Playwright report and reproduce the smallest owned journey. The Synapse-backed flows use a fixed disposable stack, so run them sequentially. |
-| `mobile-e2e`       | WebdriverIO and Appium suite against the installed Capacitor app on an API 36 emulator, with identifiers scrubbed before upload | Reproduce with `pnpm e2e:mobile`; check the uploaded `mobile.android` artifact for the WebView and chromedriver versions line.                        |
-| `ios-native-build` | Unsigned iOS Simulator host compile on `macos-26`, using the verified renderer and checking only Cordova extras                 | Inspect the retained Xcode log and result bundle; this is a compile gate, not installed-device evidence.                                              |
-| `scheduled-e2e`    | Chromium, Firefox, and WebKit scheduled suite                                                                                   | This weekly Sunday 03:23 UTC job is separate from pull-request jobs; diagnose its browser-specific artifact and environment.                          |
+| Job                     | Checks                                                                                                                                                          | First recovery step                                                                                                                                                                                                         |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `quality`               | `pnpm lint`, `pnpm stylelint`, and `pnpm format:check`                                                                                                          | Fix the reported rule or formatting issue. Stylelint is separate from lint.                                                                                                                                                 |
+| `test`                  | Workspace-wide typecheck, then `pnpm test`                                                                                                                      | Fix the type or unit failure; a passing Vitest run does not replace the typecheck.                                                                                                                                          |
+| `renderer`              | One verified production web renderer build, recorded as a SHA/configuration/file manifest artifact                                                              | Inspect the renderer workflow's build, manifest, or upload step. Downstream hosts must consume this artifact.                                                                                                               |
+| `desktop`               | Electron install, compile, typecheck, unit tests, and launched-shell E2E using the verified renderer                                                            | Use the [desktop guide](../../apps/docs-developers/src/content/docs/platforms/electron.md) to reproduce the matching shell or packaging step.                                                                               |
+| `e2e`                   | Component Storybook, production renderer, styling, disposable-homeserver (Tuwunel) browser journeys, then QR verification                                       | Read the Playwright report and reproduce the smallest owned journey. The homeserver-backed flows use a fixed disposable stack, so run them sequentially.                                                                    |
+| `mobile-e2e`            | WebdriverIO and Appium suite against the installed Capacitor app on an API 36 emulator, with identifiers scrubbed before upload                                 | Reproduce with `pnpm e2e:mobile`; check the uploaded `mobile.android` artifact for the WebView and chromedriver versions line.                                                                                              |
+| `ios-native-build`      | Unsigned iOS Simulator host compile on `macos-26`, using the verified renderer and checking only Cordova extras                                                 | Inspect the retained Xcode log and result bundle; this is a compile gate, not installed-device evidence.                                                                                                                    |
+| `scheduled-e2e`         | Chromium, Firefox, and WebKit scheduled suite                                                                                                                   | This weekly Sunday 03:23 UTC job is separate from pull-request jobs; diagnose its browser-specific artifact and environment.                                                                                                |
+| `E2E (Synapse nightly)` | Separate `e2e-synapse-nightly.yml` workflow: browser, Electron full and protocol suites with `TRINITY_E2E_HOMESERVER=synapse`, daily at 02:47 UTC and on demand | Reproduce locally with the same variable, for example `TRINITY_E2E_HOMESERVER=synapse pnpm e2e:browser`. A failure that Tuwunel does not show is a server difference: branch the expectation on `homeserverSession().kind`. |
 
 Started Playwright suites upload hidden `dist/.playwright/` output through the
 [diagnostics action](../../.github/actions/upload-playwright-diagnostics/action.yml).
@@ -177,7 +179,9 @@ Releases come from two lines, each managed by release-please through
 | Stable     | `main`    | `X.Y.Z`        | `release-please-config.json` / `.release-please-manifest.json`           | GitHub release and `CHANGELOG.md` |
 
 On every push to either branch, release-please updates that branch's release PR
-from the Conventional Commits since the last release. Merging the release PR bumps
+from the Conventional Commits since the last release. Release PRs on both lines are titled
+`release: cut the vX.Y.Z release` (`pull-request-title-pattern` in both configs), and
+the squash merge keeps that title as the commit; commitlint allows the `release` type. Merging the release PR bumps
 `package.json`, `electron/package.json` and the manifest, and release-please then
 tags the merge commit and creates a **draft** GitHub release. The same workflow run
 verifies the tag and attaches the desktop packages to that draft. Nothing is
@@ -190,21 +194,41 @@ reads them on both lines, so one footer tries to cut the same version twice.
 
 ### Promote to stable
 
+Run the `Promote to stable` workflow (Actions tab, manual dispatch) twice per stable release.
+`step=promote` does steps 1 and 2 below; `step=back-merge` does step 4. Step 3 stays
+manual.
+
 1. Close any release PR still open on `develop`. Merging it after the promotion
    would cut a `-next` prerelease of a version that is already stable; release-please
-   opens a fresh one after the back-merge.
+   opens a fresh one after the back-merge. The workflow first requires a successful
+   `ci.yml` run for `develop`'s head, then closes that PR with a comment, and writes
+   the commits since the last stable tag and the expected version to the run summary.
 2. Open a pull request from `develop` to `main` and merge it with a **merge
    commit** (not squash), so `main` keeps the individual commits release-please
    reads.
 3. release-please opens the stable release PR on `main`. Review its version and
-   `CHANGELOG.md` entry, then merge it. The draft release and packages follow.
+   `CHANGELOG.md` entry, then merge it. The draft release and packages follow. Publish
+   the draft before the back-merge.
 4. Open a pull request from `main` back to `develop` and merge it with a merge
-   commit. The stable release PR already wrote the stable version into
+   commit. The workflow refuses to run until the release in `main`'s
+   `.release-please-manifest.json` is published, not a draft. The stable release PR
+   already wrote the stable version into
    `.release-please-manifest.next.json`, so the merge needs no edits and the next
    prerelease starts a new `-next.0` series above the stable version: the next
    minor after a `feat`, the next patch after only fixes. Only if a prerelease was merged on
    `develop` between promotion and back-merge do the version files conflict;
-   resolve them to `main`'s values.
+   resolve them to `main`'s values. The workflow fails on a conflict and changes
+   nothing; resolve it by hand.
+
+The workflow merges with the Renovate GitHub App's installation token
+(`RENOVATE_APP_CLIENT_ID` variable, `RENOVATE_APP_PRIVATE_KEY` secret), not
+`GITHUB_TOKEN`: a merge made with `GITHUB_TOKEN` triggers no workflows, so `release.yml`
+would never run on `main` and release-please would never open the stable release PR.
+The App needs Contents and Pull requests write access to merge. To use a dedicated App,
+create one with the same permissions and point those two settings at it.
+
+The manual steps above remain the fallback: do them with `gh pr create` and
+`gh pr merge --merge` (never `--squash`) as a user whose pushes trigger workflows.
 
 ### First release
 
@@ -216,9 +240,15 @@ whatever reached `develop` after the bootstrap commit. Both configs carry a
 `bootstrap-sha` so release-please's first runs do not read the project's whole
 history; once the `v0.1.0` release exists it no longer matters.
 
-When the first release is published, also switch `apps/docs-users/release.json`
-to `published` and update the README's "has not published its first release"
-notice.
+The stable release PR also bumps the user guide: `version` in
+`apps/docs-users/release.json` and every version string on its pages. Mark a version on
+a page with `x-release-please-version` on its line, or wrap the body in
+`x-release-please-start-version` / `x-release-please-end` comments; the updater replaces
+only the first version on each line. `scripts/user-guide-release-version.spec.mjs`
+rejects unmarked versions. Prereleases leave the user guide alone. The developer
+guide always deploys from `develop`. Between the back-merge and publishing the release,
+`docs-pages.yml` builds the user guide from the newest commit whose version is
+published, and publishing the release re-runs the workflow on `develop` to switch it.
 
 The release verifier checks the tag format, ancestry and both manifest versions.
 Ancestry shows that the commit is contained in `develop` or `main`; it does not
@@ -393,6 +423,6 @@ The executable contracts are [`ci.yml`](../../.github/workflows/ci.yml),
 [`docs-pages.yml`](../../.github/workflows/docs-pages.yml),
 [`release.yml`](../../.github/workflows/release.yml),
 [`renovate.yml`](../../.github/workflows/renovate.yml),
-[`electron-builder.yml`](../../electron/electron-builder.yml), and the
-[notarization hook](../../electron/build/notarize.cjs). Keep this guide aligned
+and [`electron-builder.yml`](../../electron/electron-builder.yml), which notarizes signed macOS
+builds with electron-builder's built-in notarization. Keep this guide aligned
 with those files when a trigger, job, artifact, or credential name changes.
