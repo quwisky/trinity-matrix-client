@@ -1,0 +1,51 @@
+name: Backport
+
+# Opens a PR that cherry-picks a merged fix from main onto each release branch named by a
+# `backport release/X.Y.x` label. pull_request_target runs this workflow from main with
+# secrets, so it must never check out or run the PR's own code: it checks out main and
+# cherry-picks the merge commit, which is already reviewed and merged.
+on:
+  pull_request_target:
+    types: [closed, labeled]
+    branches: [main]
+
+concurrency:
+  group: backport-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backport:
+    name: Open backport PRs
+    if: ${{ github.event.pull_request.merged == true && contains(join(github.event.pull_request.labels.*.name, ' '), 'backport release/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    steps:
+      - name: Mint the release App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Cherry-pick onto the labelled release branches
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          git config user.name 'trinity-release[bot]'
+          git config user.email 'trinity-release[bot]@users.noreply.github.com'
+          node scripts/backport.mjs --pr "$PR" --title "$TITLE" --sha "$SHA" --labels-json "$LABELS"

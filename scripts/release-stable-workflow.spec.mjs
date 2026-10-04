@@ -95,6 +95,16 @@ describe('Release stable workflow', () => {
     );
     // release.yml opens the stable release PR from the push; no CLI call may race it.
     expect(source).not.toContain('release-please@');
-    expect(source).not.toMatch(/--force\b|push -f|\+HEAD:/);
+    expect(source).not.toMatch(/git push[^\n]*(--force\b| -f\b)|\+HEAD:/);
+  });
+
+  it('creates the backport label for the new line after the push', () => {
+    const label = job.steps[index('Create the backport label')];
+    expect(label.if).toBe('${{ !inputs.dry_run }}');
+    expect(label.env.GH_TOKEN).toBe('${{ steps.app-token.outputs.token }}');
+    expect(label.run).toContain('gh label create "backport $BRANCH"');
+    expect(index('Create the release branch')).toBeLessThan(
+      index('Create the backport label'),
+    );
   });
 });

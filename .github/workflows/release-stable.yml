@@ -158,3 +158,11 @@ jobs:
         env:
           BRANCH: ${{ steps.from.outputs.branch }}
         run: git push origin "HEAD:refs/heads/$BRANCH"
+
+      # Merged PRs carry this label to be cherry-picked onto the new line (backport.yml).
+      - name: Create the backport label
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BRANCH: ${{ steps.from.outputs.branch }}
+        run: gh label create "backport $BRANCH" --color 0E8A16 --description "Cherry-pick this merged PR onto $BRANCH" --force
