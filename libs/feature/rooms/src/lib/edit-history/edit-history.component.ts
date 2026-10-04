@@ -195,9 +195,9 @@ export class EditHistoryComponent {
   remove(revisionId: string): void {
     this.alert
       .confirm$({
-        header: 'Remove version',
-        message: 'Remove this version of your message? This cannot be undone.',
-        confirmText: 'Remove',
+        header: 'Delete version',
+        message: 'Delete this version of your message? This cannot be undone.',
+        confirmText: 'Delete',
         variant: 'danger',
       })
       .pipe(
@@ -223,7 +223,7 @@ export class EditHistoryComponent {
         // and one row failing is no reason to lose the history.
         error: () => {
           this.removing.set(null);
-          this.toast.show('Could not remove that version.');
+          this.toast.show('Could not delete that version.');
         },
       });
   }

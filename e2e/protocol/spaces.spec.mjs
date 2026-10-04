@@ -7,7 +7,7 @@
 //      sidebar list; server-side confirms an unsuggested m.space.child link,
 //      no reverse m.space.parent, and m.room.encryption on the child.
 //
-//   3. Leave the space → returns to Home (sidebar title = "Home"); the space
+//   3. Leave the space → returns to Home (sidebar title = "Direct messages"); the space
 //      pill disappears from the rail; sidebar actions are hidden; server-side
 //      confirms space membership=leave and child membership still=join.
 //
@@ -158,7 +158,7 @@ async function main(protocolBrowser) {
     log('space pill visible in rail ✓');
 
     // Once the spaces() signal is updated, activeSpaceName() resolves to the
-    // real name (it falls back to "Home" until sync). waitForFunction is the
+    // real name (it falls back to "Direct messages" until sync). waitForFunction is the
     // robust wait here since the element is always present (text changes).
     await page.waitForFunction(
       (name) =>
@@ -184,19 +184,17 @@ async function main(protocolBrowser) {
     log('PASS scenario 1');
 
     // -----------------------------------------------------------------------
-    // SCENARIO 2: Create a channel inside the active space
+    // SCENARIO 2: Create a room inside the active space
     // -----------------------------------------------------------------------
     log(`--- Scenario 2: create channel "${CHANNEL_NAME}" ---`);
 
     // sidebar__actions are gated on spaceActive() === true (activeSpaceId !== null).
     // applyCreateSpace sets activeSpaceId immediately on success, so the button is
     // already visible; the waitFor below is a safety net.
-    const createChannelBtn = page.locator(
-      'button[aria-label="Create a channel"]',
-    );
+    const createChannelBtn = page.locator('button[aria-label="Create a room"]');
     await createChannelBtn.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
     await createChannelBtn.click();
-    await fillAlertAndConfirm(page, 'Channel name', CHANNEL_NAME, 'Create');
+    await fillAlertAndConfirm(page, 'Room name', CHANNEL_NAME, 'Create');
 
     // The channel row appears once the room is created and the m.space.child
     // state event fires SpacesService.onStateEvent → refresh() → childRoomIds().
@@ -269,22 +267,17 @@ async function main(protocolBrowser) {
     await fillAlertAndConfirm(page, null, null, 'Leave');
 
     // applyLeaveSpace calls spaces.leaveSpace() and on completion sets activeSpaceId(null)
-    // → spaceActive() = false. The title is then "Direct Messages", NOT "Home":
-    // `sidebarTitle()` (rooms.page.ts) reads
-    //   recentView() ? 'Recent activity' : roomsView() ? 'Rooms'
-    //     : activeSpaceId() ? activeSpaceName() : 'Direct Messages'
-    // and onSelectSpace(null) clears both views on the way past. "Home" survives only as
-    // activeSpaceName()'s fallback, which is not what renders here — it stopped being this
-    // title in bd16dc25 (2026-07-04, the DM/Rooms rail split), and this assertion has been
-    // unreachable ever since. See #54.
+    // → spaceActive() = false. The title is then "Direct messages" (`sidebarTitle()` in
+    // room-shell-view-model.ts): the Home rail button was renamed to match the page it opens
+    // (#931), and onSelectSpace(null) clears both views on the way past.
     await page.waitForFunction(
       () =>
         document.querySelector('span.sidebar__title')?.textContent?.trim() ===
-        'Direct Messages',
+        'Direct messages',
       undefined,
       { timeout: STEP_TIMEOUT, polling: 500 },
     );
-    log('sidebar title = "Direct Messages" ✓');
+    log('sidebar title = "Direct messages" ✓');
 
     // The space pill disappears once the RoomEvent.MyMembership event syncs
     // and SpacesService drops it from the spaces() read model.

@@ -275,7 +275,7 @@ test.describe('Pin messages', () => {
     // The panel empties and/or the count badge drops to 0 — again waiting on
     // the state round trip rather than a fixed sleep.
     await expect(
-      page.getByText('No pinned messages in this channel yet.'),
+      page.getByText('No pinned messages in this room yet.'),
     ).toBeVisible({ timeout: 30_000 });
 
     await page.getByRole('button', { name: 'Close pinned messages' }).click();

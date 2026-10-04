@@ -16,8 +16,8 @@
       presentation="ghost"
       shape="icon"
       size="md"
-      aria-label="Close Edit history"
-      trnTooltip="Close Edit history"
+      aria-label="Close edit history"
+      trnTooltip="Close edit history"
       data-testid="edit-history-close"
       (click)="close()"
     >
@@ -80,13 +80,13 @@
                   class="revision__remove"
                   data-testid="revision-remove"
                   [attr.aria-label]="
-                    'Remove this version, sent ' +
+                    'Delete this version, sent ' +
                     fmt.longDateTime(entry.timestamp)
                   "
                   [disabled]="removing() !== null"
                   (click)="remove(entry.id)"
                 >
-                  {{ removing() === entry.id ? 'Removing…' : 'Remove' }}
+                  {{ removing() === entry.id ? 'Deleting…' : 'Delete' }}
                 </button>
               }
             </div>

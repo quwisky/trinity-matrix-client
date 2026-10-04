@@ -270,12 +270,12 @@ describe('MessageListBase — the mobile action sheet', () => {
     // Default caps: no pin, no edit, no delete, and quoting is off for a row with no text
     // worth quoting — so none of those may appear.
     expect(labels).not.toContain('Pin message');
-    expect(labels).not.toContain('Edit message');
-    expect(labels).not.toContain('Delete message');
+    expect(labels).not.toContain('Edit');
+    expect(labels).not.toContain('Delete');
     // Always available on a writable row.
     expect(labels).toContain('Reply');
     expect(labels).toContain('Forward');
-    expect(labels).toContain('Report message');
+    expect(labels).toContain('Report');
   });
 
   it('adds the permitted actions, and says Unpin for a pinned message', () => {
@@ -304,9 +304,8 @@ describe('MessageListBase — the mobile action sheet', () => {
 
     cmp.onRowLongPress(cmp.rows()[0]);
 
-    const remove = lastSheet(open).buttons.find(
-      (b) => b.text === 'Delete message',
-    ) as { variant?: string; separatorBefore?: boolean } | undefined;
+    const remove = lastSheet(open).buttons.find((b) => b.text === 'Delete') as
+      { variant?: string; separatorBefore?: boolean } | undefined;
     expect(remove).toBeDefined();
     expect(remove?.variant).toBe('danger');
     expect(remove?.separatorBefore).toBe(true);

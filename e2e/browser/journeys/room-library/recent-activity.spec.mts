@@ -122,7 +122,7 @@ test.describe('Recent activity', () => {
     await expect(roomRow).toBeVisible();
 
     // Home scopes to direct messages: the DM stays, the plain room drops.
-    await page.getByRole('button', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Direct messages' }).click();
     await expect(page.getByTestId('rail-recent')).not.toHaveAttribute(
       'aria-current',
       'true',

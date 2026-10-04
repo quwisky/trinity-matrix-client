@@ -309,7 +309,7 @@ test.describe('Room order inside a space', () => {
     await page.getByTestId('space-settings-for-you-save').click();
     await expect(
       page.getByTestId('space-settings-for-you-feedback'),
-    ).toContainText('saved for this Account on this device');
+    ).toContainText('saved for this account on this device');
     expect(hierarchyWrites).toEqual([]);
     await page.getByTestId('space-settings-cancel').click();
     await expect(roomNames(page)).toHaveText(curated);
@@ -336,7 +336,7 @@ test.describe('Room order inside a space', () => {
     await page.getByTestId('space-settings-for-you-save').click();
     await expect(
       page.getByTestId('space-settings-for-you-feedback'),
-    ).toContainText('saved for this Account on this device');
+    ).toContainText('saved for this account on this device');
     await page.getByTestId('space-settings-cancel').click();
     await expect(roomNames(page)).toHaveText(alphabetical);
 

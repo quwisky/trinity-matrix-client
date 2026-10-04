@@ -113,7 +113,7 @@ describe('QuickSwitcherComponent', () => {
     // The full production path in one test — real QuickSwitcherService, real
     // TrnDialogService, real CDK dialog — because that is where the bug lived: the
     // component's own focus() ran first and CDK's focus pass then overrode it with the
-    // header's Cancel button. Only the search backend is stubbed.
+    // header's Close button. Only the search backend is stubbed.
     TestBed.configureTestingModule({
       providers: [
         GlobalSearchService,
@@ -249,7 +249,7 @@ describe('QuickSwitcherComponent', () => {
     });
   });
 
-  it('Escape / Cancel dismisses with null', async () => {
+  it('Escape / Close dismisses with null', async () => {
     const { fixture } = await renderSwitcher();
     const c = fixture.componentInstance;
 

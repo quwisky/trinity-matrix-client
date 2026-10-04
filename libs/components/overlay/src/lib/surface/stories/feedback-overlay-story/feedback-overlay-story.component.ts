@@ -52,6 +52,7 @@ export class FeedbackOverlayStoryComponent {
         header: 'Name this room',
         message: 'Prompt fields keep their label and bounded input options.',
         inputLabel: 'Room name',
+        confirmText: 'Create',
         placeholder: 'Project room',
         value: '',
         maxLength: 64,

@@ -457,7 +457,7 @@ test.describe('Space settings', () => {
       document.documentElement.style.fontSize = '125%';
     });
     await expect(
-      panel.getByRole('button', { name: 'Create Space' }),
+      panel.getByRole('button', { name: 'Create space' }),
     ).toBeVisible();
     expect(
       await panel.evaluate(
@@ -469,7 +469,7 @@ test.describe('Space settings', () => {
     }, openingRootSize);
 
     await panel.getByRole('button', { name: 'Add existing' }).click();
-    await panel.getByLabel('Find a joined Room or Space').fill(`Candidate`);
+    await panel.getByLabel('Find a joined room or space').fill(`Candidate`);
     const candidateRoom = panel.getByTestId(
       `space-contents-pick-${candidateId}`,
     );
@@ -494,7 +494,7 @@ test.describe('Space settings', () => {
         response.url().endsWith('/createRoom') &&
         response.ok(),
     );
-    await panel.getByRole('button', { name: 'Create Space' }).click();
+    await panel.getByRole('button', { name: 'Create space' }).click();
     await page.getByPlaceholder('Space name').fill(createdSpaceName);
     await page.getByRole('button', { name: 'Create', exact: true }).click();
     const createdSpaceId = (
@@ -530,7 +530,7 @@ test.describe('Space settings', () => {
         }),
       }),
     );
-    await panel.getByRole('button', { name: 'Create Room' }).click();
+    await panel.getByRole('button', { name: 'Create room' }).click();
     await page.getByPlaceholder('Room name').fill(recoveredName);
     await page.getByRole('button', { name: 'Create', exact: true }).click();
     const recovery = panel.getByTestId('space-contents-recovery');
@@ -561,7 +561,7 @@ test.describe('Space settings', () => {
     const linkedRow = panel.getByTestId(`space-content-${linkedId}`);
     await linkedRow.getByRole('button', { name: 'Remove' }).click();
     const removeDialog = page.getByRole('dialog', {
-      name: 'Remove Room from Space',
+      name: 'Remove room from space',
     });
     await expect(removeDialog).toContainText(linkedName);
     await expect(removeDialog).toContainText(spaceName);
@@ -596,7 +596,7 @@ test.describe('Space settings', () => {
     );
     await createdSpaceRow.getByRole('button', { name: 'Remove' }).click();
     const removeSpaceDialog = page.getByRole('dialog', {
-      name: 'Remove Space from Space',
+      name: 'Remove space from space',
     });
     await expect(removeSpaceDialog).toContainText(createdSpaceName);
     await expect(removeSpaceDialog).toContainText(spaceName);

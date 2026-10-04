@@ -98,7 +98,7 @@ test.describe('Room settings', () => {
     await name.pressSequentially(newName);
     await page.goBack();
     const discard = page.getByRole('dialog', {
-      name: 'Discard Room settings changes?',
+      name: 'Discard room settings changes?',
     });
     await expect(discard).toBeVisible();
     await discard.getByRole('button', { name: 'Keep editing' }).click();

@@ -13,7 +13,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
-// System Status is an application surface, but its entry point follows the shell's navigation:
+// System status is an application surface, but its entry point follows the shell's navigation:
 // an icon left of Settings on desktop and in the room header's mobile overflow when the sidebar page is
 // not present. These checks need a real conversation because a login-page status button can hide
 // both placement and composer regressions.
@@ -78,7 +78,7 @@ async function expectComposerUsable(page: Page, body: string): Promise<void> {
   });
 }
 
-test.describe('System Status navigation placement', () => {
+test.describe('System status navigation placement', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
   test('sits as an icon left of Settings on desktop and leaves the composer usable', async ({
@@ -92,7 +92,7 @@ test.describe('System Status navigation placement', () => {
     await expect(page.getByTestId('system-status-access')).toHaveCount(0);
     await expect(sidebarStatus).toBeVisible();
     await expect(sidebarStatus).toHaveText('');
-    await expect(sidebarStatus).toHaveAccessibleName('System Status');
+    await expect(sidebarStatus).toHaveAccessibleName('System status');
     await expect(settings).toBeVisible();
     const statusBox = await sidebarStatus.boundingBox();
     const settingsBox = await settings.boundingBox();
@@ -117,9 +117,9 @@ test.describe('System Status navigation placement', () => {
       contentType: 'image/png',
     });
     await sidebarStatus.click();
-    const dialog = page.getByRole('dialog', { name: 'System Status' });
+    const dialog = page.getByRole('dialog', { name: 'System status' });
     await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', { name: 'Close System Status' }).click();
+    await dialog.getByRole('button', { name: 'Close System status' }).click();
     await expect(dialog).toBeHidden();
     await expect(sidebarStatus).toBeFocused();
 
@@ -165,9 +165,9 @@ test.describe('System Status navigation placement', () => {
       });
       await mobileStatus.click();
 
-      const dialog = page.getByRole('dialog', { name: 'System Status' });
+      const dialog = page.getByRole('dialog', { name: 'System status' });
       await expect(dialog).toBeVisible();
-      await dialog.getByRole('button', { name: 'Close System Status' }).click();
+      await dialog.getByRole('button', { name: 'Close System status' }).click();
       await expect(dialog).toBeHidden();
       await expect(overflow).toBeFocused();
 

@@ -162,9 +162,9 @@ test.describe('Security settings', () => {
     await page.getByRole('button', { name: 'Close settings' }).click();
     await page
       .getByTestId('app-capability-summary')
-      .getByRole('button', { name: 'System Status' })
+      .getByRole('button', { name: 'System status' })
       .click();
-    const status = page.getByRole('dialog', { name: 'System Status' });
+    const status = page.getByRole('dialog', { name: 'System status' });
     const problem = status
       .locator('article')
       .filter({ hasText: 'Encryption trust status is unavailable' });

@@ -11,7 +11,7 @@ const EXPECTED_INVENTORY = {
   // Space creation checks the current parent-only policy: unsuggested child,
   // no reverse parent state. Both legacy assertion slots remain covered.
   fingerprint:
-    'cc5e793b2c57d6da9d5ef956aeb3b1e559aa5d473bf15e0e6ca475f9953fb52d',
+    '0973e2e116dc6542e03d2e68dec5577ebe46d22b1eea1a4bd435f87919efd6a9',
 };
 const PRE_MIGRATION_ASSERTIONS = 207;
 const APPROVED_POST_MIGRATION_ASSERTIONS = 1;

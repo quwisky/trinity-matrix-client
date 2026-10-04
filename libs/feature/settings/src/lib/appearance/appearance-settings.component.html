@@ -40,7 +40,7 @@
   }
 
   <trn-settings-group
-    title="Mode and Theme"
+    title="Mode and theme"
     headingId="appearance-mode-heading"
     description="Choose the surface contrast and colour accents that feel most comfortable."
     data-testid="appearance-mode-theme"
@@ -54,7 +54,7 @@
       (valueChange)="onModeChange($event)"
     />
     <p class="text-13 text-[var(--trinity-text-muted)]">
-      Showing the {{ resolvedMode() }} Mode.
+      Showing the {{ resolvedMode() }} mode.
     </p>
     @if (appearance.status.mode.failed()) {
       <div
@@ -71,7 +71,7 @@
           data-testid="theme-mode-retry"
           (click)="appearance.retry('mode')"
         >
-          Retry
+          Try again
         </button>
       </div>
     }

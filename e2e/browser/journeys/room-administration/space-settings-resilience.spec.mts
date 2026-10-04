@@ -281,7 +281,7 @@ test.describe('Space settings resilience', () => {
     const contents = page.getByTestId('space-settings-panel-contents');
     await contents.getByRole('button', { name: 'Add existing' }).click();
     await contents
-      .getByLabel('Find a joined Room or Space')
+      .getByLabel('Find a joined room or space')
       .fill(exactChildName);
     await contents.getByTestId(`space-contents-pick-${exactChildId}`).click();
     await contents.getByRole('button', { name: 'Add selected' }).click();
@@ -294,7 +294,7 @@ test.describe('Space settings resilience', () => {
     const exactChildRow = contents.getByTestId(`space-content-${exactChildId}`);
     await exactChildRow.getByRole('button', { name: 'Remove' }).click();
     await page
-      .getByRole('dialog', { name: 'Remove Space from Space' })
+      .getByRole('dialog', { name: 'Remove space from space' })
       .getByRole('button', { name: 'Remove' })
       .click();
     await expect

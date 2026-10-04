@@ -215,9 +215,9 @@ export class RoomMembersService {
       availability,
       unavailableReason:
         availability === 'account-unavailable'
-          ? 'This Account is no longer available. The member list remains attached to the opening Account.'
+          ? 'This account is no longer available. The member list remains attached to this account.'
           : availability === 'room-unavailable'
-            ? 'This Room is no longer joined for the opening Account.'
+            ? 'This room is no longer joined for this account.'
             : null,
       members:
         client && availability === 'available'

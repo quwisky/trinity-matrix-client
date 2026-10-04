@@ -256,7 +256,7 @@ describe('SpaceSettingsContentsComponent', () => {
     prompt.next('Recovered Space');
     cmp.retryLink();
 
-    expect(cmp.feedback()?.message).toContain('without creating another Space');
+    expect(cmp.feedback()?.message).toContain('without creating another space');
     expect(create).toHaveBeenCalledTimes(1);
     expect(link).toHaveBeenCalledWith(TARGET, '!orphan:hs');
     expect(cmp.recovery()).toBeNull();
@@ -278,7 +278,7 @@ describe('SpaceSettingsContentsComponent', () => {
 
   it('distinguishes an empty Space from a failed hierarchy read', async () => {
     const { container, fixture, states } = await build(snapshot({ items: [] }));
-    expect(container.textContent).toContain('This Space is empty');
+    expect(container.textContent).toContain('This space is empty');
 
     states.next(snapshot({ items: [], hierarchyError: 'server unavailable' }));
     await fixture.whenStable();
@@ -286,6 +286,6 @@ describe('SpaceSettingsContentsComponent', () => {
     expect(container.textContent).toContain(
       'Space contents could not be loaded',
     );
-    expect(container.textContent).not.toContain('This Space is empty');
+    expect(container.textContent).not.toContain('This space is empty');
   });
 });

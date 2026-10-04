@@ -34,7 +34,7 @@ describe('SidebarUserPanelComponent', () => {
     expect(opened).toBe(true);
   });
 
-  it('keeps System Status beside Settings and emits its open action', async () => {
+  it('keeps System status beside Settings and emits its open action', async () => {
     const { fixture, container } = await render(SidebarUserPanelComponent, {
       inputs: { user: USER },
     });
@@ -44,13 +44,13 @@ describe('SidebarUserPanelComponent', () => {
     const status = container.querySelector<HTMLElement>(
       '[data-testid="open-system-status"]',
     );
-    expect(status?.getAttribute('aria-label')).toBe('System Status');
+    expect(status?.getAttribute('aria-label')).toBe('System status');
     status!.click();
 
     expect(opened).toBe(true);
   });
 
-  it('marks the System Status entry when capability problems exist', async () => {
+  it('marks the System status entry when capability problems exist', async () => {
     const { container } = await render(SidebarUserPanelComponent, {
       inputs: { user: USER, hasSystemStatusProblems: true },
     });

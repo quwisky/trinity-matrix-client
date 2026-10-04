@@ -16,7 +16,7 @@ import { registerUser } from '../../../support/account.mts';
 // Covers moderator redaction: a room admin (power 100, the creator) can delete
 // ANOTHER user's message. TimelineService.canRedactOthers compares the user's
 // power level to the room's `redact` requirement; when sufficient, the message
-// toolbar's ⋯ menu exposes "Delete message" (data-testid="msg-delete") on other
+// toolbar's ⋯ menu exposes "Delete" (data-testid="msg-delete") on other
 // people's rows (MessageListBase widens `deletable` beyond own messages). Deleting
 // redacts the event, so the row renders "(message deleted)".
 //
@@ -120,7 +120,7 @@ test.describe('Moderator redaction', () => {
     const row = page.locator('.scroll .msg[data-mid]', { hasText: memberBody });
     await row.first().waitFor({ state: 'visible', timeout: 20_000 });
 
-    // Reveal the hover toolbar → ⋯ menu → "Delete message" (offered because the
+    // Reveal the hover toolbar → ⋯ menu → "Delete" (offered because the
     // admin has redact power over others), then confirm the destructive dialog.
     await clickRowMenuItem(row.first(), page.getByTestId('msg-delete'));
 

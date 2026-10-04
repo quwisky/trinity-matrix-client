@@ -504,7 +504,7 @@ describe('EditHistoryComponent', () => {
     const closeButton = container.querySelector(
       '[data-testid=edit-history-close]',
     ) as HTMLButtonElement;
-    expect(closeButton.getAttribute('aria-label')).toBe('Close Edit history');
+    expect(closeButton.getAttribute('aria-label')).toBe('Close edit history');
     expect(closeButton.closest('footer')).toBeNull();
 
     fireEvent.click(closeButton);

@@ -8,7 +8,7 @@ import {
 import { registerUser } from '../../../support/account.mts';
 
 // Covers reporting a message: a message's ⋯ menu (data-testid="msg-more") offers
-// "Report message" (data-testid="msg-report"), which prompts for a reason
+// "Report" (data-testid="msg-report"), which prompts for a reason
 // (data-testid="alert-confirm") and reports it to the room's server admins
 // (ReportService → RoomModerationService.reportMessage → client.reportEvent),
 // surfacing a success toast. Needs a Synapse homeserver (Docker); self-skips.
@@ -63,7 +63,7 @@ test.describe('Report a message', () => {
     const row = page.locator('.scroll .msg[data-mid]', { hasText: body });
     await row.first().waitFor({ state: 'visible', timeout: 20_000 });
 
-    // Hover → ⋯ → Report message → confirm the reason prompt.
+    // Hover → ⋯ → Report → confirm the reason prompt.
     await clickRowMenuItem(row.first(), page.getByTestId('msg-report'));
 
     await page.getByTestId('alert-confirm').click();

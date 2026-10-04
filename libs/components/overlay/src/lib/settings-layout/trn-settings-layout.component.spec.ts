@@ -42,7 +42,7 @@ describe('TrnSettingsLayoutComponent', () => {
   it('keeps compact section navigation when presented as a sheet', async () => {
     const { container, getByRole } = await render(TrnSettingsLayoutComponent, {
       inputs: {
-        title: 'System Status',
+        title: 'System status',
         sections,
         selectedSection: 'general',
         compact: true,
