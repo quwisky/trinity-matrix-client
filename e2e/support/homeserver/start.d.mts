@@ -8,7 +8,11 @@
 //
 // Keep in sync with the `return` at the end of `start()` and the exported constants.
 
-import type { HomeserverKind } from './kind.mts';
+import type {
+  HomeserverFeature,
+  HomeserverKind,
+  HomeserverRuntime,
+} from './kind.mts';
 
 export declare const HOMESERVER_HTTP: string;
 export declare const SECONDARY_HTTP: string;
@@ -42,16 +46,22 @@ export interface HomeserverHarness {
   kind: HomeserverKind;
   /** Its version from `/_matrix/federation/v1/version`. */
   version: string;
-  secondary: {
+  /** Docker Compose, or host processes when TRINITY_E2E_HOMESERVER_RUNTIME=native. */
+  runtime: HomeserverRuntime;
+  /** Features this runtime does not provide; their fields below are then absent. */
+  unavailable: readonly HomeserverFeature[];
+  secondary?: {
     /** Host-reachable Client-Server API for setup requests. */
     hs: string;
     /** Matrix server name reachable by the primary over federation. */
     serverName: string;
     registrationSecret: string;
   };
-  sso: HomeserverSsoAccount;
+  sso?: HomeserverSsoAccount;
   /** A second SSO account, permanently seeded for the recovery-reset spec. */
-  ssoReset: HomeserverSsoAccount;
+  ssoReset?: HomeserverSsoAccount;
+  /** Caddy's local root certificate (native runtime), for hosts that must trust it. */
+  caddyRoot?: string;
 }
 
 export declare function start(options?: {

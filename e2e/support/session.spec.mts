@@ -141,4 +141,61 @@ describe('E2E session contract', () => {
     expect(() => recoverStaleProcessLock(file)).toThrow(/live process lock/);
     releaseProcessLock(lock);
   });
+
+  it('carries the native runtime, its unavailable features and the Caddy root', () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), 'trinity-e2e-session-'));
+    directories.push(workspaceRoot);
+    const file = join(workspaceRoot, 'session.json');
+    const base = descriptor(workspaceRoot);
+    const value: E2ESessionDescriptor = {
+      ...base,
+      homeserver: {
+        ...base.homeserver!,
+        kind: 'synapse',
+        version: '1.161.0',
+        runtime: 'native',
+        unavailable: ['remote', 'sso'],
+        caddyRoot:
+          '/state/data/caddy-data/caddy/pki/authorities/local/root.crt',
+      },
+    };
+    writeSession(file, value);
+    expect(readSession(file)).toEqual(value);
+    expect(sessionSummary(value)).toContain(
+      'homeserver=synapse 1.161.0 (native)',
+    );
+  });
+
+  it('rejects an unknown runtime or feature, and a feature both offered and withheld', () => {
+    const value = descriptor('/workspace');
+    const homeserver = value.homeserver!;
+    expect(() =>
+      validateSession({
+        ...value,
+        homeserver: { ...homeserver, runtime: 'podman' },
+      }),
+    ).toThrow(/unknown homeserver runtime/);
+    expect(() =>
+      validateSession({
+        ...value,
+        homeserver: { ...homeserver, unavailable: ['dex'] },
+      }),
+    ).toThrow(/unknown unavailable homeserver feature/);
+    expect(() =>
+      validateSession({
+        ...value,
+        homeserver: {
+          ...homeserver,
+          unavailable: ['sso'],
+          sso: { user: 'u', email: 'e', pass: 'p' },
+        },
+      }),
+    ).toThrow(/both offers and withholds sso/);
+    expect(() =>
+      validateSession({
+        ...value,
+        homeserver: { ...homeserver, caddyRoot: 7 },
+      }),
+    ).toThrow(/Caddy root/);
+  });
 });
