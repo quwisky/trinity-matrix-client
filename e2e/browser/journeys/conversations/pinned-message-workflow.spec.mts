@@ -43,14 +43,14 @@ const REPEAT_PIN_BODY = 'pin me twice please';
 // regression, below. Comfortably past whatever a 1280x720 viewport's worth of
 // compact message rows can show at once (real overflow, not a guess), and — more
 // importantly — pushed *after* the reader is already logged in and the room is
-// open, so every filler message lands as ordinary live sync traffic in the
-// client's already-open (uncapped) live timeline, rather than via the initial
+// open, so the filler lands as live sync traffic rather than via the initial
 // `/sync`, which `MatrixClientService` caps at `initialSyncLimit: 20` — history
 // beyond that window only loads via an explicit scroll-to-top backfill (see
-// timeline-virtualization.spec.mts). Seeding this many *before* login would put
-// the target outside that window — not just scrolled off, but genuinely unloaded
-// — and PinnedMessagesPanelComponent → MessageListBase.jumpTo() only scrolls to
-// an event already in the rendered DOM; it never fetches context for a jump.
+// timeline-virtualization.spec.mts). Live sync is capped too, though: a burst that
+// outruns a sync's timeline limit comes back as a gappy (`limited`) sync, and the SDK
+// restarts the live timeline after the gap, unloading the target until history is
+// paged back in. That is fine here: the panel fetches unloaded pins and a jump pages the
+// target back in, so the test no longer has to.
 const FILLER_COUNT = 32;
 
 interface ApiUser {
@@ -338,13 +338,17 @@ test.describe('Pin messages', () => {
       );
     }
 
-    // The flood lands via live sync and the list's stick-to-bottom effect (the user
-    // hasn't scrolled up, so it's still "at bottom") rides it down — the last filler
-    // arrives on screen, and the target (now dozens of rows above) scrolls out.
+    // The flood lands via live sync. The list usually rides it to the last filler, but a
+    // gappy sync (Tuwunel) can leave it short of the bottom and unload the target. The panel
+    // lists the target either way and a jump pages it back in, so just rest at the bottom.
     const lastFillerRow = page.locator('.scroll .msg[data-mid]', {
       hasText: lastFillerBody,
     });
-    await expect(lastFillerRow.first()).toBeInViewport({ timeout: 30_000 });
+    const scroll = page.locator('.scroll');
+    await expect(async () => {
+      await scroll.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+      await expect(lastFillerRow.first()).toBeInViewport({ timeout: 1_000 });
+    }).toPass({ timeout: 30_000 });
     await expect(targetRow.first()).not.toBeInViewport({ timeout: 15_000 });
 
     const pinButton = page.getByTestId('open-pinned');
@@ -371,9 +375,7 @@ test.describe('Pin messages', () => {
 
     // --- Scroll back away from the target so it's out of view again, exactly as
     // it was before the first jump. ---
-    await page
-      .locator('.scroll')
-      .evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    await scroll.evaluate((el) => el.scrollTo(0, el.scrollHeight));
     await expect(targetRow.first()).not.toBeInViewport({ timeout: 15_000 });
 
     // --- Second jump to the SAME event id — the regression assertion. Before the

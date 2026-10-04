@@ -204,7 +204,18 @@ export class MessageActionsService {
    * this for free: `openAndWait` resolved a microtask AFTER the overlay was torn down.
    */
   onPanelJump(eventId: string): void {
-    this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
+    // A pin or hit may be older than the loaded timeline; page it in first, or the
+    // list has no row to scroll to. Already-loaded events resolve synchronously.
+    this.timeline
+      .loadEvent(eventId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((loaded) => {
+        if (loaded) {
+          this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
+        } else {
+          void this.status.showError('Could not load that message.');
+        }
+      });
   }
 
   /** Pin or unpin a message from its overflow menu, resolving which by current state. */

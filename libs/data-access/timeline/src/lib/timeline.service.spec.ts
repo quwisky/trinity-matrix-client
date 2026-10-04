@@ -36,6 +36,18 @@ import {
   systemLinesProvider,
 } from './timeline.spec-harness';
 
+// The fake clients here model one page of history as `client.scrollback`. The real paging
+// (and its race with gappy syncs) is covered against the SDK in live-scrollback.spec.
+vi.mock('./live-scrollback', () => ({
+  scrollbackLive: async (
+    client: { scrollback: (room: unknown, limit: number) => Promise<unknown> },
+    room: unknown,
+    limit: number,
+  ) => {
+    await client.scrollback(room, limit);
+  },
+}));
+
 beforeEach(() => {
   TestBed.configureTestingModule({ providers: [privacyProvider(true)] });
 });
@@ -2530,6 +2542,39 @@ describe('TimelineService.jumpToDate', () => {
     // Without the loop this is where "jump to date" silently does nothing: the id is
     // real, the DOM has never seen it, and scrollIntoView finds no element.
     expect(scrollbacks()).toBeGreaterThan(0);
+  });
+
+  it('loadEvent pages history back until a pinned or searched event is loaded', async () => {
+    const { svc, scrollbacks } = pagingSetup({
+      loaded: 10,
+      total: 100,
+      targetIndex: 5,
+    });
+
+    expect(await firstValueFrom(svc.loadEvent('$e5'))).toBe(true);
+    expect(scrollbacks()).toBeGreaterThan(0);
+  });
+
+  it('loadEvent costs no request when the event is already loaded', async () => {
+    const { svc, scrollbacks } = pagingSetup({
+      loaded: 50,
+      total: 50,
+      targetIndex: 40,
+    });
+
+    expect(await firstValueFrom(svc.loadEvent('$e40'))).toBe(true);
+    expect(scrollbacks()).toBe(0);
+  });
+
+  it('loadEvent reports false when the event is beyond the bounded scrollback', async () => {
+    const { svc, scrollbacks } = pagingSetup({
+      loaded: 10,
+      total: 5000,
+      targetIndex: 0,
+    });
+
+    expect(await firstValueFrom(svc.loadEvent('$e0'))).toBe(false);
+    expect(scrollbacks()).toBe(20);
   });
 
   it('asks for the first event AFTER midnight, not the last one before it', async () => {

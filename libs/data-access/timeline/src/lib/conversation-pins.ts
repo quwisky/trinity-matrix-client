@@ -3,6 +3,11 @@ import type { Observable } from 'rxjs';
 
 export interface PinnedMessageView {
   readonly id: string;
+  /**
+   * `loading` while an event outside the loaded timeline is fetched; `unavailable`
+   * when the server will not return it. Both carry empty sender and body.
+   */
+  readonly status: 'loaded' | 'loading' | 'unavailable';
   readonly sender: string;
   readonly senderName: string;
   readonly body: string;

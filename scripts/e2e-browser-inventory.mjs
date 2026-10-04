@@ -25,12 +25,12 @@ const EXTRACTED_ASSERTION_SUPPORT = [
 export const BROWSER_ASSERTION_BASELINE = Object.freeze({
   baselineSpecFiles: 103,
   currentSpecFiles: 122,
-  testDefinitions: 310,
-  assertionCalls: 2715,
+  testDefinitions: 311,
+  assertionCalls: 2722,
   testFingerprint:
-    'f2304385ded2613e821b86391af43b358ae68b64a71539b29a66e166f53b1816',
+    'b34ffd2b91a03468c8b0cee30aea85cbcac307ad85c870cd2c8e745f65351053',
   assertionFingerprint:
-    '4d1f1efed127ed635de0787827bfbf04792e582a359a6d281cc3c8dcee782b8a',
+    '674612177afee67b641bc96d2a7d858ae053dcd711a83c50c5925fbe374d4bdc',
 });
 
 const normalizeSource = (source) => source.replace(/\s+/gu, ' ').trim();
