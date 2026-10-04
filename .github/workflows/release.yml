@@ -200,9 +200,8 @@ jobs:
     # Gates the signing secrets behind an environment. Required reviewers on `release`
     # gate packaging only (the release App jobs use `release-app`); without them this is
     # a no-op, with them it is what stops a pushed tag from minting a signed installer
-    # unattended. The certificate is
-    # the asset worth protecting: electron-builder runs repo-controlled hooks
-    # (afterPack.cjs) in the same process that holds CSC_KEY_PASSWORD.
+    # unattended. The certificate is the asset worth protecting: electron-builder runs
+    # repo-controlled hooks (afterPack.cjs) in the same process that holds CSC_KEY_PASSWORD.
     environment: release
     # Without this the job inherits the 6-hour default, and a wedged @electron/get download
     # would hold the release all day. macOS gets 120 minutes: Apple's notary queue alone
