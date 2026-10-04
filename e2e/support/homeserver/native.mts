@@ -3,7 +3,7 @@
 // macOS runner the iOS suite needs). Primary server only: no Dex, no federated secondary.
 // Detached like Compose containers: a run that dies leaves them up, and the PID file is
 // how the lease notices them and stop.mjs removes them.
-import { execFile, spawn } from 'node:child_process';
+import { execFile, execFileSync, spawn } from 'node:child_process';
 import {
   closeSync,
   existsSync,
@@ -79,6 +79,8 @@ export interface NativeProcessApi {
     options: { readonly env: NodeJS.ProcessEnv; readonly logFile: string },
   ): number;
   kill(pid: number, signal: NodeJS.Signals | 0): void;
+  /** The full command line of a live process; '' when it is gone or unreadable. */
+  commandOf(pid: number): string;
 }
 
 const execFileAsync = promisify(execFile);
@@ -110,6 +112,16 @@ export const nodeProcessApi: NativeProcessApi = {
   },
   kill: (pid, signal) => {
     process.kill(pid, signal);
+  },
+  commandOf(pid) {
+    try {
+      // `ps -o command= -p` behaves the same on Linux and macOS.
+      return execFileSync('ps', ['-o', 'command=', '-p', String(pid)], {
+        encoding: 'utf8',
+      }).trim();
+    } catch {
+      return '';
+    }
   },
 };
 
@@ -192,6 +204,8 @@ export function nativeCaddyfile(shared: string): string {
     // Never touch the host trust store; the iOS runner trusts the root in the Simulator.
     '\tskip_install_trust',
     '\tauto_https disable_redirects',
+    // Docker publishes 127.0.0.1:8448 only; the LAN must not reach the admin API.
+    '\tdefault_bind 127.0.0.1 [::1]',
     '}',
     '',
     site,
@@ -245,14 +259,27 @@ function isAlive(api: NativeProcessApi, pid: number): boolean {
   }
 }
 
-// ponytail: a PID file that outlives a reboot can name a reused PID; the lease error names
-// the file, and deleting it is the fix. Store process start times if that ever bites.
+// A PID file that outlives a crash or reboot can name a reused PID, so a live PID only
+// counts as ours when its command line is the service we spawned.
+const IDENTITY: Record<NativeService, RegExp> = {
+  homeserver: /synapse\.app\.homeserver/u,
+  caddy: /\bcaddy\b.*\brun\b/u,
+};
+
+function isOurs(
+  api: NativeProcessApi,
+  service: NativeService,
+  pid: number,
+): boolean {
+  return isAlive(api, pid) && IDENTITY[service].test(api.commandOf(pid));
+}
+
 export function runningNativeServices(
   pidFile: string,
   api: NativeProcessApi,
 ): NativeService[] {
   return Object.entries(readNativePids(pidFile))
-    .filter(([, pid]) => pid !== undefined && isAlive(api, pid))
+    .filter(([service, pid]) => isOurs(api, service as NativeService, pid))
     .map(([service]) => service as NativeService);
 }
 
@@ -295,15 +322,23 @@ export async function stopNativeServices(
     graceMs = 10_000,
     pollMs = 100,
     signal,
+    log = () => undefined,
   }: {
     readonly graceMs?: number;
     readonly pollMs?: number;
     readonly signal?: AbortSignal;
+    readonly log?: (message: string) => void;
   } = {},
 ): Promise<void> {
-  const pids = Object.values(readNativePids(pidFile)).filter(
-    (pid): pid is number => pid !== undefined,
-  );
+  const pids: number[] = [];
+  for (const [service, pid] of Object.entries(readNativePids(pidFile))) {
+    if (isOurs(api, service as NativeService, pid)) pids.push(pid);
+    else if (isAlive(api, pid)) {
+      log(
+        `PID ${pid} (${service}) in ${pidFile} is another process; not signalling it`,
+      );
+    }
+  }
   const signalGroups = (name: NodeJS.Signals): void => {
     for (const pid of pids) {
       try {

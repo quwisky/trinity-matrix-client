@@ -53,6 +53,7 @@ function fakeProcesses(
   } = {},
 ) {
   const live = new Set<number>();
+  const commands = new Map<number, string>();
   const execCalls: string[][] = [];
   const spawns: Spawned[] = [];
   const signals: Array<[number, NodeJS.Signals | 0]> = [];
@@ -71,9 +72,11 @@ function fakeProcesses(
         throw new Error(`could not start ${file}`);
       const pid = nextPid++;
       live.add(pid);
+      commands.set(pid, [file, ...args].join(' '));
       spawns.push({ file, args, ...spawnOptions });
       return pid;
     },
+    commandOf: (pid) => (live.has(pid) ? (commands.get(pid) ?? '') : ''),
     kill(pid, signal) {
       signals.push([pid, signal]);
       const target = Math.abs(pid);
@@ -88,7 +91,7 @@ function fakeProcesses(
       }
     },
   };
-  return { api, live, execCalls, spawns, signals };
+  return { api, live, commands, execCalls, spawns, signals };
 }
 
 describe('native homeserver runtime', () => {
@@ -234,6 +237,46 @@ describe('native homeserver runtime', () => {
     expect(fake.live.size).toBe(0);
   });
 
+  it('neither reports nor signals a reused PID that runs something else', async () => {
+    const paths = layout();
+    const fake = fakeProcesses();
+    fake.live.add(777);
+    fake.commands.set(777, '/usr/bin/vim notes.txt');
+    startNativeServices(paths, fake.api, {});
+    const pids = JSON.parse(readFileSync(paths.pidFile, 'utf8'));
+    writeFileSync(paths.pidFile, JSON.stringify({ ...pids, caddy: 777 }));
+    expect(runningNativeServices(paths.pidFile, fake.api)).toEqual([
+      'homeserver',
+    ]);
+    const messages: string[] = [];
+    await stopNativeServices(paths.pidFile, fake.api, {
+      graceMs: 50,
+      pollMs: 1,
+      log: (m) => messages.push(m),
+    });
+    expect(
+      fake.signals.filter(([pid, sig]) => sig !== 0 && Math.abs(pid) === 777),
+    ).toEqual([]);
+    expect(fake.live.has(777)).toBe(true);
+    expect(fake.live.has(4100)).toBe(false);
+    expect(messages.join('\n')).toMatch(/777/);
+    expect(existsSync(paths.pidFile)).toBe(false);
+  });
+
+  it('removes a stale PID file whose PIDs are all foreign, signalling nothing', async () => {
+    const paths = layout();
+    const fake = fakeProcesses();
+    fake.live.add(888);
+    fake.commands.set(888, 'sshd: me');
+    writeFileSync(paths.pidFile, JSON.stringify({ homeserver: 888 }));
+    expect(runningNativeServices(paths.pidFile, fake.api)).toEqual([]);
+    await stopNativeServices(paths.pidFile, fake.api, { graceMs: 5 });
+    expect(
+      fake.signals.filter(([pid, sig]) => sig !== 0 && Math.abs(pid) === 888),
+    ).toEqual([]);
+    expect(existsSync(paths.pidFile)).toBe(false);
+  });
+
   it('serves only the 8448 site, without the admin API or a trust-store install', () => {
     const shared = readFileSync(join(import.meta.dirname, 'Caddyfile'), 'utf8');
     const caddyfile = nativeCaddyfile(shared);
@@ -243,6 +286,7 @@ describe('native homeserver runtime', () => {
       'admin off',
       'skip_install_trust',
       'auto_https disable_redirects',
+      'default_bind 127.0.0.1 [::1]',
     ]) {
       expect(caddyfile).toContain(option);
     }

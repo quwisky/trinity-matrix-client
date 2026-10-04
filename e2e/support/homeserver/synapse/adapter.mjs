@@ -188,9 +188,11 @@ export async function ensureConfig(ctx) {
       '  burst_count: 100',
       // Link previews for the URL-preview e2e. The empty IP blacklist lets Synapse
       // fetch the harness OG page (http://caddy:8080/og) on the private docker network
-      // — safe here because this homeserver is disposable and network-isolated.
+      // — safe here because this homeserver is disposable and network-isolated. The
+      // native runtime (sso: false) serves no OG page and shares the host's network,
+      // so it keeps Synapse's default blocklist.
       'url_preview_enabled: true',
-      'url_preview_ip_range_blacklist: []',
+      ...(ctx.sso === false ? [] : ['url_preview_ip_range_blacklist: []']),
       // Permissive CORS isn't a Synapse config knob; matrix endpoints already send
       // Access-Control-Allow-Origin: *. Listed here only as a reminder.
     );
@@ -252,7 +254,7 @@ export async function ensureConfig(ctx) {
   if (additions.length || replacedSecret || oidcChanged || trustedKeysChanged) {
     await writeFile(CONFIG, yaml, 'utf8');
     ctx.log(
-      'patched homeserver.yaml (shared secret, public_baseurl, rate limits, dex sso)',
+      `patched homeserver.yaml (shared secret, public_baseurl, rate limits${ctx.sso === false ? '' : ', dex sso'})`,
     );
   }
 }

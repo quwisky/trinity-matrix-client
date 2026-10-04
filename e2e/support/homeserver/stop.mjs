@@ -58,7 +58,7 @@ export async function stop({ keepData = false, signal } = {}) {
     await stopNativeServices(
       nativePaths(STATE_DIR, DATA).pidFile,
       nodeProcessApi,
-      { signal },
+      { signal, log },
     );
   } catch (err) {
     log(`native stop failed: ${err.message ?? err}`);

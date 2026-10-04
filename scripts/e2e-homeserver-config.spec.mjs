@@ -214,6 +214,7 @@ describe('Synapse adapter config generation', () => {
     );
     expect(yaml).toContain('public_baseurl: "https://localhost:8448/"');
     expect(yaml).toContain('url_preview_enabled: true');
+    expect(yaml).not.toContain('url_preview_ip_range_blacklist');
     expect(yaml).not.toContain('trinity-e2e-oidc');
     expect(yaml).not.toContain('oidc_providers');
   });
@@ -227,5 +228,6 @@ describe('Synapse adapter config generation', () => {
     });
     const yaml = readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8');
     expect(yaml).toContain('idp_id: dex');
+    expect(yaml).toContain('url_preview_ip_range_blacklist: []');
   });
 });
