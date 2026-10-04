@@ -160,27 +160,6 @@
     vertical-align: middle;
   }
 
-  // The pinned-messages header button carries a small count badge in its corner.
-  .header-pin {
-    position: relative;
-  }
-
-  .header-pin__badge {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    min-width: 1rem;
-    height: 1rem;
-    padding: 0 0.25rem;
-    border-radius: var(--trinity-radius-pill);
-    background: var(--trinity-accent);
-    color: var(--trinity-accent-foreground);
-    font-size: 0.625rem;
-    font-weight: 700;
-    line-height: 1rem;
-    text-align: center;
-  }
-
   // The chat area owns the drawer gesture, so a swipe that starts over the timeline is heard.
   // `touch-action: pan-y` keeps vertical scrolling native while claiming the horizontal axis —
   // without it the browser consumes the sideways drag as a scroll or an overscroll navigation
