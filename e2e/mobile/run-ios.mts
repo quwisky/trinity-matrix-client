@@ -41,14 +41,29 @@ const artifactsDir = (): string =>
     'host-output',
   );
 
-async function simctl(...args: string[]): Promise<string> {
+async function simctlWithin(
+  cleanupTimeout: number,
+  args: string[],
+): Promise<string> {
   const { stdout } = await exec('xcrun', ['simctl', ...args], {
     cwd: workspaceRoot,
     maxBuffer: 50 * 1024 * 1024,
     signal: commandSignal(),
-    timeout: isCleaningUp() ? 30_000 : undefined,
+    timeout: isCleaningUp() ? cleanupTimeout : undefined,
   });
   return stdout.trim();
+}
+
+const simctl = (...args: string[]): Promise<string> =>
+  simctlWithin(30_000, args);
+
+/** execFile errors carry the child's output; keep it, not just "Command failed". */
+function failureText(error: unknown): string {
+  const { stdout = '', stderr = '' } = error as {
+    stdout?: string;
+    stderr?: string;
+  };
+  return `${String(error)}\n${stdout}\n${stderr}`;
 }
 
 /** Use the pinned device (a booted one first), booting it only if nobody else has. */
@@ -151,16 +166,23 @@ async function captureDiagnostics(): Promise<void> {
   // stop.mjs deletes ./data at teardown; the runner scrubs host-output afterwards.
   const paths = nativePaths(STATE_DIR, DATA);
   copyHomeserverLogs(
-    [...Object.values(paths.logs), paths.homeserverLog],
+    [...Object.values(paths.logs), paths.homeserverLog, paths.caddyAccessLog],
     outputDirectory,
   );
   if (!simulator) return;
   const { udid } = simulator;
-  const capture = async (file: string, args: string[]): Promise<void> => {
+  const capture = async (
+    file: string,
+    args: string[],
+    cleanupTimeout = 30_000,
+  ): Promise<void> => {
     try {
-      writeFileSync(join(outputDirectory, file), `${await simctl(...args)}\n`);
+      writeFileSync(
+        join(outputDirectory, file),
+        `${await simctlWithin(cleanupTimeout, args)}\n`,
+      );
     } catch (error) {
-      writeFileSync(join(outputDirectory, file), String(error));
+      writeFileSync(join(outputDirectory, file), failureText(error));
     }
   };
   await capture('devices.json', ['list', '-j', 'devices']);
@@ -170,18 +192,24 @@ async function captureDiagnostics(): Promise<void> {
     APP_PACKAGE,
     'data',
   ]);
-  await capture('syslog-tail.txt', [
-    'spawn',
-    udid,
-    'log',
-    'show',
-    '--last',
-    '15m',
-    '--style',
-    'compact',
-    '--predicate',
-    'process == "App" OR process BEGINSWITH "com.apple.WebKit" OR subsystem == "com.apple.WebKit" OR subsystem == "com.apple.network"',
-  ]);
+  // `log show` over the whole Simulator is slow: allow it 3 minutes, one argv element
+  // for the predicate (no shell).
+  await capture(
+    'syslog-tail.txt',
+    [
+      'spawn',
+      udid,
+      'log',
+      'show',
+      '--last',
+      '10m',
+      '--style',
+      'compact',
+      '--predicate',
+      'process == "App" OR process BEGINSWITH "com.apple.WebKit" OR subsystem == "com.apple.network"',
+    ],
+    180_000,
+  );
 }
 
 async function releaseDevice(): Promise<void> {

@@ -18,6 +18,8 @@ const iosCapabilities = {
   // Web Inspector lists the Capacitor app by process name (process-App), not bundle id.
   'appium:additionalWebviewBundleIds': ['process-App'],
   'appium:webviewConnectTimeout': 60_000,
+  // The app's JS console errors land in appium.log (uploaded and scrubbed).
+  'appium:showSafariConsoleLog': true,
   'appium:includeSafariInWebviews': false,
   // The notification prompt appears at first launch, and simctl privacy cannot grant it.
   'appium:autoAcceptAlerts': true,

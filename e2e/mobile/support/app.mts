@@ -43,7 +43,8 @@ export async function login(user: string, pass: string): Promise<void> {
   await fillByLabel('Username', user);
   await fillByLabel('Password', pass);
   await signIn.click();
-  await waitForRooms();
+  // First-run crypto/IndexedDB setup in a CI simulator can outlast 30 s.
+  await waitForRooms(browser.isIOS ? 90_000 : 30_000);
   // Every mobile journey signs in a freshly registered account, whose crypto state
   // resolves after the Rooms shell renders and mounts this banner above it. Its arrival
   // pushes the rail and lists down, so wait for it before any tap is aimed: a tap that

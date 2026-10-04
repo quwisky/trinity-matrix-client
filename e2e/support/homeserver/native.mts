@@ -30,6 +30,8 @@ export interface NativePaths {
   readonly logs: Readonly<Record<NativeService, string>>;
   /** Synapse's own file log (its generated log config), beside homeserver.yaml. */
   readonly homeserverLog: string;
+  /** Caddy's request log for the 8448 site (no headers). */
+  readonly caddyAccessLog: string;
   readonly caddyData: string;
   readonly caddyConfig: string;
   readonly caddyRoot: string;
@@ -54,6 +56,7 @@ export function nativePaths(stateDir: string, dataDir: string): NativePaths {
       caddy: join(dataDir, 'caddy.log'),
     },
     homeserverLog: join(dataDir, 'homeserver.log'),
+    caddyAccessLog: join(dataDir, 'caddy-access.log'),
     caddyData,
     caddyConfig: join(dataDir, 'caddy-config'),
     // Caddy honours XDG_DATA_HOME on every OS; its local CA lives under it.
@@ -73,7 +76,7 @@ export interface NativeProcessApi {
   exec(
     file: string,
     args: readonly string[],
-    options?: { readonly signal?: AbortSignal },
+    options?: { readonly signal?: AbortSignal; readonly cwd?: string },
   ): Promise<{ readonly stdout: string }>;
   /** Start a detached process group logging to `logFile`; returns its PID. */
   spawnDetached(
@@ -92,6 +95,7 @@ export const nodeProcessApi: NativeProcessApi = {
   async exec(file, args, options = {}) {
     const { stdout } = await execFileAsync(file, [...args], {
       signal: options.signal,
+      cwd: options.cwd,
       maxBuffer: 20 * 1024 * 1024,
     });
     return { stdout };
@@ -186,7 +190,9 @@ export async function generateSynapseConfig(
       '--generate-config',
       '--report-stats=no',
     ],
-    { signal },
+    // Synapse bakes `homeserver.log` into the log config relative to its cwd, not the
+    // config: run in the data directory so the log lands where nativePaths says.
+    { signal, cwd: paths.data },
   );
 }
 
@@ -195,7 +201,7 @@ export async function generateSynapseConfig(
  * options. The other sites serve the secondary server, federation and the link-preview
  * page, none of which run natively, and :443 cannot be bound unprivileged on Linux.
  */
-export function nativeCaddyfile(shared: string): string {
+export function nativeCaddyfile(shared: string, accessLog: string): string {
   const site = /^https:\/\/localhost:8448 \{\n[\s\S]*?^\}$/mu.exec(shared)?.[0];
   if (!site)
     throw new Error('the shared Caddyfile has no https://localhost:8448 site');
@@ -211,7 +217,11 @@ export function nativeCaddyfile(shared: string): string {
     '\tdefault_bind 127.0.0.1 [::1]',
     '}',
     '',
-    site,
+    site.replace(
+      /\{\n/u,
+      // Method, URI, status and duration only: no headers, so no bearer tokens.
+      `{\n\tlog {\n\t\toutput file ${accessLog}\n\t\tformat filter {\n\t\t\twrap json\n\t\t\tfields {\n\t\t\t\trequest>headers delete\n\t\t\t\tresp_headers delete\n\t\t\t}\n\t\t}\n\t}\n`,
+    ),
     '',
   ].join('\n');
 }

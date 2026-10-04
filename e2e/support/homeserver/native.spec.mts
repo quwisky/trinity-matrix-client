@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   SYNAPSE_VERSION,
   ensureSynapseVenv,
+  generateSynapseConfig,
   nativeCaddyfile,
   nativePaths,
   readNativePids,
@@ -279,7 +280,7 @@ describe('native homeserver runtime', () => {
 
   it('serves only the 8448 site, without the admin API or a trust-store install', () => {
     const shared = readFileSync(join(import.meta.dirname, 'Caddyfile'), 'utf8');
-    const caddyfile = nativeCaddyfile(shared);
+    const caddyfile = nativeCaddyfile(shared, '/data/caddy-access.log');
     expect(caddyfile).toContain('https://localhost:8448 {');
     expect(caddyfile).toContain('respond /.well-known/matrix/client 200');
     for (const option of [
@@ -290,11 +291,28 @@ describe('native homeserver runtime', () => {
     ]) {
       expect(caddyfile).toContain(option);
     }
+    // Access log without headers (bearer tokens), inside the 8448 site.
+    expect(caddyfile).toContain('output file /data/caddy-access.log');
+    expect(caddyfile).toContain('request>headers delete');
     expect(caddyfile).not.toContain('https://localhost {');
     expect(caddyfile).not.toContain('9448');
     expect(caddyfile).not.toContain(':8080');
-    expect(() => nativeCaddyfile(':8080 {\n}\n')).toThrow(
+    expect(() => nativeCaddyfile(':8080 {\n}\n', '/x')).toThrow(
       /no https:\/\/localhost:8448 site/,
     );
+  });
+});
+
+describe('native Synapse config generation', () => {
+  it('runs in the data directory so homeserver.log lands there', async () => {
+    const paths = layout();
+    let cwd: string | undefined;
+    await generateSynapseConfig(paths, 'localhost', {
+      async exec(_file, _args, options) {
+        cwd = options?.cwd;
+        return { stdout: '' };
+      },
+    } as NativeProcessApi);
+    expect(cwd).toBe(paths.data);
   });
 });
