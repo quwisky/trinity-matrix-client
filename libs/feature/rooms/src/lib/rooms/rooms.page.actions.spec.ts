@@ -12,6 +12,7 @@ import {
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
+import { InboundRoomLinkService } from '@trinity/application/workspace';
 import {
   ACCOUNT_REMOVAL_CONSEQUENCES,
   AccountRuntimeService,
@@ -672,8 +673,98 @@ describe('RoomsPage room / DM / invite actions', () => {
     });
 
     expect(resolveRoomId).toHaveBeenCalledWith('#linked:remote');
-    expect(openLinkedRoom).toHaveBeenCalledWith('!linked:hs', '$event:remote');
+    expect(openLinkedRoom).toHaveBeenCalledWith(
+      '!linked:hs',
+      '$event:remote',
+      'room-action',
+    );
     expect(dialogOpen).not.toHaveBeenCalled();
+  });
+
+  it('opens a deep-link room link through the same preview, tagged with its origin', async () => {
+    const shell = build();
+    const openExact = vi.spyOn(shell.routing, 'onSelectRoomSelection');
+    dialogOpen.mockReturnValue(
+      of({
+        accountId: '@alt:hs',
+        roomId: '!joined:remote',
+        isSpace: false,
+        membershipChanged: false,
+      }),
+    );
+
+    shell.messages.onMatrixLink(
+      { target: { kind: 'room', roomIdOrAlias: '#linked:remote' } },
+      'deep-link',
+    );
+    await Promise.resolve();
+
+    expect(dialogOpen).toHaveBeenCalledWith(
+      RoomLinkPreviewComponent,
+      expect.objectContaining({ ariaLabel: 'Room information' }),
+    );
+    expect(openExact).toHaveBeenCalledWith(
+      { roomId: '!joined:remote', accountId: '@alt:hs' },
+      'deep-link',
+    );
+  });
+
+  it('carries the deep-link origin through event links and fresh joins', async () => {
+    const shell = build();
+    const openLinkedRoom = vi.spyOn(shell.routing, 'openLinkedRoom');
+    const openConfirmed = vi.spyOn(shell.routing, 'openConfirmedLinkedRoom');
+
+    shell.messages.onMatrixLink(
+      {
+        target: {
+          kind: 'room',
+          roomIdOrAlias: '#linked:remote',
+          eventId: '$event:remote',
+        },
+      },
+      'deep-link',
+    );
+    expect(openLinkedRoom).toHaveBeenCalledWith(
+      '!linked:hs',
+      '$event:remote',
+      'deep-link',
+    );
+
+    dialogOpen.mockReturnValue(
+      of({
+        accountId: '@me:hs',
+        roomId: '!joined:remote',
+        isSpace: false,
+        membershipChanged: true,
+      }),
+    );
+    shell.messages.onMatrixLink(
+      { target: { kind: 'room', roomIdOrAlias: '#linked:remote' } },
+      'deep-link',
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(openConfirmed).toHaveBeenCalledWith(
+      { kind: 'room', roomId: '!joined:remote', accountId: '@me:hs' },
+      'deep-link',
+    );
+  });
+
+  it('opens a room link waiting from the host exactly once', () => {
+    const shell = build();
+    const onMatrixLink = vi.spyOn(shell.messages, 'onMatrixLink');
+    const inbound = TestBed.inject(InboundRoomLinkService);
+    const link = { kind: 'room', roomIdOrAlias: '!b:hs' } as const;
+
+    inbound.offer(link);
+    TestBed.tick();
+    TestBed.tick();
+
+    expect(onMatrixLink).toHaveBeenCalledExactlyOnceWith(
+      { target: link },
+      'deep-link',
+    );
+    expect(inbound.pending()).toBeNull();
   });
 
   it('reports a malformed Matrix link instead of opening an overlay', () => {
@@ -706,11 +797,10 @@ describe('RoomsPage room / DM / invite actions', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(openConfirmed).toHaveBeenCalledWith({
-      kind: 'room',
-      roomId: '!joined:remote',
-      accountId: '@me:hs',
-    });
+    expect(openConfirmed).toHaveBeenCalledWith(
+      { kind: 'room', roomId: '!joined:remote', accountId: '@me:hs' },
+      'room-action',
+    );
   });
 
   it('opens an already-joined preview on the Account that resolved it', async () => {

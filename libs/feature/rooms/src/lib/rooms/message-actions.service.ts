@@ -1,5 +1,6 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { type WorkspaceRoomNavigationOrigin } from '@trinity/application/workspace';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { isMobileOs } from '@trinity/platform-native';
@@ -74,7 +75,10 @@ export class MessageActionsService {
    * we're joined — opens it, then jumps to a linked event. A room we haven't joined
    * surfaces a toast rather than navigating.
    */
-  onMatrixLink({ target, anchor }: MatrixLinkClick): void {
+  onMatrixLink(
+    { target, anchor }: MatrixLinkClick,
+    origin: WorkspaceRoomNavigationOrigin = 'room-action',
+  ): void {
     if (target.kind === 'invalid') {
       void this.status.showError(
         'That Matrix link is malformed or unsupported.',
@@ -88,14 +92,15 @@ export class MessageActionsService {
       return;
     }
     if (!target.eventId) {
-      this.openRoomLinkPreview(target);
+      this.openRoomLinkPreview(target, origin);
       return;
     }
     this.rooms
       .resolveRoomId(target.roomIdOrAlias)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (roomId) => this.routing.openLinkedRoom(roomId, target.eventId),
+        next: (roomId) =>
+          this.routing.openLinkedRoom(roomId, target.eventId, origin),
         error: () => void this.status.showError('Could not open that room.'),
       });
   }
@@ -105,6 +110,7 @@ export class MessageActionsService {
       Exclude<MatrixLinkClick['target'], { kind: 'invalid' }>,
       { kind: 'room' }
     >,
+    origin: WorkspaceRoomNavigationOrigin,
   ): void {
     const mobile = isMobileOs();
     this.dialog
@@ -121,11 +127,14 @@ export class MessageActionsService {
       .subscribe((result) => {
         if (!result) return;
         if (result.membershipChanged) {
-          this.routing.openConfirmedLinkedRoom({
-            kind: result.isSpace ? 'space' : 'room',
-            roomId: result.roomId,
-            accountId: result.accountId,
-          });
+          this.routing.openConfirmedLinkedRoom(
+            {
+              kind: result.isSpace ? 'space' : 'room',
+              roomId: result.roomId,
+              accountId: result.accountId,
+            },
+            origin,
+          );
           return;
         }
         if (result.isSpace) {
@@ -137,7 +146,7 @@ export class MessageActionsService {
         }
         this.routing.onSelectRoomSelection(
           { roomId: result.roomId, accountId: result.accountId },
-          'room-action',
+          origin,
         );
       });
   }

@@ -67,3 +67,24 @@ export async function createRoom(token: string, name: string): Promise<string> {
   );
   return body['room_id'] as string;
 }
+
+/** Point a local alias (`#name:server`) at a room. */
+export async function createRoomAlias(
+  token: string,
+  alias: string,
+  roomId: string,
+): Promise<void> {
+  await json(
+    await fetch(
+      `${HOMESERVER_HTTP}/_matrix/client/v3/directory/room/${encodeURIComponent(alias)}`,
+      {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ room_id: roomId }),
+      },
+    ),
+  );
+}

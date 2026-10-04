@@ -7,7 +7,11 @@ import { CapabilityHealthService } from '../capability-health.service';
 import { NavigationFocusService } from '../navigation-focus.service';
 import { BadgeCoordinator } from '@trinity/application/badge';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
-import { WorkspaceBackService } from '@trinity/application/workspace';
+import {
+  InboundRoomLinkService,
+  WorkspaceBackService,
+} from '@trinity/application/workspace';
+import { parseTrinityRoomLink } from '@trinity/util/matrix';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
   NotificationLifetime,
@@ -100,6 +104,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly roomAdministration = inject(RoomAdministrationLifetime);
   private readonly notificationSession = inject(NotificationSessionService);
   private readonly statusVisibility = inject(SystemStatusVisibilityService);
+  private readonly inboundRoomLink = inject(InboundRoomLinkService);
   private readonly interactions = defer(() =>
     merge(
       this.runBackIntents().pipe(ignoreElements()),
@@ -303,6 +308,12 @@ export class TrinityApplicationSessionAdapter {
   }
 
   private handleDeepLink(url: string): Observable<void> {
+    const roomLink = parseTrinityRoomLink(url);
+    if (roomLink) {
+      // The Rooms shell opens it exactly like a tapped matrix.to link, once it exists.
+      this.inboundRoomLink.offer(roomLink);
+      return EMPTY;
+    }
     let parsed: URL;
     try {
       parsed = new URL(url);

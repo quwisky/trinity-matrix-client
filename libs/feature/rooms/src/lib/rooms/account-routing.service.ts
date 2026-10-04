@@ -109,7 +109,11 @@ export class AccountRoutingService {
   }
 
   /** Open a resolved room if joined (jumping to `eventId` when given), else toast. */
-  openLinkedRoom(roomId: string, eventId?: string): void {
+  openLinkedRoom(
+    roomId: string,
+    eventId?: string,
+    origin: WorkspaceRoomNavigationOrigin = 'room-action',
+  ): void {
     const room = this.selected
       .view()
       .rooms.find((candidate) => candidate.id === roomId);
@@ -124,7 +128,7 @@ export class AccountRoutingService {
     ) {
       this.openRoom(
         { roomId, accountId: room.accountId },
-        'room-action',
+        origin,
         eventId
           ? () =>
               this.roomSurfaces.transition({ kind: 'reveal-message', eventId })
@@ -142,7 +146,10 @@ export class AccountRoutingService {
    * path checks the synced sidebar projection and can briefly reject the new membership
    * before `/sync` catches up, so confirmed membership deliberately bypasses that stale read.
    */
-  openConfirmedLinkedRoom(target: ConfirmedRoomLinkTarget): void {
+  openConfirmedLinkedRoom(
+    target: ConfirmedRoomLinkTarget,
+    origin: WorkspaceRoomNavigationOrigin = 'room-action',
+  ): void {
     if (target.kind === 'space') {
       this.navigate(
         {
@@ -160,7 +167,7 @@ export class AccountRoutingService {
         accountId: target.accountId,
         roomId: target.roomId,
         scope: { kind: 'rooms' },
-        origin: 'room-action',
+        origin,
       },
       'Unable to open that destination right now.',
     );

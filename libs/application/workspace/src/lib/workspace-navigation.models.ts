@@ -13,7 +13,8 @@ export type WorkspaceRoomNavigationOrigin =
   | 'room-hop'
   | 'direct-invitation'
   | 'room-invitation'
-  | 'global-search';
+  | 'global-search'
+  | 'deep-link';
 
 /** Product intent for opening one exact Room. */
 export interface WorkspaceRoomNavigationIntent {

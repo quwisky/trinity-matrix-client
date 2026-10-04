@@ -100,6 +100,9 @@ export class CapacitorHostOperationAdapter implements HostOperationsAdapter {
     );
   }
 
+  /** The launch URL describes the process start; re-attached listeners must not replay it. */
+  private launchUrlTaken = false;
+
   readonly received = new Observable<{ readonly url: string }>((subscriber) => {
     let handle: PluginListenerHandle | undefined;
     let cancelled = false;
@@ -115,7 +118,9 @@ export class CapacitorHostOperationAdapter implements HostOperationsAdapter {
       });
     void App.getLaunchUrl()
       .then((launch) => {
-        if (launch?.url) subscriber.next({ url: launch.url });
+        if (cancelled || !launch?.url || this.launchUrlTaken) return;
+        this.launchUrlTaken = true;
+        subscriber.next({ url: launch.url });
       })
       .catch((error: unknown) => {
         if (!cancelled) subscriber.error(error);

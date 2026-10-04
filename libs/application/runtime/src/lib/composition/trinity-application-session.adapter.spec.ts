@@ -10,6 +10,7 @@ import {
 import { NavigationFocusService } from '../navigation-focus.service';
 import { BadgeCoordinator } from '@trinity/application/badge';
 import {
+  InboundRoomLinkService,
   WorkspaceBackService,
   WorkspaceNavigationService,
 } from '@trinity/application/workspace';
@@ -742,6 +743,59 @@ describe('TrinityApplicationSessionAdapter', () => {
       queryParams: { code: 'CODE', state: 'STATE' },
     });
     expect(test.closeAuthentication).toHaveBeenCalledTimes(2);
+    lifetime.unsubscribe();
+  });
+
+  it('hands a valid room link to the Rooms shell and leaves SSO untouched', async () => {
+    const test = setup();
+    const inbound = TestBed.inject(InboundRoomLinkService);
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+
+    test.deepLinks.next({
+      url: 'eu.qwky.trinity://matrix.to/#/%21room%3Aexample.org?via=example.org',
+    });
+
+    expect(inbound.pending()).toEqual({
+      kind: 'room',
+      roomIdOrAlias: '!room:example.org',
+      via: ['example.org'],
+    });
+    expect(test.navigate).not.toHaveBeenCalled();
+    expect(test.closeAuthentication).not.toHaveBeenCalled();
+    lifetime.unsubscribe();
+  });
+
+  it('keeps only the newest unopened room link', () => {
+    const test = setup();
+    const inbound = TestBed.inject(InboundRoomLinkService);
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+
+    test.deepLinks.next({
+      url: 'eu.qwky.trinity://matrix.to/#/!a:example.org',
+    });
+    test.deepLinks.next({
+      url: 'eu.qwky.trinity://matrix.to/#/!b:example.org',
+    });
+
+    expect(inbound.pending()?.roomIdOrAlias).toBe('!b:example.org');
+    lifetime.unsubscribe();
+  });
+
+  it.each([
+    'eu.qwky.trinity://evil.example/#/!room:example.org',
+    'eu.qwky.trinity://matrix.to/#/@user:example.org',
+    'eu.qwky.trinity://matrix.to/#/not-a-room',
+    `eu.qwky.trinity://matrix.to/#/!${'a'.repeat(5000)}:example.org`,
+    'not a url',
+  ])('ignores hostile or unsupported link %s', (url) => {
+    const test = setup();
+    const inbound = TestBed.inject(InboundRoomLinkService);
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+
+    test.deepLinks.next({ url });
+
+    expect(inbound.pending()).toBeNull();
+    expect(test.navigate).not.toHaveBeenCalled();
     lifetime.unsubscribe();
   });
 

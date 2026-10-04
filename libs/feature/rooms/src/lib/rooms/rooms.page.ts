@@ -13,11 +13,15 @@ import {
   Injector,
   afterNextRender,
   effect,
+  untracked,
   inject,
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { WORKSPACE_SYSTEM_STATUS } from '@trinity/application/workspace';
+import {
+  InboundRoomLinkService,
+  WORKSPACE_SYSTEM_STATUS,
+} from '@trinity/application/workspace';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import {
@@ -247,6 +251,7 @@ export class RoomsPage {
   private readonly accountPicker = inject(AccountPickerService);
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
+  private readonly inboundRoomLink = inject(InboundRoomLinkService);
   readonly store = inject(RoomShellStore);
   readonly roomSurfaces = inject(RoomSurfaceLifecycle);
   readonly status = inject(ShellStatusService);
@@ -317,6 +322,15 @@ export class RoomsPage {
       if (!this.matrix.activeUserId()) {
         void this.router.navigateByUrl('/login', { replaceUrl: true });
       }
+    });
+    // A link handed over by the host (cold start or warm) opens like a tapped matrix.to link.
+    effect(() => {
+      const target = this.inboundRoomLink.pending();
+      if (!target) return;
+      this.inboundRoomLink.clear();
+      untracked(() =>
+        this.messageActions.onMatrixLink({ target }, 'deep-link'),
+      );
     });
     effect((onCleanup) => {
       const roomId = this.store.activeRoomId();
