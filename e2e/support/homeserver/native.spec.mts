@@ -288,6 +288,7 @@ describe('native homeserver runtime', () => {
       'skip_install_trust',
       'auto_https disable_redirects',
       'default_bind 127.0.0.1 [::1]',
+      'protocols h1 h2',
     ]) {
       expect(caddyfile).toContain(option);
     }

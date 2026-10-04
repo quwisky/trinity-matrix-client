@@ -215,6 +215,10 @@ export function nativeCaddyfile(shared: string, accessLog: string): string {
     '\tauto_https disable_redirects',
     // Docker publishes 127.0.0.1:8448 only; the LAN must not reach the admin API.
     '\tdefault_bind 127.0.0.1 [::1]',
+    // TCP only, as Docker publishes it: HTTP/3 advertised over Alt-Svc makes WebKit race QUIC.
+    '\tservers {',
+    '\t\tprotocols h1 h2',
+    '\t}',
     '}',
     '',
     site.replace(
