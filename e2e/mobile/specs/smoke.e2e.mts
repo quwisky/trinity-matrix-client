@@ -21,7 +21,7 @@ describe('mobile smoke', () => {
     await login(user, pass);
     await $('[data-testid="rail-rooms"]').click();
     await $(
-      `//*[contains(@class,"channel")][contains(.,"${roomName}")]`,
+      `//button[contains(@class,"channel")][contains(.,"${roomName}")]`,
     ).click();
     const composer = $('[data-testid="composer-input"]');
     await expect(composer).toBeDisplayed();
