@@ -1,7 +1,14 @@
-import { readFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import {
   HOMESERVER_KINDS,
@@ -168,5 +175,57 @@ describe('E2E homeserver runtime selection', () => {
         resolveHomeserverRuntime({ TRINITY_E2E_HOMESERVER_RUNTIME: value }),
       ).toThrow(/expected one of: docker, native/);
     }
+  });
+});
+
+describe('Synapse adapter config generation', () => {
+  let stateDir;
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    if (stateDir) rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  async function adapterIn(dir) {
+    vi.stubEnv('TRINITY_E2E_STATE_DIR', dir);
+    vi.resetModules();
+    return import('../e2e/support/homeserver/synapse/adapter.mjs');
+  }
+
+  const generateInto = (dir) =>
+    vi.fn(async () => {
+      mkdirSync(join(dir, 'data'), { recursive: true });
+      writeFileSync(
+        join(dir, 'data/homeserver.yaml'),
+        'server_name: "localhost"\nregistration_shared_secret: "random"\n',
+      );
+    });
+
+  it('generates through the injected generator and omits Dex when SSO is unavailable', async () => {
+    stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
+    const { ensureConfig } = await adapterIn(stateDir);
+    const generate = generateInto(stateDir);
+    await ensureConfig({ log: () => undefined, sso: false, generate });
+    await ensureConfig({ log: () => undefined, sso: false, generate });
+    const yaml = readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8');
+    expect(generate).toHaveBeenCalledOnce();
+    expect(yaml).toContain(
+      'registration_shared_secret: "trinity-e2e-shared-secret"',
+    );
+    expect(yaml).toContain('public_baseurl: "https://localhost:8448/"');
+    expect(yaml).toContain('url_preview_enabled: true');
+    expect(yaml).not.toContain('trinity-e2e-oidc');
+    expect(yaml).not.toContain('oidc_providers');
+  });
+
+  it('keeps the Dex block for the Docker runtime', async () => {
+    stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
+    const { ensureConfig } = await adapterIn(stateDir);
+    await ensureConfig({
+      log: () => undefined,
+      generate: generateInto(stateDir),
+    });
+    const yaml = readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8');
+    expect(yaml).toContain('idp_id: dex');
   });
 });

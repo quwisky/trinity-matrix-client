@@ -110,28 +110,38 @@ function oidcBlock(ctx) {
   ].join('\n');
 }
 
-/** Generate homeserver.yaml on first run, then patch in the e2e settings. */
-async function ensureConfig(ctx) {
+/** One-shot container that scaffolds homeserver.yaml into the mounted ./data volume. */
+async function generateWithDocker(ctx) {
+  await exec(
+    'docker',
+    [
+      'run',
+      '--rm',
+      '-v',
+      `${DATA}:/data`,
+      '-e',
+      `SYNAPSE_SERVER_NAME=${SERVER_NAME}`,
+      '-e',
+      'SYNAPSE_REPORT_STATS=no',
+      ...containerUser,
+      'matrixdotorg/synapse:v1.119.0',
+      'generate',
+    ],
+    { signal: ctx.signal },
+  );
+}
+
+/**
+ * Generate homeserver.yaml on first run, then patch in the e2e settings.
+ *
+ * `ctx.generate` replaces the Docker scaffold (the native runtime runs Synapse's own
+ * --generate-config). `ctx.sso === false` leaves the Dex block out: there is no Dex, and
+ * Synapse refuses OIDC providers without authlib, which the native venv does not install.
+ */
+export async function ensureConfig(ctx) {
   if (!(await exists(CONFIG))) {
     ctx.log('generating homeserver.yaml…');
-    // One-shot container to scaffold the config into the mounted ./data volume.
-    await exec(
-      'docker',
-      [
-        'run',
-        '--rm',
-        '-v',
-        `${DATA}:/data`,
-        '-e',
-        `SYNAPSE_SERVER_NAME=${SERVER_NAME}`,
-        '-e',
-        'SYNAPSE_REPORT_STATS=no',
-        ...containerUser,
-        'matrixdotorg/synapse:v1.119.0',
-        'generate',
-      ],
-      { signal: ctx.signal },
-    );
+    await (ctx.generate ?? generateWithDocker)(ctx);
   }
 
   let yaml = await readFile(CONFIG, 'utf8');
@@ -234,7 +244,8 @@ async function ensureConfig(ctx) {
   const region = new RegExp(
     `\\n*${escape(OIDC_START)}[\\s\\S]*?${escape(OIDC_END)}\\n*`,
   );
-  const patched = `${yaml.replace(region, '\n').replace(/\s+$/, '')}\n\n${oidcBlock(ctx)}\n`;
+  const oidc = ctx.sso === false ? '' : `\n\n${oidcBlock(ctx)}`;
+  const patched = `${yaml.replace(region, '\n').replace(/\s+$/, '')}${oidc}\n`;
   const oidcChanged = patched !== yaml;
   yaml = patched;
 
@@ -326,5 +337,9 @@ export const synapse = {
   async prepare(ctx) {
     await ensureConfig(ctx);
     await ensureSecondaryConfig(ctx);
+  },
+  /** The primary server only: the native runtime has no secondary homeserver. */
+  async preparePrimary(ctx) {
+    await ensureConfig(ctx);
   },
 };
