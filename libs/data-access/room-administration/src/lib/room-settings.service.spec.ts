@@ -2,7 +2,12 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
-import { HistoryVisibility, JoinRule, KnownMembership } from 'matrix-js-sdk';
+import {
+  HistoryVisibility,
+  JoinRule,
+  KnownMembership,
+  MatrixEvent,
+} from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
@@ -20,6 +25,8 @@ function setup(
     name?: string;
     topic?: string;
     avatarUrl?: string;
+    tombstone?: string;
+    events?: Map<string, Map<string, MatrixEvent>>;
   } = {},
 ) {
   const setRoomName = vi.fn().mockResolvedValue({});
@@ -59,6 +66,9 @@ function setup(
         getContent: () => ({ history_visibility: opts.historyVisibility }),
       };
     }
+    if (type === 'm.room.tombstone' && opts.tombstone !== undefined) {
+      return { getContent: () => ({ replacement_room: opts.tombstone }) };
+    }
     return null;
   };
   const room = opts.noRoom
@@ -74,6 +84,7 @@ function setup(
             maySendStateEvent: (type: string) =>
               opts.may ? opts.may(type) : true,
             getStateEvents: (type: string, _stateKey: string) => stateFor(type),
+            events: opts.events ?? new Map(),
           }),
         }),
       };
@@ -618,5 +629,70 @@ describe('RoomSettingsService', () => {
       identity: { name: '', topic: '', avatarMxc: null },
       encrypted: null,
     });
+  });
+
+  it('recomputes the advanced details when Room state changes', () => {
+    const opts: { tombstone?: string } = {};
+    const { svc, emitState } = setup(opts);
+    const successors: (string | null)[] = [];
+    const subscription = svc
+      .observe({ accountId: '@me:hs', roomId: '!r:hs' })
+      .subscribe((snapshot) => successors.push(snapshot.advanced.successor));
+
+    expect(
+      svc.snapshot({ accountId: '@me:hs', roomId: '!r:hs' }).advanced,
+    ).toMatchObject({ roomId: '!r:hs', version: null, successor: null });
+    opts.tombstone = '!next:hs';
+    emitState();
+
+    expect(successors.at(-1)).toBe('!next:hs');
+    subscription.unsubscribe();
+  });
+
+  it('lists every current state event as a plain copy of its JSON', () => {
+    const create = new MatrixEvent({
+      type: 'm.room.create',
+      state_key: '',
+      sender: '@me:hs',
+      content: { room_version: '10' },
+    });
+    const member = new MatrixEvent({
+      type: 'm.room.member',
+      state_key: '@me:hs',
+      sender: '@me:hs',
+      content: { membership: 'join' },
+    });
+    const { svc } = setup({
+      events: new Map([
+        ['m.room.create', new Map([['', create]])],
+        ['m.room.member', new Map([['@me:hs', member]])],
+      ]),
+    });
+
+    const entries = svc.stateEvents({ accountId: '@me:hs', roomId: '!r:hs' });
+
+    expect(entries).toEqual([
+      {
+        type: 'm.room.create',
+        stateKey: '',
+        event: expect.objectContaining({
+          type: 'm.room.create',
+          content: { room_version: '10' },
+        }),
+      },
+      {
+        type: 'm.room.member',
+        stateKey: '@me:hs',
+        event: expect.objectContaining({ content: { membership: 'join' } }),
+      },
+    ]);
+    expect(entries[0].event).not.toBe(create.event);
+  });
+
+  it('lists no state for a Room the Account cannot see', () => {
+    const { svc } = setup({ noRoom: true });
+    expect(svc.stateEvents({ accountId: '@me:hs', roomId: '!r:hs' })).toEqual(
+      [],
+    );
   });
 });

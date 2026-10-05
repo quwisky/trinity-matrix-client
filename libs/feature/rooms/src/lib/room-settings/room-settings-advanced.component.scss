@@ -1,0 +1,50 @@
+@use './room-settings-panel' as panel;
+
+@layer components {
+  @include panel.layout;
+
+  .room-advanced__list {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--trinity-space-4);
+    margin: 0;
+  }
+
+  .room-advanced__row {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--trinity-space-1);
+
+    dt {
+      color: var(--trinity-text);
+      font-size: var(--trinity-type-control-size);
+      line-height: var(--trinity-type-control-line-height);
+      font-weight: 600;
+    }
+
+    dd {
+      display: flex;
+      min-width: 0;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--trinity-space-2);
+      margin: 0;
+    }
+  }
+
+  .room-advanced__value {
+    overflow-wrap: anywhere;
+    color: var(--trinity-text);
+    font-size: var(--trinity-type-body-size);
+    line-height: var(--trinity-type-body-line-height);
+    user-select: text;
+  }
+
+  .room-advanced__note {
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+  }
+}

@@ -81,6 +81,17 @@ function spaceSnapshot(
     permissions: { ...ALL_ALLOWED, ...permissions },
     encrypted: false,
     supportsRestricted: true,
+    advanced: {
+      roomId: TARGET.roomId,
+      version: '10',
+      createdBy: [],
+      createdAt: null,
+      encrypted: false,
+      encryption: null,
+      federated: true,
+      predecessor: null,
+      successor: null,
+    },
     ...snapshot,
   };
 }

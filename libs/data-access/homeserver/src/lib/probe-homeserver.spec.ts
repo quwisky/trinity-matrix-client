@@ -509,7 +509,11 @@ describe('fetchCapabilities', () => {
 
     await expect(
       firstValueFrom(fetchCapabilities(BASE_URL, 'tok')),
-    ).resolves.toEqual({ defaultRoomVersion: '10', canChangePassword: false });
+    ).resolves.toEqual({
+      defaultRoomVersion: '10',
+      roomVersions: { '10': 'stable' },
+      canChangePassword: false,
+    });
   });
 
   it('reports an unstated password capability as unknown, not as allowed', async () => {
@@ -524,7 +528,43 @@ describe('fetchCapabilities', () => {
 
     await expect(
       firstValueFrom(fetchCapabilities(BASE_URL, 'tok')),
-    ).resolves.toEqual({ defaultRoomVersion: '9', canChangePassword: null });
+    ).resolves.toEqual({
+      defaultRoomVersion: '9',
+      roomVersions: null,
+      canChangePassword: null,
+    });
+  });
+
+  it('keeps the advertised room versions and drops entries with an unknown label', async () => {
+    stubFetch({
+      [CAPS_URL]: () =>
+        jsonResponse({
+          capabilities: {
+            'm.room_versions': {
+              default: '10',
+              available: {
+                '10': 'stable',
+                '11': 'stable',
+                'org.example.v1': 'unstable',
+                '99': 'experimental',
+                '7': 7,
+              },
+            },
+          },
+        }),
+    });
+
+    await expect(
+      firstValueFrom(fetchCapabilities(BASE_URL, 'tok')),
+    ).resolves.toEqual({
+      defaultRoomVersion: '10',
+      roomVersions: {
+        '10': 'stable',
+        '11': 'stable',
+        'org.example.v1': 'unstable',
+      },
+      canChangePassword: null,
+    });
   });
 
   it('resolves null when the server states neither capability', async () => {

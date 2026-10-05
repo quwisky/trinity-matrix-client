@@ -1,6 +1,7 @@
 import { Observable, catchError, defer, from, of, switchMap } from 'rxjs';
 import type {
   HomeserverCapabilities,
+  RoomVersionStability,
   ServerSoftware,
 } from './homeserver-info.model';
 
@@ -140,7 +141,7 @@ export function fetchSpecVersions(
 }
 
 /**
- * The two capabilities worth showing. Authenticated, unlike the other two probes.
+ * The capabilities Trinity reads. Authenticated, unlike the other two probes.
  *
  * Raw, like {@link fetchSpecVersions}, but for a weaker reason worth stating precisely:
  * `client.getCapabilities()` reads a six-hour poller cache, and while `fetchCapabilities()`
@@ -286,13 +287,31 @@ function toCapabilities(body: unknown): HomeserverCapabilities | null {
     defaultRoomVersion: roomVersions
       ? readString(roomVersions, 'default')
       : null,
+    roomVersions: readRoomVersions(roomVersions),
     // Absent means "supported" per the spec, but absent ALSO covers a server that never
     // mentioned the capability at all — so null (unstated) rather than a confident `true`.
     canChangePassword: typeof enabled === 'boolean' ? enabled : null,
   };
-  return info.defaultRoomVersion === null && info.canChangePassword === null
+  return info.defaultRoomVersion === null &&
+    info.roomVersions === null &&
+    info.canChangePassword === null
     ? null
     : info;
+}
+
+/** `m.room_versions.available`, keeping only entries labelled `stable` or `unstable`. */
+function readRoomVersions(
+  roomVersions: Record<string, unknown> | null,
+): Readonly<Record<string, RoomVersionStability>> | null {
+  const available = roomVersions && readRecord(roomVersions, 'available');
+  if (!available) {
+    return null;
+  }
+  const known = Object.entries(available).filter(
+    (entry): entry is [string, RoomVersionStability] =>
+      entry[1] === 'stable' || entry[1] === 'unstable',
+  );
+  return known.length ? Object.fromEntries(known) : null;
 }
 
 /** The unstable feature flags the server advertises as ON, sorted for a stable render. */
