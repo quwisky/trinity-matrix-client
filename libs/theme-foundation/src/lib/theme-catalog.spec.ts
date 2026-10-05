@@ -133,6 +133,15 @@ describe('Theme Foundation catalog', () => {
     );
   });
 
+  it('governs the app and pane surface roles', () => {
+    expect(THEME_CATALOG.authoring.colorRoles).toEqual(
+      expect.arrayContaining([
+        '--trinity-surface-app',
+        '--trinity-surface-pane',
+      ]),
+    );
+  });
+
   it('keeps resolved CSS values out of TypeScript metadata', () => {
     expect(JSON.stringify(THEME_CATALOG)).not.toMatch(
       /(?:#(?:[0-9a-f]{3})|(?:oklch|hsl|rgb)\()/iu,

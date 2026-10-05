@@ -311,6 +311,6 @@ test.describe('Settings', () => {
     await page.getByTestId('theme-trinity').click();
     await expect.poll(() => themeAttr(page)).toBeNull();
     await expect(amethyst).toHaveCount(0);
-    await expect(trigger).toHaveText('Trinity');
+    await expect(trigger).toHaveText('Graphite');
   });
 });
