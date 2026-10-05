@@ -114,7 +114,6 @@ export class ConversationPinsController implements ConversationPins {
     this.room?.off(RoomEvent.Timeline, this.onTimeline);
     this.client?.off(MatrixEventEvent.Decrypted, this.onDecrypted);
     this.scheduleResolve.cancel();
-    this.fetches.invalidate();
     this.fetchToken = this.fetches.next();
     this.fetched = new Map();
     this.loading = new Set();
@@ -229,7 +228,6 @@ export class ConversationPinsController implements ConversationPins {
       pinned.length !== current.length ||
       pinned.some((id, i) => id !== current[i])
     ) {
-      this.fetches.invalidate();
       this.fetchToken = this.fetches.next();
       this.fetched = new Map();
       this.loading = new Set();
