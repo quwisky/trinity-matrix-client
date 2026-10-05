@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **67 Nx projects** and **258 dependencies**. No project cycles detected.
+This snapshot contains **67 Nx projects** and **259 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -125,7 +125,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `avatar`                          | `libs/spartan/avatar`                  | role:design-system; capability:design-system    |                   1 |
 | `button`                          | `libs/spartan/button`                  | role:design-system; capability:design-system    |                   1 |
 | `card`                            | `libs/spartan/card`                    | role:design-system; capability:design-system    |                   1 |
-| `components-controls`             | `libs/components/controls`             | role:design-system; capability:design-system    |                   7 |
+| `components-controls`             | `libs/components/controls`             | role:design-system; capability:design-system    |                   8 |
 | `components-foundations`          | `libs/components/foundations`          | role:design-system; capability:design-system    |                   1 |
 | `components-generic-content`      | `libs/components/generic-content`      | role:design-system; capability:design-system    |                   9 |
 | `components-navigation-layout`    | `libs/components/navigation-layout`    | role:design-system; capability:design-system    |                   4 |

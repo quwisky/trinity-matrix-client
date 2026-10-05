@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { MediaService } from '@trinity/data-access/media';
 import type { MediaPayload } from '@trinity/util/matrix';
+import { latestGuard } from '@trinity/util/ui';
 import { Subscription, fromEvent, take } from 'rxjs';
 
 const MAX_INLINE_EMOTES = 50;
@@ -20,21 +21,21 @@ export class InlineMxcImagesDirective implements OnDestroy {
   private readonly media = inject(MediaService);
   private subscriptions = new Subscription();
   private readonly pinned = new Set<string>();
-  private generation = 0;
+  private readonly reveal = latestGuard();
 
   constructor() {
     effect(() => {
       const source = this.source();
-      const generation = ++this.generation;
+      const token = this.reveal.next();
       this.release();
       queueMicrotask(() => {
-        if (generation === this.generation) this.resolve(source);
+        if (this.reveal.isCurrent(token)) this.resolve(source);
       });
     });
   }
 
   ngOnDestroy(): void {
-    this.generation += 1;
+    this.reveal.invalidate();
     this.release();
   }
 
