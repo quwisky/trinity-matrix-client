@@ -208,29 +208,15 @@ export async function restartApp(): Promise<void> {
   await webview();
 }
 
-/** The platform's own Back: Android's system Back, or the WebKit left-edge swipe on iOS. */
+/**
+ * Android's system Back. iOS has no equivalent here: WebKit's edge swipe is off while a
+ * routed Settings page or panel is active (see the gesture policy in
+ * trinity-application-session.adapter), so iOS specs use the in-app Back button.
+ */
 export async function goBack(): Promise<void> {
   await native();
-  if (browser.isIOS) await swipeBack();
-  else await browser.pressKeyCode(4);
+  await browser.pressKeyCode(4);
   await webview();
-}
-
-/**
- * A left-edge pan, which WKWebView turns into history Back. MainViewController enables it
- * only while Angular holds no dialog or panel, so it is Back for routes, not for panels.
- */
-async function swipeBack(): Promise<void> {
-  const { width, height } = await browser.getWindowSize();
-  const y = Math.round(height / 2);
-  await browser
-    .action('pointer', { parameters: { pointerType: 'touch' } })
-    .move({ x: 1, y })
-    .down()
-    .pause(50)
-    .move({ duration: 400, x: Math.round(width * 0.75), y })
-    .up()
-    .perform();
 }
 
 export async function webviewVersion(): Promise<string> {

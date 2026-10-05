@@ -27,7 +27,7 @@ const IME_BACK_ANDROID_ONLY =
  */
 async function backFromSettings(): Promise<void> {
   if (browser.isIOS) {
-    const back = $('//button[normalize-space()="Back" or @aria-label="Back"]');
+    const back = $('//trn-settings//button[@aria-label="Back"]');
     await expect(back).toBeDisplayed({ wait: 20_000 });
     await back.click();
   } else {

@@ -33,25 +33,48 @@ export async function waitForRooms(timeout = 30_000): Promise<void> {
   );
 }
 
+/**
+ * The app aborts homeserver discovery after a few seconds. The first TLS handshake to the
+ * host's Caddy from a freshly installed iOS app can outlast that on a loaded runner (the
+ * request never reaches Caddy), leaving the "couldn't find a homeserver" alert. Re-press
+ * Continue on that alert, up to three attempts.
+ */
+async function continueWithRetry(
+  next: ReturnType<typeof $>,
+  signIn: ReturnType<typeof $>,
+): Promise<void> {
+  const alert = $('#login-homeserver-error');
+  let lastError = '';
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await next.click();
+    // Submitting clears the previous error synchronously (runWithBusy sets it to null
+    // before the request), so wait for the stale alert to go before judging the outcome.
+    // Best effort: a failure fast enough to re-show it between polls is caught below.
+    await browser
+      .waitUntil(async () => !(await alert.isDisplayed()), { timeout: 5_000 })
+      .catch(() => undefined);
+    await browser.waitUntil(
+      async () => (await signIn.isDisplayed()) || (await alert.isDisplayed()),
+      { timeout: 30_000, timeoutMsg: 'neither Sign in nor a discovery error' },
+    );
+    if (await signIn.isDisplayed()) return;
+    lastError = await alert.getText();
+  }
+  throw new Error(
+    `homeserver discovery failed on 3 attempts at ${HS_TLS}; last alert: "${lastError}"`,
+  );
+}
+
 export async function login(user: string, pass: string): Promise<void> {
   await fillByLabel('Homeserver', HS_TLS);
   const next = $('//button[normalize-space()="Continue"]');
   await expect(next).toBeDisplayed({ wait: 30_000 });
   const signIn = $('//button[normalize-space()="Sign in"]');
-  const discoveryFailed = $(
-    '//*[@role="alert"][contains(.,"couldn\'t find a homeserver")]',
-  );
-  // The app aborts discovery after a few seconds. The first TLS handshake to the host's
-  // Caddy from a freshly installed iOS app can outlast that on a loaded runner (the
-  // request never reaches Caddy), so a "couldn't find a homeserver" alert is retried.
-  for (let attempt = 1; ; attempt += 1) {
+  if (!browser.isIOS) {
     await next.click();
-    await browser.waitUntil(
-      async () => (await signIn.isDisplayed()) || discoveryFailed.isDisplayed(),
-      { timeout: 30_000, timeoutMsg: 'neither Sign in nor a discovery error' },
-    );
-    if (await signIn.isDisplayed()) break;
-    if (attempt >= 3) throw new Error('homeserver discovery failed 3 times');
+    await expect(signIn).toBeDisplayed({ wait: 30_000 });
+  } else {
+    await continueWithRetry(next, signIn);
   }
   await fillByLabel('Username', user);
   await fillByLabel('Password', pass);
