@@ -61,7 +61,7 @@
     (pointerup)="onPointerUp($event)"
     (pointercancel)="onPointerCancel()"
     (pointerleave)="onPointerLeave()"
-    (focusin)="toolbarActive.set(true)"
+    (focusin)="onFocusIn($event)"
     (focusout)="onFocusOut($event)"
   >
     @if (swipeDirection() !== 'off' && !caps().readOnly) {

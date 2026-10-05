@@ -748,20 +748,23 @@ describe('MessageRowComponent', () => {
       expect(toolbar(container)).toBeNull();
     });
 
-    it('mounts the toolbar when focus enters the row', async () => {
+    it('mounts the toolbar when keyboard focus enters the row', async () => {
       const { container } = await renderRow({ row: row(), caps: caps() });
 
+      // A Tab keydown makes the next focus :focus-visible, as a real Tab would.
+      fireEvent.keyDown(document.body, { key: 'Tab' });
       msg(container).focus();
       await settle();
 
       expect(toolbar(container)).not.toBeNull();
     });
 
-    it('keeps the toolbar while focus is inside the row after the pointer leaves', async () => {
+    it('keeps the toolbar while keyboard focus is inside the row after the pointer leaves', async () => {
       const { container } = await renderRow({ row: row(), caps: caps() });
 
       fireEvent.pointerEnter(msg(container));
       await settle();
+      fireEvent.keyDown(document.body, { key: 'Tab' });
       container
         .querySelector<HTMLButtonElement>('button[aria-label="Reply"]')
         ?.focus();
@@ -769,6 +772,26 @@ describe('MessageRowComponent', () => {
       await settle();
 
       expect(toolbar(container)).not.toBeNull();
+    });
+
+    it('drops the toolbar of a row focused by a click once the pointer leaves (#986 K6)', async () => {
+      // A click focuses the row, but mouse focus is not :focus-visible, so it must not pin
+      // the bar there while another row is hovered.
+      const { container, fixture } = await renderRow({
+        row: row(),
+        caps: caps(),
+      });
+
+      fireEvent.pointerEnter(msg(container));
+      // A real click: pointerdown, then mousedown, which focuses the row.
+      fireEvent.pointerDown(msg(container));
+      fireEvent.mouseDown(msg(container));
+      msg(container).focus();
+      await settle();
+      fireEvent.pointerLeave(msg(container));
+      await settle();
+
+      expect(fixture.componentInstance.toolbarActive()).toBe(false);
     });
 
     it('unmounts the toolbar when focus leaves the row', async () => {

@@ -647,6 +647,15 @@ export class MessageRowComponent {
     this.releaseToolbar(document.activeElement);
   }
 
+  onFocusIn(event: FocusEvent): void {
+    if (
+      event.target instanceof Element &&
+      event.target.matches(':focus-visible')
+    ) {
+      this.toolbarActive.set(true);
+    }
+  }
+
   onFocusOut(event: FocusEvent): void {
     this.releaseToolbar(event.relatedTarget);
   }
@@ -660,16 +669,20 @@ export class MessageRowComponent {
   }
 
   /**
-   * Unmount the toolbar unless something still needs it: the pointer, focus inside the row
-   * (`focus` is where focus is going or now sits), or its overflow menu, which lives in an
-   * overlay outside the row and would close under the user. `revealed()` keeps it mounted
+   * Unmount the toolbar unless something still needs it: the pointer, keyboard focus inside
+   * the row (`focus` is where focus is going or now sits), or its overflow menu, which lives in
+   * an overlay outside the row and would close under the user. `revealed()` keeps it mounted
    * through the template on its own.
    */
   private releaseToolbar(focus: EventTarget | null): void {
     if (
       this.pointerInside ||
       this.menuOpen ||
-      (focus instanceof Node && this.host.nativeElement.contains(focus))
+      // Only keyboard focus pins the bar: a click also focuses the row, and that must not
+      // keep it there while the pointer is over another row (#986 K6).
+      (focus instanceof Element &&
+        this.host.nativeElement.contains(focus) &&
+        focus.matches(':focus-visible'))
     ) {
       return;
     }
