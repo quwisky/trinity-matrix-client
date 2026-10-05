@@ -20,7 +20,7 @@ import { FormField, disabled, form } from '@angular/forms/signals';
 import { TrnButton, TrnInput } from '@trinity/components/controls';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { type LatestToken, latestGuard } from '@trinity/util/ui';
-import { filter } from 'rxjs';
+import { Subject, catchError, filter, map, of, switchMap } from 'rxjs';
 
 /** Reject alias localparts containing characters an `#alias:server` can't hold. */
 const INVALID_LOCALPART = /[\s:#]/;
@@ -48,7 +48,11 @@ export class RoomAliasesComponent implements OnChanges {
   private readonly aliasModel = signal({ localpart: '' });
   private readonly targetSwitch = latestGuard();
   private targetToken = this.targetSwitch.next();
-  private loadGeneration = 0;
+  /** A newer directory load cancels the one still in flight. */
+  private readonly loads = new Subject<{
+    readonly target: RoomSettingsTarget;
+    readonly token: LatestToken;
+  }>();
 
   readonly accountId = input.required<string>();
   readonly roomId = input.required<string>();
@@ -88,13 +92,31 @@ export class RoomAliasesComponent implements OnChanges {
     });
   });
 
+  constructor() {
+    this.loads
+      .pipe(
+        switchMap(({ target, token }) =>
+          this.aliasesSvc.localAliases(target).pipe(
+            map((aliases) => ({ target, token, aliases })),
+            catchError(() => of({ target, token, aliases: null })),
+          ),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(({ target, token, aliases }) => {
+        if (!this.isCurrent(target, token)) return;
+        this.loading.set(false);
+        if (aliases) this.aliases.set(aliases);
+        else this.loadFailed.set(true);
+      });
+  }
+
   ngOnChanges(changes: SimpleChanges): void {
     if (!changes['accountId'] && !changes['roomId']) {
       if (changes['available'] && this.available()) this.load();
       return;
     }
     this.targetToken = this.targetSwitch.next();
-    this.loadGeneration += 1;
     this.adding.set(false);
     this.settingPrimary.set(null);
     this.removing.set(new Set());
@@ -110,37 +132,11 @@ export class RoomAliasesComponent implements OnChanges {
       return;
     }
     const target = this.target();
-    const targetToken = this.targetToken;
-    const loadGeneration = ++this.loadGeneration;
     this.loading.set(true);
     this.loadFailed.set(false);
     this.aliases.set([]);
     this.canonical.set(this.aliasesSvc.currentCanonical(target));
-    this.aliasesSvc
-      .localAliases(target)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (aliases) => {
-          if (
-            !this.isCurrent(target, targetToken) ||
-            loadGeneration !== this.loadGeneration
-          ) {
-            return;
-          }
-          this.aliases.set(aliases);
-          this.loading.set(false);
-        },
-        error: () => {
-          if (
-            !this.isCurrent(target, targetToken) ||
-            loadGeneration !== this.loadGeneration
-          ) {
-            return;
-          }
-          this.loading.set(false);
-          this.loadFailed.set(true);
-        },
-      });
+    this.loads.next({ target, token: this.targetToken });
   }
 
   isRemoving(alias: string): boolean {

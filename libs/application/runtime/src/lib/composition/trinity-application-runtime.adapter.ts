@@ -31,6 +31,7 @@ import type {
 } from '@trinity/runtime/projection';
 import {
   Observable,
+  Subject,
   TimeoutError,
   catchError,
   defaultIfEmpty,
@@ -42,6 +43,7 @@ import {
   of,
   switchMap,
   take,
+  takeUntil,
   timeout,
 } from 'rxjs';
 import { AccountStartupHealthService } from './account-startup-health.service';
@@ -63,6 +65,12 @@ const ready = (
   kind: 'ready',
   ...(settlements.length > 0 ? { settlements } : {}),
 });
+
+const navigationFailed = {
+  kind: 'blocked',
+  recovery: 'retry-startup',
+  diagnostic: { code: 'workspace-navigation-failed' },
+} as const satisfies ApplicationStartupStageOutcome;
 
 @Injectable({ providedIn: 'root' })
 export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapter {
@@ -89,7 +97,8 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private preferenceResetAttempt: number | null = null;
   private workspaceNavigationStarted = false;
   private workspaceUrl: string | null = null;
-  private workspaceNavigationGeneration = 0;
+  /** Emits when a Workspace restoration starts; releases the one it supersedes. */
+  private readonly workspaceRestorations = new Subject<void>();
 
   negotiateHost(): Observable<ApplicationStartupStageOutcome> {
     return this.host.manifest().pipe(
@@ -221,7 +230,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   restoreWorkspace(): Observable<ApplicationStartupStageOutcome> {
     return defer(() => {
       this.workspaceUrl ??= this.location.path(true) || '/';
-      const generation = ++this.workspaceNavigationGeneration;
+      this.workspaceRestorations.next();
       let navigation: Observable<boolean>;
       if (!this.workspaceNavigationStarted) {
         this.workspaceNavigationStarted = true;
@@ -229,25 +238,21 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
           this.initialWorkspaceNavigation(),
         );
       } else {
-        navigation = this.navigateWorkspace(this.workspaceUrl, generation);
+        navigation = this.navigateWorkspace(this.workspaceUrl);
       }
       return navigation.pipe(
         take(1),
         switchMap((navigated) =>
           navigated
             ? of(ready())
-            : this.navigateWorkspace('/', generation).pipe(
+            : this.navigateWorkspace('/').pipe(
                 map((fallback) =>
-                  fallback
-                    ? this.workspaceFallback()
-                    : ({
-                        kind: 'blocked',
-                        recovery: 'retry-startup',
-                        diagnostic: { code: 'workspace-navigation-failed' },
-                      } as const),
+                  fallback ? this.workspaceFallback() : navigationFailed,
                 ),
               ),
         ),
+        takeUntil(this.workspaceRestorations),
+        defaultIfEmpty(navigationFailed),
       );
     });
   }
@@ -489,10 +494,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
     });
   }
 
-  private navigateWorkspace(
-    url: string,
-    generation: number,
-  ): Observable<boolean> {
+  private navigateWorkspace(url: string): Observable<boolean> {
     return defer(() =>
       from(this.router.navigateByUrl(url, { replaceUrl: true })),
     ).pipe(
@@ -500,10 +502,6 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
         first: APPLICATION_STARTUP_PRODUCER_POLICIES.workspace.attemptBudgetMs,
         with: () => of(false),
       }),
-      map(
-        (navigated) =>
-          generation === this.workspaceNavigationGeneration && navigated,
-      ),
       catchError(() => of(false)),
     );
   }

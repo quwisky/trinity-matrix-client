@@ -22,6 +22,7 @@ import { KeywordRulesBlockComponent } from './keyword-rules-block.component';
 import { PushGatewayBlockComponent } from './push-gateway-block.component';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.directive';
+import { Subject, takeUntil } from 'rxjs';
 
 /**
  * Notifications settings sub-page: account-level toggles for which events notify,
@@ -56,7 +57,8 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
   /** Rule ids whose write is in flight. */
   private readonly pending = signal<ReadonlySet<string>>(new Set());
   private reactionAccountId: string | null | undefined;
-  private reactionWriteGeneration = 0;
+  /** Emits on an account switch; releases the previous account's reaction write. */
+  private readonly reactionAccountSwitches = new Subject<void>();
 
   /**
    * Key for the sound switch in the same optimistic state/pending maps as the rule toggles.
@@ -74,7 +76,7 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
         this.reactionAccountId !== undefined &&
         this.reactionAccountId !== accountId
       ) {
-        this.reactionWriteGeneration += 1;
+        this.reactionAccountSwitches.next();
         this.state.update((current) => {
           const next = new Map(current);
           next.delete(this.reactionsKey);
@@ -161,18 +163,20 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
     this.setState(this.reactionsKey, on);
     this.setPending(this.reactionsKey, true);
     const accountId = this.matrix.activeUserId();
-    const generation = this.reactionWriteGeneration;
     this.reactions
       .setOn(on)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        takeUntil(this.reactionAccountSwitches),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: () => {
-          if (this.isCurrentReactionWrite(accountId, generation)) {
+          if (this.isCurrentReactionWrite(accountId)) {
             this.setPending(this.reactionsKey, false);
           }
         },
         error: () => {
-          if (this.isCurrentReactionWrite(accountId, generation)) {
+          if (this.isCurrentReactionWrite(accountId)) {
             this.setState(this.reactionsKey, !on);
             this.setPending(this.reactionsKey, false);
             this.toast.show('Could not update your notification settings.', {
@@ -183,14 +187,9 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
       });
   }
 
-  private isCurrentReactionWrite(
-    accountId: string | null,
-    generation: number,
-  ): boolean {
-    return (
-      this.reactionWriteGeneration === generation &&
-      this.matrix.activeUserId() === accountId
-    );
+  /** The switch effect runs later than the signal changes, so also compare the account. */
+  private isCurrentReactionWrite(accountId: string | null): boolean {
+    return this.matrix.activeUserId() === accountId;
   }
 
   checked(toggle: PushRuleToggle): boolean {
