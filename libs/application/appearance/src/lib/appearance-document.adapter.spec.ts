@@ -49,7 +49,7 @@ describe('BrowserAppearanceDocumentAdapter', () => {
     const documentAdapter = adapter();
     documentAdapter.apply({
       mode: 'dark',
-      theme: 'onyx',
+      theme: 'midnight',
       textSize: 'small',
       density: 'compact',
       codeSize: 'smaller',

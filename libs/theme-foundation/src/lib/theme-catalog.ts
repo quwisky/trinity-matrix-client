@@ -15,9 +15,10 @@ export interface ThemeModeCatalogEntry {
 }
 
 const themes = Object.freeze([
-  Object.freeze({ id: 'trinity', label: 'Trinity', dataTheme: null }),
+  Object.freeze({ id: 'trinity', label: 'Graphite', dataTheme: null }),
+  Object.freeze({ id: 'classic', label: 'Classic', dataTheme: 'classic' }),
+  Object.freeze({ id: 'midnight', label: 'Midnight', dataTheme: 'midnight' }),
   Object.freeze({ id: 'amethyst', label: 'Amethyst', dataTheme: 'amethyst' }),
-  Object.freeze({ id: 'onyx', label: 'Onyx', dataTheme: 'onyx' }),
 ] as const satisfies readonly ThemeCatalogEntry[]);
 
 const modes = Object.freeze([

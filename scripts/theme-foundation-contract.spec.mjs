@@ -62,7 +62,12 @@ const definesThemeMetadata = (source, production = true) => {
   return (
     production &&
     (carriesCatalogTriplet(code, ['system', 'light', 'dark']) ||
-      carriesCatalogTriplet(code, ['trinity', 'amethyst', 'onyx']))
+      carriesCatalogTriplet(code, [
+        'trinity',
+        'classic',
+        'midnight',
+        'amethyst',
+      ]))
   );
 };
 

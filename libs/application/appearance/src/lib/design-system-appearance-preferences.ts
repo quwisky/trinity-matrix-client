@@ -78,7 +78,7 @@ export const THEME_PREFERENCE = definePreference({
   persistence: {
     key: 'trinity.appearance.theme',
     legacyKeys: ['trinity.palette'],
-    migration: closedStringMigration(isThemeId),
+    migration: closedStringMigration(isThemeId, 2, { onyx: 'midnight' }),
   },
   validate: closedStringValidation(isThemeId, 'appearance-theme-invalid'),
 } satisfies PreferenceDescriptor<ThemeId>);
@@ -174,15 +174,21 @@ function closedStringValidation<T extends string>(
 
 function closedStringMigration<T extends string>(
   accepts: (value: unknown) => value is T,
+  currentVersion = 1,
+  /** Retired values and the value that replaces each, applied before validation. */
+  renames: Readonly<Record<string, string>> = {},
 ) {
   return {
-    currentVersion: 1,
+    currentVersion,
     migrate: (stored: StoredPreference): PreferenceValidation<T> => {
-      if (
-        (stored.version === 0 || stored.version === 1) &&
-        accepts(stored.value)
-      ) {
-        return { kind: 'accepted', value: stored.value };
+      const value =
+        typeof stored.value === 'string'
+          ? Object.hasOwn(renames, stored.value)
+            ? renames[stored.value]
+            : stored.value
+          : stored.value;
+      if (stored.version <= currentVersion && accepts(value)) {
+        return { kind: 'accepted', value };
       }
       return {
         kind: 'rejected',

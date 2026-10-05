@@ -138,21 +138,21 @@ describe('AppearanceSettingsComponent', () => {
 
     expect(preview).not.toBeNull();
     expect(preview?.getAttribute('aria-hidden')).toBe('true');
-    expect(state?.textContent).toContain('dark · Trinity · Cosy');
+    expect(state?.textContent).toContain('dark · Graphite · Cosy');
 
     resolved.set({
       mode: 'light',
-      theme: 'onyx',
+      theme: 'midnight',
       textSize: 'default',
       density: 'compact',
       codeSize: 'default',
       codeLinePresentation: 'auto',
     });
-    fixture.componentInstance.appearance.update('theme', 'onyx');
+    fixture.componentInstance.appearance.update('theme', 'midnight');
     fixture.componentInstance.appearance.update('density', 'compact');
     fixture.detectChanges();
 
-    expect(state?.textContent).toContain('light · Onyx · Compact');
+    expect(state?.textContent).toContain('light · Midnight · Compact');
   });
 
   it('applies the chosen Mode on change', async () => {
@@ -462,7 +462,7 @@ describe('AppearanceSettingsComponent', () => {
     const trigger = container.querySelector(
       '[data-testid="theme-select"] hlm-select-trigger',
     );
-    expect(trigger?.textContent).toContain('Trinity');
+    expect(trigger?.textContent).toContain('Graphite');
     expect(
       container.querySelector('[data-testid=theme-select-failure]'),
     ).not.toBeNull();

@@ -130,7 +130,7 @@ describe('Design System Appearance preference descriptors', () => {
       {
         key: 'trinity.appearance.theme',
         legacyKeys: ['trinity.palette'],
-        version: 1,
+        version: 2,
       },
       {
         key: 'trinity.appearance.text-size',
@@ -223,6 +223,50 @@ describe('AppearancePreferences', () => {
       expect.objectContaining({ key: CODE_SIZE_PREFERENCE.persistence.key }),
     );
   });
+
+  it.each([
+    ['trinity.appearance.theme', JSON.stringify({ version: 1, value: 'onyx' })],
+    ['trinity.palette', 'onyx'],
+  ])(
+    'migrates a stored Onyx theme from %s to Midnight',
+    async (key, payload) => {
+      const read = vi.fn<PreferenceStorageAdapter['read']>((request) =>
+        of(
+          request.key === key
+            ? { kind: 'found', payload }
+            : { kind: 'missing' },
+        ),
+      );
+      const write = vi.fn<PreferenceStorageAdapter['write']>(() =>
+        of({ kind: 'completed' }),
+      );
+      TestBed.configureTestingModule({
+        providers: [
+          provideAppearancePreferences(),
+          {
+            provide: PREFERENCE_STORAGE_ADAPTER,
+            useValue: { read, write } satisfies PreferenceStorageAdapter,
+          },
+        ],
+      });
+      const appearance = TestBed.inject(AppearancePreferences);
+
+      await expect(firstValueFrom(appearance.hydrate())).resolves.toEqual({
+        kind: 'ready',
+        hydrated: 6,
+      });
+      expect(appearance.axes.theme.state()).toEqual({
+        kind: 'ready',
+        value: 'midnight',
+      });
+      expect(write).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: THEME_PREFERENCE.persistence.key,
+          payload: JSON.stringify({ version: 2, value: 'midnight' }),
+        }),
+      );
+    },
+  );
 
   it('contributes all six descriptors once and returns no warning when ready', async () => {
     const adapter: PreferenceStorageAdapter = {

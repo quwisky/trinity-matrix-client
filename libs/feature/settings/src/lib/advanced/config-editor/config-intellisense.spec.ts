@@ -51,7 +51,7 @@ const ENTRIES: readonly ConfigEntry[] = [
         ? { ok: true, value }
         : {
             ok: false,
-            problem: `'${String(value)}' is not a known palette (expected trinity, amethyst or onyx)`,
+            problem: `'${String(value)}' is not a known palette (expected trinity, classic, midnight or amethyst)`,
           },
   }),
   entry('theme.mode', {
@@ -242,7 +242,7 @@ describe('config diagnostics', () => {
     expect(state.sliceDoc(diagnostic.from, diagnostic.to)).toBe('"mauve"');
     // The path is already the range, so the message is only the reason.
     expect(diagnostic.message).toBe(
-      "'mauve' is not a known palette (expected trinity, amethyst or onyx)",
+      "'mauve' is not a known palette (expected trinity, classic, midnight or amethyst)",
     );
   });
 

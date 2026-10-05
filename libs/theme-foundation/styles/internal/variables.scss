@@ -501,6 +501,116 @@
   }
 
   // =============================================================================
+  // Classic — the original Trinity palette, kept as a selectable Theme. It restates the base
+  // neutral family verbatim, so the default Theme is free to move on.
+  // =============================================================================
+
+  :root[data-theme='classic']:not(.dark) {
+    --trinity-rail: oklch(91% 0.014 265deg);
+    --trinity-sidebar: oklch(96.5% 0.008 265deg);
+    --trinity-sidebar-header: oklch(94.5% 0.01 265deg);
+    --trinity-chat: oklch(99% 0.004 265deg);
+    --trinity-hover: oklch(93.5% 0.012 265deg);
+    --trinity-active: oklch(88% 0.024 265deg);
+    --trinity-divider: oklch(89.5% 0.014 265deg);
+    --trinity-text: oklch(30% 0.018 265deg);
+    --trinity-text-muted: oklch(43% 0.018 265deg);
+    --trinity-text-bright: oklch(16% 0.014 265deg);
+    --trinity-state-hover-surface: oklch(93.5% 0.012 265deg);
+    --trinity-state-pressed-surface: oklch(86.5% 0.03 265deg);
+    --trinity-state-selected-surface: oklch(88% 0.024 265deg);
+    --trinity-state-selected-hover-surface: oklch(84.5% 0.032 265deg);
+    --trinity-status-neutral-surface: oklch(88% 0.024 265deg);
+    --trinity-status-neutral-foreground: oklch(30% 0.018 265deg);
+    --trinity-surface-control: oklch(95% 0.008 265deg);
+    --trinity-control-foreground: oklch(20% 0.016 265deg);
+    --trinity-control-muted-foreground: oklch(43% 0.018 265deg);
+    --trinity-border-control: var(--trinity-control-muted-foreground);
+    --trinity-surface-drop-overlay: oklch(99% 0.004 265deg / 82%);
+  }
+
+  :root[data-theme='classic'].dark {
+    --trinity-rail: oklch(18% 0.014 265deg);
+    --trinity-sidebar: oklch(24% 0.016 265deg);
+    --trinity-sidebar-header: oklch(21% 0.015 265deg);
+    --trinity-chat: oklch(28% 0.016 265deg);
+    --trinity-hover: oklch(32% 0.018 265deg);
+    --trinity-active: oklch(37% 0.03 265deg);
+    --trinity-divider: oklch(20% 0.014 265deg);
+    --trinity-text: oklch(90% 0.012 265deg);
+    --trinity-text-muted: oklch(74% 0.018 265deg);
+    --trinity-text-bright: oklch(97% 0.006 265deg);
+    --trinity-state-hover-surface: oklch(32% 0.018 265deg);
+    --trinity-state-pressed-surface: oklch(39% 0.035 265deg);
+    --trinity-state-selected-surface: oklch(37% 0.03 265deg);
+    --trinity-state-selected-hover-surface: oklch(41% 0.038 265deg);
+    --trinity-status-neutral-surface: oklch(37% 0.03 265deg);
+    --trinity-status-neutral-foreground: oklch(90% 0.012 265deg);
+    --trinity-surface-control: oklch(32% 0.018 265deg);
+    --trinity-control-foreground: oklch(97% 0.006 265deg);
+    --trinity-control-muted-foreground: oklch(74% 0.018 265deg);
+    --trinity-border-control: var(--trinity-control-muted-foreground);
+    --trinity-surface-drop-overlay: oklch(28% 0.016 265deg / 82%);
+  }
+
+  // =============================================================================
+  // Midnight — an achromatic Theme. It overrides only its neutral family; the inherited indigo
+  // accent, conventional status hues and syntax colours keep their established meanings.
+  // Dark starts at true black for an AMOLED identity, then uses a shallow neutral ramp so
+  // navigation, workspace and interaction surfaces remain distinguishable.
+  // =============================================================================
+
+  :root[data-theme='midnight']:not(.dark) {
+    --trinity-rail: oklch(91% 0 0deg);
+    --trinity-sidebar: oklch(96.5% 0 0deg);
+    --trinity-sidebar-header: oklch(94.5% 0 0deg);
+    --trinity-chat: oklch(100% 0 0deg);
+    --trinity-hover: oklch(93.5% 0 0deg);
+    --trinity-active: oklch(88% 0 0deg);
+    --trinity-divider: oklch(89.5% 0 0deg);
+    --trinity-text: oklch(30% 0 0deg);
+    --trinity-text-muted: oklch(43% 0 0deg);
+    --trinity-text-bright: oklch(16% 0 0deg);
+    --trinity-state-hover-surface: oklch(93.5% 0 0deg);
+    --trinity-state-pressed-surface: oklch(86% 0 0deg);
+    --trinity-state-selected-surface: oklch(88% 0 0deg);
+    --trinity-state-selected-hover-surface: oklch(84% 0 0deg);
+    --trinity-status-neutral-surface: oklch(88% 0 0deg);
+    --trinity-status-neutral-foreground: oklch(30% 0 0deg);
+    --trinity-surface-control: oklch(95% 0 0deg);
+    --trinity-control-foreground: oklch(20% 0 0deg);
+    --trinity-control-muted-foreground: oklch(43% 0 0deg);
+    --trinity-border-control: var(--trinity-control-muted-foreground);
+    --trinity-surface-drop-overlay: oklch(100% 0 0deg / 82%);
+  }
+
+  :root[data-theme='midnight'].dark {
+    // Zero lightness is deliberate: on an OLED panel the rail and canvas pixels are unlit.
+    --trinity-rail: oklch(0% 0 0deg);
+    --trinity-sidebar: oklch(15% 0 0deg);
+    --trinity-sidebar-header: oklch(11% 0 0deg);
+    --trinity-chat: oklch(20% 0 0deg);
+    --trinity-hover: oklch(25% 0 0deg);
+    --trinity-active: oklch(31% 0 0deg);
+    --trinity-divider: oklch(23% 0 0deg);
+    --trinity-text: oklch(90% 0 0deg);
+    --trinity-text-muted: oklch(74% 0 0deg);
+    --trinity-text-bright: oklch(97% 0 0deg);
+    --trinity-state-hover-surface: oklch(25% 0 0deg);
+    --trinity-state-pressed-surface: oklch(35% 0 0deg);
+    --trinity-state-selected-surface: oklch(31% 0 0deg);
+    --trinity-state-selected-hover-surface: oklch(38% 0 0deg);
+    --trinity-status-neutral-surface: oklch(31% 0 0deg);
+    --trinity-status-neutral-foreground: oklch(90% 0 0deg);
+    --trinity-surface-canvas: oklch(0% 0 0deg);
+    --trinity-surface-control: oklch(25% 0 0deg);
+    --trinity-control-foreground: oklch(97% 0 0deg);
+    --trinity-control-muted-foreground: oklch(74% 0 0deg);
+    --trinity-border-control: var(--trinity-control-muted-foreground);
+    --trinity-surface-drop-overlay: oklch(20% 0 0deg / 82%);
+  }
+
+  // =============================================================================
   // Amethyst — a violet Theme. It overrides only its accent and violet-neutral family;
   // conventional status hues, syntax colours and every mode-invariant role stay inherited.
   // Brand-bound Helm tokens such as --primary and aliased surfaces re-theme automatically.
@@ -570,63 +680,6 @@
     --trinity-control-muted-foreground: oklch(74% 0.025 300deg);
     --trinity-border-control: var(--trinity-control-muted-foreground);
     --trinity-surface-drop-overlay: oklch(28% 0.024 300deg / 82%);
-  }
-
-  // =============================================================================
-  // Onyx — an achromatic Theme. It overrides only its neutral family; the inherited indigo
-  // accent, conventional status hues and syntax colours keep their established meanings.
-  // Dark starts at true black for an AMOLED identity, then uses a shallow neutral ramp so
-  // navigation, workspace and interaction surfaces remain distinguishable.
-  // =============================================================================
-
-  :root[data-theme='onyx']:not(.dark) {
-    --trinity-rail: oklch(91% 0 0deg);
-    --trinity-sidebar: oklch(96.5% 0 0deg);
-    --trinity-sidebar-header: oklch(94.5% 0 0deg);
-    --trinity-chat: oklch(100% 0 0deg);
-    --trinity-hover: oklch(93.5% 0 0deg);
-    --trinity-active: oklch(88% 0 0deg);
-    --trinity-divider: oklch(89.5% 0 0deg);
-    --trinity-text: oklch(30% 0 0deg);
-    --trinity-text-muted: oklch(43% 0 0deg);
-    --trinity-text-bright: oklch(16% 0 0deg);
-    --trinity-state-hover-surface: oklch(93.5% 0 0deg);
-    --trinity-state-pressed-surface: oklch(86% 0 0deg);
-    --trinity-state-selected-surface: oklch(88% 0 0deg);
-    --trinity-state-selected-hover-surface: oklch(84% 0 0deg);
-    --trinity-status-neutral-surface: oklch(88% 0 0deg);
-    --trinity-status-neutral-foreground: oklch(30% 0 0deg);
-    --trinity-surface-control: oklch(95% 0 0deg);
-    --trinity-control-foreground: oklch(20% 0 0deg);
-    --trinity-control-muted-foreground: oklch(43% 0 0deg);
-    --trinity-border-control: var(--trinity-control-muted-foreground);
-    --trinity-surface-drop-overlay: oklch(100% 0 0deg / 82%);
-  }
-
-  :root[data-theme='onyx'].dark {
-    // Zero lightness is deliberate: on an OLED panel the rail and canvas pixels are unlit.
-    --trinity-rail: oklch(0% 0 0deg);
-    --trinity-sidebar: oklch(15% 0 0deg);
-    --trinity-sidebar-header: oklch(11% 0 0deg);
-    --trinity-chat: oklch(20% 0 0deg);
-    --trinity-hover: oklch(25% 0 0deg);
-    --trinity-active: oklch(31% 0 0deg);
-    --trinity-divider: oklch(23% 0 0deg);
-    --trinity-text: oklch(90% 0 0deg);
-    --trinity-text-muted: oklch(74% 0 0deg);
-    --trinity-text-bright: oklch(97% 0 0deg);
-    --trinity-state-hover-surface: oklch(25% 0 0deg);
-    --trinity-state-pressed-surface: oklch(35% 0 0deg);
-    --trinity-state-selected-surface: oklch(31% 0 0deg);
-    --trinity-state-selected-hover-surface: oklch(38% 0 0deg);
-    --trinity-status-neutral-surface: oklch(31% 0 0deg);
-    --trinity-status-neutral-foreground: oklch(90% 0 0deg);
-    --trinity-surface-canvas: oklch(0% 0 0deg);
-    --trinity-surface-control: oklch(25% 0 0deg);
-    --trinity-control-foreground: oklch(97% 0 0deg);
-    --trinity-control-muted-foreground: oklch(74% 0 0deg);
-    --trinity-border-control: var(--trinity-control-muted-foreground);
-    --trinity-surface-drop-overlay: oklch(20% 0 0deg / 82%);
   }
 
   // -----------------------------------------------------------------------------

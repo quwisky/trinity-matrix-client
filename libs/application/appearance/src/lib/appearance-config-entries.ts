@@ -30,6 +30,7 @@ export function provideAppearanceConfigEntries(): EnvironmentProviders {
         'appearance.theme',
         THEME_PREFERENCE,
         appearance.axes.theme,
+        THEME_RENAMES,
       ),
       appearanceEntry(
         'appearance.textSize',
@@ -55,10 +56,14 @@ export function provideAppearanceConfigEntries(): EnvironmentProviders {
   });
 }
 
+/** Retired theme ids that an older exported document may still carry. */
+const THEME_RENAMES: Readonly<Record<string, string>> = { onyx: 'midnight' };
+
 function appearanceEntry<T extends string>(
   path: string,
   descriptor: PreferenceDescriptor<T>,
   axis: AppearanceAxis<T>,
+  renames: Readonly<Record<string, string>> = {},
 ): ConfigEntry {
   if (descriptor.export !== 'portable' || descriptor.editor.kind !== 'select') {
     throw new Error(
@@ -68,17 +73,24 @@ function appearanceEntry<T extends string>(
   const choices = descriptor.editor.options.map(({ value }) => value);
   const accepts = (value: string): value is T =>
     descriptor.validate(value).kind === 'accepted';
+  const choice = choiceSetting({
+    isValid: accepts,
+    options: choices,
+    noun: `a supported ${descriptor.editor.label.toLowerCase()}`,
+    set: axis.set,
+  });
   return {
     path,
     key: descriptor.persistence.key,
     description: descriptor.editor.description,
     read: axis.value,
     reset: () => axis.set(descriptor.defaultValue),
-    ...choiceSetting({
-      isValid: accepts,
-      options: choices,
-      noun: `a supported ${descriptor.editor.label.toLowerCase()}`,
-      set: axis.set,
-    }),
+    ...choice,
+    validate: (value) =>
+      choice.validate(
+        typeof value === 'string' && Object.hasOwn(renames, value)
+          ? renames[value]
+          : value,
+      ),
   };
 }
