@@ -188,6 +188,10 @@ const ROLES = [
     text: '--trinity-danger-solid-foreground',
     on: ['--trinity-danger-solid', '--trinity-danger-solid-hover'],
   },
+  ...[1, 2, 3, 4, 5, 6].map((n) => ({
+    text: `--trinity-avatar-${n}-ink`,
+    on: [`--trinity-avatar-${n}`],
+  })),
 ];
 
 /** Essential graphics and focus indicators use WCAG's 3:1 non-text threshold. */

@@ -255,6 +255,21 @@
     --trinity-danger-tint-20: oklch(93% 0.024 25deg);
     --trinity-danger-tint-30: oklch(90% 0.036 25deg);
 
+    // Default avatar fills, hashed per person (avatar.component.ts). Six hues that keep
+    // clear of the danger hue (25deg); each fill carries its own ink so initials clear AA.
+    --trinity-avatar-1: oklch(50% 0.2 270deg);
+    --trinity-avatar-1-ink: oklch(99% 0.004 265deg);
+    --trinity-avatar-2: oklch(50% 0.13 150deg);
+    --trinity-avatar-2-ink: oklch(99% 0.004 265deg);
+    --trinity-avatar-3: oklch(80% 0.15 75deg);
+    --trinity-avatar-3-ink: oklch(22% 0.04 75deg);
+    --trinity-avatar-4: oklch(50% 0.08 195deg);
+    --trinity-avatar-4-ink: oklch(99% 0.004 265deg);
+    --trinity-avatar-5: oklch(52% 0.2 350deg);
+    --trinity-avatar-5-ink: oklch(99% 0.004 265deg);
+    --trinity-avatar-6: oklch(50% 0.17 305deg);
+    --trinity-avatar-6-ink: oklch(99% 0.004 265deg);
+
     // The drag surface intentionally remains translucent so the destination stays visible.
     // Its coordinates are authored directly rather than mixed from a changing workspace token.
     --trinity-surface-drop-overlay: oklch(99% 0.004 265deg / 82%);
@@ -446,6 +461,18 @@
     --trinity-danger-tint-10: oklch(30% 0.035 25deg);
     --trinity-danger-tint-20: oklch(33% 0.055 25deg);
     --trinity-danger-tint-30: oklch(36% 0.075 25deg);
+    --trinity-avatar-1: oklch(72% 0.13 270deg);
+    --trinity-avatar-1-ink: oklch(20% 0.02 265deg);
+    --trinity-avatar-2: oklch(74% 0.13 150deg);
+    --trinity-avatar-2-ink: oklch(20% 0.02 265deg);
+    --trinity-avatar-3: oklch(80% 0.13 75deg);
+    --trinity-avatar-3-ink: oklch(20% 0.02 265deg);
+    --trinity-avatar-4: oklch(74% 0.1 195deg);
+    --trinity-avatar-4-ink: oklch(20% 0.02 265deg);
+    --trinity-avatar-5: oklch(74% 0.14 350deg);
+    --trinity-avatar-5-ink: oklch(20% 0.02 265deg);
+    --trinity-avatar-6: oklch(72% 0.13 305deg);
+    --trinity-avatar-6-ink: oklch(20% 0.02 265deg);
     --trinity-surface-drop-overlay: oklch(28% 0.016 265deg / 82%);
     --trinity-state-hover-surface: oklch(32% 0.018 265deg);
     --trinity-state-pressed-surface: oklch(39% 0.035 265deg);

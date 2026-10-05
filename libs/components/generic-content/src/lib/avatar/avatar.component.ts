@@ -34,54 +34,16 @@ export interface AccountBadge {
 /** Semantic avatar geometry: identities are circular; rooms and spaces are squircles. */
 export type AvatarShape = 'person' | 'place';
 
-/** The two inks an initial may be drawn in; the higher-contrast one wins. */
-const INK_DARK = '#1a1a1a';
-const INK_LIGHT = '#ffffff';
+/** Number of themed avatar fills (`--trinity-avatar-1..6`). */
+const AVATAR_SLOTS = 6;
 
-/**
- * WCAG 2.x relative luminance of a full `#rrggbb` colour. Note this is *not* the
- * cheap YIQ "perceived brightness" — YIQ ranks these palette colours differently
- * from real luminance, so no YIQ threshold can pick the right ink for all of them.
- */
-function relativeLuminance(hex: string): number {
-  const linear = (offset: number) => {
-    const c = parseInt(hex.slice(offset, offset + 2), 16) / 255;
-    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  };
-  return 0.2126 * linear(1) + 0.7152 * linear(3) + 0.0722 * linear(5);
-}
-
-/** WCAG contrast ratio between two relative luminances (AA body text needs 4.5). */
-function contrastRatio(a: number, b: number): number {
-  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-}
-
-/** Discord-style default-avatar palette (name-hashed). */
-const PALETTE = [
-  '#5865f2',
-  '#3ba55d',
-  '#faa81a',
-  '#ed4245',
-  '#eb459e',
-  '#9b59b6',
-];
-
-/** Stable colour picked from a key, like Discord's default avatars. */
-function hashColor(key: string): string {
+/** Stable 1-based avatar slot from a key, like Discord's default avatars. */
+function hashSlot(key: string): number {
   let hash = 0;
   for (let i = 0; i < key.length; i++) {
     hash = (hash * 31 + key.charCodeAt(i)) | 0;
   }
-  return PALETTE[Math.abs(hash) % PALETTE.length];
-}
-
-/** Whichever ink (dark/light) scores the higher WCAG contrast against `hex`. */
-function readableInk(hex: string): string {
-  const bg = relativeLuminance(hex);
-  return contrastRatio(bg, relativeLuminance(INK_DARK)) >=
-    contrastRatio(bg, relativeLuminance(INK_LIGHT))
-    ? INK_DARK
-    : INK_LIGHT;
+  return (Math.abs(hash) % AVATAR_SLOTS) + 1;
 }
 
 /**
@@ -156,13 +118,18 @@ export class AvatarComponent {
     Math.max(14, Math.round(this.resolvedSize() * 0.42)),
   );
 
-  /** Account-hashed fill for the badge, and a readable ink for its letter. Hashed on the
-   * user id so two accounts with the same display name stay visually distinct. */
-  readonly badgeColor = computed(() => {
+  /** Account-hashed avatar slot for the badge. Hashed on the user id so two accounts with
+   * the same display name stay visually distinct. */
+  private readonly badgeSlot = computed(() => {
     const badge = this.accountBadge();
-    return hashColor(badge?.id || badge?.name || '');
+    return hashSlot(badge?.id || badge?.name || '');
   });
-  readonly badgeInk = computed(() => readableInk(this.badgeColor()));
+  readonly badgeColor = computed(
+    () => `var(--trinity-avatar-${this.badgeSlot()})`,
+  );
+  readonly badgeInk = computed(
+    () => `var(--trinity-avatar-${this.badgeSlot()}-ink)`,
+  );
 
   /** Accessible label / tooltip for the presence dot (null when there's no dot). */
   readonly presenceTitle = computed(() => {
@@ -206,13 +173,14 @@ export class AvatarComponent {
     this.resolvedBadgeUrl.set(null);
   }
 
-  /** Stable color picked from the name, like Discord's default avatars. */
-  readonly color = computed(() => hashColor(this.name() || this.initial()));
-
-  /** Readable text colour for the initial on the hashed background: whichever ink
-   * scores the higher WCAG contrast ratio against it — so a single letter always
-   * meets contrast (every palette entry clears AA under that choice). */
-  readonly initialColor = computed(() => readableInk(this.color()));
+  /** Name-hashed avatar slot; each themed fill carries its own AA ink. */
+  private readonly slot = computed(() =>
+    hashSlot(this.name() || this.initial()),
+  );
+  readonly color = computed(() => `var(--trinity-avatar-${this.slot()})`);
+  readonly initialColor = computed(
+    () => `var(--trinity-avatar-${this.slot()}-ink)`,
+  );
 
   constructor() {
     // Re-resolve when the bound avatar changes (instances are reused across @for
