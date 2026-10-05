@@ -10,7 +10,11 @@ vi.mock('matrix-js-sdk', async (importActual) => {
   const actual = await importActual<typeof import('matrix-js-sdk')>();
   return {
     ...actual,
-    AutoDiscovery: { ...actual.AutoDiscovery, findClientConfig: vi.fn() },
+    AutoDiscovery: {
+      ...actual.AutoDiscovery,
+      findClientConfig: vi.fn(),
+      setFetchFn: vi.fn(),
+    },
   };
 });
 

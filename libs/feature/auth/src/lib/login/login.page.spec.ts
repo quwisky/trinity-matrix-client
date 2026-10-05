@@ -15,7 +15,7 @@ import {
 import { TrnAlertService } from '@trinity/components/overlay';
 import { desktopBridgeFixture, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { map, of, throwError, type Observable } from 'rxjs';
+import { NEVER, map, of, throwError, type Observable } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { LoginPage } from './login.page';
 import { SsoStateStore } from '../sso-state.store';
@@ -175,6 +175,22 @@ describe('LoginPage', () => {
     expect(cmp.passwordSupported()).toBe(true);
     expect(cmp.ssoSupported()).toBe(true);
     expect(cmp.oidcSupported()).toBe(false);
+  });
+
+  it('does not start a second discovery when Continue is pressed while one is running', async () => {
+    const discoverHomeserver = vi.fn(() => NEVER);
+    const { fixture } = await renderLogin({
+      discoverHomeserver,
+    } as unknown as Partial<AuthService>);
+    const button = (
+      fixture.nativeElement as HTMLElement
+    ).querySelector<HTMLButtonElement>('.login-card__submit');
+
+    button?.click();
+    fixture.detectChanges();
+    button?.click();
+
+    expect(discoverHomeserver).toHaveBeenCalledTimes(1);
   });
 
   it('shows legacy registration only after its side-effect-free probe reports open', async () => {
