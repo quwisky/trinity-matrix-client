@@ -53,3 +53,11 @@ repository, or deprecation message outside this table is unclassified. Keep the
 compiler output visible and use the developer
 [native testing guide](../../apps/docs-developers/src/content/docs/testing/desktop-and-native-tests.md)
 to reproduce the owning check.
+
+## Classified upstream stylelint
+
+| Boundary            | Classified output                                                                                            | Recheck when                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| `stylelint` 17.15.0 | Informational `ExperimentalWarning: The suppressions feature is experimental.` on stderr; exit 0; no effect. | The package changes or the suppressions API changes. |
+
+The suppressions feature (`stylelint-suppressions.json`, #932) is marked experimental upstream and emits a warning on every run via `pnpm stylelint`, `--fix`, and `scripts/stylelint-suppressions.spec.mjs`. The allow-list is bounded by exact-match checks in that spec that prevent growth.
