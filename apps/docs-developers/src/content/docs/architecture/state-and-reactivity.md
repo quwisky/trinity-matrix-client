@@ -28,6 +28,50 @@ Ongoing streams belong to the runtime or capability that owns their lifetime. Ap
 
 The supported scopes are active account, all live accounts, exact account, and exact conversation. Releasing a scope detaches the exact listeners it attached, cancels queued work, prevents late generations from publishing, and resets the owned read model.
 
+## SDK-backed fetch caches
+
+Some data is fetched from the homeserver on demand and cached per scope (a room, an account):
+pinned messages outside the loaded timeline, room state for the state viewer, a space's
+unread list. Build every such cache the same way:
+
+- **One cache per scope**, keyed by what is fetched (event id, state key).
+- **Invalidate on the SDK event** that makes it wrong: clear the affected entries **and** call
+  `guard.invalidate()`, so a request already in flight cannot land afterwards.
+- **Reset on `release()`**: clear the cache and invalidate the guard.
+- **Model failure as a state.** A fetch that fails is `{ kind: 'failed' }`, rendered as such and
+  retried on the next invalidation — never a silent omission or a `null` that reads as "gone".
+  Keep the server's definitive "no" (not found, forbidden) separate from a transient failure.
+- **Apply a result only while its token is current** (`latestGuard()` from `@trinity/util/ui`).
+
+```ts
+private readonly fetches = latestGuard();
+private token = this.fetches.next();
+private cache = new Map<string, Fetch>();
+
+private invalidate(): void {           // on the invalidating SDK event, and in release()
+  this.cache = new Map();
+  this.fetches.invalidate();
+  this.token = this.fetches.next();
+}
+
+private async fetch(id: string): Promise<void> {
+  const token = this.token;
+  const result = await load(id).then(
+    (value) => ({ kind: 'loaded', value }) as const,
+    (error) => (isDefinitiveNo(error) ? { kind: 'missing' } : { kind: 'failed' }) as const,
+  );
+  if (this.fetches.isCurrent(token)) this.cache.set(id, result);
+}
+```
+
+The reference implementation is
+[`conversation-pins.controller.ts`](https://github.com/quwisky/trinity-matrix-client/blob/main/libs/data-access/timeline/src/lib/conversation-pins.controller.ts).
+
+**`latestGuard()` or `switchMap`?** When the work is already an Observable, use `switchMap`
+(or `takeUntil` for release): the newer trigger cancels the older inner subscription and no
+guard is needed. Use `latestGuard()` for Promise chains, callbacks and render hooks, where
+there is no subscription to cancel.
+
 ## Keep commands event-driven {#event-driven-commands}
 
 After a Matrix command succeeds, prefer the SDK event path to update the projected state. A routine write followed by a hand-built replacement model or unconditional refresh often means the projection lacks an invalidation source. Local echo is an explicit exception, not the default ownership model.
