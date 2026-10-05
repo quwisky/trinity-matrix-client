@@ -670,7 +670,16 @@ export class VirtualMessageListComponent extends MessageListBase {
     this.prependAnchorGeneration++;
     this.expectedProgrammaticScrollTop = null;
     this.atBottomSig.set(false);
-    const existing = el.querySelector(`[data-mid="${messageId}"]`);
+    // Only a row in the CURRENT window counts as rendered. A scroll written just before the
+    // jump (a history restore as a date jump's last page lands) has already moved the window
+    // while the DOM still holds the old rows; smooth-scrolling to one of those chases an
+    // element the next render removes, and the first measurement write then cancels the
+    // scroll mid-list.
+    const { startIndex, endIndex } = this.windowResult();
+    const existing =
+      idx >= startIndex && idx <= endIndex
+        ? el.querySelector(`[data-mid="${messageId}"]`)
+        : null;
     if (existing) {
       existing.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
       this.flash(existing);
