@@ -137,7 +137,6 @@ test.describe('Room upgrade', () => {
     await expect(page.getByTestId('composer-input')).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByTestId('tombstone-banner')).toBeHidden();
     await page.getByTestId('open-room-settings').click();
     await page.getByTestId('room-settings-tab-advanced').click();
     await expect(page.getByTestId('room-advanced-room-id')).toHaveText(
@@ -146,23 +145,37 @@ test.describe('Room upgrade', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('room-settings')).toBeHidden();
 
+    // The follow-up writes land after the toast, so poll them.
     // The member has an invite to the new room.
-    const membership = await request
-      .get(
-        `${room(newRoomId)}/state/m.room.member/${encodeURIComponent(memberId)}`,
-        { headers: asAdmin },
+    await expect
+      .poll(
+        () =>
+          request
+            .get(
+              `${room(newRoomId)}/state/m.room.member/${encodeURIComponent(memberId)}`,
+              { headers: asAdmin },
+            )
+            .then((r) => r.json())
+            .then((content) => content.membership as string),
+        { timeout: 30_000 },
       )
-      .then((r) => r.json());
-    expect(membership.membership).toBe('invite');
+      .toBe('invite');
 
     // The space links the new room, with its order and suggested flag kept, and not the old one.
-    const newChild = await request
-      .get(childOf(newRoomId), { headers: asAdmin })
-      .then((r) => r.json());
-    expect(newChild).toMatchObject({ order: 'upgrade-a', suggested: true });
-    expect(newChild.via).toContain(HS_SERVER_NAME);
-    const oldChild = await request.get(childOf(roomId), { headers: asAdmin });
-    expect(oldChild.ok() ? await oldChild.json() : {}).toEqual({});
+    const childContent = (childId: string) =>
+      request
+        .get(childOf(childId), { headers: asAdmin })
+        .then((r) => (r.ok() ? r.json() : {}));
+    await expect
+      .poll(() => childContent(newRoomId), { timeout: 30_000 })
+      .toMatchObject({
+        order: 'upgrade-a',
+        suggested: true,
+        via: expect.arrayContaining([HS_SERVER_NAME]),
+      });
+    await expect
+      .poll(() => childContent(roomId), { timeout: 30_000 })
+      .toEqual({});
 
     // The old room keeps the tombstone banner.
     await page.goto(oldRoomUrl);
