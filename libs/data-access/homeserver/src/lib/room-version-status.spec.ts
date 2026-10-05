@@ -35,7 +35,7 @@ describe('roomVersionStatus', () => {
     expect(roomVersionStatus('9', caps())).toBe('newer-available');
   });
 
-  // Review Focus 2: a room created elsewhere at v12 is not behind a v10 default.
+  // A room created elsewhere at v12 is not behind a v10 default.
   it('does not call a room outdated when it is newer than the default', () => {
     expect(roomVersionStatus('12', caps())).toBe('current');
   });

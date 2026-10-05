@@ -289,7 +289,7 @@ describe('RoomsPage panels, pins and media', () => {
     expect(shell.store.activeRoomId()).toBe('!new:hs'); // onSelectRoom ran with the joined id
   });
 
-  // Review Focus 5: the room opens for the Account that opened Room settings, even when
+  // The room opens for the Account that opened Room settings, even when
   // another Account became active while the dialog was open.
   it('joins a room chosen in Room settings for the Account that opened them', async () => {
     const shell = build();

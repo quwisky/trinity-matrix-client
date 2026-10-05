@@ -124,7 +124,7 @@ describe('RoomStateViewerComponent', () => {
     );
   });
 
-  // Review Focus 4: a room with thousands of members stays cheap until the reader asks.
+  // A room with thousands of members stays cheap until the reader asks.
   it('renders no member rows or JSON for a large room until opened', async () => {
     const members = Array.from({ length: 3000 }, (_, i) =>
       entry('m.room.member', `@user${i}:hs`, { membership: 'join' }),
