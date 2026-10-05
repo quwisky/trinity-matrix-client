@@ -57,7 +57,8 @@ export async function login(user: string, pass: string): Promise<void> {
 /**
  * Wait until `element` holds still and is what a tap at its centre would hit: the same
  * client rect across two animation frames, and its centre hit-tests to itself or a
- * descendant. This is Playwright's "stable" and "receives events" actionability. Banners
+ * descendant. A timeout names the check that last failed: movement, or the element
+ * covering the tap point. This is Playwright's "stable" and "receives events" actionability. Banners
  * that arrive after sign-in push the whole layout down, so a tap aimed at a row's old
  * position otherwise lands on whatever moved there.
  */
@@ -65,34 +66,63 @@ async function waitUntilTappable(
   element: WebdriverIO.Element,
   selector: string,
 ): Promise<void> {
-  await browser.waitUntil(
-    () =>
-      browser.executeAsync(
-        (target: HTMLElement, done: (tappable: boolean) => void) => {
-          const first = target.getBoundingClientRect();
-          requestAnimationFrame(() =>
-            requestAnimationFrame(() => {
-              const second = target.getBoundingClientRect();
-              const still =
-                first.x === second.x &&
-                first.y === second.y &&
-                first.width === second.width &&
-                first.height === second.height;
-              const hit = document.elementFromPoint(
-                second.x + second.width / 2,
-                second.y + second.height / 2,
-              );
-              done(still && second.width > 0 && !!hit && target.contains(hit));
-            }),
-          );
-        },
-        element as unknown as HTMLElement,
-      ),
-    {
-      timeout: 20_000,
-      timeoutMsg: `${selector} never held still under its own tap point`,
-    },
-  );
+  // The last failed check, so a timeout says whether the target moved or was covered.
+  let reason = '';
+  try {
+    await browser.waitUntil(
+      async () => {
+        reason = await browser.executeAsync(
+          (target: HTMLElement, done: (reason: string) => void) => {
+            const first = target.getBoundingClientRect();
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() => {
+                const second = target.getBoundingClientRect();
+                if (
+                  first.x !== second.x ||
+                  first.y !== second.y ||
+                  first.width !== second.width ||
+                  first.height !== second.height
+                ) {
+                  done(
+                    `did not hold still (moved from ${first.x},${first.y} ${first.width}×${first.height} to ${second.x},${second.y} ${second.width}×${second.height})`,
+                  );
+                  return;
+                }
+                if (second.width <= 0) {
+                  done('has no width');
+                  return;
+                }
+                const x = second.x + second.width / 2;
+                const y = second.y + second.height / 2;
+                const hit = document.elementFromPoint(x, y);
+                if (hit && target.contains(hit)) {
+                  done('');
+                  return;
+                }
+                const name = hit
+                  ? hit.tagName.toLowerCase() +
+                    (hit.id ? `#${hit.id}` : '') +
+                    [...hit.classList].map((c) => `.${c}`).join('') +
+                    (hit.getAttribute('aria-label')
+                      ? `[aria-label="${hit.getAttribute('aria-label')}"]`
+                      : '')
+                  : 'nothing';
+                done(`is covered by ${name} at its tap point (${x},${y})`);
+              }),
+            );
+          },
+          element as unknown as HTMLElement,
+        );
+        return reason === '';
+      },
+      { timeout: 20_000 },
+    );
+  } catch (error) {
+    if (!reason) throw error;
+    throw new Error(`${selector} was never tappable: it ${reason}`, {
+      cause: error,
+    });
+  }
 }
 
 /**
