@@ -102,13 +102,25 @@ export class CapacitorHostOperationAdapter implements HostOperationsAdapter {
 
   /** The launch URL describes the process start; re-attached listeners must not replay it. */
   private launchUrlTaken = false;
+  /**
+   * Capacitor also replays the launch intent as a retained `appUrlOpen` once a listener
+   * attaches (Android always, iOS for a URL launch), in either order relative to
+   * `getLaunchUrl`. This is the launch URL that `getLaunchUrl` already delivered, whose
+   * replay is still due; it is swallowed once so one tap opens one link.
+   */
+  private launchReplay: string | null = null;
 
   readonly received = new Observable<{ readonly url: string }>((subscriber) => {
     let handle: PluginListenerHandle | undefined;
     let cancelled = false;
-    void App.addListener('appUrlOpen', (event) =>
-      subscriber.next({ url: event.url }),
-    )
+    void App.addListener('appUrlOpen', (event) => {
+      if (event.url === this.launchReplay) {
+        this.launchReplay = null;
+        return;
+      }
+      this.launchUrlTaken = true;
+      subscriber.next({ url: event.url });
+    })
       .then((value) => {
         handle = value;
         if (cancelled) void value.remove().catch(() => undefined);
@@ -120,6 +132,7 @@ export class CapacitorHostOperationAdapter implements HostOperationsAdapter {
       .then((launch) => {
         if (cancelled || !launch?.url || this.launchUrlTaken) return;
         this.launchUrlTaken = true;
+        this.launchReplay = launch.url;
         subscriber.next({ url: launch.url });
       })
       .catch((error: unknown) => {
