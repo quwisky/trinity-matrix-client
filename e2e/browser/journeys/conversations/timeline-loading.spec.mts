@@ -129,6 +129,7 @@ async function seedRoom(
   f: Fixture,
   name: string,
   bodies: readonly string[],
+  eventIds: string[] = [],
 ): Promise<string> {
   const { room_id } = await request
     .post(`${f.hs}/_matrix/client/v3/createRoom`, {
@@ -137,10 +138,11 @@ async function seedRoom(
     })
     .then((r) => r.json());
   for (const body of bodies) {
-    await request.put(
+    const sent = await request.put(
       `${f.hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/${f.runId}-${txn++}`,
       { headers: f.headers, data: { msgtype: 'm.text', body } },
     );
+    eventIds.push((await sent.json()).event_id as string);
   }
   return room_id as string;
 }
@@ -303,6 +305,41 @@ test.describe('Timeline loading states', () => {
     await expect(page.getByTestId('timeline-skeleton')).toBeHidden();
     await expect(page.getByTestId('composer-input')).toBeVisible();
     expect(page.url()).toContain(`/rooms/${segment}`);
+  });
+
+  test('a linked message in a room that has not synced yet is scrolled into view once it loads', async ({
+    page,
+    request,
+  }) => {
+    const f = await newUser(request);
+    const bodies = messages(`anchor ${f.runId}`, 30);
+    const eventIds: string[] = [];
+    await login(page, f.me);
+    const account = new URL(page.url()).searchParams.get('account') as string;
+    const roomId = await seedRoom(
+      request,
+      f,
+      `Anchor ${f.runId}`,
+      bodies,
+      eventIds,
+    );
+    const anchorId = eventIds[1];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/_matrix/client/**/sync*', async (route) => {
+      await gate;
+      await route.continue();
+    });
+    const segment = Buffer.from(roomId).toString('base64url');
+    await page.goto(
+      `/rooms/${segment}?account=${encodeURIComponent(account)}&view=rooms&event=${encodeURIComponent(anchorId)}`,
+    );
+    await expect(page.getByTestId('composer-input')).toHaveCount(0);
+
+    release();
+    await expect(page.locator(`[data-mid="${anchorId}"]`)).toBeInViewport({
+      timeout: 30_000,
+    });
   });
 
   test('a linked room the user is not in shows the unavailable error at once', async ({

@@ -446,6 +446,44 @@ describe('SimpleMessageListComponent', () => {
     expect((jumped as unknown as Element).getAttribute('data-mid')).toBe('$2');
   });
 
+  it('jumps to a requested row that only loads after the request', async () => {
+    const scrolled: (string | null)[] = [];
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      scrolled.push(this.getAttribute('data-mid'));
+    });
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [], jumpToId: '$2', jumpToNonce: 1 },
+    });
+    expect(scrolled).toEqual([]);
+
+    fixture.componentRef.setInput('messages', [
+      msg('$1', '@a:hs', 'Alice', 1000),
+      msg('$2', '@b:hs', 'Bob', 2000),
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(scrolled).toEqual(['$2']);
+  });
+
+  it('drops a not-yet-loaded jump once the request is withdrawn', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [], jumpToId: '$2', jumpToNonce: 1 },
+    });
+
+    fixture.componentRef.setInput('jumpToId', null);
+    fixture.componentRef.setInput('jumpToNonce', 0);
+    fixture.componentRef.setInput('messages', [
+      msg('$2', '@b:hs', 'Bob', 2000),
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
   it('re-jumps to the same id when jumpToNonce is bumped', async () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;

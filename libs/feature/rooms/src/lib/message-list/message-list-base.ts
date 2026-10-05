@@ -1,6 +1,7 @@
 import {
   DestroyRef,
   Directive,
+  afterNextRender,
   ElementRef,
   computed,
   effect,
@@ -505,6 +506,10 @@ export abstract class MessageListBase {
    */
   private readonly listDestroyRef = inject(DestroyRef);
 
+  /** A requested jump whose row had not loaded yet; applied when it arrives. */
+  private awaitedJumpId: string | null = null;
+  private readonly awaitedJumpInjector = inject(Injector);
+
   constructor() {
     // A host directive's outputs are not template-bound, so the subscription IS the wiring.
     // No teardown: an `OutputEmitterRef` drops its subscribers when its own directive is
@@ -526,6 +531,27 @@ export abstract class MessageListBase {
     effect(() => {
       this.roomId();
       untracked(() => this.resetOnRoomChange());
+    });
+
+    // A jump requested before its row exists (a linked message in a room that is still
+    // syncing) is a no-op in `jumpTo`; remember it and apply it once the row loads. A newer
+    // request, or none, replaces it, so a superseded jump is never applied late.
+    effect(() => {
+      this.jumpToNonce();
+      const id = this.jumpToId();
+      untracked(() => {
+        this.awaitedJumpId =
+          id && !this.messages().some((m) => m.id === id) ? id : null;
+      });
+    });
+    effect(() => {
+      const loaded = this.messages();
+      const id = this.awaitedJumpId;
+      if (!id || !loaded.some((m) => m.id === id)) return;
+      this.awaitedJumpId = null;
+      afterNextRender(() => this.jumpTo(id), {
+        injector: this.awaitedJumpInjector,
+      });
     });
 
     // Re-evaluate the jump-to-unread pill when the unread anchor or the message set
