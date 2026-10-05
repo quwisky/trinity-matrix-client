@@ -106,7 +106,6 @@ describe('trinity design tokens', () => {
       '--trinity-shape-container-radius': '--trinity-radius',
       '--trinity-shape-overlay-radius': '--trinity-radius-xl',
       '--trinity-surface-frame': '--trinity-surface-app',
-      '--trinity-surface-navigation': '--trinity-sidebar',
       '--trinity-surface-navigation-header': '--trinity-sidebar-header',
       '--trinity-surface-workspace': '--trinity-surface-pane',
       '--trinity-surface-floating': '--trinity-sidebar',

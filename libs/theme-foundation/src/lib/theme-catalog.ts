@@ -75,7 +75,6 @@ const colorRoles = Object.freeze([
   '--trinity-surface-frame',
   '--trinity-surface-app',
   '--trinity-surface-pane',
-  '--trinity-surface-navigation',
   '--trinity-surface-navigation-header',
   '--trinity-surface-workspace',
   '--trinity-surface-raised',

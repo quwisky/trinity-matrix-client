@@ -83,6 +83,34 @@ describe('modern room shell layout contracts', () => {
     }
   });
 
+  it('sets the conversation in a rounded inset pane on the app ground', () => {
+    const app = 'var(--trinity-surface-app)';
+    for (const selector of [
+      '.rooms-shell',
+      '.rooms-workspace',
+      '.shell-side',
+    ]) {
+      expect(ruleBody(roomsCss, selector)).toContain(`background: ${app}`);
+    }
+    expect(ruleBody(railCss, '.rail')).toContain(app);
+    expect(ruleBody(sidebarCss, '.sidebar')).toContain(app);
+    expect(ruleBody(sidebarCss, '.sidebar__header')).toContain(
+      `background: ${app}`,
+    );
+
+    const main = ruleBody(roomsCss, '.main');
+    expect(main).toContain('background: var(--trinity-surface-pane)');
+    expect(main).toMatch(
+      /@media\s+#\{\$md\}\s*\{[^}]*border-start-start-radius:\s*var\(--trinity-shape-pane-radius\)/,
+    );
+    expect(ruleBody(roomsCss, '.chat-body')).toContain(
+      'background: var(--trinity-surface-pane)',
+    );
+    expect(variables).toMatch(
+      /--trinity-shape-pane-radius:\s*var\(--trinity-radius-xl\)/,
+    );
+  });
+
   it('defines both cosy and compact shell density recipes', () => {
     for (const token of [
       '--trinity-density-shell-gap',

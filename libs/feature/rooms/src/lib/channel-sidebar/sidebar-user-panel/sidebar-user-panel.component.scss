@@ -22,7 +22,7 @@
   }
 
   .userbar {
-    --userbar-avatar-ring: var(--trinity-surface-navigation-header);
+    --userbar-avatar-ring: var(--trinity-surface-app);
 
     box-sizing: border-box;
     height: var(--trinity-navigation-dock-height);
@@ -31,7 +31,7 @@
     align-items: center;
     gap: var(--trinity-density-shell-gap);
     padding: 0 var(--trinity-density-shell-padding-inline);
-    background: var(--trinity-surface-navigation-header);
+    background: var(--trinity-surface-app);
     box-shadow: inset 0 1px 0 var(--trinity-border-subtle);
 
     // Keep the three actions visually related while letting the identity carry the weight.

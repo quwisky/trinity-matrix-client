@@ -55,6 +55,7 @@
     --trinity-shape-control-radius: var(--trinity-radius-md);
     --trinity-shape-container-radius: var(--trinity-radius);
     --trinity-shape-overlay-radius: var(--trinity-radius-xl);
+    --trinity-shape-pane-radius: var(--trinity-radius-xl);
 
     // Semantic identity geometry. Selection never changes these roles: people/DMs remain
     // circular, while rooms/spaces remain stable squircles.
@@ -319,7 +320,6 @@
     // Frame and workspace follow the app and pane roles, which every Theme sets to its rail
     // and chat values.
     --trinity-surface-frame: var(--trinity-surface-app);
-    --trinity-surface-navigation: var(--trinity-sidebar);
     --trinity-surface-navigation-header: var(--trinity-sidebar-header);
     --trinity-surface-workspace: var(--trinity-surface-pane);
     --trinity-surface-raised: oklch(97.5% 0.005 85deg);

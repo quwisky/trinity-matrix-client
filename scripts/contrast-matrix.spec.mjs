@@ -200,7 +200,6 @@ const NON_TEXT_ROLES = [
     foreground: '--trinity-focus-ring',
     on: [
       '--trinity-surface-frame',
-      '--trinity-surface-navigation',
       '--trinity-surface-workspace',
       '--trinity-surface-raised',
       '--trinity-surface-floating',
