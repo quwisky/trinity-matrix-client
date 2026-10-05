@@ -12,6 +12,13 @@ import {
   uniqueId,
 } from '../support/matrix.mts';
 import { goBack, resetApp, restartApp } from '../support/session.mts';
+import { onlyOn } from '../support/platform.mts';
+
+/** iOS has no system Back for an open panel: MainViewController turns the edge swipe off. */
+const PANEL_BACK_ANDROID_ONLY =
+  'iOS has no system Back for an open sheet or panel; MainViewController disables the edge swipe while Angular holds one';
+const IME_BACK_ANDROID_ONLY =
+  'Android consumes Back at the IME before the app; iOS has no system Back for an open panel';
 
 const viewportHeight = (): Promise<number> =>
   browser.execute(() => window.visualViewport?.height ?? window.innerHeight);
@@ -63,10 +70,10 @@ const clickButton = async (name: string): Promise<void> => {
   await button.click();
 };
 
-describe('Android navigation', () => {
+describe('mobile navigation', () => {
   beforeEach(resetApp);
 
-  it('@renderer-smoke logs in, opens settings by touch, and handles hardware Back', async () => {
+  it('@renderer-smoke logs in, opens settings by touch, and goes Back', async () => {
     const user = uniqueId('android-nav');
     const pass = `${user}-pass`;
     await registerUser(user, pass);
@@ -96,7 +103,7 @@ describe('Android navigation', () => {
     await expect($('trn-rooms')).toBeDisplayed({ wait: 30_000 });
   });
 
-  it('drills into a section and restores its directory link on hardware Back', async () => {
+  it('drills into a section and restores its directory link on Back', async () => {
     const user = uniqueId('android-settings');
     const pass = `${user}-pass`;
     await registerUser(user, pass);
@@ -128,7 +135,8 @@ describe('Android navigation', () => {
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
   });
 
-  it('dismisses the native keyboard before opening a bounded sheet and handles hardware Back', async () => {
+  it('dismisses the native keyboard before opening a bounded sheet and handles hardware Back', async function () {
+    onlyOn('android', PANEL_BACK_ANDROID_ONLY).call(this);
     const { user, pass, roomName } = await seedComposerRoom();
     await login(user, pass);
     await $('[data-testid="rail-rooms"]').click();
@@ -191,7 +199,8 @@ describe('Android navigation', () => {
     await expect($('[data-testid="composer-input"]')).toBeDisplayed();
   });
 
-  it('dismisses members before the compact Conversation on hardware Back', async () => {
+  it('dismisses members before the compact Conversation on hardware Back', async function () {
+    onlyOn('android', IME_BACK_ANDROID_ONLY).call(this);
     const { user, pass, roomName } = await seedComposerRoom();
     await login(user, pass);
     await tap('[data-testid="rail-rooms"]');

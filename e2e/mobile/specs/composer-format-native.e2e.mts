@@ -8,7 +8,7 @@ import {
 } from '../support/matrix.mts';
 import { keyboardShown, goBack, resetApp } from '../support/session.mts';
 
-describe('Android composer formatting', () => {
+describe('mobile composer formatting', () => {
   beforeEach(resetApp);
 
   it('formats a selected word through Aa, restores the keyboard, and dismisses on Back', async () => {
@@ -29,7 +29,12 @@ describe('Android composer formatting', () => {
     await expect(composer).toBeDisplayed({ wait: 20_000 });
 
     await tap('[data-testid="composer-input"]');
-    await browser.keys('say hello');
+    if (browser.isIOS) {
+      // WebDriverAgent's native typing can't reach a script-focused WKWebView textarea (#933 smoke).
+      await $('[data-testid="composer-input"]').addValue('say hello');
+    } else {
+      await browser.keys('say hello');
+    }
     await browser.execute(() => {
       const input = document.querySelector<HTMLTextAreaElement>(
         '[data-testid="composer-input"]',
@@ -88,7 +93,12 @@ describe('Android composer formatting', () => {
           '[data-testid="composer-input"]',
         )!.value,
     );
-    await goBack();
+    if (browser.isIOS) {
+      // No system Back on iOS, and the edge swipe is off while the sheet is open.
+      await tap('[data-testid="format-cancel"]');
+    } else {
+      await goBack();
+    }
     await expect($('[data-testid="format-cancel"]')).not.toExist();
     await expect(composer).toHaveValue(unchanged);
   });
