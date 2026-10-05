@@ -508,6 +508,78 @@ describe('SimpleMessageListComponent', () => {
     expect(scrolled).toEqual(['$2']);
   });
 
+  describe('re-aiming a recent jump', () => {
+    type Reapply = { reapplyRecentJump(): void };
+    const scroller = (fixture: {
+      componentInstance: SimpleMessageListComponent;
+    }): HTMLElement =>
+      (
+        fixture.componentInstance as unknown as {
+          scrollEl(): { nativeElement: HTMLElement };
+        }
+      ).scrollEl().nativeElement;
+    async function jumped() {
+      const scrollIntoView = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+      const { fixture } = await render(SimpleMessageListComponent, {
+        inputs: {
+          messages: [
+            msg('$1', '@a:hs', 'Alice', 1000),
+            msg('$2', '@b:hs', 'Bob', 2000),
+          ],
+        },
+      });
+      fixture.componentRef.setInput('jumpToId', '$2');
+      fixture.componentRef.setInput('jumpToNonce', 1);
+      fixture.detectChanges();
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      const reapply = () =>
+        (fixture.componentInstance as unknown as Reapply).reapplyRecentJump();
+      return { fixture, scrollIntoView, reapply };
+    }
+
+    it('re-aims within the limit', async () => {
+      const { scrollIntoView, reapply } = await jumped();
+      reapply();
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    });
+
+    it('stops once the reader scrolls', async () => {
+      const { fixture, scrollIntoView, reapply } = await jumped();
+      scroller(fixture).dispatchEvent(new Event('wheel'));
+      reapply();
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops once the reader jumps to the latest message', async () => {
+      const { fixture, scrollIntoView, reapply } = await jumped();
+      scroller(fixture).scrollTo = vi.fn();
+      fixture.componentInstance.scrollToLatest();
+      reapply();
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops once the jump request is cleared', async () => {
+      const { fixture, scrollIntoView, reapply } = await jumped();
+      fixture.componentRef.setInput('jumpToId', null);
+      fixture.detectChanges();
+      reapply();
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    });
+
+    it('never extends the window past the limit from the original jump', async () => {
+      const now = vi.spyOn(Date, 'now');
+      now.mockReturnValue(1_000_000);
+      const { scrollIntoView, reapply } = await jumped();
+      now.mockReturnValue(1_002_000);
+      reapply(); // inside the window
+      now.mockReturnValue(1_003_500);
+      reapply(); // 3.5s after the jump: the re-aim at 2s must not have renewed it
+      now.mockRestore();
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it('drops a not-yet-loaded jump once the request is withdrawn', async () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;

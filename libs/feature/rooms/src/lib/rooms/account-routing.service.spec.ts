@@ -41,6 +41,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
   const focused = signal<ConversationHandle | null>(null);
   const eventTarget = signal<{ readonly eventId: string } | null>(null);
   const activeRoomId = signal<string | null>(null);
+  const loaded = signal<{ readonly id: string }[]>([]);
   const focus = (roomId: string | null): void =>
     focused.set(
       roomId
@@ -71,7 +72,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
         MockProvider(RoomSurfaceLifecycle, { transition }),
         MockProvider(ConversationRuntime, {
           focused: focused.asReadonly(),
-          timeline: { loadEvent } as never,
+          timeline: { loadEvent, messages: loaded.asReadonly() } as never,
         }),
         MockProvider(SelectedRoomLibraryService, { view }),
         MockProvider(MatrixClientService, { syncState }),
@@ -90,6 +91,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     view.set({ rooms: [] } as unknown as SelectedRoomLibraryView);
     syncState.set(null);
     eventTarget.set(null);
+    loaded.set([]);
     activeRoomId.set(joined.id);
     focus(joined.id);
   });
@@ -255,6 +257,22 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
 
     expect(loadEvent).not.toHaveBeenCalled();
     expect(transition).not.toHaveBeenCalled();
+    expect(showError).not.toHaveBeenCalled();
+  });
+
+  it('reveals an event already in the loaded timeline without waiting for a live sync', () => {
+    build();
+    sync([joined], 'RECONNECTING' as SyncState);
+    loaded.set([{ id: '$here' }]);
+
+    eventTarget.set({ eventId: '$here' });
+    TestBed.tick();
+
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'reveal-message',
+      eventId: '$here',
+    });
+    expect(loadEvent).not.toHaveBeenCalled();
     expect(showError).not.toHaveBeenCalled();
   });
 });

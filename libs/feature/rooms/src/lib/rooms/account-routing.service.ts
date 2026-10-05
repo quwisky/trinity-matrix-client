@@ -19,7 +19,15 @@ import {
   ROOM_READINESS_TIMEOUT_MS,
   SelectedRoomLibraryService,
 } from '@trinity/data-access/room-library';
-import { filter, of, switchMap, take, timeout, type Subscription } from 'rxjs';
+import {
+  Subscription,
+  filter,
+  of,
+  switchMap,
+  take,
+  timeout,
+  type Observable,
+} from 'rxjs';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { ShellStatusService } from './shell-status.service';
@@ -59,6 +67,17 @@ export class AccountRoutingService {
   private readonly firstSyncDone = computed(
     // String compare: components and features never import the SDK's SyncState enum.
     () => String(this.matrix.syncState() ?? '') === 'SYNCING',
+  );
+  // Watchers are created once for the service's lifetime. A `toObservable` made per wait
+  // would stay alive after its wait was cancelled, until the page is destroyed.
+  private readonly firstSyncDone$ = toObservable(this.firstSyncDone, {
+    injector: this.injector,
+  });
+  private readonly liveFocusKey$ = toObservable(
+    computed(() =>
+      this.firstSyncDone() ? (this.conversations.focused()?.key ?? null) : null,
+    ),
+    { injector: this.injector },
   );
 
   constructor() {
@@ -163,7 +182,7 @@ export class AccountRoutingService {
       this.openSyncedRoom(roomId, eventId, origin);
       return;
     }
-    toObservable(this.firstSyncDone, { injector: this.injector })
+    this.firstSyncDone$
       .pipe(
         filter(Boolean),
         take(1),
@@ -223,13 +242,28 @@ export class AccountRoutingService {
    * the newest messages, so an older linked event is paged in first. Navigation reports
    * ready before the Conversation Runtime moves focus, and `loadEvent` pages whichever
    * conversation holds it, so wait for the target room to be focused. A cold start opens
-   * the room from the cached sync, so also wait for a live sync: a gappy one replaces the
-   * cached timeline and would drop the paged-in event.
+   * the room from the cached sync, so also wait for a live sync before paging history: a
+   * gappy one replaces the cached timeline and would drop the paged-in event. An event that
+   * is already loaded is revealed at once.
    */
   private revealLoadedEvent(
     room: ExactRoomSelection,
     eventId: string,
   ): Subscription {
+    const focusedKey = this.conversations.focused()?.key;
+    const isFocused =
+      focusedKey?.roomId === room.roomId &&
+      focusedKey.accountId === room.accountId;
+    // Already in the loaded timeline: nothing to page in, so no live sync is needed.
+    if (
+      isFocused &&
+      this.conversations.timeline.messages().some((m) => m.id === eventId)
+    ) {
+      this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
+      return Subscription.EMPTY;
+    }
+    // The watcher only signals a change; the live state is re-read, since its replayed value
+    // can be one effect-flush stale.
     const isReady = (): boolean => {
       const key = this.conversations.focused()?.key;
       return (
@@ -238,10 +272,10 @@ export class AccountRoutingService {
         key.accountId === room.accountId
       );
     };
-    const ready$ = isReady()
+    const ready$: Observable<unknown> = isReady()
       ? of(true)
-      : toObservable(computed(isReady), { injector: this.injector }).pipe(
-          filter(Boolean),
+      : this.liveFocusKey$.pipe(
+          filter(isReady),
           take(1),
           timeout({ first: ROOM_READINESS_TIMEOUT_MS }),
         );

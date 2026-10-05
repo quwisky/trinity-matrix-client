@@ -541,6 +541,7 @@ export abstract class MessageListBase {
       this.jumpToNonce();
       const id = this.jumpToId();
       untracked(() => {
+        if (!id) this.cancelPendingJump();
         this.awaitedJumpId =
           id && !this.messages().some((m) => m.id === id) ? id : null;
         this.awaitedJumpAt = Date.now();
@@ -612,6 +613,7 @@ export abstract class MessageListBase {
     // room's timeline would offer actions against an event that is no longer on screen.
     this.messageSheet.close(this);
     this.awaitedJumpId = null;
+    this.cancelPendingJump();
     this.announcement.set('');
     this.rowCache.clear();
     this.groupCache = new Map();
@@ -700,6 +702,8 @@ export abstract class MessageListBase {
    */
   private pendingJumpId: string | null = null;
   private pendingJumpAt = 0;
+  private reaiming = false;
+  private userScrollWatched = false;
   private lastScrollerWidth = 0;
   private widthRo?: ResizeObserver;
   private stopHeightWatcher?: () => void;
@@ -710,25 +714,52 @@ export abstract class MessageListBase {
    */
   protected notePendingJump(messageId: string): void {
     this.pendingJumpId = messageId;
-    this.pendingJumpAt = Date.now();
+    // A re-aim keeps the deadline of the jump the reader asked for: re-aiming must never
+    // renew its own window, or measurements (or a drag) could hold the reader on the row.
+    if (!this.reaiming) this.pendingJumpAt = Date.now();
+  }
+
+  /** Stop re-aiming: the reader moved, or the jump was superseded or withdrawn. */
+  protected cancelPendingJump(): void {
+    this.pendingJumpId = null;
   }
 
   /**
-   * Re-aim a recent jump at the layout that now exists. `jumpTo` calls `notePendingJump`
-   * again, which refreshes the deadline — deliberately, so a drag that resizes continuously
-   * keeps the reader on their row for its whole duration.
+   * Re-aim a recent jump at the layout that now exists (a width change, or the first real
+   * row measurements). One path and one window: {@link JUMP_REAPPLY_MS} from the original
+   * jump, never extended by a re-aim.
    */
   protected reapplyRecentJump(): void {
     const id = this.pendingJumpId;
     if (id && Date.now() - this.pendingJumpAt <= JUMP_REAPPLY_MS) {
-      this.jumpTo(id);
+      this.reaiming = true;
+      try {
+        this.jumpTo(id);
+      } finally {
+        this.reaiming = false;
+      }
     } else {
       this.pendingJumpId = null;
     }
   }
 
+  /** Any reader-driven scroll (wheel, touch, keys, scrollbar drag) ends re-aiming. */
+  private watchUserScroll(el: HTMLElement): void {
+    if (this.userScrollWatched) return;
+    this.userScrollWatched = true;
+    const stop = () => this.cancelPendingJump();
+    const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
+    for (const type of events) {
+      el.addEventListener(type, stop, { passive: true });
+    }
+    this.listDestroyRef.onDestroy(() => {
+      for (const type of events) el.removeEventListener(type, stop);
+    });
+  }
+
   /**
-   * Watch the scroller's width and re-apply a recent jump when it changes.
+   * Watch the scroller's width and re-aim a recent jump when it changes (the virtual list also
+   * re-aims after row measurements). Also starts the reader-scroll watcher that ends re-aiming.
    *
    * Width only: a height change is the keyboard opening or the composer growing, and
    * re-jumping there would fight the reader rather than help them. Started by the subclasses
@@ -736,6 +767,7 @@ export abstract class MessageListBase {
    */
   protected watchScrollerWidth(): void {
     const el = this.scrollEl()?.nativeElement;
+    if (el) this.watchUserScroll(el);
     if (!el || typeof ResizeObserver === 'undefined' || this.widthRo) {
       return;
     }

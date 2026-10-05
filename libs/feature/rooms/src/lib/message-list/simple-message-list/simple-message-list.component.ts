@@ -245,6 +245,7 @@ export class SimpleMessageListComponent extends MessageListBase {
 
   /** Jump straight back to the newest message (the jump-to-latest pill). */
   scrollToLatest(): void {
+    this.cancelPendingJump();
     const el = this.scrollEl()?.nativeElement;
     if (!el) {
       return;
