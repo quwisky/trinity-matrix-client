@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { isAppUrl, START_URL } from './scheme';
 import { processDeepLinkQueue } from './deep-link';
 import { windowIconOptions } from './icons';
+import { readWindowPrefs, titleBarOptions } from './window-prefs';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -113,6 +114,8 @@ export function createWindow(): void {
     // Windows/Linux taskbar and window icon (packaged builds also embed it; dev runs
     // would otherwise show Electron's default). macOS uses the bundle's .icns.
     ...windowIconOptions(process.platform),
+    // Trinity draws its own 32px title row unless the user opted into the OS bar.
+    ...titleBarOptions(process.platform, readWindowPrefs()),
     autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

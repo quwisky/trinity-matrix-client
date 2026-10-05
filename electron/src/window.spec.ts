@@ -11,8 +11,19 @@ vi.mock('electron', () => ({
   },
   BrowserWindow: vi.fn(),
 }));
+vi.mock('./icons', () => ({ windowIconOptions: vi.fn(() => ({})) }));
+vi.mock('./window-prefs', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./window-prefs')>()),
+  readWindowPrefs: vi.fn(() => ({ systemTitleBar: false })),
+}));
 
-import { hardenContents, installPermissionPolicy } from './window';
+import { BrowserWindow } from 'electron';
+import {
+  createWindow,
+  hardenContents,
+  installPermissionPolicy,
+} from './window';
+import { readWindowPrefs, titleBarOptions } from './window-prefs';
 
 /** Minimal WebContents fake that records its window-open handler + event listeners. */
 function fakeContents() {
@@ -253,5 +264,62 @@ describe('installPermissionPolicy', () => {
     expect(
       check(appContents, 'midi', 'trinity://app', { isMainFrame: true }),
     ).toBe(false);
+  });
+});
+
+describe('titleBarOptions', () => {
+  it('hides the frame with a themed overlay on Windows', () => {
+    expect(titleBarOptions('win32', { systemTitleBar: false })).toEqual({
+      titleBarStyle: 'hidden',
+      titleBarOverlay: { color: '#29292e', symbolColor: '#dbdee1', height: 32 },
+    });
+  });
+
+  it('hides the frame on Linux', () => {
+    expect(titleBarOptions('linux', { systemTitleBar: false })).toMatchObject({
+      titleBarStyle: 'hidden',
+    });
+  });
+
+  it('positions the traffic lights on macOS', () => {
+    expect(titleBarOptions('darwin', { systemTitleBar: false })).toEqual({
+      titleBarStyle: 'hidden',
+      trafficLightPosition: { x: 12, y: 10 },
+    });
+  });
+
+  it('keeps the system title bar when opted in', () => {
+    expect(titleBarOptions('linux', { systemTitleBar: true })).toEqual({});
+  });
+});
+
+describe('createWindow title bar', () => {
+  function create() {
+    let options: Record<string, unknown> = {};
+    vi.mocked(BrowserWindow).mockImplementation(function (
+      this: unknown,
+      opts: unknown,
+    ) {
+      options = opts as Record<string, unknown>;
+      return {
+        webContents: { setWindowOpenHandler: vi.fn(), on: vi.fn() },
+        once: vi.fn(),
+        on: vi.fn(),
+        loadURL: vi.fn(() => Promise.resolve()),
+      };
+    } as never);
+    createWindow();
+    return options;
+  }
+
+  it('passes the frameless options', () => {
+    expect(create()).toMatchObject({ titleBarStyle: 'hidden' });
+  });
+
+  it('keeps the OS frame and menu bar with the system title bar', () => {
+    vi.mocked(readWindowPrefs).mockReturnValueOnce({ systemTitleBar: true });
+    const options = create();
+    expect(options['titleBarStyle']).toBeUndefined();
+    expect(options['autoHideMenuBar']).toBe(false);
   });
 });
