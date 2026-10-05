@@ -9,7 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormField, FormRoot, form } from '@angular/forms/signals';
+import { FormField, FormRoot, disabled, form } from '@angular/forms/signals';
 import {
   TrnButton,
   TrnCheckboxComponent,
@@ -126,8 +126,11 @@ export class RoomUpgradeDialogComponent {
   readonly roomId = input.required<string>();
   readonly plan = input.required<RoomUpgradePlan>();
 
-  readonly upgradeForm = form(this.model);
   readonly busy = signal(false);
+  // Nothing is editable mid-run; the values were captured at submit.
+  readonly upgradeForm = form(this.model, (path) => {
+    disabled(path.version, { when: () => this.busy() });
+  });
   readonly error = signal<string | null>(null);
   readonly inviteMembers = computed(() => this.model().inviteMembers);
   readonly canUpgrade = computed(() => !!this.model().version && !this.busy());

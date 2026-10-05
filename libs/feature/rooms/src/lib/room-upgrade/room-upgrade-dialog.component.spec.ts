@@ -7,7 +7,7 @@ import {
   type RoomUpgradeResult,
 } from '@trinity/data-access/room-administration';
 import { MockProvider } from 'ng-mocks';
-import { Subject } from 'rxjs';
+import { Subject, defer } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   RoomUpgradeDialogComponent,
@@ -299,6 +299,34 @@ describe('RoomUpgradeDialogComponent', () => {
     expect(
       container.querySelector('[role="status"]')?.textContent?.trim(),
     ).toBe('Upgrading the room…');
+  });
+
+  it('subscribes once when submitted twice before the view updates', async () => {
+    const { fixture, upgrade } = await build();
+    let subscriptions = 0;
+    upgrade.mockImplementation(() =>
+      defer(() => {
+        subscriptions += 1;
+        return new Subject<RoomUpgradeResult>();
+      }),
+    );
+
+    fixture.componentInstance.upgrade();
+    fixture.componentInstance.upgrade();
+
+    expect(upgrade).toHaveBeenCalledTimes(1);
+    expect(subscriptions).toBe(1);
+  });
+
+  it('disables the version picker while upgrading', async () => {
+    const { byTestId, submit } = await build();
+    const select = () =>
+      byTestId('room-upgrade-version')!.querySelector('button, select');
+
+    expect(select()?.hasAttribute('disabled')).toBe(false);
+    submit();
+
+    expect(select()?.hasAttribute('disabled')).toBe(true);
   });
 
   it('toasts and closes with the result', async () => {
