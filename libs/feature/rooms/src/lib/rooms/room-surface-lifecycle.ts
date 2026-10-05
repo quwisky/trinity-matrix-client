@@ -140,17 +140,6 @@ export class RoomSurfaceLifecycle {
   );
 
   constructor() {
-    effect(() => {
-      const target = this.workspace.eventTarget();
-      if (!target) return;
-      untracked(() =>
-        this.transition({
-          kind: 'reveal-message',
-          eventId: target.eventId,
-        }),
-      );
-    });
-
     let wasDrawer = this.membersAreDrawer();
     effect(() => {
       const isDrawer = this.membersAreDrawer();

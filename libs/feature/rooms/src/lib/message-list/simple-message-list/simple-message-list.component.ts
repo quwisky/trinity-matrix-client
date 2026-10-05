@@ -194,7 +194,7 @@ export class SimpleMessageListComponent extends MessageListBase {
 
     // Scroll to an externally-requested event (search / reply / pinned-panel jump).
     // Runs after the anchoring effect above so the row is in the DOM; reuses jumpTo,
-    // so it's a no-op when the event isn't loaded. Reads jumpToNonce so re-requesting
+    // so an event that isn't loaded yet waits (briefly) for its row. Reads jumpToNonce so re-requesting
     // the same id re-fires (an unchanged jumpToId alone wouldn't).
     effect(() => {
       this.jumpToNonce();

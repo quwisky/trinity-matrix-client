@@ -6,7 +6,6 @@ import {
   Component,
   DestroyRef,
   ElementRef,
-  Injector,
   afterNextRender,
   computed,
   effect,
@@ -131,9 +130,7 @@ export class VirtualMessageListComponent extends MessageListBase {
   /** Last scrollTop written by our own correction; distinguishes it from user movement. */
   private expectedProgrammaticScrollTop: number | null = null;
 
-  private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
-  /** Rendered row hosts, to observe their `.msg` boxes for height measurement. */
   private readonly rowHosts = viewChildren(MessageRowComponent, {
     read: ElementRef,
   });
@@ -556,6 +553,13 @@ export class VirtualMessageListComponent extends MessageListBase {
     if (!changed) {
       return;
     }
+    // A jump made while rows were still unmeasured (a linked message, right as the list
+    // mounts) aimed at estimated heights, and the first real measurements cut that smooth
+    // scroll short. Re-aim once the corrections below have landed; bounded by the same
+    // window as a width change.
+    afterNextRender(() => this.reapplyRecentJump(), {
+      injector: this.injector,
+    });
     if (this.prependAnchorActive) {
       // ResizeObserver runs after the prepend restore and can replace estimated spacer
       // heights with real measurements. Correct from the rendered anchor after each such

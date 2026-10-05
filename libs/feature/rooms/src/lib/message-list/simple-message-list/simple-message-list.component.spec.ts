@@ -466,6 +466,48 @@ describe('SimpleMessageListComponent', () => {
     expect(scrolled).toEqual(['$2']);
   });
 
+  it('drops a queued jump whose row only loads after the limit', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const now = vi.spyOn(Date, 'now');
+    now.mockReturnValue(1_000_000);
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [], jumpToId: '$2', jumpToNonce: 1 },
+    });
+
+    now.mockReturnValue(1_000_000 + 60_000); // the reader has long since moved on
+    fixture.componentRef.setInput('messages', [
+      msg('$2', '@b:hs', 'Bob', 2000),
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    now.mockRestore();
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('applies only the newest of two queued jumps', async () => {
+    const scrolled: (string | null)[] = [];
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      scrolled.push(this.getAttribute('data-mid'));
+    });
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [], jumpToId: '$1', jumpToNonce: 1 },
+    });
+
+    fixture.componentRef.setInput('jumpToId', '$2');
+    fixture.componentRef.setInput('jumpToNonce', 2);
+    fixture.detectChanges();
+    fixture.componentRef.setInput('messages', [
+      msg('$1', '@a:hs', 'Alice', 1000),
+      msg('$2', '@b:hs', 'Bob', 2000),
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(scrolled).toEqual(['$2']);
+  });
+
   it('drops a not-yet-loaded jump once the request is withdrawn', async () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;

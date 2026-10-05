@@ -39,6 +39,8 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
   let transition: Mock;
   let loadEvent: Mock;
   const focused = signal<ConversationHandle | null>(null);
+  const eventTarget = signal<{ readonly eventId: string } | null>(null);
+  const activeRoomId = signal<string | null>(null);
   const focus = (roomId: string | null): void =>
     focused.set(
       roomId
@@ -55,7 +57,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
       providers: [
         AccountRoutingService,
         MockProvider(RoomShellStore, {
-          activeRoomId: signal<string | null>(null),
+          activeRoomId: activeRoomId.asReadonly(),
           activeAccountId: signal<string | null>('@me:hs'),
           pane: signal('list') as never,
         }),
@@ -64,6 +66,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
         MockProvider(WorkspaceNavigationService, {
           navigate,
           activeAccountId: signal<string | null>('@me:hs'),
+          eventTarget: eventTarget.asReadonly(),
         }),
         MockProvider(RoomSurfaceLifecycle, { transition }),
         MockProvider(ConversationRuntime, {
@@ -86,6 +89,8 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
   beforeEach(() => {
     view.set({ rooms: [] } as unknown as SelectedRoomLibraryView);
     syncState.set(null);
+    eventTarget.set(null);
+    activeRoomId.set(joined.id);
     focus(joined.id);
   });
   afterEach(() => vi.useRealTimers());
@@ -212,5 +217,44 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
       kind: 'reveal-message',
       eventId: '$old',
     });
+  });
+
+  it('pages in and reveals a ?event= target once the linked room is ready', () => {
+    build();
+    sync([], 'PREPARED' as SyncState); // the room has not synced yet
+    const loaded = new Subject<boolean>();
+    loadEvent.mockReturnValue(loaded);
+    focus(null);
+
+    eventTarget.set({ eventId: '$old' });
+    TestBed.tick();
+    expect(loadEvent).not.toHaveBeenCalled();
+
+    sync([joined], 'SYNCING' as SyncState);
+    focus(joined.id);
+    TestBed.tick();
+    expect(loadEvent).toHaveBeenCalledExactlyOnceWith('$old');
+    expect(transition).not.toHaveBeenCalled();
+    loaded.next(true);
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'reveal-message',
+      eventId: '$old',
+    });
+  });
+
+  it('never applies a ?event= target that was superseded before its room arrived', () => {
+    build();
+    focus(null);
+    eventTarget.set({ eventId: '$old' });
+    TestBed.tick();
+
+    eventTarget.set(null); // the user navigated elsewhere
+    sync([joined], 'SYNCING' as SyncState);
+    focus(joined.id);
+    TestBed.tick();
+
+    expect(loadEvent).not.toHaveBeenCalled();
+    expect(transition).not.toHaveBeenCalled();
+    expect(showError).not.toHaveBeenCalled();
   });
 });

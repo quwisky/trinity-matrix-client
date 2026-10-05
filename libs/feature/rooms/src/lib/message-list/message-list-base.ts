@@ -235,7 +235,7 @@ export abstract class MessageListBase {
   readonly stickerPacks = input<readonly ImagePack[]>([]);
   /**
    * Event id to scroll into view, set by an external jump (e.g. in-room search).
-   * A no-op when the event isn't in the loaded timeline.
+   * Waits briefly for the event to load; a no-op once that limit passes.
    */
   readonly jumpToId = input<string | null>(null);
   /**
@@ -505,10 +505,11 @@ export abstract class MessageListBase {
    * removes the question.
    */
   private readonly listDestroyRef = inject(DestroyRef);
+  protected readonly injector = inject(Injector);
 
-  /** A requested jump whose row had not loaded yet; applied when it arrives. */
+  /** A requested jump whose row had not loaded yet; applied when it arrives, within the limit. */
   private awaitedJumpId: string | null = null;
-  private readonly awaitedJumpInjector = inject(Injector);
+  private awaitedJumpAt = 0;
 
   constructor() {
     // A host directive's outputs are not template-bound, so the subscription IS the wiring.
@@ -542,6 +543,7 @@ export abstract class MessageListBase {
       untracked(() => {
         this.awaitedJumpId =
           id && !this.messages().some((m) => m.id === id) ? id : null;
+        this.awaitedJumpAt = Date.now();
       });
     });
     effect(() => {
@@ -549,9 +551,10 @@ export abstract class MessageListBase {
       const id = this.awaitedJumpId;
       if (!id || !loaded.some((m) => m.id === id)) return;
       this.awaitedJumpId = null;
-      afterNextRender(() => this.jumpTo(id), {
-        injector: this.awaitedJumpInjector,
-      });
+      // Bounded like a width re-apply: a row that loads minutes later (the reader scrolled up
+      // and paged it in) must not yank them back.
+      if (Date.now() - this.awaitedJumpAt > JUMP_REAPPLY_MS) return;
+      afterNextRender(() => this.jumpTo(id), { injector: this.injector });
     });
 
     // Re-evaluate the jump-to-unread pill when the unread anchor or the message set
@@ -608,6 +611,7 @@ export abstract class MessageListBase {
     // A sheet is about ONE message in ONE room; leaving it standing over a different
     // room's timeline would offer actions against an event that is no longer on screen.
     this.messageSheet.close(this);
+    this.awaitedJumpId = null;
     this.announcement.set('');
     this.rowCache.clear();
     this.groupCache = new Map();
@@ -710,6 +714,20 @@ export abstract class MessageListBase {
   }
 
   /**
+   * Re-aim a recent jump at the layout that now exists. `jumpTo` calls `notePendingJump`
+   * again, which refreshes the deadline — deliberately, so a drag that resizes continuously
+   * keeps the reader on their row for its whole duration.
+   */
+  protected reapplyRecentJump(): void {
+    const id = this.pendingJumpId;
+    if (id && Date.now() - this.pendingJumpAt <= JUMP_REAPPLY_MS) {
+      this.jumpTo(id);
+    } else {
+      this.pendingJumpId = null;
+    }
+  }
+
+  /**
    * Watch the scroller's width and re-apply a recent jump when it changes.
    *
    * Width only: a height change is the keyboard opening or the composer growing, and
@@ -728,15 +746,7 @@ export abstract class MessageListBase {
         return;
       }
       this.lastScrollerWidth = width;
-      const id = this.pendingJumpId;
-      if (id && Date.now() - this.pendingJumpAt <= JUMP_REAPPLY_MS) {
-        // Re-aim at the same row against the layout that now exists. `jumpTo` calls
-        // `notePendingJump` again, which refreshes the deadline — deliberately, so a drag
-        // that resizes continuously keeps the reader on their row for its whole duration.
-        this.jumpTo(id);
-      } else {
-        this.pendingJumpId = null;
-      }
+      this.reapplyRecentJump();
     });
     this.widthRo.observe(el);
     this.listDestroyRef.onDestroy(() => this.widthRo?.disconnect());

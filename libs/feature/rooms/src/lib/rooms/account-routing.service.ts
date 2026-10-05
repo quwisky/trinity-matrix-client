@@ -2,8 +2,10 @@ import {
   DestroyRef,
   Injectable,
   computed,
+  effect,
   inject,
   Injector,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
@@ -17,7 +19,7 @@ import {
   ROOM_READINESS_TIMEOUT_MS,
   SelectedRoomLibraryService,
 } from '@trinity/data-access/room-library';
-import { filter, of, switchMap, take, timeout } from 'rxjs';
+import { filter, of, switchMap, take, timeout, type Subscription } from 'rxjs';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { ShellStatusService } from './shell-status.service';
@@ -58,6 +60,22 @@ export class AccountRoutingService {
     // String compare: components and features never import the SDK's SyncState enum.
     () => String(this.matrix.syncState() ?? '') === 'SYNCING',
   );
+
+  constructor() {
+    // A published event anchor (`?event=`, a notification) is revealed once its room is the
+    // focused, live-synced Conversation, paging the event in like a linked-room jump. A
+    // changed or cleared target, or another room, cancels the wait so it is never applied late.
+    effect((onCleanup) => {
+      const target = this.workspace.eventTarget();
+      const accountId = this.store.activeAccountId();
+      const roomId = this.store.activeRoomId();
+      if (!target || !accountId || !roomId) return;
+      const pending = untracked(() =>
+        this.revealLoadedEvent({ accountId, roomId }, target.eventId),
+      );
+      onCleanup(() => pending.unsubscribe());
+    });
+  }
 
   /** An account's display name for user-facing copy, falling back to its user id. */
   accountLabel(accountId: string): string {
@@ -208,7 +226,10 @@ export class AccountRoutingService {
    * the room from the cached sync, so also wait for a live sync: a gappy one replaces the
    * cached timeline and would drop the paged-in event.
    */
-  private revealLoadedEvent(room: ExactRoomSelection, eventId: string): void {
+  private revealLoadedEvent(
+    room: ExactRoomSelection,
+    eventId: string,
+  ): Subscription {
     const isReady = (): boolean => {
       const key = this.conversations.focused()?.key;
       return (
@@ -224,7 +245,7 @@ export class AccountRoutingService {
           take(1),
           timeout({ first: ROOM_READINESS_TIMEOUT_MS }),
         );
-    ready$
+    return ready$
       .pipe(
         switchMap(() => this.conversations.timeline.loadEvent(eventId)),
         takeUntilDestroyed(this.destroyRef),
