@@ -1,10 +1,5 @@
 @layer components {
   :host {
-    // One 0.9375rem line at 1.4 leading + 11px block padding on both sides + the field border.
-    // Kept as a construction rather than a literal 45px so Appearance text scaling grows the
-    // voice replacement with the textarea it stands in for.
-    --composer-resting-field-height: calc(1.3125rem + 24px);
-
     display: block;
     background: var(--trinity-surface-workspace);
   }
@@ -62,6 +57,25 @@
   }
 
   .composer {
+    // The one type size the field and its preview share. Touch devices lift it to the 16px
+    // text-entry floor so iOS does not zoom on focus (#974); the preview follows so the cell
+    // does not change height when toggling.
+    --trinity-entry-font-size: var(--trinity-text-base);
+
+    // One entry-size line at 1.4 leading + 11px block padding on both sides + the field border.
+    // Built from the entry size so the voice replacement stays as tall as the textarea it
+    // stands in for, on touch and under every Text size.
+    --composer-resting-field-height: calc(
+      1.4 * var(--trinity-entry-font-size) + 24px
+    );
+
+    @media (pointer: coarse) {
+      --trinity-entry-font-size: max(
+        var(--trinity-text-base),
+        var(--trinity-type-entry-min-size)
+      );
+    }
+
     // The composer is a single compact input row; overlays render independently above its field.
     display: flex;
     flex-direction: column;
@@ -180,7 +194,7 @@
 
     // The same type as the textarea, because it stands in for it: a different size or leading
     // would change the cell's height on toggle, which is the drift this arrangement removes.
-    font-size: 0.9375rem;
+    font-size: var(--trinity-entry-font-size);
     line-height: 1.4;
   }
 
@@ -354,7 +368,7 @@
     // size setting — you would read other people's messages at 20px and type your own at 15px.
     // 0.9375rem is exactly the 15px it used to be at the default root, so nothing moves until
     // the user asks it to.
-    font-size: 0.9375rem;
+    font-size: var(--trinity-entry-font-size);
     line-height: 1.4;
 
     &::placeholder {

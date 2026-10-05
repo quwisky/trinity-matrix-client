@@ -6,13 +6,13 @@ export type TrnTextControlSize = Extract<TrnSize, 'sm' | 'md' | 'lg'>;
 const inputSize = {
   sm: 'min-h-[max(1.75rem,var(--trinity-interaction-target-min-size))] px-2 py-1 text-xs',
   md: 'min-h-[max(var(--trinity-density-control-size),var(--trinity-interaction-target-min-size))] px-2.5 py-1 text-[length:var(--trinity-type-control-size)]',
-  lg: 'min-h-[max(2.5rem,var(--trinity-interaction-target-min-size))] px-3 py-2 text-base',
+  lg: 'min-h-[max(2.5rem,var(--trinity-interaction-target-min-size))] px-3 py-2 text-base [--trinity-entry-font-size:var(--trinity-text-base)]',
 } as const;
 
 const textareaSize = {
   sm: 'min-h-14 px-2 py-1.5 text-sm',
   md: 'min-h-16 px-2.5 py-2 text-[length:var(--trinity-type-control-size)]',
-  lg: 'min-h-20 px-3 py-2.5 text-base',
+  lg: 'min-h-20 px-3 py-2.5 text-base [--trinity-entry-font-size:var(--trinity-text-base)]',
 } as const;
 
 const base =

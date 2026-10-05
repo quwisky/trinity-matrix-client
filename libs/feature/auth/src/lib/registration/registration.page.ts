@@ -23,8 +23,10 @@ import { TrnButton, TrnFieldImports } from '@trinity/components/controls';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { TrnCardImports } from '@trinity/components/navigation-layout';
 import { TrnCheckboxComponent } from '@trinity/components/controls';
-import { TrnIconComponent } from '@trinity/components/foundations';
-import { TrnInput } from '@trinity/components/controls';
+import {
+  TrnInput,
+  TrnPasswordInputComponent,
+} from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
   AuthService,
@@ -47,8 +49,8 @@ import { ExternalBrowserService } from '@trinity/platform-native';
     TrnFieldImports,
     TrnCardImports,
     TrnCheckboxComponent,
-    TrnIconComponent,
     TrnInput,
+    TrnPasswordInputComponent,
     TrnSpinnerComponent,
   ],
 })
@@ -69,7 +71,6 @@ export class RegistrationPage implements OnDestroy {
   readonly baseUrl = signal<string | null>(null);
   readonly discovering = signal(false);
   readonly started = signal(false);
-  readonly passwordVisible = signal(false);
   private readonly acceptedPolicyKeys = signal<ReadonlySet<string>>(new Set());
   private readonly openedFallbackUrl = signal<string | null>(null);
   private readonly pageError = signal<string | null>(null);
