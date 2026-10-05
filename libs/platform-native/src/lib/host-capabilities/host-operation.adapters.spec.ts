@@ -81,6 +81,63 @@ describe('CapacitorHostOperationAdapter event streams', () => {
     expect(urls).toEqual(['eu.qwky.trinity://matrix.to/#/!a:b.c']);
   });
 
+  describe('cold-start link and later taps', () => {
+    const link = 'eu.qwky.trinity://matrix.to/#/!a:b.c';
+    let open!: (event: { url: string }) => void;
+    const urls: string[] = [];
+
+    const attach = async (retained: boolean, launch: string | null) => {
+      urls.length = 0;
+      app.addListener.mockImplementation(
+        (_event: string, listener: (event: { url: string }) => void) => {
+          open = listener;
+          if (retained) listener({ url: link });
+          return Promise.resolve({ remove: vi.fn(() => Promise.resolve()) });
+        },
+      );
+      app.getLaunchUrl.mockResolvedValue(launch ? { url: launch } : {});
+      new CapacitorHostOperationAdapter().received.subscribe(({ url }) =>
+        urls.push(url),
+      );
+      await new Promise((resolve) => setTimeout(resolve));
+    };
+
+    it('delivers a cold-start link once when the retained appUrlOpen flushes during addListener', async () => {
+      // Models Android: the retained launch event fires synchronously on the first listener.
+      await attach(true, link);
+
+      expect(urls).toEqual([link]);
+    });
+
+    it('delivers a later tap of the same URL after a retained launch event', async () => {
+      await attach(true, link);
+      open({ url: link });
+
+      expect(urls).toEqual([link, link]);
+    });
+
+    it('delivers a later tap of the same URL after a getLaunchUrl-only launch', async () => {
+      await attach(false, link);
+      open({ url: link });
+
+      expect(urls).toEqual([link, link]);
+    });
+
+    it('delivers a different URL after the launch link', async () => {
+      const other = 'eu.qwky.trinity://matrix.to/#/!d:e.f';
+      await attach(true, link);
+      open({ url: other });
+
+      expect(urls).toEqual([link, other]);
+    });
+
+    it('delivers a getLaunchUrl-only launch once', async () => {
+      await attach(false, link);
+
+      expect(urls).toEqual([link]);
+    });
+  });
+
   it('removes a Back listener that resolves after teardown', async () => {
     let resolveListener!: (value: { remove: () => Promise<void> }) => void;
     const remove = vi.fn(() => Promise.resolve());
