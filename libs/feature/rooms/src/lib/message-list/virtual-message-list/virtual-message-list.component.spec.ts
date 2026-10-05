@@ -540,6 +540,40 @@ describe('VirtualMessageListComponent', () => {
     expect(row?.classList.contains('msg--flash')).toBe(true);
   });
 
+  it('pre-positions a jump whose row is rendered only from a window the list has left', async () => {
+    const { fixture, container } = await renderList({ messages: many(200) });
+    const cmp = fixture.componentInstance;
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+    let st = 0;
+    Object.defineProperties(scroll, {
+      scrollTop: { get: () => st, set: (value: number) => (st = value) },
+      scrollHeight: { value: 200 * EST },
+      clientHeight: { value: 600 },
+    });
+    scroll.getBoundingClientRect = () => rect(0);
+    (scroll.querySelector('.vpad') as HTMLElement).getBoundingClientRect = () =>
+      rect(-st);
+    cmp.onScroll();
+    fixture.detectChanges();
+    const target = '$1';
+    expect(scroll.querySelector(`[data-mid="${target}"]`)).not.toBeNull();
+
+    // A history restore moves the reader far down right before a date jump lands: the
+    // window has moved on, but the DOM still holds the old rows until the next render.
+    st = 120 * EST;
+    cmp.onScroll();
+    const smooth = vi.fn();
+    Element.prototype.scrollIntoView = smooth;
+    cmp.jumpTo(target);
+
+    // A smooth scroll aimed at that stale row would chase an element the next render
+    // removes; the jump must instead bring the row's own window in first.
+    expect(smooth).not.toHaveBeenCalled();
+    expect(st).toBeLessThan(10 * EST);
+    fixture.detectChanges();
+    expect(smooth).toHaveBeenCalled();
+  });
+
   it('does not re-jump when the timeline changes after a jump', async () => {
     // jumpTo reads ids()/prefix(); the jump effect must run it untracked so a later
     // messages() change does not re-invoke jumpTo and yank the viewport back.
