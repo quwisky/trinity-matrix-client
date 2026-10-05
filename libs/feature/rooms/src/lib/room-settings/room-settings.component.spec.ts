@@ -20,6 +20,7 @@ import {
   type RoomSettingsPermissions,
   type RoomSettingsSnapshot,
 } from '@trinity/data-access/room-administration';
+import { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
@@ -206,6 +207,10 @@ async function build(options: BuildOptions = {}) {
         }),
       }),
       MockProvider(RoomModerationService, { unban: () => of(undefined) }),
+      MockProvider(HomeserverInfoService, {
+        infos: signal(new Map()).asReadonly(),
+        load: () => of(undefined),
+      }),
       MockProvider(WidgetsService, {
         widgetsFor: () => widgets.asReadonly(),
         canManageFor: () => canManageWidgets.asReadonly(),
@@ -269,6 +274,7 @@ describe('RoomSettingsComponent', () => {
       'members',
       'addresses',
       'widgets',
+      'advanced',
     ]);
   });
 
@@ -744,6 +750,32 @@ describe('RoomSettingsComponent', () => {
 
     emit(roomSnapshot({ openingAccountActive: false }));
     expect(container.querySelector('trn-room-aliases')).not.toBeNull();
+  });
+
+  it('shows Advanced last and hands Open room back to the opener', async () => {
+    const { cmp, fixture, container, close } = await build({
+      initial: roomSnapshot({
+        advanced: { ...ADVANCED, successor: '!next:hs' },
+      }),
+    });
+
+    cmp.selectSection('advanced');
+    await fixture.whenStable();
+
+    expect(cmp.sectionTitle()).toBe('Advanced');
+    expect(
+      container.querySelector('[data-testid="room-advanced-room-id"]')
+        ?.textContent,
+    ).toContain(TARGET.roomId);
+    container
+      .querySelector<HTMLButtonElement>(
+        '[aria-label="Open room that replaced this"]',
+      )
+      ?.click();
+    expect(close).toHaveBeenCalledWith({
+      accountId: TARGET.accountId,
+      roomId: '!next:hs',
+    });
   });
 
   it('keeps Widgets attached to the opening Account after the active Account changes', async () => {

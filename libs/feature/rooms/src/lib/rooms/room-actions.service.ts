@@ -22,6 +22,7 @@ import {
   type DirectoryJoin,
 } from '../room-directory/room-directory.component';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
+import type { RoomSettingsResult } from '../room-settings/room-settings.models';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -200,9 +201,14 @@ export class RoomActionsService {
       });
   }
 
-  /** Move to a room's upgraded successor (from the tombstone banner): join it, then open it. */
-  onGoToUpgradedRoom(roomId: string): void {
-    const accountId = this.store.activeAccountId();
+  /**
+   * Join a linked room, then open it: the successor from the tombstone banner, or a
+   * predecessor/successor chosen in Room settings › Advanced (for the Account that opened them).
+   */
+  onGoToUpgradedRoom(
+    roomId: string,
+    accountId: string | null = this.store.activeAccountId(),
+  ): void {
     if (!accountId) return;
     this.status.error.set(null);
     runWithBusy(
@@ -334,21 +340,26 @@ export class RoomActionsService {
       name: this.vm.railSpaces().find((s) => s.id === id)?.name ?? id,
     }));
     this.dialog
-      .openAndWait$(RoomSettingsComponent, {
-        ariaLabel: 'Room settings',
-        placement: isMobileOs() ? 'fullscreen' : 'center',
-        autoFocus: '[data-autofocus]',
-        dismissGuard: (component) =>
-          component?.requestExternalDismiss() ?? true,
-        inputs: {
-          accountId,
-          roomId: room.id,
-          roomDisplayName: room.name,
-          direct: room.directUserId !== undefined,
-          parentSpaces,
+      .openAndWait$<RoomSettingsResult, RoomSettingsComponent>(
+        RoomSettingsComponent,
+        {
+          ariaLabel: 'Room settings',
+          placement: isMobileOs() ? 'fullscreen' : 'center',
+          autoFocus: '[data-autofocus]',
+          dismissGuard: (component) =>
+            component?.requestExternalDismiss() ?? true,
+          inputs: {
+            accountId,
+            roomId: room.id,
+            roomDisplayName: room.name,
+            direct: room.directUserId !== undefined,
+            parentSpaces,
+          },
         },
-      })
+      )
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+      .subscribe((result) => {
+        if (result) this.onGoToUpgradedRoom(result.roomId, result.accountId);
+      });
   }
 }

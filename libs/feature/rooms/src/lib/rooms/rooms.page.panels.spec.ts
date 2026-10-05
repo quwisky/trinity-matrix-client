@@ -289,6 +289,43 @@ describe('RoomsPage panels, pins and media', () => {
     expect(shell.store.activeRoomId()).toBe('!new:hs'); // onSelectRoom ran with the joined id
   });
 
+  // Review Focus 5: the room opens for the Account that opened Room settings, even when
+  // another Account became active while the dialog was open.
+  it('joins a room chosen in Room settings for the Account that opened them', async () => {
+    const shell = build();
+    roomsSignal.set([
+      {
+        id: '!r:hs',
+        accountId: '@me:hs',
+        accountIds: ['@me:hs'],
+        name: 'General',
+        initial: 'G',
+        avatarMxc: null,
+        topic: 'The topic',
+        memberCount: 2,
+        encrypted: false,
+        unreadCount: 0,
+        highlightCount: 0,
+        hasUnread: false,
+        markedUnread: false,
+        lastMessage: '',
+        activityTs: 0,
+        favourite: false,
+        lowPriority: false,
+      },
+    ]);
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+    dialogOpen.mockReturnValue(
+      of({ accountId: '@alt:hs', roomId: '!next:hs' }),
+    );
+
+    shell.rooms.onOpenRoomSettings();
+    await settleWorkspace();
+
+    expect(joinPublicRoom).toHaveBeenCalledWith('@alt:hs', '!next:hs');
+  });
+
   it('marks a room read via RoomLibraryService', () => {
     const shell = build();
     shell.readState.onMarkRead({ roomId: '!r:hs', accountIds: ['@me:hs'] });
