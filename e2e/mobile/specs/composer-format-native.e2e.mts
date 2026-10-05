@@ -20,8 +20,10 @@ describe('mobile composer formatting', () => {
     await login(user, pass);
     await waitForRooms();
     await $('[data-testid="rail-rooms"]').click();
+    // A `button`, not `*`: `*` matches the outer `.channel-row` first, whose centre XCUITest
+    // atom clicks do not hit-test onto the button (#933 smoke).
     const room = $(
-      `//*[contains(@class,"channel")][contains(.,"${roomName}")]`,
+      `//button[contains(@class,"channel")][contains(.,"${roomName}")]`,
     );
     await expect(room).toBeDisplayed({ wait: 30_000 });
     await room.click();
