@@ -96,6 +96,7 @@
         class="composer__recording-send"
         aria-label="Send voice message"
         data-testid="composer-voice-send"
+        [disabled]="sendBlocked()"
         (click)="stopVoiceRecording()"
       >
         <trn-icon name="send" motion="nudge-up-right" />
@@ -154,6 +155,7 @@
       [recording]="attachments.recordingVoice()"
       [locationSharing]="attachments.locationSharing()"
       [stickerEnabled]="stickerEnabled()"
+      [sendBlocked]="sendBlocked()"
       (attachFile)="onAttach()"
       (pickGif)="toggleGifPicker()"
       (createPoll)="openPollDialog()"

@@ -873,11 +873,13 @@ export class MessageComposerComponent {
 
   /** Open the create-poll dialog (starts a poll in the active room on confirm). */
   openPollDialog(): void {
+    if (this.sendBlocked()) return;
     this.attachments.openPollDialog();
   }
 
   /** Share the device's current location to the active room. */
   shareLocation(): void {
+    if (this.sendBlocked()) return;
     this.attachments.shareLocation();
   }
 
@@ -956,6 +958,7 @@ export class MessageComposerComponent {
   }
 
   onStickerSelect(sticker: ImagePackImage): void {
+    if (this.sendBlocked()) return;
     this.stickerPickerOpen.set(false);
     this.stickerSelect.emit(sticker);
     queueMicrotask(() => this.field.focus());
@@ -992,6 +995,7 @@ export class MessageComposerComponent {
 
   /** Stop recording and send the clip as a voice message. */
   stopVoiceRecording(): void {
+    if (this.sendBlocked()) return;
     const wasRecording = this.attachments.recordingVoice();
     this.attachments.stopVoiceRecording();
     if (wasRecording) {
