@@ -10,36 +10,13 @@ import { describe, expect, it } from 'vitest';
  * A spec asserting the end state would fail on the day it landed and be deleted the first
  * time it cried wolf.
  *
- * Why these two properties and not, say, colour: `stylelint` already has
- * `declaration-property-value-disallowed-list` wired for colours, and z-index and duration
- * are the two layers where the raw values carried no relation to each other at all — 5, 10,
- * 20 and 40 with nothing saying which was meant to sit over which, and six hand-picked
- * durations across six files.
+ * Stylesheet literals (font-size, spacing, radius, z-index, hex colours) are not checked
+ * here: `.stylelintrc.json` rejects them and `scripts/stylelint-suppressions.spec.mjs` holds
+ * the recorded allow-list. This spec covers what stylelint cannot see, such as motion
+ * durations and templates.
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');
-
-/**
- * Local stacking: these order a component's own children against each other, not against
- * anything in the app. The z-index scale governs app-level layers; pretending it governs
- * these would make both harder to read.
- */
-const LOCAL_STACKING = [
-  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.scss',
-  'apps/trinity/src/rendered-markdown.scss',
-  // The member list's sticky filter, over that same list's own rows. It has to out-stack
-  // the rows it scrolls above and nothing else — the panel it sits in is placed by the
-  // shell, and giving this an app-level layer would claim a relationship it does not have.
-  'libs/feature/rooms/src/lib/member-list/member-list.component.scss',
-  // The Room-settings save bar is sticky only within its section scroller. Its local value
-  // keeps the bar above the fields it scrolls over; the dialog service owns app-level placement.
-  'libs/feature/rooms/src/lib/room-settings/_room-settings-panel.scss',
-  // Space General and Access share the same section-local sticky save-bar relationship.
-  'libs/feature/rooms/src/lib/space-settings/_space-settings-form.scss',
-  // The close control and image are children of the same full-screen lightbox. This value only
-  // keeps the control above that image; the overlay service owns the lightbox's app-level layer.
-  'libs/feature/rooms/src/lib/media-attachment/lightbox/lightbox.component.scss',
-];
 
 /**
  * Keyframe animations carry no literal durations any more.
@@ -56,42 +33,6 @@ const LOCAL_STACKING = [
  * care.
  */
 const LITERAL_ANIMATIONS = [];
-
-/**
- * Stylesheets that still size text in literal `px`. A px font-size ignores Settings →
- * Appearance → Text size (a % on the root), so at 200% that text stays small while the rest of
- * the UI grows and the layout breaks (WCAG 1.4.4 and 1.4.10). Use a `--trinity-text-*` or
- * `--trinity-type-*` role, or a `rem` value. A frozen ledger of the files not migrated yet
- * (#928): it may only shrink, and a migrated file must leave it.
- */
-const LITERAL_FONT_SIZES = [
-  'apps/trinity/src/rendered-markdown.scss',
-  'libs/feature/crypto/src/lib/recovery-key-display/recovery-key-display.component.scss',
-  'libs/feature/crypto/src/lib/verification/device-verification.page.scss',
-  'libs/feature/crypto/src/lib/verification/sas-compare.component.scss',
-  'libs/feature/rooms/src/lib/add-to-space/add-to-space.component.scss',
-  'libs/feature/rooms/src/lib/jump-to-date/jump-to-date.component.scss',
-  'libs/feature/rooms/src/lib/link-preview/link-preview.component.scss',
-  'libs/feature/rooms/src/lib/location-share/location.component.scss',
-  'libs/feature/rooms/src/lib/member-info/member-info.component.scss',
-  'libs/feature/rooms/src/lib/member-list/member-list.component.scss',
-  'libs/feature/rooms/src/lib/message-composer/composer-attachment-strip/composer-attachment-strip.component.scss',
-  'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.scss',
-  'libs/feature/rooms/src/lib/message-composer/composer-suggestions/composer-suggestions.component.scss',
-  'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
-  'libs/feature/rooms/src/lib/message-list/drop-overlay/drop-overlay.component.scss',
-  'libs/feature/rooms/src/lib/message-row/message-row.component.scss',
-  'libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.scss',
-  'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.scss',
-  'libs/feature/rooms/src/lib/pinned/pinned-messages-panel.component.scss',
-  'libs/feature/rooms/src/lib/poll/poll.component.scss',
-  'libs/feature/rooms/src/lib/shared/avatar-field/avatar-field.component.scss',
-  'libs/feature/rooms/src/lib/styles/_mixins.scss',
-  'libs/feature/rooms/src/lib/thread/threads-list.component.scss',
-  'libs/feature/rooms/src/lib/user-card/user-card.component.scss',
-  'libs/feature/rooms/src/lib/voice-message/voice-message.component.scss',
-  'libs/feature/settings/src/lib/server/homeserver-block.component.scss',
-];
 
 const files = ['libs/**/*.scss', 'apps/**/*.scss']
   .flatMap((pattern) => globSync(pattern, { cwd: workspaceRoot }))
@@ -146,14 +87,6 @@ describe('styling tokens', () => {
     );
   });
 
-  it('uses the z-index scale for every app-level layer', () => {
-    const raw = files
-      .filter((file) => !LOCAL_STACKING.includes(file))
-      .filter((file) => /z-index:\s*\d/.test(code(file)));
-
-    expect(raw).toEqual([]);
-  });
-
   it('uses the motion tokens for every transition', () => {
     // A literal duration cannot be collapsed by the reduced-motion block in variables.scss,
     // so it keeps moving for a user who asked it not to — the blanket `!important` in
@@ -163,14 +96,6 @@ describe('styling tokens', () => {
     );
 
     expect(raw).toEqual([]);
-  });
-
-  it('keeps px font sizes to the recorded ledger so text scales with the Text size setting', () => {
-    const raw = files.filter((file) =>
-      /font-size:\s*[\d.]+px/.test(code(file)),
-    );
-
-    expect(raw).toEqual([...LITERAL_FONT_SIZES].sort());
   });
 
   it('keeps the literal keyframe durations to the recorded ledger', () => {
