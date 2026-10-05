@@ -61,14 +61,29 @@ describe('getTrinityDesktopBridge', () => {
     expect(getTrinityDesktopBridge()).toBeUndefined();
   });
 
-  it('rejects a bridge without the complete title-bar group', () => {
+  it.each([
+    'setOverlayColors',
+    'popupMenu',
+    'getSystemTitleBar',
+    'setSystemTitleBar',
+    'relaunch',
+  ] as const)('rejects a title-bar group without %s', (member) => {
     const bridge = bridgeFixture();
-    const { relaunch: _relaunch, ...partialTitleBar } =
-      bridge.capabilities.titleBar;
+    const titleBar: Partial<TrinityDesktopBridge['capabilities']['titleBar']> =
+      { ...bridge.capabilities.titleBar };
+    delete titleBar[member];
     setBridge({
       ...bridge,
-      capabilities: { ...bridge.capabilities, titleBar: partialTitleBar },
+      capabilities: { ...bridge.capabilities, titleBar },
     });
+
+    expect(getTrinityDesktopBridge()).toBeUndefined();
+  });
+
+  it('rejects a bridge without the title-bar group', () => {
+    const bridge = bridgeFixture();
+    const { titleBar: _titleBar, ...capabilities } = bridge.capabilities;
+    setBridge({ ...bridge, capabilities });
 
     expect(getTrinityDesktopBridge()).toBeUndefined();
   });

@@ -52,7 +52,7 @@ type ExposedBridge = {
     readonly titleBar: {
       readonly setOverlayColors: (colors: unknown) => void;
       readonly popupMenu: (at: unknown) => void;
-      readonly getSystemTitleBar: () => Promise<boolean>;
+      readonly getSystemTitleBar: () => Promise<unknown>;
       readonly setSystemTitleBar: (value: unknown) => Promise<unknown>;
       readonly relaunch: () => void;
     };
@@ -158,7 +158,7 @@ describe('preload host capabilities', () => {
     bridge.capabilities.titleBar.relaunch();
     await expect(
       bridge.capabilities.titleBar.getSystemTitleBar(),
-    ).resolves.toBe(false);
+    ).resolves.toEqual({ saved: false, active: false });
     await expect(
       bridge.capabilities.titleBar.setSystemTitleBar(true),
     ).resolves.toEqual({ kind: 'unavailable', reason: 'host-rejected' });

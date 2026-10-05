@@ -65,7 +65,10 @@ export interface DesktopBridgeFixture {
         symbolColor: string;
       }) => void;
       readonly popupMenu: (at: { x: number; y: number }) => void;
-      readonly getSystemTitleBar: () => Promise<boolean>;
+      readonly getSystemTitleBar: () => Promise<{
+        saved: boolean;
+        active: boolean;
+      }>;
       readonly setSystemTitleBar: (value: boolean) => Promise<
         | { readonly kind: 'completed' }
         | {
@@ -132,7 +135,7 @@ export function desktopBridgeFixture(
       titleBar: {
         setOverlayColors: () => undefined,
         popupMenu: () => undefined,
-        getSystemTitleBar: async () => false,
+        getSystemTitleBar: async () => ({ saved: false, active: false }),
         setSystemTitleBar: async () => ({ kind: 'completed' }),
         relaunch: () => undefined,
       },

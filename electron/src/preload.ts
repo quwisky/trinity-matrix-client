@@ -37,8 +37,14 @@ const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
 // as with SHOW_NOTIFICATION_CHANNEL / NOTIFICATION_CLICK_CHANNEL above).
 const SET_BADGE_COUNT_CHANNEL = 'trinity:host:v1:badge:set';
 const HOST_NEGOTIATE_CHANNEL = 'trinity:host:v1:negotiate';
-// Mirrors title-bar-ipc.ts; main re-validates every payload.
-const TITLE_BAR_CHANNEL = 'trinity:host:v1:title-bar';
+// Mirror title-bar-ipc.ts by string value; main re-validates every payload.
+const SET_OVERLAY_CHANNEL = 'trinity:host:v1:title-bar:set-overlay';
+const POPUP_MENU_CHANNEL = 'trinity:host:v1:title-bar:popup-menu';
+const GET_SYSTEM_TITLE_BAR_CHANNEL =
+  'trinity:host:v1:title-bar:get-system-title-bar';
+const SET_SYSTEM_TITLE_BAR_CHANNEL =
+  'trinity:host:v1:title-bar:set-system-title-bar';
+const RELAUNCH_CHANNEL = 'trinity:host:v1:title-bar:relaunch';
 const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 
 /** Payload accepted by `showNotification`; mirrors core's `DesktopNotification`. */
@@ -289,7 +295,7 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
         if (!colors || typeof colors !== 'object') return;
         const { color, symbolColor } = colors as Partial<typeof colors>;
         if (!isHexColour(color) || !isHexColour(symbolColor)) return;
-        ipcRenderer.send(`${TITLE_BAR_CHANNEL}:set-overlay`, {
+        ipcRenderer.send(SET_OVERLAY_CHANNEL, {
           color,
           symbolColor,
         });
@@ -299,14 +305,15 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
         if (!at || typeof at !== 'object') return;
         const { x, y } = at as Partial<typeof at>;
         if (!isMenuCoordinate(x) || !isMenuCoordinate(y)) return;
-        ipcRenderer.send(`${TITLE_BAR_CHANNEL}:popup-menu`, { x, y });
+        ipcRenderer.send(POPUP_MENU_CHANNEL, { x, y });
       },
-      getSystemTitleBar: (): Promise<boolean> =>
+      getSystemTitleBar: (): Promise<{ saved: boolean; active: boolean }> =>
         grantedOperations.has('title-bar')
-          ? (ipcRenderer.invoke(
-              `${TITLE_BAR_CHANNEL}:get-system-title-bar`,
-            ) as Promise<boolean>)
-          : Promise.resolve(false),
+          ? (ipcRenderer.invoke(GET_SYSTEM_TITLE_BAR_CHANNEL) as Promise<{
+              saved: boolean;
+              active: boolean;
+            }>)
+          : Promise.resolve({ saved: false, active: false }),
       setSystemTitleBar: (value: boolean): Promise<unknown> => {
         if (!grantedOperations.has('title-bar')) {
           return Promise.resolve(unavailableGrant());
@@ -318,13 +325,13 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
           });
         }
         return ipcRenderer.invoke(
-          `${TITLE_BAR_CHANNEL}:set-system-title-bar`,
+          SET_SYSTEM_TITLE_BAR_CHANNEL,
           value,
         ) as Promise<unknown>;
       },
       relaunch: (): void => {
         if (!grantedOperations.has('title-bar')) return;
-        ipcRenderer.send(`${TITLE_BAR_CHANNEL}:relaunch`);
+        ipcRenderer.send(RELAUNCH_CHANNEL);
       },
     },
   },

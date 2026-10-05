@@ -22,6 +22,7 @@ import {
   createWindow,
   hardenContents,
   installPermissionPolicy,
+  isSystemTitleBarActive,
 } from './window';
 import { readWindowPrefs, titleBarOptions } from './window-prefs';
 
@@ -329,6 +330,14 @@ describe('createWindow title bar', () => {
       expect(setMenuBarVisibility).toHaveBeenCalledExactlyOnceWith(false);
     },
   );
+
+  it('records the title-bar mode the window was created with', () => {
+    vi.mocked(readWindowPrefs).mockReturnValueOnce({ systemTitleBar: true });
+    create();
+    expect(isSystemTitleBarActive()).toBe(true);
+    create();
+    expect(isSystemTitleBarActive()).toBe(false);
+  });
 
   it('leaves the macOS menu bar alone', () => {
     Object.defineProperty(process, 'platform', { value: 'darwin' });

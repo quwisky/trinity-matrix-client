@@ -11,12 +11,16 @@ const mocks = vi.hoisted(() => ({
       setTitleBarOverlay: ReturnType<typeof vi.fn>;
     } | null,
   },
+  systemTitleBarActive: { current: false },
+  stored: { systemTitleBar: false },
   popup: vi.fn(),
   getApplicationMenu: vi.fn(),
   relaunch: vi.fn(),
   exit: vi.fn(),
-  readWindowPrefs: vi.fn(() => ({ systemTitleBar: false })),
-  writeWindowPrefs: vi.fn(),
+  readWindowPrefs: vi.fn(() => ({ ...mocks.stored })),
+  writeWindowPrefs: vi.fn((prefs: { systemTitleBar: boolean }) => {
+    mocks.stored = { ...prefs };
+  }),
 }));
 
 vi.mock('electron', () => ({
@@ -31,6 +35,7 @@ vi.mock('electron', () => ({
 }));
 vi.mock('./window', () => ({
   getMainWindow: () => mocks.mainWindowRef.current,
+  isSystemTitleBarActive: () => mocks.systemTitleBarActive.current,
 }));
 vi.mock('./window-prefs', () => ({
   readWindowPrefs: mocks.readWindowPrefs,
@@ -73,6 +78,8 @@ describe('title-bar IPC', () => {
       setTitleBarOverlay: vi.fn(),
     };
     mocks.getApplicationMenu.mockReturnValue({ popup: mocks.popup });
+    mocks.systemTitleBarActive.current = false;
+    mocks.stored = { systemTitleBar: false };
     setPlatform('win32');
     registerTitleBarIpc();
   });
@@ -115,6 +122,29 @@ describe('title-bar IPC', () => {
       expect(
         mocks.mainWindowRef.current!.setTitleBarOverlay,
       ).not.toHaveBeenCalled();
+    });
+
+    it('skips a window running with the system title bar, which has no overlay', () => {
+      mocks.systemTitleBarActive.current = true;
+      send('set-overlay', ownSender(), {
+        color: '#121214',
+        symbolColor: '#dbdee1',
+      });
+      expect(
+        mocks.mainWindowRef.current!.setTitleBarOverlay,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('never lets a native overlay failure escape the listener', () => {
+      mocks.mainWindowRef.current!.setTitleBarOverlay.mockImplementation(() => {
+        throw new Error('Titlebar overlay is not enabled');
+      });
+      expect(() =>
+        send('set-overlay', ownSender(), {
+          color: '#121214',
+          symbolColor: '#dbdee1',
+        }),
+      ).not.toThrow();
     });
 
     it('does nothing on macOS, which has no overlay', () => {
@@ -166,15 +196,26 @@ describe('title-bar IPC', () => {
   });
 
   describe('system title bar preference', () => {
-    it('reads the stored preference', async () => {
-      mocks.readWindowPrefs.mockReturnValueOnce({ systemTitleBar: true });
-      await expect(invoke('get-system-title-bar', ownSender())).resolves.toBe(
-        true,
-      );
+    it('reports the saved preference and the running window mode', async () => {
+      mocks.systemTitleBarActive.current = true;
+      mocks.stored = { systemTitleBar: true };
+      await expect(
+        invoke('get-system-title-bar', ownSender()),
+      ).resolves.toEqual({ saved: true, active: true });
     });
 
-    it('answers a foreign sender with false without reading', async () => {
-      await expect(invoke('get-system-title-bar', {})).resolves.toBe(false);
+    it('keeps the running mode after the preference flips without a restart', async () => {
+      await invoke('set-system-title-bar', ownSender(), true);
+      await expect(
+        invoke('get-system-title-bar', ownSender()),
+      ).resolves.toEqual({ saved: true, active: false });
+    });
+
+    it('answers a foreign sender with defaults without reading', async () => {
+      await expect(invoke('get-system-title-bar', {})).resolves.toEqual({
+        saved: false,
+        active: false,
+      });
       expect(mocks.readWindowPrefs).not.toHaveBeenCalled();
     });
 
@@ -236,12 +277,28 @@ describe('title-bar IPC', () => {
       expect(mocks.relaunch).not.toHaveBeenCalled();
       expect(mocks.exit).not.toHaveBeenCalled();
     });
+  });
 
-    it('ignores every request while no main window exists', () => {
-      const sender = ownSender();
-      mocks.mainWindowRef.current = null;
-      send('relaunch', sender);
-      expect(mocks.relaunch).not.toHaveBeenCalled();
+  it('ignores every request while no main window exists', async () => {
+    const sender = ownSender();
+    const win = mocks.mainWindowRef.current!;
+    mocks.mainWindowRef.current = null;
+
+    send('set-overlay', sender, { color: '#121214', symbolColor: '#dbdee1' });
+    send('popup-menu', sender, { x: 8, y: 32 });
+    send('relaunch', sender);
+    await expect(invoke('get-system-title-bar', sender)).resolves.toEqual({
+      saved: false,
+      active: false,
     });
+    await expect(invoke('set-system-title-bar', sender, true)).resolves.toEqual(
+      { kind: 'rejected', diagnostic: { code: 'sender-rejected' } },
+    );
+
+    expect(win.setTitleBarOverlay).not.toHaveBeenCalled();
+    expect(mocks.popup).not.toHaveBeenCalled();
+    expect(mocks.relaunch).not.toHaveBeenCalled();
+    expect(mocks.readWindowPrefs).not.toHaveBeenCalled();
+    expect(mocks.writeWindowPrefs).not.toHaveBeenCalled();
   });
 });

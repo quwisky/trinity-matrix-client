@@ -71,7 +71,12 @@ export interface TrinityDesktopBridge {
       }) => void;
       /** Pop the application menu up at integer window coordinates (0–10000). */
       popupMenu: (at: { x: number; y: number }) => void;
-      getSystemTitleBar: () => Promise<boolean>;
+      /**
+       * `saved` is the stored preference (applies after `relaunch()`); `active` is
+       * whether this session's window uses the OS title bar. Draw the title row only
+       * while `active` is false.
+       */
+      getSystemTitleBar: () => Promise<{ saved: boolean; active: boolean }>;
       /** Store the preference; it applies after `relaunch()`. */
       setSystemTitleBar: (value: boolean) => Promise<HostOperationOutcome>;
       relaunch: () => void;

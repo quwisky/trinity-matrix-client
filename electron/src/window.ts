@@ -6,6 +6,8 @@ import { windowIconOptions } from './icons';
 import { readWindowPrefs, titleBarOptions } from './window-prefs';
 
 let mainWindow: BrowserWindow | null = null;
+// The mode the current window was created with; the saved pref applies only after a relaunch.
+let systemTitleBarActive = false;
 
 // Set only on the explicit Quit path (tray "Quit", app menu / Cmd+Q, or any
 // app.quit()). Until then, closing the window hides it to the tray instead of
@@ -18,6 +20,11 @@ let isQuitting = false;
  * mutable state directly. Returns `null` while no window exists. */
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow;
+}
+
+/** Whether the running window uses the OS title bar (no Trinity row, no overlay). */
+export function isSystemTitleBarActive(): boolean {
+  return systemTitleBarActive;
 }
 
 /**
@@ -105,6 +112,7 @@ export function installPermissionPolicy(session: Electron.Session): void {
 
 export function createWindow(): void {
   const prefs = readWindowPrefs();
+  systemTitleBarActive = prefs.systemTitleBar;
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
