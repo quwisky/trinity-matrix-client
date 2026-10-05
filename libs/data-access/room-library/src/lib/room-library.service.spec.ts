@@ -1569,9 +1569,12 @@ describe('RoomLibraryService per-account actions', () => {
 
     expect(svc.selectionAvailability('@owner:hs', '!r:hs')).toBe('available');
     expect(svc.selectionAvailability('@owner:hs', '!missing:hs')).toBe(
-      'unavailable',
+      'unconfirmed',
     );
     expect(svc.selectionAvailability('@gone:hs', '!r:hs')).toBe('unavailable');
+    expect(svc.selectionAvailability('@owner:hs', '#room:hs')).toBe(
+      'unavailable',
+    );
   });
 });
 
