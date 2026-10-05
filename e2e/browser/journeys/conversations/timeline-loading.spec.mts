@@ -178,8 +178,8 @@ test.describe('Timeline loading states', () => {
     await openNamedRoom(page, name);
     await expect(page.getByTestId('composer-input')).toBeVisible();
     // A created Room is never truly empty (the server seeds state events), so settled
-    // means its creation row renders instead of a skeleton.
-    await expect(page.getByText('created the room')).toBeVisible({
+    // means its setup summary (a collapsed system run) renders instead of a skeleton.
+    await expect(page.getByTestId('system-run-toggle')).toBeVisible({
       timeout: 15_000,
     });
     expect(await skeletonSeen(page)).toBe(false);
