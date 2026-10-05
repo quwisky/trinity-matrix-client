@@ -57,7 +57,7 @@
   .members-settings__destination span {
     min-width: 1.5rem;
     padding: 1px 6px;
-    border-radius: 999px;
+    border-radius: var(--trinity-radius-pill);
     background: var(--trinity-surface-control);
     color: var(--trinity-text-muted);
     font-size: var(--trinity-type-caption-size);
