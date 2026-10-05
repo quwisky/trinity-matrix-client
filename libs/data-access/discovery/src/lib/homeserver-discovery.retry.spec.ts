@@ -115,4 +115,76 @@ describe('HomeserverDiscoveryService retries (#978)', () => {
     await expect(result).rejects.toThrow();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('retries a response whose body stalls after the headers', async () => {
+    const stalledBody = (_url: unknown, init?: RequestInit) =>
+      new Response(
+        new ReadableStream({
+          start: (controller) =>
+            init?.signal?.addEventListener('abort', () =>
+              controller.error(init.signal?.reason),
+            ),
+        }),
+        { status: 200 },
+      );
+    fetchMock
+      .mockImplementationOnce(async (url, init) => stalledBody(url, init))
+      .mockImplementationOnce(async () => wellKnownOk())
+      .mockImplementationOnce(async () => versionsOk());
+
+    const result = discover();
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await expect(result).resolves.toMatchObject({
+      baseUrl: 'https://hs.example',
+    });
+    expect(wellKnownCalls()).toBe(2);
+  });
+
+  it('gives the first attempt more than the SDK 5 s budget', async () => {
+    fetchMock
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) =>
+            setTimeout(() => resolve(wellKnownOk()), 6_000),
+          ),
+      )
+      .mockImplementationOnce(async () => versionsOk());
+
+    const result = discover();
+    await vi.advanceTimersByTimeAsync(7_000);
+
+    await expect(result).resolves.toMatchObject({
+      baseUrl: 'https://hs.example',
+    });
+    expect(wellKnownCalls()).toBe(1);
+  });
+
+  it('does not retry, or wait for, a dead identity server', async () => {
+    fetchMock.mockImplementation(async (url: unknown) => {
+      const href = String(url);
+      if (href === WELL_KNOWN) {
+        return json({
+          'm.homeserver': { base_url: 'https://hs.example' },
+          'm.identity_server': { base_url: 'https://id.example' },
+        });
+      }
+      if (href.startsWith('https://id.example')) {
+        throw new TypeError('Load failed');
+      }
+      return versionsOk();
+    });
+
+    const result = discover();
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(result).resolves.toMatchObject({
+      baseUrl: 'https://hs.example',
+    });
+    expect(
+      fetchMock.mock.calls.filter(([url]) =>
+        String(url).startsWith('https://id.example'),
+      ),
+    ).toHaveLength(1);
+  });
 });
