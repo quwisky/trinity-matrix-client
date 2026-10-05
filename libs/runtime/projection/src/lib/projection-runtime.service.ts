@@ -62,6 +62,7 @@ export class ProjectionRuntime {
   private readonly entries = new Map<string, ProjectionEntry>();
   private readonly runtimeChanges = new Subject<void>();
   private readonly runtimeDiagnostics = signal(INITIAL_DIAGNOSTICS);
+  // The runtime's canonical generation (publish, acknowledgement, failure); not a latest-wins guard (#927).
   private nextGeneration = 0;
 
   readonly diagnostics = this.runtimeDiagnostics.asReadonly();

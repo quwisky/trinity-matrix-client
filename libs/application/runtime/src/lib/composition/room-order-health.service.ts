@@ -26,6 +26,7 @@ export class RoomOrderHealthService {
   private readonly order = inject(SpaceRoomOrderService);
   private readonly health = inject(CapabilityHealthService);
   private readonly contexts = new Map<string, CapabilityContext>();
+  // Version stamped into CapabilityHealthFact.generation and compared by recover(); not a latest-wins guard (#927).
   private readonly generations = new Map<string, number>();
   private demanded = new Set<string>();
   private active: RetainedFirstResult<

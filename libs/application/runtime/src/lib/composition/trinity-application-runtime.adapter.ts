@@ -91,6 +91,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly hostHealth = inject(HostSessionHealthService);
   private readonly health = inject(CapabilityHealthService);
   private readonly healthContexts = new Map<string, CapabilityContext>();
+  // Version stamped into CapabilityHealthFact.generation and compared by recover(); not a latest-wins guard (#927).
   private readonly healthGenerations = new Map<string, number>();
   private manifest: HostCapabilityManifest | null = null;
   private accountRecoveryId: string | null = null;
