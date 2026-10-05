@@ -1,4 +1,11 @@
-import { Injectable, computed, signal, type Signal } from '@angular/core';
+import {
+  Injectable,
+  computed,
+  effect,
+  signal,
+  untracked,
+  type Signal,
+} from '@angular/core';
 import { ClientEvent, SyncState, type MatrixClient } from 'matrix-js-sdk';
 import type { Subscription } from 'rxjs';
 import type { TimelineService } from './timeline.service';
@@ -22,7 +29,7 @@ export const READY_LOAD_STATE = Object.freeze({ kind: 'ready' } as const);
 
 export type ReadinessTimeline = Pick<
   TimelineService,
-  'open' | 'messages' | 'canLoadOlder' | 'loadOlder'
+  'open' | 'messages' | 'canLoadOlder' | 'loadOlder' | 'loadingOlder'
 >;
 
 /** Pages of history fetched for an empty Room before it settles `empty`. */
@@ -60,6 +67,16 @@ export class ConversationTimelineReadiness {
   private page = 0;
   private visible = true;
   private stopped = false;
+
+  constructor() {
+    effect(() => {
+      const timeline = this.timelineRef();
+      timeline?.loadingOlder();
+      timeline?.messages();
+      timeline?.canLoadOlder();
+      untracked(() => this.nextPage());
+    });
+  }
 
   readonly state: Signal<TimelineLoadState> = computed(() => {
     const phase = this.phase();
@@ -129,6 +146,10 @@ export class ConversationTimelineReadiness {
   }
 
   private waitForRoom(client: MatrixClient): void {
+    if (isStopped(client.getSyncState())) {
+      this.fail('sync-stopped');
+      return;
+    }
     this.phase.set({ kind: 'room-pending' });
     const onRoom = (): void => {
       if (client.getRoom(this.roomId)) this.run();
@@ -142,6 +163,10 @@ export class ConversationTimelineReadiness {
   }
 
   private waitForSync(client: MatrixClient): void {
+    if (isStopped(client.getSyncState())) {
+      this.fail('sync-stopped');
+      return;
+    }
     this.phase.set({ kind: 'initial-sync' });
     const onSync = (state: SyncState): void => {
       if (isStopped(state)) this.fail('sync-stopped');
@@ -176,24 +201,47 @@ export class ConversationTimelineReadiness {
     } else {
       this.phase.set({ kind: 'backfill' });
       this.page = 0;
-      if (this.visible) this.nextPage();
+      this.nextPage();
     }
   }
 
+  /**
+   * Issues one backfill page when nothing is in flight. A page that completes
+   * synchronously changed nothing (the service no-ops while hidden or already
+   * paging), so it neither counts nor recurses; the effect in the constructor
+   * re-evaluates when `loadingOlder`, `messages` or `canLoadOlder` change.
+   */
   private nextPage(): void {
     const timeline = this.timelineRef();
-    if (!timeline) return;
+    if (
+      !timeline ||
+      this.stopped ||
+      !this.visible ||
+      this.phase().kind !== 'backfill' ||
+      this.backfill ||
+      timeline.loadingOlder()
+    ) {
+      return;
+    }
     this.page += 1;
-    this.backfill = timeline.loadOlder().subscribe({
+    let sync = true;
+    const sub = timeline.loadOlder().subscribe({
       complete: () => {
+        if (this.stopped) return;
         this.backfill = null;
         if (timeline.messages().length > 0) this.phase.set(READY_LOAD_STATE);
-        else if (!timeline.canLoadOlder() || this.page >= BACKFILL_PAGE_CAP) {
+        else if (!timeline.canLoadOlder()) this.phase.set({ kind: 'empty' });
+        else if (sync) this.page -= 1;
+        else if (this.page >= BACKFILL_PAGE_CAP)
           this.phase.set({ kind: 'empty' });
-        } else this.nextPage();
+        else this.nextPage();
       },
-      error: () => this.fail('backfill-failed'),
+      error: () => {
+        if (!this.stopped) this.fail('backfill-failed');
+      },
     });
+    sync = false;
+    if (!sub.closed) this.backfill = sub;
   }
 
   private fail(

@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ClientEvent, SyncState, type MatrixClient } from 'matrix-js-sdk';
-import { Subject } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MessageView } from './message-presentation';
 import {
@@ -40,10 +40,12 @@ function fakeClient(sync: SyncState | null = SyncState.Syncing) {
 function fakeTimeline() {
   const messages = signal<MessageView[]>([]);
   const canLoadOlder = signal(false);
+  const loadingOlder = signal(false);
   const pages: Subject<void>[] = [];
   const timeline = {
     messages,
     canLoadOlder,
+    loadingOlder,
     open: vi.fn(),
     loadOlder: vi.fn(() => {
       const page = new Subject<void>();
@@ -51,7 +53,7 @@ function fakeTimeline() {
       return page.asObservable();
     }),
   };
-  return { timeline, messages, canLoadOlder, pages };
+  return { timeline, messages, canLoadOlder, loadingOlder, pages };
 }
 
 const message = { id: '$m' } as unknown as MessageView;
@@ -250,5 +252,89 @@ describe('ConversationTimelineReadiness', () => {
     const readiness = start(client, timeline);
     readiness.stop();
     expect(pages[0].observed).toBe(false);
+  });
+
+  it('does not settle empty on a synchronous no-op page, then backfills once it can', () => {
+    const client = fakeClient();
+    client.rooms.add(ROOM);
+    const { timeline, messages, canLoadOlder, pages } = fakeTimeline();
+    canLoadOlder.set(true);
+    timeline.loadOlder.mockImplementation(() => of(void 0));
+    const readiness = start(client, timeline);
+    expect(timeline.loadOlder).toHaveBeenCalledTimes(1);
+    expect(readiness.state()).toEqual({
+      kind: 'loading',
+      reason: 'backfill',
+      partial: false,
+    });
+    timeline.loadOlder.mockImplementation(() => {
+      const page = new Subject<void>();
+      pages.push(page);
+      return page.asObservable();
+    });
+    canLoadOlder.set(false);
+    canLoadOlder.set(true);
+    TestBed.tick();
+    expect(pages).toHaveLength(1);
+    messages.set([message]);
+    pages[0].complete();
+    expect(readiness.state()).toEqual({ kind: 'ready' });
+  });
+
+  it('ignores a live page after a synchronous one when stopped', () => {
+    const client = fakeClient();
+    client.rooms.add(ROOM);
+    const { timeline, canLoadOlder, pages } = fakeTimeline();
+    canLoadOlder.set(true);
+    let calls = 0;
+    timeline.loadOlder.mockImplementation(() => {
+      if (++calls === 1) return of(void 0);
+      const page = new Subject<void>();
+      pages.push(page);
+      return page.asObservable();
+    });
+    const readiness = start(client, timeline);
+    TestBed.tick();
+    canLoadOlder.set(false);
+    canLoadOlder.set(true);
+    TestBed.tick();
+    expect(pages).toHaveLength(1);
+    readiness.stop();
+    expect(pages[0].observed).toBe(false);
+    pages[0].complete();
+    expect(readiness.state()).toEqual({
+      kind: 'loading',
+      reason: 'backfill',
+      partial: false,
+    });
+  });
+
+  it('waits for loadingOlder to drop before paging', () => {
+    const client = fakeClient();
+    client.rooms.add(ROOM);
+    const { timeline, canLoadOlder, loadingOlder, pages } = fakeTimeline();
+    canLoadOlder.set(true);
+    loadingOlder.set(true);
+    start(client, timeline);
+    expect(timeline.loadOlder).not.toHaveBeenCalled();
+    loadingOlder.set(false);
+    TestBed.tick();
+    expect(pages).toHaveLength(1);
+  });
+
+  it('fails sync-stopped immediately when sync is already stopped or errored', () => {
+    for (const [state, hasRoom] of [
+      [SyncState.Stopped, false],
+      [SyncState.Error, true],
+    ] as const) {
+      const client = fakeClient(state);
+      if (hasRoom) client.rooms.add(ROOM);
+      const readiness = start(client, fakeTimeline().timeline);
+      expect(readiness.state()).toEqual({
+        kind: 'error',
+        reason: 'sync-stopped',
+      });
+      expect(client.listeners()).toBe(0);
+    }
   });
 });
