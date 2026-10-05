@@ -149,6 +149,33 @@
         </dd>
       </div>
     }
+    @if (upgrade().available) {
+      <div class="room-advanced__row">
+        <dt>Upgrade</dt>
+        <dd>
+          <button
+            trnBtn
+            type="button"
+            variant="secondary"
+            presentation="outline"
+            size="sm"
+            [trnActionAllowed]="upgradeBlockedReason() === null"
+            [trnActionDisabledReason]="upgradeBlockedReason()"
+            (click)="openUpgrade()"
+            data-testid="room-advanced-upgrade"
+          >
+            Upgrade room
+          </button>
+          @if (upgradeBlockedReason(); as reason) {
+            <span
+              class="room-advanced__note"
+              data-testid="room-advanced-upgrade-reason"
+              >{{ reason }}</span
+            >
+          }
+        </dd>
+      </div>
+    }
   </dl>
   <div>
     <button
