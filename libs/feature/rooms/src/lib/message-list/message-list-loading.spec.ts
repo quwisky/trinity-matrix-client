@@ -171,7 +171,10 @@ describe.each(LISTS)(
   'message list — conversation load state (%s)',
   (_label, List) => {
     beforeEach(() => vi.useFakeTimers());
-    afterEach(() => vi.useRealTimers());
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    });
     const advance = (ms: number) => {
       vi.advanceTimersByTime(ms);
       TestBed.tick();
@@ -287,7 +290,6 @@ describe.each(LISTS)(
       TestBed.tick();
       flush();
       expect(loadOlder).toHaveBeenCalledOnce();
-      vi.unstubAllGlobals();
     });
 
     it('does not auto-load older while loading', async () => {
@@ -305,7 +307,6 @@ describe.each(LISTS)(
       frames.splice(0).forEach((cb) => cb(0));
       advance(500);
       expect(loadOlder).not.toHaveBeenCalled();
-      vi.unstubAllGlobals();
     });
   },
 );
