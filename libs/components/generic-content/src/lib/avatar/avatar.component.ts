@@ -34,17 +34,23 @@ export interface AccountBadge {
 /** Semantic avatar geometry: identities are circular; rooms and spaces are squircles. */
 export type AvatarShape = 'person' | 'place';
 
-/** Number of themed avatar fills (`--trinity-avatar-1..6`). */
-const AVATAR_SLOTS = 6;
-type AvatarSlot = 1 | 2 | 3 | 4 | 5 | 6;
+/** The six themed avatar fills, each with its own AA ink. Spelled out in full so the token guard sees every name. */
+const AVATAR_FILLS = [
+  { fill: 'var(--trinity-avatar-1)', ink: 'var(--trinity-avatar-1-ink)' },
+  { fill: 'var(--trinity-avatar-2)', ink: 'var(--trinity-avatar-2-ink)' },
+  { fill: 'var(--trinity-avatar-3)', ink: 'var(--trinity-avatar-3-ink)' },
+  { fill: 'var(--trinity-avatar-4)', ink: 'var(--trinity-avatar-4-ink)' },
+  { fill: 'var(--trinity-avatar-5)', ink: 'var(--trinity-avatar-5-ink)' },
+  { fill: 'var(--trinity-avatar-6)', ink: 'var(--trinity-avatar-6-ink)' },
+] as const;
 
-/** Stable 1-based avatar slot from a key, like Discord's default avatars. */
-function hashSlot(key: string): AvatarSlot {
+/** Stable 0-based index into {@link AVATAR_FILLS} from a key, like Discord's default avatars. */
+function hashSlot(key: string): number {
   let hash = 0;
   for (let i = 0; i < key.length; i++) {
     hash = (hash * 31 + key.charCodeAt(i)) | 0;
   }
-  return ((Math.abs(hash) % AVATAR_SLOTS) + 1) as AvatarSlot;
+  return Math.abs(hash) % AVATAR_FILLS.length;
 }
 
 /**
@@ -125,12 +131,8 @@ export class AvatarComponent {
     const badge = this.accountBadge();
     return hashSlot(badge?.id || badge?.name || '');
   });
-  readonly badgeColor = computed(
-    () => `var(--trinity-avatar-${this.badgeSlot()})`,
-  );
-  readonly badgeInk = computed(
-    () => `var(--trinity-avatar-${this.badgeSlot()}-ink)`,
-  );
+  readonly badgeColor = computed(() => AVATAR_FILLS[this.badgeSlot()].fill);
+  readonly badgeInk = computed(() => AVATAR_FILLS[this.badgeSlot()].ink);
 
   /** Accessible label / tooltip for the presence dot (null when there's no dot). */
   readonly presenceTitle = computed(() => {
@@ -178,10 +180,8 @@ export class AvatarComponent {
   private readonly slot = computed(() =>
     hashSlot(this.name() || this.initial()),
   );
-  readonly color = computed(() => `var(--trinity-avatar-${this.slot()})`);
-  readonly initialColor = computed(
-    () => `var(--trinity-avatar-${this.slot()}-ink)`,
-  );
+  readonly color = computed(() => AVATAR_FILLS[this.slot()].fill);
+  readonly initialColor = computed(() => AVATAR_FILLS[this.slot()].ink);
 
   constructor() {
     // Re-resolve when the bound avatar changes (instances are reused across @for

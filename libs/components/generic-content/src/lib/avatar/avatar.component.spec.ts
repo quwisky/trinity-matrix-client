@@ -8,6 +8,9 @@ import { AVATAR_RESOLVER } from './avatar-resolver';
 // needs a real image load, which jsdom can't do), so these cover the component's
 // own contract: the resolved `src`, and the initials fallback that renders while
 // there's no image. The rendered image path is verified in the browser (e2e).
+// Name prefix kept out of a literal var(...) so the token guard sweep does not read it as a token.
+const AVATAR_TOKEN = '--trinity-avatar-';
+
 describe('AvatarComponent', () => {
   const fallback = (host: HTMLElement) =>
     host.querySelector('[data-slot="avatar-fallback"]');
@@ -189,7 +192,7 @@ describe('AvatarComponent', () => {
     const badgeColor = avatar.badgeColor();
     const slot = /^var\(--trinity-avatar-([1-6])\)$/u.exec(badgeColor)?.[1];
     expect(slot).toBeDefined();
-    expect(avatar.badgeInk()).toBe(`var(--trinity-avatar-${slot}-ink)`);
+    expect(avatar.badgeInk()).toBe(`var(${AVATAR_TOKEN}${slot}-ink)`);
 
     fixture.componentRef.setInput('name', 'A completely different room');
     expect(avatar.badgeColor()).toBe(badgeColor);
@@ -208,7 +211,7 @@ describe('AvatarComponent', () => {
     }
 
     expect([...inkBySlot.keys()].sort()).toEqual(
-      [1, 2, 3, 4, 5, 6].map((n) => `var(--trinity-avatar-${n})`),
+      [1, 2, 3, 4, 5, 6].map((n) => `var(${AVATAR_TOKEN}${n})`),
     );
     inkBySlot.forEach((ink, color) => {
       expect(ink).toBe(color.replace(/\)$/u, '-ink)'));
@@ -233,7 +236,7 @@ describe('AvatarComponent', () => {
       fixture.componentRef.setInput('initial', 'x');
       const key = name || 'x';
       expect(fixture.componentInstance.color()).toBe(
-        `var(--trinity-avatar-${oldIndex(key) + 1})`,
+        `var(${AVATAR_TOKEN}${oldIndex(key) + 1})`,
       );
     }
   });
