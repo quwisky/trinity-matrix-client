@@ -11,12 +11,8 @@
   }
 
   // Spacers standing in for the off-screen rows above/below the window. Must not
-  // shrink in the flex column. Their height must apply in the frame it is set: the windowing
-  // reads scrollHeight right after, and the global reduced-motion reset gives every element
-  // a 0.01ms transition, which otherwise keeps the old height for that frame (#959). The
-  // reset forces only the duration, so the property is what turns it off.
+  // shrink in the flex column.
   .vpad {
     flex: 0 0 auto;
-    transition-property: none;
   }
 }

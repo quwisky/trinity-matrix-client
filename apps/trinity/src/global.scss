@@ -245,13 +245,15 @@
     }
   }
 
-  /* Respect users who prefer reduced motion. */
+  /* Respect users who prefer reduced motion. Transitions are removed, not shortened:
+     see the reduced-motion note in theme-foundation's variables.scss (#962). */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
     *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
+      transition-property: none !important;
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }

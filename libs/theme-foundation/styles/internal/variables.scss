@@ -615,6 +615,19 @@
   // without a `motion-safe:` prefix, and nothing prevents the next one being written bare —
   // the guard covers `libs/spartan/**`, not the app. And, per the note above, the blanket is
   // what stops the infinite animations spinning: collapsing a duration does not end them.
+
+  // The blanket also sets `transition-property: none` (#962). Forcing only the duration left
+  // the property at its initial `all`, so EVERY element — including ones that never declared
+  // a transition — ran a 0.01ms transition on every property. A geometry style written from
+  // code (`[style.height.px]`, `el.style.maxHeight = …`, a pane-width variable) then kept its
+  // old computed value for that frame, and a layout read straight after it was stale, only
+  // for reduced-motion users (#959: the timeline reopened at the top). Opting elements out one
+  // at a time (#961) missed the message sheet, the pane handle and the anchored overlay, and
+  // every new measuring site would have to remember it, so the blanket removes transitions
+  // outright. The cost is that the app's transitions fire no `transitionend` under reduced
+  // motion, so nothing may wait for one — `scripts/reduced-motion-reset.spec.mjs` enforces
+  // both halves. CDK's overlay backdrop is the one library listener, and it has a 500ms
+  // fallback. Animations are untouched: they still run once at 0.01ms and fire `animationend`.
   @media (prefers-reduced-motion: reduce) {
     :root {
       --trinity-duration-press: 0.01ms;
