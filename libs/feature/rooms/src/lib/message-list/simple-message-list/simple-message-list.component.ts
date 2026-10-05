@@ -112,6 +112,8 @@ export class SimpleMessageListComponent extends MessageListBase {
 
     effect(() => {
       const msgs = this.messages();
+      // Tracked so a load that ends with the same messages still retries the viewport fill.
+      const settled = this.settled();
       const el = this.scrollEl()?.nativeElement;
       if (!el) {
         return;
@@ -173,7 +175,7 @@ export class SimpleMessageListComponent extends MessageListBase {
         const prependedOlder = oldestId !== this.lastBackfillOldestId;
         if (
           notFull &&
-          this.settled() &&
+          settled &&
           this.canLoadOlder() &&
           !this.loadingOlder() &&
           !this.pendingPrepend &&

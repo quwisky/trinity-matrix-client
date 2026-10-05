@@ -260,16 +260,52 @@ describe.each(LISTS)(
       fixture.componentRef.setInput('loadState', { kind: 'ready' });
       TestBed.tick();
       expect(composer().sendBlocked()).toBe(false);
+      fixture.componentRef.setInput('loadState', {
+        kind: 'error',
+        reason: 'sync-stopped',
+      });
+      TestBed.tick();
+      expect(composer().sendBlocked()).toBe(true);
+    });
+
+    it('retries the viewport fill once when loading ends with the same messages', async () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+        frames.push(cb);
+        return 0;
+      });
+      const flush = () => frames.splice(0).forEach((cb) => cb(0));
+      const { fixture } = await create(loading(), [fakeMessage('$1', 'hi')]);
+      const loadOlder = vi.fn();
+      fixture.componentInstance.loadOlder.subscribe(loadOlder);
+      fixture.componentRef.setInput('canLoadOlder', true);
+      fixture.componentRef.setInput('oldestEventId', '$1');
+      TestBed.tick();
+      flush();
+      expect(loadOlder).not.toHaveBeenCalled();
+      fixture.componentRef.setInput('loadState', { kind: 'ready' });
+      TestBed.tick();
+      flush();
+      expect(loadOlder).toHaveBeenCalledOnce();
+      vi.unstubAllGlobals();
     });
 
     it('does not auto-load older while loading', async () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+        frames.push(cb);
+        return 0;
+      });
       const { fixture } = await create(loading());
       const loadOlder = vi.fn();
       fixture.componentInstance.loadOlder.subscribe(loadOlder);
       fixture.componentRef.setInput('canLoadOlder', true);
+      fixture.componentRef.setInput('oldestEventId', '$1');
       TestBed.tick();
+      frames.splice(0).forEach((cb) => cb(0));
       advance(500);
       expect(loadOlder).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
     });
   },
 );
