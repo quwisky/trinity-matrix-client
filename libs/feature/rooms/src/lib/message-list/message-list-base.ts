@@ -40,6 +40,7 @@ import {
   DateTimeFormatService,
   HapticsService,
 } from '@trinity/platform-native';
+import { groupSystemRuns } from './system-runs';
 import { DayBoundaryService } from './day-boundary.service';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import { delayedBusy } from '@trinity/util/ui';
@@ -356,7 +357,7 @@ export abstract class MessageListBase {
    * anything derived from "the previous *rendered* row" would emit a spurious separator at
    * the top of every window and lose the one where a window opens mid-day.
    */
-  readonly rows = computed<MessageRow[]>(() => {
+  private readonly eventRows = computed<MessageRow[]>(() => {
     const GAP_MS = 5 * 60 * 1000;
     const msgs = this.messages();
     const todayStart = this.dayBoundary.todayStart();
@@ -416,6 +417,62 @@ export abstract class MessageListBase {
     });
     this.rowCache = nextCache;
     return result;
+  });
+
+  // Group rows from the previous pass, keyed by group id, so an unchanged run keeps its
+  // row identity (see `groupSystemRuns`).
+  private groupCache: ReadonlyMap<string, MessageRow> = new Map();
+
+  /** Event rows with each run of adjacent system lines folded into one summary row. */
+  private readonly grouping = computed(() => {
+    const grouped = groupSystemRuns(
+      this.eventRows(),
+      this.firstUnreadId(),
+      this.groupCache,
+    );
+    this.groupCache = new Map(
+      grouped.rows.filter((row) => row.systemRun).map((row) => [row.id, row]),
+    );
+    return grouped;
+  });
+
+  /** The rows both lists render. */
+  readonly rows = computed(() => this.grouping().rows);
+
+  /** Member event id → the id of the group row that holds it. */
+  readonly runOf = computed(() => this.grouping().runOf);
+
+  private readonly expandedRunIds = signal<ReadonlySet<string>>(new Set());
+  /** Group rows the reader has expanded; in memory only, cleared on a room switch. */
+  readonly expandedRuns = this.expandedRunIds.asReadonly();
+
+  toggleRun(groupId: string): void {
+    this.expandedRunIds.update((ids) => {
+      const next = new Set(ids);
+      if (!next.delete(groupId)) next.add(groupId);
+      return next;
+    });
+  }
+
+  /**
+   * The row to scroll to for an event: the event itself, or the group that holds it,
+   * expanded so the line is on screen.
+   */
+  revealEvent(eventId: string): string {
+    // Untracked: callers are jump effects that must fire on a new request only, not on
+    // every timeline change or expand/collapse.
+    return untracked(() => {
+      const groupId = this.runOf().get(eventId);
+      if (!groupId) return eventId;
+      if (!this.expandedRunIds().has(groupId)) this.toggleRun(groupId);
+      return groupId;
+    });
+  }
+
+  /** The row the "New messages" divider sits above (a run splits at the first unread). */
+  readonly unreadRowId = computed(() => {
+    const id = this.firstUnreadId();
+    return id ? (this.runOf().get(id) ?? id) : null;
   });
 
   /** Rows whose avatar column continues to a later thread in the same sender group. */
@@ -512,7 +569,7 @@ export abstract class MessageListBase {
 
   /** Scroll the "New messages" divider (first unread) into view. */
   jumpToUnread(): void {
-    const id = this.firstUnreadId();
+    const id = this.unreadRowId();
     if (id) {
       this.jumpTo(id);
     }
@@ -525,6 +582,8 @@ export abstract class MessageListBase {
     this.messageSheet.close(this);
     this.announcement.set('');
     this.rowCache.clear();
+    this.groupCache = new Map();
+    this.expandedRunIds.set(new Set());
   }
 
   /**

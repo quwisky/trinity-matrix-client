@@ -652,6 +652,7 @@ export class VirtualMessageListComponent extends MessageListBase {
    * event isn't loaded.
    */
   jumpTo(messageId: string): void {
+    messageId = this.revealEvent(messageId);
     const el = this.scrollEl()?.nativeElement;
     if (!el) {
       return;

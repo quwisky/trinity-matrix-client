@@ -3,10 +3,36 @@
 @if (r.kind === 'event') {
   <div
     class="msg msg--event"
+    [class.msg--run]="!!r.systemRun"
     [attr.data-mid]="r.id"
     data-testid="timeline-event"
   >
-    <span class="msg__event-text">{{ r.summary }}</span>
+    @if (r.systemRun; as run) {
+      <button
+        type="button"
+        class="msg__run-toggle"
+        data-testid="system-run-toggle"
+        [attr.aria-expanded]="runExpanded()"
+        (click)="toggleRun.emit()"
+      >
+        <span class="msg__event-text">{{ run.summary }}</span>
+      </button>
+      @if (runExpanded()) {
+        <ul class="msg__run-lines" data-testid="system-run-lines">
+          @for (line of run.events; track line.id) {
+            <li
+              class="msg__event-text"
+              data-testid="system-run-line"
+              [attr.data-event-id]="line.id"
+            >
+              {{ line.summary }}
+            </li>
+          }
+        </ul>
+      }
+    } @else {
+      <span class="msg__event-text">{{ r.summary }}</span>
+    }
   </div>
 } @else {
   <div
@@ -35,7 +61,7 @@
     (pointerup)="onPointerUp($event)"
     (pointercancel)="onPointerCancel()"
     (pointerleave)="onPointerLeave()"
-    (focusin)="toolbarActive.set(true)"
+    (focusin)="onFocusIn($event)"
     (focusout)="onFocusOut($event)"
   >
     @if (swipeDirection() !== 'off' && !caps().readOnly) {
@@ -72,7 +98,16 @@
         size="xl"
       />
     } @else {
-      <span class="msg__gutter">{{ fmt.time(r.timestamp) }}</span>
+      @if (isoTime(r.timestamp); as iso) {
+        <time
+          class="msg__gutter"
+          [attr.datetime]="iso"
+          [trnTooltip]="fmt.dateTime(r.timestamp)"
+          >{{ fmt.time(r.timestamp) }}</time
+        >
+      } @else {
+        <span class="msg__gutter">{{ fmt.time(r.timestamp) }}</span>
+      }
     }
 
     <!-- One body for both layouts. It used to be written twice, character-identical
@@ -84,7 +119,16 @@
         @if (r.showHeader) {
           <div class="msg__head">
             <span class="msg__author">{{ r.senderName }}</span>
-            <span class="msg__time">{{ fmt.dateTime(r.timestamp) }}</span>
+            @if (isoTime(r.timestamp); as iso) {
+              <time
+                class="msg__time"
+                [attr.datetime]="iso"
+                [trnTooltip]="fmt.dateTime(r.timestamp)"
+                >{{ fmt.time(r.timestamp) }}</time
+              >
+            } @else {
+              <span class="msg__time">{{ fmt.dateTime(r.timestamp) }}</span>
+            }
             @if (showEditedMarker()) {
               <button
                 type="button"

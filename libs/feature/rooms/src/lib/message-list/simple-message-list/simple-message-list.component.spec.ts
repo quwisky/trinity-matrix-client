@@ -128,6 +128,28 @@ describe('SimpleMessageListComponent', () => {
     expect(container.textContent).toContain('body $2');
   });
 
+  it('jumping to a system event hidden in a run expands the run and targets its row', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const { fixture, container } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [
+          msg('$m1', '@a:hs', 'Alice', 1000),
+          eventRow('$e1', 'Alice joined', 2000),
+          eventRow('$e2', 'Alice set a name', 3000),
+          eventRow('$e3', 'Alice left', 4000),
+          msg('$m2', '@b:hs', 'Bob', 5000),
+        ],
+      },
+    });
+    const list = fixture.componentInstance;
+
+    list.jumpTo('$e2');
+    fixture.detectChanges();
+
+    expect(list.expandedRuns().has('group:$e3')).toBe(true);
+    expect(container.querySelector('[data-mid="group:$e3"]')).not.toBeNull();
+  });
+
   it('renders state events as system lines that break sender grouping', async () => {
     const { container } = await render(SimpleMessageListComponent, {
       inputs: {
@@ -437,6 +459,40 @@ describe('SimpleMessageListComponent', () => {
     fixture.componentRef.setInput('jumpToNonce', 2);
     fixture.detectChanges();
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not re-run a past jump when the timeline changes or its group is collapsed', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const messages = [
+      msg('$m1', '@a:hs', 'Alice', 1000),
+      eventRow('$e1', 'Alice joined', 2000),
+      eventRow('$e2', 'Alice set a name', 3000),
+      eventRow('$e3', 'Alice left', 4000),
+      msg('$m2', '@b:hs', 'Bob', 5000),
+    ];
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages },
+    });
+    const list = fixture.componentInstance;
+
+    fixture.componentRef.setInput('jumpToId', '$e2');
+    fixture.componentRef.setInput('jumpToNonce', 1);
+    fixture.detectChanges();
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(list.expandedRuns().has('group:$e3')).toBe(true);
+
+    fixture.componentRef.setInput('messages', [
+      ...messages,
+      msg('$m3', '@a:hs', 'Alice', 6000),
+    ]);
+    fixture.detectChanges();
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+    list.toggleRun('group:$e3');
+    fixture.detectChanges();
+    expect(list.expandedRuns().has('group:$e3')).toBe(false);
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
 
   it('flashes the jumped-to row', async () => {
@@ -950,6 +1006,26 @@ describe('SimpleMessageListComponent', () => {
       cmp.jumpToUnread();
 
       expect(jumpTo).toHaveBeenCalledWith('$2');
+    });
+
+    it('jumpToUnread does not expand the run whose first member is the first unread', async () => {
+      const { fixture } = await render(SimpleMessageListComponent, {
+        inputs: {
+          messages: [
+            msg('$m1', '@a:hs', 'Alice', 1000),
+            eventRow('$e1', 'Alice joined', 2000),
+            eventRow('$e2', 'Alice set a name', 3000),
+            eventRow('$e3', 'Alice left', 4000),
+            msg('$m2', '@b:hs', 'Bob', 5000),
+          ],
+          firstUnreadId: '$e1',
+        },
+      });
+      const cmp = fixture.componentInstance;
+
+      cmp.jumpToUnread();
+
+      expect(cmp.expandedRuns().size).toBe(0);
     });
   });
 

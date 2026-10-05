@@ -125,10 +125,13 @@ test.describe('Composer @-mentions', () => {
     await composer.fill(`@${memberName.slice(0, 5)}`);
     const menu = page.getByTestId('mention-autocomplete');
     await expect(menu).toBeVisible({ timeout: 15_000 });
-    await expect(menu.getByText(memberName)).toBeVisible();
+    const option = menu.getByRole('option', {
+      name: `${memberName} (${memberId})`,
+    });
+    await expect(option).toBeVisible();
 
     // Pick the member → the composer shows the mention, then send.
-    await menu.getByText(memberName).click();
+    await option.click();
     await expect(composer).toHaveValue(`@${memberName} `);
     await composer.press('Enter');
 

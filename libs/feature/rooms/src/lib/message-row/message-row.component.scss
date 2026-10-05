@@ -93,6 +93,34 @@
     overflow-wrap: anywhere;
   }
 
+  .msg--run {
+    flex-direction: column;
+    align-items: center;
+    row-gap: var(--trinity-space-1);
+  }
+
+  .msg__run-toggle {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+
+    &:hover .msg__event-text {
+      text-decoration: underline;
+    }
+  }
+
+  .msg__run-lines {
+    display: flex;
+    flex-direction: column;
+    gap: var(--trinity-space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
   // The "(edited)" marker opens the message's edit history. It keeps the muted, 12px
   // look of the label it replaced — the negative margins buy a ~44px touch target out of
   // the surrounding padding without moving the baseline, which matters because on a
@@ -321,6 +349,7 @@
   }
 
   .msg__text {
+    max-width: var(--trinity-measure-prose);
     margin: 2px 0 0;
     color: var(--trinity-text);
     font-size: var(--trinity-type-message-size);
