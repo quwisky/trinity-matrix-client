@@ -16,8 +16,6 @@ describe('TimelineSkeletonComponent', () => {
       expect(group.querySelector('.skeleton-avatar')).not.toBeNull();
       expect(group.querySelector('.skeleton-bar--name')).not.toBeNull();
     }
-    expect(
-      container.querySelector('[data-testid="timeline-skeleton"]'),
-    ).not.toBeNull();
+    expect(container.getAttribute('data-testid')).toBe('timeline-skeleton');
   });
 });

@@ -9,6 +9,7 @@ const GROUPS: readonly (readonly number[])[] = [[72, 48], [86], [64, 90, 40]];
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './timeline-skeleton.component.html',
   styleUrl: './timeline-skeleton.component.scss',
+  host: { 'data-testid': 'timeline-skeleton' },
 })
 export class TimelineSkeletonComponent {
   protected readonly groups = GROUPS;
