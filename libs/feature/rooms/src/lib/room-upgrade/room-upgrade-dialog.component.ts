@@ -68,8 +68,13 @@ export function upgradeSummary(
   ].filter(Boolean);
   return {
     message: [`Upgraded; ${counts.join(' and ')} failed.`, ...retry].join(' '),
-    // Kept until dismissed: it is the only list of what still needs doing.
-    options: { variant: 'warning', duration: 0 },
+    // Kept until dismissed: it is the only list of what still needs doing. The toaster has
+    // no close button, so the action is how a keyboard user dismisses it.
+    options: {
+      variant: 'warning',
+      duration: 0,
+      action: { label: 'Dismiss', onClick: () => undefined },
+    },
   };
 }
 
@@ -138,6 +143,13 @@ export class RoomUpgradeDialogComponent {
   });
   readonly error = signal<string | null>(null);
   readonly inviteMembers = computed(() => this.model().inviteMembers);
+  /** The new room's creators line; null below v12, where creators cannot be added. */
+  readonly creators = computed(() => {
+    const { version } = this.model();
+    if (!/^\d+$/.test(version) || Number(version) < 12) return null;
+    const { additionalCreatorNames } = this.plan();
+    return ['you', ...additionalCreatorNames].join(', ');
+  });
   readonly canUpgrade = computed(() => !!this.model().version && !this.busy());
   readonly versionOptions = computed<readonly TrnSelectOption<string>[]>(() =>
     this.plan().targets.map(({ version, isDefault }) => ({

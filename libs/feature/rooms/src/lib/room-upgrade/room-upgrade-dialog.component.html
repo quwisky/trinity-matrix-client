@@ -29,6 +29,15 @@
     />
   </div>
 
+  @if (creators(); as creators) {
+    <p
+      class="text-sm text-muted-foreground"
+      data-testid="room-upgrade-creators"
+    >
+      Creators of the new room: {{ creators }}
+    </p>
+  }
+
   @if (plan().members.length > 0) {
     <label
       class="flex items-center gap-2 text-sm"

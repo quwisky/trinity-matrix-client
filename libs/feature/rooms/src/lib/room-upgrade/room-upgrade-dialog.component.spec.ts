@@ -35,6 +35,7 @@ const PLAN: RoomUpgradePlan = {
     },
   ],
   additionalCreators: [],
+  additionalCreatorNames: [],
 };
 
 const RESULT: RoomUpgradeResult = {
@@ -130,7 +131,11 @@ describe('upgradeSummary', () => {
     ).toEqual({
       message:
         'Upgraded; 2 invites and 1 space link failed. Invite again: @bob:hs and @carol:hs. Remove the old room from: Design.',
-      options: { variant: 'warning', duration: 0 },
+      options: {
+        variant: 'warning',
+        duration: 0,
+        action: { label: 'Dismiss', onClick: expect.any(Function) },
+      },
     });
     expect(
       upgradeSummary(
@@ -364,8 +369,38 @@ describe('RoomUpgradeDialogComponent', () => {
 
     expect(show).toHaveBeenCalledWith(
       'Upgraded; 1 invite and 1 space link failed. Invite again: @bob:hs. Add the new room to: Design.',
-      { variant: 'warning', duration: 0 },
+      {
+        variant: 'warning',
+        duration: 0,
+        action: { label: 'Dismiss', onClick: expect.any(Function) },
+      },
     );
+  });
+
+  const withCreators = {
+    ...PLAN,
+    additionalCreators: ['@alice:hs'],
+    additionalCreatorNames: ['Alice'],
+  };
+
+  it('lists the new room’s creators for version 12', async () => {
+    const { text } = await build({
+      ...withCreators,
+      targets: [{ version: '12', isDefault: true }],
+    });
+
+    expect(text('room-upgrade-creators')).toBe(
+      'Creators of the new room: you, Alice',
+    );
+  });
+
+  it('hides the creators for version 11', async () => {
+    const { byTestId } = await build({
+      ...withCreators,
+      targets: [{ version: '11', isDefault: true }],
+    });
+
+    expect(byTestId('room-upgrade-creators')).toBeNull();
   });
 
   it('shows a rejected upgrade inline and stays open', async () => {

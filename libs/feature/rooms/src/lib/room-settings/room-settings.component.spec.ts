@@ -84,6 +84,7 @@ const UPGRADE_PLAN: RoomUpgradePlan = {
   members: [],
   spaces: [],
   additionalCreators: [],
+  additionalCreatorNames: [],
 };
 
 function roomSnapshot(

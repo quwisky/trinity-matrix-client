@@ -71,6 +71,7 @@ const PLAN: RoomUpgradePlan = {
   members: ['@bob:hs'],
   spaces: [],
   additionalCreators: [],
+  additionalCreatorNames: [],
 };
 const RESULT: RoomUpgradeResult = {
   newRoomId: '!new-room:hs',
