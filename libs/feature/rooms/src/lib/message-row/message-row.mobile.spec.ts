@@ -123,6 +123,10 @@ describe('MessageRowComponent — the long press on a mobile OS', () => {
     const { container, pressed } = await renderRow();
 
     expect(container.querySelector('.msg__toolbar')).toBeNull();
+    // No desktop toolbar to reach, so the row is not a keyboard tab stop either.
+    expect(container.querySelector('.msg')?.hasAttribute('tabindex')).toBe(
+      false,
+    );
 
     longPress(container);
 
@@ -213,6 +217,9 @@ describe('MessageRowComponent — the long press on a mobile OS', () => {
   it('still opens the overflow menu on a right-click everywhere else', async () => {
     state.mobile = false;
     const { container, fixture } = await renderRow();
+    // The bar mounts on hover (#958); the right-click below reuses the mounted one.
+    container.querySelector('.msg')?.dispatchEvent(new Event('pointerenter'));
+    TestBed.tick();
     // `toolbar` is a private viewChild; reached the same way `message-list-base.spec.ts`
     // reaches its protected members, because what is being asserted is the collaboration.
     const bar = (

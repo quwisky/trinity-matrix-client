@@ -639,12 +639,192 @@ describe('MessageRowComponent', () => {
     expect(container.querySelector('[data-testid=read-receipts]')).toBeNull();
   });
 
-  it('renders the message body and the hover toolbar', async () => {
+  it('renders the message body without mounting the hover toolbar', async () => {
+    // The toolbar is ~33 nodes and ~32 listeners; mounting it on every row made it most of a
+    // long room's DOM (#958). It exists only on the row being hovered, focused or revealed.
     const { container } = await renderRow({ row: row() });
 
     expect(container.querySelector('.msg')).toBeTruthy();
     expect(container.textContent).toContain('hello');
-    expect(container.querySelector('trn-message-toolbar')).toBeTruthy();
+    expect(container.querySelector('trn-message-toolbar')).toBeNull();
+  });
+
+  describe('lazy toolbar and keyboard access', () => {
+    const toolbar = (container: HTMLElement) =>
+      container.querySelector('trn-message-toolbar');
+    const msg = (container: HTMLElement) =>
+      container.querySelector('.msg') as HTMLElement;
+    const settle = async () => {
+      TestBed.tick();
+      await Promise.resolve();
+      TestBed.tick();
+    };
+    const menuOpen = () =>
+      document.querySelectorAll('[data-testid=msg-copy]').length > 0;
+
+    afterEach(() => {
+      document
+        .querySelectorAll('.cdk-overlay-container')
+        .forEach((el) => el.remove());
+    });
+
+    it('mounts the toolbar when the pointer enters the row', async () => {
+      const { container } = await renderRow({ row: row(), caps: caps() });
+
+      fireEvent.pointerEnter(msg(container));
+      await settle();
+
+      expect(toolbar(container)).not.toBeNull();
+    });
+
+    it('unmounts the toolbar when the pointer leaves the row', async () => {
+      const { container } = await renderRow({ row: row(), caps: caps() });
+
+      fireEvent.pointerEnter(msg(container));
+      await settle();
+      fireEvent.pointerLeave(msg(container));
+      await settle();
+
+      expect(toolbar(container)).toBeNull();
+    });
+
+    it('mounts the toolbar when focus enters the row', async () => {
+      const { container } = await renderRow({ row: row(), caps: caps() });
+
+      msg(container).focus();
+      await settle();
+
+      expect(toolbar(container)).not.toBeNull();
+    });
+
+    it('keeps the toolbar while focus is inside the row after the pointer leaves', async () => {
+      const { container } = await renderRow({ row: row(), caps: caps() });
+
+      fireEvent.pointerEnter(msg(container));
+      await settle();
+      container
+        .querySelector<HTMLButtonElement>('button[aria-label="Reply"]')
+        ?.focus();
+      fireEvent.pointerLeave(msg(container));
+      await settle();
+
+      expect(toolbar(container)).not.toBeNull();
+    });
+
+    it('unmounts the toolbar when focus leaves the row', async () => {
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const outside = document.createElement('button');
+      document.body.append(outside);
+
+      msg(container).focus();
+      await settle();
+      outside.focus();
+      await settle();
+
+      expect(toolbar(container)).toBeNull();
+      outside.remove();
+    });
+
+    it('keeps the toolbar while its overflow menu is open, and drops it once closed', async () => {
+      // The menu renders in an overlay outside the row; unmounting the toolbar would close it
+      // under the user.
+      const { container } = await renderRow({ row: row(), caps: caps() });
+
+      fireEvent.pointerEnter(msg(container));
+      await settle();
+      container.querySelector<HTMLElement>('[data-testid=msg-more]')?.click();
+      await settle();
+      expect(menuOpen()).toBe(true);
+      fireEvent.pointerLeave(msg(container));
+      await settle();
+
+      expect(toolbar(container)).not.toBeNull();
+      expect(menuOpen()).toBe(true);
+
+      // A click elsewhere closes the menu without returning focus to the row.
+      const outside = document.createElement('div');
+      document.body.append(outside);
+      outside.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, composed: true }),
+      );
+      outside.click();
+      await settle();
+      await settle();
+      outside.remove();
+
+      expect(menuOpen()).toBe(false);
+      expect(toolbar(container)).toBeNull();
+    });
+
+    it('mounts the toolbar while the row is revealed by a long press', async () => {
+      vi.useFakeTimers();
+      const { container } = await renderRow({ row: row(), caps: caps() });
+
+      msg(container).dispatchEvent(
+        Object.assign(
+          new Event('pointerdown', { bubbles: true, cancelable: true }),
+          { pointerType: 'touch', clientX: 100, clientY: 0, isPrimary: true },
+        ),
+      );
+      vi.advanceTimersByTime(600);
+      await settle();
+
+      expect(toolbar(container)).not.toBeNull();
+      vi.useRealTimers();
+    });
+
+    it('makes an action-capable message one named tab stop', async () => {
+      const { container } = await renderRow({
+        row: row({ body: 'lunch at noon?' }),
+        caps: caps(),
+      });
+      const el = msg(container);
+
+      expect(el.getAttribute('tabindex')).toBe('0');
+      expect(el.getAttribute('role')).toBe('article');
+      expect(el.getAttribute('aria-label')).toContain('Alice');
+      expect(el.getAttribute('aria-label')).toContain('lunch at noon?');
+      // No hidden toolbar buttons to tab through before the row is focused.
+      expect(container.querySelectorAll('button').length).toBe(0);
+    });
+
+    it.each([
+      [
+        'a state event',
+        row({ kind: 'event', summary: 'Alice joined' }),
+        caps(),
+      ],
+      ['a redacted message', row({ kind: 'redacted' }), caps()],
+      ['a read-only row', row(), caps({ readOnly: true })],
+      ['an undecryptable message', row({ decryptionFailed: true }), caps()],
+    ])('does not make %s a tab stop', async (_name, r, c) => {
+      const { container } = await renderRow({ row: r, caps: c });
+
+      expect(container.querySelector('[tabindex="0"].msg')).toBeNull();
+    });
+
+    it.each([
+      ['Shift+F10', { key: 'F10', shiftKey: true }],
+      ['the context-menu key', { key: 'ContextMenu' }],
+    ])('opens the action menu on %s from a focused row', async (_name, key) => {
+      const { container } = await renderRow({ row: row(), caps: caps() });
+      const el = msg(container);
+      el.focus();
+      await settle();
+
+      const event = new KeyboardEvent('keydown', {
+        ...key,
+        bubbles: true,
+        cancelable: true,
+      });
+      el.dispatchEvent(event);
+      await settle();
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(menuOpen()).toBe(true);
+      // Keyboard users land in the menu, so arrows and Escape work straight away.
+      expect(document.activeElement?.closest('[role=menu]')).not.toBeNull();
+    });
   });
 
   it('shows a thread indicator and emits a thread action on click', async () => {
@@ -757,10 +937,10 @@ describe('MessageRowComponent', () => {
         cancelable: true,
       });
       el.dispatchEvent(event);
-      await Promise.resolve();
+      // The toolbar mounts on demand, and the menu opens once it has rendered.
+      await waitFor(() => expect(menuOpen()).toBe(true));
 
       expect(event.defaultPrevented).toBe(true);
-      expect(menuOpen()).toBe(true);
     });
 
     /** Pretend the user has highlighted text, anchored at `anchorNode`. */
@@ -804,10 +984,10 @@ describe('MessageRowComponent', () => {
         cancelable: true,
       });
       el.dispatchEvent(event);
-      await Promise.resolve();
+      // The toolbar mounts on demand, and the menu opens once it has rendered.
+      await waitFor(() => expect(menuOpen()).toBe(true));
 
       expect(event.defaultPrevented).toBe(true);
-      expect(menuOpen()).toBe(true);
       vi.mocked(document.getSelection).mockRestore();
       elsewhere.remove();
     });

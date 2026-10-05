@@ -73,6 +73,8 @@
     trnIconButton
     class="toolbar__btn"
     [trnDropdownMenuTrigger]="moreMenu"
+    (trnDropdownMenuOpened)="menuOpenChange.emit(true)"
+    (trnDropdownMenuClosed)="menuOpenChange.emit(false)"
     align="end"
     trnTooltip="More actions"
     aria-label="More actions"

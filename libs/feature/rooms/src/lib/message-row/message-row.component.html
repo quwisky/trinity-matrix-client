@@ -21,14 +21,22 @@
     [class.msg--sending]="r.status === 'sending'"
     [class.msg--sendfailed]="r.status === 'failed'"
     [class.msg--revealed]="revealed()"
+    [class.msg--actions]="hasToolbar()"
     [attr.data-mid]="r.id"
+    [attr.tabindex]="hasToolbar() ? 0 : null"
+    [attr.role]="hasToolbar() ? 'article' : null"
+    [attr.aria-label]="hasToolbar() ? rowLabel() : null"
     (contextmenu)="onContextMenu($event)"
+    (keydown.shift.f10)="onContextMenu($event)"
+    (keydown.contextmenu)="onContextMenu($event)"
     (pointerdown)="onPointerDown($event)"
-    (pointerenter)="placeToolbar()"
+    (pointerenter)="onPointerEnter()"
     (pointermove)="onPointerMove($event)"
     (pointerup)="onPointerUp($event)"
     (pointercancel)="onPointerCancel()"
-    (pointerleave)="cancelLongPress()"
+    (pointerleave)="onPointerLeave()"
+    (focusin)="toolbarActive.set(true)"
+    (focusout)="onFocusOut($event)"
   >
     @if (swipeDirection() !== 'off' && !caps().readOnly) {
       <!-- The affordance, and under this design it is what makes the gesture honest: the
@@ -224,16 +232,14 @@
       </button>
     }
 
-    @if (
-      !mobileActions &&
-      !caps().readOnly &&
-      !r.decryptionFailed &&
-      r.kind !== 'redacted'
-    ) {
+    <!-- Mounted only on the hovered, focused or revealed row (#958): on every row it was
+         most of a long room's DOM and listeners. -->
+    @if (hasToolbar() && (toolbarActive() || revealed())) {
       <trn-message-toolbar
         class="msg__toolbar"
         [caps]="toolbarCaps()"
         (action)="onToolbarAction($event)"
+        (menuOpenChange)="onMenuOpenChange($event)"
       />
     }
   </div>

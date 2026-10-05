@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  afterNextRender,
   inject,
   input,
   output,
@@ -92,6 +93,11 @@ export class MessageToolbarComponent {
     canQuote: false,
   });
   readonly action = output<MessageAction>();
+  /**
+   * Whether the overflow menu is open. The menu lives in an overlay outside the row, so the
+   * row needs this to keep the (lazily mounted) toolbar alive until the menu closes.
+   */
+  readonly menuOpenChange = output<boolean>();
 
   /**
    * The overflow menu's trigger, so a consumer can open the SAME menu from somewhere else —
@@ -107,13 +113,19 @@ export class MessageToolbarComponent {
   /** Unique id linking the reaction toggle to its picker via aria-controls. */
   readonly pickerId = `trn-reaction-picker-${nextPickerId++}`;
 
+  constructor() {
+    // The row mounts this toolbar on demand (#958), usually from the same pointerenter that
+    // reveals it, so it places itself as soon as it has a box rather than waiting for one.
+    afterNextRender(() => this.placeToolbar());
+  }
+
   /**
    * Open the overflow menu programmatically. Anchored to the "⋯" button rather than to the
    * pointer, which is deliberate: the menu keeps one predictable position however it was
    * summoned, and on touch it does not land under the finger that opened it.
    */
-  openMoreMenu(): void {
-    this.moreTrigger()?.open();
+  openMoreMenu(options: { focusFirstItem?: boolean } = {}): void {
+    this.moreTrigger()?.open(options);
   }
 
   /**
