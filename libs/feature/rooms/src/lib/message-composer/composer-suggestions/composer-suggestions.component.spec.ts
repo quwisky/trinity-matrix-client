@@ -93,8 +93,18 @@ const commands = SLASH_COMMANDS.filter((command) =>
 );
 
 const members: MentionMember[] = [
-  { userId: '@ada:x', roomDisplayName: 'Ada' },
-  { userId: '@bob:x', roomDisplayName: 'Bob' },
+  {
+    userId: '@ada:x',
+    roomDisplayName: 'Ada',
+    roomAvatarMxc: null,
+    roomInitial: 'A',
+  },
+  {
+    userId: '@bob:x',
+    roomDisplayName: 'Bob',
+    roomAvatarMxc: null,
+    roomInitial: 'B',
+  },
 ];
 
 describe('ComposerSuggestionsComponent', () => {
@@ -125,6 +135,40 @@ describe('ComposerSuggestionsComponent', () => {
     expect(options.length).toBe(2);
     expect(options[0].textContent).toContain('😄');
     expect(options[0].textContent).toContain(':smile:');
+  });
+
+  it('tells same-named members apart by user id, with a decorative avatar', async () => {
+    await build({
+      mentionOpen: true,
+      mentionMatches: [
+        {
+          userId: '@ana:hs',
+          roomDisplayName: 'Ana',
+          roomAvatarMxc: null,
+          roomInitial: 'A',
+        },
+        {
+          userId: '@ana:other',
+          roomDisplayName: 'Ana',
+          roomAvatarMxc: null,
+          roomInitial: 'A',
+        },
+      ],
+    });
+
+    const options = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        '[data-testid=mention-autocomplete] [role=option]',
+      ),
+    );
+    expect(options.map((o) => o.getAttribute('aria-label'))).toEqual([
+      'Ana (@ana:hs)',
+      'Ana (@ana:other)',
+    ]);
+    expect(options[1].textContent).toContain('@ana:other');
+    const avatar = options[0].querySelector('trn-avatar')!;
+    expect(avatar.getAttribute('aria-hidden')).toBe('true');
+    expect(options[0].getAttribute('tabindex')).toBe('-1');
   });
 
   it('stamps the ids the composer textarea points aria-activedescendant at', async () => {

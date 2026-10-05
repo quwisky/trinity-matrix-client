@@ -6,6 +6,8 @@ import { type CaretReplacement } from './caret-replacement';
 export interface MentionMember {
   userId: string;
   roomDisplayName: string;
+  roomAvatarMxc: string | null;
+  roomInitial: string;
 }
 
 /**

@@ -65,19 +65,30 @@
             type="button"
             tabindex="-1"
             [id]="'mention-suggestion-' + i"
-            class="composer__emoji-suggestion"
+            class="composer__emoji-suggestion composer__mention-suggestion"
             [class.composer__emoji-suggestion--active]="
               i === mentionActiveIndex()
             "
             role="option"
+            [attr.aria-label]="
+              member.roomDisplayName + ' (' + member.userId + ')'
+            "
             [attr.aria-selected]="i === mentionActiveIndex()"
             (mousedown)="$event.preventDefault()"
             (mouseenter)="mentionHighlight.emit(i)"
             (click)="mentionAccept.emit(i)"
           >
-            <span class="composer__emoji-suggestion-code">{{
+            <trn-avatar
+              aria-hidden="true"
+              [mxc]="member.roomAvatarMxc"
+              [initial]="member.roomInitial"
+              [name]="member.roomDisplayName"
+              size="xs"
+            />
+            <span class="composer__mention-name">{{
               member.roomDisplayName
             }}</span>
+            <span class="composer__mention-id">{{ member.userId }}</span>
           </button>
         </li>
       }
