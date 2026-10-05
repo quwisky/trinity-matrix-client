@@ -1,5 +1,17 @@
 import { Injectable, inject } from '@angular/core';
 import {
+  Observable,
+  catchError,
+  concat,
+  defer,
+  from,
+  map,
+  of,
+  switchMap,
+  throwError,
+  toArray,
+} from 'rxjs';
+import {
   EventType,
   JoinRule,
   KnownMembership,
@@ -9,6 +21,11 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { liveRoomState } from '@trinity/util/matrix';
 import { roomAdvancedInfo } from './room-advanced-info';
+import { RoomActionPermissionsService } from './room-action-permissions.service';
+import {
+  recoverRoomAdministrationRequest,
+  roomAdministrationNotSignedIn,
+} from './room-administration-error';
 
 /** The `m.room_versions` facts a plan needs. `HomeserverCapabilities` satisfies it. */
 export interface RoomUpgradeCapabilities {
@@ -91,6 +108,11 @@ interface UpgradeContext {
   readonly additionalCreators: readonly string[];
 }
 
+interface RelinkOutcome {
+  readonly spaceId: string;
+  readonly failure: RoomUpgradeRelinkFailure | null;
+}
+
 /**
  * Stable, whole-number room versions newer than `currentVersion`, ascending.
  *
@@ -130,6 +152,7 @@ export function roomUpgradeTargets(
 @Injectable({ providedIn: 'root' })
 export class RoomUpgradeService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly permissions = inject(RoomActionPermissionsService);
 
   /** What upgrading `roomId` would do; null when the Account or the Room is unavailable. */
   plan(
@@ -146,6 +169,47 @@ export class RoomUpgradeService {
       targets: roomUpgradeTargets(context.currentVersion, capabilities),
       spaces: context.spaces.map(publicSpace),
     };
+  }
+
+  /**
+   * Upgrade one room and carry its members and space links over. Cold: runs on subscribe.
+   *
+   * Errors only when nothing changed: no client for the opening Account, no permission to send
+   * the tombstone, or the server rejected the upgrade itself. After the upgrade every step
+   * reports its own failures in the result, and nothing is rolled back.
+   */
+  upgrade(
+    accountId: string,
+    roomId: string,
+    options: RoomUpgradeOptions,
+  ): Observable<RoomUpgradeResult> {
+    return defer(() => {
+      const client = this.matrix.clientFor(accountId);
+      if (!client) {
+        return throwError(() => roomAdministrationNotSignedIn('upgrade-room'));
+      }
+      this.permissions.assert(
+        this.permissions.settingsFor({ accountId, roomId }).upgrade,
+      );
+      // Unreachable after the permission check, which needs the joined room; narrows the type.
+      const room = client.getRoom(roomId);
+      if (!room) {
+        return throwError(() => roomAdministrationNotSignedIn('upgrade-room'));
+      }
+      const before = readContext(client, room);
+      const creators =
+        isWholeNumber(options.version) &&
+        Number(options.version) >= 12 &&
+        before.additionalCreators.length > 0
+          ? [...before.additionalCreators]
+          : undefined;
+      return from(client.upgradeRoom(roomId, options.version, creators)).pipe(
+        recoverRoomAdministrationRequest('upgrade-room'),
+        switchMap(({ replacement_room }) =>
+          followUp(client, roomId, replacement_room, before, options),
+        ),
+      );
+    });
   }
 }
 
@@ -172,6 +236,111 @@ function readContext(client: MatrixClient, room: Room): UpgradeContext {
       .map(({ userId }) => userId)
       .filter((userId) => userId !== me),
   };
+}
+
+/** Invite, then relink, one at a time; every failure is collected, none is thrown. */
+function followUp(
+  client: MatrixClient,
+  oldRoomId: string,
+  newRoomId: string,
+  before: UpgradeContext,
+  options: RoomUpgradeOptions,
+): Observable<RoomUpgradeResult> {
+  const newRoom = client.getRoom(newRoomId);
+  const invitees = options.inviteMembers
+    ? before.members.filter((userId) => !isPresent(newRoom, userId))
+    : [];
+  const server = serverOf(newRoomId, client);
+  const invites = concat(
+    ...invitees.map((userId) =>
+      from(client.invite(newRoomId, userId)).pipe(
+        map(() => ({ userId, reason: null as string | null })),
+        catchError((cause: unknown) => of({ userId, reason: reasonOf(cause) })),
+      ),
+    ),
+  ).pipe(toArray());
+  const relinks = concat(
+    ...before.spaces
+      .filter((space) => space.relinkable)
+      .map((space) => relink(client, space, oldRoomId, newRoomId, server)),
+  ).pipe(toArray());
+  return invites.pipe(
+    switchMap((inviteOutcomes) =>
+      relinks.pipe(
+        map((relinkOutcomes) => ({
+          newRoomId,
+          invited: inviteOutcomes
+            .filter(({ reason }) => reason === null)
+            .map(({ userId }) => userId),
+          inviteFailed: inviteOutcomes.flatMap(({ userId, reason }) =>
+            reason === null ? [] : [{ userId, reason }],
+          ),
+          relinked: relinkOutcomes
+            .filter(({ failure }) => failure === null)
+            .map(({ spaceId }) => spaceId),
+          relinkFailed: relinkOutcomes.flatMap(({ failure }) =>
+            failure ? [failure] : [],
+          ),
+          skippedSpaces: before.spaces
+            .filter((space) => !space.relinkable)
+            .map(publicSpace),
+        })),
+      ),
+    ),
+  );
+}
+
+/** Link the new room, then unlink the old one; the old link stays if the first write fails. */
+function relink(
+  client: MatrixClient,
+  space: LinkedSpace,
+  oldRoomId: string,
+  newRoomId: string,
+  server: string | null,
+): Observable<RelinkOutcome> {
+  const { spaceId } = space;
+  const failed = (cause: unknown, linkedTwice: boolean) =>
+    of<RelinkOutcome>({
+      spaceId,
+      failure: { spaceId, reason: reasonOf(cause), linkedTwice },
+    });
+  const link = {
+    via: [...new Set([...space.via, ...(server ? [server] : [])])],
+    ...(space.order === undefined ? {} : { order: space.order }),
+    ...(space.suggested === undefined ? {} : { suggested: space.suggested }),
+  };
+  return from(
+    client.sendStateEvent(spaceId, EventType.SpaceChild, link, newRoomId),
+  ).pipe(
+    switchMap(() =>
+      from(
+        client.sendStateEvent(spaceId, EventType.SpaceChild, {}, oldRoomId),
+      ).pipe(
+        map((): RelinkOutcome => ({ spaceId, failure: null })),
+        catchError((cause: unknown) => failed(cause, true)),
+      ),
+    ),
+    catchError((cause: unknown) => failed(cause, false)),
+  );
+}
+
+/** The new room's server: from its ID, or the Account's for a v12 ID that has none. */
+function serverOf(roomId: string, client: MatrixClient): string | null {
+  const colon = roomId.indexOf(':');
+  return colon >= 0 ? roomId.slice(colon + 1) : client.getDomain();
+}
+
+function isPresent(room: Room | null, userId: string): boolean {
+  const membership = room?.getMember(userId)?.membership;
+  return (
+    membership === KnownMembership.Join || membership === KnownMembership.Invite
+  );
+}
+
+function reasonOf(cause: unknown): string {
+  return cause instanceof Error && cause.message
+    ? cause.message
+    : 'The homeserver rejected the request.';
 }
 
 /** Joined spaces of this Account whose live state links `room`. */

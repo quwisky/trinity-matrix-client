@@ -2,12 +2,14 @@ import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MatrixEvent, type IEvent } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
+import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
   RoomActionPermissionError,
   RoomActionPermissionsService,
   type ActionAvailability,
 } from './room-action-permissions.service';
+import { RoomAdministrationError } from './room-administration-error';
 import {
   RoomUpgradeService,
   roomUpgradeTargets,
@@ -338,5 +340,260 @@ describe('RoomUpgradeService.plan', () => {
 
     expect(svc.plan('@other:hs', OLD, CAPS)).toBeNull();
     expect(svc.plan(ME, '!missing:hs', CAPS)).toBeNull();
+  });
+});
+
+describe('RoomUpgradeService.upgrade', () => {
+  const rooms = (extra: readonly FakeRoom[] = []) => [
+    fakeRoom(OLD, {
+      events: [create('10'), joinRule('invite')],
+      members: [
+        [ME, 'join'],
+        ['@bob:hs', 'join'],
+        ['@carol:hs', 'invite'],
+      ],
+    }),
+    fakeRoom('!design:hs', {
+      name: 'Design',
+      space: true,
+      events: [
+        create('10'),
+        child(OLD, { via: ['other.hs'], order: 'a', suggested: true }),
+      ],
+    }),
+    ...extra,
+  ];
+  const rejection = (svc: RoomUpgradeService, accountId = ME) =>
+    firstValueFrom(
+      svc.upgrade(accountId, OLD, { version: '11', inviteMembers: true }),
+    ).catch((error: unknown) => error);
+
+  it('is cold, then upgrades, invites and moves the space link in order', async () => {
+    const { svc, upgradeRoom, invite, sendStateEvent } = setup(rooms());
+
+    const action = svc.upgrade(ME, OLD, { version: '11', inviteMembers: true });
+    expect(upgradeRoom).not.toHaveBeenCalled();
+
+    await expect(firstValueFrom(action)).resolves.toEqual({
+      newRoomId: NEW,
+      invited: ['@bob:hs', '@carol:hs'],
+      inviteFailed: [],
+      relinked: ['!design:hs'],
+      relinkFailed: [],
+      skippedSpaces: [],
+    });
+    expect(upgradeRoom).toHaveBeenCalledWith(OLD, '11', undefined);
+    expect(invite.mock.calls).toEqual([
+      [NEW, '@bob:hs'],
+      [NEW, '@carol:hs'],
+    ]);
+    expect(sendStateEvent.mock.calls).toEqual([
+      [
+        '!design:hs',
+        'm.space.child',
+        { via: ['other.hs', 'hs'], order: 'a', suggested: true },
+        NEW,
+      ],
+      ['!design:hs', 'm.space.child', {}, OLD],
+    ]);
+    expect(upgradeRoom.mock.invocationCallOrder[0]).toBeLessThan(
+      invite.mock.invocationCallOrder[0],
+    );
+    expect(invite.mock.invocationCallOrder[1]).toBeLessThan(
+      sendStateEvent.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('invites nobody when asked not to', async () => {
+    const { svc, invite } = setup(rooms());
+
+    const result = await firstValueFrom(
+      svc.upgrade(ME, OLD, { version: '11', inviteMembers: false }),
+    );
+
+    expect(invite).not.toHaveBeenCalled();
+    expect(result.invited).toEqual([]);
+  });
+
+  it('skips members already in the new room', async () => {
+    const { svc, invite } = setup(
+      rooms([fakeRoom(NEW, { members: [['@carol:hs', 'invite']] })]),
+    );
+
+    await firstValueFrom(
+      svc.upgrade(ME, OLD, { version: '11', inviteMembers: true }),
+    );
+
+    expect(invite.mock.calls).toEqual([[NEW, '@bob:hs']]);
+  });
+
+  it.each([
+    ['11', undefined],
+    ['12', ['@alice:hs']],
+  ])(
+    'to version %s passes additional creators %j',
+    async (version, creators) => {
+      const { svc, upgradeRoom } = setup([
+        fakeRoom(OLD, { events: [create('10', {}, '@alice:hs')] }),
+      ]);
+
+      await firstValueFrom(
+        svc.upgrade(ME, OLD, { version, inviteMembers: false }),
+      );
+
+      expect(upgradeRoom).toHaveBeenCalledWith(OLD, version, creators);
+    },
+  );
+
+  it('uses the new room’s server from the Account for a v12 room ID', async () => {
+    const { svc, upgradeRoom, sendStateEvent } = setup(rooms());
+    upgradeRoom.mockResolvedValueOnce({ replacement_room: '!opaqueid' });
+
+    await firstValueFrom(
+      svc.upgrade(ME, OLD, { version: '12', inviteMembers: false }),
+    );
+
+    expect(sendStateEvent.mock.calls[0]).toEqual([
+      '!design:hs',
+      'm.space.child',
+      { via: ['other.hs', 'hs'], order: 'a', suggested: true },
+      '!opaqueid',
+    ]);
+  });
+
+  it('reports each failed invite and keeps going', async () => {
+    const { svc, invite } = setup(rooms());
+    invite.mockRejectedValueOnce(new Error('M_FORBIDDEN: blocked'));
+
+    const result = await firstValueFrom(
+      svc.upgrade(ME, OLD, { version: '11', inviteMembers: true }),
+    );
+
+    expect(result.invited).toEqual(['@carol:hs']);
+    expect(result.inviteFailed).toEqual([
+      { userId: '@bob:hs', reason: 'M_FORBIDDEN: blocked' },
+    ]);
+    expect(result.relinked).toEqual(['!design:hs']);
+  });
+
+  it('keeps the old link when the new one cannot be written', async () => {
+    const { svc, sendStateEvent } = setup(rooms());
+    sendStateEvent.mockRejectedValueOnce(new Error('M_FORBIDDEN: no'));
+
+    const result = await firstValueFrom(
+      svc.upgrade(ME, OLD, { version: '11', inviteMembers: false }),
+    );
+
+    expect(sendStateEvent).toHaveBeenCalledTimes(1);
+    expect(result.relinked).toEqual([]);
+    expect(result.relinkFailed).toEqual([
+      { spaceId: '!design:hs', reason: 'M_FORBIDDEN: no', linkedTwice: false },
+    ]);
+  });
+
+  it('reports a space that now links both rooms', async () => {
+    const { svc, sendStateEvent } = setup(rooms());
+    sendStateEvent
+      .mockResolvedValueOnce({ event_id: '$new' })
+      .mockRejectedValueOnce(new Error('M_LIMIT_EXCEEDED'));
+
+    const result = await firstValueFrom(
+      svc.upgrade(ME, OLD, { version: '11', inviteMembers: false }),
+    );
+
+    expect(result.relinked).toEqual([]);
+    expect(result.relinkFailed).toEqual([
+      { spaceId: '!design:hs', reason: 'M_LIMIT_EXCEEDED', linkedTwice: true },
+    ]);
+  });
+
+  it('leaves spaces it cannot edit, and removed links, alone', async () => {
+    const { svc, sendStateEvent } = setup([
+      fakeRoom(OLD, { events: [create('10')] }),
+      fakeRoom('!readonly:hs', {
+        name: 'Read only',
+        space: true,
+        mayEdit: false,
+        events: [create('10'), child(OLD, { via: ['hs'] })],
+      }),
+      fakeRoom('!removed:hs', {
+        name: 'Removed',
+        space: true,
+        events: [create('10'), child(OLD, { via: [] })],
+      }),
+    ]);
+
+    const result = await firstValueFrom(
+      svc.upgrade(ME, OLD, { version: '11', inviteMembers: false }),
+    );
+
+    expect(sendStateEvent).not.toHaveBeenCalled();
+    expect(result.skippedSpaces).toEqual([
+      {
+        spaceId: '!readonly:hs',
+        name: 'Read only',
+        relinkable: false,
+        reason: 'no permission',
+      },
+    ]);
+  });
+
+  it('stops everything when the server rejects the upgrade', async () => {
+    const { svc, upgradeRoom, invite, sendStateEvent } = setup(rooms());
+    upgradeRoom.mockRejectedValueOnce(new Error('M_UNSUPPORTED_ROOM_VERSION'));
+
+    const error = await rejection(svc);
+
+    expect(error).toBeInstanceOf(RoomAdministrationError);
+    expect((error as RoomAdministrationError).outcome).toMatchObject({
+      failure: 'server-rejected',
+      operation: 'upgrade-room',
+    });
+    expect(invite).not.toHaveBeenCalled();
+    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it('refuses without permission to send the tombstone', async () => {
+    const { svc, upgradeRoom } = setup(rooms(), {
+      upgrade: {
+        available: false,
+        reason: "Your role cannot change this room's version.",
+      },
+    });
+
+    const error = await rejection(svc);
+
+    expect((error as RoomAdministrationError).outcome.failure).toBe(
+      'permission-denied',
+    );
+    expect(upgradeRoom).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the opening Account is gone', async () => {
+    const { svc, upgradeRoom } = setup(rooms());
+
+    const error = await rejection(svc, '@other:hs');
+
+    expect((error as RoomAdministrationError).outcome.failure).toBe(
+      'not-signed-in',
+    );
+    expect(upgradeRoom).not.toHaveBeenCalled();
+  });
+
+  it('never rolls back once the new room exists', async () => {
+    const { svc, invite, sendStateEvent, leave } = setup(rooms());
+    invite.mockRejectedValue(new Error('down'));
+    sendStateEvent.mockRejectedValue(new Error('down'));
+
+    const result = await firstValueFrom(
+      svc.upgrade(ME, OLD, { version: '11', inviteMembers: true }),
+    );
+
+    expect(result.newRoomId).toBe(NEW);
+    expect(result.inviteFailed).toHaveLength(2);
+    expect(result.relinkFailed).toHaveLength(1);
+    // One attempted write per space and nothing that undoes the upgrade.
+    expect(sendStateEvent).toHaveBeenCalledTimes(1);
+    expect(leave).not.toHaveBeenCalled();
   });
 });
