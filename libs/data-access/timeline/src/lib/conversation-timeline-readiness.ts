@@ -166,6 +166,12 @@ export class ConversationTimelineReadiness {
       this.fail('sync-stopped');
       return;
     }
+    // Already synced and still absent: the Room is not on this Account (yet). Say so now
+    // rather than after the next long-poll; `fail` keeps watching for it to arrive.
+    if (isSynced(client.getSyncState())) {
+      this.fail('room-unavailable');
+      return;
+    }
     this.phase.set({ kind: 'room-pending' });
     const onRoom = (): void => {
       if (client.getRoom(this.roomId)) this.run();
@@ -269,6 +275,16 @@ export class ConversationTimelineReadiness {
       this.listen(client, null, (state) => {
         if (isSynced(state)) this.run();
       });
+    }
+    if (reason === 'room-unavailable' && client) {
+      // Accepted elsewhere, or a late sync: open it as soon as it lands, no Retry needed.
+      this.listen(
+        client,
+        () => {
+          if (client.getRoom(this.roomId)) this.run();
+        },
+        () => undefined,
+      );
     }
   }
 
