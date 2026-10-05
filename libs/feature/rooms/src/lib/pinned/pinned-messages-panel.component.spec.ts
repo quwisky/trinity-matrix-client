@@ -70,6 +70,24 @@ function unpinButton(container: HTMLElement, senderName: string) {
 }
 
 describe('PinnedMessagesPanelComponent', () => {
+  it('tells the reader a failed pin could not be loaded', async () => {
+    const { container } = await renderPanel({
+      pinned: [
+        pin({
+          id: '$p',
+          status: 'failed',
+          sender: '',
+          senderName: '',
+          body: '',
+        }),
+      ],
+    });
+
+    expect(
+      container.querySelector('[data-testid="pinned-failed"]')?.textContent,
+    ).toContain('Couldn’t load this pinned message.');
+  });
+
   it('renders a row per pinned message, in pin order', async () => {
     const { container } = await renderPanel({
       pinned: [

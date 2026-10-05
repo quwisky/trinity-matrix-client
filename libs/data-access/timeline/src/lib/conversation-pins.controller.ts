@@ -10,6 +10,7 @@ import {
 } from 'matrix-js-sdk';
 import { catchError, defer, from, map, of, type Observable } from 'rxjs';
 import { coalesce } from '@trinity/data-access/matrix-client';
+import { latestGuard } from '@trinity/util/ui';
 import {
   isTransientMatrixError,
   liveRoomState,
@@ -23,6 +24,11 @@ import type {
   ConversationPins,
   PinnedMessageView,
 } from './conversation-pins';
+
+type PinFetch =
+  | { readonly kind: 'loaded'; readonly event: MatrixEvent }
+  | { readonly kind: 'missing' }
+  | { readonly kind: 'failed' };
 
 const unavailablePolicy: ConversationPinPolicy = {
   canMutate: () => false,
@@ -45,11 +51,12 @@ export class ConversationPinsController implements ConversationPins {
   private readonly pinnedEventIds = signal<readonly string[]>([]);
   private readonly pinnedMessages = signal<readonly PinnedMessageView[]>([]);
   private readonly mayMutate = signal(false);
-  /** Pins fetched because the loaded timeline lacks them; `null` = unavailable. */
-  private fetched = new Map<string, MatrixEvent | null>();
+  /** Pins fetched because the loaded timeline lacks them. */
+  private fetched = new Map<string, PinFetch>();
   private loading = new Set<string>();
-  /** Bumped when the pin list or room changes, so in-flight fetches drop their results. */
-  private generation = 0;
+  /** Invalidated when the pin list or room changes, so in-flight fetches drop their results. */
+  private readonly fetches = latestGuard();
+  private fetchToken = this.fetches.next();
   private key: ConversationKey | null = null;
   private room: Room | null = null;
   private client: MatrixClient | null = null;
@@ -100,7 +107,8 @@ export class ConversationPinsController implements ConversationPins {
     this.room?.off(RoomEvent.Timeline, this.onTimeline);
     this.client?.off(MatrixEventEvent.Decrypted, this.onDecrypted);
     this.scheduleResolve.cancel();
-    this.generation++;
+    this.fetches.invalidate();
+    this.fetchToken = this.fetches.next();
     this.fetched = new Map();
     this.loading = new Set();
     this.key = null;
@@ -192,9 +200,15 @@ export class ConversationPinsController implements ConversationPins {
       pinned.length !== current.length ||
       pinned.some((id, i) => id !== current[i])
     ) {
-      this.generation++;
+      this.fetches.invalidate();
+      this.fetchToken = this.fetches.next();
       this.fetched = new Map();
       this.loading = new Set();
+    } else {
+      // Retry failed pins on the next invalidation.
+      for (const [id, f] of this.fetched) {
+        if (f.kind === 'failed') this.fetched.delete(id);
+      }
     }
     this.pinnedEventIds.set(Object.freeze([...pinned]));
     this.mayMutate.set(this.policy.canMutate(key));
@@ -216,11 +230,17 @@ export class ConversationPinsController implements ConversationPins {
         continue;
       }
       if (!event) {
-        event = this.fetched.get(id) ?? undefined;
-        if (!event) {
-          views.push(this.placeholder(id, 'unavailable'));
+        const fetched = this.fetched.get(id);
+        if (fetched?.kind !== 'loaded') {
+          views.push(
+            this.placeholder(
+              id,
+              fetched?.kind === 'failed' ? 'failed' : 'unavailable',
+            ),
+          );
           continue;
         }
+        event = fetched.event;
       }
       if (event.isRedacted()) continue;
       const sender = event.getSender() ?? '';
@@ -240,7 +260,7 @@ export class ConversationPinsController implements ConversationPins {
 
   private placeholder(
     id: string,
-    status: 'loading' | 'unavailable',
+    status: 'loading' | 'unavailable' | 'failed',
   ): PinnedMessageView {
     return Object.freeze({
       id,
@@ -257,26 +277,34 @@ export class ConversationPinsController implements ConversationPins {
     const client = this.client;
     const roomId = this.key?.roomId;
     if (!client || !roomId) return;
-    const generation = this.generation;
+    const token = this.fetchToken;
     this.loading.add(id);
     void (async () => {
-      let event: MatrixEvent | null = null;
+      let result: PinFetch;
       try {
         const raw = await client.fetchRoomEvent(roomId, id);
-        if (!raw.room_id || raw.room_id === roomId) {
-          event = client.getEventMapper({ decrypt: false })({
+        if (raw.room_id && raw.room_id !== roomId) {
+          result = { kind: 'missing' };
+        } else {
+          const event = client.getEventMapper({ decrypt: false })({
             ...raw,
             room_id: roomId,
           });
           if (event.isEncrypted()) await client.decryptEventIfNeeded(event);
+          result = { kind: 'loaded', event };
         }
-      } catch {
-        // 403/404 and transient failures alike: the row reads "unavailable".
-        event = null;
+      } catch (error) {
+        // The server's "no" (not found / not allowed) is final; anything else is a failure
+        // that the next invalidation retries.
+        const status = (error as { httpStatus?: number } | null)?.httpStatus;
+        result =
+          status === 404 || status === 403
+            ? { kind: 'missing' }
+            : { kind: 'failed' };
       }
-      if (generation !== this.generation) return;
+      if (!this.fetches.isCurrent(token)) return;
       this.loading.delete(id);
-      this.fetched.set(id, event);
+      this.fetched.set(id, result);
       this.scheduleResolve.schedule();
     })();
   }

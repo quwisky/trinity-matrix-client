@@ -352,6 +352,54 @@ describe('ConversationPinsController', () => {
       expect(controller.messages()).toEqual([]);
     });
 
+    it('reports a pin whose fetch fails as failed, not unavailable', async () => {
+      const { controller, fetchRoomEvent, setPinned, room } = setup();
+      fetchRoomEvent.mockRejectedValueOnce(new Error('network down'));
+      setPinned(['$old']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
+
+      expect(controller.messages().map((m) => [m.id, m.status])).toEqual([
+        ['$old', 'failed'],
+      ]);
+    });
+
+    it('reports a pin the server will not return as unavailable', async () => {
+      const { controller, fetchRoomEvent, setPinned, room } = setup();
+      fetchRoomEvent.mockRejectedValueOnce(
+        Object.assign(new Error('Forbidden'), { httpStatus: 403 }),
+      );
+      setPinned(['$old']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
+
+      expect(controller.messages()[0]?.status).toBe('unavailable');
+    });
+
+    it('retries a failed pin after the next invalidation', async () => {
+      const { controller, remote, fetchRoomEvent, setPinned, room } = setup();
+      remote.set('$old', raw('$old'));
+      fetchRoomEvent.mockRejectedValueOnce(new Error('network down'));
+      setPinned(['$old']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
+      expect(controller.messages()[0]?.status).toBe('failed');
+
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPowerLevels,
+      });
+      await flush();
+
+      expect(fetchRoomEvent).toHaveBeenCalledTimes(2);
+      expect(controller.messages()[0]?.status).toBe('loaded');
+    });
+
     it('drops a fetch that resolves after the pin list changed', async () => {
       const { controller, remote, fetchRoomEvent, setPinned, room } = setup();
       remote.set('$old', raw('$old'));
