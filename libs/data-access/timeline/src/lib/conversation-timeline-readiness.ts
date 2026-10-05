@@ -260,6 +260,7 @@ export class ConversationTimelineReadiness {
   private fail(
     reason: Extract<TimelineLoadState, { kind: 'error' }>['reason'],
   ): void {
+    if (this.stopped) return;
     this.cancel();
     this.phase.set({ kind: 'error', reason });
     const client = this.client;

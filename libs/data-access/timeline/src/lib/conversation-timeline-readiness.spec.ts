@@ -390,6 +390,28 @@ describe('ConversationTimelineReadiness', () => {
     expect(stopped.listeners()).toBe(0);
   });
 
+  it('attaches no recovery listener when stop runs earlier in the same Sync emit that fails the wait', () => {
+    const client = fakeClient();
+    const readiness = TestBed.runInInjectionContext(
+      () => new ConversationTimelineReadiness(),
+    );
+    // Registered before start(), so it runs first in the emit's listener snapshot.
+    const stopper = (): void => {
+      client.off(ClientEvent.Sync, stopper);
+      readiness.stop();
+    };
+    client.on(ClientEvent.Sync, stopper);
+    readiness.start(
+      ROOM,
+      client as unknown as MatrixClient,
+      fakeTimeline().timeline,
+    );
+    const pending = readiness.state();
+    client.setSync(SyncState.Error);
+    expect(client.listeners()).toBe(0);
+    expect(readiness.state()).toBe(pending);
+  });
+
   it('re-hides the timeline when its Room arrives while hidden', () => {
     const client = fakeClient();
     const { timeline } = fakeTimeline();
