@@ -72,8 +72,10 @@ const nonSolidTone = {
   },
 } as const;
 
-// `dark:focus-visible:ring-*` out-merges Helm destructive's `dark:focus-visible:ring-destructive/40`.
-/** One keyboard-focus ring for every button, matching `trnInput` and the global baseline. */
+/**
+ * One keyboard-focus ring for every button, matching `trnInput` and the global baseline.
+ * `dark:focus-visible:ring-*` out-merges Helm destructive's `dark:focus-visible:ring-destructive/40`.
+ */
 const focusRing =
   'focus-visible:border-[color:var(--trinity-focus-ring)] focus-visible:ring-[color:var(--trinity-focus-ring)] dark:focus-visible:ring-[color:var(--trinity-focus-ring)]';
 

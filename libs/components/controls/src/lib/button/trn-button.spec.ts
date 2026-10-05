@@ -89,6 +89,10 @@ describe('TrnButton', () => {
     expect(solidDanger).toContain(
       'hover:bg-[color:var(--trinity-danger-solid-hover)]',
     );
+    expect(solidDanger).toContain(
+      'dark:hover:bg-[color:var(--trinity-danger-solid-hover)]',
+    );
+    expect(solidDanger).not.toContain('dark:hover:bg-destructive/30');
     expect(solidDanger).not.toContain('bg-destructive/10');
     expect(solidDanger).not.toContain('dark:bg-destructive/20');
     expect(solidDanger).not.toContain('text-destructive');

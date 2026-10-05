@@ -36,14 +36,15 @@ export type AvatarShape = 'person' | 'place';
 
 /** Number of themed avatar fills (`--trinity-avatar-1..6`). */
 const AVATAR_SLOTS = 6;
+type AvatarSlot = 1 | 2 | 3 | 4 | 5 | 6;
 
 /** Stable 1-based avatar slot from a key, like Discord's default avatars. */
-function hashSlot(key: string): number {
+function hashSlot(key: string): AvatarSlot {
   let hash = 0;
   for (let i = 0; i < key.length; i++) {
     hash = (hash * 31 + key.charCodeAt(i)) | 0;
   }
-  return (Math.abs(hash) % AVATAR_SLOTS) + 1;
+  return ((Math.abs(hash) % AVATAR_SLOTS) + 1) as AvatarSlot;
 }
 
 /**

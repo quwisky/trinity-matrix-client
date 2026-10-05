@@ -80,13 +80,14 @@
     --trinity-text-lg: 1.25rem; // 20px — page and section headings
     --trinity-text-lg--line-height: 1.3;
 
-    // Semantic typography roles. Size, leading and weight travel together; a component should
-    // not silently pair a role's size with arbitrary leading. Metadata also gets stable number
-    // widths so timestamps and byte counts do not jitter as their digits change.
     // The one monospace stack: code, keys, paths and the config editor.
     --trinity-font-mono:
       ui-monospace, sfmono-regular, menlo, consolas, 'Roboto Mono',
       'Liberation Mono', monospace;
+
+    // Semantic typography roles. Size, leading and weight travel together; a component should
+    // not silently pair a role's size with arbitrary leading. Metadata also gets stable number
+    // widths so timestamps and byte counts do not jitter as their digits change.
     --trinity-type-caption-size: var(--trinity-text-xs);
     --trinity-type-caption-line-height: var(--trinity-text-xs--line-height);
     --trinity-type-caption-weight: 500;
