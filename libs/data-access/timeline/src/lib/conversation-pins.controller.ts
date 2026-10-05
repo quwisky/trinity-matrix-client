@@ -28,7 +28,10 @@ import type {
 type PinFetch =
   | { readonly kind: 'loaded'; readonly event: MatrixEvent }
   | { readonly kind: 'missing' }
-  | { readonly kind: 'failed' };
+  | { readonly kind: 'failed'; readonly at: number };
+
+/** Minimum gap before a Timeline or Decrypted event retries a failed pin again. */
+const AUTO_RETRY_MS = 30_000;
 
 const unavailablePolicy: ConversationPinPolicy = {
   canMutate: () => false,
@@ -74,10 +77,14 @@ export class ConversationPinsController implements ConversationPins {
       this.readRoomState();
     }
   };
-  private readonly onTimeline = (): void => this.retryFailed();
+  private readonly onTimeline = (): void => {
+    this.retryFailedPins(AUTO_RETRY_MS);
+    this.scheduleResolve.schedule();
+  };
   private readonly onDecrypted = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.key?.roomId) {
-      this.retryFailed();
+      this.retryFailedPins(AUTO_RETRY_MS);
+      this.scheduleResolve.schedule();
     }
   };
 
@@ -121,13 +128,23 @@ export class ConversationPinsController implements ConversationPins {
 
   /** Re-fetch pins whose fetch failed; `missing` pins stay final. */
   retryFailed(): void {
-    this.dropFailed();
-    this.scheduleResolve.schedule();
+    this.retryFailedPins(0);
   }
 
-  private dropFailed(): void {
+  /**
+   * Re-fetch failed pins that failed at least `minAgeMs` ago. The failed entry stays
+   * until the re-fetch resolves, so the row never flickers back to loading.
+   */
+  private retryFailedPins(minAgeMs: number): void {
+    const now = Date.now();
     for (const [id, f] of this.fetched) {
-      if (f.kind === 'failed') this.fetched.delete(id);
+      if (
+        f.kind === 'failed' &&
+        !this.loading.has(id) &&
+        now - f.at >= minAgeMs
+      ) {
+        this.fetchPinned(id);
+      }
     }
   }
 
@@ -217,7 +234,7 @@ export class ConversationPinsController implements ConversationPins {
       this.fetched = new Map();
       this.loading = new Set();
     } else {
-      this.dropFailed();
+      this.retryFailedPins(0);
     }
     this.pinnedEventIds.set(Object.freeze([...pinned]));
     this.mayMutate.set(this.policy.canMutate(key));
@@ -309,7 +326,7 @@ export class ConversationPinsController implements ConversationPins {
         result =
           status === 404 || status === 403
             ? { kind: 'missing' }
-            : { kind: 'failed' };
+            : { kind: 'failed', at: Date.now() };
       }
       if (!this.fetches.isCurrent(token)) return;
       this.loading.delete(id);
