@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **67 Nx projects** and **259 dependencies**. No project cycles detected.
+This snapshot contains **67 Nx projects** and **261 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -132,7 +132,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `components-overlay`              | `libs/components/overlay`              | role:design-system; capability:design-system    |                   6 |
 | `components-storybook-host`       | `libs/components/storybook-host`       | role:design-system; capability:design-system    |                   1 |
 | `data-access-accounts`            | `libs/data-access/accounts`            | role:capability; capability:accounts            |                   4 |
-| `data-access-auth`                | `libs/data-access/auth`                | role:capability; capability:accounts            |                   4 |
+| `data-access-auth`                | `libs/data-access/auth`                | role:capability; capability:accounts            |                   5 |
 | `data-access-discovery`           | `libs/data-access/discovery`           | role:capability; capability:discovery           |                   3 |
 | `data-access-gif`                 | `libs/data-access/gif`                 | role:capability; capability:conversations       |                   1 |
 | `data-access-homeserver`          | `libs/data-access/homeserver`          | role:capability; capability:discovery           |                   1 |
@@ -141,7 +141,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `data-access-media`               | `libs/data-access/media`               | role:adapter; capability:media                  |                   2 |
 | `data-access-notifications`       | `libs/data-access/notifications`       | role:capability; capability:notifications       |                   5 |
 | `data-access-room-administration` | `libs/data-access/room-administration` | role:capability; capability:room-administration |                   3 |
-| `data-access-room-library`        | `libs/data-access/room-library`        | role:capability; capability:room-library        |                   5 |
+| `data-access-room-library`        | `libs/data-access/room-library`        | role:capability; capability:room-library        |                   6 |
 | `data-access-timeline`            | `libs/data-access/timeline`            | role:capability; capability:conversations       |                   5 |
 | `data-access-trust`               | `libs/data-access/trust`               | role:capability; capability:trust               |                   3 |
 | `data-access-widgets`             | `libs/data-access/widgets`             | role:capability; capability:conversations       |                   3 |
