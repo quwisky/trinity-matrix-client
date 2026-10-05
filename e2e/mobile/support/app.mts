@@ -1,3 +1,4 @@
+import { connect } from 'node:tls';
 import { browser, expect } from '@wdio/globals';
 import { HS_TLS } from '../../support/homeserver/start.mjs';
 import { APP_PACKAGE, iosPreferences, native, webview } from './session.mts';
@@ -33,36 +34,57 @@ export async function waitForRooms(timeout = 30_000): Promise<void> {
   );
 }
 
-/**
- * The app aborts homeserver discovery after a few seconds. The first TLS handshake to the
- * host's Caddy from a freshly installed iOS app can outlast that on a loaded runner (the
- * request never reaches Caddy), leaving the "couldn't find a homeserver" alert. Re-press
- * Continue on that alert, up to three attempts.
- */
-async function continueWithRetry(
-  next: ReturnType<typeof $>,
-  signIn: ReturnType<typeof $>,
-): Promise<void> {
-  const alert = $('#login-homeserver-error');
-  let lastError = '';
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    await next.click();
-    // Submitting clears the previous error synchronously (runWithBusy sets it to null
-    // before the request), so wait for the stale alert to go before judging the outcome.
-    // Best effort: a failure fast enough to re-show it between polls is caught below.
-    await browser
-      .waitUntil(async () => !(await alert.isDisplayed()), { timeout: 5_000 })
-      .catch(() => undefined);
-    await browser.waitUntil(
-      async () => (await signIn.isDisplayed()) || (await alert.isDisplayed()),
-      { timeout: 30_000, timeoutMsg: 'neither Sign in nor a discovery error' },
+/** Time a TLS handshake from this host to the native Caddy on one address family. */
+function probeHandshake(host: string): Promise<string> {
+  const { port } = new URL(HS_TLS);
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const socket = connect(
+      {
+        host,
+        port: Number(port),
+        servername: 'localhost',
+        rejectUnauthorized: false,
+        timeout: 10_000,
+      },
+      () => {
+        resolve(`${host} handshake ${Date.now() - started} ms`);
+        socket.end();
+      },
     );
-    if (await signIn.isDisplayed()) return;
-    lastError = await alert.getText();
-  }
-  throw new Error(
-    `homeserver discovery failed on 3 attempts at ${HS_TLS}; last alert: "${lastError}"`,
-  );
+    socket.on('timeout', () => {
+      resolve(`${host} no handshake after 10 s`);
+      socket.destroy();
+    });
+    socket.on('error', (error) =>
+      resolve(`${host} ${error.message} after ${Date.now() - started} ms`),
+    );
+  });
+}
+
+/**
+ * Evidence for a failed homeserver discovery, taken while the failure is still live: is
+ * the host's Caddy answering a handshake now on each family, and how long does the same
+ * well-known fetch take from inside the WebView?
+ */
+async function discoveryDiagnostics(): Promise<string> {
+  const [v6, v4] = await Promise.all([
+    probeHandshake('::1'),
+    probeHandshake('127.0.0.1'),
+  ]);
+  const webview = await browser
+    .executeAsync((url: string, done: (result: string) => void) => {
+      const started = Date.now();
+      fetch(`${url}/.well-known/matrix/client`, {
+        signal: AbortSignal.timeout(15_000),
+      })
+        .then((res) => done(`fetch ${res.status} ${Date.now() - started} ms`))
+        .catch((error: unknown) =>
+          done(`fetch ${String(error)} after ${Date.now() - started} ms`),
+        );
+    }, HS_TLS)
+    .catch((error: unknown) => `webview probe failed: ${String(error)}`);
+  return `host ${v6}; host ${v4}; webview ${webview}`;
 }
 
 export async function login(user: string, pass: string): Promise<void> {
@@ -70,11 +92,17 @@ export async function login(user: string, pass: string): Promise<void> {
   const next = $('//button[normalize-space()="Continue"]');
   await expect(next).toBeDisplayed({ wait: 30_000 });
   const signIn = $('//button[normalize-space()="Sign in"]');
-  if (!browser.isIOS) {
-    await next.click();
+  await next.click();
+  try {
     await expect(signIn).toBeDisplayed({ wait: 30_000 });
-  } else {
-    await continueWithRetry(next, signIn);
+  } catch (error) {
+    if (!browser.isIOS) throw error;
+    const alert = $('#login-homeserver-error');
+    if (!(await alert.isDisplayed())) throw error;
+    throw new Error(
+      `homeserver discovery failed at ${HS_TLS}: "${await alert.getText()}"; ${await discoveryDiagnostics()}`,
+      { cause: error },
+    );
   }
   await fillByLabel('Username', user);
   await fillByLabel('Password', pass);

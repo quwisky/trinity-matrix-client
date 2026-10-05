@@ -286,6 +286,7 @@ describe('native homeserver runtime', () => {
     for (const option of [
       'admin off',
       'skip_install_trust',
+      '\tdebug\n',
       'auto_https disable_redirects',
       'default_bind 127.0.0.1 [::1]',
       'protocols h1 h2',

@@ -212,6 +212,8 @@ export function nativeCaddyfile(shared: string, accessLog: string): string {
     '\tadmin off',
     // Never touch the host trust store; the iOS runner trusts the root in the Simulator.
     '\tskip_install_trust',
+    // Go logs failed or abandoned TLS handshakes ("TLS handshake error from …") at debug.
+    '\tdebug',
     '\tauto_https disable_redirects',
     // Docker publishes 127.0.0.1:8448 only; the LAN must not reach the admin API.
     '\tdefault_bind 127.0.0.1 [::1]',
