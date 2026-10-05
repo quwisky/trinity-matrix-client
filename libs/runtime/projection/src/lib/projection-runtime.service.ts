@@ -16,6 +16,9 @@ import type {
   ProjectionRuntimeDiagnostics,
   ProjectionScope,
 } from './projection-runtime.models';
+import { traceProjection } from './projection-trace';
+
+declare const ngDevMode: boolean | undefined;
 
 interface ProjectionEntry {
   readonly key: string;
@@ -91,6 +94,14 @@ export class ProjectionRuntime {
       failure: null,
     };
     this.entries.set(key, entry);
+    if (typeof ngDevMode !== 'undefined' && ngDevMode) {
+      traceProjection({
+        kind: 'activate',
+        id: definition.id,
+        scope: scopeKey(definition.scope),
+        generation: entry.generation,
+      });
+    }
 
     try {
       entry.detach =
@@ -233,6 +244,14 @@ export class ProjectionRuntime {
     if (this.entries.get(entry.key) !== entry) return;
     entry.generation = ++this.nextGeneration;
     entry.failure = null;
+    if (typeof ngDevMode !== 'undefined' && ngDevMode) {
+      traceProjection({
+        kind: 'invalidate',
+        id: entry.definition.id,
+        scope: scopeKey(entry.definition.scope),
+        generation: entry.generation,
+      });
+    }
     this.cancelReconciliation(entry);
     this.announceRuntimeChange();
     this.schedule(entry);
@@ -285,9 +304,25 @@ export class ProjectionRuntime {
           this.entries.get(entry.key) !== entry ||
           entry.generation !== generation
         ) {
+          if (typeof ngDevMode !== 'undefined' && ngDevMode) {
+            traceProjection({
+              kind: 'stale-drop',
+              id: entry.definition.id,
+              scope: scopeKey(entry.definition.scope),
+              generation: generation,
+            });
+          }
           return false;
         }
         commit();
+        if (typeof ngDevMode !== 'undefined' && ngDevMode) {
+          traceProjection({
+            kind: 'publish',
+            id: entry.definition.id,
+            scope: scopeKey(entry.definition.scope),
+            generation: generation,
+          });
+        }
         return true;
       },
     };
@@ -323,6 +358,14 @@ export class ProjectionRuntime {
     if (!entry.active) return;
 
     if (entry.generation !== attempt.generation) {
+      if (typeof ngDevMode !== 'undefined' && ngDevMode) {
+        traceProjection({
+          kind: 'stale-drop',
+          id: entry.definition.id,
+          scope: scopeKey(entry.definition.scope),
+          generation: attempt.generation,
+        });
+      }
       this.announceRuntimeChange();
       this.schedule(entry);
       return;
@@ -352,6 +395,14 @@ export class ProjectionRuntime {
     this.cancelReconciliation(entry);
     if (this.entries.get(entry.key) === entry) {
       this.entries.delete(entry.key);
+    }
+    if (typeof ngDevMode !== 'undefined' && ngDevMode) {
+      traceProjection({
+        kind: 'release',
+        id: entry.definition.id,
+        scope: scopeKey(entry.definition.scope),
+        generation: entry.generation,
+      });
     }
     const failures: unknown[] = [];
     try {

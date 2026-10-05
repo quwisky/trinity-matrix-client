@@ -9,3 +9,9 @@ export type {
   CapabilityRecoveryOutcome,
   CapabilityIncident,
 } from './lib/capability-health.models';
+export { setProjectionTraceSink } from './lib/projection-trace';
+export type {
+  ProjectionTraceEvent,
+  ProjectionTraceKind,
+  ProjectionTraceSink,
+} from './lib/projection-trace';
