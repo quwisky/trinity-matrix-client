@@ -86,6 +86,7 @@ function spaceSnapshot(
       version: '10',
       createdBy: [],
       createdAt: null,
+      encrypted: false,
       encryption: null,
       federated: true,
       predecessor: null,

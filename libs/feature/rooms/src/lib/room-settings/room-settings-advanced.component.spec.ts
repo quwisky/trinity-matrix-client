@@ -28,6 +28,7 @@ const INFO: RoomAdvancedInfo = {
     { userId: '@carol:hs', displayName: '@carol:hs' },
   ],
   createdAt: 1_700_000_000_000,
+  encrypted: true,
   encryption: 'm.megolm.v1.aes-sha2',
   federated: false,
   predecessor: { roomId: '!old:hs', eventId: '$tomb' },
@@ -38,6 +39,7 @@ const UNKNOWN: RoomAdvancedInfo = {
   version: null,
   createdBy: [],
   createdAt: null,
+  encrypted: false,
   encryption: null,
   federated: null,
   predecessor: null,
@@ -120,6 +122,7 @@ describe('RoomSettingsAdvancedComponent', () => {
   it('reads an unencrypted, federated room with no upgrade history', async () => {
     const { row } = await build({
       ...INFO,
+      encrypted: false,
       encryption: null,
       federated: true,
       predecessor: null,
@@ -132,7 +135,7 @@ describe('RoomSettingsAdvancedComponent', () => {
     expect(row('Replaced by')).toBeNull();
   });
 
-  // Review Focus 1: partial state still shows the room ID.
+  // Partial state still shows the room ID.
   it('shows the room ID and Unknown when the create event is missing', async () => {
     const { row, queryByRole } = await build(UNKNOWN);
 
@@ -142,6 +145,12 @@ describe('RoomSettingsAdvancedComponent', () => {
     expect(row('Created')).toBe('Unknown');
     expect(row('Federation')).toBe('Unknown');
     expect(queryByRole('button', { name: 'Copy room version' })).toBeNull();
+  });
+
+  it('reads an encrypted room with an unusable algorithm as Unknown, not Off', async () => {
+    const { row } = await build({ ...INFO, encrypted: true, encryption: null });
+
+    expect(row('Encryption')).toBe('Unknown');
   });
 
   it('names what each copy button copies and copies it', async () => {
@@ -169,7 +178,7 @@ describe('RoomSettingsAdvancedComponent', () => {
     );
   });
 
-  // Review Focus 3: no clipboard means a failure toast, never "copied".
+  // No clipboard means a failure toast, never "copied".
   it('toasts a failed copy instead of claiming success', async () => {
     const { getByRole, show } = await build();
     vi.stubGlobal('navigator', {});

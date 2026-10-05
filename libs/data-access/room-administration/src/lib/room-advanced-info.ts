@@ -25,7 +25,9 @@ export interface RoomAdvancedInfo {
   readonly createdBy: readonly RoomCreator[];
   /** The create event's `origin_server_ts`, or null. */
   readonly createdAt: number | null;
-  /** The `m.room.encryption` algorithm, or null when the room is not encrypted. */
+  /** True whenever the room has an `m.room.encryption` event, even a redacted one. */
+  readonly encrypted: boolean;
+  /** The `m.room.encryption` algorithm, or null when absent or unusable. */
   readonly encryption: string | null;
   /** False only when `m.federate` is false; null when the create event is missing. */
   readonly federated: boolean | null;
@@ -42,11 +44,9 @@ export function roomAdvancedInfo(
   roomId: string,
   state: RoomState | undefined,
 ): RoomAdvancedInfo {
-  const encryption = text(
-    state?.getStateEvents(EventType.RoomEncryption, '')?.getContent()[
-      'algorithm'
-    ],
-  );
+  const encryptionEvent = state?.getStateEvents(EventType.RoomEncryption, '');
+  const encrypted = !!encryptionEvent;
+  const encryption = text(encryptionEvent?.getContent()['algorithm']);
   const successor = text(
     state?.getStateEvents(EventType.RoomTombstone, '')?.getContent()[
       'replacement_room'
@@ -59,6 +59,7 @@ export function roomAdvancedInfo(
       version: null,
       createdBy: [],
       createdAt: null,
+      encrypted,
       encryption,
       federated: null,
       predecessor: null,
@@ -76,7 +77,8 @@ export function roomAdvancedInfo(
     roomId,
     version,
     createdBy: creatorsOf(create, version, state),
-    createdAt: createdAt > 0 ? createdAt : null,
+    createdAt: validTs(createdAt),
+    encrypted,
     encryption,
     federated: content['m.federate'] !== false,
     predecessor: predecessorId
@@ -93,7 +95,7 @@ function creatorsOf(
   state: RoomState | undefined,
 ): readonly RoomCreator[] {
   const content: Record<string, unknown> = create.getContent();
-  const ids = [create.getSender() ?? text(content['creator'])];
+  const ids = [text(create.getSender()) ?? text(content['creator'])];
   const additional = content['additional_creators'];
   // `additional_creators` only means something from room version 12 (MSC4289).
   if (version !== null && /^\d+$/.test(version) && Number(version) >= 12) {
@@ -105,6 +107,15 @@ function creatorsOf(
       displayName: state?.getMember(userId)?.name || userId,
     }),
   );
+}
+
+/** A positive timestamp `Date` can represent (and so `Intl` can format), or null. */
+function validTs(ts: unknown): number | null {
+  return typeof ts === 'number' &&
+    ts > 0 &&
+    Number.isFinite(new Date(ts).getTime())
+    ? ts
+    : null;
 }
 
 /** A non-blank string, or null. */

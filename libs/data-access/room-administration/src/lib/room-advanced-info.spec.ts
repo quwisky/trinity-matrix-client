@@ -44,6 +44,7 @@ describe('roomAdvancedInfo', () => {
       version: '1',
       createdBy: [{ userId: '@alice:hs', displayName: 'Alice' }],
       createdAt: CREATED_AT,
+      encrypted: false,
       encryption: null,
       federated: true,
       predecessor: null,
@@ -146,6 +147,38 @@ describe('roomAdvancedInfo', () => {
     ).toBeNull();
   });
 
+  it('keeps an encrypted room encrypted when the algorithm is redacted', () => {
+    const info = roomAdvancedInfo(
+      ROOM,
+      stateOf([
+        create({ room_version: '10' }),
+        { type: 'm.room.encryption', sender: '@alice:hs', content: {} },
+      ]),
+    );
+    expect(info).toMatchObject({ encrypted: true, encryption: null });
+    expect(
+      roomAdvancedInfo(ROOM, stateOf([create({ room_version: '10' })])),
+    ).toMatchObject({ encrypted: false, encryption: null });
+  });
+
+  it('falls back to the legacy creator when the sender is empty', () => {
+    const info = roomAdvancedInfo(
+      ROOM,
+      stateOf([create({ creator: '@bob:hs' }, '')]),
+    );
+    expect(info.createdBy).toEqual([
+      { userId: '@bob:hs', displayName: '@bob:hs' },
+    ]);
+  });
+
+  it('treats a timestamp beyond the Date range as unknown', () => {
+    const info = roomAdvancedInfo(
+      ROOM,
+      stateOf([{ ...create({ room_version: '10' }), origin_server_ts: 9e15 }]),
+    );
+    expect(info.createdAt).toBeNull();
+  });
+
   it('reports a room closed to federation', () => {
     const info = roomAdvancedInfo(
       ROOM,
@@ -154,13 +187,14 @@ describe('roomAdvancedInfo', () => {
     expect(info.federated).toBe(false);
   });
 
-  // Review Focus 1: partial state shows the room ID and nothing invented.
+  // Partial state shows the room ID and nothing invented.
   it('shows only the room ID when the create event is missing', () => {
     const unknown = {
       roomId: ROOM,
       version: null,
       createdBy: [],
       createdAt: null,
+      encrypted: false,
       encryption: null,
       federated: null,
       predecessor: null,

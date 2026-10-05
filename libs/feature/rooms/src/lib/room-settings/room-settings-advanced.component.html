@@ -79,7 +79,7 @@
       <dt>Encryption</dt>
       <dd>
         <span class="room-advanced__value">{{
-          info().encryption ?? 'Off'
+          info().encrypted ? (info().encryption ?? 'Unknown') : 'Off'
         }}</span>
       </dd>
     </div>

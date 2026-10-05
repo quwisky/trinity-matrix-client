@@ -107,7 +107,7 @@ export interface RoomSettingsSnapshot {
 export interface RoomStateEntry {
   readonly type: string;
   readonly stateKey: string;
-  /** The event as stored — state events are not end-to-end encrypted. A copy, never the SDK's. */
+  /** The event as stored — state events are not end-to-end encrypted. A shallow copy: treat it as read-only, nested content is shared with the SDK. */
   readonly event: Readonly<Record<string, unknown>>;
 }
 
