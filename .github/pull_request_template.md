@@ -25,6 +25,15 @@ Select checks using the developer validation guide; unit tests do not replace
 TypeScript checks or rendered browser/native validation. CSS and SCSS also have
 a separate stylelint gate. -->
 
+## Evidence
+
+<!-- Required when the PR changes UI; delete this section otherwise. Show every new or
+changed state (for example loading, error, empty, populated, dialogs) in the dark theme,
+on both desktop (1280×800) and mobile (390×844), with alt text that names the state.
+Capture against synthetic test data only, and never commit screenshots. Attach them
+with `gh pr comment <number> --attach './shot.png#Alt text'` or by dragging them into
+this description, then say here where they are. -->
+
 ## Notes
 
 <!-- Optional: remaining work, known limitations, migration/configuration steps,
