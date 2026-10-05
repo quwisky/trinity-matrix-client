@@ -44,6 +44,12 @@ import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images
 import { MessageReplyPreviewComponent } from '../message-reply-preview/message-reply-preview.component';
 import { MessageThreadSummaryComponent } from '../message-thread-summary/message-thread-summary.component';
 
+/** A collapsed run of adjacent system lines (see `groupSystemRuns`). */
+export interface SystemRun {
+  readonly events: readonly MessageRow[];
+  readonly summary: string;
+}
+
 /** A {@link MessageView} plus the presentation state the list derives for it. */
 export interface MessageRow extends MessageView {
   /** Discord-style grouping: own header, or a continuation of the row above. */
@@ -58,6 +64,8 @@ export interface MessageRow extends MessageView {
    * the label the cached value means a rollover invalidates the row for free.
    */
   daySeparator?: string | null;
+  /** Present when this row stands for a run of adjacent system lines. */
+  readonly systemRun?: SystemRun;
 }
 
 /** The per-row capability/state flags the row (and its toolbar) render from. */
