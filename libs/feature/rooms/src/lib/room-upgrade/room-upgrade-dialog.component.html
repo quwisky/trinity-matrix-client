@@ -10,7 +10,11 @@
   data-testid="room-upgrade-dialog"
 >
   <h2 class="text-lg font-semibold">Upgrade room</h2>
-  <p class="text-sm text-muted-foreground" data-testid="room-upgrade-warning">
+  <p
+    class="text-sm text-muted-foreground"
+    [id]="warningId"
+    data-testid="room-upgrade-warning"
+  >
     Upgrading creates a new room and closes this one. Members need to join the
     new room; the old room stays readable with a link to the new one.
   </p>

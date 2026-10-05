@@ -10,6 +10,7 @@ import { MockProvider } from 'ng-mocks';
 import { Subject, defer } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  ROOM_UPGRADE_WARNING_ID,
   RoomUpgradeDialogComponent,
   preselectedTarget,
   upgradeErrorMessage,
@@ -198,6 +199,12 @@ describe('RoomUpgradeDialogComponent', () => {
       },
       { value: '12', label: '12', testId: 'room-upgrade-version-12' },
     ]);
+  });
+
+  it('gives the warning the id the opener points aria-describedby at', async () => {
+    const { byTestId } = await build();
+
+    expect(byTestId('room-upgrade-warning')?.id).toBe(ROOM_UPGRADE_WARNING_ID);
   });
 
   it('upgrades to the preselected server default and invites a private room’s members', async () => {

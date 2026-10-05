@@ -30,6 +30,9 @@ import {
   type RoomUpgradeTarget,
 } from '@trinity/data-access/room-administration';
 
+/** Id of the warning; the opener passes it as the dialog's `ariaDescribedBy`. */
+export const ROOM_UPGRADE_WARNING_ID = 'room-upgrade-dialog-warning';
+
 /** The version the dialog starts on: the server default when offered, else the highest. */
 export function preselectedTarget(
   targets: readonly RoomUpgradeTarget[],
@@ -121,6 +124,8 @@ export class RoomUpgradeDialogComponent {
     version: preselectedTarget(this.plan().targets),
     inviteMembers: this.plan().invitePrivateDefault,
   }));
+
+  protected readonly warningId = ROOM_UPGRADE_WARNING_ID;
 
   readonly accountId = input.required<string>();
   readonly roomId = input.required<string>();
