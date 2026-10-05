@@ -101,9 +101,15 @@ export class TrnDropdownMenuTrigger {
       .subscribe(() => this.trnDropdownMenuClosed.emit());
   }
 
-  /** Opens this trigger's configured menu without exposing the CDK trigger. */
-  open(): void {
+  /**
+   * Opens this trigger's configured menu without exposing the CDK trigger. A keyboard opener
+   * passes `focusFirstItem` so focus lands in the menu, as the CDK does for its own keys.
+   */
+  open(options: { focusFirstItem?: boolean } = {}): void {
     this.cdkTrigger.open();
+    if (options.focusFirstItem) {
+      this.cdkTrigger.getMenu()?.focusFirstItem('keyboard');
+    }
   }
 
   /** Closes this trigger's configured menu without exposing the CDK trigger. */

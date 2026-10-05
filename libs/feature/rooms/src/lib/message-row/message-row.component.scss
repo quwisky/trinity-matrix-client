@@ -183,16 +183,27 @@
       var(--trinity-ease-standard);
   }
 
-  .msg:is(:hover, :focus-within, .msg--revealed) .msg__toolbar {
+  // `:has(:focus)` rather than `:focus-within`: an action-capable row is itself focusable
+  // (#958), and a mouse click that focuses the row must not pin its bar open. Keyboard focus
+  // on the row shows it via `:focus-visible`; focus on a control inside it still does.
+  .msg:is(:hover, :focus-visible, :has(:focus), .msg--revealed) .msg__toolbar {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  // One tab stop per message. Inset so the scroller's horizontal clip cannot cut it off.
+  .msg:focus-visible {
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: calc(var(--trinity-focus-ring-width) * -1);
   }
 
   // Mobile OSes use the action sheet and never render this bar. A hybrid desktop can still accept
   // touch even when its primary pointer is fine, so preserve a non-overlapping 44px action track in
   // that capability case. Precise-pointer desktop/web keeps the full-width floating treatment.
+  // `.msg--actions`, not `:has(.msg__toolbar)`: the bar mounts on hover, and a track that came
+  // and went with it would change the row's measured height under the pointer.
   @media (any-pointer: coarse) {
-    .msg:has(.msg__toolbar) {
+    .msg--actions {
       min-height: 46px;
       padding-inline-end: calc(var(--trinity-space-6) + 178px);
     }

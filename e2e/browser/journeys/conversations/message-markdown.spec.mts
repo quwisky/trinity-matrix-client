@@ -210,6 +210,7 @@ test.describe('Message markdown', () => {
     await expect(row).toHaveClass(/msg--cont/);
 
     await pre.hover();
+    await expect(row.locator('.msg__toolbar')).toHaveCount(1);
 
     const overlap = await page.evaluate(() => {
       const row = [...document.querySelectorAll('.msg')].find((m) =>
