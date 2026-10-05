@@ -1,10 +1,16 @@
 import { type Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SimpleMessageListComponent } from './simple-message-list/simple-message-list.component';
 import { VirtualMessageListComponent } from './virtual-message-list/virtual-message-list.component';
 import type { MessageListBase } from './message-list-base';
+import type {
+  MessageView,
+  TimelineLoadState,
+} from '@trinity/data-access/timeline';
+import { MessageComposerComponent } from '../message-composer/message-composer.component';
 
 /**
  * The "Loading older messages…" strip, and when it is allowed to appear.
@@ -135,3 +141,135 @@ describe.each(LISTS)('message list — loading older (%s)', (_label, List) => {
     expect(strip(container)).toBeNull();
   });
 });
+
+function fakeMessage(id: string, body: string): MessageView {
+  return {
+    id,
+    senderId: '@a:hs',
+    senderName: 'Alice',
+    senderInitial: 'A',
+    senderAvatarMxc: null,
+    body,
+    html: null,
+    timestamp: 1000,
+    isOwn: false,
+    decryptionFailed: false,
+    edited: false,
+    reactions: [],
+    replyTo: null,
+    status: null,
+    kind: 'text',
+    media: null,
+    caption: null,
+    captionHtml: null,
+    readReceipts: [],
+    poll: null,
+  };
+}
+
+describe.each(LISTS)(
+  'message list — conversation load state (%s)',
+  (_label, List) => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+    const advance = (ms: number) => {
+      vi.advanceTimersByTime(ms);
+      TestBed.tick();
+    };
+    const loading = (partial = false): TimelineLoadState => ({
+      kind: 'loading',
+      reason: 'backfill',
+      partial,
+    });
+    const skeleton = (c: HTMLElement) =>
+      c.querySelector('[data-testid="timeline-skeleton"]');
+    const emptyState = (c: HTMLElement) => c.querySelector('trn-empty-state');
+
+    async function create(
+      loadState: TimelineLoadState,
+      messages: MessageView[] = [],
+    ) {
+      const result = await render(List, { inputs: { messages, loadState } });
+      TestBed.tick();
+      return result;
+    }
+
+    it('shows the skeleton only after 150 ms of loading and never the empty state meanwhile', async () => {
+      const { container } = await create(loading());
+      expect(skeleton(container)).toBeNull();
+      expect(emptyState(container)).toBeNull();
+      advance(200);
+      expect(skeleton(container)).not.toBeNull();
+      expect(emptyState(container)).toBeNull();
+    });
+
+    it('removes the skeleton the instant loading ends', async () => {
+      const { container, fixture } = await create(loading());
+      advance(200);
+      fixture.componentRef.setInput('loadState', { kind: 'empty' });
+      TestBed.tick();
+      expect(skeleton(container)).toBeNull();
+      expect(emptyState(container)).not.toBeNull();
+    });
+
+    it('never shows a skeleton for a ready empty Room', async () => {
+      const { container } = await create({ kind: 'empty' });
+      advance(1000);
+      expect(skeleton(container)).toBeNull();
+      expect(emptyState(container)).not.toBeNull();
+    });
+
+    it('renders the skeleton above messages when partial', async () => {
+      const { container } = await create(loading(true), [
+        fakeMessage('$1', 'hello'),
+      ]);
+      advance(200);
+      const sk = skeleton(container)!;
+      const firstRow = container.querySelector('trn-message-row')!;
+      expect(
+        sk.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('shows the reason copy with Retry on error and emits retryLoad', async () => {
+      const { container, fixture } = await create({
+        kind: 'error',
+        reason: 'backfill-failed',
+      });
+      const retry = vi.fn();
+      fixture.componentInstance.retryLoad.subscribe(retry);
+      expect(
+        container.querySelector('[data-testid="timeline-load-error"]')
+          ?.textContent,
+      ).toContain("Couldn't load messages.");
+      expect(emptyState(container)).toBeNull();
+      (
+        container.querySelector(
+          '[data-testid="timeline-load-retry"]',
+        ) as HTMLButtonElement
+      ).click();
+      expect(retry).toHaveBeenCalledOnce();
+    });
+
+    it('blocks sending while loading or failed, not when settled', async () => {
+      const { fixture } = await create(loading());
+      const composer = () =>
+        fixture.debugElement.query(By.directive(MessageComposerComponent))
+          .componentInstance as MessageComposerComponent;
+      expect(composer().sendBlocked()).toBe(true);
+      fixture.componentRef.setInput('loadState', { kind: 'ready' });
+      TestBed.tick();
+      expect(composer().sendBlocked()).toBe(false);
+    });
+
+    it('does not auto-load older while loading', async () => {
+      const { fixture } = await create(loading());
+      const loadOlder = vi.fn();
+      fixture.componentInstance.loadOlder.subscribe(loadOlder);
+      fixture.componentRef.setInput('canLoadOlder', true);
+      TestBed.tick();
+      advance(500);
+      expect(loadOlder).not.toHaveBeenCalled();
+    });
+  },
+);

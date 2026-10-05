@@ -22,6 +22,24 @@
     @if (showLoadingOlder()) {
       <div class="load-older">Loading older messages…</div>
     }
+    @if (showSkeleton()) {
+      <trn-timeline-skeleton />
+    }
+    @if (loadError(); as message) {
+      <div class="load-error" role="alert" data-testid="timeline-load-error">
+        <span>{{ message }}</span>
+        <button
+          trnBtn
+          type="button"
+          presentation="outline"
+          size="sm"
+          data-testid="timeline-load-retry"
+          (click)="retryLoad.emit()"
+        >
+          Retry
+        </button>
+      </div>
+    }
 
     @for (row of rows(); track row.id) {
       @if (row.daySeparator; as day) {
@@ -50,7 +68,9 @@
         (pollEnd)="pollEnd.emit($event)"
       />
     } @empty {
-      <trn-empty-state body="No messages yet." />
+      @if (settled()) {
+        <trn-empty-state body="No messages yet." />
+      }
     }
   </div>
 
@@ -82,6 +102,7 @@
   [replyingTo]="replyingToName()"
   [uploadProgress]="uploadProgress()"
   [stickerPacks]="stickerPacks()"
+  [sendBlocked]="sendBlocked()"
   (submitText)="onSubmit($event)"
   (submitBatchCaption)="onBatchCaption($event)"
   (submitMedia)="sendMedia.emit($event)"

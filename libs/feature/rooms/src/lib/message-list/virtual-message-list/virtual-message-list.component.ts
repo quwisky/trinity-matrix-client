@@ -1,4 +1,6 @@
 import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { TrnButton } from '@trinity/components/controls';
+import { TimelineSkeletonComponent } from '../timeline-skeleton/timeline-skeleton.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -65,6 +67,8 @@ const SMALL_LIST_ROWS = 80;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     EmptyStateComponent,
+    TimelineSkeletonComponent,
+    TrnButton,
     MessageComposerComponent,
     MessageRowComponent,
     DropOverlayComponent,
@@ -193,6 +197,9 @@ export class VirtualMessageListComponent extends MessageListBase {
       const msgs = this.messages();
       // The delayed loading strip changes row geometry before history arrives too.
       this.showLoadingOlder();
+      // The skeleton and the load error sit in flow above the rows as well.
+      this.showSkeleton();
+      this.loadError();
       const el = this.scrollEl()?.nativeElement;
       if (!el) {
         return;
@@ -281,6 +288,7 @@ export class VirtualMessageListComponent extends MessageListBase {
         const prependedOlder = oldestId !== this.lastBackfillOldestId;
         if (
           notFull &&
+          this.settled() &&
           this.canLoadOlder() &&
           !this.loadingOlder() &&
           !this.pendingPrepend &&
@@ -393,7 +401,12 @@ export class VirtualMessageListComponent extends MessageListBase {
       this.backfilling = false;
       return;
     }
-    if (this.pendingPrepend || this.loadingOlder() || !this.canLoadOlder()) {
+    if (
+      !this.settled() ||
+      this.pendingPrepend ||
+      this.loadingOlder() ||
+      !this.canLoadOlder()
+    ) {
       return;
     }
     if (el.scrollTop < AUTO_LOAD_THRESHOLD_PX) {

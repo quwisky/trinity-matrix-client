@@ -374,6 +374,46 @@ describe('VirtualMessageListComponent', () => {
     expect(scroll.scrollTop).toBe(200 * EST);
   });
 
+  it('stays pinned to the bottom when the loading skeleton above the rows goes away', async () => {
+    vi.useFakeTimers();
+    // Queue frames and flush them by hand: running them inside the effect re-enters change detection.
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      frames.push(cb);
+      return 0;
+    });
+    const { fixture, container } = await renderList({ messages: many(30) });
+    fixture.componentRef.setInput('loadState', {
+      kind: 'loading',
+      reason: 'backfill',
+      partial: true,
+    });
+    TestBed.tick();
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+    let scrollHeight = 30 * EST + 80;
+    Object.defineProperties(scroll, {
+      clientHeight: { value: 600, configurable: true },
+      scrollHeight: { get: () => scrollHeight, configurable: true },
+    });
+    scroll.scrollTop = scrollHeight;
+    scroll.dispatchEvent(new Event('scroll'));
+    vi.advanceTimersByTime(200);
+    TestBed.tick();
+    expect(
+      container.querySelector('[data-testid="timeline-skeleton"]'),
+    ).not.toBeNull();
+
+    scrollHeight -= 80;
+    fixture.componentRef.setInput('loadState', { kind: 'ready' });
+    TestBed.tick();
+    frames.splice(0).forEach((cb) => cb(0));
+
+    expect(scroll.scrollTop + scroll.clientHeight).toBeGreaterThanOrEqual(
+      scroll.scrollHeight - 1,
+    );
+    vi.useRealTimers();
+  });
+
   it('keeps a latest-message jump when an older-history correction is queued', async () => {
     const { fixture, container } = await renderList({
       messages: many(30),
