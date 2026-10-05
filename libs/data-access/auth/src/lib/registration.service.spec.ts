@@ -455,4 +455,25 @@ describe('RegistrationService', () => {
     expect(service.stage().kind).toBe('credentials');
     expect(service.error()).toMatch(/invalid registration UIA challenge/i);
   });
+
+  it('ignores a registration response that arrives after cancel', async () => {
+    let resolve!: (response: typeof registered) => void;
+    const held = new Promise<typeof registered>((r) => (resolve = r));
+    const registerRequest = vi.fn().mockReturnValue(held);
+    createClientMock.mockReturnValue(client({ registerRequest }) as never);
+    const completed = lastValueFrom(
+      service.begin('https://hs', 'new', 'password', 'hs'),
+      { defaultValue: undefined },
+    );
+
+    service.cancel();
+    resolve(registered);
+    await completed;
+
+    expect(service.stage().kind).toBe('idle');
+    expect(service.busy()).toBe(false);
+    expect(service.error()).toBeNull();
+    expect(registerRequest).toHaveBeenCalledOnce();
+    expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
+  });
 });
