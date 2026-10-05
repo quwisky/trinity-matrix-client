@@ -387,6 +387,7 @@ describe('cascade layer contract', () => {
     expect(declarations).toEqual([
       'apps/trinity/src/global.scss:animation-duration:0.01ms !important',
       'apps/trinity/src/global.scss:animation-iteration-count:1 !important',
+      'apps/trinity/src/global.scss:transition-property:none !important',
       'apps/trinity/src/global.scss:transition-duration:0.01ms !important',
       'apps/trinity/src/global.scss:scroll-behavior:auto !important',
     ]);

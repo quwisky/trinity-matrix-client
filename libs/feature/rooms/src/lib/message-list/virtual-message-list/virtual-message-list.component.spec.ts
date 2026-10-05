@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
@@ -1160,23 +1158,5 @@ describe('VirtualMessageListComponent', () => {
     fixture.detectChanges();
     expect(container.querySelector('.typing-indicator')).toBeNull();
     expect(container.querySelector('.typing-slot')).not.toBeNull();
-  });
-});
-
-describe('VirtualMessageListComponent spacers', () => {
-  it('never transition their height', () => {
-    // Read from the stylesheet because jsdom has no layout or transitions. The windowing
-    // reads scrollHeight in the same frame it sets the spacer heights, so a transition, even
-    // the 0.01ms one the global reduced-motion reset gives every element, leaves the old
-    // height in place for that frame. Re-entering a long room then pinned the bottom to a
-    // stale scroll height and opened at the top of its history (#959). That reset only
-    // forces the DURATION, so turning the property off is what keeps the spacers instant.
-    const scss = readFileSync(
-      join(import.meta.dirname, 'virtual-message-list.component.scss'),
-      'utf8',
-    );
-    const vpad = /\.vpad\s*\{([^}]*)\}/.exec(scss)?.[1] ?? '';
-
-    expect(vpad).toMatch(/transition-property:\s*none;/);
   });
 });
