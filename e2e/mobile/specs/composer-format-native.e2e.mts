@@ -8,6 +8,18 @@ import {
 } from '../support/matrix.mts';
 import { keyboardShown, goBack, resetApp } from '../support/session.mts';
 
+/**
+ * Press a control while the composer holds the soft keyboard. On iOS, Appium converts a
+ * touch's web coordinates with the page's viewport, and the keyboard leaves WKWebView
+ * zoomed and offset (run 37294494885: innerHeight 530, visual viewport scale 1.067, offset
+ * 36): "Converted web coords {261,491} into real coords {357,1796}", off the screen, so the
+ * Aa tap hit nothing. A WebDriver element click does not depend on that conversion.
+ */
+async function press(selector: string): Promise<void> {
+  if (browser.isIOS) await $(selector).click();
+  else await tap(selector);
+}
+
 describe('mobile composer formatting', () => {
   beforeEach(resetApp);
 
@@ -44,7 +56,7 @@ describe('mobile composer formatting', () => {
       input.focus();
       input.setSelectionRange(4, 9);
     });
-    await tap('[data-testid="composer-format"]');
+    await press('[data-testid="composer-format"]');
     const menu = $('[data-testid="action-sheet-surface"]');
     await expect(menu).toBeDisplayed();
     const fit = await browser.execute(() => {
@@ -68,7 +80,7 @@ describe('mobile composer formatting', () => {
     // WebView rounds its CSS viewport through native device-pixel ratios.
     expect(fit!.right).toBeLessThanOrEqual(fit!.width + 0.5);
     expect(fit!.bottom).toBeLessThanOrEqual(fit!.height + 0.5);
-    await tap(
+    await press(
       '[data-testid="action-sheet-surface"] [data-testid="format-italic"]',
     );
     await expect(composer).toHaveValue('say *hello*');
@@ -87,7 +99,7 @@ describe('mobile composer formatting', () => {
       timeoutMsg: 'soft keyboard never restored',
     });
 
-    await tap('[data-testid="composer-format"]');
+    await press('[data-testid="composer-format"]');
     await expect($('[data-testid="format-cancel"]')).toBeDisplayed();
     const unchanged = await browser.execute(
       () =>
@@ -97,7 +109,7 @@ describe('mobile composer formatting', () => {
     );
     if (browser.isIOS) {
       // No system Back on iOS, and the edge swipe is off while the sheet is open.
-      await tap('[data-testid="format-cancel"]');
+      await press('[data-testid="format-cancel"]');
     } else {
       await goBack();
     }
