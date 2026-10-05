@@ -288,13 +288,10 @@
       min-width: var(--trinity-interaction-target-min-size);
       min-height: var(--trinity-interaction-target-min-size);
     }
-  }
 
-  /* iOS WebKit zooms the page when a focused text field computes below 16px, so on touch
- * devices every text-entry control resolves to at least 16px. The max() keeps the field
- * scaling with Settings -> Appearance -> Text size (rem) instead of pinning it. A field
- * may expose its own size as `--trinity-entry-font-size`. Pinch-zoom is untouched. */
-  @media (pointer: coarse) {
+    /* iOS WebKit zooms the page when a focused text field computes below 16px, so every
+     * text-entry control resolves to at least 16px here. The floor token is rem-based, so the
+     * Text size setting still grows fields; a field may set `--trinity-entry-font-size`. */
     input:not(
       [type='checkbox'],
       [type='radio'],

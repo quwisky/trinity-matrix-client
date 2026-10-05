@@ -101,9 +101,9 @@
     --trinity-type-control-weight: 600;
 
     // Floor for text-entry controls on touch devices: iOS WebKit zooms the page when a focused
-    // field computes below 16px. Applied as `max(scaled size, floor)` so the Text size setting
-    // still scales fields upward (global.scss, `pointer: coarse`).
-    --trinity-type-entry-min-size: 16px;
+    // field computes below 16px. The floor is never below 16px yet scales with the Text size root
+    // (1rem), and is applied as `max(size, floor)` (global.scss, `pointer: coarse`).
+    --trinity-type-entry-min-size: max(1rem, 16px);
     --trinity-type-title-size: var(--trinity-text-lg);
     --trinity-type-title-line-height: var(--trinity-text-lg--line-height);
     --trinity-type-title-weight: 700;

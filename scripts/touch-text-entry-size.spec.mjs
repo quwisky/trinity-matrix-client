@@ -14,18 +14,19 @@ describe('touch text-entry font size floor', () => {
   it('defines the floor as a 16px theme-foundation token', () => {
     expect(
       read('libs/theme-foundation/styles/internal/variables.scss'),
-    ).toMatch(/--trinity-type-entry-min-size:\s*16px;/u);
+    ).toMatch(/--trinity-type-entry-min-size:\s*max\(1rem,\s*16px\);/u);
   });
 
   it('applies max(scaled size, floor) to every text-entry control on coarse pointers', () => {
     const global = read('apps/trinity/src/global.scss');
+    // The rule sits inside the touch-target `@media (pointer: coarse)` block.
+    expect(global).toMatch(
+      /@media \(pointer: coarse\) \{[^@]*\[contenteditable/u,
+    );
     const rule = global.match(
-      /@media \(pointer: coarse\) \{\s*(?:input[^{]*|textarea[^{]*|select[^{]*|\[contenteditable[^{]*)\{[^}]*font-size:\s*max\(([^;]*)\);/u,
+      /\[contenteditable[^{]*\{\s*font-size:\s*max\(([^;]*)\);/,
     );
     expect(rule, 'coarse-pointer text-entry font-size rule').not.toBeNull();
     expect(rule[1]).toContain('var(--trinity-type-entry-min-size)');
-    for (const control of ['input', 'textarea', 'select', '[contenteditable']) {
-      expect(global).toContain(control);
-    }
   });
 });

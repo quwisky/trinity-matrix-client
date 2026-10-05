@@ -1,10 +1,5 @@
 @layer components {
   :host {
-    // One 0.9375rem line at 1.4 leading + 11px block padding on both sides + the field border.
-    // Kept as a construction rather than a literal 45px so Appearance text scaling grows the
-    // voice replacement with the textarea it stands in for.
-    --composer-resting-field-height: calc(1.3125rem + 24px);
-
     display: block;
     background: var(--trinity-surface-workspace);
   }
@@ -65,11 +60,18 @@
     // The one type size the field and its preview share. Touch devices lift it to the 16px
     // text-entry floor so iOS does not zoom on focus (#974); the preview follows so the cell
     // does not change height when toggling.
-    --trinity-entry-font-size: 0.9375rem;
+    --trinity-entry-font-size: var(--trinity-text-base);
+
+    // One entry-size line at 1.4 leading + 11px block padding on both sides + the field border.
+    // Built from the entry size so the voice replacement stays as tall as the textarea it
+    // stands in for, on touch and under every Text size.
+    --composer-resting-field-height: calc(
+      1.4 * var(--trinity-entry-font-size) + 24px
+    );
 
     @media (pointer: coarse) {
       --trinity-entry-font-size: max(
-        0.9375rem,
+        var(--trinity-text-base),
         var(--trinity-type-entry-min-size)
       );
     }
