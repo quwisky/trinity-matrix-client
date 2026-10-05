@@ -20,6 +20,21 @@ const PANEL_BACK_ANDROID_ONLY =
 const IME_BACK_ANDROID_ONLY =
   'Android consumes Back at the IME before the app; iOS has no system Back for an open panel';
 
+/**
+ * Back out of a routed Settings page. Android and the browser history take the system
+ * Back; iOS has no edge-swipe Back there (the gesture policy disables WebKit's while the
+ * routed Settings surface is active), so a user goes back with the in-app Back button.
+ */
+async function backFromSettings(): Promise<void> {
+  if (browser.isIOS) {
+    const back = $('//button[normalize-space()="Back" or @aria-label="Back"]');
+    await expect(back).toBeDisplayed({ wait: 20_000 });
+    await back.click();
+  } else {
+    await goBack();
+  }
+}
+
 const viewportHeight = (): Promise<number> =>
   browser.execute(() => window.visualViewport?.height ?? window.innerHeight);
 
@@ -80,7 +95,7 @@ describe('mobile navigation', () => {
     await login(user, pass);
     await openSettingsFromRooms();
 
-    await goBack();
+    await backFromSettings();
     await waitForRooms();
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
   });
@@ -120,7 +135,7 @@ describe('mobile navigation', () => {
     );
     await expect($('#appearance-heading')).toBeFocused({ wait: 10_000 });
 
-    await goBack();
+    await backFromSettings();
     await waitForPath((path) => path.endsWith('/settings'), '/settings');
     await expect(appearance).toBeFocused({ wait: 10_000 });
     const horizontalOverflow = await browser.execute(
@@ -130,7 +145,7 @@ describe('mobile navigation', () => {
     );
     expect(horizontalOverflow).toBeLessThanOrEqual(1);
 
-    await goBack();
+    await backFromSettings();
     await waitForRooms();
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
   });
