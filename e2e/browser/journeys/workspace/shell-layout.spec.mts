@@ -198,7 +198,7 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
     const railStyle = getComputedStyle(rail);
     const roomStyle = getComputedStyle(roomScroller);
     const result = {
-      compact: document.documentElement.dataset['density'] === 'compact',
+      density: document.documentElement.dataset['density'] ?? 'cosy',
       hostPosition: getComputedStyle(host).position,
       railScrollPaddingEnd: Number.parseFloat(railStyle.scrollPaddingBlockEnd),
       roomScrollPaddingEnd: Number.parseFloat(roomStyle.scrollPaddingBlockEnd),
@@ -228,8 +228,11 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
     return result;
   });
 
-  expect(geometry.railScrollPaddingEnd).toBe(geometry.compact ? 64 : 68);
-  expect(geometry.roomScrollPaddingEnd).toBe(geometry.compact ? 64 : 68);
+  // Dock clearance follows the density's shell gap.
+  const dockClearance =
+    { cosy: 68, compact: 64, spacious: 72 }[geometry.density] ?? Number.NaN;
+  expect(geometry.railScrollPaddingEnd).toBe(dockClearance);
+  expect(geometry.roomScrollPaddingEnd).toBe(dockClearance);
   expect(geometry.settingsIconOffsetX).toBeLessThanOrEqual(1);
   expect(geometry.settingsIconOffsetY).toBeLessThanOrEqual(1);
   expect(geometry).toMatchObject({
@@ -508,7 +511,7 @@ async function fillNavigationScrollers(page: Page): Promise<void> {
 test.describe('Modern room shell layout', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('keeps overflowing panes and long identities safe in both densities', async ({
+  test('keeps overflowing panes and long identities safe in every density', async ({
     page,
     request,
   }) => {
@@ -579,9 +582,15 @@ test.describe('Modern room shell layout', () => {
     const roomNames = {
       cosy: `Cosy Room Name ${runId} That Is Deliberately Much Wider Than The Sidebar`,
       compact: `Compact Room Name ${runId} That Is Deliberately Much Wider Than The Sidebar`,
+      spacious: `Spacious Room Name ${runId} That Is Deliberately Much Wider Than The Sidebar`,
+    } as const;
+    const shellSpacing = {
+      cosy: { gap: '8px', padding: '8px' },
+      compact: { gap: '4px', padding: '6px' },
+      spacious: { gap: '10px', padding: '14px' },
     } as const;
     for (const [densityIndex, density] of (
-      ['cosy', 'compact'] as const
+      ['cosy', 'compact', 'spacious'] as const
     ).entries()) {
       const owner = members[densityIndex];
       const roomId = await createRoom(request, hs, owner, {
@@ -608,23 +617,22 @@ test.describe('Modern room shell layout', () => {
       pass: readerPass,
     } as HomeserverSession);
 
-    for (const density of ['cosy', 'compact'] as const) {
+    for (const density of ['cosy', 'compact', 'spacious'] as const) {
       await seedPreference(page, DENSITY_KEY, density);
       await page.reload({ waitUntil: 'domcontentloaded' });
       await expect(page.locator('[data-shell-root]')).toBeVisible({
         timeout: 30_000,
       });
-      if (density === 'compact') {
+      if (density !== 'cosy') {
         await expect(page.locator('html')).toHaveAttribute(
           'data-density',
-          'compact',
+          density,
         );
       } else {
         await expect(page.locator('html')).not.toHaveAttribute('data-density');
       }
 
-      const shellGap = density === 'compact' ? '4px' : '8px';
-      const shellPadding = density === 'compact' ? '6px' : '8px';
+      const { gap: shellGap, padding: shellPadding } = shellSpacing[density];
       await expect(page.locator('.rail')).toHaveCSS('gap', shellGap);
       await expect(page.locator('.sidebar__header')).toHaveCSS(
         'padding-left',

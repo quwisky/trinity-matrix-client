@@ -123,7 +123,7 @@ export const DENSITY_PREFERENCE = definePreference({
   editor: {
     kind: 'select',
     label: 'Conversation density',
-    description: 'Choose compact, comfortable or spacious application spacing.',
+    description: 'Choose comfortable, compact or spacious application spacing.',
     testId: 'density-select',
     options: DENSITY_OPTIONS.map(({ id, label }) => ({ value: id, label })),
   },

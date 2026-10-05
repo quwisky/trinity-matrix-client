@@ -111,13 +111,14 @@ describe('modern room shell layout contracts', () => {
     );
   });
 
-  it('defines both cosy and compact shell density recipes', () => {
+  it('defines cosy, compact and spacious shell density recipes', () => {
     for (const token of [
       '--trinity-density-shell-gap',
       '--trinity-density-shell-padding-inline',
       '--trinity-density-channel-padding-block',
     ]) {
-      expect(variables.match(new RegExp(`${token}\\s*:`, 'g'))?.length).toBe(2);
+      // One declaration per density block: base, compact and spacious.
+      expect(variables.match(new RegExp(`${token}\\s*:`, 'g'))?.length).toBe(3);
     }
   });
 
