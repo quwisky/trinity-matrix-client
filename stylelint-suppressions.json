@@ -101,7 +101,7 @@
   },
   "libs/feature/rooms/src/lib/message-composer/message-composer.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 9
+      "count": 7
     }
   },
   "libs/feature/rooms/src/lib/message-list/_message-list-shared.scss": {

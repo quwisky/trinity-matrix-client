@@ -289,4 +289,31 @@
       min-height: var(--trinity-interaction-target-min-size);
     }
   }
+
+  /* iOS WebKit zooms the page when a focused text field computes below 16px, so on touch
+ * devices every text-entry control resolves to at least 16px. The max() keeps the field
+ * scaling with Settings -> Appearance -> Text size (rem) instead of pinning it. A field
+ * may expose its own size as `--trinity-entry-font-size`. Pinch-zoom is untouched. */
+  @media (pointer: coarse) {
+    input:not(
+      [type='checkbox'],
+      [type='radio'],
+      [type='range'],
+      [type='button'],
+      [type='submit'],
+      [type='reset'],
+      [type='file'],
+      [type='color'],
+      [type='image'],
+      [type='hidden']
+    ),
+    textarea,
+    select,
+    [contenteditable]:not([contenteditable='false']) {
+      font-size: max(
+        var(--trinity-entry-font-size, var(--trinity-type-control-size)),
+        var(--trinity-type-entry-min-size)
+      );
+    }
+  }
 }
