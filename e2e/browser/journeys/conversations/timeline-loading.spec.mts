@@ -142,6 +142,7 @@ async function seedRoom(
       `${f.hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/${f.runId}-${txn++}`,
       { headers: f.headers, data: { msgtype: 'm.text', body } },
     );
+    expect(sent.ok()).toBe(true);
     eventIds.push((await sent.json()).event_id as string);
   }
   return room_id as string;
@@ -279,13 +280,13 @@ test.describe('Timeline loading states', () => {
     await login(page, f.me);
     const account = new URL(page.url()).searchParams.get('account') as string;
     // Created after login, so the client has never synced it and cannot hydrate it from cache.
-    const roomId = await seedRoom(request, f, `Pending ${f.runId}`, bodies);
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
     await page.route('**/_matrix/client/**/sync*', async (route) => {
       await gate;
       await route.continue();
     });
+    const roomId = await seedRoom(request, f, `Pending ${f.runId}`, bodies);
     const segment = Buffer.from(roomId).toString('base64url');
     await page.goto(
       `/rooms/${segment}?account=${encodeURIComponent(account)}&view=rooms`,
@@ -312,10 +313,17 @@ test.describe('Timeline loading states', () => {
     request,
   }) => {
     const f = await newUser(request);
-    const bodies = messages(`anchor ${f.runId}`, 30);
+    const bodies = messages(`anchor ${f.runId}`, 60);
     const eventIds: string[] = [];
+    await watchSkeleton(page);
     await login(page, f.me);
     const account = new URL(page.url()).searchParams.get('account') as string;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/_matrix/client/**/sync*', async (route) => {
+      await gate;
+      await route.continue();
+    });
     const roomId = await seedRoom(
       request,
       f,
@@ -324,16 +332,13 @@ test.describe('Timeline loading states', () => {
       eventIds,
     );
     const anchorId = eventIds[1];
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => (release = resolve));
-    await page.route('**/_matrix/client/**/sync*', async (route) => {
-      await gate;
-      await route.continue();
-    });
     const segment = Buffer.from(roomId).toString('base64url');
     await page.goto(
       `/rooms/${segment}?account=${encodeURIComponent(account)}&view=rooms&event=${encodeURIComponent(anchorId)}`,
     );
+    await expect(page.getByTestId('timeline-skeleton')).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(page.getByTestId('composer-input')).toHaveCount(0);
 
     release();
