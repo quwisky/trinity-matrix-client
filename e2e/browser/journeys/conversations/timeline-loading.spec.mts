@@ -195,7 +195,7 @@ test.describe('Timeline loading states', () => {
     const roomId = await seedRoom(request, f, name, bodies);
     await watchSkeleton(page);
     await forceBackfill(page, [roomId]);
-    await routeMessages(page, { [roomId]: { delayMs: 1500 } });
+    await routeMessages(page, { [roomId]: { delayMs: 4000 } });
     await login(page, f.me);
     await openNamedRoom(page, name);
     await expect(page.getByTestId('timeline-skeleton')).toBeVisible();
