@@ -214,7 +214,10 @@ function message(
   };
 }
 
-afterEach(() => TestBed.resetTestingModule());
+afterEach(() => {
+  vi.restoreAllMocks();
+  TestBed.resetTestingModule();
+});
 
 describe('ConversationRuntime', () => {
   it('keys one immutable handle by exactly Account and Room', () => {
