@@ -104,6 +104,7 @@ export function installPermissionPolicy(session: Electron.Session): void {
 }
 
 export function createWindow(): void {
+  const prefs = readWindowPrefs();
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -115,7 +116,7 @@ export function createWindow(): void {
     // would otherwise show Electron's default). macOS uses the bundle's .icns.
     ...windowIconOptions(process.platform),
     // Trinity draws its own 32px title row unless the user opted into the OS bar.
-    ...titleBarOptions(process.platform, readWindowPrefs()),
+    ...titleBarOptions(process.platform, prefs),
     autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -136,6 +137,12 @@ export function createWindow(): void {
       backgroundThrottling: false,
     },
   });
+
+  // The title row's ☰ pops the application menu up instead (title-bar-ipc.ts);
+  // hiding keeps the menu's accelerators, unlike removeMenu().
+  if (!prefs.systemTitleBar && process.platform !== 'darwin') {
+    mainWindow.setMenuBarVisibility(false);
+  }
 
   hardenContents(mainWindow.webContents);
 

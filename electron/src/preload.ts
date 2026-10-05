@@ -37,6 +37,9 @@ const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
 // as with SHOW_NOTIFICATION_CHANNEL / NOTIFICATION_CLICK_CHANNEL above).
 const SET_BADGE_COUNT_CHANNEL = 'trinity:host:v1:badge:set';
 const HOST_NEGOTIATE_CHANNEL = 'trinity:host:v1:negotiate';
+// Mirrors title-bar-ipc.ts; main re-validates every payload.
+const TITLE_BAR_CHANNEL = 'trinity:host:v1:title-bar';
+const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 
 /** Payload accepted by `showNotification`; mirrors core's `DesktopNotification`. */
 interface ShowNotificationPayload {
@@ -62,7 +65,8 @@ type NegotiatedOperation =
   | 'badge'
   | 'secure-store'
   | 'lifecycle'
-  | 'updates';
+  | 'updates'
+  | 'title-bar';
 
 const unavailableGrant = () =>
   ({ kind: 'unavailable', reason: 'host-rejected' }) as const;
@@ -276,8 +280,67 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
             } | null>)
           : Promise.resolve(null),
     },
+    titleBar: {
+      setOverlayColors: (colors: {
+        color: string;
+        symbolColor: string;
+      }): void => {
+        if (!grantedOperations.has('title-bar')) return;
+        if (!colors || typeof colors !== 'object') return;
+        const { color, symbolColor } = colors as Partial<typeof colors>;
+        if (!isHexColour(color) || !isHexColour(symbolColor)) return;
+        ipcRenderer.send(`${TITLE_BAR_CHANNEL}:set-overlay`, {
+          color,
+          symbolColor,
+        });
+      },
+      popupMenu: (at: { x: number; y: number }): void => {
+        if (!grantedOperations.has('title-bar')) return;
+        if (!at || typeof at !== 'object') return;
+        const { x, y } = at as Partial<typeof at>;
+        if (!isMenuCoordinate(x) || !isMenuCoordinate(y)) return;
+        ipcRenderer.send(`${TITLE_BAR_CHANNEL}:popup-menu`, { x, y });
+      },
+      getSystemTitleBar: (): Promise<boolean> =>
+        grantedOperations.has('title-bar')
+          ? (ipcRenderer.invoke(
+              `${TITLE_BAR_CHANNEL}:get-system-title-bar`,
+            ) as Promise<boolean>)
+          : Promise.resolve(false),
+      setSystemTitleBar: (value: boolean): Promise<unknown> => {
+        if (!grantedOperations.has('title-bar')) {
+          return Promise.resolve(unavailableGrant());
+        }
+        if (typeof value !== 'boolean') {
+          return Promise.resolve({
+            kind: 'rejected',
+            diagnostic: { code: 'invalid-system-title-bar' },
+          });
+        }
+        return ipcRenderer.invoke(
+          `${TITLE_BAR_CHANNEL}:set-system-title-bar`,
+          value,
+        ) as Promise<unknown>;
+      },
+      relaunch: (): void => {
+        if (!grantedOperations.has('title-bar')) return;
+        ipcRenderer.send(`${TITLE_BAR_CHANNEL}:relaunch`);
+      },
+    },
   },
 });
+
+function isHexColour(value: unknown): value is string {
+  return typeof value === 'string' && HEX_COLOUR.test(value);
+}
+
+function isMenuCoordinate(value: unknown): value is number {
+  return (
+    Number.isInteger(value) &&
+    (value as number) >= 0 &&
+    (value as number) <= 10_000
+  );
+}
 
 function isNotificationDestination(
   value: unknown,

@@ -49,6 +49,13 @@ type ExposedBridge = {
         lng: number;
       } | null>;
     };
+    readonly titleBar: {
+      readonly setOverlayColors: (colors: unknown) => void;
+      readonly popupMenu: (at: unknown) => void;
+      readonly getSystemTitleBar: () => Promise<boolean>;
+      readonly setSystemTitleBar: (value: unknown) => Promise<unknown>;
+      readonly relaunch: () => void;
+    };
   };
   readonly onDeepLink?: unknown;
   readonly showNotification?: unknown;
@@ -100,6 +107,7 @@ describe('preload host capabilities', () => {
       'networkCors',
       'notificationPresentation',
       'secureStore',
+      'titleBar',
     ]);
     expect(bridge.onDeepLink).toBeUndefined();
     expect(bridge.showNotification).toBeUndefined();
@@ -142,6 +150,18 @@ describe('preload host capabilities', () => {
     await expect(
       bridge.capabilities.location.approximate(),
     ).resolves.toBeNull();
+    bridge.capabilities.titleBar.setOverlayColors({
+      color: '#121214',
+      symbolColor: '#dbdee1',
+    });
+    bridge.capabilities.titleBar.popupMenu({ x: 8, y: 32 });
+    bridge.capabilities.titleBar.relaunch();
+    await expect(
+      bridge.capabilities.titleBar.getSystemTitleBar(),
+    ).resolves.toBe(false);
+    await expect(
+      bridge.capabilities.titleBar.setSystemTitleBar(true),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'host-rejected' });
     expect(on).not.toHaveBeenCalledWith(
       'notification-click',
       expect.anything(),
@@ -233,6 +253,50 @@ describe('preload host capabilities', () => {
       kind: 'rejected',
       diagnostic: { code: 'invalid-badge-count' },
     });
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('forwards title-bar requests once the operation is granted', async () => {
+    await bridge.negotiate(['title-bar']);
+    invoke.mockClear();
+    const titleBar = bridge.capabilities.titleBar;
+
+    titleBar.setOverlayColors({ color: '#121214', symbolColor: '#dbdee1' });
+    titleBar.popupMenu({ x: 8, y: 32 });
+    titleBar.relaunch();
+    await titleBar.getSystemTitleBar();
+    await titleBar.setSystemTitleBar(true);
+
+    expect(send.mock.calls).toEqual([
+      [
+        'trinity:host:v1:title-bar:set-overlay',
+        { color: '#121214', symbolColor: '#dbdee1' },
+      ],
+      ['trinity:host:v1:title-bar:popup-menu', { x: 8, y: 32 }],
+      ['trinity:host:v1:title-bar:relaunch'],
+    ]);
+    expect(invoke.mock.calls).toEqual([
+      ['trinity:host:v1:title-bar:get-system-title-bar'],
+      ['trinity:host:v1:title-bar:set-system-title-bar', true],
+    ]);
+  });
+
+  it('drops malformed title-bar input before IPC', async () => {
+    await bridge.negotiate(['title-bar']);
+    invoke.mockClear();
+    const titleBar = bridge.capabilities.titleBar;
+
+    titleBar.setOverlayColors({ color: 'red', symbolColor: '#dbdee1' });
+    titleBar.setOverlayColors({ color: '#121214' });
+    titleBar.popupMenu({ x: 8.5, y: 32 });
+    titleBar.popupMenu({ x: -1, y: 32 });
+    titleBar.popupMenu(null);
+    await expect(titleBar.setSystemTitleBar('true')).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'invalid-system-title-bar' },
+    });
+
+    expect(send).not.toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalled();
   });
 

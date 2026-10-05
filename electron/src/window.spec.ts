@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { openExternal } = vi.hoisted(() => ({ openExternal: vi.fn() }));
 vi.mock('electron', () => ({
@@ -294,6 +294,14 @@ describe('titleBarOptions', () => {
 });
 
 describe('createWindow title bar', () => {
+  const setMenuBarVisibility = vi.fn();
+  const originalPlatform = process.platform;
+
+  afterEach(() => {
+    setMenuBarVisibility.mockClear();
+    Object.defineProperty(process, 'platform', { value: originalPlatform });
+  });
+
   function create() {
     let options: Record<string, unknown> = {};
     vi.mocked(BrowserWindow).mockImplementation(function (
@@ -306,11 +314,27 @@ describe('createWindow title bar', () => {
         once: vi.fn(),
         on: vi.fn(),
         loadURL: vi.fn(() => Promise.resolve()),
+        setMenuBarVisibility,
       };
     } as never);
     createWindow();
     return options;
   }
+
+  it.each(['win32', 'linux'] as const)(
+    'hides the native menu bar behind the title row on %s',
+    (platform) => {
+      Object.defineProperty(process, 'platform', { value: platform });
+      create();
+      expect(setMenuBarVisibility).toHaveBeenCalledExactlyOnceWith(false);
+    },
+  );
+
+  it('leaves the macOS menu bar alone', () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+    create();
+    expect(setMenuBarVisibility).not.toHaveBeenCalled();
+  });
 
   it('passes the frameless options', () => {
     expect(create()).toMatchObject({
@@ -324,5 +348,6 @@ describe('createWindow title bar', () => {
     const options = create();
     expect(options['titleBarStyle']).toBeUndefined();
     expect(options['autoHideMenuBar']).toBe(false);
+    expect(setMenuBarVisibility).not.toHaveBeenCalled();
   });
 });

@@ -60,6 +60,18 @@ describe('getTrinityDesktopBridge', () => {
 
     expect(getTrinityDesktopBridge()).toBeUndefined();
   });
+
+  it('rejects a bridge without the complete title-bar group', () => {
+    const bridge = bridgeFixture();
+    const { relaunch: _relaunch, ...partialTitleBar } =
+      bridge.capabilities.titleBar;
+    setBridge({
+      ...bridge,
+      capabilities: { ...bridge.capabilities, titleBar: partialTitleBar },
+    });
+
+    expect(getTrinityDesktopBridge()).toBeUndefined();
+  });
 });
 
 describe('isElectronRenderer', () => {

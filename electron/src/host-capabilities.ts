@@ -15,6 +15,7 @@ export const HOST_OPERATIONS = [
   'secure-store',
   'lifecycle',
   'updates',
+  'title-bar',
 ] as const;
 
 type HostOperation = (typeof HOST_OPERATIONS)[number];
@@ -34,6 +35,7 @@ const SUPPORTED = new Set<HostOperation>([
   'badge',
   'secure-store',
   'lifecycle',
+  'title-bar',
 ]);
 
 function isOperation(value: unknown): value is HostOperation {
@@ -97,6 +99,7 @@ export function negotiateHostCapabilities(
     'secure-store': support('secure-store'),
     lifecycle: support('lifecycle'),
     updates: support('updates'),
+    'title-bar': support('title-bar'),
   };
   return { kind: 'accepted', protocolVersion: 1, operations };
 }
