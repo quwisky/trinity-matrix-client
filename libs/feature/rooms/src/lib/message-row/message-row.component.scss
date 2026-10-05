@@ -96,7 +96,7 @@
   .msg--run {
     flex-direction: column;
     align-items: center;
-    gap: var(--trinity-space-1);
+    row-gap: var(--trinity-space-1);
   }
 
   .msg__run-toggle {
