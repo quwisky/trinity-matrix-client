@@ -596,4 +596,57 @@ describe('RoomUpgradeService.upgrade', () => {
     expect(sendStateEvent).toHaveBeenCalledTimes(1);
     expect(leave).not.toHaveBeenCalled();
   });
+
+  it('runs each request only after the previous one settles', async () => {
+    const second = fakeRoom('!ops:hs', {
+      name: 'Ops',
+      space: true,
+      events: [create('10'), child(OLD, { via: ['hs'] })],
+    });
+    const { svc, invite, sendStateEvent } = setup(rooms([second]));
+    const gates: (() => void)[] = [];
+    const gated = () => new Promise((resolve) => gates.push(() => resolve({})));
+    invite.mockImplementation(gated);
+    sendStateEvent.mockImplementation(gated);
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+    const done = firstValueFrom(
+      svc.upgrade(ME, OLD, { version: '11', inviteMembers: true }),
+    );
+    const step = async (invites: number, writes: number) => {
+      await flush();
+      expect(invite).toHaveBeenCalledTimes(invites);
+      expect(sendStateEvent).toHaveBeenCalledTimes(writes);
+      gates.shift()?.();
+    };
+    await step(1, 0);
+    await step(2, 0);
+    await step(2, 1); // first space: new child
+    await step(2, 2); // first space: old child cleared
+    await step(2, 3); // second space: new child
+    await step(2, 4);
+    await done;
+  });
+
+  it('refuses a room that already has a replacement', async () => {
+    const { svc, upgradeRoom, invite, sendStateEvent } = setup([
+      fakeRoom(OLD, {
+        events: [
+          create('10'),
+          { type: 'm.room.tombstone', content: { replacement_room: NEW } },
+        ],
+      }),
+    ]);
+
+    const error = await rejection(svc);
+
+    expect(error).toBeInstanceOf(RoomAdministrationError);
+    expect((error as RoomAdministrationError).outcome).toMatchObject({
+      failure: 'invalid-input',
+      operation: 'upgrade-room',
+    });
+    expect(upgradeRoom).not.toHaveBeenCalled();
+    expect(invite).not.toHaveBeenCalled();
+    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
 });

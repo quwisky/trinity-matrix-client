@@ -24,6 +24,7 @@ import { roomAdvancedInfo } from './room-advanced-info';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
 import {
   recoverRoomAdministrationRequest,
+  roomAdministrationInvalidInput,
   roomAdministrationNotSignedIn,
 } from './room-administration-error';
 
@@ -196,6 +197,14 @@ export class RoomUpgradeService {
       if (!room) {
         return throwError(() => roomAdministrationNotSignedIn('upgrade-room'));
       }
+      if (roomAdvancedInfo(roomId, liveRoomState(room)).successor) {
+        return throwError(() =>
+          roomAdministrationInvalidInput(
+            'upgrade-room',
+            'This room has already been upgraded.',
+          ),
+        );
+      }
       const before = readContext(client, room);
       const creators =
         isWholeNumber(options.version) &&
@@ -253,7 +262,7 @@ function followUp(
   const server = serverOf(newRoomId, client);
   const invites = concat(
     ...invitees.map((userId) =>
-      from(client.invite(newRoomId, userId)).pipe(
+      defer(() => client.invite(newRoomId, userId)).pipe(
         map(() => ({ userId, reason: null as string | null })),
         catchError((cause: unknown) => of({ userId, reason: reasonOf(cause) })),
       ),
@@ -309,11 +318,11 @@ function relink(
     ...(space.order === undefined ? {} : { order: space.order }),
     ...(space.suggested === undefined ? {} : { suggested: space.suggested }),
   };
-  return from(
+  return defer(() =>
     client.sendStateEvent(spaceId, EventType.SpaceChild, link, newRoomId),
   ).pipe(
     switchMap(() =>
-      from(
+      defer(() =>
         client.sendStateEvent(spaceId, EventType.SpaceChild, {}, oldRoomId),
       ).pipe(
         map((): RelinkOutcome => ({ spaceId, failure: null })),
