@@ -158,18 +158,31 @@ describe('MessageRowComponent', () => {
       expect(fixture.componentInstance.row()).toBe(only);
     });
 
-    it('applies the date preference to the header timestamp', async () => {
-      const { container, fixture } = await renderRow({
-        row: row({ timestamp: AFTERNOON }),
+    it('shows only the time in the header, with the full date as tooltip and datetime', async () => {
+      const ts = Date.UTC(2026, 9, 5, 18, 56);
+      const { container } = await renderRow({ row: row({ timestamp: ts }) });
+      const fmt = TestBed.inject(DateTimeFormatService);
+      const time = container.querySelector(
+        '.msg__head time.msg__time',
+      ) as HTMLElement;
+
+      expect(time.textContent?.trim()).toBe(fmt.time(ts));
+      expect(time.getAttribute('datetime')).toBe(new Date(ts).toISOString());
+
+      fireEvent.pointerEnter(time, { pointerType: 'mouse' });
+      await waitFor(() => {
+        const found = document.body.querySelector('.cdk-overlay-container');
+        expect(found?.textContent).toContain(fmt.dateTime(ts));
       });
-      const format = TestBed.inject(DateTimeFormatService);
+    });
 
-      format.setDateFormat('iso');
-      fixture.detectChanges();
+    it('keeps today’s header output for an unusable timestamp', async () => {
+      const { container } = await renderRow({ row: row({ timestamp: 0 }) });
+      const fmt = TestBed.inject(DateTimeFormatService);
 
-      expect(container.querySelector('.msg__time')?.textContent).toContain(
-        '2026-07-24',
-      );
+      expect(
+        container.querySelector('.msg__head .msg__time')?.textContent?.trim(),
+      ).toBe(fmt.dateTime(0));
     });
 
     // The hover gutter on a grouped continuation is the site the issue calls out by name.

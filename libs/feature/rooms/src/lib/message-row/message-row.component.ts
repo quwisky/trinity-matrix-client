@@ -13,6 +13,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { DateTimeFormatService, isMobileOs } from '@trinity/platform-native';
+import { hasUsableTimestamp } from '@trinity/util/matrix';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import {
   MessageToolbarComponent,
@@ -176,6 +177,13 @@ export type MessageSwipeAction = 'edit' | 'reply';
 export class MessageRowComponent {
   /** Timestamps go through the app-wide format preference, never a DatePipe. */
   readonly fmt = inject(DateTimeFormatService);
+
+  /** ISO form of a timestamp for `<time datetime>`, or null when it isn't usable. */
+  protected isoTime(timestamp: number): string | null {
+    return hasUsableTimestamp(timestamp)
+      ? new Date(timestamp).toISOString()
+      : null;
+  }
   /** Phones and tablets use the action sheet and do not render the desktop toolbar. */
   readonly mobileActions = isMobileOs();
   private readonly destroyRef = inject(DestroyRef);

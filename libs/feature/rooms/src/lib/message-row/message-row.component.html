@@ -98,7 +98,16 @@
         size="xl"
       />
     } @else {
-      <span class="msg__gutter">{{ fmt.time(r.timestamp) }}</span>
+      @if (isoTime(r.timestamp); as iso) {
+        <time
+          class="msg__gutter"
+          [attr.datetime]="iso"
+          [trnTooltip]="fmt.dateTime(r.timestamp)"
+          >{{ fmt.time(r.timestamp) }}</time
+        >
+      } @else {
+        <span class="msg__gutter">{{ fmt.time(r.timestamp) }}</span>
+      }
     }
 
     <!-- One body for both layouts. It used to be written twice, character-identical
@@ -110,7 +119,16 @@
         @if (r.showHeader) {
           <div class="msg__head">
             <span class="msg__author">{{ r.senderName }}</span>
-            <span class="msg__time">{{ fmt.dateTime(r.timestamp) }}</span>
+            @if (isoTime(r.timestamp); as iso) {
+              <time
+                class="msg__time"
+                [attr.datetime]="iso"
+                [trnTooltip]="fmt.dateTime(r.timestamp)"
+                >{{ fmt.time(r.timestamp) }}</time
+              >
+            } @else {
+              <span class="msg__time">{{ fmt.dateTime(r.timestamp) }}</span>
+            }
             @if (showEditedMarker()) {
               <button
                 type="button"

@@ -145,6 +145,9 @@
     --trinity-density-shell-padding-inline: 8px;
     --trinity-density-channel-padding-block: 5px;
     --trinity-density-message-column-gap: 12px;
+
+    // Readable line length for message prose (#986).
+    --trinity-measure-prose: 75ch;
     --trinity-density-composer-padding-inline: 16px;
     --trinity-density-composer-field-gap: 4px;
     --trinity-density-composer-field-inset: 6px;

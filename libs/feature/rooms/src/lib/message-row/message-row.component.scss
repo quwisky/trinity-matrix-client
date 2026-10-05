@@ -349,6 +349,7 @@
   }
 
   .msg__text {
+    max-width: var(--trinity-measure-prose);
     margin: 2px 0 0;
     color: var(--trinity-text);
     font-size: var(--trinity-type-message-size);
