@@ -100,37 +100,17 @@
         >
           Password
         </trn-field-label>
-        <div class="flex items-center gap-2">
+        <trn-password-input [disabled]="busy()">
           <input
             trnInput
             id="password"
-            [type]="passwordVisible() ? 'text' : 'password'"
-            class="min-w-0 flex-1"
             [formField]="credentialsForm.password"
             [aria-describedby]="
               credentialsError() ? 'login-credentials-error' : null
             "
             (keyup.enter)="loginPassword()"
           />
-          <button
-            trnBtn
-            presentation="ghost"
-            shape="icon"
-            size="md"
-            type="button"
-            [attr.aria-label]="
-              passwordVisible() ? 'Hide password' : 'Show password'
-            "
-            [attr.aria-pressed]="passwordVisible()"
-            [disabled]="busy()"
-            (click)="passwordVisible.set(!passwordVisible())"
-          >
-            <trn-icon
-              [name]="passwordVisible() ? 'eye-off' : 'eye'"
-              motion="pop"
-            />
-          </button>
-        </div>
+        </trn-password-input>
         @if (credentialsError(); as message) {
           <p
             id="login-credentials-error"

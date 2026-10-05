@@ -45,7 +45,6 @@
       "template": "libs/feature/auth/src/lib/login/login.page.html",
       "publicEntrypoints": [
         "@trinity/components/controls",
-        "@trinity/components/foundations",
         "@trinity/components/generic-content",
         "@trinity/components/navigation-layout",
         "@trinity/components/overlay"

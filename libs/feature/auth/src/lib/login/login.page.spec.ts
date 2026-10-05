@@ -13,7 +13,7 @@ import {
   provideHostCapabilities,
 } from '@trinity/platform-native';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { desktopBridgeFixture, render } from '@trinity/testing';
+import { desktopBridgeFixture, fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, map, of, throwError, type Observable } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
@@ -145,6 +145,31 @@ describe('LoginPage', () => {
     expect(input?.id).toBe('homeserver');
     expect(label?.textContent?.trim()).toBe('Homeserver');
     expect(label?.getAttribute('data-emphasis')).toBe('strong');
+  });
+
+  it('reveals the password from a toggle inside the password field', async () => {
+    const { fixture, cmp } = await renderLogin(
+      {} as unknown as Partial<AuthService>,
+    );
+    cmp.baseUrl.set('https://hs.example');
+    cmp.passwordSupported.set(true);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector<HTMLInputElement>('#password');
+    const toggle = root.querySelector<HTMLButtonElement>(
+      'trn-password-input button',
+    );
+
+    expect(input?.parentElement?.localName).toBe('trn-password-input');
+    expect(input?.type).toBe('password');
+    expect(toggle?.getAttribute('aria-label')).toBe('Show password');
+
+    fireEvent.click(toggle as HTMLButtonElement);
+    fixture.detectChanges();
+
+    expect(input?.type).toBe('text');
+    expect(toggle?.getAttribute('aria-label')).toBe('Hide password');
+    expect(toggle?.getAttribute('aria-pressed')).toBe('true');
   });
 
   it('renders its page title as the first and only heading', async () => {
