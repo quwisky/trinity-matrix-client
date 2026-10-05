@@ -137,6 +137,30 @@ describe('TrnButton', () => {
     );
   });
 
+  it('gives outline buttons the control border, and danger outlines a danger border in both modes', () => {
+    const outline = (variant: TrnButtonVariant) =>
+      trnButtonRecipe({
+        presentation: 'outline',
+        shape: 'label',
+        size: 'md',
+        variant,
+      });
+
+    for (const variant of ['primary', 'secondary'] as const) {
+      expect(outline(variant)).toContain(
+        'border-[color:var(--trinity-border-control)]',
+      );
+      expect(outline(variant)).toContain(
+        'dark:border-[color:var(--trinity-border-control)]',
+      );
+      expect(outline(variant)).not.toContain('border-border');
+      expect(outline(variant)).not.toContain('dark:border-input');
+    }
+    expect(outline('danger')).toContain('border-danger');
+    expect(outline('danger')).toContain('dark:border-danger');
+    expect(outline('danger')).not.toContain('dark:border-input');
+  });
+
   it('marks icon recipes without marking labels', async () => {
     const { container, fixture } = await render(IconHostComponent);
     const buttons = [...container.querySelectorAll('button')];

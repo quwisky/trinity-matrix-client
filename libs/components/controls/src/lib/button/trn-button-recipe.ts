@@ -45,22 +45,25 @@ const iconSize = {
 const solidDangerTone =
   'bg-[color:var(--trinity-danger-solid)] dark:bg-[color:var(--trinity-danger-solid)] text-[color:var(--trinity-danger-solid-foreground)] hover:bg-[color:var(--trinity-danger-solid-hover)] dark:hover:bg-[color:var(--trinity-danger-solid-hover)]';
 
+/** Outline buttons share the text-field border; Helm's `--border` is too faint (1.39:1). */
+const controlBorder =
+  'border-[color:var(--trinity-border-control)] dark:border-[color:var(--trinity-border-control)]';
+
 const nonSolidTone = {
   primary: {
-    outline: '',
+    outline: controlBorder,
     ghost: '',
     link: '',
   },
   secondary: {
-    outline:
-      'text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground dark:hover:text-secondary-foreground',
+    outline: `${controlBorder} text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground dark:hover:text-secondary-foreground`,
     ghost:
       'text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground dark:hover:text-secondary-foreground',
     link: 'text-secondary-foreground',
   },
   danger: {
     outline:
-      'border-danger text-danger hover:bg-[var(--trinity-danger-tint-10)] dark:hover:bg-[var(--trinity-danger-tint-10)] hover:text-danger',
+      'border-danger dark:border-danger text-danger hover:bg-[var(--trinity-danger-tint-10)] dark:hover:bg-[var(--trinity-danger-tint-10)] hover:text-danger',
     ghost:
       'text-danger hover:bg-[var(--trinity-danger-tint-10)] dark:hover:bg-[var(--trinity-danger-tint-10)] hover:text-danger',
     link: 'text-danger hover:text-danger',
