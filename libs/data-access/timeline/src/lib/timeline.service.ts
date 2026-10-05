@@ -1,4 +1,4 @@
-import { Injectable, effect, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import {
   Direction,
   EventType,
@@ -43,6 +43,10 @@ import {
   TYPING_TIMEOUT_MS,
   liveRoomState,
 } from '@trinity/util/matrix';
+import {
+  ConversationTimelineReadiness,
+  READY_LOAD_STATE,
+} from './conversation-timeline-readiness';
 import { resolveShieldsInto, shieldKey } from './shields';
 import { projectMessage } from './project-message';
 import { isPresentableSystemEvent } from './normalize-timeline-event';
@@ -165,6 +169,19 @@ export class TimelineService {
   private readonly mediaPipeline = inject(MediaPipeline);
   private readonly messageAdapter = inject(CONVERSATION_MESSAGE_ADAPTER);
   private readonly messagePolicy = inject(CONVERSATION_MESSAGE_POLICY);
+  private readonly readiness = inject(ConversationTimelineReadiness, {
+    optional: true,
+  });
+
+  /** The Conversation's loading interval (#545); ready when no runtime owns this projection. */
+  readonly loadState = computed(
+    () => this.readiness?.state() ?? READY_LOAD_STATE,
+  );
+
+  /** Re-run the failed loading step. */
+  retryLoad(): void {
+    this.readiness?.retry();
+  }
 
   private readonly _messages = signal<MessageView[]>([]);
   readonly messages = this._messages.asReadonly();

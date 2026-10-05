@@ -1,4 +1,6 @@
 import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { TrnButton } from '@trinity/components/controls';
+import { TimelineSkeletonComponent } from '../timeline-skeleton/timeline-skeleton.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -65,6 +67,8 @@ const SMALL_LIST_ROWS = 80;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     EmptyStateComponent,
+    TimelineSkeletonComponent,
+    TrnButton,
     MessageComposerComponent,
     MessageRowComponent,
     DropOverlayComponent,
@@ -186,6 +190,8 @@ export class VirtualMessageListComponent extends MessageListBase {
   /** Reactive mirror of `!atBottom` for the template's jump-to-latest pill. */
   protected readonly notAtBottom = computed(() => !this.atBottomSig());
 
+  private lastChrome = '';
+
   constructor() {
     super();
 
@@ -193,6 +199,12 @@ export class VirtualMessageListComponent extends MessageListBase {
       const msgs = this.messages();
       // The delayed loading strip changes row geometry before history arrives too.
       this.showLoadingOlder();
+      // The skeleton and the load error sit in flow above the rows as well.
+      const chrome = `${this.showSkeleton()}|${this.loadError()}`;
+      const chromeToggled = chrome !== this.lastChrome;
+      this.lastChrome = chrome;
+      // Tracked so a load that ends with the same messages still retries the viewport fill.
+      const settled = this.settled();
       const el = this.scrollEl()?.nativeElement;
       if (!el) {
         return;
@@ -268,6 +280,8 @@ export class VirtualMessageListComponent extends MessageListBase {
       const stickToBottom =
         (newestChanged &&
           (untracked(() => this.atBottomSig()) || !!latest?.isOwn)) ||
+        // Content appeared or vanished above the rows: a pinned reader stays pinned.
+        (chromeToggled && untracked(() => this.atBottomSig())) ||
         this.backfilling;
 
       requestAnimationFrame(() => {
@@ -281,6 +295,7 @@ export class VirtualMessageListComponent extends MessageListBase {
         const prependedOlder = oldestId !== this.lastBackfillOldestId;
         if (
           notFull &&
+          settled &&
           this.canLoadOlder() &&
           !this.loadingOlder() &&
           !this.pendingPrepend &&
@@ -291,7 +306,8 @@ export class VirtualMessageListComponent extends MessageListBase {
           this.lastBackfillOldestId = oldestId;
           this.backfillRounds++;
           this.loadOlder.emit();
-        } else {
+        } else if (!chromeToggled) {
+          // A skeleton/error-only re-run must not cancel an in-flight backfill.
           this.backfilling = false;
         }
       });
@@ -393,7 +409,12 @@ export class VirtualMessageListComponent extends MessageListBase {
       this.backfilling = false;
       return;
     }
-    if (this.pendingPrepend || this.loadingOlder() || !this.canLoadOlder()) {
+    if (
+      !this.settled() ||
+      this.pendingPrepend ||
+      this.loadingOlder() ||
+      !this.canLoadOlder()
+    ) {
       return;
     }
     if (el.scrollTop < AUTO_LOAD_THRESHOLD_PX) {

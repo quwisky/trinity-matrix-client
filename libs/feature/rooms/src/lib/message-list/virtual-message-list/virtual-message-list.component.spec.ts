@@ -374,6 +374,60 @@ describe('VirtualMessageListComponent', () => {
     expect(scroll.scrollTop).toBe(200 * EST);
   });
 
+  it('stays pinned to the bottom as the loading skeleton above the rows comes and goes', async () => {
+    vi.useFakeTimers();
+    // Queue frames and flush them by hand: running them inside the effect re-enters change detection.
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      frames.push(cb);
+      return 0;
+    });
+    const flush = () => frames.splice(0).forEach((cb) => cb(0));
+    const { fixture, container } = await renderList({ messages: many(30) });
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+    const SKELETON_PX = 80;
+    const clientHeight = 600;
+    const hasSkeleton = () =>
+      !!container.querySelector('[data-testid="timeline-skeleton"]');
+    // A browser-like scroller: the skeleton adds height, and scrollTop is clamped.
+    const scrollHeight = () => 30 * EST + (hasSkeleton() ? SKELETON_PX : 0);
+    let top = scrollHeight() - clientHeight;
+    Object.defineProperties(scroll, {
+      clientHeight: { value: clientHeight, configurable: true },
+      scrollHeight: { get: scrollHeight, configurable: true },
+      scrollTop: {
+        get: () => Math.min(top, scrollHeight() - clientHeight),
+        set: (v: number) => {
+          top = Math.max(0, Math.min(v, scrollHeight() - clientHeight));
+        },
+        configurable: true,
+      },
+    });
+    scroll.dispatchEvent(new Event('scroll'));
+    flush();
+    const atBottom = () => scroll.scrollTop === scrollHeight() - clientHeight;
+    expect(atBottom()).toBe(true);
+
+    fixture.componentRef.setInput('loadState', {
+      kind: 'loading',
+      reason: 'backfill',
+      partial: true,
+    });
+    TestBed.tick();
+    vi.advanceTimersByTime(200);
+    TestBed.tick();
+    flush();
+    expect(hasSkeleton()).toBe(true);
+    expect(atBottom()).toBe(true);
+
+    fixture.componentRef.setInput('loadState', { kind: 'ready' });
+    TestBed.tick();
+    flush();
+    expect(hasSkeleton()).toBe(false);
+    expect(atBottom()).toBe(true);
+    vi.useRealTimers();
+  });
+
   it('keeps a latest-message jump when an older-history correction is queued', async () => {
     const { fixture, container } = await renderList({
       messages: many(30),

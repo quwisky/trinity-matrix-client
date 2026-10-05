@@ -1,4 +1,6 @@
 import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { TrnButton } from '@trinity/components/controls';
+import { TimelineSkeletonComponent } from '../timeline-skeleton/timeline-skeleton.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -43,6 +45,8 @@ const MAX_BACKFILL_ROUNDS = 20;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     EmptyStateComponent,
+    TimelineSkeletonComponent,
+    TrnButton,
     MessageComposerComponent,
     MessageRowComponent,
     DropOverlayComponent,
@@ -108,6 +112,8 @@ export class SimpleMessageListComponent extends MessageListBase {
 
     effect(() => {
       const msgs = this.messages();
+      // Tracked so a load that ends with the same messages still retries the viewport fill.
+      const settled = this.settled();
       const el = this.scrollEl()?.nativeElement;
       if (!el) {
         return;
@@ -169,6 +175,7 @@ export class SimpleMessageListComponent extends MessageListBase {
         const prependedOlder = oldestId !== this.lastBackfillOldestId;
         if (
           notFull &&
+          settled &&
           this.canLoadOlder() &&
           !this.loadingOlder() &&
           !this.pendingPrepend &&
@@ -220,7 +227,12 @@ export class SimpleMessageListComponent extends MessageListBase {
       el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
     this.notAtBottom.set(!this.atBottom);
     this.updateJumpToUnread(); // divider may have scrolled in/out of view
-    if (this.pendingPrepend || this.loadingOlder() || !this.canLoadOlder()) {
+    if (
+      !this.settled() ||
+      this.pendingPrepend ||
+      this.loadingOlder() ||
+      !this.canLoadOlder()
+    ) {
       return;
     }
     if (el.scrollTop < AUTO_LOAD_THRESHOLD_PX) {

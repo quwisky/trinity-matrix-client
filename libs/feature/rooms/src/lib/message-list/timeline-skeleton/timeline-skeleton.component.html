@@ -1,0 +1,12 @@
+<span class="sr-only" role="status">Loading messages…</span>
+@for (lines of groups; track $index) {
+  <div class="skeleton-group" aria-hidden="true">
+    <span class="skeleton-avatar"></span>
+    <span class="skeleton-body">
+      <span class="skeleton-bar skeleton-bar--name"></span>
+      @for (width of lines; track $index) {
+        <span class="skeleton-bar" [style.width.%]="width"></span>
+      }
+    </span>
+  </div>
+}
