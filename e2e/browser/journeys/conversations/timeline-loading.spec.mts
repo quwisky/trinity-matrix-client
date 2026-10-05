@@ -54,6 +54,49 @@ async function forceBackfill(
   });
 }
 
+/** Intercept /messages for these Rooms only: per-Room delay, optional first-request 500. */
+async function routeMessages(
+  page: Page,
+  rooms: Record<string, { delayMs?: number; failFirst?: boolean }>,
+): Promise<void> {
+  const failed = new Set<string>();
+  await page.route('**/rooms/*/messages*', async (route) => {
+    const url = decodeURIComponent(route.request().url());
+    const roomId = Object.keys(rooms).find((id) =>
+      url.includes(`/rooms/${id}/`),
+    );
+    if (!roomId) return route.continue();
+    const { delayMs = 0, failFirst = false } = rooms[roomId];
+    if (failFirst && !failed.has(roomId)) {
+      failed.add(roomId);
+      return route.fulfill({ status: 500, json: { errcode: 'M_UNKNOWN' } });
+    }
+    if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    await route.continue();
+  });
+}
+
+/** Flags any rendered message text containing one of `bodies` (a leak from another Room). */
+async function watchLeaks(
+  page: Page,
+  bodies: readonly string[],
+): Promise<void> {
+  await page.addInitScript((forbidden) => {
+    const w = window as unknown as { __leaked: boolean };
+    w.__leaked = false;
+    new MutationObserver(() => {
+      for (const el of document.querySelectorAll('.msg__text')) {
+        if (forbidden.some((b) => el.textContent?.includes(b)))
+          w.__leaked = true;
+      }
+    }).observe(document, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+  }, bodies);
+}
+
 interface Fixture {
   hs: string;
   me: HomeserverSession;
@@ -76,6 +119,8 @@ async function newUser(request: APIRequestContext): Promise<Fixture> {
   };
 }
 
+let txn = 0;
+
 async function seedRoom(
   request: APIRequestContext,
   f: Fixture,
@@ -88,9 +133,9 @@ async function seedRoom(
       data: { name, preset: 'private_chat' },
     })
     .then((r) => r.json());
-  for (const [i, body] of bodies.entries()) {
+  for (const body of bodies) {
     await request.put(
-      `${f.hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/${f.runId}-${name.length}-${i}`,
+      `${f.hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/${f.runId}-${txn++}`,
       { headers: f.headers, data: { msgtype: 'm.text', body } },
     );
   }
@@ -148,11 +193,9 @@ test.describe('Timeline loading states', () => {
     const name = `Delayed ${f.runId}`;
     const bodies = messages(`del ${f.runId}`, 3);
     const roomId = await seedRoom(request, f, name, bodies);
+    await watchSkeleton(page);
     await forceBackfill(page, [roomId]);
-    await page.route('**/rooms/*/messages*', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      await route.continue();
-    });
+    await routeMessages(page, { [roomId]: { delayMs: 1500 } });
     await login(page, f.me);
     await openNamedRoom(page, name);
     await expect(page.getByTestId('timeline-skeleton')).toBeVisible();
@@ -162,6 +205,8 @@ test.describe('Timeline loading states', () => {
       page.locator('.msg__text', { hasText: bodies[2] }),
     ).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('timeline-skeleton')).toBeHidden();
+    // Control: proves the watcher used by journeys 1, 2 and 5 can detect a skeleton.
+    expect(await skeletonSeen(page)).toBe(true);
   });
 
   test('backfill error, then Retry', async ({ page, request }) => {
@@ -170,15 +215,7 @@ test.describe('Timeline loading states', () => {
     const bodies = messages(`err ${f.runId}`, 3);
     const roomId = await seedRoom(request, f, name, bodies);
     await forceBackfill(page, [roomId]);
-    let failed = false;
-    await page.route('**/rooms/*/messages*', async (route) => {
-      if (!failed) {
-        failed = true;
-        await route.fulfill({ status: 500, json: { errcode: 'M_UNKNOWN' } });
-        return;
-      }
-      await route.continue();
-    });
+    await routeMessages(page, { [roomId]: { failFirst: true } });
     await login(page, f.me);
     await openNamedRoom(page, name);
     await expect(page.getByTestId('timeline-load-error')).toContainText(
@@ -236,10 +273,12 @@ test.describe('Timeline loading states', () => {
       ids.push(await seedRoom(request, f, n, [bodies[i]]));
     }
     await forceBackfill(page, ids);
-    await page.route('**/rooms/*/messages*', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      await route.continue();
+    await routeMessages(page, {
+      [ids[0]]: { delayMs: 800 },
+      [ids[1]]: { delayMs: 800 },
+      [ids[2]]: { delayMs: 2500 },
     });
+    await watchLeaks(page, [bodies[0], bodies[1]]);
     await login(page, f.me);
     await page.getByTestId('rail-rooms').click();
     for (const n of names) {
@@ -254,11 +293,15 @@ test.describe('Timeline loading states', () => {
     await expect(
       page.locator('.msg__text', { hasText: bodies[2] }),
     ).toBeVisible({ timeout: 30_000 });
+    // A's and B's responses (800 ms) landed while C (2500 ms) was focused; none may render.
+    await page.waitForTimeout(1500);
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { __leaked: boolean }).__leaked,
+      ),
+    ).toBe(false);
     await expect(
-      page.locator('.msg__text', { hasText: bodies[0] }),
-    ).toBeHidden();
-    await expect(
-      page.locator('.msg__text', { hasText: bodies[1] }),
-    ).toBeHidden();
+      page.locator('.msg__text', { hasText: bodies[2] }),
+    ).toBeVisible();
   });
 });
