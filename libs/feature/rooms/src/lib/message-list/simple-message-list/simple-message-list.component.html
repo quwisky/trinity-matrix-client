@@ -91,27 +91,29 @@
 
 <trn-typing-indicator [names]="typingNames()" />
 
-<trn-message-composer
-  [accountId]="accountId()"
-  [roomId]="roomId()"
-  [roomName]="roomName()"
-  [members]="members()"
-  [editing]="editingId() !== null"
-  [editTargetId]="editingId()"
-  [draft]="editingDraft()"
-  [composeDraft]="compose.draft()"
-  [textSending]="compose.sending()"
-  [replyingTo]="replyingToName()"
-  [uploadProgress]="uploadProgress()"
-  [stickerPacks]="stickerPacks()"
-  [sendBlocked]="sendBlocked()"
-  (submitText)="onSubmit($event)"
-  (submitBatchCaption)="onBatchCaption($event)"
-  (submitMedia)="sendMedia.emit($event)"
-  (stickerSelect)="sendSticker.emit($event)"
-  (composeDraftChange)="compose.setDraft($event)"
-  (cancelEdit)="cancelEdit()"
-  (cancelReply)="cancelReply()"
-  (editLast)="editLastOwn()"
-  (typing)="compose.setTyping($event)"
-/>
+@if (composerEnabled()) {
+  <trn-message-composer
+    [accountId]="accountId()"
+    [roomId]="roomId()"
+    [roomName]="roomName()"
+    [members]="members()"
+    [editing]="editingId() !== null"
+    [editTargetId]="editingId()"
+    [draft]="editingDraft()"
+    [composeDraft]="compose.draft()"
+    [textSending]="compose.sending()"
+    [replyingTo]="replyingToName()"
+    [uploadProgress]="uploadProgress()"
+    [stickerPacks]="stickerPacks()"
+    [sendBlocked]="sendBlocked()"
+    (submitText)="onSubmit($event)"
+    (submitBatchCaption)="onBatchCaption($event)"
+    (submitMedia)="sendMedia.emit($event)"
+    (stickerSelect)="sendSticker.emit($event)"
+    (composeDraftChange)="compose.setDraft($event)"
+    (cancelEdit)="cancelEdit()"
+    (cancelReply)="cancelReply()"
+    (editLast)="editLastOwn()"
+    (typing)="compose.setTyping($event)"
+  />
+}

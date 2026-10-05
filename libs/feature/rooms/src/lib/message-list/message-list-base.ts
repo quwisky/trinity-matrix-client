@@ -211,6 +211,8 @@ export abstract class MessageListBase {
    * TimelineService.oldestEventId). Not the oldest rendered row: rows can be filtered out. */
   readonly oldestEventId = input<string | null>(null);
   readonly roomName = input('');
+  /** False while the Room is not held by the client: there is nothing to send to yet. */
+  readonly composerEnabled = input(true);
   /**
    * Active room id. The list instance is reused across room switches, so a change
    * here resets the per-room UI + scroll state (see {@link resetOnRoomChange}) —

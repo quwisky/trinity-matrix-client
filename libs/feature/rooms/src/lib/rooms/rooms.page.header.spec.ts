@@ -1,6 +1,6 @@
 import { RoomModerationService } from '@trinity/data-access/room-administration';
 import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import {
@@ -37,7 +37,7 @@ import {
   MessageGestureSettingsService,
   ShellLayoutService,
 } from '@trinity/platform-native';
-import { MockComponent, MockProvider } from 'ng-mocks';
+import { MockComponent, MockProvider, ngMocks } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
@@ -101,6 +101,8 @@ const ROOM: RoomSummary = {
 };
 
 beforeEach(() => setRouteRoom(null));
+
+let lastFixture: ComponentFixture<RoomsPage>;
 
 function renderHeader(
   pinCount: number,
@@ -270,7 +272,7 @@ function renderHeader(
             activeSpaceId: signal<string | null>(null),
             recentView: signal(true),
             roomsView: signal(false),
-            activeRoomId: signal<string | null>('!r:hs'),
+            activeRoomId: signal<string | null>(opts.routeRoom ?? '!r:hs'),
             pane: signal<'list' | 'conversation'>('conversation'),
             placement: signal<'list' | 'conversation' | 'split'>('split'),
             eventTarget: signal(null),
@@ -315,6 +317,7 @@ function renderHeader(
   });
   setRouteRoom(opts.routeRoom ?? '!r:hs');
   const fixture = TestBed.createComponent(RoomsPage);
+  lastFixture = fixture;
   fixture.detectChanges();
   return fixture.nativeElement as HTMLElement;
 }
@@ -393,5 +396,21 @@ describe('RoomsPage header for a linked room the client does not hold yet', () =
     expect(host.querySelector('h1')?.textContent).not.toContain(
       'Loading room…',
     );
+  });
+
+  it('still renders the timeline, fed the load state, but not the composer', () => {
+    const state: TimelineLoadState = {
+      kind: 'error',
+      reason: 'room-unavailable',
+    };
+    const host = pending(state);
+    const list = ngMocks.find(
+      lastFixture.debugElement,
+      SimpleMessageListComponent,
+    );
+    expect(list.componentInstance.loadState()).toEqual(state);
+    expect(list.componentInstance.composerEnabled()).toBe(false);
+    expect(list.componentInstance.roomId()).toBe('!pending:hs');
+    expect(host.querySelector('[data-testid="chat-empty"]')).toBeNull();
   });
 });

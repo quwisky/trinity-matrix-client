@@ -191,6 +191,17 @@ describe('SimpleMessageListComponent', () => {
     expect(cmp.rowCaps(row).deletable).toBe(true);
   });
 
+  it('renders no composer while the Room is not held by the client', async () => {
+    const { fixture } = await render(SimpleMessageListComponent, {
+      providers: [MockProvider(TrnAlertService)],
+      inputs: { composerEnabled: false },
+    });
+
+    expect(
+      fixture.debugElement.query(By.directive(MessageComposerComponent)),
+    ).toBeNull();
+  });
+
   it('offers quoting for text but not for media, and re-issues caps when it changes', async () => {
     const text = msg('$1', '@a:hs', 'Alice', 1000);
     const media: MessageView = {
