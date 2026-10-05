@@ -11,7 +11,7 @@ import {
   registerUser,
   uniqueId,
 } from '../support/matrix.mts';
-import { pressBack, resetApp, restartApp } from '../support/session.mts';
+import { goBack, resetApp, restartApp } from '../support/session.mts';
 
 const viewportHeight = (): Promise<number> =>
   browser.execute(() => window.visualViewport?.height ?? window.innerHeight);
@@ -73,7 +73,7 @@ describe('Android navigation', () => {
     await login(user, pass);
     await openSettingsFromRooms();
 
-    await pressBack();
+    await goBack();
     await waitForRooms();
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
   });
@@ -113,7 +113,7 @@ describe('Android navigation', () => {
     );
     await expect($('#appearance-heading')).toBeFocused({ wait: 10_000 });
 
-    await pressBack();
+    await goBack();
     await waitForPath((path) => path.endsWith('/settings'), '/settings');
     await expect(appearance).toBeFocused({ wait: 10_000 });
     const horizontalOverflow = await browser.execute(
@@ -123,7 +123,7 @@ describe('Android navigation', () => {
     );
     expect(horizontalOverflow).toBeLessThanOrEqual(1);
 
-    await pressBack();
+    await goBack();
     await waitForRooms();
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
   });
@@ -184,7 +184,7 @@ describe('Android navigation', () => {
     });
     expect(geometry.top).toBeGreaterThanOrEqual(geometry.viewportTop - 1);
     expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportBottom + 1);
-    await pressBack();
+    await goBack();
     await expect(sheet).not.toBeDisplayed({ wait: 5_000 });
     await expect(trigger).toBeFocused({ wait: 5_000 });
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
@@ -222,20 +222,20 @@ describe('Android navigation', () => {
     // Android consumes Back at the IME before Capacitor can publish a host intent. Once the
     // focused filter's keyboard has gone, the next Back is offered to the Room surface and
     // only the following one to Conversation.
-    await pressBack();
+    await goBack();
     await browser.waitUntil(
       async () => (await viewportHeight()) > fullViewportHeight - 20,
       { timeout: 10_000, timeoutMsg: 'viewport never restored after the IME' },
     );
     await expect($('.chat-members')).toBeDisplayed({ wait: 5_000 });
 
-    await pressBack();
+    await goBack();
     await expect($('.chat-members')).not.toBeDisplayed({ wait: 5_000 });
     await expect($('[data-testid="composer-input"]')).toBeDisplayed({
       wait: 5_000,
     });
 
-    await pressBack();
+    await goBack();
     await expect(room).toBeDisplayed({ wait: 5_000 });
     await expect($('[data-testid="composer-input"]')).not.toBeDisplayed({
       wait: 5_000,

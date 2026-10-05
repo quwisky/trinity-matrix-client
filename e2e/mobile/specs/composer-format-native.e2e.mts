@@ -6,7 +6,7 @@ import {
   registerUser,
   uniqueId,
 } from '../support/matrix.mts';
-import { keyboardShown, pressBack, resetApp } from '../support/session.mts';
+import { keyboardShown, goBack, resetApp } from '../support/session.mts';
 
 describe('Android composer formatting', () => {
   beforeEach(resetApp);
@@ -88,7 +88,7 @@ describe('Android composer formatting', () => {
           '[data-testid="composer-input"]',
         )!.value,
     );
-    await pressBack();
+    await goBack();
     await expect($('[data-testid="format-cancel"]')).not.toExist();
     await expect(composer).toHaveValue(unchanged);
   });

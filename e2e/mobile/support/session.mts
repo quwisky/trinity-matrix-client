@@ -208,10 +208,29 @@ export async function restartApp(): Promise<void> {
   await webview();
 }
 
-export async function pressBack(): Promise<void> {
+/** The platform's own Back: Android's system Back, or the WebKit left-edge swipe on iOS. */
+export async function goBack(): Promise<void> {
   await native();
-  await browser.pressKeyCode(4);
+  if (browser.isIOS) await swipeBack();
+  else await browser.pressKeyCode(4);
   await webview();
+}
+
+/**
+ * A left-edge pan, which WKWebView turns into history Back. MainViewController enables it
+ * only while Angular holds no dialog or panel, so it is Back for routes, not for panels.
+ */
+async function swipeBack(): Promise<void> {
+  const { width, height } = await browser.getWindowSize();
+  const y = Math.round(height / 2);
+  await browser
+    .action('pointer', { parameters: { pointerType: 'touch' } })
+    .move({ x: 1, y })
+    .down()
+    .pause(50)
+    .move({ duration: 400, x: Math.round(width * 0.75), y })
+    .up()
+    .perform();
 }
 
 export async function webviewVersion(): Promise<string> {
