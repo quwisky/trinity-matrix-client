@@ -180,8 +180,17 @@ describe('GitHub Pages documentation publication', () => {
       'pnpm nx test docs-site',
       'pnpm nx run docs-site:check',
       'pnpm nx run docs-site:assemble',
-      'pnpm nx run docs-site:e2e',
+      `echo 'started=true' >> "$GITHUB_OUTPUT"\npnpm nx run docs-site:e2e\n`,
     ]);
+
+    // A failed or timed-out docs journey must leave its trace, as CI's docs job does.
+    const traces = build.steps.filter((step) =>
+      step.uses?.startsWith('actions/upload-artifact@'),
+    );
+    expect(traces).toHaveLength(1);
+    expect(traces[0].if).toContain("steps.docs-e2e.outputs.started == 'true'");
+    expect(traces[0].with.path.trim()).toBe('dist/.playwright/docs-site/');
+    expect(traces[0].with['include-hidden-files']).toBe(true);
 
     const configured = build.steps.filter((step) =>
       step.uses?.startsWith('actions/configure-pages@'),
