@@ -41,7 +41,7 @@ const TRINITY_CONFIG_EDITOR_THEME = EditorView.theme({
   },
   '.cm-scroller': {
     overflow: 'auto',
-    fontFamily: 'ui-monospace, monospace',
+    fontFamily: 'var(--trinity-font-mono)',
     lineHeight: '1.5',
   },
   '.cm-content': {
@@ -127,7 +127,7 @@ const TRINITY_CONFIG_EDITOR_THEME = EditorView.theme({
     maxWidth: '24rem',
   },
   '.trn-cm-hover__path': {
-    fontFamily: 'ui-monospace, monospace',
+    fontFamily: 'var(--trinity-font-mono)',
     fontSize: '0.75rem',
     color: 'var(--trinity-text-muted)',
   },

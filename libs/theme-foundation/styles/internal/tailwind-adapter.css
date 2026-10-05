@@ -156,6 +156,7 @@
   --drop-shadow-\*: initial;
   --radius-\*: initial;
   /* stylelint-enable custom-property-pattern */
+  --font-mono: var(--trinity-font-mono);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

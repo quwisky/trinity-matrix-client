@@ -10,7 +10,7 @@
     border-radius: var(--trinity-shape-container-radius);
     background: var(--trinity-surface-workspace);
     color: var(--trinity-text-bright);
-    font-family: SFMono-Regular, 'Roboto Mono', menlo, consolas, monospace;
+    font-family: var(--trinity-font-mono);
     font-size: var(--trinity-text-base);
     line-height: var(--trinity-text-base--line-height);
     letter-spacing: 0.04em;

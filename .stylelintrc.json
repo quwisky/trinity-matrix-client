@@ -35,6 +35,7 @@
       "/^(font-size|(padding|margin)(-(top|right|bottom|left|block|inline)(-(start|end))?)?|(row-|column-)?gap|border(-[a-z]+)*-radius)$/": [
         "/(?<![\\w$#.-])-?(\\d+(\\.\\d+)?|\\.\\d+)(px|rem|em|%|ex|ch|r?lh|[dsl]?v[hw]|vmin|vmax)(?![\\w-])/"
       ],
+      "font-family": ["/monospace/"],
       "z-index": ["/^-?\\d+$/"]
     }
   },
