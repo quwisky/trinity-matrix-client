@@ -27,10 +27,11 @@ These checks can prove source boundaries, manifests, bridge shape, and packaging
 pnpm electron:e2e:smoke
 pnpm electron:e2e
 pnpm e2e:mobile
+TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native pnpm e2e:mobile:ios
 pnpm nx run trinity-ios:verify-native
 ```
 
-Electron needs its separate dependencies and a usable display. Android needs the SDK and a managed emulator or device. iOS validation needs macOS and Xcode. Use the platform-specific project target to inspect exact prerequisites and outputs.
+Electron needs its separate dependencies and a usable display. Android needs the SDK and a managed emulator or device. iOS validation needs macOS and Xcode; the installed-app suite also needs the pinned iOS Simulator and runs Synapse and Caddy as host processes because it does not use Docker. Use the platform-specific project target to inspect exact prerequisites and outputs.
 
 Browser mobile emulation provides useful responsive evidence but does not establish Capacitor, WebView, plugin, or native operating-system behavior. An unsigned simulator build proves something different from a signed device package; state that distinction in review evidence.
 

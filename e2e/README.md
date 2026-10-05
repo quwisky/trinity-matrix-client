@@ -33,8 +33,8 @@ pnpm exec playwright install chromium webkit
 
 Check its prerequisites. Docker is required by homeserver-backed suites unless `TRINITY_E2E_HOMESERVER_RUNTIME=native` runs Synapse and Caddy as host processes (see the Matrix E2E guide). Android requires a
 dedicated API 36 x86_64 emulator, its SDK and JDK 21; Electron needs its separately installed
-shell dependencies and a display; iOS needs macOS, Xcode, an iOS Simulator and the native homeserver runtime
-(`pnpm e2e:mobile:ios`; in progress, #863). The aggregate preflights selected suites.
+shell dependencies and a display; iOS needs macOS, Xcode, the pinned iOS Simulator and the native homeserver runtime
+(`pnpm e2e:mobile:ios`). The aggregate preflights selected suites.
 
 The disposable homeserver is Tuwunel unless `TRINITY_E2E_HOMESERVER=synapse` selects Synapse
 (see the [Matrix E2E guide](../apps/docs-developers/src/content/docs/testing/matrix-e2e-tests.md#choose-homeserver)).
@@ -59,7 +59,7 @@ when that boundary matters. Browser specs live directly under
 `e2e/browser/journeys/<capability>/`; `node scripts/e2e-suite-registry.mjs check` (part of `pnpm architecture:check`) rejects a spec outside a known
 capability folder, a capability folder with no spec, and specs left in the former `e2e/playwright/` root.
 
-## Mobile (Android)
+## Mobile (Android and iOS)
 
 Playwright owns renderer journeys (`e2e/browser`, including touch and mobile viewport
 profiles) and Electron. `pnpm e2e:mobile` runs the WebdriverIO and Appium suite in
@@ -77,6 +77,16 @@ Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed
   (Appium log, JUnit, failure screenshots and native hierarchies). Text artifacts are
   scrubbed of Matrix ids, tokens and passwords when the run completes.
 - CI runs this as the `mobile-e2e` job, with no retries.
+- iOS: `TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native pnpm e2e:mobile:ios`
+  on macOS with Xcode, `python3` and `caddy` on `PATH`. It boots (or reuses) the pinned
+  `iPhone 17` on `iOS 26.5` (override with `TRINITY_IOS_DEVICE`, `TRINITY_IOS_RUNTIME` or
+  `TRINITY_IOS_UDID`), builds and installs the simulator app, trusts the run's Caddy root in the
+  Simulator keychain and installs the pinned XCUITest driver. The first session builds
+  WebDriverAgent (about 7 minutes) into `dist/ios-wda`. Artifacts land under `mobile.ios/`.
+- Platform-only tests call `onlyOn('android' | 'ios', reason)`, which skips with the reason in
+  the run log; SSO, Back for open panels, attachments, deep-link, location, notifications and
+  share are Android-only.
+- CI runs iOS in the `E2E (iOS nightly)` workflow, never on pull requests.
 
 ## MSC2545 image-pack management
 
