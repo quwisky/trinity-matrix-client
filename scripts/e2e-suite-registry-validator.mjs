@@ -698,11 +698,7 @@ export function validateWorkspace(
   validateAggregateTargets(errors, workspaceRoot, snapshot);
   validateTargetInventory(errors, workspaceRoot, snapshot);
   validateEntrypointInventory(errors, workspaceRoot, snapshot);
-  validateBrowserJourneyInventory(
-    errors,
-    workspaceRoot,
-    snapshot.suites.find(({ id }) => id === 'browser.canonical'),
-  );
+  validateBrowserJourneyInventory(errors, workspaceRoot);
   validateCiEntrypoints(errors, workspaceRoot, snapshot);
   validateArchitectureCommand(errors, packageScripts);
   validateDurableE2ENames(errors, workspaceRoot);

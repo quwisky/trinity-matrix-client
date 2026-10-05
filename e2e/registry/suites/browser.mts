@@ -1,8 +1,5 @@
 import type { E2ESuiteDefinition } from '../../support/e2e-registry.types.mts';
-import {
-  BROWSER_CAPABILITIES,
-  BROWSER_CONTRACT_TYPES,
-} from '../browser-classification.mts';
+import { BROWSER_CAPABILITIES } from '../browser-classification.mts';
 
 /** Browser ownership metadata consumed by the aggregate registry and config. */
 export const BROWSER_E2E_SUITES = [
@@ -10,7 +7,7 @@ export const BROWSER_E2E_SUITES = [
     id: 'browser.canonical',
     environment: 'browser',
     capabilities: BROWSER_CAPABILITIES,
-    contractTypes: BROWSER_CONTRACT_TYPES,
+    contractTypes: ['accessibility', 'host', 'journey', 'security', 'visual'],
     currentTarget: 'trinity-e2e-browser:e2e',
     targetProject: 'trinity-e2e-browser',
     prerequisites: ['docker', 'playwright-chromium'],
