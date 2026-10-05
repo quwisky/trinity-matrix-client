@@ -400,6 +400,59 @@ describe('ConversationPinsController', () => {
       expect(controller.messages()[0]?.status).toBe('loaded');
     });
 
+    it.each([
+      [
+        'Decrypted',
+        () => [MatrixEventEvent.Decrypted, { getRoomId: () => KEY.roomId }],
+      ],
+      ['Timeline', () => [RoomEvent.Timeline]],
+    ] as const)(
+      'retries a failed pin after a %s event',
+      async (_name, args) => {
+        const { controller, remote, client, room, fetchRoomEvent, setPinned } =
+          setup();
+        remote.set('$old', raw('$old'));
+        fetchRoomEvent.mockRejectedValueOnce(new Error('network down'));
+        setPinned(['$old']);
+        room.emit(RoomStateEvent.Events, {
+          getType: () => EventType.RoomPinnedEvents,
+        });
+        await flush();
+        expect(controller.messages()[0]?.status).toBe('failed');
+
+        const [event, ...rest] = args() as [string, ...unknown[]];
+        (event === MatrixEventEvent.Decrypted ? client : room).emit(
+          event,
+          ...rest,
+        );
+        await flush();
+
+        expect(fetchRoomEvent).toHaveBeenCalledTimes(2);
+        expect(controller.messages()[0]?.status).toBe('loaded');
+      },
+    );
+
+    it('retries failed pins on retryFailed but never an unavailable one', async () => {
+      const { controller, remote, fetchRoomEvent, setPinned, room } = setup();
+      remote.set('$old', raw('$old'));
+      fetchRoomEvent.mockRejectedValueOnce(new Error('network down'));
+      setPinned(['$old', '$gone']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
+      expect(fetchRoomEvent).toHaveBeenCalledTimes(2);
+
+      controller.retryFailed();
+      await flush();
+
+      expect(fetchRoomEvent).toHaveBeenCalledTimes(3);
+      expect(controller.messages().map((m) => [m.id, m.status])).toEqual([
+        ['$old', 'loaded'],
+        ['$gone', 'unavailable'],
+      ]);
+    });
+
     it('drops a fetch that resolves after the pin list changed', async () => {
       const { controller, remote, fetchRoomEvent, setPinned, room } = setup();
       remote.set('$old', raw('$old'));

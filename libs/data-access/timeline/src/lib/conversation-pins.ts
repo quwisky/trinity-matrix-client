@@ -37,6 +37,8 @@ export interface ConversationPins {
   isPinned(eventId: string): boolean;
   pin(eventId: string): Observable<ConversationPinOutcome>;
   unpin(eventId: string): Observable<ConversationPinOutcome>;
+  /** Re-fetch pinned messages whose fetch failed (e.g. when the panel reopens). */
+  retryFailed(): void;
 }
 
 export interface ConversationPinPolicyKey {

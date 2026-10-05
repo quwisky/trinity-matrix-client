@@ -245,6 +245,7 @@ function renderHeader(pinCount: number) {
               messages: pinMessages.asReadonly(),
               eventIds: signal<readonly string[]>([]),
               canMutate: signal(false),
+              retryFailed: () => undefined,
             },
           }),
         },

@@ -504,6 +504,7 @@ export class ConversationRuntime {
         () => state() === 'focused' && controller.pins.canMutate(),
       ),
       isPinned: (eventId: string) => controller.pins.isPinned(eventId),
+      retryFailed: () => controller.pins.retryFailed(),
       pin: (eventId: string) =>
         defer(() =>
           state() === 'focused'
@@ -712,6 +713,7 @@ export class ConversationRuntime {
       messages: computed(() => focused()?.pins.messages() ?? []),
       canMutate: computed(() => focused()?.pins.canMutate() ?? false),
       isPinned: (eventId) => focused()?.pins.isPinned(eventId) ?? false,
+      retryFailed: () => focused()?.pins.retryFailed(),
       pin: (eventId) =>
         defer(() => focused()?.pins.pin(eventId) ?? of(unavailable('pin'))),
       unpin: (eventId) =>

@@ -74,10 +74,10 @@ export class ConversationPinsController implements ConversationPins {
       this.readRoomState();
     }
   };
-  private readonly onTimeline = (): void => this.scheduleResolve.schedule();
+  private readonly onTimeline = (): void => this.retryFailed();
   private readonly onDecrypted = (event: MatrixEvent): void => {
     if (event.getRoomId() === this.key?.roomId) {
-      this.scheduleResolve.schedule();
+      this.retryFailed();
     }
   };
 
@@ -117,6 +117,18 @@ export class ConversationPinsController implements ConversationPins {
     this.pinnedEventIds.set([]);
     this.pinnedMessages.set([]);
     this.mayMutate.set(false);
+  }
+
+  /** Re-fetch pins whose fetch failed; `missing` pins stay final. */
+  retryFailed(): void {
+    this.dropFailed();
+    this.scheduleResolve.schedule();
+  }
+
+  private dropFailed(): void {
+    for (const [id, f] of this.fetched) {
+      if (f.kind === 'failed') this.fetched.delete(id);
+    }
   }
 
   isPinned(eventId: string): boolean {
@@ -205,10 +217,7 @@ export class ConversationPinsController implements ConversationPins {
       this.fetched = new Map();
       this.loading = new Set();
     } else {
-      // Retry failed pins on the next invalidation.
-      for (const [id, f] of this.fetched) {
-        if (f.kind === 'failed') this.fetched.delete(id);
-      }
+      this.dropFailed();
     }
     this.pinnedEventIds.set(Object.freeze([...pinned]));
     this.mayMutate.set(this.policy.canMutate(key));
