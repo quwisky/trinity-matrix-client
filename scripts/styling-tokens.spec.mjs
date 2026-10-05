@@ -5,15 +5,12 @@ import { describe, expect, it } from 'vitest';
 /**
  * Once a token layer exists, a raw value beside it is a fork in the vocabulary.
  *
- * This is a **frozen ledger**, not an aspiration: every entry below is a value that is
- * deliberately still a literal, with the reason. The assertion is that the set does not GROW.
+ * This spec checks only literal animations, the remaining enforcement ledger here; other
+ * stylesheet literals (font-size, spacing, radius, z-index, hex colours) are guarded by
+ * `.stylelintrc.json` (rejecting them) and `scripts/stylelint-suppressions.spec.mjs`
+ * (holding the recorded allow-list). The assertion is that the animation set does not GROW.
  * A spec asserting the end state would fail on the day it landed and be deleted the first
- * time it cried wolf.
- *
- * Stylesheet literals (font-size, spacing, radius, z-index, hex colours) are not checked
- * here: `.stylelintrc.json` rejects them and `scripts/stylelint-suppressions.spec.mjs` holds
- * the recorded allow-list. This spec covers what stylelint cannot see, such as motion
- * durations and templates.
+ * time it cried wolf. Templates are also checked here to catch what stylelint cannot see.
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');

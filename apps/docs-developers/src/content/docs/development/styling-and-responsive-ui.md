@@ -18,7 +18,7 @@ Use semantic tokens from the theme foundation for surfaces, text, borders, focus
 
 ## Use tokens, not literals {#token-literals}
 
-Stylelint rejects literal values for `font-size`, padding, margin, gap, border radius and `z-index`, and hex colours, everywhere except `libs/theme-foundation`. A literal is any number with a length or percentage unit, or any integer `z-index`. `0`, keywords, `var()`, `env()` and `calc()` with unitless factors are allowed; a `var(--x, 4px)` fallback is a literal too.
+Stylelint rejects literal values for `font-size`, padding, margin, gap, border radius and `z-index`, and hex colours, everywhere except `libs/theme-foundation`. A literal is a number with a common length unit (px, rem, em, vh and similar) or a percentage, or any integer `z-index`. `0`, keywords, `var()`, `env()` and `calc()` with unitless factors are allowed; a `var(--x, 4px)` fallback is a literal too.
 
 Existing literals are recorded per file in `stylelint-suppressions.json`. That list may only shrink: `pnpm stylelint` fails a file that gains one, and `scripts/stylelint-suppressions.spec.mjs` fails when the list no longer matches the stylesheets exactly or grows against `main`. Counts are per declaration, not per literal: a declaration with several literals is one entry, so replacing only some of its literals does not shrink the list. After replacing every literal in a declaration with a token, regenerate the list and commit the smaller file:
 

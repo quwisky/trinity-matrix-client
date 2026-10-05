@@ -29,7 +29,7 @@ const committed = () =>
   JSON.parse(readFileSync(join(workspaceRoot, SUPPRESSIONS), 'utf8'));
 
 /** The allow-list at the merge base with origin/main; `null` before it existed. */
-export function baseSuppressions(run = git) {
+function baseSuppressions(run = git) {
   let sha;
   try {
     sha = run('merge-base', 'HEAD', 'origin/main').trim();
@@ -56,7 +56,7 @@ const totals = (suppressions) => {
 };
 
 /** Every way `current` holds more than `base`, as readable lines; empty when it shrank or held. */
-export function growth(base, current) {
+function growth(base, current) {
   if (!base) return [];
   const grown = [];
   for (const [file, rules] of Object.entries(current)) {
