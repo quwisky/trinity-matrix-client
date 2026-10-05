@@ -26,7 +26,7 @@ const ROOM_MESSAGES = [
 ] as const;
 
 type Mode = 'light' | 'dark';
-type Theme = 'trinity' | 'amethyst' | 'onyx';
+type Theme = 'trinity' | 'amethyst' | 'midnight';
 type Density = 'cosy' | 'compact';
 type TextSize = 'default' | 'larger';
 interface Appearance {
@@ -61,9 +61,9 @@ const MATRIX: Record<string, Appearance> = {
     density: 'compact',
     textSize: 'larger',
   },
-  'pixel-onyx-cosy': {
+  'pixel-midnight-cosy': {
     mode: 'dark',
-    theme: 'onyx',
+    theme: 'midnight',
     density: 'cosy',
     textSize: 'default',
   },
@@ -489,12 +489,15 @@ test.describe('@production-renderer application surface', () => {
     if (testInfo.project.name === 'standard-amethyst-cosy') {
       const theme = page.getByTestId('theme-select').getByRole('combobox');
       await theme.click();
-      const onyx = page.getByTestId('theme-onyx');
-      await expect(onyx).toBeVisible();
-      await onyx.click();
-      await expect(page.locator('html')).toHaveAttribute('data-theme', 'onyx');
-      await expect(onyx).toHaveCount(0);
-      await expect(theme).toHaveText('Onyx');
+      const midnight = page.getByTestId('theme-midnight');
+      await expect(midnight).toBeVisible();
+      await midnight.click();
+      await expect(page.locator('html')).toHaveAttribute(
+        'data-theme',
+        'midnight',
+      );
+      await expect(midnight).toHaveCount(0);
+      await expect(theme).toHaveText('Midnight');
     }
     const settingsNavigation = page.getByRole('navigation', {
       name: 'Settings sections',

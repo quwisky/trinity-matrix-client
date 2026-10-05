@@ -170,13 +170,14 @@ test('the installed production PWA starts, routes, and remains usable offline', 
       expect(onlineWasmBytes).toBeGreaterThan(1_000);
 
       await seedPreference(page, 'trinity.appearance.mode', 'dark');
+      // A stored legacy `onyx` must hydrate as Midnight.
       await seedPreference(page, 'trinity.appearance.theme', 'onyx');
       await page.reload({ waitUntil: 'domcontentloaded' });
       await expect(
         page.getByRole('heading', { name: 'Sign in to Trinity' }),
       ).toBeVisible();
       const onlineAppearance = await readAppearanceEvidence(page);
-      expect(onlineAppearance).toMatchObject({ dark: true, theme: 'onyx' });
+      expect(onlineAppearance).toMatchObject({ dark: true, theme: 'midnight' });
       expect(onlineAppearance.background).not.toBe('');
       expect(onlineAppearance.accent).not.toBe('');
       expect(onlineAppearance.text).not.toBe('');
@@ -196,7 +197,7 @@ test('the installed production PWA starts, routes, and remains usable offline', 
       }, CRYPTO_WASM);
       expect(offlineWasmBytes).toBe(onlineWasmBytes);
       expect(await readAppearanceEvidence(page)).toEqual(onlineAppearance);
-      await attachScreenshot(page, testInfo, 'installed-pwa-onyx-dark.png');
+      await attachScreenshot(page, testInfo, 'installed-pwa-midnight-dark.png');
 
       await page.emulateMedia({ forcedColors: 'active' });
       await homeserver.focus();

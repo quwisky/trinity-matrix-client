@@ -262,7 +262,7 @@ test('applies production Appearance through the custom protocol', async () => {
   const setAppearance = async (selection: {
     density: 'cosy' | 'compact';
     mode: 'light' | 'dark';
-    theme: 'amethyst' | 'onyx';
+    theme: 'amethyst' | 'midnight';
   }): Promise<void> => {
     await page.evaluate(
       ([appearanceKeys, values]) => {
@@ -342,13 +342,13 @@ test('applies production Appearance through the custom protocol', async () => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
 
-    await setAppearance({ density: 'cosy', mode: 'dark', theme: 'onyx' });
+    await setAppearance({ density: 'cosy', mode: 'dark', theme: 'midnight' });
     const dark = await appearance();
     expect(dark).toMatchObject({
       asyncStyleSwaps: 0,
       dark: true,
       density: null,
-      theme: 'onyx',
+      theme: 'midnight',
     });
     expect(dark.linkedStylesheets).toBeGreaterThan(0);
     expect(dark.loadedStylesheets).toBe(dark.linkedStylesheets);

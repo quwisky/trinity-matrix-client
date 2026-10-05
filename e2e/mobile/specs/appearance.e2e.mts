@@ -109,13 +109,13 @@ describe('Android Appearance', () => {
     expect(lightStatusBar.height).toBeGreaterThan(0);
 
     await $('[data-testid="mode-dark"]').click();
-    await choose('theme-select', 'theme-onyx');
+    await choose('theme-select', 'theme-midnight');
     await choose('density-select', 'density-compact');
     await choose('text-scale-select', 'text-scale-larger');
 
     await expect($('[data-testid="mode-dark"] input')).toBeChecked();
     await expect($('html')).toHaveElementClass('dark', { containing: true });
-    await expect($('html')).toHaveAttribute('data-theme', 'onyx');
+    await expect($('html')).toHaveAttribute('data-theme', 'midnight');
     await expect($('html')).toHaveAttribute('data-density', 'compact');
     expect(await $('html').getCSSProperty('font-size')).toMatchObject({
       value: '20px',
@@ -124,7 +124,7 @@ describe('Android Appearance', () => {
       $('[data-testid="appearance-preview-state"]'),
     ).toHaveElementProperty(
       'textContent',
-      expect.stringContaining('dark · Onyx · Compact'),
+      expect.stringContaining('dark · Midnight · Compact'),
     );
     await browser.waitUntil(
       async () => (await readNativeStatusBar()).style === 'DARK',
@@ -172,6 +172,6 @@ describe('Android Appearance', () => {
     );
 
     await $('[data-testid="theme-select"] button').click();
-    await expect($('[data-testid="theme-onyx"]')).toBeDisplayed();
+    await expect($('[data-testid="theme-midnight"]')).toBeDisplayed();
   });
 });
