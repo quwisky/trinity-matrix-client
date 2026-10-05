@@ -290,16 +290,36 @@ describe('mobile navigation', () => {
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
     // The phone layout hides the pane holding the shell's <h1>; focus must still
     // land inside Rooms rather than on <body> (#859).
-    await browser.waitUntil(
-      () =>
-        browser.execute(
-          () =>
-            document
-              .querySelector('trn-rooms')
-              ?.contains(document.activeElement) ?? false,
-        ),
-      { timeout: 20_000, timeoutMsg: 'focus did not enter trn-rooms' },
-    );
+    try {
+      await browser.waitUntil(
+        () =>
+          browser.execute(
+            () =>
+              document
+                .querySelector('trn-rooms')
+                ?.contains(document.activeElement) ?? false,
+          ),
+        { timeout: 20_000 },
+      );
+    } catch (error) {
+      // Say where focus was, so a recurrence shows whether the handoff ran at all.
+      const state = await browser.execute(() => {
+        const rooms = document.querySelector('trn-rooms');
+        const active = document.activeElement;
+        return {
+          path: location.pathname + location.search,
+          active: active
+            ? `${active.tagName.toLowerCase()}${active.id ? `#${active.id}` : ''}`
+            : null,
+          roomsTabindex: rooms?.getAttribute('tabindex') ?? null,
+          hasFocus: document.hasFocus(),
+        };
+      });
+      throw new Error(
+        `focus did not enter trn-rooms: ${JSON.stringify(state)}`,
+        { cause: error },
+      );
+    }
   });
 
   it('routes Verify device and returns focus to the Security heading on Close', async () => {
