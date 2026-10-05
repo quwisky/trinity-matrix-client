@@ -29,7 +29,12 @@ export const READY_LOAD_STATE = Object.freeze({ kind: 'ready' } as const);
 
 export type ReadinessTimeline = Pick<
   TimelineService,
-  'open' | 'messages' | 'canLoadOlder' | 'loadOlder' | 'loadingOlder'
+  | 'open'
+  | 'setVisible'
+  | 'messages'
+  | 'canLoadOlder'
+  | 'loadOlder'
+  | 'loadingOlder'
 >;
 
 /** Pages of history fetched for an empty Room before it settles `empty`. */
@@ -55,6 +60,13 @@ const isStopped = (state: SyncState | null): boolean =>
  * nothing displayable — and names every outcome. One instance lives in each
  * Conversation's injector and is stopped on release, so a previous Room can never
  * publish into the focused one.
+ *
+ * Only a never-synced Account (`getSyncState() === null`) waits for sync; transient
+ * states (Reconnecting, Catchup, Error) never block an Account that already synced.
+ * After `sync-stopped` a listener stays attached and re-runs on Prepared/Syncing.
+ *
+ * A capped `empty` does not return to `ready` if the list's own paging later loads
+ * displayable messages: the rows still render, the state only stops claiming loading.
  */
 @Injectable()
 export class ConversationTimelineReadiness {
@@ -114,6 +126,8 @@ export class ConversationTimelineReadiness {
     if (visible) {
       this.nextPage();
     } else {
+      // A page cancelled by hide never completed, so it must not count toward the cap.
+      if (this.backfill) this.page -= 1;
       this.backfill?.unsubscribe();
       this.backfill = null;
     }
@@ -138,7 +152,9 @@ export class ConversationTimelineReadiness {
       return;
     }
     timeline.open(this.roomId, client);
-    if (!isSynced(client.getSyncState())) {
+    // open() forces visible; a hidden Conversation must not mark read or bypass compaction.
+    if (!this.visible) timeline.setVisible(false);
+    if (client.getSyncState() === null) {
       this.waitForSync(client);
       return;
     }
@@ -158,15 +174,12 @@ export class ConversationTimelineReadiness {
       if (isStopped(state)) this.fail('sync-stopped');
       else if (isSynced(state) && !client.getRoom(this.roomId))
         this.fail('room-unavailable');
+      // Reconnecting / Catchup: keep waiting.
     };
     this.listen(client, onRoom, onSync);
   }
 
   private waitForSync(client: MatrixClient): void {
-    if (isStopped(client.getSyncState())) {
-      this.fail('sync-stopped');
-      return;
-    }
     this.phase.set({ kind: 'initial-sync' });
     const onSync = (state: SyncState): void => {
       if (isStopped(state)) this.fail('sync-stopped');
@@ -249,6 +262,13 @@ export class ConversationTimelineReadiness {
   ): void {
     this.cancel();
     this.phase.set({ kind: 'error', reason });
+    const client = this.client;
+    if (reason === 'sync-stopped' && client) {
+      // The SDK keeps retrying after Error; recover when sync is running again.
+      this.listen(client, null, (state) => {
+        if (isSynced(state)) this.run();
+      });
+    }
   }
 
   private cancel(): void {

@@ -47,6 +47,7 @@ function fakeTimeline() {
     canLoadOlder,
     loadingOlder,
     open: vi.fn(),
+    setVisible: vi.fn(),
     loadOlder: vi.fn(() => {
       const page = new Subject<void>();
       pages.push(page);
@@ -322,19 +323,100 @@ describe('ConversationTimelineReadiness', () => {
     expect(pages).toHaveLength(1);
   });
 
-  it('fails sync-stopped immediately when sync is already stopped or errored', () => {
-    for (const [state, hasRoom] of [
-      [SyncState.Stopped, false],
-      [SyncState.Error, true],
-    ] as const) {
+  it('fails sync-stopped immediately when a pending Room meets an already stopped sync', () => {
+    const client = fakeClient(SyncState.Stopped);
+    const readiness = start(client, fakeTimeline().timeline);
+    expect(readiness.state()).toEqual({
+      kind: 'error',
+      reason: 'sync-stopped',
+    });
+  });
+
+  it('settles from the store when an already synced Account is Reconnecting, Catchup or Error', () => {
+    for (const state of [
+      SyncState.Reconnecting,
+      SyncState.Catchup,
+      SyncState.Error,
+    ]) {
       const client = fakeClient(state);
-      if (hasRoom) client.rooms.add(ROOM);
-      const readiness = start(client, fakeTimeline().timeline);
-      expect(readiness.state()).toEqual({
-        kind: 'error',
-        reason: 'sync-stopped',
-      });
-      expect(client.listeners()).toBe(0);
+      client.rooms.add(ROOM);
+      const { timeline, messages } = fakeTimeline();
+      timeline.open.mockImplementation(() => messages.set([message]));
+      expect(start(client, timeline).state()).toEqual({ kind: 'ready' });
     }
+  });
+
+  it('backfills in an Errored client instead of failing', () => {
+    const client = fakeClient(SyncState.Error);
+    client.rooms.add(ROOM);
+    const { timeline, canLoadOlder, pages } = fakeTimeline();
+    canLoadOlder.set(true);
+    const readiness = start(client, timeline);
+    expect(pages).toHaveLength(1);
+    expect(readiness.state()).toEqual({
+      kind: 'loading',
+      reason: 'backfill',
+      partial: false,
+    });
+  });
+
+  it('keeps waiting for a Room through Reconnecting and Catchup', () => {
+    const client = fakeClient();
+    const readiness = start(client, fakeTimeline().timeline);
+    client.setSync(SyncState.Reconnecting);
+    client.setSync(SyncState.Catchup);
+    expect(readiness.state()).toMatchObject({ reason: 'room-pending' });
+  });
+
+  it('re-runs when sync resumes after sync-stopped, and stop detaches the recovery listener', () => {
+    const client = fakeClient(null);
+    client.rooms.add(ROOM);
+    const { timeline } = fakeTimeline();
+    const readiness = start(client, timeline);
+    client.setSync(SyncState.Error);
+    expect(readiness.state()).toEqual({
+      kind: 'error',
+      reason: 'sync-stopped',
+    });
+    expect(client.listeners()).toBe(1);
+    client.setSync(SyncState.Syncing);
+    expect(readiness.state()).toEqual({ kind: 'empty' });
+    expect(client.listeners()).toBe(0);
+
+    const stopped = fakeClient(SyncState.Stopped);
+    const again = start(stopped, fakeTimeline().timeline);
+    expect(stopped.listeners()).toBe(1);
+    again.stop();
+    expect(stopped.listeners()).toBe(0);
+  });
+
+  it('re-hides the timeline when its Room arrives while hidden', () => {
+    const client = fakeClient();
+    const { timeline } = fakeTimeline();
+    const readiness = start(client, timeline);
+    readiness.setVisible(false);
+    client.addRoom(ROOM);
+    expect(timeline.setVisible).toHaveBeenCalledWith(false);
+    expect(timeline.setVisible.mock.invocationCallOrder[0]).toBeGreaterThan(
+      timeline.open.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('does not count a page cancelled by hide toward the cap', () => {
+    const client = fakeClient();
+    client.rooms.add(ROOM);
+    const { timeline, canLoadOlder, pages } = fakeTimeline();
+    canLoadOlder.set(true);
+    const readiness = start(client, timeline);
+    for (let i = 0; i < 3; i++) {
+      readiness.setVisible(false);
+      readiness.setVisible(true);
+    }
+    expect(pages).toHaveLength(4);
+    pages[3].complete();
+    pages[4].complete();
+    expect(readiness.state()).toMatchObject({ reason: 'backfill' });
+    pages[5].complete();
+    expect(readiness.state()).toEqual({ kind: 'empty' });
   });
 });
