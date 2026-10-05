@@ -22,7 +22,7 @@
     width: 34px;
     height: 34px;
     border: none;
-    border-radius: 50%;
+    border-radius: var(--trinity-radius-pill);
     background: var(--trinity-accent);
     color: var(--trinity-accent-foreground);
     font-size: 18px;

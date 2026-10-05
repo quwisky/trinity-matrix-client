@@ -47,7 +47,7 @@
     width: 64px;
     height: 64px;
     margin: 8px auto 12px;
-    border-radius: 50%;
+    border-radius: var(--trinity-radius-pill);
     display: flex;
     align-items: center;
     justify-content: center;

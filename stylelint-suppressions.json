@@ -36,7 +36,7 @@
   },
   "libs/feature/crypto/src/lib/verification/device-verification.page.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 6
+      "count": 5
     }
   },
   "libs/feature/crypto/src/lib/verification/sas-compare.component.scss": {
@@ -96,12 +96,12 @@
   },
   "libs/feature/rooms/src/lib/members-settings/members-settings.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 12
+      "count": 11
     }
   },
   "libs/feature/rooms/src/lib/message-composer/message-composer.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 7
+      "count": 6
     }
   },
   "libs/feature/rooms/src/lib/message-list/_message-list-shared.scss": {
@@ -181,12 +181,12 @@
   },
   "libs/feature/rooms/src/lib/space-settings/space-settings-contents-list.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 11
+      "count": 10
     }
   },
   "libs/feature/rooms/src/lib/space-settings/space-settings-contents.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 14
+      "count": 13
     }
   },
   "libs/feature/rooms/src/lib/sticker-image/sticker-image.component.scss": {
@@ -216,7 +216,7 @@
   },
   "libs/feature/rooms/src/lib/voice-message/voice-message.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 7
+      "count": 6
     }
   },
   "libs/feature/settings/src/lib/server/homeserver-block.component.scss": {
@@ -236,7 +236,7 @@
   },
   "libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 14
+      "count": 13
     }
   },
   "libs/feature/rooms/src/lib/media-attachment/lightbox/lightbox.component.scss": {
@@ -276,7 +276,7 @@
   },
   "libs/feature/rooms/src/lib/message-list/typing-indicator/typing-indicator.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 2
+      "count": 1
     }
   },
   "libs/feature/rooms/src/lib/room-settings/room-settings-for-you/room-settings-for-you.component.scss": {

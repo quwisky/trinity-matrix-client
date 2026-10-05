@@ -70,7 +70,7 @@
   .contents-list__kind,
   .contents-list__suggested-readonly {
     padding: 2px 7px;
-    border-radius: 999px;
+    border-radius: var(--trinity-radius-pill);
     background: var(--trinity-surface-control);
   }
 

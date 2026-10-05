@@ -38,4 +38,10 @@ describe('TrnBadge', () => {
       new Set(sizes.map((size) => trnBadgeRecipe('neutral', size))).size,
     ).toBe(sizes.length);
   });
+
+  it('carries no dark: variants; badge tokens already follow the mode', () => {
+    for (const variant of ['neutral', 'success', 'warning'] as const) {
+      expect(trnBadgeRecipe(variant, 'sm')).not.toMatch(/\bdark:/u);
+    }
+  });
 });

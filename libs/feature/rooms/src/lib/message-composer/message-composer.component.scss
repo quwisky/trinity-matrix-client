@@ -262,7 +262,7 @@
     flex: 0 0 auto;
     width: 10px;
     height: 10px;
-    border-radius: 50%;
+    border-radius: var(--trinity-radius-pill);
 
     // A filled shape, not text, so it takes the solid fill rather than the
     // `--trinity-danger` text/icon role.

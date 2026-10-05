@@ -225,7 +225,7 @@
 
   .userbar__stack-item {
     position: relative;
-    border-radius: 50%;
+    border-radius: var(--trinity-shape-person-radius);
     box-shadow: 0 0 0 2px var(--userbar-avatar-ring);
 
     &:not(:first-child) {
