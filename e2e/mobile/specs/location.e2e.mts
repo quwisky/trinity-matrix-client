@@ -80,18 +80,59 @@ async function shareLocationAndWaitForPrompt(): Promise<void> {
   await expect(permissionButton('permission_deny_button')).toBeDisplayed();
 }
 
-/** Press a prompt button and retry until the dialog is gone (a click can miss while it animates). */
-async function answerPrompt(id: string): Promise<void> {
-  await browser.waitUntil(
-    async () => {
-      const button = permissionButton(id);
-      if (!(await button.isExisting())) return true;
-      await button.click().catch(() => undefined);
-      await browser.pause(1_000);
-      return !(await button.isExisting());
-    },
-    { timeout: 20_000, timeoutMsg: `the permission prompt stayed after ${id}` },
+/** Press a prompt button until the dialog is gone; false if it ignored every press. */
+async function pressUntilGone(id: string): Promise<boolean> {
+  // A press can miss while the dialog animates in, so allow a few.
+  for (let press = 0; press < 5; press += 1) {
+    const button = permissionButton(id);
+    if (!(await button.isExisting())) return true;
+    await button.click().catch(() => undefined);
+    await browser.pause(1_000);
+  }
+  return !(await permissionButton(id).isExisting());
+}
+
+/**
+ * Android occasionally drops the prompt's input channel just after drawing it: the
+ * activity stays in the hierarchy but its window is gone and every tap is discarded
+ * (`InputDispatcher: … NO_INPUT_CHANNEL`). Finishing the controller cancels the request,
+ * which the app reports as a denial, so wait for that message to clear before the caller
+ * prompts again; otherwise a denial assertion could pass on the cancellation alone.
+ */
+async function dismissStuckPrompt(): Promise<void> {
+  for (const controller of [
+    'com.google.android.permissioncontroller',
+    'com.android.permissioncontroller',
+  ]) {
+    await shell('am', ['force-stop', controller]);
+  }
+  await expect(permissionButton('permission_deny_button')).not.toExist({
+    wait: 10_000,
+  });
+  await webview();
+  const cancelled = $(
+    '//*[contains(normalize-space(.),"Location permission request was denied.")]',
   );
+  await cancelled.waitForExist({ timeout: 10_000 }).catch(() => undefined);
+  await cancelled.waitForExist({ timeout: 15_000, reverse: true });
+}
+
+/** Answer the location prompt, re-prompting if Android left it unable to take input. */
+async function answerPrompt(id: string): Promise<void> {
+  const prompts = 3;
+  for (let prompt = 1; ; prompt += 1) {
+    if (await pressUntilGone(id)) return;
+    if (prompt === prompts) {
+      throw new Error(
+        `the permission prompt ignored ${id} on ${prompts} prompts; Android dropped its input channel`,
+      );
+    }
+    console.log(
+      `[mobile] location prompt ignored ${id} (prompt ${prompt}); dismissing and re-prompting`,
+    );
+    await dismissStuckPrompt();
+    await shareLocationAndWaitForPrompt();
+  }
 }
 
 async function sentGeoUri(token: string, roomId: string): Promise<string> {
