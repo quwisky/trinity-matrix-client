@@ -1,4 +1,12 @@
-import { expect, test } from '../../../fixtures.mts';
+import {
+  devices,
+  expect,
+  test,
+  testResourceId,
+  type Page,
+} from '../../../fixtures.mts';
+import { login, type HomeserverSession } from '../../../support/app.mts';
+import { registerUser } from '../../../support/account.mts';
 import {
   closeSettings,
   openSettingsFromRooms,
@@ -8,6 +16,7 @@ import {
   configureSettingsSuite,
   openSection,
   themeAttr,
+  session,
   settingsTitleAlignment,
 } from '../../support/settings-journey.mts';
 import {
@@ -312,5 +321,113 @@ test.describe('Settings', () => {
     await expect.poll(() => themeAttr(page)).toBeNull();
     await expect(amethyst).toHaveCount(0);
     await expect(trigger).toHaveText('Graphite');
+  });
+});
+
+// Density is a rendered conversation mode, so measure a real text row in a real room.
+// The coarse-pointer floor is checked on a touch device because `(pointer: coarse)` only
+// matches there.
+test.describe('Conversation density', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+
+  const DENSITIES = ['cosy', 'compact', 'spacious'] as const;
+
+  async function openConversation(
+    page: Page,
+    request: Parameters<typeof registerUser>[0],
+  ): Promise<void> {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}den`;
+    const user = `den-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Density ${runId}`;
+
+    await registerUser(request, user, pass);
+    const token = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json())
+      .then((j) => j.access_token as string);
+    const headers = { Authorization: `Bearer ${token}` };
+    const { room_id: roomId } = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers,
+        data: { name: roomName, preset: 'private_chat' },
+      })
+      .then((r) => r.json());
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${runId}`,
+      { headers, data: { msgtype: 'm.text', body: `density ${runId}` } },
+    );
+
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
+    await page.getByTestId('rail-rooms').click();
+    const channel = page.locator('.channel', { hasText: roomName }).first();
+    await channel.waitFor({ state: 'visible', timeout: 30_000 });
+    await channel.click();
+    await expect(page.getByTestId('composer-input')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.locator('.msg .msg__text').first()).toBeVisible({
+      timeout: 20_000,
+    });
+  }
+
+  const setDensity = (page: Page, density: (typeof DENSITIES)[number]) =>
+    page.locator('html').evaluate((html, value) => {
+      if (value === 'cosy') html.removeAttribute('data-density');
+      else html.setAttribute('data-density', value);
+    }, density);
+
+  test('spacious rows are taller than cosy, which are taller than compact', async ({
+    page,
+    request,
+  }) => {
+    await openConversation(page, request);
+    const row = page.locator('.msg', { has: page.locator('.msg__text') });
+    const heights: Record<string, number> = {};
+    for (const density of DENSITIES) {
+      await setDensity(page, density);
+      await expect
+        .poll(async () => (await row.first().boundingBox())?.height ?? 0)
+        .toBeGreaterThan(0);
+      heights[density] = (await row.first().boundingBox())?.height ?? 0;
+    }
+    expect(heights['compact']).toBeLessThan(heights['cosy']);
+    expect(heights['cosy']).toBeLessThan(heights['spacious']);
+  });
+
+  test.describe('on a touch device', () => {
+    test.use({
+      viewport: devices['Pixel 5'].viewport,
+      userAgent: devices['Pixel 5'].userAgent,
+      deviceScaleFactor: devices['Pixel 5'].deviceScaleFactor,
+      isMobile: devices['Pixel 5'].isMobile,
+      hasTouch: devices['Pixel 5'].hasTouch,
+    });
+
+    test('keeps every composer button at least 44px tall in compact and spacious', async ({
+      page,
+      request,
+    }) => {
+      await openConversation(page, request);
+      for (const density of ['compact', 'spacious'] as const) {
+        await setDensity(page, density);
+        const heights = await page
+          .locator('trn-message-composer .composer button:visible')
+          .evaluateAll((buttons) =>
+            buttons.map((b) => b.getBoundingClientRect().height),
+          );
+        expect(heights.length).toBeGreaterThan(0);
+        for (const height of heights) {
+          expect(height).toBeGreaterThanOrEqual(44);
+        }
+      }
+    });
   });
 });

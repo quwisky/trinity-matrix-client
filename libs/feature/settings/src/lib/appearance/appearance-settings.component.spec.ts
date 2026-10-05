@@ -419,6 +419,16 @@ describe('AppearanceSettingsComponent', () => {
     expect(select?.querySelector('button')).not.toBeNull();
   });
 
+  it('offers Spacious in the density select', async () => {
+    const { fixture } = await renderPage();
+
+    expect(
+      selectFor(fixture, 'density-select')
+        ?.options()
+        .map(({ value, label }) => [value, label]),
+    ).toContainEqual(['spacious', 'Spacious']);
+  });
+
   // #168, and the quietest of the three: the Theme dropdown lost only a capital letter,
   // reading `amethyst` under an option labelled 'Amethyst'. `toContain` is case-sensitive,
   // which is the whole reason the negative half of this assertion can still fail.

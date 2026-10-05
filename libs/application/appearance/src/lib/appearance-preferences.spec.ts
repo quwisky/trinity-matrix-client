@@ -16,6 +16,7 @@ import {
 } from './appearance-preferences';
 import {
   DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS,
+  DENSITY_PREFERENCE,
   MODE_PREFERENCE,
   THEME_PREFERENCE,
 } from './design-system-appearance-preferences';
@@ -84,6 +85,18 @@ describe('Design System Appearance preference descriptors', () => {
         }),
       }),
     ]);
+  });
+
+  it('offers cosy, compact and spacious densities', () => {
+    expect(DENSITY_PREFERENCE.editor).toEqual(
+      expect.objectContaining({
+        options: [
+          { value: 'cosy', label: 'Cosy' },
+          { value: 'compact', label: 'Compact' },
+          { value: 'spacious', label: 'Spacious' },
+        ],
+      }),
+    );
   });
 
   it('derives Mode and Theme validation and editor options from Theme Foundation', () => {

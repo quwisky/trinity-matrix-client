@@ -788,6 +788,24 @@
     --trinity-density-composer-action-size: 36px;
   }
 
+  // Spacious is the same grid one step up from cosy; spacing roles only, never colour.
+  :root[data-density='spacious'] {
+    --trinity-space-1: 3px;
+    --trinity-space-2: 6px;
+    --trinity-space-3: 10px;
+    --trinity-space-4: 14px;
+    --trinity-space-5: 20px;
+    --trinity-density-control-size: 2.5rem;
+    --trinity-density-shell-gap: 10px;
+    --trinity-density-shell-padding-inline: 14px;
+    --trinity-density-channel-padding-block: 8px;
+    --trinity-density-message-column-gap: 20px;
+    --trinity-density-composer-padding-inline: 20px;
+    --trinity-density-composer-field-gap: 6px;
+    --trinity-density-composer-field-inset: 10px;
+    --trinity-density-composer-action-size: 48px;
+  }
+
   // Density may make precise-pointer chrome smaller, but never makes a finger target smaller.
   // Components consume this minimum alongside their density-controlled width/height or padding.
   @media (pointer: coarse) {

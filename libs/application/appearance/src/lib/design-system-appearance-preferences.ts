@@ -25,6 +25,7 @@ export type TextSize = (typeof TEXT_SIZE_OPTIONS)[number]['id'];
 const DENSITY_OPTIONS = Object.freeze([
   Object.freeze({ id: 'cosy', label: 'Cosy' }),
   Object.freeze({ id: 'compact', label: 'Compact' }),
+  Object.freeze({ id: 'spacious', label: 'Spacious' }),
 ] as const);
 
 export type AppearanceDensity = (typeof DENSITY_OPTIONS)[number]['id'];
@@ -122,7 +123,7 @@ export const DENSITY_PREFERENCE = definePreference({
   editor: {
     kind: 'select',
     label: 'Conversation density',
-    description: 'Choose comfortable or compact application spacing.',
+    description: 'Choose compact, comfortable or spacious application spacing.',
     testId: 'density-select',
     options: DENSITY_OPTIONS.map(({ id, label }) => ({ value: id, label })),
   },
