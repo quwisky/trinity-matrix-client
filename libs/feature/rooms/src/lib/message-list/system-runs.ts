@@ -96,7 +96,6 @@ function groupRow(id: string, events: readonly MessageRow[]): MessageRow {
     body: summary,
     summary,
     showHeader: true,
-    daySeparator: events[0].daySeparator,
     systemRun: { events, summary },
   };
 }
