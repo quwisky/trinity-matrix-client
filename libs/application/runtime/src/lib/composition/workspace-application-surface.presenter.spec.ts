@@ -19,6 +19,7 @@ import {
   firstValueFrom,
   of,
   Subject,
+  throwError,
   type Observable,
   type Subscription,
 } from 'rxjs';
@@ -259,5 +260,67 @@ describe('Workspace application-surface composition adapter', () => {
     await expect(
       firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
     ).resolves.toMatchObject({ kind: 'unhandled' });
+  });
+
+  it('does not report a lazy-load failure that arrives after a navigation started', async () => {
+    const toast = TestBed.inject(TrnToastService);
+    const restoreFocus = vi.fn();
+    const request = {
+      surface: { kind: 'settings', section: null },
+      context: { restoreFocus },
+    } as const satisfies WorkspaceApplicationSurfaceRequest;
+    settingsLoad = () => throwError(() => new Error('chunk failed'));
+    await firstValueFrom(presenter().present(request));
+    await Promise.resolve();
+    expect(toast.show).toHaveBeenCalledOnce();
+    expect(restoreFocus).toHaveBeenCalledOnce();
+
+    const load = new Subject<Type<unknown>>();
+    settingsLoad = () => load;
+    const outcome = firstValueFrom(presenter().present(request));
+    events.next(new NavigationStart(1, '/elsewhere'));
+    load.error(new Error('chunk failed'));
+
+    await expect(outcome).resolves.toEqual({
+      kind: 'unavailable',
+      surface: request.surface,
+    });
+    await Promise.resolve();
+    expect(toast.show).toHaveBeenCalledOnce();
+    expect(restoreFocus).toHaveBeenCalledOnce();
+  });
+
+  it('does not restore the owner when a dialog closes after a navigation started', async () => {
+    const restoreFocus = vi.fn();
+    const request = {
+      surface: { kind: 'settings', section: null },
+      context: { restoreFocus },
+    } as const satisfies WorkspaceApplicationSurfaceRequest;
+    const closeDialog = () => {
+      const closed = new Subject<void>();
+      dialogOpen.mockReturnValueOnce(
+        new TrnDialogRef({
+          closed,
+          close: () => {
+            closed.next();
+            closed.complete();
+          },
+        }),
+      );
+      return () => closed.next();
+    };
+
+    const closeFirst = closeDialog();
+    await firstValueFrom(presenter().present(request));
+    closeFirst();
+    await Promise.resolve();
+    expect(restoreFocus).toHaveBeenCalledOnce();
+
+    const closeSecond = closeDialog();
+    await firstValueFrom(presenter().present(request));
+    events.next(new NavigationStart(2, '/elsewhere'));
+    closeSecond();
+    await Promise.resolve();
+    expect(restoreFocus).toHaveBeenCalledOnce();
   });
 });
