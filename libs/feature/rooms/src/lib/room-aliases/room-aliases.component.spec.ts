@@ -62,6 +62,7 @@ async function build(
           joinRule: availability(),
           history: availability(),
           aliases: availability(),
+          upgrade: availability(),
         }),
       }),
       MockProvider(TrnAlertService, { confirm$: alertConfirm }),

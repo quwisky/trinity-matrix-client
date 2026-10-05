@@ -29,6 +29,7 @@ export const DENIED_ROOM_SETTINGS: RoomSettingsPermissions = {
   joinRule: { available: false, reason: 'Room settings are unavailable.' },
   history: { available: false, reason: 'Room settings are unavailable.' },
   aliases: { available: false, reason: 'Room settings are unavailable.' },
+  upgrade: { available: false, reason: 'Room settings are unavailable.' },
 };
 
 export const JOIN_RULE_OPTIONS = [

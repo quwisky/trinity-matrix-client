@@ -9,14 +9,22 @@ import {
 } from '@trinity/data-access/homeserver';
 import {
   RoomSettingsService,
+  RoomUpgradeService,
+  type ActionAvailability,
   type RoomAdvancedInfo,
   type RoomStateEntry,
+  type RoomUpgradePlan,
+  type RoomUpgradeResult,
 } from '@trinity/data-access/room-administration';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { Subject, of, type Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RoomStateViewerComponent } from '../room-state-viewer/room-state-viewer.component';
+import {
+  ROOM_UPGRADE_WARNING_ID,
+  RoomUpgradeDialogComponent,
+} from '../room-upgrade/room-upgrade-dialog.component';
 import { RoomSettingsAdvancedComponent } from './room-settings-advanced.component';
 
 const ACCOUNT = '@me:hs';
@@ -48,6 +56,36 @@ const UNKNOWN: RoomAdvancedInfo = {
 const STATE: readonly RoomStateEntry[] = [
   { type: 'm.room.create', stateKey: '', event: { type: 'm.room.create' } },
 ];
+const ALLOWED: ActionAvailability = { available: true, reason: null };
+/** INFO without the successor, so the room is still live. */
+const LIVE: RoomAdvancedInfo = { ...INFO, successor: null };
+const NEWER: HomeserverCapabilities = {
+  defaultRoomVersion: '11',
+  roomVersions: { '10': 'stable', '11': 'stable' },
+  canChangePassword: null,
+};
+const PLAN: RoomUpgradePlan = {
+  currentVersion: '10',
+  targets: [{ version: '11', isDefault: true }],
+  invitePrivateDefault: true,
+  members: ['@bob:hs'],
+  spaces: [],
+  additionalCreators: [],
+  additionalCreatorNames: [],
+};
+const RESULT: RoomUpgradeResult = {
+  newRoomId: '!new-room:hs',
+  invited: ['@bob:hs'],
+  inviteFailed: [],
+  relinked: [],
+  relinkFailed: [],
+  skippedSpaces: [],
+};
+
+interface UpgradeSetup {
+  readonly upgrade?: ActionAvailability;
+  readonly result?: Observable<RoomUpgradeResult | null>;
+}
 
 const homeserver = (
   capabilities: HomeserverCapabilities | null,
@@ -65,22 +103,33 @@ const homeserver = (
 async function build(
   info: RoomAdvancedInfo = INFO,
   capabilities: HomeserverCapabilities | null = null,
+  upgradeSetup: UpgradeSetup = {},
 ) {
   const infos = signal<ReadonlyMap<string, HomeserverInfo>>(
     new Map([[ACCOUNT, homeserver(capabilities)]]),
   );
   const load = vi.fn(() => of(undefined));
   const open = vi.fn();
+  const openAndWait = vi.fn(() => upgradeSetup.result ?? of(null));
   const show = vi.fn();
   const stateEvents = vi.fn(() => STATE);
+  const plan = vi.fn(() => PLAN);
   const openRoom = vi.fn();
   const result = await render(RoomSettingsAdvancedComponent, {
-    inputs: { accountId: ACCOUNT, info },
+    inputs: {
+      accountId: ACCOUNT,
+      info,
+      ...(upgradeSetup.upgrade ? { upgrade: upgradeSetup.upgrade } : {}),
+    },
     on: { openRoom },
     providers: [
       MockProvider(HomeserverInfoService, { infos: infos.asReadonly(), load }),
       MockProvider(RoomSettingsService, { stateEvents }),
-      MockProvider(TrnDialogService, { open }),
+      MockProvider(RoomUpgradeService, { plan }),
+      MockProvider(TrnDialogService, {
+        open,
+        openAndWait$: openAndWait as never,
+      }),
       MockProvider(TrnToastService, { show }),
     ],
   });
@@ -93,7 +142,22 @@ async function build(
       ? (dt.nextElementSibling?.textContent?.replace(/\s+/g, ' ').trim() ?? '')
       : null;
   };
-  return { ...result, load, open, show, stateEvents, openRoom, row };
+  const upgradeButton = () =>
+    result.container.querySelector<HTMLButtonElement>(
+      '[data-testid="room-advanced-upgrade"]',
+    );
+  return {
+    ...result,
+    load,
+    open,
+    openAndWait,
+    show,
+    stateEvents,
+    plan,
+    openRoom,
+    row,
+    upgradeButton,
+  };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -273,5 +337,128 @@ describe('RoomSettingsAdvancedComponent', () => {
       ariaLabel: 'Room state',
       inputs: { entries: STATE },
     });
+  });
+});
+
+describe('RoomSettingsAdvancedComponent upgrade', () => {
+  it('hides Upgrade room unless this Account may send the tombstone', async () => {
+    const { upgradeButton } = await build(LIVE, NEWER);
+
+    expect(upgradeButton()).toBeNull();
+  });
+
+  it('offers Upgrade room when the server has a newer stable version', async () => {
+    const { upgradeButton, container } = await build(LIVE, NEWER, {
+      upgrade: ALLOWED,
+    });
+
+    expect(upgradeButton()?.textContent?.trim()).toBe('Upgrade room');
+    expect(upgradeButton()?.getAttribute('aria-disabled')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="room-advanced-upgrade-reason"]'),
+    ).toBeNull();
+  });
+
+  it.each([
+    [
+      'the server offers nothing newer',
+      LIVE,
+      {
+        defaultRoomVersion: '10',
+        roomVersions: { '10': 'stable' },
+        canChangePassword: null,
+      } satisfies HomeserverCapabilities,
+      'This room is already on the newest version the server offers.',
+    ],
+    [
+      'the server capabilities are unknown',
+      LIVE,
+      null,
+      'This room is already on the newest version the server offers.',
+    ],
+    [
+      'the room was already upgraded',
+      INFO,
+      NEWER,
+      'This room has already been upgraded.',
+    ],
+  ])('disables Upgrade room when %s', async (_case, info, caps, reason) => {
+    const { upgradeButton, container, plan } = await build(info, caps, {
+      upgrade: ALLOWED,
+    });
+
+    expect(upgradeButton()?.getAttribute('aria-disabled')).toBe('true');
+    expect(
+      container
+        .querySelector('[data-testid="room-advanced-upgrade-reason"]')
+        ?.textContent?.trim(),
+    ).toBe(reason);
+    fireEvent.click(upgradeButton()!);
+    expect(plan).not.toHaveBeenCalled();
+  });
+
+  it('opens the upgrade dialog with the plan, undismissable while busy', async () => {
+    const { upgradeButton, plan, openAndWait } = await build(LIVE, NEWER, {
+      upgrade: ALLOWED,
+    });
+
+    fireEvent.click(upgradeButton()!);
+
+    expect(plan).toHaveBeenCalledWith(ACCOUNT, '!room:hs', NEWER);
+    const [component, options] = openAndWait.mock.calls[0] as unknown as [
+      unknown,
+      {
+        ariaLabel: string;
+        ariaDescribedBy: string;
+        inputs: unknown;
+        dismissGuard: (dialog: { busy: () => boolean } | null) => boolean;
+      },
+    ];
+    expect(component).toBe(RoomUpgradeDialogComponent);
+    expect(options.ariaLabel).toBe('Upgrade room');
+    expect(options.ariaDescribedBy).toBe(ROOM_UPGRADE_WARNING_ID);
+    expect(options.inputs).toEqual({
+      accountId: ACCOUNT,
+      roomId: '!room:hs',
+      plan: PLAN,
+    });
+    expect(options.dismissGuard({ busy: () => true })).toBe(false);
+    expect(options.dismissGuard({ busy: () => false })).toBe(true);
+  });
+
+  it('asks to open the new room after the upgrade', async () => {
+    const { upgradeButton, openRoom } = await build(LIVE, NEWER, {
+      upgrade: ALLOWED,
+      result: of(RESULT),
+    });
+
+    fireEvent.click(upgradeButton()!);
+
+    expect(openRoom).toHaveBeenCalledWith('!new-room:hs');
+  });
+
+  it('opens nothing when the dialog is cancelled', async () => {
+    const { upgradeButton, openRoom } = await build(LIVE, NEWER, {
+      upgrade: ALLOWED,
+      result: of(null),
+    });
+
+    fireEvent.click(upgradeButton()!);
+
+    expect(openRoom).not.toHaveBeenCalled();
+  });
+
+  it('opens nothing when Room settings closed before the upgrade finished', async () => {
+    const pending = new Subject<RoomUpgradeResult | null>();
+    const { upgradeButton, openRoom, fixture } = await build(LIVE, NEWER, {
+      upgrade: ALLOWED,
+      result: pending,
+    });
+
+    fireEvent.click(upgradeButton()!);
+    fixture.destroy();
+    pending.next(RESULT);
+
+    expect(openRoom).not.toHaveBeenCalled();
   });
 });

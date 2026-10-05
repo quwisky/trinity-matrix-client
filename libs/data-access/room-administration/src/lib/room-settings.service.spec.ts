@@ -149,6 +149,7 @@ function setup(
           joinRule: permissionFor('m.room.join_rules'),
           history: permissionFor('m.room.history_visibility'),
           aliases: permissionFor('m.room.canonical_alias'),
+          upgrade: permissionFor('m.room.tombstone'),
         }),
         settingsFor: () => ({
           name: permissionFor('m.room.name'),
@@ -157,6 +158,7 @@ function setup(
           joinRule: permissionFor('m.room.join_rules'),
           history: permissionFor('m.room.history_visibility'),
           aliases: permissionFor('m.room.canonical_alias'),
+          upgrade: permissionFor('m.room.tombstone'),
         }),
         assert: (permission: { available: boolean }) => {
           if (!permission.available) throw new Error('Not allowed.');

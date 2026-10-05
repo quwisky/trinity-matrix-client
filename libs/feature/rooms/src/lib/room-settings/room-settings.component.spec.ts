@@ -15,12 +15,19 @@ import {
   RoomMembersService,
   RoomModerationService,
   RoomSettingsService,
+  RoomUpgradeService,
   type ActionAvailability,
   type RoomAdvancedInfo,
   type RoomSettingsPermissions,
   type RoomSettingsSnapshot,
+  type RoomUpgradePlan,
+  type RoomUpgradeResult,
 } from '@trinity/data-access/room-administration';
-import { HomeserverInfoService } from '@trinity/data-access/homeserver';
+import {
+  HomeserverInfoService,
+  type HomeserverCapabilities,
+  type HomeserverInfo,
+} from '@trinity/data-access/homeserver';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
@@ -55,6 +62,7 @@ const ALL_ALLOWED: RoomSettingsPermissions = {
   joinRule: ALLOWED,
   history: ALLOWED,
   aliases: ALLOWED,
+  upgrade: ALLOWED,
 };
 
 const ADVANCED: RoomAdvancedInfo = {
@@ -67,6 +75,16 @@ const ADVANCED: RoomAdvancedInfo = {
   federated: true,
   predecessor: null,
   successor: null,
+};
+
+const UPGRADE_PLAN: RoomUpgradePlan = {
+  currentVersion: '10',
+  targets: [{ version: '11', isDefault: true }],
+  invitePrivateDefault: true,
+  members: [],
+  spaces: [],
+  additionalCreators: [],
+  additionalCreatorNames: [],
 };
 
 function roomSnapshot(
@@ -105,6 +123,8 @@ function roomSnapshot(
 }
 
 interface BuildOptions {
+  readonly capabilities?: HomeserverCapabilities;
+  readonly upgradeResult?: RoomUpgradeResult;
   readonly compact?: boolean;
   readonly initialSection?: 'general';
   readonly canManageWidgets?: boolean;
@@ -209,9 +229,30 @@ async function build(options: BuildOptions = {}) {
       }),
       MockProvider(RoomModerationService, { unban: () => of(undefined) }),
       MockProvider(HomeserverInfoService, {
-        infos: signal(new Map()).asReadonly(),
+        infos: signal(
+          new Map<string, HomeserverInfo>(
+            options.capabilities
+              ? [
+                  [
+                    TARGET.accountId,
+                    {
+                      userId: TARGET.accountId,
+                      serverName: 'hs',
+                      baseUrl: 'https://hs',
+                      discovered: false,
+                      software: null,
+                      specVersions: null,
+                      unstableFeatures: null,
+                      capabilities: options.capabilities,
+                    },
+                  ],
+                ]
+              : [],
+          ),
+        ).asReadonly(),
         load: () => of(undefined),
       }),
+      MockProvider(RoomUpgradeService, { plan: () => UPGRADE_PLAN }),
       MockProvider(WidgetsService, {
         widgetsFor: () => widgets.asReadonly(),
         canManageFor: () => canManageWidgets.asReadonly(),
@@ -221,7 +262,9 @@ async function build(options: BuildOptions = {}) {
       }),
       MockProvider(WidgetManagementService),
       MockProvider(ExternalBrowserService, { open: () => of(true) }),
-      MockProvider(TrnDialogService),
+      MockProvider(TrnDialogService, {
+        openAndWait$: (() => of(options.upgradeResult ?? null)) as never,
+      }),
       MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnAlertService, { confirm$: confirm }),
       MockProvider(TrnToastService, { show: toast }),
@@ -776,6 +819,35 @@ describe('RoomSettingsComponent', () => {
     expect(close).toHaveBeenCalledWith({
       accountId: TARGET.accountId,
       roomId: '!next:hs',
+    });
+  });
+
+  it('opens the upgraded room for the opening Account', async () => {
+    const { cmp, fixture, container, close } = await build({
+      capabilities: {
+        defaultRoomVersion: '11',
+        roomVersions: { '10': 'stable', '11': 'stable' },
+        canChangePassword: null,
+      },
+      upgradeResult: {
+        newRoomId: '!upgraded:hs',
+        invited: [],
+        inviteFailed: [],
+        relinked: [],
+        relinkFailed: [],
+        skippedSpaces: [],
+      },
+    });
+
+    cmp.selectSection('advanced');
+    await fixture.whenStable();
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="room-advanced-upgrade"]')
+      ?.click();
+
+    expect(close).toHaveBeenCalledWith({
+      accountId: TARGET.accountId,
+      roomId: '!upgraded:hs',
     });
   });
 

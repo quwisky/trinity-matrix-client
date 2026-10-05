@@ -39,6 +39,8 @@ export interface RoomSettingsPermissions {
   readonly joinRule: ActionAvailability;
   readonly history: ActionAvailability;
   readonly aliases: ActionAvailability;
+  /** Upgrading the room, which sends `m.room.tombstone` into it. */
+  readonly upgrade: ActionAvailability;
 }
 
 export interface MemberActionPermissions {
@@ -143,6 +145,7 @@ export class RoomActionPermissionsService {
         joinRule: freshness,
         history: freshness,
         aliases: freshness,
+        upgrade: freshness,
       };
     }
     return this.settingsPermissions(this.context(roomId));
@@ -168,6 +171,7 @@ export class RoomActionPermissionsService {
         joinRule: unavailable,
         history: unavailable,
         aliases: unavailable,
+        upgrade: unavailable,
       };
     }
     const maySend = (type: EventType, label: string): ActionAvailability =>
@@ -181,6 +185,7 @@ export class RoomActionPermissionsService {
       joinRule: maySend(EventType.RoomJoinRules, 'join rule'),
       history: maySend(EventType.RoomHistoryVisibility, 'history visibility'),
       aliases: maySend(EventType.RoomCanonicalAlias, 'addresses'),
+      upgrade: maySend(EventType.RoomTombstone, 'version'),
     };
   }
 

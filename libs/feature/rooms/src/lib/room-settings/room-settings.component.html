@@ -62,6 +62,7 @@
         <trn-room-settings-advanced
           [accountId]="accountId()"
           [info]="advanced"
+          [upgrade]="draft.permissions().upgrade"
           (openRoom)="openRoom($event)"
         />
       }

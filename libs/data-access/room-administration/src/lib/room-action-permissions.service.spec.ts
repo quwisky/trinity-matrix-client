@@ -28,6 +28,7 @@ interface ClientFixture {
     kick: number;
     ban: number;
     state: number;
+    stateByType: Record<string, number>;
   };
 }
 
@@ -60,14 +61,21 @@ function clientFixture(
       },
     ],
   ]);
-  const rules = { invite: 50, kick: 50, ban: 50, state: 50 };
+  const rules = {
+    invite: 50,
+    kick: 50,
+    ban: 50,
+    state: 50,
+    stateByType: {} as Record<string, number>,
+  };
   const state = {
     hasSufficientPowerLevelFor: (
       action: 'invite' | 'kick' | 'ban',
       power: number,
     ) => power >= rules[action],
-    maySendStateEvent: (_type: string, actor: string) =>
-      (members.get(actor)?.powerLevel ?? 0) >= rules.state,
+    maySendStateEvent: (type: string, actor: string) =>
+      (members.get(actor)?.powerLevel ?? 0) >=
+      (rules.stateByType[type] ?? rules.state),
   };
   const room = {
     getMyMembership: () => members.get(userId)?.membership,
@@ -215,7 +223,7 @@ describe('RoomActionPermissionsService', () => {
     const fixture = clientFixture('@me:hs', { myPower: 49 });
     const { service } = setup(fixture);
 
-    expect(Object.values(service.settings('!room:hs'))).toHaveLength(6);
+    expect(Object.values(service.settings('!room:hs'))).toHaveLength(7);
     expect(
       Object.values(service.settings('!room:hs')).every(
         (permission) => !permission.available && !!permission.reason,
@@ -228,6 +236,23 @@ describe('RoomActionPermissionsService', () => {
         (permission) => permission.available && permission.reason === null,
       ),
     ).toBe(true);
+  });
+
+  it('allows an upgrade only to members who may send the tombstone', () => {
+    const fixture = clientFixture('@me:hs', { myPower: 50 });
+    fixture.rules.stateByType[EventType.RoomTombstone] = 100;
+    const { service } = setup(fixture);
+
+    expect(service.settings('!room:hs').name.available).toBe(true);
+    expect(service.settings('!room:hs').upgrade).toEqual({
+      available: false,
+      reason: "Your role cannot change this room's version.",
+    });
+
+    fixture.members.get('@me:hs')!.powerLevel = 100;
+    expect(
+      service.settingsFor({ accountId: '@me:hs', roomId: '!room:hs' }).upgrade,
+    ).toEqual({ available: true, reason: null });
   });
 
   it.each([
@@ -357,6 +382,7 @@ describe('RoomActionPermissionsService', () => {
       reason: expect.stringContaining('permissions are unavailable'),
     });
     expect(service.settings('!room:hs').topic.available).toBe(false);
+    expect(service.settings('!room:hs').upgrade.available).toBe(false);
     expect(service.member('!room:hs', '@target:hs').ban.available).toBe(false);
     expect(service.unban('!room:hs', '@target:hs').available).toBe(false);
   });
