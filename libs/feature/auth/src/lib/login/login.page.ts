@@ -29,6 +29,7 @@ import {
   TrnButton,
   TrnFieldImports,
   TrnInput,
+  TrnPasswordInputComponent,
 } from '@trinity/components/controls';
 import { TrnCardImports } from '@trinity/components/navigation-layout';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
@@ -61,7 +62,6 @@ import {
 } from './clear-all-data';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { OidcStateStore } from '../oidc-state.store';
-import { TrnIconComponent } from '@trinity/components/foundations';
 import { accountEstablishmentError } from '../account-establishment-outcome';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 
@@ -103,8 +103,8 @@ function describeSignInError(error: unknown, fallback: string): string {
     TrnCardImports,
     TrnFieldImports,
     TrnInput,
+    TrnPasswordInputComponent,
     TrnSpinnerComponent,
-    TrnIconComponent,
   ],
 })
 export class LoginPage {
@@ -205,8 +205,6 @@ export class LoginPage {
   private loginMode(): LoginMode {
     return this.addMode || this.reauthUserId() ? 'add' : 'replace';
   }
-
-  readonly passwordVisible = signal(false);
 
   // Resolved homeserver + capabilities after discovery.
   readonly baseUrl = signal<string | null>(null);

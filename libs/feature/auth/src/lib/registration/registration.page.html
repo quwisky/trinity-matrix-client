@@ -84,13 +84,11 @@
         >
           Password
         </trn-field-label>
-        <div class="flex items-center gap-2">
+        <trn-password-input [disabled]="busy()">
           <input
             trnInput
             id="registration-password"
             autocomplete="new-password"
-            [type]="passwordVisible() ? 'text' : 'password'"
-            class="min-w-0 flex-1"
             [formField]="credentialsForm.password"
             [attr.aria-describedby]="
               credentialsForm.password().touched() &&
@@ -99,25 +97,7 @@
                 : null
             "
           />
-          <button
-            trnBtn
-            presentation="ghost"
-            shape="icon"
-            size="md"
-            type="button"
-            [attr.aria-label]="
-              passwordVisible() ? 'Hide password' : 'Show password'
-            "
-            [attr.aria-pressed]="passwordVisible()"
-            [disabled]="busy()"
-            (click)="passwordVisible.set(!passwordVisible())"
-          >
-            <trn-icon
-              [name]="passwordVisible() ? 'eye-off' : 'eye'"
-              motion="pop"
-            />
-          </button>
-        </div>
+        </trn-password-input>
         @if (
           credentialsForm.password().touched() &&
             credentialsForm.password().errors()[0];
@@ -149,20 +129,21 @@
         >
           Confirm password
         </trn-field-label>
-        <input
-          trnInput
-          id="registration-confirm-password"
-          autocomplete="new-password"
-          [type]="passwordVisible() ? 'text' : 'password'"
-          [formField]="credentialsForm.confirmPassword"
-          [attr.aria-describedby]="
-            credentialsForm.confirmPassword().touched() &&
-            credentialsForm.confirmPassword().errors().length
-              ? 'registration-confirm-password-error'
-              : null
-          "
-          (keyup.enter)="createAccount()"
-        />
+        <trn-password-input [disabled]="busy()">
+          <input
+            trnInput
+            id="registration-confirm-password"
+            autocomplete="new-password"
+            [formField]="credentialsForm.confirmPassword"
+            [attr.aria-describedby]="
+              credentialsForm.confirmPassword().touched() &&
+              credentialsForm.confirmPassword().errors().length
+                ? 'registration-confirm-password-error'
+                : null
+            "
+            (keyup.enter)="createAccount()"
+          />
+        </trn-password-input>
         @if (
           credentialsForm.confirmPassword().touched() &&
             credentialsForm.confirmPassword().errors()[0];
