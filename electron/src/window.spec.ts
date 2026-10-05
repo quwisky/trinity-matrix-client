@@ -313,7 +313,10 @@ describe('createWindow title bar', () => {
   }
 
   it('passes the frameless options', () => {
-    expect(create()).toMatchObject({ titleBarStyle: 'hidden' });
+    expect(create()).toMatchObject({
+      titleBarStyle: 'hidden',
+      autoHideMenuBar: false,
+    });
   });
 
   it('keeps the OS frame and menu bar with the system title bar', () => {
