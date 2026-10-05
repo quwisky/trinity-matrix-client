@@ -107,6 +107,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/message-list/drop-overlay/drop-overlay.component.scss',
   'libs/feature/rooms/src/lib/message-list/simple-message-list/simple-message-list.component.scss',
   'libs/feature/rooms/src/lib/message-list/timeline-divider/timeline-divider.component.scss',
+  'libs/feature/rooms/src/lib/message-list/timeline-skeleton/timeline-skeleton.component.scss',
   'libs/feature/rooms/src/lib/message-list/typing-indicator/typing-indicator.component.scss',
   'libs/feature/rooms/src/lib/message-list/virtual-message-list/virtual-message-list.component.scss',
   'libs/feature/rooms/src/lib/message-reactions/message-reactions.component.scss',

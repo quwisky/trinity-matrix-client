@@ -1,0 +1,51 @@
+@layer components {
+  :host {
+    display: flex;
+    flex-direction: column;
+    gap: var(--trinity-space-4);
+    padding: var(--trinity-space-3) var(--trinity-space-4);
+  }
+
+  .skeleton-group {
+    display: flex;
+    gap: var(--trinity-space-3);
+  }
+
+  .skeleton-avatar,
+  .skeleton-bar {
+    background: var(--trinity-state-hover-surface);
+    animation: timeline-skeleton-pulse var(--trinity-duration-pulse) ease-in-out
+      infinite alternate;
+  }
+
+  .skeleton-avatar {
+    flex: none;
+    width: var(--trinity-space-6);
+    height: var(--trinity-space-6);
+    border-radius: var(--trinity-radius-pill);
+  }
+
+  .skeleton-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--trinity-space-2);
+    min-width: 0;
+  }
+
+  .skeleton-bar {
+    display: block;
+    height: var(--trinity-space-3);
+    border-radius: var(--trinity-radius-sm);
+  }
+
+  .skeleton-bar--name {
+    width: 30%;
+  }
+
+  @keyframes timeline-skeleton-pulse {
+    to {
+      opacity: 0.55;
+    }
+  }
+}
