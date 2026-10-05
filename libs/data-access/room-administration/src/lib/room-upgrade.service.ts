@@ -4,6 +4,7 @@ import {
   catchError,
   concat,
   defer,
+  finalize,
   from,
   map,
   of,
@@ -20,7 +21,7 @@ import {
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { liveRoomState } from '@trinity/util/matrix';
-import { roomAdvancedInfo } from './room-advanced-info';
+import { roomAdvancedInfo, type RoomAdvancedInfo } from './room-advanced-info';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
 import {
   recoverRoomAdministrationRequest,
@@ -60,8 +61,14 @@ export interface RoomUpgradePlan {
   /** Joined and invited members, excluding this Account. */
   readonly members: readonly string[];
   readonly spaces: readonly RoomUpgradeSpace[];
-  /** The old room's creators other than this Account; sent only for v12+ targets. */
+  /**
+   * Creators the new room gets besides this Account, sent only for v12+ targets (and always
+   * the same list for those). From a pre-v12 room only creators still joined at a power level
+   * no lower than this Account's carry over; from a v12+ room they all do.
+   */
   readonly additionalCreators: readonly string[];
+  /** Display names for {@link additionalCreators}, in the same order. */
+  readonly additionalCreatorNames: readonly string[];
 }
 
 export interface RoomUpgradeOptions {
@@ -107,6 +114,7 @@ interface UpgradeContext {
   readonly members: readonly string[];
   readonly spaces: readonly LinkedSpace[];
   readonly additionalCreators: readonly string[];
+  readonly additionalCreatorNames: readonly string[];
 }
 
 interface RelinkOutcome {
@@ -154,6 +162,8 @@ export function roomUpgradeTargets(
 export class RoomUpgradeService {
   private readonly matrix = inject(MatrixClientService);
   private readonly permissions = inject(RoomActionPermissionsService);
+  /** `${accountId}|${roomId}` of upgrades in flight. */
+  private readonly upgrading = new Set<string>();
 
   /** What upgrading `roomId` would do; null when the Account or the Room is unavailable. */
   plan(
@@ -180,6 +190,26 @@ export class RoomUpgradeService {
    * reports its own failures in the result, and nothing is rolled back.
    */
   upgrade(
+    accountId: string,
+    roomId: string,
+    options: RoomUpgradeOptions,
+  ): Observable<RoomUpgradeResult> {
+    return defer(() => {
+      const key = `${accountId}|${roomId}`;
+      if (this.upgrading.has(key)) {
+        return throwError(() =>
+          roomAdministrationInvalidInput(
+            'upgrade-room',
+            'This room is already being upgraded.',
+          ),
+        );
+      }
+      return this.run(key, accountId, roomId, options);
+    });
+  }
+
+  private run(
+    key: string,
     accountId: string,
     roomId: string,
     options: RoomUpgradeOptions,
@@ -212,11 +242,13 @@ export class RoomUpgradeService {
         before.additionalCreators.length > 0
           ? [...before.additionalCreators]
           : undefined;
+      this.upgrading.add(key);
       return from(client.upgradeRoom(roomId, options.version, creators)).pipe(
         recoverRoomAdministrationRequest('upgrade-room'),
         switchMap(({ replacement_room }) =>
           followUp(client, roomId, replacement_room, before, options),
         ),
+        finalize(() => this.upgrading.delete(key)),
       );
     });
   }
@@ -241,9 +273,31 @@ function readContext(client: MatrixClient, room: Room): UpgradeContext {
       )
       .map(({ userId }) => userId),
     spaces: linkedSpaces(client, room, me),
-    additionalCreators: info.createdBy
-      .map(({ userId }) => userId)
-      .filter((userId) => userId !== me),
+    ...carriedCreators(room, info, me),
+  };
+}
+
+/** Creators for a v12+ target; the source era decides who is still trusted to stay one. */
+function carriedCreators(
+  room: Room,
+  info: RoomAdvancedInfo,
+  me: string,
+): Pick<UpgradeContext, 'additionalCreators' | 'additionalCreatorNames'> {
+  const fromV12 =
+    info.version !== null &&
+    isWholeNumber(info.version) &&
+    Number(info.version) >= 12;
+  const myPower = room.getMember(me)?.powerLevel ?? 0;
+  const kept = info.createdBy.filter(
+    ({ userId }) =>
+      userId !== me &&
+      (fromV12 ||
+        (room.getMember(userId)?.membership === KnownMembership.Join &&
+          (room.getMember(userId)?.powerLevel ?? 0) >= myPower)),
+  );
+  return {
+    additionalCreators: kept.map(({ userId }) => userId),
+    additionalCreatorNames: kept.map(({ displayName }) => displayName),
   };
 }
 

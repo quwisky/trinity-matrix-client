@@ -33,8 +33,8 @@ const CAPS: RoomUpgradeCapabilities = {
 
 interface FakeRoomOptions {
   readonly events?: readonly Partial<IEvent>[];
-  /** `[userId, membership]` pairs. */
-  readonly members?: readonly (readonly [string, string])[];
+  /** `[userId, membership, powerLevel?]` triples. */
+  readonly members?: readonly (readonly [string, string, number?])[];
   readonly space?: boolean;
   /** What `maySendStateEvent` answers for me. */
   readonly mayEdit?: boolean;
@@ -69,9 +69,11 @@ function fakeRoom(roomId: string, o: FakeRoomOptions = {}) {
     maySendStateEvent: () => o.mayEdit ?? true,
     getMember: () => null,
   };
-  const members = (o.members ?? []).map(([userId, membership]) => ({
+  const members = (o.members ?? []).map(([userId, membership, power]) => ({
     userId,
     membership,
+    name: userId,
+    powerLevel: power ?? 0,
   }));
   return {
     roomId,
@@ -244,6 +246,7 @@ describe('RoomUpgradeService.plan', () => {
       members: ['@bob:hs', '@carol:hs'],
       spaces: [],
       additionalCreators: [],
+      additionalCreatorNames: [],
     });
   });
 
@@ -266,7 +269,7 @@ describe('RoomUpgradeService.plan', () => {
     expect(svc.plan(ME, OLD, CAPS)?.invitePrivateDefault).toBe(true);
   });
 
-  it('carries the old room’s other creators', () => {
+  it('carries a v12 room’s other creators, named', () => {
     const { svc } = setup([
       fakeRoom(OLD, {
         events: [
@@ -279,6 +282,36 @@ describe('RoomUpgradeService.plan', () => {
       '@alice:hs',
       '@carol:hs',
     ]);
+    expect(svc.plan(ME, OLD, CAPS)?.additionalCreatorNames).toEqual([
+      '@alice:hs',
+      '@carol:hs',
+    ]);
+  });
+
+  describe('creators of a pre-v12 room', () => {
+    const plan = (alice: readonly [string, string, number?] | null) =>
+      setup([
+        fakeRoom(OLD, {
+          events: [create('10', {}, '@alice:hs')],
+          members: [[ME, 'join', 100], ...(alice ? [alice] : [])],
+        }),
+      ]).svc.plan(ME, OLD, CAPS)?.additionalCreators;
+
+    it('carries one still joined at or above my power', () => {
+      expect(plan(['@alice:hs', 'join', 100])).toEqual(['@alice:hs']);
+    });
+
+    it.each([
+      ['demoted below me', ['@alice:hs', 'join', 50] as const],
+      ['left', ['@alice:hs', 'leave', 100] as const],
+      ['banned', ['@alice:hs', 'ban', 100] as const],
+    ])('does not carry one who %s', (_label, alice) => {
+      expect(plan(alice)).toEqual([]);
+    });
+
+    it('does not carry one who is not a member at all', () => {
+      expect(plan(null)).toEqual([]);
+    });
   });
 
   it('lists the spaces that link the room and whether they can be re-linked', () => {
@@ -428,13 +461,22 @@ describe('RoomUpgradeService.upgrade', () => {
   });
 
   it.each([
-    ['11', undefined],
-    ['12', ['@alice:hs']],
+    ['10', '11', undefined],
+    ['10', '12', ['@alice:hs']],
+    ['12', '12', ['@alice:hs']],
+    ['12', '13', ['@alice:hs']],
+    ['11', '11', undefined],
   ])(
-    'to version %s passes additional creators %j',
-    async (version, creators) => {
+    'from v%s to version %s passes additional creators %j',
+    async (from, version, creators) => {
       const { svc, upgradeRoom } = setup([
-        fakeRoom(OLD, { events: [create('10', {}, '@alice:hs')] }),
+        fakeRoom(OLD, {
+          events: [create(from, {}, '@alice:hs')],
+          members: [
+            [ME, 'join', 100],
+            ['@alice:hs', 'join', 100],
+          ],
+        }),
       ]);
 
       await firstValueFrom(
@@ -444,6 +486,46 @@ describe('RoomUpgradeService.upgrade', () => {
       expect(upgradeRoom).toHaveBeenCalledWith(OLD, version, creators);
     },
   );
+
+  it('rejects a second upgrade of the same room while one is in flight', async () => {
+    const { svc, upgradeRoom } = setup([
+      fakeRoom(OLD, { events: [create('10')] }),
+    ]);
+    let finish: (value: { replacement_room: string }) => void = () => undefined;
+    upgradeRoom.mockReturnValueOnce(
+      new Promise((resolve) => (finish = resolve)),
+    );
+    const options = { version: '11', inviteMembers: false };
+
+    const first = firstValueFrom(svc.upgrade(ME, OLD, options));
+    await expect(
+      firstValueFrom(svc.upgrade(ME, OLD, options)),
+    ).rejects.toMatchObject({
+      outcome: { failure: 'invalid-input', operation: 'upgrade-room' },
+    });
+    expect(upgradeRoom).toHaveBeenCalledTimes(1);
+
+    finish({ replacement_room: NEW });
+    await first;
+    await firstValueFrom(svc.upgrade(ME, OLD, options));
+    expect(upgradeRoom).toHaveBeenCalledTimes(2);
+  });
+
+  it('frees the room when the upgrade fails or is unsubscribed', async () => {
+    const { svc, upgradeRoom } = setup([
+      fakeRoom(OLD, { events: [create('10')] }),
+    ]);
+    const options = { version: '11', inviteMembers: false };
+    upgradeRoom.mockRejectedValueOnce(new Error('boom'));
+    await expect(
+      firstValueFrom(svc.upgrade(ME, OLD, options)),
+    ).rejects.toThrow();
+    upgradeRoom.mockReturnValueOnce(new Promise(() => undefined));
+    svc.upgrade(ME, OLD, options).subscribe().unsubscribe();
+
+    await firstValueFrom(svc.upgrade(ME, OLD, options));
+    expect(upgradeRoom).toHaveBeenCalledTimes(3);
+  });
 
   it('uses the new room’s server from the Account for a v12 room ID', async () => {
     const { svc, upgradeRoom, sendStateEvent } = setup(rooms());
