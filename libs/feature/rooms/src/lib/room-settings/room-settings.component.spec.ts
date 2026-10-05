@@ -55,6 +55,7 @@ const ALL_ALLOWED: RoomSettingsPermissions = {
   joinRule: ALLOWED,
   history: ALLOWED,
   aliases: ALLOWED,
+  upgrade: ALLOWED,
 };
 
 const ADVANCED: RoomAdvancedInfo = {
