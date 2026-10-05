@@ -1,0 +1,312 @@
+{
+  "apps/trinity/src/global.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 5
+    }
+  },
+  "apps/trinity/src/rendered-markdown.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 24
+    }
+  },
+  "libs/components/generic-content/src/lib/banner/banner.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 1
+    }
+  },
+  "libs/feature/auth/src/lib/auth-card/auth-card.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 2
+    }
+  },
+  "libs/feature/auth/src/lib/registration/registration.page.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 7
+    }
+  },
+  "libs/feature/crypto/src/lib/recovery-key-display/recovery-key-display.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 3
+    }
+  },
+  "libs/feature/crypto/src/lib/styles/_mixins.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 1
+    }
+  },
+  "libs/feature/crypto/src/lib/verification/device-verification.page.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 6
+    }
+  },
+  "libs/feature/crypto/src/lib/verification/sas-compare.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 3
+    }
+  },
+  "libs/feature/rooms/src/lib/account-picker/account-picker.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 7
+    }
+  },
+  "libs/feature/rooms/src/lib/add-to-space/add-to-space.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 7
+    }
+  },
+  "libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 14
+    }
+  },
+  "libs/feature/rooms/src/lib/edit-history/edit-history.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 1
+    }
+  },
+  "libs/feature/rooms/src/lib/jump-to-date/jump-to-date.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 5
+    }
+  },
+  "libs/feature/rooms/src/lib/link-preview/link-preview.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 7
+    }
+  },
+  "libs/feature/rooms/src/lib/location-share/location.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 8
+    }
+  },
+  "libs/feature/rooms/src/lib/media-bubble/media-bubble.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 1
+    }
+  },
+  "libs/feature/rooms/src/lib/member-info/member-info.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 11
+    }
+  },
+  "libs/feature/rooms/src/lib/member-list/member-list.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 9
+    }
+  },
+  "libs/feature/rooms/src/lib/members-settings/members-settings.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 12
+    }
+  },
+  "libs/feature/rooms/src/lib/message-composer/message-composer.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 9
+    }
+  },
+  "libs/feature/rooms/src/lib/message-list/_message-list-shared.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 1
+    }
+  },
+  "libs/feature/rooms/src/lib/message-reactions/message-reactions.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 3
+    }
+  },
+  "libs/feature/rooms/src/lib/message-reply-preview/message-reply-preview.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 3
+    }
+  },
+  "libs/feature/rooms/src/lib/message-row/message-row.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 12
+    }
+  },
+  "libs/feature/rooms/src/lib/message-search/message-search.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 9
+    }
+  },
+  "libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 3
+    }
+  },
+  "libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 3
+    }
+  },
+  "libs/feature/rooms/src/lib/pinned/pinned-messages-panel.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 8
+    }
+  },
+  "libs/feature/rooms/src/lib/poll/poll.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 9
+    }
+  },
+  "libs/feature/rooms/src/lib/reactions-dialog/reactions-dialog.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 1
+    }
+  },
+  "libs/feature/rooms/src/lib/room-settings/_room-settings-access.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 2
+    }
+  },
+  "libs/feature/rooms/src/lib/room-settings/_room-settings-panel.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 1
+    }
+  },
+  "libs/feature/rooms/src/lib/room-settings/room-widgets.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 6
+    }
+  },
+  "libs/feature/rooms/src/lib/rooms/rooms.page.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 8
+    }
+  },
+  "libs/feature/rooms/src/lib/server-rail/server-rail.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 5
+    }
+  },
+  "libs/feature/rooms/src/lib/space-settings/space-settings-contents-list.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 11
+    }
+  },
+  "libs/feature/rooms/src/lib/space-settings/space-settings-contents.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 14
+    }
+  },
+  "libs/feature/rooms/src/lib/sticker-image/sticker-image.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 1
+    }
+  },
+  "libs/feature/rooms/src/lib/sticker-picker/sticker-picker.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 14
+    }
+  },
+  "libs/feature/rooms/src/lib/styles/_mixins.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 5
+    }
+  },
+  "libs/feature/rooms/src/lib/thread/threads-list.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 13
+    }
+  },
+  "libs/feature/rooms/src/lib/user-card/user-card.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 4
+    }
+  },
+  "libs/feature/rooms/src/lib/voice-message/voice-message.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 7
+    }
+  },
+  "libs/feature/settings/src/lib/server/homeserver-block.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 11
+    }
+  },
+  "libs/application/runtime/src/lib/application-root/system-status/system-status.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 11
+    }
+  },
+  "libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 17
+    }
+  },
+  "libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 14
+    }
+  },
+  "libs/feature/rooms/src/lib/media-attachment/lightbox/lightbox.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 1
+    }
+  },
+  "libs/feature/rooms/src/lib/message-composer/composer-attachment-strip/composer-attachment-strip.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 9
+    }
+  },
+  "libs/feature/rooms/src/lib/message-composer/composer-format-menu/composer-format-menu.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 1
+    }
+  },
+  "libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 1
+    }
+  },
+  "libs/feature/rooms/src/lib/message-composer/composer-suggestions/composer-suggestions.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 7
+    }
+  },
+  "libs/feature/rooms/src/lib/message-list/drop-overlay/drop-overlay.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 2
+    }
+  },
+  "libs/feature/rooms/src/lib/message-list/timeline-divider/timeline-divider.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 4
+    }
+  },
+  "libs/feature/rooms/src/lib/message-list/typing-indicator/typing-indicator.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 2
+    }
+  },
+  "libs/feature/rooms/src/lib/room-settings/room-settings-for-you/room-settings-for-you.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 4
+    }
+  },
+  "libs/feature/rooms/src/lib/room-settings/room-widget-create/room-widget-create.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 4
+    }
+  },
+  "libs/feature/rooms/src/lib/room-settings/room-widget-frame/room-widget-frame.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 3
+    }
+  },
+  "libs/feature/rooms/src/lib/shared/avatar-field/avatar-field.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 3
+    }
+  },
+  "libs/feature/rooms/src/lib/shared/settings-identity-card/settings-identity-card.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 1
+    }
+  },
+  "libs/feature/rooms/src/lib/shared/settings-load-state-card/settings-load-state-card.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 1
+    }
+  }
+}
