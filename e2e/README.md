@@ -55,8 +55,9 @@ pnpm nx run trinity-e2e-browser:e2e -- --grep "message link"
 
 The browser suite uses a development build and the disposable homeserver. It cannot prove a
 production service worker, installed Android app, or Electron boundary; choose the matching task above
-when that boundary matters. Browser journeys are cataloged by one capability and one primary
-contract type; add or move a spec with its `e2e/browser/journey-catalog.mts` entry.
+when that boundary matters. Browser specs live directly under
+`e2e/browser/journeys/<capability>/`; `node scripts/e2e-suite-registry.mjs check` (part of `pnpm architecture:check`) rejects a spec outside a known
+capability folder, a capability folder with no spec, and specs left in the former `e2e/playwright/` root.
 
 ## Mobile (Android)
 

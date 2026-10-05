@@ -15,10 +15,8 @@ import {
   MOBILE_ANDROID_SUITE,
   MOBILE_IOS_SUITE,
 } from '../e2e/support/host-suites.mts';
-import { BROWSER_JOURNEYS } from '../e2e/browser/journey-catalog.mts';
-import CapabilityCoverageReporter, {
-  browserJourneyPath,
-} from '../e2e/browser/capability-coverage.reporter.mts';
+import { validateBrowserJourneyInventory } from './e2e-browser-inventory.mjs';
+import { BROWSER_CAPABILITIES } from '../e2e/registry/browser-classification.mts';
 import {
   CI_WORKFLOW_BY_TIER,
   registrySnapshot,
@@ -259,75 +257,64 @@ describe('E2E suite registry', () => {
     );
   });
 
-  it('reports executable browser coverage from the typed journey catalog', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'trinity-e2e-coverage-'));
-    try {
-      const outputFile = join(directory, 'coverage.json');
-      const reporter = new CapabilityCoverageReporter({ outputFile });
-      const testCase = {
-        id: 'one',
-        location: {
-          file: join(
-            workspaceRoot,
-            'e2e/browser/journeys/accounts/registration.spec.mts',
-          ),
-        },
-        annotations: [],
-        titlePath: () => ['chromium', 'Accounts', 'registers'],
-        parent: { project: () => ({ name: 'chromium' }) },
-      };
-      const result = {
-        annotations: [],
-        status: 'passed',
-        retry: 0,
-        duration: 42,
-      };
+  describe('browser journey folders', () => {
+    const inventoryErrors = (mutate = () => undefined) => {
+      const root = mkdtempSync(join(tmpdir(), 'trinity-e2e-inventory-'));
+      try {
+        const spec = (path) => {
+          mkdirSync(join(root, path, '..'), { recursive: true });
+          writeFileSync(join(root, path), '');
+        };
+        for (const capability of BROWSER_CAPABILITIES) {
+          spec(`e2e/browser/journeys/${capability}/one.spec.mts`);
+        }
+        mutate(root, spec);
+        const errors = [];
+        validateBrowserJourneyInventory(errors, root);
+        return errors;
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    };
 
-      reporter.onBegin({}, { allTests: () => [testCase] });
-      reporter.onTestEnd(testCase, result);
-      await reporter.onEnd({ status: 'passed' });
+    it('accepts the checked-in layout and a complete synthetic one', () => {
+      const errors = [];
+      validateBrowserJourneyInventory(errors, workspaceRoot);
+      expect(errors).toEqual([]);
+      expect(inventoryErrors()).toEqual([]);
+    });
 
-      expect(browserJourneyPath(testCase.location.file)).toBe(
-        'journeys/accounts/registration.spec.mts',
-      );
-      expect(testCase.annotations).toEqual(
-        expect.arrayContaining([
-          {
-            type: 'trinity.e2e.capability',
-            description: 'accounts',
-          },
-          {
-            type: 'trinity.e2e.contractType',
-            description: 'journey',
-          },
-        ]),
-      );
-      const report = JSON.parse(readFileSync(outputFile, 'utf8'));
-      expect(report).toMatchObject({
-        expectedSpecCount: BROWSER_JOURNEYS.length,
-        collectedSpecCount: 1,
-        testCount: 1,
-        attempts: 1,
-        retries: 0,
-        durationMs: 42,
-        byCapability: {
-          accounts: {
-            specCount: 1,
-            testCount: 1,
-            statuses: { passed: 1 },
-          },
-        },
-        byContractType: {
-          journey: {
-            specCount: 1,
-            testCount: 1,
-            statuses: { passed: 1 },
-          },
-        },
-      });
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
+    it('rejects specs under an unknown capability folder', () => {
+      expect(
+        inventoryErrors((_, spec) =>
+          spec('e2e/browser/journeys/bogus/a.spec.mts'),
+        ),
+      ).toEqual([expect.stringContaining('journeys/bogus/a.spec.mts')]);
+    });
+
+    it('rejects specs nested below a capability folder', () => {
+      expect(
+        inventoryErrors((_, spec) =>
+          spec('e2e/browser/journeys/accounts/deep/a.spec.mts'),
+        ),
+      ).toEqual([expect.stringContaining('accounts/deep/a.spec.mts')]);
+    });
+
+    it('rejects a capability without a spec', () => {
+      expect(
+        inventoryErrors((root) =>
+          rmSync(join(root, 'e2e/browser/journeys/trust'), { recursive: true }),
+        ),
+      ).toEqual(['browser capability has no journey: trust']);
+    });
+
+    it('rejects specs left in the former flat root', () => {
+      expect(
+        inventoryErrors((_, spec) => spec('e2e/playwright/old.spec.mts')),
+      ).toEqual([
+        expect.stringContaining('former flat canonical browser root'),
+      ]);
+    });
   });
 
   it('requires migrated lifecycle targets and artifacts to use their durable owner', () => {

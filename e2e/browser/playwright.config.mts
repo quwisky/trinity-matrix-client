@@ -1,13 +1,8 @@
-import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 import { nxE2EPreset } from '@nx/playwright/preset';
 import { appE2EConfig } from './support/app-e2e-config.mts';
 import { BROWSER_CANONICAL_SUITE } from '../registry/suites/browser.mts';
-import {
-  e2eEndpoint,
-  e2eArtifactPath,
-  e2eReportConfig,
-} from '../support/playwright-config.mts';
+import { e2eEndpoint, e2eReportConfig } from '../support/playwright-config.mts';
 
 // Base URL of the invocation-owned development artifact server. The config is a
 // fail-closed joiner and never starts or tears down application infrastructure.
@@ -43,20 +38,7 @@ export default defineConfig({
   // event-propagation specs (rename, reactions, polls, threads). 120s (well under the
   // outer invocation budget) gives realistic headroom; retries still catch the rare tail.
   timeout: 120_000,
-  ...e2eReportConfig(browserSuite, {
-    reportersAfterMetadata: [
-      [
-        join(import.meta.dirname, 'capability-coverage.reporter.mts'),
-        {
-          outputFile: e2eArtifactPath(
-            browserSuite.targetProject,
-            browserSuite.id,
-            'capability-coverage/coverage.json',
-          ),
-        },
-      ],
-    ],
-  }),
+  ...e2eReportConfig(browserSuite),
   // Shared with the current-interface evidence suite: Synapse lifecycle, app server, self-signed
   // TLS policy and retain-on-failure traces must not drift between real-app browser harnesses.
   ...appE2EConfig(baseURL),
