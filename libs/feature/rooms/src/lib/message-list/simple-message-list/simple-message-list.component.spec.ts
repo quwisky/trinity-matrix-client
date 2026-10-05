@@ -128,6 +128,28 @@ describe('SimpleMessageListComponent', () => {
     expect(container.textContent).toContain('body $2');
   });
 
+  it('jumping to a system event hidden in a run expands the run and targets its row', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const { fixture, container } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [
+          msg('$m1', '@a:hs', 'Alice', 1000),
+          eventRow('$e1', 'Alice joined', 2000),
+          eventRow('$e2', 'Alice set a name', 3000),
+          eventRow('$e3', 'Alice left', 4000),
+          msg('$m2', '@b:hs', 'Bob', 5000),
+        ],
+      },
+    });
+    const list = fixture.componentInstance;
+
+    list.jumpTo('$e2');
+    fixture.detectChanges();
+
+    expect(list.expandedRuns().has('group:$e3')).toBe(true);
+    expect(container.querySelector('[data-mid="group:$e3"]')).not.toBeNull();
+  });
+
   it('renders state events as system lines that break sender grouping', async () => {
     const { container } = await render(SimpleMessageListComponent, {
       inputs: {

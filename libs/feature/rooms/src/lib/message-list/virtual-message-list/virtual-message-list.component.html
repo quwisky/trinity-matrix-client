@@ -47,7 +47,7 @@
       @if (row.daySeparator; as day) {
         <trn-timeline-divider kind="day" [label]="day" />
       }
-      @if (row.id === firstUnreadId()) {
+      @if (row.id === unreadRowId()) {
         <trn-timeline-divider
           kind="unread"
           [threadConnected]="
@@ -61,6 +61,8 @@
         [threadSummary]="threadSummaries()[row.id] ?? null"
         [threadContinues]="threadContinuationIds().has(row.id)"
         [caps]="rowCaps(row)"
+        [runExpanded]="expandedRuns().has(row.id)"
+        (toggleRun)="toggleRun(row.id)"
         (action)="onRowAction(row, $event)"
         (longPress)="onRowLongPress(row, $event)"
         [swipeDirection]="swipeDirection()"

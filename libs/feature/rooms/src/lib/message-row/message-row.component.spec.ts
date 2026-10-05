@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { fireEvent, render, waitFor } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
 import {
   MediaPipeline,
@@ -95,13 +95,18 @@ function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
 }
 
 describe('MessageRowComponent', () => {
-  function renderRow(inputs: {
-    row: MessageRow;
-    threadSummary?: ThreadSummary | null;
-    caps?: MessageRowCaps;
-  }) {
+  function renderRow(
+    inputs: {
+      row: MessageRow;
+      threadSummary?: ThreadSummary | null;
+      caps?: MessageRowCaps;
+      runExpanded?: boolean;
+    },
+    on: { toggleRun?: () => void } = {},
+  ) {
     return render(MessageRowComponent, {
       inputs,
+      on,
       // The media branch renders <trn-media-attachment>, and a previewUrl renders
       // <trn-link-preview>, which inject these.
       providers: [
@@ -536,6 +541,48 @@ describe('MessageRowComponent', () => {
     // A system line carries no author header, avatar, or hover toolbar.
     expect(container.querySelector('trn-avatar')).toBeNull();
     expect(container.querySelector('trn-message-toolbar')).toBeNull();
+  });
+
+  describe('system runs', () => {
+    const e1 = row({ id: '$e1', kind: 'event', summary: 'line e1' });
+    const e2 = row({ id: '$e2', kind: 'event', summary: 'line e2' });
+    const summaryText = 'Alice \u00b7 2 membership changes';
+    const groupRow = row({
+      id: 'group:$e2',
+      kind: 'event',
+      summary: summaryText,
+      systemRun: { events: [e1, e2], summary: summaryText },
+    });
+
+    it('renders a system run as a collapsed summary toggle', async () => {
+      const { getByTestId, queryByTestId } = await renderRow({ row: groupRow });
+      const toggle = getByTestId('system-run-toggle');
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      expect(toggle.textContent).toContain(summaryText);
+      expect(queryByTestId('system-run-lines')).toBeNull();
+    });
+
+    it('lists each line when expanded and asks the list to toggle on click', async () => {
+      const toggleRun = vi.fn();
+      const { getByTestId, getAllByTestId } = await renderRow(
+        { row: groupRow, runExpanded: true },
+        { toggleRun },
+      );
+      expect(
+        getByTestId('system-run-toggle').getAttribute('aria-expanded'),
+      ).toBe('true');
+      expect(
+        getAllByTestId('system-run-line').map((li) => li.textContent?.trim()),
+      ).toEqual(['line e1', 'line e2']);
+      fireEvent.click(getByTestId('system-run-toggle'));
+      expect(toggleRun).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a plain system line as plain text', async () => {
+      const { getByTestId, queryByTestId } = await renderRow({ row: e1 });
+      expect(queryByTestId('system-run-toggle')).toBeNull();
+      expect(getByTestId('timeline-event').textContent).toContain('line e1');
+    });
   });
 
   it('expands the "seen by" reader list when the receipt cluster is clicked', async () => {

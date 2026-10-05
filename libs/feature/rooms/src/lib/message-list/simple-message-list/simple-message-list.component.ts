@@ -257,6 +257,7 @@ export class SimpleMessageListComponent extends MessageListBase {
   /** Scroll a message into view (reply preview, in-room search, or pinned panel) and
    * briefly highlight it. */
   jumpTo(messageId: string): void {
+    messageId = this.revealEvent(messageId);
     const el = this.scrollEl()?.nativeElement.querySelector(
       `[data-mid="${messageId}"]`,
     );

@@ -514,6 +514,31 @@ describe('VirtualMessageListComponent', () => {
     expect(st).toBe(JUMPED);
   });
 
+  it('jumping to a system event hidden in a run expands the run and targets its row', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const event = (id: string, ts: number): MessageView => ({
+      ...msg(id, '@a:hs', 'A', ts),
+      kind: 'event',
+      summary: `line ${id}`,
+    });
+    const { fixture, container } = await renderList({
+      messages: [
+        msg('$m1', '@a:hs', 'A', 1000),
+        event('$e1', 2000),
+        event('$e2', 3000),
+        event('$e3', 4000),
+        msg('$m2', '@b:hs', 'B', 5000),
+      ],
+    });
+    const cmp = fixture.componentInstance;
+
+    cmp.jumpTo('$e2');
+    fixture.detectChanges();
+
+    expect(cmp.expandedRuns().has('group:$e3')).toBe(true);
+    expect(container.querySelector('[data-mid="group:$e3"]')).not.toBeNull();
+  });
+
   it('brings a windowed-out row into the DOM when jumped to', async () => {
     Element.prototype.scrollIntoView = vi.fn();
     const { fixture, container } = await renderList({ messages: many(200) });

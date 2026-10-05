@@ -3,10 +3,36 @@
 @if (r.kind === 'event') {
   <div
     class="msg msg--event"
+    [class.msg--run]="!!r.systemRun"
     [attr.data-mid]="r.id"
     data-testid="timeline-event"
   >
-    <span class="msg__event-text">{{ r.summary }}</span>
+    @if (r.systemRun; as run) {
+      <button
+        type="button"
+        class="msg__run-toggle"
+        data-testid="system-run-toggle"
+        [attr.aria-expanded]="runExpanded()"
+        (click)="toggleRun.emit()"
+      >
+        <span class="msg__event-text">{{ run.summary }}</span>
+      </button>
+      @if (runExpanded()) {
+        <ul class="msg__run-lines" data-testid="system-run-lines">
+          @for (line of run.events; track line.id) {
+            <li
+              class="msg__event-text"
+              data-testid="system-run-line"
+              [attr.data-event-id]="line.id"
+            >
+              {{ line.summary }}
+            </li>
+          }
+        </ul>
+      }
+    } @else {
+      <span class="msg__event-text">{{ r.summary }}</span>
+    }
   </div>
 } @else {
   <div

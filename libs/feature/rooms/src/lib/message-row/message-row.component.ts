@@ -710,6 +710,10 @@ export class MessageRowComponent {
    * jump-to-quoted-message. The host pairs it with `row` to run the effect.
    */
   readonly action = output<MessageRowAction>();
+  /** Whether this system-run row is expanded (owned by the list). */
+  readonly runExpanded = input(false);
+  /** Ask the list to expand or collapse this system-run row. */
+  readonly toggleRun = output<void>();
 
   /**
    * A long press on a phone or tablet — the host offers this row's actions as a sheet.
