@@ -459,10 +459,14 @@ export abstract class MessageListBase {
    * expanded so the line is on screen.
    */
   revealEvent(eventId: string): string {
-    const groupId = this.runOf().get(eventId);
-    if (!groupId) return eventId;
-    if (!this.expandedRunIds().has(groupId)) this.toggleRun(groupId);
-    return groupId;
+    // Untracked: callers are jump effects that must fire on a new request only, not on
+    // every timeline change or expand/collapse.
+    return untracked(() => {
+      const groupId = this.runOf().get(eventId);
+      if (!groupId) return eventId;
+      if (!this.expandedRunIds().has(groupId)) this.toggleRun(groupId);
+      return groupId;
+    });
   }
 
   /** The row the "New messages" divider sits above (a run splits at the first unread). */
@@ -565,7 +569,7 @@ export abstract class MessageListBase {
 
   /** Scroll the "New messages" divider (first unread) into view. */
   jumpToUnread(): void {
-    const id = this.firstUnreadId();
+    const id = this.unreadRowId();
     if (id) {
       this.jumpTo(id);
     }
