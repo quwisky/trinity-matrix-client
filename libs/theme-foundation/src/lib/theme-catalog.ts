@@ -110,6 +110,7 @@ const colorRoles = Object.freeze([
   '--trinity-danger',
   '--trinity-danger-solid',
   '--trinity-danger-solid-foreground',
+  '--trinity-danger-solid-hover',
   '--trinity-danger-tint-10',
   '--trinity-danger-tint-20',
   '--trinity-danger-tint-30',

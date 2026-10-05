@@ -57,6 +57,26 @@ class AvailabilityHostComponent {
 }
 
 describe('TrnButton', () => {
+  it('renders a solid danger action as a filled danger button, not a tint', () => {
+    const solidDanger = trnButtonRecipe({
+      presentation: 'solid',
+      shape: 'label',
+      size: 'md',
+      variant: 'danger',
+    });
+
+    expect(solidDanger).toContain('bg-[color:var(--trinity-danger-solid)]');
+    expect(solidDanger).toContain(
+      'text-[color:var(--trinity-danger-solid-foreground)]',
+    );
+    expect(solidDanger).toContain(
+      'hover:bg-[color:var(--trinity-danger-solid-hover)]',
+    );
+    expect(solidDanger).not.toContain('bg-destructive/10');
+    expect(solidDanger).not.toContain('dark:bg-destructive/20');
+    expect(solidDanger).not.toContain('text-destructive');
+  });
+
   it('keeps the Helm substrate private while preserving native button semantics', async () => {
     const { container } = await render(HostComponent);
     const button = container.querySelector('button');

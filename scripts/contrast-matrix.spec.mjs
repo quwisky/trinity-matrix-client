@@ -184,6 +184,10 @@ const ROLES = [
     text: '--trinity-status-danger-surface-foreground',
     on: ['--trinity-status-danger-surface'],
   },
+  {
+    text: '--trinity-danger-solid-foreground',
+    on: ['--trinity-danger-solid', '--trinity-danger-solid-hover'],
+  },
 ];
 
 /** Essential graphics and focus indicators use WCAG's 3:1 non-text threshold. */

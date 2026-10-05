@@ -37,6 +37,14 @@ const iconSize = {
   lg: 'icon-lg',
 } as const;
 
+/**
+ * Helm's `destructive` variant is a 10% tint, which reads weaker than the outlined Cancel
+ * beside it. Trinity's solid danger is a filled confirm. The `dark:` classes override
+ * Helm's own `dark:bg-destructive/20` and `dark:hover:bg-destructive/30`.
+ */
+const solidDangerTone =
+  'bg-[color:var(--trinity-danger-solid)] dark:bg-[color:var(--trinity-danger-solid)] text-[color:var(--trinity-danger-solid-foreground)] hover:bg-[color:var(--trinity-danger-solid-hover)] dark:hover:bg-[color:var(--trinity-danger-solid-hover)]';
+
 const nonSolidTone = {
   primary: {
     outline: '',
@@ -78,7 +86,9 @@ export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
       : options.presentation;
   const tone =
     options.presentation === 'solid'
-      ? ''
+      ? options.variant === 'danger'
+        ? solidDangerTone
+        : ''
       : nonSolidTone[options.variant][options.presentation];
 
   return hlm(buttonVariants({ variant, size }), tone, focusRing);

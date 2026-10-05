@@ -245,6 +245,9 @@
     --trinity-danger-solid: oklch(55% 0.2 25deg);
     --trinity-danger-solid-foreground: oklch(99% 0.004 265deg);
 
+    // Pressed-in hover for solid danger confirms: same hue, a step darker than the fill.
+    --trinity-danger-solid-hover: oklch(50% 0.19 25deg);
+
     // Helm emits three destructive tint strengths. They stay opaque so the contrast does not
     // change with the surface below, but each is now an authored Theme stop rather than a
     // runtime color-mix whose result depends on two independently changing tokens.
@@ -439,6 +442,7 @@
     --trinity-danger: oklch(76% 0.11 25deg);
     --trinity-danger-solid: oklch(66% 0.18 25deg);
     --trinity-danger-solid-foreground: oklch(17% 0.025 25deg);
+    --trinity-danger-solid-hover: oklch(70% 0.17 25deg);
     --trinity-danger-tint-10: oklch(30% 0.035 25deg);
     --trinity-danger-tint-20: oklch(33% 0.055 25deg);
     --trinity-danger-tint-30: oklch(36% 0.075 25deg);
