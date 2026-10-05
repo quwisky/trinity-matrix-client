@@ -31,16 +31,16 @@ The supported scopes are active account, all live accounts, exact account, and e
 ## SDK-backed fetch caches
 
 Some data is fetched from the homeserver on demand and cached per scope (a room, an account):
-pinned messages outside the loaded timeline, room state for the state viewer, a space's
-unread list. Build every such cache the same way:
+for example, pinned messages outside the loaded timeline. Build every such cache the same way:
 
 - **One cache per scope**, keyed by what is fetched (event id, state key).
-- **Invalidate on the SDK event** that makes it wrong: clear the affected entries **and** call
-  `guard.invalidate()`, so a request already in flight cannot land afterwards.
-- **Reset on `release()`**: clear the cache and invalidate the guard.
+- **Invalidate on the SDK event** that makes it wrong: clear the affected entries **and** take a
+  new token with `guard.next()`, so a request already in flight cannot land afterwards.
+- **Reset on `release()`**: clear the cache and advance the guard.
 - **Model failure as a state.** A fetch that fails is `{ kind: 'failed' }`, rendered as such and
-  retried on the next invalidation — never a silent omission or a `null` that reads as "gone".
-  Keep the server's definitive "no" (not found, forbidden) separate from a transient failure.
+  retried — never a silent omission or a `null` that reads as "gone". A room state change or
+  opening the panel retries immediately; Timeline and Decrypted events retry after a 30 s
+  cooldown. Keep the server's definitive "no" (not found, forbidden) separate from a transient failure.
 - **Apply a result only while its token is current** (`latestGuard()` from `@trinity/util/ui`).
 
 ```ts
@@ -50,7 +50,6 @@ private cache = new Map<string, Fetch>();
 
 private invalidate(): void {           // on the invalidating SDK event, and in release()
   this.cache = new Map();
-  this.fetches.invalidate();
   this.token = this.fetches.next();
 }
 
