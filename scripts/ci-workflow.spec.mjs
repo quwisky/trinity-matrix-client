@@ -158,4 +158,30 @@ describe('iOS nightly E2E workflow', () => {
     );
     expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(scrub));
   });
+
+  it('runs nightly and on demand, with no push trigger left from the draft', () => {
+    expect(ios.on.schedule).toEqual([{ cron: '13 4 * * *' }]);
+    expect(ios.on).toHaveProperty('workflow_dispatch');
+    expect(ios.on).not.toHaveProperty('push');
+    expect(
+      steps.find((step) => step.id === 'mobile').env.TRINITY_MOBILE_SPECS,
+    ).toBe('${{ inputs.specs }}');
+  });
+
+  it('caches WebDriverAgent per Xcode and driver pin, apart from pip, Appium and Caddy', () => {
+    const caches = steps.filter((step) =>
+      step.uses?.startsWith('actions/cache@'),
+    );
+    const byPath = (fragment) =>
+      caches.filter((step) => step.with.path.includes(fragment));
+    const [wda] = byPath('dist/ios-wda');
+    expect(wda.with.key).toContain('steps.toolchain.outputs.xcode');
+    expect(wda.with.key).toContain("hashFiles('scripts/setup-appium.mjs')");
+    expect(byPath('Library/Caches/pip')[0].with.key).toContain(
+      "hashFiles('e2e/support/homeserver/native.mts')",
+    );
+    expect(byPath('.appium')).toHaveLength(1);
+    expect(byPath('trinity-caddy')[0].with.key).toContain('env.CADDY_VERSION');
+    expect(caches).toHaveLength(4);
+  });
 });
