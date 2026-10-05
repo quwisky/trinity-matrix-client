@@ -37,9 +37,22 @@ export async function login(user: string, pass: string): Promise<void> {
   await fillByLabel('Homeserver', HS_TLS);
   const next = $('//button[normalize-space()="Continue"]');
   await expect(next).toBeDisplayed({ wait: 30_000 });
-  await next.click();
   const signIn = $('//button[normalize-space()="Sign in"]');
-  await expect(signIn).toBeDisplayed({ wait: 30_000 });
+  const discoveryFailed = $(
+    '//*[@role="alert"][contains(.,"couldn\'t find a homeserver")]',
+  );
+  // The app aborts discovery after a few seconds. The first TLS handshake to the host's
+  // Caddy from a freshly installed iOS app can outlast that on a loaded runner (the
+  // request never reaches Caddy), so a "couldn't find a homeserver" alert is retried.
+  for (let attempt = 1; ; attempt += 1) {
+    await next.click();
+    await browser.waitUntil(
+      async () => (await signIn.isDisplayed()) || discoveryFailed.isDisplayed(),
+      { timeout: 30_000, timeoutMsg: 'neither Sign in nor a discovery error' },
+    );
+    if (await signIn.isDisplayed()) break;
+    if (attempt >= 3) throw new Error('homeserver discovery failed 3 times');
+  }
   await fillByLabel('Username', user);
   await fillByLabel('Password', pass);
   await signIn.click();
