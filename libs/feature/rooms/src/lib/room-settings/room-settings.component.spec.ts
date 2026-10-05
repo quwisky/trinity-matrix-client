@@ -16,6 +16,7 @@ import {
   RoomModerationService,
   RoomSettingsService,
   type ActionAvailability,
+  type RoomAdvancedInfo,
   type RoomSettingsPermissions,
   type RoomSettingsSnapshot,
 } from '@trinity/data-access/room-administration';
@@ -55,6 +56,17 @@ const ALL_ALLOWED: RoomSettingsPermissions = {
   aliases: ALLOWED,
 };
 
+const ADVANCED: RoomAdvancedInfo = {
+  roomId: TARGET.roomId,
+  version: '10',
+  createdBy: [],
+  createdAt: null,
+  encryption: null,
+  federated: true,
+  predecessor: null,
+  successor: null,
+};
+
 function roomSnapshot(
   over: Partial<
     Omit<RoomSettingsSnapshot, 'identity' | 'access' | 'permissions'>
@@ -85,6 +97,7 @@ function roomSnapshot(
     permissions: { ...ALL_ALLOWED, ...permissions },
     encrypted: true,
     supportsRestricted: true,
+    advanced: ADVANCED,
     ...snapshot,
   };
 }
