@@ -207,3 +207,85 @@ test.describe('Timeline virtualization', () => {
     }
   });
 });
+
+// #959: a reader who asked for reduced motion reopened a room whose history they had paged
+// in at the TOP of that history. The app's reduced-motion reset gives every element a
+// 0.01ms transition, and the spacers' new heights only applied a frame later — so the
+// bottom pin landed on a stale scroll height and the next scroll event unpinned it.
+test.describe('Timeline reopen after scrolling back', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+
+  test('reopens a scrolled-back room at the latest message', async ({
+    page,
+    request,
+  }) => {
+    test.slow();
+    const hs = session.hs as string;
+    const runId = testResourceId('reopen');
+    const longRoom = `Reopen long ${runId}`;
+    const otherRoom = `Reopen other ${runId}`;
+    const count = 300;
+
+    const auth = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user: session.user },
+          password: session.pass,
+        },
+      })
+      .then((r) => r.json())
+      .then((j) => ({ Authorization: `Bearer ${j.access_token}` }));
+    const createRoom = (name: string): Promise<string> =>
+      request
+        .post(`${hs}/_matrix/client/v3/createRoom`, {
+          headers: auth,
+          data: { name, preset: 'private_chat' },
+        })
+        .then((r) => r.json())
+        .then((j) => j.room_id as string);
+
+    const longRoomId = await createRoom(longRoom);
+    for (let i = 0; i < count; i++) {
+      await request.put(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(
+          longRoomId,
+        )}/send/m.room.message/reopen-${i}`,
+        { headers: auth, data: { msgtype: 'm.text', body: `reopen ${i}` } },
+      );
+    }
+    await createRoom(otherRoom);
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await login(page, session);
+    await page.getByTestId('rail-rooms').click();
+    const open = (name: string) =>
+      page.locator('.channel', { hasText: name }).first().click();
+
+    const timeline = page.locator('.scroll');
+    const newest = timeline.getByText(`reopen ${count - 1}`, { exact: true });
+    await open(longRoom);
+    await expect(newest).toBeVisible({ timeout: 30_000 });
+
+    // Page the whole room in, down to its creation.
+    await expect
+      .poll(
+        async () => {
+          await timeline.evaluate((el) => (el.scrollTop = 0));
+          return timeline.getByText(/created the room/).count();
+        },
+        { timeout: 90_000, intervals: [400] },
+      )
+      .toBeGreaterThan(0);
+
+    await open(otherRoom);
+    await expect(newest).toHaveCount(0);
+
+    await open(longRoom);
+    await expect(newest).toBeInViewport({ timeout: 15_000 });
+    // The broken open passed through the bottom for a frame before unpinning, so check
+    // again once the rows have been measured and the window has settled.
+    await page.waitForTimeout(1_000);
+    await expect(newest).toBeInViewport();
+  });
+});
