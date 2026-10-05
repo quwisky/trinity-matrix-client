@@ -21,6 +21,7 @@ import {
   shell,
   webview,
 } from '../support/session.mts';
+import { onlyOn } from '../support/platform.mts';
 
 const pathname = async (): Promise<string> =>
   new URL(await browser.getUrl()).pathname;
@@ -59,7 +60,13 @@ async function openPreviewedRoom(roomId: string): Promise<void> {
 const roomButton = (name: string) =>
   $(`//button[contains(@class,"channel")][contains(.,"${name}")]`);
 
-describe('Android room deep links', () => {
+describe('mobile room deep links', () => {
+  before(
+    onlyOn(
+      'android',
+      'launches the room link with am start -a android.intent.action.VIEW; iOS needs simctl openurl, not adapted yet',
+    ),
+  );
   let roomA: { id: string; name: string };
   let roomB: { id: string; name: string };
   let token: string;

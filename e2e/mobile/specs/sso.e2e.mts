@@ -3,6 +3,7 @@ import { HS_TLS } from '../../support/homeserver/start.mjs';
 import { readSession } from '../../support/session.mts';
 import { fillByLabel, tap, waitForRooms } from '../support/app.mts';
 import { native, resetApp, shell, webview } from '../support/session.mts';
+import { onlyOn } from '../support/platform.mts';
 
 const CHROME = 'com.android.chrome';
 // Chrome reads this file on debuggable images (the google_apis emulator). `_` stands for
@@ -70,7 +71,14 @@ async function answerDexInCustomTab(
   await browser.pressKeyCode(66);
 }
 
-describe('Android SSO sign-in', () => {
+describe('mobile SSO sign-in', () => {
+  before(
+    onlyOn(
+      'android',
+      'iOS runs on the native homeserver runtime, which has no Dex, so SSO is Android-only for now',
+    ),
+  );
+
   beforeEach(async () => {
     await native();
     // `adb shell` joins its arguments into one device command line, so pass the whole

@@ -1,6 +1,7 @@
 import { browser, expect } from '@wdio/globals';
 import { login, waitForRooms } from '../support/app.mts';
 import { registerUser, uniqueId } from '../support/matrix.mts';
+import { mobilePlatform } from '../support/platform.mts';
 import { resetApp } from '../support/session.mts';
 
 interface NativeStatusBarInfo {
@@ -45,7 +46,7 @@ async function choose(select: string, option: string): Promise<void> {
   await expect(item).not.toExist();
 }
 
-describe('Android Appearance', () => {
+describe('mobile Appearance', () => {
   beforeEach(resetApp);
 
   it('projects Appearance into the installed WebView and native chrome @native-appearance', async () => {
@@ -85,7 +86,7 @@ describe('Android Appearance', () => {
         ).Capacitor?.getPlatform(),
         coarsePointer: matchMedia('(pointer: coarse)').matches,
       })),
-    ).toEqual({ platform: 'android', coarsePointer: true });
+    ).toEqual({ platform: mobilePlatform(), coarsePointer: true });
 
     await $('[data-testid="mode-light"]').click();
     await choose('theme-select', 'theme-amethyst');
@@ -144,7 +145,7 @@ describe('Android Appearance', () => {
         '[data-testid="text-scale-select"] button',
       ].map((selector) => document.querySelector<HTMLElement>(selector));
       if (!header || !heading || controls.some((control) => !control)) {
-        throw new Error('Android Appearance geometry is incomplete');
+        throw new Error('Appearance geometry is incomplete');
       }
       const headerStyle = getComputedStyle(header);
       return {
@@ -164,9 +165,17 @@ describe('Android Appearance', () => {
     });
     expect(geometry.minimumTarget).toBeGreaterThanOrEqual(44);
     expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1);
-    expect(
-      geometry.hostAppliedVerticalInset + geometry.headerPaddingTop,
-    ).toBeGreaterThanOrEqual(darkStatusBar.height - 1);
+    if (browser.isIOS) {
+      // WKWebView spans the status bar; the header's safe-area padding alone clears it.
+      expect(geometry.headerPaddingTop).toBeGreaterThanOrEqual(
+        darkStatusBar.height - 1,
+      );
+    } else {
+      // Android may inset the WebView itself; host inset plus padding clears the bar.
+      expect(
+        geometry.hostAppliedVerticalInset + geometry.headerPaddingTop,
+      ).toBeGreaterThanOrEqual(darkStatusBar.height - 1);
+    }
     expect(geometry.headingTop).toBeGreaterThanOrEqual(
       geometry.headerPaddingTop - 1,
     );

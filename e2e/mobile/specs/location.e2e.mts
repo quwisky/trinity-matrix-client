@@ -14,6 +14,7 @@ import {
   shell,
   webview,
 } from '../support/session.mts';
+import { onlyOn } from '../support/platform.mts';
 
 // Budapest: distinct from the emulator's default fix and from the browser suite's New York.
 const LAT = 47.49801;
@@ -108,7 +109,13 @@ async function sentGeoUri(token: string, roomId: string): Promise<string> {
   return sent.content.geo_uri;
 }
 
-describe('Android location', () => {
+describe('mobile location', () => {
+  before(
+    onlyOn(
+      'android',
+      'grants location through the Android permission controller dialog; iOS location permission and simulated location are not adapted yet',
+    ),
+  );
   beforeEach(resetApp);
 
   it('prompts for location, then sends the mocked position as an m.location message', async () => {
