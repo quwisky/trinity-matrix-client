@@ -15,6 +15,8 @@ import {
 export interface ComposerBatchPorts {
   /** Upload fraction while an attachment uploads, else null — a signal input, so it lags. */
   readonly uploadProgress: Signal<BatchProgress | null>;
+  /** The Conversation cannot take a send right now. */
+  readonly blocked: Signal<boolean>;
   /** The conversation this composer is showing right now. */
   readonly roomId: Signal<string | null>;
   /** The composer's text, which a send empties and a lost caption restores. */
@@ -128,7 +130,10 @@ export class ComposerBatchSender {
    * synchronously, while the input it mirrors lags by a change-detection tick.
    */
   readonly canSend = computed(
-    () => this.uploadProgress() === null && !this.sending(),
+    () =>
+      this.uploadProgress() === null &&
+      !this.sending() &&
+      !this.ports.blocked(),
   );
 
   /**

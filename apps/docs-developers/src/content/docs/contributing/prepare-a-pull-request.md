@@ -24,6 +24,7 @@ Use these sections:
 - **Why:** the problem or issue being resolved.
 - **How:** only when the design is not apparent from the diff.
 - **Testing:** exact commands and outcomes, plus tested and untested affected platforms.
+- **Evidence:** for UI changes, screenshots of every new or changed state in the dark theme, on both desktop (1280×800) and mobile (390×844), captured against synthetic test data. Attach them to the pull request with `gh pr comment <number> --attach './shot.png#Alt text'` or by dragging them into the description, never as committed files.
 - **Notes:** migrations, secrets handling, infrastructure, public API changes, limitations, or follow-ups.
 
 Use `Closes #123` when the pull request resolves an issue and `Refs #123` for related work. Keep the title in Conventional Commit form.

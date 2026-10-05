@@ -63,6 +63,18 @@
     color: var(--trinity-text-muted);
   }
 
+  .load-error {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--trinity-space-2);
+    padding: var(--trinity-space-3) var(--trinity-space-4);
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-control-size);
+    line-height: var(--trinity-type-control-line-height);
+  }
+
   // The day and unread dividers are styled by `trn-timeline-divider`, which owns their markup.
   // Their rules used to live here; under emulated encapsulation that left them scoped to these
   // two list components while the elements belonged to another, so they matched nothing.

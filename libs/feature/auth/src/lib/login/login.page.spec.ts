@@ -13,9 +13,9 @@ import {
   provideHostCapabilities,
 } from '@trinity/platform-native';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { desktopBridgeFixture, render } from '@trinity/testing';
+import { desktopBridgeFixture, fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { map, of, throwError, type Observable } from 'rxjs';
+import { NEVER, map, of, throwError, type Observable } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { LoginPage } from './login.page';
 import { SsoStateStore } from '../sso-state.store';
@@ -147,6 +147,31 @@ describe('LoginPage', () => {
     expect(label?.getAttribute('data-emphasis')).toBe('strong');
   });
 
+  it('reveals the password from a toggle inside the password field', async () => {
+    const { fixture, cmp } = await renderLogin(
+      {} as unknown as Partial<AuthService>,
+    );
+    cmp.baseUrl.set('https://hs.example');
+    cmp.passwordSupported.set(true);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector<HTMLInputElement>('#password');
+    const toggle = root.querySelector<HTMLButtonElement>(
+      'trn-password-input button',
+    );
+
+    expect(input?.parentElement?.localName).toBe('trn-password-input');
+    expect(input?.type).toBe('password');
+    expect(toggle?.getAttribute('aria-label')).toBe('Show password');
+
+    fireEvent.click(toggle as HTMLButtonElement);
+    fixture.detectChanges();
+
+    expect(input?.type).toBe('text');
+    expect(toggle?.getAttribute('aria-label')).toBe('Hide password');
+    expect(toggle?.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('renders its page title as the first and only heading', async () => {
     const { fixture } = await renderLogin(
       {} as unknown as Partial<AuthService>,
@@ -175,6 +200,22 @@ describe('LoginPage', () => {
     expect(cmp.passwordSupported()).toBe(true);
     expect(cmp.ssoSupported()).toBe(true);
     expect(cmp.oidcSupported()).toBe(false);
+  });
+
+  it('does not start a second discovery when Continue is pressed while one is running', async () => {
+    const discoverHomeserver = vi.fn(() => NEVER);
+    const { fixture } = await renderLogin({
+      discoverHomeserver,
+    } as unknown as Partial<AuthService>);
+    const button = (
+      fixture.nativeElement as HTMLElement
+    ).querySelector<HTMLButtonElement>('.login-card__submit');
+
+    button?.click();
+    fixture.detectChanges();
+    button?.click();
+
+    expect(discoverHomeserver).toHaveBeenCalledTimes(1);
   });
 
   it('shows legacy registration only after its side-effect-free probe reports open', async () => {

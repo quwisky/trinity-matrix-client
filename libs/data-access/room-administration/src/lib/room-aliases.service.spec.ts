@@ -66,6 +66,7 @@ function setup(
       joinRule: permission,
       history: permission,
       aliases: permission,
+      upgrade: permission,
     };
   });
   TestBed.configureTestingModule({

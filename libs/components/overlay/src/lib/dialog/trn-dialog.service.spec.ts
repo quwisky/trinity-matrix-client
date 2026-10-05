@@ -55,6 +55,21 @@ describe('TrnDialogService', () => {
     expect(await closed).toBe('Hi there');
   });
 
+  it('describes the CDK dialog container with the given element id', () => {
+    const svc = TestBed.inject(TrnDialogService);
+    const ref = svc.open<string, TestDialogComponent>(TestDialogComponent, {
+      inputs: { label: 'Hi there' },
+      ariaLabel: 'Greeting',
+      ariaDescribedBy: 'greeting-body',
+    });
+    TestBed.inject(ApplicationRef).tick();
+
+    const container = document.querySelector('[role="dialog"]');
+    expect(container?.getAttribute('aria-describedby')).toBe('greeting-body');
+    expect(container?.getAttribute('aria-label')).toBe('Greeting');
+    ref.close();
+  });
+
   it('maps a bare dismiss to null (openAndWait contract)', async () => {
     const svc = TestBed.inject(TrnDialogService);
     const ref = svc.open<string, TestDialogComponent>(TestDialogComponent);

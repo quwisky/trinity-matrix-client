@@ -108,6 +108,8 @@ export class ComposerInsertMenuComponent {
   readonly locationSharing = input(false);
   /** Whether the active room has at least one sticker-capable image-pack entry. */
   readonly stickerEnabled = input(false);
+  /** The Conversation cannot take a send yet; entries that send to the Room are disabled. */
+  readonly sendBlocked = input(false);
 
   readonly attachFile = output<void>();
   readonly pickGif = output<void>();
@@ -134,7 +136,8 @@ export class ComposerInsertMenuComponent {
           text: 'GIF',
           icon: 'image-play',
           testId: 'insert-gif',
-          disabled: this.uploading() || this.gifDownloading(),
+          disabled:
+            this.sendBlocked() || this.uploading() || this.gifDownloading(),
           transfersFocus: true,
           run: () => this.pickGif.emit(),
         });
@@ -145,7 +148,7 @@ export class ComposerInsertMenuComponent {
             text: 'Sticker',
             icon: 'image',
             testId: 'insert-sticker',
-            disabled: false,
+            disabled: this.sendBlocked(),
             transfersFocus: true,
             run: () => this.pickSticker.emit(),
           });
@@ -155,7 +158,7 @@ export class ComposerInsertMenuComponent {
             text: 'Poll',
             icon: 'vote',
             testId: 'insert-poll',
-            disabled: false,
+            disabled: this.sendBlocked(),
             transfersFocus: true,
             run: () => this.createPoll.emit(),
           },
@@ -163,7 +166,7 @@ export class ComposerInsertMenuComponent {
             text: 'Location',
             icon: 'map-pin',
             testId: 'insert-location',
-            disabled: this.locationSharing(),
+            disabled: this.sendBlocked() || this.locationSharing(),
             transfersFocus: false,
             run: () => this.shareLocation.emit(),
           },
@@ -173,7 +176,7 @@ export class ComposerInsertMenuComponent {
             text: 'Voice message',
             icon: 'mic',
             testId: 'insert-voice',
-            disabled: this.uploading(),
+            disabled: this.sendBlocked() || this.uploading(),
             transfersFocus: false,
             run: () => this.recordVoice.emit(),
           });

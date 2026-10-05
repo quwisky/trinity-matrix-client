@@ -26,10 +26,18 @@ export interface ServerSoftware {
   readonly host: string;
 }
 
-/** The two bits of `/_matrix/client/v3/capabilities` worth showing. */
+/** How a homeserver labels one room version in `m.room_versions.available`. */
+export type RoomVersionStability = 'stable' | 'unstable';
+
+/** The parts of `/_matrix/client/v3/capabilities` Trinity reads. */
 export interface HomeserverCapabilities {
   /** The room version this server creates rooms at, or null when it does not say. */
   readonly defaultRoomVersion: string | null;
+  /**
+   * `m.room_versions.available`: each room version the server supports and its stability,
+   * or null when it does not say. Entries labelled anything else are dropped.
+   */
+  readonly roomVersions: Readonly<Record<string, RoomVersionStability>> | null;
   /** Whether this server allows changing the password here; null when it does not say. */
   readonly canChangePassword: boolean | null;
 }

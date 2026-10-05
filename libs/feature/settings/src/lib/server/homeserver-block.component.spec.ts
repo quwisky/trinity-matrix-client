@@ -27,7 +27,11 @@ function info(overrides: Partial<HomeserverInfo> = {}): HomeserverInfo {
     },
     specVersions: ['v1.11', 'v1.12'],
     unstableFeatures: [],
-    capabilities: { defaultRoomVersion: '10', canChangePassword: true },
+    capabilities: {
+      defaultRoomVersion: '10',
+      roomVersions: null,
+      canChangePassword: true,
+    },
     ...overrides,
   };
 }
@@ -172,7 +176,11 @@ describe('HomeserverBlockComponent', () => {
     // a definite answer would be a guess presented as a fact.
     const { container } = await renderBlock(
       info({
-        capabilities: { defaultRoomVersion: null, canChangePassword: null },
+        capabilities: {
+          defaultRoomVersion: null,
+          roomVersions: null,
+          canChangePassword: null,
+        },
       }),
     );
 

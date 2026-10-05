@@ -168,6 +168,8 @@ export class MessageComposerComponent {
   readonly composeDraft = input<string | null>(null);
   /** A Conversation-owned text attempt is still resolving through the SDK. */
   readonly textSending = input(false);
+  /** The Conversation is not ready to send (loading or failed); typing and drafts stay live. */
+  readonly sendBlocked = input(false);
   /**
    * Id of the message being edited (null when not editing). The prefill keys on
    * this — not on {@link draft} — so re-targeting to a different message refreshes
@@ -395,6 +397,7 @@ export class MessageComposerComponent {
     });
     this.batches = new ComposerBatchSender({
       uploadProgress: this.uploadProgress,
+      blocked: this.sendBlocked,
       roomId: this.roomId,
       text: this.text,
       send: (event) => this.submitMedia.emit(event),
@@ -787,6 +790,7 @@ export class MessageComposerComponent {
   /** Send on Enter / the send button: a staged attachment (with the text as its
    * caption) takes precedence, else the plain text message. */
   submit(): void {
+    if (this.sendBlocked()) return;
     // A staged attachment sends as media with the text as its caption. Never mixes
     // with an edit (attach is disabled while editing), so edit mode ignores it.
     const batch = this.editing() ? [] : this.attachments.staged();
@@ -869,11 +873,13 @@ export class MessageComposerComponent {
 
   /** Open the create-poll dialog (starts a poll in the active room on confirm). */
   openPollDialog(): void {
+    if (this.sendBlocked()) return;
     this.attachments.openPollDialog();
   }
 
   /** Share the device's current location to the active room. */
   shareLocation(): void {
+    if (this.sendBlocked()) return;
     this.attachments.shareLocation();
   }
 
@@ -952,6 +958,7 @@ export class MessageComposerComponent {
   }
 
   onStickerSelect(sticker: ImagePackImage): void {
+    if (this.sendBlocked()) return;
     this.stickerPickerOpen.set(false);
     this.stickerSelect.emit(sticker);
     queueMicrotask(() => this.field.focus());
@@ -988,6 +995,7 @@ export class MessageComposerComponent {
 
   /** Stop recording and send the clip as a voice message. */
   stopVoiceRecording(): void {
+    if (this.sendBlocked()) return;
     const wasRecording = this.attachments.recordingVoice();
     this.attachments.stopVoiceRecording();
     if (wasRecording) {

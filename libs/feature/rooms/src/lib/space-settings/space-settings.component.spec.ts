@@ -49,6 +49,7 @@ const ALL_ALLOWED: RoomSettingsPermissions = {
   joinRule: ALLOWED,
   history: DENIED,
   aliases: ALLOWED,
+  upgrade: ALLOWED,
 };
 
 function spaceSnapshot(
@@ -81,6 +82,17 @@ function spaceSnapshot(
     permissions: { ...ALL_ALLOWED, ...permissions },
     encrypted: false,
     supportsRestricted: true,
+    advanced: {
+      roomId: TARGET.roomId,
+      version: '10',
+      createdBy: [],
+      createdAt: null,
+      encrypted: false,
+      encryption: null,
+      federated: true,
+      predecessor: null,
+      successor: null,
+    },
     ...snapshot,
   };
 }

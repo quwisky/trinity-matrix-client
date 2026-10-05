@@ -9,3 +9,5 @@ export * from './lib/room-moderation.service';
 export * from './lib/room-aliases.service';
 export * from './lib/room-message-governance.service';
 export * from './lib/room-pin-governance.service';
+export * from './lib/room-advanced-info';
+export * from './lib/room-upgrade.service';

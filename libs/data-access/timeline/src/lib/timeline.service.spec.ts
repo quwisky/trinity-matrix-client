@@ -60,6 +60,12 @@ describe('TimelineService', () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
+  it('reports ready and ignores retry without a readiness owner', () => {
+    const svc = setup([]);
+    expect(svc.loadState()).toEqual({ kind: 'ready' });
+    expect(() => svc.retryLoad()).not.toThrow();
+  });
+
   it('maps message events to views and drops non-messages', () => {
     const svc = setup([
       fakeEvent({ id: '$1', sender: '@alice:hs', body: 'hi' }),

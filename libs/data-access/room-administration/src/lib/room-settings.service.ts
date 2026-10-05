@@ -49,6 +49,7 @@ import {
   invalidAllowedSpaceId,
   restrictedAllowEntriesForWrite,
 } from './room-access-policy';
+import { roomAdvancedInfo, type RoomAdvancedInfo } from './room-advanced-info';
 
 /** Which room-settings fields the current user may edit (from the room's power levels). */
 export interface EditableRoomFields {
@@ -98,6 +99,16 @@ export interface RoomSettingsSnapshot {
   readonly permissions: RoomSettingsPermissions;
   readonly encrypted: boolean | null;
   readonly supportsRestricted: boolean;
+  /** Technical details for Room settings › Advanced; never throws on partial state. */
+  readonly advanced: RoomAdvancedInfo;
+}
+
+/** One current state event, for the read-only room state viewer. */
+export interface RoomStateEntry {
+  readonly type: string;
+  readonly stateKey: string;
+  /** The event as stored — state events are not end-to-end encrypted. A shallow copy: treat it as read-only, nested content is shared with the SDK. */
+  readonly event: Readonly<Record<string, unknown>>;
 }
 
 type RoomSettingsTargetInput = RoomSettingsTarget | string;
@@ -401,7 +412,28 @@ export class RoomSettingsService {
       permissions: this.permissions.settingsFor(target),
       encrypted: room ? room.hasEncryptionStateEvent() : null,
       supportsRestricted: this.supportsRestricted(target),
+      advanced: roomAdvancedInfo(
+        target.roomId,
+        room ? liveRoomState(room) : undefined,
+      ),
     };
+  }
+
+  /**
+   * Every current state event of one exact target, read once for the state viewer. Unsorted:
+   * presentation order belongs to the viewer. Empty when the Account or Room is unavailable.
+   */
+  stateEvents(target: RoomSettingsTarget): readonly RoomStateEntry[] {
+    const room = this.roomFor(target);
+    const state = room ? liveRoomState(room) : undefined;
+    if (!state) return [];
+    return [...state.events].flatMap(([type, byKey]) =>
+      [...byKey].map(([stateKey, event]) => ({
+        type,
+        stateKey,
+        event: { ...event.event },
+      })),
+    );
   }
 
   /**

@@ -57,5 +57,15 @@
         />
       </section>
     }
+    @case ('advanced') {
+      @if (draft.snapshot()?.advanced; as advanced) {
+        <trn-room-settings-advanced
+          [accountId]="accountId()"
+          [info]="advanced"
+          [upgrade]="draft.permissions().upgrade"
+          (openRoom)="openRoom($event)"
+        />
+      }
+    }
   }
 </trn-settings-hub>

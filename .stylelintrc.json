@@ -29,6 +29,22 @@
         ]
       }
     ],
-    "nesting-selector-no-missing-scoping-root": null
-  }
+    "nesting-selector-no-missing-scoping-root": null,
+    "color-no-hex": true,
+    "declaration-property-value-disallowed-list": {
+      "/^(font-size|(padding|margin)(-(top|right|bottom|left|block|inline)(-(start|end))?)?|(row-|column-)?gap|border(-[a-z]+)*-radius)$/": [
+        "/(?<![\\w$#.-])-?(\\d+(\\.\\d+)?|\\.\\d+)(px|rem|em|%|ex|ch|r?lh|[dsl]?v[hw]|vmin|vmax)(?![\\w-])/"
+      ],
+      "z-index": ["/^-?\\d+$/"]
+    }
+  },
+  "overrides": [
+    {
+      "files": ["libs/theme-foundation/**"],
+      "rules": {
+        "color-no-hex": null,
+        "declaration-property-value-disallowed-list": null
+      }
+    }
+  ]
 }

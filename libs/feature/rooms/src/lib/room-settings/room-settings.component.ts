@@ -7,6 +7,7 @@ import {
   input,
   viewChild,
 } from '@angular/core';
+import { TrnDialogRef } from '@trinity/components/overlay';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import type { RoomWidgetTarget } from '@trinity/data-access/widgets';
 import { MembersSettingsComponent } from '../members-settings/members-settings.component';
@@ -17,15 +18,22 @@ import {
 } from '../shared/settings-hub/settings-hub.component';
 import { SettingsHubController } from '../shared/settings-hub/settings-hub.controller';
 import { RoomSettingsAccessComponent } from './room-settings-access.component';
+import { RoomSettingsAdvancedComponent } from './room-settings-advanced.component';
 import { RoomSettingsDraftService } from './room-settings-draft.service';
 import { RoomSettingsForYouComponent } from './room-settings-for-you/room-settings-for-you.component';
 import { RoomSettingsForYouDraftService } from './room-settings-for-you/room-settings-for-you-draft.service';
 import { RoomSettingsGeneralComponent } from './room-settings-general.component';
-import type { ParentSpace } from './room-settings.models';
+import type { ParentSpace, RoomSettingsResult } from './room-settings.models';
 import { RoomWidgetsComponent } from './room-widgets.component';
 
 type RoomSettingsSection =
-  'general' | 'for-you' | 'access' | 'members' | 'addresses' | 'widgets';
+  | 'general'
+  | 'for-you'
+  | 'access'
+  | 'members'
+  | 'addresses'
+  | 'widgets'
+  | 'advanced';
 
 const SECTIONS: readonly (SettingsHubSection & {
   readonly value: RoomSettingsSection;
@@ -72,6 +80,13 @@ const SECTIONS: readonly (SettingsHubSection & {
     label: 'Widgets',
     description: 'Connected room tools',
   },
+  {
+    value: 'advanced',
+    icon: 'braces',
+    group: 'Developer',
+    label: 'Advanced',
+    description: 'Room ID, version, and room state',
+  },
 ];
 
 /** Responsive, exact-Account Room settings hub. */
@@ -83,6 +98,7 @@ const SECTIONS: readonly (SettingsHubSection & {
     MembersSettingsComponent,
     RoomAliasesComponent,
     RoomSettingsAccessComponent,
+    RoomSettingsAdvancedComponent,
     RoomSettingsGeneralComponent,
     RoomSettingsForYouComponent,
     RoomWidgetsComponent,
@@ -95,6 +111,8 @@ export class RoomSettingsComponent implements OnInit {
   private readonly identities = inject(AccountIdentitiesService);
   private readonly membersSection = viewChild(MembersSettingsComponent);
   private readonly widgetsSection = viewChild(RoomWidgetsComponent);
+  private readonly dialogRef =
+    inject<TrnDialogRef<RoomSettingsResult>>(TrnDialogRef);
 
   readonly accountId = input.required<string>();
   readonly roomId = input.required<string>();
@@ -172,5 +190,14 @@ export class RoomSettingsComponent implements OnInit {
 
   close(): void {
     this.hub.close();
+  }
+
+  /**
+   * Advanced › Open room: close and hand the room to the opener, which joins and opens it
+   * for this exact Account. Advanced holds no draft — entering it already passed the
+   * unsaved-changes guard — so closing with a result loses nothing.
+   */
+  openRoom(roomId: string): void {
+    this.dialogRef.close({ accountId: this.accountId(), roomId });
   }
 }

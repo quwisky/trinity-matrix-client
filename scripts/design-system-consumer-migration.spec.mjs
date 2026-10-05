@@ -319,16 +319,16 @@ describe('migrated application design-system consumers', () => {
     ).toEqual([
       '2xl',
       ...Array(4).fill('lg'),
-      ...Array(13).fill('md'),
+      ...Array(14).fill('md'),
       ...Array(4).fill('sm'),
-      ...Array(2).fill('xl'),
+      ...Array(3).fill('xl'),
     ]);
     expect(
       surfaces
         .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
     ).toEqual([
-      ...Array(11).fill('dialog'),
+      ...Array(13).fill('dialog'),
       ...Array(3).fill('dynamic'),
       ...Array(4).fill('fullscreen'),
       ...Array(6).fill('popover'),

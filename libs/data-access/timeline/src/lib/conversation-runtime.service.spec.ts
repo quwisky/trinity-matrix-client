@@ -24,6 +24,13 @@ import type {
   ConversationMessageAdapter,
   ConversationMessageOperation,
 } from './conversation-messages';
+import { ConversationTimelineReadiness } from './conversation-timeline-readiness';
+import type { TimelineLoadState } from './conversation-timeline-readiness';
+import { TimelineService } from './timeline.service';
+import { ThreadsService as RealThreadsService } from './threads.service';
+import { ConversationPinsController as RealPins } from './conversation-pins.controller';
+import { ConversationSearchController } from './conversation-search.service';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import type { MessageView } from './message-presentation';
 import type { ThreadsService } from './threads.service';
 import type { ConversationPinsController } from './conversation-pins.controller';
@@ -57,6 +64,8 @@ function timeline(
     setTyping: vi.fn(),
     rawEvent: () => null,
     reactionDetails: () => [],
+    loadState: signal<TimelineLoadState>({ kind: 'ready' }).asReadonly(),
+    retryLoad: vi.fn(),
   };
 }
 
@@ -205,7 +214,10 @@ function message(
   };
 }
 
-afterEach(() => TestBed.resetTestingModule());
+afterEach(() => {
+  vi.restoreAllMocks();
+  TestBed.resetTestingModule();
+});
 
 describe('ConversationRuntime', () => {
   it('keys one immutable handle by exactly Account and Room', () => {
@@ -235,6 +247,100 @@ describe('ConversationRuntime', () => {
     expect(runtime.diagnostics().lastAttachDurationMs).toEqual(
       expect.any(Number),
     );
+  });
+
+  it('exposes the focused Conversation load state and routes retry to it', () => {
+    const { runtime, factory } = setup();
+    const loadState = signal<TimelineLoadState>({
+      kind: 'error',
+      reason: 'backfill-failed',
+    });
+    const retryLoad = vi.fn();
+    vi.mocked(factory.create).mockImplementationOnce(
+      (key) =>
+        ({
+          timeline: {
+            ...timeline(key.roomId),
+            loadState: loadState.asReadonly(),
+            retryLoad,
+          },
+          search: {
+            searchLoaded: vi.fn(),
+            searchServer: vi.fn(),
+            loadOlder: vi.fn(),
+          },
+          threads: { closeThread: vi.fn(), close: vi.fn() },
+          pins: { release: vi.fn() },
+          setVisible: vi.fn(),
+          release: vi.fn(),
+          resources: () => ({ listenerCount: 0, retainedBytes: 0 }),
+        }) as unknown as ConversationTimelineController,
+    );
+
+    runtime.focus({ accountId: ALICE, roomId: '!a:example.org' });
+
+    expect(runtime.timeline.loadState()).toEqual({
+      kind: 'error',
+      reason: 'backfill-failed',
+    });
+    runtime.timeline.retryLoad();
+    expect(retryLoad).toHaveBeenCalledOnce();
+  });
+
+  it('is ready when nothing is focused', () => {
+    const { runtime } = setup();
+    expect(runtime.timeline.loadState()).toEqual({ kind: 'ready' });
+  });
+
+  it('shows the timeline before readiness resumes paging', () => {
+    const calls: string[] = [];
+    vi.spyOn(TimelineService.prototype, 'open').mockImplementation(
+      () => undefined,
+    );
+    vi.spyOn(TimelineService.prototype, 'setVisible').mockImplementation(
+      (v) => {
+        calls.push(`timeline:${v}`);
+      },
+    );
+    vi.spyOn(
+      ConversationTimelineReadiness.prototype,
+      'start',
+    ).mockImplementation(() => undefined);
+    vi.spyOn(
+      ConversationTimelineReadiness.prototype,
+      'setVisible',
+    ).mockImplementation((v) => {
+      calls.push(`readiness:${v}`);
+    });
+    vi.spyOn(RealThreadsService.prototype, 'attach').mockImplementation(
+      () => undefined,
+    );
+    vi.spyOn(RealPins.prototype, 'attach').mockImplementation(() => undefined);
+    vi.spyOn(
+      ConversationSearchController.prototype,
+      'attach',
+    ).mockImplementation(() => undefined);
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: MatrixClientService, useValue: { clientFor: () => ({}) } },
+        { provide: MediaPipeline, useValue: {} },
+        { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: {} },
+      ],
+    });
+    const controller = TestBed.inject(CONVERSATION_TIMELINE_FACTORY).create({
+      accountId: ALICE,
+      roomId: '!a:example.org',
+    });
+
+    controller.setVisible(false);
+    controller.setVisible(true);
+
+    expect(calls).toEqual([
+      'timeline:false',
+      'readiness:false',
+      'timeline:true',
+      'readiness:true',
+    ]);
   });
 
   it('blurs visibility while retaining a warm conversation', () => {

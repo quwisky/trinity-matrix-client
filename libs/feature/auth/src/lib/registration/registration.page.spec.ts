@@ -8,7 +8,7 @@ import {
   type RegistrationStage,
 } from '@trinity/data-access/auth';
 import { ExternalBrowserService } from '@trinity/platform-native';
-import { render } from '@trinity/testing';
+import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -95,6 +95,28 @@ describe('RegistrationPage', () => {
       'autocomplete',
       'new-password',
     );
+  });
+
+  it('reveals the password from a toggle inside the password field', async () => {
+    const { fixture } = await renderPage();
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector<HTMLInputElement>(
+      '#registration-password',
+    );
+    const toggle = root.querySelector<HTMLButtonElement>(
+      'trn-password-input button',
+    );
+
+    expect(input?.parentElement?.localName).toBe('trn-password-input');
+    expect(input?.type).toBe('password');
+    expect(toggle?.getAttribute('aria-label')).toBe('Show password');
+
+    fireEvent.click(toggle as HTMLButtonElement);
+    fixture.detectChanges();
+
+    expect(input?.type).toBe('text');
+    expect(toggle?.getAttribute('aria-label')).toBe('Hide password');
   });
 
   it('does not start registration when password confirmation differs', async () => {

@@ -4,3 +4,4 @@
 // crossing this barrel would be a boundary leak (see homeserver-info.model.ts).
 export * from './lib/homeserver-info.model';
 export * from './lib/homeserver-info.service';
+export * from './lib/room-version-status';

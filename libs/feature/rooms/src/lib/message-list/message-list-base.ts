@@ -26,6 +26,8 @@ import {
   ConversationRuntime,
   type MessageView,
   type ThreadSummary,
+  type TimelineLoadState,
+  READY_LOAD_STATE,
 } from '@trinity/data-access/timeline';
 import {
   dayLabel,
@@ -104,6 +106,14 @@ function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
   );
 }
 
+const LOAD_ERROR_COPY: Readonly<
+  Record<Extract<TimelineLoadState, { kind: 'error' }>['reason'], string>
+> = {
+  'room-unavailable': "This room isn't available on this account yet.",
+  'sync-stopped': "Can't reach your server.",
+  'backfill-failed': "Couldn't load messages.",
+};
+
 /**
  * Shared domain logic for the room timeline, independent of scroll strategy: the
  * inputs/outputs, the edit/reply state + action handlers, and the Discord-style row
@@ -168,6 +178,33 @@ export abstract class MessageListBase {
   protected readonly showLoadingOlder = computed(
     () => this.loadingOlder() && this.loadingOlderSettled(),
   );
+
+  /** The Conversation's loading interval (#545). Not an empty list: an empty Room is `empty`. */
+  readonly loadState = input<TimelineLoadState>(READY_LOAD_STATE);
+  readonly retryLoad = output<void>();
+
+  protected readonly loadingConversation = computed(
+    () => this.loadState().kind === 'loading',
+  );
+  private readonly loadingConversationSettled = delayedBusy(
+    this.loadingConversation,
+    inject(Injector),
+    { minimumMs: 0 },
+  );
+  /** Skeleton after 150 ms of real loading; gone the instant loading ends. */
+  protected readonly showSkeleton = computed(
+    () => this.loadingConversation() && this.loadingConversationSettled(),
+  );
+  /** Ready or empty: the only states that may say "No messages yet." or page by themselves. */
+  protected readonly settled = computed(() => {
+    const kind = this.loadState().kind;
+    return kind === 'ready' || kind === 'empty';
+  });
+  protected readonly sendBlocked = computed(() => !this.settled());
+  protected readonly loadError = computed(() => {
+    const state = this.loadState();
+    return state.kind === 'error' ? LOAD_ERROR_COPY[state.reason] : null;
+  });
   readonly canLoadOlder = input(false);
   /** Oldest RAW event in the loaded window — the backfill progress marker (see
    * TimelineService.oldestEventId). Not the oldest rendered row: rows can be filtered out. */

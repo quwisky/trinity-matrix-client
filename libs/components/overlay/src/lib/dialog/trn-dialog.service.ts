@@ -31,6 +31,11 @@ export interface DialogOptions<C = object> {
    */
   ariaLabel?: string;
   /**
+   * Id of an element inside the dialog that describes it, set as `aria-describedby` on the
+   * CDK `role="dialog"` container. Use it instead of a nested dialog role on the content.
+   */
+  ariaDescribedBy?: string;
+  /**
    * Which element takes focus when the dialog opens, defaulting to CDK's
    * `'first-tabbable'`. That default is wrong for any dialog whose header carries a
    * Cancel/Close button ahead of the field the user came to type in — the button wins.
@@ -168,6 +173,7 @@ export class TrnDialogService {
         !opts.dismissGuard ||
         opts.dismissGuard(instance as C | null),
       ariaLabel: opts.ariaLabel,
+      ariaDescribedBy: opts.ariaDescribedBy,
       // Spelled out rather than left off: CDK merges the config over its defaults with
       // a spread, so an `autoFocus: undefined` key would clobber the default instead of
       // falling back to it.

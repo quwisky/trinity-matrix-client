@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 const workspaceRoot = join(import.meta.dirname, '..');
 const runtimeImplementation =
   'libs/data-access/timeline/src/lib/conversation-runtime.service.ts';
+const readinessImplementation =
+  'libs/data-access/timeline/src/lib/conversation-timeline-readiness.ts';
 const composeImplementation =
   'libs/data-access/timeline/src/lib/conversation-compose.ts';
 const timelineEntrypoint = 'libs/data-access/timeline/src/index.ts';
@@ -98,9 +100,11 @@ describe('Conversation Runtime production boundary', () => {
 
   it('binds each child to the client for its immutable Account key', () => {
     const runtime = source(runtimeImplementation);
+    const readiness = source(readinessImplementation);
 
     expect(runtime).toContain('this.matrix.clientFor(key.accountId)');
-    expect(runtime).toContain('timeline.open(key.roomId, client);');
+    expect(runtime).toContain('readiness.start(key.roomId, client, timeline);');
+    expect(readiness).toContain('timeline.open(this.roomId, client)');
   });
 
   it('binds message search to the same exact Conversation child', () => {

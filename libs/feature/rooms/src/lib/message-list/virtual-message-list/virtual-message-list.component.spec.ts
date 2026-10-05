@@ -374,6 +374,60 @@ describe('VirtualMessageListComponent', () => {
     expect(scroll.scrollTop).toBe(200 * EST);
   });
 
+  it('stays pinned to the bottom as the loading skeleton above the rows comes and goes', async () => {
+    vi.useFakeTimers();
+    // Queue frames and flush them by hand: running them inside the effect re-enters change detection.
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      frames.push(cb);
+      return 0;
+    });
+    const flush = () => frames.splice(0).forEach((cb) => cb(0));
+    const { fixture, container } = await renderList({ messages: many(30) });
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+    const SKELETON_PX = 80;
+    const clientHeight = 600;
+    const hasSkeleton = () =>
+      !!container.querySelector('[data-testid="timeline-skeleton"]');
+    // A browser-like scroller: the skeleton adds height, and scrollTop is clamped.
+    const scrollHeight = () => 30 * EST + (hasSkeleton() ? SKELETON_PX : 0);
+    let top = scrollHeight() - clientHeight;
+    Object.defineProperties(scroll, {
+      clientHeight: { value: clientHeight, configurable: true },
+      scrollHeight: { get: scrollHeight, configurable: true },
+      scrollTop: {
+        get: () => Math.min(top, scrollHeight() - clientHeight),
+        set: (v: number) => {
+          top = Math.max(0, Math.min(v, scrollHeight() - clientHeight));
+        },
+        configurable: true,
+      },
+    });
+    scroll.dispatchEvent(new Event('scroll'));
+    flush();
+    const atBottom = () => scroll.scrollTop === scrollHeight() - clientHeight;
+    expect(atBottom()).toBe(true);
+
+    fixture.componentRef.setInput('loadState', {
+      kind: 'loading',
+      reason: 'backfill',
+      partial: true,
+    });
+    TestBed.tick();
+    vi.advanceTimersByTime(200);
+    TestBed.tick();
+    flush();
+    expect(hasSkeleton()).toBe(true);
+    expect(atBottom()).toBe(true);
+
+    fixture.componentRef.setInput('loadState', { kind: 'ready' });
+    TestBed.tick();
+    flush();
+    expect(hasSkeleton()).toBe(false);
+    expect(atBottom()).toBe(true);
+    vi.useRealTimers();
+  });
+
   it('keeps a latest-message jump when an older-history correction is queued', async () => {
     const { fixture, container } = await renderList({
       messages: many(30),
@@ -484,6 +538,40 @@ describe('VirtualMessageListComponent', () => {
     expect(row).not.toBeNull();
     // Flashed by the deferred afterNextRender path, once the row is on-screen.
     expect(row?.classList.contains('msg--flash')).toBe(true);
+  });
+
+  it('pre-positions a jump whose row is rendered only from a window the list has left', async () => {
+    const { fixture, container } = await renderList({ messages: many(200) });
+    const cmp = fixture.componentInstance;
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+    let st = 0;
+    Object.defineProperties(scroll, {
+      scrollTop: { get: () => st, set: (value: number) => (st = value) },
+      scrollHeight: { value: 200 * EST },
+      clientHeight: { value: 600 },
+    });
+    scroll.getBoundingClientRect = () => rect(0);
+    (scroll.querySelector('.vpad') as HTMLElement).getBoundingClientRect = () =>
+      rect(-st);
+    cmp.onScroll();
+    fixture.detectChanges();
+    const target = '$1';
+    expect(scroll.querySelector(`[data-mid="${target}"]`)).not.toBeNull();
+
+    // A history restore moves the reader far down right before a date jump lands: the
+    // window has moved on, but the DOM still holds the old rows until the next render.
+    st = 120 * EST;
+    cmp.onScroll();
+    const smooth = vi.fn();
+    Element.prototype.scrollIntoView = smooth;
+    cmp.jumpTo(target);
+
+    // A smooth scroll aimed at that stale row would chase an element the next render
+    // removes; the jump must instead bring the row's own window in first.
+    expect(smooth).not.toHaveBeenCalled();
+    expect(st).toBeLessThan(10 * EST);
+    fixture.detectChanges();
+    expect(smooth).toHaveBeenCalled();
   });
 
   it('does not re-jump when the timeline changes after a jump', async () => {

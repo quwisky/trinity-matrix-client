@@ -37,6 +37,7 @@ describe('Room Administration production boundary', () => {
       'room-aliases.service',
       'room-message-governance.service',
       'room-pin-governance.service',
+      'room-upgrade.service',
     ]) {
       expect(entrypoint).toContain(`export * from './lib/${module}'`);
     }
