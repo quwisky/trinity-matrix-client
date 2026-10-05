@@ -81,46 +81,61 @@ describe('CapacitorHostOperationAdapter event streams', () => {
     expect(urls).toEqual(['eu.qwky.trinity://matrix.to/#/!a:b.c']);
   });
 
-  it('delivers a cold-start link once when Capacitor also replays it as appUrlOpen', async () => {
-    const link = 'eu.qwky.trinity://matrix.to/#/!a:b.c';
-    // Capacitor retains the launch intent's appUrlOpen and fires it when the first listener
-    // attaches, while getLaunchUrl reports the same intent.
-    app.addListener.mockImplementation(
-      (_event: string, listener: (event: { url: string }) => void) => {
-        listener({ url: link });
-        return Promise.resolve({ remove: vi.fn(() => Promise.resolve()) });
-      },
-    );
-    app.getLaunchUrl.mockResolvedValue({ url: link });
-    const urls: string[] = [];
-
-    new CapacitorHostOperationAdapter().received.subscribe(({ url }) =>
-      urls.push(url),
-    );
-    await new Promise((resolve) => setTimeout(resolve));
-
-    expect(urls).toEqual([link]);
-  });
-
-  it('delivers a cold-start link once when the appUrlOpen replay arrives after getLaunchUrl', async () => {
+  describe('cold-start link and later taps', () => {
     const link = 'eu.qwky.trinity://matrix.to/#/!a:b.c';
     let open!: (event: { url: string }) => void;
-    app.addListener.mockImplementation(
-      (_event: string, listener: (event: { url: string }) => void) => {
-        open = listener;
-        return Promise.resolve({ remove: vi.fn(() => Promise.resolve()) });
-      },
-    );
-    app.getLaunchUrl.mockResolvedValue({ url: link });
     const urls: string[] = [];
 
-    new CapacitorHostOperationAdapter().received.subscribe(({ url }) =>
-      urls.push(url),
-    );
-    await new Promise((resolve) => setTimeout(resolve));
-    open({ url: link });
+    const attach = async (retained: boolean, launch: string | null) => {
+      urls.length = 0;
+      app.addListener.mockImplementation(
+        (_event: string, listener: (event: { url: string }) => void) => {
+          open = listener;
+          if (retained) listener({ url: link });
+          return Promise.resolve({ remove: vi.fn(() => Promise.resolve()) });
+        },
+      );
+      app.getLaunchUrl.mockResolvedValue(launch ? { url: launch } : {});
+      new CapacitorHostOperationAdapter().received.subscribe(({ url }) =>
+        urls.push(url),
+      );
+      await new Promise((resolve) => setTimeout(resolve));
+    };
 
-    expect(urls).toEqual([link]);
+    it('delivers a cold-start link once when the retained appUrlOpen flushes during addListener', async () => {
+      // Models Android: the retained launch event fires synchronously on the first listener.
+      await attach(true, link);
+
+      expect(urls).toEqual([link]);
+    });
+
+    it('delivers a later tap of the same URL after a retained launch event', async () => {
+      await attach(true, link);
+      open({ url: link });
+
+      expect(urls).toEqual([link, link]);
+    });
+
+    it('delivers a later tap of the same URL after a getLaunchUrl-only launch', async () => {
+      await attach(false, link);
+      open({ url: link });
+
+      expect(urls).toEqual([link, link]);
+    });
+
+    it('delivers a different URL after the launch link', async () => {
+      const other = 'eu.qwky.trinity://matrix.to/#/!d:e.f';
+      await attach(true, link);
+      open({ url: other });
+
+      expect(urls).toEqual([link, other]);
+    });
+
+    it('delivers a getLaunchUrl-only launch once', async () => {
+      await attach(false, link);
+
+      expect(urls).toEqual([link]);
+    });
   });
 
   it('removes a Back listener that resolves after teardown', async () => {
