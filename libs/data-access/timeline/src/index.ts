@@ -3,6 +3,8 @@ export type {
   RoomTombstone,
   TypingOwner,
 } from './lib/timeline.service';
+export type { TimelineLoadState } from './lib/conversation-timeline-readiness';
+export { READY_LOAD_STATE } from './lib/conversation-timeline-readiness';
 export { ConversationRuntime } from './lib/conversation-runtime.service';
 export { CONVERSATION_MESSAGE_POLICY } from './lib/conversation-message-adapter.service';
 export { CONVERSATION_PIN_POLICY } from './lib/conversation-pins.controller';

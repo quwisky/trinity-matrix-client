@@ -38,6 +38,10 @@ import type {
   ConversationPinOutcome,
   ConversationPins,
 } from './conversation-pins';
+import {
+  ConversationTimelineReadiness,
+  READY_LOAD_STATE,
+} from './conversation-timeline-readiness';
 import { TimelineService } from './timeline.service';
 import { ThreadsService } from './threads.service';
 import { ConversationPinsController } from './conversation-pins.controller';
@@ -76,6 +80,8 @@ export type ConversationTimeline = Pick<
   | 'setTyping'
   | 'rawEvent'
   | 'reactionDetails'
+  | 'loadState'
+  | 'retryLoad'
 >;
 
 export type ConversationSearch = Pick<
@@ -146,6 +152,7 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
     const injector = createEnvironmentInjector(
       [
         TimelineService,
+        ConversationTimelineReadiness,
         ThreadsService,
         ConversationPinsController,
         ConversationSearchController,
@@ -153,15 +160,17 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       this.parentInjector,
     );
     let timeline: TimelineService;
+    let readiness: ConversationTimelineReadiness;
     let threads: ThreadsService;
     let pins: ConversationPinsController;
     let search: ConversationSearchController;
     try {
       timeline = injector.get(TimelineService);
+      readiness = injector.get(ConversationTimelineReadiness);
       threads = injector.get(ThreadsService);
       pins = injector.get(ConversationPinsController);
       search = injector.get(ConversationSearchController);
-      timeline.open(key.roomId, client);
+      readiness.start(key.roomId, client, timeline);
       threads.attach(key, client);
       pins.attach(key, client);
       search.attach(key, client);
@@ -178,6 +187,8 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       search,
       setVisible: (visible) => {
         timeline.setVisible(visible);
+        // After the timeline: loadOlder() no-ops while hidden, so readiness must resume second.
+        readiness.setVisible(visible);
         if (visible) {
           // Retained Conversations keep only the bounded main timeline warm. Thread
           // summaries and pins re-read SDK-authoritative state when focus returns;
@@ -214,6 +225,7 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
         released = true;
         this.actionContext.clear(resolveActionContext);
         try {
+          readiness.stop();
           threads.closeThread();
           threads.close();
           pins.release();
@@ -574,6 +586,10 @@ export class ConversationRuntime {
       messages: computed(() => focused()?.timeline.messages() ?? []),
       loadingOlder: computed(() => focused()?.timeline.loadingOlder() ?? false),
       canLoadOlder: computed(() => focused()?.timeline.canLoadOlder() ?? false),
+      loadState: computed(
+        () => focused()?.timeline.loadState() ?? READY_LOAD_STATE,
+      ),
+      retryLoad: () => focused()?.timeline.retryLoad(),
       oldestEventId: computed(
         () => focused()?.timeline.oldestEventId() ?? null,
       ),

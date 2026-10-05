@@ -4,6 +4,7 @@ import type {
   ConversationComposeIntent,
   ConversationMessages,
   ConversationTimeline,
+  TimelineLoadState,
 } from '@trinity/data-access/timeline';
 import { of } from 'rxjs';
 import { vi } from 'vitest';
@@ -102,6 +103,8 @@ export class ConversationTimelineStub implements ConversationTimeline {
     signal(null).asReadonly();
   readonly firstUnreadId: ConversationTimeline['firstUnreadId'] =
     signal(null).asReadonly();
+  readonly loadState = signal<TimelineLoadState>({ kind: 'ready' });
+  readonly retryLoad = vi.fn();
   openRoomId: string | null = null;
   roomEncrypted = false;
   readonly loadOlder: ConversationTimeline['loadOlder'] = vi.fn(() =>
