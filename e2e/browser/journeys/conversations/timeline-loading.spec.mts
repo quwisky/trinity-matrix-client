@@ -104,9 +104,12 @@ interface Fixture {
   runId: string;
 }
 
-async function newUser(request: APIRequestContext): Promise<Fixture> {
+async function newUser(
+  request: APIRequestContext,
+  suffix = '',
+): Promise<Fixture> {
   const hs = session.hs as string;
-  const runId = `${testResourceId('run')}tl`;
+  const runId = `${testResourceId('run')}tl${suffix}`;
   const user = `tl-${runId}`;
   const pass = `${user}-pass`;
   await registerUser(request, user, pass);
@@ -262,6 +265,65 @@ test.describe('Timeline loading states', () => {
     release();
     await expect(message).toBeVisible();
     await expect(page.getByTestId('timeline-skeleton')).toBeHidden();
+  });
+
+  test('opens a linked room that has not synced yet: skeleton, then messages', async ({
+    page,
+    request,
+  }) => {
+    const f = await newUser(request);
+    const bodies = messages(`pend ${f.runId}`, 1);
+    await watchSkeleton(page);
+    await login(page, f.me);
+    const account = new URL(page.url()).searchParams.get('account') as string;
+    // Created after login, so the client has never synced it and cannot hydrate it from cache.
+    const roomId = await seedRoom(request, f, `Pending ${f.runId}`, bodies);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/_matrix/client/**/sync*', async (route) => {
+      await gate;
+      await route.continue();
+    });
+    const segment = Buffer.from(roomId).toString('base64url');
+    await page.goto(
+      `/rooms/${segment}?account=${encodeURIComponent(account)}&view=rooms`,
+    );
+
+    await expect(page.getByTestId('timeline-skeleton')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('composer-input')).toHaveCount(0);
+    expect(page.url()).toContain(`/rooms/${segment}`);
+    await expect(page.getByText('Select a room')).toHaveCount(0);
+
+    release();
+    await expect(
+      page.locator('.msg__text', { hasText: bodies[0] }),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('timeline-skeleton')).toBeHidden();
+    await expect(page.getByTestId('composer-input')).toBeVisible();
+    expect(page.url()).toContain(`/rooms/${segment}`);
+  });
+
+  test('a linked room the user is not in shows the unavailable error at once', async ({
+    page,
+    request,
+  }) => {
+    const me = await newUser(request);
+    const other = await newUser(request, 'other');
+    const roomId = await seedRoom(request, other, `Foreign ${other.runId}`, []);
+    await login(page, me.me);
+    const account = new URL(page.url()).searchParams.get('account') as string;
+    const segment = Buffer.from(roomId).toString('base64url');
+    await page.goto(
+      `/rooms/${segment}?account=${encodeURIComponent(account)}&view=rooms`,
+    );
+
+    await expect(
+      page.getByText("This room isn't available on this account yet."),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+    expect(page.url()).toContain(`/rooms/${segment}`);
   });
 
   test('rapid switching ends on the right room', async ({ page, request }) => {
