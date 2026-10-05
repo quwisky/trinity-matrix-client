@@ -74,6 +74,7 @@ const ROLES = [
     on: [
       '--trinity-chat',
       '--trinity-sidebar',
+      '--trinity-surface-sidebar',
       '--trinity-rail',
       '--trinity-hover',
       '--trinity-active',
@@ -84,6 +85,7 @@ const ROLES = [
     on: [
       '--trinity-chat',
       '--trinity-sidebar',
+      '--trinity-surface-sidebar',
       '--trinity-rail',
       '--trinity-hover',
       '--trinity-active',
@@ -94,6 +96,7 @@ const ROLES = [
     on: [
       '--trinity-chat',
       '--trinity-sidebar',
+      '--trinity-surface-sidebar',
       '--trinity-hover',
       '--trinity-active',
     ],
@@ -103,6 +106,7 @@ const ROLES = [
     on: [
       '--trinity-chat',
       '--trinity-sidebar',
+      '--trinity-surface-sidebar',
       '--trinity-rail',
       '--trinity-hover',
       '--trinity-active',
@@ -116,6 +120,7 @@ const ROLES = [
     on: [
       '--trinity-chat',
       '--trinity-sidebar',
+      '--trinity-surface-sidebar',
       '--trinity-rail',
       '--trinity-hover',
       '--trinity-active',
@@ -126,6 +131,7 @@ const ROLES = [
     on: [
       '--trinity-chat',
       '--trinity-sidebar',
+      '--trinity-surface-sidebar',
       '--trinity-rail',
       '--trinity-hover',
       '--trinity-active',
@@ -139,6 +145,7 @@ const ROLES = [
     on: [
       '--trinity-chat',
       '--trinity-sidebar',
+      '--trinity-surface-sidebar',
       '--trinity-rail',
       '--trinity-hover',
       '--trinity-active',

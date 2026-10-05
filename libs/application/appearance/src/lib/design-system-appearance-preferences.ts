@@ -55,6 +55,11 @@ export const MODE_PREFERENCE = definePreference({
   validate: closedStringValidation(isThemeMode, 'appearance-mode-invalid'),
 } satisfies PreferenceDescriptor<ThemeMode>);
 
+/** Retired theme ids and the Theme they became. */
+export const THEME_RENAMES: Readonly<Record<string, string>> = {
+  onyx: 'midnight',
+};
+
 export const THEME_PREFERENCE = definePreference({
   id: 'design-system.appearance.theme',
   owner: 'design-system',
@@ -79,7 +84,7 @@ export const THEME_PREFERENCE = definePreference({
   persistence: {
     key: 'trinity.appearance.theme',
     legacyKeys: ['trinity.palette'],
-    migration: closedStringMigration(isThemeId, 2, { onyx: 'midnight' }),
+    migration: closedStringMigration(isThemeId, 2, THEME_RENAMES),
   },
   validate: closedStringValidation(isThemeId, 'appearance-theme-invalid'),
 } satisfies PreferenceDescriptor<ThemeId>);

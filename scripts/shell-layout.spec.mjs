@@ -85,6 +85,7 @@ describe('modern room shell layout contracts', () => {
 
   it('sets the conversation in a rounded inset pane on the app ground', () => {
     const app = 'var(--trinity-surface-app)';
+    const sidebarSurface = 'var(--trinity-surface-sidebar)';
     for (const selector of [
       '.rooms-shell',
       '.rooms-workspace',
@@ -93,10 +94,32 @@ describe('modern room shell layout contracts', () => {
       expect(ruleBody(roomsCss, selector)).toContain(`background: ${app}`);
     }
     expect(ruleBody(railCss, '.rail')).toContain(app);
-    expect(ruleBody(sidebarCss, '.sidebar')).toContain(app);
+    expect(ruleBody(sidebarCss, '.sidebar')).toContain(sidebarSurface);
     expect(ruleBody(sidebarCss, '.sidebar__header')).toContain(
-      `background: ${app}`,
+      'background: var(--trinity-surface-navigation-header)',
     );
+    expect(ruleBody(userPanelCss, '.userbar')).toContain(
+      'background: var(--trinity-surface-navigation-header)',
+    );
+    // Rail tiles must read against the rail ground, so never paint them with it.
+    expect(ruleBody(railCss, '.pill')).toContain(
+      'background: var(--trinity-state-hover-surface)',
+    );
+    expect(ruleBody(railCss, '.pill')).not.toContain(
+      'background: var(--trinity-surface-app)',
+    );
+    // Classic keeps today's sidebar tone; every other Theme inherits the app ground.
+    expect(variables).toMatch(
+      /--trinity-surface-sidebar:\s*var\(--trinity-surface-app\)/,
+    );
+    for (const selector of [
+      ":root[data-theme='classic']:not(.dark)",
+      ":root[data-theme='classic'].dark",
+    ]) {
+      expect(ruleBody(variables, selector), selector).toContain(
+        '--trinity-surface-sidebar:',
+      );
+    }
 
     const main = ruleBody(roomsCss, '.main');
     expect(main).toContain('background: var(--trinity-surface-pane)');

@@ -320,6 +320,7 @@
     // Frame and workspace follow the app and pane roles, which every Theme sets to its rail
     // and chat values.
     --trinity-surface-frame: var(--trinity-surface-app);
+    --trinity-surface-sidebar: var(--trinity-surface-app);
     --trinity-surface-navigation-header: var(--trinity-sidebar-header);
     --trinity-surface-workspace: var(--trinity-surface-pane);
     --trinity-surface-raised: oklch(97.5% 0.005 85deg);
@@ -429,6 +430,7 @@
     // Graphite dark: a near-neutral 270deg family. The app ground is darkest and the pane a
     // step lighter, so frame, workspace and interaction states separate without a grey wash.
     --trinity-surface-app: oklch(16% 0.004 270deg);
+    --trinity-surface-sidebar: var(--trinity-surface-app);
     --trinity-surface-pane: oklch(20% 0.005 270deg);
     --trinity-surface-raised: oklch(24% 0.006 270deg);
     --trinity-rail: oklch(16% 0.004 270deg);
@@ -509,12 +511,13 @@
   }
 
   // =============================================================================
-  // Classic — the original Trinity palette, kept as a selectable Theme. It restates the base
+  // Classic — the original Trinity colours, kept as a selectable Theme. It restates the base
   // neutral family verbatim, so the default Theme is free to move on.
   // =============================================================================
 
   :root[data-theme='classic']:not(.dark) {
     --trinity-surface-app: oklch(91% 0.014 265deg);
+    --trinity-surface-sidebar: oklch(96.5% 0.008 265deg);
     --trinity-surface-pane: oklch(99% 0.004 265deg);
     --trinity-surface-raised: var(--trinity-sidebar);
     --trinity-rail: oklch(91% 0.014 265deg);
@@ -542,6 +545,7 @@
 
   :root[data-theme='classic'].dark {
     --trinity-surface-app: oklch(18% 0.014 265deg);
+    --trinity-surface-sidebar: oklch(24% 0.016 265deg);
     --trinity-surface-pane: oklch(28% 0.016 265deg);
     --trinity-surface-raised: var(--trinity-sidebar);
     --trinity-rail: oklch(18% 0.014 265deg);
