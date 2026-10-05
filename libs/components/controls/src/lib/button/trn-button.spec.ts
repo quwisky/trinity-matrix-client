@@ -57,6 +57,23 @@ class AvailabilityHostComponent {
 }
 
 describe('TrnButton', () => {
+  it('carries no dark: text variants, which have no Helm class to override', () => {
+    const presentations = ['solid', 'outline', 'ghost', 'link'] as const;
+    const variants = ['primary', 'secondary', 'danger'] as const;
+    for (const presentation of presentations) {
+      for (const variant of variants) {
+        expect(
+          trnButtonRecipe({
+            presentation,
+            shape: 'label',
+            size: 'md',
+            variant,
+          }),
+        ).not.toMatch(/dark:hover:text-/u);
+      }
+    }
+  });
+
   it('renders a solid danger action as a filled danger button, not a tint', () => {
     const solidDanger = trnButtonRecipe({
       presentation: 'solid',

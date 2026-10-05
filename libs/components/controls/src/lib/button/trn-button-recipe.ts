@@ -49,6 +49,8 @@ const solidDangerTone =
 const controlBorder =
   'border-[color:var(--trinity-border-control)] dark:border-[color:var(--trinity-border-control)]';
 
+// `dark:hover:bg-*` stays: it out-merges Helm's own `dark:hover:bg-input/50` (outline) and
+// `dark:hover:bg-muted/50` (ghost). Without it, Helm's dark hover fill wins in dark mode.
 const nonSolidTone = {
   primary: {
     outline: controlBorder,
@@ -56,9 +58,9 @@ const nonSolidTone = {
     link: '',
   },
   secondary: {
-    outline: `${controlBorder} text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground dark:hover:text-secondary-foreground`,
+    outline: `${controlBorder} text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground`,
     ghost:
-      'text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground dark:hover:text-secondary-foreground',
+      'text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground',
     link: 'text-secondary-foreground',
   },
   danger: {
@@ -70,6 +72,7 @@ const nonSolidTone = {
   },
 } as const;
 
+// `dark:focus-visible:ring-*` out-merges Helm destructive's `dark:focus-visible:ring-destructive/40`.
 /** One keyboard-focus ring for every button, matching `trnInput` and the global baseline. */
 const focusRing =
   'focus-visible:border-[color:var(--trinity-focus-ring)] focus-visible:ring-[color:var(--trinity-focus-ring)] dark:focus-visible:ring-[color:var(--trinity-focus-ring)]';
