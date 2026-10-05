@@ -339,6 +339,9 @@ describe('WorkspaceNavigationService', () => {
       roomId: '!missing:example.org',
       pane: 'conversation',
     });
+    // The anchor must survive for a room the client has yet to hold: the list jumps to it
+    // once the room loads.
+    expect(h.service.eventTarget()).toMatchObject({ eventId: '$notification' });
   });
 
   it('repairs a room alias segment to the list', async () => {
@@ -1006,6 +1009,7 @@ describe('WorkspaceNavigationService', () => {
       expect(h.conversations.focus).toHaveBeenLastCalledWith(
         expect.objectContaining({ roomId: '!missing:example.org' }),
       );
+      expect(h.service.eventTarget()).toMatchObject({ eventId: '$event' });
     });
   });
 

@@ -28,6 +28,7 @@ import {
 import {
   ConversationRuntime,
   TimelineActionsService,
+  type TimelineLoadState,
 } from '@trinity/data-access/timeline';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
@@ -101,7 +102,14 @@ const ROOM: RoomSummary = {
 
 beforeEach(() => setRouteRoom(null));
 
-function renderHeader(pinCount: number) {
+function renderHeader(
+  pinCount: number,
+  opts: {
+    room?: RoomSummary | null;
+    routeRoom?: string;
+    loadState?: TimelineLoadState;
+  } = {},
+) {
   const pinMessages = signal<readonly unknown[]>(
     Array.from({ length: pinCount }, (_, id) => ({ id })),
   );
@@ -109,7 +117,9 @@ function renderHeader(pinCount: number) {
     accountBadges: signal(new Map()),
     accounts: signal([]),
     activeAccountId: signal<string | null>('@me:hs'),
-    activeRoom: signal<RoomSummary | null>(ROOM),
+    activeRoom: signal<RoomSummary | null>(
+      opts.room === undefined ? ROOM : opts.room,
+    ),
     activeRoomIsDirect: signal(false),
     anyRoomUnread: signal(false),
     canConfigureSpace: signal(false),
@@ -239,7 +249,9 @@ function renderHeader(pinCount: number) {
         {
           provide: ConversationRuntime,
           useFactory: () => ({
-            timeline: new ConversationTimelineStub(),
+            timeline: Object.assign(new ConversationTimelineStub(), {
+              loadState: signal(opts.loadState ?? { kind: 'ready' as const }),
+            }),
             threads: { summaries: signal({}), list: signal([]) },
             pins: {
               messages: pinMessages.asReadonly(),
@@ -301,7 +313,7 @@ function renderHeader(pinCount: number) {
       ],
     },
   });
-  setRouteRoom('!r:hs');
+  setRouteRoom(opts.routeRoom ?? '!r:hs');
   const fixture = TestBed.createComponent(RoomsPage);
   fixture.detectChanges();
   return fixture.nativeElement as HTMLElement;
@@ -340,5 +352,46 @@ describe('RoomsPage header pinned-messages state', () => {
   it('keeps the plain accessible name when nothing is pinned', () => {
     const pin = renderHeader(0).querySelector('[data-testid="open-pinned"]');
     expect(pin?.getAttribute('aria-label')).toBe('Pinned messages');
+  });
+});
+
+describe('RoomsPage header for a linked room the client does not hold yet', () => {
+  const pending = (loadState: TimelineLoadState) =>
+    renderHeader(0, { room: null, routeRoom: '!pending:hs', loadState });
+  const roomActions = [
+    'search-messages',
+    'invite-people',
+    'open-room-settings',
+    'open-threads',
+    'open-pinned',
+    'toggle-members',
+    'room-actions-overflow',
+  ];
+
+  it('titles the header "Loading room…" while the room is pending', () => {
+    const host = pending({
+      kind: 'loading',
+      reason: 'room-pending',
+      partial: false,
+    });
+    expect(host.querySelector('h1')?.textContent).toContain('Loading room…');
+  });
+
+  it('offers no room-scoped actions', () => {
+    const host = pending({
+      kind: 'loading',
+      reason: 'room-pending',
+      partial: false,
+    });
+    for (const id of roomActions) {
+      expect(host.querySelector(`[data-testid="${id}"]`), id).toBeNull();
+    }
+  });
+
+  it('drops the loading title once the room is known to be unavailable', () => {
+    const host = pending({ kind: 'error', reason: 'room-unavailable' });
+    expect(host.querySelector('h1')?.textContent).not.toContain(
+      'Loading room…',
+    );
   });
 });

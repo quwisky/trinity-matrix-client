@@ -170,6 +170,12 @@
                 <span class="title-account__name">{{ vm.userName() }}</span>
               </span>
             }
+          } @else if (
+            store.activeRoomId() && timeline.loadState().kind === 'loading'
+          ) {
+            <!-- A linked room the client has not synced yet: no name to show, and none of
+                 the room's actions (they live in the actions slot, behind activeRoom()). -->
+            Loading room…
           } @else {
             Trinity
           }
