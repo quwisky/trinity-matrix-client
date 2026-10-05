@@ -35,6 +35,8 @@ pnpm build
 pnpm architecture:check
 ```
 
+`pnpm stylelint` also rejects new literal sizes, spacing and hex colours; see [use tokens, not literals](../../development/styling-and-responsive-ui/#token-literals).
+
 Select from this set; do not claim every repository change always needs every command.
 
 ## Report actual outcomes {#report-outcomes}
