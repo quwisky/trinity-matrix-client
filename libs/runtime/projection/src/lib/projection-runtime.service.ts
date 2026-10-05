@@ -18,8 +18,6 @@ import type {
 } from './projection-runtime.models';
 import { traceProjection } from './projection-trace';
 
-declare const ngDevMode: boolean | undefined;
-
 interface ProjectionEntry {
   readonly key: string;
   readonly definition: ProjectionDefinition;
