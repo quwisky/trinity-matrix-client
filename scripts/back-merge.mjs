@@ -1,5 +1,6 @@
 /**
- * Opens the PR that merges a stable release branch back into main (see release.yml).
+ * Opens the PR that merges a stable release branch back into main (see release.yml);
+ * land-back-merge.mjs pushes its merge commit to main once CI is green.
  * Version files that both lines bump are resolved by rule; any other conflict stops the job
  * so a maintainer merges by hand.
  */
@@ -73,14 +74,6 @@ export function planBackMerge({ mainContainsTag, existingPr }) {
   if (mainContainsTag) return 'skip';
   return existingPr === null ? 'create' : 'update';
 }
-
-export const autoMergeArgs = (pr) => [
-  'pr',
-  'merge',
-  String(pr),
-  '--auto',
-  '--merge',
-];
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
 const gh = (...args) => execFileSync('gh', args, { encoding: 'utf8' }).trim();
@@ -267,11 +260,9 @@ function run({ tag, branch }) {
           `Drops the one-time \`release-as\` that \`${STABLE_CONFIG}\` carries on the release branch.`,
         ]),
     '',
-    'Merges itself (merge commit) once CI is green.',
+    'Lands on `main` as this merge commit, by a direct push from `scripts/land-back-merge.mjs`, once CI is green on it. Do not merge it with the button.',
   ].join('\n');
-  let number;
   if (plan === 'update') {
-    number = existing;
     gh('pr', 'edit', existing, '--body', body);
     console.log(`Updated back-merge PR #${existing}.`);
   } else {
@@ -288,14 +279,6 @@ function run({ tag, branch }) {
       body,
     );
     console.log(url);
-    number = url.split('/').pop();
-  }
-  try {
-    gh(...autoMergeArgs(number));
-  } catch (error) {
-    console.log(
-      `::warning::Could not enable auto-merge on #${number} (is "Allow auto-merge" on?): ${error.message}`,
-    );
   }
 }
 

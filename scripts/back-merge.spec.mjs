@@ -8,8 +8,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import * as backMerge from './back-merge.mjs';
 import {
-  autoMergeArgs,
   compareVersions,
   higherVersion,
   mergeNextManifest,
@@ -306,14 +306,13 @@ describe('back-merge', () => {
     );
   });
 
-  it('enables auto-merge with a merge commit', () => {
-    expect(autoMergeArgs(17)).toEqual([
-      'pr',
-      'merge',
-      '17',
-      '--auto',
-      '--merge',
-    ]);
+  it('leaves landing to land-back-merge.mjs: it never merges the PR itself', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, 'back-merge.mjs'),
+      'utf8',
+    );
+    expect(backMerge.autoMergeArgs).toBeUndefined();
+    expect(source).not.toMatch(/'--auto'|'--merge'|pr merge/);
   });
 
   it('strips the one-time release-as without reformatting the config', () => {

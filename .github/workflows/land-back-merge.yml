@@ -1,0 +1,51 @@
+name: Land back-merge
+
+# main allows only squash merges, but a back-merge must land as its merge commit so release
+# tags stay reachable from main. Once CI passes on a back-merge/vX.Y.Z PR, the release App
+# (a bypass actor on main's ruleset) fast-forwards main to that exact commit.
+# scripts/land-back-merge.mjs re-checks everything live and never forces the push.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  land:
+    name: Land the back-merge on main
+    # Same repository only: a fork can name its branch back-merge/* too.
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success'
+      && startsWith(github.event.workflow_run.head_branch, 'back-merge/')
+      && github.event.workflow_run.head_repository.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The release App's private key lives only in this environment.
+    environment: release-app
+    # GITHUB_TOKEN only reads the check runs; the App token does the push.
+    permissions:
+      checks: read
+    steps:
+      - name: Mint the App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      # main's script, never the PR head's.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+      # The script uses import.meta.main (Node 24+).
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Push the merge commit to main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: node scripts/land-back-merge.mjs --branch "$BRANCH"

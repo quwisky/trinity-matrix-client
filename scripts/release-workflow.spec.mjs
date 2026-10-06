@@ -171,7 +171,12 @@ describe('release branches', () => {
 
   it('mints the release App token only in the reviewer-free release-app environment', () => {
     // Required reviewers on `release` gate packaging; they must not stall the automation.
-    for (const name of ['release.yml', 'release-stable.yml', 'backport.yml']) {
+    for (const name of [
+      'release.yml',
+      'release-stable.yml',
+      'backport.yml',
+      'land-back-merge.yml',
+    ]) {
       const { jobs } = parse(
         readFileSync(resolve(root, '.github/workflows', name), 'utf8'),
       );
