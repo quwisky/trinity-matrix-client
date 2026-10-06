@@ -24,7 +24,9 @@ import {
 import { MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import {
   Observable,
+  Subject,
   catchError,
+  defaultIfEmpty,
   defer,
   filter,
   finalize,
@@ -34,6 +36,7 @@ import {
   shareReplay,
   switchMap,
   take,
+  takeUntil,
 } from 'rxjs';
 
 interface ActiveApplicationDialog {
@@ -67,7 +70,8 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
     readonly surface: WorkspaceApplicationSurface;
     readonly command: Observable<WorkspaceApplicationSurfaceOutcome>;
   } | null = null;
-  private navigationGeneration = 0;
+  /** Emits on every navigation start and on teardown; releases work begun before it. */
+  private readonly navigationStarts = new Subject<void>();
 
   /** Application Runtime owns navigation observation and Back registration. */
   run(): Observable<void> {
@@ -76,7 +80,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
         .pipe(filter((event) => event instanceof NavigationStart))
         .subscribe({
           next: () => {
-            this.navigationGeneration++;
+            this.navigationStarts.next();
             subscriber.next();
           },
           error: (error: unknown) => subscriber.error(error),
@@ -95,7 +99,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
         },
       });
       return () => {
-        this.navigationGeneration++;
+        this.navigationStarts.next();
         navigation.unsubscribe();
         unregister();
         for (const active of this.active()) active.ref.close();
@@ -169,19 +173,18 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
         ? this.pending.command
         : of({ kind: 'unavailable', surface: request.surface });
     }
-    const navigationGeneration = this.navigationGeneration;
+    const unavailable = {
+      kind: 'unavailable',
+      surface: request.surface,
+    } as const;
     const task = defer(load).pipe(
       switchMap((component) =>
         defer(() => {
           if (
-            navigationGeneration !== this.navigationGeneration ||
             !this.ownerIsActive(request) ||
             !this.canPresentOverActive(request)
           ) {
-            return of({
-              kind: 'unavailable',
-              surface: request.surface,
-            } as const);
+            return of(unavailable);
           }
           const ref = this.dialog.open(component, {
             ...options,
@@ -197,23 +200,24 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
                 this.active.update((active) =>
                   active.filter((dialog) => dialog.ref !== ref),
                 );
-                this.restoreOwner(request, navigationGeneration);
               }),
             )
             .subscribe();
+          ref.closed
+            .pipe(take(1), takeUntil(this.navigationStarts))
+            .subscribe(() => this.restoreOwner(request));
           return of({ kind: 'presented', surface: request.surface } as const);
         }),
       ),
       catchError(() => {
-        if (
-          navigationGeneration === this.navigationGeneration &&
-          this.ownerIsActive(request)
-        ) {
+        if (this.ownerIsActive(request)) {
           this.showOpenFailure(request.surface);
-          this.restoreOwner(request, navigationGeneration);
+          this.restoreOwner(request);
         }
-        return of({ kind: 'unavailable', surface: request.surface } as const);
+        return of(unavailable);
       }),
+      takeUntil(this.navigationStarts),
+      defaultIfEmpty(unavailable),
       finalize(() => {
         if (this.pending?.command === task) this.pending = null;
       }),
@@ -296,14 +300,8 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
     }
   }
 
-  private restoreOwner(
-    request: WorkspaceApplicationSurfaceRequest,
-    navigationGeneration: number,
-  ): void {
-    if (
-      request.context?.restoreFocus &&
-      navigationGeneration === this.navigationGeneration
-    ) {
+  private restoreOwner(request: WorkspaceApplicationSurfaceRequest): void {
+    if (request.context?.restoreFocus) {
       queueMicrotask(request.context.restoreFocus);
     }
   }

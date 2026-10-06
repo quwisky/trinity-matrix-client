@@ -13,6 +13,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { DateTimeFormatService, isMobileOs } from '@trinity/platform-native';
+import { hasUsableTimestamp } from '@trinity/util/matrix';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import {
   MessageToolbarComponent,
@@ -44,6 +45,12 @@ import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images
 import { MessageReplyPreviewComponent } from '../message-reply-preview/message-reply-preview.component';
 import { MessageThreadSummaryComponent } from '../message-thread-summary/message-thread-summary.component';
 
+/** A collapsed run of adjacent system lines (see `groupSystemRuns`). */
+export interface SystemRun {
+  readonly events: readonly MessageRow[];
+  readonly summary: string;
+}
+
 /** A {@link MessageView} plus the presentation state the list derives for it. */
 export interface MessageRow extends MessageView {
   /** Discord-style grouping: own header, or a continuation of the row above. */
@@ -58,6 +65,8 @@ export interface MessageRow extends MessageView {
    * the label the cached value means a rollover invalidates the row for free.
    */
   daySeparator?: string | null;
+  /** Present when this row stands for a run of adjacent system lines. */
+  readonly systemRun?: SystemRun;
 }
 
 /** The per-row capability/state flags the row (and its toolbar) render from. */
@@ -168,6 +177,7 @@ export type MessageSwipeAction = 'edit' | 'reply';
 export class MessageRowComponent {
   /** Timestamps go through the app-wide format preference, never a DatePipe. */
   readonly fmt = inject(DateTimeFormatService);
+
   /** Phones and tablets use the action sheet and do not render the desktop toolbar. */
   readonly mobileActions = isMobileOs();
   private readonly destroyRef = inject(DestroyRef);
@@ -213,6 +223,13 @@ export class MessageRowComponent {
       this.cancelSwipe();
       this.hideToolbar();
     });
+  }
+
+  /** ISO form of a timestamp for `<time datetime>`, or null when it isn't usable. */
+  protected isoTime(timestamp: number): string | null {
+    return hasUsableTimestamp(timestamp)
+      ? new Date(timestamp).toISOString()
+      : null;
   }
 
   /**
@@ -631,6 +648,15 @@ export class MessageRowComponent {
     this.releaseToolbar(document.activeElement);
   }
 
+  onFocusIn(event: FocusEvent): void {
+    if (
+      event.target instanceof Element &&
+      event.target.matches(':focus-visible')
+    ) {
+      this.toolbarActive.set(true);
+    }
+  }
+
   onFocusOut(event: FocusEvent): void {
     this.releaseToolbar(event.relatedTarget);
   }
@@ -644,16 +670,20 @@ export class MessageRowComponent {
   }
 
   /**
-   * Unmount the toolbar unless something still needs it: the pointer, focus inside the row
-   * (`focus` is where focus is going or now sits), or its overflow menu, which lives in an
-   * overlay outside the row and would close under the user. `revealed()` keeps it mounted
+   * Unmount the toolbar unless something still needs it: the pointer, keyboard focus inside
+   * the row (`focus` is where focus is going or now sits), or its overflow menu, which lives in
+   * an overlay outside the row and would close under the user. `revealed()` keeps it mounted
    * through the template on its own.
    */
   private releaseToolbar(focus: EventTarget | null): void {
     if (
       this.pointerInside ||
       this.menuOpen ||
-      (focus instanceof Node && this.host.nativeElement.contains(focus))
+      // Only keyboard focus pins the bar: a click also focuses the row, and that must not
+      // keep it there while the pointer is over another row (#986 K6).
+      (focus instanceof Element &&
+        this.host.nativeElement.contains(focus) &&
+        focus.matches(':focus-visible'))
     ) {
       return;
     }
@@ -702,6 +732,10 @@ export class MessageRowComponent {
    * jump-to-quoted-message. The host pairs it with `row` to run the effect.
    */
   readonly action = output<MessageRowAction>();
+  /** Whether this system-run row is expanded (owned by the list). */
+  readonly runExpanded = input(false);
+  /** Ask the list to expand or collapse this system-run row. */
+  readonly toggleRun = output<void>();
 
   /**
    * A long press on a phone or tablet — the host offers this row's actions as a sheet.

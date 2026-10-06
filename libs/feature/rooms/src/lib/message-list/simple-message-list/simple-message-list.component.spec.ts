@@ -128,6 +128,28 @@ describe('SimpleMessageListComponent', () => {
     expect(container.textContent).toContain('body $2');
   });
 
+  it('jumping to a system event hidden in a run expands the run and targets its row', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const { fixture, container } = await render(SimpleMessageListComponent, {
+      inputs: {
+        messages: [
+          msg('$m1', '@a:hs', 'Alice', 1000),
+          eventRow('$e1', 'Alice joined', 2000),
+          eventRow('$e2', 'Alice set a name', 3000),
+          eventRow('$e3', 'Alice left', 4000),
+          msg('$m2', '@b:hs', 'Bob', 5000),
+        ],
+      },
+    });
+    const list = fixture.componentInstance;
+
+    list.jumpTo('$e2');
+    fixture.detectChanges();
+
+    expect(list.expandedRuns().has('group:$e3')).toBe(true);
+    expect(container.querySelector('[data-mid="group:$e3"]')).not.toBeNull();
+  });
+
   it('renders state events as system lines that break sender grouping', async () => {
     const { container } = await render(SimpleMessageListComponent, {
       inputs: {
@@ -167,6 +189,17 @@ describe('SimpleMessageListComponent', () => {
     // A moderator (canRedactOthers) can.
     fixture.componentRef.setInput('canRedactOthers', true);
     expect(cmp.rowCaps(row).deletable).toBe(true);
+  });
+
+  it('renders no composer while the Room is not held by the client', async () => {
+    const { fixture } = await render(SimpleMessageListComponent, {
+      providers: [MockProvider(TrnAlertService)],
+      inputs: { composerEnabled: false },
+    });
+
+    expect(
+      fixture.debugElement.query(By.directive(MessageComposerComponent)),
+    ).toBeNull();
   });
 
   it('offers quoting for text but not for media, and re-issues caps when it changes', async () => {
@@ -413,6 +446,190 @@ describe('SimpleMessageListComponent', () => {
     expect((jumped as unknown as Element).getAttribute('data-mid')).toBe('$2');
   });
 
+  it('jumps to a requested row that only loads after the request', async () => {
+    const scrolled: (string | null)[] = [];
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      scrolled.push(this.getAttribute('data-mid'));
+    });
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [], jumpToId: '$2', jumpToNonce: 1 },
+    });
+    expect(scrolled).toEqual([]);
+
+    fixture.componentRef.setInput('messages', [
+      msg('$1', '@a:hs', 'Alice', 1000),
+      msg('$2', '@b:hs', 'Bob', 2000),
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(scrolled).toEqual(['$2']);
+  });
+
+  it('drops a queued jump whose row only loads after the limit', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const now = vi.spyOn(Date, 'now');
+    now.mockReturnValue(1_000_000);
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [], jumpToId: '$2', jumpToNonce: 1 },
+    });
+
+    now.mockReturnValue(1_000_000 + 60_000); // the reader has long since moved on
+    fixture.componentRef.setInput('messages', [
+      msg('$2', '@b:hs', 'Bob', 2000),
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    now.mockRestore();
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('applies only the newest of two queued jumps', async () => {
+    const scrolled: (string | null)[] = [];
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+      scrolled.push(this.getAttribute('data-mid'));
+    });
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [], jumpToId: '$1', jumpToNonce: 1 },
+    });
+
+    fixture.componentRef.setInput('jumpToId', '$2');
+    fixture.componentRef.setInput('jumpToNonce', 2);
+    fixture.detectChanges();
+    fixture.componentRef.setInput('messages', [
+      msg('$1', '@a:hs', 'Alice', 1000),
+      msg('$2', '@b:hs', 'Bob', 2000),
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(scrolled).toEqual(['$2']);
+  });
+
+  describe('re-aiming a recent jump', () => {
+    type Reapply = { reapplyRecentJump(): void };
+    const scroller = (fixture: {
+      componentInstance: SimpleMessageListComponent;
+    }): HTMLElement =>
+      (
+        fixture.componentInstance as unknown as {
+          scrollEl(): { nativeElement: HTMLElement };
+        }
+      ).scrollEl().nativeElement;
+    async function jumped() {
+      const scrollIntoView = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+      const { fixture } = await render(SimpleMessageListComponent, {
+        inputs: {
+          messages: [
+            msg('$1', '@a:hs', 'Alice', 1000),
+            msg('$2', '@b:hs', 'Bob', 2000),
+          ],
+        },
+      });
+      fixture.componentRef.setInput('jumpToId', '$2');
+      fixture.componentRef.setInput('jumpToNonce', 1);
+      fixture.detectChanges();
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      const reapply = () =>
+        (fixture.componentInstance as unknown as Reapply).reapplyRecentJump();
+      return { fixture, scrollIntoView, reapply };
+    }
+
+    it('re-aims within the limit', async () => {
+      const { scrollIntoView, reapply } = await jumped();
+      reapply();
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    });
+
+    it('stops once the reader scrolls', async () => {
+      const { fixture, scrollIntoView, reapply } = await jumped();
+      scroller(fixture).dispatchEvent(new Event('wheel'));
+      reapply();
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops once the reader jumps to the latest message', async () => {
+      const { fixture, scrollIntoView, reapply } = await jumped();
+      scroller(fixture).scrollTo = vi.fn();
+      fixture.componentInstance.scrollToLatest();
+      reapply();
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops once the jump request is cleared', async () => {
+      const { fixture, scrollIntoView, reapply } = await jumped();
+      fixture.componentRef.setInput('jumpToId', null);
+      fixture.detectChanges();
+      reapply();
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not flash the row again when re-aiming', async () => {
+      const { fixture, scrollIntoView, reapply } = await jumped();
+      const row = scroller(fixture).querySelector('[data-mid="$2"]');
+      row?.classList.remove('msg--flash'); // the first flash ran its course
+      reapply();
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+      expect(row?.classList.contains('msg--flash')).toBe(false);
+    });
+
+    it('never extends the window past the limit from the original jump', async () => {
+      const now = vi.spyOn(Date, 'now');
+      now.mockReturnValue(1_000_000);
+      const { scrollIntoView, reapply } = await jumped();
+      now.mockReturnValue(1_002_000);
+      reapply(); // inside the window
+      now.mockReturnValue(1_003_500);
+      reapply(); // 3.5s after the jump: the re-aim at 2s must not have renewed it
+      now.mockRestore();
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('drops a not-yet-loaded jump once the reader scrolls', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [], jumpToId: '$2', jumpToNonce: 1 },
+    });
+
+    (
+      fixture.componentInstance as unknown as {
+        scrollEl(): { nativeElement: HTMLElement };
+      }
+    )
+      .scrollEl()
+      .nativeElement.dispatchEvent(new Event('wheel'));
+    fixture.componentRef.setInput('messages', [
+      msg('$2', '@b:hs', 'Bob', 2000),
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('drops a not-yet-loaded jump once the request is withdrawn', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [], jumpToId: '$2', jumpToNonce: 1 },
+    });
+
+    fixture.componentRef.setInput('jumpToId', null);
+    fixture.componentRef.setInput('jumpToNonce', 0);
+    fixture.componentRef.setInput('messages', [
+      msg('$2', '@b:hs', 'Bob', 2000),
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
   it('re-jumps to the same id when jumpToNonce is bumped', async () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
@@ -437,6 +654,40 @@ describe('SimpleMessageListComponent', () => {
     fixture.componentRef.setInput('jumpToNonce', 2);
     fixture.detectChanges();
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not re-run a past jump when the timeline changes or its group is collapsed', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const messages = [
+      msg('$m1', '@a:hs', 'Alice', 1000),
+      eventRow('$e1', 'Alice joined', 2000),
+      eventRow('$e2', 'Alice set a name', 3000),
+      eventRow('$e3', 'Alice left', 4000),
+      msg('$m2', '@b:hs', 'Bob', 5000),
+    ];
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages },
+    });
+    const list = fixture.componentInstance;
+
+    fixture.componentRef.setInput('jumpToId', '$e2');
+    fixture.componentRef.setInput('jumpToNonce', 1);
+    fixture.detectChanges();
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(list.expandedRuns().has('group:$e3')).toBe(true);
+
+    fixture.componentRef.setInput('messages', [
+      ...messages,
+      msg('$m3', '@a:hs', 'Alice', 6000),
+    ]);
+    fixture.detectChanges();
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+    list.toggleRun('group:$e3');
+    fixture.detectChanges();
+    expect(list.expandedRuns().has('group:$e3')).toBe(false);
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
 
   it('flashes the jumped-to row', async () => {
@@ -950,6 +1201,26 @@ describe('SimpleMessageListComponent', () => {
       cmp.jumpToUnread();
 
       expect(jumpTo).toHaveBeenCalledWith('$2');
+    });
+
+    it('jumpToUnread does not expand the run whose first member is the first unread', async () => {
+      const { fixture } = await render(SimpleMessageListComponent, {
+        inputs: {
+          messages: [
+            msg('$m1', '@a:hs', 'Alice', 1000),
+            eventRow('$e1', 'Alice joined', 2000),
+            eventRow('$e2', 'Alice set a name', 3000),
+            eventRow('$e3', 'Alice left', 4000),
+            msg('$m2', '@b:hs', 'Bob', 5000),
+          ],
+          firstUnreadId: '$e1',
+        },
+      });
+      const cmp = fixture.componentInstance;
+
+      cmp.jumpToUnread();
+
+      expect(cmp.expandedRuns().size).toBe(0);
     });
   });
 

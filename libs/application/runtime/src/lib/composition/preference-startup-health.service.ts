@@ -35,6 +35,7 @@ export class PreferenceStartupHealthService {
     PreferenceStartupProducer,
     RetainedFirstResult<PreferenceAttemptKey, PreferencePreparationEvidence>
   >();
+  // Version stamped into CapabilityHealthFact.generation and compared by recover(); not a latest-wins guard (#927).
   private readonly generations = new Map<PreferenceStartupProducer, number>();
 
   hydrate(

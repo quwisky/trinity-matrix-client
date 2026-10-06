@@ -63,6 +63,11 @@ export class PinnedMessagesPanelComponent {
   /** The user closed the panel without picking a pinned message. */
   readonly dismissed = output<void>();
 
+  constructor() {
+    // Reopening the panel retries pins whose fetch failed.
+    this.pins.retryFailed();
+  }
+
   /** Row tap: announce the chosen event id for a timeline jump. */
   jumpTo(eventId: string): void {
     this.selected.emit(eventId);

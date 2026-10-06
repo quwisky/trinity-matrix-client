@@ -254,6 +254,7 @@ export const SHARED_MOCKS: Provider[] = [
         eventIds: pinnedEventIds.asReadonly(),
         messages: pinnedMessages.asReadonly(),
         canMutate: canMutatePins.asReadonly(),
+        retryFailed: vi.fn(),
         isPinned: vi.fn((eventId: string) =>
           pinnedEventIds().includes(eventId),
         ),

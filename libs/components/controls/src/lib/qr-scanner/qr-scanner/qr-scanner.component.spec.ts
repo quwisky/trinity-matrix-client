@@ -96,4 +96,31 @@ describe('QrScannerComponent', () => {
     expect(cancelled).toHaveBeenCalledOnce();
     expect(TestBed.inject(QrCodeService).openCamera).toHaveBeenCalledOnce();
   });
+
+  it('closes a camera that opens after the scan was cancelled and never attaches it', async () => {
+    const stream = { getTracks: () => [] } as unknown as MediaStream;
+    let resolve!: (stream: MediaStream) => void;
+    const opening = new Promise<MediaStream>((r) => (resolve = r));
+    const closeCamera = vi.fn();
+    const { container, fixture } = await render(QrScannerComponent, {
+      providers: [
+        MockProvider(QrCodeService, {
+          openCamera: vi.fn().mockReturnValue(opening),
+          closeCamera,
+        }),
+      ],
+    });
+    const cancelled = vi.fn();
+    fixture.componentInstance.cancelled.subscribe(cancelled);
+
+    window.dispatchEvent(new Event('pagehide'));
+    closeCamera.mockClear();
+    resolve(stream);
+    await fixture.whenStable();
+
+    expect(cancelled).toHaveBeenCalledOnce();
+    expect(closeCamera).toHaveBeenCalledExactlyOnceWith(stream);
+    expect(container.querySelector('video')!.srcObject).toBeNull();
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+  });
 });

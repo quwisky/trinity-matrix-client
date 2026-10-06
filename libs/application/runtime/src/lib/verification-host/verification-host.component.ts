@@ -34,13 +34,9 @@ export class VerificationHostComponent {
   });
   private ref: TrnDialogRef<void> | null = null;
   private presenting = false;
-  private presentationGeneration = 0;
 
   constructor() {
-    this.destroyRef.onDestroy(() => {
-      this.presentationGeneration++;
-      this.dismissModal();
-    });
+    this.destroyRef.onDestroy(() => this.dismissModal());
     effect(() => {
       const shouldShow = this.shouldPresent(this.verification.active());
       if (shouldShow && !this.ref) {
@@ -60,25 +56,15 @@ export class VerificationHostComponent {
     const loadPage = this.dialogComponents?.verify;
     if (!loadPage) return;
     this.presenting = true;
-    const generation = ++this.presentationGeneration;
     defer(loadPage)
       .pipe(
         take(1),
         takeUntilDestroyed(this.destroyRef),
-        finalize(() => {
-          if (generation === this.presentationGeneration) {
-            this.presenting = false;
-          }
-        }),
+        finalize(() => (this.presenting = false)),
       )
       .subscribe({
         next: (DeviceVerificationPage) => {
-          if (
-            generation !== this.presentationGeneration ||
-            !this.shouldPresent(this.verification.active())
-          ) {
-            return;
-          }
+          if (!this.shouldPresent(this.verification.active())) return;
           const ref = this.dialog.open<void, unknown>(DeviceVerificationPage, {
             inputs: { asModal: true },
             disableClose: true,

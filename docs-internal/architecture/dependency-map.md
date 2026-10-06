@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **67 Nx projects** and **258 dependencies**. No project cycles detected.
+This snapshot contains **67 Nx projects** and **262 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -125,14 +125,14 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `avatar`                          | `libs/spartan/avatar`                  | role:design-system; capability:design-system    |                   1 |
 | `button`                          | `libs/spartan/button`                  | role:design-system; capability:design-system    |                   1 |
 | `card`                            | `libs/spartan/card`                    | role:design-system; capability:design-system    |                   1 |
-| `components-controls`             | `libs/components/controls`             | role:design-system; capability:design-system    |                   7 |
+| `components-controls`             | `libs/components/controls`             | role:design-system; capability:design-system    |                   8 |
 | `components-foundations`          | `libs/components/foundations`          | role:design-system; capability:design-system    |                   1 |
 | `components-generic-content`      | `libs/components/generic-content`      | role:design-system; capability:design-system    |                   9 |
 | `components-navigation-layout`    | `libs/components/navigation-layout`    | role:design-system; capability:design-system    |                   4 |
 | `components-overlay`              | `libs/components/overlay`              | role:design-system; capability:design-system    |                   7 |
 | `components-storybook-host`       | `libs/components/storybook-host`       | role:design-system; capability:design-system    |                   1 |
 | `data-access-accounts`            | `libs/data-access/accounts`            | role:capability; capability:accounts            |                   4 |
-| `data-access-auth`                | `libs/data-access/auth`                | role:capability; capability:accounts            |                   4 |
+| `data-access-auth`                | `libs/data-access/auth`                | role:capability; capability:accounts            |                   5 |
 | `data-access-discovery`           | `libs/data-access/discovery`           | role:capability; capability:discovery           |                   3 |
 | `data-access-gif`                 | `libs/data-access/gif`                 | role:capability; capability:conversations       |                   1 |
 | `data-access-homeserver`          | `libs/data-access/homeserver`          | role:capability; capability:discovery           |                   1 |
@@ -141,8 +141,8 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `data-access-media`               | `libs/data-access/media`               | role:adapter; capability:media                  |                   2 |
 | `data-access-notifications`       | `libs/data-access/notifications`       | role:capability; capability:notifications       |                   5 |
 | `data-access-room-administration` | `libs/data-access/room-administration` | role:capability; capability:room-administration |                   3 |
-| `data-access-room-library`        | `libs/data-access/room-library`        | role:capability; capability:room-library        |                   5 |
-| `data-access-timeline`            | `libs/data-access/timeline`            | role:capability; capability:conversations       |                   5 |
+| `data-access-room-library`        | `libs/data-access/room-library`        | role:capability; capability:room-library        |                   6 |
+| `data-access-timeline`            | `libs/data-access/timeline`            | role:capability; capability:conversations       |                   6 |
 | `data-access-trust`               | `libs/data-access/trust`               | role:capability; capability:trust               |                   3 |
 | `data-access-widgets`             | `libs/data-access/widgets`             | role:capability; capability:conversations       |                   3 |
 | `docs-developers`                 | `apps/docs-developers`                 | unmanaged tooling/test                          |                   1 |

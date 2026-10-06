@@ -45,7 +45,7 @@
       @if (row.daySeparator; as day) {
         <trn-timeline-divider kind="day" [label]="day" />
       }
-      @if (row.id === firstUnreadId()) {
+      @if (row.id === unreadRowId()) {
         <trn-timeline-divider
           kind="unread"
           [threadConnected]="
@@ -59,6 +59,8 @@
         [threadSummary]="threadSummaries()[row.id] ?? null"
         [threadContinues]="threadContinuationIds().has(row.id)"
         [caps]="rowCaps(row)"
+        [runExpanded]="expandedRuns().has(row.id)"
+        (toggleRun)="toggleRun(row.id)"
         (action)="onRowAction(row, $event)"
         (longPress)="onRowLongPress(row, $event)"
         [swipeDirection]="swipeDirection()"
@@ -89,27 +91,29 @@
 
 <trn-typing-indicator [names]="typingNames()" />
 
-<trn-message-composer
-  [accountId]="accountId()"
-  [roomId]="roomId()"
-  [roomName]="roomName()"
-  [members]="members()"
-  [editing]="editingId() !== null"
-  [editTargetId]="editingId()"
-  [draft]="editingDraft()"
-  [composeDraft]="compose.draft()"
-  [textSending]="compose.sending()"
-  [replyingTo]="replyingToName()"
-  [uploadProgress]="uploadProgress()"
-  [stickerPacks]="stickerPacks()"
-  [sendBlocked]="sendBlocked()"
-  (submitText)="onSubmit($event)"
-  (submitBatchCaption)="onBatchCaption($event)"
-  (submitMedia)="sendMedia.emit($event)"
-  (stickerSelect)="sendSticker.emit($event)"
-  (composeDraftChange)="compose.setDraft($event)"
-  (cancelEdit)="cancelEdit()"
-  (cancelReply)="cancelReply()"
-  (editLast)="editLastOwn()"
-  (typing)="compose.setTyping($event)"
-/>
+@if (composerEnabled()) {
+  <trn-message-composer
+    [accountId]="accountId()"
+    [roomId]="roomId()"
+    [roomName]="roomName()"
+    [members]="members()"
+    [editing]="editingId() !== null"
+    [editTargetId]="editingId()"
+    [draft]="editingDraft()"
+    [composeDraft]="compose.draft()"
+    [textSending]="compose.sending()"
+    [replyingTo]="replyingToName()"
+    [uploadProgress]="uploadProgress()"
+    [stickerPacks]="stickerPacks()"
+    [sendBlocked]="sendBlocked()"
+    (submitText)="onSubmit($event)"
+    (submitBatchCaption)="onBatchCaption($event)"
+    (submitMedia)="sendMedia.emit($event)"
+    (stickerSelect)="sendSticker.emit($event)"
+    (composeDraftChange)="compose.setDraft($event)"
+    (cancelEdit)="cancelEdit()"
+    (cancelReply)="cancelReply()"
+    (editLast)="editLastOwn()"
+    (typing)="compose.setTyping($event)"
+  />
+}

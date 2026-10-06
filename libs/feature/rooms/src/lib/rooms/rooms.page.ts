@@ -256,6 +256,18 @@ export class RoomsPage {
   private readonly selectedLibrary = inject(SelectedRoomLibraryService);
   private readonly conversations = inject(ConversationRuntime);
   readonly timeline = this.conversations.timeline;
+  /**
+   * A joined room, or a linked room still loading or unavailable (#968). A room the client
+   * holds but the user has not joined (kicked, banned, left, invited) settles ready or
+   * empty and falls back to the "Select a room" hero.
+   */
+  protected readonly showTimeline = computed(() => {
+    if (this.vm.activeRoom()) return true;
+    const kind = this.timeline.loadState().kind;
+    return (
+      !!this.store.activeRoomId() && (kind === 'loading' || kind === 'error')
+    );
+  });
   readonly threads = this.conversations.threads;
   readonly pinned = this.conversations.pins;
   /** Doubles as tooltip, accessible name and phone menu label, so the count has no badge. */
