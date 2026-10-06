@@ -233,9 +233,11 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
     return result;
   });
 
-  // Dock clearance follows the density's shell gap.
+  // Dock clearance is the 60px --trinity-navigation-dock-height plus the density's
+  // --trinity-space-5 gap (cosy 16, compact 12, spacious 20).
   const dockClearance =
-    { cosy: 68, compact: 64, spacious: 72 }[geometry.density] ?? Number.NaN;
+    { cosy: 60 + 16, compact: 60 + 12, spacious: 60 + 20 }[geometry.density] ??
+    Number.NaN;
   expect(geometry.railScrollPaddingEnd).toBe(dockClearance);
   expect(geometry.roomScrollPaddingEnd).toBe(dockClearance);
   expect(geometry.settingsIconOffsetX).toBeLessThanOrEqual(1);
@@ -333,16 +335,17 @@ async function expectAccountMenuAboveDock(page: Page): Promise<void> {
     await expectInside(unreadBadge, accountRow);
   }
 
-  // The anchored overlay may meet the dock inside the 4px spacing token (including its
-  // shadow), but it must remain above the dock controls after its entrance motion settles.
+  // The floating panel is a padded surface around its controls, so the anchored overlay may
+  // sit over that padding and shadow. It must stay above the controls themselves (the
+  // identity trigger, and the "+N" chip when present) after its entrance motion settles.
   await expect
     .poll(async () => {
-      const [menuBox, dockBox] = await Promise.all([
+      const [menuBox, triggerBox] = await Promise.all([
         menu.boundingBox(),
-        page.locator('.userbar').boundingBox(),
+        trigger.boundingBox(),
       ]);
       return Boolean(
-        menuBox && dockBox && menuBox.y + menuBox.height <= dockBox.y + 4,
+        menuBox && triggerBox && menuBox.y + menuBox.height <= triggerBox.y,
       );
     })
     .toBe(true);

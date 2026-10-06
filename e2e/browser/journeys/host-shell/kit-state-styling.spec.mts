@@ -107,10 +107,11 @@ test.describe('Kit state styling', () => {
     await expect(inactive).toBeVisible();
 
     // The current settings directory exposes the active page semantically and uses the
-    // button's solid/ghost presentation to distinguish it visually.
+    // button's solid/ghost presentation to distinguish it visually. That presentation is a
+    // fill, so compare the fill: a Theme may give both tabs the same text colour.
     await expect(active).toHaveAttribute('aria-current', 'page');
-    expect(await styleOf(active, 'color')).not.toBe(
-      await styleOf(inactive, 'color'),
+    expect(await styleOf(active, 'background-color')).not.toBe(
+      await styleOf(inactive, 'background-color'),
     );
   });
 });
