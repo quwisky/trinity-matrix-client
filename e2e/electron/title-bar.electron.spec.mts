@@ -76,7 +76,7 @@ test.describe('frameless title row', () => {
       const calls: unknown[] = [];
       (globalThis as Record<string, unknown>)['__overlays'] = calls;
       const original = win.setTitleBarOverlay.bind(win);
-      win.setTitleBarOverlay = (options) => {
+      win.setTitleBarOverlay = (options: unknown) => {
         calls.push(options);
         original(options);
       };
