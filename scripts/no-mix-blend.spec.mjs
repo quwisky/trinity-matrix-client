@@ -12,11 +12,17 @@ import { describe, expect, it } from 'vitest';
 const workspaceRoot = join(import.meta.dirname, '..');
 
 describe('no mix-blend-mode in app source', () => {
-  it('keeps blend modes out of libs, apps and electron', () => {
-    const files = globSync(['{libs,apps,electron}/**/*.{ts,html,scss,css}'], {
-      cwd: workspaceRoot,
-      exclude: (f) => f.includes('node_modules'),
-    }).filter((file) => !file.endsWith('.spec.ts'));
+  it('keeps blend modes out of libs, apps and electron sources', () => {
+    const files = globSync(
+      [
+        '{libs,apps}/**/*.{ts,html,scss,css}',
+        'electron/src/**/*.{ts,html,scss,css}',
+      ],
+      {
+        cwd: workspaceRoot,
+        exclude: (f) => f.includes('node_modules'),
+      },
+    ).filter((file) => !file.endsWith('.spec.ts'));
     expect(files.length).toBeGreaterThan(100);
 
     const offenders = files.filter((file) =>
