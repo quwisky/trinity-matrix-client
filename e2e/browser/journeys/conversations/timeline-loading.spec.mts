@@ -76,25 +76,39 @@ async function routeMessages(
   });
 }
 
-/** Flags any rendered message text containing one of `bodies` (a leak from another Room). */
+/**
+ * Flags a message body rendered while another Room is open (a leak from that Room).
+ * `owners` maps each body to its Room id. A body seen in its own Room is fine: under CPU
+ * load a click can take longer than the Room's delayed /messages, so A's content legitimately
+ * renders while A is still open.
+ */
 async function watchLeaks(
   page: Page,
-  bodies: readonly string[],
+  owners: Readonly<Record<string, string>>,
 ): Promise<void> {
+  const segments = Object.fromEntries(
+    Object.entries(owners).map(([body, roomId]) => [
+      body,
+      Buffer.from(roomId).toString('base64url'),
+    ]),
+  );
   await page.addInitScript((forbidden) => {
     const w = window as unknown as { __leaked: boolean };
     w.__leaked = false;
     new MutationObserver(() => {
+      const open = location.pathname.split('/')[2] ?? '';
       for (const el of document.querySelectorAll('.msg__text')) {
-        if (forbidden.some((b) => el.textContent?.includes(b)))
-          w.__leaked = true;
+        for (const [body, segment] of Object.entries(forbidden)) {
+          if (el.textContent?.includes(body) && open !== segment)
+            w.__leaked = true;
+        }
       }
     }).observe(document, {
       childList: true,
       subtree: true,
       characterData: true,
     });
-  }, bodies);
+  }, segments);
 }
 
 /** Records whether the "isn't available" error was EVER shown. */
@@ -444,7 +458,7 @@ test.describe('Timeline loading states', () => {
       [ids[1]]: { delayMs: 800 },
       [ids[2]]: { delayMs: 2500 },
     });
-    await watchLeaks(page, [bodies[0], bodies[1]]);
+    await watchLeaks(page, { [bodies[0]]: ids[0], [bodies[1]]: ids[1] });
     await login(page, f.me);
     await page.getByTestId('rail-rooms').click();
     for (const n of names) {
@@ -459,7 +473,7 @@ test.describe('Timeline loading states', () => {
     await expect(
       page.locator('.msg__text', { hasText: bodies[2] }),
     ).toBeVisible({ timeout: 30_000 });
-    // A's and B's responses (800 ms) landed while C (2500 ms) was focused; none may render.
+    // A's and B's responses (800 ms) land while C (2500 ms) is focused; neither may render in C.
     await page.waitForTimeout(1500);
     expect(
       await page.evaluate(
