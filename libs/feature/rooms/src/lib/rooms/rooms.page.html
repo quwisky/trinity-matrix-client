@@ -44,6 +44,7 @@
       />
       <trn-channel-sidebar
         class="shell-side__rooms"
+        [showSwitcher]="!titleBar.active()"
         [spaceName]="vm.sidebarTitle()"
         [spaceActive]="
           !store.recentView() &&
@@ -516,7 +517,7 @@
                marks the rest of the page inert, and claiming modality a screen reader then
                cannot rely on is worse than not claiming it. -->
               <div
-                class="fixed inset-0 z-[var(--trinity-z-scrim)] hidden bg-overlay-scrim max-members:block"
+                class="fixed inset-0 top-[var(--trinity-title-row-inset,0px)] z-[var(--trinity-z-scrim)] hidden bg-overlay-scrim max-members:block"
                 (click)="clearRightPanel()"
                 aria-hidden="true"
                 data-testid="members-backdrop"

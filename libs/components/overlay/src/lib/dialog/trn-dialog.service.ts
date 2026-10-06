@@ -75,6 +75,10 @@ export interface DialogOptions<C = object> {
  * `TrnAnchoredOverlayDirective` uses) because that one is built for a menu hugging a
  * button edge-to-edge, and a card wants the 8px of daylight below.
  */
+/** The viewport height left below the desktop title row (the full viewport elsewhere). */
+const VIEWPORT_BELOW_TITLE_ROW =
+  'calc(100dvh - var(--trinity-title-row-inset, 0px))';
+
 const POPOVER_POSITIONS: ConnectedPosition[] = [
   {
     originX: 'start',
@@ -183,12 +187,12 @@ export class TrnDialogService {
         : bottomSheet
           ? 'min(100vw, 36rem)'
           : undefined,
-      height: fullScreen ? '100dvh' : undefined,
+      height: fullScreen ? VIEWPORT_BELOW_TITLE_ROW : undefined,
       maxWidth: fullScreen || bottomSheet ? '100vw' : undefined,
       maxHeight: fullScreen
-        ? '100dvh'
+        ? VIEWPORT_BELOW_TITLE_ROW
         : bottomSheet
-          ? 'calc(100dvh - 12px)'
+          ? 'calc(100dvh - var(--trinity-title-row-inset, 0px) - 12px)'
           : undefined,
       // Default (undefined) lets CDK center the card; `'inline-end'` pins it to
       // the logical end edge (currently right in Trinity's supported direction).

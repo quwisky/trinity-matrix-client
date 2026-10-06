@@ -125,6 +125,10 @@
     --trinity-space-6: 24px;
     --trinity-space-7: 32px;
 
+    // The desktop title row's height, and the room macOS needs for the traffic lights.
+    --trinity-title-bar-height: 32px;
+    --trinity-title-bar-traffic-light-inset: 76px;
+
     // Every visible overflow surface shares the former room-container scrollbar
     // treatment. The thumb follows the active rail surface; `.no-scrollbar` remains
     // the deliberate exception for compact navigation and select panels.

@@ -1,4 +1,5 @@
 import { Component, signal } from '@angular/core';
+import { WORKSPACE_SYSTEM_STATUS } from '@trinity/application/workspace';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import { provideRouter, Router, type Routes } from '@angular/router';
 import {
@@ -48,6 +49,14 @@ describe('ApplicationRootComponent', () => {
       providers: [
         provideRouter(routes),
         provideTrnIcons(),
+        {
+          provide: WORKSPACE_SYSTEM_STATUS,
+          useValue: {
+            hasProblems: signal(false),
+            bannerSlot: signal(null),
+            show: vi.fn(),
+          },
+        },
         { provide: ApplicationRuntimeService, useValue: { state, recover } },
         {
           provide: BUILD_INFO,

@@ -62,6 +62,30 @@ export interface TrinityDesktopBridge {
       /** Resolve an opt-in, city-level IP estimate or `null` when unavailable. */
       approximate: () => Promise<{ lat: number; lng: number } | null>;
     };
+    /** Trinity's own title row: overlay colours, the app menu and the system-bar opt-out. */
+    titleBar: {
+      /**
+       * The mode this window was launched with, readable at first render without
+       * negotiation: `'row'` means Trinity draws its title row. `null` (or anything
+       * unexpected from an older shell) means it must not, so the row never covers an OS bar.
+       */
+      readonly mode: 'row' | 'system' | null;
+      /** `#rrggbb` colours for the Windows/Linux window-controls overlay. */
+      setOverlayColors: (colors: {
+        color: string;
+        symbolColor: string;
+      }) => void;
+      /** Pop the application menu up at integer window coordinates (0–10000). */
+      popupMenu: (at: { x: number; y: number }) => void;
+      /**
+       * `saved` is the stored preference (applies after `relaunch()`); `active` is
+       * whether this session's window uses the OS title bar. Rendering reads `mode`.
+       */
+      getSystemTitleBar: () => Promise<{ saved: boolean; active: boolean }>;
+      /** Store the preference; it applies after `relaunch()`. */
+      setSystemTitleBar: (value: boolean) => Promise<HostOperationOutcome>;
+      relaunch: () => void;
+    };
   };
 }
 
@@ -120,7 +144,13 @@ export function getTrinityDesktopBridge(): TrinityDesktopBridge | undefined {
     typeof capabilities.networkCors.setAllowedOrigins === 'function' &&
     typeof capabilities.networkCors.allowOrigin === 'function' &&
     !!capabilities.location &&
-    typeof capabilities.location.approximate === 'function'
+    typeof capabilities.location.approximate === 'function' &&
+    !!capabilities.titleBar &&
+    typeof capabilities.titleBar.setOverlayColors === 'function' &&
+    typeof capabilities.titleBar.popupMenu === 'function' &&
+    typeof capabilities.titleBar.getSystemTitleBar === 'function' &&
+    typeof capabilities.titleBar.setSystemTitleBar === 'function' &&
+    typeof capabilities.titleBar.relaunch === 'function'
     ? (bridge as TrinityDesktopBridge)
     : undefined;
 }

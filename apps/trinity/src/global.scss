@@ -176,6 +176,21 @@
     display: flex;
     flex-direction: column;
   }
+
+  /*
+ * Desktop title row. While it shows, TitleBarComponent sets `.trn-title-row` on <body>,
+ * and every viewport-fixed layer starts below the row: in Electron the row's drag region
+ * and the native window buttons (macOS traffic lights included) keep receiving clicks in
+ * that band even when something is painted over it. The row follows the native strip's
+ * zoomed height, so the inset does too. Viewport-sized panes subtract the same inset.
+ * CDK overlays are moved in the `overrides` layer below.
+ */
+  .trn-title-row {
+    --trinity-title-row-inset: env(
+      titlebar-area-height,
+      var(--trinity-title-bar-height)
+    );
+  }
 }
 
 @layer utilities {
@@ -238,6 +253,19 @@
 }
 
 @layer overrides {
+  /* Global CDK overlays (dialogs, the lightbox, the widget frame) start below the desktop
+   * title row, so their top controls are not under its drag region or the native window
+   * buttons. Only the global wrapper and the backdrop move: the container stays at the
+   * viewport origin, because CDK positions anchored menus and tooltips in viewport
+   * coordinates inside it and corrects only a negative container offset.
+   * `!important` is deliberate: when the first overlay opens, CDK injects its own unlayered
+   * `top: 0; height: 100%`, and unlayered rules beat every layer unless a layered
+   * declaration is important. Scoped to `.trn-title-row`, so web and mobile are untouched. */
+  .trn-title-row :is(.cdk-global-overlay-wrapper, .cdk-overlay-backdrop) {
+    inset-block: var(--trinity-title-row-inset) 0 !important;
+    height: auto !important;
+  }
+
   @media (forced-colors: active) {
     :focus-visible {
       outline: var(--trinity-focus-ring-width) solid Highlight;

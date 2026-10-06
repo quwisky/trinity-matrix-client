@@ -25,6 +25,8 @@ import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 
+import { TitleBarState } from '@trinity/application/workspace';
+import { Title } from '@angular/platform-browser';
 import { describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
@@ -131,6 +133,58 @@ describe('RoomsPage space filtering', () => {
     });
     return shellFrom();
   }
+
+  it('names the title row after the open room', async () => {
+    const shell = build();
+    const titleBar = TestBed.inject(TitleBarState);
+    shell.nav.onSelectRoomInScope(
+      { roomId: '!b:hs', accountId: '@me:hs' },
+      { kind: 'space', spaceId: '!s:hs' },
+    );
+    await vi.waitFor(() => {
+      TestBed.tick();
+      expect(titleBar.title()).toBe('!s:hs · #bravo');
+    });
+    expect(titleBar.quickSwitcher()).toBeTypeOf('function');
+  });
+
+  it('keeps the tab at the app name while no room is open', async () => {
+    build();
+    const titleBar = TestBed.inject(TitleBarState);
+    await settleWorkspace();
+    TestBed.tick();
+
+    expect(TestBed.inject(Title).getTitle()).toBe('Trinity');
+    expect(titleBar.quickSwitcher()).toBeTypeOf('function');
+  });
+
+  it.each([{ kind: 'recent' as const }, { kind: 'rooms' as const }])(
+    'a room opened from the $kind view has no space prefix',
+    async (scope) => {
+      const shell = build();
+      const titleBar = TestBed.inject(TitleBarState);
+      shell.nav.onSelectRoomInScope(
+        { roomId: '!c:hs', accountId: '@me:hs' },
+        scope,
+      );
+      await vi.waitFor(() => {
+        TestBed.tick();
+        expect(titleBar.title()).toBe('#charlie');
+      });
+    },
+  );
+
+  it('shows a direct message by the person name, without a space', async () => {
+    const shell = build();
+    const titleBar = TestBed.inject(TitleBarState);
+    shell.nav.onSelectSpace({ spaceId: null, accountId: '@me:hs' });
+    await settleWorkspace();
+    setRouteRoom('!a:hs');
+    await vi.waitFor(() => {
+      TestBed.tick();
+      expect(titleBar.title()).toBe('alpha');
+    });
+  });
 
   it('Recent activity (the default) shows every joined room, mixed', () => {
     const shell = build();

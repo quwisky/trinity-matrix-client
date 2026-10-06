@@ -115,6 +115,7 @@ function normalizeElectronManifest(value: unknown): HostCapabilityManifest {
       'secure-store': safeSupport(result.operations['secure-store']),
       lifecycle: safeSupport(result.operations.lifecycle),
       updates: safeSupport(result.operations.updates),
+      'title-bar': safeSupport(result.operations['title-bar']),
     },
   };
 }
@@ -195,6 +196,9 @@ function manifest(
         ? { kind: 'supported' }
         : { kind: 'unavailable', reason: unavailableReason },
       updates: supports.has('updates')
+        ? { kind: 'supported' }
+        : { kind: 'unavailable', reason: unavailableReason },
+      'title-bar': supports.has('title-bar')
         ? { kind: 'supported' }
         : { kind: 'unavailable', reason: unavailableReason },
     },

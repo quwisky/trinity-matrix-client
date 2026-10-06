@@ -31,6 +31,7 @@ import {
 } from './appearance-preference-field/appearance-preference-field.component';
 import { AppearanceSettingsController } from './appearance-settings.controller';
 import { MessageGesturesBlockComponent } from './message-gestures-block.component';
+import { SystemTitleBarBlockComponent } from './system-title-bar-block.component';
 import { AppearancePreviewComponent } from './appearance-preview.component';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.directive';
@@ -58,6 +59,7 @@ import { SettingsGroupComponent } from '../shared/settings-group/settings-group.
     CodeAppearanceBlockComponent,
     AppearancePreferenceFieldComponent,
     MessageGesturesBlockComponent,
+    SystemTitleBarBlockComponent,
     AppearancePreviewComponent,
     SettingsSectionHeadingComponent,
     SettingsToggleRowDirective,

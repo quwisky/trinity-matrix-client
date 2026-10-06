@@ -12,7 +12,7 @@ Trinity models platform behavior as narrow host operations. Application and feat
 
 ## Negotiate once, consume explicit support {#capability-manifest}
 
-The protocol-versioned host manifest covers authentication handoff, deep links, Back, file export, notification presentation, location, badges, secure storage, lifecycle, and update checks. Every operation reports `supported` or a stable unavailable reason such as `not-supported` or `protocol-mismatch`.
+The protocol-versioned host manifest covers authentication handoff, deep links, Back, file export, notification presentation, location, badges, secure storage, lifecycle, update checks, and the desktop title bar (overlay colours, the application menu, the system-title-bar preference and relaunch). Every operation reports `supported` or a stable unavailable reason such as `not-supported` or `protocol-mismatch`.
 
 Unsupported and disabled behavior is an expected state. Do not infer support from the user agent, a global object, screen size, or the presence of one unrelated plugin.
 

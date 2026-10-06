@@ -3,6 +3,7 @@
     position: fixed;
     z-index: var(--trinity-z-panel);
     inset: 0;
+    inset-block-start: var(--trinity-title-row-inset, 0);
     display: grid;
     place-items: center;
     padding: var(--trinity-space-4);

@@ -12,6 +12,7 @@ export const HOST_OPERATIONS = [
   'secure-store',
   'lifecycle',
   'updates',
+  'title-bar',
 ] as const;
 
 export type HostOperation = (typeof HOST_OPERATIONS)[number];
@@ -131,6 +132,7 @@ export function unavailableHostManifest(
       'secure-store': support,
       lifecycle: support,
       updates: support,
+      'title-bar': support,
     },
   };
 }

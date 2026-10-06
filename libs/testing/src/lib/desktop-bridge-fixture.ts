@@ -59,6 +59,31 @@ export interface DesktopBridgeFixture {
         lng: number;
       } | null>;
     };
+    readonly titleBar: {
+      readonly mode: 'row' | 'system' | null;
+      readonly setOverlayColors: (colors: {
+        color: string;
+        symbolColor: string;
+      }) => void;
+      readonly popupMenu: (at: { x: number; y: number }) => void;
+      readonly getSystemTitleBar: () => Promise<{
+        saved: boolean;
+        active: boolean;
+      }>;
+      readonly setSystemTitleBar: (value: boolean) => Promise<
+        | { readonly kind: 'completed' }
+        | {
+            readonly kind: 'unavailable';
+            readonly reason:
+              | 'not-implemented'
+              | 'not-supported'
+              | 'protocol-mismatch'
+              | 'host-rejected';
+          }
+        | { readonly kind: 'rejected'; readonly diagnostic: { code: string } }
+      >;
+      readonly relaunch: () => void;
+    };
   };
 }
 
@@ -108,6 +133,14 @@ export function desktopBridgeFixture(
         allowOrigin: () => undefined,
       },
       location: { approximate: async () => null },
+      titleBar: {
+        mode: 'row',
+        setOverlayColors: () => undefined,
+        popupMenu: () => undefined,
+        getSystemTitleBar: async () => ({ saved: false, active: false }),
+        setSystemTitleBar: async () => ({ kind: 'completed' }),
+        relaunch: () => undefined,
+      },
     },
   };
   const capabilities = overrides.capabilities;
@@ -135,6 +168,10 @@ export function desktopBridgeFixture(
       location: {
         ...defaults.capabilities.location,
         ...capabilities?.location,
+      },
+      titleBar: {
+        ...defaults.capabilities.titleBar,
+        ...capabilities?.titleBar,
       },
     },
   };

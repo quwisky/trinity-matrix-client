@@ -29,6 +29,7 @@ import { CapabilityStatusService } from '../capability-status.service';
 import { VerificationHostComponent } from '../verification-host/verification-host.component';
 import { ApplicationRecoveryPresenter } from './application-recovery.presenter';
 import { SystemStatusComponent } from './system-status/system-status.component';
+import { TitleBarComponent } from './title-bar/title-bar.component';
 import { TrinityApplicationSessionAdapter } from '../composition/trinity-application-session.adapter';
 
 @Component({
@@ -44,6 +45,7 @@ import { TrinityApplicationSessionAdapter } from '../composition/trinity-applica
     TrnToasterComponent,
     TrnSpinnerComponent,
     SystemStatusComponent,
+    TitleBarComponent,
   ],
 })
 export class ApplicationRootComponent {

@@ -8,7 +8,7 @@ import {
 } from '@trinity/runtime/preferences';
 import { provideConversationPrivacyPreferences } from '@trinity/data-access/timeline';
 import { render } from '@trinity/testing';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PreferenceCatalogSectionComponent } from './preference-catalog-section.component';
 
@@ -109,5 +109,40 @@ describe('PreferenceCatalogSectionComponent', () => {
         '[data-testid=privacy-send-read-receipts-failure]',
       )?.textContent,
     ).toContain('could not be saved');
+  });
+
+  it('shows the new value while the save is pending and keeps it once saved', async () => {
+    const pending = new Subject<PreferenceStorageWriteOutcome>();
+    write.mockImplementationOnce(() => pending);
+    const { fixture } = await renderSection();
+    const control = switchFor(fixture, 'privacy-send-read-receipts')!;
+
+    control.componentInstance.checkedChange.emit(false);
+    fixture.detectChanges();
+    expect(control.componentInstance.checked()).toBe(false);
+
+    pending.next({ kind: 'completed' });
+    pending.complete();
+    fixture.detectChanges();
+    expect(control.componentInstance.checked()).toBe(false);
+  });
+
+  it('reverts a pending value only when its save fails', async () => {
+    const pending = new Subject<PreferenceStorageWriteOutcome>();
+    write.mockImplementationOnce(() => pending);
+    const { fixture } = await renderSection();
+    const control = switchFor(fixture, 'privacy-send-read-receipts')!;
+
+    control.componentInstance.checkedChange.emit(false);
+    fixture.detectChanges();
+    expect(control.componentInstance.checked()).toBe(false);
+
+    pending.next({
+      kind: 'unavailable',
+      diagnostic: { code: 'device-preferences-write-failed' },
+    });
+    pending.complete();
+    fixture.detectChanges();
+    expect(control.componentInstance.checked()).toBe(true);
   });
 });

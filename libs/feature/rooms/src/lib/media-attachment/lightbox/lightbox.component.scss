@@ -3,7 +3,7 @@
     position: relative;
     display: flex;
     width: 100vw;
-    height: 100vh;
+    height: calc(100dvh - var(--trinity-title-row-inset, 0px));
     align-items: center;
     justify-content: center;
     padding: max(var(--trinity-space-6), env(safe-area-inset-top))

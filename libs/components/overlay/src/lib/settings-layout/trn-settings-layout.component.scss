@@ -12,7 +12,7 @@
 
   .settings-layout[data-trn-layout='fullscreen'] {
     min-width: 100vw;
-    min-height: 100dvh;
+    min-height: calc(100dvh - var(--trinity-title-row-inset, 0px));
   }
 
   .settings-layout__header {

@@ -63,6 +63,7 @@ export const TRN_ICON_NAMES = [
   'mail',
   'mail-open',
   'map-pin',
+  'menu',
   'message-square',
   'messages-square',
   'mic',
