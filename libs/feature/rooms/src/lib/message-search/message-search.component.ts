@@ -1,3 +1,4 @@
+import { type Subscription } from 'rxjs';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -100,7 +101,10 @@ export class MessageSearchComponent {
     // fall back to instant local.
     effect(() => {
       this.query();
-      untracked(() => this.resetServer());
+      untracked(() => {
+        this.cancelServer();
+        this.resetServer();
+      });
     });
     afterNextRender(() => {
       // Skip when opened by typing in the header field, so that typing isn't interrupted.
@@ -172,8 +176,9 @@ export class MessageSearchComponent {
     if (!term) {
       return;
     }
+    this.cancelServer();
     this.serverMode.set(true);
-    runWithBusy(this.search.searchServer(term), {
+    this.inFlight = runWithBusy(this.search.searchServer(term), {
       busy: this.searching,
       error: this.error,
       destroyRef: this.destroyRef,
@@ -191,7 +196,8 @@ export class MessageSearchComponent {
     if (!term || !next) {
       return;
     }
-    runWithBusy(this.search.searchServer(term, next), {
+    this.cancelServer();
+    this.inFlight = runWithBusy(this.search.searchServer(term, next), {
       busy: this.searching,
       error: this.error,
       destroyRef: this.destroyRef,
@@ -250,6 +256,14 @@ export class MessageSearchComponent {
   initialOf(name: string): string {
     const stripped = name.replace(/^[#@!]+/, '').trim();
     return (stripped[0] ?? '?').toUpperCase();
+  }
+
+  /** Only the latest server request may write results; `runWithBusy` also bounds it to the component. */
+  private inFlight: Subscription | null = null;
+
+  private cancelServer(): void {
+    this.inFlight?.unsubscribe();
+    this.inFlight = null;
   }
 
   private resetServer(): void {

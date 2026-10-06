@@ -9,7 +9,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { MockComponent, MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MessageSearchComponent } from './message-search.component';
 import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
@@ -305,5 +305,69 @@ describe('MessageSearchComponent', () => {
 
     expect(c.serverMode()).toBe(false);
     expect(c.results().map((h) => h.eventId)).toEqual(['$loaded']);
+  });
+
+  describe('in-flight server searches', () => {
+    const page = (id: string, nextBatch: string | null = null) =>
+      ({
+        hits: [hit({ eventId: id })],
+        count: 1,
+        nextBatch,
+      }) as ServerMessageSearch;
+
+    it('never renders an older term that resolves after a newer search', async () => {
+      const foo = new Subject<ServerMessageSearch>();
+      const foob = new Subject<ServerMessageSearch>();
+      searchServerMessages.mockReturnValueOnce(foo).mockReturnValueOnce(foob);
+      const { fixture, c } = await build(loaded({ encrypted: false }));
+      setQuery('foo', c);
+      fixture.detectChanges();
+      c.searchServer();
+      setQuery('foob', c);
+      fixture.detectChanges();
+      c.searchServer();
+
+      foob.next(page('$foob'));
+      foo.next(page('$foo'));
+
+      expect(c.results().map((h) => h.eventId)).toEqual(['$foob']);
+    });
+
+    it('drops a result that lands after the query reset', async () => {
+      const foo = new Subject<ServerMessageSearch>();
+      searchServerMessages.mockReturnValueOnce(foo);
+      const { fixture, c } = await build(loaded({ encrypted: false }));
+      setQuery('foo', c);
+      fixture.detectChanges();
+      c.searchServer();
+      setQuery('fo', c);
+      fixture.detectChanges();
+
+      foo.next(page('$foo', 'b2'));
+
+      expect(c.serverMode()).toBe(false);
+      expect(c.serverNextBatch()).toBeNull();
+      expect(c.searching()).toBe(false);
+    });
+
+    it('drops a load-more page for a term that has since changed', async () => {
+      searchServerMessages.mockReturnValueOnce(of(page('$s1', 'b2')));
+      const more = new Subject<ServerMessageSearch>();
+      searchServerMessages.mockReturnValueOnce(more);
+      const { fixture, c } = await build(loaded({ encrypted: false }));
+      setQuery('foo', c);
+      fixture.detectChanges();
+      c.searchServer();
+      c.loadMoreServer();
+      setQuery('foob', c);
+      fixture.detectChanges();
+      searchServerMessages.mockReturnValueOnce(of(page('$new', null)));
+      c.searchServer();
+
+      more.next(page('$old-more', 'b9'));
+
+      expect(c.results().map((h) => h.eventId)).toEqual(['$new']);
+      expect(c.serverNextBatch()).toBeNull();
+    });
   });
 });
