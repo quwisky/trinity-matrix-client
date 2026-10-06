@@ -754,4 +754,82 @@ test.describe('Modern room shell layout', () => {
       }
     }
   });
+
+  test('keeps the topic popover closed until asked and marks the pressed header button', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}hp`;
+    const user = `header-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Header popover ${runId}`;
+    const reader = await account(request, hs, user, pass);
+    await createRoom(request, hs, reader, {
+      name: roomName,
+      topic: `Release planning ${runId}`,
+      preset: 'private_chat',
+    });
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await login(page, {
+      available: true,
+      hs,
+      user,
+      pass,
+    } as HomeserverSession);
+    await page.getByTestId('rail-rooms').click();
+    const channel = page.locator('.channel', { hasText: roomName });
+    await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
+    await channel.first().click();
+    await expect(page.getByTestId('composer-input')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Beside static panels the header carries the inline search field, not the icon.
+    await expect(page.getByTestId('header-search')).toBeVisible();
+    await expect(page.getByTestId('search-messages')).toBeHidden();
+
+    // The pressed panel button shows the selected surface and the bright text colour.
+    const pinned = page.getByTestId('open-pinned');
+    await pinned.click();
+    await expect(pinned).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('pinned-close')).toBeVisible();
+    // Off the button, and polled: the ghost recipe transitions its background.
+    await page.mouse.move(0, 0);
+    await expect
+      .poll(() =>
+        pinned.evaluate((button) => {
+          const probe = document.createElement('div');
+          probe.style.background = 'var(--trinity-state-selected-surface)';
+          probe.style.color = 'var(--trinity-text-bright)';
+          document.body.append(probe);
+          const want = getComputedStyle(probe);
+          const got = getComputedStyle(button);
+          const same =
+            got.backgroundColor === want.backgroundColor &&
+            got.color === want.color;
+          probe.remove();
+          return same;
+        }),
+      )
+      .toBe(true);
+
+    // The closed topic popover is not rendered; the topic opens it and Escape closes
+    // only the popover, leaving the open panel in place.
+    const popover = page.locator('#room-topic-popover');
+    await expect(popover).toBeHidden();
+    await page.getByTestId('room-topic').click();
+    await expect(popover).toBeVisible();
+    await expect(popover).toContainText(`Release planning ${runId}`);
+    await page.keyboard.press('Escape');
+    await expect(popover).toBeHidden();
+    await expect(page.getByTestId('pinned-close')).toBeVisible();
+
+    // Below the members breakpoint panels are drawers over the header, so the icon
+    // replaces the inline field.
+    await page.setViewportSize({ width: 900, height: 800 });
+    await expect(page.getByTestId('header-search')).toBeHidden();
+    await expect(page.getByTestId('search-messages')).toBeVisible();
+  });
 });

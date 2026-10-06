@@ -335,6 +335,7 @@ export class RoomsPage {
 
   private readonly headerSearch =
     viewChild<ElementRef<HTMLInputElement>>('headerSearch');
+  private readonly messageSearch = viewChild(MessageSearchComponent);
 
   /** Shared by the header field and the search panel's own field. */
   protected readonly searchQuery = signal('');
@@ -351,9 +352,11 @@ export class RoomsPage {
   }
 
   protected clearHeaderSearch(event: Event): void {
-    event.stopPropagation(); // keep Escape from also closing the panel via onEscapeKey
+    const field = event.target as HTMLInputElement;
+    // Escape that clears text stops there; in an empty field it reaches onEscapeKey.
+    if (field.value) event.stopPropagation();
     this.searchQuery.set('');
-    (event.target as HTMLInputElement).blur();
+    field.blur();
   }
 
   constructor() {
@@ -363,9 +366,14 @@ export class RoomsPage {
     this.nav.bindFocus(() => this.focusActiveView());
     this.shortcutActions.bindSearchFocus(() => {
       if (!this.vm.activeRoom()) return false;
-      const field = this.headerSearch()?.nativeElement;
-      if (field && getComputedStyle(field).display !== 'none') field.focus();
-      else this.messageActions.openMessageSearch();
+      // Below the members breakpoint the field is hidden: panels are drawers over it.
+      if (!this.roomSurfaces.membersAreDrawer()) {
+        this.headerSearch()?.nativeElement.focus();
+      } else if (this.surfaceKind() === 'search') {
+        this.messageSearch()?.focusField();
+      } else {
+        this.messageActions.openMessageSearch();
+      }
       return true;
     });
     // ShellStatusService presents runWithBusy failures directly. In the zoneless app,
@@ -505,6 +513,8 @@ export class RoomsPage {
    * Drawer members remain an overlay and dismiss like the temporary surfaces.
    */
   onEscapeKey(): void {
+    // An open native popover (the topic) takes this Escape for itself.
+    if (document.querySelector('[popover]:popover-open')) return;
     this.roomSurfaces.transition({ kind: 'escape' });
   }
 }

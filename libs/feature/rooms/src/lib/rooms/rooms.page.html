@@ -157,6 +157,7 @@
                 [name]="room.name"
                 [exactSize]="24"
                 [shape]="room.directUserId ? 'person' : 'place'"
+                aria-hidden="true"
               />
               <span class="truncate">{{ room.name }}</span>
             </span>
@@ -218,10 +219,13 @@
               presentation="ghost"
               size="md"
               shape="icon"
+              class="header-toggle"
               (click)="messageActions.openThreadsList()"
               trnTooltip="Threads"
               aria-label="Threads"
-              [attr.aria-pressed]="surfaceKind() === 'threads'"
+              [attr.aria-pressed]="
+                surfaceKind() === 'threads' || surfaceKind() === 'thread'
+              "
               data-testid="open-threads"
             >
               <trn-icon size="lg" name="messages-square" motion="pop" />
@@ -231,7 +235,7 @@
               presentation="ghost"
               size="md"
               shape="icon"
-              class="max-md:hidden"
+              class="header-toggle max-md:hidden"
               (click)="messageActions.openPinnedPanel()"
               [trnTooltip]="pinnedLabel()"
               [attr.aria-label]="pinnedLabel()"
@@ -250,7 +254,7 @@
               presentation="ghost"
               size="md"
               shape="icon"
-              class="max-md:hidden"
+              class="header-toggle max-md:hidden"
               (click)="toggleMembers()"
               [attr.aria-pressed]="roomSurfaces.membersVisible()"
               trnTooltip="Members"
@@ -262,7 +266,7 @@
 
             <input
               type="search"
-              class="header-search max-md:hidden"
+              class="header-search max-members:hidden"
               data-testid="header-search"
               #headerSearch
               [placeholder]="'Search ' + room.name"
@@ -276,7 +280,7 @@
               presentation="ghost"
               size="md"
               shape="icon"
-              class="md:hidden"
+              class="members:hidden"
               (click)="messageActions.openMessageSearch()"
               trnTooltip="Search messages in this room"
               aria-label="Search messages in this room"

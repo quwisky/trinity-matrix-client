@@ -108,12 +108,29 @@ describe('MessageSearchComponent', () => {
     expect(document.activeElement).toBe(query);
   });
 
-  it('does not grab focus when it opens with a query already typed elsewhere', async () => {
+  it('does not grab focus while the header search field is being typed in', async () => {
+    const header = document.createElement('input');
+    header.type = 'search';
+    document.body.append(header);
+    header.focus();
+    try {
+      const { container } = await build(loaded(), { query: 'abc' });
+
+      const field =
+        container.querySelector<HTMLInputElement>('[data-autofocus]');
+      expect(field?.value).toBe('abc');
+      expect(document.activeElement).toBe(header);
+    } finally {
+      header.remove();
+    }
+  });
+
+  it('focuses its own field when reopened with a query from elsewhere', async () => {
     const { container } = await build(loaded(), { query: 'abc' });
 
     const field = container.querySelector<HTMLInputElement>('[data-autofocus]');
     expect(field?.value).toBe('abc');
-    expect(document.activeElement).not.toBe(field);
+    expect(document.activeElement).toBe(field);
   });
 
   it('drops server results when the bound query changes from outside', async () => {

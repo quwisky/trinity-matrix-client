@@ -16,7 +16,7 @@ import {
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { WorkspaceBackService } from '@trinity/application/workspace';
-import { BELOW_MD_QUERY } from '@trinity/util/ui';
+import { BELOW_MD_QUERY, BELOW_MEMBERS_QUERY } from '@trinity/util/ui';
 import { Router } from '@angular/router';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { type PendingInvite } from '@trinity/data-access/room-library';
@@ -1379,14 +1379,19 @@ describe('RoomsPage keyboard room switching', () => {
     expect(shell.store.activeRoomId()).toBe('!b:hs');
   });
 
-  it('opens in-room search with Ctrl/Cmd+F when no header field is visible', async () => {
-    const shell = build();
-    await visitABC(shell);
+  it('opens in-room search with Ctrl/Cmd+F below the members breakpoint', async () => {
+    const restore = stubLiveLayout({ [BELOW_MEMBERS_QUERY]: true });
+    try {
+      const shell = build();
+      await visitABC(shell);
 
-    const handled = key({ key: 'f', ctrlKey: true });
-    shell.shortcuts.onGlobalKeydown(handled);
-    expect(handled.preventDefault).toHaveBeenCalled();
-    expect(shell.surfaces.renderedSurface()?.kind).toBe('search');
+      const handled = key({ key: 'f', ctrlKey: true });
+      shell.shortcuts.onGlobalKeydown(handled);
+      expect(handled.preventDefault).toHaveBeenCalled();
+      expect(shell.surfaces.renderedSurface()?.kind).toBe('search');
+    } finally {
+      restore();
+    }
   });
 
   it('clears the header search when the room changes', async () => {
@@ -1415,19 +1420,24 @@ describe('RoomsPage keyboard room switching', () => {
   });
 
   it('still handles Ctrl+F while a side panel is open, and guards other chords', async () => {
-    const shell = build();
-    await visitABC(shell);
-    shell.surfaces.transition({ kind: 'open-threads' });
+    const restore = stubLiveLayout({ [BELOW_MEMBERS_QUERY]: true });
+    try {
+      const shell = build();
+      await visitABC(shell);
+      shell.surfaces.transition({ kind: 'open-threads' });
 
-    const hop = key({ key: "'", ctrlKey: true });
-    shell.shortcuts.onGlobalKeydown(hop);
-    expect(hop.preventDefault).not.toHaveBeenCalled();
-    expect(shell.store.activeRoomId()).toBe('!c:hs');
+      const hop = key({ key: "'", ctrlKey: true });
+      shell.shortcuts.onGlobalKeydown(hop);
+      expect(hop.preventDefault).not.toHaveBeenCalled();
+      expect(shell.store.activeRoomId()).toBe('!c:hs');
 
-    const find = key({ key: 'f', ctrlKey: true });
-    shell.shortcuts.onGlobalKeydown(find);
-    expect(find.preventDefault).toHaveBeenCalled();
-    expect(shell.surfaces.renderedSurface()?.kind).toBe('search');
+      const find = key({ key: 'f', ctrlKey: true });
+      shell.shortcuts.onGlobalKeydown(find);
+      expect(find.preventDefault).toHaveBeenCalled();
+      expect(shell.surfaces.renderedSurface()?.kind).toBe('search');
+    } finally {
+      restore();
+    }
   });
 
   it('leaves Ctrl+F to the browser while an overlay owns the screen', async () => {

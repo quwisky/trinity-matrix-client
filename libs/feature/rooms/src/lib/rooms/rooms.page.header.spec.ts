@@ -51,6 +51,7 @@ import { SimpleMessageListComponent } from '../message-list/simple-message-list/
 import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
+import { ThreadViewComponent } from '../thread/thread-view.component';
 import { AccountRoutingService } from './account-routing.service';
 import { InviteActionsService } from './invite-actions.service';
 import { MemberActionsService } from './member-actions.service';
@@ -67,8 +68,10 @@ import {
   ROUTE_PROVIDER,
   SYSTEM_STATUS_PROVIDER,
   setRouteRoom,
+  stubLiveLayout,
   stubNarrowLayout,
 } from './rooms-page.spec-harness';
+import { BELOW_MEMBERS_QUERY } from '@trinity/util/ui';
 import { SessionActionsService } from './session-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { ShellStatusService } from './shell-status.service';
@@ -252,6 +255,7 @@ function renderHeader(
         EncryptionBannerComponent,
         ConnectivityBannerComponent,
         TombstoneBannerComponent,
+        ThreadViewComponent,
       ],
     },
     add: {
@@ -323,7 +327,7 @@ function renderHeader(
         },
         {
           provide: ShellShortcutsService,
-          useValue: { bindSearchFocus: vi.fn() },
+          useValue: { bindSearchFocus: vi.fn(), onGlobalKeydown: vi.fn() },
         },
         { provide: SessionActionsService, useValue: {} },
       ],
@@ -337,6 +341,7 @@ function renderHeader(
         MockComponent(EncryptionBannerComponent),
         MockComponent(ConnectivityBannerComponent),
         MockComponent(TombstoneBannerComponent),
+        MockComponent(ThreadViewComponent),
       ],
     },
   });
@@ -429,6 +434,15 @@ describe('RoomsPage header title', () => {
     ).not.toBeNull();
   });
 
+  it('hides the decorative avatar so the heading names the room once', () => {
+    const host = renderHeader(0);
+    expect(
+      host
+        .querySelector('[data-testid="room-title"] trn-avatar')
+        ?.getAttribute('aria-hidden'),
+    ).toBe('true');
+  });
+
   it('omits the divider and topic when the topic is empty', () => {
     const host = renderHeader(0);
     expect(host.querySelector('[data-testid="room-topic"]')).toBeNull();
@@ -519,6 +533,16 @@ describe('RoomsPage topic popover stylesheet', () => {
       expect(supports![0]).toContain(decl);
     }
     expect(scss.replace(supports![0], '')).not.toMatch(/anchor\(|margin: 0;/);
+  });
+
+  it('leaves the closed popover to the UA display: none', () => {
+    const rule = scss.match(/\n {2}\.topic-popover \{[\s\S]*?\n {2}\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![0]).not.toMatch(/\bdisplay:/);
+  });
+
+  it('flips the anchored popover inline when it would overflow', () => {
+    expect(scss).toContain('position-try-fallbacks: flip-inline');
   });
 });
 
@@ -622,6 +646,77 @@ describe('RoomsPage header actions and search field', () => {
     lastRender.fixture.detectChanges();
     expect(field.value).toBe('');
     expect(document.activeElement).not.toBe(field);
+    root.remove();
+  });
+
+  function runSearchShortcut(): void {
+    const bindSearchFocus = lastRender.fixture.debugElement.injector.get(
+      ShellShortcutsService,
+    ).bindSearchFocus as ReturnType<typeof vi.fn>;
+    bindSearchFocus.mock.calls.at(-1)?.[0]();
+  }
+
+  async function settle(): Promise<void> {
+    lastRender.fixture.detectChanges();
+    await lastRender.fixture.whenStable();
+    lastRender.fixture.detectChanges();
+  }
+
+  it('shows the inline field only beside static panels, else the icon', () => {
+    const root = renderHeader(0);
+    expect(byId(root, 'header-search')?.classList).toContain(
+      'max-members:hidden',
+    );
+    expect(byId(root, 'search-messages')?.classList).toContain(
+      'members:hidden',
+    );
+  });
+
+  it('opens the panel and focuses its field from the shortcut below the members breakpoint', async () => {
+    const restore = stubLiveLayout({ [BELOW_MEMBERS_QUERY]: true });
+    try {
+      const root = renderHeader(0);
+      document.body.append(root);
+      runSearchShortcut();
+      await settle();
+      const panelField = root.querySelector<HTMLInputElement>(
+        'trn-message-search input',
+      );
+      expect(panelField).not.toBeNull();
+      expect(document.activeElement).toBe(panelField);
+
+      // Again with the panel already open: focus returns to the panel field.
+      panelField!.blur();
+      runSearchShortcut();
+      await settle();
+      expect(document.activeElement).toBe(panelField);
+      root.remove();
+    } finally {
+      restore();
+    }
+  });
+
+  it('keeps the threads button pressed while a single thread is open', () => {
+    const root = renderHeader(0);
+    surfaces().transition({ kind: 'open-thread', rootEventId: '$root' });
+    lastRender.fixture.detectChanges();
+    expect(byId(root, 'open-threads')?.getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+  });
+
+  it('lets Escape in an empty field reach the page and close the panel', async () => {
+    const root = renderHeader(0);
+    document.body.append(root);
+    surfaces().transition({ kind: 'open-threads' });
+    await settle();
+    const field = byId(root, 'header-search') as HTMLInputElement;
+    field.focus();
+    field.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    lastRender.fixture.detectChanges();
+    expect(surfaces().renderedSurface()).toBeNull();
     root.remove();
   });
 });

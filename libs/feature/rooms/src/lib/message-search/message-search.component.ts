@@ -107,9 +107,17 @@ export class MessageSearchComponent {
       });
     });
     afterNextRender(() => {
-      // Skip when opened by typing in the header field, so that typing isn't interrupted.
-      if (!this.query()) this.queryField()?.nativeElement.focus();
+      // Skip when opened by typing in the header search field, so typing isn't interrupted.
+      const active = document.activeElement;
+      if (!(active instanceof HTMLInputElement && active.type === 'search')) {
+        this.focusField();
+      }
     });
+  }
+
+  /** Moves focus into the query field, e.g. when the search shortcut finds the panel open. */
+  focusField(): void {
+    this.queryField()?.nativeElement.focus();
   }
 
   /** Active room the search is scoped to, bound by whoever hosts the panel. */

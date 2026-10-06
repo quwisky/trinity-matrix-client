@@ -222,11 +222,18 @@
       left: anchor(start);
       margin: 0;
       margin-block-start: var(--trinity-space-2);
+      position-try-fallbacks: flip-inline;
     }
   }
 
+  // Header panel toggles show R1's selected surface while their panel is open.
+  .header-toggle[aria-pressed='true'] {
+    background: var(--trinity-state-selected-surface);
+    color: var(--trinity-text-bright);
+  }
+
+  // No author `display`: it would beat the UA `[popover]:not(:popover-open)` hide rule.
   .topic-popover {
-    display: block;
     white-space: pre-line;
     max-inline-size: min(480px, 90vw);
     max-block-size: 50vh;

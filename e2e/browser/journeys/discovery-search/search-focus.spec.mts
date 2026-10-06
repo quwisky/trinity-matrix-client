@@ -94,4 +94,49 @@ test.describe('Search dialogs', () => {
     await expect(headerField).toHaveValue('');
     await expect(headerField).not.toBeFocused();
   });
+
+  test('below the members breakpoint search opens in the panel field', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}n`;
+    const user = `search-narrow-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Search narrow ${runId}`;
+
+    await registerUser(request, user, pass);
+    const token = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json())
+      .then((j) => j.access_token as string);
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { name: roomName, preset: 'private_chat' },
+    });
+
+    await page.setViewportSize({ width: 900, height: 700 });
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
+    await openRoom(page, roomName);
+
+    // Ctrl/Cmd+F opens the search panel and lands in its own field.
+    await page.keyboard.press('ControlOrMeta+f');
+    const query = page.getByPlaceholder('Search this conversation');
+    await expect(query).toBeFocused({ timeout: 10_000 });
+    await page.keyboard.type('hello');
+    await expect(query).toHaveValue('hello');
+
+    // Closing keeps the query; reopening from the icon still focuses the panel field.
+    await page.keyboard.press('Escape');
+    await expect(query).toBeHidden();
+    await page.getByTestId('search-messages').click();
+    await expect(query).toHaveValue('hello');
+    await expect(query).toBeFocused({ timeout: 10_000 });
+  });
 });
