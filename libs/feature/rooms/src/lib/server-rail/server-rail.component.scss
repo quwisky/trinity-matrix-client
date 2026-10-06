@@ -58,7 +58,9 @@
     transition: height var(--trinity-duration-fast) var(--trinity-ease-standard);
   }
 
-  // Order matters: the unread dot is overridden by hover, and both by the selected pill.
+  // Precedence: unread dot < hover pill < selected pill. Each rule sits at equal or higher
+  // specificity than the one it overrides (`.item .indicator--selected` ties the unread rule
+  // and comes later), so a selected item with plain unread still shows the 32px pill.
   .item--unread .indicator {
     height: var(--trinity-rail-indicator-unread);
   }
@@ -67,7 +69,7 @@
     height: var(--trinity-rail-indicator-hover);
   }
 
-  .indicator--selected,
+  .item .indicator--selected,
   .item:hover .indicator--selected {
     height: var(--trinity-rail-indicator-selected);
   }

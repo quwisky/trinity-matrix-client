@@ -321,6 +321,22 @@ describe('ServerRailComponent', () => {
     expect(pill.hasAttribute('data-trn-icon-button')).toBe(true);
   });
 
+  it('keeps the selected pill over the unread dot and hover pill', () => {
+    const css = readFileSync(
+      join(import.meta.dirname, 'server-rail.component.scss'),
+      'utf8',
+    );
+    // Specificity of the unread rule is (item, indicator) = 2 classes; the selected rule
+    // must have at least that many and come after it, or the 8px dot wins.
+    const unreadAt = css.indexOf('.item--unread .indicator {');
+    const selectedAt = css.indexOf('.item .indicator--selected,');
+    expect(unreadAt).toBeGreaterThan(-1);
+    expect(selectedAt).toBeGreaterThan(unreadAt);
+    expect(css.indexOf('.item:hover .indicator--selected')).toBeGreaterThan(
+      css.indexOf('.item:hover .indicator {'),
+    );
+  });
+
   it('sizes the indicator 32px selected, 20px on hover and 8px for unread', () => {
     const css = readFileSync(
       join(import.meta.dirname, 'server-rail.component.scss'),
