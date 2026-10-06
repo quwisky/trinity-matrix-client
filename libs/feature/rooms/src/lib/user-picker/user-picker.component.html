@@ -1,6 +1,6 @@
 <trn-dialog-shell [title]="title()" size="lg" (closed)="cancel()">
   <div class="picker">
-    <div class="picker__search">
+    <div>
       <input
         trnInput
         [placeholder]="placeholder()"
@@ -13,7 +13,7 @@
       />
     </div>
 
-    <div class="picker__results">
+    <div>
       @if (searching()) {
         <div class="picker-status" aria-live="polite"><trn-spinner /></div>
       }

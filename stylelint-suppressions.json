@@ -201,7 +201,7 @@
   },
   "libs/feature/rooms/src/lib/styles/_mixins.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 5
+      "count": 3
     }
   },
   "libs/feature/rooms/src/lib/thread/threads-list.component.scss": {

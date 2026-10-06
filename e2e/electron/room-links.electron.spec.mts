@@ -88,9 +88,7 @@ test.describe('Electron room-link preview', () => {
         'placeholder',
         new RegExp(sourceName),
       );
-      await expect(page.locator('trn-room-link-preview')).not.toHaveClass(
-        /room-link-preview--sheet/,
-      );
+      await expect(preview).toHaveAttribute('data-presentation', 'dialog');
 
       const box = await preview.boundingBox();
       // Dialogs centre in the area below the frameless title row, not the whole window.
