@@ -168,7 +168,7 @@ test.describe('Keyword notifications', () => {
     // scored the keyword rule and applied its `highlight` tweak.
     const highlight = channel.first().locator('[data-slot="badge"]');
     await expect(highlight).toBeVisible({ timeout: 30_000 });
-    await expect(highlight).toHaveAttribute('aria-label', /unread mentions/);
+    await expect(channel.first().locator('.sr-only')).toHaveText(/mentions/);
 
     // Removing it deletes the rule server-side rather than only dropping the row — the
     // rule is addressed by id, and a delete aimed at the wrong string simply 404s.

@@ -10,7 +10,7 @@
       class="pill recent"
       (click)="showRecent.emit()"
       [attr.aria-current]="recentActive() ? 'true' : null"
-      aria-label="Recent activity"
+      [attr.aria-label]="pillLabel('Recent activity', unread().recent)"
       trnTooltip="Recent activity"
       position="right"
       data-testid="rail-recent"
@@ -36,7 +36,7 @@
       class="pill home"
       (click)="selectHome()"
       [attr.aria-current]="homeActive ? 'true' : null"
-      aria-label="Direct messages"
+      [attr.aria-label]="pillLabel('Direct messages', unread().home)"
       trnTooltip="Direct messages"
       position="right"
     >
@@ -59,7 +59,7 @@
       class="pill rooms"
       (click)="showRooms.emit()"
       [attr.aria-current]="roomsActive() ? 'true' : null"
-      aria-label="Rooms"
+      [attr.aria-label]="pillLabel('Rooms', unread().rooms)"
       trnTooltip="Rooms"
       position="right"
       data-testid="rail-rooms"
@@ -94,9 +94,12 @@
         "
         [attr.aria-current]="spaceActive ? 'true' : null"
         [attr.aria-label]="
-          badgeFor(space.accountId)
-            ? space.name + ' — ' + badgeFor(space.accountId)!.name
-            : space.name
+          pillLabel(
+            badgeFor(space.accountId)
+              ? space.name + ' — ' + badgeFor(space.accountId)!.name
+              : space.name,
+            counts
+          )
         "
         [trnTooltip]="space.name"
         position="right"
@@ -145,7 +148,7 @@
       size="xs"
       [class.badge--top]="top"
       [class.badge--bottom]="!top"
-      [attr.aria-label]="label + ' mentions'"
+      aria-hidden="true"
       >{{ label }}</span
     >
   }

@@ -238,6 +238,36 @@ describe('ServerRailComponent', () => {
     expect(container.querySelector('.item--unread')).toBeNull();
   });
 
+  it('names rail pills with their unread state', async () => {
+    const { container } = await render(ServerRailComponent, {
+      inputs: {
+        spaces: [
+          space({ id: '!a:hs', name: 'Alpha' }),
+          space({ id: '!b:hs', name: 'Beta' }),
+          space({ id: '!c:hs', name: 'Gamma' }),
+        ],
+        unread: unread({
+          home: counts(4, 0),
+          rooms: counts(5, 2),
+          perSpace: { '!a:hs': counts(3, 0), '!b:hs': counts(5, 2) },
+        }),
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+
+    const labels = [...container.querySelectorAll('.item > .pill')].map((p) =>
+      p.getAttribute('aria-label'),
+    );
+    expect(labels.slice(0, 6)).toEqual([
+      'Recent activity',
+      'Direct messages, unread',
+      'Rooms, 2 mentions',
+      'Alpha, unread',
+      'Beta, 2 mentions',
+      'Gamma',
+    ]);
+  });
+
   it('puts the mention badge bottom-right of a single-account space', async () => {
     const { container } = await render(ServerRailComponent, {
       inputs: {

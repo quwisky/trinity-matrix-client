@@ -867,7 +867,7 @@ describe('MessageRowComponent', () => {
     expect(badge).toBeTruthy();
     expect(badge?.textContent).toContain('5');
     expect(badge).toHaveAttribute('data-variant', 'danger');
-    // The count rides on the (aria-hidden badge's) button label for SR users.
+    // The badge is aria-hidden; the count rides on the button label for SR users.
     expect(
       container.querySelector('.msg__thread')?.getAttribute('aria-label'),
     ).toContain('5 unread');

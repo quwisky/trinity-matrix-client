@@ -49,6 +49,17 @@ describe('MessageThreadSummaryComponent', () => {
     );
   });
 
+  it('keeps the unread badge neutral when the thread has no mention', async () => {
+    const { container } = await render(MessageThreadSummaryComponent, {
+      inputs: { summary: { ...summary, highlight: false } },
+    });
+
+    expect(container.querySelector('[trnBadge]')).toHaveAttribute(
+      'data-variant',
+      'neutral',
+    );
+  });
+
   it('uses singular copy and emits open', async () => {
     const { container, fixture } = await render(MessageThreadSummaryComponent, {
       inputs: {

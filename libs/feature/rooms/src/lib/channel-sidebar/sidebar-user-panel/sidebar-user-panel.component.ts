@@ -34,6 +34,12 @@ export interface AccountSummary extends IdentityProfile {
 }
 
 /** The navigation shell's bottom user panel: the signed-in user plus account switcher. */
+const PRESENCE_NAMES = {
+  online: 'online',
+  unavailable: 'away',
+  offline: 'offline',
+} satisfies Record<PresenceState, string>;
+
 @Component({
   selector: 'trn-sidebar-user-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -78,16 +84,15 @@ export class SidebarUserPanelComponent {
   /** User ids of accounts the server signed out that need re-authentication. */
   readonly reauthAccounts = input<readonly string[]>([]);
   /**
-   * The accounts the room list currently draws from. Drives the picker's ticks and the
-   * stacked-avatar indicator; defaults to empty so the panel renders standalone.
+   * The accounts the room list currently draws from. Drives the picker's ticks; defaults to empty so the panel renders standalone.
    */
   readonly shownAccountIds = input<ReadonlySet<string>>(new Set());
 
   /**
    * Present the account picker as a dialog rather than a submenu.
    *
-   * Set by the host from the layout, not read here: this component stays presentational and
-   * injects nothing. Below the `md` breakpoint the sidebar is a full-screen page and this
+   * Set by the host from the layout, not read here: this component stays presentational
+   * (its only injection is the title-bar state). Below the `md` breakpoint the sidebar is a full-screen page and this
    * panel is a bar across the bottom of the viewport, so a submenu flying out beside the
    * account menu has nowhere to go and lands back on top of it.
    */
@@ -103,12 +108,17 @@ export class SidebarUserPanelComponent {
     const count = this.otherAccountCount();
     return `${count} more account${count === 1 ? '' : 's'}`;
   });
-  /** Accessible summary of the mixed state, the only signal of it for assistive tech. */
+  /** Starts with the visible name (label in name), then presence and the mixed state. */
   readonly accountSummaryLabel = computed(() => {
     const shown = this.shownAccountIds().size;
-    return shown < 2
-      ? 'Account menu'
-      : `Account menu — ${this.user().displayName}, showing ${shown} accounts`;
+    const presence = this.presence();
+    return [
+      this.user().displayName || 'Account menu',
+      presence && PRESENCE_NAMES[presence],
+      shown >= 2 && `showing ${shown} accounts`,
+    ]
+      .filter(Boolean)
+      .join(', ');
   });
   /** Gear — open the settings page. */
   readonly openSettings = output<void>();

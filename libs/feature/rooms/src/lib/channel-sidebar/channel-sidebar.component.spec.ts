@@ -1139,9 +1139,9 @@ describe('ChannelSidebarComponent', () => {
     expect(
       container.querySelector('[data-testid="room-unread-dot"]'),
     ).toBeNull();
-    expect(
-      container.querySelector('[trnBadge]')?.getAttribute('aria-label'),
-    ).toContain('unread mentions');
+    expect(container.querySelector('.channel .sr-only')?.textContent).toContain(
+      'mentions',
+    );
   });
 
   it('emits every account that owns the row when flagging it', async () => {

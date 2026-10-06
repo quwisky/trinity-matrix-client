@@ -215,20 +215,48 @@ describe('SidebarUserPanelComponent', () => {
     ).not.toBeNull();
   });
 
-  it('hides system status while the desktop title row is shown', async () => {
-    const { container } = await render(SidebarUserPanelComponent, {
-      inputs: { user: USER },
-    });
-    TestBed.inject(TitleBarState).setActive(true);
-    TestBed.tick();
+  it.each([
+    { titleRow: false, problems: false, shown: true },
+    { titleRow: false, problems: true, shown: true },
+    { titleRow: true, problems: false, shown: true },
+    { titleRow: true, problems: true, shown: false },
+  ])(
+    'System status shown=$shown with title row $titleRow and problems $problems',
+    async ({ titleRow, problems, shown }) => {
+      const { container } = await render(SidebarUserPanelComponent, {
+        inputs: { user: USER, hasSystemStatusProblems: problems },
+      });
+      TestBed.inject(TitleBarState).setActive(titleRow);
+      TestBed.tick();
 
-    expect(
-      container.querySelector('[data-testid="open-system-status"]'),
-    ).toBeNull();
-    expect(
-      container.querySelector('[data-testid="open-settings"]'),
-    ).not.toBeNull();
-  });
+      expect(
+        container.querySelector('[data-testid="open-system-status"]') !== null,
+      ).toBe(shown);
+      expect(
+        container.querySelector('[data-testid="open-settings"]'),
+      ).not.toBeNull();
+    },
+  );
+
+  it.each([
+    ['online', 'Alice, online'],
+    ['unavailable', 'Alice, away'],
+    ['offline', 'Alice, offline'],
+    [null, 'Alice'],
+  ] as const)(
+    'names the user menu trigger with presence %s',
+    async (presence, name) => {
+      const { container } = await render(SidebarUserPanelComponent, {
+        inputs: { user: USER, presence },
+      });
+
+      expect(
+        container
+          .querySelector('[data-testid="user-menu-trigger"]')
+          ?.getAttribute('aria-label'),
+      ).toBe(name);
+    },
+  );
 
   describe('stylesheet', () => {
     const scss = readFileSync(

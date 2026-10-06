@@ -40,7 +40,12 @@ describe('TrnBadge', () => {
   });
 
   it('carries no dark: variants; badge tokens already follow the mode', () => {
-    for (const variant of ['neutral', 'success', 'warning'] as const) {
+    for (const variant of [
+      'neutral',
+      'success',
+      'warning',
+      'danger',
+    ] as const) {
       expect(trnBadgeRecipe(variant, 'sm')).not.toMatch(/\bdark:/u);
     }
   });

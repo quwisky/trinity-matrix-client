@@ -40,7 +40,7 @@ function room(over: Partial<RoomSummary> = {}): RoomSummary {
 async function renderRows(
   rooms: RoomSummary[],
   activeRoomId: string | null = null,
-  notifyMode: 'all' | 'mute' = 'all',
+  notifyMode: 'all' | 'mute' | 'mentions' | 'mixed' = 'all',
   style: RoomListStyle = 'rich',
   extra: Record<string, unknown> = {},
 ) {
@@ -89,6 +89,43 @@ describe('SidebarRoomListComponent rows', () => {
     const badge = container.querySelector('[trnBadge]')!;
     expect(badge.textContent!.trim()).toBe('2');
     expect(badge.getAttribute('data-variant')).toBe('danger');
+  });
+
+  it('says "unread" to assistive tech for a plain unread row', async () => {
+    const { container } = await renderRows([
+      room({ hasUnread: true, unreadCount: 3 }),
+    ]);
+
+    expect(
+      container.querySelector('.channel .sr-only')?.textContent?.trim(),
+    ).toBe(', unread');
+  });
+
+  it('says the mention count inside the row button, not "unread"', async () => {
+    const { container } = await renderRows([
+      room({ hasUnread: true, unreadCount: 4, highlightCount: 2 }),
+    ]);
+
+    expect(
+      container.querySelector('.channel .sr-only')?.textContent?.trim(),
+    ).toBe(', 2 mentions');
+  });
+
+  it('adds no hidden unread text to a read row', async () => {
+    const { container } = await renderRows([room()]);
+
+    expect(container.querySelector('.channel .sr-only')).toBeNull();
+  });
+
+  it.each([
+    ['mute', true],
+    ['mentions', false],
+    ['mixed', false],
+    ['all', false],
+  ] as const)('notify mode %s dims the row: %s', async (mode, dimmed) => {
+    const { container } = await renderRows([room()], null, mode);
+
+    expect(container.querySelector('.channel--muted') !== null).toBe(dimmed);
   });
 
   it('keeps the danger badge on a muted room', async () => {

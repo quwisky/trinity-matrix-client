@@ -38,7 +38,7 @@
       >
     </button>
   }
-  @if (!titleBar.active()) {
+  @if (!(titleBar.active() && hasSystemStatusProblems())) {
     <button
       trnBtn
       presentation="ghost"
@@ -101,6 +101,7 @@
             trnBadge
             class="account-row__badge"
             variant="neutral"
+            size="xs"
             [attr.aria-label]="account.unread + ' unread'"
             >{{ badgeLabel(account.unread) }}</span
           >

@@ -102,6 +102,13 @@ export class ServerRailComponent {
       : null;
   }
 
+  /** Accessible name of a pill: its label plus unread state, since the badge and dot sit outside the button. */
+  pillLabel(label: string, counts: RailCounts | undefined): string {
+    if (!counts) return label;
+    if (counts.mentions > 0) return `${label}, ${counts.mentions} mentions`;
+    return counts.unread > 0 ? `${label}, unread` : label;
+  }
+
   /** Whether the item shows the plain unread dot (unread without mentions). */
   showDot(counts: RailCounts | undefined): boolean {
     return !!counts && counts.unread > 0 && counts.mentions === 0;

@@ -98,7 +98,7 @@
       class="channel"
       [class.channel--selected]="activeRoomId() === room.id"
       [class.channel--unread]="room.hasUnread"
-      [class.channel--muted]="notifyMode(room) !== 'all'"
+      [class.channel--muted]="notifyMode(room) === 'mute'"
       (click)="selectRoom.emit({ roomId: room.id, accountId: room.accountId })"
     >
       <trn-avatar
@@ -121,6 +121,11 @@
         } @else if (room.lastMessage) {
           <span class="channel__preview">{{ room.lastMessage }}</span>
         }
+        @if (room.highlightCount > 0) {
+          <span class="sr-only">, {{ room.highlightCount }} mentions</span>
+        } @else if (room.hasUnread && !room.markedUnread) {
+          <span class="sr-only">, unread</span>
+        }
       </div>
       @let mode = notifyMode(room);
       @if (mode !== 'all') {
@@ -139,13 +144,9 @@
         />
       }
       @if (room.highlightCount > 0) {
-        <span
-          trnBadge
-          variant="danger"
-          size="xs"
-          [attr.aria-label]="room.highlightCount + ' unread mentions'"
-          >{{ badgeLabel(room.highlightCount) }}</span
-        >
+        <span trnBadge variant="danger" size="xs" aria-hidden="true">{{
+          badgeLabel(room.highlightCount)
+        }}</span>
       } @else if (room.markedUnread) {
         <!-- Flagged with nothing new in it: a count would read "0", so it is a dot. -->
         <span
