@@ -14,7 +14,7 @@
       [initial]="userInitial()"
       [name]="user().displayName"
       size="md"
-      presence="online"
+      [presence]="presence()"
     />
     <span class="userbar__id">
       <span class="userbar__name">{{ user().displayName }}</span>

@@ -23,7 +23,7 @@ import {
   TrnDropdownMenuSubTrigger,
   TrnDropdownMenuTrigger,
 } from '@trinity/components/overlay';
-import { initialOf } from '@trinity/util/matrix';
+import { type PresenceState, initialOf } from '@trinity/util/matrix';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
@@ -67,6 +67,8 @@ export class SidebarUserPanelComponent {
     displayName: '',
     avatarMxc: null,
   });
+  /** The signed-in user's presence for the avatar dot; null (unknown) draws no dot. */
+  readonly presence = input<PresenceState | null>(null);
   /** First letter of the display name, for the avatar fallback. */
   readonly userInitial = computed(() => initialOf(this.user().displayName));
   /** Every signed-in account, for the switcher list. */

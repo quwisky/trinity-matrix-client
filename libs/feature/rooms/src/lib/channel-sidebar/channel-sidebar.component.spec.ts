@@ -120,6 +120,7 @@ async function renderSidebar(
       hasAnyUnread?: boolean;
       filterQuery?: string;
       spaceActive?: boolean;
+      spaceName?: string;
       showSwitcher?: boolean;
       activeRoomId?: string | null;
       activeUserId?: string | null;

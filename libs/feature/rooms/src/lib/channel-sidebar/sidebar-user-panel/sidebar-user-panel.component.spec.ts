@@ -163,7 +163,7 @@ describe('SidebarUserPanelComponent', () => {
       inputs: { user: USER },
     });
 
-    expect(container.querySelector('trn-avatar .presence-dot')).not.toBeNull();
+    expect(container.querySelector('trn-avatar .presence-dot')).toBeNull();
     // The dropdown trigger overwrites data-slot, so assert the recipe directive itself.
     expect(
       fixture.debugElement
@@ -171,6 +171,21 @@ describe('SidebarUserPanelComponent', () => {
         .map((element) => element.nativeElement),
     ).toContain(container.querySelector('[data-testid="user-menu-trigger"]'));
   });
+
+  it.each(['online', 'unavailable', 'offline'] as const)(
+    'draws the %s presence of the signed-in user on the avatar',
+    async (presence) => {
+      const { container } = await render(SidebarUserPanelComponent, {
+        inputs: { user: USER, presence },
+      });
+
+      expect(
+        container
+          .querySelector('trn-avatar .presence-dot')
+          ?.getAttribute('data-presence'),
+      ).toBe(presence);
+    },
+  );
 
   it('keeps settings and system status without the title row', async () => {
     const { container } = await render(SidebarUserPanelComponent, {
