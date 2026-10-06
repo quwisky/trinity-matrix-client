@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { RoomModerationService } from '@trinity/data-access/room-administration';
 import { signal, type WritableSignal } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
@@ -437,6 +439,35 @@ describe('RoomsPage header title', () => {
     expect(links).toHaveLength(1);
   });
 
+  it('treats a literal anchor tag in the topic as text, not a link', () => {
+    const host = renderHeader(
+      0,
+      {},
+      topicRoom('<a href="javascript:alert(1)">hi</a>'),
+    );
+    const popover = host.querySelector('#room-topic-popover') as HTMLElement;
+    expect(popover.querySelector('a')).toBeNull();
+    expect(popover.textContent).toContain(
+      '<a href="javascript:alert(1)">hi</a>',
+    );
+  });
+
+  it('caps the name width only while a topic is shown', () => {
+    const withTopic = renderHeader(0, {}, topicRoom('Release planning'));
+    expect(
+      withTopic
+        .querySelector('.title-room')
+        ?.classList.contains('title-room--topic'),
+    ).toBe(true);
+    TestBed.resetTestingModule();
+    const without = renderHeader(0);
+    expect(
+      without
+        .querySelector('.title-room')
+        ?.classList.contains('title-room--topic'),
+    ).toBe(false);
+  });
+
   it('keeps the heading named but visually empty with no room open', () => {
     const host = renderHeader(0, {}, null);
     const h1 = host.querySelector('h1') as HTMLElement;
@@ -454,5 +485,20 @@ describe('RoomsPage header title', () => {
     } finally {
       restore();
     }
+  });
+});
+
+describe('RoomsPage topic popover stylesheet', () => {
+  const scss = readFileSync(join(__dirname, 'rooms.page.scss'), 'utf8');
+
+  it('applies anchor positioning and the margin reset only where supported', () => {
+    const supports = scss.match(
+      /@supports \(top: anchor\(bottom\)\) \{[\s\S]*?\n {2}\}/,
+    );
+    expect(supports).not.toBeNull();
+    for (const decl of ['position-anchor', 'top: anchor(', 'margin: 0']) {
+      expect(supports![0]).toContain(decl);
+    }
+    expect(scss.replace(supports![0], '')).not.toMatch(/anchor\(|margin: 0;/);
   });
 });

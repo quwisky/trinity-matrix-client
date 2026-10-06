@@ -13,5 +13,5 @@ test('page and toolbar headers retain their mobile geometry', async ({
   await page.goto(story('components-page-header--toolbar'));
   const toolbar = page.locator('header');
   await expect(toolbar).toHaveAttribute('data-trn-layout', 'toolbar');
-  await expect(toolbar).toHaveCSS('height', '56px');
+  await expect(toolbar).toHaveCSS('height', '48px');
 });

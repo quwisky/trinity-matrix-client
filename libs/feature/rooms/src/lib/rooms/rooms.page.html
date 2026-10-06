@@ -145,7 +145,11 @@
            nested heading. rooms' scoped .title-room/.title-lock still apply. -->
         <ng-container trnHeaderTitle>
           @if (vm.activeRoom(); as room) {
-            <span class="title-room" data-testid="room-title">
+            <span
+              class="title-room"
+              [class.title-room--topic]="!!room.topic && !mobileMasterDetail()"
+              data-testid="room-title"
+            >
               <trn-avatar
                 [mxc]="room.avatarMxc"
                 [accountId]="room.accountId"
@@ -195,12 +199,12 @@
               >
                 {{ room.topic }}
               </button>
-              <div
+              <span
                 id="room-topic-popover"
                 popover
                 class="topic-popover"
                 [innerHTML]="topicHtml()"
-              ></div>
+              ></span>
             }
           } @else {
             <span class="sr-only">Trinity</span>

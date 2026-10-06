@@ -161,10 +161,12 @@
     align-items: center;
     gap: var(--trinity-space-3);
     min-width: 0;
-
-    // A very long name truncates before it can squeeze the topic to nothing.
-    max-inline-size: 60%;
     font-weight: 700;
+  }
+
+  // A very long name truncates before it can squeeze the topic to nothing.
+  .title-room--topic {
+    max-inline-size: 60%;
   }
 
   .title-divider {
@@ -176,7 +178,6 @@
   }
 
   .title-topic {
-    anchor-name: --room-topic;
     min-width: 0;
     flex: 1 1 0;
     overflow: hidden;
@@ -192,12 +193,23 @@
 
   // Native popover: top layer, so it sits above the R2 overlay offsets without z-index.
   // Anchored under the button where anchor positioning exists; else the UA centres it.
+  @supports (top: anchor(bottom)) {
+    .title-topic {
+      anchor-name: --room-topic;
+    }
+
+    .topic-popover {
+      position-anchor: --room-topic;
+      top: anchor(bottom);
+      left: anchor(start);
+      margin: 0;
+      margin-block-start: var(--trinity-space-2);
+    }
+  }
+
   .topic-popover {
-    position-anchor: --room-topic;
-    top: anchor(bottom);
-    left: anchor(start);
-    margin: 0;
-    margin-block-start: var(--trinity-space-2);
+    display: block;
+    white-space: pre-line;
     max-inline-size: min(480px, 90vw);
     max-block-size: 50vh;
     overflow: auto;
