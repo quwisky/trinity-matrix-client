@@ -43,7 +43,9 @@ test.describe('Encrypted key export', () => {
     const downloadPromise = page.waitForEvent('download');
     await page.getByTestId('alert-confirm').click();
     const inputFile = await downloadPromise.then((download) => download.path());
-    await expect(page.getByText('Room keys exported.')).toBeVisible({
+    await expect(
+      page.getByLabel('Notifications alt+T').getByText('Room keys exported.'),
+    ).toBeVisible({
       timeout: 20_000,
     });
 
