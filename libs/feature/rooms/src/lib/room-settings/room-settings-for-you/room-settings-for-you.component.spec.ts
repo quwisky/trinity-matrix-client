@@ -92,11 +92,16 @@ describe('RoomSettingsForYouComponent', () => {
         .querySelector('[role="radiogroup"]')
         ?.querySelectorAll(':scope > trn-settings-row'),
     ).toHaveLength(3);
+    const description = container.querySelector(
+      '#room-settings-favourite-input-description',
+    );
+    expect(description).not.toBeNull();
+    expect(description?.closest('trn-settings-row')).not.toBeNull();
     expect(
       container
-        .querySelector('#room-settings-favourite-help')
-        ?.closest('trn-settings-row'),
-    ).not.toBeNull();
+        .querySelector('[data-testid="room-settings-favourite"] input')
+        ?.getAttribute('aria-describedby'),
+    ).toBe('room-settings-favourite-input-description');
   });
 
   it('keeps the radios in one native group so the arrow keys move between them', async () => {

@@ -70,6 +70,7 @@ test.describe('Room settings · For you on a phone', () => {
       timeout: 15_000,
     });
 
+    await page.setViewportSize({ width: 390, height: 844 });
     await expectRowLabelsAlignedWithTitle(page, 'room-settings');
     const mute = page
       .getByTestId('room-settings-notify-mute')

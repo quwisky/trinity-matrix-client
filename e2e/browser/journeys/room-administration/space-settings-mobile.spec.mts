@@ -232,6 +232,7 @@ test.describe('Space settings on a phone', () => {
     await expect(
       page.getByTestId('space-settings-section-heading'),
     ).toBeFocused();
+    await page.setViewportSize({ width: 390, height: 844 });
     await expectRowLabelsAlignedWithTitle(page, 'space-settings');
     const alphabetical = page.getByTestId('space-settings-order-alphabetical');
     expect(
