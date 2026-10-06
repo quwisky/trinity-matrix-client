@@ -79,3 +79,10 @@ export type {
   TrnOverlayAlign,
   TrnOverlaySide,
 } from './lib/position/trn-overlay-position';
+export { TrnSettingsGroupComponent } from './lib/settings-layout/trn-settings-group.component';
+export { TrnSettingsRowComponent } from './lib/settings-layout/trn-settings-row.component';
+export {
+  TrnSettingsParts,
+  slugify,
+  type SettingsPart,
+} from './lib/settings-layout/trn-settings-parts';
