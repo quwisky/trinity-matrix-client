@@ -102,6 +102,11 @@
     background: var(--trinity-state-hover-surface);
     color: var(--trinity-text);
     border-radius: var(--trinity-shape-place-radius);
+
+    // The global icon-button rule (overrides layer) wins over `border-radius` above and reads
+    // this hook, so the space pill keeps the avatar's place radius.
+    --trn-icon-button-radius: var(--trinity-shape-place-radius);
+
     display: flex;
     align-items: center;
     justify-content: center;
