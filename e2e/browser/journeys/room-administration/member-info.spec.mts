@@ -147,15 +147,14 @@ test.describe('Member info panel', () => {
     // needs 44px at every breakpoint — so measure again on a phone-sized viewport.
     const desktopViewport = page.viewportSize()!;
     await page.setViewportSize({ width: 390, height: 844 });
-    if (!(await page.locator('.chat-members').isVisible())) {
-      await openMembers(page);
-    }
+    // Becoming a drawer closes the remembered roster, in an effect after the resize — so
+    // wait for that rather than reading visibility before it has run.
+    await expect(page.locator('.chat-members')).toBeHidden();
+    await openMembers(page);
     await memberRow.first().waitFor({ state: 'visible' });
     expect((await memberRow.first().boundingBox())?.height).toBe(44);
     await page.setViewportSize(desktopViewport);
-    if (!(await page.locator('.chat-members').isVisible())) {
-      await openMembers(page);
-    }
+    await expect(page.locator('.chat-members')).toBeVisible();
 
     await memberRow.first().click();
 
