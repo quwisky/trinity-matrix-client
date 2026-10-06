@@ -100,6 +100,8 @@ export class ChannelSidebarComponent {
   readonly spaceName = input('Direct messages');
   /** Whether a space (not Home) is selected — gates the header space actions. */
   readonly spaceActive = input(false);
+  /** Desktop's title row owns the quick switcher; the sidebar button then steps aside. */
+  readonly showSwitcher = input(true);
   /**
    * Whether the active space belongs to the signed-in account. Writes always go through the
    * ACTIVE client, so in the mixed-account view another account's space would open a dialog

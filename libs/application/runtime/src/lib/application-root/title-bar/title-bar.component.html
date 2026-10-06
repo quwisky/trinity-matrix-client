@@ -1,0 +1,43 @@
+@if (visible()) {
+  @if (!isMac) {
+    <button
+      trnIconButton
+      class="title-bar__button"
+      type="button"
+      aria-label="Application menu"
+      data-testid="title-bar-menu"
+      (click)="openMenu($event)"
+    >
+      <trn-icon name="menu" />
+    </button>
+  }
+  <span class="title-bar__title" data-testid="title-bar-title">{{
+    titleBar.title()
+  }}</span>
+  <div class="title-bar__actions">
+    @if (titleBar.quickSwitcher(); as openSwitcher) {
+      <button
+        trnIconButton
+        class="title-bar__button"
+        type="button"
+        aria-label="Search (Ctrl/Cmd+K)"
+        data-testid="title-bar-switcher"
+        (click)="openSwitcher()"
+      >
+        <trn-icon name="command" />
+      </button>
+    }
+    @if (systemStatus.hasProblems()) {
+      <button
+        trnIconButton
+        class="title-bar__button"
+        type="button"
+        aria-label="System status"
+        data-testid="title-bar-status"
+        (click)="systemStatus.show()"
+      >
+        <trn-icon name="shield-alert" />
+      </button>
+    }
+  </div>
+}

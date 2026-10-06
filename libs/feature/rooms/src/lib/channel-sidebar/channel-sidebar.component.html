@@ -2,16 +2,18 @@
   <header class="sidebar__header">
     <span class="sidebar__title">{{ spaceName() }}</span>
     <div class="sidebar__actions">
-      <button
-        trnIconButton
-        class="sidebar__action"
-        (click)="openSwitcher.emit()"
-        aria-label="Search (Ctrl/Cmd+K)"
-        trnTooltip="Search (Ctrl/Cmd+K)"
-        data-testid="open-switcher"
-      >
-        <trn-icon name="command" motion="pop" />
-      </button>
+      @if (showSwitcher()) {
+        <button
+          trnIconButton
+          class="sidebar__action"
+          (click)="openSwitcher.emit()"
+          aria-label="Search (Ctrl/Cmd+K)"
+          trnTooltip="Search (Ctrl/Cmd+K)"
+          data-testid="open-switcher"
+        >
+          <trn-icon name="command" motion="pop" />
+        </button>
+      }
       <!-- A space keeps only its two most-reached-for actions out here; the rest live in the
            overflow. The sidebar is a fixed 280px at EVERY breakpoint, so this is not a
            narrow-layout concern the way the room header's `md:hidden` demotion is: six

@@ -22,11 +22,15 @@ export function roomTitle(
 @Injectable({ providedIn: 'root' })
 export class TitleBarState {
   private readonly context = signal<TitleBarContext | null>(null);
+  private readonly activeState = signal(false);
 
   readonly title = computed(() => this.context()?.title ?? APP_NAME);
   readonly quickSwitcher = computed(
     () => this.context()?.quickSwitcher ?? null,
   );
+
+  /** True while the desktop title row renders; the Rooms sidebar then drops its switcher. */
+  readonly active = this.activeState.asReadonly();
 
   constructor() {
     const pageTitle = inject(Title);
@@ -37,6 +41,10 @@ export class TitleBarState {
         title === APP_NAME ? APP_NAME : `${title} – ${APP_NAME}`,
       );
     });
+  }
+
+  setActive(active: boolean): void {
+    this.activeState.set(active);
   }
 
   setContext(context: TitleBarContext | null): void {

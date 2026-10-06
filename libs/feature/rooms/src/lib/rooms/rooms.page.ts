@@ -269,7 +269,7 @@ export class RoomsPage {
   readonly shortcutActions = inject(ShellShortcutsService);
   readonly session = inject(SessionActionsService);
   readonly systemStatus = inject(WORKSPACE_SYSTEM_STATUS);
-  private readonly titleBar = inject(TitleBarState);
+  protected readonly titleBar = inject(TitleBarState);
   private readonly roomActionsOverflow = viewChild<ElementRef<HTMLElement>>(
     'roomActionsOverflow',
   );

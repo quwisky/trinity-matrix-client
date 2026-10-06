@@ -65,6 +65,7 @@ export const TRN_ICON_NAMES = [
   'map-pin',
   'message-square',
   'messages-square',
+  'menu',
   'mic',
   'monitor-smartphone',
   'palette',

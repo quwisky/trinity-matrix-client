@@ -44,6 +44,7 @@
       />
       <trn-channel-sidebar
         class="shell-side__rooms"
+        [showSwitcher]="!titleBar.active()"
         [spaceName]="vm.sidebarTitle()"
         [spaceActive]="
           !store.recentView() &&

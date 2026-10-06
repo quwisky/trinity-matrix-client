@@ -119,6 +119,7 @@ async function renderSidebar(
       hasAnyUnread?: boolean;
       filterQuery?: string;
       spaceActive?: boolean;
+      showSwitcher?: boolean;
       activeRoomId?: string | null;
       activeUserId?: string | null;
       sortMode?: RoomSortMode;
@@ -671,6 +672,14 @@ describe('ChannelSidebarComponent', () => {
       .click();
 
     expect(opened).toBe(true);
+  });
+
+  it('drops the header search button when the desktop title row owns the switcher', async () => {
+    const { container } = await renderSidebar({
+      inputs: { showSwitcher: false },
+    });
+
+    expect(container.querySelector('[data-testid="open-switcher"]')).toBeNull();
   });
 
   it('lists not-yet-joined channels and emits joinRoom with the child', async () => {
