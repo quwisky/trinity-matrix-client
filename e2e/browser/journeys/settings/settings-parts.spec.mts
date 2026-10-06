@@ -24,9 +24,10 @@ test.describe('Settings parts', () => {
 
     await page.getByTestId('settings-detail').hover();
     await page.mouse.wheel(0, -10_000);
+    // Appearance opens with an untitled preview, so no part is current at the very top.
     await expect(
-      page.getByTestId('settings-part-mode-and-theme'),
-    ).toHaveAttribute('aria-current', 'location');
+      page.locator('.settings-layout__part[aria-current="location"]'),
+    ).toHaveCount(0);
     await expect(page).toHaveURL(/\/settings\/appearance$/);
   });
 

@@ -258,10 +258,24 @@ export class TrnSettingsLayoutComponent {
       clearTimeout(this.lockTimer);
       this.lockTimer = setTimeout(this.endScrollLock, 800);
     }
-    part.heading.scrollIntoView({
-      behavior: reduce ? 'auto' : 'smooth',
-      block: 'start',
-    });
+    // Scroll the content column alone (scrollIntoView would also move its ancestors), and
+    // stop below the sticky chip row, which only exists while compact.
+    const detail = this.detail()?.nativeElement;
+    if (detail) {
+      const chips = detail.querySelector<HTMLElement>(
+        '.settings-layout__chips',
+      );
+      const clearance = this.compact() && chips ? chips.offsetHeight : 0;
+      detail.style.scrollPaddingTop = clearance ? `${clearance}px` : '';
+      detail.scrollTo({
+        top:
+          part.heading.getBoundingClientRect().top -
+          detail.getBoundingClientRect().top +
+          detail.scrollTop -
+          clearance,
+        behavior: reduce ? 'auto' : 'smooth',
+      });
+    }
     part.heading.focus({ preventScroll: true });
     this.registry.current.set(id);
     this.emitNow(id);
@@ -289,16 +303,16 @@ export class TrnSettingsLayoutComponent {
       scrollable &&
       detail.scrollTop + detail.clientHeight >= detail.scrollHeight - 1;
     const top = !atBottom && detail.scrollTop === 0;
+    // At the top an untitled leading block can precede the first part: then none is current.
     const id = atBottom
       ? parts.at(-1)?.id
-      : (parts.find((p) => this.visibleParts.has(p.id))?.id ??
-        (top ? parts[0]?.id : undefined));
-    if (!id) {
+      : parts.find((p) => this.visibleParts.has(p.id))?.id;
+    if (!id && !top) {
       return;
     }
-    this.registry.current.set(id);
+    this.registry.current.set(id ?? null);
     // The top of the page is the section itself: it carries no fragment.
-    const emit = top ? null : id;
+    const emit = top ? null : (id ?? null);
     clearTimeout(this.emitTimer);
     if (emit !== this.lastEmitted) {
       this.emitTimer = setTimeout(() => this.emitNow(emit), 200);

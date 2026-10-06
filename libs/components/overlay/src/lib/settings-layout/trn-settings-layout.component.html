@@ -95,9 +95,10 @@
       </div>
     </nav>
 
-    <main
+    <section
       #detail
       [class]="detailClasses()"
+      [attr.aria-label]="headingText()"
       [class.settings-pane--hidden]="compact() && directoryVisible()"
       [attr.data-testid]="resolvedDetailTestId()"
     >
@@ -145,6 +146,6 @@
       @if (!listView()) {
         <ng-container [ngTemplateOutlet]="closeButton" />
       }
-    </main>
+    </section>
   </div>
 </div>

@@ -44,6 +44,22 @@ class SettingsLayoutHostComponent {
 }
 
 describe('TrnSettingsLayoutComponent', () => {
+  it('leaves the main landmark to the page and names its content column', async () => {
+    const { container } = await render(TrnSettingsLayoutComponent, {
+      inputs: {
+        title: 'Preferences',
+        heading: 'General',
+        sections,
+        selectedSection: 'general',
+      },
+      providers: [provideTrnIcons()],
+    });
+    expect(container.querySelector('main')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="settings-detail"]'),
+    ).toHaveAccessibleName('General');
+  });
+
   it('puts the heading test id on the section h1', async () => {
     const { container } = await render(TrnSettingsLayoutComponent, {
       inputs: {
@@ -473,6 +489,9 @@ const partsStart: { section: string; part: string | null } = {
       (partSelected)="partSelected($event)"
     >
       @if (selected() === 'general') {
+        @if (leading()) {
+          <trn-settings-group />
+        }
         <trn-settings-group title="Theme" />
         <trn-settings-group title="Messages" />
         <trn-settings-group title="Code blocks" />
@@ -488,18 +507,37 @@ class PartsHostComponent {
   readonly selected = signal<string | null>(partsStart.section);
   readonly initialPart = signal<string | null>(partsStart.part);
   readonly late = signal(false);
+  readonly leading = signal(false);
   readonly compact = signal(false);
   readonly partSelected = vi.fn();
 }
 
 describe('TrnSettingsLayoutComponent parts', () => {
-  const scrollIntoView = vi.fn();
+  const scrollTo = vi.fn();
+  const order = ['theme', 'messages', 'code-blocks', 'window'];
+  /** The scroll offset the fake layout gives a heading: 500px per part in document order. */
+  const offsetOf = (id: string): number => order.indexOf(id) * 500;
   let reduceMotion = false;
 
   beforeEach(() => {
     FakeObserver.instances = [];
-    scrollIntoView.mockReset();
+    scrollTo.mockReset();
     reduceMotion = false;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(
+      function (this: Element) {
+        const top = this.id.startsWith('part-')
+          ? offsetOf(this.id.slice(5))
+          : 0;
+        return {
+          top,
+          bottom: top,
+          left: 0,
+          right: 0,
+          width: 0,
+          height: 0,
+        } as DOMRect;
+      },
+    );
     vi.stubGlobal('IntersectionObserver', FakeObserver);
     vi.stubGlobal('matchMedia', (query: string) => ({
       matches: reduceMotion && query.includes('prefers-reduced-motion'),
@@ -507,11 +545,12 @@ describe('TrnSettingsLayoutComponent parts', () => {
       addEventListener: () => undefined,
       removeEventListener: () => undefined,
     }));
-    Element.prototype.scrollIntoView = scrollIntoView;
+    Element.prototype.scrollTo = scrollTo;
   });
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   const mount = async (
@@ -575,11 +614,13 @@ describe('TrnSettingsLayoutComponent parts', () => {
     partRow(container, 'messages')!.click();
     await flush();
     const heading = container.querySelector<HTMLElement>('#part-messages')!;
-    expect(scrollIntoView).toHaveBeenCalledOnce();
-    expect(scrollIntoView.mock.contexts[0]).toBe(heading);
-    expect(scrollIntoView).toHaveBeenCalledWith({
+    expect(scrollTo).toHaveBeenCalledOnce();
+    expect(scrollTo.mock.contexts[0]).toBe(
+      container.querySelector('[data-testid="settings-detail"]'),
+    );
+    expect(scrollTo).toHaveBeenCalledWith({
+      top: offsetOf('messages'),
       behavior: 'smooth',
-      block: 'start',
     });
     expect(document.activeElement).toBe(heading);
     expect(host.partSelected).toHaveBeenCalledWith('messages');
@@ -594,9 +635,9 @@ describe('TrnSettingsLayoutComponent parts', () => {
     const { container, flush } = await mount();
     partRow(container, 'messages')!.click();
     await flush();
-    expect(scrollIntoView).toHaveBeenCalledWith({
+    expect(scrollTo).toHaveBeenCalledWith({
+      top: offsetOf('messages'),
       behavior: 'auto',
-      block: 'start',
     });
   });
 
@@ -667,11 +708,9 @@ describe('TrnSettingsLayoutComponent parts', () => {
   });
 
   it('scrolls to the initial part once it has rendered', async () => {
-    const { container, host, flush } = await mount({ part: 'code-blocks' });
-    expect(scrollIntoView).toHaveBeenCalledOnce();
-    expect(scrollIntoView.mock.contexts[0]).toBe(
-      container.querySelector('#part-code-blocks'),
-    );
+    const { host, flush } = await mount({ part: 'code-blocks' });
+    expect(scrollTo).toHaveBeenCalledOnce();
+    expect(scrollTo.mock.calls[0]?.[0].top).toBe(offsetOf('code-blocks'));
     expect(host.partSelected).toHaveBeenCalledWith('code-blocks');
     await flush();
   });
@@ -681,21 +720,19 @@ describe('TrnSettingsLayoutComponent parts', () => {
     const { host, detail } = await mount({ part: 'nope' });
     expect(host.partSelected).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1500);
-    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(scrollTo).not.toHaveBeenCalled();
     expect(detail.scrollTop).toBe(0);
     expect(host.partSelected).toHaveBeenCalledExactlyOnceWith(null);
   });
 
   it('keeps a deep link pending for a group that registers late', async () => {
     vi.useFakeTimers();
-    const { container, host, flush } = await mount({ part: 'window' });
+    const { host, flush } = await mount({ part: 'window' });
     vi.advanceTimersByTime(300);
     expect(host.partSelected).not.toHaveBeenCalled();
     host.late.set(true);
     await flush();
-    expect(scrollIntoView.mock.contexts[0]).toBe(
-      container.querySelector('#part-window'),
-    );
+    expect(scrollTo.mock.calls[0]?.[0].top).toBe(offsetOf('window'));
     vi.advanceTimersByTime(1500);
     expect(host.partSelected).toHaveBeenCalledExactlyOnceWith('window');
   });
@@ -741,7 +778,7 @@ describe('TrnSettingsLayoutComponent parts', () => {
     });
     host.selected.set('general');
     await flush();
-    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(scrollTo).not.toHaveBeenCalled();
     expect(detail.scrollTop).toBe(0);
   });
 
@@ -762,9 +799,51 @@ describe('TrnSettingsLayoutComponent parts', () => {
     expect(links[0]).not.toHaveAttribute('aria-current');
     links[2]!.click();
     await flush();
-    expect(scrollIntoView.mock.contexts.at(-1)).toBe(
-      container.querySelector('#part-code-blocks'),
-    );
+    expect(scrollTo.mock.lastCall?.[0].top).toBe(offsetOf('code-blocks'));
+  });
+
+  it('scrolls the content column itself, clear of the sticky chip row, when compact', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { container, host, detail, flush } = await mount();
+    host.compact.set(true);
+    await flush();
+    const row = container.querySelector<HTMLElement>(
+      '.settings-layout__chips',
+    )!;
+    Object.defineProperty(row, 'offsetHeight', { value: 44 });
+    row.querySelectorAll('a')[2]!.click();
+    await flush();
+    expect(detail.style.scrollPaddingTop).toBe('44px');
+    expect(scrollTo).toHaveBeenCalledWith({
+      top: offsetOf('code-blocks') - 44,
+      behavior: 'smooth',
+    });
+    expect(scrollTo.mock.contexts[0]).toBe(detail);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('keeps no scroll padding when the chip row is not shown', async () => {
+    const { container, host, detail, flush } = await mount();
+    host.compact.set(true);
+    await flush();
+    container
+      .querySelectorAll<HTMLElement>('.settings-layout__chips a')[1]!
+      .click();
+    host.compact.set(false);
+    await flush();
+    partRow(container, 'messages')!.click();
+    expect(detail.style.scrollPaddingTop).toBe('');
+  });
+
+  it('has no part current at the top while an untitled block leads the section', async () => {
+    const { container, host, detail, flush } = await mount();
+    host.leading.set(true);
+    await flush();
+    detail.scrollTop = 0;
+    FakeObserver.live.report([]);
+    await flush();
+    expect(container.querySelector('[aria-current="location"]')).toBeNull();
   });
 
   it('lets an open popover trigger take Escape before going back', async () => {
