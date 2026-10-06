@@ -134,45 +134,61 @@
       inset 0 1px 0 var(--trinity-border-subtle);
   }
 
-  // The inset pane's rounded corner, beside the rail only: below md the conversation fills the
-  // screen and stays square. It is painted, not clipped. A radius on `.main` (which clips with
-  // overflow:hidden) rounds the clip around the composited timeline and forces an offscreen
-  // render pass: ~430 MB of GPU IOSurface memory on macOS. This unclipped mask draws the app
-  // ground and the 1px edge over the corner instead.
+  // The inset pane's rounded corner and 1px top/left edges, beside the rail only: below md the
+  // conversation fills the screen and stays square. They are painted, not clipped. A radius on
+  // `.main` (which clips with overflow:hidden) rounds the clip around the composited timeline
+  // and forces an offscreen render pass: ~430 MB of GPU IOSurface memory on macOS. Thin
+  // unclipped overlays draw them instead, above the header and timeline backgrounds that
+  // cover `.main`'s own inset edge shadows.
   @media #{$md} {
     .main {
+      --corner: var(--trinity-shape-pane-radius);
+      --corner-at: 100% 100%;
+      --edge-x: 0;
+
       position: relative;
     }
 
-    .main::before {
-      --corner: var(--trinity-shape-pane-radius);
+    .main:dir(rtl) {
+      --corner-at: 0 100%;
+      --edge-x: 100%;
+    }
 
+    // The corner arc over the app ground, then the straight edge beside the rail.
+    .main::before {
       content: '';
       position: absolute;
-      inset-block-start: 0;
+      inset-block: 0;
       inset-inline-start: 0;
       z-index: var(--trinity-z-sticky);
       inline-size: var(--corner);
-      block-size: var(--corner);
       pointer-events: none;
-      background: radial-gradient(
-        circle at 100% 100%,
-        transparent calc(var(--corner) - 1px),
-        var(--trinity-border-subtle) calc(var(--corner) - 1px),
-        var(--trinity-border-subtle) var(--corner),
-        var(--trinity-surface-app) var(--corner)
-      );
+      background:
+        radial-gradient(
+            circle at var(--corner-at),
+            transparent calc(var(--corner) - 1px),
+            var(--trinity-border-subtle) calc(var(--corner) - 1px),
+            var(--trinity-border-subtle) var(--corner),
+            var(--trinity-surface-app) var(--corner)
+          )
+          0 0 / var(--corner) var(--corner) no-repeat,
+        linear-gradient(
+            var(--trinity-border-subtle),
+            var(--trinity-border-subtle)
+          )
+          var(--edge-x) var(--corner) / 1px calc(100% - var(--corner)) no-repeat;
     }
 
-    .main:dir(rtl)::before {
-      background-position: 0 0;
-      background-image: radial-gradient(
-        circle at 0 100%,
-        transparent calc(var(--corner) - 1px),
-        var(--trinity-border-subtle) calc(var(--corner) - 1px),
-        var(--trinity-border-subtle) var(--corner),
-        var(--trinity-surface-app) var(--corner)
-      );
+    // The straight top edge, after the corner.
+    .main::after {
+      content: '';
+      position: absolute;
+      inset-block-start: 0;
+      inset-inline: var(--corner) 0;
+      z-index: var(--trinity-z-sticky);
+      block-size: 1px;
+      pointer-events: none;
+      background: var(--trinity-border-subtle);
     }
   }
 
