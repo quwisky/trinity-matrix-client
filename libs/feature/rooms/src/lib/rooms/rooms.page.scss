@@ -132,11 +132,47 @@
     box-shadow:
       inset 1px 0 0 var(--trinity-border-subtle),
       inset 0 1px 0 var(--trinity-border-subtle);
+  }
 
-    // The inset pane's rounded corner only exists beside the rail; below md the conversation
-    // fills the screen, so it stays square.
-    @media #{$md} {
-      border-start-start-radius: var(--trinity-shape-pane-radius);
+  // The inset pane's rounded corner, beside the rail only: below md the conversation fills the
+  // screen and stays square. It is painted, not clipped. A radius on `.main` (which clips with
+  // overflow:hidden) rounds the clip around the composited timeline and forces an offscreen
+  // render pass: ~430 MB of GPU IOSurface memory on macOS. This unclipped mask draws the app
+  // ground and the 1px edge over the corner instead.
+  @media #{$md} {
+    .main {
+      position: relative;
+    }
+
+    .main::before {
+      --corner: var(--trinity-shape-pane-radius);
+
+      content: '';
+      position: absolute;
+      inset-block-start: 0;
+      inset-inline-start: 0;
+      z-index: var(--trinity-z-sticky);
+      inline-size: var(--corner);
+      block-size: var(--corner);
+      pointer-events: none;
+      background: radial-gradient(
+        circle at 100% 100%,
+        transparent calc(var(--corner) - 1px),
+        var(--trinity-border-subtle) calc(var(--corner) - 1px),
+        var(--trinity-border-subtle) var(--corner),
+        var(--trinity-surface-app) var(--corner)
+      );
+    }
+
+    .main:dir(rtl)::before {
+      background-position: 0 0;
+      background-image: radial-gradient(
+        circle at 0 100%,
+        transparent calc(var(--corner) - 1px),
+        var(--trinity-border-subtle) calc(var(--corner) - 1px),
+        var(--trinity-border-subtle) var(--corner),
+        var(--trinity-surface-app) var(--corner)
+      );
     }
   }
 
