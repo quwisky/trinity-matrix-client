@@ -17,10 +17,12 @@
     background: var(--trinity-border-overlay);
   }
 
+  // Centred, not start-aligned: on a coarse pointer the close button grows to a 44px target,
+  // and top-aligned its icon sat ~10px below a one-line title.
   .dialog-shell__header {
     display: flex;
     flex: none;
-    align-items: flex-start;
+    align-items: center;
     gap: var(--trinity-space-4);
     padding: var(--trinity-space-5) var(--trinity-space-5) 0;
   }
