@@ -208,6 +208,12 @@ test.describe('Rooms view excludes space-owned rooms', () => {
       expect(radii.avatar).not.toBe('50%');
     };
 
+    // The icon-button recipe must not shrink the pill under its 48px avatar.
+    expect(await spacePill.boundingBox()).toMatchObject({
+      width: 48,
+      height: 48,
+    });
+
     const restingRadii = await spaceRadii();
     assertStablePlaceGeometry(restingRadii);
     await spacePill.hover();

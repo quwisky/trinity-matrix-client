@@ -33,7 +33,10 @@
 
   .account-badge {
     position: absolute;
-    left: -2px;
+
+    // Bottom-left by default; a host can move it with the two inline hooks (the rail does).
+    left: var(--trn-account-badge-left, -2px);
+    right: var(--trn-account-badge-right, auto);
     bottom: -2px;
     display: flex;
     align-items: center;

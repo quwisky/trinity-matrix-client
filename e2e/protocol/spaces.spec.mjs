@@ -159,11 +159,11 @@ async function main(protocolBrowser) {
 
     // Once the spaces() signal is updated, activeSpaceName() resolves to the
     // real name (it falls back to "Direct messages" until sync). waitForFunction is the
-    // robust wait here since the element is always present (text changes).
+    // robust wait here since the element is always present (text changes). An active space
+    // renders its title as the actions-menu button, so match the class, not the span.
     await page.waitForFunction(
       (name) =>
-        document.querySelector('span.sidebar__title')?.textContent?.trim() ===
-        name,
+        document.querySelector('.sidebar__title')?.textContent?.trim() === name,
       SPACE_NAME,
       { timeout: STEP_TIMEOUT, polling: 500 },
     );

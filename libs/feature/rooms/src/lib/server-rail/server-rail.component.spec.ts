@@ -351,6 +351,35 @@ describe('ServerRailComponent', () => {
     expect(pill.hasAttribute('data-trn-icon-button')).toBe(true);
   });
 
+  it('keeps the space pill 48px with the place radius inside the icon-button recipe', async () => {
+    const { container } = await render(ServerRailComponent, {
+      inputs: { spaces: [space()] },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    const pill = container
+      .querySelectorAll('.item')
+      [FIRST_SPACE].querySelector('button')!;
+    // The recipe's own size-8 and the global icon-button radius would otherwise shrink
+    // the pill under its 48px avatar and round it differently.
+    expect(pill.classList.contains('size-12')).toBe(true);
+    const css = readFileSync(
+      join(import.meta.dirname, 'server-rail.component.scss'),
+      'utf8',
+    );
+    expect(css).toMatch(
+      /--trn-icon-button-radius:\s*var\(--trinity-shape-place-radius\)/,
+    );
+  });
+
+  it('moves the account badge to the bottom-right of the rail avatar', () => {
+    const css = readFileSync(
+      join(import.meta.dirname, 'server-rail.component.scss'),
+      'utf8',
+    );
+    expect(css).toMatch(/--trn-account-badge-left:\s*auto/);
+    expect(css).toMatch(/--trn-account-badge-right:\s*-2px/);
+  });
+
   it('keeps the selected pill over the unread dot and hover pill', () => {
     const css = readFileSync(
       join(import.meta.dirname, 'server-rail.component.scss'),
