@@ -9,6 +9,8 @@ import type { Observable } from 'rxjs';
  */
 export interface ClosableRef<R> {
   readonly closed: Observable<R | undefined>;
+  /** CDK's `DialogRef` carries it; `close()` itself ignores it, so callers that swipe must not. */
+  readonly disableClose?: boolean;
   close(result?: R): void;
 }
 
@@ -76,6 +78,11 @@ export class TrnDialogRef<R = unknown> {
     this.closed = cdkRef.closed;
     this.presentation = presentation;
     this.titleId = titleId;
+  }
+
+  /** Opened non-dismissible: no gesture may close it, only the flow itself. */
+  get disableClose(): boolean {
+    return this.cdkRef.disableClose ?? false;
   }
 
   /**

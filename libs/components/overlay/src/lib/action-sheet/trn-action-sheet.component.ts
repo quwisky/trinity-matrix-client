@@ -4,7 +4,7 @@ import {
   ElementRef,
   inject,
 } from '@angular/core';
-import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { DIALOG_DATA, Dialog, DialogRef } from '@angular/cdk/dialog';
 import { TrnButton } from '@trinity/components/controls';
 import {
   TrnIconComponent,
@@ -96,7 +96,7 @@ export interface ActionSheetData {
   providers: [
     {
       provide: TRN_SHEET_DISMISS,
-      useFactory: () => sheetDismissFor(inject(DialogRef)),
+      useFactory: () => sheetDismissFor(inject(DialogRef), inject(Dialog)),
     },
   ],
   styles: [

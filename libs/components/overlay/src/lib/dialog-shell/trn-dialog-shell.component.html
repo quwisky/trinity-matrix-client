@@ -1,6 +1,6 @@
 <section
   trnOverlaySurface
-  [trnSheetDrag]="layout() === 'sheet'"
+  [trnSheetDrag]="swipeable()"
   variant="neutral"
   [size]="size()"
   [layout]="layout()"
@@ -9,7 +9,7 @@
   [class.trn-overlay-enter-dialog]="layout() !== 'sheet'"
   data-testid="dialog-surface"
 >
-  @if (layout() === 'sheet') {
+  @if (layout() === 'sheet' && swipeable()) {
     <div
       class="dialog-shell__handle"
       data-testid="sheet-handle"

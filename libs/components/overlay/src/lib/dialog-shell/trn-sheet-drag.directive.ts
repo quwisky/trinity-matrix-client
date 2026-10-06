@@ -7,7 +7,7 @@ import {
   inject,
   input,
 } from '@angular/core';
-import type { Observable } from 'rxjs';
+import type { Dialog } from '@angular/cdk/dialog';
 
 /** Dismisses the surrounding sheet; returns whether it actually closed (a guard may refuse). */
 export const TRN_SHEET_DISMISS = new InjectionToken<() => boolean>(
@@ -15,21 +15,19 @@ export const TRN_SHEET_DISMISS = new InjectionToken<() => boolean>(
 );
 
 /**
- * Builds a {@link TRN_SHEET_DISMISS} function for a ref: it calls `close()` and reports
- * whether `closed` then emitted, since a refused `dismissGuard` leaves the dialog open.
+ * Builds a {@link TRN_SHEET_DISMISS} function for a ref: it refuses a `disableClose` dialog,
+ * calls `close()`, and reports whether the dialog left the CDK stack. A refused `dismissGuard`
+ * keeps it there; `close()` splices it out synchronously otherwise (see `closeTopmost()`).
  */
-export function sheetDismissFor(ref: {
-  readonly closed: Observable<unknown>;
-  close(): void;
-}): () => boolean {
-  let closed = false;
-  ref.closed.subscribe({
-    next: () => (closed = true),
-    complete: () => (closed = true),
-  });
+export function sheetDismissFor(
+  ref: { readonly disableClose?: boolean; close(): void },
+  dialog: Pick<Dialog, 'openDialogs'>,
+): () => boolean {
   return () => {
+    if (ref.disableClose) return false;
+    const before = dialog.openDialogs.length;
     ref.close();
-    return closed;
+    return dialog.openDialogs.length < before;
   };
 }
 
@@ -56,7 +54,7 @@ export class TrnSheetDrag {
   }
 
   begin(event: PointerEvent): void {
-    if (!this.enabled()) return;
+    if (!this.enabled() || event.button !== 0) return;
     this.stopDrag?.();
     const startY = event.clientY;
     const startT = event.timeStamp;
@@ -65,9 +63,11 @@ export class TrnSheetDrag {
     this.host.style.transition = 'none';
 
     const move = (e: PointerEvent) => {
+      if (e.pointerId !== event.pointerId) return;
       this.host.style.transform = `translateY(${offset(e)}px)`;
     };
     const finish = (e: PointerEvent, cancelled: boolean) => {
+      if (e.pointerId !== event.pointerId) return;
       const dy = offset(e);
       const velocity = dy / Math.max(1, e.timeStamp - startT);
       this.stopDrag?.();
@@ -105,10 +105,13 @@ export class TrnSheetDrag {
 /** The part of a sheet (grab handle, header) that starts a drag. */
 @Directive({
   selector: '[trnSheetDragHandle]',
-  host: { '(pointerdown)': 'start($event)', style: 'touch-action: none' },
+  host: {
+    '(pointerdown)': 'start($event)',
+    '[style.touch-action]': 'sheet?.enabled() ? "none" : null',
+  },
 })
 export class TrnSheetDragHandle {
-  private readonly sheet = inject(TrnSheetDrag, { optional: true });
+  protected readonly sheet = inject(TrnSheetDrag, { optional: true });
 
   protected start(event: PointerEvent): void {
     // A header control (the close X) keeps its own press; capturing would retarget its click.

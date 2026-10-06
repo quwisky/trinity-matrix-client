@@ -7,6 +7,7 @@ import {
   inject,
   input,
 } from '@angular/core';
+import { Dialog } from '@angular/cdk/dialog';
 import { outputFromObservable } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
@@ -53,7 +54,7 @@ export class TrnDialogActions {}
       provide: TRN_SHEET_DISMISS,
       useFactory: () => {
         const ref = inject(TrnDialogRef, { optional: true });
-        return ref ? sheetDismissFor(ref) : () => false;
+        return ref ? sheetDismissFor(ref, inject(Dialog)) : () => false;
       },
     },
   ],
@@ -74,6 +75,14 @@ export class TrnDialogShellComponent {
       ? presentation
       : 'dialog';
   });
+
+  /** Only a closable sheet that was not opened `disableClose` follows a swipe. */
+  protected readonly swipeable = computed(
+    () =>
+      this.layout() === 'sheet' &&
+      this.closable() &&
+      !(this.ref?.disableClose ?? false),
+  );
 
   readonly title = input.required<string>();
   readonly description = input<string>();

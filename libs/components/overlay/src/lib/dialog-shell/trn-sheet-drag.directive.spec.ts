@@ -1,6 +1,6 @@
-import { Component, input } from '@angular/core';
+import { Component, DestroyRef, input } from '@angular/core';
 import { render } from '@trinity/testing';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   TRN_SHEET_DISMISS,
   TrnSheetDrag,
@@ -75,6 +75,8 @@ async function setup(): Promise<{ sheet: HTMLElement; handle: HTMLElement }> {
 }
 
 describe('TrnSheetDrag', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it('dismisses past 25% of the sheet height', async () => {
     const { handle } = await setup();
     pointer('pointerdown', 100, 0, handle);
@@ -138,8 +140,8 @@ describe('TrnSheetDrag', () => {
     expect(sheet.style.transition).toBe('transform 200ms ease-out');
   });
 
-  it('dismisses only the dragged sheet of a stack', async () => {
-    for (const key of Object.keys(spies)) delete spies[key];
+  it("dismisses through the dragged sheet's own dismiss function", async () => {
+    for (const key of Object.keys(spies)) delete spies[key]; // each host gets a fresh spy
     await render(StackedHostComponent);
     const top = document.querySelector<HTMLElement>('[data-testid=handle-b]')!;
     vi.spyOn(
@@ -181,5 +183,82 @@ describe('TrnSheetDrag', () => {
     expect(
       remove.mock.calls.filter(([t]) => t.startsWith('pointer')),
     ).toHaveLength(3);
+  });
+
+  it.each([
+    ['24% of the height', false, 96, 1000],
+    ['26% of the height', true, 104, 1000],
+    ['just under 0.5 px/ms', false, 40, 82],
+    ['just over 0.5 px/ms', true, 40, 78],
+  ])('%s (dismissed: %s)', async (_label, expected, dy, ms) => {
+    const { handle } = await setup();
+    pointer('pointerdown', 100, 0, handle);
+    pointer('pointermove', 100 + dy, ms);
+    pointer('pointerup', 100 + dy, ms);
+    expect(dismiss.mock.calls.length > 0).toBe(expected);
+  });
+
+  it('drops the first drag listeners when a second drag starts before it ends', async () => {
+    const { handle } = await setup();
+    const add = vi.spyOn(document, 'addEventListener');
+    const remove = vi.spyOn(document, 'removeEventListener');
+    const pointerCalls = (spy: typeof add) =>
+      spy.mock.calls.filter(([t]) => t.startsWith('pointer')).length;
+
+    pointer('pointerdown', 100, 0, handle);
+    pointer('pointerdown', 100, 5, handle);
+    expect(pointerCalls(add)).toBe(6);
+    expect(pointerCalls(remove)).toBe(3);
+
+    pointer('pointerup', 110, 1000);
+    expect(pointerCalls(remove)).toBe(6);
+    expect(dismiss).not.toHaveBeenCalled();
+  });
+
+  it.each(['pointerup', 'pointercancel'])(
+    'captures the pointer on the handle and releases it on %s',
+    async (ending) => {
+      const { handle } = await setup();
+      handle.setPointerCapture = vi.fn();
+      handle.releasePointerCapture = vi.fn();
+
+      pointer('pointerdown', 100, 0, handle);
+      expect(handle.setPointerCapture).toHaveBeenCalledOnce();
+      expect(handle.releasePointerCapture).not.toHaveBeenCalled();
+      pointer(ending, 110, 1000);
+      expect(handle.releasePointerCapture).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('registers one destroy hook per instance, however many drags run', async () => {
+    const { fixture } = await render(SheetHostComponent);
+    const sheetEl = document.querySelector<HTMLElement>('[data-testid=sheet]')!;
+    const destroyRef = fixture.debugElement
+      .query((d) => d.nativeElement === sheetEl)
+      .injector.get(DestroyRef);
+    const onDestroy = vi.spyOn(Object.getPrototypeOf(destroyRef), 'onDestroy');
+    const handle = document.querySelector<HTMLElement>('[data-testid=handle]')!;
+
+    for (let i = 0; i < 5; i++) {
+      pointer('pointerdown', 100, 0, handle);
+      pointer('pointerup', 110, 1000);
+    }
+
+    expect(onDestroy).not.toHaveBeenCalled();
+  });
+
+  it('removes no listeners on destroy after the drags have completed', async () => {
+    dismiss.mockReset();
+    const { fixture } = await render(SheetHostComponent);
+    const handle = document.querySelector<HTMLElement>('[data-testid=handle]')!;
+    pointer('pointerdown', 100, 0, handle);
+    pointer('pointerup', 110, 1000);
+    const remove = vi.spyOn(document, 'removeEventListener');
+
+    fixture.destroy();
+
+    expect(
+      remove.mock.calls.filter(([t]) => t.startsWith('pointer')),
+    ).toHaveLength(0);
   });
 });
