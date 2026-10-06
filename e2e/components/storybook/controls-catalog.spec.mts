@@ -334,21 +334,21 @@ for (const [size, storyId] of [
   ['md', 'emoji-picker-medium'],
   ['lg', 'emoji-picker-large'],
 ] as const) {
-  for (const preview of STORYBOOK_THEME_PREVIEWS) {
-    test(`${size} emoji picker keeps its ordinal recipe in ${preview.theme.id} ${preview.mode.id}`, async ({
-      page,
-    }) => {
-      await page.goto(
-        `/iframe.html?id=components-control-recipe-matrix--${storyId}&viewMode=story&globals=${storybookThemeGlobals(preview)}`,
-      );
-      await expect(page.getByTestId('catalog-emoji-size')).toHaveAttribute(
-        'data-size',
-        size,
-      );
-      await expectStorybookThemeRoot(page, preview);
-      const scan = await runAxe(page);
-      expect(formatAxeResults(scan.violations)).toEqual([]);
-      expect(formatAxeResults(scan.incomplete)).toEqual([]);
-    });
-  }
+  // Size changes only the glyph measurement, never a colour role. Every Theme and Mode
+  // already scans the picker inside the complete catalog above, so each size canvas runs
+  // once, in the default preview.
+  const preview = DEFAULT_STORYBOOK_THEME_PREVIEW;
+  test(`${size} emoji picker keeps its ordinal recipe`, async ({ page }) => {
+    await page.goto(
+      `/iframe.html?id=components-control-recipe-matrix--${storyId}&viewMode=story&globals=${storybookThemeGlobals(preview)}`,
+    );
+    await expect(page.getByTestId('catalog-emoji-size')).toHaveAttribute(
+      'data-size',
+      size,
+    );
+    await expectStorybookThemeRoot(page, preview);
+    const scan = await runAxe(page);
+    expect(formatAxeResults(scan.violations)).toEqual([]);
+    expect(formatAxeResults(scan.incomplete)).toEqual([]);
+  });
 }
