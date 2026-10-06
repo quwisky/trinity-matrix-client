@@ -43,10 +43,52 @@ jobs:
       created: ${{ steps.release.outputs.release_created }}
       tag: ${{ steps.release.outputs.tag_name }}
     steps:
+      # A release branch's first stable release takes the version of the prerelease it was
+      # cut from. The action ignores release-as in manifest mode, so the CLI opens that PR
+      # with --release-as and the action below only tags and releases. Once the line has a
+      # stable tag the helper prints nothing and always-bump-patch proposes patch releases.
+      - name: Check out the release branch
+        if: ${{ startsWith(github.ref_name, 'release/') }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The whole history and every tag: the helper reads the tags reachable from HEAD.
+          fetch-depth: 0
+          persist-credentials: false
+      # The script uses import.meta.main (Node 24+); the runner's default Node is older.
+      - name: Set up Node
+        if: ${{ startsWith(github.ref_name, 'release/') }}
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - id: version
+        name: Find the first stable version
+        if: ${{ startsWith(github.ref_name, 'release/') }}
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          version=$(node scripts/release-version.mjs "$BRANCH")
+          echo "version=$version" | tee -a "$GITHUB_OUTPUT"
+      # release-please aborts here while a merged release PR is still untagged, so the push
+      # that merges the release PR leaves tagging to the action.
+      - id: first-release-pr
+        name: Open the first stable release PR
+        if: ${{ steps.version.outputs.version != '' }}
+        env:
+          TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: >-
+          npx --yes release-please@17.11.2 release-pr
+          --token "$TOKEN"
+          --repo-url "$GITHUB_REPOSITORY"
+          --target-branch "$GITHUB_REF_NAME"
+          --config-file release-please-config.json
+          --manifest-file .release-please-manifest.json
+          --release-as "$VERSION"
       - id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           target-branch: ${{ github.ref_name }}
+          skip-github-pull-request: ${{ steps.version.outputs.version != '' }}
           config-file: ${{ startsWith(github.ref_name, 'release/') && 'release-please-config.json' || 'release-please-config.next.json' }}
           manifest-file: ${{ startsWith(github.ref_name, 'release/') && '.release-please-manifest.json' || '.release-please-manifest.next.json' }}
 
@@ -71,30 +113,13 @@ jobs:
         with:
           client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-      # The release branch, not main: the drop step below commits to it. back-merge.mjs
-      # fetches main and branches from origin/main itself.
+      # The release branch's own copy of the script. back-merge.mjs fetches main and
+      # branches from origin/main itself; it pushes only its back-merge/vX.Y.Z branch.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
-      # Release stable pins release-as X.Y.Z when it cuts the branch; left in place, every later
-      # push would propose X.Y.Z again instead of the next patch release.
-      - name: Drop the one-time release-as
-        env:
-          TAG: ${{ needs.release-please.outputs.tag }}
-          BRANCH: ${{ github.ref_name }}
-        run: |
-          git config user.name 'trinity-release[bot]'
-          git config user.email 'trinity-release[bot]@users.noreply.github.com'
-          # A fix may have landed on the branch since checkout; rebase first so the push is not rejected.
-          git pull --rebase origin "$BRANCH"
-          if [ "$(jq '.packages["."] | has("release-as")' release-please-config.json)" = true ]; then
-            jq --indent 2 'del(.packages["."]["release-as"])' release-please-config.json > "$RUNNER_TEMP/release-please-config.json"
-            mv "$RUNNER_TEMP/release-please-config.json" release-please-config.json
-            git commit --quiet -m "chore(release): drop the one-time release-as after $TAG" -- release-please-config.json
-            git push origin "HEAD:refs/heads/$BRANCH"
-          fi
       # The script uses import.meta.main (Node 24+); the runner's default Node is older.
       # Node only: the script needs no workspace dependencies, so skip the full setup.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -105,8 +130,10 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           TAG: ${{ needs.release-please.outputs.tag }}
           BRANCH: ${{ github.ref_name }}
-        # Commits as the bot identity configured in the drop step.
-        run: node scripts/back-merge.mjs --tag "$TAG" --branch "$BRANCH"
+        run: |
+          git config user.name 'trinity-release[bot]'
+          git config user.email 'trinity-release[bot]@users.noreply.github.com'
+          node scripts/back-merge.mjs --tag "$TAG" --branch "$BRANCH"
 
   # The whole gate for a release: the same checks ci.yml runs on a branch, plus the
   # tag/ancestry/version checks below. A dispatch can name any tag, so nothing here may

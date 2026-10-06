@@ -1,8 +1,8 @@
 name: Release stable
 
-# Cuts a stable line: creates release/X.Y.x at a tested, published vX.Y.Z-next.N prerelease,
-# plus one commit that pins release-as X.Y.Z. That push runs release.yml on the branch,
-# which opens the first stable release PR with version X.Y.Z. Merging that PR tags vX.Y.Z on
+# Cuts a stable line: creates release/X.Y.x at exactly a tested, published vX.Y.Z-next.N
+# prerelease commit. That push runs release.yml on the branch, which finds X.Y.Z from the
+# prerelease tag and opens the first stable release PR with it. Merging that PR tags vX.Y.Z on
 # the branch (release.yml), packages the draft and opens the back-merge PR into main.
 # Later fixes land on release/X.Y.x through PRs and release as X.Y.Z+1 patch releases.
 on:
@@ -136,21 +136,6 @@ jobs:
           ref: ${{ steps.from.outputs.sha }}
           token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 1
-
-      # The branch's first push already carries release-as: release.yml runs release-please on
-      # every push to the branch, and without the pin it would open (or rewrite) the release
-      # PR as a patch of the last stable. release.yml drops the pin once vX.Y.Z is tagged.
-      - name: Pin the stable version
-        if: ${{ !inputs.dry_run }}
-        env:
-          VERSION: ${{ steps.from.outputs.version }}
-        run: |
-          jq --indent 2 --arg version "$VERSION" '.packages["."]["release-as"] = $version' \
-            release-please-config.json > "$RUNNER_TEMP/release-please-config.json"
-          mv "$RUNNER_TEMP/release-please-config.json" release-please-config.json
-          git config user.name 'trinity-release[bot]'
-          git config user.email 'trinity-release[bot]@users.noreply.github.com'
-          git commit --quiet -m "chore(release): release v$VERSION from this branch" -- release-please-config.json
 
       # A plain push of a new ref: it fails rather than overwrite a branch created meanwhile.
       # The push runs release.yml on the branch, which opens the stable release PR.
