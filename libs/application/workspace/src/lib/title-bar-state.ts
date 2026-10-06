@@ -31,8 +31,11 @@ export class TitleBarState {
   constructor() {
     const pageTitle = inject(Title);
     effect(() => {
-      const context = this.context();
-      pageTitle.setTitle(context ? `${context.title} – ${APP_NAME}` : APP_NAME);
+      const title = this.title();
+      // No room open: the row says "Trinity", and the tab must not repeat it.
+      pageTitle.setTitle(
+        title === APP_NAME ? APP_NAME : `${title} – ${APP_NAME}`,
+      );
     });
   }
 

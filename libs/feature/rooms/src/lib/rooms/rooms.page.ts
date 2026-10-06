@@ -339,13 +339,19 @@ export class RoomsPage {
     // contributes a prefix (Home, Recent and the Rooms view are not spaces).
     effect((onCleanup) => {
       const room = this.vm.activeRoom();
-      const inSpace =
-        !this.store.recentView() &&
-        !this.store.roomsView() &&
-        this.store.activeSpaceId() !== null;
+      const spaceId = this.store.activeSpaceId();
+      // The space's own name; unknown (not yet in the library) shows no prefix rather
+      // than the view model's "Direct messages" fallback.
+      const space =
+        !this.store.recentView() && !this.store.roomsView() && spaceId
+          ? (this.selectedLibrary
+              .view()
+              .spaces.find((candidate) => candidate.id === spaceId)?.name ??
+            null)
+          : null;
       this.titleBar.setContext({
         title: roomTitle(
-          inSpace ? this.vm.activeSpaceName() : null,
+          space,
           room
             ? { name: room.name, isDirect: this.vm.activeRoomIsDirect() }
             : null,
