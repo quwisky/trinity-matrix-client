@@ -13,7 +13,9 @@ import {
   setRouteRoom,
   settleWorkspace,
   shellFrom,
+  stubLiveLayout,
 } from './rooms-page.spec-harness';
+import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
@@ -221,6 +223,41 @@ describe('RoomsPage panels, pins and media', () => {
         direct: false,
       },
     });
+  });
+
+  it('opens Room settings fullscreen below md', async () => {
+    const restore = stubLiveLayout({ [BELOW_MD_QUERY]: true });
+    const shell = build();
+    roomsSignal.set([
+      {
+        id: '!r:hs',
+        accountId: '@me:hs',
+        accountIds: ['@me:hs'],
+        name: 'General',
+        initial: 'G',
+        avatarMxc: null,
+        topic: 'The topic',
+        memberCount: 2,
+        encrypted: false,
+        unreadCount: 0,
+        highlightCount: 0,
+        hasUnread: false,
+        markedUnread: false,
+        lastMessage: '',
+        activityTs: 0,
+        favourite: false,
+        lowPriority: false,
+      },
+    ]);
+    setRouteRoom('!r:hs'); // the open room comes from /rooms/:roomId now
+    await settleWorkspace();
+    shell.rooms.onOpenRoomSettings();
+
+    expect(dialogOpen).toHaveBeenCalledWith(
+      RoomSettingsComponent,
+      expect.objectContaining({ placement: 'fullscreen' }),
+    );
+    restore();
   });
 
   it('opens the room directory and selects a room joined from it', async () => {

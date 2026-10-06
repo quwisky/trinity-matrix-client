@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import { TrnDialogService } from '@trinity/components/overlay';
+import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
@@ -174,6 +176,23 @@ describe('MediaAttachmentComponent', () => {
 
     expect(lightboxImage()).toBeNull();
     expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
+  });
+
+  it('opens the lightbox fullscreen below md, where a sheet pane would clip it', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({ matches: query === BELOW_MD_QUERY })),
+    );
+    const { fixture } = await renderMedia(imageMedia());
+    const open = vi.spyOn(TestBed.inject(TrnDialogService), 'open');
+
+    fixture.componentInstance.openLightbox();
+
+    expect(open).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ placement: 'fullscreen' }),
+    );
+    vi.unstubAllGlobals();
   });
 
   it('opens one lightbox however many times the image is tapped', async () => {

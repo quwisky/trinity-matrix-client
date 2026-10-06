@@ -1,3 +1,4 @@
+import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import {
   RoomSettingsService,
   RoomAliasesService,
@@ -13,6 +14,7 @@ import {
   setRouteRoom,
   settleWorkspace,
   shellFrom,
+  stubLiveLayout,
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -518,6 +520,21 @@ describe('RoomsPage action error feedback', () => {
         initialSection: undefined,
       },
     });
+  });
+
+  it('opens Space settings fullscreen below md', async () => {
+    const restore = stubLiveLayout({ [BELOW_MD_QUERY]: true });
+    const shell = build();
+    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
+    await settleWorkspace();
+    railSpacesSignal.set([railSpace('!s:hs')]);
+    shell.spaces.onOpenSpaceSettings();
+
+    expect(dialogOpen).toHaveBeenCalledWith(
+      SpaceSettingsComponent,
+      expect.objectContaining({ placement: 'fullscreen' }),
+    );
+    restore();
   });
 
   it('offers no history visibility to the space dialog', async () => {
