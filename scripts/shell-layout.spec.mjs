@@ -129,9 +129,17 @@ describe('modern room shell layout contracts', () => {
     expect(main).not.toMatch(/border(-[a-z-]+)?-radius/);
     const corner = ruleBody(roomsCss, '.main::before');
     expect(corner).toContain('pointer-events: none');
-    expect(corner).toContain('var(--trinity-shape-pane-radius)');
+    expect(roomsCss).toContain('--corner: var(--trinity-shape-pane-radius)');
     expect(corner).toMatch(/radial-gradient\(/);
-    expect(roomsCss).toMatch(/@media\s+#\{\$md\}\s*\{[^]*?\.main::before/);
+    // The straight 1px edges are overlays too: .main's own inset shadows paint under the
+    // header and timeline backgrounds, so the arc would otherwise float on its own.
+    expect(corner).toMatch(/linear-gradient\(/);
+    const topEdge = ruleBody(roomsCss, '.main::after');
+    expect(topEdge).toContain('pointer-events: none');
+    expect(topEdge).toContain('block-size: 1px');
+    expect(roomsCss).toMatch(
+      /@media\s+#\{\$md\}\s*\{[^]*?\.main::before[^]*?\.main::after/,
+    );
     expect(ruleBody(roomsCss, '.chat-body')).toContain(
       'background: var(--trinity-surface-pane)',
     );
