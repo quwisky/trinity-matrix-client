@@ -64,7 +64,6 @@ describe('VerificationHostComponent', () => {
 
     expect(open).toHaveBeenCalledWith(expect.any(Function), {
       inputs: { asModal: true },
-      ariaLabel: 'Verify device',
       disableClose: true,
     });
   });

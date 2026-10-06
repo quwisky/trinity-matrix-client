@@ -25,7 +25,6 @@ export class JumpToDateService {
       this.open = true;
       return this.dialog
         .openAndWait$<number, JumpToDateComponent>(JumpToDateComponent, {
-          ariaLabel: 'Jump to date',
           autoFocus: '[data-autofocus]',
         })
         .pipe(finalize(() => (this.open = false)));

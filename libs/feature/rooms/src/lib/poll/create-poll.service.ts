@@ -24,7 +24,6 @@ export class CreatePollService {
       .openAndWait$<NewPoll, CreatePollDialogComponent>(
         CreatePollDialogComponent,
         {
-          ariaLabel: 'Create poll',
           autoFocus: '[data-testid=poll-question]',
         },
       )

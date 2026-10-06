@@ -1,11 +1,12 @@
 import { inject } from '@angular/core';
 import { TrnDialogRef } from '@trinity/components/overlay';
+import { Subject } from 'rxjs';
 import {
   ConversationRuntime,
   type ReactionDetail,
 } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/generic-content';
-import { render } from '@trinity/testing';
+import { render, screen, within } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { ReactionsDialogComponent } from './reactions-dialog.component';
@@ -32,12 +33,18 @@ describe('ReactionsDialogComponent', () => {
     reactionDetails = vi.fn(() => SECTIONS);
   });
 
-  async function build(options: { sheet?: boolean } = {}) {
+  async function build(presentation: 'dialog' | 'sheet' = 'dialog') {
     const { fixture, container } = await render(ReactionsDialogComponent, {
-      inputs: { eventId: '$m', sheet: options.sheet ?? false },
+      inputs: { eventId: '$m' },
       imports: [MockComponent(AvatarComponent)],
       providers: [
-        MockProvider(TrnDialogRef, { close: vi.fn() }),
+        {
+          provide: TrnDialogRef,
+          useValue: new TrnDialogRef(
+            { closed: new Subject(), close: vi.fn() },
+            presentation,
+          ),
+        },
         MockProvider(ConversationTimelineStub, { reactionDetails }),
         {
           provide: ConversationRuntime,
@@ -61,13 +68,15 @@ describe('ReactionsDialogComponent', () => {
     expect(container.querySelectorAll('.key').length).toBe(2);
     expect(names(container)).toEqual(['Alice', 'Bob']);
     expect(
-      container.querySelector('.reactions-dialog__total')?.textContent,
-    ).toContain('3 total');
-    expect(
-      container
-        .querySelector('[data-testid=close-reactions]')
-        ?.getAttribute('aria-label'),
-    ).toBe('Close reactions');
+      within(screen.getByTestId('dialog-surface')).getByRole('heading', {
+        level: 2,
+        name: 'Reactions',
+      }),
+    ).toBeTruthy();
+    expect(container.textContent).toContain('3 total');
+    expect(screen.getByTestId('dialog-close').getAttribute('aria-label')).toBe(
+      'Close',
+    );
   });
 
   it('switches sections when another key is picked', async () => {
@@ -103,22 +112,14 @@ describe('ReactionsDialogComponent', () => {
     ).toContain('🎉');
   });
 
-  it('uses the sheet surface input without changing the snapshot selection', async () => {
-    const { fixture, container, c } = await build({ sheet: true });
+  it('takes the sheet layout from the shell without changing the snapshot selection', async () => {
+    const { fixture, container, c } = await build('sheet');
 
     expect(container.querySelector('[data-trn-layout="sheet"]')).toBeTruthy();
     expect(container.querySelector('[data-trn-layout="dialog"]')).toBeNull();
-    const surface = container.querySelector<HTMLElement>(
-      '[data-trn-layout="sheet"]',
-    );
-    expect(surface?.classList.contains('w-full')).toBe(true);
-    expect(surface?.classList.contains('max-w-full')).toBe(true);
     c.select('🎉');
     fixture.detectChanges();
 
     expect(c.selected()?.key).toBe('🎉');
-    expect(
-      fixture.nativeElement.classList.contains('reactions-dialog--sheet'),
-    ).toBe(true);
   });
 });

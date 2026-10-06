@@ -21,7 +21,7 @@ import {
   TrnDialogService,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { MD_QUERY, matchesQuery } from '@trinity/util/ui';
+import { BELOW_MD_QUERY, MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import {
   Observable,
   Subject,
@@ -136,6 +136,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
             : {}),
         },
         ariaLabel: 'Settings',
+        placement: matchesQuery(BELOW_MD_QUERY) ? 'fullscreen' : 'center',
         autoFocus: '[data-settings-autofocus]',
       });
     }
@@ -148,7 +149,6 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
           ...(context?.offerReset ? { offerReset: true } : {}),
         },
         disableClose: true,
-        ariaLabel: 'Encryption',
       });
     }
     if (context?.placement === 'nested') {

@@ -1,0 +1,63 @@
+<section
+  trnOverlaySurface
+  [trnSheetDrag]="swipeable()"
+  variant="neutral"
+  [size]="size()"
+  [layout]="layout()"
+  class="flex flex-col border-[var(--trinity-border-overlay)] bg-[var(--trinity-surface-overlay)]"
+  [class.trn-overlay-enter-sheet]="layout() === 'sheet'"
+  [class.trn-overlay-enter-dialog]="layout() === 'dialog'"
+  data-testid="dialog-surface"
+>
+  @if (layout() === 'sheet' && swipeable()) {
+    <div
+      class="dialog-shell__handle"
+      data-testid="sheet-handle"
+      aria-hidden="true"
+      trnSheetDragHandle
+    ></div>
+  }
+  @if (titleHidden() && !closable()) {
+    <!-- Nothing visible would sit in the header, so the band is dropped; the h2 still names the dialog. -->
+    <h2 [id]="titleId" class="sr-only">{{ title() }}</h2>
+  } @else {
+    <header class="dialog-shell__header" trnSheetDragHandle>
+      <h2
+        [id]="titleId"
+        class="dialog-shell__title text-[17px] leading-snug font-bold text-[var(--trinity-text-bright)]"
+        [class.sr-only]="titleHidden()"
+      >
+        {{ title() }}
+      </h2>
+      @if (closable()) {
+        <button
+          trnBtn
+          presentation="ghost"
+          shape="icon"
+          size="sm"
+          aria-label="Close"
+          data-testid="dialog-close"
+          (click)="requestClose()"
+        >
+          <trn-icon name="x" motion="rotate" />
+        </button>
+      }
+    </header>
+  }
+  <!-- The description scrolls with the body, so a long one never pushes the footer away. -->
+  <div class="dialog-shell__body" [class]="bodyClass()">
+    @if (description()) {
+      <p
+        class="dialog-shell__description text-sm whitespace-pre-line text-muted-foreground"
+      >
+        {{ description() }}
+      </p>
+    }
+    <ng-content />
+  </div>
+  @if (actions()) {
+    <footer class="dialog-shell__footer" data-testid="dialog-footer">
+      <ng-content select="[trnDialogActions]" />
+    </footer>
+  }
+</section>

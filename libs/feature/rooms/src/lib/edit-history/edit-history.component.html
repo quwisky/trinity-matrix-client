@@ -1,32 +1,9 @@
-<div
-  trnOverlaySurface
-  variant="neutral"
+<trn-dialog-shell
+  title="Edit history"
   size="xl"
-  [layout]="wide() ? 'workspace' : 'fullscreen'"
-  class="edit-history flex min-h-0 flex-col"
-  [attr.data-compact]="!wide()"
-  [style.width]="wide() ? null : '100vw'"
-  [style.height]="
-    wide() ? null : 'calc(100dvh - var(--trinity-title-row-inset, 0px))'
-  "
+  (closed)="close()"
   data-testid="edit-history"
 >
-  <header class="edit-history__header">
-    <h1 data-autofocus tabindex="-1">Edit history</h1>
-    <button
-      trnBtn
-      presentation="ghost"
-      shape="icon"
-      size="md"
-      aria-label="Close edit history"
-      trnTooltip="Close edit history"
-      data-testid="edit-history-close"
-      (click)="close()"
-    >
-      <trn-icon name="x" motion="rotate" />
-    </button>
-  </header>
-
   @if (!busy() && !error() && entries().length > 1) {
     <div class="edit-history__toolbar">
       <!-- Variant and presentation carry the pressed state visually; aria-pressed alone
@@ -117,4 +94,4 @@
       </ol>
     }
   </div>
-</div>
+</trn-dialog-shell>

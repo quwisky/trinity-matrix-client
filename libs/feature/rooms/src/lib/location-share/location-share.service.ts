@@ -64,7 +64,6 @@ export class LocationShareService {
       this.dialog
         .openAndWait$<GeoPoint, ManualLocationDialogComponent>(
           ManualLocationDialogComponent,
-          { ariaLabel: 'Share location' },
         )
         .pipe(filter((point): point is GeoPoint => point !== null)),
     );

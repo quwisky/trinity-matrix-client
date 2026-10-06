@@ -177,3 +177,53 @@ describe('component styling reach', () => {
     expect(unpadded).toEqual([]);
   });
 });
+
+describe('overlay surface and scrim', () => {
+  const variables = read(
+    'libs/theme-foundation/styles/internal/variables.scss',
+  );
+  const globalStyles = read('apps/trinity/src/global.scss');
+  const blockOf = (selector) => {
+    const start = variables.indexOf(`${selector} {`);
+    return variables.slice(start, variables.indexOf('\n  }', start));
+  };
+  const roles = [
+    '--trinity-surface-overlay',
+    '--trinity-surface-overlay-footer',
+    '--trinity-border-overlay',
+  ];
+
+  it('declares the overlay roles in :root and :root.dark and aliases card and popover to them', () => {
+    for (const selector of [':root', ':root.dark']) {
+      const block = blockOf(`  ${selector}`);
+      for (const role of roles) expect(block).toContain(`${role}:`);
+      expect(block).toMatch(
+        /--trinity-surface-card:\s*var\(--trinity-surface-overlay\);/u,
+      );
+      expect(block).toMatch(
+        /--trinity-surface-popover:\s*var\(--trinity-surface-overlay\);/u,
+      );
+    }
+  });
+
+  it('dims the dark scrim to 65% and paints the CDK backdrop with it', () => {
+    expect(blockOf('  :root.dark')).toMatch(
+      /--trinity-overlay-scrim:\s*oklch\(0% 0 0deg \/ 65%\);/u,
+    );
+    expect(globalStyles).toMatch(
+      /\.cdk-overlay-dark-backdrop\s*\{[^}]*background:\s*var\(--trinity-overlay-scrim\)/u,
+    );
+  });
+
+  it('defines the dialog and sheet enter animations and silences them for reduced motion', () => {
+    expect(globalStyles).toMatch(
+      /\.trn-overlay-enter-dialog\s*\{[^}]*trn-dialog-in var\(--trinity-duration-overlay\) ease-out/u,
+    );
+    expect(globalStyles).toMatch(
+      /\.trn-overlay-enter-sheet\s*\{[^}]*trn-sheet-in var\(--trinity-duration-base\) ease-out/u,
+    );
+    expect(globalStyles).toMatch(
+      /prefers-reduced-motion: reduce[\s\S]*animation-duration: 0\.01ms !important/u,
+    );
+  });
+});

@@ -4,7 +4,7 @@ import {
   RoomModerationService,
 } from '@trinity/data-access/room-administration';
 import { signal } from '@angular/core';
-import { render } from '@trinity/testing';
+import { render, screen, within } from '@trinity/testing';
 import {
   TrnDialogRef,
   TrnAlertService,
@@ -185,6 +185,26 @@ async function buildPanel(m: MemberSummary = member()) {
 
 describe('MemberInfoComponent', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it('is built on the shared dialog shell as a dialog', async () => {
+    const { container } = await build();
+
+    expect(
+      within(screen.getByTestId('dialog-surface')).getByRole('heading', {
+        level: 2,
+        name: 'Member info',
+      }),
+    ).toBeTruthy();
+    expect(
+      container.querySelector('[data-testid="member-info-close"]'),
+    ).toBeNull();
+  });
+
+  it('does not use the dialog shell as the panel', async () => {
+    const { container } = await buildPanel();
+
+    expect(container.querySelector('trn-dialog-shell')).toBeNull();
+  });
 
   it('carries its own close button as the panel, where nothing else closes it', async () => {
     // In the slot there is no backdrop, and above the `members` breakpoint no Escape either

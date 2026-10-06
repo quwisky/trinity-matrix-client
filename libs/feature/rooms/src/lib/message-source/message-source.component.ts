@@ -7,7 +7,8 @@ import {
 import { TrnButton } from '@trinity/components/controls';
 import {
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogActions,
+  TrnDialogShellComponent,
   TrnToastService,
 } from '@trinity/components/overlay';
 
@@ -15,22 +16,19 @@ import {
 @Component({
   selector: 'trn-message-source',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnOverlaySurfaceDirective],
+  imports: [TrnButton, TrnDialogActions, TrnDialogShellComponent],
   template: `
-    <div
-      trnOverlaySurface
-      variant="neutral"
+    <trn-dialog-shell
+      title="Message source"
       size="xl"
-      layout="dialog"
-      class="flex flex-col gap-3 p-4"
+      (closed)="close()"
       data-testid="message-source"
     >
-      <h2 class="text-lg font-semibold">Message source</h2>
       <pre
-        class="rounded min-h-0 flex-1 overflow-auto bg-muted p-3 text-xs leading-relaxed"
+        class="rounded overflow-auto bg-muted p-3 text-xs leading-relaxed"
         data-testid="message-source-json"
         >{{ source() }}</pre>
-      <div class="flex justify-end gap-2">
+      <div trnDialogActions>
         <button
           trnBtn
           variant="secondary"
@@ -44,14 +42,14 @@ import {
         <button
           trnBtn
           variant="secondary"
-          presentation="ghost"
+          presentation="link"
           size="sm"
           (click)="close()"
         >
           Close
         </button>
       </div>
-    </div>
+    </trn-dialog-shell>
   `,
 })
 export class MessageSourceComponent {

@@ -1,76 +1,73 @@
-<div
-  trnOverlaySurface
-  variant="neutral"
-  size="md"
-  layout="dialog"
-  class="add-to-space flex flex-col"
+<trn-dialog-shell
+  [title]="'Add rooms to ' + spaceName()"
+  (closed)="close()"
   data-testid="add-to-space"
 >
-  <h2 class="add-to-space__title">Add rooms to {{ spaceName() }}</h2>
+  <div class="add-to-space">
+    <input
+      trnInput
+      class="w-full"
+      [formField]="search.query"
+      type="search"
+      placeholder="Search your rooms"
+      autocomplete="off"
+      aria-label="Search your rooms"
+      data-testid="add-to-space-search"
+    />
 
-  <input
-    trnInput
-    class="w-full"
-    [formField]="search.query"
-    type="search"
-    placeholder="Search your rooms"
-    autocomplete="off"
-    aria-label="Search your rooms"
-    data-testid="add-to-space-search"
-  />
-
-  <ul class="add-to-space__list">
-    @if (loading()) {
-      <li><trn-empty-state layout="line" body="Loading joined rooms…" /></li>
-    } @else if (loadError(); as error) {
-      <li><trn-empty-state layout="line" [body]="error" /></li>
-    } @else {
-      @for (candidate of visible(); track candidate.id) {
-        <li class="add-to-space__row">
-          <label class="add-to-space__label">
-            <trn-checkbox
-              [checked]="isSelected(candidate.id)"
-              (checkedChange)="toggle(candidate.id, $event)"
-              [attr.data-testid]="'add-to-space-pick-' + candidate.id"
-            />
-            <trn-avatar
-              [mxc]="candidate.avatarMxc"
-              [initial]="candidate.initial"
-              [name]="candidate.name"
-              size="sm"
-              [shape]="candidate.shape"
-            />
-            <span class="add-to-space__name" [title]="candidate.name">{{
-              candidate.name
-            }}</span>
-            @if (candidate.isSpace) {
-              <span class="add-to-space__kind">Space</span>
-            }
-          </label>
-        </li>
-      } @empty {
-        <li>
-          <!-- Two messages rather than one: "nothing matches your search" and "there is
+    <ul class="add-to-space__list">
+      @if (loading()) {
+        <li><trn-empty-state layout="line" body="Loading joined rooms…" /></li>
+      } @else if (loadError(); as error) {
+        <li><trn-empty-state layout="line" [body]="error" /></li>
+      } @else {
+        @for (candidate of visible(); track candidate.id) {
+          <li class="add-to-space__row">
+            <label class="add-to-space__label">
+              <trn-checkbox
+                [checked]="isSelected(candidate.id)"
+                (checkedChange)="toggle(candidate.id, $event)"
+                [attr.data-testid]="'add-to-space-pick-' + candidate.id"
+              />
+              <trn-avatar
+                [mxc]="candidate.avatarMxc"
+                [initial]="candidate.initial"
+                [name]="candidate.name"
+                size="sm"
+                [shape]="candidate.shape"
+              />
+              <span class="add-to-space__name" [title]="candidate.name">{{
+                candidate.name
+              }}</span>
+              @if (candidate.isSpace) {
+                <span class="add-to-space__kind">Space</span>
+              }
+            </label>
+          </li>
+        } @empty {
+          <li>
+            <!-- Two messages rather than one: "nothing matches your search" and "there is
                nothing left to add" are different facts, and the second is the happier one. -->
-          <trn-empty-state
-            layout="line"
-            [body]="
-              candidates().length
-                ? 'No rooms match that search.'
-                : 'Every room you are in is already here.'
-            "
-          />
-        </li>
+            <trn-empty-state
+              layout="line"
+              [body]="
+                candidates().length
+                  ? 'No rooms match that search.'
+                  : 'Every room you are in is already here.'
+              "
+            />
+          </li>
+        }
       }
-    }
-  </ul>
+    </ul>
+  </div>
 
-  <div class="add-to-space__actions">
+  <div trnDialogActions>
     <button
       trnBtn
       type="button"
       variant="secondary"
-      presentation="ghost"
+      presentation="link"
       (click)="close()"
       data-testid="add-to-space-cancel"
     >
@@ -86,4 +83,4 @@
       {{ adding() ? 'Adding…' : 'Add' }}
     </button>
   </div>
-</div>
+</trn-dialog-shell>

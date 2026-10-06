@@ -38,10 +38,9 @@ export class QuickSwitcherService {
         .openAndWait$<SwitcherSelection, QuickSwitcherComponent>(
           QuickSwitcherComponent,
           {
-            ariaLabel: 'Jump to a room',
             inputs: { activeAccountOnly: opts.activeAccountOnly ?? false },
             // Open-and-type is the whole point of a quick switcher, so focus lands on the
-            // search field rather than CDK's first tabbable element (the Cancel button).
+            // search field rather than CDK's first tabbable element (the shell's close button).
             autoFocus: '[data-autofocus]',
           },
         )

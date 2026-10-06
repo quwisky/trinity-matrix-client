@@ -1,30 +1,9 @@
-<section
-  trnOverlaySurface
-  variant="neutral"
-  size="md"
-  [layout]="sheet() ? 'sheet' : 'dialog'"
-  class="room-preview flex flex-col"
+<trn-dialog-shell
+  title="Room information"
+  (closed)="close()"
   data-testid="room-link-preview"
   [attr.aria-busy]="loading() || acting()"
 >
-  <header class="room-preview__header">
-    <h2 class="room-preview__title">Room information</h2>
-    <button
-      #closeButton
-      trnBtn
-      type="button"
-      variant="secondary"
-      presentation="ghost"
-      size="sm"
-      shape="icon"
-      aria-label="Close room information"
-      data-testid="room-link-close"
-      (click)="close()"
-    >
-      <trn-icon name="x" motion="rotate" />
-    </button>
-  </header>
-
   <div class="room-preview__content">
     @if (loading()) {
       <div class="room-preview__status" role="status" aria-live="polite">
@@ -126,13 +105,13 @@
     }
   </div>
 
-  @if (preview(); as room) {
-    <footer class="room-preview__actions">
+  @if (preview()) {
+    <div trnDialogActions>
       <button
         trnBtn
         type="button"
         variant="secondary"
-        presentation="ghost"
+        presentation="link"
         (click)="close()"
       >
         Close
@@ -164,6 +143,6 @@
           }
         </button>
       }
-    </footer>
+    </div>
   }
-</section>
+</trn-dialog-shell>

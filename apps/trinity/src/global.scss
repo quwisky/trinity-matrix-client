@@ -195,6 +195,29 @@
       var(--trinity-title-bar-height)
     );
   }
+
+  /* Dialog and sheet entrances. The overlay shell opts in with these classes; the reduced-motion
+   * blanket in `overrides` shortens them to nothing. */
+  @keyframes trn-dialog-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+
+  @keyframes trn-sheet-in {
+    from {
+      transform: translateY(100%);
+    }
+  }
+
+  .trn-overlay-enter-dialog {
+    animation: trn-dialog-in var(--trinity-duration-overlay) ease-out;
+  }
+
+  .trn-overlay-enter-sheet {
+    animation: trn-sheet-in var(--trinity-duration-base) ease-out;
+  }
 }
 
 @layer utilities {
@@ -236,6 +259,20 @@
   .trn-title-row :is(.cdk-global-overlay-wrapper, .cdk-overlay-backdrop) {
     inset-block: var(--trinity-title-row-inset) 0 !important;
     height: auto !important;
+  }
+
+  /* The scrim colour. CDK writes its own `.cdk-overlay-dark-backdrop` colour and fade inside an
+   * unlayered-after-everything `@layer cdk-overlay`, which out-ranks every declared layer, so
+   * only an important layered declaration can replace it. The fade is skipped under reduced
+   * motion so the blanket rule below stays the only owner of that preference. */
+  .cdk-overlay-dark-backdrop {
+    background: var(--trinity-overlay-scrim) !important;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .cdk-overlay-dark-backdrop {
+      transition: opacity var(--trinity-duration-overlay) ease-out !important;
+    }
   }
 
   @media (forced-colors: active) {

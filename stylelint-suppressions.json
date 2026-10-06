@@ -46,12 +46,12 @@
   },
   "libs/feature/rooms/src/lib/account-picker/account-picker.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 7
+      "count": 3
     }
   },
   "libs/feature/rooms/src/lib/add-to-space/add-to-space.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 7
+      "count": 5
     }
   },
   "libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.scss": {
@@ -66,7 +66,7 @@
   },
   "libs/feature/rooms/src/lib/jump-to-date/jump-to-date.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 5
+      "count": 2
     }
   },
   "libs/feature/rooms/src/lib/link-preview/link-preview.component.scss": {
@@ -201,7 +201,7 @@
   },
   "libs/feature/rooms/src/lib/styles/_mixins.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 5
+      "count": 3
     }
   },
   "libs/feature/rooms/src/lib/thread/threads-list.component.scss": {
@@ -291,7 +291,7 @@
   },
   "libs/feature/rooms/src/lib/room-settings/room-widget-frame/room-widget-frame.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 3
+      "count": 1
     }
   },
   "libs/feature/rooms/src/lib/shared/avatar-field/avatar-field.component.scss": {

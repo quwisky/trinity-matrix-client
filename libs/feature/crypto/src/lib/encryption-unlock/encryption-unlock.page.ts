@@ -26,7 +26,7 @@ import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
   TrnAlertService,
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
 } from '@trinity/components/overlay';
 import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
 import {
@@ -57,9 +57,9 @@ import {
     PageHeaderComponent,
     RecoveryKeySaveComponent,
     TrnButton,
+    TrnDialogShellComponent,
     TrnFieldImports,
     TrnInput,
-    TrnOverlaySurfaceDirective,
     TrnSpinnerComponent,
   ],
 })

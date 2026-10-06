@@ -653,16 +653,13 @@ describe('RoomsPage room / DM / invite actions', () => {
     await Promise.resolve();
 
     expect(dialogOpen).toHaveBeenCalledWith(RoomLinkPreviewComponent, {
-      ariaLabel: 'Room information',
       autoFocus: 'first-heading',
-      placement: 'center',
       inputs: {
         target: {
           kind: 'room',
           roomIdOrAlias: '#linked:remote',
           via: ['remote'],
         },
-        sheet: false,
       },
     });
     expect(resolveRoomId).not.toHaveBeenCalled();
@@ -710,7 +707,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     expect(dialogOpen).toHaveBeenCalledWith(
       RoomLinkPreviewComponent,
-      expect.objectContaining({ ariaLabel: 'Room information' }),
+      expect.objectContaining({ autoFocus: 'first-heading' }),
     );
     expect(openExact).toHaveBeenCalledWith(
       { roomId: '!joined:remote', accountId: '@alt:hs' },

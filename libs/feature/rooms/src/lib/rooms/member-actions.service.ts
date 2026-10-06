@@ -70,13 +70,10 @@ export class MemberActionsService {
 
     this.dialog
       .openAndWait$<string, MemberInfoComponent>(MemberInfoComponent, {
-        ariaLabel: 'Member info',
         inputs: {
           member,
           roomId: owner.roomId,
           direct,
-          surfaceSize: 'sm',
-          surfaceLayout: 'dialog',
         },
       })
       .pipe(takeUntilDestroyed(this.destroyRef))

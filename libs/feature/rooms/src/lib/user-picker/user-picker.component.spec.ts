@@ -4,7 +4,7 @@ import {
   type DiscoveredUser,
 } from '@trinity/data-access/discovery';
 import { AvatarComponent } from '@trinity/components/generic-content';
-import { render } from '@trinity/testing';
+import { render, screen, within } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
@@ -15,6 +15,22 @@ const RESULTS: DiscoveredUser[] = [
 ];
 
 describe('UserPickerComponent', () => {
+  it('shows its title in the shared dialog shell', async () => {
+    await renderPicker();
+
+    expect(
+      within(screen.getByTestId('dialog-surface')).getByRole('heading', {
+        level: 2,
+        name: 'Find people',
+      }),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('dialog-footer')).getByRole('button', {
+        name: 'Select',
+      }),
+    ).toBeTruthy();
+  });
+
   let dismiss: Mock;
   let searchIdentities: Mock;
 

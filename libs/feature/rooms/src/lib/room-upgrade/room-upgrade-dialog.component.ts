@@ -17,8 +17,9 @@ import {
   type TrnSelectOption,
 } from '@trinity/components/controls';
 import {
+  TrnDialogActions,
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
   TrnToastService,
   type ToastOptions,
 } from '@trinity/components/overlay';
@@ -114,7 +115,8 @@ function list(items: readonly string[]): string {
     FormRoot,
     TrnButton,
     TrnCheckboxComponent,
-    TrnOverlaySurfaceDirective,
+    TrnDialogActions,
+    TrnDialogShellComponent,
     TrnSelectComponent,
   ],
   templateUrl: './room-upgrade-dialog.component.html',

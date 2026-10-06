@@ -1,5 +1,5 @@
 import { type RoomLinkPreview } from '@trinity/data-access/discovery';
-import { render } from '@trinity/testing';
+import { render, screen, within } from '@trinity/testing';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { InvitesService } from '@trinity/data-access/room-library';
 import { RoomLinkService } from '@trinity/data-access/discovery';
@@ -37,7 +37,6 @@ async function build(
     join?: ReturnType<typeof vi.fn>;
     knock?: ReturnType<typeof vi.fn>;
     accept?: ReturnType<typeof vi.fn>;
-    sheet?: boolean;
   } = {},
 ) {
   const close = vi.fn();
@@ -54,7 +53,6 @@ async function build(
         roomIdOrAlias: '!room:hs',
         via: ['hs'],
       },
-      sheet: options.sheet ?? false,
     },
     providers: [
       MockProvider(TrnDialogRef, { close }),
@@ -66,6 +64,22 @@ async function build(
 }
 
 describe('RoomLinkPreviewComponent', () => {
+  it('shows its title in the shared dialog shell', async () => {
+    await build();
+
+    expect(
+      within(screen.getByTestId('dialog-surface')).getByRole('heading', {
+        level: 2,
+        name: 'Room information',
+      }),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('dialog-footer')).getByTestId(
+        'room-link-primary',
+      ),
+    ).toBeTruthy();
+  });
+
   afterEach(() => vi.restoreAllMocks());
 
   it('announces loading before a deferred preview resolves', async () => {
@@ -203,7 +217,7 @@ describe('RoomLinkPreviewComponent', () => {
     retry.click();
     expect(load).toHaveBeenCalledTimes(2);
     expect(document.activeElement).toBe(
-      container.querySelector('[data-testid=room-link-close]'),
+      container.querySelector('[data-testid=dialog-close]'),
     );
   });
 
@@ -227,12 +241,5 @@ describe('RoomLinkPreviewComponent', () => {
     expect(
       container.querySelector('[data-testid=room-link-primary]')?.textContent,
     ).toContain('Join room');
-  });
-
-  it('opts into the native sheet styling when requested', async () => {
-    const { fixture } = await build({ sheet: true });
-    expect(fixture.nativeElement.classList).toContain(
-      'room-link-preview--sheet',
-    );
   });
 });

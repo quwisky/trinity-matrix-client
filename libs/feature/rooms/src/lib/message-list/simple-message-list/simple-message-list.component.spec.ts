@@ -1153,7 +1153,7 @@ describe('SimpleMessageListComponent', () => {
 
       expect(open).toHaveBeenCalledWith(
         MessageSourceComponent,
-        expect.objectContaining({ ariaLabel: 'Message source' }),
+        expect.objectContaining({ inputs: { source: expect.any(String) } }),
       );
     });
   });

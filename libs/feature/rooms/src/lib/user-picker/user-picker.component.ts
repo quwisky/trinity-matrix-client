@@ -24,8 +24,9 @@ import { isValidUserId } from '@trinity/util/matrix';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import {
+  TrnDialogActions,
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
 } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
@@ -55,7 +56,8 @@ const MIN_SEARCH_LENGTH = 2;
     EmptyStateComponent,
     AvatarComponent,
     TrnSpinnerComponent,
-    TrnOverlaySurfaceDirective,
+    TrnDialogActions,
+    TrnDialogShellComponent,
     TrnButton,
     TrnInput,
   ],

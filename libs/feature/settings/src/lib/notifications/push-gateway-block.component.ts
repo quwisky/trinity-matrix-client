@@ -188,7 +188,7 @@ export class PushGatewayBlockComponent {
     return this.dialog
       .openAndWait$<boolean>(PushGatewayTrustDialogComponent, {
         inputs: { data },
-        ariaLabel: 'Trust this push gateway?',
+        ariaDescribedBy: 'push-gateway-trust-body',
       })
       .pipe(map((confirmed) => confirmed ?? false));
   }

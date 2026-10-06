@@ -26,7 +26,7 @@ export class UserPickerService {
     return this.dialog.openAndWait$<string, UserPickerComponent>(
       UserPickerComponent,
       {
-        ariaLabel: options.title,
+        autoFocus: '[data-autofocus]',
         inputs: {
           title: options.title,
           confirmLabel: options.confirmLabel,

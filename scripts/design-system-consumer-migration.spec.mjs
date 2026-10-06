@@ -269,17 +269,16 @@ describe('migrated application design-system consumers', () => {
       );
     }
 
-    const roomNavigationSurfaces = tagsFrom(
+    // The account picker is the one room-navigation dialog; it builds on the shared shell.
+    const roomNavigationShells = tagsFrom(
       roomNavigationTemplates,
-      /<[^>]*\btrnOverlaySurface\b[^>]*>/gu,
+      /<trn-dialog-shell\b[^>]*>/gu,
     );
-    expect(roomNavigationSurfaces).toHaveLength(1);
-    expect(roomNavigationSurfaces[0]?.[1]).toMatch(/\bvariant="neutral"/u);
-    expect(roomNavigationSurfaces[0]?.[1]).toMatch(/\bsize="sm"/u);
-    expect(roomNavigationSurfaces[0]?.[1]).toMatch(/\blayout="dialog"/u);
-    expect(roomNavigationSurfaces[0]?.[1]).toMatch(
-      /\bclass="[^"]*\bflex\b[^"]*\bflex-col\b/u,
-    );
+    expect(roomNavigationShells).toHaveLength(1);
+    expect(roomNavigationShells[0]?.[1]).toMatch(/\bsize="sm"/u);
+    expect(
+      tagsFrom(roomNavigationTemplates, /<[^>]*\btrnOverlaySurface\b[^>]*>/gu),
+    ).toHaveLength(0);
 
     const accountCheckboxes = tagsFrom(
       roomNavigationTemplates,
@@ -316,64 +315,48 @@ describe('migrated application design-system consumers', () => {
       surfaces
         .map(([, tag]) => tag.match(/\bsize="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
-    ).toEqual([
-      '2xl',
-      ...Array(4).fill('lg'),
-      ...Array(14).fill('md'),
-      ...Array(4).fill('sm'),
-      ...Array(3).fill('xl'),
-    ]);
+    ).toEqual(['lg', ...Array(7).fill('md'), ...Array(2).fill('sm')]);
     expect(
       surfaces
         .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
     ).toEqual([
-      ...Array(13).fill('dialog'),
-      ...Array(3).fill('dynamic'),
-      ...Array(4).fill('fullscreen'),
+      ...Array(3).fill('fullscreen'),
+      'panel',
       ...Array(6).fill('popover'),
     ]);
 
+    // Room dialogs build on the shared shell, which picks the dialog, sheet or fullscreen
+    // presentation itself; none keeps its own surface or its own sheet switch.
+    for (const name of [
+      'room-link-preview/room-link-preview',
+      'reactions-dialog/reactions-dialog',
+      'edit-history/edit-history',
+    ]) {
+      const template = source(
+        `libs/feature/rooms/src/lib/${name}.component.html`,
+      );
+      expect(template, name).toMatch(/<trn-dialog-shell\b/u);
+      expect(template, name).not.toMatch(/\bsheet\(\)|\bwide\(\)\s*\?/u);
+    }
     expect(
-      surfaces.find(([file]) =>
-        file.endsWith('room-link-preview.component.html'),
-      )?.[1],
-    ).toMatch(/\[layout\]="sheet\(\) \? 'sheet' : 'dialog'"/u);
+      source(
+        'libs/feature/rooms/src/lib/edit-history/edit-history.component.html',
+      ),
+    ).toMatch(/<trn-dialog-shell[^>]*\bsize="xl"/u);
 
+    // Member info is a dialog on the shared shell and, in the slot, a panel surface of its own;
+    // it no longer takes its surface through host directive inputs.
+    const memberInfoDir =
+      'libs/feature/rooms/src/lib/member-info/member-info.component';
+    expect(source(`${memberInfoDir}.html`)).toMatch(/<trn-dialog-shell\b/u);
+    expect(source(`${memberInfoDir}.ts`)).not.toMatch(/hostDirectives/u);
     expect(
-      surfaces.find(([file]) =>
-        file.endsWith('reactions-dialog.component.html'),
-      )?.[1],
-    ).toMatch(/\[layout\]="sheet\(\) \? 'sheet' : 'dialog'"/u);
-
-    // Edit history keeps a narrow workspace on desktop and fills compact screens.
-    expect(
-      surfaces.find(([file]) =>
-        file.endsWith('edit-history.component.html'),
-      )?.[1],
-    ).toMatch(/\[layout\]="wide\(\) \? 'workspace' : 'fullscreen'"/u);
-
-    // Member info is the one overlay whose public surface directive belongs on the component
-    // host: in panel mode that host is the actual in-flow pane measured beside the timeline.
-    const memberInfo = source(
-      'libs/feature/rooms/src/lib/member-info/member-info.component.ts',
-    );
-    expect(memberInfo).toMatch(
-      /hostDirectives:[\s\S]{0,180}TrnOverlaySurfaceDirective[\s\S]{0,180}size: surfaceSize[\s\S]{0,80}layout: surfaceLayout/u,
-    );
-    const memberInfoPanel = tagsFrom(
-      ['libs/feature/rooms/src/lib/rooms/rooms.page.html'],
-      /<trn-member-info\b[^>]*>/gu,
-    );
-    expect(memberInfoPanel).toHaveLength(1);
-    expect(memberInfoPanel[0]?.[1]).toMatch(/\bsurfaceSize="lg"/u);
-    expect(memberInfoPanel[0]?.[1]).toMatch(/\bsurfaceLayout="panel"/u);
-    const memberInfoService = source(
-      'libs/feature/rooms/src/lib/rooms/member-actions.service.ts',
-    );
-    expect(memberInfoService).toMatch(
-      /surfaceSize:\s*['"]sm['"][\s\S]{0,80}surfaceLayout:\s*['"]dialog['"]/u,
-    );
+      tagsFrom(
+        ['libs/feature/rooms/src/lib/rooms/rooms.page.html'],
+        /<trn-member-info\b[^>]*>/gu,
+      ),
+    ).toHaveLength(1);
 
     // Message source uses a deliberately small inline template, so it is not part of the
     // external-markup collection above. Pin its complete public surface vocabulary here rather
@@ -381,9 +364,7 @@ describe('migrated application design-system consumers', () => {
     const messageSource = source(
       'libs/feature/rooms/src/lib/message-source/message-source.component.ts',
     );
-    expect(messageSource).toMatch(
-      /trnOverlaySurface[\s\S]{0,160}\bvariant="neutral"[\s\S]{0,80}\bsize="xl"[\s\S]{0,80}\blayout="dialog"/u,
-    );
+    expect(messageSource).toMatch(/<trn-dialog-shell[\s\S]{0,160}\bsize="xl"/u);
     expect(messageSource).not.toMatch(
       /\bvariant="(?:default|destructive|outline|ghost|link)"|\bsize="(?:default|icon(?:-(?:xs|sm|lg))?)"/u,
     );
@@ -392,23 +373,16 @@ describe('migrated application design-system consumers', () => {
       conversationTemplates,
       /<[^>]*\btrnOverlaySurface\b[^>]*>/gu,
     );
-    expect(conversationSurfaces).toHaveLength(7);
+    expect(conversationSurfaces).toHaveLength(6);
     for (const [file, tag] of conversationSurfaces) {
       expect(tag, file).toMatch(/\bvariant="neutral"/u);
-      // Reaction details has a directory and people pane; other conversation surfaces
-      // retain the original medium recipe.
-      expect(tag, file).toMatch(
-        file.endsWith('/reactions-dialog/reactions-dialog.component.html')
-          ? /\bsize="xl"/u
-          : /\bsize="md"/u,
-      );
+      expect(tag, file).toMatch(/\bsize="md"/u);
     }
     expect(
       conversationSurfaces
         .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
     ).toEqual([
-      'dynamic',
       'fullscreen',
       'fullscreen',
       'fullscreen',

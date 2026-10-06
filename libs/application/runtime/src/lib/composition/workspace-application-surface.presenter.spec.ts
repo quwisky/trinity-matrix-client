@@ -24,6 +24,7 @@ import {
   type Subscription,
 } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 
 const platform = vi.hoisted(() => ({ native: false }));
@@ -137,6 +138,7 @@ describe('Workspace application-surface composition adapter', () => {
         initialSource: '!room:example.org',
       },
       ariaLabel: 'Settings',
+      placement: 'center',
       autoFocus: '[data-settings-autofocus]',
     });
     await expect(
@@ -146,6 +148,24 @@ describe('Workspace application-surface composition adapter', () => {
       surface: { layer: 'application', surface: request.surface },
     });
     expect(close).toHaveBeenCalled();
+  });
+
+  it('opens Settings fullscreen below md, where a sheet pane would clip it', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({ matches: query === BELOW_MD_QUERY })),
+    );
+
+    await firstValueFrom(
+      presenter().present({
+        surface: { kind: 'settings', section: 'stickers' },
+      }),
+    );
+
+    expect(dialogOpen).toHaveBeenCalledWith(
+      StubSettingsComponent,
+      expect.objectContaining({ placement: 'fullscreen' }),
+    );
   });
 
   it('keeps Settings routed in installed Capacitor hosts', async () => {
@@ -196,7 +216,6 @@ describe('Workspace application-surface composition adapter', () => {
     expect(dialogOpen).toHaveBeenNthCalledWith(2, StubVerifyComponent, {
       inputs: { asModal: true },
       disableClose: true,
-      ariaLabel: 'Encryption',
     });
     await expect(
       firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
@@ -233,7 +252,6 @@ describe('Workspace application-surface composition adapter', () => {
     expect(dialogOpen).toHaveBeenCalledWith(StubVerifyComponent, {
       inputs: { asModal: true },
       disableClose: true,
-      ariaLabel: 'Encryption',
     });
     await expect(
       firstValueFrom(TestBed.inject(WorkspaceBackService).back()),

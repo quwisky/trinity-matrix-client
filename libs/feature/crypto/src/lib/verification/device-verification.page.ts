@@ -14,7 +14,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
 } from '@trinity/components/overlay';
 import { Observable } from 'rxjs';
 import { TrustVerificationService } from '@trinity/data-access/trust';
@@ -42,7 +42,7 @@ import { SasCompareComponent } from './sas-compare.component';
     NgTemplateOutlet,
     PageHeaderComponent,
     TrnButton,
-    TrnOverlaySurfaceDirective,
+    TrnDialogShellComponent,
     SasCompareComponent,
     QrScannerComponent,
     TrnSpinnerComponent,

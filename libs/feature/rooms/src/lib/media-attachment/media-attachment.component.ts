@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription, finalize, switchMap, tap } from 'rxjs';
-import { runWithBusy } from '@trinity/util/ui';
+import { BELOW_MD_QUERY, matchesQuery, runWithBusy } from '@trinity/util/ui';
 import { MediaBubbleComponent } from '../media-bubble/media-bubble.component';
 import {
   TrnDialogService,
@@ -138,6 +138,7 @@ export class MediaAttachmentComponent {
             {
               inputs: { src: url, filename: this.media().filename },
               ariaLabel: this.media().filename,
+              placement: matchesQuery(BELOW_MD_QUERY) ? 'fullscreen' : 'center',
               // Keep the full viewer container as the initial focus target. The visible close
               // button remains keyboard reachable, while Escape/backdrop dismissal stay intact.
               autoFocus: 'dialog',

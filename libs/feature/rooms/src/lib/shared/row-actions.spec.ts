@@ -72,11 +72,9 @@ describe('dispatchSharedRowAction', () => {
     dispatchSharedRowAction({ type: 'react-more' }, row, ctx);
 
     expect(ctx.react).toHaveBeenCalledWith('$e', '🎉');
-    // The ariaLabel is the assertion: the CDK container is the dialog, so without a name a
-    // screen reader announces the most-used picker in the app as just "dialog".
+    // No ariaLabel: the picker sits in the dialog shell, whose heading names the dialog.
     expect(ctx.dialog.openAndWait$).toHaveBeenCalledWith(
       ReactionPickerComponent,
-      { ariaLabel: 'Pick a reaction' },
     );
   });
 

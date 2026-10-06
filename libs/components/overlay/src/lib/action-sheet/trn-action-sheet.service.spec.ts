@@ -31,6 +31,17 @@ describe('TrnActionSheetService', () => {
     expect(handler).toHaveBeenCalledOnce();
   });
 
+  it('titles the sheet in the shared dialog shell style', () => {
+    const svc = TestBed.inject(TrnActionSheetService);
+    svc.open({ header: 'New message', buttons: [{ text: 'Cancel' }] });
+    render();
+
+    const title = [...document.querySelectorAll('p')].find(
+      (p) => p.textContent?.trim() === 'New message',
+    );
+    expect(title).toHaveClass('text-[17px]', 'font-bold');
+  });
+
   it('does not run a handler for the cancel button', () => {
     const svc = TestBed.inject(TrnActionSheetService);
     const handler = vi.fn();
@@ -209,5 +220,30 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     render();
 
     expect(document.querySelector('[role=separator]')).not.toBeNull();
+  });
+
+  it('renders a drag handle that closes the sheet when swiped down', () => {
+    const svc = TestBed.inject(TrnActionSheetService);
+    const ref = svc.open({ buttons: [{ text: 'Edit message' }] });
+    const closed = vi.fn();
+    ref.closed.subscribe(closed);
+    render();
+
+    const handle = document.querySelector('[data-testid=sheet-handle]');
+    expect(handle).not.toBeNull();
+    const surface = ref.surface as HTMLElement;
+    vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({
+      height: 400,
+    } as DOMRect);
+    const fire = (type: string, y: number, t: number, to: EventTarget) => {
+      const event = new MouseEvent(type, { clientY: y, bubbles: true });
+      Object.defineProperty(event, 'timeStamp', { value: t });
+      to.dispatchEvent(event);
+    };
+    fire('pointerdown', 0, 0, handle as Element);
+    fire('pointermove', 200, 1000, document);
+    fire('pointerup', 200, 1000, document);
+
+    expect(closed).toHaveBeenCalledOnce();
   });
 });

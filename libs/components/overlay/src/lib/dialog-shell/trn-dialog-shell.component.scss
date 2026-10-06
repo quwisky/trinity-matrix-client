@@ -1,0 +1,61 @@
+@layer components {
+  :host {
+    display: block;
+  }
+
+  // CDK sizes the fullscreen pane; the shell fills it.
+  :host([data-presentation='fullscreen']) {
+    height: 100%;
+  }
+
+  .dialog-shell__handle {
+    flex: none;
+    width: 36px;
+    height: 4px;
+    margin: var(--trinity-space-3) auto 0;
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-border-overlay);
+  }
+
+  // Centred, not start-aligned: on a coarse pointer the close button grows to a 44px target,
+  // and top-aligned its icon sat ~10px below a one-line title.
+  .dialog-shell__header {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--trinity-space-4);
+    padding: var(--trinity-space-5) var(--trinity-space-5) 0;
+  }
+
+  :host([data-presentation='fullscreen']) .dialog-shell__header {
+    padding-top: max(var(--trinity-space-5), env(safe-area-inset-top));
+  }
+
+  .dialog-shell__title {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .dialog-shell__description:not(:last-child) {
+    margin-bottom: var(--trinity-space-4);
+  }
+
+  // Only the body scrolls; the header and footer stay put.
+  .dialog-shell__body {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: var(--trinity-space-4) var(--trinity-space-5)
+      var(--trinity-space-5);
+  }
+
+  .dialog-shell__footer {
+    flex: none;
+    padding: var(--trinity-space-5);
+    background: var(--trinity-surface-overlay-footer);
+  }
+
+  :host([data-presentation='sheet']) .dialog-shell__footer {
+    padding-bottom: calc(var(--trinity-space-5) + env(safe-area-inset-bottom));
+  }
+}

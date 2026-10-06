@@ -43,7 +43,6 @@ describe('CreatePollService', () => {
     expect(openAndWait$).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({
-        ariaLabel: 'Create poll',
         autoFocus: '[data-testid=poll-question]',
       }),
     );

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { render, screen } from '@trinity/testing';
+import { render, screen, within } from '@trinity/testing';
 import { TrustOperationError, TrustService } from '@trinity/data-access/trust';
 import { TrnDialogRef, TrnAlertService } from '@trinity/components/overlay';
 import { ExternalBrowserService } from '@trinity/platform-native';
@@ -114,7 +114,7 @@ const resetCancelled = () =>
 
 /** Queries for the modal-only Close control. */
 function closeButton(): HTMLElement | null {
-  return screen.queryByRole('button', { name: 'Close' });
+  return screen.queryByTestId('dialog-close');
 }
 
 describe('EncryptionUnlockPage', () => {
@@ -197,10 +197,13 @@ describe('EncryptionUnlockPage', () => {
     fixture.detectChanges();
     expect(closeButton()).not.toBeNull();
 
-    const surface = container.querySelector('.crypto-modal');
-    expect(surface).toHaveAttribute('data-trn-layout', 'dialog');
-    expect(surface).toHaveAttribute('data-trn-size', 'md');
-    expect(surface).toHaveAttribute('data-trn-variant', 'neutral');
+    expect(container.querySelector('.crypto-modal')).toBeNull();
+    expect(
+      within(screen.getByTestId('dialog-surface')).getByRole('heading', {
+        level: 2,
+        name: fixture.componentInstance.title(),
+      }),
+    ).toBeTruthy();
   });
 
   describe('losing the recovery key', () => {

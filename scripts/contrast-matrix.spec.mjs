@@ -72,6 +72,8 @@ const ROLES = [
   {
     text: '--trinity-text',
     on: [
+      '--trinity-surface-overlay',
+      '--trinity-surface-overlay-footer',
       '--trinity-chat',
       '--trinity-surface-floating-card',
       '--trinity-sidebar',
@@ -84,6 +86,8 @@ const ROLES = [
   {
     text: '--trinity-text-muted',
     on: [
+      '--trinity-surface-overlay',
+      '--trinity-surface-overlay-footer',
       '--trinity-chat',
       '--trinity-surface-floating-card',
       '--trinity-sidebar',
@@ -96,6 +100,8 @@ const ROLES = [
   {
     text: '--trinity-text-bright',
     on: [
+      '--trinity-surface-overlay',
+      '--trinity-surface-overlay-footer',
       '--trinity-chat',
       '--trinity-surface-floating-card',
       '--trinity-sidebar',
@@ -258,6 +264,14 @@ const NON_TEXT_ROLES = [
  * text in the app and called it "every text role".
  */
 const HELM_ROLES = [
+  {
+    text: '--trinity-control-foreground',
+    on: ['--trinity-surface-overlay', '--trinity-surface-overlay-footer'],
+  },
+  {
+    text: '--trinity-control-muted-foreground',
+    on: ['--trinity-surface-overlay', '--trinity-surface-overlay-footer'],
+  },
   {
     text: '--foreground',
     on: [
@@ -595,6 +609,34 @@ function* nonTextPairs() {
 const measuredNonText = [...nonTextPairs()];
 
 describe('contrast matrix', () => {
+  it('measures text and control pairs on the overlay and its footer for every Theme and mode', () => {
+    for (const theme of themes) {
+      for (const mode of ['light', 'dark']) {
+        for (const text of [
+          '--trinity-text',
+          '--trinity-text-muted',
+          '--trinity-control-foreground',
+        ]) {
+          for (const surface of [
+            '--trinity-surface-overlay',
+            '--trinity-surface-overlay-footer',
+          ]) {
+            expect(
+              measured.some(
+                (pair) =>
+                  pair.theme === theme &&
+                  pair.mode === mode &&
+                  pair.text === text &&
+                  pair.surface === surface,
+              ),
+              `${theme} ${mode} ${text} on ${surface}`,
+            ).toBe(true);
+          }
+        }
+      }
+    }
+  });
+
   it('keeps Theme metadata and CSS carriers bidirectionally complete', () => {
     const catalogCarriers = productionThemes
       .flatMap(({ dataTheme }) => (dataTheme === null ? [] : [dataTheme]))

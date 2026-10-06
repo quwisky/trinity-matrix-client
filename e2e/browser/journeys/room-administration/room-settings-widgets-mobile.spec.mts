@@ -178,7 +178,7 @@ test.describe('Room settings widgets on a phone', () => {
     expect((frameBox?.y ?? 0) + (frameBox?.height ?? 0)).toBeLessThanOrEqual(
       visualViewport.top + visualViewport.height + 1,
     );
-    await page.getByTestId('room-widget-frame-close').click();
+    await page.getByTestId('dialog-close').click();
     await expect(frame).toHaveCount(0);
 
     const cancel = page.getByTestId('room-settings-cancel');

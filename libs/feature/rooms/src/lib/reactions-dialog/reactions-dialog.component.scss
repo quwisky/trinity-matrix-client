@@ -4,39 +4,12 @@
   }
 
   .reactions-dialog {
-    min-height: min(36rem, calc(100dvh - 2rem));
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .reactions-dialog__header {
     display: flex;
-    min-height: 3.5rem;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: var(--trinity-space-2);
-    padding: var(--trinity-space-2) var(--trinity-space-3);
-    border-bottom: 1px solid var(--trinity-border-subtle);
-    background: var(--trinity-surface-floating);
-  }
 
-  .reactions-dialog__heading {
-    min-width: 0;
-    flex: 1;
-    padding-inline-start: var(--trinity-space-1);
-  }
-
-  .reactions-dialog__heading h2 {
-    margin: 0;
-    color: var(--trinity-text-bright);
-    font-size: var(--trinity-type-title-size);
-    line-height: var(--trinity-type-title-line-height);
-    font-weight: var(--trinity-type-title-weight);
-  }
-
-  .reactions-dialog__total {
-    color: var(--trinity-text-muted);
-    font-size: var(--trinity-type-caption-size);
+    // A fixed height keeps the directory and the people list scrolling on their own,
+    // inside the shell's body.
+    height: min(32rem, 60dvh);
+    flex-direction: column;
   }
 
   .reactions-dialog__workspace {
@@ -44,18 +17,18 @@
     min-height: 0;
     flex: 1;
     flex-direction: column;
-    overflow: hidden;
   }
 
   .keys {
     display: flex;
     min-width: 0;
-    flex-wrap: wrap;
+    flex: 0 0 auto;
+    flex-flow: row nowrap;
     gap: var(--trinity-density-item-gap);
-    overflow-y: auto;
-    padding: var(--trinity-space-3);
+    overflow: auto hidden;
+    padding-bottom: var(--trinity-space-3);
+    touch-action: pan-x;
     border-bottom: 1px solid var(--trinity-border-subtle);
-    background: var(--trinity-surface-floating);
   }
 
   .key {
@@ -63,6 +36,7 @@
     align-items: center;
     gap: var(--trinity-density-row-gap);
     min-height: var(--trinity-interaction-target-min-size);
+    flex: 0 0 auto;
     cursor: pointer;
   }
 
@@ -81,9 +55,8 @@
   .reactors {
     min-height: 0;
     flex: 1;
-    overflow-y: auto;
     margin: 0;
-    padding: 0 var(--trinity-space-4) var(--trinity-space-5);
+    padding: 0;
     list-style: none;
   }
 
@@ -110,13 +83,12 @@
     min-height: 0;
     flex: 1;
     overflow-y: auto;
-    background: var(--trinity-surface-raised);
+    touch-action: pan-y;
   }
 
   .reactions-dialog__detail h3 {
     margin: 0;
-    padding: var(--trinity-space-4) var(--trinity-space-4)
-      var(--trinity-space-2);
+    padding: var(--trinity-space-3) 0 var(--trinity-space-2);
     color: var(--trinity-text-bright);
     font-size: var(--trinity-type-control-size);
     line-height: var(--trinity-type-control-line-height);
@@ -137,62 +109,24 @@
     width: 10rem;
     flex: 0 0 10rem;
     flex-flow: column nowrap;
+    overflow: hidden auto;
+    touch-action: auto;
+    padding: 0 var(--trinity-space-3) 0 0;
     border-right: 1px solid var(--trinity-border-subtle);
     border-bottom: 0;
   }
 
+  .reactions-dialog--wide .reactions-dialog__detail {
+    padding-inline-start: var(--trinity-space-4);
+  }
+
   .reactions-dialog--wide .key {
     width: 100%;
+    flex: 0 0 auto;
     justify-content: flex-start;
   }
 
   .reactions-dialog--wide .key__count {
     margin-inline-start: auto;
-  }
-
-  :host(.reactions-dialog--sheet) .reactions-dialog {
-    width: 100%;
-    max-width: 100%;
-    min-height: min(28rem, 80svh);
-    max-height: 80svh;
-  }
-
-  :host(.reactions-dialog--sheet) .reactions-dialog__header {
-    padding-top: max(var(--trinity-space-2), env(safe-area-inset-top));
-    padding-right: calc(var(--trinity-space-3) + env(safe-area-inset-right));
-    padding-left: calc(var(--trinity-space-3) + env(safe-area-inset-left));
-  }
-
-  :host(.reactions-dialog--sheet) .reactions-dialog__workspace {
-    flex-direction: column;
-  }
-
-  /* A sheet keeps the directory as one touch-scrollable strip at every width. */
-  :host(.reactions-dialog--sheet) .keys {
-    flex: 0 0 auto;
-    flex-flow: row nowrap;
-    overflow: auto hidden;
-    padding-right: calc(var(--trinity-space-3) + env(safe-area-inset-right));
-    padding-left: calc(var(--trinity-space-3) + env(safe-area-inset-left));
-    touch-action: pan-x;
-  }
-
-  :host(.reactions-dialog--sheet) .key {
-    flex: 0 0 auto;
-  }
-
-  :host(.reactions-dialog--sheet) .reactions-dialog__detail {
-    padding-bottom: env(safe-area-inset-bottom);
-    touch-action: pan-y;
-  }
-
-  :host(.reactions-dialog--sheet) .reactions-dialog__detail h3 {
-    padding-inline: calc(var(--trinity-space-4) + env(safe-area-inset-left))
-      calc(var(--trinity-space-4) + env(safe-area-inset-right));
-  }
-
-  :host(.reactions-dialog--sheet) .reactors {
-    padding-inline: calc(var(--trinity-space-4) + env(safe-area-inset-left))
-      calc(var(--trinity-space-4) + env(safe-area-inset-right));
   }
 }

@@ -487,7 +487,7 @@ describe('ThreadViewComponent', () => {
 
     expect(sourceOpen).toHaveBeenCalledWith(
       MessageSourceComponent,
-      expect.objectContaining({ ariaLabel: 'Message source' }),
+      expect.objectContaining({ inputs: { source: expect.any(String) } }),
     );
   });
 

@@ -70,9 +70,6 @@ export function dispatchSharedRowAction(
       defer(() =>
         ctx.dialog.openAndWait$<string, ReactionPickerComponent>(
           ReactionPickerComponent,
-          // Names the CDK container, which IS the dialog here; the wrapper inside
-          // deliberately claims no role of its own.
-          { ariaLabel: 'Pick a reaction' },
         ),
       )
         .pipe(
@@ -96,7 +93,6 @@ export function dispatchSharedRowAction(
       if (raw) {
         ctx.dialog.open(MessageSourceComponent, {
           inputs: { source: JSON.stringify(raw, null, 2) },
-          ariaLabel: 'Message source',
         });
       }
       return true;

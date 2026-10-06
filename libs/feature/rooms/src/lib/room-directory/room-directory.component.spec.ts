@@ -3,7 +3,7 @@ import {
   type PublicRoomSummary,
 } from '@trinity/data-access/discovery';
 import { TestBed } from '@angular/core/testing';
-import { render } from '@trinity/testing';
+import { render, screen, within } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { EMPTY, of, throwError, Subject } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
@@ -60,6 +60,22 @@ async function build(
 }
 
 describe('RoomDirectoryComponent', () => {
+  it('shows its title in the shared dialog shell', async () => {
+    await build();
+
+    expect(
+      within(screen.getByTestId('dialog-surface')).getByRole('heading', {
+        level: 2,
+        name: 'Explore rooms',
+      }),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('dialog-footer')).getByTestId(
+        'directory-close',
+      ),
+    ).toBeTruthy();
+  });
+
   it('loads the first page of public rooms on open', async () => {
     const { cmp, search, container } = await build();
     expect(search).toHaveBeenCalledWith('@me:hs', {

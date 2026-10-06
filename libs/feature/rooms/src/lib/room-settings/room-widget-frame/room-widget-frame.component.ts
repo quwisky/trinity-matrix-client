@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import {
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
 } from '@trinity/components/overlay';
 import {
   WidgetBridgeService,
@@ -20,12 +20,11 @@ import {
   type WidgetBridgeSession,
   type WidgetEmbed,
 } from '@trinity/data-access/widgets';
-import { TrnButton } from '@trinity/components/controls';
 
 @Component({
   selector: 'trn-room-widget-frame',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnOverlaySurfaceDirective],
+  imports: [TrnDialogShellComponent],
   templateUrl: './room-widget-frame.component.html',
   styleUrl: './room-widget-frame.component.scss',
 })

@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@trinity/testing';
+import { fireEvent, render, screen, waitFor, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Observable, map, of, throwError, timer } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -69,6 +69,17 @@ function labels(container: HTMLElement): string[] {
 }
 
 describe('EditHistoryComponent', () => {
+  it('shows its title in the shared dialog shell', async () => {
+    await build();
+
+    expect(
+      within(screen.getByTestId('dialog-surface')).getByRole('heading', {
+        level: 2,
+        name: 'Edit history',
+      }),
+    ).toBeTruthy();
+  });
+
   it('fetches the history for the message it was opened for', async () => {
     const { revisions } = await build();
 
@@ -502,9 +513,9 @@ describe('EditHistoryComponent', () => {
     const { container, close } = await build();
 
     const closeButton = container.querySelector(
-      '[data-testid=edit-history-close]',
+      '[data-testid=dialog-close]',
     ) as HTMLButtonElement;
-    expect(closeButton.getAttribute('aria-label')).toBe('Close edit history');
+    expect(closeButton.getAttribute('aria-label')).toBe('Close');
     expect(closeButton.closest('footer')).toBeNull();
 
     fireEvent.click(closeButton);

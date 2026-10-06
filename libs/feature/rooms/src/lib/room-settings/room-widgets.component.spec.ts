@@ -356,7 +356,6 @@ describe('RoomWidgetsComponent', () => {
       expect.any(Function),
       expect.objectContaining({
         placement: 'fullscreen',
-        ariaLabel: 'Planning board widget',
         inputs: expect.objectContaining({
           roomId: '!r:hs',
           widget: BOARD_WIDGET,

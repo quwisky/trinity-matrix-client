@@ -43,7 +43,6 @@ export class AccountPickerService {
           this.dialog.openAndWait$<void, AccountPickerComponent>(
             AccountPickerComponent,
             {
-              ariaLabel: 'Accounts in view',
               inputs: { accounts, activeUserId },
               // Land on the first changeable account rather than the locked active row or
               // CDK's first tabbable element, which is the Done button when none can change.

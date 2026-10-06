@@ -334,7 +334,6 @@ describe('RoomSettingsAdvancedComponent', () => {
       roomId: '!room:hs',
     });
     expect(open).toHaveBeenCalledWith(RoomStateViewerComponent, {
-      ariaLabel: 'Room state',
       inputs: { entries: STATE },
     });
   });
@@ -408,14 +407,12 @@ describe('RoomSettingsAdvancedComponent upgrade', () => {
     const [component, options] = openAndWait.mock.calls[0] as unknown as [
       unknown,
       {
-        ariaLabel: string;
         ariaDescribedBy: string;
         inputs: unknown;
         dismissGuard: (dialog: { busy: () => boolean } | null) => boolean;
       },
     ];
     expect(component).toBe(RoomUpgradeDialogComponent);
-    expect(options.ariaLabel).toBe('Upgrade room');
     expect(options.ariaDescribedBy).toBe(ROOM_UPGRADE_WARNING_ID);
     expect(options.inputs).toEqual({
       accountId: ACCOUNT,

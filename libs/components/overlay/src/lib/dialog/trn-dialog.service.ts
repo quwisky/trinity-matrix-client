@@ -1,9 +1,19 @@
 import { Injectable, inject, type Type } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
-import { Overlay, type ConnectedPosition } from '@angular/cdk/overlay';
+import {
+  Overlay,
+  type ConnectedPosition,
+  type PositionStrategy,
+} from '@angular/cdk/overlay';
+import { BELOW_MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import { defer, map, merge, take, type Observable } from 'rxjs';
-import { TrnDialogRef } from './trn-dialog-ref';
+import {
+  TrnDialogRef,
+  dialogTitleId,
+  type ClosableRef,
+  type TrnDialogPresentation,
+} from './trn-dialog-ref';
 
 /** Structural position for a component dialog. Appearance belongs to its surface. */
 export type TrnDialogPlacement =
@@ -19,7 +29,8 @@ export interface DialogOptions<C = object> {
    * Where the panel sits. `'center'` (default) is a centered modal card;
    * `'inline-end'` pins it full-height against the logical end edge — the
    * split-pane side panel (the surface recipe supplies its own bounded geometry).
-   * Replaces the Ionic `justify-content: flex-end` modal css.
+   * Replaces the Ionic `justify-content: flex-end` modal css. Below `md`, `'center'` opens
+   * as a full-width bottom sheet instead; see {@link TrnDialogRef.presentation}.
    */
   placement?: TrnDialogPlacement;
   /** Prevent backdrop/escape close (Ionic backdropDismiss: false). */
@@ -66,6 +77,10 @@ export interface DialogOptions<C = object> {
   anchor?: HTMLElement;
 }
 
+/** The viewport height left below the desktop title row (the full viewport elsewhere). */
+const VIEWPORT_BELOW_TITLE_ROW =
+  'calc(100dvh - var(--trinity-title-row-inset, 0px))';
+
 /**
  * Where a popover sits relative to its anchor, in preference order.
  *
@@ -75,10 +90,6 @@ export interface DialogOptions<C = object> {
  * `TrnAnchoredOverlayDirective` uses) because that one is built for a menu hugging a
  * button edge-to-edge, and a card wants the 8px of daylight below.
  */
-/** The viewport height left below the desktop title row (the full viewport elsewhere). */
-const VIEWPORT_BELOW_TITLE_ROW =
-  'calc(100dvh - var(--trinity-title-row-inset, 0px))';
-
 const POPOVER_POSITIONS: ConnectedPosition[] = [
   {
     originX: 'start',
@@ -115,6 +126,90 @@ function prefersCentred(): boolean {
   return (
     typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
   );
+}
+
+/** The sheet's height cap; the same value as the sheet surface recipe's, so the pane never clips it. */
+const SHEET_MAX_HEIGHT =
+  'min(90svh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--trinity-title-row-inset, 0px)))';
+
+/**
+ * The presentation, CDK pane geometry and ref wiring for a dialog, decided once at open.
+ *
+ * Below `md` a centred dialog becomes a full-width bottom sheet. Fullscreen, inline-end and
+ * anchored popovers keep their own geometry. Shared with {@link TrnAlertService}, which opens
+ * on the same root `Dialog` with its own data, so confirms and prompts follow the same rule.
+ *
+ * `pane` carries `ariaLabelledBy` for the shell's title id and leaves geometry it does not set
+ * out entirely, so CDK's own defaults stand.
+ */
+export function dialogPresentation(
+  overlay: Overlay,
+  placement: TrnDialogPlacement,
+  anchor: HTMLElement | null,
+): {
+  pane: {
+    ariaLabelledBy: string;
+    width?: string;
+    height?: string;
+    maxWidth?: string;
+    maxHeight?: string;
+    positionStrategy?: PositionStrategy;
+  };
+  /** Builds the ref handed to the component and the opener. */
+  createRef: <R>(cdkRef: ClosableRef<R>) => TrnDialogRef<R>;
+} {
+  const presentation: TrnDialogPresentation =
+    placement === 'fullscreen'
+      ? 'fullscreen'
+      : anchor
+        ? 'popover'
+        : placement === 'bottom' ||
+            (placement === 'center' && matchesQuery(BELOW_MD_QUERY))
+          ? 'sheet'
+          : 'dialog';
+  const fullScreen = presentation === 'fullscreen';
+  const sheet = presentation === 'sheet';
+  const titleId = dialogTitleId();
+  const positionStrategy = anchor
+    ? overlay
+        .position()
+        .flexibleConnectedTo(anchor)
+        .withPositions(POPOVER_POSITIONS)
+        .withFlexibleDimensions(false)
+        .withPush(true)
+    : placement === 'inline-end'
+      ? overlay.position().global().top('0').right('0')
+      : sheet
+        ? overlay.position().global().centerHorizontally().bottom('0')
+        : fullScreen
+          ? overlay
+              .position()
+              .global()
+              .top('0')
+              .right('0')
+              .bottom('0')
+              .left('0')
+          : undefined;
+  return {
+    pane: {
+      ariaLabelledBy: titleId,
+      ...(fullScreen && {
+        width: '100vw',
+        height: VIEWPORT_BELOW_TITLE_ROW,
+        maxWidth: '100vw',
+        maxHeight: VIEWPORT_BELOW_TITLE_ROW,
+      }),
+      ...(sheet && {
+        width: '100vw',
+        maxWidth: '100vw',
+        maxHeight: SHEET_MAX_HEIGHT,
+      }),
+      // Default (undefined) lets CDK center the card; `'inline-end'` pins it to
+      // the logical end edge (currently right in Trinity's supported direction).
+      ...(positionStrategy && { positionStrategy }),
+    },
+    createRef: (cdkRef) => new TrnDialogRef(cdkRef, presentation, titleId),
+  };
 }
 
 /**
@@ -162,9 +257,11 @@ export class TrnDialogService {
     // carry. Consumers migrated in #397-#401. Re-add a hook only with a
     // real behavior consumer.
     const anchor = opts.anchor && !prefersCentred() ? opts.anchor : null;
-    const placement = opts.placement ?? 'center';
-    const fullScreen = placement === 'fullscreen';
-    const bottomSheet = placement === 'bottom';
+    const { pane, createRef } = dialogPresentation(
+      this.overlay,
+      opts.placement ?? 'center',
+      anchor,
+    );
     let trinityRef: TrnDialogRef<R> | null = null;
     const ref = this.dialog.open<R, unknown, C>(component, {
       backdropClass: anchor
@@ -182,44 +279,11 @@ export class TrnDialogService {
       // a spread, so an `autoFocus: undefined` key would clobber the default instead of
       // falling back to it.
       autoFocus: opts.autoFocus ?? 'first-tabbable',
-      width: fullScreen
-        ? '100vw'
-        : bottomSheet
-          ? 'min(100vw, 36rem)'
-          : undefined,
-      height: fullScreen ? VIEWPORT_BELOW_TITLE_ROW : undefined,
-      maxWidth: fullScreen || bottomSheet ? '100vw' : undefined,
-      maxHeight: fullScreen
-        ? VIEWPORT_BELOW_TITLE_ROW
-        : bottomSheet
-          ? 'calc(100dvh - var(--trinity-title-row-inset, 0px) - 12px)'
-          : undefined,
-      // Default (undefined) lets CDK center the card; `'inline-end'` pins it to
-      // the logical end edge (currently right in Trinity's supported direction).
-      positionStrategy: anchor
-        ? this.overlay
-            .position()
-            .flexibleConnectedTo(anchor)
-            .withPositions(POPOVER_POSITIONS)
-            .withFlexibleDimensions(false)
-            .withPush(true)
-        : placement === 'inline-end'
-          ? this.overlay.position().global().top('0').right('0')
-          : bottomSheet
-            ? this.overlay.position().global().centerHorizontally().bottom('0')
-            : fullScreen
-              ? this.overlay
-                  .position()
-                  .global()
-                  .top('0')
-                  .right('0')
-                  .bottom('0')
-                  .left('0')
-              : undefined,
+      ...pane,
       // Give the component and opener the same vendor-neutral handle. Besides closing, this
       // lets a semantic surface prove that its own dialog is topmost without exposing CDK.
       providers: (cdkRef) => {
-        trinityRef = new TrnDialogRef<R>(cdkRef);
+        trinityRef = createRef(cdkRef);
         return [{ provide: TrnDialogRef, useValue: trinityRef }];
       },
     });
@@ -228,7 +292,7 @@ export class TrnDialogService {
         ref.componentRef.setInput(key, value);
       }
     }
-    trinityRef ??= new TrnDialogRef<R>(ref);
+    trinityRef ??= createRef(ref);
     this.refs.set(
       trinityRef as TrnDialogRef<unknown>,
       ref as DialogRef<unknown, unknown>,

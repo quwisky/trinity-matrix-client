@@ -31,7 +31,7 @@ const layoutRecipe = {
   dialog:
     'max-h-[calc(100dvh-var(--trinity-title-row-inset,0px)-1.5rem)] w-[min(92vw,var(--trn-overlay-inline-size))] max-w-full rounded-[var(--trinity-shape-overlay-radius)]',
   sheet:
-    'max-h-[min(80svh,calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)))] w-screen max-w-[100vw] rounded-t-[var(--trinity-shape-overlay-radius)] rounded-b-none border-x-0 border-b-0',
+    'max-h-[min(90svh,calc(100dvh-env(safe-area-inset-top,0px)-var(--trinity-title-row-inset,0px)))] w-screen max-w-[100vw] rounded-t-[var(--trinity-shape-overlay-radius)] rounded-b-none border-x-0 border-b-0',
   popover:
     'max-h-[calc(100dvh-var(--trinity-title-row-inset,0px)-1rem)] min-w-full w-max max-w-[min(92vw,var(--trn-overlay-inline-size))] rounded-[var(--trinity-shape-overlay-radius)]',
   panel:

@@ -5,7 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { QrScannerComponent } from '@trinity/components/controls';
 import { QrCodeService } from '@trinity/platform-native';
-import { fireEvent, render } from '@trinity/testing';
+import { fireEvent, render, screen, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import {
   TrustVerificationService,
@@ -366,14 +366,20 @@ describe('DeviceVerificationPage', () => {
   });
 
   it('uses the canonical dialog surface recipe in modal mode', async () => {
-    const { container } = await renderPage(signal(view({ stage: 'done' })), {
-      asModal: true,
-    });
+    const { container, svc } = await renderPage(
+      signal(view({ stage: 'done' })),
+      { asModal: true },
+    );
 
-    const surface = container.querySelector('.crypto-modal');
-    expect(surface).toHaveAttribute('data-trn-layout', 'dialog');
-    expect(surface).toHaveAttribute('data-trn-size', 'md');
-    expect(surface).toHaveAttribute('data-trn-variant', 'neutral');
+    expect(container.querySelector('.crypto-modal')).toBeNull();
+    expect(
+      within(screen.getByTestId('dialog-surface')).getByRole('heading', {
+        level: 2,
+        name: 'Verify device',
+      }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByTestId('dialog-close'));
+    expect(svc.dismiss).toHaveBeenCalledOnce();
   });
 
   it('does not touch the modal stack on the routed (non-modal) path', async () => {

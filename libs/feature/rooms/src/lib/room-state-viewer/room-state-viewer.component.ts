@@ -9,8 +9,9 @@ import {
 import { FormField, form } from '@angular/forms/signals';
 import { TrnButton, TrnInput } from '@trinity/components/controls';
 import {
+  TrnDialogActions,
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
   TrnToastService,
 } from '@trinity/components/overlay';
 import type { RoomStateEntry } from '@trinity/data-access/room-administration';
@@ -30,7 +31,13 @@ export interface RoomStateGroup {
 @Component({
   selector: 'trn-room-state-viewer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, TrnButton, TrnInput, TrnOverlaySurfaceDirective],
+  imports: [
+    FormField,
+    TrnButton,
+    TrnInput,
+    TrnDialogActions,
+    TrnDialogShellComponent,
+  ],
   templateUrl: './room-state-viewer.component.html',
 })
 export class RoomStateViewerComponent {

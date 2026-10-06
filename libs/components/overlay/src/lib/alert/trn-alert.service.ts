@@ -1,7 +1,10 @@
 import { Injectable, inject } from '@angular/core';
-import { Dialog } from '@angular/cdk/dialog';
+import { Dialog, type DialogConfig, type DialogRef } from '@angular/cdk/dialog';
+import { Overlay } from '@angular/cdk/overlay';
 import type { TrnVariant } from '@trinity/components/foundations';
 import { defer, map, take, type Observable } from 'rxjs';
+import { TrnDialogRef } from '../dialog/trn-dialog-ref';
+import { dialogPresentation } from '../dialog/trn-dialog.service';
 import {
   TrnAlertDialogComponent,
   type AlertDialogData,
@@ -52,6 +55,7 @@ export interface PromptOptions extends ConfirmOptions {
 @Injectable({ providedIn: 'root' })
 export class TrnAlertService {
   private readonly dialog = inject(Dialog);
+  private readonly overlay = inject(Overlay);
 
   /** Emits true when confirmed, false on cancel / backdrop / escape. */
   confirm$(opts: ConfirmOptions): Observable<boolean> {
@@ -64,12 +68,11 @@ export class TrnAlertService {
       variant: opts.variant ?? 'neutral',
     };
     return defer(() => {
-      const ref = this.dialog.open<boolean>(TrnAlertDialogComponent, {
-        data,
-        ariaLabel: data.header,
-        backdropClass: ['cdk-overlay-dark-backdrop'],
-        closeOnNavigation: opts.closeOnNavigation ?? true,
-      });
+      const ref = this.dialog.open<
+        boolean,
+        AlertDialogData,
+        TrnAlertDialogComponent
+      >(TrnAlertDialogComponent, this.config(data, opts));
       return ref.closed.pipe(
         take(1),
         map((value) => value ?? false),
@@ -94,16 +97,38 @@ export class TrnAlertService {
       required: opts.required,
     };
     return defer(() => {
-      const ref = this.dialog.open<string | null>(TrnAlertDialogComponent, {
-        data,
-        ariaLabel: data.header,
-        backdropClass: ['cdk-overlay-dark-backdrop'],
-        closeOnNavigation: opts.closeOnNavigation ?? true,
-      });
+      const ref = this.dialog.open<
+        string | null,
+        AlertDialogData,
+        TrnAlertDialogComponent
+      >(TrnAlertDialogComponent, this.config(data, opts));
       return ref.closed.pipe(
         take(1),
         map((value) => value ?? null),
       );
     });
+  }
+
+  /** A centred alert, or a bottom sheet below `md`, like any centred dialog. */
+  private config<R>(
+    data: AlertDialogData,
+    opts: ConfirmOptions,
+  ): DialogConfig<AlertDialogData, DialogRef<R, TrnAlertDialogComponent>> {
+    const { pane, createRef } = dialogPresentation(
+      this.overlay,
+      'center',
+      null,
+    );
+    return {
+      data,
+      // No `ariaLabel`: `pane.ariaLabelledBy` names the dialog by the shell's visible title.
+      backdropClass: ['cdk-overlay-dark-backdrop'],
+      closeOnNavigation: opts.closeOnNavigation ?? true,
+      ...pane,
+      // The dialog shell reads the presentation from the ref it injects.
+      providers: (cdkRef) => [
+        { provide: TrnDialogRef, useValue: createRef<R>(cdkRef) },
+      ],
+    };
   }
 }

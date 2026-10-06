@@ -67,7 +67,6 @@ export class VerificationHostComponent {
           if (!this.shouldPresent(this.verification.active())) return;
           const ref = this.dialog.open<void, unknown>(DeviceVerificationPage, {
             inputs: { asModal: true },
-            ariaLabel: 'Verify device',
             disableClose: true,
           });
           this.ref = ref;

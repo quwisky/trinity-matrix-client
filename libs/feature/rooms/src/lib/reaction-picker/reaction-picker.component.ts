@@ -1,5 +1,8 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { TrnDialogRef } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnDialogShellComponent,
+} from '@trinity/components/overlay';
 import {
   TrnEmojiPickerComponent,
   type TrnEmojiPick,
@@ -15,7 +18,7 @@ import {
 @Component({
   selector: 'trn-reaction-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnEmojiPickerComponent],
+  imports: [TrnDialogShellComponent, TrnEmojiPickerComponent],
   templateUrl: './reaction-picker.component.html',
   styleUrl: './reaction-picker.component.scss',
 })

@@ -5,7 +5,7 @@ import {
   GlobalSearchService,
   type SwitcherResult,
 } from '@trinity/application/search';
-import { render } from '@trinity/testing';
+import { render, screen, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
@@ -41,6 +41,22 @@ const LOCAL: SwitcherResult[] = [
 ];
 
 describe('QuickSwitcherComponent', () => {
+  it('names its shell with a hidden title and has no header or footer', async () => {
+    const { container } = await renderSwitcher();
+
+    const surface = within(screen.getByTestId('dialog-surface'));
+    expect(
+      surface.getByRole('heading', { level: 2, name: 'Jump to a room' })
+        .classList,
+    ).toContain('sr-only');
+    expect(container.querySelector('header')).toBeNull();
+    expect(screen.queryByTestId('dialog-close')).toBeNull();
+    expect(screen.queryByTestId('dialog-footer')).toBeNull();
+    expect(
+      screen.getByTestId('switcher-input').closest('.dialog-shell__body'),
+    ).not.toBeNull();
+  });
+
   let dismiss: Mock;
   let localResults: Mock;
   let searchPeople: Mock;
