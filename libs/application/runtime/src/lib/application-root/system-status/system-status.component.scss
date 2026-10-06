@@ -4,9 +4,7 @@
     z-index: var(--trinity-z-panel);
     inset: 0;
     inset-block-start: var(--trinity-title-row-inset, 0);
-    display: grid;
-    place-items: center;
-    padding: var(--trinity-space-4);
+    display: block;
   }
 
   .system-status__backdrop {
@@ -18,6 +16,7 @@
   trn-settings-layout {
     position: relative;
     min-width: 0;
+    block-size: 100%;
   }
 
   .system-status__content {
@@ -118,16 +117,5 @@
     background: var(--trinity-surface-control);
     font-size: 0.75rem;
     white-space: pre-wrap;
-  }
-
-  :host.system-status--mobile {
-    place-items: end center;
-    padding: 0;
-  }
-
-  @media (max-width: 48rem) {
-    :host {
-      padding: 0;
-    }
   }
 }

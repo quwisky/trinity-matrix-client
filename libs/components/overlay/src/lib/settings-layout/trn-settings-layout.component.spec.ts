@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Component, signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { provideTrnIcons } from '@trinity/components/foundations';
@@ -39,21 +41,147 @@ class SettingsLayoutHostComponent {
 }
 
 describe('TrnSettingsLayoutComponent', () => {
-  it('keeps compact section navigation when presented as a sheet', async () => {
+  it('keeps compact section navigation with the directory hidden', async () => {
     const { container, getByRole } = await render(TrnSettingsLayoutComponent, {
       inputs: {
         title: 'System status',
         sections,
         selectedSection: 'general',
         compact: true,
-        surfaceLayout: 'sheet',
         directoryVisible: false,
       },
       providers: [provideTrnIcons()],
     });
-    expect(container.querySelector('[data-trn-layout="sheet"]')).toBeTruthy();
     expect(getByRole('button', { name: 'Back to sections' })).toBeTruthy();
     expect(container.querySelector('nav')).toHaveClass('settings-pane--hidden');
+  });
+
+  describe('full-screen layer', () => {
+    const css = readFileSync(
+      join(import.meta.dirname, 'trn-settings-layout.component.scss'),
+      'utf8',
+    );
+    const rule = (selector: string): string =>
+      new RegExp(`${selector.replace('.', '\\.')}\\s*\\{([^}]*)\\}`, 'u').exec(
+        css,
+      )?.[1] ?? '';
+
+    it('puts the nav on the app ground and the content on the pane', async () => {
+      const { container } = await render(SettingsLayoutHostComponent, {
+        providers: [provideTrnIcons()],
+      });
+      expect(container.querySelector('.settings-layout__nav')).toBeTruthy();
+      expect(container.querySelector('.settings-layout__content')).toBeTruthy();
+      expect(container.querySelector('[trnoverlaysurface]')).toBeNull();
+      const nav = rule('.settings-layout__nav');
+      expect(nav).toContain('background: var(--trinity-surface-app)');
+      expect(nav).toContain('flex: 0 0 35%');
+      expect(nav).toContain('min-inline-size: 218px');
+      const inner = rule('.settings-layout__nav-inner');
+      expect(inner).toContain('inline-size: 192px');
+      expect(inner).toContain('margin-inline-start: auto');
+      expect(rule('.settings-layout__group-label')).toContain(
+        'text-transform: uppercase',
+      );
+      expect(rule('.settings-layout__content')).toContain(
+        'background: var(--trinity-surface-pane)',
+      );
+      expect(rule('.settings-layout__column')).toContain(
+        'max-inline-size: 740px',
+      );
+      const title = rule('.settings-layout__column h1');
+      expect(title).toContain('font-size: var(--trinity-text-lg)');
+      expect(title).toContain('font-weight: 700');
+    });
+
+    it('renders the context and warning before the section title', async () => {
+      const { container } = await render(SettingsLayoutHostComponent, {
+        providers: [provideTrnIcons()],
+      });
+      const column = container.querySelector('.settings-layout__column')!;
+      const order = Array.from(column.children).map(
+        (el) =>
+          el.getAttribute('settings-context') ??
+          el.getAttribute('settings-warning') ??
+          el.tagName,
+      );
+      expect(order.slice(0, 3)).toEqual(['', '', 'H1']);
+      expect(column.children[0]?.textContent).toContain('Context');
+      expect(column.children[1]?.textContent).toContain('Warning');
+    });
+
+    it('closes from a round close button with a hidden ESC caption', async () => {
+      const closeRequested = vi.fn();
+      const { getByRole, container } = await render(
+        TrnSettingsLayoutComponent,
+        {
+          inputs: {
+            title: 'Preferences',
+            sections,
+            selectedSection: 'general',
+          },
+          on: { closeRequested },
+          providers: [provideTrnIcons()],
+        },
+      );
+      const close = getByRole('button', { name: 'Close settings' });
+      expect(
+        container
+          .querySelector('.settings-layout__close-caption')
+          ?.getAttribute('aria-hidden'),
+      ).toBe('true');
+      expect(
+        container.querySelector('.settings-layout__close-caption')?.textContent,
+      ).toContain('ESC');
+      close.click();
+      expect(closeRequested).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes on Escape and handles it once', async () => {
+      const closeRequested = vi.fn();
+      const { container } = await render(TrnSettingsLayoutComponent, {
+        inputs: { title: 'Preferences', sections, selectedSection: 'general' },
+        on: { closeRequested },
+        providers: [provideTrnIcons()],
+      });
+      const reachedBody = vi.fn();
+      document.body.addEventListener('keydown', reachedBody);
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      container.querySelector('button')!.dispatchEvent(event);
+      document.body.removeEventListener('keydown', reachedBody);
+      expect(closeRequested).toHaveBeenCalledTimes(1);
+      // The CDK dialog listens on the body; it must not also close the layer.
+      expect(reachedBody).not.toHaveBeenCalled();
+    });
+
+    it('returns to the directory on Escape when compact with a section open', async () => {
+      const closeRequested = vi.fn();
+      const backRequested = vi.fn();
+      const { container } = await render(TrnSettingsLayoutComponent, {
+        inputs: {
+          title: 'Preferences',
+          sections,
+          selectedSection: 'general',
+          compact: true,
+          directoryVisible: false,
+        },
+        on: { closeRequested, backRequested },
+        providers: [provideTrnIcons()],
+      });
+      container.querySelector('button')!.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Escape',
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      expect(backRequested).toHaveBeenCalledTimes(1);
+      expect(closeRequested).not.toHaveBeenCalled();
+    });
   });
 
   it('publishes the domain-neutral section contract', () => {

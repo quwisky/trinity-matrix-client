@@ -9,7 +9,6 @@ import {
   configureSettingsSuite,
   openSection,
   session,
-  settingsTitleAlignment,
 } from '../../support/settings-journey.mts';
 import { settingsLayoutMetrics } from '../../support/settings-layout.mts';
 
@@ -56,23 +55,17 @@ test.describe('Settings', () => {
     expect(detailBox).not.toBeNull();
     // Beside, not stacked: the detail starts after the nav ends.
     expect(detailBox!.x).toBeGreaterThanOrEqual(navBox!.x + navBox!.width - 1);
-    // Device-scale conversion can report CSS-pixel geometry as a float
-    // (for example 255.999992px for this exact 16rem pane).
-    expect(navBox!.width).toBeCloseTo(256, 4);
-    await expect
-      .poll(async () => Math.abs(await settingsTitleAlignment(page)))
-      .toBeLessThanOrEqual(1);
-
-    const settingsDialog = page.getByTestId('settings-dialog');
-    await settingsDialog.evaluate((element) => {
-      element.setAttribute('dir', 'rtl');
-    });
-    await expect
-      .poll(async () => Math.abs(await settingsTitleAlignment(page)))
-      .toBeLessThanOrEqual(1);
-    await settingsDialog.evaluate((element) => {
-      element.setAttribute('dir', 'ltr');
-    });
+    // The nav is 35% of the viewport and the content column sits on the pane beside it.
+    const viewport = page.viewportSize()!;
+    expect(navBox!.width).toBeGreaterThanOrEqual(218 - 1);
+    expect(navBox!.width).toBeCloseTo(viewport.width * 0.35, -1);
+    await expect(page.locator('.settings-layout__column h1')).toBeVisible();
+    const closeBox = await page
+      .getByRole('button', { name: 'Close settings' })
+      .boundingBox();
+    expect(closeBox).not.toBeNull();
+    expect(closeBox!.x + closeBox!.width).toBeLessThanOrEqual(viewport.width);
+    expect(closeBox!.y).toBeGreaterThanOrEqual(0);
 
     // The mobile drill-in chevron is suppressed in the sidebar — and it is suppressed by
     // NOT BEING RENDERED, which is why this asserts absence rather than a computed style.
@@ -97,6 +90,26 @@ test.describe('Settings', () => {
         .evaluate((element) => getComputedStyle(element).backgroundColor),
     ]);
     expect(activeBackground).not.toBe(idleBackground);
+  });
+
+  test('desktop: the full-screen layer keeps the nav clear of the content at 200% text', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '200%';
+    });
+    const nav = page.locator('nav[aria-label="Settings sections"]');
+    await expect(nav).toBeVisible();
+    const [navBox, detailBox] = await Promise.all([
+      nav.boundingBox(),
+      page.getByTestId('settings-detail').boundingBox(),
+    ]);
+    if (navBox && detailBox) {
+      expect(navBox.x + navBox.width).toBeLessThanOrEqual(detailBox.x + 1);
+    }
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('settings-dialog')).toBeHidden();
   });
 
   test('desktop: Room and Space use the same scaled settings frame', async ({
@@ -148,7 +161,6 @@ test.describe('Settings', () => {
     );
 
     const expectSharedFrame = (actual: typeof main): void => {
-      expect(actual.headerHeight).toBeCloseTo(main.headerHeight, 4);
       expect(actual.directoryWidth).toBeCloseTo(main.directoryWidth, 4);
       expect(actual.directoryIconWidth).toBeCloseTo(main.directoryIconWidth, 4);
       expect(actual.directoryLabelFontSize).toBeCloseTo(
@@ -188,7 +200,7 @@ test.describe('Settings', () => {
     });
     const roomHeader = page
       .getByTestId('room-settings')
-      .locator('.settings-layout__header');
+      .locator('.settings-layout__column');
     await expect(roomHeader.getByTestId('room-settings-room-name')).toHaveText(
       roomName,
     );
@@ -215,7 +227,7 @@ test.describe('Settings', () => {
     });
     const spaceHeader = page
       .getByTestId('space-settings')
-      .locator('.settings-layout__header');
+      .locator('.settings-layout__column');
     await expect(
       spaceHeader.getByTestId('space-settings-space-name'),
     ).toHaveText(spaceName);

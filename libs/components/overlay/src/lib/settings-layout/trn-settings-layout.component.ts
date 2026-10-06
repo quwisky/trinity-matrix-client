@@ -12,7 +12,7 @@ import {
   TrnIconComponent,
   type TrnIconName,
 } from '@trinity/components/foundations';
-import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';
+import { TrnSettingsParts } from './trn-settings-parts';
 
 /** One selectable entry in a domain-neutral settings directory. */
 export interface TrnSettingsLayoutSection {
@@ -25,9 +25,11 @@ export interface TrnSettingsLayoutSection {
 @Component({
   selector: 'trn-settings-layout',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnIconComponent, TrnOverlaySurfaceDirective],
+  imports: [TrnButton, TrnIconComponent],
+  providers: [TrnSettingsParts],
   templateUrl: './trn-settings-layout.component.html',
   styleUrl: './trn-settings-layout.component.scss',
+  host: { '(keydown.escape)': 'onEscape($event)' },
 })
 export class TrnSettingsLayoutComponent {
   private readonly directory = viewChild<ElementRef<HTMLElement>>('directory');
@@ -41,10 +43,6 @@ export class TrnSettingsLayoutComponent {
   readonly selectedSection = input<string | null>(null);
   /** Whether this presentation fills the viewport and swaps directory/detail panes. */
   readonly compact = input(false);
-  /** Optional host presentation; pane navigation still follows compact. */
-  readonly surfaceLayout = input<'workspace' | 'fullscreen' | 'sheet' | null>(
-    null,
-  );
   /** Whether the directory pane is presently visible. */
   readonly directoryVisible = input(true);
   /** Stable base for this layout's public test hooks. */
@@ -65,25 +63,34 @@ export class TrnSettingsLayoutComponent {
   protected readonly directoryLabel = computed(
     () => `${this.title()} sections`,
   );
-  protected readonly resolvedSurfaceLayout = computed(
-    () => this.surfaceLayout() ?? (this.compact() ? 'fullscreen' : 'workspace'),
-  );
-  protected readonly surfaceHeight = computed(() =>
-    this.resolvedSurfaceLayout() === 'sheet'
-      ? 'calc(100dvh - max(0.75rem, env(safe-area-inset-top)))'
-      : this.compact()
-        ? 'calc(100dvh - var(--trinity-title-row-inset, 0px))'
-        : null,
-  );
   protected readonly resolvedCloseTestId = computed(
     () => this.closeTestId() ?? `${this.testId()}-cancel`,
   );
   protected readonly detailClasses = computed(() =>
-    ['settings-layout__detail', this.detailClass()].filter(Boolean).join(' '),
+    ['settings-layout__content', this.detailClass()].filter(Boolean).join(' '),
   );
   protected readonly resolvedDetailTestId = computed(
     () => this.detailTestId() ?? `${this.testId()}-detail`,
   );
+
+  /**
+   * Escape is handled here and stops there. The CDK dialog also closes on Escape from a
+   * body-level listener, which would skip this layer's own compact "back" step; stopping
+   * the event leaves `closeRequested` as the one close path, where the owner's unsaved
+   * changes guard runs.
+   */
+  protected onEscape(event: Event): void {
+    if (event.defaultPrevented) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (this.compact() && this.selectedSection() && !this.directoryVisible()) {
+      this.backRequested.emit();
+    } else {
+      this.closeRequested.emit();
+    }
+  }
 
   protected selectSection(id: string): void {
     this.sectionSelected.emit(id);

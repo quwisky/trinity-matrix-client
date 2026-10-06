@@ -21,7 +21,7 @@ import {
   TrnDialogService,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { BELOW_MD_QUERY, MD_QUERY, matchesQuery } from '@trinity/util/ui';
+import { MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import {
   Observable,
   catchError,
@@ -132,7 +132,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
             : {}),
         },
         ariaLabel: 'Settings',
-        placement: matchesQuery(BELOW_MD_QUERY) ? 'fullscreen' : 'center',
+        placement: 'fullscreen',
         autoFocus: '[data-settings-autofocus]',
       });
     }

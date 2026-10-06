@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { within } from '@testing-library/dom';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -33,6 +34,13 @@ describe('SettingsDialogComponent', () => {
     vi.clearAllMocks();
   });
 
+  it('keeps Log out out of the navigation', () => {
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    fixture.detectChanges();
+    const nav = (fixture.nativeElement as HTMLElement).querySelector('nav')!;
+    expect(within(nav).queryByRole('button', { name: /log out/i })).toBeNull();
+  });
+
   it('filters groups, reports no matches and clears without closing', async () => {
     const fixture = TestBed.createComponent(SettingsDialogComponent);
     fixture.detectChanges();
@@ -52,15 +60,18 @@ describe('SettingsDialogComponent', () => {
       ),
     ).toEqual(['Appearance', 'Notifications', 'Privacy']);
     expect(
-      Array.from(root.querySelectorAll('.settings-layout__group'), (item) =>
-        item.textContent?.trim(),
+      Array.from(
+        root.querySelectorAll('.settings-layout__group-label'),
+        (item) => item.textContent?.trim(),
       ),
     ).toEqual(['Preferences']);
     input('no matching section');
     expect(root.querySelectorAll('[data-trn-settings-section]')).toHaveLength(
       0,
     );
-    expect(root.querySelectorAll('.settings-layout__group')).toHaveLength(0);
+    expect(root.querySelectorAll('.settings-layout__group-label')).toHaveLength(
+      0,
+    );
     expect(root.querySelector('[role="status"]')?.textContent).toContain(
       '0 sections found',
     );

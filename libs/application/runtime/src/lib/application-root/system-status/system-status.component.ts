@@ -23,7 +23,6 @@ import {
   type TrnSettingsLayoutSection,
 } from '@trinity/components/overlay';
 import { textScaledViewportSignal } from '@trinity/util/ui';
-import { isMobileOs } from '@trinity/platform-native';
 import type { CapabilityRecoveryOutcome } from '@trinity/runtime/projection';
 import { take } from 'rxjs';
 import { SystemStatusVisibilityService } from '../../system-status-visibility.service';
@@ -46,7 +45,6 @@ import { ApplicationRecoveryPresenter } from '../application-recovery.presenter'
   templateUrl: './system-status.component.html',
   styleUrl: './system-status.component.scss',
   host: {
-    '[class.system-status--mobile]': 'mobile',
     '(document:keydown)': 'keydown($event)',
   },
 })
@@ -61,7 +59,6 @@ export class SystemStatusComponent implements AfterViewInit {
   private readonly layout = viewChild(TrnSettingsLayoutComponent);
 
   readonly status = inject(CapabilityStatusService);
-  readonly mobile = isMobileOs();
   readonly wide = textScaledViewportSignal(48, this.destroyRef);
   readonly selectedSection = signal<string | null>('overview');
   readonly sections = computed<readonly TrnSettingsLayoutSection[]>(() => [

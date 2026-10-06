@@ -17,7 +17,6 @@ import {
   openSection,
   themeAttr,
   session,
-  settingsTitleAlignment,
 } from '../../support/settings-journey.mts';
 import {
   AA_NORMAL_TEXT,
@@ -184,9 +183,6 @@ test.describe('Settings', () => {
     await expect.poll(densityAttr).toBe('compact');
     await expect.poll(spaceToken).toBe('12px');
     await expect.poll(previewGap).toBe('8px');
-    await expect
-      .poll(async () => Math.abs(await settingsTitleAlignment(page)))
-      .toBeLessThanOrEqual(1);
 
     await expect(page.getByTestId('appearance-preview-state')).toContainText(
       'Compact',

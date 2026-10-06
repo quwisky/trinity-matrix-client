@@ -510,7 +510,7 @@ describe('RoomsPage action error feedback', () => {
 
     expect(dialogOpen).toHaveBeenCalledWith(SpaceSettingsComponent, {
       ariaLabel: 'Space settings',
-      placement: 'center',
+      placement: 'fullscreen',
       autoFocus: '[data-autofocus]',
       dismissGuard: expect.any(Function),
       inputs: {
@@ -522,8 +522,8 @@ describe('RoomsPage action error feedback', () => {
     });
   });
 
-  it('opens Space settings fullscreen below md', async () => {
-    const restore = stubLiveLayout({ [BELOW_MD_QUERY]: true });
+  it('opens Space settings fullscreen on a wide layout too', async () => {
+    const restore = stubLiveLayout({ [BELOW_MD_QUERY]: false });
     const shell = build();
     shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
     await settleWorkspace();
@@ -640,7 +640,7 @@ describe('RoomsPage action error feedback', () => {
     // The label names the space, so the id alone is not enough to pass through.
     expect(dialogOpen).toHaveBeenCalledWith(RoomSettingsComponent, {
       ariaLabel: 'Room settings',
-      placement: 'center',
+      placement: 'fullscreen',
       autoFocus: '[data-autofocus]',
       dismissGuard: expect.any(Function),
       inputs: {

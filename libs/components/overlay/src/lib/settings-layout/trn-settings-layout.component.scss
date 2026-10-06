@@ -1,86 +1,47 @@
 @layer components {
   :host {
     display: block;
+    block-size: 100%;
+    min-block-size: 0;
+    background: var(--trinity-surface-app);
+
+    // The Discord-style top and side gutters of the content column.
+    --settings-layout-inset: 60px;
+    --settings-layout-gutter: 40px;
   }
 
   .settings-layout {
     display: flex;
-    min-height: 0;
-    flex-direction: column;
+    block-size: 100%;
+    min-block-size: 0;
+    flex-direction: row;
+    overflow: hidden;
     contain: layout paint;
   }
 
-  .settings-layout[data-trn-layout='fullscreen'] {
-    min-width: 100vw;
-    min-height: calc(100dvh - var(--trinity-title-row-inset, 0px));
-  }
-
-  .settings-layout__header {
+  .settings-layout__nav {
     display: flex;
-    min-height: 3.5rem;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: var(--trinity-space-2);
-    padding: max(var(--trinity-space-2), env(safe-area-inset-top))
-      max(var(--trinity-space-3), env(safe-area-inset-right))
-      var(--trinity-space-2)
-      max(var(--trinity-space-3), env(safe-area-inset-left));
-    border-bottom: 1px solid var(--trinity-border-subtle);
-    background: var(--trinity-surface-floating);
-  }
-
-  // A phone header gets more room above the title than the desktop frame, which keeps
-  // the same header height for Room, Space and app settings.
-  @media (max-width: 47.9375rem) {
-    .settings-layout__header {
-      padding-top: max(var(--trinity-space-4), env(safe-area-inset-top));
-    }
-  }
-
-  .settings-layout__heading {
-    min-width: 0;
-    flex: 1;
-  }
-
-  .settings-layout__heading h1 {
-    margin: 0;
-    padding-inline-start: calc(var(--trinity-space-4) - var(--trinity-space-3));
-    color: var(--trinity-text-bright);
-    font-size: var(--trinity-type-title-size);
-    line-height: var(--trinity-type-title-line-height);
-    font-weight: var(--trinity-type-title-weight);
-    outline: none;
-  }
-
-  .settings-layout__warning:empty {
-    display: none;
-  }
-
-  .settings-layout__workspace {
-    display: flex;
-    min-height: 0;
-    flex: 1;
-    flex-direction: row;
-    overflow: hidden;
-  }
-
-  .settings-layout__directory {
-    display: flex;
-    width: 16rem;
-    min-width: 0;
-    min-height: 0;
-    flex: 0 0 auto;
-    flex-direction: column;
-    gap: var(--trinity-density-item-gap);
+    flex: 0 0 35%;
+    min-inline-size: 218px;
+    min-block-size: 0;
     overflow-y: auto;
-    padding: var(--trinity-space-4);
-    border-right: 1px solid var(--trinity-border-subtle);
-    background: var(--trinity-surface-floating);
+    padding-block: var(--settings-layout-inset) var(--trinity-space-4);
+    padding-inline: var(--trinity-space-2);
+    background: var(--trinity-surface-app);
   }
 
-  .settings-layout__group {
-    margin: var(--trinity-space-5) var(--trinity-density-row-padding-inline)
-      var(--trinity-space-2);
+  .settings-layout__nav-inner {
+    display: flex;
+    inline-size: 192px;
+    min-inline-size: 0;
+    flex-direction: column;
+    gap: var(--trinity-space-1);
+    margin-inline-start: auto;
+  }
+
+  .settings-layout__group-label {
+    margin: var(--trinity-space-4) 0 var(--trinity-space-1);
+    padding-inline: var(--trinity-space-2);
     color: var(--trinity-text-muted);
     font-size: var(--trinity-type-caption-size);
     line-height: var(--trinity-type-caption-line-height);
@@ -89,34 +50,45 @@
     text-transform: uppercase;
   }
 
-  .settings-layout__group:first-child {
-    margin-top: var(--trinity-space-2);
+  .settings-layout__group-label:first-child {
+    margin-top: 0;
   }
 
-  .settings-layout__directory-item {
+  .settings-layout__nav-item {
     display: flex;
-    width: 100%;
-    min-height: max(
-      var(--trinity-density-control-size),
-      var(--trinity-interaction-target-min-size)
-    );
-    justify-content: flex-start;
-    gap: var(--trinity-density-row-gap);
-    text-align: left;
-  }
-
-  .settings-layout__directory-label {
-    min-width: 0;
-    flex: 1;
-    overflow-wrap: anywhere;
+    min-block-size: 32px;
+    align-items: center;
+    gap: var(--trinity-space-2);
+    padding: 0 var(--trinity-space-2);
+    border: 0;
+    border-radius: var(--trinity-radius-md);
+    background: transparent;
+    color: var(--trinity-text-muted);
     font-size: var(--trinity-type-control-size);
     line-height: var(--trinity-type-control-line-height);
-    white-space: normal;
+    text-align: start;
+    cursor: pointer;
   }
 
-  .settings-layout__directory-footer {
-    margin: auto 0 0;
-    padding: var(--trinity-space-5) var(--trinity-density-row-padding-inline)
+  .settings-layout__nav-item:hover {
+    background: var(--trinity-state-hover-surface, transparent);
+    color: var(--trinity-text-bright);
+  }
+
+  .settings-layout__nav-item.is-active {
+    background: var(--trinity-state-selected-surface);
+    color: var(--trinity-state-selected-foreground);
+  }
+
+  .settings-layout__nav-label {
+    min-inline-size: 0;
+    flex: 1;
+    overflow-wrap: anywhere;
+  }
+
+  .settings-layout__nav-footer {
+    margin-block-start: auto;
+    padding: var(--trinity-space-5) var(--trinity-space-2)
       max(var(--trinity-space-2), env(safe-area-inset-bottom));
     color: var(--trinity-text-muted);
     font-size: var(--trinity-type-caption-size);
@@ -124,37 +96,97 @@
     user-select: text;
   }
 
-  .settings-layout__detail {
-    min-width: 0;
-    min-height: 0;
+  .settings-layout__content {
+    display: flex;
+    min-inline-size: 0;
+    min-block-size: 0;
     flex: 1;
     overflow-y: auto;
     overscroll-behavior: contain;
-    background: var(--trinity-surface-raised);
+    background: var(--trinity-surface-pane);
   }
 
-  .settings-layout__detail-content {
-    width: 100%;
-    max-width: 52rem;
-    min-height: 100%;
-    margin-inline: auto;
-    padding: var(--trinity-space-4) var(--trinity-space-5)
+  .settings-layout__column {
+    inline-size: 100%;
+    max-inline-size: 740px;
+    min-inline-size: 0;
+    flex: 0 1 740px;
+    padding: var(--trinity-space-5) var(--trinity-space-4)
       max(var(--trinity-space-7), env(safe-area-inset-bottom));
   }
 
-  .settings-layout[data-compact='true'] .settings-layout__workspace {
+  .settings-layout__column h1 {
+    margin: 0 0 var(--trinity-space-4);
+    color: var(--trinity-text-bright);
+    font-size: var(--trinity-text-lg);
+    line-height: 28px;
+    font-weight: 700;
+    outline: none;
+  }
+
+  .settings-layout__close {
+    position: sticky;
+    inset-block-start: var(--settings-layout-inset);
+    display: flex;
+    flex: 0 0 auto;
     flex-direction: column;
+    align-items: center;
+    align-self: flex-start;
+    gap: var(--trinity-space-1);
+    margin-block-start: var(--settings-layout-inset);
+    margin-inline: var(--trinity-space-4) var(--trinity-space-4);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--trinity-text-muted);
+    cursor: pointer;
   }
 
-  .settings-layout[data-compact='true'] .settings-layout__directory {
-    width: auto;
+  .settings-layout__close-icon {
+    display: grid;
+    inline-size: 36px;
+    block-size: 36px;
+    place-items: center;
+    border: 2px solid currentcolor;
+    border-radius: var(--trinity-radius-pill);
+  }
+
+  .settings-layout__close:hover {
+    color: var(--trinity-text-bright);
+  }
+
+  .settings-layout__close-caption {
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+    font-weight: 700;
+  }
+
+  @media (min-width: 48rem) {
+    .settings-layout__column {
+      padding: var(--settings-layout-inset) var(--settings-layout-gutter);
+    }
+  }
+
+  .settings-layout[data-compact='true'] .settings-layout__nav {
     flex: 1;
-    border-right: 0;
+    min-inline-size: 0;
+    padding-block: max(var(--trinity-space-4), env(safe-area-inset-top))
+      var(--trinity-space-4);
   }
 
-  .settings-layout[data-compact='true'] .settings-layout__detail-content {
-    padding: var(--trinity-space-2) 0
-      max(var(--trinity-space-7), env(safe-area-inset-bottom));
+  .settings-layout[data-compact='true'] .settings-layout__nav-inner {
+    inline-size: 100%;
+    margin-inline-start: 0;
+  }
+
+  .settings-layout[data-compact='true'] .settings-layout__column {
+    padding-block-start: max(var(--trinity-space-4), env(safe-area-inset-top));
+  }
+
+  .settings-layout[data-compact='true'] .settings-layout__close {
+    inset-block-start: max(var(--trinity-space-4), env(safe-area-inset-top));
+    margin-block-start: max(var(--trinity-space-4), env(safe-area-inset-top));
+    margin-inline: 0 var(--trinity-space-3);
   }
 
   .settings-pane--hidden {
