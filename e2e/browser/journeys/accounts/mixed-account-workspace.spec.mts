@@ -121,6 +121,18 @@ test.describe('Multiple accounts', () => {
       railPill(spaceA).locator('[data-testid="account-badge"]'),
     ).toBeVisible();
 
+    // The account badge sits at the pill's bottom-right (it overhangs by its 2px ring).
+    const pillBox = (await railPill(spaceA).boundingBox())!;
+    const badgeBox = (await railPill(spaceA)
+      .locator('[data-testid="account-badge"]')
+      .boundingBox())!;
+    expect(
+      Math.abs(badgeBox.x + badgeBox.width - (pillBox.x + pillBox.width)),
+    ).toBeLessThanOrEqual(3);
+    expect(
+      Math.abs(badgeBox.y + badgeBox.height - (pillBox.y + pillBox.height)),
+    ).toBeLessThanOrEqual(3);
+
     // Opening A's space switches the active account to A.
     await railPill(spaceA).click();
     await expect(page.locator('.userbar__handle')).toContainText(`@${userA}:`, {

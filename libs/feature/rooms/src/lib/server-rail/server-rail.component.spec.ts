@@ -371,6 +371,15 @@ describe('ServerRailComponent', () => {
     );
   });
 
+  it('moves the account badge to the bottom-right of the rail avatar', () => {
+    const css = readFileSync(
+      join(import.meta.dirname, 'server-rail.component.scss'),
+      'utf8',
+    );
+    expect(css).toMatch(/--trn-account-badge-left:\s*auto/);
+    expect(css).toMatch(/--trn-account-badge-right:\s*-2px/);
+  });
+
   it('keeps the selected pill over the unread dot and hover pill', () => {
     const css = readFileSync(
       join(import.meta.dirname, 'server-rail.component.scss'),

@@ -156,6 +156,10 @@
   }
 
   trn-avatar {
+    // Account badge at the bottom-right; the mention badge takes the top-right.
+    --trn-account-badge-left: auto;
+    --trn-account-badge-right: -2px;
+
     pointer-events: none;
   }
 }
