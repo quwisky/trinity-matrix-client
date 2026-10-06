@@ -17,7 +17,6 @@ const RELEASE_SIDE = new Set([
 ]);
 const MAIN_SIDE = new Set(['package.json', 'electron/package.json']);
 const NEXT_MANIFEST = '.release-please-manifest.next.json';
-const STABLE_CONFIG = 'release-please-config.json';
 const USER_GUIDE_PAGE = /^apps\/docs-users\/src\/content\/docs\/.+\.mdx?$/;
 const VERSION =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-next\.(0|[1-9]\d*))?$/;
@@ -60,14 +59,6 @@ export function mergeNextManifest(mainText, releaseText) {
     JSON.parse(releaseText)['.'],
   );
   return `${JSON.stringify({ '.': version }, null, 2)}\n`;
-}
-
-/** Release stable's one-time pin belongs to the release branch only; main never keeps it. */
-export function withoutReleaseAs(configText) {
-  const config = JSON.parse(configText);
-  if (!Object.hasOwn(config.packages['.'], 'release-as')) return null;
-  delete config.packages['.']['release-as'];
-  return `${JSON.stringify(config, null, 2)}\n`;
 }
 
 export function planBackMerge({ mainContainsTag, existingPr }) {
@@ -235,11 +226,6 @@ function run({ tag, branch }) {
   }
   git('switch', '-C', head, 'origin/main');
   const resolved = mergeTag(tag);
-  const config = withoutReleaseAs(readFileSync(STABLE_CONFIG, 'utf8'));
-  if (config !== null) {
-    writeFileSync(STABLE_CONFIG, config);
-    git('add', '--', STABLE_CONFIG);
-  }
   git('commit', '--no-edit');
   // Lease on what the remote has now: no local tracking ref for the branch is needed.
   const lease = leaseFor(
@@ -253,12 +239,6 @@ function run({ tag, branch }) {
     resolved.length > 0
       ? `Conflicting hunks resolved by rule (see \`scripts/back-merge.mjs\`):\n${resolved.map(({ path, rule, wholeFile }) => `- \`${path}\` → ${rule}${wholeFile ? ' (whole file: added on both lines, review it)' : ''}`).join('\n')}`
       : 'Merged without conflicts.',
-    ...(config === null
-      ? []
-      : [
-          '',
-          `Drops the one-time \`release-as\` that \`${STABLE_CONFIG}\` carries on the release branch.`,
-        ]),
     '',
     'Lands on `main` as this merge commit, by a direct push from `scripts/land-back-merge.mjs`, once CI is green on it. Do not merge it with the button.',
   ].join('\n');
