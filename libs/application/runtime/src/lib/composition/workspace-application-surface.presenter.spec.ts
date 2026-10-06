@@ -148,7 +148,9 @@ describe('Workspace application-surface composition adapter', () => {
     );
 
     await firstValueFrom(
-      presenter().present({ surface: { kind: 'settings' } }),
+      presenter().present({
+        surface: { kind: 'settings', section: 'stickers' },
+      }),
     );
 
     expect(dialogOpen).toHaveBeenCalledWith(
