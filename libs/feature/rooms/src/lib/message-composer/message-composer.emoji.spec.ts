@@ -5,13 +5,22 @@ import {
   stubObjectUrls,
   type,
 } from './message-composer.spec-harness';
+import { TestBed } from '@angular/core/testing';
+import { TrnEmojiIndex } from '@trinity/components/controls';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+/** The index loads its vendor on first use; these tests are about matching, not loading. */
+async function renderWithIndex(...args: Parameters<typeof renderComposer>) {
+  const rendered = await renderComposer(...args);
+  await TestBed.inject(TrnEmojiIndex).load();
+  return rendered;
+}
 
 describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   beforeEach(() => stubObjectUrls());
 
   it('opens the emoji menu while typing a :shortcode and ranks an exact match first', async () => {
-    const { fixture } = await renderComposer();
+    const { fixture } = await renderWithIndex();
     const cmp = fixture.componentInstance;
 
     type(fixture, ':joy');
@@ -22,7 +31,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   });
 
   it('accepts the highlighted emoji on Enter without sending the message', async () => {
-    const { fixture } = await renderComposer();
+    const { fixture } = await renderWithIndex();
     const cmp = fixture.componentInstance;
 
     let sent = 0;
@@ -37,7 +46,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   });
 
   it('replaces only the :shortcode token, preserving surrounding text', async () => {
-    const { fixture } = await renderComposer();
+    const { fixture } = await renderWithIndex();
     const cmp = fixture.componentInstance;
 
     type(fixture, 'hi :joy');
@@ -47,7 +56,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   });
 
   it('moves the highlight with the arrow keys before accepting', async () => {
-    const { fixture } = await renderComposer();
+    const { fixture } = await renderWithIndex();
     const cmp = fixture.componentInstance;
 
     type(fixture, ':joy');
@@ -60,7 +69,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   });
 
   it('closes the menu on Escape without cancelling an active reply', async () => {
-    const { fixture } = await renderComposer({ replyingTo: 'Alice' });
+    const { fixture } = await renderWithIndex({ replyingTo: 'Alice' });
     const cmp = fixture.componentInstance;
 
     let cancelled = 0;
@@ -76,7 +85,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   });
 
   it('converts a fully typed :shortcode: to its emoji inline', async () => {
-    const { fixture } = await renderComposer();
+    const { fixture } = await renderWithIndex();
     const cmp = fixture.componentInstance;
 
     type(fixture, 'party :tada:');
@@ -86,7 +95,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   });
 
   it('inserts the emoji when a suggestion is clicked', async () => {
-    const { fixture } = await renderComposer();
+    const { fixture } = await renderWithIndex();
     const cmp = fixture.componentInstance;
 
     type(fixture, ':fire');
@@ -98,7 +107,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   });
 
   it('does not trigger on a colon that is not a shortcode boundary', async () => {
-    const { fixture } = await renderComposer();
+    const { fixture } = await renderWithIndex();
     const cmp = fixture.componentInstance;
 
     type(fixture, '8:30');
@@ -110,7 +119,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   });
 
   it('accepts on Tab when open and leaves Tab alone when closed', async () => {
-    const { fixture } = await renderComposer();
+    const { fixture } = await renderWithIndex();
     const cmp = fixture.componentInstance;
 
     type(fixture, ':joy');
@@ -130,7 +139,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   });
 
   it('replaces a :shortcode in the middle of the text (caret not at end)', async () => {
-    const { fixture } = await renderComposer();
+    const { fixture } = await renderWithIndex();
     const cmp = fixture.componentInstance;
 
     type(fixture, 'hey :joy there', 8); // caret right after ":joy"
@@ -140,7 +149,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   });
 
   it('resets the highlight to the first item when the result set changes', async () => {
-    const { fixture } = await renderComposer();
+    const { fixture } = await renderWithIndex();
     const cmp = fixture.componentInstance;
 
     type(fixture, ':joy');
@@ -153,7 +162,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   });
 
   it('does not open the menu while an IME composition is in progress', async () => {
-    const { fixture, container } = await renderComposer();
+    const { fixture, container } = await renderWithIndex();
     const cmp = fixture.componentInstance;
     const ta = container.querySelector('textarea') as HTMLTextAreaElement;
 
@@ -172,7 +181,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   });
 
   it('lets an IME-confirming Enter pass through without accepting or sending', async () => {
-    const { fixture } = await renderComposer();
+    const { fixture } = await renderWithIndex();
     const cmp = fixture.componentInstance;
 
     let sent = 0;
@@ -192,7 +201,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   });
 
   it('resolves the +1/-1 shortcodes through the emoji index', async () => {
-    const { fixture } = await renderComposer();
+    const { fixture } = await renderWithIndex();
     const cmp = fixture.componentInstance;
 
     type(fixture, ':+1');
@@ -202,7 +211,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   });
 
   it('renders each suggestion with its native emoji and :colons: label', async () => {
-    const { fixture } = await renderComposer();
+    const { fixture } = await renderWithIndex();
 
     type(fixture, ':joy');
     const first = menu(fixture)!.querySelector('.composer__emoji-suggestion')!;
@@ -215,7 +224,7 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
   });
 
   it('does not inline-convert a token that is not a real shortcode', async () => {
-    const { fixture } = await renderComposer();
+    const { fixture } = await renderWithIndex();
     const cmp = fixture.componentInstance;
 
     // "happy" is only a search keyword, never a shortcode → stays literal.

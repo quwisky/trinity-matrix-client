@@ -385,6 +385,8 @@ export class MessageComposerComponent {
   private wasRoomId: string | null | undefined = undefined;
 
   constructor() {
+    // Warm the lazy emoji index so a quickly typed `:shortcode:` still converts.
+    void this.emojiIndex.load();
     this.field = new ComposerTextField(this.textarea, this.text, this.injector);
     this.menus = new ComposerAutocompletes(this.emojiIndex, this.members, {
       text: this.text,

@@ -21,6 +21,18 @@
   .trn-emoji-picker {
     display: block;
 
+    // Stands in for the medium picker (302 x 358 px) while its chunk loads, so the overlay
+    // around it keeps its size. Painted like `.emoji-mart` below so the swap is invisible.
+    .trn-emoji-picker__placeholder {
+      box-sizing: border-box;
+      width: 302px;
+      max-width: 100%;
+      height: 358px;
+      border: 1px solid var(--trinity-border-subtle);
+      border-radius: var(--trinity-shape-overlay-radius);
+      background: var(--trinity-surface-floating);
+    }
+
     .emoji-mart {
       overflow: hidden;
       border-color: var(--trinity-border-subtle);

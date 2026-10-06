@@ -4,7 +4,7 @@ import { Component, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { PickerComponent } from '@ctrl/ngx-emoji-mart';
 import { render } from '@trinity/testing';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { TrnEmojiPick } from '../trn-emoji.model';
 import { TrnEmojiPickerComponent } from './trn-emoji-picker.component';
 
@@ -89,7 +89,27 @@ function unscopedSelectors(scss: string): string[] {
   return escaped;
 }
 
+/** `render`, then let the deferred vendor panel arrive. */
+async function renderLoaded<T>(
+  ...args: Parameters<typeof render<T>>
+): Promise<Awaited<ReturnType<typeof render<T>>>> {
+  const rendered = await render<T>(...args);
+  await vi.waitFor(() => {
+    rendered.fixture.detectChanges();
+    expect(
+      rendered.fixture.debugElement.query(By.directive(PickerComponent)),
+    ).not.toBeNull();
+  });
+  return rendered;
+}
+
 describe('TrnEmojiPickerComponent', () => {
+  // The vendor panel is a deferred import, so the first test would otherwise pay for
+  // transforming the whole library inside its own 5 s budget.
+  beforeAll(async () => {
+    await import('./trn-emoji-picker-panel.component');
+  }, 60_000);
+
   /**
    * Fires the VENDOR's own output rather than calling our handler.
    *
@@ -99,7 +119,7 @@ describe('TrnEmojiPickerComponent', () => {
    * the narrowing in one path, so breaking either fails here.
    */
   const emit = async (emoji: unknown) => {
-    const { fixture } = await render(HostComponent);
+    const { fixture } = await renderLoaded(HostComponent);
     const vendor = fixture.debugElement.query(By.directive(PickerComponent));
     vendor.componentInstance.emojiSelect.emit({
       emoji,
@@ -135,7 +155,7 @@ describe('TrnEmojiPickerComponent', () => {
   });
 
   it('can be targeted by aria-controls, and claims no role of its own', async () => {
-    const { fixture } = await render(TrnEmojiPickerComponent, {
+    const { fixture } = await renderLoaded(TrnEmojiPickerComponent, {
       inputs: { pickerId: 'reaction-emoji-picker' },
     });
     const host = fixture.nativeElement as HTMLElement;
@@ -158,21 +178,21 @@ describe('TrnEmojiPickerComponent', () => {
     // `fill: currentColor`. Neither can be reached from our stylesheet without
     // `!important`, so the token is passed through the vendor's own input. Drop this
     // binding and the selected category renders emoji-mart's #ae65c5 again.
-    const { fixture } = await render(TrnEmojiPickerComponent);
+    const { fixture } = await renderLoaded(TrnEmojiPickerComponent);
     const vendor = fixture.debugElement.query(By.directive(PickerComponent));
 
     expect(vendor.componentInstance.color).toBe('var(--trinity-accent)');
   });
 
   it('renders emoji as named buttons instead of labelled generic spans', async () => {
-    const { fixture } = await render(TrnEmojiPickerComponent);
+    const { fixture } = await renderLoaded(TrnEmojiPickerComponent);
     const vendor = fixture.debugElement.query(By.directive(PickerComponent));
 
     expect(vendor.componentInstance.useButton).toBe(true);
   });
 
   it('maps an ordinal Trinity size to the private vendor glyph measurement', async () => {
-    const { fixture } = await render(TrnEmojiPickerComponent, {
+    const { fixture } = await renderLoaded(TrnEmojiPickerComponent, {
       inputs: { size: 'lg' },
     });
     const vendor = fixture.debugElement.query(By.directive(PickerComponent));
@@ -191,7 +211,7 @@ describe('TrnEmojiPickerComponent', () => {
     // picker that would have carried `.emoji-mart-dark`, and its ten rules at (0,3,0), for
     // every user on a dark desktop. Removing the binding fails this.
     const html = await withDarkOs(async () => {
-      const { fixture } = await render(TrnEmojiPickerComponent);
+      const { fixture } = await renderLoaded(TrnEmojiPickerComponent);
       return (fixture.nativeElement as HTMLElement).innerHTML;
     });
 
