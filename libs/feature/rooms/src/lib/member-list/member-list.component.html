@@ -72,7 +72,10 @@
       <!-- The group's aria-label already names the role and count, so hide the
            visual header (icon included) from assistive tech to avoid a double read. -->
       @if (section.showHeader) {
-        <span class="category members__section-label" aria-hidden="true">
+        <span
+          class="category members__section-label member-group__label"
+          aria-hidden="true"
+        >
           <trn-icon class="members__section-icon" [name]="section.icon" />
           {{ section.label }} — {{ section.totalRows }}
         </span>
@@ -81,7 +84,11 @@
         @for (row of section.rows; track row.member.userId) {
           <li class="members__item">
             <button
+              trnBtn
+              variant="secondary"
+              presentation="ghost"
               class="member"
+              [style.height.px]="rowPx"
               type="button"
               [class.member--offline]="row.presence === 'offline'"
               [trnTooltip]="row.member.userId"
@@ -97,7 +104,12 @@
                 size="lg"
                 [presence]="row.presence"
               />
-              <span class="member__name">{{ row.member.roomDisplayName }}</span>
+              <span
+                class="member__name"
+                [class.member__name--admin]="row.role === 'admin'"
+                [class.member__name--moderator]="row.role === 'moderator'"
+                >{{ row.member.roomDisplayName }}</span
+              >
             </button>
           </li>
         }

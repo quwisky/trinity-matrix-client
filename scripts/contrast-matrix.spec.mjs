@@ -108,6 +108,7 @@ const ROLES = [
     text: '--trinity-danger',
     on: [
       '--trinity-chat',
+      '--trinity-surface-panel',
       '--trinity-surface-floating-card',
       '--trinity-sidebar',
       '--trinity-surface-sidebar',
@@ -148,6 +149,7 @@ const ROLES = [
     text: '--trinity-link',
     on: [
       '--trinity-chat',
+      '--trinity-surface-panel',
       '--trinity-sidebar',
       '--trinity-surface-sidebar',
       '--trinity-rail',

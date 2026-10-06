@@ -29,7 +29,7 @@ import {
   type TrnIconName,
 } from '@trinity/components/foundations';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
-import { TrnInput } from '@trinity/components/controls';
+import { TrnButton, TrnInput } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   buildPrefixSums,
@@ -122,6 +122,7 @@ const ROLE_ICON: Record<MemberRole, TrnIconName> = {
     SidePanelHeaderComponent,
     AvatarComponent,
     TrnIconComponent,
+    TrnButton,
     TrnInput,
     TrnTooltip,
     EmptyStateComponent,
@@ -153,6 +154,7 @@ export class MemberListComponent {
 
   /** What the reader typed into the filter, matched against name and user id. */
   protected readonly query = signal('');
+  protected readonly rowPx = ROW_PX;
 
   private readonly scrollHost =
     viewChild.required<ElementRef<HTMLElement>>('scrollHost');

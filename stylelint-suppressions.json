@@ -91,7 +91,7 @@
   },
   "libs/feature/rooms/src/lib/member-list/member-list.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 9
+      "count": 8
     }
   },
   "libs/feature/rooms/src/lib/members-settings/members-settings.component.scss": {

@@ -8,6 +8,8 @@ import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { type PresenceState } from '@trinity/util/matrix';
 import { MockComponent } from 'ng-mocks';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MemberListComponent } from './member-list.component';
 import { provideTrnIcons } from '@trinity/components/foundations';
@@ -392,6 +394,65 @@ describe('MemberListComponent', () => {
       'shield',
       'user',
     ]);
+  });
+});
+
+describe('MemberListComponent — restyle', () => {
+  it('marks group labels for uppercase styling and keeps their text', async () => {
+    const { container } = await render(MemberListComponent, {
+      inputs: { members: [member({ userId: '@a:hs', powerLevel: 100 })] },
+      ...opts,
+    });
+
+    const label = container.querySelector('.member-group__label');
+    expect(label?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Admin — 1');
+    expect(label?.classList).toContain('members__section-label');
+  });
+
+  it('tints admin and moderator names only', async () => {
+    const { container } = await render(MemberListComponent, {
+      inputs: {
+        members: [
+          member({ userId: '@a:hs', roomDisplayName: 'Ada', powerLevel: 100 }),
+          member({ userId: '@m:hs', roomDisplayName: 'Mo', powerLevel: 50 }),
+          member({ userId: '@p:hs', roomDisplayName: 'Pat' }),
+        ],
+      },
+      ...opts,
+    });
+
+    const nameOf = (text: string) =>
+      [...container.querySelectorAll('.member__name')].find(
+        (n) => n.textContent?.trim() === text,
+      )!;
+    expect(nameOf('Ada').classList).toContain('member__name--admin');
+    expect(nameOf('Mo').classList).toContain('member__name--moderator');
+    expect(nameOf('Pat').className).not.toMatch(/--admin|--moderator/);
+  });
+
+  it('renders rows with the shared button recipe', async () => {
+    const { container } = await render(MemberListComponent, {
+      inputs: { members: MEMBERS },
+      ...opts,
+    });
+
+    const row = container.querySelector('[data-testid=member-row]')!;
+    expect(row.getAttribute('data-slot')).toBe('button');
+  });
+
+  it('maps the name tints and label casing in the stylesheet', () => {
+    const scss = readFileSync(
+      join(import.meta.dirname, 'member-list.component.scss'),
+      'utf8',
+    );
+    const colourOf = (selector: string) =>
+      new RegExp(`${selector}\\s*\\{[^}]*color:\\s*([^;]+);`).exec(scss)?.[1];
+
+    expect(colourOf('\\.member__name--admin')).toBe('var(--trinity-danger)');
+    expect(colourOf('\\.member__name--moderator')).toBe('var(--trinity-link)');
+    expect(scss).toMatch(
+      /\.member-group__label\s*\{[^}]*text-transform:\s*uppercase;/,
+    );
   });
 });
 

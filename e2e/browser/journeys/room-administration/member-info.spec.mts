@@ -143,6 +143,20 @@ test.describe('Member info panel', () => {
       .boundingBox();
     expect(headerBox?.height).toBe(34);
 
+    // The button recipe sets its own height (32px on a coarse pointer), and the windowing
+    // needs 44px at every breakpoint — so measure again on a phone-sized viewport.
+    const desktopViewport = page.viewportSize()!;
+    await page.setViewportSize({ width: 390, height: 844 });
+    if (!(await page.locator('.chat-members').isVisible())) {
+      await openMembers(page);
+    }
+    await memberRow.first().waitFor({ state: 'visible' });
+    expect((await memberRow.first().boundingBox())?.height).toBe(44);
+    await page.setViewportSize(desktopViewport);
+    if (!(await page.locator('.chat-members').isVisible())) {
+      await openMembers(page);
+    }
+
     await memberRow.first().click();
 
     // The info panel opens with their name, id, role, and a Message action.
