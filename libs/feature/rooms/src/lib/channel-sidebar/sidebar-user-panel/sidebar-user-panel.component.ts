@@ -2,10 +2,12 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
   output,
 } from '@angular/core';
-import { AvatarComponent } from '@trinity/components/generic-content';
+import { TitleBarState } from '@trinity/application/workspace';
+import { AvatarComponent, TrnBadge } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { type IdentityProfile } from '@trinity/data-access/identity';
@@ -25,9 +27,6 @@ import { initialOf } from '@trinity/util/matrix';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
-/** Most avatars drawn in the mixed-account stack before it collapses to a "+N" count. */
-const STACK_MAX = 3;
-
 /** One signed-in account in the user-panel switcher: the profile plus its unread total. */
 export interface AccountSummary extends IdentityProfile {
   /** Unread notification total for this account (drives the switcher badge). */
@@ -41,6 +40,7 @@ export interface AccountSummary extends IdentityProfile {
   imports: [
     TrnButton,
     TrnTooltip,
+    TrnBadge,
     AvatarComponent,
     TrnIconComponent,
     TrnDropdownMenuTrigger,
@@ -58,6 +58,9 @@ export interface AccountSummary extends IdentityProfile {
   styleUrl: './sidebar-user-panel.component.scss',
 })
 export class SidebarUserPanelComponent {
+  /** The desktop title row carries system status itself, so the panel then drops it. */
+  protected readonly titleBar = inject(TitleBarState);
+
   /** The signed-in user (name + handle + avatar) for the panel trigger. */
   readonly user = input<IdentityProfile>({
     userId: '',
@@ -87,38 +90,18 @@ export class SidebarUserPanelComponent {
    * account menu has nowhere to go and lands back on top of it.
    */
   readonly pickAccountsInDialog = input(false);
-  /**
-   * The accounts being mixed, active account first so it stays the front tile of the stack.
-   * Empty unless more than one account is shown — a single account renders the plain avatar.
-   */
-  readonly mixedAccounts = computed<AccountSummary[]>(() => {
-    const shown = this.shownAccountIds();
-    if (shown.size < 2) {
-      return [];
-    }
-    const active = this.activeUserId();
-    return this.accounts()
-      .filter((account) => shown.has(account.userId))
-      .sort(
-        (a, b) =>
-          Number(b.userId === active) - Number(a.userId === active) ||
-          a.displayName.localeCompare(b.displayName),
-      );
-  });
   /** The picker is only meaningful with more than one account signed in. */
   readonly canPickAccounts = computed(() => this.accounts().length > 1);
-  /** Avatars actually drawn in the stack — capped so the cluster stays inside the footer's
-   * fixed 52px budget; the "+N" text carries the rest. */
-  readonly stackAvatars = computed(() =>
-    this.mixedAccounts().slice(0, STACK_MAX),
+  /** Signed-in accounts besides the one in view; the "+N" chip shows when above zero. */
+  readonly otherAccountCount = computed(() =>
+    Math.max(this.accounts().length - 1, 0),
   );
   /** Accessible summary of the mixed state; the stack itself is decorative. */
   readonly accountSummaryLabel = computed(() => {
-    const mixed = this.mixedAccounts();
-    if (mixed.length < 2) {
-      return 'Account menu';
-    }
-    return `Account menu — ${this.user().displayName}, showing ${mixed.length} accounts`;
+    const shown = this.shownAccountIds().size;
+    return shown < 2
+      ? 'Account menu'
+      : `Account menu — ${this.user().displayName}, showing ${shown} accounts`;
   });
   /** Gear — open the settings page. */
   readonly openSettings = output<void>();

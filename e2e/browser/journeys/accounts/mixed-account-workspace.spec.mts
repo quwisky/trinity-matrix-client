@@ -167,11 +167,8 @@ test.describe('Multiple accounts', () => {
 
     await mixInAccount(page, userA);
     await expect(roomARow).toBeVisible({ timeout: 20_000 });
-    // While mixing, the footer states the mix size and stacks the accounts' avatars.
-    await expect(page.getByTestId('account-stack')).toBeVisible();
-    await expect(page.getByTestId('account-stack-count')).toContainText(
-      '2 accounts',
-    );
+    // The panel's chip counts the other signed-in accounts.
+    await expect(page.getByTestId('account-stack-count')).toHaveText('+1');
 
     // The selection is persisted, so a cold reload comes back mixed rather than resetting.
     await page.reload();
@@ -317,7 +314,6 @@ test.describe('Multiple accounts', () => {
     await expect(desktopTrigger).toBeFocused();
     await expect(roomARow).toHaveCount(0);
     await expect(roomBRow).toBeVisible();
-    await expect(page.getByTestId('account-stack')).toHaveCount(0);
   });
   // The quick switcher shares the picker's scope, so it must find another account's rooms
   // and switch to that account on the jump — the same contract as clicking a sidebar row.

@@ -70,7 +70,7 @@
 
     // One measurement owns the shell-spanning dock and the clearance inherited by both
     // independent navigation scrollers.
-    --trinity-navigation-dock-height: 52px;
+    --trinity-navigation-dock-height: 60px;
     --trinity-navigation-safe-area-bottom: env(safe-area-inset-bottom);
 
     @media #{$md} {

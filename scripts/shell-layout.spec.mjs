@@ -169,7 +169,7 @@ describe('modern room shell layout contracts', () => {
   it('gives the desktop identity dock one shared floating geometry contract', () => {
     expect(roomsHtml).not.toMatch(/class="[^"]*shell-side[^"]*\bw-full\b/);
     expect(roomsCss).toMatch(
-      /\.shell-side\s*\{[^}]*position:\s*relative;[^}]*display:\s*grid;[^}]*width:\s*100%;[^}]*--trinity-navigation-dock-height:\s*52px;[^}]*@media\s+#\{\$md\}\s*\{[^}]*width:\s*var\(--shell-sidebar-w,\s*352px\);/s,
+      /\.shell-side\s*\{[^}]*position:\s*relative;[^}]*display:\s*grid;[^}]*width:\s*100%;[^}]*--trinity-navigation-dock-height:\s*60px;[^}]*@media\s+#\{\$md\}\s*\{[^}]*width:\s*var\(--shell-sidebar-w,\s*352px\);/s,
     );
     expect(roomsCss).toMatch(
       /--trinity-navigation-safe-area-bottom:\s*env\(safe-area-inset-bottom\);[\s\S]*?padding-bottom:\s*var\(--trinity-navigation-safe-area-bottom\);/,
@@ -187,7 +187,7 @@ describe('modern room shell layout contracts', () => {
       /:host\s*\{[\s\S]*?height:\s*var\(--trinity-navigation-dock-height\);[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1;[\s\S]*?position:\s*absolute;[\s\S]*?inset-inline:[^;]+;[\s\S]*?inset-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-safe-area-bottom\)/,
     );
     expect(userPanelCss).toMatch(
-      /\.userbar\s*\{[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?border-radius:\s*var\(--trinity-shape-container-radius\);[\s\S]*?background:\s*var\(--trinity-surface-floating\);[\s\S]*?box-shadow:\s*var\(--trinity-shadow-floating\);/,
+      /\.userbar\s*\{[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?border-radius:\s*var\(--trinity-shape-overlay-radius\);[\s\S]*?background:\s*var\(--trinity-surface-raised\);[\s\S]*?box-shadow:\s*var\(--trinity-shadow-floating\);/,
     );
   });
 

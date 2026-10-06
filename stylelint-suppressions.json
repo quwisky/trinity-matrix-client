@@ -236,7 +236,7 @@
   },
   "libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 13
+      "count": 8
     }
   },
   "libs/feature/rooms/src/lib/media-attachment/lightbox/lightbox.component.scss": {
