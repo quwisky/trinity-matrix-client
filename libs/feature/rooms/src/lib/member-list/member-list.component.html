@@ -107,7 +107,9 @@
               />
               <span
                 class="member__name"
-                [class.member__name--admin]="row.role === 'admin'"
+                [class.member__name--admin]="
+                  row.role === 'owner' || row.role === 'admin'
+                "
                 [class.member__name--moderator]="row.role === 'moderator'"
                 >{{ row.member.roomDisplayName }}</span
               >

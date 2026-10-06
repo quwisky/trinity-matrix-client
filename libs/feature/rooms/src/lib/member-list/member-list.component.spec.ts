@@ -432,6 +432,27 @@ describe('MemberListComponent — restyle', () => {
     expect(nameOf('Pat').className).not.toMatch(/--admin|--moderator/);
   });
 
+  it('tints the owner like an admin', async () => {
+    const { container } = await render(MemberListComponent, {
+      inputs: {
+        members: [
+          member({
+            userId: '@o:hs',
+            roomDisplayName: 'Olive',
+            powerLevel: 100,
+            isCreator: true,
+          }),
+        ],
+      },
+      ...opts,
+    });
+
+    const name = [...container.querySelectorAll('.member__name')].find(
+      (n) => n.textContent?.trim() === 'Olive',
+    );
+    expect(name?.classList).toContain('member__name--admin');
+  });
+
   it('renders rows with the shared button recipe', async () => {
     const { container } = await render(MemberListComponent, {
       inputs: { members: MEMBERS },
