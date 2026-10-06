@@ -98,6 +98,7 @@
       class="channel"
       [class.channel--selected]="activeRoomId() === room.id"
       [class.channel--unread]="room.hasUnread"
+      [class.channel--muted]="notifyMode(room) !== 'all'"
       (click)="selectRoom.emit({ roomId: room.id, accountId: room.accountId })"
     >
       <trn-avatar
@@ -106,7 +107,7 @@
         [accountId]="room.accountId"
         [initial]="room.initial"
         [name]="room.name"
-        [exactSize]="36"
+        [exactSize]="avatarSize()"
         [shape]="room.directUserId ? 'person' : 'place'"
         [presence]="presenceOf(room)"
         [accountBadge]="badgeFor(room.accountId)"
@@ -145,7 +146,7 @@
           [attr.aria-label]="room.highlightCount + ' unread mentions'"
           >{{ badgeLabel(room.highlightCount) }}</span
         >
-      } @else if (room.markedUnread && room.unreadCount === 0) {
+      } @else if (room.markedUnread) {
         <!-- Flagged with nothing new in it: a count would read "0", so it is a dot. -->
         <span
           class="channel__dot"

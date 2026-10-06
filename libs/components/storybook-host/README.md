@@ -20,7 +20,7 @@ controls; change them while reviewing each story's examples, control states and 
 states. The Theme and Mode choices come from Theme Foundation's catalog.
 
 The toolbar previews resolved light/dark Mode. It does not run the application's system-Mode
-preference, persistence or native-chrome lifetime, and it does not expose all six Appearance
+preference, persistence or native-chrome lifetime, and it does not expose all seven Appearance
 axes. Use the application/host journeys for those contracts. A story-specific text-size example
 is not a global toolbar setting.
 

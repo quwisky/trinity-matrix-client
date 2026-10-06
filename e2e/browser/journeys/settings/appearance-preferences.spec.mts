@@ -424,6 +424,11 @@ test.describe('Conversation density', () => {
     );
     await expect(preview).toBeHidden();
     await expect.poll(rowHeight).toBeLessThan(richHeight);
+    // The avatar is resized through its own API, not scaled by CSS.
+    await expect(row.locator('trn-avatar')).toHaveAttribute(
+      'data-exact-size',
+      '20',
+    );
 
     await page.getByTestId('density-select').locator('button').click();
     await page.getByTestId('density-spacious').click();

@@ -29,7 +29,10 @@ import {
   type AccountBadge,
 } from '@trinity/components/generic-content';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
-import { type RoomSummary } from '@trinity/data-access/room-library';
+import {
+  ROOM_LIST_STYLE,
+  type RoomSummary,
+} from '@trinity/data-access/room-library';
 import {
   RoomNotificationsService,
   type RoomNotifyDisplayMode,
@@ -82,6 +85,12 @@ import { TrnIconComponent } from '@trinity/components/foundations';
 export class SidebarRoomListComponent {
   private readonly presence = inject(IdentityPresenceService);
   private readonly roomNotifications = inject(RoomNotificationsService);
+  private readonly roomListStyle = inject(ROOM_LIST_STYLE);
+
+  /** Compact rows use a 20px avatar; the avatar derives its dot and badge floors from it. */
+  readonly avatarSize = computed(() =>
+    this.roomListStyle() === 'compact' ? 20 : 36,
+  );
 
   readonly rooms = input<readonly RoomSummary[]>([]);
   readonly invites = input<readonly PendingInvite[]>([]);

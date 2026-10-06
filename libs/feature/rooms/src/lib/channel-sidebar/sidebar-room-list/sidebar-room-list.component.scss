@@ -115,6 +115,17 @@
     // because the button recipe's fixed height and centred label would change the layout.
     position: relative;
 
+    // Muted rooms recede: dimmed avatar and muted-role text. Opacity is kept off the text
+    // and the badge so the name keeps AA contrast and a mention badge stays full strength.
+    // Placed before the selected and unread states so those still win.
+    &.channel--muted {
+      color: var(--trinity-text-muted);
+
+      .channel__avatar {
+        opacity: 0.55;
+      }
+    }
+
     &.channel--selected {
       background: var(--trinity-state-selected-surface);
       color: var(--trinity-state-selected-foreground);
@@ -249,14 +260,10 @@
     }
   }
 
-  // Compact rows: one line, a 20px avatar and no preview. `zoom` scales the avatar's own
-  // inline pixel size (set by the avatar component) together with its presence dot.
+  // Compact rows: one line and no preview. The 20px avatar comes from the ROOM_LIST_STYLE
+  // token through `exactSize`, so its presence dot and account badge keep their floors.
   :host-context(html[data-room-list='compact']) .channel__preview {
     display: none;
-  }
-
-  :host-context(html[data-room-list='compact']) .channel__avatar {
-    zoom: calc(20 / 36);
   }
 
   // Spacious has the room for a preview line, so compact brings it back there.

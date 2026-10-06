@@ -102,6 +102,7 @@ async function sendMessages(
   actor: ApiAccount,
   roomId: string,
   prefix: string,
+  mention?: string,
 ): Promise<void> {
   for (let index = 0; index < 42; index++) {
     const response = await request.put(
@@ -111,6 +112,10 @@ async function sendMessages(
         data: {
           msgtype: 'm.text',
           body: `${prefix} message ${index} with enough text to occupy the timeline`,
+          // The last message mentions the reader, so the row carries its danger badge.
+          ...(mention && index === 41
+            ? { 'm.mentions': { user_ids: [mention] } }
+            : {}),
         },
       },
     );
@@ -607,7 +612,14 @@ test.describe('Modern room shell layout', () => {
       for (const member of members) {
         if (member !== owner) await joinRoom(request, hs, member, roomId);
       }
-      await sendMessages(request, hs, owner, roomId, `${density}-${runId}`);
+      await sendMessages(
+        request,
+        hs,
+        owner,
+        roomId,
+        `${density}-${runId}`,
+        reader.userId,
+      );
     }
 
     await login(page, {
@@ -648,6 +660,8 @@ test.describe('Modern room shell layout', () => {
 
       await expectEllipsis(row.locator('.channel__name'));
       await expect(row.locator('.channel--unread')).toBeVisible();
+      await expect(row.locator('[data-slot="badge"]')).toBeVisible();
+      await expectInside(row.locator('[data-slot="badge"]'), row);
       await expectInside(row.locator('.channel__menu'), row);
       await expectEllipsis(page.locator('.userbar__name'));
       await expectInside(

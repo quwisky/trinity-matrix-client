@@ -18,7 +18,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // evaluation, not anything this client re-implements.
 //
 // The highlight badge is the honest end of the assertion: a desktop notification cannot be
-// observed from Playwright, but the red the danger badge is driven by the same
+// observed from Playwright, but the danger badge is driven by the same
 // `highlight` tweak the rule sets, through the same server-side scoring.
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
 const session = homeserverSession();

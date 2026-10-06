@@ -3,6 +3,10 @@ import { join } from 'node:path';
 import { signal } from '@angular/core';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
+import {
+  ROOM_LIST_STYLE,
+  type RoomListStyle,
+} from '@trinity/data-access/room-library';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
 import type { RoomSummary } from '@trinity/data-access/room-library';
 import { render } from '@trinity/testing';
@@ -37,11 +41,14 @@ async function renderRows(
   rooms: RoomSummary[],
   activeRoomId: string | null = null,
   notifyMode: 'all' | 'mute' = 'all',
+  style: RoomListStyle = 'rich',
+  extra: Record<string, unknown> = {},
 ) {
   return render(SidebarRoomListComponent, {
-    inputs: { rooms, activeRoomId },
+    inputs: { rooms, activeRoomId, ...extra },
     providers: [
       provideTrnIcons(),
+      { provide: ROOM_LIST_STYLE, useValue: signal(style) },
       MockProvider(RoomNotificationsService, {
         modeForAccounts: vi.fn(() => notifyMode),
       }),
@@ -99,6 +106,58 @@ describe('SidebarRoomListComponent rows', () => {
     ).toBe('danger');
   });
 
+  it('draws a 36px avatar in rich rows', async () => {
+    const { container } = await renderRows([room()]);
+
+    expect(
+      container.querySelector('trn-avatar')!.getAttribute('data-exact-size'),
+    ).toBe('36');
+  });
+
+  it('draws a 20px avatar in compact rows', async () => {
+    const { container } = await renderRows([room()], null, 'all', 'compact');
+
+    expect(
+      container.querySelector('trn-avatar')!.getAttribute('data-exact-size'),
+    ).toBe('20');
+  });
+
+  it('keeps the presence dot and account badge at their floors in compact rows', async () => {
+    const { container } = await renderRows(
+      [room({ directUserId: '@bob:hs' })],
+      null,
+      'all',
+      'compact',
+      {
+        accountBadges: new Map([
+          ['@me:hs', { id: '@me:hs', initial: 'M', name: 'Me' }],
+        ]),
+      },
+    );
+
+    const dot = container.querySelector<HTMLElement>('.presence-dot')!;
+    const badge = container.querySelector<HTMLElement>(
+      '[data-testid="account-badge"]',
+    )!;
+    expect(dot.style.width).toBe('8px');
+    expect(badge.style.width).toBe('14px');
+  });
+
+  it('dims a muted room but keeps its mention badge outside the dimmed parts', async () => {
+    const { container } = await renderRows(
+      [room({ hasUnread: true, highlightCount: 1 })],
+      null,
+      'mute',
+    );
+
+    expect(container.querySelector('.channel--muted')).not.toBeNull();
+    const badge = container.querySelector('[trnBadge]')!;
+    expect(badge.closest('.channel__avatar, .channel__text')).toBeNull();
+    expect(
+      /\.channel--muted \{ color: var\(--trinity-text-muted\)/.exec(scssText()),
+    ).not.toBeNull();
+  });
+
   it('keeps the dot for a room marked unread', async () => {
     const { container } = await renderRows([
       room({ hasUnread: true, markedUnread: true }),
@@ -111,12 +170,16 @@ describe('SidebarRoomListComponent rows', () => {
   });
 });
 
-describe('sidebar-room-list.component.scss', () => {
-  // Whitespace-normalised: prettier wraps the long compound selector.
-  const scss = readFileSync(
+function scssText(): string {
+  return readFileSync(
     join(__dirname, 'sidebar-room-list.component.scss'),
     'utf8',
   ).replace(/\s+/g, ' ');
+}
+
+describe('sidebar-room-list.component.scss', () => {
+  // Whitespace-normalised: prettier wraps the long compound selector.
+  const scss = scssText();
 
   it('hides the preview in compact rows and restores it in Spacious', () => {
     expect(scss).toContain(
@@ -127,9 +190,7 @@ describe('sidebar-room-list.component.scss', () => {
     );
   });
 
-  it('shrinks the avatar in compact rows', () => {
-    expect(scss).toMatch(
-      /:host-context\(html\[data-room-list='compact'\]\) \.channel__avatar/,
-    );
+  it('does not scale the avatar with CSS', () => {
+    expect(scss).not.toContain('zoom');
   });
 });

@@ -1123,7 +1123,7 @@ describe('ChannelSidebarComponent', () => {
     expect(emitted).toEqual(['@me:hs', '@alt:hs']);
   });
 
-  it('shows no dot when a flagged room also has unread messages', async () => {
+  it('still shows the dot when a flagged room also has unread messages', async () => {
     const { container } = await renderSidebar({
       inputs: {
         rooms: [
@@ -1140,7 +1140,7 @@ describe('ChannelSidebarComponent', () => {
 
     expect(
       container.querySelector('[data-testid="room-unread-dot"]'),
-    ).toBeNull();
+    ).not.toBeNull();
     expect(container.querySelector('.channel--unread')).not.toBeNull();
   });
 

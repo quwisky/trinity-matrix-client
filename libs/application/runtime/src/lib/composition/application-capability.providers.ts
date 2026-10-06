@@ -6,6 +6,7 @@ import {
 import {
   APPEARANCE_NATIVE_CHROME_ADAPTER,
   AppearanceEffects,
+  AppearancePreferences,
   provideAppearanceConfigEntries,
   provideAppearancePreferences,
 } from '@trinity/application/appearance';
@@ -39,6 +40,7 @@ import {
 } from '@trinity/data-access/room-administration';
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
+  ROOM_LIST_STYLE,
   type RoomLibraryGovernancePolicy,
   provideRoomLibraryPreferences,
 } from '@trinity/data-access/room-library';
@@ -88,6 +90,10 @@ export function applicationCapabilityProviders(
     {
       provide: APPEARANCE_NATIVE_CHROME_ADAPTER,
       useExisting: NativeAppearanceChromeAdapter,
+    },
+    {
+      provide: ROOM_LIST_STYLE,
+      useFactory: () => inject(AppearancePreferences).axes.roomList.value,
     },
     {
       provide: WIDGET_APPEARANCE_PROJECTION,
