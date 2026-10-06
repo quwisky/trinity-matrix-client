@@ -72,7 +72,7 @@ export class TrnSettingsLayoutComponent {
     this.resolvedSurfaceLayout() === 'sheet'
       ? 'calc(100dvh - max(0.75rem, env(safe-area-inset-top)))'
       : this.compact()
-        ? '100dvh'
+        ? 'calc(100dvh - var(--trinity-title-row-inset, 0px))'
         : null,
   );
   protected readonly resolvedCloseTestId = computed(

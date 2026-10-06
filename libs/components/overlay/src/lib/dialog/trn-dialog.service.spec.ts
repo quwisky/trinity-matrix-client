@@ -137,16 +137,20 @@ describe('TrnDialogService', () => {
     expect(await closed).toBe('Side');
   });
 
-  it('gives a full-screen dialog the complete viewport pane', () => {
+  it('gives a full-screen dialog the viewport pane below the desktop title row', () => {
     const svc = TestBed.inject(TrnDialogService);
     const ref = svc.open(TestDialogComponent, { placement: 'fullscreen' });
     TestBed.inject(ApplicationRef).tick();
 
     const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
     expect(pane?.style.width).toBe('100vw');
-    expect(pane?.style.height).toBe('100dvh');
+    expect(pane?.style.height).toBe(
+      'calc(100dvh - var(--trinity-title-row-inset, 0px))',
+    );
     expect(pane?.style.maxWidth).toBe('100vw');
-    expect(pane?.style.maxHeight).toBe('100dvh');
+    expect(pane?.style.maxHeight).toBe(
+      'calc(100dvh - var(--trinity-title-row-inset, 0px))',
+    );
 
     ref.close();
   });
@@ -159,7 +163,9 @@ describe('TrnDialogService', () => {
     const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
     expect(pane?.style.width).toBe('min(100vw, 36rem)');
     expect(pane?.style.maxWidth).toBe('100vw');
-    expect(pane?.style.maxHeight).toBe('calc(100dvh - 12px)');
+    expect(pane?.style.maxHeight).toBe(
+      'calc(100dvh - var(--trinity-title-row-inset, 0px) - 12px)',
+    );
     expect(document.querySelector('.cdk-global-overlay-wrapper')).toBeTruthy();
 
     ref.close();

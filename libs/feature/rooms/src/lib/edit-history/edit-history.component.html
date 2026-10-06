@@ -6,7 +6,9 @@
   class="edit-history flex min-h-0 flex-col"
   [attr.data-compact]="!wide()"
   [style.width]="wide() ? null : '100vw'"
-  [style.height]="wide() ? null : '100dvh'"
+  [style.height]="
+    wide() ? null : 'calc(100dvh - var(--trinity-title-row-inset, 0px))'
+  "
   data-testid="edit-history"
 >
   <header class="edit-history__header">

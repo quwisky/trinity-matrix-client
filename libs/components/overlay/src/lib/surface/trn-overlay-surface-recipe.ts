@@ -29,15 +29,15 @@ const sizeRecipe = {
 
 const layoutRecipe = {
   dialog:
-    'max-h-[calc(100dvh-1.5rem)] w-[min(92vw,var(--trn-overlay-inline-size))] max-w-full rounded-[var(--trinity-shape-overlay-radius)]',
+    'max-h-[calc(100dvh-var(--trinity-title-row-inset,0px)-1.5rem)] w-[min(92vw,var(--trn-overlay-inline-size))] max-w-full rounded-[var(--trinity-shape-overlay-radius)]',
   sheet:
     'max-h-[min(80svh,calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)))] w-screen max-w-[100vw] rounded-t-[var(--trinity-shape-overlay-radius)] rounded-b-none border-x-0 border-b-0',
   popover:
-    'max-h-[calc(100dvh-1rem)] min-w-full w-max max-w-[min(92vw,var(--trn-overlay-inline-size))] rounded-[var(--trinity-shape-overlay-radius)]',
+    'max-h-[calc(100dvh-var(--trinity-title-row-inset,0px)-1rem)] min-w-full w-max max-w-[min(92vw,var(--trn-overlay-inline-size))] rounded-[var(--trinity-shape-overlay-radius)]',
   panel:
-    'h-dvh w-screen rounded-none border-y-0 border-e-0 md:w-[var(--trn-overlay-inline-size)]',
+    'h-[calc(100dvh-var(--trinity-title-row-inset,0px))] w-screen rounded-none border-y-0 border-e-0 md:w-[var(--trn-overlay-inline-size)]',
   workspace:
-    'flex h-[min(48rem,calc(100dvh-2*var(--trinity-space-4)))] w-[min(var(--trn-overlay-inline-size),calc(100vw-2*var(--trinity-space-4)))] max-w-full rounded-[var(--trinity-shape-overlay-radius)]',
+    'flex h-[min(48rem,calc(100dvh-var(--trinity-title-row-inset,0px)-2*var(--trinity-space-4)))] w-[min(var(--trn-overlay-inline-size),calc(100vw-2*var(--trinity-space-4)))] max-w-full rounded-[var(--trinity-shape-overlay-radius)]',
   fullscreen: 'flex h-full w-full rounded-none border-0 shadow-none',
 } as const;
 

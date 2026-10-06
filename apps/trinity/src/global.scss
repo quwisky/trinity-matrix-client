@@ -176,6 +176,25 @@
     display: flex;
     flex-direction: column;
   }
+
+  /*
+ * Desktop title row. While it shows, TitleBarComponent sets `.trn-title-row` on <html>,
+ * and every viewport-fixed layer starts below the row: in Electron the row's drag region
+ * and the native window buttons (macOS traffic lights included) keep receiving clicks in
+ * that band even when something is painted over it. The row follows the native strip's
+ * zoomed height, so the inset does too. Viewport-sized panes subtract the same inset.
+ */
+  .trn-title-row {
+    --trinity-title-row-inset: env(
+      titlebar-area-height,
+      var(--trinity-title-bar-height)
+    );
+  }
+
+  .cdk-overlay-container {
+    inset-block: var(--trinity-title-row-inset, 0) 0;
+    height: auto;
+  }
 }
 
 @layer utilities {

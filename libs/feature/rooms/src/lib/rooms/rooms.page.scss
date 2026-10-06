@@ -220,6 +220,7 @@
     .chat-panel {
       position: fixed;
       inset-block: 0;
+      inset-block-start: var(--trinity-title-row-inset, 0);
       right: 0;
       z-index: var(--trinity-z-panel);
       flex: none;
