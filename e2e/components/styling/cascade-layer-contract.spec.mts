@@ -18,7 +18,7 @@ async function installProbe(page: Page): Promise<CascadeProbe> {
   await page.evaluate(() => {
     const panel = document.createElement('div');
     panel.id = 'cascade-panel';
-    panel.className = 'panel-header bg-primary text-destructive';
+    panel.className = 'trn-action-feedback bg-primary text-destructive';
 
     const primary = document.createElement('div');
     primary.id = 'cascade-primary';
@@ -87,7 +87,7 @@ test('compiled cascade preserves defaults, utilities, and invariants', async ({
 }) => {
   const probe = await installProbe(page);
 
-  // `panel-header` is an authored component default. The generated utility owns the
+  // `trn-action-feedback` is an authored component default. The generated utility owns the
   // contextual background because `utilities` follows `components`.
   expect(await computed(probe.panel, 'backgroundColor')).toBe(
     await computed(probe.primary, 'backgroundColor'),

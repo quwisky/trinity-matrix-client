@@ -519,6 +519,7 @@
                   [availability]="vm.membersView().availability"
                   [direct]="vm.activeRoomIsDirect()"
                   (selectMember)="memberActions.onSelectMember($event)"
+                  (dismissed)="closeRightPanel()"
                 />
               }
               @case ('threads') {

@@ -1,3 +1,12 @@
+@if (showHeader()) {
+  <!-- Outside the scroll host: the windowing math measures from the host's own top. -->
+  <trn-side-panel-header
+    title="Members"
+    closeLabel="Close members"
+    closeTestId="close-members"
+    (closed)="dismissed.emit()"
+  />
+}
 <aside
   class="members"
   aria-label="Members"

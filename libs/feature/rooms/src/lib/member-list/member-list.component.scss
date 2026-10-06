@@ -1,11 +1,20 @@
 @use '../styles/mixins' as *;
 
 @layer components {
+  // The header sits above the scroll host, not inside it: the windowing offsets are measured
+  // from the host's own scrollTop, so a header that scrolled with the rows would skew them.
+  :host {
+    display: flex;
+    flex-direction: column;
+  }
+
   .members {
     @include column(var(--trinity-surface-panel));
     @include scrollable;
     @include swipe-through;
 
+    flex: 1 1 0;
+    min-height: 0;
     width: 240px;
     padding: 16px var(--trinity-density-shell-padding-inline);
 
@@ -29,6 +38,7 @@
   :host(.member-list--settings) .members {
     width: 100%;
     height: 100%;
+    flex: none;
     padding: 0;
     background: transparent;
 

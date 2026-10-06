@@ -191,7 +191,8 @@
 
   .chat-members {
     flex: 0 0 240px;
-    box-shadow: inset 1px 0 0 var(--trinity-border-subtle);
+    background: var(--trinity-surface-panel);
+    border-inline-start: 1px solid var(--trinity-border-subtle);
   }
 
   // The other surfaces the slot can show — threads, a thread, pinned, search, member info.
@@ -209,6 +210,8 @@
     // The stored value is untouched, so widening the window restores it.
     flex: 0 1 var(--shell-right-panel-w, 480px);
     min-width: 0;
+    background: var(--trinity-surface-panel);
+    border-inline-start: 1px solid var(--trinity-border-subtle);
   }
 
   // Below the `members` breakpoint the static column would crowd the chat, so present the
@@ -249,15 +252,12 @@
     // exceeds the viewport here. The dragged width is deliberately not read at this breakpoint:
     // there is no divider to drag, and a width chosen on a desktop has nothing to say about a
     // phone.
-    // INSETS: the four panels pad themselves at BOTH ends — `safe-top` on the header they all
-    // carry, `safe-bottom` on the root — because their content reaches both edges (a thread
-    // composer, a member-info action row), and padding the host as well would clear the notch
-    // twice. The member list has neither, so the host does both for it; without the bottom one
-    // its last row sits under the home indicator, which is the bug the panels' `safe-bottom`
-    // was added to fix.
+    // INSETS: every panel pads itself at BOTH ends — the shared header takes the top inset,
+    // `safe-bottom` on the root takes the bottom — because their content reaches both edges.
+    // The member list has no `safe-bottom`, so the host takes the bottom inset for it; without
+    // it its last row sits under the home indicator.
     .chat-members {
       width: 240px;
-      padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
     }
 

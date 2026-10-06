@@ -72,6 +72,31 @@ const MEMBERS = [
 ];
 
 describe('MemberListComponent', () => {
+  it('titles the panel and emits dismissed from its close button', async () => {
+    const { fixture, container } = await render(MemberListComponent, {
+      inputs: { members: MEMBERS },
+      ...opts,
+    });
+    const dismissed = vi.fn();
+    fixture.componentInstance.dismissed.subscribe(dismissed);
+
+    expect(container.querySelector('h2')?.textContent).toContain('Members');
+    container
+      .querySelector<HTMLElement>('[data-testid="close-members"]')!
+      .click();
+
+    expect(dismissed).toHaveBeenCalledOnce();
+  });
+
+  it('omits the header in the settings reuse', async () => {
+    const { container } = await render(MemberListComponent, {
+      inputs: { members: MEMBERS, showHeader: false },
+      ...opts,
+    });
+
+    expect(container.querySelector('h2')).toBeNull();
+  });
+
   it('marks its labelled filter as the panel focus target', async () => {
     const { container } = await render(MemberListComponent, {
       inputs: { members: MEMBERS },
@@ -425,8 +450,10 @@ describe('MemberListComponent — filtering', () => {
     expect(row?.textContent).toContain('Bo');
     expect(row?.hasAttribute('title')).toBe(false);
     expect(
-      fixture.debugElement.query(By.directive(TrnTooltip)).nativeElement,
-    ).toBe(row);
+      fixture.debugElement
+        .queryAll(By.directive(TrnTooltip))
+        .map((tooltip) => tooltip.nativeElement),
+    ).toContain(row);
   });
 
   it('is case-insensitive on both sides', async () => {

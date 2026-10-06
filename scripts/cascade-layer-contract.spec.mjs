@@ -236,7 +236,6 @@ describe('cascade layer contract', () => {
       'components',
     );
     expect(components).toContain('router-outlet + *');
-    expect(components).toContain('.panel-header');
 
     const utilities = layerBodies('apps/trinity/src/global.scss', 'utilities');
     expect(utilities).toContain('.safe-top');

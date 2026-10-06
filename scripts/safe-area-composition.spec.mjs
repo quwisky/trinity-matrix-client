@@ -21,7 +21,7 @@ import { describe, expect, it } from 'vitest';
  * source, though — the helper's side comes from `global.scss` and the utility's sides come
  * from its prefix — which is what makes it worth a guard rather than another browser test.
  *
- * The composition that IS correct is one declaration doing both, as `.panel-header` and the
+ * The composition that IS correct is one declaration doing both, as the side-panel header and the
  * action sheet's `.sheet` now do: `padding-bottom: calc(0.375rem + env(safe-area-inset-bottom))`.
  * Nothing there can lose a cascade fight, because there is no second rule to lose it to.
  *

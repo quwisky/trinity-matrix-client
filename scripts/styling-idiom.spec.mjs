@@ -162,14 +162,15 @@ const COMPONENT_STYLESHEET_LEDGER = [
  * The ledger's counterpart for the inline idiom: components declaring `styles: [...]`.
  *
  * Every entry is in `libs/components` by construction — the wrapper tier ships one-rule
- * escapes from a kit default, which is the case inline styles are actually good for. A
- * feature component appearing here would be the thing worth a conversation.
+ * escapes from a kit default, which is the case inline styles are actually good for. The one
+ * feature entry is the side-panel header: a leaf with one :host rule shared by six panels.
  */
 const INLINE_STYLE_LEDGER = [
   'libs/components/controls/src/lib/checkbox/trn-checkbox.component.ts',
   'libs/components/controls/src/lib/radio-group/trn-radio-group.component.ts',
   'libs/components/controls/src/lib/switch/trn-switch.component.ts',
   'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',
+  'libs/feature/rooms/src/lib/side-panel/side-panel-header.component.ts',
 ];
 
 const inlineStyled = inlineStyleSheets();

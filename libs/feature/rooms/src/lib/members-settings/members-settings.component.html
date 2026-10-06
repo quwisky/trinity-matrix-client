@@ -85,6 +85,7 @@
     } @else if (destination() === 'current') {
       <trn-member-list
         layout="settings"
+        [showHeader]="false"
         [showPresence]="false"
         [members]="current.members"
         [availability]="availability()"

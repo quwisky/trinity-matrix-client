@@ -12,6 +12,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { throwError, type Observable } from 'rxjs';
 import {
@@ -41,8 +42,6 @@ import {
   TrnOverlaySurfaceDirective,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { TrnButton } from '@trinity/components/controls';
-import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   TimelineActionsService,
   ConversationRuntime,
@@ -68,7 +67,6 @@ import { ForwardService } from '../forward/forward.service';
 import { ReportService } from '../report/report.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
-import { TrnIconComponent } from '@trinity/components/foundations';
 import { confirmMessageDeletion$ } from '../message-actions/confirm-message-deletion';
 import {
   scrollBehavior,
@@ -108,11 +106,9 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
   selector: 'trn-thread-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    SidePanelHeaderComponent,
     TypingIndicatorComponent,
     EmptyStateComponent,
-    TrnIconComponent,
-    TrnButton,
-    TrnTooltip,
     MessageRowComponent,
     MessageComposerComponent,
     TrnOverlaySurfaceDirective,

@@ -12,6 +12,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import {
   MEMBER_ROLE_LABEL,
@@ -118,6 +119,7 @@ const ROLE_ICON: Record<MemberRole, TrnIconName> = {
   selector: 'trn-member-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    SidePanelHeaderComponent,
     AvatarComponent,
     TrnIconComponent,
     TrnInput,
@@ -142,6 +144,10 @@ export class MemberListComponent {
    * level 100 by the trusted_private_chat preset — so the section is suppressed there.
    */
   readonly direct = input(false);
+  /** Shows the titled header with its close button; the settings reuse has no panel to close. */
+  readonly showHeader = input(true);
+  /** The header's X was clicked — the host closes the panel. */
+  readonly dismissed = output<void>();
   /** A member row was clicked — the host opens their info panel. */
   readonly selectMember = output<MemberSummary>();
 

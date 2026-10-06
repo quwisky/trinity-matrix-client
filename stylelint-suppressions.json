@@ -1,7 +1,7 @@
 {
   "apps/trinity/src/global.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 5
+      "count": 3
     }
   },
   "apps/trinity/src/rendered-markdown.scss": {

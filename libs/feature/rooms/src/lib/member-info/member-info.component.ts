@@ -10,6 +10,7 @@ import {
   output,
   viewChild,
 } from '@angular/core';
+import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, type Observable } from 'rxjs';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
@@ -41,7 +42,6 @@ import {
   TrustVerificationService,
 } from '@trinity/data-access/trust';
 import { AvatarComponent } from '@trinity/components/generic-content';
-import { TrnIconComponent } from '@trinity/components/foundations';
 
 /**
  * A room-scoped info panel for a member (avatar, name, id, live presence, role), shown
@@ -54,11 +54,11 @@ import { TrnIconComponent } from '@trinity/components/foundations';
   selector: 'trn-member-info',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    SidePanelHeaderComponent,
     AvatarComponent,
     TrnButton,
     TrnActionAvailability,
     TrnTooltip,
-    TrnIconComponent,
   ],
   hostDirectives: [
     {
