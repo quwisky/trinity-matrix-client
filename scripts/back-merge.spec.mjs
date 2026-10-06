@@ -317,10 +317,13 @@ describe('back-merge', () => {
   });
 
   it('strips the one-time release-as without reformatting the config', () => {
-    const config = readFileSync(
+    // The real config's formatting, unpinned: on a release branch before its tag the file
+    // already carries the one-time pin, so start from the stripped text in both states.
+    const real = readFileSync(
       resolve(import.meta.dirname, '../release-please-config.json'),
       'utf8',
     );
+    const config = withoutReleaseAs(real) ?? real;
     const pinned = config.replace(
       '".": {}',
       '".": {\n      "release-as": "0.2.0"\n    }',
