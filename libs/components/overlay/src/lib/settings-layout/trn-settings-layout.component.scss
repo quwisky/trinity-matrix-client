@@ -214,6 +214,9 @@
     max-inline-size: 740px;
     min-inline-size: 0;
     flex: 0 1 740px;
+
+    /* Take the content's full height so sticky children (the chip row) stay pinned. */
+    align-self: flex-start;
     padding: var(--trinity-space-5) var(--trinity-space-4)
       max(var(--trinity-space-7), env(safe-area-inset-bottom));
   }

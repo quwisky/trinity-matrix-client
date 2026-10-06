@@ -41,4 +41,29 @@ test.describe('Settings parts', () => {
     await expect(page).toHaveURL(/\/settings\/appearance$/);
     await expect(page.locator('#part-mode-and-theme')).toBeInViewport();
   });
+
+  test('keeps the part chips pinned while a long section scrolls on a phone', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/settings/appearance');
+    const chips = page.locator('.settings-layout__chips');
+    await expect(chips).toBeVisible({ timeout: 20_000 });
+    const detail = page.getByTestId('settings-detail');
+    await detail.hover();
+    await page.mouse.wheel(0, 2_000);
+    await expect
+      .poll(() =>
+        detail.evaluate((element) => {
+          const scroller = element.querySelector(
+            '.settings-layout__column',
+          )?.parentElement;
+          return scroller?.scrollTop ?? 0;
+        }),
+      )
+      .toBeGreaterThan(1_500);
+    const box = await chips.boundingBox();
+    expect(box?.y ?? -1).toBeGreaterThanOrEqual(0);
+    expect(box?.y ?? Infinity).toBeLessThan(120);
+  });
 });
