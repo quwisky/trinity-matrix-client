@@ -863,12 +863,10 @@ describe('MessageRowComponent', () => {
       threadSummary: summary({ unreadCount: 5, highlight: true }),
     });
 
-    const badge = container.querySelector('.msg__thread-badge');
+    const badge = container.querySelector('.msg__thread [trnBadge]');
     expect(badge).toBeTruthy();
     expect(badge?.textContent).toContain('5');
-    expect(badge?.classList.contains('msg__thread-badge--highlight')).toBe(
-      true,
-    );
+    expect(badge).toHaveAttribute('data-variant', 'danger');
     // The count rides on the (aria-hidden badge's) button label for SR users.
     expect(
       container.querySelector('.msg__thread')?.getAttribute('aria-label'),
@@ -881,7 +879,7 @@ describe('MessageRowComponent', () => {
       threadSummary: summary({ unreadCount: 0 }),
     });
 
-    expect(container.querySelector('.msg__thread-badge')).toBeNull();
+    expect(container.querySelector('.msg__thread [trnBadge]')).toBeNull();
   });
 
   it('omits the thread indicator when there is no summary', async () => {

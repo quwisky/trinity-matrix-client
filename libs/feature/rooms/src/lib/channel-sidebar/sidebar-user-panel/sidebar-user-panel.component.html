@@ -98,7 +98,9 @@
         </div>
         @if (account.unread > 0) {
           <span
+            trnBadge
             class="account-row__badge"
+            variant="neutral"
             [attr.aria-label]="account.unread + ' unread'"
             >{{ badgeLabel(account.unread) }}</span
           >

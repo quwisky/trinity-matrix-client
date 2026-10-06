@@ -171,20 +171,7 @@
   }
 
   .account-row__badge {
-    display: inline-flex;
     flex: 0 0 auto;
-    min-height: 16px;
-    min-width: 16px;
-    align-items: center;
-    justify-content: center;
-    padding: 0 5px;
-    border-radius: var(--trinity-radius-pill);
-    background: var(--trinity-text-muted);
-    color: var(--trinity-sidebar);
-    font-size: var(--trinity-type-caption-size);
-    line-height: var(--trinity-type-caption-line-height);
-    font-weight: 700;
-    text-align: center;
   }
 
   .account-row__check {

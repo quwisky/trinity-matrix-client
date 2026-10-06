@@ -87,18 +87,28 @@ describe('ThreadsListComponent', () => {
       summary({ unreadCount: 4, highlight: true }),
     ]);
 
-    const badge = container.querySelector('.thread-item__badge');
+    const badge = container.querySelector('[trnBadge]');
     expect(badge).toBeTruthy();
     expect(badge?.textContent).toContain('4');
-    expect(badge?.classList.contains('thread-item__badge--highlight')).toBe(
-      true,
+    expect(badge).toHaveAttribute('data-variant', 'danger');
+    expect(badge?.className).not.toMatch(/thread-item__badge/);
+  });
+
+  it('uses the neutral badge for an unread thread without a mention', async () => {
+    const { container } = await build([
+      summary({ unreadCount: 2, highlight: false }),
+    ]);
+
+    expect(container.querySelector('[trnBadge]')).toHaveAttribute(
+      'data-variant',
+      'neutral',
     );
   });
 
   it('omits the unread badge for a read thread', async () => {
     const { container } = await build([summary({ unreadCount: 0 })]);
 
-    expect(container.querySelector('.thread-item__badge')).toBeNull();
+    expect(container.querySelector('[trnBadge]')).toBeNull();
   });
 
   it('announces the chosen thread-root id when a row is tapped', async () => {

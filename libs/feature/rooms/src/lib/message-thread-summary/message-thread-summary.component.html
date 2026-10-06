@@ -18,8 +18,9 @@
     >
     @if (thread.unreadCount > 0) {
       <span
-        class="msg__thread-badge"
-        [class.msg__thread-badge--highlight]="thread.highlight"
+        trnBadge
+        class="shrink-0"
+        [variant]="thread.highlight ? 'danger' : 'neutral'"
         aria-hidden="true"
         >{{ thread.unreadCount }} unread</span
       >

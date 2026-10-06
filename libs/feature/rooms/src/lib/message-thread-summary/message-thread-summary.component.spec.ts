@@ -41,9 +41,9 @@ describe('MessageThreadSummaryComponent', () => {
       '12:30',
     );
     expect(container.textContent).toContain('2 min. ago');
-    expect(container.querySelector('.msg__thread-badge')).toHaveClass(
-      'msg__thread-badge--highlight',
-    );
+    const badge = container.querySelector('[trnBadge]');
+    expect(badge).toHaveAttribute('data-variant', 'danger');
+    expect(badge?.className).not.toMatch(/msg__thread-badge/);
     expect(container.querySelector('button')?.getAttribute('aria-label')).toBe(
       'View thread, 3 replies, 2 unread, including mentions, Bob: latest reply, 2 min. ago',
     );
@@ -61,7 +61,7 @@ describe('MessageThreadSummaryComponent', () => {
     container.querySelector('button')?.click();
 
     expect(container.textContent).toContain('1 reply');
-    expect(container.querySelector('.msg__thread-badge')).toBeNull();
+    expect(container.querySelector('[trnBadge]')).toBeNull();
     expect(opened).toHaveBeenCalledOnce();
   });
 

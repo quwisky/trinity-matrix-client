@@ -131,7 +131,7 @@
   },
   "libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 3
+      "count": 1
     }
   },
   "libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.scss": {
@@ -206,7 +206,7 @@
   },
   "libs/feature/rooms/src/lib/thread/threads-list.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 13
+      "count": 11
     }
   },
   "libs/feature/rooms/src/lib/user-card/user-card.component.scss": {
@@ -236,7 +236,7 @@
   },
   "libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 8
+      "count": 7
     }
   },
   "libs/feature/rooms/src/lib/media-attachment/lightbox/lightbox.component.scss": {
