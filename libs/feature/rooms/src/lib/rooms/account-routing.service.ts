@@ -25,6 +25,7 @@ import {
   of,
   switchMap,
   take,
+  takeWhile,
   timeout,
   type Observable,
 } from 'rxjs';
@@ -73,10 +74,15 @@ export class AccountRoutingService {
   private readonly firstSyncDone$ = toObservable(this.firstSyncDone, {
     injector: this.injector,
   });
-  private readonly liveFocusKey$ = toObservable(
-    computed(() =>
-      this.firstSyncDone() ? (this.conversations.focused()?.key ?? null) : null,
-    ),
+  /** Changes whenever anything a pending event reveal waits on (or is cancelled by) changes. */
+  private readonly revealInputs$ = toObservable(
+    computed(() => ({
+      synced: this.firstSyncDone(),
+      focus: this.conversations.focused()?.key ?? null,
+      load: this.conversations.timeline.loadState().kind,
+      roomId: this.store.activeRoomId(),
+      accountId: this.store.activeAccountId(),
+    })),
     { injector: this.injector },
   );
 
@@ -263,25 +269,33 @@ export class AccountRoutingService {
       return Subscription.EMPTY;
     }
     // The watcher only signals a change; the live state is re-read, since its replayed value
-    // can be one effect-flush stale.
+    // can be one effect-flush stale. The room must be open (ready or empty): an unavailable
+    // or still-loading room waits silently, however long its sync takes, and the timeout
+    // only bounds paging the event in once it can be.
+    const isActive = (): boolean =>
+      this.store.activeRoomId() === room.roomId &&
+      this.store.activeAccountId() === room.accountId;
     const isReady = (): boolean => {
       const key = this.conversations.focused()?.key;
+      const load = this.conversations.timeline.loadState().kind;
       return (
         this.firstSyncDone() &&
         key?.roomId === room.roomId &&
-        key.accountId === room.accountId
+        key.accountId === room.accountId &&
+        (load === 'ready' || load === 'empty')
       );
     };
+    // Navigating to another room or account drops the reveal, from any navigation source.
     const ready$: Observable<unknown> = isReady()
       ? of(true)
-      : this.liveFocusKey$.pipe(
-          filter(isReady),
-          take(1),
-          timeout({ first: ROOM_READINESS_TIMEOUT_MS }),
-        );
+      : this.revealInputs$.pipe(takeWhile(isActive), filter(isReady), take(1));
     return ready$
       .pipe(
-        switchMap(() => this.conversations.timeline.loadEvent(eventId)),
+        switchMap(() =>
+          this.conversations.timeline
+            .loadEvent(eventId)
+            .pipe(timeout({ first: ROOM_READINESS_TIMEOUT_MS })),
+        ),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({

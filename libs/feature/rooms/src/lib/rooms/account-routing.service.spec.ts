@@ -42,6 +42,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
   const eventTarget = signal<{ readonly eventId: string } | null>(null);
   const activeRoomId = signal<string | null>(null);
   const loaded = signal<{ readonly id: string }[]>([]);
+  const loadState = signal<{ readonly kind: string }>({ kind: 'ready' });
   const focus = (roomId: string | null): void =>
     focused.set(
       roomId
@@ -72,7 +73,11 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
         MockProvider(RoomSurfaceLifecycle, { transition }),
         MockProvider(ConversationRuntime, {
           focused: focused.asReadonly(),
-          timeline: { loadEvent, messages: loaded.asReadonly() } as never,
+          timeline: {
+            loadEvent,
+            messages: loaded.asReadonly(),
+            loadState: loadState.asReadonly(),
+          } as never,
         }),
         MockProvider(SelectedRoomLibraryService, { view }),
         MockProvider(MatrixClientService, { syncState }),
@@ -92,6 +97,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     syncState.set(null);
     eventTarget.set(null);
     loaded.set([]);
+    loadState.set({ kind: 'ready' });
     activeRoomId.set(joined.id);
     focus(joined.id);
   });
@@ -272,6 +278,75 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
       kind: 'reveal-message',
       eventId: '$here',
     });
+    expect(loadEvent).not.toHaveBeenCalled();
+    expect(showError).not.toHaveBeenCalled();
+  });
+
+  it('waits silently while the linked room is unavailable, then reveals the event once it opens', () => {
+    build();
+    sync([], 'SYNCING' as SyncState);
+    loadState.set({ kind: 'error' });
+
+    eventTarget.set({ eventId: '$old' });
+    TestBed.tick();
+    expect(loadEvent).not.toHaveBeenCalled();
+    expect(showError).not.toHaveBeenCalled();
+
+    loadState.set({ kind: 'ready' }); // the room arrived through the recovery listener
+    TestBed.tick();
+    expect(loadEvent).toHaveBeenCalledExactlyOnceWith('$old');
+    expect(transition).toHaveBeenCalledExactlyOnceWith({
+      kind: 'reveal-message',
+      eventId: '$old',
+    });
+  });
+
+  it('starts the anchor timeout when the room is ready, not at navigation', () => {
+    vi.useFakeTimers();
+    build();
+    loadState.set({ kind: 'loading' });
+    eventTarget.set({ eventId: '$old' });
+    TestBed.tick();
+
+    vi.advanceTimersByTime(20_000); // a slow first sync
+    expect(showError).not.toHaveBeenCalled();
+
+    sync([joined], 'SYNCING' as SyncState);
+    loadState.set({ kind: 'ready' });
+    TestBed.tick();
+    expect(loadEvent).toHaveBeenCalledExactlyOnceWith('$old');
+    expect(transition).toHaveBeenCalledOnce();
+  });
+
+  it('still says so when the event does not load within the timeout once the room is ready', () => {
+    vi.useFakeTimers();
+    build();
+    sync([joined], 'SYNCING' as SyncState);
+    loadEvent.mockReturnValue(new Subject<boolean>());
+    eventTarget.set({ eventId: '$old' });
+    TestBed.tick();
+
+    vi.advanceTimersByTime(15_000);
+    expect(showError).toHaveBeenCalledExactlyOnceWith(
+      'Could not load that message.',
+    );
+  });
+
+  it('drops a linked-message reveal when the user navigates to another room first', () => {
+    vi.useFakeTimers();
+    const routing = build();
+    sync([joined], 'PREPARED' as SyncState); // cache only: the reveal waits
+
+    routing.openLinkedRoom(joined.id, '$old', 'deep-link');
+    TestBed.tick();
+    activeRoomId.set('!elsewhere:hs');
+    focus('!elsewhere:hs');
+    TestBed.tick();
+
+    vi.advanceTimersByTime(20_000);
+    activeRoomId.set(joined.id);
+    focus(joined.id);
+    sync([joined], 'SYNCING' as SyncState);
     expect(loadEvent).not.toHaveBeenCalled();
     expect(showError).not.toHaveBeenCalled();
   });

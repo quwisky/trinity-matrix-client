@@ -612,7 +612,6 @@ export abstract class MessageListBase {
     // A sheet is about ONE message in ONE room; leaving it standing over a different
     // room's timeline would offer actions against an event that is no longer on screen.
     this.messageSheet.close(this);
-    this.awaitedJumpId = null;
     this.cancelPendingJump();
     this.announcement.set('');
     this.rowCache.clear();
@@ -627,7 +626,8 @@ export abstract class MessageListBase {
    * `animationend`.
    */
   protected flash(el: Element | null | undefined): void {
-    if (!el) {
+    // A re-aim lands on the row the reader already saw flash; flashing again is flicker.
+    if (!el || this.reaiming) {
       return;
     }
     el.classList.remove('msg--flash');
@@ -719,9 +719,13 @@ export abstract class MessageListBase {
     if (!this.reaiming) this.pendingJumpAt = Date.now();
   }
 
-  /** Stop re-aiming: the reader moved, or the jump was superseded or withdrawn. */
+  /**
+   * Stop re-aiming, and drop a jump still waiting for its row: the reader moved, or the
+   * jump was superseded or withdrawn.
+   */
   protected cancelPendingJump(): void {
     this.pendingJumpId = null;
+    this.awaitedJumpId = null;
   }
 
   /**

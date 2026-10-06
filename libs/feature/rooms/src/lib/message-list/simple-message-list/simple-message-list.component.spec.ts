@@ -567,6 +567,15 @@ describe('SimpleMessageListComponent', () => {
       expect(scrollIntoView).toHaveBeenCalledTimes(1);
     });
 
+    it('does not flash the row again when re-aiming', async () => {
+      const { fixture, scrollIntoView, reapply } = await jumped();
+      const row = scroller(fixture).querySelector('[data-mid="$2"]');
+      row?.classList.remove('msg--flash'); // the first flash ran its course
+      reapply();
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+      expect(row?.classList.contains('msg--flash')).toBe(false);
+    });
+
     it('never extends the window past the limit from the original jump', async () => {
       const now = vi.spyOn(Date, 'now');
       now.mockReturnValue(1_000_000);
@@ -578,6 +587,29 @@ describe('SimpleMessageListComponent', () => {
       now.mockRestore();
       expect(scrollIntoView).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it('drops a not-yet-loaded jump once the reader scrolls', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { fixture } = await render(SimpleMessageListComponent, {
+      inputs: { messages: [], jumpToId: '$2', jumpToNonce: 1 },
+    });
+
+    (
+      fixture.componentInstance as unknown as {
+        scrollEl(): { nativeElement: HTMLElement };
+      }
+    )
+      .scrollEl()
+      .nativeElement.dispatchEvent(new Event('wheel'));
+    fixture.componentRef.setInput('messages', [
+      msg('$2', '@b:hs', 'Bob', 2000),
+    ]);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
   it('drops a not-yet-loaded jump once the request is withdrawn', async () => {
