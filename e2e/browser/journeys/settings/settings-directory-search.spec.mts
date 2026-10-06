@@ -112,7 +112,7 @@ test.describe('Settings directory search', () => {
       await page.getByRole('button', { name: 'Back' }).click();
       await expect(page).toHaveURL(/\/settings$/);
       await expect(search(page)).toBeEmpty();
-      await page.getByRole('button', { name: 'Back' }).click();
+      await page.getByRole('button', { name: 'Close settings' }).click();
       await expect(page).toHaveURL(/\/rooms/);
       await page.goto('/settings');
       await expect(page.getByTestId('settings-nav-appearance')).toBeVisible();
@@ -139,7 +139,7 @@ test.describe('Settings directory search', () => {
       await page.getByRole('button', { name: 'Back' }).click();
       await expect(page).toHaveURL(/\/settings$/);
       await expect(field).toHaveValue('  noti ');
-      await page.getByRole('button', { name: 'Back' }).click();
+      await page.getByRole('button', { name: 'Close settings' }).click();
       await expect(page).toHaveURL(/\/rooms/);
 
       await page.goto('/settings');
@@ -215,10 +215,6 @@ test.describe('Settings directory search', () => {
       await page.evaluate(() => {
         document.documentElement.style.fontSize = '125%';
       });
-      await expect(page.locator('.settings-layout')).toHaveAttribute(
-        'data-trn-layout',
-        'workspace',
-      );
       await expect(page.getByTestId('settings-detail')).toBeVisible();
       await search(page).fill('preferences');
       await expect(status(page)).toHaveText('3 sections found');

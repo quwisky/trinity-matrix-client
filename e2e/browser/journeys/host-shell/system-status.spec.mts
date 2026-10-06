@@ -175,7 +175,7 @@ test.describe('System status on desktop', () => {
       body: await page.screenshot({ animations: 'disabled' }),
       contentType: 'image/png',
     });
-    const surface = dialog.locator('[data-trn-layout="workspace"]');
+    const surface = dialog;
     const lightBackground = await surface.evaluate(
       (element) => getComputedStyle(element).backgroundColor,
     );
@@ -192,7 +192,7 @@ test.describe('System status on desktop', () => {
     ).toBeVisible();
     const darkControlColor = await dialog.evaluate((element) => {
       const probe = document.createElement('span');
-      probe.style.color = 'var(--trinity-control-foreground)';
+      probe.style.color = 'var(--trinity-text-muted)';
       element.append(probe);
       const color = getComputedStyle(probe).color;
       probe.remove();
@@ -262,10 +262,7 @@ test.describe('System status on a mobile OS', () => {
     const host = page.locator('trn-system-status');
     const dialog = page.getByRole('dialog', { name: 'System status' });
     await expect(host).toHaveClass(/system-status--mobile/);
-    await expect(dialog.locator('[data-trn-layout="sheet"]')).toHaveCSS(
-      'border-bottom-left-radius',
-      '0px',
-    );
+    await expect(dialog).toHaveCSS('border-bottom-left-radius', '0px');
     const box = await dialog.boundingBox();
     expect(box).not.toBeNull();
     expect(

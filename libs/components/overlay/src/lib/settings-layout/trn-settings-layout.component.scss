@@ -1,7 +1,10 @@
 @layer components {
   :host {
     display: block;
-    block-size: 100%;
+
+    // The pane around a dialog is sized by the dialog service, but the component between
+    // them is not, so the layer sizes itself to the viewport below the title row.
+    block-size: calc(100dvh - var(--trinity-title-row-inset, 0px));
     min-block-size: 0;
     background: var(--trinity-surface-app);
 
@@ -79,7 +82,7 @@
 
   .settings-layout__nav-item {
     display: flex;
-    min-block-size: 32px;
+    min-block-size: max(32px, var(--trinity-interaction-target-min-size, 0px));
     align-items: center;
     gap: var(--trinity-space-2);
     padding: 0 var(--trinity-space-2);
