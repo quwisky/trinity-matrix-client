@@ -118,7 +118,7 @@ test.describe('Space curation', () => {
     const pill = page.getByRole('button', { name: spaceName, exact: true });
     await pill.waitFor({ state: 'visible', timeout: 30_000 });
     await pill.click();
-    await page.getByTestId('space-actions-overflow').click();
+    await page.getByTestId('space-header').click();
     await page.getByTestId('space-add-rooms').click();
 
     await expect(page.getByTestId('add-to-space')).toBeVisible({
@@ -160,7 +160,7 @@ test.describe('Space curation', () => {
     const pill = page.getByRole('button', { name: parentName, exact: true });
     await pill.waitFor({ state: 'visible', timeout: 30_000 });
     await pill.click();
-    await page.getByTestId('space-actions-overflow').click();
+    await page.getByTestId('space-header').click();
     await page.getByTestId('space-create-subspace').click();
 
     // Target the prompt's own field by its placeholder, not `getByRole('textbox').last()`.
@@ -261,7 +261,7 @@ test.describe('Space curation', () => {
     const pill = page.getByRole('button', { name: spaceName, exact: true });
     await pill.waitFor({ state: 'visible', timeout: 30_000 });
     await pill.click();
-    await page.getByTestId('space-actions-overflow').click();
+    await page.getByTestId('space-header').click();
     await page.getByTestId('space-manage-rooms').click();
     const panel = page.getByTestId('space-settings-panel-contents');
     await expect(panel).toBeVisible({

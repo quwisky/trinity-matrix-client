@@ -1,6 +1,23 @@
 <div class="sidebar">
   <header class="sidebar__header">
-    <span class="sidebar__title">{{ spaceName() }}</span>
+    @if (spaceActive()) {
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        presentation="ghost"
+        class="sidebar__title sidebar__title--button"
+        [trnDropdownMenuTrigger]="spaceMenu"
+        align="start"
+        [attr.aria-label]="spaceName() + ' actions'"
+        data-testid="space-header"
+      >
+        <span class="sidebar__title-text">{{ spaceName() }}</span>
+        <trn-icon name="chevron-down" />
+      </button>
+    } @else {
+      <span class="sidebar__title">{{ spaceName() }}</span>
+    }
     <div class="sidebar__actions">
       @if (showSwitcher()) {
         <button
@@ -14,8 +31,8 @@
           <trn-icon name="command" motion="pop" />
         </button>
       }
-      <!-- A space keeps only its two most-reached-for actions out here; the rest live in the
-           overflow. The sidebar is a fixed 280px at EVERY breakpoint, so this is not a
+      <!-- A space keeps only its most-reached-for action out here; the rest live in the
+           space-name menu. The sidebar is a fixed 280px at EVERY breakpoint, so this is not a
            narrow-layout concern the way the room header's `md:hidden` demotion is: six
            buttons left the space name about six characters of room on a desktop, and on
            touch (44px targets) they were wider than the sidebar itself. -->
@@ -30,17 +47,6 @@
           [trnTooltip]="curateSpaceReason() ?? 'Create a room'"
         >
           <trn-icon name="plus" motion="rotate" />
-        </button>
-        <button
-          trnIconButton
-          class="sidebar__action"
-          [trnDropdownMenuTrigger]="spaceMenu"
-          align="end"
-          [attr.aria-label]="'More actions in ' + spaceName()"
-          trnTooltip="More actions"
-          data-testid="space-actions-overflow"
-        >
-          <trn-icon name="ellipsis-vertical" motion="pop" />
         </button>
       } @else {
         <!-- Home has three buttons and already fits, so it keeps the flat row: an overflow
@@ -168,6 +174,10 @@
                 }
               </div>
               <button
+                trnBtn
+                variant="secondary"
+                presentation="outline"
+                size="sm"
                 class="joinable__action"
                 (click)="joinRoom.emit(child)"
                 [attr.aria-label]="'Join ' + child.name"
@@ -198,6 +208,10 @@
               </div>
               @if (child.joined) {
                 <button
+                  trnBtn
+                  variant="secondary"
+                  presentation="outline"
+                  size="sm"
                   class="joinable__action"
                   (click)="
                     openChildSpace.emit({
@@ -211,6 +225,10 @@
                 </button>
               } @else {
                 <button
+                  trnBtn
+                  variant="secondary"
+                  presentation="outline"
+                  size="sm"
                   class="joinable__action"
                   (click)="joinRoom.emit(child)"
                   [attr.aria-label]="'Join ' + child.name"

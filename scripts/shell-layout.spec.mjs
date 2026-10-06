@@ -194,9 +194,6 @@ describe('modern room shell layout contracts', () => {
   it('keeps generic interaction guards weaker than specialized consumer states', () => {
     expect(roomMixins).toContain('&:hover:where(:not(:disabled))');
     expect(roomMixins).toContain('&:active:where(:not(:disabled))');
-    expect(sidebarCss).toMatch(
-      /\.joinable__action\s*\{[\s\S]*?&:hover\s*\{[\s\S]*?background:\s*var\(--trinity-active\)/,
-    );
   });
 
   it('leaves right-panel separators with one paint owner', () => {

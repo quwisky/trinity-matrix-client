@@ -36,7 +36,7 @@ async function openSpaceMenu(page: Page, name: string): Promise<void> {
   const pill = page.getByRole('button', { name, exact: true });
   await pill.waitFor({ state: 'visible', timeout: 30_000 });
   await pill.click();
-  await page.getByTestId('space-actions-overflow').click();
+  await page.getByTestId('space-header').click();
 }
 
 async function joinedRooms(

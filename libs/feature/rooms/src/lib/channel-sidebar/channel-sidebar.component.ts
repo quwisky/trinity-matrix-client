@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import {
   TrnActionAvailability,
+  TrnButton,
   TrnIconButton,
 } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
@@ -59,6 +60,7 @@ import { TrnIconComponent } from '@trinity/components/foundations';
   selector: 'trn-channel-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnButton,
     TrnIconButton,
     TrnActionAvailability,
     TrnTooltip,

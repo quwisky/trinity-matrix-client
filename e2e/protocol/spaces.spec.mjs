@@ -261,7 +261,7 @@ async function main(protocolBrowser) {
     // Leave moved into the header overflow: open it, then pick the row. Driven by testid
     // rather than aria-label — the row carries a text label now, and the label is the thing
     // most likely to be reworded.
-    await page.click('[data-testid="space-actions-overflow"]');
+    await page.click('[data-testid="space-header"]');
     await page.click('[data-testid="space-leave"]');
     // Leave alert has no text input — just Cancel and Leave buttons.
     await fillAlertAndConfirm(page, null, null, 'Leave');

@@ -43,6 +43,22 @@
     min-width: 0;
   }
 
+  // Space name as a menu trigger: the recipe owns colour and hover; this keeps the label
+  // ellipsised and the chevron beside it.
+  .sidebar__title--button {
+    justify-content: flex-start;
+    gap: 4px;
+    padding-inline: 8px;
+    font-weight: inherit;
+    color: inherit;
+  }
+
+  .sidebar__title-text {
+    @include ellipsis;
+
+    min-width: 0;
+  }
+
   .sidebar__actions {
     flex: 0 0 auto;
     display: flex;
@@ -157,20 +173,9 @@
     text-transform: uppercase;
   }
 
+  // Colour, border and hover come from the `trnBtn` recipe; only the layout stays here.
   .joinable__action {
-    @include interactive-row;
-
     flex: 0 0 auto;
-    min-height: var(--trinity-interaction-target-min-size);
-    padding: 3px 10px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    background: var(--trinity-hover);
-
-    &:hover {
-      background: var(--trinity-active);
-      color: var(--trinity-text-bright);
-    }
   }
 
   // The space-children section headers ("More Channels", "Spaces"). Duplicated from

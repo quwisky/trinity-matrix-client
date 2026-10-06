@@ -199,7 +199,7 @@ test.describe('Settings', () => {
     const space = page.getByRole('button', { name: spaceName, exact: true });
     await space.waitFor({ state: 'visible', timeout: 30_000 });
     await space.click();
-    await page.getByTestId('space-actions-overflow').click();
+    await page.getByTestId('space-header').click();
     await page.getByTestId('open-space-settings').click();
     await expect(page.getByTestId('space-settings')).toBeVisible();
     const spaceFrame = await settingsLayoutMetrics(page, {

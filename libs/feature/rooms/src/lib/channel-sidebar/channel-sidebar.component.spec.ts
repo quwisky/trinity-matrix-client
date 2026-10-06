@@ -1,6 +1,7 @@
 import { computed, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { TrnButton } from '@trinity/components/controls';
 import { type AccountBadge } from '@trinity/components/generic-content';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
@@ -302,15 +303,62 @@ describe('ChannelSidebarComponent', () => {
     // Space-only actions are hidden on Home; the new-room/DM "+" is present.
     expect(container.querySelector('[aria-label="Create a room"]')).toBeNull();
     // Invite and Leave live in the space overflow, which Home does not render at all.
-    expect(
-      container.querySelector('[data-testid="space-actions-overflow"]'),
-    ).toBeNull();
+    expect(container.querySelector('[data-testid="space-header"]')).toBeNull();
     expect(
       container.querySelector('[aria-label="New room or direct message"]'),
     ).not.toBeNull();
   });
 
-  it('keeps the space header to three buttons, whatever the unread state', async () => {
+  it('shows the space name as a menu button with a chevron', async () => {
+    const { container } = await renderSidebar({
+      inputs: { spaceActive: true, spaceName: 'Garden' },
+    });
+
+    const header = container.querySelector<HTMLElement>(
+      '[data-testid="space-header"]',
+    )!;
+    expect(header.tagName).toBe('BUTTON');
+    expect(header.textContent).toContain('Garden');
+    expect(header.getAttribute('aria-label')).toBe('Garden actions');
+    expect(
+      header.querySelector('trn-icon[name="chevron-down"]'),
+    ).not.toBeNull();
+  });
+
+  it('moves the three joinable actions to the secondary outline button', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { spaceActive: true },
+      joinableRooms: [child({ roomId: '!x:hs', name: 'open-channel' })],
+      childSpaces: [
+        child({
+          roomId: '!j:hs',
+          name: 'Joined Sub',
+          isSpace: true,
+          joined: true,
+        }),
+        child({
+          roomId: '!n:hs',
+          name: 'New Sub',
+          isSpace: true,
+          joined: false,
+        }),
+      ],
+    });
+
+    const actions = fixture.debugElement.queryAll(By.css('.joinable__action'));
+    expect(actions).toHaveLength(3);
+    for (const action of actions) {
+      const btn = action.injector.get(TrnButton);
+      expect(btn.variant()).toBe('secondary');
+      expect(btn.presentation()).toBe('outline');
+      expect(btn.size()).toBe('sm');
+    }
+    expect(
+      container.querySelector('[data-testid="join-child-!x:hs"]'),
+    ).not.toBeNull();
+  });
+
+  it('keeps the space header actions to two buttons, whatever the unread state', async () => {
     // The whole point of the overflow: six buttons left the 280px sidebar's title about six
     // characters, and on touch (44px targets) they were wider than the sidebar itself. Both
     // unread states are rendered, because mark-all-read is the one conditional button and a
@@ -324,13 +372,13 @@ describe('ChannelSidebarComponent', () => {
     });
     expect(
       unread.container.querySelectorAll('.sidebar__actions button'),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
 
     TestBed.resetTestingModule();
     const read = await renderSidebar({ inputs: { spaceActive: true } });
     expect(
       read.container.querySelectorAll('.sidebar__actions button'),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
   });
 
   it('offers mark-all-read in the overflow, and emits it', async () => {
@@ -345,7 +393,7 @@ describe('ChannelSidebarComponent', () => {
     fixture.componentInstance.markAllRead.subscribe(() => (marked = true));
 
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
 
@@ -370,7 +418,7 @@ describe('ChannelSidebarComponent', () => {
     });
 
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
 
@@ -410,13 +458,13 @@ describe('ChannelSidebarComponent', () => {
       .querySelector<HTMLElement>('[aria-label="Create a room"]')!
       .click();
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
     document.querySelector<HTMLElement>('[data-testid="space-leave"]')!.click();
     fixture.detectChanges();
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
     document
@@ -443,7 +491,7 @@ describe('ChannelSidebarComponent', () => {
     let opened = false;
     fixture.componentInstance.openSpaceMembers.subscribe(() => (opened = true));
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
     document
@@ -466,7 +514,7 @@ describe('ChannelSidebarComponent', () => {
     );
 
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
     document
@@ -474,7 +522,7 @@ describe('ChannelSidebarComponent', () => {
       .click();
     fixture.detectChanges();
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
     document
@@ -504,7 +552,7 @@ describe('ChannelSidebarComponent', () => {
     );
 
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
 
@@ -538,7 +586,7 @@ describe('ChannelSidebarComponent', () => {
       () => (opened = true),
     );
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
     document
@@ -557,7 +605,7 @@ describe('ChannelSidebarComponent', () => {
     });
 
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
 
@@ -1498,7 +1546,7 @@ describe('ChannelSidebarComponent space sort menu', () => {
     });
     // The sort menu is a SUBMENU now: open the header overflow first, then its row.
     rendered.container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     rendered.fixture.detectChanges();
     const trigger = document.querySelector<HTMLElement>(
@@ -1528,7 +1576,7 @@ describe('ChannelSidebarComponent space sort menu', () => {
     expect(container.querySelector('[data-testid="space-sort"]')).toBeNull();
 
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
 
