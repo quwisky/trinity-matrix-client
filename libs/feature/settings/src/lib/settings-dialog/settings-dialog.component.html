@@ -2,6 +2,7 @@
   title="Settings"
   [sections]="layoutSections()"
   [selectedSection]="selectedPath()"
+  [initialPart]="initialPart()"
   [compact]="!wide()"
   [directoryVisible]="wide() || !selectedPath()"
   testId="settings-dialog"

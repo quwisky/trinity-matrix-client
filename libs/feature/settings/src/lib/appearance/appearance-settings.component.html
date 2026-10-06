@@ -41,13 +41,12 @@
 
   <trn-settings-group
     title="Mode and theme"
-    headingId="appearance-mode-heading"
     description="Choose the surface contrast and colour accents that feel most comfortable."
     data-testid="appearance-mode-theme"
   >
     <trn-radio-group
       layout="segmented"
-      aria-labelledby="appearance-mode-heading"
+      aria-labelledby="part-mode-and-theme"
       [options]="modeOptions"
       [value]="appearance.axes.mode.value()"
       [disabled]="appearance.hydrationBusy() || appearance.status.mode.busy()"
@@ -80,7 +79,6 @@
 
   <trn-settings-group
     title="Layout"
-    headingId="appearance-layout-heading"
     description="Density changes spacing while accessible targets stay the same size."
     data-testid="appearance-layout"
   >
@@ -93,7 +91,6 @@
 
   <trn-settings-group
     title="Date and time"
-    headingId="appearance-date-time-heading"
     description="Choose how timestamps are written throughout Trinity."
   >
     <div trnSettingsFieldRow>
@@ -147,7 +144,6 @@
 
   <trn-settings-group
     title="Room lists"
-    headingId="appearance-room-lists-heading"
     description="Choose the default order for rooms inside spaces."
   >
     <div trnSettingsFieldRow>
@@ -178,7 +174,6 @@
 
   <trn-settings-group
     title="Timeline"
-    headingId="appearance-timeline-heading"
     description="Reduce membership and profile churn in busy or bridged rooms without changing unread counts."
   >
     <label trnSettingsToggleRow data-testid="timeline-show-membership">

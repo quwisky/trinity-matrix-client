@@ -55,6 +55,8 @@ export class SettingsDialogComponent {
 
   readonly initialSection = input<string>();
   readonly initialSource = input<string>();
+  /** A part of the initial section to scroll to; the dialog owns no URL, so none is written back. */
+  readonly initialPart = input<string | null>(null);
   readonly query = signal('');
   readonly layoutSections = computed<readonly TrnSettingsLayoutSection[]>(() =>
     matchingSettingsSections(this.query()).map(

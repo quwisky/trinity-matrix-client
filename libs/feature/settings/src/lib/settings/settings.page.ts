@@ -94,6 +94,11 @@ export class SettingsPage {
     { initialValue: this.currentSection() },
   );
 
+  /** The URL fragment names the part of the open section to scroll to. */
+  protected readonly fragment = toSignal(this.route.fragment, {
+    initialValue: null,
+  });
+
   /** Whether a section detail is open — drives the mobile list ↔ detail swap. */
   readonly sectionActive = computed(() => this.activePath() !== null);
 
@@ -194,6 +199,19 @@ export class SettingsPage {
       relativeTo: this.route,
       replaceUrl: this.wide(),
     });
+  }
+
+  /**
+   * Mirror the current part (or clear an unknown one) in the URL without a history entry.
+   * This rewrites the address bar directly: a router navigation would run the shell's
+   * route-focus pass and pull focus off the heading the user just reached.
+   */
+  protected setFragment(part: string | null): void {
+    this.location.replaceState(
+      this.location.path() + (part ? `#${part}` : ''),
+      '',
+      this.location.getState(),
+    );
   }
 
   /** Leave settings altogether, whichever pane is open. */

@@ -118,6 +118,74 @@
     overflow-wrap: anywhere;
   }
 
+  .settings-layout__parts {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .settings-layout__part {
+    display: block;
+    min-block-size: max(28px, var(--trinity-interaction-target-min-size, 0px));
+    padding: 0 var(--trinity-space-2);
+    margin-inline-start: var(--trinity-space-3);
+    inline-size: calc(100% - var(--trinity-space-3));
+    border: 0;
+    border-inline-start: 2px solid transparent;
+    background: transparent;
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+    text-align: start;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+  }
+
+  .settings-layout__part:hover {
+    color: var(--trinity-text-bright);
+  }
+
+  .settings-layout__part:focus-visible,
+  .settings-layout__chip:focus-visible {
+    outline: 2px solid var(--trinity-focus-ring);
+    outline-offset: 2px;
+  }
+
+  .settings-layout__part.is-current {
+    border-inline-start-color: var(--trinity-accent);
+    color: var(--trinity-text-bright);
+  }
+
+  .settings-layout__chips {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: var(--trinity-z-sticky);
+    display: flex;
+    gap: var(--trinity-space-2);
+    margin-block: var(--trinity-space-3);
+    padding-block: var(--trinity-space-1);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    background: var(--trinity-surface-pane);
+  }
+
+  .settings-layout__chip {
+    flex: none;
+    padding: var(--trinity-space-1) var(--trinity-space-3);
+    border-radius: var(--trinity-radius-md);
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+    text-decoration: none;
+  }
+
+  .settings-layout__chip.is-current {
+    background: var(--trinity-state-selected-surface);
+    color: var(--trinity-state-selected-foreground);
+  }
+
   .settings-layout__nav-footer {
     margin-block-start: auto;
     padding: var(--trinity-space-5) var(--trinity-space-2)

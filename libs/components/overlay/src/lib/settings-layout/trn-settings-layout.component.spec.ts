@@ -5,7 +5,8 @@ import { TestBed } from '@angular/core/testing';
 import { TrnDialogService } from '../dialog/trn-dialog.service';
 import { render } from '@trinity/testing';
 import { provideTrnIcons } from '@trinity/components/foundations';
-import { afterEach, expectTypeOf } from 'vitest';
+import { afterEach, beforeEach, expectTypeOf } from 'vitest';
+import { TrnSettingsGroupComponent } from './trn-settings-group.component';
 import {
   TrnSettingsLayoutComponent,
   type TrnSettingsLayoutSection,
@@ -391,5 +392,330 @@ describe('TrnSettingsLayoutComponent', () => {
     expect(
       container.querySelector('[data-testid="settings-mobile-back"]'),
     ).toBeTruthy();
+  });
+});
+
+class FakeObserver {
+  static instances: FakeObserver[] = [];
+  readonly observed = new Set<Element>();
+  disconnected = false;
+  constructor(
+    private readonly callback: IntersectionObserverCallback,
+    readonly options?: IntersectionObserverInit,
+  ) {
+    FakeObserver.instances.push(this);
+  }
+  observe(el: Element): void {
+    this.observed.add(el);
+  }
+  unobserve(el: Element): void {
+    this.observed.delete(el);
+  }
+  disconnect(): void {
+    this.disconnected = true;
+    this.observed.clear();
+  }
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+  /** Report the headings whose ids are listed as intersecting, all others not. */
+  report(visibleIds: readonly string[]): void {
+    const entries = Array.from(this.observed).map(
+      (target) =>
+        ({
+          target,
+          isIntersecting: visibleIds.includes(target.id.replace('part-', '')),
+        }) as IntersectionObserverEntry,
+    );
+    this.callback(entries, this as unknown as IntersectionObserver);
+  }
+  static get live(): FakeObserver {
+    return FakeObserver.instances.filter((o) => !o.disconnected).at(-1)!;
+  }
+}
+
+/** Read by the host's field initialisers: what the section and fragment are at first render. */
+const partsStart: { section: string; part: string | null } = {
+  section: 'general',
+  part: null,
+};
+
+@Component({
+  imports: [TrnSettingsLayoutComponent, TrnSettingsGroupComponent],
+  template: `
+    <trn-settings-layout
+      title="Preferences"
+      [sections]="sections"
+      [selectedSection]="selected()"
+      [initialPart]="initialPart()"
+      [compact]="compact()"
+      [directoryVisible]="!compact()"
+      (sectionSelected)="selected.set($event)"
+      (partSelected)="partSelected($event)"
+    >
+      @if (selected() === 'general') {
+        <trn-settings-group title="Theme" />
+        <trn-settings-group title="Messages" />
+        <trn-settings-group title="Code blocks" />
+      }
+    </trn-settings-layout>
+  `,
+})
+class PartsHostComponent {
+  readonly sections = sections;
+  readonly selected = signal<string | null>(partsStart.section);
+  readonly initialPart = signal<string | null>(partsStart.part);
+  readonly compact = signal(false);
+  readonly partSelected = vi.fn();
+}
+
+describe('TrnSettingsLayoutComponent parts', () => {
+  const scrollIntoView = vi.fn();
+  let reduceMotion = false;
+
+  beforeEach(() => {
+    FakeObserver.instances = [];
+    scrollIntoView.mockReset();
+    reduceMotion = false;
+    vi.stubGlobal('IntersectionObserver', FakeObserver);
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: reduceMotion && query.includes('prefers-reduced-motion'),
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    Element.prototype.scrollIntoView = scrollIntoView;
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  const mount = async (
+    start: { section?: string; part?: string } = {},
+  ): Promise<{
+    container: HTMLElement;
+    host: PartsHostComponent;
+    detail: HTMLElement;
+    flush: () => Promise<void>;
+  }> => {
+    partsStart.section = start.section ?? 'general';
+    partsStart.part = start.part ?? null;
+    const result = await render(PartsHostComponent, {
+      providers: [provideTrnIcons()],
+    });
+    const flush = async (): Promise<void> => {
+      result.fixture.detectChanges();
+      await result.fixture.whenStable();
+      result.fixture.detectChanges();
+    };
+    await flush();
+    return {
+      container: result.container as HTMLElement,
+      host: result.fixture.componentInstance,
+      detail: result.container.querySelector<HTMLElement>(
+        '[data-testid="settings-detail"]',
+      )!,
+      flush,
+    };
+  };
+
+  const partRow = (c: HTMLElement, id: string): HTMLElement | null =>
+    c.querySelector(`[data-testid="settings-part-${id}"]`);
+
+  it('lists the parts under the selected section only', async () => {
+    const { container, host, flush } = await mount();
+    expect(
+      Array.from(
+        container.querySelectorAll('[data-testid^="settings-part-"]'),
+      ).map((el) => el.getAttribute('data-testid')),
+    ).toEqual([
+      'settings-part-theme',
+      'settings-part-messages',
+      'settings-part-code-blocks',
+    ]);
+    const general = container.querySelector(
+      '[data-testid="settings-tab-general"]',
+    )!;
+    expect(general.nextElementSibling?.querySelector('button')).toBe(
+      partRow(container, 'theme'),
+    );
+    host.selected.set('advanced');
+    await flush();
+    expect(
+      container.querySelectorAll('[data-testid^="settings-part-"]'),
+    ).toHaveLength(0);
+  });
+
+  it('scrolls to the heading, moves focus, marks the row and emits on click', async () => {
+    const { container, host, flush } = await mount();
+    partRow(container, 'messages')!.click();
+    await flush();
+    const heading = container.querySelector<HTMLElement>('#part-messages')!;
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+    expect(scrollIntoView.mock.contexts[0]).toBe(heading);
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'start',
+    });
+    expect(document.activeElement).toBe(heading);
+    expect(host.partSelected).toHaveBeenCalledWith('messages');
+    const row = partRow(container, 'messages')!;
+    expect(row).toHaveAttribute('aria-current', 'location');
+    expect(row).toHaveClass('is-current');
+    expect(partRow(container, 'theme')).not.toHaveAttribute('aria-current');
+  });
+
+  it('scrolls without animation under reduced motion', async () => {
+    reduceMotion = true;
+    const { container, flush } = await mount();
+    partRow(container, 'messages')!.click();
+    await flush();
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'auto',
+      block: 'start',
+    });
+  });
+
+  it('follows the scroll: the observer picks the top-most visible heading', async () => {
+    const { container, host, flush } = await mount();
+    const observer = FakeObserver.live;
+    expect(observer.options?.rootMargin).toBe('0px 0px -70% 0px');
+    observer.report(['messages', 'code-blocks']);
+    await flush();
+    expect(partRow(container, 'messages')).toHaveAttribute(
+      'aria-current',
+      'location',
+    );
+    expect(partRow(container, 'code-blocks')).not.toHaveAttribute(
+      'aria-current',
+    );
+    expect(host.partSelected).not.toHaveBeenCalled();
+  });
+
+  it('debounces the spy emission so the URL is not rewritten per frame', async () => {
+    vi.useFakeTimers();
+    const { host, detail, flush } = await mount();
+    detail.scrollTop = 100;
+    FakeObserver.live.report(['theme']);
+    FakeObserver.live.report(['messages']);
+    expect(host.partSelected).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(300);
+    await flush();
+    expect(host.partSelected).toHaveBeenCalledTimes(1);
+    expect(host.partSelected).toHaveBeenCalledWith('messages');
+  });
+
+  it('selects the last part at the bottom of the page whatever the observer reports', async () => {
+    const { container, detail, flush } = await mount();
+    Object.defineProperty(detail, 'scrollHeight', { value: 1000 });
+    Object.defineProperty(detail, 'clientHeight', { value: 400 });
+    detail.scrollTop = 600;
+    detail.dispatchEvent(new Event('scroll'));
+    await flush();
+    expect(partRow(container, 'code-blocks')).toHaveAttribute(
+      'aria-current',
+      'location',
+    );
+    FakeObserver.live.report(['messages']);
+    await flush();
+    expect(partRow(container, 'code-blocks')).toHaveAttribute(
+      'aria-current',
+      'location',
+    );
+  });
+
+  it('highlights the first part and clears the fragment back at the top', async () => {
+    vi.useFakeTimers();
+    const { container, host, detail, flush } = await mount();
+    detail.scrollTop = 100;
+    FakeObserver.live.report(['messages']);
+    vi.advanceTimersByTime(300);
+    expect(host.partSelected).toHaveBeenLastCalledWith('messages');
+    detail.scrollTop = 0;
+    FakeObserver.live.report(['theme']);
+    vi.advanceTimersByTime(300);
+    await flush();
+    expect(partRow(container, 'theme')).toHaveAttribute(
+      'aria-current',
+      'location',
+    );
+    expect(host.partSelected).toHaveBeenLastCalledWith(null);
+  });
+
+  it('scrolls to the initial part once it has rendered', async () => {
+    const { container, host, flush } = await mount({ part: 'code-blocks' });
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+    expect(scrollIntoView.mock.contexts[0]).toBe(
+      container.querySelector('#part-code-blocks'),
+    );
+    expect(host.partSelected).toHaveBeenCalledWith('code-blocks');
+    await flush();
+  });
+
+  it('opens at the top and asks the host to clear an unknown initial part', async () => {
+    const { host, detail } = await mount({ part: 'nope' });
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(detail.scrollTop).toBe(0);
+    expect(host.partSelected).toHaveBeenCalledExactlyOnceWith(null);
+  });
+
+  it('drops a pending scroll target when the section changes', async () => {
+    const { host, detail, flush } = await mount({
+      section: 'advanced',
+      part: 'code-blocks',
+    });
+    host.selected.set('general');
+    await flush();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(detail.scrollTop).toBe(0);
+  });
+
+  it('renders a labelled chip row of links when compact', async () => {
+    const { container, host, flush } = await mount();
+    host.compact.set(true);
+    await flush();
+    const row = container.querySelector('nav[aria-label="Parts of General"]')!;
+    const links = Array.from(row.querySelectorAll('a'));
+    expect(links.map((a) => a.textContent?.trim())).toEqual([
+      'Theme',
+      'Messages',
+      'Code blocks',
+    ]);
+    FakeObserver.live.report(['messages']);
+    await flush();
+    expect(links[1]).toHaveAttribute('aria-current', 'location');
+    expect(links[0]).not.toHaveAttribute('aria-current');
+    links[2]!.click();
+    await flush();
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(
+      container.querySelector('#part-code-blocks'),
+    );
+  });
+
+  it('lets an open popover trigger take Escape before going back', async () => {
+    const backRequested = vi.fn();
+    const { container } = await render(TrnSettingsLayoutComponent, {
+      inputs: {
+        title: 'Preferences',
+        sections,
+        selectedSection: 'general',
+        compact: true,
+        directoryVisible: false,
+      },
+      on: { backRequested },
+      providers: [provideTrnIcons()],
+    });
+    const trigger = document.createElement('button');
+    trigger.setAttribute('aria-expanded', 'true');
+    container.querySelector('.settings-layout__column')!.append(trigger);
+    trigger.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    expect(backRequested).not.toHaveBeenCalled();
   });
 });

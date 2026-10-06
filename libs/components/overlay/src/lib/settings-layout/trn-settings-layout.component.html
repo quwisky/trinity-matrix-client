@@ -63,6 +63,28 @@
               <trn-icon name="chevron-right" size="md" variant="muted" />
             }
           </button>
+          @if (
+            selectedSection() === section.id && !compact() && parts().length
+          ) {
+            <ul class="settings-layout__parts">
+              @for (part of parts(); track part.id) {
+                <li>
+                  <button
+                    type="button"
+                    class="settings-layout__part"
+                    [class.is-current]="currentPart() === part.id"
+                    [attr.aria-current]="
+                      currentPart() === part.id ? 'location' : null
+                    "
+                    [attr.data-testid]="'settings-part-' + part.id"
+                    (click)="goToPart(part.id)"
+                  >
+                    {{ part.label }}
+                  </button>
+                </li>
+              }
+            </ul>
+          }
         }
         <div class="settings-layout__nav-footer">
           <ng-content select="[settings-nav-footer]" />
@@ -94,6 +116,26 @@
         <ng-content select="[settings-warning]" />
         @if (!listView()) {
           <ng-container [ngTemplateOutlet]="heading" />
+        }
+        @if (compact() && !listView() && parts().length) {
+          <nav
+            class="settings-layout__chips no-scrollbar"
+            [attr.aria-label]="'Parts of ' + selectedLabel()"
+          >
+            @for (part of parts(); track part.id) {
+              <a
+                class="settings-layout__chip"
+                [class.is-current]="currentPart() === part.id"
+                [attr.href]="'#part-' + part.id"
+                [attr.aria-current]="
+                  currentPart() === part.id ? 'location' : null
+                "
+                [attr.data-part]="part.id"
+                (click)="$event.preventDefault(); goToPart(part.id)"
+                >{{ part.label }}</a
+              >
+            }
+          </nav>
         }
         <ng-content />
       </div>

@@ -36,8 +36,8 @@ import { AppearancePreviewComponent } from './appearance-preview.component';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.directive';
 import { SettingsFieldRowDirective } from '../shared/settings-field-row.directive';
-import { SettingsGroupComponent } from '../shared/settings-group/settings-group.component';
 
+import { TrnSettingsGroupComponent } from '@trinity/components/overlay';
 /**
  * Appearance settings sub-page: Mode, Theme, text and code size,
  * how dates and times are written, how rooms are ordered inside a space, and which system
@@ -64,7 +64,7 @@ import { SettingsGroupComponent } from '../shared/settings-group/settings-group.
     SettingsSectionHeadingComponent,
     SettingsToggleRowDirective,
     SettingsFieldRowDirective,
-    SettingsGroupComponent,
+    TrnSettingsGroupComponent,
   ],
 })
 export class AppearanceSettingsComponent {
