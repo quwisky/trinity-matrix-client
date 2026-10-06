@@ -11,6 +11,12 @@ import { outputFromObservable } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { Subject } from 'rxjs';
+import {
+  TRN_SHEET_DISMISS,
+  TrnSheetDrag,
+  TrnSheetDragHandle,
+  sheetDismissFor,
+} from './trn-sheet-drag.directive';
 import { TrnDialogRef, dialogTitleId } from '../dialog/trn-dialog-ref';
 import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';
 import type {
@@ -35,7 +41,22 @@ export class TrnDialogActions {}
 @Component({
   selector: 'trn-dialog-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnIconComponent, TrnOverlaySurfaceDirective],
+  imports: [
+    TrnButton,
+    TrnIconComponent,
+    TrnOverlaySurfaceDirective,
+    TrnSheetDrag,
+    TrnSheetDragHandle,
+  ],
+  providers: [
+    {
+      provide: TRN_SHEET_DISMISS,
+      useFactory: () => {
+        const ref = inject(TrnDialogRef, { optional: true });
+        return ref ? sheetDismissFor(ref) : () => false;
+      },
+    },
+  ],
   templateUrl: './trn-dialog-shell.component.html',
   styleUrl: './trn-dialog-shell.component.scss',
   host: { '[attr.data-presentation]': 'layout()' },

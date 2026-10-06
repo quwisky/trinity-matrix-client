@@ -11,6 +11,12 @@ import {
   type TrnIconName,
   type TrnVariant,
 } from '@trinity/components/foundations';
+import {
+  TRN_SHEET_DISMISS,
+  TrnSheetDrag,
+  TrnSheetDragHandle,
+  sheetDismissFor,
+} from '../dialog-shell/trn-sheet-drag.directive';
 import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';
 
 export type TrnActionSheetButtonVariant = Extract<
@@ -80,7 +86,19 @@ export interface ActionSheetData {
   selector: 'trn-action-sheet',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnIconComponent, TrnOverlaySurfaceDirective],
+  imports: [
+    TrnButton,
+    TrnIconComponent,
+    TrnOverlaySurfaceDirective,
+    TrnSheetDrag,
+    TrnSheetDragHandle,
+  ],
+  providers: [
+    {
+      provide: TRN_SHEET_DISMISS,
+      useFactory: () => sheetDismissFor(inject(DialogRef)),
+    },
+  ],
   styles: [
     `
       /*
@@ -93,6 +111,15 @@ export interface ActionSheetData {
         .sheet {
           padding-bottom: calc(0.375rem + env(safe-area-inset-bottom));
         }
+
+        .dialog-shell__handle {
+          flex: none;
+          width: 36px;
+          height: 4px;
+          margin: 0 auto var(--trinity-space-2);
+          border-radius: var(--trinity-radius-pill);
+          background: var(--trinity-border-overlay);
+        }
       }
     `,
   ],
@@ -102,11 +129,20 @@ export interface ActionSheetData {
       variant="neutral"
       size="md"
       layout="sheet"
+      trnSheetDrag
       class="sheet flex flex-col px-1.5 pt-1.5"
       data-testid="action-sheet-surface"
     >
+      <div
+        class="dialog-shell__handle"
+        data-testid="sheet-handle"
+        aria-hidden="true"
+        trnSheetDragHandle
+      ></div>
+
       @if (data.header) {
         <p
+          trnSheetDragHandle
           class="shrink-0 px-3 py-2 text-center text-xs font-medium text-muted-foreground"
         >
           {{ data.header }}
