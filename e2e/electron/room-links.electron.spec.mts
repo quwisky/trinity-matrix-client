@@ -93,6 +93,10 @@ test.describe('Electron room-link preview', () => {
       );
 
       const box = await preview.boundingBox();
+      // Dialogs centre in the area below the frameless title row, not the whole window.
+      const rowHeight = await page
+        .locator('.title-bar--visible')
+        .evaluate((el) => el.getBoundingClientRect().height);
       const viewport = await page.evaluate(() => ({
         width: window.innerWidth,
         height: window.innerHeight,
@@ -102,7 +106,7 @@ test.describe('Electron room-link preview', () => {
         Math.abs(box!.x + box!.width / 2 - viewport.width / 2),
       ).toBeLessThan(3);
       expect(
-        Math.abs(box!.y + box!.height / 2 - viewport.height / 2),
+        Math.abs(box!.y + box!.height / 2 - (rowHeight + viewport.height) / 2),
       ).toBeLessThan(3);
     } finally {
       await app.close();

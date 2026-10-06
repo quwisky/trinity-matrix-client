@@ -16,8 +16,8 @@ export interface WindowPrefsIo {
 }
 
 /**
- * R1's Graphite dark `--trinity-surface-app` (oklch(16% 0.004 270deg)) and `--trinity-text`
- * (oklch(90% 0.004 270deg)) as sRGB hex, converted once by hand: the window background and
+ * R1's Graphite dark `--trinity-surface-app` (oklch(16% 0.004 269deg)) and `--trinity-text`
+ * (oklch(90% 0.004 269deg)) as sRGB hex, converted once by hand: the window background and
  * the native button strip paint these until the renderer sends the live theme's colours.
  * Update them together with the tokens in libs/theme-foundation/styles/internal/variables.scss.
  */
