@@ -414,6 +414,25 @@ describe('MediaService', () => {
     await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/c'), 'full'));
 
     expect(revokeObjectURL).not.toHaveBeenCalledWith(a);
+    // Eviction did run, and skipped only the pinned entry: b is the oldest unpinned.
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats a cache hit as recent use when evicting for the byte budget', async () => {
+    const { svc } = setup();
+    stubBlobSize(40);
+    const a = await firstValueFrom(
+      svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'),
+    );
+    const b = await firstValueFrom(
+      svc.resolveMedia(plainMedia('mxc://hs/b'), 'full'),
+    );
+    await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/a'), 'full')); // touch a
+    await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/c'), 'full'));
+
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith(b);
+    expect(revokeObjectURL).not.toHaveBeenCalledWith(a);
   });
 
   it('does not revoke a lone blob that is over the byte budget before it can be pinned', async () => {

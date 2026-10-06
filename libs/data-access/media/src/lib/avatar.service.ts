@@ -169,17 +169,24 @@ export class AvatarService {
       holders: 0,
       resolved: fetchMediaBytes(client, mxc, { w: edge, h: edge }, true).pipe(
         map((bytes) => {
+          // releaseAll cannot cancel a fetch already in flight. If this one lands after
+          // it, the entry is no longer cached, so no later releaseAll or eviction would
+          // ever find its URL: don't create one.
+          if (this.cache.get(key) !== entry) {
+            return null;
+          }
           entry.url = URL.createObjectURL(new Blob([bytes]));
-          // Evict after the new URL is in: it is not held yet, so it is the newest and
-          // protected by recency, not by a holder.
           this.evict();
           return entry.url;
         }),
         // An avatar is decorative — on failure fall back to initials (null), and drop the
         // cache entry so a transient failure can be retried, but not before the cooldown.
         catchError(() => {
-          this.cache.delete(key);
-          this.retryAfter.set(key, Date.now() + FAILURE_COOLDOWN_MS);
+          // A failure from a released entry says nothing about a newer one for this key.
+          if (this.cache.get(key) === entry) {
+            this.cache.delete(key);
+            this.retryAfter.set(key, Date.now() + FAILURE_COOLDOWN_MS);
+          }
           return of<string | null>(null);
         }),
         shareReplay(1),

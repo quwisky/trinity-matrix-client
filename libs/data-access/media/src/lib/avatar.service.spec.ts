@@ -275,6 +275,77 @@ describe('AvatarService', () => {
     });
   });
 
+  describe('fetches that land after releaseAll', () => {
+    /** A fetch the test settles by hand. */
+    function deferFetch(): { ok: () => void } {
+      let settle!: (r: Response) => void;
+      fetchMock.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            settle = resolve;
+          }),
+      );
+      return { ok: () => settle(okResponse()) };
+    }
+    const tick = () => new Promise((r) => setTimeout(r));
+
+    it('does not create an object URL nobody can revoke', async () => {
+      const { svc } = setup();
+      const late = deferFetch();
+      const seen: (string | null)[] = [];
+      svc.resolve('mxc://hs/slow').subscribe((u) => seen.push(u));
+      svc.releaseAll();
+
+      late.ok();
+      await tick();
+
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(seen).toEqual([null]);
+    });
+
+    it('does not let a late failure delete or cool down the newer entry', async () => {
+      const { svc } = setup();
+      vi.useFakeTimers();
+      try {
+        // Call 1 (the stale fetch) hangs until failed by hand, call 2 (the fresh entry)
+        // succeeds, and every retry the stale fetch makes after that fails too.
+        let calls = 0;
+        let failFirst!: () => void;
+        fetchMock.mockImplementation(() => {
+          calls++;
+          if (calls === 1) {
+            return new Promise((_, reject) => {
+              failFirst = () => reject(new TypeError('Failed to fetch'));
+            });
+          }
+          return calls === 2
+            ? Promise.resolve(okResponse())
+            : Promise.reject(new TypeError('Failed to fetch'));
+        });
+        svc.resolve('mxc://hs/slow').subscribe();
+        svc.releaseAll();
+        // Re-resolve in between: a new entry for the same key.
+        const fresh: (string | null)[] = [];
+        svc.resolve('mxc://hs/slow').subscribe((u) => fresh.push(u));
+        await vi.advanceTimersByTimeAsync(10);
+        expect(fresh).toEqual(['blob:av-1']);
+
+        failFirst();
+        await vi.runAllTimersAsync();
+
+        // Still cached (no refetch) and not cooling down.
+        fetchMock.mockClear();
+        const again: (string | null)[] = [];
+        svc.resolve('mxc://hs/slow').subscribe((u) => again.push(u));
+        await vi.advanceTimersByTimeAsync(10);
+        expect(again).toEqual(['blob:av-1']);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   it('releaseAll revokes every cached avatar URL and clears the cache', async () => {
     const { svc } = setup();
     const url = await firstValueFrom(svc.resolve('mxc://hs/abc'));
