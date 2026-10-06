@@ -19,7 +19,7 @@ public developer guide.
 | [`renovate.yml`](../../.github/workflows/renovate.yml)               | Daily at 00:00 UTC or a manual dispatch                                    | Dependency update maintenance through a GitHub App token                                                                                                        |
 | [`release-stable.yml`](../../.github/workflows/release-stable.yml)   | A manual dispatch with `from` and `dry_run` inputs                         | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                                   |
 | [`backport.yml`](../../.github/workflows/backport.yml)               | A merged `main` pull request is closed or labeled `backport release/X.Y.x` | Opens a PR that cherry-picks the fix onto each labeled release branch, through a GitHub App token                                                               |
-| [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml) | `CI` succeeds on a `back-merge/**` branch of this repository               | Pushes the back-merge commit to `main` as a fast-forward, through a GitHub App token                                                                            |
+| [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml) | `CI` completes on a `back-merge/**` branch of this repository              | Pushes the back-merge commit to `main` as a fast-forward, through a GitHub App token                                                                            |
 
 The branch workflow accepts pushes to `main`, `release/**`, and
 `renovate/patch-**`; pull requests are its usual review path. A newer run for
@@ -332,18 +332,28 @@ already contains the tag. The job does not affect the release itself.
 
 `main` allows only squash merges, so never merge the PR with the button: a squash would
 drop the tag from `main`'s history. Instead the PR lands by a direct push after CI passes.
-When `CI` succeeds on a `back-merge/**` branch of this repository,
-[`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml) runs
+Whenever `CI` completes on a `back-merge/**` branch of this repository, whatever its
+conclusion, [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml) runs
 [`scripts/land-back-merge.mjs`](../../scripts/land-back-merge.mjs) with the release App
 token, which pushes the branch's head to `main` as a fast-forward, never forced. GitHub then
 marks the PR merged. The script refuses, and pushes nothing, unless:
 
-- the head is a merge commit whose first parent is the current `main`. If `main` has moved,
-  re-run the `Open the back-merge PR` job; it rebuilds the merge on current `main`, and the
-  new CI run lands it;
-- the merge contains the `vX.Y.Z` tag named by the branch;
+- the branch is still at the commit that CI run tested;
+- the head has exactly two parents: the current `main` first and the `vX.Y.Z` tag named by
+  the branch second. Commits on top of the merge, a merge of anything but the tag, or an
+  octopus merge are refused. If `main` has moved, re-run the `Open the back-merge PR` job;
+  it rebuilds the merge on current `main`, and the new CI run lands it;
 - every required status check of `main`'s ruleset, read live from the branch rules API, has
-  passed (success, skipped or neutral) on that exact commit.
+  passed (success, skipped or neutral) on that exact commit, judged by its latest GitHub
+  Actions run. A failed job that `main` does not require (Desktop, iOS) does not block it;
+- exactly one open, non-draft pull request from this repository goes from the branch into
+  `main`, its head is that commit, and its review decision is not "changes requested".
+
+These checks run just before the push, not atomically with it. The fast-forward-only push
+is what keeps a `main` that moved in between safe: git rejects it and `main` stays as it is.
+Because the App bypasses `main`'s ruleset, its pull-request rules do not stop the push; the
+script's PR check does. To stop a back-merge from landing, close its PR, mark it draft or
+request changes on it.
 
 It resolves conflicts in only these files, hunk by hunk with `git merge-file`: a
 conflicting hunk takes the side below, and every non-conflicting edit from either side is
@@ -440,12 +450,17 @@ run release-please.
 9. Verify with a `dry_run` of `Release stable`, then the first real cut, and the first fix
    on `release/0.1.x`, each followed by its back-merge PR.
 10. Settings for automatic publishing, back-merges and backports:
-    - `main` allows squash merges only: the ruleset's allowed merge methods are squash, and
-      "Allow merge commits" is off in the repository settings. Release-please PRs and every
-      other PR merge as a squash.
-    - Add the release App as a bypass actor on `main`'s ruleset, so `land-back-merge.yml`
-      can push back-merge commits. The script never forces, so the bypass is used only for
-      fast-forwards.
+    - Make `main` squash-only with a back-merge route, in this order, so a back-merge
+      always has one way to land:
+      1. Add the release App as a bypass actor on the `Protect main` ruleset, so
+         `land-back-merge.yml` can push back-merge commits. The script never forces, so the
+         bypass is used only for fast-forwards.
+      2. Add a ruleset on `refs/heads/back-merge/**` with the creation, update, deletion and
+         non-fast-forward rules, and the release App and the maintainer as its bypass
+         actors, so no other writer can stage a back-merge.
+      3. Set the `Protect main` ruleset's allowed merge methods to squash only.
+      4. Turn off "Allow merge commits" in the repository settings. Release-please PRs and
+         every other PR then merge as a squash.
     - Require the CI status checks on `main`; `land-back-merge.mjs` reads them live and
       waits for all of them.
     - Create the label `backport release/0.1.x`
