@@ -55,15 +55,13 @@ export class ShellShortcutsService {
    */
   onGlobalKeydown(event: Event): void {
     const e = event as KeyboardEvent;
-    if (
-      (!e.ctrlKey && !e.metaKey && !e.altKey) ||
-      this.dialog.hasOpen() ||
-      this.panelOwnsTheScreen()
-    ) {
+    if ((!e.ctrlKey && !e.metaKey && !e.altKey) || this.dialog.hasOpen()) {
       return;
     }
     const hit = this.shortcuts.resolve(e);
-    if (!hit) {
+    // Search is the one chord that is still wanted with a panel open: it refocuses the
+    // header field, which is how a reader edits the query of the panel they are looking at.
+    if (!hit || (this.panelOwnsTheScreen() && hit.id !== 'room.search')) {
       return;
     }
     // preventDefault belongs to the branches that act, NOT to "the catalogue matched". The
@@ -76,8 +74,8 @@ export class ShellShortcutsService {
         void this.openSwitcher();
         break;
       case 'room.search':
-        e.preventDefault();
-        this.focusSearch();
+        // Only when a room is open: otherwise the browser's find keeps working.
+        if (this.focusSearch()) e.preventDefault();
         break;
       case 'room.hop.back':
         e.preventDefault();
@@ -116,10 +114,13 @@ export class ShellShortcutsService {
     }
   }
 
-  private focusSearch: () => void = () => undefined;
+  private focusSearch: () => boolean = () => false;
 
-  /** The page owns the header field, so it hands over the "focus or open search" call. */
-  bindSearchFocus(focus: () => void): void {
+  /**
+   * The page owns the header field, so it hands over the "focus or open search" call. It
+   * returns whether it acted, which is false with no room open.
+   */
+  bindSearchFocus(focus: () => boolean): void {
     this.focusSearch = focus;
   }
 

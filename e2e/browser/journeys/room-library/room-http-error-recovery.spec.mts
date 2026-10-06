@@ -117,7 +117,6 @@ test.describe('Room HTTP error recovery', () => {
     });
 
     await page.getByTestId('room-actions-overflow').click();
-
     await page.getByTestId('overflow-invite-people').click();
     await page.getByLabel('@user:server or a name').fill(target);
     await page.getByRole('button', { name: 'Invite', exact: true }).click();

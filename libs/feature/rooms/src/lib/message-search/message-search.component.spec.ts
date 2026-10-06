@@ -46,14 +46,17 @@ describe('MessageSearchComponent', () => {
   let searchServerMessages: Mock;
   let loadMoreHistory: Mock;
 
-  async function build(state: LoadedMessageSearch): Promise<{
+  async function build(
+    state: LoadedMessageSearch,
+    extraInputs: { query?: string } = {},
+  ): Promise<{
     fixture: ComponentFixture<MessageSearchComponent>;
     container: HTMLElement;
     c: MessageSearchComponent;
   }> {
     searchLoadedMessages.mockReturnValue(state);
     const { fixture, container } = await render(MessageSearchComponent, {
-      inputs: { roomId: '!r:hs' },
+      inputs: { roomId: '!r:hs', ...extraInputs },
       on: {
         selected: (eventId: string) => selected.push(eventId),
         dismissed: () => {
@@ -105,7 +108,27 @@ describe('MessageSearchComponent', () => {
     expect(document.activeElement).toBe(query);
   });
 
-  it('shows a bound query in its field and does not steal focus for it', async () => {
+  it('does not grab focus when it opens with a query already typed elsewhere', async () => {
+    const { container } = await build(loaded(), { query: 'abc' });
+
+    const field = container.querySelector<HTMLInputElement>('[data-autofocus]');
+    expect(field?.value).toBe('abc');
+    expect(document.activeElement).not.toBe(field);
+  });
+
+  it('drops server results when the bound query changes from outside', async () => {
+    const { fixture, c } = await build(loaded());
+    fixture.componentRef.setInput('query', 'hello');
+    fixture.detectChanges();
+    c.searchServer();
+    expect(c.serverMode()).toBe(true);
+
+    fixture.componentRef.setInput('query', 'hello w');
+    fixture.detectChanges();
+    expect(c.serverMode()).toBe(false);
+  });
+
+  it('shows a bound query in its field', async () => {
     const { fixture, container } = await build(loaded());
     fixture.componentRef.setInput('query', 'abc');
     fixture.detectChanges();
@@ -220,6 +243,7 @@ describe('MessageSearchComponent', () => {
     );
     const { fixture, container, c } = await build(loaded({ encrypted: false }));
     setQuery('hello', c);
+    fixture.detectChanges(); // the query's own reset runs before the search is requested
 
     c.searchServer();
     fixture.detectChanges();
@@ -268,12 +292,16 @@ describe('MessageSearchComponent', () => {
         nextBatch: null,
       }),
     );
-    const { c } = await build(loaded({ hits: [hit({ eventId: '$loaded' })] }));
+    const { fixture, c } = await build(
+      loaded({ hits: [hit({ eventId: '$loaded' })] }),
+    );
     setQuery('hello', c);
+    fixture.detectChanges();
     c.searchServer();
     expect(c.serverMode()).toBe(true);
 
     setQuery('hell', c);
+    fixture.detectChanges();
 
     expect(c.serverMode()).toBe(false);
     expect(c.results().map((h) => h.eventId)).toEqual(['$loaded']);

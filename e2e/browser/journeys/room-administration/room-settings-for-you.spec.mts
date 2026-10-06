@@ -187,7 +187,6 @@ test.describe('Room settings · For you', () => {
     });
 
     await page.getByTestId('room-actions-overflow').click();
-
     await page.getByTestId('overflow-open-room-settings').click();
     await expect(page.getByTestId('room-settings')).toBeVisible({
       timeout: 10_000,

@@ -362,9 +362,11 @@ export class RoomsPage {
     // hooks, so binding there left the callback unset for all 170 unit tests.
     this.nav.bindFocus(() => this.focusActiveView());
     this.shortcutActions.bindSearchFocus(() => {
+      if (!this.vm.activeRoom()) return false;
       const field = this.headerSearch()?.nativeElement;
       if (field && getComputedStyle(field).display !== 'none') field.focus();
       else this.messageActions.openMessageSearch();
+      return true;
     });
     // ShellStatusService presents runWithBusy failures directly. In the zoneless app,
     // a component effect that only reads the error signal is not a reliable render

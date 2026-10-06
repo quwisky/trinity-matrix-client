@@ -5,11 +5,13 @@ import {
   ElementRef,
   afterNextRender,
   computed,
+  effect,
   inject,
   input,
   model,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
@@ -94,6 +96,12 @@ export class MessageSearchComponent {
     // After the first render, not on construction: the input does not exist yet at
     // construction time, and `afterNextRender` is the zoneless-safe hook for reaching into
     // the DOM once.
+    // A changed query, from this field or the host's, invalidates any server results;
+    // fall back to instant local.
+    effect(() => {
+      this.query();
+      untracked(() => this.resetServer());
+    });
     afterNextRender(() => {
       // Skip when opened by typing in the header field, so that typing isn't interrupted.
       if (!this.query()) this.queryField()?.nativeElement.focus();
@@ -156,8 +164,6 @@ export class MessageSearchComponent {
 
   onInput(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);
-    // A changed query invalidates any server results; fall back to instant local.
-    this.resetServer();
   }
 
   /** Run the homeserver full-text search over the whole (unencrypted) history. */

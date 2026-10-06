@@ -285,11 +285,9 @@
               <trn-icon size="lg" name="search" motion="pop" />
             </button>
 
-            <!-- Present at EVERY breakpoint. Below md it also absorbs the demoted header
-               actions (each marked md:hidden inside), which are shown as their own buttons
-               above at md+. Actions that are rare rather than demoted — Jump to date — live
-               here at all widths rather than spending a permanent slot in a header that
-               already carries six. -->
+            <!-- Present at EVERY breakpoint. It holds Invite, Room settings and Jump to date
+               at all widths; below md it also absorbs the demoted Pinned, Members and System
+               status actions (each marked md:hidden inside). -->
             <button
               trnBtn
               presentation="ghost"

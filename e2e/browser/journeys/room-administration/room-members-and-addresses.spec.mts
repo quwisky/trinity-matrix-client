@@ -139,7 +139,6 @@ test.describe('Room settings', () => {
     await openRoom(page, roomName);
 
     await page.getByTestId('room-actions-overflow').click();
-
     await page.getByTestId('overflow-open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'members');
     await page.getByTestId('members-settings-banned').click();
@@ -448,7 +447,6 @@ test.describe('Room settings', () => {
     await openRoom(page, roomName);
 
     await page.getByTestId('room-actions-overflow').click();
-
     await page.getByTestId('overflow-open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'addresses');
     await expect(page.getByTestId('room-aliases')).toBeVisible({

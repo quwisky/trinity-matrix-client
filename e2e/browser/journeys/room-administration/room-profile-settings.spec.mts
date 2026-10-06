@@ -176,7 +176,6 @@ test.describe('Room settings', () => {
     await openRoom(page, roomName);
 
     await page.getByTestId('room-actions-overflow').click();
-
     await page.getByTestId('overflow-open-room-settings').click();
     await expect(page.getByTestId('room-settings')).toBeVisible({
       timeout: 10_000,

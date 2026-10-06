@@ -711,6 +711,15 @@ test.describe('Modern room shell layout', () => {
       await expect(page.getByTestId('header-search')).toBeVisible();
       await expect(page.getByTestId('room-actions-overflow')).toBeVisible();
       await page.setViewportSize(headerViewport);
+      // Crossing the drawer breakpoint closes the roster; reopen it for the member rows.
+      if (
+        (await page
+          .getByTestId('toggle-members')
+          .getAttribute('aria-pressed')) !== 'true'
+      ) {
+        await activate(page.getByTestId('toggle-members'));
+      }
+      await expect(page.locator('.members')).toBeVisible({ timeout: 20_000 });
 
       await expect(page.locator('.member').first()).toHaveCSS('height', '44px');
       await expect(page.locator('.member').first()).toHaveCSS(

@@ -1406,6 +1406,30 @@ describe('RoomsPage keyboard room switching', () => {
     expect(shell.surfaces.renderedSurface()?.kind).not.toBe('search');
   });
 
+  it('leaves Ctrl+F to the browser find when no room is open', () => {
+    const shell = build();
+
+    const ignored = key({ key: 'f', ctrlKey: true });
+    shell.shortcuts.onGlobalKeydown(ignored);
+    expect(ignored.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('still handles Ctrl+F while a side panel is open, and guards other chords', async () => {
+    const shell = build();
+    await visitABC(shell);
+    shell.surfaces.transition({ kind: 'open-threads' });
+
+    const hop = key({ key: "'", ctrlKey: true });
+    shell.shortcuts.onGlobalKeydown(hop);
+    expect(hop.preventDefault).not.toHaveBeenCalled();
+    expect(shell.store.activeRoomId()).toBe('!c:hs');
+
+    const find = key({ key: 'f', ctrlKey: true });
+    shell.shortcuts.onGlobalKeydown(find);
+    expect(find.preventDefault).toHaveBeenCalled();
+    expect(shell.surfaces.renderedSurface()?.kind).toBe('search');
+  });
+
   it('leaves Ctrl+F to the browser while an overlay owns the screen', async () => {
     const shell = build();
     await visitABC(shell);
