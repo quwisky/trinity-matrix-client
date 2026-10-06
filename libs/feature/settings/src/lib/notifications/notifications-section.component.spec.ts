@@ -167,6 +167,25 @@ describe('NotificationsSectionComponent', () => {
     expect(toastShow).not.toHaveBeenCalled();
   });
 
+  it('drops a write from before an account round trip back to the same account', async () => {
+    const oldWrite = new Subject<undefined>();
+    const newWrite = new Subject<undefined>();
+    reactionSetOn.mockReturnValueOnce(oldWrite).mockReturnValueOnce(newWrite);
+    const { cmp, fixture, toastShow } = await build();
+
+    cmp.toggleReactions(true);
+    activeAccount.set('@other:hs');
+    fixture.detectChanges();
+    activeAccount.set('@me:hs');
+    fixture.detectChanges();
+    cmp.toggleReactions(true);
+    oldWrite.error(new Error('old write failed'));
+
+    expect(cmp.reactionPending()).toBe(true);
+    expect(cmp.reactionChecked()).toBe(true);
+    expect(toastShow).not.toHaveBeenCalled();
+  });
+
   it('follows the account when the value arrives AFTER the page rendered', async () => {
     // A cold load renders this page before the initial sync delivers account data. Seeding
     // once left the switch showing the default forever; the e2e caught it after a reload.

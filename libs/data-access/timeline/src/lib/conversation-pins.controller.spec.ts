@@ -6,7 +6,7 @@ import {
   RoomStateEvent,
 } from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CONVERSATION_PIN_POLICY,
   ConversationPinsController,
@@ -264,6 +264,8 @@ describe('ConversationPinsController', () => {
       ...over,
     });
     const flush = () => new Promise((resolve) => setTimeout(resolve));
+    beforeEach(() => vi.useFakeTimers({ toFake: ['Date'] }));
+    afterEach(() => vi.useRealTimers());
 
     it('lists a loading row, then the fetched message, in pin order', async () => {
       const { controller, remote, fetchRoomEvent, setPinned, room } = setup();
@@ -350,6 +352,158 @@ describe('ConversationPinsController', () => {
       await flush();
 
       expect(controller.messages()).toEqual([]);
+    });
+
+    it('reports a pin whose fetch fails as failed, not unavailable', async () => {
+      const { controller, fetchRoomEvent, setPinned, room } = setup();
+      fetchRoomEvent.mockRejectedValueOnce(new Error('network down'));
+      setPinned(['$old']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
+
+      expect(controller.messages().map((m) => [m.id, m.status])).toEqual([
+        ['$old', 'failed'],
+      ]);
+    });
+
+    it('reports a pin the server will not return as unavailable', async () => {
+      const { controller, fetchRoomEvent, setPinned, room } = setup();
+      fetchRoomEvent.mockRejectedValueOnce(
+        Object.assign(new Error('Not found'), { httpStatus: 404 }),
+      );
+      setPinned(['$old']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
+
+      expect(controller.messages()[0]?.status).toBe('unavailable');
+    });
+
+    it('retries a failed pin after the next invalidation', async () => {
+      const { controller, remote, fetchRoomEvent, setPinned, room } = setup();
+      remote.set('$old', raw('$old'));
+      fetchRoomEvent.mockRejectedValueOnce(new Error('network down'));
+      setPinned(['$old']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
+      expect(controller.messages()[0]?.status).toBe('failed');
+
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPowerLevels,
+      });
+      await flush();
+
+      expect(fetchRoomEvent).toHaveBeenCalledTimes(2);
+      expect(controller.messages()[0]?.status).toBe('loaded');
+    });
+
+    it.each([
+      [
+        'Decrypted',
+        () => [MatrixEventEvent.Decrypted, { getRoomId: () => KEY.roomId }],
+      ],
+      ['Timeline', () => [RoomEvent.Timeline]],
+    ] as const)(
+      'retries a failed pin after a %s event',
+      async (_name, args) => {
+        const { controller, remote, client, room, fetchRoomEvent, setPinned } =
+          setup();
+        remote.set('$old', raw('$old'));
+        fetchRoomEvent.mockRejectedValueOnce(new Error('network down'));
+        setPinned(['$old']);
+        room.emit(RoomStateEvent.Events, {
+          getType: () => EventType.RoomPinnedEvents,
+        });
+        await flush();
+        expect(controller.messages()[0]?.status).toBe('failed');
+
+        vi.setSystemTime(Date.now() + 30_000);
+        const [event, ...rest] = args() as [string, ...unknown[]];
+        (event === MatrixEventEvent.Decrypted ? client : room).emit(
+          event,
+          ...rest,
+        );
+        await flush();
+
+        expect(fetchRoomEvent).toHaveBeenCalledTimes(2);
+        expect(controller.messages()[0]?.status).toBe('loaded');
+      },
+    );
+
+    it('throttles automatic retries to one per 30 seconds', async () => {
+      const { controller, room, fetchRoomEvent, setPinned } = setup();
+      fetchRoomEvent.mockRejectedValue(new Error('network down'));
+      setPinned(['$old']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
+      expect(fetchRoomEvent).toHaveBeenCalledTimes(1);
+
+      vi.setSystemTime(Date.now() + 10_000);
+      room.emit(RoomEvent.Timeline);
+      room.emit(RoomEvent.Timeline);
+      await flush();
+      expect(fetchRoomEvent).toHaveBeenCalledTimes(1);
+
+      vi.setSystemTime(Date.now() + 20_000);
+      room.emit(RoomEvent.Timeline);
+      await flush();
+      expect(fetchRoomEvent).toHaveBeenCalledTimes(2);
+      expect(controller.messages()[0]?.status).toBe('failed');
+    });
+
+    it('keeps showing failed, never loading, while a failed pin is re-fetched', async () => {
+      const { controller, remote, room, fetchRoomEvent, setPinned } = setup();
+      remote.set('$old', raw('$old'));
+      fetchRoomEvent.mockRejectedValueOnce(new Error('network down'));
+      setPinned(['$old']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
+      let release!: () => void;
+      fetchRoomEvent.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve(remote.get('$old') as never);
+          }),
+      );
+
+      controller.retryFailed();
+      await flush();
+      expect(fetchRoomEvent).toHaveBeenCalledTimes(2);
+      expect(controller.messages()[0]?.status).toBe('failed');
+
+      release();
+      await flush();
+      expect(controller.messages()[0]?.status).toBe('loaded');
+    });
+
+    it('retries failed pins on retryFailed but never an unavailable one', async () => {
+      const { controller, remote, fetchRoomEvent, setPinned, room } = setup();
+      remote.set('$old', raw('$old'));
+      fetchRoomEvent.mockRejectedValueOnce(new Error('network down'));
+      setPinned(['$old', '$gone']);
+      room.emit(RoomStateEvent.Events, {
+        getType: () => EventType.RoomPinnedEvents,
+      });
+      await flush();
+      expect(fetchRoomEvent).toHaveBeenCalledTimes(2);
+
+      controller.retryFailed();
+      await flush();
+
+      expect(fetchRoomEvent).toHaveBeenCalledTimes(3);
+      expect(controller.messages().map((m) => [m.id, m.status])).toEqual([
+        ['$old', 'loaded'],
+        ['$gone', 'unavailable'],
+      ]);
     });
 
     it('drops a fetch that resolves after the pin list changed', async () => {

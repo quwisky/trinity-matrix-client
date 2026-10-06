@@ -127,6 +127,7 @@ export class VirtualMessageListComponent extends MessageListBase {
   private prependAnchorOffset = 0;
   /** Keep the captured row fixed while the first rendered rows settle their heights. */
   private prependAnchorActive = false;
+  // Scroll-anchor session token, bumped by every gesture that owns the anchor; not a latest-wins guard (#927).
   private prependAnchorGeneration = 0;
   /** Last scrollTop written by our own correction; distinguishes it from user movement. */
   private expectedProgrammaticScrollTop: number | null = null;

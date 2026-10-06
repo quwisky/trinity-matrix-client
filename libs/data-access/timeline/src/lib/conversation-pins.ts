@@ -5,9 +5,10 @@ export interface PinnedMessageView {
   readonly id: string;
   /**
    * `loading` while an event outside the loaded timeline is fetched; `unavailable`
-   * when the server will not return it. Both carry empty sender and body.
+   * when the server will not return it; `failed` when fetching it failed; retried on the
+   * next invalidation. All three carry empty sender and body.
    */
-  readonly status: 'loaded' | 'loading' | 'unavailable';
+  readonly status: 'loaded' | 'loading' | 'unavailable' | 'failed';
   readonly sender: string;
   readonly senderName: string;
   readonly body: string;
@@ -36,6 +37,8 @@ export interface ConversationPins {
   isPinned(eventId: string): boolean;
   pin(eventId: string): Observable<ConversationPinOutcome>;
   unpin(eventId: string): Observable<ConversationPinOutcome>;
+  /** Re-fetch pinned messages whose fetch failed (e.g. when the panel reopens). */
+  retryFailed(): void;
 }
 
 export interface ConversationPinPolicyKey {

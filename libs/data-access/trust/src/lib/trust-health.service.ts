@@ -64,6 +64,8 @@ export class TrustHealthService {
   );
 
   /** Monotonic token so a slow status run cannot overwrite a newer one. */
+  // Guards reconcileProjection (a reconcile superseded within one projection generation;
+  // publish() only drops older generations), refreshCurrent and reset().
   private statusGeneration = 0;
 
   private readonly projection = this.cryptoPort.project({

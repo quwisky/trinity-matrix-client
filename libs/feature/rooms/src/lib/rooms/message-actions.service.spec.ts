@@ -7,6 +7,7 @@ import {
   type ConversationMessageOutcome,
   type ConversationTextSendOutcome,
 } from '@trinity/data-access/timeline';
+import { type MediaTransferEvent } from '@trinity/data-access/media';
 import { TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Observable, Subject, of, throwError } from 'rxjs';
@@ -76,6 +77,8 @@ describe('MessageActionsService', () => {
     of({ kind: 'sent', eventId: '$sent' }),
   );
   const toastShow = vi.fn();
+  const mediaSend = vi.fn<() => Observable<MediaTransferEvent>>();
+  const conversation = { media: { send: mediaSend } };
   let roomEncrypted = false;
 
   const MOCKS: Provider[] = [
@@ -94,6 +97,7 @@ describe('MessageActionsService', () => {
       provide: ConversationRuntime,
       useFactory: () => ({
         timeline: inject(ConversationTimelineStub),
+        focused: () => conversation,
         compose: { setDraft, submit: submitText, setTyping },
         messages: { redact, toggleReaction, retry },
         pins: { isPinned, pin, unpin },
@@ -327,6 +331,47 @@ describe('MessageActionsService', () => {
       actions.loadOlder();
 
       expect(loadOlder).toHaveBeenCalled();
+    });
+  });
+
+  describe('uploading attachments', () => {
+    it('reports progress for the newest batch only, ignoring a superseded batch', () => {
+      const { actions } = build();
+      const first = new Subject<MediaTransferEvent>();
+      const second = new Subject<MediaTransferEvent>();
+      mediaSend.mockReturnValueOnce(first).mockReturnValueOnce(second);
+      const item = (id: string) => ({
+        id,
+        file: new File(['x'], `${id}.png`),
+        media: {} as never,
+      });
+
+      actions.onSendMedia({
+        items: [item('a')],
+        caption: '',
+        onOutcomes: vi.fn(),
+      });
+      actions.onSendMedia({
+        items: [item('b')],
+        caption: '',
+        onOutcomes: vi.fn(),
+      });
+      first.next({ kind: 'progress', phase: 'uploading', fraction: 0.9 });
+      expect(actions.uploadProgress()).toEqual({
+        index: 1,
+        total: 1,
+        fraction: 0,
+      });
+
+      second.next({ kind: 'progress', phase: 'uploading', fraction: 0.5 });
+      first.next({ kind: 'sent', eventId: '$a' });
+      first.complete();
+
+      expect(actions.uploadProgress()).toEqual({
+        index: 1,
+        total: 1,
+        fraction: 0.5,
+      });
     });
   });
 
