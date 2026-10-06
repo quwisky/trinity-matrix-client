@@ -2,10 +2,12 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  inject,
   input,
   output,
 } from '@angular/core';
-import { AvatarComponent } from '@trinity/components/generic-content';
+import { TitleBarState } from '@trinity/application/workspace';
+import { AvatarComponent, TrnBadge } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { type IdentityProfile } from '@trinity/data-access/identity';
@@ -21,12 +23,9 @@ import {
   TrnDropdownMenuSubTrigger,
   TrnDropdownMenuTrigger,
 } from '@trinity/components/overlay';
-import { initialOf } from '@trinity/util/matrix';
+import { type PresenceState, initialOf } from '@trinity/util/matrix';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
 import { TrnIconComponent } from '@trinity/components/foundations';
-
-/** Most avatars drawn in the mixed-account stack before it collapses to a "+N" count. */
-const STACK_MAX = 3;
 
 /** One signed-in account in the user-panel switcher: the profile plus its unread total. */
 export interface AccountSummary extends IdentityProfile {
@@ -35,12 +34,19 @@ export interface AccountSummary extends IdentityProfile {
 }
 
 /** The navigation shell's bottom user panel: the signed-in user plus account switcher. */
+const PRESENCE_NAMES = {
+  online: 'online',
+  unavailable: 'away',
+  offline: 'offline',
+} satisfies Record<PresenceState, string>;
+
 @Component({
   selector: 'trn-sidebar-user-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TrnButton,
     TrnTooltip,
+    TrnBadge,
     AvatarComponent,
     TrnIconComponent,
     TrnDropdownMenuTrigger,
@@ -58,12 +64,17 @@ export interface AccountSummary extends IdentityProfile {
   styleUrl: './sidebar-user-panel.component.scss',
 })
 export class SidebarUserPanelComponent {
+  /** The desktop title row carries system status itself, so the panel then drops it. */
+  protected readonly titleBar = inject(TitleBarState);
+
   /** The signed-in user (name + handle + avatar) for the panel trigger. */
   readonly user = input<IdentityProfile>({
     userId: '',
     displayName: '',
     avatarMxc: null,
   });
+  /** The signed-in user's presence for the avatar dot; null (unknown) draws no dot. */
+  readonly presence = input<PresenceState | null>(null);
   /** First letter of the display name, for the avatar fallback. */
   readonly userInitial = computed(() => initialOf(this.user().displayName));
   /** Every signed-in account, for the switcher list. */
@@ -73,52 +84,41 @@ export class SidebarUserPanelComponent {
   /** User ids of accounts the server signed out that need re-authentication. */
   readonly reauthAccounts = input<readonly string[]>([]);
   /**
-   * The accounts the room list currently draws from. Drives the picker's ticks and the
-   * stacked-avatar indicator; defaults to empty so the panel renders standalone.
+   * The accounts the room list currently draws from. Drives the picker's ticks; defaults to empty so the panel renders standalone.
    */
   readonly shownAccountIds = input<ReadonlySet<string>>(new Set());
 
   /**
    * Present the account picker as a dialog rather than a submenu.
    *
-   * Set by the host from the layout, not read here: this component stays presentational and
-   * injects nothing. Below the `md` breakpoint the sidebar is a full-screen page and this
+   * Set by the host from the layout, not read here: this component stays presentational
+   * (its only injection is the title-bar state). Below the `md` breakpoint the sidebar is a full-screen page and this
    * panel is a bar across the bottom of the viewport, so a submenu flying out beside the
    * account menu has nowhere to go and lands back on top of it.
    */
   readonly pickAccountsInDialog = input(false);
-  /**
-   * The accounts being mixed, active account first so it stays the front tile of the stack.
-   * Empty unless more than one account is shown — a single account renders the plain avatar.
-   */
-  readonly mixedAccounts = computed<AccountSummary[]>(() => {
-    const shown = this.shownAccountIds();
-    if (shown.size < 2) {
-      return [];
-    }
-    const active = this.activeUserId();
-    return this.accounts()
-      .filter((account) => shown.has(account.userId))
-      .sort(
-        (a, b) =>
-          Number(b.userId === active) - Number(a.userId === active) ||
-          a.displayName.localeCompare(b.displayName),
-      );
-  });
   /** The picker is only meaningful with more than one account signed in. */
   readonly canPickAccounts = computed(() => this.accounts().length > 1);
-  /** Avatars actually drawn in the stack — capped so the cluster stays inside the footer's
-   * fixed 52px budget; the "+N" text carries the rest. */
-  readonly stackAvatars = computed(() =>
-    this.mixedAccounts().slice(0, STACK_MAX),
+  /** Signed-in accounts besides the one in view; the "+N" chip shows when above zero. */
+  readonly otherAccountCount = computed(() =>
+    Math.max(this.accounts().length - 1, 0),
   );
-  /** Accessible summary of the mixed state; the stack itself is decorative. */
+  /** Names the chip with its visible "+N", so the label contains the text. */
+  readonly otherAccountsLabel = computed(() => {
+    const count = this.otherAccountCount();
+    return `${count} more account${count === 1 ? '' : 's'}`;
+  });
+  /** Starts with the visible name (label in name), then presence and the mixed state. */
   readonly accountSummaryLabel = computed(() => {
-    const mixed = this.mixedAccounts();
-    if (mixed.length < 2) {
-      return 'Account menu';
-    }
-    return `Account menu — ${this.user().displayName}, showing ${mixed.length} accounts`;
+    const shown = this.shownAccountIds().size;
+    const presence = this.presence();
+    return [
+      this.user().displayName || 'Account menu',
+      presence && PRESENCE_NAMES[presence],
+      shown >= 2 && `showing ${shown} accounts`,
+    ]
+      .filter(Boolean)
+      .join(', ');
   });
   /** Gear — open the settings page. */
   readonly openSettings = output<void>();

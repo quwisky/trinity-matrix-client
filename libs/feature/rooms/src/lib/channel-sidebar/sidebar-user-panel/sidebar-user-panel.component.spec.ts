@@ -1,3 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { TestBed } from '@angular/core/testing';
+import { TitleBarState } from '@trinity/application/workspace';
+import { TrnButton } from '@trinity/components/controls';
 import { By } from '@angular/platform-browser';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { render } from '@trinity/testing';
@@ -105,43 +110,171 @@ describe('SidebarUserPanelComponent', () => {
     expect(reauthRow?.querySelector('trn-avatar')?.textContent).toContain('D');
   });
 
-  it('shows the plain avatar and no stack while only one account is shown', async () => {
+  it('shows name and handle and no accounts chip with a single account', async () => {
     const { container } = await render(SidebarUserPanelComponent, {
       inputs: {
         user: USER,
-        accounts: ACCOUNTS,
+        accounts: [ACCOUNTS[0]],
         activeUserId: '@alice:hs',
-        shownAccountIds: new Set(['@alice:hs']),
       },
     });
 
-    expect(container.querySelector('[data-testid="account-stack"]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="account-stack-count"]'),
+    ).toBeNull();
+    expect(container.querySelector('.userbar__name')?.textContent).toContain(
+      'Alice',
+    );
     expect(container.querySelector('.userbar__handle')?.textContent).toContain(
       '@alice:hs',
     );
   });
 
-  it('stacks the mixed accounts, active first, with a count of the rest', async () => {
+  it.each([
+    [3, '+2'],
+    [5, '+4'],
+  ])(
+    'reads the other accounts on the chip with %i signed in',
+    async (count, text) => {
+      const accounts = Array.from({ length: count }, (_, i) => ({
+        userId: `@u${i}:hs`,
+        displayName: `U${i}`,
+        avatarMxc: null,
+        unread: 0,
+      }));
+      const { fixture, container } = await render(SidebarUserPanelComponent, {
+        inputs: { user: USER, accounts, activeUserId: '@u0:hs' },
+      });
+
+      const chip = container.querySelector<HTMLElement>(
+        '[data-testid="account-stack-count"]',
+      )!;
+      expect(chip.textContent?.trim()).toBe(text);
+      expect(chip.getAttribute('aria-label')).toBe(
+        `${count - 1} more accounts`,
+      );
+      chip.click();
+      fixture.detectChanges();
+      expect(
+        document.querySelectorAll('[data-testid="account-row"]'),
+      ).toHaveLength(count);
+    },
+  );
+
+  it('draws no presence dot until presence is known, and uses the button recipe', async () => {
     const { fixture, container } = await render(SidebarUserPanelComponent, {
-      inputs: {
-        user: USER,
-        accounts: ACCOUNTS,
-        activeUserId: '@bob:hs',
-        shownAccountIds: new Set(['@alice:hs', '@bob:hs']),
-      },
+      inputs: { user: USER },
     });
 
-    const stack = container.querySelector('[data-testid="account-stack"]');
-    expect(stack).toBeTruthy();
-    expect(stack!.querySelectorAll('trn-avatar').length).toBe(2);
-    // The active account leads the stack so it stays the front tile.
+    expect(container.querySelector('trn-avatar .presence-dot')).toBeNull();
+    // The dropdown trigger overwrites data-slot, so assert the recipe directive itself.
     expect(
-      fixture.componentInstance.mixedAccounts().map((a) => a.userId),
-    ).toEqual(['@bob:hs', '@alice:hs']);
+      fixture.debugElement
+        .queryAll(By.directive(TrnButton))
+        .map((element) => element.nativeElement),
+    ).toContain(container.querySelector('[data-testid="user-menu-trigger"]'));
+  });
+
+  it.each(['online', 'unavailable', 'offline'] as const)(
+    'draws the %s presence of the signed-in user on the avatar',
+    async (presence) => {
+      const { container } = await render(SidebarUserPanelComponent, {
+        inputs: { user: USER, presence },
+      });
+
+      expect(
+        container
+          .querySelector('trn-avatar .presence-dot')
+          ?.getAttribute('data-presence'),
+      ).toBe(presence);
+    },
+  );
+
+  it('names a single other account in the singular', async () => {
+    const { container } = await render(SidebarUserPanelComponent, {
+      inputs: { user: USER, accounts: ACCOUNTS.slice(0, 2) },
+    });
+
     expect(
-      container.querySelector('[data-testid="account-stack-count"]')
-        ?.textContent,
-    ).toContain('2 accounts');
+      container
+        .querySelector('[data-testid="account-stack-count"]')
+        ?.getAttribute('aria-label'),
+    ).toBe('1 more account');
+  });
+
+  it('keeps settings and system status without the title row', async () => {
+    const { container } = await render(SidebarUserPanelComponent, {
+      inputs: { user: USER },
+    });
+
+    expect(
+      container.querySelector('[data-testid="open-system-status"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="open-settings"]'),
+    ).not.toBeNull();
+  });
+
+  it.each([
+    { titleRow: false, problems: false, shown: true },
+    { titleRow: false, problems: true, shown: true },
+    { titleRow: true, problems: false, shown: true },
+    { titleRow: true, problems: true, shown: false },
+  ])(
+    'System status shown=$shown with title row $titleRow and problems $problems',
+    async ({ titleRow, problems, shown }) => {
+      const { container } = await render(SidebarUserPanelComponent, {
+        inputs: { user: USER, hasSystemStatusProblems: problems },
+      });
+      TestBed.inject(TitleBarState).setActive(titleRow);
+      TestBed.tick();
+
+      expect(
+        container.querySelector('[data-testid="open-system-status"]') !== null,
+      ).toBe(shown);
+      expect(
+        container.querySelector('[data-testid="open-settings"]'),
+      ).not.toBeNull();
+    },
+  );
+
+  it.each([
+    ['online', 'Alice, online'],
+    ['unavailable', 'Alice, away'],
+    ['offline', 'Alice, offline'],
+    [null, 'Alice'],
+  ] as const)(
+    'names the user menu trigger with presence %s',
+    async (presence, name) => {
+      const { container } = await render(SidebarUserPanelComponent, {
+        inputs: { user: USER, presence },
+      });
+
+      expect(
+        container
+          .querySelector('[data-testid="user-menu-trigger"]')
+          ?.getAttribute('aria-label'),
+      ).toBe(name);
+    },
+  );
+
+  describe('stylesheet', () => {
+    const scss = readFileSync(
+      join(__dirname, 'sidebar-user-panel.component.scss'),
+      'utf8',
+    );
+
+    it('floats the raised card from md and ellipsises the name', () => {
+      expect(scss).toMatch(/@media #\{\$md\} \{[^}]*position: absolute/);
+      for (const token of [
+        'var(--trinity-surface-floating-card)',
+        'var(--trinity-shape-overlay-radius)',
+        'var(--trinity-shadow-floating)',
+      ]) {
+        expect(scss).toContain(token);
+      }
+      expect(scss).toMatch(/\.userbar__name,[^{]*\{\s*@include ellipsis/);
+    });
   });
 
   it('offers the picker only when more than one account is signed in', async () => {

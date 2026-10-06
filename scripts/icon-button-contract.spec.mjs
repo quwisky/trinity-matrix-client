@@ -71,6 +71,11 @@ const bespokeIconFiles = new Set([
   'libs/components/controls/src/lib/button/trn-icon-motion.stories.ts#template-3',
 ]);
 
+// Icon-shaped controls whose content is an avatar, so there is no glyph to animate.
+const avatarIconFiles = new Set([
+  'libs/feature/rooms/src/lib/server-rail/server-rail.component.html',
+]);
+
 const compositeIconFiles = new Set([
   'libs/feature/rooms/src/lib/account-picker/account-picker.component.html',
   'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.html',
@@ -104,6 +109,10 @@ describe('icon-button contract', () => {
 
   it('gives every public icon button an explicit semantic motion', () => {
     const inert = publicIconButtons
+      .filter(
+        ({ file, source }) =>
+          !(avatarIconFiles.has(file) && /<trn-avatar\b/.test(source)),
+      )
       .filter(({ source }) => !/<trn-icon\b[^>]*\bmotion=/.test(source))
       .map(({ file, line }) => `${file}:${line}`);
 

@@ -219,9 +219,7 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
   const room = page.locator('.channel', { hasText: roomName }).first();
   await room.waitFor({ state: 'visible', timeout: 30_000 });
-  await expect(room.locator('.channel__badge')).toBeVisible({
-    timeout: 20_000,
-  });
+  await expect(room).toHaveClass(/channel--unread/, { timeout: 20_000 });
   await room.click();
   await expect(page.getByTestId('composer-input')).toBeVisible({
     timeout: 20_000,

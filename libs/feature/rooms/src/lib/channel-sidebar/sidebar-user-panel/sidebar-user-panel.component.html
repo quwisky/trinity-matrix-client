@@ -1,5 +1,7 @@
 <footer class="userbar">
   <button
+    trnBtn
+    presentation="ghost"
     class="userbar__trigger"
     [trnDropdownMenuTrigger]="accountMenu"
     side="top"
@@ -7,65 +9,55 @@
     [attr.aria-label]="accountSummaryLabel()"
     data-testid="user-menu-trigger"
   >
-    @if (mixedAccounts().length > 1) {
-      <!-- Mixing: show the included accounts as an overlapping stack, active one in front,
-           so the mixed view has a persistent, honest indicator right where you change it. -->
-      <span
-        class="userbar__stack"
-        data-testid="account-stack"
-        aria-hidden="true"
-      >
-        @for (account of stackAvatars(); track account.userId) {
-          <trn-avatar
-            class="userbar__stack-item"
-            [mxc]="account.avatarMxc"
-            [accountId]="account.userId"
-            [initial]="initialFor(account)"
-            [name]="account.displayName"
-            size="sm"
-          />
-        }
-      </span>
-    } @else {
-      <trn-avatar
-        [mxc]="user().avatarMxc"
-        [initial]="userInitial()"
-        [name]="user().displayName"
-        size="lg"
-      />
-    }
-    <div class="userbar__id">
-      <span class="userbar__name">{{ user().displayName }}</span>
-      @if (mixedAccounts().length > 1) {
-        <span class="userbar__meta">
-          <span class="userbar__handle">{{ user().userId }}</span>
-          <span class="userbar__mixed" data-testid="account-stack-count"
-            >{{ mixedAccounts().length }} accounts</span
-          >
-        </span>
-      } @else {
-        <span class="userbar__handle">{{ user().userId }}</span>
-      }
-    </div>
-  </button>
-  <button
-    trnBtn
-    presentation="ghost"
-    shape="icon"
-    size="sm"
-    class="userbar__system-status"
-    [class.userbar__system-status--problem]="hasSystemStatusProblems()"
-    (click)="openSystemStatus.emit()"
-    aria-label="System status"
-    trnTooltip="System status"
-    data-testid="open-system-status"
-  >
-    <trn-icon
-      name="shield-alert"
-      [variant]="hasSystemStatusProblems() ? 'danger' : 'muted'"
-      motion="pop"
+    <trn-avatar
+      [mxc]="user().avatarMxc"
+      [initial]="userInitial()"
+      [name]="user().displayName"
+      size="md"
+      [presence]="presence()"
     />
+    <span class="userbar__id">
+      <span class="userbar__name">{{ user().displayName }}</span>
+      <span class="userbar__handle">{{ user().userId }}</span>
+    </span>
   </button>
+  @if (otherAccountCount() > 0) {
+    <button
+      trnBtn
+      presentation="ghost"
+      size="sm"
+      class="userbar__accounts"
+      [trnDropdownMenuTrigger]="accountMenu"
+      side="top"
+      align="start"
+      [attr.aria-label]="otherAccountsLabel()"
+      data-testid="account-stack-count"
+    >
+      <span trnBadge variant="neutral" size="sm"
+        >+{{ otherAccountCount() }}</span
+      >
+    </button>
+  }
+  @if (!(titleBar.active() && hasSystemStatusProblems())) {
+    <button
+      trnBtn
+      presentation="ghost"
+      shape="icon"
+      size="sm"
+      class="userbar__system-status"
+      [class.userbar__system-status--problem]="hasSystemStatusProblems()"
+      (click)="openSystemStatus.emit()"
+      aria-label="System status"
+      trnTooltip="System status"
+      data-testid="open-system-status"
+    >
+      <trn-icon
+        name="shield-alert"
+        [variant]="hasSystemStatusProblems() ? 'danger' : 'muted'"
+        motion="pop"
+      />
+    </button>
+  }
   <button
     trnBtn
     presentation="ghost"
@@ -106,7 +98,10 @@
         </div>
         @if (account.unread > 0) {
           <span
+            trnBadge
             class="account-row__badge"
+            variant="neutral"
+            size="xs"
             [attr.aria-label]="account.unread + ' unread'"
             >{{ badgeLabel(account.unread) }}</span
           >

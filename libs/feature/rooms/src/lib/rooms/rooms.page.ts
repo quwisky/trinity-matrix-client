@@ -4,6 +4,7 @@
 // grammar in the initial chunk. This route is lazily loaded, so the grammars land in the
 // rooms chunk — and it evaluates before any message view is projected.
 import '../message-presentation/code-highlight';
+import { IdentityPresenceService } from '@trinity/data-access/identity';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -282,6 +283,12 @@ export class RoomsPage {
   readonly session = inject(SessionActionsService);
   readonly systemStatus = inject(WORKSPACE_SYSTEM_STATUS);
   protected readonly titleBar = inject(TitleBarState);
+  private readonly presence = inject(IdentityPresenceService);
+  /** The active account's own presence for the user-panel avatar; null while unknown. */
+  protected readonly ownPresence = computed(() => {
+    const userId = this.vm.activeAccountId();
+    return userId ? this.presence.presenceFor(userId)() : null;
+  });
   private readonly roomActionsOverflow = viewChild<ElementRef<HTMLElement>>(
     'roomActionsOverflow',
   );

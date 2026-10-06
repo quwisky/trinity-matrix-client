@@ -100,6 +100,10 @@ const CURRENT_STORAGE_OWNERS = new Map([
     'libs/application/appearance/src/lib/design-system-appearance-preferences.ts',
   ],
   [
+    'trinity.appearance.room-list',
+    'libs/application/appearance/src/lib/design-system-appearance-preferences.ts',
+  ],
+  [
     'trinity.appearance.code-size',
     'libs/data-access/timeline/src/lib/appearance-preferences.ts',
   ],
@@ -192,6 +196,7 @@ describe('Appearance contraction', () => {
     for (const carrier of [
       'data-theme',
       'data-density',
+      'data-room-list',
       'data-code-lines',
       '--trinity-code-scale',
     ]) {
@@ -220,7 +225,7 @@ describe('Appearance contraction', () => {
     const templateWritesRootCarrier = (file) => {
       const source = read(file);
       const hasBoundCarrier =
-        /\[(?:attr\.)?(?:data-theme|data-density|data-code-lines)\]|\[style\.(?:font-size|--trinity-code-scale)\]|\[class\.dark\]|\[(?:class|ngClass)\]\s*=\s*["'][^"']*\bdark\b/iu.test(
+        /\[(?:attr\.)?(?:data-theme|data-density|data-room-list|data-code-lines)\]|\[style\.(?:font-size|--trinity-code-scale)\]|\[class\.dark\]|\[(?:class|ngClass)\]\s*=\s*["'][^"']*\bdark\b/iu.test(
           source,
         );
       const hasStaticDarkCarrier = Array.from(

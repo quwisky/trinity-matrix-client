@@ -91,7 +91,7 @@ async function openSpaceSettings(
     );
     await touchPlatform.tap(page, pill);
   }
-  await touchPlatform.tap(page, page.getByTestId('space-actions-overflow'));
+  await touchPlatform.tap(page, page.getByTestId('space-header'));
   await touchPlatform.tap(page, page.getByTestId('open-space-settings'));
 }
 
@@ -448,7 +448,7 @@ test.describe('Space settings on a phone', () => {
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     const pill = page.getByRole('button', { name: spaceName, exact: true });
     await touchPlatform.tap(page, pill);
-    await touchPlatform.tap(page, page.getByTestId('space-actions-overflow'));
+    await touchPlatform.tap(page, page.getByTestId('space-header'));
     await touchPlatform.tap(page, page.getByTestId('open-space-members'));
 
     await expect(page.getByTestId('space-settings-panel-members')).toBeVisible({

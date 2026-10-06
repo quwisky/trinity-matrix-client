@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { render, screen } from '@trinity/testing';
 import { type SpaceSummary } from '@trinity/data-access/room-library';
 import { AvatarComponent } from '@trinity/components/generic-content';
@@ -17,11 +19,16 @@ function space(over: Partial<SpaceSummary> = {}): SpaceSummary {
   };
 }
 
+const counts = (unreadCount = 0, mentions = 0) => ({
+  unread: unreadCount,
+  mentions,
+});
+
 /** Build an unread object, overriding only the counts a test cares about. */
 const unread = (over: Partial<RailUnread> = {}): RailUnread => ({
-  recent: 0,
-  home: 0,
-  rooms: 0,
+  recent: counts(),
+  home: counts(),
+  rooms: counts(),
   perSpace: {},
   ...over,
 });
@@ -176,97 +183,249 @@ describe('ServerRailComponent', () => {
     expect(items[ROOMS].classList.contains('active')).toBe(true);
   });
 
-  it('shows unread badges on the Recent, Home, Rooms and space pills', async () => {
+  it('shows a mention badge on the Recent, Home, Rooms and space items', async () => {
     const { container } = await render(ServerRailComponent, {
       inputs: {
         spaces: [space({ id: '!s:hs' })],
         unread: unread({
-          recent: 9,
-          home: 3,
-          rooms: 7,
-          perSpace: { '!s:hs': 12 },
+          recent: counts(9, 9),
+          home: counts(3, 3),
+          rooms: counts(7, 7),
+          perSpace: { '!s:hs': counts(12, 12) },
         }),
       },
       imports: [MockComponent(AvatarComponent)],
     });
 
     const items = container.querySelectorAll('.item');
-    expect(items[RECENT].querySelector('.badge')?.textContent?.trim()).toBe(
+    const text = (i: number) =>
+      items[i].querySelector('[trnBadge]')?.textContent?.trim();
+    expect([text(RECENT), text(HOME), text(ROOMS), text(FIRST_SPACE)]).toEqual([
       '9',
-    );
-    expect(items[HOME].querySelector('.badge')?.textContent?.trim()).toBe('3');
-    expect(items[ROOMS].querySelector('.badge')?.textContent?.trim()).toBe('7');
-    expect(
-      items[FIRST_SPACE].querySelector('.badge')?.textContent?.trim(),
-    ).toBe('12');
+      '3',
+      '7',
+      '12',
+    ]);
   });
 
-  it('hides a pill badge when its unread count is zero', async () => {
+  it('shows the unread dot and no badge for unread without mentions', async () => {
     const { container } = await render(ServerRailComponent, {
+      inputs: {
+        spaces: [space({ id: '!s:hs' })],
+        unread: unread({ perSpace: { '!s:hs': counts(3, 0) } }),
+      },
       imports: [MockComponent(AvatarComponent)],
     });
-    expect(container.querySelector('.badge')).toBeNull();
+
+    const item = container.querySelectorAll('.item')[FIRST_SPACE];
+    expect(item.classList.contains('item--unread')).toBe(true);
+    expect(item.querySelector('[trnBadge]')).toBeNull();
   });
 
-  it('caps a pill badge at 99+', async () => {
+  it('shows neither dot nor badge with nothing unread, and no dot when mentioned', async () => {
     const { container } = await render(ServerRailComponent, {
-      inputs: { unread: unread({ home: 250 }) },
+      inputs: {
+        spaces: [space({ id: '!a:hs' }), space({ id: '!b:hs' })],
+        unread: unread({ perSpace: { '!b:hs': counts(5, 2) } }),
+      },
       imports: [MockComponent(AvatarComponent)],
     });
-    expect(container.querySelector('.item .badge')?.textContent?.trim()).toBe(
-      '99+',
+
+    expect(container.querySelector('[trnBadge]')?.textContent?.trim()).toBe(
+      '2',
     );
+    expect(container.querySelectorAll('[trnBadge]').length).toBe(1);
+    expect(container.querySelector('.item--unread')).toBeNull();
   });
 
-  it('shows a distinct badge value per space pill among several spaces', async () => {
+  it('names rail pills with their unread state', async () => {
     const { container } = await render(ServerRailComponent, {
       inputs: {
         spaces: [
           space({ id: '!a:hs', name: 'Alpha' }),
-          space({ id: '!b:hs', name: 'Bravo' }),
-          space({ id: '!c:hs', name: 'Charlie' }),
+          space({ id: '!b:hs', name: 'Beta' }),
+          space({ id: '!c:hs', name: 'Gamma' }),
         ],
         unread: unread({
-          perSpace: {
-            '!a:hs': 1,
-            '!b:hs': 0,
-            '!c:hs': 42,
-          },
+          home: counts(4, 0),
+          rooms: counts(5, 2),
+          perSpace: { '!a:hs': counts(3, 0), '!b:hs': counts(5, 2) },
         }),
       },
       imports: [MockComponent(AvatarComponent)],
     });
 
-    // order: Recent, Home, Rooms, a, b, c, add
-    const items = container.querySelectorAll('.item');
-    expect(
-      items[FIRST_SPACE].querySelector('.badge')?.textContent?.trim(),
-    ).toBe('1');
-    expect(items[FIRST_SPACE + 1].querySelector('.badge')).toBeNull(); // zero → hidden
-    expect(
-      items[FIRST_SPACE + 2].querySelector('.badge')?.textContent?.trim(),
-    ).toBe('42');
+    const labels = [...container.querySelectorAll('.item > .pill')].map((p) =>
+      p.getAttribute('aria-label'),
+    );
+    expect(labels.slice(0, 6)).toEqual([
+      'Recent activity',
+      'Direct messages, unread',
+      'Rooms, 2 mentions',
+      'Alpha, unread',
+      'Beta, 2 mentions',
+      'Gamma',
+    ]);
   });
 
-  it('hides a space badge once its count transitions to 0 via a setInput change', async () => {
+  it('puts the mention badge bottom-right of a single-account space', async () => {
+    const { container } = await render(ServerRailComponent, {
+      inputs: {
+        spaces: [space({ id: '!s:hs' })],
+        unread: unread({ perSpace: { '!s:hs': counts(5, 2) } }),
+      },
+    });
+    const badge = container.querySelector('[trnBadge]')!;
+    expect(badge.getAttribute('data-variant')).toBe('danger');
+    expect(badge.classList.contains('badge--bottom')).toBe(true);
+    expect(badge.classList.contains('badge--top')).toBe(false);
+  });
+
+  it('moves the mention badge top-right beside an account badge', async () => {
+    const { container } = await render(ServerRailComponent, {
+      inputs: {
+        spaces: [space({ id: '!s:hs', accountId: '@me:hs' })],
+        unread: unread({ perSpace: { '!s:hs': counts(5, 2) } }),
+        accountBadges: new Map([
+          ['@me:hs', { id: '@me:hs', initial: 'M', name: 'Me' }],
+        ]),
+      },
+    });
+    const badge = container.querySelector('[trnBadge]')!;
+    expect(badge.classList.contains('badge--top')).toBe(true);
+    expect(badge.classList.contains('badge--bottom')).toBe(false);
+    expect(
+      container.querySelector('[data-testid="account-badge"]'),
+    ).toBeTruthy();
+  });
+
+  it('caps a mention badge at 99+', async () => {
+    const { container } = await render(ServerRailComponent, {
+      inputs: { unread: unread({ home: counts(250, 250) }) },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    expect(container.querySelector('[trnBadge]')?.textContent?.trim()).toBe(
+      '99+',
+    );
+  });
+
+  it('updates a space badge when its mentions transition to 0', async () => {
     const { fixture, container } = await render(ServerRailComponent, {
       inputs: {
         spaces: [space({ id: '!s:hs' })],
-        unread: unread({ perSpace: { '!s:hs': 6 } }),
+        unread: unread({ perSpace: { '!s:hs': counts(6, 6) } }),
       },
       imports: [MockComponent(AvatarComponent)],
     });
-
-    const spaceItem = () => container.querySelectorAll('.item')[FIRST_SPACE];
-    expect(spaceItem().querySelector('.badge')?.textContent?.trim()).toBe('6');
+    const item = () => container.querySelectorAll('.item')[FIRST_SPACE];
+    expect(item().querySelector('[trnBadge]')?.textContent?.trim()).toBe('6');
 
     fixture.componentRef.setInput(
       'unread',
-      unread({ perSpace: { '!s:hs': 0 } }),
+      unread({ perSpace: { '!s:hs': counts(0, 0) } }),
     );
     fixture.detectChanges();
+    expect(item().querySelector('[trnBadge]')).toBeNull();
+  });
 
-    expect(spaceItem().querySelector('.badge')).toBeNull();
+  it('marks the selected item indicator', async () => {
+    const { container } = await render(ServerRailComponent, {
+      inputs: { spaces: [space({ id: '!s:hs' })], activeSpaceId: '!s:hs' },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    const selected = container.querySelectorAll('.indicator--selected');
+    expect(selected.length).toBe(1);
+    expect(selected[0].parentElement).toBe(
+      container.querySelectorAll('.item')[FIRST_SPACE],
+    );
+  });
+
+  it('renders the space pill as an icon button', async () => {
+    const { container } = await render(ServerRailComponent, {
+      inputs: { spaces: [space()] },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    const pill = container
+      .querySelectorAll('.item')
+      [FIRST_SPACE].querySelector('button')!;
+    expect(pill.hasAttribute('data-trn-icon-button')).toBe(true);
+  });
+
+  it('keeps the space pill 48px with the place radius inside the icon-button recipe', async () => {
+    const { container } = await render(ServerRailComponent, {
+      inputs: { spaces: [space()] },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    const pill = container
+      .querySelectorAll('.item')
+      [FIRST_SPACE].querySelector('button')!;
+    // The recipe's own size-8 and the global icon-button radius would otherwise shrink
+    // the pill under its 48px avatar and round it differently.
+    expect(pill.classList.contains('size-12')).toBe(true);
+    const css = readFileSync(
+      join(import.meta.dirname, 'server-rail.component.scss'),
+      'utf8',
+    );
+    expect(css).toMatch(
+      /--trn-icon-button-radius:\s*var\(--trinity-shape-place-radius\)/,
+    );
+  });
+
+  it('moves the account badge to the bottom-right of the rail avatar', () => {
+    const css = readFileSync(
+      join(import.meta.dirname, 'server-rail.component.scss'),
+      'utf8',
+    );
+    expect(css).toMatch(/--trn-account-badge-left:\s*auto/);
+    expect(css).toMatch(/--trn-account-badge-right:\s*-2px/);
+  });
+
+  it('keeps the selected pill over the unread dot and hover pill', () => {
+    const css = readFileSync(
+      join(import.meta.dirname, 'server-rail.component.scss'),
+      'utf8',
+    );
+    // Specificity of the unread rule is (item, indicator) = 2 classes; the selected rule
+    // must have at least that many and come after it, or the 8px dot wins.
+    const unreadAt = css.indexOf('.item--unread .indicator {');
+    const selectedAt = css.indexOf('.item .indicator--selected,');
+    expect(unreadAt).toBeGreaterThan(-1);
+    expect(selectedAt).toBeGreaterThan(unreadAt);
+    expect(css.indexOf('.item:hover .indicator--selected')).toBeGreaterThan(
+      css.indexOf('.item:hover .indicator {'),
+    );
+  });
+
+  it('sizes the indicator 32px selected, 20px on hover and 8px for unread', () => {
+    const css = readFileSync(
+      join(import.meta.dirname, 'server-rail.component.scss'),
+      'utf8',
+    );
+    const tokens = readFileSync(
+      join(
+        import.meta.dirname,
+        '../../../../../theme-foundation/styles/internal/variables.scss',
+      ),
+      'utf8',
+    );
+    const height = (selector: string) =>
+      css.match(
+        new RegExp(
+          `${selector.replace(/[.]/g, '\\.')}\\s*\\{\\s*height:\\s*([^;]+);`,
+        ),
+      )?.[1];
+    expect(height('.item--unread .indicator')).toBe(
+      'var(--trinity-rail-indicator-unread)',
+    );
+    expect(height('.item:hover .indicator')).toBe(
+      'var(--trinity-rail-indicator-hover)',
+    );
+    expect(height('.item:hover .indicator--selected')).toBe(
+      'var(--trinity-rail-indicator-selected)',
+    );
+    expect(tokens).toContain('--trinity-rail-indicator-selected: 32px');
+    expect(tokens).toContain('--trinity-rail-indicator-hover: 20px');
+    expect(tokens).toContain('--trinity-rail-indicator-unread: 8px');
   });
 
   it('badges each space pill with its owning account in the mixed view', async () => {

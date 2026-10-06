@@ -104,23 +104,4 @@
   .thread-item__last-author {
     color: var(--trinity-text);
   }
-
-  .thread-item__badge {
-    flex: 0 0 auto;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 6px;
-    border-radius: var(--trinity-radius-pill);
-    background: var(--trinity-accent);
-    color: var(--trinity-accent-foreground);
-    font-size: 12px;
-    font-weight: 700;
-    line-height: 18px;
-    text-align: center;
-  }
-
-  .thread-item__badge--highlight {
-    background: var(--trinity-danger-solid);
-    color: var(--trinity-danger-solid-foreground);
-  }
 }

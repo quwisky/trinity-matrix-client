@@ -67,7 +67,7 @@ async function openSpaceSettings(
     page.getByRole('button', { name: 'Back to rooms' }),
   );
   await touchPlatform.tap(page, space);
-  await touchPlatform.tap(page, page.getByTestId('space-actions-overflow'));
+  await touchPlatform.tap(page, page.getByTestId('space-header'));
   await touchPlatform.tap(page, page.getByTestId('open-space-settings'));
   await expect(page.getByTestId('space-settings')).toBeVisible({
     timeout: 10_000,
@@ -601,7 +601,7 @@ test.describe('Space member and address settings on a phone', () => {
     const space = page.getByRole('button', { name: spaceName, exact: true });
     await space.waitFor({ state: 'visible', timeout: 30_000 });
     await touchPlatform.tap(page, space);
-    await touchPlatform.tap(page, page.getByTestId('space-actions-overflow'));
+    await touchPlatform.tap(page, page.getByTestId('space-header'));
     await touchPlatform.tap(page, page.getByTestId('open-space-members'));
 
     const settings = page.getByTestId('space-settings');

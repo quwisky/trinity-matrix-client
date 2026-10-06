@@ -73,6 +73,7 @@ const ROLES = [
     text: '--trinity-text',
     on: [
       '--trinity-chat',
+      '--trinity-surface-floating-card',
       '--trinity-sidebar',
       '--trinity-surface-sidebar',
       '--trinity-rail',
@@ -84,6 +85,7 @@ const ROLES = [
     text: '--trinity-text-muted',
     on: [
       '--trinity-chat',
+      '--trinity-surface-floating-card',
       '--trinity-sidebar',
       '--trinity-surface-sidebar',
       '--trinity-rail',
@@ -95,6 +97,7 @@ const ROLES = [
     text: '--trinity-text-bright',
     on: [
       '--trinity-chat',
+      '--trinity-surface-floating-card',
       '--trinity-sidebar',
       '--trinity-surface-sidebar',
       '--trinity-hover',
@@ -105,6 +108,7 @@ const ROLES = [
     text: '--trinity-danger',
     on: [
       '--trinity-chat',
+      '--trinity-surface-floating-card',
       '--trinity-sidebar',
       '--trinity-surface-sidebar',
       '--trinity-rail',
@@ -210,6 +214,7 @@ const NON_TEXT_ROLES = [
       '--trinity-surface-workspace',
       '--trinity-surface-raised',
       '--trinity-surface-floating',
+      '--trinity-surface-floating-card',
       '--trinity-surface-panel',
       '--trinity-state-hover-surface',
       '--trinity-state-pressed-surface',
@@ -824,7 +829,7 @@ describe('contrast matrix', () => {
     );
 
     expect(sheet).toMatch(
-      /&\.active\s*\{[^]*?\.channel__preview\s*\{\s*color:\s*var\(--trinity-state-selected-foreground\)/,
+      /&\.channel--selected\s*\{[^]*?\.channel__preview\s*\{\s*color:\s*var\(--trinity-state-selected-foreground\)/,
     );
   });
 });

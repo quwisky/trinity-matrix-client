@@ -111,7 +111,22 @@
     margin-top: 1px;
     text-align: left;
 
-    &.active {
+    // A list row, not a button control: it stays a semantic <button> styled by row tokens,
+    // because the button recipe's fixed height and centred label would change the layout.
+    position: relative;
+
+    // Muted rooms recede: dimmed avatar and muted-role text. Opacity is kept off the text
+    // and the badge so the name keeps AA contrast and a mention badge stays full strength.
+    // Placed before the selected and unread states so those still win.
+    &.channel--muted {
+      color: var(--trinity-text-muted);
+
+      .channel__avatar {
+        opacity: 0.55;
+      }
+    }
+
+    &.channel--selected {
       background: var(--trinity-state-selected-surface);
       color: var(--trinity-state-selected-foreground);
 
@@ -131,8 +146,21 @@
     }
 
     // Unread rooms read brighter and bolder (messenger-style emphasis).
-    &.unread {
+    &.channel--unread {
       color: var(--trinity-text-bright);
+
+      // The 4x8px unread marker at the row's inline start.
+      &::before {
+        content: '';
+        position: absolute;
+        inset-inline-start: 0;
+        inset-block-start: 50%;
+        width: 4px;
+        height: 8px;
+        transform: translateY(-50%);
+        border-radius: var(--trinity-radius-pill);
+        background: var(--trinity-text-bright);
+      }
 
       .channel__name {
         font-weight: 600;
@@ -191,39 +219,14 @@
     font-size: 0.75rem;
   }
 
-  .channel__badge {
+  // A room flagged unread with nothing new in it has no number to show, so it gets an 8px
+  // dot rather than a "0".
+  .channel__dot {
     flex: 0 0 auto;
-    min-width: 1rem;
-    height: 1rem;
-    padding: 0 0.3125rem;
+    width: 8px;
+    height: 8px;
     border-radius: var(--trinity-radius-pill);
-
-    // Filled badge, so this takes the solid pair — `--trinity-danger` is the
-    // text/icon role and is too light to carry white on it.
-    background: var(--trinity-danger-solid);
-    color: var(--trinity-danger-solid-foreground);
-    font-size: var(--trinity-text-xs);
-    font-weight: 700;
-    line-height: 1rem;
-    text-align: center;
-
-    // Ordinary unread (no mention) reads as a neutral count, not the red alert.
-    // Both fills clear AA against the sidebar, so hue — not contrast — is what
-    // separates them; don't rely on the mention badge being the "louder" one.
-    &--muted {
-      background: var(--trinity-text-muted);
-      color: var(--trinity-sidebar);
-    }
-
-    // A room flagged unread with nothing new in it has no number to show, so it gets a
-    // dot in the same neutral fill as an ordinary unread count rather than a "0".
-    &--dot {
-      min-width: 8px;
-      width: 8px;
-      height: 8px;
-      padding: 0;
-      background: var(--trinity-text-muted);
-    }
+    background: var(--trinity-text-muted);
   }
 
   .channel__menu {
@@ -255,5 +258,17 @@
     .channel__menu {
       opacity: 1;
     }
+  }
+
+  // Compact rows: one line and no preview. The 20px avatar comes from the ROOM_LIST_STYLE
+  // token through `exactSize`, so its presence dot and account badge keep their floors.
+  :host-context(html[data-room-list='compact']) .channel__preview {
+    display: none;
+  }
+
+  // Spacious has the room for a preview line, so compact brings it back there.
+  :host-context(html[data-room-list='compact'][data-density='spacious'])
+    .channel__preview {
+    display: block;
   }
 }

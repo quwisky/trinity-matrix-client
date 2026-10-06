@@ -8,6 +8,7 @@ import {
 import { THEME_CATALOG } from '@trinity/theme-foundation';
 import {
   DENSITY_PREFERENCE,
+  ROOM_LIST_PREFERENCE,
   TEXT_SIZE_OPTIONS,
   TEXT_SIZE_PREFERENCE,
 } from './design-system-appearance-preferences';
@@ -16,6 +17,7 @@ import type { ResolvedAppearance } from './appearance-resolution';
 const DARK_CLASS = 'dark';
 const THEME_ATTRIBUTE = 'data-theme';
 const DENSITY_ATTRIBUTE = 'data-density';
+const ROOM_LIST_ATTRIBUTE = 'data-room-list';
 const CODE_LINE_ATTRIBUTE = 'data-code-lines';
 const CODE_SIZE_PROPERTY = '--trinity-code-scale';
 
@@ -33,6 +35,7 @@ export class BrowserAppearanceDocumentAdapter implements AppearanceDocumentAdapt
     this.applyTheme(appearance);
     this.applyTextSize(appearance);
     this.applyDensity(appearance);
+    this.applyRoomList(appearance);
     this.applyCodeSize(appearance);
     this.applyCodeLines(appearance);
   }
@@ -61,6 +64,15 @@ export class BrowserAppearanceDocumentAdapter implements AppearanceDocumentAdapt
       appearance.density === DENSITY_PREFERENCE.defaultValue
         ? null
         : appearance.density,
+    );
+  }
+
+  private applyRoomList(appearance: ResolvedAppearance): void {
+    this.applyAttribute(
+      ROOM_LIST_ATTRIBUTE,
+      appearance.roomList === ROOM_LIST_PREFERENCE.defaultValue
+        ? null
+        : appearance.roomList,
     );
   }
 

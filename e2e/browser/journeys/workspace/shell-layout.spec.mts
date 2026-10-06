@@ -102,6 +102,7 @@ async function sendMessages(
   actor: ApiAccount,
   roomId: string,
   prefix: string,
+  mention?: string,
 ): Promise<void> {
   for (let index = 0; index < 42; index++) {
     const response = await request.put(
@@ -111,6 +112,10 @@ async function sendMessages(
         data: {
           msgtype: 'm.text',
           body: `${prefix} message ${index} with enough text to occupy the timeline`,
+          // The last message mentions the reader, so the row carries its danger badge.
+          ...(mention && index === 41
+            ? { 'm.mentions': { user_ids: [mention] } }
+            : {}),
         },
       },
     );
@@ -228,9 +233,11 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
     return result;
   });
 
-  // Dock clearance follows the density's shell gap.
+  // Dock clearance is the 60px --trinity-navigation-dock-height plus the density's
+  // --trinity-space-5 gap (cosy 16, compact 12, spacious 20).
   const dockClearance =
-    { cosy: 68, compact: 64, spacious: 72 }[geometry.density] ?? Number.NaN;
+    { cosy: 60 + 16, compact: 60 + 12, spacious: 60 + 20 }[geometry.density] ??
+    Number.NaN;
   expect(geometry.railScrollPaddingEnd).toBe(dockClearance);
   expect(geometry.roomScrollPaddingEnd).toBe(dockClearance);
   expect(geometry.settingsIconOffsetX).toBeLessThanOrEqual(1);
@@ -328,16 +335,17 @@ async function expectAccountMenuAboveDock(page: Page): Promise<void> {
     await expectInside(unreadBadge, accountRow);
   }
 
-  // The anchored overlay may meet the dock inside the 4px spacing token (including its
-  // shadow), but it must remain above the dock controls after its entrance motion settles.
+  // The floating panel is a padded surface around its controls, so the anchored overlay may
+  // sit over that padding and shadow. It must stay above the controls themselves (the
+  // identity trigger, and the "+N" chip when present) after its entrance motion settles.
   await expect
     .poll(async () => {
-      const [menuBox, dockBox] = await Promise.all([
+      const [menuBox, triggerBox] = await Promise.all([
         menu.boundingBox(),
-        page.locator('.userbar').boundingBox(),
+        trigger.boundingBox(),
       ]);
       return Boolean(
-        menuBox && dockBox && menuBox.y + menuBox.height <= dockBox.y + 4,
+        menuBox && triggerBox && menuBox.y + menuBox.height <= triggerBox.y,
       );
     })
     .toBe(true);
@@ -607,7 +615,14 @@ test.describe('Modern room shell layout', () => {
       for (const member of members) {
         if (member !== owner) await joinRoom(request, hs, member, roomId);
       }
-      await sendMessages(request, hs, owner, roomId, `${density}-${runId}`);
+      await sendMessages(
+        request,
+        hs,
+        owner,
+        roomId,
+        `${density}-${runId}`,
+        reader.userId,
+      );
     }
 
     await login(page, {
@@ -647,8 +662,9 @@ test.describe('Modern room shell layout', () => {
       await row.first().scrollIntoViewIfNeeded();
 
       await expectEllipsis(row.locator('.channel__name'));
-      await expect(row.locator('.channel__badge')).toBeVisible();
-      await expectInside(row.locator('.channel__badge'), row);
+      await expect(row.locator('.channel--unread')).toBeVisible();
+      await expect(row.locator('[data-slot="badge"]')).toBeVisible();
+      await expectInside(row.locator('[data-slot="badge"]'), row);
       await expectInside(row.locator('.channel__menu'), row);
       await expectEllipsis(page.locator('.userbar__name'));
       await expectInside(

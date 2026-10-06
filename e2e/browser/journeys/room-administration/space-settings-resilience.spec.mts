@@ -75,7 +75,7 @@ async function openSpaceSettings(page: Page, name: string): Promise<void> {
   const pill = page.getByRole('button', { name, exact: true });
   await pill.waitFor({ state: 'visible', timeout: 30_000 });
   await pill.click();
-  await page.getByTestId('space-actions-overflow').click();
+  await page.getByTestId('space-header').click();
   await page.getByTestId('open-space-settings').click();
   await expect(page.getByTestId('space-settings')).toBeVisible({
     timeout: 10_000,

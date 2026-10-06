@@ -30,6 +30,13 @@ const DENSITY_OPTIONS = Object.freeze([
 
 export type AppearanceDensity = (typeof DENSITY_OPTIONS)[number]['id'];
 
+const ROOM_LIST_OPTIONS = Object.freeze([
+  Object.freeze({ id: 'rich', label: 'Rich' }),
+  Object.freeze({ id: 'compact', label: 'Compact' }),
+] as const);
+
+export type AppearanceRoomList = (typeof ROOM_LIST_OPTIONS)[number]['id'];
+
 export const MODE_PREFERENCE = definePreference({
   id: 'design-system.appearance.mode',
   owner: 'design-system',
@@ -143,8 +150,42 @@ export const DENSITY_PREFERENCE = definePreference({
   ),
 } satisfies PreferenceDescriptor<AppearanceDensity>);
 
+export const ROOM_LIST_PREFERENCE = definePreference({
+  id: 'design-system.appearance.room-list',
+  owner: 'design-system',
+  section: 'appearance',
+  order: 50,
+  scope: 'installation',
+  defaultValue: 'rich',
+  sensitivity: 'public',
+  storage: 'device-preferences',
+  export: 'portable',
+  editor: {
+    kind: 'select',
+    label: 'Room list',
+    description:
+      "Rich rows show each room's last message; compact rows fit more rooms.",
+    testId: 'room-list-select',
+    options: ROOM_LIST_OPTIONS.map(({ id, label }) => ({ value: id, label })),
+  },
+  persistence: {
+    key: 'trinity.appearance.room-list',
+    migration: closedStringMigration(isAppearanceRoomList),
+  },
+  validate: closedStringValidation(
+    isAppearanceRoomList,
+    'appearance-room-list-invalid',
+  ),
+} satisfies PreferenceDescriptor<AppearanceRoomList>);
+
 export const DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS: readonly PreferenceDescriptor<PreferenceValue>[] =
-  [MODE_PREFERENCE, THEME_PREFERENCE, TEXT_SIZE_PREFERENCE, DENSITY_PREFERENCE];
+  [
+    MODE_PREFERENCE,
+    THEME_PREFERENCE,
+    TEXT_SIZE_PREFERENCE,
+    DENSITY_PREFERENCE,
+    ROOM_LIST_PREFERENCE,
+  ];
 
 export function provideDesignSystemAppearancePreferences(): EnvironmentProviders {
   return providePreferenceDescriptors(
@@ -166,6 +207,10 @@ function isTextSize(value: unknown): value is TextSize {
 
 function isAppearanceDensity(value: unknown): value is AppearanceDensity {
   return DENSITY_OPTIONS.some(({ id }) => id === value);
+}
+
+function isAppearanceRoomList(value: unknown): value is AppearanceRoomList {
+  return ROOM_LIST_OPTIONS.some(({ id }) => id === value);
 }
 
 function closedStringValidation<T extends string>(

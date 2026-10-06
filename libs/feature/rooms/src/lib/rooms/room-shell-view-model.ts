@@ -225,13 +225,53 @@ export class RoomShellViewModel {
     return totals;
   });
 
-  /** The rail's unread badges bundled into one object input. */
-  readonly railUnread = computed<RailUnread>(() => ({
-    recent: this.recentUnread(),
-    home: this.homeUnread(),
-    rooms: this.roomsUnread(),
-    perSpace: this.spaceUnread(),
-  }));
+  /** Mentions (highlight counts) over the same rooms each unread total covers. */
+  private sumHighlights(include: (room: RoomSummary) => boolean): number {
+    return this.railRoomSource().reduce(
+      (sum, r) => (include(r) ? sum + r.highlightCount : sum),
+      0,
+    );
+  }
+
+  /** Mentions summed per space, over the same child rooms as {@link spaceUnread}. */
+  readonly spaceMentions = computed<Record<string, number>>(() => {
+    const view = this.selectedLibrary.view();
+    const byId = new Map(view.rooms.map((r) => [r.id, r] as const));
+    const totals: Record<string, number> = {};
+    for (const space of view.spaces) {
+      totals[space.id] = space.childRoomIds.reduce(
+        (sum, id) => sum + (byId.get(id)?.highlightCount ?? 0),
+        0,
+      );
+    }
+    return totals;
+  });
+
+  /** The rail's unread and mention counts bundled into one object input. */
+  readonly railUnread = computed<RailUnread>(() => {
+    const mentions = this.spaceMentions();
+    const perSpace: RailUnread['perSpace'] = {};
+    for (const [id, unread] of Object.entries(this.spaceUnread())) {
+      perSpace[id] = { unread, mentions: mentions[id] ?? 0 };
+    }
+    return {
+      recent: {
+        unread: this.recentUnread(),
+        mentions: this.sumHighlights(() => true),
+      },
+      home: {
+        unread: this.homeUnread(),
+        mentions: this.sumHighlights((r) => this.isDirectRow(r)),
+      },
+      rooms: {
+        unread: this.roomsUnread(),
+        mentions: this.sumHighlights(
+          (r) => !this.isDirectRow(r) && !this.isSpaceChild(r),
+        ),
+      },
+      perSpace,
+    };
+  });
 
   readonly activeRoom = computed(() => {
     const id = this.store.activeRoomId();

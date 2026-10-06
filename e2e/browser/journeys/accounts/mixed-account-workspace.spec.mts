@@ -65,7 +65,9 @@ test.describe('Multiple accounts', () => {
       timeout: 20_000,
     });
     await expect(
-      page.locator('trn-channel-sidebar .channel.active', { hasText: roomA }),
+      page.locator('trn-channel-sidebar .channel.channel--selected', {
+        hasText: roomA,
+      }),
     ).toBeVisible({ timeout: 15_000 });
   });
 
@@ -119,6 +121,18 @@ test.describe('Multiple accounts', () => {
       railPill(spaceA).locator('[data-testid="account-badge"]'),
     ).toBeVisible();
 
+    // The account badge sits at the pill's bottom-right (it overhangs by its 2px ring).
+    const pillBox = (await railPill(spaceA).boundingBox())!;
+    const badgeBox = (await railPill(spaceA)
+      .locator('[data-testid="account-badge"]')
+      .boundingBox())!;
+    expect(
+      Math.abs(badgeBox.x + badgeBox.width - (pillBox.x + pillBox.width)),
+    ).toBeLessThanOrEqual(3);
+    expect(
+      Math.abs(badgeBox.y + badgeBox.height - (pillBox.y + pillBox.height)),
+    ).toBeLessThanOrEqual(3);
+
     // Opening A's space switches the active account to A.
     await railPill(spaceA).click();
     await expect(page.locator('.userbar__handle')).toContainText(`@${userA}:`, {
@@ -165,11 +179,8 @@ test.describe('Multiple accounts', () => {
 
     await mixInAccount(page, userA);
     await expect(roomARow).toBeVisible({ timeout: 20_000 });
-    // While mixing, the footer states the mix size and stacks the accounts' avatars.
-    await expect(page.getByTestId('account-stack')).toBeVisible();
-    await expect(page.getByTestId('account-stack-count')).toContainText(
-      '2 accounts',
-    );
+    // The panel's chip counts the other signed-in accounts.
+    await expect(page.getByTestId('account-stack-count')).toHaveText('+1');
 
     // The selection is persisted, so a cold reload comes back mixed rather than resetting.
     await page.reload();
@@ -315,7 +326,8 @@ test.describe('Multiple accounts', () => {
     await expect(desktopTrigger).toBeFocused();
     await expect(roomARow).toHaveCount(0);
     await expect(roomBRow).toBeVisible();
-    await expect(page.getByTestId('account-stack')).toHaveCount(0);
+    // The chip counts signed-in accounts, so unticking one from the view leaves it alone.
+    await expect(page.getByTestId('account-stack-count')).toHaveText('+1');
   });
   // The quick switcher shares the picker's scope, so it must find another account's rooms
   // and switch to that account on the jump — the same contract as clicking a sidebar row.
@@ -521,7 +533,9 @@ test.describe('Multiple accounts', () => {
       timeout: 20_000,
     });
     await expect(
-      page.locator('trn-channel-sidebar .channel.active', { hasText: roomA }),
+      page.locator('trn-channel-sidebar .channel.channel--selected', {
+        hasText: roomA,
+      }),
     ).toBeVisible({ timeout: 15_000 });
   });
 

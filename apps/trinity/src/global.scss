@@ -121,7 +121,11 @@
   }
 
   :is(button, a)[trnBtn][data-trn-icon-button] {
-    border-radius: var(--trinity-shape-control-radius);
+    // A caller whose control holds an identity shape (the rail's space pill) sets the hook.
+    border-radius: var(
+      --trn-icon-button-radius,
+      var(--trinity-shape-control-radius)
+    );
   }
 
   @media (hover: hover) {

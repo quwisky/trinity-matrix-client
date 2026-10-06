@@ -58,35 +58,38 @@
     transition: height var(--trinity-duration-fast) var(--trinity-ease-standard);
   }
 
-  .item:hover .indicator {
-    height: 20px;
+  // Precedence: unread dot < hover pill < selected pill. Each rule sits at equal or higher
+  // specificity than the one it overrides (`.item .indicator--selected` ties the unread rule
+  // and comes later), so a selected item with plain unread still shows the 32px pill.
+  .item--unread .indicator {
+    height: var(--trinity-rail-indicator-unread);
   }
 
-  // Unread-count badge pinned to a pill's top-right. The rail-coloured ring lifts
-  // it off the pill (Discord-style); pointer-events:none keeps clicks on the pill.
-  .badge {
-    position: absolute;
-    top: -2px;
-    right: 8px;
-    min-width: 1.125rem;
-    height: 1.125rem;
-    padding: 0 0.3125rem;
-    border-radius: var(--trinity-radius-pill);
+  .item:hover .indicator {
+    height: var(--trinity-rail-indicator-hover);
+  }
 
-    // Filled badge, so this takes the solid pair — `--trinity-danger` is the
-    // text/icon role and is too light to carry white on it.
-    background: var(--trinity-danger-solid);
-    color: var(--trinity-danger-solid-foreground);
-    font-size: var(--trinity-text-xs);
-    font-weight: 700;
-    line-height: 1.125rem;
-    text-align: center;
+  .item .indicator--selected,
+  .item:hover .indicator--selected {
+    height: var(--trinity-rail-indicator-selected);
+  }
+
+  // Mention badge: bottom-right of the icon, or top-right when an account badge holds the
+  // bottom. The rail-coloured ring lifts it off the icon; clicks fall through to the pill.
+  .badge--top,
+  .badge--bottom {
+    position: absolute;
+    right: 8px;
     box-shadow: 0 0 0 2px var(--trinity-surface-app);
     pointer-events: none;
   }
 
-  .item.active .indicator {
-    height: 40px;
+  .badge--top {
+    top: -2px;
+  }
+
+  .badge--bottom {
+    bottom: -2px;
   }
 
   .pill {
@@ -99,6 +102,11 @@
     background: var(--trinity-state-hover-surface);
     color: var(--trinity-text);
     border-radius: var(--trinity-shape-place-radius);
+
+    // The global icon-button rule (overrides layer) wins over `border-radius` above and reads
+    // this hook, so the space pill keeps the avatar's place radius.
+    --trn-icon-button-radius: var(--trinity-shape-place-radius);
+
     display: flex;
     align-items: center;
     justify-content: center;
@@ -148,6 +156,10 @@
   }
 
   trn-avatar {
+    // Account badge at the bottom-right; the mention badge takes the top-right.
+    --trn-account-badge-left: auto;
+    --trn-account-badge-right: -2px;
+
     pointer-events: none;
   }
 }

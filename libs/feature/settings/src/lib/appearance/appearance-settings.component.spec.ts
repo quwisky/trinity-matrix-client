@@ -48,6 +48,7 @@ describe('AppearanceSettingsComponent', () => {
       theme: 'trinity',
       textSize: 'default',
       density: 'cosy',
+      roomList: 'rich',
       codeSize: 'default',
       codeLinePresentation: 'auto',
     });
@@ -145,6 +146,7 @@ describe('AppearanceSettingsComponent', () => {
       theme: 'midnight',
       textSize: 'default',
       density: 'compact',
+      roomList: 'rich',
       codeSize: 'default',
       codeLinePresentation: 'auto',
     });
@@ -427,6 +429,19 @@ describe('AppearanceSettingsComponent', () => {
         ?.options()
         .map(({ value, label }) => [value, label]),
     ).toContainEqual(['spacious', 'Spacious']);
+  });
+
+  it('offers Rich and Compact in the room list select', async () => {
+    const { fixture } = await renderPage();
+
+    expect(
+      selectFor(fixture, 'room-list-select')
+        ?.options()
+        .map(({ value, label }) => [value, label]),
+    ).toEqual([
+      ['rich', 'Rich'],
+      ['compact', 'Compact'],
+    ]);
   });
 
   // #168, and the quietest of the three: the Theme dropdown lost only a capital letter,

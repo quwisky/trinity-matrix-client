@@ -9,10 +9,10 @@ import {
 /**
  * What a badge can say in Trinity. Ours, and deliberately narrower than the kit's.
  *
- * The kit offers eight variants; this app uses three — `success` and `warning` on the device
- * list, and the default elsewhere. A public union is a promise to keep working, so it is kept
- * to what call sites actually ask for: five fewer things for the next library to satisfy, and
- * five fewer things to check when one is swapped in. Widen it when something needs it.
+ * The kit offers eight variants; this app uses four — `success` and `warning` on the device
+ * list, `danger` for mentions, and the default elsewhere. A public union is a promise to keep working, so it is kept
+ * to what call sites actually ask for: four fewer things for the next library to satisfy, and
+ * four fewer things to check when one is swapped in. Widen it when something needs it.
  */
 /** Trinity's status badge, expressed only through semantic Trinity recipes. */
 @Directive({

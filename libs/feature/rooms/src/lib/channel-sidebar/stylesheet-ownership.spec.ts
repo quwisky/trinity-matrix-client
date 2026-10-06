@@ -57,7 +57,7 @@ function styledClasses(scss: string): Set<string> {
   for (const match of scss.matchAll(/^\s*\.([a-zA-Z0-9_-]+)/gm)) {
     found.add(match[1]);
   }
-  // `&--muted` under `.channel__badge` styles `.channel__badge--muted`.
+  // `&--muted` under `.channel__badge` would style `.channel__badge--muted`.
   let current: string | null = null;
   for (const line of scss.split('\n')) {
     const top = /^\.([a-zA-Z0-9_-]+)/.exec(line);

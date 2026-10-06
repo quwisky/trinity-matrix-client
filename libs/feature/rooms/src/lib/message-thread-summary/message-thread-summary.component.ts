@@ -8,6 +8,7 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { map, shareReplay, timer } from 'rxjs';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import { TrnBadge } from '@trinity/components/generic-content';
 import { type ThreadSummary } from '@trinity/data-access/timeline';
 
 const relativeTime = new Intl.RelativeTimeFormat('en', { style: 'short' });
@@ -20,7 +21,7 @@ const clock = timer(60_000, 60_000).pipe(
 @Component({
   selector: 'trn-message-thread-summary',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconComponent],
+  imports: [TrnIconComponent, TrnBadge],
   templateUrl: './message-thread-summary.component.html',
   styleUrl: './message-thread-summary.component.scss',
 })

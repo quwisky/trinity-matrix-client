@@ -18,7 +18,7 @@ import {
 // Covers the two unread-badge features end to end:
 //
 //   1. Server-rail badge (ServerRailComponent) — a non-DM room's unread
-//      notifications should surface as a red `.badge` on the Rooms pill
+//      notifications should surface as an unread dot on the Rooms item
 //      (`data-testid="rail-rooms"`), summed from RoomsPage.roomsUnread().
 //
 //   2. AppBadgeService's web sink — the W3C Badging API. We stub
@@ -76,6 +76,7 @@ async function seedUnreadRoom(
   hs: string,
   runId: string,
   seed: number,
+  mention = false,
 ): Promise<{ reader: HomeserverSession; roomId: string; roomName: string }> {
   const readerUser = `reader-${runId}`;
   const readerPass = `reader-pass-${runId}`;
@@ -113,7 +114,14 @@ async function seedUnreadRoom(
       )}/send/m.room.message/ub-${runId}-${i}`,
       {
         headers: sender.headers,
-        data: { msgtype: 'm.text', body: `unread ${i} ${runId}` },
+        data: {
+          msgtype: 'm.text',
+          // An m.mentions entry trips Synapse's default user-mention highlight rule.
+          body: mention
+            ? `hello ${reader.userId} ${i}`
+            : `unread ${i} ${runId}`,
+          ...(mention ? { 'm.mentions': { user_ids: [reader.userId] } } : {}),
+        },
       },
     );
   }
@@ -128,7 +136,7 @@ async function seedUnreadRoom(
 test.describe('Unread badges', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('server-rail Rooms pill shows the aggregated unread count', async ({
+  test('server-rail Rooms item shows an unread dot', async ({
     page,
     request,
   }) => {
@@ -145,16 +153,29 @@ test.describe('Unread badges', () => {
     const roomsItem = page.locator('trn-server-rail .item').filter({
       has: page.getByTestId('rail-rooms'),
     });
-    const badge = roomsItem.locator('.badge');
-    await expect(badge).toBeVisible({ timeout: 30_000 });
+    // Plain unread (no mention) is a dot on the item, not a count badge.
+    await expect(roomsItem).toHaveClass(/item--unread/, { timeout: 30_000 });
+    await expect(roomsItem.locator('[trnBadge]')).toHaveCount(0);
+  });
 
-    const text = (await badge.textContent())?.trim() ?? '';
-    // Assert the exact seeded count; fall back to "a positive integer" so the
-    // test isn't flaky against server-side notification-count timing quirks.
-    if (text !== String(SEED)) {
-      expect(text).toMatch(/^\d+\+?$/);
-      expect(parseInt(text, 10)).toBeGreaterThan(0);
-    }
+  test('a mention shows a danger badge on the Rooms item instead of the dot', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}m`;
+    const { reader } = await seedUnreadRoom(request, hs, runId, SEED, true);
+
+    await login(page, reader);
+
+    const roomsItem = page.locator('trn-server-rail .item').filter({
+      has: page.getByTestId('rail-rooms'),
+    });
+    const badge = roomsItem.locator('[trnBadge]');
+    await expect(badge).toBeVisible({ timeout: 30_000 });
+    await expect(badge).toHaveAttribute('data-variant', 'danger');
+    await expect(badge).toHaveText(/^\d+\+?$/);
+    await expect(roomsItem).not.toHaveClass(/item--unread/);
   });
 
   test('the platform badge mirrors the unread total', async ({

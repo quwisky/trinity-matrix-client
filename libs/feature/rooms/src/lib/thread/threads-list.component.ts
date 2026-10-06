@@ -9,7 +9,7 @@ import { DateTimeFormatService } from '@trinity/platform-native';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnTooltip } from '@trinity/components/generic-content';
+import { TrnBadge, TrnTooltip } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
 import {
@@ -40,6 +40,7 @@ const MAX_AVATARS = 4;
     EmptyStateComponent,
     TrnIconComponent,
     AvatarComponent,
+    TrnBadge,
     TrnButton,
     TrnTooltip,
     TrnOverlaySurfaceDirective,

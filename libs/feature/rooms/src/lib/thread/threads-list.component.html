@@ -78,8 +78,9 @@
 
         @if (t.unreadCount > 0) {
           <span
-            class="thread-item__badge"
-            [class.thread-item__badge--highlight]="t.highlight"
+            trnBadge
+            class="shrink-0"
+            [variant]="t.highlight ? 'danger' : 'neutral'"
             [attr.aria-label]="unreadLabel(t)"
             >{{ t.unreadCount }}</span
           >

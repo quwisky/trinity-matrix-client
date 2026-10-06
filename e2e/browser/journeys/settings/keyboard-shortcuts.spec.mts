@@ -49,7 +49,9 @@ test.describe('Keyboard shortcuts settings', () => {
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
 
-    const active = page.locator('trn-channel-sidebar .channel.active');
+    const active = page.locator(
+      'trn-channel-sidebar .channel.channel--selected',
+    );
     const open = async (name: string): Promise<void> => {
       await page.locator('.channel', { hasText: name }).first().click();
       await expect(active).toHaveText(new RegExp(name), { timeout: 15_000 });

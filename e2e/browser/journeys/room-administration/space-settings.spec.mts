@@ -15,7 +15,7 @@ import { registerUser } from '../../../support/account.mts';
 
 // Covers editing a SPACE's settings, which had no surface at all before #40: a space was
 // configured once at creation and never again. The space overflow menu
-// (data-testid="space-actions-overflow") gains a "Space settings" row
+// (data-testid="space-header") gains a "Space settings" row
 // (data-testid="open-space-settings") opening a dialog (data-testid="space-settings") with
 // Name/Topic/join-rule fields — trigger and dialog named apart, as the room pair is.
 //
@@ -132,7 +132,7 @@ async function openSpaceMenu(page: Page, spaceName: string): Promise<void> {
   const pill = page.getByRole('button', { name: spaceName, exact: true });
   await pill.waitFor({ state: 'visible', timeout: 30_000 });
   await pill.click();
-  await page.getByTestId('space-actions-overflow').click();
+  await page.getByTestId('space-header').click();
 }
 
 /** Read one field out of a room's current state, or undefined if it isn't set. */
@@ -229,7 +229,7 @@ test.describe('Space settings', () => {
     // Reactivate the Space sidebar without navigating away from the Conversation.
     // Its overflow belongs to the active Space, while the room surface stays mounted.
     await pill.click();
-    await page.getByTestId('space-actions-overflow').click();
+    await page.getByTestId('space-header').click();
 
     await page.getByTestId('open-space-settings').click();
     const settings = page.getByTestId('space-settings');

@@ -93,6 +93,7 @@
       <trn-sidebar-user-panel
         class="shell-side__dock"
         [user]="vm.userProfile()"
+        [presence]="ownPresence()"
         [accounts]="vm.accounts()"
         [activeUserId]="vm.activeAccountId()"
         [reauthAccounts]="vm.reauthAccounts()"
