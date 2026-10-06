@@ -183,6 +183,8 @@ describe('TrnDialogShellComponent', () => {
     });
 
     expect(surface().getAttribute('data-trn-layout')).toBe('fullscreen');
+    // A scale-in entrance would leave the surface short of the viewport while it plays.
+    expect(surface().classList).not.toContain('trn-overlay-enter-dialog');
     expect(screen.queryByTestId('sheet-handle')).toBeNull();
   });
 });

@@ -103,7 +103,7 @@ test.describe('Security settings', () => {
     await expect(verify).toBeVisible({ timeout: 15_000 });
     await verify.click();
 
-    const encryption = page.getByRole('dialog', { name: 'Verify this device' });
+    const encryption = page.getByRole('dialog', { name: 'Verify device' });
     await expect(encryption).toBeVisible({
       timeout: 20_000,
     });

@@ -6,7 +6,7 @@
   [layout]="layout()"
   class="flex flex-col border-[var(--trinity-border-overlay)] bg-[var(--trinity-surface-overlay)]"
   [class.trn-overlay-enter-sheet]="layout() === 'sheet'"
-  [class.trn-overlay-enter-dialog]="layout() !== 'sheet'"
+  [class.trn-overlay-enter-dialog]="layout() === 'dialog'"
   data-testid="dialog-surface"
 >
   @if (layout() === 'sheet' && swipeable()) {
