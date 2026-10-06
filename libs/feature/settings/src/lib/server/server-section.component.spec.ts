@@ -168,6 +168,8 @@ describe('ServerSectionComponent', () => {
     expect(container.textContent).toContain(
       "See what each signed-in account's homeserver is running.",
     );
-    expect(container.querySelector('h2')).toBeNull();
+    expect(
+      container.querySelector('h2:not([data-testid="hs-account"])'),
+    ).toBeNull();
   });
 });

@@ -16,12 +16,12 @@
   }
 
   @for (group of groups(); track group.category) {
-    <h3
+    <h2
       class="m-0 pt-6 text-sm font-semibold text-[var(--trinity-text-bright)]"
       [attr.data-testid]="'shortcut-group-' + group.category.toLowerCase()"
     >
       {{ group.category }}
-    </h3>
+    </h2>
     <ul class="m-0 list-none p-0">
       @for (row of group.rows; track row.id) {
         <li>

@@ -64,6 +64,19 @@ function renderBlock(
 const text = (container: Element, testid: string) =>
   container.querySelector(`[data-testid="${testid}"]`)?.textContent?.trim();
 
+/** The heading levels in document order, as a section sits under its page's h1. */
+function skippedHeadingLevel(root: HTMLElement): string | null {
+  let previous = 1;
+  for (const heading of root.querySelectorAll('h1, h2, h3, h4, h5, h6')) {
+    const level = Number(heading.tagName.slice(1));
+    if (level > previous + 1) {
+      return `${heading.tagName} "${heading.textContent?.trim()}" follows h${previous}`;
+    }
+    previous = level;
+  }
+  return null;
+}
+
 describe('HomeserverBlockComponent', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -73,6 +86,13 @@ describe('HomeserverBlockComponent', () => {
     const { container } = await renderBlock(info());
 
     expect(text(container, 'hs-account')).toBe('Me');
+  });
+
+  it('skips no heading level under the page heading', async () => {
+    const { container } = await renderBlock(info());
+
+    expect(container.querySelector('h2')).not.toBeNull();
+    expect(skippedHeadingLevel(container as HTMLElement)).toBeNull();
   });
 
   it('shows the software name and version as the headline', async () => {

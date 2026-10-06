@@ -3,13 +3,13 @@
     description="Install image packs for stickers and custom emoji suggestions."
   >
     <section class="packs__section" aria-labelledby="installed-packs-title">
-      <h3 id="installed-packs-title" #installedHeading tabindex="-1">
+      <h2 id="installed-packs-title" #installedHeading tabindex="-1">
         Installed for all rooms
-      </h3>
+      </h2>
       @for (pack of installed(); track pack.id) {
         <article class="pack-card" data-testid="installed-image-pack">
           <div class="pack-card__body">
-            <h4>{{ pack.name }}</h4>
+            <h3>{{ pack.name }}</h3>
             <p class="pack-card__source">
               {{ pack.roomName || pack.roomId }} · state key “{{
                 stateKeyText(pack.stateKey)
@@ -135,13 +135,13 @@
 
       @if (discovery(); as result) {
         <section class="packs__section" aria-labelledby="available-packs-title">
-          <h3 id="available-packs-title" #resultsHeading tabindex="-1">
+          <h2 id="available-packs-title" #resultsHeading tabindex="-1">
             Available in {{ result.roomName || result.roomId }}
-          </h3>
+          </h2>
           @for (pack of result.packs; track pack.id) {
             <article class="pack-card" data-testid="available-image-pack">
               <div class="pack-card__body">
-                <h4>{{ pack.name }}</h4>
+                <h3>{{ pack.name }}</h3>
                 <p class="pack-card__source">
                   State key “{{ stateKeyText(pack.stateKey) }}”
                 </p>

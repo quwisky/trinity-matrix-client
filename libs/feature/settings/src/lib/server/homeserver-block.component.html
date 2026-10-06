@@ -4,12 +4,12 @@
   [attr.data-account]="userId()"
   [attr.aria-label]="'Homeserver for ' + displayName()"
 >
-  <h3
+  <h2
     class="m-0 text-sm font-semibold [overflow-wrap:anywhere] text-[var(--trinity-text-bright)]"
     data-testid="hs-account"
   >
     {{ displayName() }}
-  </h3>
+  </h2>
 
   <!--
     Persistent, and the reason it is persistent is the whole point: this block's value
