@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { Subject, of, throwError } from 'rxjs';
+import { NEVER, Subject, of, throwError } from 'rxjs';
+import { signal } from '@angular/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockProvider } from 'ng-mocks';
 import { TrnToastService } from '@trinity/components/overlay';
@@ -8,11 +9,12 @@ import {
   type PresentedMediaReference,
 } from '@trinity/data-access/media';
 import { HostFileExportService } from '@trinity/runtime/host';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { MediaSaveService } from './media-save.service';
 
-function media(kind: 'image' | 'video' | 'file' = 'image') {
+function media(kind: 'image' | 'video' | 'file' = 'image', id = 'm') {
   return {
-    id: 'm',
+    id,
     kind,
     filename: 'original-name.png',
     mimeType: 'image/png',
@@ -23,9 +25,11 @@ describe('MediaSaveService', () => {
   const downloadMedia = vi.fn();
   const save = vi.fn();
   const show = vi.fn();
+  const activeAccountId = signal<string | null>('@a:hs');
 
   beforeEach(() => {
     vi.resetAllMocks();
+    activeAccountId.set('@a:hs');
     // The pipeline hands back decrypted bytes under whatever name it likes; the saved
     // file must carry the event's own filename.
     downloadMedia.mockReturnValue(
@@ -37,6 +41,7 @@ describe('MediaSaveService', () => {
         MockProvider(MediaPipeline, { downloadMedia }),
         MockProvider(HostFileExportService, { save }),
         MockProvider(TrnToastService, { show }),
+        MockProvider(AccountRuntimeService, { activeAccountId }),
       ],
     });
   });
@@ -53,22 +58,65 @@ describe('MediaSaveService', () => {
       filename: 'original-name.png',
     });
     expect(show).not.toHaveBeenCalled();
-    expect(service.saving()).toBe(false);
+    expect(service.isSaving(m)).toBe(false);
   });
 
-  it('ignores a second request while one is in flight', () => {
+  it('ignores a repeat request for an item while it is saving', () => {
     const pending = new Subject<{ blob: Blob; filename: string }>();
     downloadMedia.mockReturnValue(pending);
     const service = TestBed.inject(MediaSaveService);
+    const m = media();
 
-    service.save(media());
-    expect(service.saving()).toBe(true);
-    service.save(media());
+    service.save(m);
+    expect(service.isSaving(m)).toBe(true);
+    service.save(m);
     expect(downloadMedia).toHaveBeenCalledTimes(1);
 
     pending.next({ blob: new Blob(['x']), filename: 'x' });
     pending.complete();
-    expect(service.saving()).toBe(false);
+    expect(service.isSaving(m)).toBe(false);
+  });
+
+  it('keeps saving other items while one save never settles', () => {
+    downloadMedia.mockReturnValueOnce(NEVER);
+    const service = TestBed.inject(MediaSaveService);
+    const a = media('image', 'a');
+    const b = media('image', 'b');
+
+    service.save(a);
+    service.save(b);
+
+    expect(downloadMedia).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(service.isSaving(a)).toBe(true);
+    expect(service.isSaving(b)).toBe(false);
+  });
+
+  it('clears the busy state when the save fails', () => {
+    downloadMedia.mockReturnValue(throwError(() => new Error('net')));
+    const service = TestBed.inject(MediaSaveService);
+    const m = media();
+
+    service.save(m);
+
+    expect(service.isSaving(m)).toBe(false);
+  });
+
+  it('clears every busy state when the account changes', () => {
+    downloadMedia.mockReturnValue(NEVER);
+    const service = TestBed.inject(MediaSaveService);
+    const a = media('image', 'a');
+    service.save(a);
+    TestBed.tick();
+    expect(service.isSaving(a)).toBe(true);
+
+    activeAccountId.set('@b:hs');
+    TestBed.tick();
+
+    expect(service.isSaving(a)).toBe(false);
+    downloadMedia.mockReturnValue(of({ blob: new Blob(['x']), filename: 'x' }));
+    service.save(a);
+    expect(save).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -82,7 +130,7 @@ describe('MediaSaveService', () => {
     service.save(media(kind));
 
     expect(show).toHaveBeenCalledWith(message, { variant: 'danger' });
-    expect(service.saving()).toBe(false);
+    expect(service.isSaving(media(kind))).toBe(false);
   });
 
   it('toasts when the host reports anything but completed', () => {

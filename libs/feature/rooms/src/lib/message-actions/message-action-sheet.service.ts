@@ -153,14 +153,6 @@ export class MessageActionSheetService {
         handler: act('pin'),
       });
     }
-    if (caps.saveMedia) {
-      buttons.push({
-        text: `Save ${caps.saveMedia}`,
-        icon: 'download',
-        testId: 'sheet-save-media',
-        handler: act('save-media'),
-      });
-    }
     buttons.push(
       {
         text: 'Copy text',
@@ -174,6 +166,16 @@ export class MessageActionSheetService {
         testId: 'sheet-copy-link',
         handler: act('copy-link'),
       },
+      ...(caps.saveMedia
+        ? [
+            {
+              text: `Save ${caps.saveMedia}`,
+              icon: 'download' as const,
+              testId: 'sheet-save-media',
+              handler: act('save-media'),
+            },
+          ]
+        : []),
       {
         text: 'Forward',
         icon: 'forward',

@@ -8,8 +8,8 @@
     size="lg"
     class="lightbox__action lightbox__download"
     [attr.aria-label]="'Download ' + media().kind"
-    [loading]="mediaSave.saving()"
-    [disabled]="mediaSave.saving()"
+    [loading]="busy()"
+    [attr.aria-disabled]="busy() ? 'true' : null"
     (click)="download($event)"
     data-testid="lightbox-download"
   >

@@ -139,6 +139,22 @@ describe('MessageListBase — the mobile action sheet', () => {
     expect(button?.text).toBe(label);
   });
 
+  it('lists Save image after Copy link, as the desktop menu does', () => {
+    const { fixture, cmp, open } = build();
+    const media = { id: 'm', kind: 'image', filename: 'a', mimeType: 'x/y' };
+    fixture.componentRef.setInput('messages', [
+      { ...msg('$1'), kind: 'image', media },
+    ]);
+    fixture.detectChanges();
+
+    cmp.onRowLongPress(cmp.rows()[0]);
+
+    const ids = lastSheet(open).buttons.map((b) => b.testId);
+    expect(ids.indexOf('sheet-save-media')).toBe(
+      ids.indexOf('sheet-copy-link') + 1,
+    );
+  });
+
   it('offers no save for a text message or a file', () => {
     const { fixture, cmp, open } = build();
 

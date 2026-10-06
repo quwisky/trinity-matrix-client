@@ -247,5 +247,19 @@ describe('Message Presentation capabilities', () => {
     expect(savableMediaKind(view({ kind: 'image', media: null }))).toBeNull();
     expect(savableMediaKind(view({ kind: 'file', media }))).toBeNull();
     expect(savableMediaKind(view({ kind: 'text' }))).toBeNull();
+    expect(savableMediaKind(view({ kind: 'sticker', media }))).toBeNull();
+    expect(
+      savableMediaKind(view({ kind: 'redacted', media: null })),
+    ).toBeNull();
+  });
+
+  it('does not offer saving media that is still unsent or failed', () => {
+    const media = { id: 'm' } as MessageView['media'];
+    expect(
+      savableMediaKind(view({ kind: 'image', media, status: 'sending' })),
+    ).toBeNull();
+    expect(
+      savableMediaKind(view({ kind: 'video', media, status: 'failed' })),
+    ).toBeNull();
   });
 });

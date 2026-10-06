@@ -14,13 +14,16 @@ const media = {
 } as PresentedMediaReference;
 
 async function renderLightbox(saving = signal(false)) {
+  const isSaving = vi.fn(
+    (m: PresentedMediaReference) => m === media && saving(),
+  );
   const saveMedia = vi.fn();
   const close = vi.fn();
   const view = await render(LightboxComponent, {
     inputs: { src: 'blob:full', filename: 'pic.png', media },
     providers: [
       { provide: TrnDialogRef, useValue: { close } },
-      { provide: MediaSaveService, useValue: { save: saveMedia, saving } },
+      { provide: MediaSaveService, useValue: { save: saveMedia, isSaving } },
     ],
   });
   const button = () =>
@@ -42,14 +45,20 @@ describe('LightboxComponent download', () => {
     expect(close).not.toHaveBeenCalled();
   });
 
-  it('is disabled and busy while a save is in flight', async () => {
-    const { button, fixture, saving } = await renderLightbox();
-    expect(button().disabled).toBe(false);
+  it('is busy and inert while its own item is saving, without closing the viewer', async () => {
+    const { button, fixture, saving, saveMedia, close } =
+      await renderLightbox();
+    expect(button().getAttribute('aria-disabled')).toBeNull();
 
     saving.set(true);
+    fixture.componentInstance.media();
     fixture.detectChanges();
-
-    expect(button().disabled).toBe(true);
+    expect(button().getAttribute('aria-disabled')).toBe('true');
     expect(button().getAttribute('aria-busy')).toBe('true');
+
+    button().click();
+    expect(saveMedia).not.toHaveBeenCalled();
+    // A tap during a save must not reach the host's close-on-click.
+    expect(close).not.toHaveBeenCalled();
   });
 });
