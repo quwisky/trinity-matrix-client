@@ -1,91 +1,91 @@
-<div
-  trnOverlaySurface
-  variant="neutral"
+<trn-dialog-shell
+  title="Room state"
   size="xl"
-  layout="dialog"
-  class="flex flex-col gap-3 p-4"
+  (closed)="close()"
   data-testid="room-state-viewer"
 >
-  <h2 class="text-lg font-semibold">Room state</h2>
-  <label class="flex flex-col gap-1 text-sm">
-    <span>Filter by event type or state key</span>
-    <input
-      trnInput
-      type="search"
-      autocomplete="off"
-      [formField]="filter.query"
-      data-testid="room-state-filter"
-    />
-  </label>
-  <div class="min-h-0 flex-1 overflow-auto">
-    @for (group of groups(); track group.type) {
-      <section class="border-b border-border" data-testid="room-state-group">
-        <button
-          type="button"
-          class="flex w-full items-center justify-between gap-2 py-2 text-left font-mono text-sm"
-          [attr.aria-expanded]="isGroupOpen(group.type)"
-          (click)="toggleGroup(group.type)"
-          data-testid="room-state-group-toggle"
-        >
-          <span>{{ group.type }}</span>
-          <span class="text-xs text-muted-foreground">
-            {{ group.entries.length }}
-          </span>
-        </button>
-        @if (isGroupOpen(group.type)) {
-          <ul class="flex flex-col gap-1 pb-2 pl-3">
-            @for (entry of group.entries; track entry.stateKey) {
-              <li class="flex flex-col gap-1">
-                <button
-                  type="button"
-                  class="py-1 text-left font-mono text-xs"
-                  [attr.aria-expanded]="isEventOpen(entry)"
-                  (click)="toggleEvent(entry)"
-                  data-testid="room-state-event"
-                >
-                  {{ entry.stateKey || '(empty)' }}
-                </button>
-                @if (isEventOpen(entry)) {
-                  <pre
-                    class="rounded overflow-auto bg-muted p-3 text-xs leading-relaxed"
-                    data-testid="room-state-json"
-                    >{{ json(entry) }}</pre>
-                  <div>
-                    <button
-                      trnBtn
-                      type="button"
-                      variant="secondary"
-                      presentation="outline"
-                      size="sm"
-                      [attr.aria-label]="copyLabel(entry)"
-                      (click)="copy(entry)"
-                      data-testid="room-state-copy"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                }
-              </li>
-            }
-          </ul>
-        }
-      </section>
-    } @empty {
-      <p class="py-2 text-sm text-muted-foreground" role="status">
-        No matching state events.
-      </p>
-    }
+  <div class="flex flex-col gap-3">
+    <label class="flex flex-col gap-1 text-sm">
+      <span>Filter by event type or state key</span>
+      <input
+        trnInput
+        type="search"
+        autocomplete="off"
+        [formField]="filter.query"
+        data-testid="room-state-filter"
+      />
+    </label>
+    <div>
+      @for (group of groups(); track group.type) {
+        <section class="border-b border-border" data-testid="room-state-group">
+          <button
+            type="button"
+            class="flex w-full items-center justify-between gap-2 py-2 text-left font-mono text-sm"
+            [attr.aria-expanded]="isGroupOpen(group.type)"
+            (click)="toggleGroup(group.type)"
+            data-testid="room-state-group-toggle"
+          >
+            <span>{{ group.type }}</span>
+            <span class="text-xs text-muted-foreground">
+              {{ group.entries.length }}
+            </span>
+          </button>
+          @if (isGroupOpen(group.type)) {
+            <ul class="flex flex-col gap-1 pb-2 pl-3">
+              @for (entry of group.entries; track entry.stateKey) {
+                <li class="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    class="py-1 text-left font-mono text-xs"
+                    [attr.aria-expanded]="isEventOpen(entry)"
+                    (click)="toggleEvent(entry)"
+                    data-testid="room-state-event"
+                  >
+                    {{ entry.stateKey || '(empty)' }}
+                  </button>
+                  @if (isEventOpen(entry)) {
+                    <pre
+                      class="rounded overflow-auto bg-muted p-3 text-xs leading-relaxed"
+                      data-testid="room-state-json"
+                      >{{ json(entry) }}</pre>
+                    <div>
+                      <button
+                        trnBtn
+                        type="button"
+                        variant="secondary"
+                        presentation="outline"
+                        size="sm"
+                        [attr.aria-label]="copyLabel(entry)"
+                        (click)="copy(entry)"
+                        data-testid="room-state-copy"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  }
+                </li>
+              }
+            </ul>
+          }
+        </section>
+      } @empty {
+        <p class="py-2 text-sm text-muted-foreground" role="status">
+          No matching state events.
+        </p>
+      }
+    </div>
   </div>
-  <div class="flex justify-end">
+
+  <div trnDialogActions>
     <button
       trnBtn
       type="button"
       variant="secondary"
-      presentation="ghost"
+      presentation="link"
       size="sm"
       (click)="close()"
     >
       Close
     </button>
   </div>
-</div>
+</trn-dialog-shell>

@@ -1,9 +1,9 @@
 @layer components {
   // Account badges on result rows ring themselves in --trn-presence-ring; inside a dialog
-  // that must be the card surface, or the default (--background) punches a near-black halo
+  // that must be the overlay surface, or the default (--background) punches a near-black halo
   // through each badge in dark themes.
   :host {
-    --trn-presence-ring: var(--trinity-surface-raised);
+    --trn-presence-ring: var(--trinity-surface-overlay);
   }
 
   // Trailing kind + lock icons — muted to match the subtitle. The classes sit on the

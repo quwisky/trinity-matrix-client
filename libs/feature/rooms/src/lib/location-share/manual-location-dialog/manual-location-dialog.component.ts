@@ -14,8 +14,9 @@ import { TrnInput } from '@trinity/components/controls';
 import { TrnLabel } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
+  TrnDialogActions,
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { TrnIconComponent } from '@trinity/components/foundations';
@@ -35,7 +36,8 @@ import { TrnIconComponent } from '@trinity/components/foundations';
     TrnIconComponent,
     TrnButton,
     TrnInput,
-    TrnOverlaySurfaceDirective,
+    TrnDialogActions,
+    TrnDialogShellComponent,
     TrnLabel,
     TrnSpinnerComponent,
   ],

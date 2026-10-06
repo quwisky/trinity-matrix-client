@@ -1,6 +1,5 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnDialogService } from '@trinity/components/overlay';
-import { isMobileOs } from '@trinity/platform-native';
 import { defer, EMPTY, finalize, map, type Observable } from 'rxjs';
 import { ReactionsDialogComponent } from './reactions-dialog.component';
 
@@ -23,15 +22,10 @@ export class ReactionsDialogService {
         return EMPTY; // already open — ignore the repeat subscription
       }
       this.showing = true;
-      const mobile = isMobileOs();
       return this.dialog
         .openAndWait$<void, ReactionsDialogComponent>(
           ReactionsDialogComponent,
-          {
-            ariaLabel: 'Reactions',
-            placement: mobile ? 'bottom' : 'center',
-            inputs: { eventId, sheet: mobile },
-          },
+          { inputs: { eventId } },
         )
         .pipe(
           map(() => undefined),

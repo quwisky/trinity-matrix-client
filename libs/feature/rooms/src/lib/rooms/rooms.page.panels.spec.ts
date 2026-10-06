@@ -237,7 +237,6 @@ describe('RoomsPage panels, pins and media', () => {
     shell.rooms.onExploreRooms();
 
     expect(dialogOpen).toHaveBeenCalledWith(RoomDirectoryComponent, {
-      ariaLabel: 'Explore rooms and spaces',
       autoFocus: '[data-autofocus]',
       inputs: { accountId: '@me:hs' },
     });

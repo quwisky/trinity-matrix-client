@@ -455,16 +455,20 @@ test.describe('Matrix room links', () => {
 
       const preview = page.getByTestId('room-link-preview');
       await expect(preview).toBeVisible();
-      await expect(page.locator('trn-room-link-preview')).toHaveClass(
-        /room-link-preview--sheet/,
-      );
+      await expect(preview).toHaveAttribute('data-presentation', 'sheet');
       await expect(preview.getByTestId('room-link-primary')).toHaveText(
         'Open room',
+      );
+      // The sheet slides up on open; measure it once it has settled.
+      await preview.evaluate((element) =>
+        Promise.all(
+          element.getAnimations({ subtree: true }).map((a) => a.finished),
+        ),
       );
       const geometry = await preview.evaluate((element) => {
         const surface = element.getBoundingClientRect();
         const footer = element
-          .querySelector<HTMLElement>('.room-preview__actions')!
+          .querySelector<HTMLElement>('[data-testid="dialog-footer"]')!
           .getBoundingClientRect();
         const viewport = window.visualViewport;
         const viewportBottom =

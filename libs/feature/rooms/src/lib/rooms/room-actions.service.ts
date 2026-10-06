@@ -163,7 +163,6 @@ export class RoomActionsService {
     if (!accountId) return;
     this.dialog
       .openAndWait$<DirectoryJoin | null>(RoomDirectoryComponent, {
-        ariaLabel: 'Explore rooms and spaces',
         autoFocus: '[data-autofocus]',
         inputs: { accountId },
       })

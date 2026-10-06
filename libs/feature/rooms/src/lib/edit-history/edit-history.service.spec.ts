@@ -40,7 +40,6 @@ describe('EditHistoryDialogService', () => {
     expect(openAndWait$).toHaveBeenCalledWith(
       EditHistoryComponent,
       expect.objectContaining({
-        ariaLabel: 'Edit history',
         inputs: { roomId: '!r:hs', eventId: '$orig' },
       }),
     );

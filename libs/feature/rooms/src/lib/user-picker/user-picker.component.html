@@ -1,75 +1,57 @@
-<div
-  trnOverlaySurface
-  variant="neutral"
-  size="lg"
-  layout="dialog"
-  class="picker flex flex-col"
->
-  <div class="picker__header">
-    <button
-      trnBtn
-      variant="secondary"
-      presentation="ghost"
-      size="sm"
-      (click)="cancel()"
-    >
+<trn-dialog-shell [title]="title()" size="lg" (closed)="cancel()">
+  <div class="picker">
+    <div class="picker__search">
+      <input
+        trnInput
+        [placeholder]="placeholder()"
+        [attr.aria-label]="placeholder()"
+        autocapitalize="off"
+        autocorrect="off"
+        inputmode="text"
+        [value]="term()"
+        (input)="onInput($event)"
+      />
+    </div>
+
+    <div class="picker__results">
+      @if (searching()) {
+        <div class="picker-status" aria-live="polite"><trn-spinner /></div>
+      }
+      @for (user of results(); track user.userId) {
+        <button
+          type="button"
+          class="picker__result"
+          (click)="choose(user.userId)"
+        >
+          <trn-avatar
+            [mxc]="user.avatarMxc"
+            [initial]="initialOf(user.displayName)"
+            [name]="user.displayName"
+            [exactSize]="36"
+          />
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-sm font-medium">{{
+              user.displayName
+            }}</span>
+            <span class="block truncate text-xs text-muted-foreground">{{
+              user.userId
+            }}</span>
+          </span>
+        </button>
+      } @empty {
+        @if (!searching()) {
+          <trn-empty-state layout="line" [body]="emptyHint()" />
+        }
+      }
+    </div>
+  </div>
+
+  <div trnDialogActions>
+    <button trnBtn variant="secondary" presentation="link" (click)="cancel()">
       Cancel
     </button>
-    <h2 class="picker__title">
-      {{ title() }}
-    </h2>
-    <button
-      trnBtn
-      size="sm"
-      [disabled]="!canConfirm()"
-      (click)="confirmTyped()"
-    >
+    <button trnBtn [disabled]="!canConfirm()" (click)="confirmTyped()">
       {{ confirmLabel() }}
     </button>
   </div>
-
-  <div class="picker__search">
-    <input
-      trnInput
-      [placeholder]="placeholder()"
-      [attr.aria-label]="placeholder()"
-      autocapitalize="off"
-      autocorrect="off"
-      inputmode="text"
-      [value]="term()"
-      (input)="onInput($event)"
-    />
-  </div>
-
-  <div class="picker__results">
-    @if (searching()) {
-      <div class="picker-status" aria-live="polite"><trn-spinner /></div>
-    }
-    @for (user of results(); track user.userId) {
-      <button
-        type="button"
-        class="picker__result"
-        (click)="choose(user.userId)"
-      >
-        <trn-avatar
-          [mxc]="user.avatarMxc"
-          [initial]="initialOf(user.displayName)"
-          [name]="user.displayName"
-          [exactSize]="36"
-        />
-        <span class="min-w-0 flex-1">
-          <span class="block truncate text-sm font-medium">{{
-            user.displayName
-          }}</span>
-          <span class="block truncate text-xs text-muted-foreground">{{
-            user.userId
-          }}</span>
-        </span>
-      </button>
-    } @empty {
-      @if (!searching()) {
-        <trn-empty-state layout="line" [body]="emptyHint()" />
-      }
-    }
-  </div>
-</div>
+</trn-dialog-shell>

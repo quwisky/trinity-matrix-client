@@ -17,28 +17,33 @@
       trnSheetDragHandle
     ></div>
   }
-  <header class="dialog-shell__header" trnSheetDragHandle>
-    <h2
-      [id]="titleId"
-      class="dialog-shell__title text-[17px] leading-snug font-bold text-[var(--trinity-text-bright)]"
-      [class.sr-only]="titleHidden()"
-    >
-      {{ title() }}
-    </h2>
-    @if (closable()) {
-      <button
-        trnBtn
-        presentation="ghost"
-        shape="icon"
-        size="sm"
-        aria-label="Close"
-        data-testid="dialog-close"
-        (click)="requestClose()"
+  @if (titleHidden() && !closable()) {
+    <!-- Nothing visible would sit in the header, so the band is dropped; the h2 still names the dialog. -->
+    <h2 [id]="titleId" class="sr-only">{{ title() }}</h2>
+  } @else {
+    <header class="dialog-shell__header" trnSheetDragHandle>
+      <h2
+        [id]="titleId"
+        class="dialog-shell__title text-[17px] leading-snug font-bold text-[var(--trinity-text-bright)]"
+        [class.sr-only]="titleHidden()"
       >
-        <trn-icon name="x" motion="rotate" />
-      </button>
-    }
-  </header>
+        {{ title() }}
+      </h2>
+      @if (closable()) {
+        <button
+          trnBtn
+          presentation="ghost"
+          shape="icon"
+          size="sm"
+          aria-label="Close"
+          data-testid="dialog-close"
+          (click)="requestClose()"
+        >
+          <trn-icon name="x" motion="rotate" />
+        </button>
+      }
+    </header>
+  }
   <!-- The description scrolls with the body, so a long one never pushes the footer away. -->
   <div class="dialog-shell__body">
     @if (description()) {

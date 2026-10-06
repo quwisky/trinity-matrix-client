@@ -1,87 +1,81 @@
-<div
-  trnOverlaySurface
-  variant="neutral"
-  size="md"
-  layout="dialog"
-  class="flex flex-col gap-3 p-4"
->
-  <h2 class="text-base font-semibold">Create poll</h2>
+<trn-dialog-shell title="Create poll" (closed)="cancel()">
+  <div class="flex flex-col gap-3">
+    <div>
+      <label trnLabel for="poll-question">Question</label>
+      <input
+        id="poll-question"
+        trnInput
+        class="mt-1 w-full"
+        placeholder="Ask something…"
+        [value]="question()"
+        (input)="onQuestion($event)"
+        data-testid="poll-question"
+      />
+    </div>
 
-  <div>
-    <label trnLabel for="poll-question">Question</label>
-    <input
-      id="poll-question"
-      trnInput
-      class="mt-1 w-full"
-      placeholder="Ask something…"
-      [value]="question()"
-      (input)="onQuestion($event)"
-      data-testid="poll-question"
-    />
+    <div class="flex flex-col gap-2">
+      @for (option of options(); track $index) {
+        <div class="flex items-center gap-2">
+          <input
+            trnInput
+            class="w-full"
+            [placeholder]="'Option ' + ($index + 1)"
+            [value]="option"
+            (input)="onOption($index, $event)"
+            [attr.data-testid]="'poll-option-' + $index"
+          />
+          @if (options().length > minOptions) {
+            <button
+              type="button"
+              trnBtn
+              variant="secondary"
+              presentation="ghost"
+              size="md"
+              shape="icon"
+              class="shrink-0"
+              aria-label="Remove option"
+              (click)="removeOption($index)"
+              [attr.data-testid]="'poll-remove-option-' + $index"
+            >
+              <trn-icon name="x" motion="rotate" />
+            </button>
+          }
+        </div>
+      }
+      @if (options().length < maxOptions) {
+        <button
+          trnBtn
+          variant="secondary"
+          presentation="ghost"
+          size="sm"
+          class="self-start"
+          (click)="addOption()"
+          data-testid="poll-add-option"
+        >
+          Add option
+        </button>
+      }
+    </div>
+
+    <div>
+      <label trnLabel for="poll-max-selections">Max selections</label>
+      <input
+        id="poll-max-selections"
+        trnInput
+        type="number"
+        inputmode="numeric"
+        min="1"
+        [max]="selectionLimit()"
+        class="mt-1 w-24"
+        [value]="effectiveMaxSelections()"
+        (input)="onMaxSelections($event)"
+        data-testid="poll-max-selections"
+      />
+    </div>
   </div>
 
-  <div class="flex flex-col gap-2">
-    @for (option of options(); track $index) {
-      <div class="flex items-center gap-2">
-        <input
-          trnInput
-          class="w-full"
-          [placeholder]="'Option ' + ($index + 1)"
-          [value]="option"
-          (input)="onOption($index, $event)"
-          [attr.data-testid]="'poll-option-' + $index"
-        />
-        @if (options().length > minOptions) {
-          <button
-            type="button"
-            trnBtn
-            variant="secondary"
-            presentation="ghost"
-            size="md"
-            shape="icon"
-            class="shrink-0"
-            aria-label="Remove option"
-            (click)="removeOption($index)"
-            [attr.data-testid]="'poll-remove-option-' + $index"
-          >
-            <trn-icon name="x" motion="rotate" />
-          </button>
-        }
-      </div>
-    }
-    @if (options().length < maxOptions) {
-      <button
-        trnBtn
-        variant="secondary"
-        presentation="ghost"
-        size="sm"
-        class="self-start"
-        (click)="addOption()"
-        data-testid="poll-add-option"
-      >
-        Add option
-      </button>
-    }
-  </div>
-
-  <div>
-    <label trnLabel for="poll-max-selections">Max selections</label>
-    <input
-      id="poll-max-selections"
-      trnInput
-      type="number"
-      inputmode="numeric"
-      min="1"
-      [max]="selectionLimit()"
-      class="mt-1 w-24"
-      [value]="effectiveMaxSelections()"
-      (input)="onMaxSelections($event)"
-      data-testid="poll-max-selections"
-    />
-  </div>
-
-  <div class="flex justify-end gap-2">
-    <button trnBtn variant="secondary" presentation="ghost" (click)="cancel()">
+  <div trnDialogActions>
+    <button trnBtn variant="secondary" presentation="link" (click)="cancel()">
       Cancel
     </button>
     <button
@@ -93,4 +87,4 @@
       Create
     </button>
   </div>
-</div>
+</trn-dialog-shell>

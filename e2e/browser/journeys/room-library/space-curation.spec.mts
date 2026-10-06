@@ -78,10 +78,15 @@ async function childLink(
  * as floating text over the timeline. Nothing else catches it: the markup is correct, the
  * component tests pass, and jsdom has no computed styles — it is only visible on screen.
  */
-async function expectOpaque(page: Page, testId: string): Promise<void> {
-  const background = await page
-    .getByTestId(testId)
-    .evaluate((element) => getComputedStyle(element).backgroundColor);
+async function expectOpaque(
+  page: Page,
+  testId: string,
+  surface?: string,
+): Promise<void> {
+  const host = page.getByTestId(testId);
+  const background = await (surface ? host.locator(surface) : host).evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
   // rgba(..., 0) and `transparent` are the failure; anything else has a surface.
   expect(background).not.toMatch(/rgba\(\s*0,\s*0,\s*0,\s*0\s*\)|transparent/);
 }
@@ -124,7 +129,7 @@ test.describe('Space curation', () => {
     await expect(page.getByTestId('add-to-space')).toBeVisible({
       timeout: 10_000,
     });
-    await expectOpaque(page, 'add-to-space');
+    await expectOpaque(page, 'add-to-space', '[data-testid="dialog-surface"]');
     await page.getByTestId(`add-to-space-pick-${roomId}`).click();
     await page.getByTestId('add-to-space-add').click();
 

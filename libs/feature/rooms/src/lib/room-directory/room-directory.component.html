@@ -1,160 +1,158 @@
-<div
-  trnOverlaySurface
-  variant="neutral"
+<trn-dialog-shell
+  [title]="mode() === 'spaces' ? 'Explore spaces' : 'Explore rooms'"
   size="lg"
-  layout="dialog"
-  class="flex flex-col gap-3 p-4"
+  (closed)="close()"
   data-testid="room-directory"
 >
-  <h2 class="text-base font-semibold">
-    {{ mode() === 'spaces' ? 'Explore spaces' : 'Explore rooms' }}
-  </h2>
+  <div class="flex flex-col gap-3">
+    <div class="flex gap-1">
+      <button
+        trnBtn
+        type="button"
+        size="sm"
+        [variant]="mode() === 'rooms' ? 'primary' : 'secondary'"
+        [presentation]="mode() === 'rooms' ? 'solid' : 'ghost'"
+        [attr.aria-pressed]="mode() === 'rooms'"
+        (click)="setMode('rooms')"
+        data-testid="directory-mode-rooms"
+      >
+        Rooms
+      </button>
+      <button
+        trnBtn
+        type="button"
+        size="sm"
+        [variant]="mode() === 'spaces' ? 'primary' : 'secondary'"
+        [presentation]="mode() === 'spaces' ? 'solid' : 'ghost'"
+        [attr.aria-pressed]="mode() === 'spaces'"
+        (click)="setMode('spaces')"
+        data-testid="directory-mode-spaces"
+      >
+        Spaces
+      </button>
+    </div>
 
-  <div class="flex gap-1">
-    <button
-      trnBtn
-      type="button"
-      size="sm"
-      [variant]="mode() === 'rooms' ? 'primary' : 'secondary'"
-      [presentation]="mode() === 'rooms' ? 'solid' : 'ghost'"
-      [attr.aria-pressed]="mode() === 'rooms'"
-      (click)="setMode('rooms')"
-      data-testid="directory-mode-rooms"
-    >
-      Rooms
-    </button>
-    <button
-      trnBtn
-      type="button"
-      size="sm"
-      [variant]="mode() === 'spaces' ? 'primary' : 'secondary'"
-      [presentation]="mode() === 'spaces' ? 'solid' : 'ghost'"
-      [attr.aria-pressed]="mode() === 'spaces'"
-      (click)="setMode('spaces')"
-      data-testid="directory-mode-spaces"
-    >
-      Spaces
-    </button>
-  </div>
-
-  <!--
+    <!--
     [formRoot] is what stops a bare <form> navigating away on submit: the directive
     sets novalidate and calls preventDefault() itself, which is why this handler is a
     plain search() and not a hand-rolled event.preventDefault().
   -->
-  <form
-    class="flex items-center gap-2"
-    [formRoot]="searchForm"
-    (submit)="search()"
-  >
-    <input
-      trnInput
-      class="min-w-0 flex-1"
-      [formField]="searchForm.query"
-      placeholder="Search public rooms"
-      autocomplete="off"
-      data-autofocus
-      data-testid="directory-search"
-    />
-    <button
-      trnBtn
-      type="submit"
-      size="sm"
-      [disabled]="loading()"
-      data-testid="directory-search-btn"
+    <form
+      class="flex items-center gap-2"
+      [formRoot]="searchForm"
+      (submit)="search()"
     >
-      {{ loading() ? 'Searching…' : 'Search' }}
-    </button>
-  </form>
-
-  @if (error(); as message) {
-    <p class="text-sm text-danger" role="alert" data-testid="directory-error">
-      {{ message }}
-    </p>
-  }
-
-  <div class="min-h-0 flex-1 overflow-y-auto">
-    @if (loading() && rooms().length === 0) {
-      <p
-        class="text-13 text-muted-foreground"
-        aria-live="polite"
-        data-testid="directory-loading"
+      <input
+        trnInput
+        class="min-w-0 flex-1"
+        [formField]="searchForm.query"
+        placeholder="Search public rooms"
+        autocomplete="off"
+        data-autofocus
+        data-testid="directory-search"
+      />
+      <button
+        trnBtn
+        type="submit"
+        size="sm"
+        [disabled]="loading()"
+        data-testid="directory-search-btn"
       >
-        Loading…
-      </p>
-    } @else if (isEmpty()) {
-      <p class="text-13 text-muted-foreground" data-testid="directory-empty">
-        No public rooms found.
-      </p>
-    } @else {
-      <ul class="flex flex-col gap-1">
-        @for (room of rooms(); track room.roomId) {
-          <li
-            class="rounded flex items-center gap-3 p-2"
-            data-testid="directory-room"
-          >
-            <trn-avatar
-              [mxc]="room.avatarMxc"
-              [name]="room.name"
-              [initial]="initialFor(room)"
-              size="xl"
-              shape="place"
-            />
-            <span class="flex min-w-0 flex-1 flex-col">
-              <span class="truncate text-sm font-medium">{{ room.name }}</span>
-              <span class="truncate text-xs text-muted-foreground">
-                {{ room.memberCount }} members
-              </span>
-              @if (room.topic) {
-                <span class="truncate text-xs text-muted-foreground">
-                  {{ room.topic }}
-                </span>
-              }
-            </span>
-            <button
-              trnBtn
-              type="button"
-              variant="secondary"
-              presentation="outline"
-              size="sm"
-              [disabled]="joining() === room.roomId"
-              (click)="join(room)"
-              data-testid="directory-join"
-            >
-              {{ joining() === room.roomId ? 'Joining…' : 'Join' }}
-            </button>
-          </li>
-        }
-      </ul>
+        {{ loading() ? 'Searching…' : 'Search' }}
+      </button>
+    </form>
 
-      @if (hasMore()) {
-        <button
-          trnBtn
-          type="button"
-          variant="secondary"
-          presentation="ghost"
-          size="sm"
-          class="mt-2 w-full"
-          [disabled]="loading()"
-          (click)="loadMore()"
-          data-testid="directory-load-more"
-        >
-          {{ loading() ? 'Loading…' : 'Load more' }}
-        </button>
-      }
+    @if (error(); as message) {
+      <p class="text-sm text-danger" role="alert" data-testid="directory-error">
+        {{ message }}
+      </p>
     }
+
+    <div>
+      @if (loading() && rooms().length === 0) {
+        <p
+          class="text-13 text-muted-foreground"
+          aria-live="polite"
+          data-testid="directory-loading"
+        >
+          Loading…
+        </p>
+      } @else if (isEmpty()) {
+        <p class="text-13 text-muted-foreground" data-testid="directory-empty">
+          No public rooms found.
+        </p>
+      } @else {
+        <ul class="flex flex-col gap-1">
+          @for (room of rooms(); track room.roomId) {
+            <li
+              class="rounded flex items-center gap-3 p-2"
+              data-testid="directory-room"
+            >
+              <trn-avatar
+                [mxc]="room.avatarMxc"
+                [name]="room.name"
+                [initial]="initialFor(room)"
+                size="xl"
+                shape="place"
+              />
+              <span class="flex min-w-0 flex-1 flex-col">
+                <span class="truncate text-sm font-medium">{{
+                  room.name
+                }}</span>
+                <span class="truncate text-xs text-muted-foreground">
+                  {{ room.memberCount }} members
+                </span>
+                @if (room.topic) {
+                  <span class="truncate text-xs text-muted-foreground">
+                    {{ room.topic }}
+                  </span>
+                }
+              </span>
+              <button
+                trnBtn
+                type="button"
+                variant="secondary"
+                presentation="outline"
+                size="sm"
+                [disabled]="joining() === room.roomId"
+                (click)="join(room)"
+                data-testid="directory-join"
+              >
+                {{ joining() === room.roomId ? 'Joining…' : 'Join' }}
+              </button>
+            </li>
+          }
+        </ul>
+
+        @if (hasMore()) {
+          <button
+            trnBtn
+            type="button"
+            variant="secondary"
+            presentation="ghost"
+            size="sm"
+            class="mt-2 w-full"
+            [disabled]="loading()"
+            (click)="loadMore()"
+            data-testid="directory-load-more"
+          >
+            {{ loading() ? 'Loading…' : 'Load more' }}
+          </button>
+        }
+      }
+    </div>
   </div>
 
-  <div class="flex justify-end">
+  <div trnDialogActions>
     <button
       trnBtn
       type="button"
       variant="secondary"
-      presentation="ghost"
+      presentation="link"
       (click)="close()"
       data-testid="directory-close"
     >
       Close
     </button>
   </div>
-</div>
+</trn-dialog-shell>

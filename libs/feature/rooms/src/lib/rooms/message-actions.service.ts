@@ -3,7 +3,6 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { type WorkspaceRoomNavigationOrigin } from '@trinity/application/workspace';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { TrnDialogService } from '@trinity/components/overlay';
-import { isMobileOs } from '@trinity/platform-native';
 import {
   type ConversationMessageOutcome,
   ConversationRuntime,
@@ -112,15 +111,12 @@ export class MessageActionsService {
     >,
     origin: WorkspaceRoomNavigationOrigin,
   ): void {
-    const mobile = isMobileOs();
     this.dialog
       .openAndWait$<RoomLinkPreviewResult | null, RoomLinkPreviewComponent>(
         RoomLinkPreviewComponent,
         {
-          ariaLabel: 'Room information',
           autoFocus: 'first-heading',
-          placement: mobile ? 'bottom' : 'center',
-          inputs: { target, sheet: mobile },
+          inputs: { target },
         },
       )
       .pipe(takeUntilDestroyed(this.destroyRef))

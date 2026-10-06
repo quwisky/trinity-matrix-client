@@ -351,7 +351,6 @@ export class SpaceActionsService {
     }
     this.dialog
       .openAndWait$(AddToSpaceComponent, {
-        ariaLabel: 'Add rooms to this space',
         inputs: { accountId, spaceId, spaceName: this.vm.activeSpaceName() },
       })
       .pipe(takeUntilDestroyed(this.destroyRef))

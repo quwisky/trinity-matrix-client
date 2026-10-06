@@ -1,4 +1,4 @@
-import { render } from '@trinity/testing';
+import { render, screen, within } from '@trinity/testing';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import { SpaceContentsService } from '@trinity/data-access/room-library';
 import { MockProvider } from 'ng-mocks';
@@ -97,6 +97,22 @@ async function build(
 }
 
 describe('AddToSpaceComponent', () => {
+  it('shows its title in the shared dialog shell', async () => {
+    await build();
+
+    expect(
+      within(screen.getByTestId('dialog-surface')).getByRole('heading', {
+        level: 2,
+        name: 'Add rooms to Design',
+      }),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('dialog-footer')).getByTestId(
+        'add-to-space-add',
+      ),
+    ).toBeTruthy();
+  });
+
   it('offers the rooms the user is in', async () => {
     const { cmp } = await build({
       rooms: [room('!a:hs', 'Alpha'), room('!b:hs', 'Bravo')],

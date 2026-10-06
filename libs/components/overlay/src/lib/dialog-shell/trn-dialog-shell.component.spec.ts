@@ -37,6 +37,16 @@ class HiddenTitleHostComponent {}
 
 @Component({
   imports: [TrnDialogShellComponent],
+  template: `<trn-dialog-shell
+    title="Switch room"
+    [titleHidden]="true"
+    [closable]="false"
+  />`,
+})
+class BareHostComponent {}
+
+@Component({
+  imports: [TrnDialogShellComponent],
   template: `<trn-dialog-shell title="Busy" [closable]="false" />`,
 })
 class NotClosableHostComponent {}
@@ -104,6 +114,17 @@ describe('TrnDialogShellComponent', () => {
     expect(heading.classList).toContain('sr-only');
     expect(surface().hasAttribute('role')).toBe(false);
     expect(surface().hasAttribute('aria-labelledby')).toBe(false);
+  });
+
+  it('renders no header band when the title is hidden and there is no close button', async () => {
+    const { container } = await render(BareHostComponent, {
+      providers: [provideTrnIcons()],
+    });
+
+    expect(container.querySelector('header')).toBeNull();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Switch room' }).classList,
+    ).toContain('sr-only');
   });
 
   it('still gives its heading an id without an opening ref', async () => {

@@ -33,7 +33,6 @@ export class EditHistoryDialogService {
         .openAndWait$<MatrixLinkClickTarget, EditHistoryComponent>(
           EditHistoryComponent,
           {
-            ariaLabel: 'Edit history',
             inputs: { roomId, eventId },
           },
         )

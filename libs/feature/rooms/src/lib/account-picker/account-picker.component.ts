@@ -8,9 +8,10 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
+  TrnDialogActions,
   TrnDialogRef,
+  TrnDialogShellComponent,
   TrnLockedSelectionDirective,
-  TrnOverlaySurfaceDirective,
 } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
@@ -42,7 +43,8 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
     TrnButton,
     TrnIconComponent,
     TrnLockedSelectionDirective,
-    TrnOverlaySurfaceDirective,
+    TrnDialogActions,
+    TrnDialogShellComponent,
   ],
 })
 export class AccountPickerComponent {

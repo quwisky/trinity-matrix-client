@@ -1,22 +1,14 @@
-@use '../styles/mixins' as *;
-
 @layer components {
   .add-to-space {
-    @include dialog-surface;
-  }
-
-  .add-to-space__title {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--trinity-text-bright);
+    display: flex;
+    flex-direction: column;
+    gap: var(--trinity-space-3);
   }
 
   .add-to-space__list {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    max-height: 320px;
-    overflow-y: auto;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -42,11 +34,5 @@
   .add-to-space__kind {
     font-size: 12px;
     color: var(--trinity-text-muted);
-  }
-
-  .add-to-space__actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
   }
 }

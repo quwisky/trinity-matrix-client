@@ -387,12 +387,15 @@ test.describe('Multiple accounts', () => {
       // A dialog, not a submenu: the account menu is gone by now.
       const picker = page.getByTestId('account-picker');
       await expect(picker).toBeVisible({ timeout: 15_000 });
-      await expect(picker).toHaveCSS('display', 'flex');
+      await expect(picker.getByTestId('dialog-surface')).toHaveCSS(
+        'display',
+        'flex',
+      );
       await expect(
         picker.getByText('Accounts in view', { exact: true }),
       ).toBeVisible();
       await expect(picker.locator('[data-autofocus]')).toBeFocused();
-      await expect(picker.locator('.picker__list')).toHaveCSS(
+      await expect(picker.locator('.dialog-shell__body')).toHaveCSS(
         'overflow-y',
         'auto',
       );
@@ -439,7 +442,7 @@ test.describe('Multiple accounts', () => {
         body: await picker.screenshot(),
         contentType: 'image/png',
       });
-      const mobileList = picker.locator('.picker__list');
+      const mobileList = picker.locator('.dialog-shell__body');
       await expect
         .poll(() =>
           mobileList.evaluate(

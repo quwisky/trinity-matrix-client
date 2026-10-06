@@ -1,5 +1,5 @@
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { render } from '@trinity/testing';
+import { render, screen, within } from '@trinity/testing';
 import { describe, expect, it, vi } from 'vitest';
 import { CreatePollDialogComponent } from './create-poll-dialog.component';
 
@@ -12,6 +12,20 @@ async function setup() {
 }
 
 describe('CreatePollDialogComponent', () => {
+  it('shows its title in the shared dialog shell', async () => {
+    await setup();
+
+    expect(
+      within(screen.getByTestId('dialog-surface')).getByRole('heading', {
+        level: 2,
+        name: 'Create poll',
+      }),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('dialog-footer')).getByTestId('poll-create'),
+    ).toBeTruthy();
+  });
+
   it('requires a question and at least two non-empty options', async () => {
     const { cmp } = await setup();
     expect(cmp.valid()).toBe(false);

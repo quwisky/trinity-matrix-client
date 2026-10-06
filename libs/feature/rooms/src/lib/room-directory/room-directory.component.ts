@@ -15,8 +15,9 @@ import { FormField, FormRoot, form } from '@angular/forms/signals';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import {
+  TrnDialogActions,
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { PublicRoomsService } from '@trinity/data-access/discovery';
@@ -52,7 +53,8 @@ export interface DirectoryJoin {
     TrnButton,
     TrnInput,
     AvatarComponent,
-    TrnOverlaySurfaceDirective,
+    TrnDialogActions,
+    TrnDialogShellComponent,
   ],
 })
 export class RoomDirectoryComponent implements OnInit {

@@ -8,21 +8,14 @@ import {
   input,
   signal,
 } from '@angular/core';
-import {
-  EmptyStateComponent,
-  TrnTooltip,
-} from '@trinity/components/generic-content';
-import {
-  TrnDialogRef,
-  TrnOverlaySurfaceDirective,
-} from '@trinity/components/overlay';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
+import { TrnDialogShellComponent } from '@trinity/components/overlay';
 import {
   ConversationRuntime,
   type ReactionDetail,
 } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/generic-content';
-import { TrnIconComponent } from '@trinity/components/foundations';
 import { textScaledViewportSignal } from '@trinity/util/ui';
 
 /**
@@ -38,27 +31,18 @@ import { textScaledViewportSignal } from '@trinity/util/ui';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './reactions-dialog.component.html',
   styleUrl: './reactions-dialog.component.scss',
-  host: {
-    '[class.reactions-dialog--sheet]': 'sheet()',
-  },
   imports: [
     EmptyStateComponent,
     AvatarComponent,
     TrnButton,
-    TrnOverlaySurfaceDirective,
-    TrnIconComponent,
-    TrnTooltip,
+    TrnDialogShellComponent,
   ],
 })
 export class ReactionsDialogComponent implements OnInit {
   private readonly timeline = inject(ConversationRuntime).timeline;
-  private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
 
   /** The message whose reactors to list (populated from the dialog's `inputs`). */
   readonly eventId = input.required<string>();
-
-  /** Whether the shared dialog is presented as a mobile bottom sheet. */
-  readonly sheet = input(false);
 
   /** The reactors, grouped by reaction key, as they stood when the dialog opened. */
   readonly sections = signal<ReactionDetail[]>([]);
@@ -92,9 +76,5 @@ export class ReactionsDialogComponent implements OnInit {
 
   select(key: string): void {
     this.selectedKey.set(key);
-  }
-
-  close(): void {
-    this.dialogRef.close();
   }
 }

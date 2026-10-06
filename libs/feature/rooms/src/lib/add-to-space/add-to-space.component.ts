@@ -15,8 +15,9 @@ import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnCheckboxComponent } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import {
+  TrnDialogActions,
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
   TrnToastService,
 } from '@trinity/components/overlay';
 import {
@@ -63,7 +64,8 @@ export interface AddCandidate {
     EmptyStateComponent,
     FormField,
     TrnButton,
-    TrnOverlaySurfaceDirective,
+    TrnDialogActions,
+    TrnDialogShellComponent,
     TrnCheckboxComponent,
     TrnInput,
     AvatarComponent,

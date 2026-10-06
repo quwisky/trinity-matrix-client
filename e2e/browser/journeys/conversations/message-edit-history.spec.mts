@@ -287,7 +287,7 @@ test.describe('Edit history', () => {
     // The list is complete, so it must not claim otherwise.
     await expect(page.getByTestId('edit-history-truncated')).toHaveCount(0);
 
-    await page.getByTestId('edit-history-close').click();
+    await page.getByTestId('dialog-close').click();
     await expect(dialog).toBeHidden();
 
     // The formatted message: its highlight sits INSIDE the bold run, and the bold still
@@ -311,7 +311,7 @@ test.describe('Edit history', () => {
     await expect(latest.locator('.diff-ins, .diff-del')).toHaveCount(0);
     await expect(latest).not.toContainText('Fri ');
 
-    await page.getByTestId('edit-history-close').click();
+    await page.getByTestId('dialog-close').click();
     await expect(dialog).toBeHidden();
 
     // Removing your own versions. Every row but the first offers it — the first is the
@@ -341,7 +341,7 @@ test.describe('Edit history', () => {
     await expect(dialog).not.toContainText(versions[2]);
     // The list did not collapse into an error because one row went away.
     await expect(page.getByTestId('edit-history-error')).toHaveCount(0);
-    await page.getByTestId('edit-history-close').click();
+    await page.getByTestId('dialog-close').click();
     await expect(dialog).toBeHidden();
 
     // THE POINT: the message now reads as the version before the one removed — not as
@@ -372,7 +372,7 @@ test.describe('Edit history', () => {
     await expect(dialog.locator('.revision')).toHaveCount(1, {
       timeout: 20_000,
     });
-    await page.getByTestId('edit-history-close').click();
+    await page.getByTestId('dialog-close').click();
     await expect(dialog).toBeHidden();
 
     await expect(row.locator('.msg__text')).toHaveText(versions[0], {
@@ -394,7 +394,7 @@ test.describe('Edit history', () => {
     await expect(deletedRow).not.toContainText(deletedBody);
   });
 
-  test('uses a settings-style frame with a fixed header and scrolling revisions', async ({
+  test('uses the shared dialog frame with a fixed header and scrolling body', async ({
     page,
     request,
   }) => {
@@ -410,9 +410,9 @@ test.describe('Edit history', () => {
     const header = dialog.locator('header');
     await expect(header).toBeVisible();
     await expect(
-      header.getByRole('heading', { name: 'Edit history' }),
+      header.getByRole('heading', { level: 2, name: 'Edit history' }),
     ).toBeVisible();
-    await expect(header.getByTestId('edit-history-close')).toBeVisible();
+    await expect(header.getByTestId('dialog-close')).toBeVisible();
     await expect(dialog.locator('footer')).toHaveCount(0);
     const toggle = dialog.getByTestId('edit-history-toggle');
     await expect(toggle).toBeVisible();
@@ -424,79 +424,55 @@ test.describe('Edit history', () => {
     expect(dialogBox).not.toBeNull();
     expect(dialogBox!.width).toBeLessThan(viewport!.width);
     expect(dialogBox!.height).toBeLessThanOrEqual(viewport!.height + 1);
-    const revisions = dialog.locator('.revisions');
+    // Only the body scrolls: the header stays where it is while the history moves.
+    const body = dialog.locator('.dialog-shell__body');
     await expect
-      .poll(() => revisions.evaluate((el) => el.scrollHeight > el.clientHeight))
+      .poll(() => body.evaluate((el) => el.scrollHeight > el.clientHeight))
       .toBe(true);
     const headerY = (await header.boundingBox())!.y;
-    const toggleY = (await toggle.boundingBox())!.y;
-    await revisions.evaluate((el) => {
+    await body.evaluate((el) => {
       el.scrollTop = el.scrollHeight;
     });
     await expect
       .poll(async () => (await header.boundingBox())!.y)
       .toBe(headerY);
-    await expect
-      .poll(async () => (await toggle.boundingBox())!.y)
-      .toBe(toggleY);
     await page.keyboard.press('Tab');
     await expect
       .poll(() => dialog.evaluate((el) => el.contains(document.activeElement)))
       .toBe(true);
-    await test.info().attach('edit-history-settings-style', {
+    await test.info().attach('edit-history-dialog', {
       body: await dialog.screenshot(),
       contentType: 'image/png',
     });
 
     // Closing returns keyboard focus to the edited marker that opened the dialog.
-    await header.getByTestId('edit-history-close').click();
+    await header.getByTestId('dialog-close').click();
     await expect(dialog).toBeHidden();
     await expect(row.getByTestId('msg-edited')).toBeFocused();
 
-    // Crossing the compact viewport breakpoint also turns the desktop card into a
-    // fullscreen surface, and the close control remains in the fixed header.
-    await row.getByTestId('msg-edited').click();
+    // Below the md breakpoint the shell turns the card into a bottom sheet, and the
+    // close control remains in the fixed header.
     await page.setViewportSize({ width: 767, height: viewport!.height });
-    await expect(dialog).toHaveAttribute('data-compact', 'true');
+    await row.getByTestId('msg-edited').click();
+    await expect(dialog.getByTestId('sheet-handle')).toBeVisible();
     await expect
       .poll(async () => (await dialog.boundingBox())?.width ?? 0)
       .toBeGreaterThanOrEqual(766);
     await expect(
-      dialog.locator('header').getByTestId('edit-history-close'),
+      dialog.locator('header').getByTestId('dialog-close'),
     ).toBeVisible();
     await expect
       .poll(() => dialog.evaluate((el) => el.scrollWidth <= el.clientWidth))
       .toBe(true);
-    await header.getByTestId('edit-history-close').click();
+    await header.getByTestId('dialog-close').click();
     await expect(dialog).toBeHidden();
-
     await page.setViewportSize(viewport!);
-    // The 48rem text-scaled breakpoint is exercised by changing the document text size,
-    // which a jsdom test cannot observe. At 32px, the same desktop viewport is compact.
-    await row.getByTestId('msg-edited').click();
-    await expect(dialog).toBeVisible();
-    await page.evaluate(() => {
-      document.documentElement.style.fontSize = '32px';
-      window.dispatchEvent(new Event('resize'));
-    });
-    await expect(dialog).toHaveAttribute('data-compact', 'true');
-    await expect
-      .poll(async () => (await dialog.boundingBox())?.width ?? 0)
-      .toBeGreaterThanOrEqual(viewport!.width - 1);
-    await expect
-      .poll(async () => (await dialog.boundingBox())?.height ?? 0)
-      .toBeGreaterThanOrEqual(viewport!.height - 1);
-    await header.getByTestId('edit-history-close').click();
-    await page.evaluate(() => {
-      document.documentElement.style.removeProperty('font-size');
-      window.dispatchEvent(new Event('resize'));
-    });
   });
 
   test.describe('real Pixel 5 profile', () => {
     test.use({ ...pixel5 });
 
-    test('renders the history as a fullscreen, touch-sized surface', async ({
+    test('renders the history as a bottom sheet with a touch-sized close', async ({
       page,
       request,
     }) => {
@@ -509,14 +485,10 @@ test.describe('Edit history', () => {
       const box = await dialog.boundingBox();
       expect(box).not.toBeNull();
       expect(box!.width).toBeGreaterThanOrEqual((viewport?.width ?? 0) - 1);
-      expect(box!.height).toBeGreaterThanOrEqual((viewport?.height ?? 0) - 1);
-      await expect(
-        dialog.locator('header').getByTestId('edit-history-close'),
-      ).toBeVisible();
-      const closeBox = await dialog
-        .locator('header')
-        .getByTestId('edit-history-close')
-        .boundingBox();
+      await expect(dialog.getByTestId('sheet-handle')).toBeVisible();
+      const close = dialog.locator('header').getByTestId('dialog-close');
+      await expect(close).toBeVisible();
+      const closeBox = await close.boundingBox();
       expect(closeBox?.width ?? 0).toBeGreaterThanOrEqual(44);
       expect(closeBox?.height ?? 0).toBeGreaterThanOrEqual(44);
       await expect
@@ -524,8 +496,8 @@ test.describe('Edit history', () => {
         .toBe(true);
       await expect(dialog.getByTestId('edit-history-toggle')).toBeVisible();
       await expect(dialog.locator('.revisions')).toBeVisible();
-      // Large text and a narrow viewport must coexist: the outer frame clips overflow,
-      // so measure the actual reading region and keep the trailing action reachable.
+      // Large text and a narrow viewport must coexist: measure the actual reading region
+      // and keep the trailing action reachable.
       await page.evaluate(() => {
         document.documentElement.style.fontSize = '24px';
         window.dispatchEvent(new Event('resize'));

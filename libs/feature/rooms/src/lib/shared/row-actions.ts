@@ -96,7 +96,6 @@ export function dispatchSharedRowAction(
       if (raw) {
         ctx.dialog.open(MessageSourceComponent, {
           inputs: { source: JSON.stringify(raw, null, 2) },
-          ariaLabel: 'Message source',
         });
       }
       return true;

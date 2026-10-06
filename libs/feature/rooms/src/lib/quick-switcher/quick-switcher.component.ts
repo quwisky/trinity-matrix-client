@@ -22,9 +22,8 @@ import {
 } from '@trinity/components/generic-content';
 import {
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
 } from '@trinity/components/overlay';
-import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
@@ -71,9 +70,8 @@ const KIND_ICON: Record<SwitcherKind, TrnIconName> = {
     EmptyStateComponent,
     TrnIconComponent,
     AvatarComponent,
-    TrnOverlaySurfaceDirective,
+    TrnDialogShellComponent,
     TrnSpinnerComponent,
-    TrnButton,
     TrnInput,
   ],
   templateUrl: './quick-switcher.component.html',

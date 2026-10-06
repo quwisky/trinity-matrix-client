@@ -105,7 +105,6 @@ export class RoomSettingsAdvancedComponent implements OnInit {
 
   viewState(): void {
     this.dialog.open(RoomStateViewerComponent, {
-      ariaLabel: 'Room state',
       inputs: {
         entries: this.settings.stateEvents({
           accountId: this.accountId(),
@@ -124,7 +123,6 @@ export class RoomSettingsAdvancedComponent implements OnInit {
       .openAndWait$<RoomUpgradeResult, RoomUpgradeDialogComponent>(
         RoomUpgradeDialogComponent,
         {
-          ariaLabel: 'Upgrade room',
           ariaDescribedBy: ROOM_UPGRADE_WARNING_ID,
           // Closing mid-run would hide a workflow that keeps going.
           dismissGuard: (dialog) => !dialog?.busy(),
