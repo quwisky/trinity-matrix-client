@@ -123,9 +123,15 @@ describe('modern room shell layout contracts', () => {
 
     const main = ruleBody(roomsCss, '.main');
     expect(main).toContain('background: var(--trinity-surface-pane)');
-    expect(main).toMatch(
-      /@media\s+#\{\$md\}\s*\{[^}]*border-start-start-radius:\s*var\(--trinity-shape-pane-radius\)/,
-    );
+    // The rounded corner must not be a radius on `.main`: `.main` clips with overflow:hidden,
+    // and a rounded clip around the composited timeline forces an offscreen render pass that
+    // costs ~430 MB of GPU IOSurface memory on macOS. The corner is painted by an unclipped mask.
+    expect(main).not.toMatch(/border(-[a-z-]+)?-radius/);
+    const corner = ruleBody(roomsCss, '.main::before');
+    expect(corner).toContain('pointer-events: none');
+    expect(corner).toContain('var(--trinity-shape-pane-radius)');
+    expect(corner).toMatch(/radial-gradient\(/);
+    expect(roomsCss).toMatch(/@media\s+#\{\$md\}\s*\{[^]*?\.main::before/);
     expect(ruleBody(roomsCss, '.chat-body')).toContain(
       'background: var(--trinity-surface-pane)',
     );
