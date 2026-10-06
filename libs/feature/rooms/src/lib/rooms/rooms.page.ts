@@ -19,6 +19,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import { escapeHtml, linkifyText } from '@trinity/util/matrix';
 import {
   InboundRoomLinkService,
   roomTitle,
@@ -174,6 +175,19 @@ export class RoomsPage {
     BELOW_MD_QUERY,
     inject(DestroyRef),
   );
+  /**
+   * The full topic as HTML: text is escaped by `linkifyText`/`escapeHtml` first, then links
+   * are made to open outside the app (Angular's sanitiser keeps `target` and `rel`).
+   */
+  protected readonly topicHtml = computed(() => {
+    const topic = this.vm.activeRoom()?.topic ?? '';
+    return (
+      linkifyText(topic)?.replace(
+        /<a href=/g,
+        '<a target="_blank" rel="noopener noreferrer" href=',
+      ) ?? escapeHtml(topic)
+    );
+  });
   /**
    * Which way a message row is dragged to act on it, HERE and not in the list.
    *

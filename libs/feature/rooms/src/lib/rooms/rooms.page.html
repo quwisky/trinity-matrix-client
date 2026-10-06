@@ -142,11 +142,19 @@
         </button>
 
         <!-- Projected into the shell's single <h1>: inline spans + icon only, no
-           nested heading. rooms' scoped .title-hash/.title-lock still apply. -->
+           nested heading. rooms' scoped .title-room/.title-lock still apply. -->
         <ng-container trnHeaderTitle>
           @if (vm.activeRoom(); as room) {
-            <span class="truncate">
-              <span class="title-hash">#</span>{{ room.name }}
+            <span class="title-room" data-testid="room-title">
+              <trn-avatar
+                [mxc]="room.avatarMxc"
+                [accountId]="room.accountId"
+                [initial]="room.initial"
+                [name]="room.name"
+                [exactSize]="24"
+                [shape]="room.directUserId ? 'person' : 'place'"
+              />
+              <span class="truncate">{{ room.name }}</span>
             </span>
             @if (room.encrypted) {
               <trn-icon class="title-lock" name="lock" label="Encrypted room" />
@@ -172,8 +180,30 @@
                 <span class="title-account__name">{{ vm.userName() }}</span>
               </span>
             }
+            @if (room.topic && !mobileMasterDetail()) {
+              <span
+                class="title-divider"
+                data-testid="room-topic-divider"
+                aria-hidden="true"
+              ></span>
+              <button
+                type="button"
+                class="title-topic"
+                data-testid="room-topic"
+                popovertarget="room-topic-popover"
+                [attr.aria-label]="'Room topic: ' + room.topic"
+              >
+                {{ room.topic }}
+              </button>
+              <div
+                id="room-topic-popover"
+                popover
+                class="topic-popover"
+                [innerHTML]="topicHtml()"
+              ></div>
+            }
           } @else {
-            Trinity
+            <span class="sr-only">Trinity</span>
           }
         </ng-container>
 

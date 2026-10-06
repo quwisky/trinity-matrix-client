@@ -65,6 +65,7 @@ import {
   ROUTE_PROVIDER,
   SYSTEM_STATUS_PROVIDER,
   setRouteRoom,
+  stubNarrowLayout,
 } from './rooms-page.spec-harness';
 import { SessionActionsService } from './session-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
@@ -111,6 +112,7 @@ let lastRender: {
 function renderHeader(
   pinCount: number,
   presenceByUser: Record<string, WritableSignal<PresenceState | null>> = {},
+  room: RoomSummary | null = ROOM,
 ) {
   const pinMessages = signal<readonly unknown[]>(
     Array.from({ length: pinCount }, (_, id) => ({ id })),
@@ -119,7 +121,7 @@ function renderHeader(
     accountBadges: signal(new Map()),
     accounts: signal([]),
     activeAccountId: signal<string | null>('@me:hs'),
-    activeRoom: signal<RoomSummary | null>(ROOM),
+    activeRoom: signal<RoomSummary | null>(room),
     activeRoomIsDirect: signal(false),
     anyRoomUnread: signal(false),
     canConfigureSpace: signal(false),
@@ -380,5 +382,77 @@ describe('RoomsPage user panel presence', () => {
     lastRender.activeAccountId.set('@alt:hs');
     lastRender.fixture.detectChanges();
     expect(panelPresence()).toBe('unavailable');
+  });
+});
+
+describe('RoomsPage header title', () => {
+  const topicRoom = (topic: string): RoomSummary => ({ ...ROOM, topic });
+
+  it('shows a 24px avatar, no hash, and a divider with the topic', () => {
+    const host = renderHeader(0, {}, topicRoom('Release planning'));
+    const avatar = host.querySelector(
+      '[data-testid="room-title"] trn-avatar',
+    ) as HTMLElement | null;
+    expect(avatar).not.toBeNull();
+    expect(
+      lastRender.fixture.debugElement
+        .query(By.css('[data-testid="room-title"] trn-avatar'))
+        .componentInstance.exactSize(),
+    ).toBe(24);
+    expect(host.querySelector('.title-hash')).toBeNull();
+    expect(
+      host.querySelector('[data-testid="room-topic"]')?.textContent?.trim(),
+    ).toBe('Release planning');
+    expect(
+      host.querySelector('[data-testid="room-topic-divider"]'),
+    ).not.toBeNull();
+  });
+
+  it('omits the divider and topic when the topic is empty', () => {
+    const host = renderHeader(0);
+    expect(host.querySelector('[data-testid="room-topic"]')).toBeNull();
+    expect(host.querySelector('[data-testid="room-topic-divider"]')).toBeNull();
+  });
+
+  it('points the topic button at the popover', () => {
+    const host = renderHeader(0, {}, topicRoom('Release planning'));
+    const button = host.querySelector('[data-testid="room-topic"]');
+    expect(button?.tagName).toBe('BUTTON');
+    expect(button?.getAttribute('popovertarget')).toBe('room-topic-popover');
+    expect(host.querySelector('#room-topic-popover')).not.toBeNull();
+  });
+
+  it('shows markup in the topic as text and links as safe anchors', () => {
+    const host = renderHeader(
+      0,
+      {},
+      topicRoom('<img src=x onerror=alert(1)> see https://example.org'),
+    );
+    const popover = host.querySelector('#room-topic-popover') as HTMLElement;
+    expect(popover.querySelector('img')).toBeNull();
+    expect(popover.textContent).toContain('<img src=x onerror=alert(1)>');
+    const links = popover.querySelectorAll(
+      'a[href="https://example.org"][target="_blank"][rel~="noopener"]',
+    );
+    expect(links).toHaveLength(1);
+  });
+
+  it('keeps the heading named but visually empty with no room open', () => {
+    const host = renderHeader(0, {}, null);
+    const h1 = host.querySelector('h1') as HTMLElement;
+    expect(h1.querySelector('.sr-only')?.textContent?.trim()).toBe('Trinity');
+    expect(h1.querySelector('[data-testid="room-title"]')).toBeNull();
+    h1.querySelector('.sr-only')?.remove();
+    expect(h1.textContent?.trim()).toBe('');
+  });
+
+  it('does not render the topic below md', () => {
+    const restore = stubNarrowLayout();
+    try {
+      const host = renderHeader(0, {}, topicRoom('Release planning'));
+      expect(host.querySelector('[data-testid="room-topic"]')).toBeNull();
+    } finally {
+      restore();
+    }
   });
 });

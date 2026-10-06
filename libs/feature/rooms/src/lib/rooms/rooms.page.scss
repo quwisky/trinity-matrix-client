@@ -156,9 +156,60 @@
   // The toolbar surface now comes from the canonical neutral toolbar page-header
   // recipe. The room-name title is still projected from here, so these scoped
   // title styles stay.
-  .title-hash {
+  .title-room {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--trinity-space-3);
+    min-width: 0;
+
+    // A very long name truncates before it can squeeze the topic to nothing.
+    max-inline-size: 60%;
+    font-weight: 700;
+  }
+
+  .title-divider {
+    inline-size: 1px;
+    block-size: 20px;
+    background: var(--trinity-border-subtle);
+    flex: none;
+    margin-inline: var(--trinity-space-3);
+  }
+
+  .title-topic {
+    anchor-name: --room-topic;
+    min-width: 0;
+    flex: 1 1 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: start;
     color: var(--trinity-text-muted);
-    margin-right: 4px;
+    font-weight: 400;
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+
+  // Native popover: top layer, so it sits above the R2 overlay offsets without z-index.
+  // Anchored under the button where anchor positioning exists; else the UA centres it.
+  .topic-popover {
+    position-anchor: --room-topic;
+    top: anchor(bottom);
+    left: anchor(start);
+    margin: 0;
+    margin-block-start: var(--trinity-space-2);
+    max-inline-size: min(480px, 90vw);
+    max-block-size: 50vh;
+    overflow: auto;
+    padding-block: var(--trinity-space-3);
+    padding-inline: var(--trinity-space-4);
+    font-weight: 400;
+    color: var(--trinity-text-bright);
+    background: var(--trinity-surface-raised);
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-overlay-radius);
+    box-shadow: var(--trinity-shadow-floating);
+    overflow-wrap: anywhere;
   }
 
   .title-lock {

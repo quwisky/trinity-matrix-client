@@ -600,6 +600,10 @@ test.describe('Modern room shell layout', () => {
       const owner = members[densityIndex];
       const roomId = await createRoom(request, hs, owner, {
         name: roomNames[density],
+        topic: `Topic ${runId} ${'a very long topic '.repeat(20)}`.slice(
+          0,
+          300,
+        ),
         preset: 'private_chat',
         invite: [
           reader.userId,
@@ -688,6 +692,21 @@ test.describe('Modern room shell layout', () => {
         await activate(page.getByTestId('toggle-members'));
       }
       await expect(page.locator('.members')).toBeVisible({ timeout: 20_000 });
+
+      // A long room name and a 300-character topic truncate inside the 48px header: the
+      // header never overflows horizontally and its actions stay reachable.
+      const headerViewport = page.viewportSize()!;
+      await page.setViewportSize({ width: 1100, height: 800 });
+      const header = page.locator('header[data-trn-layout="toolbar"]');
+      await expect(page.getByTestId('room-topic')).toBeVisible();
+      await expect(header).toHaveCSS('height', '48px');
+      expect(
+        await header.evaluate((el) => el.scrollWidth <= el.clientWidth),
+      ).toBe(true);
+      await expect(page.getByTestId('search-messages')).toBeVisible();
+      await expect(page.getByTestId('room-actions-overflow')).toBeVisible();
+      await page.setViewportSize(headerViewport);
+
       await expect(page.locator('.member').first()).toHaveCSS('height', '44px');
       await expect(page.locator('.member').first()).toHaveCSS(
         'padding-left',

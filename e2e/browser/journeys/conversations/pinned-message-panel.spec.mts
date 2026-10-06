@@ -131,6 +131,11 @@ test.describe('Pinned messages panel', () => {
     expect(panelTitle).not.toBeNull();
 
     expect(panelBar!.height).toBe(48);
+    // The room header beside it is the same 48px, so the two bars share one baseline.
+    const roomBar = await page
+      .locator('header[data-trn-layout="toolbar"]')
+      .boundingBox();
+    expect(roomBar!.height).toBe(panelBar!.height);
     expect(panelTitle!.x - panelBar!.x).toBeCloseTo(12, 0);
     // And the title is centred in the bar rather than riding its top edge.
     const above = panelTitle!.y - panelBar!.y;
