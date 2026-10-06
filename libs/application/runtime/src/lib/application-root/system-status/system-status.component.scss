@@ -4,7 +4,9 @@
     z-index: var(--trinity-z-panel);
     inset: 0;
     inset-block-start: var(--trinity-title-row-inset, 0);
-    display: block;
+    display: grid;
+    place-items: center;
+    padding: var(--trinity-space-4);
   }
 
   .system-status__backdrop {
@@ -16,7 +18,50 @@
   trn-settings-layout {
     position: relative;
     min-width: 0;
-    block-size: 100%;
+
+    // A framed workspace card, not a full-screen layer: only app, Room and Space
+    // settings are full screen.
+    block-size: min(
+      48rem,
+      calc(
+        100dvh - var(--trinity-title-row-inset, 0px) - var(--trinity-space-7)
+      )
+    );
+    inline-size: min(72rem, calc(100vw - 2 * var(--trinity-space-4)));
+    max-inline-size: 100%;
+    overflow: hidden;
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-overlay-radius);
+    box-shadow: var(--trinity-shadow-floating);
+  }
+
+  // A phone gets a bottom sheet.
+  :host.system-status--mobile {
+    place-items: end center;
+    padding: 0;
+  }
+
+  :host.system-status--mobile trn-settings-layout {
+    block-size: min(
+      90svh,
+      calc(
+        100dvh - env(safe-area-inset-top, 0px) - var(
+            --trinity-title-row-inset,
+            0px
+          )
+      )
+    );
+    inline-size: 100vw;
+    border-inline-width: 0;
+    border-block-end-width: 0;
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  @media (max-width: 48rem) {
+    :host {
+      padding: 0;
+    }
   }
 
   .system-status__content {
