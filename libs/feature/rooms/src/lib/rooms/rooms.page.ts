@@ -20,6 +20,8 @@ import {
 import { Router } from '@angular/router';
 import {
   InboundRoomLinkService,
+  roomTitle,
+  TitleBarState,
   WORKSPACE_SYSTEM_STATUS,
 } from '@trinity/application/workspace';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
@@ -267,6 +269,7 @@ export class RoomsPage {
   readonly shortcutActions = inject(ShellShortcutsService);
   readonly session = inject(SessionActionsService);
   readonly systemStatus = inject(WORKSPACE_SYSTEM_STATUS);
+  private readonly titleBar = inject(TitleBarState);
   private readonly roomActionsOverflow = viewChild<ElementRef<HTMLElement>>(
     'roomActionsOverflow',
   );
@@ -331,6 +334,25 @@ export class RoomsPage {
       untracked(() =>
         this.messageActions.onMatrixLink({ target }, 'deep-link'),
       );
+    });
+    // Name the desktop title row and the browser tab after the open room; only a space
+    // contributes a prefix (Home, Recent and the Rooms view are not spaces).
+    effect((onCleanup) => {
+      const room = this.vm.activeRoom();
+      const inSpace =
+        !this.store.recentView() &&
+        !this.store.roomsView() &&
+        this.store.activeSpaceId() !== null;
+      this.titleBar.setContext({
+        title: roomTitle(
+          inSpace ? this.vm.activeSpaceName() : null,
+          room
+            ? { name: room.name, isDirect: this.vm.activeRoomIsDirect() }
+            : null,
+        ),
+        quickSwitcher: () => this.shortcutActions.openSwitcher(),
+      });
+      onCleanup(() => this.titleBar.setContext(null));
     });
     effect((onCleanup) => {
       const roomId = this.store.activeRoomId();

@@ -25,6 +25,7 @@ import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 
+import { TitleBarState } from '@trinity/application/workspace';
 import { describe, expect, it, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
@@ -131,6 +132,32 @@ describe('RoomsPage space filtering', () => {
     });
     return shellFrom();
   }
+
+  it('names the title row after the open room', async () => {
+    const shell = build();
+    const titleBar = TestBed.inject(TitleBarState);
+    shell.nav.onSelectRoomInScope(
+      { roomId: '!b:hs', accountId: '@me:hs' },
+      { kind: 'space', spaceId: '!s:hs' },
+    );
+    await vi.waitFor(() => {
+      TestBed.tick();
+      expect(titleBar.title()).toBe('!s:hs · #bravo');
+    });
+    expect(titleBar.quickSwitcher()).toBeTypeOf('function');
+  });
+
+  it('shows a direct message by the person name, without a space', async () => {
+    const shell = build();
+    const titleBar = TestBed.inject(TitleBarState);
+    shell.nav.onSelectSpace({ spaceId: null, accountId: '@me:hs' });
+    await settleWorkspace();
+    setRouteRoom('!a:hs');
+    await vi.waitFor(() => {
+      TestBed.tick();
+      expect(titleBar.title()).toBe('alpha');
+    });
+  });
 
   it('Recent activity (the default) shows every joined room, mixed', () => {
     const shell = build();
