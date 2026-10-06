@@ -31,8 +31,18 @@ async function longPress(page: Page, selector: string): Promise<void> {
   await longPressTarget(page, page.locator(selector).first());
 }
 
+/**
+ * Long-press until the action sheet opens. Right after a room opens, the sync can re-add
+ * events already in the timeline and re-render the row mid-hold, which drops that press —
+ * a person would simply press again, so the test does too.
+ */
 async function longPressTarget(page: Page, target: Locator): Promise<void> {
-  await touchLongPress(page, target);
+  const sheet = page.getByRole('dialog', { name: 'Message actions' });
+  await expect(async () => {
+    if (await sheet.isVisible()) return;
+    await touchLongPress(page, target);
+    await expect(sheet).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
 }
 
 /** Open a seeded room and hand back the newest row's stable selector. */
