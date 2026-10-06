@@ -85,3 +85,27 @@ export async function linkIntoSpace(
 export function configureRoomSettingsSuite(): void {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 }
+
+/**
+ * Every settings row label starts where the section title starts: inline padding comes from
+ * the content column only, so a group, row or card must add none.
+ */
+export async function expectRowLabelsAlignedWithTitle(
+  page: Page,
+  settingsTestId: 'room-settings' | 'space-settings',
+): Promise<void> {
+  const title = await page
+    .getByTestId(`${settingsTestId}-section-heading`)
+    .boundingBox();
+  expect(title).not.toBeNull();
+  const labels = page.locator(
+    `[data-testid="${settingsTestId}"] [data-slot="settings-row"] label`,
+  );
+  const count = await labels.count();
+  expect(count).toBeGreaterThan(0);
+  for (let index = 0; index < count; index++) {
+    const box = await labels.nth(index).boundingBox();
+    expect(box).not.toBeNull();
+    expect(Math.abs(box!.x - title!.x)).toBeLessThanOrEqual(1);
+  }
+}

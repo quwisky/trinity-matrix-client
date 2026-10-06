@@ -230,6 +230,25 @@ async function build(options: BuildOptions = {}) {
 }
 
 describe('SpaceSettingsComponent', () => {
+  it('titles the page with the open section and lists its groups as parts', async () => {
+    const { cmp, fixture, container } = await build();
+    cmp.selectSection('for-you');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const h1 = container.querySelector('h1');
+    expect(h1?.textContent?.trim()).toBe('For you');
+    expect(h1?.getAttribute('data-testid')).toBe(
+      'space-settings-section-heading',
+    );
+    expect(
+      [...container.querySelectorAll('[data-testid^="settings-part-"]')].map(
+        (part) => part.textContent?.trim(),
+      ),
+    ).toEqual(['Room order', 'For this account on this device']);
+  });
+
   it('opens General with the exact Account identity and readable Space details', async () => {
     const { cmp, container } = await build();
 

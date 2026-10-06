@@ -30,80 +30,76 @@
         data-testid="room-settings-for-you-form"
         (submit)="draft.save()"
       >
-        <section class="room-settings__card room-settings__fields">
-          <div class="room-settings__field">
-            <h3
-              id="room-settings-notifications-heading"
-              class="room-settings__label"
-            >
-              Notifications
-            </h3>
-            <p>
-              “All messages” leaves this room without specific rules, so your
-              account-wide notification settings decide. “Mentions and keywords”
-              quiets ordinary messages. “Mute” silences everything, including
-              mentions.
-            </p>
-          </div>
+        <trn-settings-group
+          title="Notifications"
+          description="“All messages” leaves this room without specific rules, so your account-wide notification settings decide. “Mentions and keywords” quiets ordinary messages. “Mute” silences everything, including mentions."
+        >
           <trn-radio-group
-            [options]="notificationOptions"
             [value]="draft.model().notificationMode"
             [disabled]="draft.form.notificationMode().disabled()"
-            aria-labelledby="room-settings-notifications-heading"
+            aria-labelledby="part-notifications"
             (valueChange)="draft.setNotificationMode($event)"
-          />
-        </section>
+          >
+            @for (option of notificationOptions; track option.value) {
+              <trn-settings-row
+                [label]="option.label"
+                [for]="'room-settings-notify-' + option.value + '-input'"
+              >
+                <trn-radio
+                  [value]="option.value"
+                  [inputId]="'room-settings-notify-' + option.value + '-input'"
+                  [attr.data-testid]="option.testId"
+                />
+              </trn-settings-row>
+            }
+          </trn-radio-group>
+        </trn-settings-group>
 
-        <section class="room-settings__card room-settings__fields">
-          <div class="room-settings__field">
-            <h3 class="room-settings__label">Organisation</h3>
-            <p>Choose where this room appears for this account.</p>
-          </div>
-          <label class="room-settings__choice">
+        <trn-settings-group
+          title="Organisation"
+          description="Choose where this room appears for this account."
+        >
+          <trn-settings-row
+            label="Favourite"
+            description="Keep this room in the favourites group near the top of the list."
+            for="room-settings-favourite-input"
+          >
             <trn-checkbox
+              inputId="room-settings-favourite-input"
               [checked]="draft.model().favourite"
               [disabled]="draft.form.favourite().disabled()"
-              aria-describedby="room-settings-favourite-help"
+              aria-describedby="room-settings-favourite-input-description"
               data-testid="room-settings-favourite"
               (checkedChange)="draft.setFavourite($event)"
             />
-            <span>
-              <strong>Favourite</strong>
-              <small id="room-settings-favourite-help">
-                Keep this room in the favourites group near the top of the list.
-              </small>
-            </span>
-          </label>
-          <label class="room-settings__choice">
+          </trn-settings-row>
+          <trn-settings-row
+            label="Low priority"
+            description="Move this room below ordinary rooms. A favourite still stays in favourites."
+            for="room-settings-low-priority-input"
+          >
             <trn-checkbox
+              inputId="room-settings-low-priority-input"
               [checked]="draft.model().lowPriority"
               [disabled]="draft.form.lowPriority().disabled()"
-              aria-describedby="room-settings-low-priority-help"
+              aria-describedby="room-settings-low-priority-input-description"
               data-testid="room-settings-low-priority"
               (checkedChange)="draft.setLowPriority($event)"
             />
-            <span>
-              <strong>Low priority</strong>
-              <small id="room-settings-low-priority-help">
-                Move this room below ordinary rooms. A favourite still stays in
-                favourites.
-              </small>
-            </span>
-          </label>
-        </section>
+          </trn-settings-row>
+        </trn-settings-group>
 
-        <section class="room-settings__card room-settings__scope">
-          <h3>This account only</h3>
-          <p>
+        <trn-settings-group title="This account only">
+          <p class="room-settings__note">
             Changes here apply only to the account named above. A shortcut in a
             combined sidebar row still applies to every account represented by
             that row.
           </p>
-          <p>
+          <p class="room-settings__note">
             Read receipts and link previews remain installation-wide Privacy
             settings and are not overridden per room.
           </p>
-        </section>
+        </trn-settings-group>
 
         @if (!room.targetAvailable()) {
           <p

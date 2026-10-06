@@ -31,7 +31,16 @@ export interface TrnSettingsLayoutSection {
   selector: 'trn-settings-layout',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgTemplateOutlet, TrnButton, TrnIconComponent],
-  providers: [TrnSettingsParts],
+  // A wrapper that projects the sections itself provides the registry the layout then shares:
+  // projected sections resolve their injector from where they are declared, outside the layout.
+  providers: [
+    {
+      provide: TrnSettingsParts,
+      useFactory: () =>
+        inject(TrnSettingsParts, { skipSelf: true, optional: true }) ??
+        new TrnSettingsParts(),
+    },
+  ],
   templateUrl: './trn-settings-layout.component.html',
   styleUrl: './trn-settings-layout.component.scss',
   host: { '(keydown.escape)': 'onEscape($event)' },
@@ -54,6 +63,8 @@ export class TrnSettingsLayoutComponent {
   readonly title = input.required<string>();
   /** The open section's name: the h1 of its detail. The list view keeps `title`. */
   readonly heading = input<string | null>(null);
+  /** Test id for the section h1, for the consumer whose own heading it replaced. */
+  readonly headingTestId = input<string | null>(null);
   /** Ordered entries for the left directory. */
   readonly sections = input<readonly TrnSettingsLayoutSection[]>([]);
   /** The selected entry, or null while a compact layout shows only its directory. */

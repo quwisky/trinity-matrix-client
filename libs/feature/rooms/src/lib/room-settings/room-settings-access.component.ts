@@ -11,6 +11,10 @@ import {
   TrnCheckboxComponent,
   TrnSelectComponent,
 } from '@trinity/components/controls';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+} from '@trinity/components/overlay';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { RoomSettingsDraftService } from './room-settings-draft.service';
 import type { ParentSpace } from './room-settings.models';
@@ -26,6 +30,8 @@ import type { ParentSpace } from './room-settings.models';
     TrnButton,
     TrnCheckboxComponent,
     TrnSelectComponent,
+    TrnSettingsGroupComponent,
+    TrnSettingsRowComponent,
     TrnTooltip,
   ],
   templateUrl: './room-settings-access.component.html',

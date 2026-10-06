@@ -12,6 +12,7 @@ import {
   TrnInput,
   TrnTextarea,
 } from '@trinity/components/controls';
+import { TrnSettingsGroupComponent } from '@trinity/components/overlay';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { initialOf } from '@trinity/util/matrix';
 import { AvatarFieldComponent } from '../shared/avatar-field/avatar-field.component';
@@ -29,6 +30,7 @@ import { SpaceSettingsDraftService } from './space-settings-draft.service';
     FormRoot,
     TrnActionAvailability,
     TrnButton,
+    TrnSettingsGroupComponent,
     TrnInput,
     TrnTextarea,
     TrnTooltip,

@@ -44,6 +44,25 @@ class SettingsLayoutHostComponent {
 }
 
 describe('TrnSettingsLayoutComponent', () => {
+  it('puts the heading test id on the section h1', async () => {
+    const { container } = await render(TrnSettingsLayoutComponent, {
+      inputs: {
+        title: 'Room settings',
+        heading: 'Access',
+        headingTestId: 'room-settings-section-heading',
+        sections,
+        selectedSection: 'general',
+      },
+      providers: [provideTrnIcons()],
+    });
+    const h1 = container.querySelector('h1');
+
+    expect(h1?.textContent?.trim()).toBe('Access');
+    expect(h1?.getAttribute('data-testid')).toBe(
+      'room-settings-section-heading',
+    );
+  });
+
   it('keeps compact section navigation with the directory hidden', async () => {
     const { container, getByRole } = await render(TrnSettingsLayoutComponent, {
       inputs: {

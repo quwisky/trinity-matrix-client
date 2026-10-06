@@ -1,37 +1,19 @@
 @mixin layout {
   .room-settings__spaces {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    min-width: 0;
     margin: 0;
     padding: 0;
     border: 0;
   }
 
-  .room-settings__space {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 40px;
-    font-size: var(--trinity-type-body-size);
-    cursor: pointer;
+  .room-settings__legend {
+    padding: var(--trinity-space-4) 0 0;
   }
 
   .room-settings__error {
     margin: 0;
+    padding-block: var(--trinity-space-4);
     color: var(--trinity-danger);
     font-size: var(--trinity-type-caption-size);
-  }
-
-  .room-settings__hint,
-  .room-settings__restriction {
-    margin: 0;
-    color: var(--trinity-text-muted);
-    font-size: var(--trinity-type-caption-size);
-    line-height: 1.45;
-  }
-
-  .room-settings__restriction {
-    color: var(--trinity-danger);
   }
 }

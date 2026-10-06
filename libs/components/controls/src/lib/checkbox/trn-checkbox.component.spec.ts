@@ -25,10 +25,30 @@ class HostComponent {
   readonly last = signal<boolean | null>(null);
 }
 
+@Component({
+  imports: [TrnCheckboxComponent],
+  template: `
+    <label for="fav-box">Favourite</label>
+    <trn-checkbox inputId="fav-box" (checkedChange)="last.set($event)" />
+  `,
+})
+class LabelledHostComponent {
+  readonly last = signal<boolean | null>(null);
+}
+
 const box = (container: Element) =>
   container.querySelector<HTMLInputElement>('[role="checkbox"]');
 
 describe('TrnCheckboxComponent', () => {
+  it('puts inputId on the native control, so a label for it operates the checkbox', async () => {
+    const { container, fixture } = await render(LabelledHostComponent);
+    expect(box(container)?.id).toBe('fav-box');
+
+    container.querySelector('label')!.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.last()).toBe(true);
+  });
+
   it('reflects the bound state onto the rendered control', async () => {
     // Assert through the native input's ARIA state rather than a presentation class, because
     // ARIA is what both a screen reader and the e2e suite read

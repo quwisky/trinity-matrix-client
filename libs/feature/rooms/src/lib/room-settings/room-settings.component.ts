@@ -7,7 +7,10 @@ import {
   input,
   viewChild,
 } from '@angular/core';
-import { TrnDialogRef } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnSettingsGroupComponent,
+} from '@trinity/components/overlay';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import type { RoomWidgetTarget } from '@trinity/data-access/widgets';
 import { MembersSettingsComponent } from '../members-settings/members-settings.component';
@@ -103,6 +106,7 @@ const SECTIONS: readonly (SettingsHubSection & {
     RoomSettingsForYouComponent,
     RoomWidgetsComponent,
     SettingsHubComponent,
+    TrnSettingsGroupComponent,
   ],
   templateUrl: './room-settings.component.html',
   styleUrl: './room-settings.component.scss',

@@ -36,6 +36,7 @@ import { trnCheckboxRecipe } from '../choice-control/trn-choice-control-recipe';
       class="peer absolute inset-0 z-10 size-full cursor-pointer opacity-0 disabled:cursor-default"
       type="checkbox"
       role="checkbox"
+      [attr.id]="inputId()"
       [checked]="checked()"
       [attr.aria-checked]="indeterminate() ? 'mixed' : checked()"
       [indeterminate]="indeterminate()"
@@ -74,6 +75,8 @@ export class TrnCheckboxComponent {
   readonly indeterminate = input(false, { transform: booleanAttribute });
   readonly disabled = input(false, { transform: booleanAttribute });
   readonly invalid = input(false, { transform: booleanAttribute });
+  /** Id of the native control, so a `<label for>` (a settings row) operates it. */
+  readonly inputId = input<string | null>(null);
 
   /** For a checkbox with no visible label of its own. */
   readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });

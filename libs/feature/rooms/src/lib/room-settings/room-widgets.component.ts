@@ -18,6 +18,7 @@ import {
   TrnAlertService,
   TrnDialogRef,
   TrnDialogService,
+  TrnSettingsGroupComponent,
   TrnToastService,
 } from '@trinity/components/overlay';
 import {
@@ -46,7 +47,7 @@ interface WidgetEntry {
 @Component({
   selector: 'trn-room-widgets',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, RoomWidgetCreateComponent],
+  imports: [TrnButton, TrnSettingsGroupComponent, RoomWidgetCreateComponent],
   templateUrl: './room-widgets.component.html',
   styleUrl: './room-widgets.component.scss',
 })

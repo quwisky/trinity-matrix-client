@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
@@ -70,6 +72,54 @@ async function build(options: BuildOptions = {}) {
 }
 
 describe('RoomSettingsForYouComponent', () => {
+  it('gives radio and checkbox choices the shared settings row label', async () => {
+    const { container } = await build();
+    const rowLabel = (testId: string) =>
+      container
+        .querySelector(`[data-testid="${testId}"]`)
+        ?.closest('trn-settings-row')
+        ?.querySelector('label');
+    const radio = rowLabel('room-settings-notify-mentions');
+    const checkbox = rowLabel('room-settings-favourite');
+
+    expect(radio?.textContent?.trim()).toBe('Mentions and keywords');
+    expect(checkbox?.textContent?.trim()).toBe('Favourite');
+    expect(radio?.className).toContain('font-semibold');
+    expect(radio?.className).toBe(checkbox?.className);
+    expect(container.querySelector('strong, small')).toBeNull();
+    expect(
+      container
+        .querySelector('[role="radiogroup"]')
+        ?.querySelectorAll(':scope > trn-settings-row'),
+    ).toHaveLength(3);
+    expect(
+      container
+        .querySelector('#room-settings-favourite-help')
+        ?.closest('trn-settings-row'),
+    ).not.toBeNull();
+  });
+
+  it('keeps the radios in one native group so the arrow keys move between them', async () => {
+    const { container } = await build();
+    const names = new Set(
+      [
+        ...container.querySelectorAll<HTMLInputElement>('input[type=radio]'),
+      ].map(({ name }) => name),
+    );
+
+    expect(names.size).toBe(1);
+    expect([...names][0]).not.toBe('');
+  });
+
+  it('leaves choice label type to the shared row', () => {
+    const scss = readFileSync(
+      join(__dirname, 'room-settings-for-you.component.scss'),
+      'utf8',
+    );
+
+    expect(scss).not.toContain('room-settings__choice');
+  });
+
   it('loads the exact opening Account and explains the sidebar shortcut scope', async () => {
     const { container, readMode, organisationFor } = await build();
 

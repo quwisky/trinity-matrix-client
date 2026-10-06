@@ -23,8 +23,7 @@
     />
   </trn-settings-identity-card>
 
-  <section class="room-settings__card room-settings__fields">
-    <h3>Room details</h3>
+  <trn-settings-group title="Room details">
     <div class="room-settings__field">
       <span id="room-settings-name-label" class="room-settings__label"
         >Name</span
@@ -122,15 +121,16 @@
         </span>
       }
     </div>
-  </section>
+  </trn-settings-group>
 
-  <section class="room-settings__card">
-    <h3>Encryption</h3>
-    <p data-testid="room-settings-encryption">{{ encryptionStatus() }}</p>
-    <p class="room-settings__hint">
+  <trn-settings-group title="Encryption">
+    <p class="room-settings__note" data-testid="room-settings-encryption">
+      {{ encryptionStatus() }}
+    </p>
+    <p class="room-settings__note">
       Encryption is informational here and cannot be changed from Room settings.
     </p>
-  </section>
+  </trn-settings-group>
 
   @if (draft.generalFeedback(); as feedback) {
     <p

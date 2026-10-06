@@ -22,8 +22,7 @@
     />
   </trn-settings-identity-card>
 
-  <section class="space-settings__card space-settings__fields">
-    <h3>Space details</h3>
+  <trn-settings-group title="Space details">
     <div class="space-settings__field">
       <span id="space-settings-name-label" class="space-settings__label"
         >Name</span
@@ -126,7 +125,7 @@
         </span>
       }
     </div>
-  </section>
+  </trn-settings-group>
 
   @if (draft.generalFeedback(); as feedback) {
     <p

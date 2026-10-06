@@ -3,6 +3,7 @@ import {
   Component,
   booleanAttribute,
   computed,
+  inject,
   input,
   output,
 } from '@angular/core';
@@ -119,11 +120,12 @@ export interface TrnRadioOption<T> {
           </span>
         </label>
       }
+      <ng-content />
     </div>
   `,
 })
 export class TrnRadioGroupComponent<T> {
-  protected readonly controlName = `trn-radio-${nextRadioGroupId++}`;
+  readonly controlName = `trn-radio-${nextRadioGroupId++}`;
   protected readonly groupClass = computed(() =>
     trnRadioGroupRecipe(this.layout()),
   );
@@ -145,7 +147,8 @@ export class TrnRadioGroupComponent<T> {
   }
 
   readonly layout = input<TrnRadioGroupLayout>('list');
-  readonly options = input.required<readonly TrnRadioOption<T>[]>();
+  /** Omit to project {@link TrnRadioComponent}s, each labelled by the caller's own row. */
+  readonly options = input<readonly TrnRadioOption<T>[]>([]);
   readonly value = input<T | null>(null);
   readonly disabled = input(false, { transform: booleanAttribute });
   readonly invalid = input(false, { transform: booleanAttribute });
@@ -157,4 +160,58 @@ export class TrnRadioGroupComponent<T> {
   });
 
   readonly valueChange = output<T>();
+}
+
+/**
+ * One radio of a {@link TrnRadioGroupComponent} whose label the caller supplies, for a settings
+ * row that names the choice. The radios share the group's native name, so the arrow keys move
+ * between them. A native label for `inputId` operates it.
+ */
+@Component({
+  selector: 'trn-radio',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: [
+    '@layer components { :host { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: var(--trinity-interaction-target-min-size); min-height: var(--trinity-interaction-target-min-size); } }',
+  ],
+  host: {
+    '[attr.data-state]': 'selected() ? "selected" : "idle"',
+    '[attr.data-disabled]': 'group.disabled() ? "true" : null',
+  },
+  template: `
+    <input
+      class="peer absolute inset-0 z-10 size-full cursor-pointer opacity-0 disabled:cursor-default"
+      type="radio"
+      role="radio"
+      [attr.id]="inputId()"
+      [name]="group.controlName"
+      [checked]="selected()"
+      [disabled]="group.disabled()"
+      [attr.aria-checked]="selected()"
+      [attr.aria-describedby]="ariaDescribedby()"
+      (change)="group.valueChange.emit(value())"
+    />
+    <span aria-hidden="true" [class]="indicatorClass()">
+      <span [class]="dotClass()"></span>
+    </span>
+  `,
+})
+export class TrnRadioComponent<T> {
+  protected readonly group = inject<TrnRadioGroupComponent<T>>(
+    TrnRadioGroupComponent,
+  );
+  protected readonly selected = computed(
+    () => this.group.value() === this.value(),
+  );
+  protected readonly indicatorClass = computed(() =>
+    trnRadioIndicatorRecipe('list', this.group.invalid()),
+  );
+  protected readonly dotClass = computed(() =>
+    trnRadioIndicatorDotRecipe(this.selected()),
+  );
+
+  readonly value = input.required<T>();
+  readonly inputId = input<string | null>(null);
+  readonly ariaDescribedby = input<string | null>(null, {
+    alias: 'aria-describedby',
+  });
 }

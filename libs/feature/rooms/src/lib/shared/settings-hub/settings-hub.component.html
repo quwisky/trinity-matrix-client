@@ -1,6 +1,8 @@
 <trn-settings-layout
   [testId]="testId()"
   [title]="noun() + ' settings'"
+  [heading]="sectionTitle()"
+  [headingTestId]="testId() + '-section-heading'"
   [sections]="navigation()"
   [selectedSection]="selectedSection()"
   [compact]="compactNavigation()"
@@ -23,13 +25,6 @@
       {{ reason }} Last-known details may be outdated. Unsaved changes are kept.
     </p>
   }
-  <header class="settings-hub__section-heading">
-    <h2 tabindex="-1" [attr.data-testid]="testId() + '-section-heading'">
-      {{ sectionTitle() }}
-    </h2>
-    <p>{{ sectionDescription() }}</p>
-  </header>
-  <div class="settings-hub__section-content">
-    <ng-content />
-  </div>
+  <p class="settings-hub__section-description">{{ sectionDescription() }}</p>
+  <ng-content />
 </trn-settings-layout>

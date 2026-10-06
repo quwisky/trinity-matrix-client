@@ -23,6 +23,8 @@ import { registerUser } from '../../../support/account.mts';
 // that closes having written nothing looks identical from the UI, and that is exactly the
 // failure this spec exists to catch.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
+import { expectRowLabelsAlignedWithTitle } from '../../support/room-settings-journey.mts';
+
 const session = homeserverSession();
 
 async function apiLogin(
@@ -241,10 +243,17 @@ test.describe('Space settings', () => {
       user,
     );
     await expect(
-      settings.getByRole('heading', { name: 'Space settings', level: 1 }),
+      settings.getByRole('heading', { name: 'General', level: 1 }),
     ).toBeFocused();
     const settingsBox = await settings.boundingBox();
     expect(settingsBox?.width ?? 0).toBeGreaterThan(700);
+
+    await page.getByTestId('space-settings-tab-for-you').click();
+    await expect(page.getByTestId('space-settings-for-you-form')).toBeVisible();
+    expect(page.viewportSize()!.width).toBeGreaterThanOrEqual(1280);
+    await expectRowLabelsAlignedWithTitle(page, 'space-settings');
+    await page.getByTestId('space-settings-tab-general').click();
+    await expect(page.getByTestId('space-settings-name')).toBeVisible();
 
     const openingViewport = page.viewportSize();
     if (!openingViewport) throw new Error('Space settings needs a viewport');
@@ -743,7 +752,9 @@ test.describe('Space settings', () => {
       page.getByTestId('space-settings-general-actions'),
     ).toHaveCount(0);
     await openSettingsTab(page, 'space-settings', 'access');
-    await expect(page.getByTestId('space-settings-join-rule')).toBeDisabled();
+    await expect(
+      page.getByTestId('space-settings-join-rule').getByRole('combobox'),
+    ).toBeDisabled();
     await expect(
       page.getByText("Your role cannot change this room's join rule."),
     ).toBeVisible();

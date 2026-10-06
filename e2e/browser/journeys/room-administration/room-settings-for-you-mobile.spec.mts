@@ -4,6 +4,7 @@ import { registerUser } from '../../../support/account.mts';
 import { apiLogin } from '../../support/multi-account-journey.mts';
 import {
   configureRoomSettingsSuite,
+  expectRowLabelsAlignedWithTitle,
   openRoom,
   session,
 } from '../../support/room-settings-journey.mts';
@@ -69,6 +70,7 @@ test.describe('Room settings · For you on a phone', () => {
       timeout: 15_000,
     });
 
+    await expectRowLabelsAlignedWithTitle(page, 'room-settings');
     const mute = page
       .getByTestId('room-settings-notify-mute')
       .getByRole('radio');

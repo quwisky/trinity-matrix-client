@@ -1,5 +1,10 @@
 <ng-template #heading>
-  <h1 data-autofocus data-settings-autofocus tabindex="-1">
+  <h1
+    data-autofocus
+    data-settings-autofocus
+    tabindex="-1"
+    [attr.data-testid]="headingTestId()"
+  >
     {{ headingText() }}
   </h1>
 </ng-template>

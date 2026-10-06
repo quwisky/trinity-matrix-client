@@ -29,24 +29,28 @@
     }
     @case ('members') {
       <section data-testid="room-settings-panel-members">
-        <trn-members-settings
-          [showUnavailableReason]="draft.targetAvailable()"
-          [accountId]="accountId()"
-          [roomId]="roomId()"
-          [targetName]="draft.model().name || roomDisplayName()"
-          noun="Room"
-          [direct]="direct()"
-        />
+        <trn-settings-group>
+          <trn-members-settings
+            [showUnavailableReason]="draft.targetAvailable()"
+            [accountId]="accountId()"
+            [roomId]="roomId()"
+            [targetName]="draft.model().name || roomDisplayName()"
+            noun="Room"
+            [direct]="direct()"
+          />
+        </trn-settings-group>
       </section>
     }
     @case ('addresses') {
       <section data-testid="room-settings-panel-addresses">
-        <trn-room-aliases
-          [accountId]="accountId()"
-          [roomId]="roomId()"
-          [available]="draft.targetAvailable()"
-          noun="Room"
-        />
+        <trn-settings-group>
+          <trn-room-aliases
+            [accountId]="accountId()"
+            [roomId]="roomId()"
+            [available]="draft.targetAvailable()"
+            noun="Room"
+          />
+        </trn-settings-group>
       </section>
     }
     @case ('widgets') {
