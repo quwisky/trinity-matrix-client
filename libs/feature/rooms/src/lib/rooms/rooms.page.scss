@@ -242,6 +242,11 @@
 
   .chat-members {
     flex: 0 0 240px;
+
+    // The list inside is `width: 100%`, a percentage that cannot size the host, so the
+    // host's automatic minimum is the list's content width: a long member name would
+    // otherwise stretch this column far past its 240px basis.
+    min-width: 0;
     background: var(--trinity-surface-panel);
     border-inline-start: 1px solid var(--trinity-border-subtle);
   }
