@@ -112,8 +112,8 @@ test.describe('The open room lives in the URL', () => {
       timeout: 15_000,
     });
 
-    // An unavailable Room keeps the requested Account and scope but replaces the bad
-    // history entry with their safe list destination.
+    // A Room this account has not synced stays in the URL and says so (#968), instead of
+    // replacing the history entry with the list.
     const listUrl = new URL(page.url());
     const missingRoom = Buffer.from('!missing:example.org').toString(
       'base64url',
@@ -121,7 +121,10 @@ test.describe('The open room lives in the URL', () => {
     const missingUrl = new URL(listUrl);
     missingUrl.pathname = `/rooms/${missingRoom}`;
     await page.goto(missingUrl.toString());
-    await expect(page).toHaveURL(listUrl.toString());
+    await expect(
+      page.getByText("This room isn't available on this account yet."),
+    ).toBeVisible({ timeout: 15_000 });
+    expect(page.url()).toContain(`/rooms/${missingRoom}`);
     await expect(page.getByTestId('composer-input')).toBeHidden();
 
     // Mixed scope coordinates are malformed and canonicalize to Recent rather than

@@ -15,11 +15,15 @@ function fakeClient(sync: SyncState | null = SyncState.Syncing) {
   const handlers = new Map<string, Set<Handler>>();
   const rooms = new Set<string>();
   let state = sync;
+  let stateData: { fromCache?: boolean } | null = null;
   const client = {
     rooms,
-    setSync: (next: SyncState) => {
+    setSync: (next: SyncState, data: { fromCache?: boolean } = {}) => {
+      const prev = state;
       state = next;
-      for (const h of [...(handlers.get(ClientEvent.Sync) ?? [])]) h(next);
+      stateData = data;
+      for (const h of [...(handlers.get(ClientEvent.Sync) ?? [])])
+        h(next, prev, data);
     },
     addRoom: (roomId: string) => {
       rooms.add(roomId);
@@ -28,6 +32,7 @@ function fakeClient(sync: SyncState | null = SyncState.Syncing) {
     },
     getRoom: (roomId: string) => (rooms.has(roomId) ? { roomId } : null),
     getSyncState: () => state,
+    getSyncStateData: () => stateData,
     on: (event: string, h: Handler) => {
       handlers.set(event, (handlers.get(event) ?? new Set()).add(h));
     },
@@ -92,7 +97,7 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('waits for a pending Room, then opens it', () => {
-    const client = fakeClient();
+    const client = fakeClient(null);
     const { timeline, messages } = fakeTimeline();
     const readiness = start(client, timeline);
     expect(readiness.state()).toEqual({
@@ -104,24 +109,94 @@ describe('ConversationTimelineReadiness', () => {
     timeline.open.mockImplementation(() => messages.set([message]));
     client.addRoom(ROOM);
     expect(timeline.open).toHaveBeenCalledOnce();
+    client.setSync(SyncState.Syncing);
     expect(readiness.state()).toEqual({ kind: 'ready' });
     expect(client.listeners()).toBe(0);
   });
 
   it('fails a pending Room after the next completed sync still lacks it', () => {
-    const client = fakeClient();
+    const client = fakeClient(null);
     const readiness = start(client, fakeTimeline().timeline);
     client.setSync(SyncState.Syncing);
     expect(readiness.state()).toEqual({
       kind: 'error',
       reason: 'room-unavailable',
     });
+    // Still watching for the Room to arrive.
+    expect(client.listeners()).toBe(2);
+  });
+
+  it('reports an absent Room at once when the Account has already synced', () => {
+    const client = fakeClient();
+    const readiness = start(client, fakeTimeline().timeline);
+    expect(readiness.state()).toEqual({
+      kind: 'error',
+      reason: 'room-unavailable',
+    });
+  });
+
+  it('keeps a pending Room loading through a sync restored from the cache', () => {
+    const client = fakeClient(null);
+    const readiness = start(client, fakeTimeline().timeline);
+    client.setSync(SyncState.Prepared, { fromCache: true });
+    expect(readiness.state()).toMatchObject({
+      kind: 'loading',
+      reason: 'room-pending',
+    });
+    client.setSync(SyncState.Syncing);
+    expect(readiness.state()).toEqual({
+      kind: 'error',
+      reason: 'room-unavailable',
+    });
+  });
+
+  it('keeps an absent Room loading when only the cached sync has been restored', () => {
+    const client = fakeClient(null);
+    client.setSync(SyncState.Prepared, { fromCache: true });
+    const { timeline } = fakeTimeline();
+    const readiness = start(client, timeline);
+    expect(readiness.state()).toMatchObject({
+      kind: 'loading',
+      reason: 'room-pending',
+    });
+    // Joined since the cache was written: delivered by the live catch-up sync.
+    client.addRoom(ROOM);
+    expect(timeline.open).toHaveBeenCalledWith(ROOM, client);
+  });
+
+  it('fails a pending Room on a live Prepared (no cache) that still lacks it', () => {
+    const client = fakeClient(null);
+    const readiness = start(client, fakeTimeline().timeline);
+    client.setSync(SyncState.Prepared);
+    expect(readiness.state()).toEqual({
+      kind: 'error',
+      reason: 'room-unavailable',
+    });
+  });
+
+  it('opens the Room when it arrives after room-unavailable', () => {
+    const client = fakeClient();
+    const { timeline } = fakeTimeline();
+    const readiness = start(client, timeline);
+    expect(readiness.state()).toMatchObject({ reason: 'room-unavailable' });
+    client.addRoom(ROOM);
+    expect(timeline.open).toHaveBeenCalledWith(ROOM, client);
+    expect(readiness.state()).toEqual({ kind: 'empty' });
+  });
+
+  it('stops listening for the Room when stopped in the error state', () => {
+    const client = fakeClient();
+    const { timeline } = fakeTimeline();
+    const readiness = start(client, timeline);
+    readiness.stop();
     expect(client.listeners()).toBe(0);
+    client.addRoom(ROOM);
+    expect(timeline.open).not.toHaveBeenCalled();
   });
 
   it('fails with sync-stopped when sync stops or errors while waiting', () => {
     for (const state of [SyncState.Stopped, SyncState.Error]) {
-      const client = fakeClient();
+      const client = fakeClient(null);
       const readiness = start(client, fakeTimeline().timeline);
       client.setSync(state);
       expect(readiness.state()).toEqual({
@@ -230,7 +305,7 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('ignores events after stop and detaches every listener', () => {
-    const client = fakeClient();
+    const client = fakeClient(null);
     const { timeline } = fakeTimeline();
     const readiness = start(client, timeline);
     readiness.stop();
@@ -361,7 +436,7 @@ describe('ConversationTimelineReadiness', () => {
   });
 
   it('keeps waiting for a Room through Reconnecting and Catchup', () => {
-    const client = fakeClient();
+    const client = fakeClient(null);
     const readiness = start(client, fakeTimeline().timeline);
     client.setSync(SyncState.Reconnecting);
     client.setSync(SyncState.Catchup);

@@ -93,6 +93,85 @@ describe('release branches', () => {
     );
   });
 
+  describe('first stable release on a release branch', () => {
+    const steps = () => workflow.jobs['release-please'].steps;
+    const step = (id) => steps().find((s) => s.id === id);
+    const at = (id) => steps().findIndex((s) => s.id === id);
+    const onReleaseBranch = `\${{ ${ref} }}`;
+
+    it('finds the version from the tags, only on release branches', () => {
+      const checkout = steps().find((s) =>
+        s.uses?.startsWith('actions/checkout@'),
+      );
+      expect(checkout.if).toBe(onReleaseBranch);
+      // Every tag and the whole history: the helper reads the tags reachable from HEAD.
+      expect(checkout.with).toMatchObject({
+        'fetch-depth': 0,
+        'persist-credentials': false,
+      });
+      const node = steps().find((s) =>
+        s.uses?.startsWith('actions/setup-node@'),
+      );
+      expect(node.if).toBe(onReleaseBranch);
+      expect(node.with['node-version-file']).toBe('.nvmrc');
+      const version = step('version');
+      expect(version.if).toBe(onReleaseBranch);
+      expect(version.env.BRANCH).toBe('\${{ github.ref_name }}');
+      // A failing helper must fail the job, not fall back to a patch release PR.
+      expect(version.run.split('\n')).toEqual([
+        'version=$(node scripts/release-version.mjs "$BRANCH")',
+        'echo "version=$version" | tee -a "$GITHUB_OUTPUT"',
+        '',
+      ]);
+      expect(at('version')).toBeLessThan(at('first-release-pr'));
+    });
+
+    it('opens the release PR with the pinned CLI and --release-as when there is a version', () => {
+      const cli = step('first-release-pr');
+      expect(cli.if).toBe("\${{ steps.version.outputs.version != '' }}");
+      expect(cli.env).toEqual({
+        TOKEN: '\${{ github.token }}',
+        VERSION: '\${{ steps.version.outputs.version }}',
+      });
+      expect(
+        cli.run
+          .trim()
+          .split(/\s+/)
+          .filter((w) => w !== '\\'),
+      ).toEqual([
+        'npx',
+        '--yes',
+        'release-please@17.11.2',
+        'release-pr',
+        '--token',
+        '"$TOKEN"',
+        '--repo-url',
+        '"$GITHUB_REPOSITORY"',
+        '--target-branch',
+        '"$GITHUB_REF_NAME"',
+        '--config-file',
+        'release-please-config.json',
+        '--manifest-file',
+        '.release-please-manifest.json',
+        '--release-as',
+        '"$VERSION"',
+      ]);
+      expect(at('first-release-pr')).toBeLessThan(at('release'));
+    });
+
+    it('lets the action only tag and release when the CLI ran', () => {
+      const action = releasePlease();
+      expect(action.if).toBeUndefined();
+      expect(action.with['skip-github-pull-request']).toBe(
+        "\${{ steps.version.outputs.version != '' }}",
+      );
+      expect(workflow.jobs['release-please'].outputs).toEqual({
+        created: '\${{ steps.release.outputs.release_created }}',
+        tag: '\${{ steps.release.outputs.tag_name }}',
+      });
+    });
+  });
+
   describe('back-merge job', () => {
     const job = () => workflow.jobs['back-merge'];
 
@@ -125,36 +204,14 @@ describe('release branches', () => {
       expect(run.env.GH_TOKEN).toBe('\${{ steps.app-token.outputs.token }}');
     });
 
-    it('drops the one-time release-as on the release branch before back-merging', () => {
+    it('never pushes to the release branch: it only opens the back-merge PR', () => {
       const steps = job().steps;
-      const checkout = steps.find((s) =>
-        s.uses?.startsWith('actions/checkout@'),
-      );
-      expect(checkout.with).toMatchObject({
-        ref: '\${{ github.ref_name }}',
-        'fetch-depth': 0,
-        token: '\${{ steps.app-token.outputs.token }}',
-      });
-      const drop = steps.findIndex(
-        (s) => s.name === 'Drop the one-time release-as',
-      );
-      const run = steps.findIndex((s) => s.run?.includes('back-merge.mjs'));
-      expect(drop).toBeGreaterThanOrEqual(0);
-      expect(drop).toBeLessThan(run);
-      const script = steps[drop].run;
-      expect(script).toContain('del(.packages["."]["release-as"])');
-      expect(script).toContain(
-        'chore(release): drop the one-time release-as after $TAG',
-      );
-      expect(script.match(/git push[^\n]*/g)).toEqual([
-        'git push origin "HEAD:refs/heads/$BRANCH"',
-      ]);
-      // A fix may land on the branch after checkout: rebase onto it, and skip if the pin is gone.
-      const pull = script.indexOf('git pull --rebase origin "$BRANCH"');
-      expect(pull).toBeGreaterThan(0);
-      expect(pull).toBeLessThan(script.indexOf('has("release-as")'));
-      expect(pull).toBeLessThan(script.indexOf('git commit'));
-      expect(steps[drop].env.BRANCH).toBe('\${{ github.ref_name }}');
+      const runs = steps.map((s) => s.run ?? '').join('\n');
+      expect(runs).not.toContain('release-as');
+      expect(runs).not.toContain('refs/heads/$BRANCH');
+      expect(runs).not.toMatch(/git (push|commit)/);
+      const run = steps.find((s) => s.run?.includes('back-merge.mjs'));
+      expect(run.run).toContain('trinity-release[bot]');
     });
 
     it('sets up Node before running the script', () => {
@@ -171,7 +228,12 @@ describe('release branches', () => {
 
   it('mints the release App token only in the reviewer-free release-app environment', () => {
     // Required reviewers on `release` gate packaging; they must not stall the automation.
-    for (const name of ['release.yml', 'release-stable.yml', 'backport.yml']) {
+    for (const name of [
+      'release.yml',
+      'release-stable.yml',
+      'backport.yml',
+      'land-back-merge.yml',
+    ]) {
       const { jobs } = parse(
         readFileSync(resolve(root, '.github/workflows', name), 'utf8'),
       );

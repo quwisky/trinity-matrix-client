@@ -71,6 +71,7 @@ import { confirmMessageDeletion$ } from '../message-actions/confirm-message-dele
 import {
   scrollBehavior,
   BELOW_MEMBERS_QUERY,
+  latestGuard,
   mediaQuerySignal,
 } from '@trinity/util/ui';
 
@@ -150,8 +151,7 @@ export class ThreadViewComponent implements OnDestroy {
   /** Which file of how many is uploading, and how far along, or null when idle. */
   readonly uploadProgress = signal<BatchProgress | null>(null);
   /** Identity allocator and current owner for the progress signal shared by threads. */
-  private nextUploadGeneration = 0;
-  private activeUploadGeneration: number | null = null;
+  private readonly uploads = latestGuard();
   private readonly threadBinding = effect(() => {
     const roomId = this.roomId();
     const rootEventId = this.rootEventId();
@@ -167,7 +167,7 @@ export class ThreadViewComponent implements OnDestroy {
       current.release();
       this.editingId.set(null);
       this.replyingToId.set(null);
-      this.activeUploadGeneration = null;
+      this.uploads.invalidate();
       this.uploadProgress.set(null);
       this.timeline.setTyping(false, 'thread');
     }
@@ -380,14 +380,13 @@ export class ThreadViewComponent implements OnDestroy {
     caption: string;
     onOutcomes: (outcomes: readonly BatchOutcome[]) => void;
   }): void {
-    const uploadGeneration = ++this.nextUploadGeneration;
-    this.activeUploadGeneration = uploadGeneration;
+    const token = this.uploads.next();
     const reportProgress = (progress: BatchProgress | null): void => {
-      if (uploadGeneration !== this.activeUploadGeneration) {
+      if (!this.uploads.isCurrent(token)) {
         return;
       }
       if (progress === null) {
-        this.activeUploadGeneration = null;
+        this.uploads.invalidate();
       }
       this.uploadProgress.set(progress);
     };

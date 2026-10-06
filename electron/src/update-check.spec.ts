@@ -126,12 +126,18 @@ describe('newestRelease', () => {
     expect(newestRelease('0.2.0', releases)?.version).toBe('0.2.1');
   });
 
-  it('offers -next users newer prereleases and newer stables', () => {
-    const releases = [release('v0.3.0-next.2'), release('v0.3.0')];
-    expect(newestRelease('0.3.0-next.1', releases)?.version).toBe('0.3.0');
+  it('offers -next users only newer prereleases', () => {
+    const releases = [
+      release('v0.4.0'),
+      release('v0.3.0'),
+      release('v0.3.0-next.2'),
+    ];
+    expect(newestRelease('0.3.0-next.1', releases)?.version).toBe(
+      '0.3.0-next.2',
+    );
     expect(
-      newestRelease('0.3.0-next.1', [release('v0.3.0-next.2')])?.version,
-    ).toBe('0.3.0-next.2');
+      newestRelease('0.3.0-next.2', [release('v0.3.0'), release('v0.4.0')]),
+    ).toBeNull();
   });
 
   it('ignores drafts, older versions, unknown tags and links outside the release page', () => {
