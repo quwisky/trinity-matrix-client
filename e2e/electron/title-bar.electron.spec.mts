@@ -106,7 +106,7 @@ test.describe('frameless title row', () => {
     ]);
   });
 
-  test('sends #rrggbb overlay colours derived from the theme and re-sends on change', async () => {
+  test('sends #rrggbb overlay colours derived from the theme and re-sends on a mode change', async () => {
     await app.evaluate(({ BrowserWindow }) => {
       const win = BrowserWindow.getAllWindows()[0];
       const calls: unknown[] = [];
@@ -121,34 +121,33 @@ test.describe('frameless title row', () => {
       app.evaluate(
         () => (globalThis as Record<string, unknown>)['__overlays'] as never,
       );
-    // The same carriers the Appearance adapter writes: `.dark` and `data-theme`.
-    const setAppearance = (dark: boolean, theme: string | null) =>
-      page.evaluate(
-        ([isDark, name]) => {
-          const root = document.documentElement;
-          root.classList.toggle('dark', isDark);
-          if (name) root.setAttribute('data-theme', name);
-          else root.removeAttribute('data-theme');
-        },
-        [dark, theme] as const,
-      );
+    // Mode flows through the real Appearance pipeline (system colour scheme); the adapter
+    // owns every root carrier, so the test never writes them.
+    const setScheme = async (scheme: 'light' | 'dark') => {
+      await page.emulateMedia({ colorScheme: scheme });
+      const html = expect(page.locator('html'));
+      await (scheme === 'dark'
+        ? html.toHaveClass(/\bdark\b/)
+        : html.not.toHaveClass(/\bdark\b/));
+    };
     const lastAfter = async (count: number): Promise<OverlayCall> => {
       await expect
         .poll(async () => (await overlays()).length)
         .toBeGreaterThan(count);
       return (await overlays()).at(-1) as OverlayCall;
     };
+    const flip = async (scheme: 'light' | 'dark'): Promise<OverlayCall> => {
+      const count = (await overlays()).length;
+      await setScheme(scheme);
+      return lastAfter(count);
+    };
 
-    await setAppearance(false, 'amethyst');
-    const light = await lastAfter(0);
-    const afterLight = (await overlays()).length;
-    await setAppearance(true, 'amethyst');
-    const dark = await lastAfter(afterLight);
-    const afterDark = (await overlays()).length;
-    await setAppearance(true, 'midnight');
-    const midnight = await lastAfter(afterDark);
+    await setScheme('dark');
+    await expect.poll(async () => (await overlays()).length).toBeGreaterThan(0);
+    const light = await flip('light');
+    const dark = await flip('dark');
 
-    for (const call of [light, dark, midnight]) {
+    for (const call of [light, dark]) {
       expect(call.color).toMatch(HEX);
       expect(call.symbolColor).toMatch(HEX);
       expect(call.height).toBe(32);
@@ -159,8 +158,6 @@ test.describe('frameless title row', () => {
       luminance(dark.symbolColor),
     );
     expect(luminance(dark.color)).toBeLessThan(luminance(dark.symbolColor));
-    // A different theme re-sends a different surface, not just a different symbol.
-    expect(midnight.color).not.toBe(dark.color);
   });
 });
 

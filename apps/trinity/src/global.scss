@@ -178,7 +178,7 @@
   }
 
   /*
- * Desktop title row. While it shows, TitleBarComponent sets `.trn-title-row` on <html>,
+ * Desktop title row. While it shows, TitleBarComponent sets `.trn-title-row` on <body>,
  * and every viewport-fixed layer starts below the row: in Electron the row's drag region
  * and the native window buttons (macOS traffic lights included) keep receiving clicks in
  * that band even when something is painted over it. The row follows the native strip's

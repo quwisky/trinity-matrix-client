@@ -12,6 +12,7 @@ import {
   HOST_CAPABILITY_NEGOTIATOR,
   unavailableHostManifest,
 } from '@trinity/runtime/host';
+import { AppearanceEffects } from '@trinity/application/appearance';
 import { Subject, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TitleBarComponent } from './title-bar.component';
@@ -22,9 +23,7 @@ describe('TitleBarComponent', () => {
   afterEach(() => {
     delete (globalThis as BridgeHost).trinityDesktop;
     const root = document.documentElement;
-    root.classList.remove('dark');
-    root.removeAttribute('data-theme');
-    root.classList.remove('trn-title-row');
+    document.body.classList.remove('trn-title-row');
     root.style.removeProperty('--trinity-surface-app');
     root.style.removeProperty('--trinity-text');
   });
@@ -55,9 +54,11 @@ describe('TitleBarComponent', () => {
         },
       });
     }
+    const resolved = signal<unknown>(undefined);
     const rendered = await render(TitleBarComponent, {
       providers: [
         provideTrnIcons(),
+        { provide: AppearanceEffects, useValue: { resolved } },
         {
           provide: WORKSPACE_SYSTEM_STATUS,
           useValue: {
@@ -71,7 +72,7 @@ describe('TitleBarComponent', () => {
     const state = rendered.fixture.debugElement.injector.get(TitleBarState);
     await rendered.fixture.whenStable();
     rendered.fixture.detectChanges();
-    return { ...rendered, state, setOverlayColors, popupMenu, show };
+    return { ...rendered, state, setOverlayColors, popupMenu, show, resolved };
   }
 
   it('renders nothing and is inactive without the desktop bridge', async () => {
@@ -119,7 +120,7 @@ describe('TitleBarComponent', () => {
       container.querySelector('[data-testid="title-bar-title"]'),
     ).toBeNull();
     expect(state.active()).toBe(false);
-    expect(document.documentElement.classList).not.toContain('trn-title-row');
+    expect(document.body.classList).not.toContain('trn-title-row');
   });
 
   it.each([null, 'frame'])(
@@ -154,6 +155,10 @@ describe('TitleBarComponent', () => {
     const { fixture } = await render(TitleBarComponent, {
       providers: [
         provideTrnIcons(),
+        {
+          provide: AppearanceEffects,
+          useValue: { resolved: signal(undefined) },
+        },
         {
           provide: HOST_CAPABILITY_NEGOTIATOR,
           useValue: { manifest: () => negotiated },
@@ -192,6 +197,10 @@ describe('TitleBarComponent', () => {
       providers: [
         provideTrnIcons(),
         {
+          provide: AppearanceEffects,
+          useValue: { resolved: signal(undefined) },
+        },
+        {
           provide: HOST_CAPABILITY_NEGOTIATOR,
           useValue: { manifest: () => throwError(() => new Error('down')) },
         },
@@ -216,9 +225,9 @@ describe('TitleBarComponent', () => {
     async (platform) => {
       const { fixture } = await setup({ platform });
 
-      expect(document.documentElement.classList).toContain('trn-title-row');
+      expect(document.body.classList).toContain('trn-title-row');
       fixture.destroy();
-      expect(document.documentElement.classList).not.toContain('trn-title-row');
+      expect(document.body.classList).not.toContain('trn-title-row');
     },
   );
 
@@ -277,7 +286,9 @@ describe('TitleBarComponent', () => {
   });
 
   it('sends hex overlay colours and resends them when the theme changes', async () => {
-    const { setOverlayColors } = await setup();
+    const { setOverlayColors, resolved } = await setup();
+    resolved.set({ mode: 'dark' });
+    await waitFor(() => expect(setOverlayColors).toHaveBeenCalled());
     expect(setOverlayColors).toHaveBeenLastCalledWith({
       color: '#121214',
       symbolColor: '#dbdee1',
@@ -285,7 +296,7 @@ describe('TitleBarComponent', () => {
 
     const root = document.documentElement;
     root.style.setProperty('--trinity-surface-app', 'rgb(250, 250, 250)');
-    root.classList.add('dark');
+    resolved.set({ mode: 'light' });
 
     await waitFor(() =>
       expect(setOverlayColors).toHaveBeenLastCalledWith({

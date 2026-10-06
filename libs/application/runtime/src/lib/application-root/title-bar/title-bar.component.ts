@@ -2,13 +2,16 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  effect,
   inject,
 } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
+import { AppearanceEffects } from '@trinity/application/appearance';
 import {
   TitleBarState,
   WORKSPACE_SYSTEM_STATUS,
 } from '@trinity/application/workspace';
-import { TrnIconButton } from '@trinity/components/controls';
+import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { getTrinityDesktopBridge } from '@trinity/platform-native';
 import { HostCapabilitiesService } from '@trinity/runtime/host';
@@ -26,7 +29,7 @@ const TITLE_ROW_CLASS = 'trn-title-row';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './title-bar.component.html',
   styleUrl: './title-bar.component.scss',
-  imports: [TrnIconButton, TrnIconComponent],
+  imports: [TrnButton, TrnIconComponent],
   host: {
     class: 'title-bar',
     '[class.title-bar--visible]': 'visible',
@@ -34,6 +37,7 @@ const TITLE_ROW_CLASS = 'trn-title-row';
   },
 })
 export class TitleBarComponent {
+  private readonly body = inject(DOCUMENT).body;
   private readonly bridge = getTrinityDesktopBridge();
 
   protected readonly titleBar = inject(TitleBarState);
@@ -46,28 +50,28 @@ export class TitleBarComponent {
 
   constructor() {
     if (!this.visible) return;
-    const root = document.documentElement;
-    // Global styles start viewport-fixed layers (overlays, drawers) below the row.
-    root.classList.add(TITLE_ROW_CLASS);
+    // Global styles start viewport-fixed layers (overlays, drawers) below the row. The
+    // class lives on <body>, not <html>: Appearance's adapter owns the document root.
+    const body = this.body;
+    body.classList.add(TITLE_ROW_CLASS);
     this.titleBar.setActive(true);
 
-    const send = () => this.sendOverlayColors();
-    const observer = new MutationObserver(send);
-    observer.observe(root, {
-      attributes: true,
-      attributeFilter: ['class', 'data-theme'],
+    // A new resolved Appearance re-themes the surface; re-read the colours afterwards.
+    const appearance = inject(AppearanceEffects);
+    effect(() => {
+      // Undefined before Appearance first runs; negotiation sends the first colours.
+      if (appearance.resolved()) this.sendOverlayColors();
     });
     let destroyed = false;
     inject(DestroyRef).onDestroy(() => {
       destroyed = true;
-      observer.disconnect();
-      root.classList.remove(TITLE_ROW_CLASS);
+      body.classList.remove(TITLE_ROW_CLASS);
       this.titleBar.setActive(false);
     });
     // The overlay operation is granted by startup negotiation; colours sent before it are
     // dropped, so send once it settles. A failed negotiation keeps the default colours.
     firstValueFrom(inject(HostCapabilitiesService).manifest())
-      .then(() => !destroyed && send())
+      .then(() => !destroyed && this.sendOverlayColors())
       .catch(() => undefined);
   }
 
@@ -85,7 +89,7 @@ export class TitleBarComponent {
   }
 
   private sendOverlayColors(): void {
-    const style = getComputedStyle(document.documentElement);
+    const style = getComputedStyle(this.body);
     const color = cssColorToHex(
       style.getPropertyValue('--trinity-surface-app'),
     );
