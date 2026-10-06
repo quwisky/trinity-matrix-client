@@ -21,6 +21,8 @@ import type { MemberSummary } from '@trinity/data-access/room-administration';
 import {
   BELOW_MD_QUERY,
   BELOW_MEMBERS_QUERY,
+  type LatestToken,
+  latestGuard,
   matchesQuery,
   mediaQuerySignal,
 } from '@trinity/util/ui';
@@ -86,7 +88,7 @@ export class RoomSurfaceLifecycle {
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
   private readonly membersRequested = signal(false);
-  private revealGeneration = 0;
+  private readonly reveal = latestGuard();
   private readonly compactConversation = mediaQuerySignal(
     BELOW_MD_QUERY,
     this.destroyRef,
@@ -140,17 +142,6 @@ export class RoomSurfaceLifecycle {
   );
 
   constructor() {
-    effect(() => {
-      const target = this.workspace.eventTarget();
-      if (!target) return;
-      untracked(() =>
-        this.transition({
-          kind: 'reveal-message',
-          eventId: target.eventId,
-        }),
-      );
-    });
-
     let wasDrawer = this.membersAreDrawer();
     effect(() => {
       const isDrawer = this.membersAreDrawer();
@@ -175,7 +166,7 @@ export class RoomSurfaceLifecycle {
     if (!state) {
       return { kind: 'rejected', reason: 'no-active-conversation' };
     }
-    if (intent.kind !== 'reveal-message') this.revealGeneration += 1;
+    if (intent.kind !== 'reveal-message') this.reveal.invalidate();
 
     switch (intent.kind) {
       case 'open-threads':
@@ -255,7 +246,6 @@ export class RoomSurfaceLifecycle {
         return this.dismiss(state);
 
       case 'reveal-message':
-        this.revealGeneration += 1;
         this.writableState.set({
           ...state,
           surface: null,
@@ -264,7 +254,7 @@ export class RoomSurfaceLifecycle {
         this.scheduleReveal(
           state.conversation,
           intent.eventId,
-          this.revealGeneration,
+          this.reveal.next(),
         );
         return { kind: 'applied' };
     }
@@ -317,7 +307,7 @@ export class RoomSurfaceLifecycle {
   private scheduleReveal(
     conversation: ExactRoomSelection,
     eventId: string,
-    generation: number,
+    token: LatestToken,
   ): void {
     afterNextRender(
       () => {
@@ -325,7 +315,7 @@ export class RoomSurfaceLifecycle {
         if (
           current?.conversation !== conversation ||
           current.surface ||
-          generation !== this.revealGeneration
+          !this.reveal.isCurrent(token)
         ) {
           return;
         }

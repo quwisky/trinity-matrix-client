@@ -40,6 +40,7 @@ export class NotificationLifetime {
   private readonly matrix = inject(MatrixClientService);
   private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly changes = new Subject<NotificationRuleHealth>();
+  // Published as fact.generation; recover() filters obsolete generations. Not a latest-wins guard (#927).
   private generation = 0;
   private current: NotificationRuleHealth | null = null;
   private retry: (() => void) | null = null;

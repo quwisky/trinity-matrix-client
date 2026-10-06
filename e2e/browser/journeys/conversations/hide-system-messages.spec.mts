@@ -113,9 +113,14 @@ test.describe('Hide system messages', () => {
     await openRoom(page, roomName);
 
     // Everything is shown by default, so the join line is there to begin with.
-    const joinLine = page.locator('[data-testid="timeline-event"]', {
+    // The room's setup lines and the join are adjacent system lines, so they collapse into
+    // one run that has to be expanded before its individual lines are visible.
+    const runToggle = page.getByTestId('system-run-toggle');
+    const joinLine = page.getByTestId('system-run-line').filter({
       hasText: `${joinerName} joined the room`,
     });
+    await expect(runToggle).toHaveCount(1, { timeout: 20_000 });
+    await runToggle.click();
     await expect(joinLine).toBeVisible({ timeout: 20_000 });
     // Scoped to the timeline row — the same text also appears in the channel-list preview.
     const message = page.locator('trn-message-row').filter({ hasText: body });
@@ -134,12 +139,20 @@ test.describe('Hide system messages', () => {
 
     // The line is gone entirely, and the conversation around it is untouched.
     await expect(message).toBeVisible({ timeout: 20_000 });
+    // The other setup lines still collapse into a run: expand it so "gone" is not just
+    // "hidden behind a collapsed summary".
+    await expect(runToggle).toHaveCount(1, { timeout: 20_000 });
+    await runToggle.click();
+    await expect(page.getByTestId('system-run-line').first()).toBeVisible();
     await expect(joinLine).toHaveCount(0);
 
     // And the choice survives a reload — it is persisted, not session state.
     await page.reload();
     await openRoom(page, roomName);
     await expect(message).toBeVisible({ timeout: 30_000 });
+    await expect(runToggle).toHaveCount(1, { timeout: 20_000 });
+    await runToggle.click();
+    await expect(page.getByTestId('system-run-line').first()).toBeVisible();
     await expect(joinLine).toHaveCount(0);
   });
 });

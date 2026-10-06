@@ -250,14 +250,14 @@ export class WorkspaceTransitionWorkflow {
     let repaired = false;
     if (
       scope.kind === 'space' &&
-      !this.destinationAvailable(requested.accountId, scope.spaceId)
+      !this.spaceAvailable(requested.accountId, scope.spaceId)
     ) {
       scope = RECENT_WORKSPACE_SCOPE;
       roomId = null;
       pane = 'list';
       repaired = true;
     }
-    if (roomId && !this.destinationAvailable(requested.accountId, roomId)) {
+    if (roomId && !this.roomKept(requested.accountId, roomId)) {
       roomId = null;
       pane = 'list';
       repaired = true;
@@ -349,7 +349,15 @@ export class WorkspaceTransitionWorkflow {
     });
   }
 
-  private destinationAvailable(accountId: string, roomId: string): boolean {
-    return this.rooms.selectionAvailability(accountId, roomId) === 'available';
+  /** A Space scope must be synced; an unsynced one is repaired to the list. */
+  private spaceAvailable(accountId: string, spaceId: string): boolean {
+    return this.rooms.selectionAvailability(accountId, spaceId) === 'available';
+  }
+
+  /** A Room the live client has not synced yet is kept; the Conversation decides. */
+  private roomKept(accountId: string, roomId: string): boolean {
+    return (
+      this.rooms.selectionAvailability(accountId, roomId) !== 'unavailable'
+    );
   }
 }

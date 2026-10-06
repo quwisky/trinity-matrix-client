@@ -29,6 +29,7 @@ function pin(over: Partial<PinnedMessageView> = {}): PinnedMessageView {
 async function renderPanel(
   options: { pinned?: PinnedMessageView[]; canPin?: boolean } = {},
 ) {
+  const retryFailed = vi.fn();
   const selected: string[] = [];
   let dismissals = 0;
   const unpin = vi.fn(() =>
@@ -49,12 +50,19 @@ async function renderPanel(
             messages: signal(options.pinned ?? []).asReadonly(),
             canMutate: signal(options.canPin ?? true).asReadonly(),
             unpin,
+            retryFailed,
           },
         },
       },
     ],
   });
-  return { container, selected, unpin, dismissals: () => dismissals };
+  return {
+    container,
+    selected,
+    unpin,
+    retryFailed,
+    dismissals: () => dismissals,
+  };
 }
 
 /** The row buttons, identified by the aria-label the template builds. */
@@ -70,6 +78,30 @@ function unpinButton(container: HTMLElement, senderName: string) {
 }
 
 describe('PinnedMessagesPanelComponent', () => {
+  it('retries failed pins when the panel opens', async () => {
+    const { retryFailed } = await renderPanel();
+
+    expect(retryFailed).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the reader a failed pin could not be loaded', async () => {
+    const { container } = await renderPanel({
+      pinned: [
+        pin({
+          id: '$p',
+          status: 'failed',
+          sender: '',
+          senderName: '',
+          body: '',
+        }),
+      ],
+    });
+
+    expect(
+      container.querySelector('[data-testid="pinned-failed"]')?.textContent,
+    ).toContain('Couldn’t load this pinned message.');
+  });
+
   it('renders a row per pinned message, in pin order', async () => {
     const { container } = await renderPanel({
       pinned: [

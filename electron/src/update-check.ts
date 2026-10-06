@@ -6,8 +6,8 @@ import * as path from 'node:path';
  * "A new version is available" notices for the desktop app.
  *
  * There is no auto-updater (that needs signed Windows builds first). Instead the app
- * asks GitHub Releases for the newest published release on its own line — stable builds
- * only see stable releases; `-next` builds also see newer prereleases — and shows one OS
+ * asks GitHub Releases for the newest published release on its own channel — stable builds
+ * only see stable releases, `-next` builds only see `-next` prereleases — and shows one OS
  * notification per new version, which opens that release's page. The Help menu runs the
  * same check on demand. Off in unpackaged builds and when TRINITY_DISABLE_UPDATE_CHECK=1.
  */
@@ -76,7 +76,8 @@ export function newestRelease(
     if (candidate.draft || !RELEASE_PAGE.test(candidate.html_url)) continue;
     const parsed = parseVersion(candidate.tag_name);
     if (!parsed) continue;
-    if (parsed.next !== null && installed.next === null) continue;
+    // Stay on the installed channel: stable builds see stable releases, -next builds -next ones.
+    if ((parsed.next === null) !== (installed.next === null)) continue;
     if (compareVersions(parsed, installed) <= 0) continue;
     if (best && compareVersions(parsed, best.parsed) <= 0) continue;
     best = {

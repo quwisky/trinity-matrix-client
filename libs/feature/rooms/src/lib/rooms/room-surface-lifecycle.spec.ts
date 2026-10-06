@@ -63,7 +63,6 @@ function stubMedia(initial: Record<string, boolean> = {}) {
 function build(roomId: string | null = '!room:example.org') {
   const activeAccountId = signal<string | null>('@alice:example.org');
   const activeRoomId = signal<string | null>(roomId);
-  const eventTarget = signal<{ readonly eventId: string } | null>(null);
   const pane = signal<'list' | 'conversation'>(
     roomId ? 'conversation' : 'list',
   );
@@ -81,7 +80,6 @@ function build(roomId: string | null = '!room:example.org') {
           activeAccountId: activeAccountId.asReadonly(),
           activeSpaceId: signal<string | null>(null).asReadonly(),
           activeRoomId: activeRoomId.asReadonly(),
-          eventTarget: eventTarget.asReadonly(),
           recentView: signal(true).asReadonly(),
           roomsView: signal(false).asReadonly(),
           pane: pane.asReadonly(),
@@ -97,7 +95,6 @@ function build(roomId: string | null = '!room:example.org') {
   return {
     activeAccountId,
     activeRoomId,
-    eventTarget,
     pane,
     navigate,
     lifecycle: TestBed.inject(RoomSurfaceLifecycle),
@@ -409,17 +406,6 @@ describe('RoomSurfaceLifecycle', () => {
 
     TestBed.tick();
     expect(lifecycle.jumpTarget()).toBe('$latest');
-    expect(lifecycle.jumpRevision()).toBe(1);
-  });
-
-  it('observes Workspace event targets without page coordination', () => {
-    stubMedia();
-    const { eventTarget, lifecycle } = build();
-
-    eventTarget.set({ eventId: '$workspace' });
-    TestBed.tick();
-
-    expect(lifecycle.jumpTarget()).toBe('$workspace');
     expect(lifecycle.jumpRevision()).toBe(1);
   });
 

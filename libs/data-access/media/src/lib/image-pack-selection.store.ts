@@ -1,4 +1,4 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, type WritableSignal } from '@angular/core';
 import type { MatrixClient } from 'matrix-js-sdk';
 
 export interface ImagePackSelectionSnapshot {
@@ -6,7 +6,7 @@ export interface ImagePackSelectionSnapshot {
   readonly content: unknown;
 }
 
-const OPTIMISTIC_TTL_MS = 30_000;
+export const OPTIMISTIC_TTL_MS = 30_000;
 
 interface StoredSelection {
   readonly snapshot: ImagePackSelectionSnapshot;
@@ -16,33 +16,38 @@ interface StoredSelection {
 /** Shares the newest confirmed MSC2545 account data between management and picker projections. */
 @Injectable({ providedIn: 'root' })
 export class ImagePackSelectionStore {
-  private readonly snapshots = new WeakMap<MatrixClient, StoredSelection>();
-  private readonly revision = signal(0);
+  // One signal per client, created on first access, so a reader re-runs only for its own
+  // client's selection (the per-entity pattern of #121/#126; there is no shared revision).
+  private readonly selections = new WeakMap<
+    MatrixClient,
+    WritableSignal<StoredSelection | null>
+  >();
 
-  readonly changed = this.revision.asReadonly();
+  private selection(
+    client: MatrixClient,
+  ): WritableSignal<StoredSelection | null> {
+    let selection = this.selections.get(client);
+    if (!selection) {
+      selection = signal<StoredSelection | null>(null);
+      this.selections.set(client, selection);
+    }
+    return selection;
+  }
 
   get(client: MatrixClient): ImagePackSelectionSnapshot | null {
-    this.revision();
-    const stored = this.snapshots.get(client);
-    if (!stored) return null;
-    if (stored.expiresAt <= Date.now()) {
-      this.snapshots.delete(client);
-      return null;
-    }
-    return stored.snapshot;
+    const stored = this.selection(client)();
+    return stored && stored.expiresAt > Date.now() ? stored.snapshot : null;
   }
 
   set(client: MatrixClient, snapshot: ImagePackSelectionSnapshot): void {
-    this.snapshots.set(client, {
+    this.selection(client).set({
       snapshot,
       expiresAt: Date.now() + OPTIMISTIC_TTL_MS,
     });
-    this.revision.update((value) => value + 1);
   }
 
   /** The SDK cache is authoritative once its account-data echo arrives. */
   clear(client: MatrixClient): void {
-    if (!this.snapshots.delete(client)) return;
-    this.revision.update((value) => value + 1);
+    this.selections.get(client)?.set(null);
   }
 }

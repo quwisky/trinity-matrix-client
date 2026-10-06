@@ -68,6 +68,19 @@
             }
           </div>
         }
+        @case ('failed') {
+          <div class="pin-item">
+            <div
+              class="pin-item__main pin-item__main--static"
+              data-testid="pinned-failed"
+              role="status"
+            >
+              <div class="pin-item__body">
+                Couldn’t load this pinned message.
+              </div>
+            </div>
+          </div>
+        }
         @default {
           <div class="pin-item">
             <button

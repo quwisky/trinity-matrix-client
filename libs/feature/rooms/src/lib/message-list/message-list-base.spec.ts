@@ -255,3 +255,62 @@ describe('MessageListBase thread connectors', () => {
     expect(fixture.componentInstance.threadContinuationIds().size).toBe(0);
   });
 });
+
+describe('MessageListBase system runs', () => {
+  const event = (id: string): MessageView => ({ ...msg(id), kind: 'event' });
+
+  function create(firstUnreadId: string | null = null) {
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    fixture.componentRef.setInput('roomId', '!a:hs');
+    fixture.componentRef.setInput('firstUnreadId', firstUnreadId);
+    fixture.componentRef.setInput('messages', [
+      msg('m1'),
+      event('e1'),
+      event('e2'),
+      event('e3'),
+      msg('m2'),
+    ]);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('renders adjacent system lines as one group row and maps members to it', () => {
+    const list = create().componentInstance;
+    expect(list.rows().map((r) => r.id)).toEqual(['m1', 'group:e3', 'm2']);
+    expect(list.runOf().get('e2')).toBe('group:e3');
+  });
+
+  it('expands and collapses a group', () => {
+    const list = create().componentInstance;
+    list.toggleRun('group:e3');
+    expect(list.expandedRuns().has('group:e3')).toBe(true);
+    list.toggleRun('group:e3');
+    expect(list.expandedRuns().has('group:e3')).toBe(false);
+  });
+
+  it('reveals an event hidden in a collapsed group', () => {
+    const list = create().componentInstance;
+    expect(list.revealEvent('e2')).toBe('group:e3');
+    expect(list.expandedRuns().has('group:e3')).toBe(true);
+    expect(list.revealEvent('m1')).toBe('m1');
+  });
+
+  it('places the unread divider on the group the first unread event starts', () => {
+    const list = create('e2').componentInstance;
+    expect(list.rows().map((r) => r.id)).toEqual([
+      'm1',
+      'e1',
+      'group:e3',
+      'm2',
+    ]);
+    expect(list.unreadRowId()).toBe('group:e3');
+  });
+
+  it('forgets expanded groups on a room switch', () => {
+    const fixture = create();
+    fixture.componentInstance.toggleRun('group:e3');
+    fixture.componentRef.setInput('roomId', '!b:hs');
+    fixture.detectChanges();
+    expect(fixture.componentInstance.expandedRuns().size).toBe(0);
+  });
+});

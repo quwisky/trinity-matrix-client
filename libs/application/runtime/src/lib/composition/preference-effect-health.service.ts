@@ -14,6 +14,7 @@ export class PreferenceEffectHealthService {
   private readonly health = inject(CapabilityHealthService);
   private readonly context = Symbol('appearance-effect');
   private active: Subscription | null = null;
+  // Health-fact version: stamped into CapabilityHealthFact.generation and compared by recover(); not a latest-wins guard (#927).
   private generation = 0;
 
   run(): Observable<never> {
@@ -42,7 +43,7 @@ export class PreferenceEffectHealthService {
   }
 
   private fail(generation: number, owner: Subscription, code: string): void {
-    if (this.active !== owner || this.generation !== generation) return;
+    if (this.active !== owner) return;
     this.active = null;
     owner.unsubscribe();
     this.report(generation, 'degraded', 'released', code);

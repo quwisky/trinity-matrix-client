@@ -17,6 +17,7 @@ export class AccountStartupHealthService {
   private readonly accounts = inject(AccountRuntimeService);
   private readonly health = inject(CapabilityHealthService);
   private readonly contexts = new Map<string, CapabilityContext>();
+  // Version stamped into CapabilityHealthFact.generation and compared by recover(); not a latest-wins guard (#927).
   private readonly generations = new Map<string, number>();
 
   report(outcomes: readonly AccountRestoreOutcome[]): void {

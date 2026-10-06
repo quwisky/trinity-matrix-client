@@ -32,6 +32,7 @@ export class HostSessionHealthService {
   private readonly badge = inject(HostBadgeService);
   private readonly updates = inject(HostUpdatesService);
   private readonly contexts = new Map<string, CapabilityContext>();
+  // Version stamped into CapabilityHealthFact.generation and compared by recover(); not a latest-wins guard (#927).
   private readonly generations = new Map<HostHealthOperation, number>();
 
   badgeSupport(support: HostCapabilitySupport): void {
