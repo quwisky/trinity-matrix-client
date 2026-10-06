@@ -187,7 +187,7 @@ describe('modern room shell layout contracts', () => {
       /:host\s*\{[\s\S]*?height:\s*var\(--trinity-navigation-dock-height\);[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1;[\s\S]*?position:\s*absolute;[\s\S]*?inset-inline:[^;]+;[\s\S]*?inset-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-safe-area-bottom\)/,
     );
     expect(userPanelCss).toMatch(
-      /\.userbar\s*\{[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?border-radius:\s*var\(--trinity-shape-overlay-radius\);[\s\S]*?background:\s*var\(--trinity-surface-raised\);[\s\S]*?box-shadow:\s*var\(--trinity-shadow-floating\);/,
+      /\.userbar\s*\{[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?border-radius:\s*var\(--trinity-shape-overlay-radius\);[\s\S]*?background:\s*var\(--trinity-surface-floating-card\);[\s\S]*?box-shadow:\s*var\(--trinity-shadow-floating\);/,
     );
   });
 

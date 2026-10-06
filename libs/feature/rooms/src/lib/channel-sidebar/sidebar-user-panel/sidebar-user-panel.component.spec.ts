@@ -150,6 +150,9 @@ describe('SidebarUserPanelComponent', () => {
         '[data-testid="account-stack-count"]',
       )!;
       expect(chip.textContent?.trim()).toBe(text);
+      expect(chip.getAttribute('aria-label')).toBe(
+        `${count - 1} more accounts`,
+      );
       chip.click();
       fixture.detectChanges();
       expect(
@@ -158,7 +161,7 @@ describe('SidebarUserPanelComponent', () => {
     },
   );
 
-  it('gives the avatar a presence dot and the trigger the button recipe', async () => {
+  it('draws no presence dot until presence is known, and uses the button recipe', async () => {
     const { fixture, container } = await render(SidebarUserPanelComponent, {
       inputs: { user: USER },
     });
@@ -186,6 +189,18 @@ describe('SidebarUserPanelComponent', () => {
       ).toBe(presence);
     },
   );
+
+  it('names a single other account in the singular', async () => {
+    const { container } = await render(SidebarUserPanelComponent, {
+      inputs: { user: USER, accounts: ACCOUNTS.slice(0, 2) },
+    });
+
+    expect(
+      container
+        .querySelector('[data-testid="account-stack-count"]')
+        ?.getAttribute('aria-label'),
+    ).toBe('1 more account');
+  });
 
   it('keeps settings and system status without the title row', async () => {
     const { container } = await render(SidebarUserPanelComponent, {
@@ -224,7 +239,7 @@ describe('SidebarUserPanelComponent', () => {
     it('floats the raised card from md and ellipsises the name', () => {
       expect(scss).toMatch(/@media #\{\$md\} \{[^}]*position: absolute/);
       for (const token of [
-        'var(--trinity-surface-raised)',
+        'var(--trinity-surface-floating-card)',
         'var(--trinity-shape-overlay-radius)',
         'var(--trinity-shadow-floating)',
       ]) {

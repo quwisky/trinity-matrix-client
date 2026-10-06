@@ -334,6 +334,7 @@
     --trinity-surface-workspace: var(--trinity-surface-pane);
     --trinity-surface-raised: oklch(97.5% 0.005 85deg);
     --trinity-surface-floating: var(--trinity-sidebar);
+    --trinity-surface-floating-card: var(--trinity-surface-raised);
     --trinity-surface-panel: var(--trinity-members);
     --trinity-border-subtle: var(--trinity-divider);
     --trinity-border-strong: var(--trinity-active);
@@ -529,6 +530,7 @@
     --trinity-surface-sidebar: oklch(96.5% 0.008 265deg);
     --trinity-surface-pane: oklch(99% 0.004 265deg);
     --trinity-surface-raised: var(--trinity-sidebar);
+    --trinity-surface-floating-card: oklch(99% 0.004 265deg);
     --trinity-rail: oklch(91% 0.014 265deg);
     --trinity-sidebar: oklch(96.5% 0.008 265deg);
     --trinity-sidebar-header: oklch(94.5% 0.01 265deg);
@@ -557,6 +559,7 @@
     --trinity-surface-sidebar: oklch(24% 0.016 265deg);
     --trinity-surface-pane: oklch(28% 0.016 265deg);
     --trinity-surface-raised: var(--trinity-sidebar);
+    --trinity-surface-floating-card: oklch(28% 0.016 265deg);
     --trinity-rail: oklch(18% 0.014 265deg);
     --trinity-sidebar: oklch(24% 0.016 265deg);
     --trinity-sidebar-header: oklch(21% 0.015 265deg);

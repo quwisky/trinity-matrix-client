@@ -30,7 +30,7 @@
       [trnDropdownMenuTrigger]="accountMenu"
       side="top"
       align="start"
-      aria-label="Switch account"
+      [attr.aria-label]="otherAccountsLabel()"
       data-testid="account-stack-count"
     >
       <span trnBadge variant="neutral" size="sm"

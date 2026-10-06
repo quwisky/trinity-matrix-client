@@ -1,6 +1,8 @@
 import { RoomModerationService } from '@trinity/data-access/room-administration';
-import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { signal, type WritableSignal } from '@angular/core';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { type PresenceState } from '@trinity/util/matrix';
 import { Router } from '@angular/router';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import {
@@ -101,7 +103,15 @@ const ROOM: RoomSummary = {
 
 beforeEach(() => setRouteRoom(null));
 
-function renderHeader(pinCount: number) {
+let lastRender: {
+  fixture: ComponentFixture<RoomsPage>;
+  activeAccountId: WritableSignal<string | null>;
+};
+
+function renderHeader(
+  pinCount: number,
+  presenceByUser: Record<string, WritableSignal<PresenceState | null>> = {},
+) {
   const pinMessages = signal<readonly unknown[]>(
     Array.from({ length: pinCount }, (_, id) => ({ id })),
   );
@@ -200,7 +210,8 @@ function renderHeader(pinCount: number) {
       }),
       MockProvider(TrustService),
       MockProvider(IdentityPresenceService, {
-        presenceFor: () => signal('offline'),
+        presenceFor: (userId: string) =>
+          presenceByUser[userId] ?? signal('offline'),
       }),
       MockProvider(SpaceChildrenService),
       MockProvider(RoomMembersService),
@@ -309,6 +320,7 @@ function renderHeader(pinCount: number) {
   setRouteRoom('!r:hs');
   const fixture = TestBed.createComponent(RoomsPage);
   fixture.detectChanges();
+  lastRender = { fixture, activeAccountId: vm.activeAccountId };
   return fixture.nativeElement as HTMLElement;
 }
 
@@ -345,5 +357,28 @@ describe('RoomsPage header pinned-messages state', () => {
   it('keeps the plain accessible name when nothing is pinned', () => {
     const pin = renderHeader(0).querySelector('[data-testid="open-pinned"]');
     expect(pin?.getAttribute('aria-label')).toBe('Pinned messages');
+  });
+});
+
+describe('RoomsPage user panel presence', () => {
+  const panelPresence = () =>
+    (
+      lastRender.fixture.debugElement.query(By.css('trn-sidebar-user-panel'))
+        .componentInstance as SidebarUserPanelComponent
+    ).presence();
+
+  it('binds the active account’s presence and follows an account switch', () => {
+    const me = signal<PresenceState | null>('online');
+    const alt = signal<PresenceState | null>('unavailable');
+    renderHeader(0, { '@me:hs': me, '@alt:hs': alt });
+    expect(panelPresence()).toBe('online');
+
+    me.set('offline');
+    lastRender.fixture.detectChanges();
+    expect(panelPresence()).toBe('offline');
+
+    lastRender.activeAccountId.set('@alt:hs');
+    lastRender.fixture.detectChanges();
+    expect(panelPresence()).toBe('unavailable');
   });
 });

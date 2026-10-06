@@ -314,6 +314,8 @@ test.describe('Multiple accounts', () => {
     await expect(desktopTrigger).toBeFocused();
     await expect(roomARow).toHaveCount(0);
     await expect(roomBRow).toBeVisible();
+    // The chip counts signed-in accounts, so unticking one from the view leaves it alone.
+    await expect(page.getByTestId('account-stack-count')).toHaveText('+1');
   });
   // The quick switcher shares the picker's scope, so it must find another account's rooms
   // and switch to that account on the jump — the same contract as clicking a sidebar row.

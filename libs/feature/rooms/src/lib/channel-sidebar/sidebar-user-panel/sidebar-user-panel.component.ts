@@ -98,7 +98,12 @@ export class SidebarUserPanelComponent {
   readonly otherAccountCount = computed(() =>
     Math.max(this.accounts().length - 1, 0),
   );
-  /** Accessible summary of the mixed state; the stack itself is decorative. */
+  /** Names the chip with its visible "+N", so the label contains the text. */
+  readonly otherAccountsLabel = computed(() => {
+    const count = this.otherAccountCount();
+    return `${count} more account${count === 1 ? '' : 's'}`;
+  });
+  /** Accessible summary of the mixed state, the only signal of it for assistive tech. */
   readonly accountSummaryLabel = computed(() => {
     const shown = this.shownAccountIds().size;
     return shown < 2
