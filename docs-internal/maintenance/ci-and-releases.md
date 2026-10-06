@@ -10,15 +10,16 @@ public developer guide.
 
 ## Know what ran
 
-| Workflow                                                           | Starts when                                                                | What it provides                                                                                                                                                               |
-| ------------------------------------------------------------------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [`ci.yml`](../../.github/workflows/ci.yml)                         | A pull request, selected pushes, or its weekly schedule                    | Branch checks and browser, desktop, and Android evidence                                                                                                                       |
-| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml)         | A `main` push, a published stable release, or a manual dispatch            | Validated user and developer sites deployed to GitHub Pages                                                                                                                    |
-| [`release.yml`](../../.github/workflows/release.yml)               | A push to `main` or `release/**`, or a manual dispatch with a tag input    | release-please release PRs and tags, then tag verification, desktop packages, a draft GitHub release, its publication, and the back-merge PR (auto-merging) after a stable tag |
-| [`homebrew.yml`](../../.github/workflows/homebrew.yml)             | A release is published, or a manual dispatch with a tag input              | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                                                                                             |
-| [`renovate.yml`](../../.github/workflows/renovate.yml)             | Daily at 00:00 UTC or a manual dispatch                                    | Dependency update maintenance through a GitHub App token                                                                                                                       |
-| [`release-stable.yml`](../../.github/workflows/release-stable.yml) | A manual dispatch with `from` and `dry_run` inputs                         | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                                                  |
-| [`backport.yml`](../../.github/workflows/backport.yml)             | A merged `main` pull request is closed or labeled `backport release/X.Y.x` | Opens a PR that cherry-picks the fix onto each labeled release branch, through a GitHub App token                                                                              |
+| Workflow                                                             | Starts when                                                                | What it provides                                                                                                                                                |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`ci.yml`](../../.github/workflows/ci.yml)                           | A pull request, selected pushes, or its weekly schedule                    | Branch checks and browser, desktop, and Android evidence                                                                                                        |
+| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml)           | A `main` push, a published stable release, or a manual dispatch            | Validated user and developer sites deployed to GitHub Pages                                                                                                     |
+| [`release.yml`](../../.github/workflows/release.yml)                 | A push to `main` or `release/**`, or a manual dispatch with a tag input    | release-please release PRs and tags, then tag verification, desktop packages, a draft GitHub release, its publication, and the back-merge PR after a stable tag |
+| [`homebrew.yml`](../../.github/workflows/homebrew.yml)               | A release is published, or a manual dispatch with a tag input              | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                                                                              |
+| [`renovate.yml`](../../.github/workflows/renovate.yml)               | Daily at 00:00 UTC or a manual dispatch                                    | Dependency update maintenance through a GitHub App token                                                                                                        |
+| [`release-stable.yml`](../../.github/workflows/release-stable.yml)   | A manual dispatch with `from` and `dry_run` inputs                         | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                                   |
+| [`backport.yml`](../../.github/workflows/backport.yml)               | A merged `main` pull request is closed or labeled `backport release/X.Y.x` | Opens a PR that cherry-picks the fix onto each labeled release branch, through a GitHub App token                                                               |
+| [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml) | `CI` completes on a `back-merge/**` branch of this repository              | Pushes the back-merge commit to `main` as a fast-forward, through a GitHub App token                                                                            |
 
 The branch workflow accepts pushes to `main`, `release/**`, and
 `renovate/patch-**`; pull requests are its usual review path. A newer run for
@@ -183,9 +184,9 @@ through [`release.yml`](../../.github/workflows/release.yml):
 On every push to either kind of branch, release-please updates that branch's release PR
 from the Conventional Commits since the last release. Release PRs on both lines are titled
 `release: cut the vX.Y.Z release` (`pull-request-title-pattern` in both configs), and
-the squash merge keeps that title as the commit; commitlint allows the `release` type. Merging the release PR bumps
+release PRs merge as a squash, which keeps that title as the commit; commitlint allows the `release` type. Merging the release PR bumps
 `package.json`, `electron/package.json` and the manifest, and release-please then
-tags the merge commit and creates a **draft** GitHub release. The same workflow run
+tags the squash commit and creates a **draft** GitHub release. The same workflow run
 verifies the tag and attaches the desktop packages to that draft. The `publish`
 job then publishes it once every package is attached; see
 [Automatic publishing](#automatic-publishing).
@@ -217,9 +218,9 @@ to cut the same version twice.
    [Automatic publishing](#automatic-publishing)).
 4. Once `vX.Y.Z` is tagged, the `Open the back-merge PR` job pushes
    `chore(release): drop the one-time release-as after vX.Y.Z` to `release/X.Y.x`, so later
-   fixes release as patches, then opens the back-merge PR and enables auto-merge on it. It
-   merges itself when `main`'s checks pass; step in only for conflicts or when auto-merge
-   is off (see [Back-merge conflicts](#back-merge-conflicts)).
+   fixes release as patches, then opens the back-merge PR. Its merge commit lands on `main`
+   by a direct push once CI passes on it; step in only for conflicts (see
+   [Back-merge conflicts](#back-merge-conflicts)).
 
 The same run creates the label `backport release/X.Y.x` for the new line.
 
@@ -248,10 +249,11 @@ comments use the issues API). Its
 `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret live in the
 `release-app` environment, whose deployment branch policy allows `main` and `release/**`;
 the jobs that mint the token (`back-merge` and `publish` in `release.yml`, `cut` in
-`release-stable.yml`, and `backport.yml`) declare `environment: release-app`. Give
+`release-stable.yml`, `backport.yml` and `land-back-merge.yml`) declare `environment: release-app`. Give
 `release-app` no required reviewers: they would stall every cut, publish, back-merge and
 backport. Reviewers belong on `release`, where they gate packaging only. The release App, not
-Renovate, is the only bypass actor for `release/**` in the ruleset. Renovate keeps its
+Renovate, is the only bypass actor for `release/**` in the ruleset, and it is a bypass actor
+on `main`'s ruleset so it can push back-merge commits. Renovate keeps its
 own App and credentials.
 
 Pushing the branch is the workflow's last step; a failure before it creates nothing, so
@@ -268,7 +270,7 @@ force-push.
    [`backport.yml`](../../.github/workflows/backport.yml) opens a pull request into
    `release/X.Y.x` that cherry-picks it. Review and merge that backport PR.
 2. release-please opens a release PR on `release/X.Y.x` for `X.Y.Z+1`. Merge it. The
-   release publishes itself and the back-merge PR follows and merges itself, as for a
+   release publishes itself and the back-merge PR follows and lands itself, as for a
    stable version. A fix release on an older line is published with `--latest=false`, never marked "latest", when a
    higher stable version is published.
 
@@ -324,11 +326,34 @@ After a stable tag is created on a `release/**` branch, the `Open the back-merge
 tag into a new `back-merge/vX.Y.Z` branch from `main` and opens a pull request titled
 `chore: back-merge vX.Y.Z into main`; the body lists the files it resolved. The merge
 also removes the release branch's one-time `release-as` from `release-please-config.json`,
-so `main` never carries it. The script then runs `gh pr merge --auto --merge`, so the PR
-merges itself with a merge commit once `main`'s required checks pass; never squash it.
-If "Allow auto-merge" is off, the PR stays open and the job log carries a warning: merge it
-by hand with a merge commit. Rerunning updates an existing PR and does nothing when `main`
+so `main` never carries it. Rerunning updates an existing PR, rebuilding the merge from
+current `main` (a lease-guarded push of the bot's own branch), and does nothing when `main`
 already contains the tag. The job does not affect the release itself.
+
+`main` allows only squash merges, so never merge the PR with the button: a squash would
+drop the tag from `main`'s history. Instead the PR lands by a direct push after CI passes.
+Whenever `CI` completes on a `back-merge/**` branch of this repository, whatever its
+conclusion, [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml) runs
+[`scripts/land-back-merge.mjs`](../../scripts/land-back-merge.mjs) with the release App
+token, which pushes the branch's head to `main` as a fast-forward, never forced. GitHub then
+marks the PR merged. The script refuses, and pushes nothing, unless:
+
+- the branch is still at the commit that CI run tested;
+- the head has exactly two parents: the current `main` first and the `vX.Y.Z` tag named by
+  the branch second. Commits on top of the merge, a merge of anything but the tag, or an
+  octopus merge are refused. If `main` has moved, re-run the `Open the back-merge PR` job;
+  it rebuilds the merge on current `main`, and the new CI run lands it;
+- every required status check of `main`'s ruleset, read live from the branch rules API, has
+  passed (success, skipped or neutral) on that exact commit, judged by its latest GitHub
+  Actions run. A failed job that `main` does not require (Desktop, iOS) does not block it;
+- exactly one open, non-draft pull request from this repository goes from the branch into
+  `main`, its head is that commit, and its review decision is not "changes requested".
+
+These checks run just before the push, not atomically with it. The fast-forward-only push
+is what keeps a `main` that moved in between safe: git rejects it and `main` stays as it is.
+Because the App bypasses `main`'s ruleset, its pull-request rules do not stop the push; the
+script's PR check does. To stop a back-merge from landing, close its PR, mark it draft or
+request changes on it.
 
 It resolves conflicts in only these files, hunk by hunk with `git merge-file`: a
 conflicting hunk takes the side below, and every non-conflicting edit from either side is
@@ -359,7 +384,15 @@ gh pr create --base main --head back-merge/vX.Y.Z \
   --body "Merges release/X.Y.x at vX.Y.Z back into main; conflicts resolved by hand."
 ```
 
-Push through a pull request and merge it with a merge commit; never force-push.
+CI runs on the PR and `land-back-merge.yml` lands it when it passes, as above. If that run
+refused or is gone, re-run the `Land back-merge` workflow once CI is green, or, as a bypass
+actor on `main`'s ruleset, land it yourself from an up-to-date clone with Node 24 or newer:
+
+```bash
+node scripts/land-back-merge.mjs --branch back-merge/vX.Y.Z   # or --pr N
+```
+
+Never merge it with the button and never force-push.
 
 The job first drops the one-time `release-as` from the release branch with a plain push. If a
 fix landed on the branch at that moment and the push was rejected, rerun the `Open the
@@ -385,7 +418,8 @@ run release-please.
    node scripts/back-merge.mjs --tag v0.1.1 --branch release/0.1.x
    ```
 
-   Review the PR it opens and merge it with a merge commit.
+   Review the PR it opens; it lands on `main` once CI passes (see
+   [Back-merge conflicts](#back-merge-conflicts)).
 
 4. Create the release App (see [Release a stable version](#release-a-stable-version)):
    install it only on this repository with Contents, Pull requests and Issues read & write, and add
@@ -416,9 +450,19 @@ run release-please.
 9. Verify with a `dry_run` of `Release stable`, then the first real cut, and the first fix
    on `release/0.1.x`, each followed by its back-merge PR.
 10. Settings for automatic publishing, back-merges and backports:
-    - Enable "Allow auto-merge" and keep merge commits allowed (back-merge PRs merge with a
-      merge commit).
-    - Require the CI status checks on `main`, so auto-merge waits for green.
+    - Make `main` squash-only with a back-merge route, in this order, so a back-merge
+      always has one way to land:
+      1. Add the release App as a bypass actor on the `Protect main` ruleset, so
+         `land-back-merge.yml` can push back-merge commits. The script never forces, so the
+         bypass is used only for fast-forwards.
+      2. Add a ruleset on `refs/heads/back-merge/**` with the creation, update, deletion and
+         non-fast-forward rules, and the release App and the maintainer as its bypass
+         actors, so no other writer can stage a back-merge.
+      3. Set the `Protect main` ruleset's allowed merge methods to squash only.
+      4. Turn off "Allow merge commits" in the repository settings. Release-please PRs and
+         every other PR then merge as a squash.
+    - Require the CI status checks on `main`; `land-back-merge.mjs` reads them live and
+      waits for all of them.
     - Create the label `backport release/0.1.x`
       (`gh label create "backport release/0.1.x" --force`); `Release stable` creates the
       label for later lines (if that step fails it only warns; create the label by hand).
