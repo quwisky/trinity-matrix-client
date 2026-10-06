@@ -1,14 +1,15 @@
 <trn-settings-group
-  title="Experimental"
   description="Try unfinished features that may still change or behave unexpectedly."
 >
   <trn-settings-row
     label="Virtualized timeline"
     description="Renders only the messages currently on screen, keeping memory low and scrolling smooth in very long rooms."
+    for="flag-virtual-timeline-switch"
     data-testid="flag-virtual-timeline"
   >
     <trn-switch
-      aria-label="Virtualized timeline"
+      inputId="flag-virtual-timeline-switch"
+      aria-describedby="flag-virtual-timeline-switch-description"
       [checked]="flags.virtualTimeline()"
       (checkedChange)="flags.setVirtualTimeline($event)"
     />

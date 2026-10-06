@@ -24,10 +24,9 @@ test.describe('Settings parts', () => {
 
     await page.getByTestId('settings-detail').hover();
     await page.mouse.wheel(0, -10_000);
-    await expect(page.getByTestId('settings-part-appearance')).toHaveAttribute(
-      'aria-current',
-      'location',
-    );
+    await expect(
+      page.getByTestId('settings-part-mode-and-theme'),
+    ).toHaveAttribute('aria-current', 'location');
     await expect(page).toHaveURL(/\/settings\/appearance$/);
   });
 
@@ -39,6 +38,6 @@ test.describe('Settings parts', () => {
       timeout: 20_000,
     });
     await expect(page).toHaveURL(/\/settings\/appearance$/);
-    await expect(page.locator('#part-appearance')).toBeInViewport();
+    await expect(page.locator('#part-mode-and-theme')).toBeInViewport();
   });
 });

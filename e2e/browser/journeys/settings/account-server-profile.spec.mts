@@ -215,9 +215,10 @@ test.describe('Settings', () => {
   test('lists the current device under Devices', async ({ page }) => {
     await openSection(page, 'devices');
     const devices = page.locator('trn-devices-section');
-    await expect(devices.getByText('Devices', { exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    // The page heading is the section name, outside the section component.
+    await expect(
+      page.locator('.settings-layout__column h1', { hasText: 'Devices' }),
+    ).toBeVisible({ timeout: 20_000 });
     // Once the list loads, the signed-in session carries a "This device" badge.
     await expect(devices.getByText('This device')).toBeVisible({
       timeout: 30_000,

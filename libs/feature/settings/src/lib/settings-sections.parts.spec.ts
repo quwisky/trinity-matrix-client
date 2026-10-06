@@ -17,7 +17,6 @@ import {
   TrnDialogService,
   TrnSettingsParts,
   TrnToastService,
-  slugify,
 } from '@trinity/components/overlay';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AuthService } from '@trinity/data-access/auth';
@@ -281,7 +280,7 @@ const SETUPS: Record<string, () => Setup> = {
   }),
 };
 
-/** Sections whose whole page is one group, named after the section: no parts to list. */
+/** Sections whose whole page is one untitled group: no parts to list. */
 const SINGLE_GROUP = [
   'profile',
   'presence',
@@ -331,11 +330,7 @@ describe('SETTINGS_SECTIONS parts', () => {
       fixture.detectChanges();
 
       const rendered = parts.parts().map((part) => part.id);
-      expect(rendered).toEqual(
-        section.parts.length
-          ? section.parts.map((part) => part.id)
-          : [slugify(section.label)],
-      );
+      expect(rendered).toEqual(section.parts.map((part) => part.id));
       // Labels shown in search are the headings people see in the page.
       if (section.parts.length) {
         expect(parts.parts().map((part) => part.label)).toEqual(

@@ -2,6 +2,7 @@
   title="Settings"
   [sections]="layoutSections()"
   [selectedSection]="selectedPath()"
+  [heading]="selectedSection()?.label ?? null"
   [initialPart]="partTarget()"
   [compact]="!wide()"
   [directoryVisible]="wide() || !selectedPath()"

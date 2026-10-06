@@ -5,10 +5,12 @@
         <trn-settings-row
           [label]="entry.editor.label"
           [description]="entry.editor.description"
+          [for]="entry.editor.testId + '-switch'"
           [attr.data-testid]="entry.editor.testId"
         >
           <trn-switch
-            [aria-label]="entry.editor.label"
+            [inputId]="entry.editor.testId + '-switch'"
+            [aria-describedby]="entry.editor.testId + '-switch-description'"
             [checked]="checked(entry)"
             [disabled]="busy(entry.id)"
             (checkedChange)="update(entry, $event)"

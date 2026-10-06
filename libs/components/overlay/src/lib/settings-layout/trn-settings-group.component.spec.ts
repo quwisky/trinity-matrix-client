@@ -98,6 +98,20 @@ describe('TrnSettingsGroupComponent spacing', () => {
   });
 });
 
+describe('TrnSettingsGroupComponent without a title', () => {
+  it('renders its description and rows but no heading, and is not a part', async () => {
+    const parts = new TrnSettingsParts();
+    const { fixture } = await render(TrnSettingsGroupComponent, {
+      inputs: { description: 'Just the intro' },
+      providers: [{ provide: TrnSettingsParts, useValue: parts }],
+    });
+    fixture.detectChanges();
+    expect(screen.getByText('Just the intro')).toBeTruthy();
+    expect(screen.queryByRole('heading')).toBeNull();
+    expect(parts.parts()).toHaveLength(0);
+  });
+});
+
 describe('slugify', () => {
   it('lowercases and dashes', () => {
     expect(slugify('Code blocks')).toBe('code-blocks');

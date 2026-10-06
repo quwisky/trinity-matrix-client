@@ -1,5 +1,4 @@
 <trn-settings-group
-  title="Appearance"
   description="Tune theme, type and spacing together, with a live preview of the result."
 >
   <trn-appearance-preview
@@ -162,20 +161,23 @@
   <trn-settings-row
     label="Show joins and leaves"
     description="Includes invites, knocks, kicks and bans."
+    for="timeline-show-membership-switch"
     data-testid="timeline-show-membership"
   >
     <trn-switch
-      aria-label="Show joins and leaves"
+      inputId="timeline-show-membership-switch"
+      aria-describedby="timeline-show-membership-switch-description"
       [checked]="systemLines.showMembership()"
       (checkedChange)="systemLines.setShowMembership($event)"
     />
   </trn-settings-row>
   <trn-settings-row
     label="Show display name and avatar changes"
+    for="timeline-show-profile-switch"
     data-testid="timeline-show-profile"
   >
     <trn-switch
-      aria-label="Show display name and avatar changes"
+      inputId="timeline-show-profile-switch"
       [checked]="systemLines.showProfile()"
       (checkedChange)="systemLines.setShowProfile($event)"
     />
@@ -183,10 +185,12 @@
   <trn-settings-row
     label="Show room changes"
     description="Includes name, topic, avatar, address and access changes, plus room creation and encryption notices."
+    for="timeline-show-room-changes-switch"
     data-testid="timeline-show-room-changes"
   >
     <trn-switch
-      aria-label="Show room changes"
+      inputId="timeline-show-room-changes-switch"
+      aria-describedby="timeline-show-room-changes-switch-description"
       [checked]="systemLines.showRoomChanges()"
       (checkedChange)="systemLines.setShowRoomChanges($event)"
     />

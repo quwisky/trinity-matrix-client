@@ -6,11 +6,14 @@
   >
     <trn-settings-row
       label="Use system title bar"
+      for="system-title-bar-switch"
       description="Show your operating system's window frame and menu bar instead of Trinity's title row."
     >
       <trn-switch
         data-testid="system-title-bar-toggle"
-        aria-label="Use system title bar"
+        inputId="system-title-bar-switch"
+        aria-describedby="system-title-bar-switch-description"
+        for="system-title-bar-switch"
         [checked]="saved()"
         (checkedChange)="onChange($event)"
       />

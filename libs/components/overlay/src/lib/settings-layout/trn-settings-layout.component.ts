@@ -52,6 +52,8 @@ export class TrnSettingsLayoutComponent {
 
   /** Plain-text title for the shared header. */
   readonly title = input.required<string>();
+  /** The open section's name: the h1 of its detail. The list view keeps `title`. */
+  readonly heading = input<string | null>(null);
   /** Ordered entries for the left directory. */
   readonly sections = input<readonly TrnSettingsLayoutSection[]>([]);
   /** The selected entry, or null while a compact layout shows only its directory. */
@@ -84,6 +86,9 @@ export class TrnSettingsLayoutComponent {
   /** Compact and showing only the directory: the close and title live in the list. */
   protected readonly listView = computed(
     () => this.compact() && this.directoryVisible(),
+  );
+  protected readonly headingText = computed(() =>
+    this.listView() ? this.title() : (this.heading() ?? this.title()),
   );
   protected readonly parts = this.registry.parts;
   protected readonly currentPart = this.registry.current;
@@ -336,8 +341,11 @@ export class TrnSettingsLayoutComponent {
 
   /** Focus the consumer-projected section heading after selection. */
   focusSectionHeading(): void {
-    const heading =
-      this.detail()?.nativeElement.querySelector<HTMLElement>('h2');
+    // With a section title the h1 is the section's heading; without one the consumer
+    // projects its own.
+    const heading = this.detail()?.nativeElement.querySelector<HTMLElement>(
+      this.heading() ? 'h1' : 'h2',
+    );
     if (!heading) {
       return;
     }

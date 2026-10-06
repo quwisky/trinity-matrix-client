@@ -98,7 +98,7 @@ test.describe('Settings directory search', () => {
     await field.fill('timeline');
     await expect(status(page)).toHaveText('1 section found');
     await page
-      .getByRole('button', { name: 'Appearance: Timeline', exact: true })
+      .getByRole('button', { name: 'Appearance › Timeline', exact: true })
       .click();
 
     await expect(page.getByTestId('settings-nav-appearance')).toHaveAttribute(

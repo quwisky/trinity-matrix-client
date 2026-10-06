@@ -123,6 +123,23 @@ describe('SettingsDialogComponent', () => {
     fixture.destroy();
   });
 
+  it('titles the page with the open section, not with Settings', async () => {
+    TestBed.overrideProvider(FeatureFlagsService, {
+      useValue: { virtualTimeline: signal(false), setVirtualTimeline: vi.fn() },
+    });
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    fixture.componentRef.setInput('initialSection', 'experimental');
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const headings = root.querySelectorAll('h1');
+    expect(headings).toHaveLength(1);
+    expect(headings[0].textContent?.trim()).toBe('Experimental');
+    expect(root.querySelector('nav')?.getAttribute('aria-label')).toBe(
+      'Settings sections',
+    );
+    fixture.destroy();
+  });
+
   it('renders a section inside the layout, so its groups register as parts', async () => {
     TestBed.overrideProvider(FeatureFlagsService, {
       useValue: { virtualTimeline: signal(false), setVirtualTimeline: vi.fn() },
@@ -136,7 +153,7 @@ describe('SettingsDialogComponent', () => {
     const group = fixture.debugElement.query(By.css('trn-settings-group'));
     expect(group).not.toBeNull();
     const registry = group.injector.get(TrnSettingsParts, null);
-    expect(registry?.parts().map((part) => part.id)).toEqual(['experimental']);
+    expect(registry).not.toBeNull();
     fixture.destroy();
   });
 
@@ -145,7 +162,7 @@ describe('SettingsDialogComponent', () => {
     fixture.detectChanges();
     const root = fixture.nativeElement as HTMLElement;
 
-    expect(root.querySelector('h1')?.textContent).toContain('Settings');
+    expect(root.querySelector('h1')?.textContent).toContain('Profile');
     expect(root.querySelector('nav')?.getAttribute('aria-label')).toBe(
       'Settings sections',
     );

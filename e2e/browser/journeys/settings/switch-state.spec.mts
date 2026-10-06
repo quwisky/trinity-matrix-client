@@ -136,6 +136,22 @@ test.describe('Switch reflects its value', () => {
     expect(Math.abs(after.offset - before.offset)).toBeGreaterThan(4);
   });
 
+  test('clicking the label text operates the switch', async ({ page }) => {
+    const row = page.getByTestId('privacy-send-read-receipts');
+    await expect(control(row)).toBeVisible({ timeout: 20_000 });
+    const before = await control(row).isChecked();
+
+    await row.locator('label').click();
+    if (before) {
+      await expect(control(row)).not.toBeChecked({ timeout: 10_000 });
+    } else {
+      await expect(control(row)).toBeChecked({ timeout: 10_000 });
+    }
+    // Put it back: the preference persists across runs.
+    await row.locator('label').click();
+    await expect(control(row)).toBeChecked({ checked: before });
+  });
+
   test('two switches in opposite states do not look the same', async ({
     page,
   }) => {

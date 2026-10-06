@@ -57,6 +57,7 @@ import {
       class="peer absolute inset-0 z-10 size-full cursor-pointer opacity-0 disabled:cursor-default"
       type="checkbox"
       role="switch"
+      [attr.id]="inputId()"
       [checked]="checked()"
       [attr.aria-checked]="checked()"
       [disabled]="disabled()"
@@ -91,6 +92,8 @@ export class TrnSwitchComponent {
     });
   }
 
+  /** Id of the native control, so a `<label for>` elsewhere operates the switch. */
+  readonly inputId = input<string | null>(null);
   readonly checked = input(false, { transform: booleanAttribute });
   readonly disabled = input(false, { transform: booleanAttribute });
 

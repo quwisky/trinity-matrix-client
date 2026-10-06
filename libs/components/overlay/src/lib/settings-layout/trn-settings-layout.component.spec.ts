@@ -822,3 +822,46 @@ describe('TrnSettingsLayoutComponent with a single group', () => {
     expect(container.querySelector('.settings-layout__chips')).toBeNull();
   });
 });
+
+@Component({
+  imports: [TrnSettingsLayoutComponent],
+  template: `
+    <trn-settings-layout
+      title="Preferences"
+      [sections]="sections"
+      selectedSection="general"
+      heading="General"
+      [compact]="compact"
+      [directoryVisible]="compact"
+    />
+  `,
+})
+class HeadingHostComponent {
+  readonly sections = sections;
+  readonly compact = solo.compact;
+}
+
+describe('TrnSettingsLayoutComponent heading', () => {
+  it('shows the open section as the h1, and the title on the list', async () => {
+    solo.compact = false;
+    const wide = await render(HeadingHostComponent, {
+      providers: [provideTrnIcons()],
+    });
+    expect(wide.container.querySelector('h1')?.textContent?.trim()).toBe(
+      'General',
+    );
+    expect(
+      wide.container.querySelector('nav')?.getAttribute('aria-label'),
+    ).toBe('Preferences sections');
+  });
+
+  it('keeps the title as the h1 of the compact list', async () => {
+    solo.compact = true;
+    const list = await render(HeadingHostComponent, {
+      providers: [provideTrnIcons()],
+    });
+    expect(list.container.querySelector('h1')?.textContent?.trim()).toBe(
+      'Preferences',
+    );
+  });
+});

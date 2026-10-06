@@ -36,7 +36,7 @@ describe('Settings directory search', () => {
     fixture.componentInstance.resultSelected.subscribe((r) => picked.push(r));
 
     fireEvent.click(
-      screen.getByRole('button', { name: 'Appearance: Code blocks' }),
+      screen.getByRole('button', { name: 'Appearance › Code blocks' }),
     );
 
     expect(picked).toEqual([

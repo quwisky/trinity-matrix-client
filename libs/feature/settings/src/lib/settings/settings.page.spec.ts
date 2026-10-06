@@ -125,6 +125,16 @@ describe('SettingsPage (shell)', () => {
     expect(router.url).toBe('/settings/appearance#code-blocks');
   });
 
+  it('titles the page with the open section', async () => {
+    stubMatchMedia(true);
+    const { harness } = await harnessAt('/settings/profile');
+    harness.detectChanges();
+    const heading = (
+      harness.fixture.nativeElement as HTMLElement
+    ).querySelector('h1');
+    expect(heading?.textContent?.trim()).toBe('Profile');
+  });
+
   it('renders a submenu link for every section', async () => {
     stubMatchMedia(false); // narrow: the index stays on the list
     const { harness } = await harnessAt('/settings');
@@ -351,7 +361,7 @@ describe('SettingsPage (shell)', () => {
 
     const heading = (
       harness.fixture.nativeElement as HTMLElement
-    ).querySelector('[data-testid=settings-detail] h2');
+    ).querySelector('[data-testid=settings-detail] h1');
     expect(document.activeElement).toBe(heading);
     expect(heading?.getAttribute('tabindex')).toBe('-1');
   });

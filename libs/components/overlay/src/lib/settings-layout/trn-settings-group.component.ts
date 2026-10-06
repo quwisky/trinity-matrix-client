@@ -17,20 +17,22 @@ import { TrnSettingsParts, slugify } from './trn-settings-parts';
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'block mt-8' },
   template: `
-    <h2
-      #heading
-      tabindex="-1"
-      [id]="headingId()"
-      class="m-0 text-xs font-bold text-[var(--trinity-text-muted)] uppercase"
-    >
-      {{ title() }}
-    </h2>
+    @if (title()) {
+      <h2
+        #heading
+        tabindex="-1"
+        [id]="headingId()"
+        class="m-0 text-xs font-bold text-[var(--trinity-text-muted)] uppercase"
+      >
+        {{ title() }}
+      </h2>
+    }
     @if (description()) {
       <p class="m-0 mt-1 text-sm text-[var(--trinity-text-muted)]">
         {{ description() }}
       </p>
     }
-    <section class="mt-2" [attr.aria-labelledby]="headingId()">
+    <section class="mt-2" [attr.aria-labelledby]="title() ? headingId() : null">
       <ng-content />
     </section>
   `,
@@ -38,28 +40,29 @@ import { TrnSettingsParts, slugify } from './trn-settings-parts';
 export class TrnSettingsGroupComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly parts = inject(TrnSettingsParts, { optional: true });
-  private readonly heading =
-    viewChild.required<ElementRef<HTMLElement>>('heading');
+  private readonly heading = viewChild<ElementRef<HTMLElement>>('heading');
 
-  readonly title = input.required<string>();
+  /** Without a title the group is an untitled block: no heading, and not a navigable part. */
+  readonly title = input<string>();
   readonly description = input<string>();
   /** Fragment id within the section; defaults to the slug of the title. */
   readonly partId = input<string>();
 
   protected readonly resolvedId = computed(
-    () => this.partId() ?? slugify(this.title()),
+    () => this.partId() ?? slugify(this.title() ?? ''),
   );
   protected readonly headingId = computed(() => `part-${this.resolvedId()}`);
 
   constructor() {
     afterNextRender(() => {
-      if (!this.parts) {
+      const heading = this.heading()?.nativeElement;
+      if (!this.parts || !heading || !this.title()) {
         return;
       }
       const unregister = this.parts.register({
         id: this.resolvedId(),
-        label: this.title(),
-        heading: this.heading().nativeElement,
+        label: this.title() as string,
+        heading,
       });
       this.destroyRef.onDestroy(unregister);
     });

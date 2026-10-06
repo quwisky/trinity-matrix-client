@@ -102,6 +102,13 @@ export class SettingsPage {
     initialValue: null,
   });
 
+  /** The open section's name, the page's h1. */
+  protected readonly activeLabel = computed(
+    () =>
+      SETTINGS_SECTIONS.find((item) => item.path === this.activePath())
+        ?.label ?? null,
+  );
+
   /** Whether a section detail is open — drives the mobile list ↔ detail swap. */
   readonly sectionActive = computed(() => this.activePath() !== null);
 
@@ -147,7 +154,7 @@ export class SettingsPage {
     afterNextRender(
       () => {
         const heading = this.host.nativeElement.querySelector<HTMLElement>(
-          '[data-testid="settings-detail"] h2',
+          '[data-testid="settings-detail"] h1',
         );
         if (!heading) {
           return;

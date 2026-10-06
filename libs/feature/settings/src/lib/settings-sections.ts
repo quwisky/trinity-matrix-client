@@ -32,7 +32,7 @@ export interface SettingsSectionDefinition {
   readonly component: Type<unknown>;
   /**
    * The groups the section renders, in order. A section whose whole page is one group
-   * (named after the section) declares none. Kept equal to what the section renders by
+   * (untitled; the section name is the page's h1) declares none. Kept equal to what the section renders by
    * `settings-sections.parts.spec.ts`; a part that is only sometimes shown (Window, on
    * desktop) is declared anyway.
    */
@@ -86,7 +86,6 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     group: 'Account',
     component: SecuritySectionComponent,
     parts: [
-      { id: 'security', label: 'Security' },
       { id: 'this-session', label: 'This session' },
       { id: 'key-backup', label: 'Key backup' },
       { id: 'encrypted-key-export', label: 'Encrypted key export' },
@@ -99,7 +98,6 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     group: 'Preferences',
     component: AppearanceSettingsComponent,
     parts: [
-      { id: 'appearance', label: 'Appearance' },
       { id: 'mode-and-theme', label: 'Mode and theme' },
       { id: 'layout', label: 'Layout' },
       { id: 'code-blocks', label: 'Code blocks' },
@@ -117,7 +115,6 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     group: 'Preferences',
     component: NotificationsSectionComponent,
     parts: [
-      { id: 'notifications', label: 'Notifications' },
       { id: 'keywords', label: 'Keywords' },
       { id: 'push-gateway-this-device', label: 'Push gateway (this device)' },
     ],
@@ -152,10 +149,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     icon: 'smile',
     group: 'App',
     component: ImagePacksSectionComponent,
-    parts: [
-      { id: 'stickers-emoji', label: 'Stickers & emoji' },
-      { id: 'install-from-a-room', label: 'Install from a room' },
-    ],
+    parts: [{ id: 'install-from-a-room', label: 'Install from a room' }],
   },
   {
     path: 'shortcuts',
@@ -180,7 +174,6 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     group: 'Developer',
     component: AdvancedSettingsComponent,
     parts: [
-      { id: 'advanced', label: 'Advanced' },
       {
         id: 'what-this-document-leaves-out',
         label: 'What this document leaves out',
@@ -192,8 +185,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
 
 /**
  * Search only directory metadata. A section matches by its label or group; a part matches
- * by its title and follows its section's own result. A part named like its section is
- * not offered again.
+ * by its title and follows its section's own result.
  */
 export function matchingSettingsSections(
   query: string,
@@ -201,13 +193,15 @@ export function matchingSettingsSections(
   const term = query.trim().toLowerCase();
   const results: SettingsSearchResult[] = [];
   for (const section of SETTINGS_SECTIONS) {
-    const own = section.label.toLowerCase();
-    if (own.includes(term) || section.group.toLowerCase().includes(term)) {
+    if (
+      section.label.toLowerCase().includes(term) ||
+      section.group.toLowerCase().includes(term)
+    ) {
       results.push({ section });
     }
     for (const part of section.parts) {
       const label = part.label.toLowerCase();
-      if (term && label !== own && label.includes(term)) {
+      if (term && label.includes(term)) {
         results.push({ section, part });
       }
     }

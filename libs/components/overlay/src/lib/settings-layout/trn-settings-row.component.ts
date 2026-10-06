@@ -27,7 +27,10 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
         </div>
       }
       @if (description()) {
-        <p class="m-0 text-sm text-[var(--trinity-text-muted)]">
+        <p
+          [attr.id]="for() ? for() + '-description' : null"
+          class="m-0 text-sm text-[var(--trinity-text-muted)]"
+        >
           {{ description() }}
         </p>
       }

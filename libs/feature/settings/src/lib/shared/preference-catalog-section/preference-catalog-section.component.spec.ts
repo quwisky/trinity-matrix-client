@@ -51,11 +51,28 @@ describe('PreferenceCatalogSectionComponent', () => {
       ) as { componentInstance: TrnSwitchComponent } | undefined;
   }
 
+  it('toggles a preference from its label and names the switch by it', async () => {
+    const { container, fixture } = await renderSection();
+    const row = container.querySelector<HTMLElement>(
+      '[data-testid=privacy-send-read-receipts]',
+    )!;
+    const control = row.querySelector<HTMLInputElement>(
+      'input[role="switch"]',
+    )!;
+    expect(control.labels?.[0]?.textContent?.trim()).toBe('Send read receipts');
+    const description = control.getAttribute('aria-describedby')!;
+    expect(row.querySelector(`#${description}`)).not.toBeNull();
+
+    row.querySelector('label')!.click();
+    fixture.detectChanges();
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
   it('renders catalog labels in descriptor order', async () => {
     const { container } = await renderSection();
     const labels = Array.from(
-      container.querySelectorAll('trn-settings-row input[role="switch"]'),
-    ).map((control) => control.getAttribute('aria-label'));
+      container.querySelectorAll('trn-settings-row label'),
+    ).map((label) => label.textContent?.trim());
 
     expect(labels).toEqual([
       'Send read receipts',

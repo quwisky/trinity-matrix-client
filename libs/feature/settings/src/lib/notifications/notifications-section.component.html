@@ -1,14 +1,14 @@
 <trn-settings-group
-  title="Notifications"
   description="Choose what notifies you. These rules apply to every device signed in to your account."
 >
   @for (rule of toggles; track rule.id) {
     <trn-settings-row
       [label]="rule.label"
+      [for]="'notif-' + rule.id + '-switch'"
       [attr.data-testid]="'notif-' + rule.id"
     >
       <trn-switch
-        [aria-label]="rule.label"
+        [inputId]="'notif-' + rule.id + '-switch'"
         [checked]="checked(rule)"
         (checkedChange)="toggle(rule, $event)"
       />
@@ -18,10 +18,12 @@
   <trn-settings-row
     label="When someone reacts to my message"
     description="While Trinity is running, groups reactions to your messages into one notification per message."
+    for="notif-reactions-switch"
     data-testid="notif-reactions"
   >
     <trn-switch
-      aria-label="When someone reacts to my message"
+      inputId="notif-reactions-switch"
+      aria-describedby="notif-reactions-switch-description"
       [checked]="reactionChecked()"
       (checkedChange)="toggleReactions($event)"
     />
@@ -30,10 +32,12 @@
   <trn-settings-row
     label="Play a sound"
     description="Covers every notification Trinity shows you here, and is stored with your account. It does not change the sound your phone makes for a pushed notification, and it is Trinity's own setting — other Matrix apps keep theirs."
+    for="notif-sound-switch"
     data-testid="notif-sound"
   >
     <trn-switch
-      aria-label="Play a sound"
+      inputId="notif-sound-switch"
+      aria-describedby="notif-sound-switch-description"
       [checked]="soundChecked()"
       (checkedChange)="toggleSound($event)"
     />

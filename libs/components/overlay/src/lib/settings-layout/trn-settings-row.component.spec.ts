@@ -29,6 +29,17 @@ class LabelHostComponent {}
 })
 class LabelIdHostComponent {}
 
+describe('TrnSettingsRowComponent description', () => {
+  it('gives the description an id derived from for, so the control can point at it', async () => {
+    const { container } = await render(TrnSettingsRowComponent, {
+      inputs: { label: 'Sound', description: 'Plays a chime', for: 'sound' },
+    });
+    expect(
+      container.querySelector('#sound-description')?.textContent,
+    ).toContain('Plays a chime');
+  });
+});
+
 describe('TrnSettingsRowComponent', () => {
   it('renders label, description and the projected control', async () => {
     const { container } = await render(ControlHostComponent);
