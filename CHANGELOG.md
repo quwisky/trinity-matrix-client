@@ -4,6 +4,13 @@ All notable changes to this project are documented here. release-please writes e
 entry from Conventional Commit subjects when a stable release is cut, and this project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.1](https://github.com/quwisky/trinity-matrix-client/compare/v0.2.0...v0.2.1) (2026-10-06)
+
+
+### Fixed
+
+* **release:** verify stable tags cut from a pinned release branch ([#1010](https://github.com/quwisky/trinity-matrix-client/issues/1010)) ([#1013](https://github.com/quwisky/trinity-matrix-client/issues/1013)) ([90a114d](https://github.com/quwisky/trinity-matrix-client/commit/90a114d2346bc5f22f22bfb5c9f742775c12d88d))
+
 ## [0.2.0](https://github.com/quwisky/trinity-matrix-client/compare/v0.1.1...v0.2.0) (2026-10-06)
 
 
