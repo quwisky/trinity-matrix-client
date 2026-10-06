@@ -111,6 +111,19 @@ test.describe('Settings directory search', () => {
     await expect(page.locator('#part-timeline')).toBeFocused();
   });
 
+  test('shows a long part result in full inside the nav', async ({ page }) => {
+    await search(page).fill('theme');
+    const result = page.getByRole('button', {
+      name: 'Appearance › Mode and theme',
+      exact: true,
+    });
+    await expect(result).toBeVisible();
+    const clipped = await result.evaluate(
+      (element) => element.scrollWidth > element.clientWidth,
+    );
+    expect(clipped).toBe(false);
+  });
+
   test.describe('Pixel 5 routed history', () => {
     test.use({
       viewport: devices['Pixel 5'].viewport,
