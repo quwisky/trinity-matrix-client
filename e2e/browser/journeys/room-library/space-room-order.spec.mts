@@ -376,9 +376,12 @@ test.describe('Room order inside a space', () => {
     await openSpace(page, spaceName);
   }
 
-  /** Three buttons, and a title with room to actually read — see #38. */
+  /**
+   * A space header keeps two buttons (search, create a room) because the rest moved into the
+   * space-name menu, and the title keeps room to actually read — see #38.
+   */
   async function expectHeaderFits(page: Page): Promise<void> {
-    await expect(page.locator('.sidebar__actions button')).toHaveCount(3);
+    await expect(page.locator('.sidebar__actions button')).toHaveCount(2);
 
     const title = await page.locator('.sidebar__title').boundingBox();
     if (!title) {
