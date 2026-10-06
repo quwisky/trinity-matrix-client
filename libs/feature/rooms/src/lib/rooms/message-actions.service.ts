@@ -10,6 +10,7 @@ import {
   TimelineActionsService,
 } from '@trinity/data-access/timeline';
 import { type Mention } from '@trinity/util/matrix';
+import { latestGuard } from '@trinity/util/ui';
 import type { ImagePackImage } from '@trinity/data-access/media';
 import { Observable, filter, switchMap, throwError } from 'rxjs';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
@@ -66,8 +67,7 @@ export class MessageActionsService {
   readonly uploadProgress = signal<BatchProgress | null>(null);
 
   /** Identity allocator and current owner for the progress signal shared by rooms. */
-  private nextUploadGeneration = 0;
-  private activeUploadGeneration: number | null = null;
+  private readonly uploads = latestGuard();
 
   /**
    * Route a `matrix.to` permalink clicked in a message, in-app. A user shows a profile
@@ -320,14 +320,13 @@ export class MessageActionsService {
     caption: string;
     onOutcomes: (outcomes: readonly BatchOutcome[]) => void;
   }): void {
-    const uploadGeneration = ++this.nextUploadGeneration;
-    this.activeUploadGeneration = uploadGeneration;
+    const token = this.uploads.next();
     const reportProgress = (progress: BatchProgress | null): void => {
-      if (uploadGeneration !== this.activeUploadGeneration) {
+      if (!this.uploads.isCurrent(token)) {
         return;
       }
       if (progress === null) {
-        this.activeUploadGeneration = null;
+        this.uploads.invalidate();
       }
       this.uploadProgress.set(progress);
     };

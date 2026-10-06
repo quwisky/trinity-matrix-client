@@ -17,8 +17,18 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
 
   describe('mention autocomplete', () => {
     const MEMBERS = [
-      { userId: '@alice:hs', roomDisplayName: 'Alice' },
-      { userId: '@bob:hs', roomDisplayName: 'Bob' },
+      {
+        userId: '@alice:hs',
+        roomDisplayName: 'Alice',
+        roomAvatarMxc: null,
+        roomInitial: 'A',
+      },
+      {
+        userId: '@bob:hs',
+        roomDisplayName: 'Bob',
+        roomAvatarMxc: null,
+        roomInitial: 'B',
+      },
     ];
 
     it('opens the member menu for an @query and inserts the pick', async () => {

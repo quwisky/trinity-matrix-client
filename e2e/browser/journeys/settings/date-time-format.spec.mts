@@ -129,22 +129,21 @@ test.describe('Date and time format', () => {
     // …and so does the timeline behind it: an ISO date and a 24-hour clock, no AM/PM.
     await page.goto('/rooms');
     await openRoom(page, roomName);
-    await expect(firstTimestamp(page)).toHaveText(
-      /^\d{4}-\d{2}-\d{2}, \d{2}:\d{2}$/,
-      {
-        timeout: 20_000,
-      },
-    );
+    await expect(firstTimestamp(page)).toHaveText(/^\d{2}:\d{2}$/, {
+      timeout: 20_000,
+    });
     await expect(firstTimestamp(page)).not.toContainText(/AM|PM/);
+    // The date lives in the tooltip now (#986).
+    await firstTimestamp(page).hover();
+    await expect(page.locator('.cdk-overlay-container')).toContainText(
+      /\d{4}-\d{2}-\d{2}, \d{2}:\d{2}/,
+    );
 
     // The choice is persisted, not session state.
     await page.reload();
     await openRoom(page, roomName);
-    await expect(firstTimestamp(page)).toHaveText(
-      /^\d{4}-\d{2}-\d{2}, \d{2}:\d{2}$/,
-      {
-        timeout: 20_000,
-      },
-    );
+    await expect(firstTimestamp(page)).toHaveText(/^\d{2}:\d{2}$/, {
+      timeout: 20_000,
+    });
   });
 });

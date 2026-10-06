@@ -155,6 +155,9 @@
     --trinity-density-composer-field-inset: 6px;
     --trinity-density-composer-action-size: 40px;
 
+    // Readable line length for message prose (#986).
+    --trinity-measure-prose: 75ch;
+
     // --- Elevation ----------------------------------------------------------------
     // Overridden per mode: a shadow tuned for the light canvas carries too little weight on
     // the dark neutral ramp, which is why the dark block raises the alpha.

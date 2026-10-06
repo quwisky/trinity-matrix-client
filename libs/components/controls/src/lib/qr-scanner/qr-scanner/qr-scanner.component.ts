@@ -11,6 +11,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { QrCodeService } from '@trinity/platform-native';
+import { latestGuard } from '@trinity/util/ui';
 import { TrnButton } from '../../button/trn-button';
 
 type ScannerStatus = 'starting' | 'scanning' | 'error';
@@ -34,7 +35,7 @@ export class QrScannerComponent implements AfterViewInit, OnDestroy {
   private animationFrame: number | null = null;
   private destroyed = false;
   private scanSessionActive = false;
-  private scanGeneration = 0;
+  private readonly cameraOpen = latestGuard();
   private lastScanAt = 0;
 
   readonly scanned = output<Uint8ClampedArray>();
@@ -69,13 +70,13 @@ export class QrScannerComponent implements AfterViewInit, OnDestroy {
 
   private async start(): Promise<void> {
     this.stop();
-    const generation = ++this.scanGeneration;
+    const token = this.cameraOpen.next();
     this.scanSessionActive = true;
     this.status.set('starting');
     this.error.set(null);
     try {
       const stream = await this.qrCode.openCamera();
-      if (this.destroyed || generation !== this.scanGeneration) {
+      if (this.destroyed || !this.cameraOpen.isCurrent(token)) {
         this.qrCode.closeCamera(stream);
         return;
       }
@@ -126,7 +127,7 @@ export class QrScannerComponent implements AfterViewInit, OnDestroy {
 
   private stop(): void {
     this.scanSessionActive = false;
-    this.scanGeneration += 1;
+    this.cameraOpen.invalidate();
     if (this.animationFrame !== null) {
       cancelAnimationFrame(this.animationFrame);
       this.animationFrame = null;

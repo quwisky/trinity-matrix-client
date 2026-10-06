@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { fireEvent, render, waitFor } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
 import {
   MediaPipeline,
@@ -95,13 +95,18 @@ function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
 }
 
 describe('MessageRowComponent', () => {
-  function renderRow(inputs: {
-    row: MessageRow;
-    threadSummary?: ThreadSummary | null;
-    caps?: MessageRowCaps;
-  }) {
+  function renderRow(
+    inputs: {
+      row: MessageRow;
+      threadSummary?: ThreadSummary | null;
+      caps?: MessageRowCaps;
+      runExpanded?: boolean;
+    },
+    on: { toggleRun?: () => void } = {},
+  ) {
     return render(MessageRowComponent, {
       inputs,
+      on,
       // The media branch renders <trn-media-attachment>, and a previewUrl renders
       // <trn-link-preview>, which inject these.
       providers: [
@@ -153,18 +158,31 @@ describe('MessageRowComponent', () => {
       expect(fixture.componentInstance.row()).toBe(only);
     });
 
-    it('applies the date preference to the header timestamp', async () => {
-      const { container, fixture } = await renderRow({
-        row: row({ timestamp: AFTERNOON }),
+    it('shows only the time in the header, with the full date as tooltip and datetime', async () => {
+      const ts = Date.UTC(2026, 9, 5, 18, 56);
+      const { container } = await renderRow({ row: row({ timestamp: ts }) });
+      const fmt = TestBed.inject(DateTimeFormatService);
+      const time = container.querySelector(
+        '.msg__head time.msg__time',
+      ) as HTMLElement;
+
+      expect(time.textContent?.trim()).toBe(fmt.time(ts));
+      expect(time.getAttribute('datetime')).toBe(new Date(ts).toISOString());
+
+      fireEvent.pointerEnter(time, { pointerType: 'mouse' });
+      await waitFor(() => {
+        const found = document.body.querySelector('.cdk-overlay-container');
+        expect(found?.textContent).toContain(fmt.dateTime(ts));
       });
-      const format = TestBed.inject(DateTimeFormatService);
+    });
 
-      format.setDateFormat('iso');
-      fixture.detectChanges();
+    it('keeps today’s header output for an unusable timestamp', async () => {
+      const { container } = await renderRow({ row: row({ timestamp: 0 }) });
+      const fmt = TestBed.inject(DateTimeFormatService);
 
-      expect(container.querySelector('.msg__time')?.textContent).toContain(
-        '2026-07-24',
-      );
+      expect(
+        container.querySelector('.msg__head .msg__time')?.textContent?.trim(),
+      ).toBe(fmt.dateTime(0));
     });
 
     // The hover gutter on a grouped continuation is the site the issue calls out by name.
@@ -538,6 +556,48 @@ describe('MessageRowComponent', () => {
     expect(container.querySelector('trn-message-toolbar')).toBeNull();
   });
 
+  describe('system runs', () => {
+    const e1 = row({ id: '$e1', kind: 'event', summary: 'line e1' });
+    const e2 = row({ id: '$e2', kind: 'event', summary: 'line e2' });
+    const summaryText = 'Alice \u00b7 2 membership changes';
+    const groupRow = row({
+      id: 'group:$e2',
+      kind: 'event',
+      summary: summaryText,
+      systemRun: { events: [e1, e2], summary: summaryText },
+    });
+
+    it('renders a system run as a collapsed summary toggle', async () => {
+      const { getByTestId, queryByTestId } = await renderRow({ row: groupRow });
+      const toggle = getByTestId('system-run-toggle');
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      expect(toggle.textContent).toContain(summaryText);
+      expect(queryByTestId('system-run-lines')).toBeNull();
+    });
+
+    it('lists each line when expanded and asks the list to toggle on click', async () => {
+      const toggleRun = vi.fn();
+      const { getByTestId, getAllByTestId } = await renderRow(
+        { row: groupRow, runExpanded: true },
+        { toggleRun },
+      );
+      expect(
+        getByTestId('system-run-toggle').getAttribute('aria-expanded'),
+      ).toBe('true');
+      expect(
+        getAllByTestId('system-run-line').map((li) => li.textContent?.trim()),
+      ).toEqual(['line e1', 'line e2']);
+      fireEvent.click(getByTestId('system-run-toggle'));
+      expect(toggleRun).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a plain system line as plain text', async () => {
+      const { getByTestId, queryByTestId } = await renderRow({ row: e1 });
+      expect(queryByTestId('system-run-toggle')).toBeNull();
+      expect(getByTestId('timeline-event').textContent).toContain('line e1');
+    });
+  });
+
   it('expands the "seen by" reader list when the receipt cluster is clicked', async () => {
     const { container, fixture } = await renderRow({
       row: row({
@@ -688,20 +748,23 @@ describe('MessageRowComponent', () => {
       expect(toolbar(container)).toBeNull();
     });
 
-    it('mounts the toolbar when focus enters the row', async () => {
+    it('mounts the toolbar when keyboard focus enters the row', async () => {
       const { container } = await renderRow({ row: row(), caps: caps() });
 
+      // A Tab keydown makes the next focus :focus-visible, as a real Tab would.
+      fireEvent.keyDown(document.body, { key: 'Tab' });
       msg(container).focus();
       await settle();
 
       expect(toolbar(container)).not.toBeNull();
     });
 
-    it('keeps the toolbar while focus is inside the row after the pointer leaves', async () => {
+    it('keeps the toolbar while keyboard focus is inside the row after the pointer leaves', async () => {
       const { container } = await renderRow({ row: row(), caps: caps() });
 
       fireEvent.pointerEnter(msg(container));
       await settle();
+      fireEvent.keyDown(document.body, { key: 'Tab' });
       container
         .querySelector<HTMLButtonElement>('button[aria-label="Reply"]')
         ?.focus();
@@ -709,6 +772,26 @@ describe('MessageRowComponent', () => {
       await settle();
 
       expect(toolbar(container)).not.toBeNull();
+    });
+
+    it('drops the toolbar of a row focused by a click once the pointer leaves (#986 K6)', async () => {
+      // A click focuses the row, but mouse focus is not :focus-visible, so it must not pin
+      // the bar there while another row is hovered.
+      const { container, fixture } = await renderRow({
+        row: row(),
+        caps: caps(),
+      });
+
+      fireEvent.pointerEnter(msg(container));
+      // A real click: pointerdown, then mousedown, which focuses the row.
+      fireEvent.pointerDown(msg(container));
+      fireEvent.mouseDown(msg(container));
+      msg(container).focus();
+      await settle();
+      fireEvent.pointerLeave(msg(container));
+      await settle();
+
+      expect(fixture.componentInstance.toolbarActive()).toBe(false);
     });
 
     it('unmounts the toolbar when focus leaves the row', async () => {

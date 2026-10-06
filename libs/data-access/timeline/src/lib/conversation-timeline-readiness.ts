@@ -6,7 +6,12 @@ import {
   untracked,
   type Signal,
 } from '@angular/core';
-import { ClientEvent, SyncState, type MatrixClient } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  SyncState,
+  type MatrixClient,
+  type SyncStateData,
+} from 'matrix-js-sdk';
 import type { Subscription } from 'rxjs';
 import type { TimelineService } from './timeline.service';
 
@@ -48,6 +53,16 @@ type Phase =
 
 const isSynced = (state: SyncState | null): boolean =>
   state === SyncState.Prepared || state === SyncState.Syncing;
+/**
+ * A sync from the server has completed. The SDK also reports Prepared for the sync it
+ * restores from its IndexedDB cache (`fromCache`), which can predate rooms joined since.
+ */
+const isLiveSynced = (
+  state: SyncState | null,
+  data: SyncStateData | null | undefined,
+): boolean =>
+  state === SyncState.Syncing ||
+  (state === SyncState.Prepared && !data?.fromCache);
 const isStopped = (state: SyncState | null): boolean =>
   state === SyncState.Stopped || state === SyncState.Error;
 
@@ -166,15 +181,25 @@ export class ConversationTimelineReadiness {
       this.fail('sync-stopped');
       return;
     }
+    // Live-synced and still absent: the Room is not on this Account (yet). Say so now
+    // rather than after the next long-poll; `fail` keeps watching for it to arrive.
+    if (isLiveSynced(client.getSyncState(), client.getSyncStateData())) {
+      this.fail('room-unavailable');
+      return;
+    }
     this.phase.set({ kind: 'room-pending' });
     const onRoom = (): void => {
       if (client.getRoom(this.roomId)) this.run();
     };
-    const onSync = (state: SyncState): void => {
+    const onSync = (
+      state: SyncState,
+      _prev: SyncState | null,
+      data?: SyncStateData,
+    ): void => {
       if (isStopped(state)) this.fail('sync-stopped');
-      else if (isSynced(state) && !client.getRoom(this.roomId))
+      else if (isLiveSynced(state, data) && !client.getRoom(this.roomId))
         this.fail('room-unavailable');
-      // Reconnecting / Catchup: keep waiting.
+      // Reconnecting / Catchup / a Prepared restored from the cache: keep waiting.
     };
     this.listen(client, onRoom, onSync);
   }
@@ -194,7 +219,11 @@ export class ConversationTimelineReadiness {
   private listen(
     client: MatrixClient,
     onRoom: (() => void) | null,
-    onSync: (state: SyncState) => void,
+    onSync: (
+      state: SyncState,
+      prev: SyncState | null,
+      data?: SyncStateData,
+    ) => void,
   ): void {
     if (onRoom) client.on(ClientEvent.Room, onRoom);
     client.on(ClientEvent.Sync, onSync);
@@ -269,6 +298,16 @@ export class ConversationTimelineReadiness {
       this.listen(client, null, (state) => {
         if (isSynced(state)) this.run();
       });
+    }
+    if (reason === 'room-unavailable' && client) {
+      // Accepted elsewhere, or a late sync: open it as soon as it lands, no Retry needed.
+      this.listen(
+        client,
+        () => {
+          if (client.getRoom(this.roomId)) this.run();
+        },
+        () => undefined,
+      );
     }
   }
 

@@ -383,18 +383,26 @@ export class WorkspaceNavigationService {
   private seedDestinationExists(destination: WorkspaceDestination): boolean {
     if (
       destination.scope.kind === 'space' &&
-      !this.selectionAvailable(destination.accountId, destination.scope.spaceId)
+      !this.spaceAvailable(destination.accountId, destination.scope.spaceId)
     ) {
       return false;
     }
     return (
       !destination.roomId ||
-      this.selectionAvailable(destination.accountId, destination.roomId)
+      this.roomKept(destination.accountId, destination.roomId)
     );
   }
 
-  private selectionAvailable(accountId: string, roomId: string): boolean {
-    return this.rooms.selectionAvailability(accountId, roomId) === 'available';
+  /** A Space scope must be synced; an unsynced one is repaired to the list. */
+  private spaceAvailable(accountId: string, spaceId: string): boolean {
+    return this.rooms.selectionAvailability(accountId, spaceId) === 'available';
+  }
+
+  /** A Room the live client has not synced yet is kept; the Conversation decides. */
+  private roomKept(accountId: string, roomId: string): boolean {
+    return (
+      this.rooms.selectionAvailability(accountId, roomId) !== 'unavailable'
+    );
   }
 }
 

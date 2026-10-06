@@ -2,8 +2,10 @@ import {
   DestroyRef,
   Injectable,
   computed,
+  effect,
   inject,
   Injector,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
@@ -17,7 +19,16 @@ import {
   ROOM_READINESS_TIMEOUT_MS,
   SelectedRoomLibraryService,
 } from '@trinity/data-access/room-library';
-import { filter, of, switchMap, take, timeout } from 'rxjs';
+import {
+  Subscription,
+  filter,
+  of,
+  switchMap,
+  take,
+  takeWhile,
+  timeout,
+  type Observable,
+} from 'rxjs';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { ShellStatusService } from './shell-status.service';
@@ -58,6 +69,38 @@ export class AccountRoutingService {
     // String compare: components and features never import the SDK's SyncState enum.
     () => String(this.matrix.syncState() ?? '') === 'SYNCING',
   );
+  // Watchers are created once for the service's lifetime. A `toObservable` made per wait
+  // would stay alive after its wait was cancelled, until the page is destroyed.
+  private readonly firstSyncDone$ = toObservable(this.firstSyncDone, {
+    injector: this.injector,
+  });
+  /** Changes whenever anything a pending event reveal waits on (or is cancelled by) changes. */
+  private readonly revealInputs$ = toObservable(
+    computed(() => ({
+      synced: this.firstSyncDone(),
+      focus: this.conversations.focused()?.key ?? null,
+      load: this.conversations.timeline.loadState().kind,
+      roomId: this.store.activeRoomId(),
+      accountId: this.store.activeAccountId(),
+    })),
+    { injector: this.injector },
+  );
+
+  constructor() {
+    // A published event anchor (`?event=`, a notification) is revealed once its room is the
+    // focused, live-synced Conversation, paging the event in like a linked-room jump. A
+    // changed or cleared target, or another room, cancels the wait so it is never applied late.
+    effect((onCleanup) => {
+      const target = this.workspace.eventTarget();
+      const accountId = this.store.activeAccountId();
+      const roomId = this.store.activeRoomId();
+      if (!target || !accountId || !roomId) return;
+      const pending = untracked(() =>
+        this.revealLoadedEvent({ accountId, roomId }, target.eventId),
+      );
+      onCleanup(() => pending.unsubscribe());
+    });
+  }
 
   /** An account's display name for user-facing copy, falling back to its user id. */
   accountLabel(accountId: string): string {
@@ -145,7 +188,7 @@ export class AccountRoutingService {
       this.openSyncedRoom(roomId, eventId, origin);
       return;
     }
-    toObservable(this.firstSyncDone, { injector: this.injector })
+    this.firstSyncDone$
       .pipe(
         filter(Boolean),
         take(1),
@@ -205,28 +248,54 @@ export class AccountRoutingService {
    * the newest messages, so an older linked event is paged in first. Navigation reports
    * ready before the Conversation Runtime moves focus, and `loadEvent` pages whichever
    * conversation holds it, so wait for the target room to be focused. A cold start opens
-   * the room from the cached sync, so also wait for a live sync: a gappy one replaces the
-   * cached timeline and would drop the paged-in event.
+   * the room from the cached sync, so also wait for a live sync before paging history: a
+   * gappy one replaces the cached timeline and would drop the paged-in event. An event that
+   * is already loaded is revealed at once.
    */
-  private revealLoadedEvent(room: ExactRoomSelection, eventId: string): void {
+  private revealLoadedEvent(
+    room: ExactRoomSelection,
+    eventId: string,
+  ): Subscription {
+    const focusedKey = this.conversations.focused()?.key;
+    const isFocused =
+      focusedKey?.roomId === room.roomId &&
+      focusedKey.accountId === room.accountId;
+    // Already in the loaded timeline: nothing to page in, so no live sync is needed.
+    if (
+      isFocused &&
+      this.conversations.timeline.messages().some((m) => m.id === eventId)
+    ) {
+      this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
+      return Subscription.EMPTY;
+    }
+    // The watcher only signals a change; the live state is re-read, since its replayed value
+    // can be one effect-flush stale. The room must be open (ready or empty): an unavailable
+    // or still-loading room waits silently, however long its sync takes, and the timeout
+    // only bounds paging the event in once it can be.
+    const isActive = (): boolean =>
+      this.store.activeRoomId() === room.roomId &&
+      this.store.activeAccountId() === room.accountId;
     const isReady = (): boolean => {
       const key = this.conversations.focused()?.key;
+      const load = this.conversations.timeline.loadState().kind;
       return (
         this.firstSyncDone() &&
         key?.roomId === room.roomId &&
-        key.accountId === room.accountId
+        key.accountId === room.accountId &&
+        (load === 'ready' || load === 'empty')
       );
     };
-    const ready$ = isReady()
+    // Navigating to another room or account drops the reveal, from any navigation source.
+    const ready$: Observable<unknown> = isReady()
       ? of(true)
-      : toObservable(computed(isReady), { injector: this.injector }).pipe(
-          filter(Boolean),
-          take(1),
-          timeout({ first: ROOM_READINESS_TIMEOUT_MS }),
-        );
-    ready$
+      : this.revealInputs$.pipe(takeWhile(isActive), filter(isReady), take(1));
+    return ready$
       .pipe(
-        switchMap(() => this.conversations.timeline.loadEvent(eventId)),
+        switchMap(() =>
+          this.conversations.timeline
+            .loadEvent(eventId)
+            .pipe(timeout({ first: ROOM_READINESS_TIMEOUT_MS })),
+        ),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
