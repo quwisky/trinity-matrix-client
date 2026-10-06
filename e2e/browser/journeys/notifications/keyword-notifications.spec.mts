@@ -18,7 +18,7 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // evaluation, not anything this client re-implements.
 //
 // The highlight badge is the honest end of the assertion: a desktop notification cannot be
-// observed from Playwright, but the red `.channel__badge` is driven by the same
+// observed from Playwright, but the red the danger badge is driven by the same
 // `highlight` tweak the rule sets, through the same server-side scoring.
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
 const session = homeserverSession();
@@ -166,9 +166,7 @@ test.describe('Keyword notifications', () => {
 
     // The highlight badge — not merely an unread one — is what proves the homeserver
     // scored the keyword rule and applied its `highlight` tweak.
-    const highlight = channel
-      .first()
-      .locator('.channel__badge:not(.channel__badge--muted)');
+    const highlight = channel.first().locator('[data-slot="badge"]');
     await expect(highlight).toBeVisible({ timeout: 30_000 });
     await expect(highlight).toHaveAttribute('aria-label', /unread mentions/);
 
@@ -268,8 +266,6 @@ test.describe('Keyword notifications', () => {
     await expect(
       channel.locator('.channel__preview:not(.channel__preview--typing)'),
     ).toContainText(KEYWORD, { timeout: 30_000 });
-    await expect(
-      channel.locator('.channel__badge:not(.channel__badge--muted)'),
-    ).toHaveCount(0);
+    await expect(channel.locator('[data-slot="badge"]')).toHaveCount(0);
   });
 });

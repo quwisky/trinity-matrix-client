@@ -90,6 +90,12 @@ export class AppearanceSettingsComponent {
     testId: 'density-select',
     optionTestIdPrefix: 'density',
   } as const satisfies AppearancePreferenceField;
+  readonly roomListField = {
+    axis: 'roomList',
+    headingId: 'appearance-room-list-heading',
+    testId: 'room-list-select',
+    optionTestIdPrefix: 'room-list',
+  } as const satisfies AppearancePreferenceField;
   readonly textSizeField = {
     axis: 'textSize',
     headingId: 'appearance-text-size-heading',

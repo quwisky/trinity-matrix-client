@@ -76,7 +76,9 @@ test.describe('Mark as unread', () => {
     // The room is read and empty, so it carries no badge of any kind.
     const row = page.locator('.channel', { hasText: roomName }).first();
     await row.waitFor({ state: 'visible', timeout: 30_000 });
-    await expect(row.locator('.channel__badge')).toHaveCount(0);
+    await expect(row.locator('[data-slot="badge"], .channel__dot')).toHaveCount(
+      0,
+    );
 
     await openRoomMenu(page, roomName);
     await page.getByTestId('room-mark-unread').click();
@@ -149,7 +151,9 @@ test.describe('Mark as unread', () => {
     await page.getByTestId('rail-rooms').click();
     const row = page.locator('.channel', { hasText: roomName }).first();
     await row.waitFor({ state: 'visible', timeout: 30_000 });
-    await expect(row.locator('.channel__badge')).toHaveCount(0);
+    await expect(row.locator('[data-slot="badge"], .channel__dot')).toHaveCount(
+      0,
+    );
 
     // Another device flags it. The running app must notice without being touched.
     const written = await request.put(flagUrl, {

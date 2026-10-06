@@ -258,7 +258,7 @@ describe('ChannelSidebarComponent', () => {
     expect(container.querySelector('.channel__preview')).toBeNull();
   });
 
-  it('shows a mention count, a muted unread count, and caps at 99+', async () => {
+  it('shows a mention count only on the mention room', async () => {
     const { container } = await renderSidebar({
       inputs: {
         rooms: [
@@ -281,17 +281,11 @@ describe('ChannelSidebarComponent', () => {
       },
     });
 
-    // The mention room shows the red mention badge with the highlight count.
-    const mention = container.querySelector(
-      '.channel__badge:not(.channel__badge--muted)',
-    )!;
-    expect(mention.textContent!.trim()).toBe('2');
-    // The plain-unread room shows a muted count badge, capped Discord-style.
-    const muted = container.querySelector('.channel__badge--muted')!;
-    expect(muted.textContent!.trim()).toBe('99+');
-    // No bare dots anymore — every unread room carries a count.
-    expect(container.querySelectorAll('.channel__dot').length).toBe(0);
-    expect(container.querySelectorAll('.channel.unread').length).toBe(2);
+    // Only the mention room carries a count; plain unread is bold text plus the marker.
+    const badges = container.querySelectorAll('[trnBadge]');
+    expect(badges).toHaveLength(1);
+    expect(badges[0].textContent!.trim()).toBe('2');
+    expect(container.querySelectorAll('.channel--unread').length).toBe(2);
   });
 
   it('caps badgeLabel exactly at the 99/100 boundary', async () => {
@@ -299,25 +293,6 @@ describe('ChannelSidebarComponent', () => {
 
     expect(roomList(fixture).badgeLabel(99)).toBe('99');
     expect(roomList(fixture).badgeLabel(100)).toBe('99+');
-  });
-
-  it('shows the exact uncapped unread count on a muted badge', async () => {
-    const { container } = await renderSidebar({
-      inputs: {
-        rooms: [
-          room({
-            id: '!u:hs',
-            name: 'unread',
-            hasUnread: true,
-            unreadCount: 7,
-            highlightCount: 0,
-          }),
-        ],
-      },
-    });
-
-    const muted = container.querySelector('.channel__badge--muted')!;
-    expect(muted.textContent!.trim()).toBe('7');
   });
 
   it('shows only the new-chat affordance on Home (no space actions)', async () => {
@@ -1093,8 +1068,8 @@ describe('ChannelSidebarComponent', () => {
     const dot = container.querySelector('[data-testid="room-unread-dot"]');
     expect(dot?.getAttribute('role')).toBe('img');
     expect(dot?.getAttribute('aria-label')).toBe('Marked unread');
-    // …and it is a dot, not the full-size red mention pill the base class renders.
-    expect(dot?.classList.contains('channel__badge--dot')).toBe(true);
+    // …and it is a dot, not the mention badge.
+    expect(dot?.classList.contains('channel__dot')).toBe(true);
   });
 
   it('lets a mention badge win over the flag', async () => {
@@ -1116,7 +1091,7 @@ describe('ChannelSidebarComponent', () => {
       container.querySelector('[data-testid="room-unread-dot"]'),
     ).toBeNull();
     expect(
-      container.querySelector('.channel__badge')?.getAttribute('aria-label'),
+      container.querySelector('[trnBadge]')?.getAttribute('aria-label'),
     ).toContain('unread mentions');
   });
 
@@ -1148,7 +1123,7 @@ describe('ChannelSidebarComponent', () => {
     expect(emitted).toEqual(['@me:hs', '@alt:hs']);
   });
 
-  it('still shows the count when a flagged room also has unread messages', async () => {
+  it('shows no dot when a flagged room also has unread messages', async () => {
     const { container } = await renderSidebar({
       inputs: {
         rooms: [
@@ -1166,7 +1141,7 @@ describe('ChannelSidebarComponent', () => {
     expect(
       container.querySelector('[data-testid="room-unread-dot"]'),
     ).toBeNull();
-    expect(container.textContent).toContain('3');
+    expect(container.querySelector('.channel--unread')).not.toBeNull();
   });
 
   it('emits markAllRead from the header when any room is unread', async () => {

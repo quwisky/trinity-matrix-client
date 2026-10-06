@@ -64,6 +64,7 @@ describe('Appearance config entries', () => {
       'appearance.codeSize',
       'appearance.density',
       'appearance.mode',
+      'appearance.roomList',
       'appearance.textSize',
       'appearance.theme',
     ]);
@@ -86,6 +87,7 @@ describe('Appearance config entries', () => {
         codeSize: 'default',
         density: 'cosy',
         mode: 'system',
+        roomList: 'rich',
         textSize: 'default',
         theme: 'trinity',
       },
@@ -103,6 +105,7 @@ describe('Appearance config entries', () => {
           theme: 'amethyst',
           textSize: 'large',
           density: 'compact',
+          roomList: 'compact',
           codeSize: 'larger',
           codeLinePresentation: 'always',
         },
@@ -118,6 +121,7 @@ describe('Appearance config entries', () => {
       theme: 'amethyst',
       textSize: 'large',
       density: 'compact',
+      roomList: 'compact',
       codeSize: 'larger',
       codeLinePresentation: 'always',
     });
@@ -169,6 +173,7 @@ describe('Appearance config entries', () => {
       theme: 'amethyst',
       textSize: 'large',
       density: 'compact',
+      roomList: 'rich',
       codeSize: 'larger',
       codeLinePresentation: 'always',
     });

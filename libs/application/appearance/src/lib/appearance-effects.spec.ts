@@ -33,6 +33,7 @@ const defaults = (): AppearanceValue => ({
   theme: 'trinity',
   textSize: 'default',
   density: 'cosy',
+  roomList: 'rich',
   codeSize: 'default',
   codeLinePresentation: 'auto',
 });

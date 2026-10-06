@@ -11,7 +11,7 @@ import {
   TrnActionAvailability,
   TrnIconButton,
 } from '@trinity/components/controls';
-import { TrnTooltip } from '@trinity/components/generic-content';
+import { TrnBadge, TrnTooltip } from '@trinity/components/generic-content';
 import {
   TrnDropdownMenu,
   TrnDropdownMenuItem,
@@ -63,6 +63,7 @@ import { TrnIconComponent } from '@trinity/components/foundations';
     TrnIconButton,
     TrnActionAvailability,
     TrnTooltip,
+    TrnBadge,
     EmptyStateComponent,
     AvatarComponent,
     TrnIconComponent,

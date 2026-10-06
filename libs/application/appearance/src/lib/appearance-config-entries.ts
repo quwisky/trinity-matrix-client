@@ -16,12 +16,13 @@ import {
 import {
   DENSITY_PREFERENCE,
   MODE_PREFERENCE,
+  ROOM_LIST_PREFERENCE,
   TEXT_SIZE_PREFERENCE,
   THEME_PREFERENCE,
   THEME_RENAMES,
 } from './design-system-appearance-preferences';
 
-/** Register the six portable Appearance axes under one descriptor-backed config group. */
+/** Register the seven portable Appearance axes under one descriptor-backed config group. */
 export function provideAppearanceConfigEntries(): EnvironmentProviders {
   return provideConfigEntries(() => {
     const appearance = inject(AppearancePreferences);
@@ -42,6 +43,11 @@ export function provideAppearanceConfigEntries(): EnvironmentProviders {
         'appearance.density',
         DENSITY_PREFERENCE,
         appearance.axes.density,
+      ),
+      appearanceEntry(
+        'appearance.roomList',
+        ROOM_LIST_PREFERENCE,
+        appearance.axes.roomList,
       ),
       appearanceEntry(
         'appearance.codeSize',

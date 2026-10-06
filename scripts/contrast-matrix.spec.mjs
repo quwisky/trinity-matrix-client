@@ -805,7 +805,7 @@ describe('contrast matrix', () => {
     );
 
     expect(sheet).toMatch(
-      /&\.active\s*\{[^]*?\.channel__preview\s*\{\s*color:\s*var\(--trinity-state-selected-foreground\)/,
+      /&\.channel--selected\s*\{[^]*?\.channel__preview\s*\{\s*color:\s*var\(--trinity-state-selected-foreground\)/,
     );
   });
 });

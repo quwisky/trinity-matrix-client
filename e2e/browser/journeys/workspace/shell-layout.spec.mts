@@ -647,8 +647,7 @@ test.describe('Modern room shell layout', () => {
       await row.first().scrollIntoViewIfNeeded();
 
       await expectEllipsis(row.locator('.channel__name'));
-      await expect(row.locator('.channel__badge')).toBeVisible();
-      await expectInside(row.locator('.channel__badge'), row);
+      await expect(row.locator('.channel--unread')).toBeVisible();
       await expectInside(row.locator('.channel__menu'), row);
       await expectEllipsis(page.locator('.userbar__name'));
       await expectInside(

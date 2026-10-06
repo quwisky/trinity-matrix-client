@@ -29,7 +29,7 @@ import { registerUser } from '../../../support/account.mts';
 //
 // The reader's unread badge is the honest observable end, exactly as in
 // keyword-notifications.spec.mts: a desktop notification cannot be seen from Playwright,
-// but `.channel__badge` (not `--muted`) is driven by the same `highlight` tweak.
+// but the danger badge is driven by the same `highlight` tweak.
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise.
 const session = homeserverSession();

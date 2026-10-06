@@ -65,7 +65,9 @@ test.describe('Multiple accounts', () => {
       timeout: 20_000,
     });
     await expect(
-      page.locator('trn-channel-sidebar .channel.active', { hasText: roomA }),
+      page.locator('trn-channel-sidebar .channel.channel--selected', {
+        hasText: roomA,
+      }),
     ).toBeVisible({ timeout: 15_000 });
   });
 
@@ -521,7 +523,9 @@ test.describe('Multiple accounts', () => {
       timeout: 20_000,
     });
     await expect(
-      page.locator('trn-channel-sidebar .channel.active', { hasText: roomA }),
+      page.locator('trn-channel-sidebar .channel.channel--selected', {
+        hasText: roomA,
+      }),
     ).toBeVisible({ timeout: 15_000 });
   });
 
