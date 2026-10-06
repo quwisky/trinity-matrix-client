@@ -176,7 +176,7 @@
   },
   "libs/feature/rooms/src/lib/server-rail/server-rail.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 5
+      "count": 4
     }
   },
   "libs/feature/rooms/src/lib/space-settings/space-settings-contents-list.component.scss": {

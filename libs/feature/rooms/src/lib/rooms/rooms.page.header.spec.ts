@@ -126,7 +126,12 @@ function renderHeader(pinCount: number) {
       stale: null,
     }),
     railSpaces: signal([]),
-    railUnread: signal({ recent: 0, home: 0, rooms: 0, perSpace: {} }),
+    railUnread: signal({
+      recent: { unread: 0, mentions: 0 },
+      home: { unread: 0, mentions: 0 },
+      rooms: { unread: 0, mentions: 0 },
+      perSpace: {},
+    }),
     reauthAccounts: signal([]),
     sidebarTitle: signal('Home'),
     spaceSortMode: signal('recent'),

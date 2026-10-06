@@ -62,6 +62,11 @@
     --trinity-shape-person-radius: 50%;
     --trinity-shape-place-radius: 30%;
 
+    // Server-rail indicator heights: selected pill, hover pill, unread dot.
+    --trinity-rail-indicator-selected: 32px;
+    --trinity-rail-indicator-hover: 20px;
+    --trinity-rail-indicator-unread: 8px;
+
     // --- Typography (Mode- & Theme-agnostic; a Theme may override) -----------------
     // Roles, not sizes. `--trinity-text-sm` is the compact workhorse used by sidebar rows
     // and chrome, and is the same 13px the `text-13` utility emits, which stays as an alias

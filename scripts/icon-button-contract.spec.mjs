@@ -104,6 +104,8 @@ describe('icon-button contract', () => {
 
   it('gives every public icon button an explicit semantic motion', () => {
     const inert = publicIconButtons
+      // An avatar-bearing control (the server-rail space pill) has no glyph to animate.
+      .filter(({ source }) => !/<trn-avatar\b/.test(source))
       .filter(({ source }) => !/<trn-icon\b[^>]*\bmotion=/.test(source))
       .map(({ file, line }) => `${file}:${line}`);
 

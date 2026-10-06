@@ -18,7 +18,7 @@ import {
 // Covers the two unread-badge features end to end:
 //
 //   1. Server-rail badge (ServerRailComponent) — a non-DM room's unread
-//      notifications should surface as a red `.badge` on the Rooms pill
+//      notifications should surface as an unread dot on the Rooms item
 //      (`data-testid="rail-rooms"`), summed from RoomsPage.roomsUnread().
 //
 //   2. AppBadgeService's web sink — the W3C Badging API. We stub
@@ -128,7 +128,7 @@ async function seedUnreadRoom(
 test.describe('Unread badges', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('server-rail Rooms pill shows the aggregated unread count', async ({
+  test('server-rail Rooms item shows an unread dot', async ({
     page,
     request,
   }) => {
@@ -145,16 +145,9 @@ test.describe('Unread badges', () => {
     const roomsItem = page.locator('trn-server-rail .item').filter({
       has: page.getByTestId('rail-rooms'),
     });
-    const badge = roomsItem.locator('.badge');
-    await expect(badge).toBeVisible({ timeout: 30_000 });
-
-    const text = (await badge.textContent())?.trim() ?? '';
-    // Assert the exact seeded count; fall back to "a positive integer" so the
-    // test isn't flaky against server-side notification-count timing quirks.
-    if (text !== String(SEED)) {
-      expect(text).toMatch(/^\d+\+?$/);
-      expect(parseInt(text, 10)).toBeGreaterThan(0);
-    }
+    // Plain unread (no mention) is a dot on the item, not a count badge.
+    await expect(roomsItem).toHaveClass(/item--unread/, { timeout: 30_000 });
+    await expect(roomsItem.locator('[trnBadge]')).toHaveCount(0);
   });
 
   test('the platform badge mirrors the unread total', async ({

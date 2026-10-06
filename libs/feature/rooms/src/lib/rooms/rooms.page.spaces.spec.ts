@@ -40,7 +40,12 @@ beforeEach(() => setRouteRoom(null));
 // The channel sidebar is fed by `visibleRooms()`: Home shows only direct messages, the
 // Rooms view shows non-DM rooms, a selected space shows only its joined children.
 describe('RoomsPage space filtering', () => {
-  function roomSummary(id: string, name: string, unread = 0): RoomSummary {
+  function roomSummary(
+    id: string,
+    name: string,
+    unread = 0,
+    mentions = 0,
+  ): RoomSummary {
     return {
       id,
       accountId: '@me:hs',
@@ -52,7 +57,7 @@ describe('RoomsPage space filtering', () => {
       memberCount: 0,
       encrypted: false,
       unreadCount: unread,
-      highlightCount: 0,
+      highlightCount: mentions,
       hasUnread: unread > 0,
       markedUnread: false,
       lastMessage: '',
@@ -79,12 +84,12 @@ describe('RoomsPage space filtering', () => {
     // curated order of a, b would be indistinguishable from the default recency ordering,
     // and the space-order assertion below would pass whether or not the mode was honoured.
     const rooms = [
-      roomSummary('!c:hs', 'charlie', 2),
+      roomSummary('!c:hs', 'charlie', 2, 1),
       {
-        ...roomSummary('!a:hs', 'alpha', 5),
+        ...roomSummary('!a:hs', 'alpha', 5, 2),
         directUserId: '@alice:hs',
       },
-      roomSummary('!b:hs', 'bravo', 3),
+      roomSummary('!b:hs', 'bravo', 3, 4),
     ];
     const childRoomIds = vi.fn((id: string | null) =>
       id === '!s:hs' ? ['!b:hs', '!a:hs'] : [],
@@ -304,6 +309,15 @@ describe('RoomsPage space filtering', () => {
     expect(shell.vm.recentUnread()).toBe(10);
     expect(shell.vm.homeUnread()).toBe(5);
     expect(shell.vm.roomsUnread()).toBe(2);
+  });
+
+  it('sums mentions over the same rooms as each unread total', () => {
+    const { recent, home, rooms, perSpace } = build().vm.railUnread();
+    // c(1) is spaceless, a(2) is the DM, b(4) is the space child; Recent covers all.
+    expect(recent).toEqual({ unread: 10, mentions: 7 });
+    expect(home).toEqual({ unread: 5, mentions: 2 });
+    expect(rooms).toEqual({ unread: 2, mentions: 1 });
+    expect(perSpace['!s:hs']).toEqual({ unread: 8, mentions: 6 });
   });
 
   it('sums unread notifications per space for the space-pill badges', () => {

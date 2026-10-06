@@ -1,6 +1,10 @@
 <nav class="rail">
-  <div class="item" [class.active]="recentActive()">
-    <span class="indicator"></span>
+  <div
+    class="item"
+    [class.active]="recentActive()"
+    [class.item--unread]="showDot(unread().recent)"
+  >
+    <span class="indicator" [class.indicator--selected]="recentActive()"></span>
     <button
       trnIconButton
       class="pill recent"
@@ -13,48 +17,43 @@
     >
       <trn-icon name="clock" motion="pop" />
     </button>
-    @if (unread().recent > 0) {
-      <span
-        class="badge"
-        [attr.aria-label]="badgeLabel(unread().recent) + ' unread'"
-        >{{ badgeLabel(unread().recent) }}</span
-      >
-    }
+    <ng-container
+      [ngTemplateOutlet]="mention"
+      [ngTemplateOutletContext]="{ $implicit: unread().recent, top: false }"
+    />
   </div>
 
+  @let homeActive =
+    activeSpaceId() === null && !roomsActive() && !recentActive();
   <div
     class="item"
-    [class.active]="
-      activeSpaceId() === null && !roomsActive() && !recentActive()
-    "
+    [class.active]="homeActive"
+    [class.item--unread]="showDot(unread().home)"
   >
-    <span class="indicator"></span>
+    <span class="indicator" [class.indicator--selected]="homeActive"></span>
     <button
       trnIconButton
       class="pill home"
       (click)="selectHome()"
-      [attr.aria-current]="
-        activeSpaceId() === null && !roomsActive() && !recentActive()
-          ? 'true'
-          : null
-      "
+      [attr.aria-current]="homeActive ? 'true' : null"
       aria-label="Direct messages"
       trnTooltip="Direct messages"
       position="right"
     >
       <trn-icon name="house" motion="pop" />
     </button>
-    @if (unread().home > 0) {
-      <span
-        class="badge"
-        [attr.aria-label]="badgeLabel(unread().home) + ' unread'"
-        >{{ badgeLabel(unread().home) }}</span
-      >
-    }
+    <ng-container
+      [ngTemplateOutlet]="mention"
+      [ngTemplateOutletContext]="{ $implicit: unread().home, top: false }"
+    />
   </div>
 
-  <div class="item" [class.active]="roomsActive()">
-    <span class="indicator"></span>
+  <div
+    class="item"
+    [class.active]="roomsActive()"
+    [class.item--unread]="showDot(unread().rooms)"
+  >
+    <span class="indicator" [class.indicator--selected]="roomsActive()"></span>
     <button
       trnIconButton
       class="pill rooms"
@@ -67,32 +66,33 @@
     >
       <trn-icon name="door-open" motion="pop" />
     </button>
-    @if (unread().rooms > 0) {
-      <span
-        class="badge"
-        [attr.aria-label]="badgeLabel(unread().rooms) + ' unread'"
-        >{{ badgeLabel(unread().rooms) }}</span
-      >
-    }
+    <ng-container
+      [ngTemplateOutlet]="mention"
+      [ngTemplateOutletContext]="{ $implicit: unread().rooms, top: false }"
+    />
   </div>
 
   <div class="separator"></div>
 
   @for (space of spaces(); track space.id) {
-    @let spaceUnreadCount = unread().perSpace[space.id] ?? 0;
+    @let counts = unread().perSpace[space.id];
+    @let spaceActive = activeSpaceId() === space.id && !roomsActive();
     <div
       class="item"
-      [class.active]="activeSpaceId() === space.id && !roomsActive()"
+      [class.active]="spaceActive"
+      [class.item--unread]="showDot(counts)"
     >
-      <span class="indicator"></span>
+      <span class="indicator" [class.indicator--selected]="spaceActive"></span>
       <button
+        trnBtn
+        shape="icon"
+        presentation="ghost"
+        variant="secondary"
         class="pill"
         (click)="
           selectSpace.emit({ spaceId: space.id, accountId: space.accountId })
         "
-        [attr.aria-current]="
-          activeSpaceId() === space.id && !roomsActive() ? 'true' : null
-        "
+        [attr.aria-current]="spaceActive ? 'true' : null"
         [attr.aria-label]="
           badgeFor(space.accountId)
             ? space.name + ' — ' + badgeFor(space.accountId)!.name
@@ -111,13 +111,13 @@
           [accountBadge]="badgeFor(space.accountId)"
         />
       </button>
-      @if (spaceUnreadCount > 0) {
-        <span
-          class="badge"
-          [attr.aria-label]="badgeLabel(spaceUnreadCount) + ' unread'"
-          >{{ badgeLabel(spaceUnreadCount) }}</span
-        >
-      }
+      <ng-container
+        [ngTemplateOutlet]="mention"
+        [ngTemplateOutletContext]="{
+          $implicit: counts,
+          top: !!badgeFor(space.accountId),
+        }"
+      />
     </div>
   }
 
@@ -135,3 +135,18 @@
     </button>
   </div>
 </nav>
+
+<!-- Mention count: bottom-right of the icon, or top-right when an account badge holds the bottom. -->
+<ng-template #mention let-counts let-top="top">
+  @if (mentionLabel(counts); as label) {
+    <span
+      trnBadge
+      variant="danger"
+      size="xs"
+      [class.badge--top]="top"
+      [class.badge--bottom]="!top"
+      [attr.aria-label]="label + ' mentions'"
+      >{{ label }}</span
+    >
+  }
+</ng-template>

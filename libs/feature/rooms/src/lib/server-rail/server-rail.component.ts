@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -6,26 +7,36 @@ import {
 } from '@angular/core';
 import {
   AvatarComponent,
+  TrnBadge,
+  TrnTooltip,
   type AccountBadge,
 } from '@trinity/components/generic-content';
-import { TrnIconButton } from '@trinity/components/controls';
-import { TrnTooltip } from '@trinity/components/generic-content';
+import { TrnButton, TrnIconButton } from '@trinity/components/controls';
 import { type SpaceSummary } from '@trinity/data-access/room-library';
 import { unreadBadgeLabel } from '../shared/unread-badge';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { type ExactSpaceSelection } from '../shared/exact-selection';
 
-/** Unread notification counts driving the rail's badges. */
-export interface RailUnread {
-  /** Total across everything the Recent activity view lists (Recent badge). */
-  recent: number;
-  /** Total across direct-message rooms (Home badge). */
-  home: number;
-  /** Total across non-DM rooms (Rooms badge). */
-  rooms: number;
-  /** Per-space totals keyed by space id (space-pill badges). */
-  perSpace: Record<string, number>;
+/** Unread and mention counts for one rail item. */
+export interface RailCounts {
+  unread: number;
+  /** Highlight (mention) total; shown as a danger badge. */
+  mentions: number;
 }
+
+/** Unread and mention counts driving the rail's indicators and badges. */
+export interface RailUnread {
+  /** Everything the Recent activity view lists. */
+  recent: RailCounts;
+  /** Direct-message rooms (Home). */
+  home: RailCounts;
+  /** Non-DM rooms outside any space (Rooms). */
+  rooms: RailCounts;
+  /** Per-space counts keyed by space id. */
+  perSpace: Record<string, RailCounts>;
+}
+
+const NO_COUNTS: RailCounts = { unread: 0, mentions: 0 };
 
 /**
  * Discord server rail: a combined Recent activity view, then Home (direct messages), a
@@ -34,7 +45,15 @@ export interface RailUnread {
 @Component({
   selector: 'trn-server-rail',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, TrnIconButton, TrnIconComponent, TrnTooltip],
+  imports: [
+    AvatarComponent,
+    NgTemplateOutlet,
+    TrnBadge,
+    TrnButton,
+    TrnIconButton,
+    TrnIconComponent,
+    TrnTooltip,
+  ],
   templateUrl: './server-rail.component.html',
   styleUrl: './server-rail.component.scss',
 })
@@ -48,9 +67,9 @@ export class ServerRailComponent {
   readonly roomsActive = input(false);
   /** Unread notification counts for the Recent / Home / Rooms / per-space badges. */
   readonly unread = input<RailUnread>({
-    recent: 0,
-    home: 0,
-    rooms: 0,
+    recent: NO_COUNTS,
+    home: NO_COUNTS,
+    rooms: NO_COUNTS,
     perSpace: {},
   });
   /**
@@ -76,6 +95,15 @@ export class ServerRailComponent {
     return this.accountBadges().get(accountId) ?? null;
   }
 
-  /** Cap an unread count for a pill badge, Discord-style ("99+"). */
-  readonly badgeLabel = unreadBadgeLabel;
+  /** The mention badge text ("99+" cap), or null when there are no mentions. */
+  mentionLabel(counts: RailCounts | undefined): string | null {
+    return counts && counts.mentions > 0
+      ? unreadBadgeLabel(counts.mentions)
+      : null;
+  }
+
+  /** Whether the item shows the plain unread dot (unread without mentions). */
+  showDot(counts: RailCounts | undefined): boolean {
+    return !!counts && counts.unread > 0 && counts.mentions === 0;
+  }
 }
