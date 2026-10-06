@@ -574,7 +574,7 @@
     --trinity-surface-raised: var(--trinity-sidebar);
     --trinity-surface-floating-card: oklch(28% 0.016 265deg);
     --trinity-surface-overlay: var(--trinity-surface-raised);
-    --trinity-surface-overlay-footer: var(--trinity-surface-pane);
+    --trinity-surface-overlay-footer: var(--trinity-surface-overlay);
     --trinity-border-overlay: oklch(38% 0.016 265deg);
     --trinity-rail: oklch(18% 0.014 265deg);
     --trinity-sidebar: oklch(24% 0.016 265deg);

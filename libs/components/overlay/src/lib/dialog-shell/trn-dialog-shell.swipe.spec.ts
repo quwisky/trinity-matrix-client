@@ -89,13 +89,13 @@ describe('TrnDialogShellComponent swipe to close, on a real dialog', () => {
     expect(surface()!.style.transform).toBe('');
   });
 
-  it('cannot be swiped shut when it is not closable', () => {
+  it('still swipes shut without an X, because it can be dismissed', () => {
     open({}, { closable: false });
 
-    expect(handle()).toBeNull();
-    drag(header(), 300);
+    expect(handle()).not.toBeNull();
+    drag(handle()!, 300);
 
-    expect(service.hasOpen()).toBe(true);
+    expect(service.hasOpen()).toBe(false);
   });
 
   it('does not start a drag on the close button, which still clicks', () => {

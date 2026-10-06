@@ -102,6 +102,19 @@ describe('TrnSheetDrag', () => {
     expect(dismiss).toHaveBeenCalledOnce();
   });
 
+  it('ignores a short flick even when it is fast', async () => {
+    const { handle } = await setup();
+    pointer('pointerdown', 100, 0, handle);
+    pointer('pointermove', 112, 20);
+    pointer('pointerup', 112, 20);
+    expect(dismiss).not.toHaveBeenCalled();
+  });
+
+  it('stops the drag area from selecting text while enabled', async () => {
+    const { handle } = await setup();
+    expect(handle.style.userSelect).toBe('none');
+  });
+
   it('snaps back when the dismissal is refused', async () => {
     const { sheet, handle } = await setup();
     dismiss.mockReturnValue(false);

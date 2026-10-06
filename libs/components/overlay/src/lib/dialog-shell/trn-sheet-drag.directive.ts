@@ -34,6 +34,8 @@ export function sheetDismissFor(
 const DISMISS_FRACTION = 0.25;
 /** px per ms */
 const FLING_VELOCITY = 0.5;
+/** A fling must also travel this far (px), so a twitch never closes the sheet. */
+const FLING_MIN_DISTANCE = 24;
 
 /** The sheet surface that follows a drag started on a {@link TrnSheetDragHandle}. */
 @Directive({ selector: '[trnSheetDrag]' })
@@ -72,7 +74,9 @@ export class TrnSheetDrag {
       const velocity = dy / Math.max(1, e.timeStamp - startT);
       this.stopDrag?.();
       this.host.style.transition = 'transform 200ms ease-out';
-      const far = dy / height > DISMISS_FRACTION || velocity > FLING_VELOCITY;
+      const far =
+        dy / height > DISMISS_FRACTION ||
+        (dy > FLING_MIN_DISTANCE && velocity > FLING_VELOCITY);
       if (!cancelled && far && this.dismiss()) return;
       this.host.style.transform = '';
     };
@@ -108,6 +112,7 @@ export class TrnSheetDrag {
   host: {
     '(pointerdown)': 'start($event)',
     '[style.touch-action]': 'sheet?.enabled() ? "none" : null',
+    '[style.user-select]': 'sheet?.enabled() ? "none" : null',
   },
 })
 export class TrnSheetDragHandle {

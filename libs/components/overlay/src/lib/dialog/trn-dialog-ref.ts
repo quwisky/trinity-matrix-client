@@ -14,12 +14,6 @@ export interface ClosableRef<R> {
   close(result?: R): void;
 }
 
-/**
- * How an open dialog is presented, decided once by {@link TrnDialogService.open}.
- *
- * `'sheet'` is a bottom sheet (phones, or an explicit `'bottom'` placement), `'popover'` an
- * anchored panel; the dialog shell reads it to pick its surface layout.
- */
 let nextTitleId = 0;
 
 /** A document-unique id for a dialog's title heading. */
@@ -27,6 +21,12 @@ export function dialogTitleId(): string {
   return `trn-dialog-title-${nextTitleId++}`;
 }
 
+/**
+ * How an open dialog is presented, decided once by {@link TrnDialogService.open}.
+ *
+ * `'sheet'` is a bottom sheet (phones, or an explicit `'bottom'` placement), `'popover'` an
+ * anchored panel; the dialog shell reads it to pick its surface layout.
+ */
 export type TrnDialogPresentation =
   'dialog' | 'sheet' | 'fullscreen' | 'popover';
 

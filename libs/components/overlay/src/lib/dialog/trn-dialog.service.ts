@@ -77,6 +77,10 @@ export interface DialogOptions<C = object> {
   anchor?: HTMLElement;
 }
 
+/** The viewport height left below the desktop title row (the full viewport elsewhere). */
+const VIEWPORT_BELOW_TITLE_ROW =
+  'calc(100dvh - var(--trinity-title-row-inset, 0px))';
+
 /**
  * Where a popover sits relative to its anchor, in preference order.
  *
@@ -86,10 +90,6 @@ export interface DialogOptions<C = object> {
  * `TrnAnchoredOverlayDirective` uses) because that one is built for a menu hugging a
  * button edge-to-edge, and a card wants the 8px of daylight below.
  */
-/** The viewport height left below the desktop title row (the full viewport elsewhere). */
-const VIEWPORT_BELOW_TITLE_ROW =
-  'calc(100dvh - var(--trinity-title-row-inset, 0px))';
-
 const POPOVER_POSITIONS: ConnectedPosition[] = [
   {
     originX: 'start',

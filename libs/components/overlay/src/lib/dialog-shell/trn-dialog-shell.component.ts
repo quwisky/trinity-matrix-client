@@ -76,12 +76,9 @@ export class TrnDialogShellComponent {
       : 'dialog';
   });
 
-  /** Only a closable sheet that was not opened `disableClose` follows a swipe. */
+  /** A sheet follows a swipe unless it was opened `disableClose`; `closable` only governs the X. */
   protected readonly swipeable = computed(
-    () =>
-      this.layout() === 'sheet' &&
-      this.closable() &&
-      !(this.ref?.disableClose ?? false),
+    () => this.layout() === 'sheet' && !(this.ref?.disableClose ?? false),
   );
 
   readonly title = input.required<string>();

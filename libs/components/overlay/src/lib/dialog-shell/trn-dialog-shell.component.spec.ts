@@ -168,6 +168,15 @@ describe('TrnDialogShellComponent', () => {
     );
   });
 
+  it('keeps the sheet handle when only the X is hidden', async () => {
+    await render(NotClosableHostComponent, {
+      providers: refFor('sheet').providers,
+    });
+
+    expect(screen.getByTestId('sheet-handle')).toBeTruthy();
+    expect(screen.queryByTestId('dialog-close')).toBeNull();
+  });
+
   it('presents a centred dialog with the dialog entrance and no handle', async () => {
     await render(PlainHostComponent, { providers: refFor('dialog').providers });
 
