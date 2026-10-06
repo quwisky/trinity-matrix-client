@@ -315,12 +315,16 @@ describe('migrated application design-system consumers', () => {
       surfaces
         .map(([, tag]) => tag.match(/\bsize="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
-    ).toEqual([...Array(7).fill('md'), ...Array(2).fill('sm')]);
+    ).toEqual(['lg', ...Array(7).fill('md'), ...Array(2).fill('sm')]);
     expect(
       surfaces
         .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
-    ).toEqual([...Array(3).fill('fullscreen'), ...Array(6).fill('popover')]);
+    ).toEqual([
+      ...Array(3).fill('fullscreen'),
+      'panel',
+      ...Array(6).fill('popover'),
+    ]);
 
     // Room dialogs build on the shared shell, which picks the dialog, sheet or fullscreen
     // presentation itself; none keeps its own surface or its own sheet switch.
@@ -341,27 +345,18 @@ describe('migrated application design-system consumers', () => {
       ),
     ).toMatch(/<trn-dialog-shell[^>]*\bsize="xl"/u);
 
-    // Member info is the one overlay whose public surface directive belongs on the component
-    // host: in panel mode that host is the actual in-flow pane measured beside the timeline.
-    const memberInfo = source(
-      'libs/feature/rooms/src/lib/member-info/member-info.component.ts',
-    );
-    expect(memberInfo).toMatch(
-      /hostDirectives:[\s\S]{0,180}TrnOverlaySurfaceDirective[\s\S]{0,180}size: surfaceSize[\s\S]{0,80}layout: surfaceLayout/u,
-    );
-    const memberInfoPanel = tagsFrom(
-      ['libs/feature/rooms/src/lib/rooms/rooms.page.html'],
-      /<trn-member-info\b[^>]*>/gu,
-    );
-    expect(memberInfoPanel).toHaveLength(1);
-    expect(memberInfoPanel[0]?.[1]).toMatch(/\bsurfaceSize="lg"/u);
-    expect(memberInfoPanel[0]?.[1]).toMatch(/\bsurfaceLayout="panel"/u);
-    const memberInfoService = source(
-      'libs/feature/rooms/src/lib/rooms/member-actions.service.ts',
-    );
-    expect(memberInfoService).toMatch(
-      /surfaceSize:\s*['"]sm['"][\s\S]{0,80}surfaceLayout:\s*['"]dialog['"]/u,
-    );
+    // Member info is a dialog on the shared shell and, in the slot, a panel surface of its own;
+    // it no longer takes its surface through host directive inputs.
+    const memberInfoDir =
+      'libs/feature/rooms/src/lib/member-info/member-info.component';
+    expect(source(`${memberInfoDir}.html`)).toMatch(/<trn-dialog-shell\b/u);
+    expect(source(`${memberInfoDir}.ts`)).not.toMatch(/hostDirectives/u);
+    expect(
+      tagsFrom(
+        ['libs/feature/rooms/src/lib/rooms/rooms.page.html'],
+        /<trn-member-info\b[^>]*>/gu,
+      ),
+    ).toHaveLength(1);
 
     // Message source uses a deliberately small inline template, so it is not part of the
     // external-markup collection above. Pin its complete public surface vocabulary here rather
