@@ -53,7 +53,7 @@ export class TrnActionSheetService {
         .bottom('0'),
     });
     return new TrnActionSheetRef(
-      new TrnDialogRef<void>(ref),
+      new TrnDialogRef<void>(ref, 'sheet'),
       () => ref.componentInstance?.surface ?? null,
     );
   }

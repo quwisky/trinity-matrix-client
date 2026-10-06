@@ -2,6 +2,7 @@ import { ApplicationRef, Component, inject, input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom, NEVER } from 'rxjs';
+import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TrnAlertService } from '../alert/trn-alert.service';
 import { TrnDialogRef } from './trn-dialog-ref';
@@ -160,8 +161,9 @@ describe('TrnDialogService', () => {
     const ref = svc.open(TestDialogComponent, { placement: 'bottom' });
     TestBed.inject(ApplicationRef).tick();
 
+    expect(ref.presentation).toBe('sheet');
     const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
-    expect(pane?.style.width).toBe('min(100vw, 36rem)');
+    expect(pane?.style.width).toBe('100vw');
     expect(pane?.style.maxWidth).toBe('100vw');
     expect(pane?.style.maxHeight).toBe(
       'calc(100dvh - var(--trinity-title-row-inset, 0px) - 12px)',
@@ -373,6 +375,78 @@ describe('TrnDialogService', () => {
   });
 });
 
+describe('TrnDialogService — presentation', () => {
+  let phone = false;
+
+  function stubViewport(): void {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (query: string) =>
+        ({
+          matches: query === BELOW_MD_QUERY && phone,
+          media: query,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+        }) as unknown as MediaQueryList,
+    );
+  }
+
+  afterEach(() => {
+    TestBed.inject(TrnDialogService).closeAll();
+    phone = false;
+    vi.restoreAllMocks();
+  });
+
+  it('opens a centred dialog as a full-width bottom sheet on a phone', () => {
+    phone = true;
+    stubViewport();
+    const svc = TestBed.inject(TrnDialogService);
+
+    const ref = svc.open(TestDialogComponent);
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(ref.presentation).toBe('sheet');
+    const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
+    expect(pane?.style.width).toBe('100vw');
+    expect(pane?.style.maxHeight).toBe(
+      'calc(100dvh - var(--trinity-title-row-inset, 0px) - 12px)',
+    );
+    // CDK's global strategy pins a `bottom()` pane by aligning its wrapper to the end.
+    const wrapper = document.querySelector<HTMLElement>(
+      '.cdk-global-overlay-wrapper',
+    );
+    expect(wrapper?.style.alignItems).toBe('flex-end');
+  });
+
+  it('keeps a fullscreen dialog fullscreen on a phone', () => {
+    phone = true;
+    stubViewport();
+    const svc = TestBed.inject(TrnDialogService);
+
+    expect(
+      svc.open(TestDialogComponent, { placement: 'fullscreen' }).presentation,
+    ).toBe('fullscreen');
+  });
+
+  it('keeps a centred dialog a dialog at desktop width', () => {
+    stubViewport();
+    const svc = TestBed.inject(TrnDialogService);
+
+    expect(svc.open(TestDialogComponent).presentation).toBe('dialog');
+  });
+
+  it('keeps the presentation it opened with when the viewport crosses md', () => {
+    stubViewport();
+    const svc = TestBed.inject(TrnDialogService);
+    const ref = svc.open(TestDialogComponent);
+    TestBed.inject(ApplicationRef).tick();
+
+    phone = true;
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(ref.presentation).toBe('dialog');
+  });
+});
+
 describe('TrnDialogService — anchored presentation', () => {
   /** A real, laid-out element to hang the popover off. */
   function anchorElement(): HTMLElement {
@@ -392,9 +466,10 @@ describe('TrnDialogService — anchored presentation', () => {
   it('positions against the anchor instead of centring', () => {
     const svc = TestBed.inject(TrnDialogService);
 
-    svc.open(TestDialogComponent, { anchor: anchorElement() });
+    const ref = svc.open(TestDialogComponent, { anchor: anchorElement() });
     TestBed.inject(ApplicationRef).tick();
 
+    expect(ref.presentation).toBe('popover');
     // CDK wraps a flexible connected overlay in this box and nothing else does, so its
     // presence is what distinguishes an anchored panel from the global centred strategy.
     expect(

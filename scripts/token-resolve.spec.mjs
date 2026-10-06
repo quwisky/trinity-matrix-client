@@ -69,12 +69,6 @@ for (const file of files) {
   }
 }
 
-/**
- * Roles introduced ahead of their consumer. The dialog shell (UI refresh R5 task 2) reads the
- * overlay footer; remove the entry in that commit.
- */
-const CONSUMED_BY_LATER_TASK = new Set(['--trinity-surface-overlay-footer']);
-
 describe('trinity design tokens', () => {
   it('finds the tokens at all, so an empty sweep cannot pass as a clean one', () => {
     // Without this, a glob or regex change that matched nothing would report every token
@@ -100,7 +94,7 @@ describe('trinity design tokens', () => {
       [...variables.matchAll(definitionPattern)].map(([, token]) => token),
     );
     const unused = [...globalDefinitions]
-      .filter((token) => !used.has(token) && !CONSUMED_BY_LATER_TASK.has(token))
+      .filter((token) => !used.has(token))
       .sort();
 
     expect(unused).toEqual([]);

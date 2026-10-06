@@ -13,6 +13,15 @@ interface ClosableRef<R> {
 }
 
 /**
+ * How an open dialog is presented, decided once by {@link TrnDialogService.open}.
+ *
+ * `'sheet'` is a bottom sheet (phones, or an explicit `'bottom'` placement), `'popover'` an
+ * anchored panel; the dialog shell reads it to pick its surface layout.
+ */
+export type TrnDialogPresentation =
+  'dialog' | 'sheet' | 'fullscreen' | 'popover';
+
+/**
  * The handle a modal'd component uses to close itself, and the handle {@link TrnDialogService.open}
  * returns to whoever opened it.
  *
@@ -40,8 +49,18 @@ export class TrnDialogRef<R = unknown> {
    */
   readonly closed: Observable<R | undefined>;
 
-  constructor(private readonly cdkRef: ClosableRef<R>) {
+  /**
+   * Fixed at open. Crossing the `md` breakpoint later (rotating a phone, resizing a window)
+   * keeps it, so an open dialog never jumps between a card and a sheet.
+   */
+  readonly presentation: TrnDialogPresentation;
+
+  constructor(
+    private readonly cdkRef: ClosableRef<R>,
+    presentation: TrnDialogPresentation = 'dialog',
+  ) {
     this.closed = cdkRef.closed;
+    this.presentation = presentation;
   }
 
   /**

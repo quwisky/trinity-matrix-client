@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **67 Nx projects** and **258 dependencies**. No project cycles detected.
+This snapshot contains **67 Nx projects** and **259 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -129,7 +129,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `components-foundations`          | `libs/components/foundations`          | role:design-system; capability:design-system    |                   1 |
 | `components-generic-content`      | `libs/components/generic-content`      | role:design-system; capability:design-system    |                   9 |
 | `components-navigation-layout`    | `libs/components/navigation-layout`    | role:design-system; capability:design-system    |                   4 |
-| `components-overlay`              | `libs/components/overlay`              | role:design-system; capability:design-system    |                   6 |
+| `components-overlay`              | `libs/components/overlay`              | role:design-system; capability:design-system    |                   7 |
 | `components-storybook-host`       | `libs/components/storybook-host`       | role:design-system; capability:design-system    |                   1 |
 | `data-access-accounts`            | `libs/data-access/accounts`            | role:capability; capability:accounts            |                   4 |
 | `data-access-auth`                | `libs/data-access/auth`                | role:capability; capability:accounts            |                   4 |

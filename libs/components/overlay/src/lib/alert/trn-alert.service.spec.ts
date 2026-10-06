@@ -2,7 +2,8 @@ import { ApplicationRef } from '@angular/core';
 import { Dialog } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { BELOW_MD_QUERY } from '@trinity/util/ui';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TrnAlertService } from './trn-alert.service';
 
 function render(): void {
@@ -188,5 +189,37 @@ describe('TrnAlertService', () => {
     expect(canonicalButton?.dataset['trnVariant']).toBe('danger');
     clickButton('Cancel');
     await canonical;
+  });
+
+  describe('on a phone', () => {
+    afterEach(() => {
+      TestBed.inject(Dialog).closeAll();
+      vi.restoreAllMocks();
+    });
+
+    it('opens a prompt as a full-width bottom sheet', () => {
+      vi.spyOn(window, 'matchMedia').mockImplementation(
+        (query: string) =>
+          ({
+            matches: query === BELOW_MD_QUERY,
+            media: query,
+            addEventListener: () => undefined,
+            removeEventListener: () => undefined,
+          }) as unknown as MediaQueryList,
+      );
+      const svc = TestBed.inject(TrnAlertService);
+
+      svc.prompt$({ header: 'Reason', confirmText: 'Report' }).subscribe();
+      render();
+
+      expect(
+        document
+          .querySelector('[data-testid="dialog-surface"]')
+          ?.getAttribute('data-trn-layout'),
+      ).toBe('sheet');
+      expect(
+        document.querySelector<HTMLElement>('.cdk-overlay-pane')?.style.width,
+      ).toBe('100vw');
+    });
   });
 });

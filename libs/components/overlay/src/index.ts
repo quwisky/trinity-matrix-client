@@ -6,7 +6,14 @@ export {
   type TrnDialogAutoFocus,
   type TrnDialogPlacement,
 } from './lib/dialog/trn-dialog.service';
-export { TrnDialogRef } from './lib/dialog/trn-dialog-ref';
+export {
+  TrnDialogRef,
+  type TrnDialogPresentation,
+} from './lib/dialog/trn-dialog-ref';
+export {
+  TrnDialogActions,
+  TrnDialogShellComponent,
+} from './lib/dialog-shell/trn-dialog-shell.component';
 export {
   TrnAlertService,
   type ConfirmOptions,

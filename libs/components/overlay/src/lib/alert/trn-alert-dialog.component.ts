@@ -9,7 +9,10 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { FormField, form, maxLength, required } from '@angular/forms/signals';
 import { TrnButton, TrnInput } from '@trinity/components/controls';
 import type { TrnAlertVariant } from './trn-alert.service';
-import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';
+import {
+  TrnDialogActions,
+  TrnDialogShellComponent,
+} from '../dialog-shell/trn-dialog-shell.component';
 
 /** Payload for {@link TrnAlertDialogComponent}, built by TrnAlertService. */
 export interface AlertDialogData {
@@ -37,30 +40,24 @@ export type AlertDialogResult = boolean | string | null;
  */
 @Component({
   selector: 'trn-alert-dialog',
-  standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, TrnButton, TrnInput, TrnOverlaySurfaceDirective],
+  imports: [
+    FormField,
+    TrnButton,
+    TrnDialogActions,
+    TrnDialogShellComponent,
+    TrnInput,
+  ],
   template: `
-    <div
-      trnOverlaySurface
-      variant="neutral"
-      size="md"
-      layout="dialog"
-      class="p-6"
+    <trn-dialog-shell
+      [title]="data.header"
+      [description]="data.message"
+      [closable]="false"
       data-testid="alert-surface"
     >
-      <h2 class="text-lg leading-none font-semibold tracking-tight">
-        {{ data.header }}
-      </h2>
-      @if (data.message) {
-        <p class="mt-2 text-sm whitespace-pre-line text-muted-foreground">
-          {{ data.message }}
-        </p>
-      }
       @if (data.kind === 'prompt') {
         <input
           trnInput
-          class="mt-4"
           [type]="data.inputType ?? 'text'"
           [placeholder]="data.placeholder ?? ''"
           [attr.aria-label]="data.inputLabel ?? null"
@@ -80,11 +77,11 @@ export type AlertDialogResult = boolean | string | null;
           </p>
         }
       }
-      <div class="mt-6 flex justify-end gap-2">
+      <div trnDialogActions>
         <button
           trnBtn
           variant="secondary"
-          presentation="outline"
+          presentation="link"
           (click)="onCancel()"
           data-testid="alert-cancel"
         >
@@ -100,7 +97,7 @@ export type AlertDialogResult = boolean | string | null;
           {{ data.confirmText }}
         </button>
       </div>
-    </div>
+    </trn-dialog-shell>
   `,
 })
 export class TrnAlertDialogComponent {
