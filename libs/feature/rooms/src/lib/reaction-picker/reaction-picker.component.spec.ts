@@ -1,5 +1,5 @@
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { render } from '@trinity/testing';
+import { render, screen, within } from '@trinity/testing';
 import { MockComponent } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
 import { ReactionPickerComponent } from './reaction-picker.component';
@@ -24,6 +24,17 @@ describe('ReactionPickerComponent', () => {
     });
     return { cmp: fixture.componentInstance, close };
   }
+
+  it('names itself with the shared dialog shell heading', async () => {
+    await setup();
+
+    expect(
+      within(screen.getByTestId('dialog-surface')).getByRole('heading', {
+        level: 2,
+        name: 'Pick a reaction',
+      }),
+    ).toBeTruthy();
+  });
 
   it('closes with the chosen native emoji', async () => {
     const { cmp, close } = await setup();

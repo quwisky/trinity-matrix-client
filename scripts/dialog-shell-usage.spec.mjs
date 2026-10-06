@@ -18,9 +18,37 @@ const allowed = new Set([
   'thread-view.component.html',
   'threads-list.component.html',
 ]);
-// Both attributes on one tag, in either order.
-const dialogLayout =
-  /<(?=[^>]*\btrnOverlaySurface\b)(?=[^>]*(?:\blayout="(?:dialog|sheet|workspace|fullscreen)"|\[layout\]))[^>]*>/u;
+const calmLayouts = new Set(['popover', 'panel']);
+
+/** The text of the array that follows `hostDirectives:`, bracket-balanced, or `''`. */
+function hostDirectivesArray(source) {
+  const start = source.search(/\bhostDirectives\s*:\s*\[/u);
+  if (start < 0) return '';
+  const open = source.indexOf('[', start);
+  let depth = 0;
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === '[') depth++;
+    if (source[i] === ']' && --depth === 0) return source.slice(open, i + 1);
+  }
+  return source.slice(open);
+}
+
+/**
+ * Whether `source` builds a dialog-like surface by hand: a `trnOverlaySurface` element whose
+ * layout is not a literal popover or panel (a missing layout defaults to `dialog`, and a bound
+ * one cannot be proven safe), or the surface directive applied as a host directive.
+ */
+function buildsDialogSurface(source) {
+  if (/\bTrnOverlaySurfaceDirective\b/u.test(hostDirectivesArray(source))) {
+    return true;
+  }
+  return [
+    ...source.matchAll(/<[a-zA-Z][^>]*\btrnOverlaySurface\b[^>]*>/gu),
+  ].some(([tag]) => {
+    const layout = /(?<![\w[-])layout\s*=\s*(["'])(.*?)\1/u.exec(tag)?.[2];
+    return !calmLayouts.has(layout);
+  });
+}
 
 describe('dialog shell usage', () => {
   it('keeps hand-rolled dialog surfaces out of libs', () => {
@@ -38,10 +66,55 @@ describe('dialog shell usage', () => {
           !allowed.has(file.split('/').at(-1)),
       )
       .filter((file) =>
-        dialogLayout.test(readFileSync(join(workspaceRoot, file), 'utf8')),
+        buildsDialogSurface(readFileSync(join(workspaceRoot, file), 'utf8')),
       )
       .sort();
 
     expect(offenders).toEqual([]);
+  });
+
+  describe('detector', () => {
+    it.each([
+      [
+        'a double-quoted dialog layout',
+        '<div trnOverlaySurface layout="dialog">',
+      ],
+      [
+        'a single-quoted dialog layout',
+        "<div trnOverlaySurface layout='dialog'>",
+      ],
+      ['a bound layout', '<div trnOverlaySurface [layout]="mode()">'],
+      [
+        'no layout, which defaults to dialog',
+        '<div trnOverlaySurface variant="neutral">',
+      ],
+      [
+        'a multi-line tag with a sheet layout',
+        '<section\n  trnOverlaySurface\n  variant="neutral"\n  layout="sheet"\n>',
+      ],
+      [
+        'a host directive',
+        "hostDirectives: [{ directive: TrnOverlaySurfaceDirective, inputs: ['layout: surfaceLayout'] }],",
+      ],
+      ['a bare host directive', 'hostDirectives: [TrnOverlaySurfaceDirective]'],
+    ])('flags %s', (_name, source) => {
+      expect(buildsDialogSurface(source)).toBe(true);
+    });
+
+    it.each([
+      ['a popover', '<div trnOverlaySurface layout="popover">'],
+      ['a single-quoted panel', "<div trnOverlaySurface layout='panel'>"],
+      ['an import of the directive', 'imports: [TrnOverlaySurfaceDirective],'],
+      [
+        'host directives that are not the surface',
+        "hostDirectives: [{ directive: Other, inputs: ['a: b'] }], imports: [TrnOverlaySurfaceDirective]",
+      ],
+      [
+        'another element using the name layout',
+        '<div [size]="x" data-layout="dialog">',
+      ],
+    ])('accepts %s', (_name, source) => {
+      expect(buildsDialogSurface(source)).toBe(false);
+    });
   });
 });
