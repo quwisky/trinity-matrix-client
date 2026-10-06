@@ -412,18 +412,18 @@ test.describe('Multiple accounts', () => {
       await expect(activeRow.locator('trn-avatar')).toBeVisible();
       await expect(activeRow).toContainText(`@${userB}:`);
       await expect(activeRow).toContainText('Always included');
-      const mobileAvatar = await activeRow.locator('trn-avatar').boundingBox();
-      const mobileCheck = await activeRow
-        .locator('.account-pick__indicator')
-        .boundingBox();
-      expect(mobileAvatar && mobileCheck).toBeTruthy();
-      expect(
-        Math.abs(
-          mobileAvatar!.y +
-            mobileAvatar!.height / 2 -
-            (mobileCheck!.y + mobileCheck!.height / 2),
-        ),
-      ).toBeLessThan(12);
+      // Both rects in one frame: the sheet slides in, and two separate boundingBox() reads
+      // could land on different frames of that slide and measure the motion, not the row.
+      const centreOffset = await activeRow.evaluate((row) => {
+        const middle = (selector: string) => {
+          const rect = row.querySelector(selector)!.getBoundingClientRect();
+          return rect.top + rect.height / 2;
+        };
+        return Math.abs(
+          middle('trn-avatar') - middle('.account-pick__indicator'),
+        );
+      });
+      expect(centreOffset).toBeLessThan(12);
 
       for (const dark of [false, true]) {
         await page.evaluate(
