@@ -42,16 +42,16 @@ export class TrnSettingsGroupComponent {
   private readonly parts = inject(TrnSettingsParts, { optional: true });
   private readonly heading = viewChild<ElementRef<HTMLElement>>('heading');
 
+  protected readonly resolvedId = computed(
+    () => this.partId() ?? slugify(this.title() ?? ''),
+  );
+  protected readonly headingId = computed(() => `part-${this.resolvedId()}`);
+
   /** Without a title the group is an untitled block: no heading, and not a navigable part. */
   readonly title = input<string>();
   readonly description = input<string>();
   /** Fragment id within the section; defaults to the slug of the title. */
   readonly partId = input<string>();
-
-  protected readonly resolvedId = computed(
-    () => this.partId() ?? slugify(this.title() ?? ''),
-  );
-  protected readonly headingId = computed(() => `part-${this.resolvedId()}`);
 
   constructor() {
     afterNextRender(() => {
