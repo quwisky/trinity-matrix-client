@@ -18,14 +18,18 @@ const allowed = new Set([
   'thread-view.component.html',
   'threads-list.component.html',
 ]);
+// Both attributes on one tag, in either order.
 const dialogLayout =
-  /<[^>]*\btrnOverlaySurface\b[^>]*(?:\blayout="(?:dialog|sheet|workspace|fullscreen)"|\[layout\])[^>]*>/u;
+  /<(?=[^>]*\btrnOverlaySurface\b)(?=[^>]*(?:\blayout="(?:dialog|sheet|workspace|fullscreen)"|\[layout\]))[^>]*>/u;
 
 describe('dialog shell usage', () => {
   it('keeps hand-rolled dialog surfaces out of libs', () => {
-    const offenders = globSync(['libs/**/*.html', 'libs/**/*.ts'], {
+    const files = globSync(['libs/**/*.html', 'libs/**/*.ts'], {
       cwd: workspaceRoot,
-    })
+    });
+    // An empty scan would pass vacuously.
+    expect(files.length).toBeGreaterThan(100);
+    const offenders = files
       .filter(
         (file) =>
           !file.endsWith('.spec.ts') &&
