@@ -89,6 +89,9 @@
               presentation="ghost"
               class="member"
               [style.height.px]="rowPx"
+              style="
+                padding-inline: var(--trinity-density-shell-padding-inline);
+              "
               type="button"
               [class.member--offline]="row.presence === 'offline'"
               [trnTooltip]="row.member.userId"

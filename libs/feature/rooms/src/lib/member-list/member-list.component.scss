@@ -114,8 +114,8 @@
 
   // Colour, hover, pressed and focus come from the `trnBtn` recipe, whose own height (32px,
   // or a 44px minimum on touch) and centring out-rank a component-layer rule. The template
-  // therefore also binds the height inline from ROW_PX; the 44px here is what the layout
-  // specs pin. The name takes the free width so it reads from the start despite the centring.
+  // therefore binds the height (from ROW_PX) and the density-driven inline padding on the
+  // element; the 44px here is what the layout specs pin. The name takes the free width so it reads from the start despite the centring.
   .member {
     box-sizing: border-box;
     height: 44px;

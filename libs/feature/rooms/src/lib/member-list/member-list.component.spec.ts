@@ -45,7 +45,7 @@ function member(
 }
 const opts = { imports: [MockComponent(AvatarComponent)], providers };
 
-/** Visible section headers, in render order (e.g. ['Admin — 1', 'Member — 2']). */
+/** Visible section headers, in render order (e.g. ['Admins — 1', 'Members — 2']). */
 function sectionLabels(container: HTMLElement): (string | undefined)[] {
   return [...container.querySelectorAll('.members__section-label')].map((n) =>
     n.textContent?.trim(),
@@ -172,14 +172,14 @@ describe('MemberListComponent', () => {
     // Sections appear highest-role first, and each header holds exactly its members —
     // proving the partition regroups rather than relying on input order.
     expect(sectionLabels(container)).toEqual([
-      'Admin — 1',
-      'Moderator — 1',
-      'Member — 2',
+      'Admins — 1',
+      'Moderators — 1',
+      'Members — 2',
     ]);
     expect(sectionMap(container)).toEqual({
-      'Admin — 1': ['Ada'],
-      'Moderator — 1': ['Bo'],
-      'Member — 2': ['Alice', 'Cy'],
+      'Admins — 1': ['Ada'],
+      'Moderators — 1': ['Bo'],
+      'Members — 2': ['Alice', 'Cy'],
     });
   });
 
@@ -206,14 +206,14 @@ describe('MemberListComponent', () => {
     });
 
     expect(sectionLabels(container)).toEqual([
-      'Owner — 1',
-      'Admin — 1',
-      'Member — 1',
+      'Owners — 1',
+      'Admins — 1',
+      'Members — 1',
     ]);
     expect(sectionMap(container)).toEqual({
-      'Owner — 1': ['Founder'],
-      'Admin — 1': ['Promoted'],
-      'Member — 1': ['Reg'],
+      'Owners — 1': ['Founder'],
+      'Admins — 1': ['Promoted'],
+      'Members — 1': ['Reg'],
     });
   });
 
@@ -235,8 +235,8 @@ describe('MemberListComponent', () => {
       ...opts,
     });
 
-    expect(sectionLabels(container)).toEqual(['Admin — 2']);
-    expect(sectionMap(container)['Admin — 2']).toEqual(['Me', 'Them']);
+    expect(sectionLabels(container)).toEqual(['Admins — 2']);
+    expect(sectionMap(container)['Admins — 2']).toEqual(['Me', 'Them']);
   });
 
   it('shows no Owner section when the creator has left the room', async () => {
@@ -250,7 +250,7 @@ describe('MemberListComponent', () => {
       ...opts,
     });
 
-    expect(sectionLabels(container)).toEqual(['Admin — 1']);
+    expect(sectionLabels(container)).toEqual(['Admins — 1']);
   });
 
   it('lists a demoted creator by the power they now hold', async () => {
@@ -274,8 +274,8 @@ describe('MemberListComponent', () => {
       ...opts,
     });
 
-    expect(sectionLabels(container)).toEqual(['Admin — 1', 'Member — 1']);
-    expect(sectionMap(container)['Member — 1']).toEqual(['Founder']);
+    expect(sectionLabels(container)).toEqual(['Admins — 1', 'Members — 1']);
+    expect(sectionMap(container)['Members — 1']).toEqual(['Founder']);
   });
 
   it('keeps online-first ordering within a role section', async () => {
@@ -289,7 +289,9 @@ describe('MemberListComponent', () => {
       ...opts,
     });
 
-    expect(sectionMap(container)).toEqual({ 'Moderator — 2': ['Zoe', 'Anna'] });
+    expect(sectionMap(container)).toEqual({
+      'Moderators — 2': ['Zoe', 'Anna'],
+    });
   });
 
   it('omits role sections that have no members', async () => {
@@ -300,15 +302,15 @@ describe('MemberListComponent', () => {
       ...opts,
     });
 
-    expect(sectionLabels(container)).toEqual(['Member — 1']);
+    expect(sectionLabels(container)).toEqual(['Members — 1']);
   });
 
   it.each([
-    [49, 'Member — 1'],
-    [50, 'Moderator — 1'],
-    [99, 'Moderator — 1'],
-    [100, 'Admin — 1'],
-    [150, 'Admin — 1'],
+    [49, 'Members — 1'],
+    [50, 'Moderators — 1'],
+    [99, 'Moderators — 1'],
+    [100, 'Admins — 1'],
+    [150, 'Admins — 1'],
   ])(
     'classifies power level %i at the role threshold',
     async (powerLevel, label) => {
@@ -333,15 +335,15 @@ describe('MemberListComponent', () => {
       inputs: { members: at(0) },
       ...opts,
     });
-    expect(sectionLabels(container)).toEqual(['Member — 1']);
+    expect(sectionLabels(container)).toEqual(['Members — 1']);
 
     fixture.componentRef.setInput('members', at(100)); // promote to admin
     fixture.detectChanges();
-    expect(sectionLabels(container)).toEqual(['Admin — 1']);
+    expect(sectionLabels(container)).toEqual(['Admins — 1']);
 
     fixture.componentRef.setInput('members', at(0)); // demote back
     fixture.detectChanges();
-    expect(sectionLabels(container)).toEqual(['Member — 1']);
+    expect(sectionLabels(container)).toEqual(['Members — 1']);
   });
 
   it('exposes each role section as a named group for assistive tech', async () => {
@@ -359,7 +361,7 @@ describe('MemberListComponent', () => {
       g.getAttribute('aria-label'),
     );
     // Count is pluralised, and the visual label is hidden from AT to avoid a double read.
-    expect(groups).toEqual(['Admin, 1 member', 'Member, 2 members']);
+    expect(groups).toEqual(['Admins, 1 member', 'Members, 2 members']);
     expect(
       container
         .querySelector('.members__section-label')
@@ -405,7 +407,7 @@ describe('MemberListComponent — restyle', () => {
     });
 
     const label = container.querySelector('.member-group__label');
-    expect(label?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Admin — 1');
+    expect(label?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Admins — 1');
     expect(label?.classList).toContain('members__section-label');
   });
 
@@ -774,9 +776,9 @@ describe('MemberListComponent — windowing', () => {
 
     // The window starts at the top, so all three headers are inside it.
     expect(sectionLabels(container)).toEqual([
-      'Admin — 3',
-      'Moderator — 2',
-      'Member — 200',
+      'Admins — 3',
+      'Moderators — 2',
+      'Members — 200',
     ]);
 
     const [top, bottom] = spacers(container);
@@ -820,7 +822,7 @@ describe('MemberListComponent — windowing', () => {
     });
     setViewport(container, 1);
 
-    expect(sectionLabels(container)).toContain('Member — 200');
+    expect(sectionLabels(container)).toContain('Members — 200');
 
     // And the spacers still account for exactly the whole list.
     const [top, bottom] = spacers(container);
@@ -846,7 +848,7 @@ describe('MemberListComponent — windowing', () => {
 
     const group = container.querySelector('.members__section')!;
     expect(group.querySelector('.members__section-label')).toBeNull();
-    expect(group.getAttribute('aria-label')).toBe('Member, 600 members');
+    expect(group.getAttribute('aria-label')).toBe('Members, 600 members');
   });
 
   it('windows the filtered list, not the full one', async () => {

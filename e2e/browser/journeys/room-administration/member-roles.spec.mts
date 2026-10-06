@@ -228,9 +228,9 @@ test.describe('Member role sections', () => {
     // this room, so they are the owner rather than merely an admin — the distinction
     // this list exists to make, and one a power level alone cannot express.
     await expect(page.locator('.members__section-label')).toHaveText([
-      'Owner — 1',
-      'Moderator — 1',
-      'Member — 1',
+      'Owners — 1',
+      'Moderators — 1',
+      'Members — 1',
     ]);
 
     // These are inputs to the virtual window, not merely visual preferences. Assert the
@@ -253,9 +253,9 @@ test.describe('Member role sections', () => {
       .locator('.members__section')
       .evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')));
     expect(groupLabels).toEqual([
-      'Owner, 1 member',
-      'Moderator, 1 member',
-      'Member, 1 member',
+      'Owners, 1 member',
+      'Moderators, 1 member',
+      'Members, 1 member',
     ]);
 
     // The right member sits under the right header. User IDs now live in the design
@@ -348,7 +348,7 @@ test.describe('Member role sections', () => {
 
     // Both at 100, one flat section, and nobody hoisted above the other.
     await expect(page.locator('.members__section-label')).toHaveText([
-      'Admin — 2',
+      'Admins — 2',
     ]);
     await expect(sectionFor(page, 'Owner')).toHaveCount(0);
 
@@ -415,8 +415,8 @@ test.describe('Member role sections', () => {
       timeout: 20_000,
     });
     await expect(page.locator('.members__section-label')).toHaveText([
-      'Owner — 1',
-      'Admin — 1',
+      'Owners — 1',
+      'Admins — 1',
     ]);
 
     // And the right person is in each — the creator above, the promotee below.
@@ -453,8 +453,8 @@ test.describe('Member role sections', () => {
       timeout: 20_000,
     });
     await expect(page.locator('.members__section-label')).toHaveText([
-      'Owner — 1',
-      'Member — 1',
+      'Owners — 1',
+      'Members — 1',
     ]);
 
     // Promote the plain member to moderator server-side; the open client should
@@ -469,7 +469,7 @@ test.describe('Member role sections', () => {
     );
 
     await expect(page.locator('.members__section-label')).toHaveText(
-      ['Owner — 1', 'Moderator — 1'],
+      ['Owners — 1', 'Moderators — 1'],
       { timeout: 20_000 },
     );
     await expect(

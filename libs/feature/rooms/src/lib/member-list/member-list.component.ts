@@ -15,7 +15,6 @@ import {
 import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import {
-  MEMBER_ROLE_LABEL,
   MEMBER_ROLE_ORDER,
   type MemberRole,
   type RoomAdministrationAvailability,
@@ -55,7 +54,15 @@ interface MemberRow {
  * spacers drift and the scrollbar lies; source and rendered-layout specs pin them together.
  */
 const HEADER_PX = 34;
-const ROW_PX = 44;
+const ROW_PX = 44; // member-list.component.scss pins the same 44px for the layout specs
+
+/** Group headers name the whole group, so they are plural; the singular names one person. */
+const GROUP_LABEL: Record<MemberRole, string> = {
+  owner: 'Owners',
+  admin: 'Admins',
+  moderator: 'Moderators',
+  member: 'Members',
+};
 
 /** Rendered beyond the viewport on each side, so a fast scroll does not show blanks. */
 const OVERSCAN_PX = 320;
@@ -72,11 +79,11 @@ const SMALL_LIST_ROWS = 80;
 /** A role section: a labelled group of members shown under its own header. */
 interface MemberSection {
   readonly role: MemberRole;
-  /** Visible header, e.g. "Admin". */
+  /** Visible header, e.g. "Admins". */
   readonly label: string;
   /** Icon shown beside the header, from Trinity's vocabulary, e.g. "crown". */
   readonly icon: TrnIconName;
-  /** Accessible name for the group landmark, e.g. "Admin, 2 members". */
+  /** Accessible name for the group landmark, e.g. "Admins, 2 members". */
   readonly ariaLabel: string;
   readonly rows: MemberRow[];
 }
@@ -231,7 +238,7 @@ export class MemberListComponent {
             (a.presence === null ? 3 : PRESENCE_RANK[a.presence]) -
             (b.presence === null ? 3 : PRESENCE_RANK[b.presence]),
         );
-      const label = MEMBER_ROLE_LABEL[role];
+      const label = GROUP_LABEL[role];
       const noun = sectionRows.length === 1 ? 'member' : 'members';
       return {
         role,
