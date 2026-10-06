@@ -414,3 +414,22 @@ describe('RoomsPage header for a linked room the client does not hold yet', () =
     expect(host.querySelector('[data-testid="chat-empty"]')).toBeNull();
   });
 });
+
+describe('RoomsPage body for a room the client holds but the user has not joined', () => {
+  for (const loadState of [
+    { kind: 'ready' },
+    { kind: 'empty' },
+  ] as const satisfies readonly TimelineLoadState[]) {
+    it(`shows the "Select a room" hero once its timeline is ${loadState.kind}`, () => {
+      const host = renderHeader(0, {
+        room: null,
+        routeRoom: '!left:hs',
+        loadState,
+      });
+      expect(host.querySelector('[data-testid="chat-empty"]')).not.toBeNull();
+      expect(
+        ngMocks.findAll(lastFixture.debugElement, SimpleMessageListComponent),
+      ).toHaveLength(0);
+    });
+  }
+});

@@ -388,7 +388,7 @@
         (opened)="onDrawerSwipedOpen()"
         (closed)="onDrawerSwipedClosed()"
       >
-        @if (store.activeRoomId()) {
+        @if (showTimeline()) {
           <!-- The list renders for a linked room the client does not hold yet too: its loadState
              shows the skeleton, or the unavailable error with Retry. Everything needing a real
              room stays behind activeRoom(): the composer (composerEnabled) and the panels.
