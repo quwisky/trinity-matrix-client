@@ -28,7 +28,7 @@ Ongoing streams belong to the runtime or capability that owns their lifetime. Ap
 
 The supported scopes are active account, all live accounts, exact account, and exact conversation. Releasing a scope detaches the exact listeners it attached, cancels queued work, prevents late generations from publishing, and resets the owned read model.
 
-## SDK-backed fetch caches
+## SDK-backed fetch caches {#sdk-fetch-caches}
 
 Some data is fetched from the homeserver on demand and cached per scope (a room, an account):
 for example, pinned messages outside the loaded timeline. Build every such cache the same way:
