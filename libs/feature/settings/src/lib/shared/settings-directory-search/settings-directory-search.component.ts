@@ -2,12 +2,15 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  computed,
   viewChild,
   input,
   model,
+  output,
 } from '@angular/core';
 import { TrnButton, TrnInput } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import type { SettingsSearchResult } from '../../settings-sections';
 
 @Component({
   selector: 'trn-settings-directory-search',
@@ -22,6 +25,13 @@ export class SettingsDirectorySearchComponent {
 
   readonly query = model('');
   readonly count = input(0);
+  /** The current matches; only the ones naming a part are listed here, sections are the nav. */
+  readonly results = input<readonly SettingsSearchResult[]>([]);
+  readonly resultSelected = output<SettingsSearchResult>();
+
+  protected readonly partResults = computed(() =>
+    this.results().filter(({ part }) => part),
+  );
 
   focus(): void {
     this.search().nativeElement.focus();

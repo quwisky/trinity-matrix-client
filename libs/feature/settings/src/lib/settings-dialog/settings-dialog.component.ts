@@ -11,6 +11,7 @@ import {
   effect,
   inject,
   input,
+  linkedSignal,
   signal,
   viewChild,
 } from '@angular/core';
@@ -25,6 +26,8 @@ import { provideConfigEditor } from '../advanced/config-editor-loader';
 import {
   SETTINGS_SECTIONS,
   matchingSettingsSections,
+  sectionsOfResults,
+  type SettingsSearchResult,
   type SettingsSectionDefinition,
 } from '../settings-sections';
 import { SettingsDirectorySearchComponent } from '../shared/settings-directory-search/settings-directory-search.component';
@@ -58,15 +61,19 @@ export class SettingsDialogComponent {
   /** A part of the initial section to scroll to; the dialog owns no URL, so none is written back. */
   readonly initialPart = input<string | null>(null);
   readonly query = signal('');
+  /**
+   * The part the layout should scroll to. It follows the layout's own scroll tracking, so
+   * picking a part again after scrolling away still scrolls; the dialog writes no URL.
+   */
+  readonly partTarget = linkedSignal<string | null>(() => this.initialPart());
+  readonly results = computed(() => matchingSettingsSections(this.query()));
   readonly layoutSections = computed<readonly TrnSettingsLayoutSection[]>(() =>
-    matchingSettingsSections(this.query()).map(
-      ({ path, label, icon, group }) => ({
-        id: path,
-        label,
-        icon,
-        group,
-      }),
-    ),
+    sectionsOfResults(this.results()).map(({ path, label, icon, group }) => ({
+      id: path,
+      label,
+      icon,
+      group,
+    })),
   );
   readonly buildLabel = `Trinity v${this.build.version} · ${this.build.commit}`;
   readonly wide = textScaledViewportSignal(48, this.destroyRef);
@@ -107,12 +114,28 @@ export class SettingsDialogComponent {
 
   selectSection(path: string): void {
     this.selectedPath.set(path);
+    this.partTarget.set(null);
+    this.focusSectionHeadingLater();
+  }
+
+  /** Open the section of a search hit, then scroll to the part it names. */
+  openResult({ section, part }: SettingsSearchResult): void {
+    this.selectedPath.set(section.path);
+    this.partTarget.set(part?.id ?? null);
+    this.clearRouteFocusTargets();
+    // The layout focuses the part's heading itself once it has scrolled there.
+    if (!part) {
+      this.focusSectionHeadingLater();
+    }
+  }
+
+  private focusSectionHeadingLater(): void {
     afterNextRender(() => this.layout()?.focusSectionHeading(), {
       injector: this.injector,
     });
   }
 
-  sectionInjector(section: SettingsSectionDefinition): Injector {
+  sectionInjector(section: SettingsSectionDefinition): EnvironmentInjector {
     return section.path === 'advanced'
       ? this.advancedInjector
       : this.environmentInjector;

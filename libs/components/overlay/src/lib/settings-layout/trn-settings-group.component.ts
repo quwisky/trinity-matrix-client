@@ -15,7 +15,7 @@ import { TrnSettingsParts, slugify } from './trn-settings-parts';
 @Component({
   selector: 'trn-settings-group',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'block' },
+  host: { class: 'block mt-8' },
   template: `
     <h2
       #heading
@@ -30,7 +30,7 @@ import { TrnSettingsParts, slugify } from './trn-settings-parts';
         {{ description() }}
       </p>
     }
-    <section [attr.aria-labelledby]="headingId()">
+    <section class="mt-2" [attr.aria-labelledby]="headingId()">
       <ng-content />
     </section>
   `,

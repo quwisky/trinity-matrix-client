@@ -1,42 +1,31 @@
-<div>
-  <trn-settings-section-heading
-    title="Account"
-    description="Manage the credentials and account controls provided by your homeserver."
-    [primary]="true"
-  />
-
+<trn-settings-group
+  title="Account"
+  description="Manage the credentials and account controls provided by your homeserver."
+>
   @if (accountManagement(); as management) {
     <!-- OIDC account: credentials + device management live at the provider. -->
-    <div class="flex flex-col gap-3 px-4 py-3">
-      <p class="text-13 text-muted-foreground">
-        Your password and sessions are managed by your identity provider.
-      </p>
+    <trn-settings-row
+      label="Credentials and sessions"
+      description="Your password and sessions are managed by your identity provider."
+    >
       <button
         trnBtn
         type="button"
-        class="self-start"
         (click)="openAccountManagement()"
         data-testid="manage-account"
       >
         Manage account
       </button>
-    </div>
+    </trn-settings-row>
   } @else {
-    <form
-      [formRoot]="form"
-      class="flex flex-col gap-4 px-4 py-3"
-      (submit)="submit()"
-    >
-      <p class="text-13 text-muted-foreground">Change your account password.</p>
-
-      <div class="flex flex-col gap-1.5">
-        <label trnLabel for="current-password">Current password</label>
+    <form [formRoot]="form" (submit)="submit()">
+      <trn-settings-row label="Current password" for="current-password">
         <div class="flex items-center gap-2">
           <input
             trnInput
             id="current-password"
             [type]="revealed().currentPassword ? 'text' : 'password'"
-            class="min-w-0 flex-1"
+            class="w-56 min-w-0 max-sm:flex-1"
             autocomplete="current-password"
             [formField]="form.currentPassword"
             data-testid="current-password"
@@ -59,16 +48,14 @@
             />
           </button>
         </div>
-      </div>
-
-      <div class="flex flex-col gap-1.5">
-        <label trnLabel for="new-password">New password</label>
+      </trn-settings-row>
+      <trn-settings-row label="New password" for="new-password">
         <div class="flex items-center gap-2">
           <input
             trnInput
             id="new-password"
             [type]="revealed().newPassword ? 'text' : 'password'"
-            class="min-w-0 flex-1"
+            class="w-56 min-w-0 max-sm:flex-1"
             autocomplete="new-password"
             [formField]="form.newPassword"
             data-testid="new-password"
@@ -91,16 +78,14 @@
             />
           </button>
         </div>
-      </div>
-
-      <div class="flex flex-col gap-1.5">
-        <label trnLabel for="confirm-password">Confirm new password</label>
+      </trn-settings-row>
+      <trn-settings-row label="Confirm new password" for="confirm-password">
         <div class="flex items-center gap-2">
           <input
             trnInput
             id="confirm-password"
             [type]="revealed().confirmPassword ? 'text' : 'password'"
-            class="min-w-0 flex-1"
+            class="w-56 min-w-0 max-sm:flex-1"
             autocomplete="new-password"
             [formField]="form.confirmPassword"
             data-testid="confirm-password"
@@ -123,23 +108,24 @@
             />
           </button>
         </div>
-      </div>
+      </trn-settings-row>
 
       @if (error(); as message) {
-        <p class="text-sm text-danger" data-testid="account-error">
+        <p class="m-0 py-3 text-sm text-danger" data-testid="account-error">
           {{ message }}
         </p>
       }
 
-      <button
-        trnBtn
-        type="submit"
-        class="self-start"
-        [disabled]="saving()"
-        data-testid="change-password"
-      >
-        {{ saving() ? 'Changing…' : 'Change password' }}
-      </button>
+      <div class="py-3">
+        <button
+          trnBtn
+          type="submit"
+          [disabled]="saving()"
+          data-testid="change-password"
+        >
+          {{ saving() ? 'Changing…' : 'Change password' }}
+        </button>
+      </div>
     </form>
   }
-</div>
+</trn-settings-group>

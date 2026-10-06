@@ -111,7 +111,7 @@ describe('Android navigation', () => {
       (path) => path.endsWith('/settings/appearance'),
       '/settings/appearance',
     );
-    await expect($('#appearance-heading')).toBeFocused({ wait: 10_000 });
+    await expect($('#part-appearance')).toBeFocused({ wait: 10_000 });
 
     await pressBack();
     await waitForPath((path) => path.endsWith('/settings'), '/settings');

@@ -8,7 +8,6 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
   KeyboardShortcutsService,
   chordFromEvent,
@@ -17,8 +16,13 @@ import {
   isBrowserReserved,
   type ShortcutView,
 } from '@trinity/platform-native';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 import { filter } from 'rxjs';
+import {
+  TrnAlertService,
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+  TrnToastService,
+} from '@trinity/components/overlay';
 
 /** A shortcut row plus the presentational bits the template needs. */
 interface ShortcutRow extends ShortcutView {
@@ -41,7 +45,7 @@ interface ShortcutGroup {
   selector: 'trn-shortcuts-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './shortcuts-section.component.html',
-  imports: [TrnButton, SettingsSectionHeadingComponent],
+  imports: [TrnSettingsRowComponent, TrnSettingsGroupComponent, TrnButton],
   host: {
     class: 'block',
     // Active only while capturing (guarded inside the handler), so it never intercepts

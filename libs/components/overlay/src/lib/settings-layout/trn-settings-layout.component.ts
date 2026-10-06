@@ -87,6 +87,10 @@ export class TrnSettingsLayoutComponent {
   );
   protected readonly parts = this.registry.parts;
   protected readonly currentPart = this.registry.current;
+  /** One group is the whole page, so there is nothing to navigate between. */
+  protected readonly hasParts = computed(
+    () => this.registry.parts().length > 1,
+  );
   protected readonly selectedLabel = computed(
     () => this.sections().find((s) => s.id === this.selectedSection())?.label,
   );

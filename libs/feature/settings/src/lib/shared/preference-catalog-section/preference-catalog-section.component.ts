@@ -17,13 +17,14 @@ import {
   type PreferenceContext,
 } from '@trinity/runtime/preferences';
 import { finalize, take } from 'rxjs';
-import { SettingsToggleRowDirective } from '../settings-toggle-row.directive';
+import { TrnSettingsRowComponent } from '@trinity/components/overlay';
 
 @Component({
   selector: 'trn-preference-catalog-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { class: 'block' },
   templateUrl: './preference-catalog-section.component.html',
-  imports: [TrnSwitchComponent, SettingsToggleRowDirective],
+  imports: [TrnSettingsRowComponent, TrnSwitchComponent],
 })
 export class PreferenceCatalogSectionComponent {
   private readonly store = inject(PreferenceStoreService);

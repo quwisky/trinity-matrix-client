@@ -1,13 +1,10 @@
-<div>
-  <trn-settings-section-heading
-    title="GIFs"
-    description="Choose a search provider and connect the API key used by the composer."
-    [primary]="true"
-  />
-
+<trn-settings-group
+  title="GIFs"
+  description="Choose a search provider and connect the API key used by the composer."
+>
   @if (migratedFrom(); as retired) {
     <p
-      class="mx-4 my-2 rounded-md border border-solid border-border px-3 py-2 text-13 text-muted-foreground"
+      class="my-2 rounded-md border border-solid border-border px-3 py-2 text-13 text-muted-foreground"
       role="status"
       data-testid="gif-provider-migrated"
     >
@@ -17,18 +14,17 @@
     </p>
   }
 
-  <trn-radio-group
-    class="px-4 py-2"
-    [options]="providerOptions"
-    [value]="provider()"
-    (valueChange)="onProviderChange($event)"
-  />
+  <trn-settings-row label="Search provider" labelId="gif-provider-heading">
+    <trn-radio-group
+      aria-labelledby="gif-provider-heading"
+      [options]="providerOptions"
+      [value]="provider()"
+      (valueChange)="onProviderChange($event)"
+    />
+  </trn-settings-row>
 
-  <div
-    class="flex items-end gap-3 border-b border-solid border-border px-4 py-2"
-  >
-    <div class="min-w-0 flex-1">
-      <label trnLabel for="gif-api-key">{{ selected().label }} API key</label>
+  <trn-settings-row [label]="selected().label + ' API key'" for="gif-api-key">
+    <div class="flex items-center gap-2">
       <input
         id="gif-api-key"
         trnInput
@@ -36,38 +32,38 @@
         autocomplete="off"
         autocapitalize="none"
         spellcheck="false"
-        class="mt-1"
+        class="w-56 max-sm:min-w-0 max-sm:flex-1"
         placeholder="Paste your API key"
         [value]="apiKeyDraft()"
         (input)="onKeyInput($event)"
         data-testid="gif-api-key"
       />
-    </div>
-    <button
-      trnBtn
-      size="sm"
-      class="ml-auto shrink-0"
-      [disabled]="!dirty()"
-      (click)="save()"
-      data-testid="gif-save"
-    >
-      Save
-    </button>
-    @if (configured()) {
       <button
         trnBtn
-        presentation="ghost"
         size="sm"
         class="shrink-0"
-        (click)="clear()"
-        data-testid="gif-clear"
+        [disabled]="!dirty()"
+        (click)="save()"
+        data-testid="gif-save"
       >
-        Clear
+        Save
       </button>
-    }
-  </div>
+      @if (configured()) {
+        <button
+          trnBtn
+          presentation="ghost"
+          size="sm"
+          class="shrink-0"
+          (click)="clear()"
+          data-testid="gif-clear"
+        >
+          Clear
+        </button>
+      }
+    </div>
+  </trn-settings-row>
 
-  <p class="block px-4 py-2 text-13 text-muted-foreground">
+  <p class="m-0 py-3 text-13 text-muted-foreground">
     @if (configured()) {
       GIF search is enabled — pick GIFs from the composer’s GIF button.
     } @else {
@@ -82,4 +78,4 @@
       Get a free {{ selected().label }} API key</a
     >.
   </p>
-</div>
+</trn-settings-group>

@@ -1,16 +1,16 @@
-<trn-settings-section-heading
+<trn-settings-group
   title="Experimental"
   description="Try unfinished features that may still change or behave unexpectedly."
-  [primary]="true"
-/>
-<label trnSettingsToggleRow data-testid="flag-virtual-timeline">
-  <trn-switch
-    [checked]="flags.virtualTimeline()"
-    (checkedChange)="flags.setVirtualTimeline($event)"
-  />
-  Virtualized timeline
-</label>
-<p class="block px-4 py-2 text-13 text-muted-foreground">
-  Renders only the messages currently on screen, keeping memory low and
-  scrolling smooth in very long rooms.
-</p>
+>
+  <trn-settings-row
+    label="Virtualized timeline"
+    description="Renders only the messages currently on screen, keeping memory low and scrolling smooth in very long rooms."
+    data-testid="flag-virtual-timeline"
+  >
+    <trn-switch
+      aria-label="Virtualized timeline"
+      [checked]="flags.virtualTimeline()"
+      (checkedChange)="flags.setVirtualTimeline($event)"
+    />
+  </trn-settings-row>
+</trn-settings-group>

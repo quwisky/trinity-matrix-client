@@ -15,7 +15,10 @@ import {
   runWithBusy,
 } from '@trinity/util/ui';
 import { HomeserverBlockComponent } from './homeserver-block.component';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+} from '@trinity/components/overlay';
 
 /**
  * Server section: one block per signed-in account, saying what that account's homeserver is
@@ -42,9 +45,10 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './server-section.component.html',
   imports: [
+    TrnSettingsRowComponent,
+    TrnSettingsGroupComponent,
     TrnButton,
     HomeserverBlockComponent,
-    SettingsSectionHeadingComponent,
   ],
 })
 export class ServerSectionComponent {

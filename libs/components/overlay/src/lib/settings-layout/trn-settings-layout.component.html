@@ -63,9 +63,7 @@
               <trn-icon name="chevron-right" size="md" variant="muted" />
             }
           </button>
-          @if (
-            selectedSection() === section.id && !compact() && parts().length
-          ) {
+          @if (selectedSection() === section.id && !compact() && hasParts()) {
             <ul class="settings-layout__parts">
               @for (part of parts(); track part.id) {
                 <li>
@@ -117,7 +115,7 @@
         @if (!listView()) {
           <ng-container [ngTemplateOutlet]="heading" />
         }
-        @if (compact() && !listView() && parts().length) {
+        @if (compact() && !listView() && hasParts()) {
           <nav
             class="settings-layout__chips no-scrollbar"
             [attr.aria-label]="'Parts of ' + selectedLabel()"

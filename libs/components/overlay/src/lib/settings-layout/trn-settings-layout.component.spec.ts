@@ -774,3 +774,51 @@ describe('TrnSettingsLayoutComponent parts', () => {
     expect(backRequested).not.toHaveBeenCalled();
   });
 });
+
+const solo = { compact: false };
+
+@Component({
+  imports: [TrnSettingsLayoutComponent, TrnSettingsGroupComponent],
+  template: `
+    <trn-settings-layout
+      title="Preferences"
+      [sections]="sections"
+      selectedSection="general"
+      [compact]="compact"
+      [directoryVisible]="!compact"
+    >
+      <trn-settings-group title="Only group" />
+    </trn-settings-layout>
+  `,
+})
+class SoloGroupHostComponent {
+  readonly sections = sections;
+  readonly compact = solo.compact;
+}
+
+describe('TrnSettingsLayoutComponent with a single group', () => {
+  const mountSolo = async (compact: boolean): Promise<HTMLElement> => {
+    solo.compact = compact;
+    const { fixture, container } = await render(SoloGroupHostComponent, {
+      providers: [provideTrnIcons()],
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return container as HTMLElement;
+  };
+
+  it('offers no part rows for one group', async () => {
+    const container = await mountSolo(false);
+    expect(container.querySelector('#part-only-group')).toBeTruthy();
+    expect(
+      container.querySelectorAll('[data-testid^="settings-part-"]'),
+    ).toHaveLength(0);
+  });
+
+  it('offers no chips for one group on compact', async () => {
+    const container = await mountSolo(true);
+    expect(container.querySelector('#part-only-group')).toBeTruthy();
+    expect(container.querySelector('.settings-layout__chips')).toBeNull();
+  });
+});

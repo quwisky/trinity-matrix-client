@@ -113,7 +113,7 @@ test.describe('Switch reflects its value', () => {
       offset: await thumbOffset(row),
     };
 
-    await row.click();
+    await control(row).click();
     if (wasChecked) {
       await expect(control(row)).not.toBeChecked({ timeout: 10_000 });
     } else {
@@ -148,7 +148,7 @@ test.describe('Switch reflects its value', () => {
 
     const receiptsState = await control(receipts).isChecked();
     if ((await control(previews).isChecked()) === receiptsState) {
-      await previews.click();
+      await control(previews).click();
       if (receiptsState) {
         await expect(control(previews)).not.toBeChecked({ timeout: 10_000 });
       } else {

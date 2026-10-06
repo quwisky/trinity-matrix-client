@@ -226,7 +226,7 @@ test.describe('Settings', () => {
     await expect(mode).toBeVisible();
     await expect(layout).toBeVisible();
     await expect(
-      page.getByRole('radiogroup', { name: 'Mode and theme' }),
+      page.getByRole('radiogroup', { name: 'Mode', exact: true }),
     ).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Theme' })).toBeVisible();
     await expect(
@@ -373,6 +373,37 @@ test.describe('Settings', () => {
       )
       .toBe('solid');
   });
+
+  for (const viewport of [
+    { width: 1280, height: 800 },
+    { width: 390, height: 844 },
+  ]) {
+    test(`${viewport.width}px: every row label starts where the section title starts`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      for (const section of ['appearance', 'notifications', 'privacy']) {
+        await page.goto(`/settings/${section}`);
+        const title = page.locator('.settings-layout__column h1');
+        await expect(title).toBeVisible({ timeout: 20_000 });
+        const rows = page.locator('[data-slot="settings-row"]');
+        await expect(rows.first()).toBeVisible();
+        const titleX = (await title.boundingBox())!.x;
+        const labelXs = await rows.evaluateAll((elements) =>
+          elements.map(
+            (row) =>
+              row
+                .querySelector(':scope > div > :first-child')!
+                .getBoundingClientRect().left,
+          ),
+        );
+        expect(labelXs.length, section).toBeGreaterThan(0);
+        for (const x of labelXs) {
+          expect(Math.abs(x - titleX), section).toBeLessThanOrEqual(1);
+        }
+      }
+    });
+  }
 
   test('desktop: close leaves settings without changing the room route', async ({
     page,

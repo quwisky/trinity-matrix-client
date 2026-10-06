@@ -72,7 +72,7 @@ describe('Android Appearance', () => {
         ),
       { timeout: 20_000, timeoutMsg: 'never reached /settings/appearance' },
     );
-    const heading = $('#appearance-heading');
+    const heading = $('#part-appearance');
     await expect(heading).toHaveText('Appearance');
     await expect(heading).toBeFocused();
 

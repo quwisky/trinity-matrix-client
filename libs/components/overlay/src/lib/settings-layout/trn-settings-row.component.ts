@@ -14,11 +14,15 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
       @if (for()) {
         <label
           [for]="for()"
+          [attr.id]="labelId()"
           class="font-semibold text-[var(--trinity-text-bright)]"
           >{{ label() }}</label
         >
       } @else {
-        <div class="font-semibold text-[var(--trinity-text-bright)]">
+        <div
+          [attr.id]="labelId()"
+          class="font-semibold text-[var(--trinity-text-bright)]"
+        >
           {{ label() }}
         </div>
       }
@@ -35,4 +39,6 @@ export class TrnSettingsRowComponent {
   readonly label = input.required<string>();
   readonly description = input<string>();
   readonly for = input<string>();
+  /** Id of the label element, for a control that is named by it (`aria-labelledby`). */
+  readonly labelId = input<string>();
 }

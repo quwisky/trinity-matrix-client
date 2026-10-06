@@ -91,7 +91,6 @@ test.describe('Settings', () => {
         };
       });
 
-    expect((await detailGeometry()).overflows).toBe(false);
     await page.getByTestId('hs-unstable').locator('summary').click();
     await expect(page.getByTestId('hs-unstable')).toHaveAttribute('open', '');
 
@@ -100,15 +99,11 @@ test.describe('Settings', () => {
     expect(expanded.documentOverflow).toBeLessThanOrEqual(1);
     expect(expanded.contained).toBe(true);
     expect(expanded.horizontalOverflow).toBeLessThanOrEqual(1);
-    // Native Settings is routed, with host chrome above the detail pane. Its one
-    // content scroller may be needed. Synapse's short flag list still fits the
-    // fixed-height desktop dialog; Tuwunel advertises ~40 flags, which wrap compactly
-    // (below) but cannot fit 600px, so the detail pane must be the one scroller.
-    if (session.kind === 'tuwunel') {
-      expect(expanded.overflows).toBe(true);
+    // The settings layer is the viewport, so the detail pane is its one content scroller.
+    // It may need to scroll once the flags are open (Tuwunel advertises ~40, which wrap
+    // compactly below); what matters is that no ancestor grows a second scrollbar.
+    if (expanded.overflows) {
       expect(expanded.scrolls).toBe(true);
-    } else {
-      expect(expanded.overflows).toBe(false);
     }
     const flagRows = await page
       .getByTestId('hs-unstable')

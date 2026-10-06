@@ -30,6 +30,8 @@ test.describe('Settings directory search', () => {
     const field = search(page);
     const resultStatus = status(page);
     await expect(resultStatus).toHaveAttribute('aria-live', 'polite');
+    // The count is read aloud only: a screen-reader-only box, not a visible line.
+    await expect(resultStatus).toHaveClass(/sr-only/);
     const initialUrl = page.url();
     await field.fill('  PREF ');
 
@@ -58,7 +60,6 @@ test.describe('Settings directory search', () => {
 
     await field.fill('does-not-exist');
     await expect(resultStatus).toContainText('0 sections found');
-    await expect(resultStatus).toContainText('No sections found.');
     await expect(
       page.getByText('No sections found.', { exact: true }),
     ).toBeVisible();
@@ -88,6 +89,26 @@ test.describe('Settings directory search', () => {
       'page',
     );
     await expect(page.getByRole('heading', { name: 'Privacy' })).toBeFocused();
+  });
+
+  test('a part result opens its section and scrolls to the part', async ({
+    page,
+  }) => {
+    const field = search(page);
+    await field.fill('timeline');
+    await expect(status(page)).toHaveText('1 section found');
+    await page
+      .getByRole('button', { name: 'Appearance: Timeline', exact: true })
+      .click();
+
+    await expect(page.getByTestId('settings-nav-appearance')).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(page.locator('#part-timeline')).toBeInViewport({
+      timeout: 20_000,
+    });
+    await expect(page.locator('#part-timeline')).toBeFocused();
   });
 
   test.describe('Pixel 5 routed history', () => {

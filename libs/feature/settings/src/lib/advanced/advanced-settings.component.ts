@@ -12,7 +12,6 @@ import {
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnLabel } from '@trinity/components/controls';
-import { TrnToastService } from '@trinity/components/overlay';
 import { TrnTextarea } from '@trinity/components/controls';
 import {
   AppConfigService,
@@ -33,8 +32,11 @@ import {
   readPickedConfigFile$,
 } from './import-config';
 import { AdvancedSettingsResetService } from './advanced-settings-reset.service';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 import { defer, filter, throwError } from 'rxjs';
+import {
+  TrnSettingsGroupComponent,
+  TrnToastService,
+} from '@trinity/components/overlay';
 
 /** Two digits, so the dated filename sorts lexically. */
 function pad(value: number): string {
@@ -100,11 +102,11 @@ function exportFileName(now: Date): string {
   host: { class: 'block' },
   providers: [AdvancedSettingsResetService],
   imports: [
+    TrnSettingsGroupComponent,
     ConfigEditorOutletDirective,
     TrnButton,
     TrnLabel,
     TrnTextarea,
-    SettingsSectionHeadingComponent,
   ],
 })
 export class AdvancedSettingsComponent {

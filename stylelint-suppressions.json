@@ -219,11 +219,6 @@
       "count": 6
     }
   },
-  "libs/feature/settings/src/lib/server/homeserver-block.component.scss": {
-    "declaration-property-value-disallowed-list": {
-      "count": 11
-    }
-  },
   "libs/application/runtime/src/lib/application-root/system-status/system-status.component.scss": {
     "declaration-property-value-disallowed-list": {
       "count": 11

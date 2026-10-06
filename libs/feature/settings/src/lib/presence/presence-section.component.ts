@@ -8,7 +8,6 @@ import {
 } from '@angular/core';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
-import { TrnLabel } from '@trinity/components/controls';
 import {
   TrnRadioGroupComponent,
   type TrnRadioOption,
@@ -16,7 +15,10 @@ import {
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { presenceLabel, type PresenceState } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+} from '@trinity/components/overlay';
 
 /** The presence states a user can set for themselves (Matrix has no "invisible"). */
 const PRESENCE_OPTIONS: readonly PresenceState[] = [
@@ -38,11 +40,11 @@ const MAX_STATUS_LENGTH = 60;
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './presence-section.component.html',
   imports: [
+    TrnSettingsRowComponent,
+    TrnSettingsGroupComponent,
     TrnButton,
     TrnInput,
-    TrnLabel,
     TrnRadioGroupComponent,
-    SettingsSectionHeadingComponent,
   ],
 })
 export class PresenceSectionComponent {

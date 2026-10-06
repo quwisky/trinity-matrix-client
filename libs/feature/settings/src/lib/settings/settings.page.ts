@@ -28,6 +28,8 @@ import { MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import {
   SETTINGS_SECTIONS,
   matchingSettingsSections,
+  sectionsOfResults,
+  type SettingsSearchResult,
 } from '../settings-sections';
 import { SettingsDirectorySearchComponent } from '../shared/settings-directory-search/settings-directory-search.component';
 
@@ -68,7 +70,8 @@ export class SettingsPage {
   private lastFocusedSection: string | null = null;
 
   readonly query = signal('');
-  readonly menu = computed(() => matchingSettingsSections(this.query()));
+  readonly results = computed(() => matchingSettingsSections(this.query()));
+  readonly menu = computed(() => sectionsOfResults(this.results()));
   protected readonly layoutSections = computed<
     readonly TrnSettingsLayoutSection[]
   >(() =>
@@ -193,12 +196,18 @@ export class SettingsPage {
   }
 
   /** Open a section from the directory; wide switches replace history. */
-  protected selectSection(path: string): void {
+  protected selectSection(path: string, part?: string): void {
     this.onSectionNavigate();
     void this.router.navigate([path], {
       relativeTo: this.route,
       replaceUrl: this.wide(),
+      fragment: part,
     });
+  }
+
+  /** Open the section of a search hit; the fragment names the part to scroll to. */
+  protected openResult({ section, part }: SettingsSearchResult): void {
+    this.selectSection(section.path, part?.id);
   }
 
   /**

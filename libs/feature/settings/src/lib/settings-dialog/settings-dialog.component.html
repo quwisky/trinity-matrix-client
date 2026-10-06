@@ -2,13 +2,14 @@
   title="Settings"
   [sections]="layoutSections()"
   [selectedSection]="selectedPath()"
-  [initialPart]="initialPart()"
+  [initialPart]="partTarget()"
   [compact]="!wide()"
   [directoryVisible]="wide() || !selectedPath()"
   testId="settings-dialog"
   navItemTestIdPrefix="settings-nav-"
   detailTestId="settings-detail"
   closeTestId="close-settings"
+  (partSelected)="partTarget.set($event)"
   (sectionSelected)="selectSection($event); clearRouteFocusTargets()"
   (backRequested)="goBackOrClose()"
   (closeRequested)="close()"
@@ -17,12 +18,14 @@
     settings-directory-header
     [(query)]="query"
     [count]="layoutSections().length"
+    [results]="results()"
+    (resultSelected)="openResult($event)"
   />
   @if (selectedSection(); as section) {
     <ng-container
       [ngComponentOutlet]="section.component"
       [ngComponentOutletInputs]="sectionInputs()"
-      [ngComponentOutletInjector]="sectionInjector(section)"
+      [ngComponentOutletEnvironmentInjector]="sectionInjector(section)"
     />
   }
   <p settings-nav-footer data-testid="settings-build">{{ buildLabel }}</p>

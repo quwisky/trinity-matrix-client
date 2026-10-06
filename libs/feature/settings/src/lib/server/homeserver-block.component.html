@@ -1,10 +1,13 @@
 <section
-  class="hs-block"
+  class="pt-4"
   data-testid="server-block"
   [attr.data-account]="userId()"
   [attr.aria-label]="'Homeserver for ' + displayName()"
 >
-  <h3 class="hs-block__account" data-testid="hs-account">
+  <h3
+    class="m-0 text-sm font-semibold [overflow-wrap:anywhere] text-[var(--trinity-text-bright)]"
+    data-testid="hs-account"
+  >
     {{ displayName() }}
   </h3>
 
@@ -20,18 +23,22 @@
   </p>
 
   @if (info(); as server) {
-    <dl class="hs-block__rows">
-      <dt>Software</dt>
-      <dd data-testid="hs-software">
-        @if (softwareLabel(); as label) {
-          {{ label }}
-        } @else {
-          <span class="hs-block__unknown">Unknown</span>
-        }
-      </dd>
+    <div>
+      <trn-settings-row label="Software">
+        <span [class]="valueClass" data-testid="hs-software">
+          @if (softwareLabel(); as label) {
+            {{ label }}
+          } @else {
+            <span class="text-[var(--trinity-text-muted)]">Unknown</span>
+          }
+        </span>
+      </trn-settings-row>
 
-      <dt>Homeserver</dt>
-      <dd data-testid="hs-url">{{ server.baseUrl }}</dd>
+      <trn-settings-row label="Homeserver">
+        <span [class]="valueClass" data-testid="hs-url">{{
+          server.baseUrl
+        }}</span>
+      </trn-settings-row>
 
       @if (server.discovered) {
         <!--
@@ -40,62 +47,77 @@
           from the server name looks identical from here. Showing both values says what is
           true without claiming a mechanism.
         -->
-        <dt>Server name</dt>
-        <dd data-testid="hs-server-name">
-          {{ server.serverName }}
-          <span class="hs-block__note">
-            — the homeserver above is a different address from this name
+        <trn-settings-row label="Server name">
+          <span [class]="valueClass" data-testid="hs-server-name">
+            {{ server.serverName }}
+            <span class="text-[var(--trinity-text-muted)]">
+              — the homeserver above is a different address from this name
+            </span>
           </span>
-        </dd>
+        </trn-settings-row>
       }
 
-      <dt>Spec versions</dt>
-      <dd data-testid="hs-spec-versions">
-        @if (server.specVersions; as versions) {
-          {{ versions.join(', ') }}
-        } @else {
-          <span class="hs-block__unknown">Unknown</span>
-        }
-      </dd>
+      <trn-settings-row label="Spec versions">
+        <span [class]="valueClass" data-testid="hs-spec-versions">
+          @if (server.specVersions; as versions) {
+            {{ versions.join(', ') }}
+          } @else {
+            <span class="text-[var(--trinity-text-muted)]">Unknown</span>
+          }
+        </span>
+      </trn-settings-row>
 
       @if (server.capabilities; as capabilities) {
         @if (capabilities.defaultRoomVersion; as roomVersion) {
-          <dt>Default room version</dt>
-          <dd data-testid="hs-room-version">{{ roomVersion }}</dd>
+          <trn-settings-row label="Default room version">
+            <span [class]="valueClass" data-testid="hs-room-version">{{
+              roomVersion
+            }}</span>
+          </trn-settings-row>
         }
         @if (capabilities.canChangePassword !== null) {
-          <dt>Password change</dt>
-          <dd data-testid="hs-change-password">
-            {{
-              capabilities.canChangePassword
-                ? 'Supported here'
-                : 'Not offered by this server'
-            }}
-          </dd>
+          <trn-settings-row label="Password change">
+            <span [class]="valueClass" data-testid="hs-change-password">
+              {{
+                capabilities.canChangePassword
+                  ? 'Supported here'
+                  : 'Not offered by this server'
+              }}
+            </span>
+          </trn-settings-row>
         }
       }
 
       @if (server.unstableFeatures?.length) {
-        <dt>Unstable features</dt>
-        <dd>
+        <trn-settings-row label="Unstable features">
           <!--
             Behind a disclosure: a server advertises dozens of these and almost nobody wants
             the list, but the count answers "is this server running anything unusual?" at a
             glance, which is the same question the version row answers.
           -->
-          <details data-testid="hs-unstable">
-            <summary>{{ server.unstableFeatures.length }} enabled</summary>
-            <ul class="hs-block__flags">
+          <details [class]="valueClass" data-testid="hs-unstable">
+            <summary class="cursor-pointer">
+              {{ server.unstableFeatures.length }} enabled
+            </summary>
+            <!-- Wrapped rather than one flag per line: a server advertises a dozen or more,
+                 and a line each made the disclosure tall enough to scroll the pane. -->
+            <ul
+              class="m-0 mt-1 flex list-none flex-wrap justify-end gap-x-3 gap-y-0.5 p-0 font-mono text-xs text-[var(--trinity-text-muted)]"
+            >
               @for (flag of server.unstableFeatures; track flag) {
-                <li>{{ flag }}</li>
+                <li class="max-w-full [overflow-wrap:anywhere]">{{ flag }}</li>
               }
             </ul>
           </details>
-        </dd>
+        </trn-settings-row>
       }
-    </dl>
+    </div>
   } @else if (loading()) {
-    <p class="hs-block__status" aria-hidden="true" data-testid="hs-loading">
+    <p
+      class="m-0 pt-1 text-13 text-[var(--trinity-text-muted)]"
+      aria-hidden="true"
+      data-testid="hs-loading"
+    >
       Checking this server…
     </p>
   } @else {
@@ -105,7 +127,11 @@
       section lists has a live client — but this is the branch that would actually produce
       the silent blank the error branch below is wired to prevent.
     -->
-    <p class="hs-block__status" aria-hidden="true" data-testid="hs-unchecked">
+    <p
+      class="m-0 pt-1 text-13 text-[var(--trinity-text-muted)]"
+      aria-hidden="true"
+      data-testid="hs-unchecked"
+    >
       Not checked yet.
     </p>
   }
@@ -115,7 +141,7 @@
       Unreachable by construction — the probe resolves rather than throws — and kept so a
       service that starts failing later says so instead of rendering a silent blank.
     -->
-    <p class="hs-block__status hs-block__status--error" role="alert">
+    <p class="m-0 pt-1 text-13 text-danger" role="alert">
       {{ message }}
     </p>
   }

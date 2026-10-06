@@ -77,7 +77,7 @@ test.describe('Notification sound', () => {
     const box = sound.locator('button, input').first();
     await expect(box).toHaveAttribute('aria-checked', 'true');
 
-    await sound.click();
+    await sound.getByRole('switch').click();
 
     // Written to the SERVER, not just to this window.
     await expect
@@ -97,7 +97,7 @@ test.describe('Notification sound', () => {
     ).toHaveAttribute('aria-checked', 'false', { timeout: 20_000 });
 
     // Back on again.
-    await page.getByTestId('notif-sound').click();
+    await page.getByTestId('notif-sound').getByRole('switch').click();
     await expect
       .poll(
         async () => (await storedSound(request, hs, userId, token))?.enabled,

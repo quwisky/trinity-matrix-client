@@ -19,6 +19,16 @@ class ControlHostComponent {}
 })
 class LabelHostComponent {}
 
+@Component({
+  imports: [TrnSettingsRowComponent],
+  template: `<trn-settings-row label="Theme" labelId="theme-heading"
+    ><button role="combobox" aria-labelledby="theme-heading">
+      Graphite
+    </button></trn-settings-row
+  >`,
+})
+class LabelIdHostComponent {}
+
 describe('TrnSettingsRowComponent', () => {
   it('renders label, description and the projected control', async () => {
     const { container } = await render(ControlHostComponent);
@@ -31,6 +41,15 @@ describe('TrnSettingsRowComponent', () => {
   it('renders a label bound to the control when for is set', async () => {
     await render(LabelHostComponent);
     expect(screen.getByLabelText('Name').id).toBe('name-input');
+  });
+
+  it('puts labelId on the label so a control can be named by it', async () => {
+    await render(LabelIdHostComponent);
+    const combo = screen.getByRole('combobox');
+    expect(combo.getAttribute('aria-labelledby')).toBe('theme-heading');
+    expect(document.getElementById('theme-heading')?.textContent?.trim()).toBe(
+      'Theme',
+    );
   });
 
   it('has a subtle bottom divider, block padding and no inline spacing', async () => {

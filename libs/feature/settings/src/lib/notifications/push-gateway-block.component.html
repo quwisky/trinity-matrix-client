@@ -1,24 +1,17 @@
-<div>
-  <trn-settings-section-heading
-    title="Push gateway (this device)"
-    headingId="push-gateway-heading"
-  />
-  <p class="px-4 py-1 text-13 text-muted-foreground">
-    Trinity delivers mobile notifications through a push gateway, operated by
-    whoever runs it — it is not part of your homeserver. This setting applies to
-    this device only.
-  </p>
-
+<trn-settings-group
+  title="Push gateway (this device)"
+  description="Trinity delivers mobile notifications through a push gateway, operated by whoever runs it — it is not part of your homeserver. This setting applies to this device only."
+>
   @if (!supported()) {
     <p
-      class="px-4 py-2 text-13 text-muted-foreground"
+      class="m-0 py-3 text-sm text-muted-foreground"
       data-testid="push-gateway-unsupported"
     >
       Push delivery applies on iOS and Android. On desktop and web, Trinity
       notifies you over its live connection.
     </p>
   } @else {
-    <div class="px-4 py-2">
+    <div class="py-3">
       <label trnLabel for="push-gateway-url">Gateway URL</label>
       <input
         id="push-gateway-url"
@@ -153,4 +146,4 @@
   <p id="push-gateway-help" class="sr-only">
     The gateway URL your homeserver sends push notifications to.
   </p>
-</div>
+</trn-settings-group>

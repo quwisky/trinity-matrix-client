@@ -84,6 +84,20 @@ describe('TrnSettingsGroupComponent', () => {
   });
 });
 
+describe('TrnSettingsGroupComponent spacing', () => {
+  it('separates groups, and the heading from its first row, with block margin only', async () => {
+    const { fixture } = await render(TrnSettingsGroupComponent, {
+      inputs: { title: 'Theme', description: 'How it looks' },
+    });
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.classList.contains('mt-8')).toBe(true);
+    expect(host.querySelector('section')!.classList.contains('mt-2')).toBe(
+      true,
+    );
+    expect(host.className).not.toMatch(/\b(p|px|ps|pe)-/);
+  });
+});
+
 describe('slugify', () => {
   it('lowercases and dashes', () => {
     expect(slugify('Code blocks')).toBe('code-blocks');

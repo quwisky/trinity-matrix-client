@@ -1,10 +1,11 @@
-<div>
-  <div class="flex items-center justify-between pr-4">
-    <trn-settings-section-heading
-      title="Server"
-      description="See what each signed-in account's homeserver is running."
-      [primary]="true"
-    />
+<trn-settings-group
+  title="Server"
+  description="See what each signed-in account's homeserver is running."
+>
+  <trn-settings-row
+    label="Checked once per session"
+    description="Use Check again to see whether anything has changed since. Some servers do not publish their software version, and those simply read “Unknown”."
+  >
     @if (accounts().length) {
       <button
         trnBtn
@@ -17,26 +18,19 @@
         {{ refreshing() ? 'Checking…' : 'Check again' }}
       </button>
     }
-  </div>
-
-  <p class="px-4 pb-2 text-sm text-muted-foreground">
-    What each signed-in account's homeserver is running. Checked once per
-    session — use Check again to see whether anything has changed since. Some
-    servers do not publish their software version, and those simply read
-    “Unknown”.
-  </p>
+  </trn-settings-row>
 
   @for (userId of accounts(); track userId) {
     <trn-homeserver-block [userId]="userId" />
   } @empty {
-    <p class="px-4 py-2 text-13 text-muted-foreground">
+    <p class="m-0 py-3 text-13 text-muted-foreground">
       No account is signed in.
     </p>
   }
 
   @if (showBuildLine()) {
     <p
-      class="px-4 py-2 text-13 text-muted-foreground"
+      class="m-0 py-3 text-13 text-muted-foreground"
       data-testid="server-build"
     >
       {{ buildLabel }}
@@ -44,6 +38,6 @@
   }
 
   @if (refreshError(); as message) {
-    <p class="px-4 py-2 text-13 text-danger" role="alert">{{ message }}</p>
+    <p class="m-0 py-3 text-13 text-danger" role="alert">{{ message }}</p>
   }
-</div>
+</trn-settings-group>

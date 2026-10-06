@@ -1,8 +1,11 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { within } from '@testing-library/dom';
-import { BUILD_INFO } from '@trinity/platform-native';
-import { TrnDialogRef } from '@trinity/components/overlay';
+import { BUILD_INFO, FeatureFlagsService } from '@trinity/platform-native';
+import { TrnDialogRef, TrnSettingsParts } from '@trinity/components/overlay';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { matchingSettingsSections } from '../settings-sections';
 import { SettingsDialogComponent } from './settings-dialog.component';
 
 describe('SettingsDialogComponent', () => {
@@ -97,6 +100,44 @@ describe('SettingsDialogComponent', () => {
         'input[type="search"]',
       )!.value,
     ).toBe('');
+  });
+
+  it('opens the section of a part result and hands the part to the layout', () => {
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    fixture.detectChanges();
+    const dialog = fixture.componentInstance;
+    const [result] = matchingSettingsSections('code');
+
+    dialog.openResult(result);
+    expect(dialog.selectedPath()).toBe('appearance');
+    expect(dialog.partTarget()).toBe('code-blocks');
+
+    // Picking the same part again after scrolling elsewhere must scroll again.
+    dialog.partTarget.set('timeline');
+    dialog.openResult(result);
+    expect(dialog.partTarget()).toBe('code-blocks');
+
+    // A plain section pick drops the part.
+    dialog.selectSection('privacy');
+    expect(dialog.partTarget()).toBeNull();
+    fixture.destroy();
+  });
+
+  it('renders a section inside the layout, so its groups register as parts', async () => {
+    TestBed.overrideProvider(FeatureFlagsService, {
+      useValue: { virtualTimeline: signal(false), setVirtualTimeline: vi.fn() },
+    });
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    fixture.componentRef.setInput('initialSection', 'experimental');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const group = fixture.debugElement.query(By.css('trn-settings-group'));
+    expect(group).not.toBeNull();
+    const registry = group.injector.get(TrnSettingsParts, null);
+    expect(registry?.parts().map((part) => part.id)).toEqual(['experimental']);
+    fixture.destroy();
   });
 
   it('renders the accessible settings directory and closes explicitly', () => {

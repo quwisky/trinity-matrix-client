@@ -18,6 +18,8 @@
     settings-directory-header
     [(query)]="query"
     [count]="menu().length"
+    [results]="results()"
+    (resultSelected)="openResult($event)"
   />
   <router-outlet (activate)="onSectionActivated()" />
   <p settings-nav-footer data-testid="settings-build">{{ buildLabel }}</p>

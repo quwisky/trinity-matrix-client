@@ -1,40 +1,25 @@
-<div>
-  <trn-settings-section-heading
-    title="Devices"
-    description="Review, verify, rename and sign out devices connected to this account."
-    [primary]="true"
-  />
-
+<trn-settings-group
+  title="Devices"
+  description="Review, verify, rename and sign out devices connected to this account."
+>
   @for (device of devices(); track device.id) {
-    <div
-      class="flex items-center gap-3 border-b border-solid border-border px-4 py-2"
+    <trn-settings-row
+      [label]="device.displayName"
+      [description]="
+        device.id +
+        (device.lastSeenIp ? ' · Last seen from ' + device.lastSeenIp : '')
+      "
       data-testid="device-row"
     >
-      <div class="min-w-0 flex-1">
-        <div
-          class="flex flex-wrap items-center gap-1.5 text-sm font-medium text-foreground"
-        >
-          <span class="device-name">{{ device.displayName }}</span>
-          @if (device.isCurrent) {
-            <span trnBadge>This device</span>
-          }
-          @if (device.isVerified) {
-            <span trnBadge variant="success">Verified</span>
-          } @else {
-            <span trnBadge variant="warning">Unverified</span>
-          }
-        </div>
-        <div class="truncate text-xs text-muted-foreground">
-          {{ device.id }}
-        </div>
-        @if (device.lastSeenIp) {
-          <div class="truncate text-xs text-muted-foreground">
-            Last seen from {{ device.lastSeenIp }}
-          </div>
+      <div class="flex flex-wrap items-center justify-end gap-1.5">
+        @if (device.isCurrent) {
+          <span trnBadge>This device</span>
         }
-      </div>
-
-      <div class="ml-auto flex shrink-0 items-center gap-1">
+        @if (device.isVerified) {
+          <span trnBadge variant="success">Verified</span>
+        } @else {
+          <span trnBadge variant="warning">Unverified</span>
+        }
         <button
           trnBtn
           presentation="ghost"
@@ -65,27 +50,23 @@
           </button>
         }
       </div>
-    </div>
+    </trn-settings-row>
   } @empty {
     @if (loading()) {
-      <div class="px-4 py-2 text-13 text-muted-foreground" aria-live="polite">
+      <p class="m-0 py-3 text-13 text-muted-foreground" aria-live="polite">
         Loading devices…
-      </div>
+      </p>
     }
   }
 
   @if (error(); as e) {
-    <p
-      class="block px-4 py-2 text-13 text-danger"
-      role="alert"
-      aria-live="assertive"
-    >
+    <p class="m-0 py-3 text-13 text-danger" role="alert" aria-live="assertive">
       {{ e }}
     </p>
   }
 
   @if (hasUnverified()) {
-    <div class="px-4 py-2">
+    <div class="py-3">
       <button
         trnBtn
         presentation="ghost"
@@ -98,4 +79,4 @@
       </button>
     </div>
   }
-</div>
+</trn-settings-group>

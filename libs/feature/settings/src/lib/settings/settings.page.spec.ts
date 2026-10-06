@@ -5,6 +5,7 @@ import { Router, provideRouter, type Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { BUILD_INFO } from '@trinity/platform-native';
+import { matchingSettingsSections } from '../settings-sections';
 import { SettingsPage } from './settings.page';
 
 // A trivial routed stand-in for each section sub-page, so the shell can be tested
@@ -110,6 +111,18 @@ describe('SettingsPage (shell)', () => {
   const original = window.matchMedia;
   afterEach(() => {
     window.matchMedia = original;
+  });
+
+  it('opens a part result as the section with the part as its fragment', async () => {
+    stubMatchMedia(true);
+    const { harness, shell, router } = await harnessAt('/settings/profile');
+    const [result] = matchingSettingsSections('code');
+
+    shell['openResult'](result);
+    await settle(router, '/settings/appearance#code-blocks');
+    harness.detectChanges();
+
+    expect(router.url).toBe('/settings/appearance#code-blocks');
   });
 
   it('renders a submenu link for every section', async () => {

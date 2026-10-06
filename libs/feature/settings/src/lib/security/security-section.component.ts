@@ -11,11 +11,14 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { TrustService } from '@trinity/data-access/trust';
 import { HostFileExportService } from '@trinity/runtime/host';
 import { filter, finalize, from, map, switchMap, tap } from 'rxjs';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
+import {
+  TrnAlertService,
+  TrnSettingsGroupComponent,
+  TrnToastService,
+} from '@trinity/components/overlay';
 
 /**
  * Security settings sub-page: surfaces this account's end-to-end-encryption posture —
@@ -28,7 +31,7 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   selector: 'trn-security-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './security-section.component.html',
-  imports: [TrnButton, SettingsSectionHeadingComponent],
+  imports: [TrnSettingsGroupComponent, TrnButton],
 })
 export class SecuritySectionComponent {
   private readonly crypto = inject(TrustService);

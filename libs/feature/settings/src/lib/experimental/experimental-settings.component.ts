@@ -1,8 +1,10 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { TrnSwitchComponent } from '@trinity/components/controls';
 import { FeatureFlagsService } from '@trinity/platform-native';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
-import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.directive';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+} from '@trinity/components/overlay';
 
 /** Experimental settings sub-page: opt-in feature flags. */
 @Component({
@@ -10,9 +12,9 @@ import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.direct
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './experimental-settings.component.html',
   imports: [
+    TrnSettingsRowComponent,
+    TrnSettingsGroupComponent,
     TrnSwitchComponent,
-    SettingsSectionHeadingComponent,
-    SettingsToggleRowDirective,
   ],
 })
 export class ExperimentalSettingsComponent {

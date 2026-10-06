@@ -53,9 +53,9 @@ describe('PreferenceCatalogSectionComponent', () => {
 
   it('renders catalog labels in descriptor order', async () => {
     const { container } = await renderSection();
-    const labels = Array.from(container.querySelectorAll('label')).map(
-      (label) => label.textContent?.trim(),
-    );
+    const labels = Array.from(
+      container.querySelectorAll('trn-settings-row input[role="switch"]'),
+    ).map((control) => control.getAttribute('aria-label'));
 
     expect(labels).toEqual([
       'Send read receipts',
