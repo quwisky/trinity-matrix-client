@@ -97,7 +97,7 @@ export class HlmAvatar extends BrnAvatar {
     super();
     classes(
       () =>
-        'size-8 rounded-[var(--trn-avatar-radius,var(--radius-full))] after:rounded-[var(--trn-avatar-radius,var(--radius-full))] data-[size=lg]:size-10 data-[size=sm]:size-6 group/avatar after:border-border relative flex shrink-0 select-none after:absolute after:inset-0 after:border after:mix-blend-darken dark:after:mix-blend-lighten',
+        'size-8 rounded-[var(--trn-avatar-radius,var(--radius-full))] after:rounded-[var(--trn-avatar-radius,var(--radius-full))] data-[size=lg]:size-10 data-[size=sm]:size-6 group/avatar after:border-foreground/10 relative flex shrink-0 select-none after:absolute after:inset-0 after:border',
     );
   }
 }

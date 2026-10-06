@@ -34,6 +34,7 @@ export class NativePushLifetime {
   private readonly push = inject(PushService);
   private readonly context: CapabilityContext = Symbol();
   private readonly changes = new Subject<NativePushHealth>();
+  // Published as fact.generation; recover() filters obsolete generations. Not a latest-wins guard (#927).
   private generation = 0;
   private current: NativePushHealth | null = null;
   private retry: (() => void) | null = null;

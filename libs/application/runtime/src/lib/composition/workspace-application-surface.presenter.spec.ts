@@ -15,7 +15,14 @@ import {
   TrnDialogService,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { firstValueFrom, of, Subject, type Subscription } from 'rxjs';
+import {
+  firstValueFrom,
+  of,
+  Subject,
+  throwError,
+  type Observable,
+  type Subscription,
+} from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
@@ -39,9 +46,11 @@ describe('Workspace application-surface composition adapter', () => {
   const dialogOpen = vi.fn();
   const close = vi.fn();
   let lifetime: Subscription;
+  let settingsLoad: () => Observable<Type<unknown>>;
 
   beforeEach(() => {
     platform.native = false;
+    settingsLoad = () => of(StubSettingsComponent as Type<unknown>);
     vi.clearAllMocks();
     vi.stubGlobal(
       'matchMedia',
@@ -68,7 +77,7 @@ describe('Workspace application-surface composition adapter', () => {
         },
         {
           provide: SETTINGS_DIALOG_COMPONENT,
-          useValue: () => of(StubSettingsComponent as Type<unknown>),
+          useValue: () => settingsLoad(),
         },
       ],
     });
@@ -248,5 +257,88 @@ describe('Workspace application-surface composition adapter', () => {
       firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
     ).resolves.toMatchObject({ kind: 'blocked' });
     expect(close).not.toHaveBeenCalled();
+  });
+
+  it('drops a dialog whose lazy load finishes after a navigation started', async () => {
+    const load = new Subject<Type<unknown>>();
+    settingsLoad = () => load;
+    const outcome = firstValueFrom(
+      presenter().present({ surface: { kind: 'settings', section: null } }),
+    );
+
+    events.next(new NavigationStart(1, '/elsewhere'));
+    load.next(StubSettingsComponent);
+    load.complete();
+
+    await expect(outcome).resolves.toEqual({
+      kind: 'unavailable',
+      surface: { kind: 'settings', section: null },
+    });
+    expect(dialogOpen).not.toHaveBeenCalled();
+    await expect(
+      firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
+    ).resolves.toMatchObject({ kind: 'unhandled' });
+  });
+
+  it('does not report a lazy-load failure that arrives after a navigation started', async () => {
+    const toast = TestBed.inject(TrnToastService);
+    const restoreFocus = vi.fn();
+    const request = {
+      surface: { kind: 'settings', section: null },
+      context: { restoreFocus },
+    } as const satisfies WorkspaceApplicationSurfaceRequest;
+    settingsLoad = () => throwError(() => new Error('chunk failed'));
+    await firstValueFrom(presenter().present(request));
+    await Promise.resolve();
+    expect(toast.show).toHaveBeenCalledOnce();
+    expect(restoreFocus).toHaveBeenCalledOnce();
+
+    const load = new Subject<Type<unknown>>();
+    settingsLoad = () => load;
+    const outcome = firstValueFrom(presenter().present(request));
+    events.next(new NavigationStart(1, '/elsewhere'));
+    load.error(new Error('chunk failed'));
+
+    await expect(outcome).resolves.toEqual({
+      kind: 'unavailable',
+      surface: request.surface,
+    });
+    await Promise.resolve();
+    expect(toast.show).toHaveBeenCalledOnce();
+    expect(restoreFocus).toHaveBeenCalledOnce();
+  });
+
+  it('does not restore the owner when a dialog closes after a navigation started', async () => {
+    const restoreFocus = vi.fn();
+    const request = {
+      surface: { kind: 'settings', section: null },
+      context: { restoreFocus },
+    } as const satisfies WorkspaceApplicationSurfaceRequest;
+    const closeDialog = () => {
+      const closed = new Subject<void>();
+      dialogOpen.mockReturnValueOnce(
+        new TrnDialogRef({
+          closed,
+          close: () => {
+            closed.next();
+            closed.complete();
+          },
+        }),
+      );
+      return () => closed.next();
+    };
+
+    const closeFirst = closeDialog();
+    await firstValueFrom(presenter().present(request));
+    closeFirst();
+    await Promise.resolve();
+    expect(restoreFocus).toHaveBeenCalledOnce();
+
+    const closeSecond = closeDialog();
+    await firstValueFrom(presenter().present(request));
+    events.next(new NavigationStart(2, '/elsewhere'));
+    closeSecond();
+    await Promise.resolve();
+    expect(restoreFocus).toHaveBeenCalledOnce();
   });
 });

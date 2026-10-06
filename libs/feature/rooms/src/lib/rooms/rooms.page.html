@@ -207,6 +207,12 @@
                 [innerHTML]="topicHtml()"
               ></span>
             }
+          } @else if (
+            store.activeRoomId() && timeline.loadState().kind === 'loading'
+          ) {
+            <!-- A linked room the client has not synced yet: no name to show, and none of
+                 the room's actions (they live in the actions slot, behind activeRoom()). -->
+            Loading room…
           } @else {
             <span class="sr-only">Trinity</span>
           }
@@ -405,8 +411,12 @@
         (opened)="onDrawerSwipedOpen()"
         (closed)="onDrawerSwipedClosed()"
       >
-        @if (vm.activeRoom(); as room) {
-          <!-- The experimental flag swaps in the windowed timeline. Both take the
+        @if (showTimeline()) {
+          <!-- The list renders for a linked room the client does not hold yet too: its loadState
+             shows the skeleton, or the unavailable error with Retry. Everything needing a real
+             room stays behind activeRoom(): the composer (composerEnabled) and the panels.
+
+             The experimental flag swaps in the windowed timeline. Both take the
              same inputs/outputs (MessageListBase); flipping the flag re-creates the
              chosen component fresh.
 
@@ -437,7 +447,8 @@
               [members]="vm.members()"
               [typingNames]="timeline.typingNames()"
               [firstUnreadId]="timeline.firstUnreadId()"
-              [roomName]="room.name"
+              [roomName]="vm.activeRoom()?.name ?? ''"
+              [composerEnabled]="!!vm.activeRoom()"
               [uploadProgress]="messageActions.uploadProgress()"
               [stickerPacks]="imagePacks()"
               [jumpToId]="roomSurfaces.jumpTarget()"
@@ -473,7 +484,8 @@
               [members]="vm.members()"
               [typingNames]="timeline.typingNames()"
               [firstUnreadId]="timeline.firstUnreadId()"
-              [roomName]="room.name"
+              [roomName]="vm.activeRoom()?.name ?? ''"
+              [composerEnabled]="!!vm.activeRoom()"
               [uploadProgress]="messageActions.uploadProgress()"
               [stickerPacks]="imagePacks()"
               [jumpToId]="roomSurfaces.jumpTarget()"
@@ -492,9 +504,10 @@
               (pollEnd)="messageActions.onPollEnd($event)"
             />
           }
-          @if (roomSurfaces.renderedSurface(); as panel) {
-            @if (panel.kind !== 'members') {
-              <!-- Between the timeline and the slot. Hidden below the `members` breakpoint,
+          @if (vm.activeRoom(); as room) {
+            @if (roomSurfaces.renderedSurface(); as panel) {
+              @if (panel.kind !== 'members') {
+                <!-- Between the timeline and the slot. Hidden below the `members` breakpoint,
                    where the slot is an overlay drawer rather than a column sharing the row —
                    there is nothing to trade width with. `invert` because this handle grows
                    the pane to its RIGHT: dragging left makes the panel wider.
@@ -504,18 +517,18 @@
                    handle's own minimum). Rendered there it was a divider that highlighted,
                    moved its `aria-valuenow` and rewrote the stored width while the pane
                    beside it stayed put. -->
-              <trn-pane-handle
-                class="hidden members:block"
-                cssVariable="--shell-right-panel-w"
-                label="Panel width"
-                [invert]="true"
-                [value]="layout.rightPanelWidth()"
-                [min]="layout.rightPanelBounds.min"
-                [max]="layout.rightPanelBounds.max"
-                (committed)="layout.setRightPanelWidth($event)"
-              />
-            }
-            <!-- Below the `members` breakpoint the slot is an overlay drawer; a backdrop
+                <trn-pane-handle
+                  class="hidden members:block"
+                  cssVariable="--shell-right-panel-w"
+                  label="Panel width"
+                  [invert]="true"
+                  [value]="layout.rightPanelWidth()"
+                  [min]="layout.rightPanelBounds.min"
+                  [max]="layout.rightPanelBounds.max"
+                  (committed)="layout.setRightPanelWidth($event)"
+                />
+              }
+              <!-- Below the `members` breakpoint the slot is an overlay drawer; a backdrop
                (shown only at that width) dismisses it. At or above it the slot is a static
                column and the backdrop is display:none. One backdrop for every surface,
                because there is one slot.
@@ -525,81 +538,82 @@
                somewhere. `complementary` rather than `dialog` — nothing here traps focus or
                marks the rest of the page inert, and claiming modality a screen reader then
                cannot rely on is worse than not claiming it. -->
-            <div
-              class="fixed inset-0 top-[var(--trinity-title-row-inset,0px)] z-[var(--trinity-z-scrim)] hidden bg-overlay-scrim max-members:block"
-              (click)="clearRightPanel()"
-              aria-hidden="true"
-              data-testid="members-backdrop"
-            ></div>
-            @switch (panel.kind) {
-              @case ('members') {
-                <trn-member-list
-                  class="chat-members"
-                  data-right-panel-surface
-                  [members]="vm.members()"
-                  [availability]="vm.membersView().availability"
-                  [direct]="vm.activeRoomIsDirect()"
-                  (selectMember)="memberActions.onSelectMember($event)"
-                  (dismissed)="closeRightPanel()"
-                />
-              }
-              @case ('threads') {
-                <trn-threads-list
-                  class="chat-panel"
-                  data-right-panel-surface
-                  role="complementary"
-                  aria-label="Threads"
-                  [roomId]="room.id"
-                  (selected)="messageActions.onThreadPicked($event)"
-                  (dismissed)="closeRightPanel()"
-                />
-              }
-              @case ('thread') {
-                <trn-thread-view
-                  class="chat-panel"
-                  data-right-panel-surface
-                  role="complementary"
-                  aria-label="Thread"
-                  [accountId]="store.activeAccountId()"
-                  [roomId]="room.id"
-                  [rootEventId]="panel.rootEventId"
-                  (dismissed)="closeRightPanel()"
-                />
-              }
-              @case ('pinned') {
-                <trn-pinned-messages-panel
-                  class="chat-panel"
-                  data-right-panel-surface
-                  role="complementary"
-                  aria-label="Pinned messages"
-                  (selected)="messageActions.onPanelJump($event)"
-                  (dismissed)="closeRightPanel()"
-                />
-              }
-              @case ('search') {
-                <trn-message-search
-                  class="chat-panel"
-                  data-right-panel-surface
-                  role="complementary"
-                  aria-label="Search messages"
-                  [roomId]="room.id"
-                  [(query)]="searchQuery"
-                  (selected)="messageActions.onPanelJump($event)"
-                  (dismissed)="closeRightPanel()"
-                />
-              }
-              @case ('member') {
-                <trn-member-info
-                  class="chat-panel"
-                  data-right-panel-surface
-                  role="complementary"
-                  aria-label="Member info"
-                  [member]="panel.member"
-                  [roomId]="room.id"
-                  [direct]="panel.direct"
-                  (messageUser)="memberActions.onMemberMessage($event)"
-                  (dismissed)="memberActions.onMemberPanelDismissed()"
-                />
+              <div
+                class="fixed inset-0 top-[var(--trinity-title-row-inset,0px)] z-[var(--trinity-z-scrim)] hidden bg-overlay-scrim max-members:block"
+                (click)="clearRightPanel()"
+                aria-hidden="true"
+                data-testid="members-backdrop"
+              ></div>
+              @switch (panel.kind) {
+                @case ('members') {
+                  <trn-member-list
+                    class="chat-members"
+                    data-right-panel-surface
+                    [members]="vm.members()"
+                    [availability]="vm.membersView().availability"
+                    [direct]="vm.activeRoomIsDirect()"
+                    (selectMember)="memberActions.onSelectMember($event)"
+                    (dismissed)="closeRightPanel()"
+                  />
+                }
+                @case ('threads') {
+                  <trn-threads-list
+                    class="chat-panel"
+                    data-right-panel-surface
+                    role="complementary"
+                    aria-label="Threads"
+                    [roomId]="room.id"
+                    (selected)="messageActions.onThreadPicked($event)"
+                    (dismissed)="closeRightPanel()"
+                  />
+                }
+                @case ('thread') {
+                  <trn-thread-view
+                    class="chat-panel"
+                    data-right-panel-surface
+                    role="complementary"
+                    aria-label="Thread"
+                    [accountId]="store.activeAccountId()"
+                    [roomId]="room.id"
+                    [rootEventId]="panel.rootEventId"
+                    (dismissed)="closeRightPanel()"
+                  />
+                }
+                @case ('pinned') {
+                  <trn-pinned-messages-panel
+                    class="chat-panel"
+                    data-right-panel-surface
+                    role="complementary"
+                    aria-label="Pinned messages"
+                    (selected)="messageActions.onPanelJump($event)"
+                    (dismissed)="closeRightPanel()"
+                  />
+                }
+                @case ('search') {
+                  <trn-message-search
+                    class="chat-panel"
+                    data-right-panel-surface
+                    role="complementary"
+                    aria-label="Search messages"
+                    [roomId]="room.id"
+                    [(query)]="searchQuery"
+                    (selected)="messageActions.onPanelJump($event)"
+                    (dismissed)="closeRightPanel()"
+                  />
+                }
+                @case ('member') {
+                  <trn-member-info
+                    class="chat-panel"
+                    data-right-panel-surface
+                    role="complementary"
+                    aria-label="Member info"
+                    [member]="panel.member"
+                    [roomId]="room.id"
+                    [direct]="panel.direct"
+                    (messageUser)="memberActions.onMemberMessage($event)"
+                    (dismissed)="memberActions.onMemberPanelDismissed()"
+                  />
+                }
               }
             }
           }

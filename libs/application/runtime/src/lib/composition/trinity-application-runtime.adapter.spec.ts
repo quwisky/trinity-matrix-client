@@ -664,6 +664,29 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     });
   });
 
+  it('reports a superseded Workspace restoration as failed even when its navigation lands', async () => {
+    initialNavigation.mockImplementationOnce(() => {
+      events.next(new NavigationError(1, '/rooms', new Error('offline')));
+    });
+    await firstValueFrom(adapter.restoreWorkspace());
+    let land!: (navigated: boolean) => void;
+    navigateByUrl.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => (land = resolve)),
+    );
+    const superseded = firstValueFrom(adapter.restoreWorkspace());
+
+    await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
+      kind: 'ready',
+    });
+    land(true);
+
+    await expect(superseded).resolves.toEqual({
+      kind: 'blocked',
+      recovery: 'retry-startup',
+      diagnostic: { code: 'workspace-navigation-failed' },
+    });
+  });
+
   it('bounds an unresponsive saved destination before trying the safe root', async () => {
     vi.useFakeTimers();
     const restoration = firstValueFrom(adapter.restoreWorkspace());

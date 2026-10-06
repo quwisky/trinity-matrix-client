@@ -105,7 +105,8 @@ export class ImagePackManagementService {
 
   constructor() {
     effect(() => {
-      this.selections.changed();
+      const client = this.projection.client();
+      if (client) this.selections.get(client);
       if (this.projection.isConnected()) this.projection.schedule();
     });
   }

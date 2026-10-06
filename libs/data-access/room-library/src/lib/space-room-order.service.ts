@@ -7,6 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { latestGuard } from '@trinity/util/ui';
 import { DevicePreferenceStorageService } from '@trinity/platform-native';
 import {
   Observable,
@@ -185,18 +186,18 @@ export class SpaceRoomOrderService {
    */
   run(): Observable<RoomOrderRuntimeEvent> {
     return new Observable((subscriber) => {
-      let generation = 0;
+      const latest = latestGuard();
       const hydration = effect(
         () => {
           // Keyed on accountIds rather than activeUserId so an account is warm before a switch.
           const accountIds = [...this.matrix.accountIds()];
-          const current = ++generation;
+          const current = latest.next();
           void Promise.all(
             accountIds.map((accountId) =>
               firstValueFrom(this.retryHydration(accountId)),
             ),
           ).then((accounts) => {
-            if (generation === current && !subscriber.closed) {
+            if (latest.isCurrent(current) && !subscriber.closed) {
               subscriber.next({ kind: 'reconciled', accounts });
             }
           });
@@ -204,7 +205,7 @@ export class SpaceRoomOrderService {
         { injector: this.injector },
       );
       return () => {
-        generation += 1;
+        latest.invalidate();
         hydration.destroy();
       };
     });
