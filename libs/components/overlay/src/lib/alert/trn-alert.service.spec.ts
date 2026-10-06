@@ -2,6 +2,7 @@ import { ApplicationRef } from '@angular/core';
 import { Dialog } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
+import { screen } from '@trinity/testing';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TrnAlertService } from './trn-alert.service';
@@ -220,6 +221,37 @@ describe('TrnAlertService', () => {
       expect(
         document.querySelector<HTMLElement>('.cdk-overlay-pane')?.style.width,
       ).toBe('100vw');
+    });
+  });
+
+  describe('dialog semantics', () => {
+    afterEach(() => TestBed.inject(Dialog).closeAll());
+
+    it('exposes one dialog role, named by its visible title', () => {
+      TestBed.inject(TrnAlertService)
+        .confirm$({ header: 'Leave space?', confirmText: 'Leave' })
+        .subscribe();
+      render();
+
+      expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+      const dialog = screen.getByRole('dialog', { name: 'Leave space?' });
+      expect(dialog.hasAttribute('aria-label')).toBe(false);
+      expect(
+        document.getElementById(dialog.getAttribute('aria-labelledby') ?? '')
+          ?.tagName,
+      ).toBe('H2');
+    });
+
+    it('keeps a desktop alert free of pane geometry, so CDK defaults stand', () => {
+      TestBed.inject(TrnAlertService)
+        .confirm$({ header: 'Leave space?', confirmText: 'Leave' })
+        .subscribe();
+      render();
+
+      const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
+      expect(pane?.style.width).toBe('');
+      expect(pane?.style.maxWidth).toBe('');
+      expect(pane?.style.maxHeight).toBe('');
     });
   });
 });

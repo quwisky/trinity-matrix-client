@@ -11,14 +11,12 @@ import { outputFromObservable } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { Subject } from 'rxjs';
-import { TrnDialogRef } from '../dialog/trn-dialog-ref';
+import { TrnDialogRef, dialogTitleId } from '../dialog/trn-dialog-ref';
 import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';
 import type {
   TrnOverlaySurfaceLayout,
   TrnOverlaySurfaceSize,
 } from '../surface/trn-overlay-surface-recipe';
-
-let nextId = 0;
 
 /** Marks the element whose children are the dialog's footer actions. */
 @Directive({
@@ -46,7 +44,8 @@ export class TrnDialogShellComponent {
   private readonly ref = inject(TrnDialogRef, { optional: true });
   private readonly closeRequests = new Subject<void>();
 
-  protected readonly titleId = `trn-dialog-title-${nextId++}`;
+  /** The opener labels its dialog container with this id; a bare shell mints its own. */
+  protected readonly titleId = this.ref?.titleId ?? dialogTitleId();
   protected readonly actions = contentChild(TrnDialogActions);
   protected readonly layout = computed<TrnOverlaySurfaceLayout>(() => {
     const presentation = this.ref?.presentation;
@@ -62,8 +61,8 @@ export class TrnDialogShellComponent {
   readonly titleHidden = input(false);
   readonly size = input<TrnOverlaySurfaceSize>('md');
   /**
-   * The X was pressed. Bind it to run your own close path; left unbound, the shell closes
-   * its dialog itself, as a dismissal without a result.
+   * The X was pressed. Bind it to run your own close path; left unbound, the shell dismisses
+   * its dialog without a result, which runs the opener's `dismissGuard` like Escape does.
    */
   readonly closed = outputFromObservable(this.closeRequests);
 

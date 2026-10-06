@@ -6,8 +6,6 @@
   class="flex flex-col border-[var(--trinity-border-overlay)] bg-[var(--trinity-surface-overlay)]"
   [class.trn-overlay-enter-sheet]="layout() === 'sheet'"
   [class.trn-overlay-enter-dialog]="layout() !== 'sheet'"
-  role="dialog"
-  [attr.aria-labelledby]="titleId"
   data-testid="dialog-surface"
 >
   @if (layout() === 'sheet') {

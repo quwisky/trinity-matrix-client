@@ -114,23 +114,20 @@ export class TrnAlertService {
     data: AlertDialogData,
     opts: ConfirmOptions,
   ): DialogConfig<AlertDialogData, DialogRef<R, TrnAlertDialogComponent>> {
-    const { presentation, pane } = dialogPresentation(
+    const { pane, createRef } = dialogPresentation(
       this.overlay,
       'center',
       null,
     );
     return {
       data,
-      ariaLabel: data.header,
+      // No `ariaLabel`: `pane.ariaLabelledBy` names the dialog by the shell's visible title.
       backdropClass: ['cdk-overlay-dark-backdrop'],
       closeOnNavigation: opts.closeOnNavigation ?? true,
       ...pane,
       // The dialog shell reads the presentation from the ref it injects.
       providers: (cdkRef) => [
-        {
-          provide: TrnDialogRef,
-          useValue: new TrnDialogRef<R>(cdkRef, presentation),
-        },
+        { provide: TrnDialogRef, useValue: createRef<R>(cdkRef) },
       ],
     };
   }

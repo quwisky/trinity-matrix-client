@@ -8,7 +8,12 @@ import {
 } from '@angular/cdk/overlay';
 import { BELOW_MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import { defer, map, merge, take, type Observable } from 'rxjs';
-import { TrnDialogRef, type TrnDialogPresentation } from './trn-dialog-ref';
+import {
+  TrnDialogRef,
+  dialogTitleId,
+  type ClosableRef,
+  type TrnDialogPresentation,
+} from './trn-dialog-ref';
 
 /** Structural position for a component dialog. Appearance belongs to its surface. */
 export type TrnDialogPlacement =
@@ -123,26 +128,35 @@ function prefersCentred(): boolean {
   );
 }
 
+/** The sheet's height cap; the same value as the sheet surface recipe's, so the pane never clips it. */
+const SHEET_MAX_HEIGHT =
+  'min(90svh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--trinity-title-row-inset, 0px)))';
+
 /**
- * The presentation and CDK pane geometry for a dialog, decided once at open.
+ * The presentation, CDK pane geometry and ref wiring for a dialog, decided once at open.
  *
  * Below `md` a centred dialog becomes a full-width bottom sheet. Fullscreen, inline-end and
  * anchored popovers keep their own geometry. Shared with {@link TrnAlertService}, which opens
  * on the same root `Dialog` with its own data, so confirms and prompts follow the same rule.
+ *
+ * `pane` carries `ariaLabelledBy` for the shell's title id and leaves geometry it does not set
+ * out entirely, so CDK's own defaults stand.
  */
 export function dialogPresentation(
   overlay: Overlay,
   placement: TrnDialogPlacement,
   anchor: HTMLElement | null,
 ): {
-  presentation: TrnDialogPresentation;
   pane: {
+    ariaLabelledBy: string;
     width?: string;
     height?: string;
     maxWidth?: string;
     maxHeight?: string;
     positionStrategy?: PositionStrategy;
   };
+  /** Builds the ref handed to the component and the opener. */
+  createRef: <R>(cdkRef: ClosableRef<R>) => TrnDialogRef<R>;
 } {
   const presentation: TrnDialogPresentation =
     placement === 'fullscreen'
@@ -155,40 +169,46 @@ export function dialogPresentation(
           : 'dialog';
   const fullScreen = presentation === 'fullscreen';
   const sheet = presentation === 'sheet';
+  const titleId = dialogTitleId();
+  const positionStrategy = anchor
+    ? overlay
+        .position()
+        .flexibleConnectedTo(anchor)
+        .withPositions(POPOVER_POSITIONS)
+        .withFlexibleDimensions(false)
+        .withPush(true)
+    : placement === 'inline-end'
+      ? overlay.position().global().top('0').right('0')
+      : sheet
+        ? overlay.position().global().centerHorizontally().bottom('0')
+        : fullScreen
+          ? overlay
+              .position()
+              .global()
+              .top('0')
+              .right('0')
+              .bottom('0')
+              .left('0')
+          : undefined;
   return {
-    presentation,
     pane: {
-      width: fullScreen || sheet ? '100vw' : undefined,
-      height: fullScreen ? VIEWPORT_BELOW_TITLE_ROW : undefined,
-      maxWidth: fullScreen || sheet ? '100vw' : undefined,
-      maxHeight: fullScreen
-        ? VIEWPORT_BELOW_TITLE_ROW
-        : sheet
-          ? 'calc(100dvh - var(--trinity-title-row-inset, 0px) - 12px)'
-          : undefined,
+      ariaLabelledBy: titleId,
+      ...(fullScreen && {
+        width: '100vw',
+        height: VIEWPORT_BELOW_TITLE_ROW,
+        maxWidth: '100vw',
+        maxHeight: VIEWPORT_BELOW_TITLE_ROW,
+      }),
+      ...(sheet && {
+        width: '100vw',
+        maxWidth: '100vw',
+        maxHeight: SHEET_MAX_HEIGHT,
+      }),
       // Default (undefined) lets CDK center the card; `'inline-end'` pins it to
       // the logical end edge (currently right in Trinity's supported direction).
-      positionStrategy: anchor
-        ? overlay
-            .position()
-            .flexibleConnectedTo(anchor)
-            .withPositions(POPOVER_POSITIONS)
-            .withFlexibleDimensions(false)
-            .withPush(true)
-        : placement === 'inline-end'
-          ? overlay.position().global().top('0').right('0')
-          : sheet
-            ? overlay.position().global().centerHorizontally().bottom('0')
-            : fullScreen
-              ? overlay
-                  .position()
-                  .global()
-                  .top('0')
-                  .right('0')
-                  .bottom('0')
-                  .left('0')
-              : undefined,
+      ...(positionStrategy && { positionStrategy }),
     },
+    createRef: (cdkRef) => new TrnDialogRef(cdkRef, presentation, titleId),
   };
 }
 
@@ -237,7 +257,7 @@ export class TrnDialogService {
     // carry. Consumers migrated in #397-#401. Re-add a hook only with a
     // real behavior consumer.
     const anchor = opts.anchor && !prefersCentred() ? opts.anchor : null;
-    const { presentation, pane } = dialogPresentation(
+    const { pane, createRef } = dialogPresentation(
       this.overlay,
       opts.placement ?? 'center',
       anchor,
@@ -263,7 +283,7 @@ export class TrnDialogService {
       // Give the component and opener the same vendor-neutral handle. Besides closing, this
       // lets a semantic surface prove that its own dialog is topmost without exposing CDK.
       providers: (cdkRef) => {
-        trinityRef = new TrnDialogRef<R>(cdkRef, presentation);
+        trinityRef = createRef(cdkRef);
         return [{ provide: TrnDialogRef, useValue: trinityRef }];
       },
     });
@@ -272,7 +292,7 @@ export class TrnDialogService {
         ref.componentRef.setInput(key, value);
       }
     }
-    trinityRef ??= new TrnDialogRef<R>(ref, presentation);
+    trinityRef ??= createRef(ref);
     this.refs.set(
       trinityRef as TrnDialogRef<unknown>,
       ref as DialogRef<unknown, unknown>,

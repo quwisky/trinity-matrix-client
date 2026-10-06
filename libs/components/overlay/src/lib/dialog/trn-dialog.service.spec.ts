@@ -4,7 +4,9 @@ import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom, NEVER } from 'rxjs';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { screen } from '@trinity/testing';
 import { TrnAlertService } from '../alert/trn-alert.service';
+import { TrnDialogShellComponent } from '../dialog-shell/trn-dialog-shell.component';
 import { TrnDialogRef } from './trn-dialog-ref';
 import { TrnDialogService } from './trn-dialog.service';
 
@@ -40,6 +42,40 @@ const clickClose = () =>
   `,
 })
 class FocusDialogComponent {}
+
+@Component({
+  imports: [TrnDialogShellComponent],
+  template: `<trn-dialog-shell title="Edit topic"
+    ><p>Body</p></trn-dialog-shell
+  >`,
+})
+class ShellDialogComponent {}
+
+describe('TrnDialogService — dialog shell', () => {
+  afterEach(() => TestBed.inject(TrnDialogService).closeAll());
+
+  it('exposes one dialog role, named by the shell title', () => {
+    const svc = TestBed.inject(TrnDialogService);
+    const ref = svc.open(ShellDialogComponent);
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    const dialog = screen.getByRole('dialog', { name: 'Edit topic' });
+    expect(dialog.getAttribute('aria-labelledby')).toBe(ref.titleId);
+  });
+
+  it('routes the X through the dismiss guard, which may refuse', () => {
+    const guard = vi.fn(() => false);
+    const svc = TestBed.inject(TrnDialogService);
+    svc.open(ShellDialogComponent, { dismissGuard: guard });
+    TestBed.inject(ApplicationRef).tick();
+
+    screen.getByTestId('dialog-close').click();
+
+    expect(guard).toHaveBeenCalledOnce();
+    expect(svc.hasOpen()).toBe(true);
+  });
+});
 
 describe('TrnDialogService', () => {
   it('opens a component, sets its inputs, and closes with a value', async () => {
@@ -166,7 +202,8 @@ describe('TrnDialogService', () => {
     expect(pane?.style.width).toBe('100vw');
     expect(pane?.style.maxWidth).toBe('100vw');
     expect(pane?.style.maxHeight).toBe(
-      'calc(100dvh - var(--trinity-title-row-inset, 0px) - 12px)',
+      // The same cap as the sheet surface recipe, so the pane never clips the surface.
+      'min(90svh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--trinity-title-row-inset, 0px)))',
     );
     expect(document.querySelector('.cdk-global-overlay-wrapper')).toBeTruthy();
 
@@ -408,7 +445,8 @@ describe('TrnDialogService — presentation', () => {
     const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
     expect(pane?.style.width).toBe('100vw');
     expect(pane?.style.maxHeight).toBe(
-      'calc(100dvh - var(--trinity-title-row-inset, 0px) - 12px)',
+      // The same cap as the sheet surface recipe, so the pane never clips the surface.
+      'min(90svh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--trinity-title-row-inset, 0px)))',
     );
     // CDK's global strategy pins a `bottom()` pane by aligning its wrapper to the end.
     const wrapper = document.querySelector<HTMLElement>(

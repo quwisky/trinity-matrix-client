@@ -7,7 +7,7 @@ import type { Observable } from 'rxjs';
  * `open()` hand one straight in; more to the point, this file then names no vendor at all,
  * so the seam a swap has to reach is two methods wide and stated here.
  */
-interface ClosableRef<R> {
+export interface ClosableRef<R> {
   readonly closed: Observable<R | undefined>;
   close(result?: R): void;
 }
@@ -18,6 +18,13 @@ interface ClosableRef<R> {
  * `'sheet'` is a bottom sheet (phones, or an explicit `'bottom'` placement), `'popover'` an
  * anchored panel; the dialog shell reads it to pick its surface layout.
  */
+let nextTitleId = 0;
+
+/** A document-unique id for a dialog's title heading. */
+export function dialogTitleId(): string {
+  return `trn-dialog-title-${nextTitleId++}`;
+}
+
 export type TrnDialogPresentation =
   'dialog' | 'sheet' | 'fullscreen' | 'popover';
 
@@ -55,16 +62,27 @@ export class TrnDialogRef<R = unknown> {
    */
   readonly presentation: TrnDialogPresentation;
 
+  /**
+   * The id the dialog shell gives its `h2`. The opener points the dialog container's
+   * `aria-labelledby` at it, so the one dialog role is named by the visible title.
+   */
+  readonly titleId: string;
+
   constructor(
     private readonly cdkRef: ClosableRef<R>,
     presentation: TrnDialogPresentation = 'dialog',
+    titleId = dialogTitleId(),
   ) {
     this.closed = cdkRef.closed;
     this.presentation = presentation;
+    this.titleId = titleId;
   }
 
   /**
    * Close the dialog, optionally with a result for the opener.
+   *
+   * Without a result this is a dismissal: the opener's `dismissGuard` runs and may refuse,
+   * exactly as for a backdrop click or Escape.
    *
    * Note this is the component closing ITSELF, which is always allowed: `disableClose`
    * governs dismissal the user did not ask for — a backdrop tap, Escape, the Android back

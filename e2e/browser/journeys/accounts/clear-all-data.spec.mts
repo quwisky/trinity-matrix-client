@@ -204,6 +204,10 @@ test.describe('Clear all data — phone prompt', () => {
     });
     await field.fill('RESET');
 
+    // The whole footer band, padding included, not just the button inside it.
+    await expect(prompt.getByTestId('dialog-footer')).toBeInViewport({
+      ratio: 1,
+    });
     await expect(prompt.getByTestId('alert-confirm')).toBeInViewport({
       ratio: 1,
     });

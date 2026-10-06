@@ -85,13 +85,31 @@ describe('TrnDialogShellComponent', () => {
     expect(screen.queryByTestId('dialog-footer')).toBeNull();
   });
 
-  it('names the dialog by its title, also when the title is visually hidden', async () => {
-    await render(HiddenTitleHostComponent, { providers: [provideTrnIcons()] });
+  it('titles the dialog through the id its ref carries, also when visually hidden', async () => {
+    const ref = new TrnDialogRef(
+      { closed: new Subject(), close: vi.fn() },
+      'dialog',
+      'opened-dialog-title',
+    );
+    await render(HiddenTitleHostComponent, {
+      providers: [provideTrnIcons(), { provide: TrnDialogRef, useValue: ref }],
+    });
 
-    const heading = screen.getByRole('heading', { level: 2 });
-    expect(surface().getAttribute('aria-labelledby')).toBe(heading.id);
-    expect(screen.getByRole('dialog', { name: 'Switch room' })).toBe(surface());
+    // The opener's CDK container is the one dialog role; it points at this heading.
+    const heading = screen.getByRole('heading', {
+      level: 2,
+      name: 'Switch room',
+    });
+    expect(heading.id).toBe('opened-dialog-title');
     expect(heading.classList).toContain('sr-only');
+    expect(surface().hasAttribute('role')).toBe(false);
+    expect(surface().hasAttribute('aria-labelledby')).toBe(false);
+  });
+
+  it('still gives its heading an id without an opening ref', async () => {
+    await render(PlainHostComponent, { providers: [provideTrnIcons()] });
+
+    expect(screen.getByRole('heading', { level: 2 }).id).toMatch(/\S/u);
   });
 
   it('hides the close button when not closable', async () => {
