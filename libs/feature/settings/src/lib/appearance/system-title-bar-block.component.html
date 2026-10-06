@@ -6,13 +6,11 @@
     data-testid="appearance-window"
   >
     <label trnSettingsToggleRow>
-      @for (epoch of [switchEpoch()]; track epoch) {
-        <trn-switch
-          data-testid="system-title-bar-toggle"
-          [checked]="saved()"
-          (checkedChange)="onChange($event)"
-        />
-      }
+      <trn-switch
+        data-testid="system-title-bar-toggle"
+        [checked]="saved()"
+        (checkedChange)="onChange($event)"
+      />
       <span class="min-w-0">
         <strong class="block text-sm font-semibold"
           >Use system title bar</strong

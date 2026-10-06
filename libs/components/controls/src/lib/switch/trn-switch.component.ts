@@ -1,8 +1,11 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  Injector,
+  afterNextRender,
   booleanAttribute,
   computed,
+  inject,
   input,
   output,
 } from '@angular/core';
@@ -72,13 +75,20 @@ import {
   `,
 })
 export class TrnSwitchComponent {
+  private readonly injector = inject(Injector);
   protected readonly controlClass = trnSwitchRecipe();
   protected readonly thumbClass = computed(() =>
     trnSwitchThumbRecipe(this.checked()),
   );
 
   protected onCheckedChange(event: Event): void {
-    this.checkedChange.emit((event.currentTarget as HTMLInputElement).checked);
+    const input = event.currentTarget as HTMLInputElement;
+    this.checkedChange.emit(input.checked);
+    // Controlled: the native box already flipped, and re-binding an unchanged `checked`
+    // would not undo that, so a parent that declines the change must see it revert.
+    afterNextRender(() => (input.checked = this.checked()), {
+      injector: this.injector,
+    });
   }
 
   readonly checked = input(false, { transform: booleanAttribute });

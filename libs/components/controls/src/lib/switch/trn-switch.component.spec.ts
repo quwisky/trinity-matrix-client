@@ -77,4 +77,29 @@ describe('TrnSwitchComponent', () => {
     expect(control?.disabled).toBe(true);
     expect(control?.getAttribute('data-disabled')).toBe('true');
   });
+
+  it('reverts in place, keeping focus, when the parent declines the change', async () => {
+    const { container, fixture } = await render(HostComponent);
+    const input = box(container);
+    input?.focus();
+    input?.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.last()).toBe(true);
+    expect(box(container)).toBe(input);
+    expect(input?.checked).toBe(false);
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('follows the parent when it accepts the change', async () => {
+    const { container, fixture } = await render(HostComponent);
+    box(container)?.click();
+    fixture.componentInstance.checked.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(box(container)?.checked).toBe(true);
+    expect(box(container)?.getAttribute('aria-checked')).toBe('true');
+  });
 });

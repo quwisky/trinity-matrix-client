@@ -18,6 +18,7 @@ describe('SystemTitleBarBlockComponent', () => {
       saved?: boolean;
       active?: boolean;
       outcome?: SetOutcome;
+      getState?: () => Promise<{ saved: boolean; active: boolean }>;
     } = {},
   ) {
     const setSystemTitleBar = vi.fn(
@@ -28,10 +29,12 @@ describe('SystemTitleBarBlockComponent', () => {
       (globalThis as BridgeHost).trinityDesktop = desktopBridgeFixture({
         capabilities: {
           titleBar: {
-            getSystemTitleBar: async () => ({
-              saved: opts.saved ?? false,
-              active: opts.active ?? false,
-            }),
+            getSystemTitleBar:
+              opts.getState ??
+              (async () => ({
+                saved: opts.saved ?? false,
+                active: opts.active ?? false,
+              })),
             setSystemTitleBar,
             relaunch,
           },
@@ -96,12 +99,26 @@ describe('SystemTitleBarBlockComponent', () => {
       },
     });
     await waitFor(() => expect(toggle(container)).not.toBeNull());
-    toggle(container)?.click();
+    const input = toggle(container);
+    input?.focus();
+    input?.click();
 
     expect(
       await screen.findByText('This choice could not be saved.'),
     ).toBeTruthy();
-    expect(toggle(container)?.checked).toBe(false);
+    await waitFor(() => expect(input?.checked).toBe(false));
+    expect(toggle(container)).toBe(input);
+    expect(document.activeElement).toBe(input);
     expect(screen.queryByText('Restart to apply')).toBeNull();
+  });
+
+  it.each([
+    ['never resolves', () => new Promise<never>(() => undefined)],
+    ['rejects', () => Promise.reject(new Error('host gone'))],
+  ])('stays hidden when the host state %s', async (_name, getState) => {
+    const { container, fixture } = await setup({ getState });
+    await fixture.whenStable();
+    expect(toggle(container)).toBeNull();
+    expect(container.textContent?.trim()).toBe('');
   });
 });

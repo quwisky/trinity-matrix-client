@@ -43,11 +43,6 @@ export class SystemTitleBarBlockComponent {
     return this.saveCompleted() && !!state && state.saved !== state.active;
   });
   protected readonly failed = signal(false);
-  /**
-   * Bumped on a failed save. The native checkbox already flipped, and re-binding the same
-   * `checked` value would not reset it, so the switch is recreated to show the saved value.
-   */
-  protected readonly switchEpoch = signal(0);
 
   constructor() {
     const destroyRef = inject(DestroyRef);
@@ -77,7 +72,6 @@ export class SystemTitleBarBlockComponent {
     } else {
       this.state.set(previous);
       this.failed.set(true);
-      this.switchEpoch.update((n) => n + 1);
     }
   }
 
