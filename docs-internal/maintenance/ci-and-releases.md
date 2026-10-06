@@ -204,21 +204,23 @@ to cut the same version twice.
    `Release stable` workflow (Actions tab, manual dispatch) with `from` set to that tag
    (empty means the newest published prerelease) and `dry_run` enabled. It runs the checks
    and prints the branch, version and commit it would use, and pushes nothing.
-2. Run it again with `dry_run` disabled. It pushes `release/X.Y.x` as the prerelease's
-   commit plus one commit, `chore(release): release vX.Y.Z from this branch`, that sets
-   `"release-as": "X.Y.Z"` for the root package in `release-please-config.json`. That push
-   runs `release.yml` on the branch, whose release-please run opens the stable release PR
-   with version `X.Y.Z`, so stable ships exactly the tested code. Without the pin, the
-   stable config's `always-bump-patch` would propose a patch of the last stable release;
-   every later push to the branch before the release (a fix merged first, say) keeps the
-   PR at `X.Y.Z` because the pin stays in the config.
+2. Run it again with `dry_run` disabled. It pushes `release/X.Y.x` as exactly the
+   prerelease's commit, with no commit of its own. That push runs `release.yml` on the
+   branch. While the branch has no stable `vX.Y.*` tag in its history,
+   [`scripts/release-version.mjs`](../../scripts/release-version.mjs) takes the newest
+   `vX.Y.Z-next.N` tag reachable from it and the `Release PR and tag` job runs the
+   release-please CLI (pinned to `17.11.2`) with `--release-as X.Y.Z`, which opens the
+   stable release PR with version `X.Y.Z`, so stable ships exactly the tested code. The
+   action then only tags and releases. Every later push before the release (a fix merged
+   first, say) keeps the PR at `X.Y.Z` the same way. Once `vX.Y.Z` is tagged, the job runs the action alone and the stable config's
+   `always-bump-patch` proposes patch releases.
 3. Review the stable release PR (version and `CHANGELOG.md` entry) and merge it. That is
    the last manual step: the tag, draft release and packages follow, and the `publish`
    job publishes the release once every package is attached (see
    [Automatic publishing](#automatic-publishing)).
-4. Once `vX.Y.Z` is tagged, the `Open the back-merge PR` job pushes
-   `chore(release): drop the one-time release-as after vX.Y.Z` to `release/X.Y.x`, so later
-   fixes release as patches, then opens the back-merge PR. Its merge commit lands on `main`
+4. Once `vX.Y.Z` is tagged, the `Open the back-merge PR` job opens the back-merge PR. The
+   release branch then holds only the prerelease commit, the squashed
+   `release: cut the vX.Y.Z release` commit and later fixes. Its merge commit lands on `main`
    by a direct push once CI passes on it; step in only for conflicts (see
    [Back-merge conflicts](#back-merge-conflicts)).
 
@@ -257,11 +259,12 @@ on `main`'s ruleset so it can push back-merge commits. Renovate keeps its
 own App and credentials.
 
 Pushing the branch is the workflow's last step; a failure before it creates nothing, so
-rerun it. Once the branch exists, rerunning is refused, and the branch already carries the
-`release-as` commit. If no stable release PR appears on it, read the `Release PR and tag`
-job of the `release.yml` run for that push and re-run it. If that run is gone, merge any
-pull request into `release/X.Y.x` (an empty commit is enough) to trigger a new one. Never
-force-push.
+rerun it. Once the branch exists, rerunning is refused. If no stable release PR appears on
+it, read the `Release PR and tag` job of the `release.yml` run for that push (its
+`Find the first stable version` step prints the version it found) and re-run it. If that
+run is gone, merge any pull request into `release/X.Y.x` (an empty commit is enough) to
+trigger a new one; the version comes from the tags, so any push opens the PR at `X.Y.Z`.
+Never force-push.
 
 ### Release a fix
 
@@ -324,9 +327,8 @@ the draft and the `publish` job publishes it.
 After a stable tag is created on a `release/**` branch, the `Open the back-merge PR` job in
 `release.yml` runs [`scripts/back-merge.mjs`](../../scripts/back-merge.mjs). It merges the
 tag into a new `back-merge/vX.Y.Z` branch from `main` and opens a pull request titled
-`chore: back-merge vX.Y.Z into main`; the body lists the files it resolved. The merge
-also removes the release branch's one-time `release-as` from `release-please-config.json`,
-so `main` never carries it. Rerunning updates an existing PR, rebuilding the merge from
+`chore: back-merge vX.Y.Z into main`; the body lists the files it resolved. It pushes only
+that branch, never the release branch. Rerunning updates an existing PR, rebuilding the merge from
 current `main` (a lease-guarded push of the bot's own branch), and does nothing when `main`
 already contains the tag. The job does not affect the release itself.
 
@@ -368,15 +370,13 @@ the PR body flags it for review.
 
 The merged `package.json` and `electron/package.json` always keep `main`'s `version`, even when
 they merge without a conflict. Any other conflicted path fails the job and lists the paths, as
-does a file deleted on one line and changed on the other. A conflict in
-`release-please-config.json` (for example `main` edited near `packages["."]` while the release
-branch carried the one-time `release-as` pin) takes the same manual path. Resolve it by hand:
+does a file deleted on one line and changed on the other. Resolve it by hand:
 
 ```bash
 git fetch origin
 git switch -c back-merge/vX.Y.Z origin/main
 git merge --no-ff vX.Y.Z
-# resolve the conflicts and remove any "release-as" from release-please-config.json, then
+# resolve the conflicts, then
 git add -A && git commit --no-edit
 git push -u origin back-merge/vX.Y.Z
 gh pr create --base main --head back-merge/vX.Y.Z \
@@ -393,10 +393,6 @@ node scripts/land-back-merge.mjs --branch back-merge/vX.Y.Z   # or --pr N
 ```
 
 Never merge it with the button and never force-push.
-
-The job first drops the one-time `release-as` from the release branch with a plain push. If a
-fix landed on the branch at that moment and the push was rejected, rerun the `Open the
-back-merge PR` job; it rebases onto the branch, sees whether the pin is still there, and goes on.
 
 ### Migrating from develop
 
@@ -609,16 +605,16 @@ commit predates `homebrew.yml` never triggers it; dispatch it from `main` instea
 
 ## Recover a release run
 
-| Situation                                                                                  | Recovery                                                                                                                                                                                                                                                                                             |
-| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tag is not reachable from `main` or a `release/*` branch, or does not match both manifests | Fix the cause through a normal pull request; release-please then proposes a new version. Do not retarget or reuse an existing tag.                                                                                                                                                                   |
-| A platform package fails but other packages succeed                                        | Inspect the failed matrix log and the `publish` job's warning, which names the missing assets. After a transient runner, credential, or service fix, dispatch `release.yml` with the same tag; `--clobber` replaces the draft's assets and `publish` completes it. A source fix needs a new release. |
-| Every package fails                                                                        | For a transient failure, dispatch the same tag again. For a source or manifest failure, fix it through a normal pull request and release the next version.                                                                                                                                           |
-| Container run cancelled (a newer publish queued behind it)                                 | A third run queued in the `container` group cancels the pending one, so that release has no image. Dispatch the Container workflow with its tag once the queue is clear.                                                                                                                             |
-| Container workflow: no `Trinity-Web-<version>.zip` asset                                   | `package-web` failed and the draft was published anyway. Set the release back to draft (`gh release edit <tag> --draft=true`) and dispatch `release.yml` with the tag; the `publish` job republishes it once complete, which runs `container.yml`.                                                   |
-| A draft-release upload fails                                                               | Dispatch `release.yml` with the same tag after diagnosing the failure.                                                                                                                                                                                                                               |
-| release-please fails or opens no release PR                                                | Read the `Release PR and tag` job log. Only `feat`, `fix`, `perf`, `revert` and breaking commits produce a release; `chore`, `ci`, `docs`, `test`, `build`, `refactor` and `style` alone do not.                                                                                                     |
-| The release is already published                                                           | The workflow refuses to replace its assets. Release the next version instead.                                                                                                                                                                                                                        |
+| Situation                                                                                  | Recovery                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tag is not reachable from `main` or a `release/*` branch, or does not match both manifests | Fix the cause through a normal pull request; release-please then proposes a new version. Do not retarget or reuse an existing tag.                                                                                                                                                                                                                             |
+| A platform package fails but other packages succeed                                        | Inspect the failed matrix log and the `publish` job's warning, which names the missing assets. After a transient runner, credential, or service fix, dispatch `release.yml` with the same tag; `--clobber` replaces the draft's assets and `publish` completes it. A source fix needs a new release.                                                           |
+| Every package fails                                                                        | For a transient failure, dispatch the same tag again. For a source or manifest failure, fix it through a normal pull request and release the next version.                                                                                                                                                                                                     |
+| Container run cancelled (a newer publish queued behind it)                                 | A third run queued in the `container` group cancels the pending one, so that release has no image. Dispatch the Container workflow with its tag once the queue is clear.                                                                                                                                                                                       |
+| Container workflow: no `Trinity-Web-<version>.zip` asset                                   | `package-web` failed and the draft was published anyway. Set the release back to draft (`gh release edit <tag> --draft=true`) and dispatch `release.yml` with the tag; the `publish` job republishes it once complete, which runs `container.yml`.                                                                                                             |
+| A draft-release upload fails                                                               | Dispatch `release.yml` with the same tag after diagnosing the failure.                                                                                                                                                                                                                                                                                         |
+| release-please fails or opens no release PR                                                | Read the `Release PR and tag` job log. Only `feat`, `fix`, `perf`, `revert` and breaking commits produce a release; `chore`, `ci`, `docs`, `test`, `build`, `refactor` and `style` alone do not. A new release branch's first release PR is the exception: re-run the job, or push to the branch, as in [Release a stable version](#release-a-stable-version). |
+| The release is already published                                                           | The workflow refuses to replace its assets. Release the next version instead.                                                                                                                                                                                                                                                                                  |
 
 Release runs share one concurrency group and never cancel each other: an
 incomplete draft is worse than a slower package run, and two runs must not upload
