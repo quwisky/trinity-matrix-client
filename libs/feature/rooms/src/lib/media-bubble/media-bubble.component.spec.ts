@@ -33,6 +33,34 @@ describe('MediaBubbleComponent', () => {
     expect(img?.getAttribute('alt')).toBe('pic.png');
   });
 
+  describe('lazy image loading', () => {
+    const image = (over: Partial<MediaBubbleItem> = {}) =>
+      render(MediaBubbleComponent, {
+        inputs: {
+          item: item({ kind: 'image', mimeType: 'image/png', ...over }),
+          src: 'blob:thumb',
+        },
+      }).then(({ container }) =>
+        container.querySelector<HTMLImageElement>('img.media__img')!,
+      );
+
+    it('loads lazily with intrinsic width and height when the event states its size', async () => {
+      const img = await image({ width: 640, height: 480 });
+
+      expect(img.getAttribute('loading')).toBe('lazy');
+      expect(img.getAttribute('width')).toBe('640');
+      expect(img.getAttribute('height')).toBe('480');
+    });
+
+    it('stays eager when the size is unknown, so its late reflow cannot happen mid-scroll', async () => {
+      const img = await image();
+
+      expect(img.hasAttribute('loading')).toBe(false);
+      expect(img.hasAttribute('width')).toBe(false);
+      expect(img.hasAttribute('height')).toBe(false);
+    });
+  });
+
   it('renders a download file-card for a file kind', async () => {
     const { container } = await render(MediaBubbleComponent, {
       inputs: { item: item({ kind: 'file', filename: 'report.pdf' }) },

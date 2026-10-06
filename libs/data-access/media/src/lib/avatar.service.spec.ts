@@ -46,6 +46,9 @@ function okResponse(): Response {
   } as unknown as Response;
 }
 
+/** Mirrors the (non-exported) AVATAR_CACHE_LIMIT in avatar.service.ts. */
+const CACHE_LIMIT = 256;
+
 describe('AvatarService', () => {
   let fetchMock: Mock;
   let createObjectURL: Mock;
@@ -216,6 +219,60 @@ describe('AvatarService', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe('bounded cache', () => {
+    async function fill(svc: AvatarService, count: number, from = 0) {
+      const urls: string[] = [];
+      for (let i = from; i < from + count; i++) {
+        urls.push((await firstValueFrom(svc.resolve(`mxc://hs/${i}`)))!);
+      }
+      return urls;
+    }
+
+    it('revokes the least recently used URL once the cap is exceeded', async () => {
+      const { svc } = setup();
+      const urls = await fill(svc, CACHE_LIMIT + 1);
+
+      expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+      expect(revokeObjectURL).toHaveBeenCalledWith(urls[0]);
+    });
+
+    it('evicts in recency order: a re-resolved key outlives an older one', async () => {
+      const { svc } = setup();
+      const urls = await fill(svc, CACHE_LIMIT);
+      await firstValueFrom(svc.resolve('mxc://hs/0')); // touch the oldest
+      await fill(svc, 1, CACHE_LIMIT);
+
+      expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+      expect(revokeObjectURL).toHaveBeenCalledWith(urls[1]);
+    });
+
+    it('never revokes a URL a live subscriber is still showing', async () => {
+      const { svc } = setup();
+      const shown: (string | null)[] = [];
+      const sub = svc.resolve('mxc://hs/0').subscribe((u) => shown.push(u));
+      await new Promise((r) => setTimeout(r));
+      await fill(svc, CACHE_LIMIT + 5, 1);
+
+      expect(revokeObjectURL).not.toHaveBeenCalledWith(shown[0]);
+
+      // Once the row is gone the URL becomes evictable again.
+      sub.unsubscribe();
+      await fill(svc, 1, CACHE_LIMIT + 10);
+      expect(revokeObjectURL).toHaveBeenCalledWith(shown[0]);
+    });
+
+    it('re-resolves an evicted key with a fresh fetch and URL', async () => {
+      const { svc } = setup();
+      const urls = await fill(svc, CACHE_LIMIT + 1);
+      fetchMock.mockClear();
+
+      const again = await firstValueFrom(svc.resolve('mxc://hs/0'));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(again).not.toBe(urls[0]);
+    });
   });
 
   it('releaseAll revokes every cached avatar URL and clears the cache', async () => {

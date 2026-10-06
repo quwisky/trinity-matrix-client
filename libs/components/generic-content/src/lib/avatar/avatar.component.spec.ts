@@ -293,6 +293,25 @@ describe('AvatarComponent', () => {
     expect(badge(container)?.textContent?.trim()).toBe('');
   });
 
+  it('loads the badge image lazily', async () => {
+    const { container } = await render(AvatarComponent, {
+      inputs: {
+        initial: 'R',
+        accountBadge: {
+          id: '@work:hs',
+          initial: 'W',
+          name: 'Work',
+          avatarMxc: 'mxc://hs/work',
+        },
+      },
+      providers: [
+        { provide: AVATAR_RESOLVER, useValue: () => of('blob:account-avatar') },
+      ],
+    });
+
+    expect(badgeImg(container)!.getAttribute('loading')).toBe('lazy');
+  });
+
   it('falls back to the account initial when the badge avatar cannot be resolved', async () => {
     const { container } = await render(AvatarComponent, {
       inputs: {

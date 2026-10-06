@@ -22,6 +22,9 @@
       <img
         decoding="async"
         class="media__img"
+        [attr.loading]="hasIntrinsicSize() ? 'lazy' : null"
+        [attr.width]="item().width"
+        [attr.height]="item().height"
         [src]="src()"
         [alt]="filename()"
         (error)="imgFailed.set(true)"

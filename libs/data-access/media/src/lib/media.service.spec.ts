@@ -39,6 +39,8 @@ const encryptMock = encryptAttachment as unknown as Mock;
 
 /** Mirrors the (non-exported) CACHE_LIMIT in media.service.ts. */
 const CACHE_LIMIT = 64;
+/** Mirrors the (non-exported) CACHE_BYTE_LIMIT in media.service.ts. */
+const CACHE_BYTE_LIMIT = 96 * 1024 * 1024;
 
 function plainMedia(mxc: string, mimeType = 'image/png'): MediaPayload {
   return {
@@ -68,6 +70,19 @@ function encryptedMedia(): MediaPayload {
     thumbnailMxc: null,
     thumbnailFile: null,
   };
+}
+
+/** Make every Blob report `mb` megabytes, so budget tests need not allocate them. */
+function stubBlobSize(mb: number): void {
+  const Orig = globalThis.Blob;
+  vi.stubGlobal(
+    'Blob',
+    class extends Orig {
+      override get size(): number {
+        return mb * 1024 * 1024;
+      }
+    },
+  );
 }
 
 function okResponse(): Response {
@@ -367,6 +382,49 @@ describe('MediaService', () => {
     // The orphaned completion must not store a fresh object URL into the cache.
     expect(seen).toEqual([]);
     expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('evicts least recently used unpinned entries once the byte budget is exceeded', async () => {
+    const { svc } = setup();
+    stubBlobSize(40);
+    expect(3 * 40 * 1024 * 1024).toBeGreaterThan(CACHE_BYTE_LIMIT);
+
+    const a = await firstValueFrom(
+      svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'),
+    );
+    const b = await firstValueFrom(
+      svc.resolveMedia(plainMedia('mxc://hs/b'), 'full'),
+    );
+    expect(revokeObjectURL).not.toHaveBeenCalled(); // 80 MB fits
+    await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/c'), 'full'));
+
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1); // 120 MB > 96 MB
+    expect(revokeObjectURL).toHaveBeenCalledWith(a);
+    expect(revokeObjectURL).not.toHaveBeenCalledWith(b);
+  });
+
+  it('keeps a pinned entry even when it alone exceeds the byte budget', async () => {
+    const { svc } = setup();
+    stubBlobSize(60);
+    const a = await firstValueFrom(
+      svc.resolveMedia(plainMedia('mxc://hs/a'), 'full'),
+    );
+    svc.pin(a);
+    await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/b'), 'full'));
+    await firstValueFrom(svc.resolveMedia(plainMedia('mxc://hs/c'), 'full'));
+
+    expect(revokeObjectURL).not.toHaveBeenCalledWith(a);
+  });
+
+  it('does not revoke a lone blob that is over the byte budget before it can be pinned', async () => {
+    const { svc } = setup();
+    stubBlobSize(CACHE_BYTE_LIMIT / 1024 / 1024 + 4);
+
+    const url = await firstValueFrom(
+      svc.resolveMedia(plainMedia('mxc://hs/huge'), 'full'),
+    );
+
+    expect(revokeObjectURL).not.toHaveBeenCalledWith(url);
   });
 
   it('never evicts pinned URLs past the cache limit, and releaseAll revokes everything', async () => {
