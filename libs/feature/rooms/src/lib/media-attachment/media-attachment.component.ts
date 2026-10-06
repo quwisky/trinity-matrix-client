@@ -9,7 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Subscription, finalize, switchMap, tap } from 'rxjs';
+import { Subscription } from 'rxjs';
 import { BELOW_MD_QUERY, matchesQuery, runWithBusy } from '@trinity/util/ui';
 import { MediaBubbleComponent } from '../media-bubble/media-bubble.component';
 import {
@@ -20,7 +20,7 @@ import {
   MediaPipeline,
   type PresentedMediaReference,
 } from '@trinity/data-access/media';
-import { HostFileExportService } from '@trinity/runtime/host';
+import { MediaSaveService } from './media-save.service';
 import { LightboxComponent } from './lightbox/lightbox.component';
 
 /**
@@ -40,16 +40,13 @@ export class MediaAttachmentComponent {
 
   private readonly mediaPipeline = inject(MediaPipeline);
   private readonly dialogs = inject(TrnDialogService);
-  private readonly fileSave = inject(HostFileExportService);
+  private readonly mediaSave = inject(MediaSaveService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly src = signal<string | null>(null);
   readonly loading = signal(false);
   readonly errorMsg = signal<string | null>(null);
   readonly hasError = computed(() => this.errorMsg() !== null);
-  /** Guards against a second save starting while one is in flight (native Share
-   * rejects a concurrent invocation, and it would write the file twice). */
-  private readonly saving = signal(false);
 
   /** Currently-pinned thumbnail URL (so it survives cache eviction while shown). */
   private pinnedUrl: string | null = null;
@@ -136,7 +133,11 @@ export class MediaAttachmentComponent {
           this.lightboxRef = this.dialogs.open<void, LightboxComponent>(
             LightboxComponent,
             {
-              inputs: { src: url, filename: this.media().filename },
+              inputs: {
+                src: url,
+                filename: this.media().filename,
+                media: this.media(),
+              },
               ariaLabel: this.media().filename,
               placement: matchesQuery(BELOW_MD_QUERY) ? 'fullscreen' : 'center',
               // Keep the full viewer container as the initial focus target. The visible close
@@ -170,26 +171,7 @@ export class MediaAttachmentComponent {
 
   /** Save the full-resolution attachment — native share sheet or web download. */
   download(): void {
-    if (this.saving()) {
-      return; // a save is already in flight (avoid a concurrent native share)
-    }
-    this.saving.set(true);
-    this.mediaPipeline
-      .downloadMedia(this.media())
-      .pipe(
-        switchMap(({ blob, filename }) =>
-          this.fileSave.save({ bytes: blob, filename }),
-        ),
-        tap((outcome) => {
-          if (outcome.kind !== 'completed')
-            this.errorMsg.set('Download failed');
-        }),
-        finalize(() => this.saving.set(false)),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe({
-        error: () => this.errorMsg.set('Download failed'),
-      });
+    this.mediaSave.save(this.media());
   }
 
   /** Swap the pinned thumbnail URL: unpin the previous, pin the next. */

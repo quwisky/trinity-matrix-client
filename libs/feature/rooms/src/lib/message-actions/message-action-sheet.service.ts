@@ -153,6 +153,14 @@ export class MessageActionSheetService {
         handler: act('pin'),
       });
     }
+    if (caps.saveMedia) {
+      buttons.push({
+        text: `Save ${caps.saveMedia}`,
+        icon: 'download',
+        testId: 'sheet-save-media',
+        handler: act('save-media'),
+      });
+    }
     buttons.push(
       {
         text: 'Copy text',

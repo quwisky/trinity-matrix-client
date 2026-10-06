@@ -141,6 +141,15 @@ export function isQuotableMessage(message: MessageView): boolean {
   );
 }
 
+/** The kind of media a message can be saved as, or null when there is nothing to save. */
+export function savableMediaKind(
+  message: MessageView,
+): 'image' | 'video' | null {
+  return message.media && (message.kind === 'image' || message.kind === 'video')
+    ? message.kind
+    : null;
+}
+
 interface NormalizedCommon {
   readonly id: string;
   readonly senderId: string;

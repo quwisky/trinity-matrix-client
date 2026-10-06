@@ -18,12 +18,14 @@ import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
 import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { ForwardService } from '../forward/forward.service';
+import { MediaSaveService } from '../media-attachment/media-save.service';
 import { ReportService } from '../report/report.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 import {
   isEditableMessage,
   isQuotableMessage,
+  savableMediaKind,
   ConversationRuntime,
   type MessageView,
   type ThreadSummary,
@@ -84,6 +86,7 @@ const DEFAULT_ROW_CAPS: MessageRowCaps = {
   pinned: false,
   canThread: true,
   canQuote: false,
+  saveMedia: null,
   readOnly: false,
 };
 
@@ -95,7 +98,7 @@ interface RowCacheEntry {
   readonly row: MessageRow;
 }
 
-/** Whether two caps carry the same capabilities — all seven fields are flat booleans. */
+/** Whether two caps carry the same capabilities — all eight fields are flat primitives. */
 function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
   return (
     a.editable === b.editable &&
@@ -104,6 +107,7 @@ function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
     a.pinned === b.pinned &&
     a.canThread === b.canThread &&
     a.canQuote === b.canQuote &&
+    a.saveMedia === b.saveMedia &&
     a.readOnly === b.readOnly
   );
 }
@@ -314,6 +318,7 @@ export abstract class MessageListBase {
   private readonly dialog = inject(TrnDialogService);
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
+  private readonly mediaSave = inject(MediaSaveService);
   private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly messageSheet = inject(MessageActionSheetService);
@@ -836,6 +841,7 @@ export abstract class MessageListBase {
         pinned: pinnedIds.includes(message.id),
         canThread: !unsent,
         canQuote: isQuotableMessage(message),
+        saveMedia: savableMediaKind(message),
         readOnly: false,
       };
       // Reuse the previous object when nothing about this row's caps changed, exactly
@@ -900,6 +906,7 @@ export abstract class MessageListBase {
         timeline: this.timeline,
         forward: this.forwardSvc,
         report: this.reportSvc,
+        mediaSave: this.mediaSave,
         reactions: this.reactionsDialog,
         editHistory: this.editHistorySvc,
         react: (id, key) => this.react.emit({ id, key }),

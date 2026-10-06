@@ -29,6 +29,8 @@ export interface MessageToolbarCaps {
   canThread: boolean;
   /** Whether this message has text worth pulling into the composer as a quote. */
   canQuote: boolean;
+  /** Offer "Save image" / "Save video"; null for a message with no savable media. */
+  saveMedia: 'image' | 'video' | null;
 }
 
 /** A single action a user triggers from the message toolbar. */
@@ -44,6 +46,8 @@ export type MessageAction =
   | { type: 'delete' }
   | { type: 'copy' }
   | { type: 'copy-link' }
+  /** Save the message's image or video to the device. */
+  | { type: 'save-media' }
   | { type: 'view-source' }
   | { type: 'forward' }
   | { type: 'report' }
@@ -91,6 +95,7 @@ export class MessageToolbarComponent {
     pinned: false,
     canThread: true,
     canQuote: false,
+    saveMedia: null,
   });
   readonly action = output<MessageAction>();
   /**

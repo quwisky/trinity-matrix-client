@@ -47,6 +47,7 @@ import {
   ConversationRuntime,
   isEditableMessage,
   isQuotableMessage,
+  savableMediaKind,
   type ConversationThread,
   type ConversationThreadOutcome,
 } from '@trinity/data-access/timeline';
@@ -64,6 +65,7 @@ import {
   type ComposerSubmit,
 } from '../message-composer/message-composer.component';
 import { ForwardService } from '../forward/forward.service';
+import { MediaSaveService } from '../media-attachment/media-save.service';
 import { ReportService } from '../report/report.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
@@ -86,6 +88,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
   pinned: false,
   canThread: false,
   canQuote: false,
+  saveMedia: null,
   readOnly: false,
 };
 
@@ -125,6 +128,7 @@ export class ThreadViewComponent implements OnDestroy {
   private readonly dialog = inject(TrnDialogService);
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
+  private readonly mediaSave = inject(MediaSaveService);
   private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly timeline = this.conversations.timeline;
@@ -524,6 +528,7 @@ export class ThreadViewComponent implements OnDestroy {
         pinned: false,
         canThread: false,
         canQuote: isQuotableMessage(row),
+        saveMedia: savableMediaKind(row),
         readOnly: false,
       });
     }
@@ -545,6 +550,7 @@ export class ThreadViewComponent implements OnDestroy {
         timeline: this.timeline,
         forward: this.forwardSvc,
         report: this.reportSvc,
+        mediaSave: this.mediaSave,
         reactions: this.reactionsDialog,
         editHistory: this.editHistorySvc,
         react: (id, key) => this.onReact(id, key),
