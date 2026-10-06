@@ -7,8 +7,8 @@
 //      appears; click it → the room is open (the header heading shows its name).
 //
 //   2. In-room message search → jump to a message: open a plaintext room seeded
-//      with several messages (one with a distinctive token); click search-messages;
-//      type the token; the matching result row appears; click it → the timeline
+//      with several messages (one with a distinctive token); type the token into the
+//      header search field; the matching result row appears; click it → the timeline
 //      [data-mid="<eventId>"] element is visible (jumpTo scroll triggered).
 //
 //   3. Quick Switcher → directory person → DM: register a 2nd user (admin API);
@@ -297,9 +297,10 @@ async function main(protocolBrowser) {
     // Navigate to SEARCH_ROOM by clicking it in the sidebar.
     await searchRoomChannel.first().click();
 
-    // The "Search messages" header button is only rendered when activeRoom() is set.
-    const searchMsgsBtn = page.getByTestId('search-messages');
-    await searchMsgsBtn.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
+    // At this desktop width the header carries the inline search field (the icon is only
+    // shown below the members breakpoint). It is only rendered when activeRoom() is set.
+    const headerSearch = page.getByTestId('header-search');
+    await headerSearch.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
 
     // Wait for the distinctive token message to sync and render in the timeline.
     const tokenRow = page.locator('.msg', { hasText: TOKEN });
@@ -308,21 +309,19 @@ async function main(protocolBrowser) {
       .waitFor({ state: 'visible', timeout: SETUP_TIMEOUT });
     log(`token message "${TOKEN}" visible in timeline ✓`);
 
-    // Open in-room message search.
-    await searchMsgsBtn.click();
+    // Typing the distinctive token into the header field opens in-room message search
+    // with the same query.
+    await headerSearch.click();
+    await page.keyboard.type(TOKEN, { delay: 30 });
     const searchPanel = page.getByRole('complementary', {
       name: 'Search messages',
     });
     await searchPanel.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
     log('message-search panel open');
-
-    // Type the distinctive token into the message-search's native input.
     const searchInput2 = searchPanel.getByPlaceholder(
       'Search this conversation',
     );
-    await searchInput2.waitFor({ state: 'visible', timeout: 10_000 });
-    await searchInput2.click();
-    await page.keyboard.type(TOKEN, { delay: 30 });
+    await expect(searchInput2).toHaveValue(TOKEN);
 
     // A [data-testid="result"] row should appear with the token in its text.
     const searchResult = searchPanel.locator('[data-testid="result"]');

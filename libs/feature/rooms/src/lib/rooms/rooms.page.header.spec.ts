@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { RoomModerationService } from '@trinity/data-access/room-administration';
 import { signal, type WritableSignal } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
@@ -50,6 +52,7 @@ import { SimpleMessageListComponent } from '../message-list/simple-message-list/
 import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
+import { ThreadViewComponent } from '../thread/thread-view.component';
 import { AccountRoutingService } from './account-routing.service';
 import { InviteActionsService } from './invite-actions.service';
 import { MemberActionsService } from './member-actions.service';
@@ -66,7 +69,10 @@ import {
   ROUTE_PROVIDER,
   SYSTEM_STATUS_PROVIDER,
   setRouteRoom,
+  stubLiveLayout,
+  stubNarrowLayout,
 } from './rooms-page.spec-harness';
+import { BELOW_MEMBERS_QUERY } from '@trinity/util/ui';
 import { SessionActionsService } from './session-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { ShellStatusService } from './shell-status.service';
@@ -258,6 +264,7 @@ function renderHeader(
         EncryptionBannerComponent,
         ConnectivityBannerComponent,
         TombstoneBannerComponent,
+        ThreadViewComponent,
       ],
     },
     add: {
@@ -268,6 +275,14 @@ function renderHeader(
             timeline: Object.assign(new ConversationTimelineStub(), {
               loadState: signal(opts.loadState ?? { kind: 'ready' as const }),
             }),
+            search: {
+              searchLoaded: () => ({
+                hits: [],
+                encrypted: false,
+                serverAvailable: false,
+                scanned: 0,
+              }),
+            },
             threads: { summaries: signal({}), list: signal([]) },
             pins: {
               messages: pinMessages.asReadonly(),
@@ -312,9 +327,20 @@ function renderHeader(
         { provide: ReadStateService, useValue: {} },
         {
           provide: MessageActionsService,
-          useValue: { uploadProgress: signal(null) },
+          useFactory: (surfaces: RoomSurfaceLifecycle) => ({
+            uploadProgress: signal(null),
+            openThreadsList: () =>
+              surfaces.transition({ kind: 'open-threads' }),
+            openPinnedPanel: () => surfaces.transition({ kind: 'open-pinned' }),
+            openMessageSearch: () =>
+              surfaces.transition({ kind: 'open-search' }),
+          }),
+          deps: [RoomSurfaceLifecycle],
         },
-        { provide: ShellShortcutsService, useValue: {} },
+        {
+          provide: ShellShortcutsService,
+          useValue: { bindSearchFocus: vi.fn(), onGlobalKeydown: vi.fn() },
+        },
         { provide: SessionActionsService, useValue: {} },
       ],
       imports: [
@@ -327,6 +353,7 @@ function renderHeader(
         MockComponent(EncryptionBannerComponent),
         MockComponent(ConnectivityBannerComponent),
         MockComponent(TombstoneBannerComponent),
+        MockComponent(ThreadViewComponent),
       ],
     },
   });
@@ -394,6 +421,312 @@ describe('RoomsPage user panel presence', () => {
     lastRender.activeAccountId.set('@alt:hs');
     lastRender.fixture.detectChanges();
     expect(panelPresence()).toBe('unavailable');
+  });
+});
+
+describe('RoomsPage header title', () => {
+  const topicRoom = (topic: string): RoomSummary => ({ ...ROOM, topic });
+
+  it('shows a 24px avatar, no hash, and a divider with the topic', () => {
+    const host = renderHeader(0, { room: topicRoom('Release planning') });
+    const avatar = host.querySelector(
+      '[data-testid="room-title"] trn-avatar',
+    ) as HTMLElement | null;
+    expect(avatar).not.toBeNull();
+    expect(
+      lastRender.fixture.debugElement
+        .query(By.css('[data-testid="room-title"] trn-avatar'))
+        .componentInstance.exactSize(),
+    ).toBe(24);
+    expect(host.querySelector('.title-hash')).toBeNull();
+    expect(
+      host.querySelector('[data-testid="room-topic"]')?.textContent?.trim(),
+    ).toBe('Release planning');
+    expect(
+      host.querySelector('[data-testid="room-topic-divider"]'),
+    ).not.toBeNull();
+  });
+
+  it('hides the decorative avatar so the heading names the room once', () => {
+    const host = renderHeader(0);
+    expect(
+      host
+        .querySelector('[data-testid="room-title"] trn-avatar')
+        ?.getAttribute('aria-hidden'),
+    ).toBe('true');
+  });
+
+  it('omits the divider and topic when the topic is empty', () => {
+    const host = renderHeader(0);
+    expect(host.querySelector('[data-testid="room-topic"]')).toBeNull();
+    expect(host.querySelector('[data-testid="room-topic-divider"]')).toBeNull();
+  });
+
+  it('points the topic button at the popover', () => {
+    const host = renderHeader(0, { room: topicRoom('Release planning') });
+    const button = host.querySelector('[data-testid="room-topic"]');
+    expect(button?.tagName).toBe('BUTTON');
+    expect(button?.getAttribute('popovertarget')).toBe('room-topic-popover');
+    expect(host.querySelector('#room-topic-popover')).not.toBeNull();
+  });
+
+  it('shows markup in the topic as text and links as safe anchors', () => {
+    const host = renderHeader(0, {
+      room: topicRoom('<img src=x onerror=alert(1)> see https://example.org'),
+    });
+    const popover = host.querySelector('#room-topic-popover') as HTMLElement;
+    expect(popover.querySelector('img')).toBeNull();
+    expect(popover.textContent).toContain('<img src=x onerror=alert(1)>');
+    const links = popover.querySelectorAll(
+      'a[href="https://example.org"][target="_blank"][rel~="noopener"]',
+    );
+    expect(links).toHaveLength(1);
+  });
+
+  it('treats a literal anchor tag in the topic as text, not a link', () => {
+    const host = renderHeader(0, {
+      room: topicRoom('<a href="javascript:alert(1)">hi</a>'),
+    });
+    const popover = host.querySelector('#room-topic-popover') as HTMLElement;
+    expect(popover.querySelector('a')).toBeNull();
+    expect(popover.textContent).toContain(
+      '<a href="javascript:alert(1)">hi</a>',
+    );
+  });
+
+  it('caps the name width only while a topic is shown', () => {
+    const withTopic = renderHeader(0, { room: topicRoom('Release planning') });
+    expect(
+      withTopic
+        .querySelector('.title-room')
+        ?.classList.contains('title-room--topic'),
+    ).toBe(true);
+    TestBed.resetTestingModule();
+    const without = renderHeader(0);
+    expect(
+      without
+        .querySelector('.title-room')
+        ?.classList.contains('title-room--topic'),
+    ).toBe(false);
+  });
+
+  it('keeps the heading named but visually empty with no room open', () => {
+    const host = renderHeader(0, { room: null });
+    const h1 = host.querySelector('h1') as HTMLElement;
+    expect(h1.querySelector('.sr-only')?.textContent?.trim()).toBe('Trinity');
+    expect(h1.querySelector('[data-testid="room-title"]')).toBeNull();
+    h1.querySelector('.sr-only')?.remove();
+    expect(h1.textContent?.trim()).toBe('');
+  });
+
+  it('does not render the topic below md', () => {
+    const restore = stubNarrowLayout();
+    try {
+      const host = renderHeader(0, { room: topicRoom('Release planning') });
+      expect(host.querySelector('[data-testid="room-topic"]')).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe('RoomsPage topic popover stylesheet', () => {
+  const scss = readFileSync(join(__dirname, 'rooms.page.scss'), 'utf8');
+
+  it('applies anchor positioning and the margin reset only where supported', () => {
+    const supports = scss.match(
+      /@supports \(top: anchor\(bottom\)\) \{[\s\S]*?\n {2}\}/,
+    );
+    expect(supports).not.toBeNull();
+    for (const decl of ['position-anchor', 'top: anchor(', 'margin: 0']) {
+      expect(supports![0]).toContain(decl);
+    }
+    expect(scss.replace(supports![0], '')).not.toMatch(/anchor\(|margin: 0;/);
+  });
+
+  it('leaves the closed popover to the UA display: none', () => {
+    const rule = scss.match(/\n {2}\.topic-popover \{[\s\S]*?\n {2}\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![0]).not.toMatch(/\bdisplay:/);
+  });
+
+  it('flips the anchored popover inline when it would overflow', () => {
+    expect(scss).toContain('position-try-fallbacks: flip-inline');
+  });
+});
+
+describe('RoomsPage header actions and search field', () => {
+  const byId = (root: ParentNode, id: string) =>
+    root.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+
+  function surfaces() {
+    return lastRender.fixture.debugElement.injector.get(RoomSurfaceLifecycle);
+  }
+
+  async function typeInHeader(root: HTMLElement, value: string) {
+    const field = byId(root, 'header-search') as HTMLInputElement;
+    field.value = value;
+    field.dispatchEvent(new Event('input'));
+    lastRender.fixture.detectChanges();
+    await lastRender.fixture.whenStable();
+    lastRender.fixture.detectChanges();
+    return field;
+  }
+
+  it('orders threads, pinned, members, the search field, then the overflow', () => {
+    const root = renderHeader(0);
+    const actions = [
+      'open-threads',
+      'open-pinned',
+      'toggle-members',
+      'header-search',
+      'room-actions-overflow',
+    ].map((id) => byId(root, id) as HTMLElement);
+    actions.forEach((el, i) => {
+      if (i > 0) {
+        expect(
+          actions[i - 1].compareDocumentPosition(el) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      }
+    });
+  });
+
+  it('moves invite and room settings into the overflow menu', () => {
+    const root = renderHeader(0);
+    expect(byId(root, 'invite-people')).toBeNull();
+    expect(byId(root, 'open-room-settings')).toBeNull();
+    const source = readFileSync(join(__dirname, 'rooms.page.html'), 'utf8');
+    expect(source).toContain('data-testid="overflow-invite-people"');
+    expect(source).toContain('data-testid="overflow-open-room-settings"');
+  });
+
+  it('marks only the open panel button as pressed', () => {
+    const root = renderHeader(0);
+    const pressed = () =>
+      ['open-threads', 'open-pinned', 'toggle-members'].map((id) =>
+        byId(root, id)?.getAttribute('aria-pressed'),
+      );
+    expect(pressed()).toEqual(['false', 'false', 'false']);
+    surfaces().transition({ kind: 'open-threads' });
+    lastRender.fixture.detectChanges();
+    expect(pressed()).toEqual(['true', 'false', 'false']);
+    surfaces().transition({ kind: 'open-pinned' });
+    lastRender.fixture.detectChanges();
+    expect(pressed()).toEqual(['false', 'true', 'false']);
+    surfaces().transition({ kind: 'open-members' });
+    lastRender.fixture.detectChanges();
+    expect(pressed()).toEqual(['false', 'false', 'true']);
+  });
+
+  it('names the field after the room', () => {
+    const field = byId(renderHeader(0), 'header-search');
+    expect(field?.getAttribute('placeholder')).toBe('Search General');
+  });
+
+  it('opens the search panel with the typed query', async () => {
+    const root = renderHeader(0);
+    await typeInHeader(root, 'hello');
+    const panelField = root.querySelector<HTMLInputElement>(
+      'trn-message-search input',
+    );
+    expect(panelField?.value).toBe('hello');
+  });
+
+  it('focuses the field when the search shortcut asks for it', () => {
+    const root = renderHeader(0);
+    document.body.append(root);
+    const bindSearchFocus = lastRender.fixture.debugElement.injector.get(
+      ShellShortcutsService,
+    ).bindSearchFocus as ReturnType<typeof vi.fn>;
+    bindSearchFocus.mock.calls.at(-1)?.[0]();
+    expect(document.activeElement).toBe(byId(root, 'header-search'));
+    root.remove();
+  });
+
+  it('clears and blurs the field on Escape', async () => {
+    const root = renderHeader(0);
+    document.body.append(root);
+    const field = await typeInHeader(root, 'hello');
+    field.focus();
+    field.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    lastRender.fixture.detectChanges();
+    expect(field.value).toBe('');
+    expect(document.activeElement).not.toBe(field);
+    root.remove();
+  });
+
+  function runSearchShortcut(): void {
+    const bindSearchFocus = lastRender.fixture.debugElement.injector.get(
+      ShellShortcutsService,
+    ).bindSearchFocus as ReturnType<typeof vi.fn>;
+    bindSearchFocus.mock.calls.at(-1)?.[0]();
+  }
+
+  async function settle(): Promise<void> {
+    lastRender.fixture.detectChanges();
+    await lastRender.fixture.whenStable();
+    lastRender.fixture.detectChanges();
+  }
+
+  it('shows the inline field only beside static panels, else the icon', () => {
+    const root = renderHeader(0);
+    expect(byId(root, 'header-search')?.classList).toContain(
+      'max-members:hidden',
+    );
+    expect(byId(root, 'search-messages')?.classList).toContain(
+      'members:hidden',
+    );
+  });
+
+  it('opens the panel and focuses its field from the shortcut below the members breakpoint', async () => {
+    const restore = stubLiveLayout({ [BELOW_MEMBERS_QUERY]: true });
+    try {
+      const root = renderHeader(0);
+      document.body.append(root);
+      runSearchShortcut();
+      await settle();
+      const panelField = root.querySelector<HTMLInputElement>(
+        'trn-message-search input',
+      );
+      expect(panelField).not.toBeNull();
+      expect(document.activeElement).toBe(panelField);
+
+      // Again with the panel already open: focus returns to the panel field.
+      panelField!.blur();
+      runSearchShortcut();
+      await settle();
+      expect(document.activeElement).toBe(panelField);
+      root.remove();
+    } finally {
+      restore();
+    }
+  });
+
+  it('keeps the threads button pressed while a single thread is open', () => {
+    const root = renderHeader(0);
+    surfaces().transition({ kind: 'open-thread', rootEventId: '$root' });
+    lastRender.fixture.detectChanges();
+    expect(byId(root, 'open-threads')?.getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+  });
+
+  it('lets Escape in an empty field reach the page and close the panel', async () => {
+    const root = renderHeader(0);
+    document.body.append(root);
+    surfaces().transition({ kind: 'open-threads' });
+    await settle();
+    const field = byId(root, 'header-search') as HTMLInputElement;
+    field.focus();
+    field.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    lastRender.fixture.detectChanges();
+    expect(surfaces().renderedSurface()).toBeNull();
+    root.remove();
   });
 });
 

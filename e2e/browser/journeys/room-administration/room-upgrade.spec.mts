@@ -90,7 +90,8 @@ test.describe('Room upgrade', () => {
       timeout: 15_000,
     });
     const oldRoomUrl = page.url();
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await expect(page.getByTestId('room-settings')).toBeVisible({
       timeout: 10_000,
     });
@@ -137,7 +138,8 @@ test.describe('Room upgrade', () => {
     await expect(page.getByTestId('composer-input')).toBeVisible({
       timeout: 30_000,
     });
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await page.getByTestId('room-settings-tab-advanced').click();
     await expect(page.getByTestId('room-advanced-room-id')).toHaveText(
       newRoomId,

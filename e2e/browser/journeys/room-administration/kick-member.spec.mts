@@ -234,6 +234,15 @@ test.describe('Remove a member', () => {
       members.retryProjection();
     });
 
+    await expect(page.getByTestId('member-list-freshness')).toContainText(
+      'Showing the last known member list',
+    );
+    await page.getByTestId('room-actions-overflow').click();
+    await expect(
+      page.getByTestId('overflow-invite-people'),
+    ).not.toHaveAttribute('aria-disabled', 'true');
+    await page.keyboard.press('Escape');
+
     await openSystemStatusFromRooms(page);
     const status = page.getByRole('dialog', { name: 'System status' });
     const memberHealth = status
@@ -253,10 +262,6 @@ test.describe('Remove a member', () => {
       'Showing the last known member list',
     );
     await expect(memberRow).toBeVisible();
-    await expect(page.getByTestId('invite-people')).not.toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
     await testInfo.attach('room-administration-stale-roster', {
       body: await page.screenshot(),
       contentType: 'image/png',

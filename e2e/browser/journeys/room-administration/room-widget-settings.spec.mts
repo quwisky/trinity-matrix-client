@@ -64,7 +64,8 @@ test.describe('Room settings', () => {
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'widgets');
 
     const card = page.getByTestId('room-widget-planning-board');
@@ -296,7 +297,8 @@ test.describe('Room settings', () => {
       .filter({ hasText: `@${user}:` })
       .click();
     await openRoom(page, roomName);
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'widgets');
     await expect(page.getByTestId('room-settings-account')).toContainText(user);
 
@@ -483,7 +485,8 @@ test.describe('Room settings', () => {
       pass: memberPass,
     } as HomeserverSession);
     await openRoom(page, roomName);
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'widgets');
 
     await expect(page.getByTestId('room-widget-shared-board')).toBeVisible();

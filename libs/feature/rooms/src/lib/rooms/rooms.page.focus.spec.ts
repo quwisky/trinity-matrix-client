@@ -1,5 +1,6 @@
 import { RoomModerationService } from '@trinity/data-access/room-administration';
 import { signal } from '@angular/core';
+import { BELOW_MEMBERS_QUERY } from '@trinity/util/ui';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { WorkspaceBackService } from '@trinity/application/workspace';
@@ -97,199 +98,213 @@ const ROOM: RoomSummary = {
 
 beforeEach(() => setRouteRoom(null));
 
-describe('RoomsPage rendered right-panel focus', () => {
-  it('hands focus through the real members → member @switch render', () => {
-    const vm = {
-      accountBadges: signal(new Map()),
-      accounts: signal([]),
-      activeAccountId: signal<string | null>('@me:hs'),
-      activeRoom: signal<RoomSummary | null>(ROOM),
-      activeRoomIsDirect: signal(false),
-      anyRoomUnread: signal(false),
-      canConfigureSpace: signal(false),
-      canCurateSpace: signal(false),
-      roomInvitePermission: signal({ available: false, reason: null }),
-      spaceCuratePermission: signal({ available: false, reason: null }),
-      spaceInvitePermission: signal({ available: false, reason: null }),
-      defaultSpaceSortMode: signal('recent'),
-      filteredRooms: signal<RoomSummary[]>([]),
-      members: signal<MemberSummary[]>([BOB]),
-      membersView: signal({
-        availability: 'coherent' as const,
-        current: [BOB],
-        stale: null,
-      }),
-      railSpaces: signal([]),
-      railUnread: signal({
-        recent: { unread: 0, mentions: 0 },
-        home: { unread: 0, mentions: 0 },
-        rooms: { unread: 0, mentions: 0 },
-        perSpace: {},
-      }),
-      reauthAccounts: signal([]),
-      sidebarTitle: signal('Home'),
-      spaceSortMode: signal('recent'),
-      spaceSortOverridden: signal(false),
-      syncLabel: signal('Connecting…'),
-      userAvatarMxc: signal<string | null>(null),
-      userId: signal('@me:hs'),
-      userInitial: signal('M'),
-      userName: signal('Me'),
-      userProfile: signal({
-        userId: '@me:hs',
-        displayName: 'Me',
-        avatarMxc: null,
-      }),
-    };
-    const nav = { bindFocus: vi.fn(), releaseOpenRoom: vi.fn() };
-    const status = { error: signal<string | null>(null), showError: vi.fn() };
+function buildPage() {
+  const vm = {
+    accountBadges: signal(new Map()),
+    accounts: signal([]),
+    activeAccountId: signal<string | null>('@me:hs'),
+    activeRoom: signal<RoomSummary | null>(ROOM),
+    activeRoomIsDirect: signal(false),
+    anyRoomUnread: signal(false),
+    canConfigureSpace: signal(false),
+    canCurateSpace: signal(false),
+    roomInvitePermission: signal({ available: false, reason: null }),
+    spaceCuratePermission: signal({ available: false, reason: null }),
+    spaceInvitePermission: signal({ available: false, reason: null }),
+    defaultSpaceSortMode: signal('recent'),
+    filteredRooms: signal<RoomSummary[]>([]),
+    members: signal<MemberSummary[]>([BOB]),
+    membersView: signal({
+      availability: 'coherent' as const,
+      current: [BOB],
+      stale: null,
+    }),
+    railSpaces: signal([]),
+    railUnread: signal({
+      recent: { unread: 0, mentions: 0 },
+      home: { unread: 0, mentions: 0 },
+      rooms: { unread: 0, mentions: 0 },
+      perSpace: {},
+    }),
+    reauthAccounts: signal([]),
+    sidebarTitle: signal('Home'),
+    spaceSortMode: signal('recent'),
+    spaceSortOverridden: signal(false),
+    syncLabel: signal('Connecting…'),
+    userAvatarMxc: signal<string | null>(null),
+    userId: signal('@me:hs'),
+    userInitial: signal('M'),
+    userName: signal('Me'),
+    userProfile: signal({
+      userId: '@me:hs',
+      displayName: 'Me',
+      avatarMxc: null,
+    }),
+  };
+  const nav = { bindFocus: vi.fn(), releaseOpenRoom: vi.fn() };
+  const status = { error: signal<string | null>(null), showError: vi.fn() };
 
-    TestBed.configureTestingModule({
-      providers: [
-        ROUTE_PROVIDER,
-        SYSTEM_STATUS_PROVIDER,
-        MockProvider(Router),
-        MockProvider(MessageGestureSettingsService, {
-          messageSwipe: signal('off'),
+  TestBed.configureTestingModule({
+    providers: [
+      ROUTE_PROVIDER,
+      SYSTEM_STATUS_PROVIDER,
+      MockProvider(Router),
+      MockProvider(MessageGestureSettingsService, {
+        messageSwipe: signal('off'),
+      }),
+      {
+        provide: ShellLayoutService,
+        useValue: {
+          sidebarWidth: signal(280),
+          rightPanelWidth: signal(480),
+          sidebarBounds: { min: 240, max: 560 },
+          rightPanelBounds: { min: 320, max: 720 },
+        },
+      },
+      MockProvider(HapticsService),
+      MockProvider(WorkspaceBackService, { register: () => vi.fn() }),
+      MockProvider(RoomLibraryService, {
+        selectionAvailability: () => 'available',
+        clearMarkedUnread: () => of(void 0),
+        createDirectMessage: vi.fn(() => of('!dm:hs')),
+      }),
+      MockProvider(SpacesService, {
+        openSpace: () => of(void 0),
+        spaces: signal([]),
+      }),
+      MockProvider(AccountScopeService, {
+        selected: signal(new Set(['@me:hs'])),
+        mixing: signal(false),
+      }),
+      MockProvider(SelectedRoomLibraryService, {
+        view: signal({
+          accountIds: new Set(['@me:hs']),
+          mode: 'active' as const,
+          rooms: [ROOM],
+          spaces: [],
+          spaceChildRoomIdsByAccount: new Map(),
+          invitations: [],
         }),
+      }),
+      MockProvider(InvitesService),
+      MockProvider(TimelineActionsService),
+      MockProvider(FeatureFlagsService, { virtualTimeline: signal(false) }),
+      MockProvider(MatrixClientService, {
+        activeUserId: signal<string | null>('@me:hs'),
+      }),
+      MockProvider(TrustService),
+      MockProvider(IdentityPresenceService, {
+        presenceFor: () => signal('offline'),
+      }),
+      MockProvider(SpaceChildrenService),
+      MockProvider(RoomMembersService),
+      MockProvider(RoomModerationService),
+      MockProvider(TrustVerificationService),
+      MockProvider(IgnoredUsersService, { isIgnored: () => false }),
+      MockProvider(TrnAlertService),
+      MockProvider(TrnToastService),
+    ],
+  });
+  TestBed.overrideComponent(RoomsPage, {
+    remove: {
+      providers: [
+        ShellStatusService,
+        RoomShellViewModel,
+        RoomShellNavigationService,
+        MemberActionsService,
+        AccountRoutingService,
+        InviteActionsService,
+        SpaceActionsService,
+        RoomActionsService,
+        ReadStateService,
+        MessageActionsService,
+        ShellShortcutsService,
+        SessionActionsService,
+      ],
+      imports: [
+        ServerRailComponent,
+        ChannelSidebarComponent,
+        SidebarUserPanelComponent,
+        PaneHandleComponent,
+        SimpleMessageListComponent,
+        VirtualMessageListComponent,
+        EncryptionBannerComponent,
+        ConnectivityBannerComponent,
+        TombstoneBannerComponent,
+      ],
+    },
+    add: {
+      providers: [
+        { provide: ShellStatusService, useValue: status },
+        { provide: RoomShellViewModel, useValue: vm },
+        { provide: RoomShellNavigationService, useValue: nav },
         {
-          provide: ShellLayoutService,
+          provide: WorkspaceNavigationService,
           useValue: {
-            sidebarWidth: signal(280),
-            rightPanelWidth: signal(480),
-            sidebarBounds: { min: 240, max: 560 },
-            rightPanelBounds: { min: 320, max: 720 },
+            activeAccountId: signal<string | null>('@me:hs'),
+            activeSpaceId: signal<string | null>(null),
+            recentView: signal(true),
+            roomsView: signal(false),
+            activeRoomId: signal<string | null>('!r:hs'),
+            pane: signal<'list' | 'conversation'>('conversation'),
+            placement: signal<'list' | 'conversation' | 'split'>('split'),
+            eventTarget: signal(null),
           },
         },
-        MockProvider(HapticsService),
-        MockProvider(WorkspaceBackService, { register: () => vi.fn() }),
-        MockProvider(RoomLibraryService, {
-          selectionAvailability: () => 'available',
-          clearMarkedUnread: () => of(void 0),
-          createDirectMessage: vi.fn(() => of('!dm:hs')),
-        }),
-        MockProvider(SpacesService, {
-          openSpace: () => of(void 0),
-          spaces: signal([]),
-        }),
-        MockProvider(AccountScopeService, {
-          selected: signal(new Set(['@me:hs'])),
-          mixing: signal(false),
-        }),
-        MockProvider(SelectedRoomLibraryService, {
-          view: signal({
-            accountIds: new Set(['@me:hs']),
-            mode: 'active' as const,
-            rooms: [ROOM],
-            spaces: [],
-            spaceChildRoomIdsByAccount: new Map(),
-            invitations: [],
+        {
+          provide: MemberActionsService,
+          useFactory: (surfaces: RoomSurfaceLifecycle) => ({
+            onSelectMember: (member: MemberSummary) =>
+              surfaces.transition({
+                kind: 'open-member',
+                member,
+                direct: false,
+              }),
           }),
-        }),
-        MockProvider(InvitesService),
-        MockProvider(TimelineActionsService),
-        MockProvider(FeatureFlagsService, { virtualTimeline: signal(false) }),
-        MockProvider(MatrixClientService, {
-          activeUserId: signal<string | null>('@me:hs'),
-        }),
-        MockProvider(TrustService),
-        MockProvider(IdentityPresenceService, {
-          presenceFor: () => signal('offline'),
-        }),
-        MockProvider(SpaceChildrenService),
-        MockProvider(RoomMembersService),
-        MockProvider(RoomModerationService),
-        MockProvider(TrustVerificationService),
-        MockProvider(IgnoredUsersService, { isIgnored: () => false }),
-        MockProvider(TrnAlertService),
-        MockProvider(TrnToastService),
+          deps: [RoomSurfaceLifecycle],
+        },
+        {
+          provide: AccountRoutingService,
+          useFactory: (surfaces: RoomSurfaceLifecycle) => ({
+            onOpenRoomMembers: () =>
+              surfaces.transition({ kind: 'toggle-members' }),
+          }),
+          deps: [RoomSurfaceLifecycle],
+        },
+        { provide: InviteActionsService, useValue: {} },
+        { provide: SpaceActionsService, useValue: {} },
+        { provide: RoomActionsService, useValue: {} },
+        { provide: ReadStateService, useValue: {} },
+        {
+          provide: MessageActionsService,
+          useValue: { uploadProgress: signal(null) },
+        },
+        {
+          provide: ShellShortcutsService,
+          useValue: { bindSearchFocus: vi.fn() },
+        },
+        { provide: SessionActionsService, useValue: {} },
       ],
-    });
-    TestBed.overrideComponent(RoomsPage, {
-      remove: {
-        providers: [
-          ShellStatusService,
-          RoomShellViewModel,
-          RoomShellNavigationService,
-          MemberActionsService,
-          AccountRoutingService,
-          InviteActionsService,
-          SpaceActionsService,
-          RoomActionsService,
-          ReadStateService,
-          MessageActionsService,
-          ShellShortcutsService,
-          SessionActionsService,
-        ],
-        imports: [
-          ServerRailComponent,
-          ChannelSidebarComponent,
-          SidebarUserPanelComponent,
-          PaneHandleComponent,
-          SimpleMessageListComponent,
-          VirtualMessageListComponent,
-          EncryptionBannerComponent,
-          ConnectivityBannerComponent,
-          TombstoneBannerComponent,
-        ],
-      },
-      add: {
-        providers: [
-          { provide: ShellStatusService, useValue: status },
-          { provide: RoomShellViewModel, useValue: vm },
-          { provide: RoomShellNavigationService, useValue: nav },
-          {
-            provide: WorkspaceNavigationService,
-            useValue: {
-              activeAccountId: signal<string | null>('@me:hs'),
-              activeSpaceId: signal<string | null>(null),
-              recentView: signal(true),
-              roomsView: signal(false),
-              activeRoomId: signal<string | null>('!r:hs'),
-              pane: signal<'list' | 'conversation'>('conversation'),
-              placement: signal<'list' | 'conversation' | 'split'>('split'),
-              eventTarget: signal(null),
-            },
-          },
-          {
-            provide: MemberActionsService,
-            useFactory: (surfaces: RoomSurfaceLifecycle) => ({
-              onSelectMember: (member: MemberSummary) =>
-                surfaces.transition({
-                  kind: 'open-member',
-                  member,
-                  direct: false,
-                }),
-            }),
-            deps: [RoomSurfaceLifecycle],
-          },
-          { provide: AccountRoutingService, useValue: {} },
-          { provide: InviteActionsService, useValue: {} },
-          { provide: SpaceActionsService, useValue: {} },
-          { provide: RoomActionsService, useValue: {} },
-          { provide: ReadStateService, useValue: {} },
-          {
-            provide: MessageActionsService,
-            useValue: { uploadProgress: signal(null) },
-          },
-          { provide: ShellShortcutsService, useValue: {} },
-          { provide: SessionActionsService, useValue: {} },
-        ],
-        imports: [
-          MockComponent(ServerRailComponent),
-          MockComponent(ChannelSidebarComponent),
-          MockComponent(SidebarUserPanelComponent),
-          MockComponent(PaneHandleComponent),
-          MockComponent(SimpleMessageListComponent),
-          MockComponent(VirtualMessageListComponent),
-          MockComponent(EncryptionBannerComponent),
-          MockComponent(ConnectivityBannerComponent),
-          MockComponent(TombstoneBannerComponent),
-        ],
-      },
-    });
-    setRouteRoom('!r:hs');
-    const fixture = TestBed.createComponent(RoomsPage);
+      imports: [
+        MockComponent(ServerRailComponent),
+        MockComponent(ChannelSidebarComponent),
+        MockComponent(SidebarUserPanelComponent),
+        MockComponent(PaneHandleComponent),
+        MockComponent(SimpleMessageListComponent),
+        MockComponent(VirtualMessageListComponent),
+        MockComponent(EncryptionBannerComponent),
+        MockComponent(ConnectivityBannerComponent),
+        MockComponent(TombstoneBannerComponent),
+      ],
+    },
+  });
+  setRouteRoom('!r:hs');
+  return TestBed.createComponent(RoomsPage);
+}
+
+describe('RoomsPage rendered right-panel focus', () => {
+  it('hands focus through the real members → member @switch render', () => {
+    const fixture = buildPage();
     fixture.debugElement.injector
       .get(RoomSurfaceLifecycle)
       .transition({ kind: 'open-members' });
@@ -311,5 +326,40 @@ describe('RoomsPage rendered right-panel focus', () => {
       'TRN-MEMBER-INFO',
     );
     expect(document.activeElement).toBe(target);
+  });
+
+  it('returns focus to the members toggle when the members drawer X closes it', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === BELOW_MEMBERS_QUERY,
+      media: query,
+    }));
+    try {
+      const fixture = buildPage();
+      fixture.detectChanges();
+      const host = fixture.nativeElement as HTMLElement;
+      const toggle = host.querySelector<HTMLElement>(
+        '[data-testid="toggle-members"]',
+      );
+      expect(toggle).not.toBeNull();
+      toggle!.focus();
+
+      toggle!.click();
+      fixture.detectChanges();
+      TestBed.tick();
+      expect(document.activeElement).not.toBe(toggle);
+      const close = host.querySelector<HTMLElement>(
+        '[data-testid="close-members"]',
+      );
+      expect(close).not.toBeNull();
+
+      close!.click();
+      fixture.detectChanges();
+      TestBed.tick();
+
+      expect(host.querySelector('[data-testid="member-list"]')).toBeNull();
+      expect(document.activeElement).toBe(toggle);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

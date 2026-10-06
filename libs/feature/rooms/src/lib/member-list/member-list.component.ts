@@ -12,9 +12,9 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import {
-  MEMBER_ROLE_LABEL,
   MEMBER_ROLE_ORDER,
   type MemberRole,
   type RoomAdministrationAvailability,
@@ -28,7 +28,7 @@ import {
   type TrnIconName,
 } from '@trinity/components/foundations';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
-import { TrnInput } from '@trinity/components/controls';
+import { TrnButton, TrnInput } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   buildPrefixSums,
@@ -54,7 +54,15 @@ interface MemberRow {
  * spacers drift and the scrollbar lies; source and rendered-layout specs pin them together.
  */
 const HEADER_PX = 34;
-const ROW_PX = 44;
+const ROW_PX = 44; // member-list.component.scss pins the same 44px for the layout specs
+
+/** Group headers name the whole group, so they are plural; the singular names one person. */
+const GROUP_LABEL: Record<MemberRole, string> = {
+  owner: 'Owners',
+  admin: 'Admins',
+  moderator: 'Moderators',
+  member: 'Members',
+};
 
 /** Rendered beyond the viewport on each side, so a fast scroll does not show blanks. */
 const OVERSCAN_PX = 320;
@@ -71,11 +79,11 @@ const SMALL_LIST_ROWS = 80;
 /** A role section: a labelled group of members shown under its own header. */
 interface MemberSection {
   readonly role: MemberRole;
-  /** Visible header, e.g. "Admin". */
+  /** Visible header, e.g. "Admins". */
   readonly label: string;
   /** Icon shown beside the header, from Trinity's vocabulary, e.g. "crown". */
   readonly icon: TrnIconName;
-  /** Accessible name for the group landmark, e.g. "Admin, 2 members". */
+  /** Accessible name for the group landmark, e.g. "Admins, 2 members". */
   readonly ariaLabel: string;
   readonly rows: MemberRow[];
 }
@@ -118,8 +126,10 @@ const ROLE_ICON: Record<MemberRole, TrnIconName> = {
   selector: 'trn-member-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    SidePanelHeaderComponent,
     AvatarComponent,
     TrnIconComponent,
+    TrnButton,
     TrnInput,
     TrnTooltip,
     EmptyStateComponent,
@@ -142,11 +152,16 @@ export class MemberListComponent {
    * level 100 by the trusted_private_chat preset — so the section is suppressed there.
    */
   readonly direct = input(false);
+  /** Shows the titled header with its close button; the settings reuse has no panel to close. */
+  readonly showHeader = input(true);
+  /** The header's X was clicked — the host closes the panel. */
+  readonly dismissed = output<void>();
   /** A member row was clicked — the host opens their info panel. */
   readonly selectMember = output<MemberSummary>();
 
   /** What the reader typed into the filter, matched against name and user id. */
   protected readonly query = signal('');
+  protected readonly rowPx = ROW_PX;
 
   private readonly scrollHost =
     viewChild.required<ElementRef<HTMLElement>>('scrollHost');
@@ -223,7 +238,7 @@ export class MemberListComponent {
             (a.presence === null ? 3 : PRESENCE_RANK[a.presence]) -
             (b.presence === null ? 3 : PRESENCE_RANK[b.presence]),
         );
-      const label = MEMBER_ROLE_LABEL[role];
+      const label = GROUP_LABEL[role];
       const noun = sectionRows.length === 1 ? 'member' : 'members';
       return {
         role,

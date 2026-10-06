@@ -210,12 +210,28 @@ describe('modern room shell layout contracts', () => {
     expect(roomMixins).toContain('&:active:where(:not(:disabled))');
   });
 
-  it('leaves right-panel separators with one paint owner', () => {
-    const panelHeader = ruleBody(globalCss, '.panel-header');
-    const chatPanel = ruleBody(roomsCss, '.chat-panel');
-    expect(panelHeader).toBeDefined();
-    expect(chatPanel).toBeDefined();
-    expect(panelHeader).not.toContain('box-shadow');
-    expect(chatPanel).not.toContain('box-shadow');
+  it('sizes the members list to its bordered host instead of overflowing it', () => {
+    // `.chat-members` is 240px border-box with a 1px inline-start border, so a fixed 240px
+    // list inside it overflows by that pixel.
+    const members = ruleBody(
+      read('libs/feature/rooms/src/lib/member-list/member-list.component.scss'),
+      '.members',
+    );
+    expect(members).toContain('width: 100%');
+    expect(members).not.toContain('width: 240px');
+  });
+
+  it('gives every right-hand panel one surface and one inline-start border', () => {
+    expect(globalCss).not.toContain('.panel-header');
+    for (const selector of ['.chat-members', '.chat-panel']) {
+      const body = ruleBody(roomsCss, selector);
+      expect(body, selector).toContain(
+        'background: var(--trinity-surface-panel)',
+      );
+      expect(body, selector).toContain(
+        'border-inline-start: 1px solid var(--trinity-border-subtle)',
+      );
+      expect(body, selector).not.toContain('box-shadow');
+    }
   });
 });

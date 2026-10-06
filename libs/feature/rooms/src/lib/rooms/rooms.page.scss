@@ -208,9 +208,97 @@
   // The toolbar surface now comes from the canonical neutral toolbar page-header
   // recipe. The room-name title is still projected from here, so these scoped
   // title styles stay.
-  .title-hash {
+  .title-room {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--trinity-space-3);
+    min-width: 0;
+    font-weight: 700;
+  }
+
+  // A very long name truncates before it can squeeze the topic to nothing.
+  .title-room--topic {
+    max-inline-size: 60%;
+  }
+
+  .header-search {
+    inline-size: 160px;
+    block-size: 28px;
+    border-radius: var(--trinity-radius-md);
+    background: var(--trinity-surface-app);
+    border: 0;
+    padding-inline: var(--trinity-space-3);
+    color: var(--trinity-text-bright);
+
+    &::placeholder {
+      color: var(--trinity-text-muted);
+    }
+
+    &:focus-visible {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    }
+  }
+
+  .title-divider {
+    inline-size: 1px;
+    block-size: 20px;
+    background: var(--trinity-border-subtle);
+    flex: none;
+    margin-inline: var(--trinity-space-3);
+  }
+
+  .title-topic {
+    min-width: 0;
+    flex: 1 1 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: start;
     color: var(--trinity-text-muted);
-    margin-right: 4px;
+    font-weight: 400;
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+
+  // Native popover: top layer, so it sits above the R2 overlay offsets without z-index.
+  // Anchored under the button where anchor positioning exists; else the UA centres it.
+  @supports (top: anchor(bottom)) {
+    .title-topic {
+      anchor-name: --room-topic;
+    }
+
+    .topic-popover {
+      position-anchor: --room-topic;
+      top: anchor(bottom);
+      left: anchor(start);
+      margin: 0;
+      margin-block-start: var(--trinity-space-2);
+      position-try-fallbacks: flip-inline;
+    }
+  }
+
+  // Header panel toggles show R1's selected surface while their panel is open.
+  .header-toggle[aria-pressed='true'] {
+    background: var(--trinity-state-selected-surface);
+    color: var(--trinity-text-bright);
+  }
+
+  // No author `display`: it would beat the UA `[popover]:not(:popover-open)` hide rule.
+  .topic-popover {
+    white-space: pre-line;
+    max-inline-size: min(480px, 90vw);
+    max-block-size: 50vh;
+    overflow: auto;
+    padding-block: var(--trinity-space-3);
+    padding-inline: var(--trinity-space-4);
+    font-weight: 400;
+    color: var(--trinity-text-bright);
+    background: var(--trinity-surface-raised);
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-overlay-radius);
+    box-shadow: var(--trinity-shadow-floating);
+    overflow-wrap: anywhere;
   }
 
   .title-lock {
@@ -243,7 +331,13 @@
 
   .chat-members {
     flex: 0 0 240px;
-    box-shadow: inset 1px 0 0 var(--trinity-border-subtle);
+
+    // The list inside is `width: 100%`, a percentage that cannot size the host, so the
+    // host's automatic minimum is the list's content width: a long member name would
+    // otherwise stretch this column far past its 240px basis.
+    min-width: 0;
+    background: var(--trinity-surface-panel);
+    border-inline-start: 1px solid var(--trinity-border-subtle);
   }
 
   // The other surfaces the slot can show — threads, a thread, pinned, search, member info.
@@ -261,6 +355,8 @@
     // The stored value is untouched, so widening the window restores it.
     flex: 0 1 var(--shell-right-panel-w, 480px);
     min-width: 0;
+    background: var(--trinity-surface-panel);
+    border-inline-start: 1px solid var(--trinity-border-subtle);
   }
 
   // Below the `members` breakpoint the static column would crowd the chat, so present the
@@ -301,15 +397,12 @@
     // exceeds the viewport here. The dragged width is deliberately not read at this breakpoint:
     // there is no divider to drag, and a width chosen on a desktop has nothing to say about a
     // phone.
-    // INSETS: the four panels pad themselves at BOTH ends — `safe-top` on the header they all
-    // carry, `safe-bottom` on the root — because their content reaches both edges (a thread
-    // composer, a member-info action row), and padding the host as well would clear the notch
-    // twice. The member list has neither, so the host does both for it; without the bottom one
-    // its last row sits under the home indicator, which is the bug the panels' `safe-bottom`
-    // was added to fix.
+    // INSETS: every panel pads itself at BOTH ends — the shared header takes the top inset,
+    // `safe-bottom` on the root takes the bottom — because their content reaches both edges.
+    // The member list has no `safe-bottom`, so the host takes the bottom inset for it; without
+    // it its last row sits under the home indicator.
     .chat-members {
       width: 240px;
-      padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
     }
 

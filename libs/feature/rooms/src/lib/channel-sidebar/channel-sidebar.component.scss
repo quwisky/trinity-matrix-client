@@ -23,9 +23,10 @@
     --trn-presence-ring: var(--trinity-surface-sidebar);
   }
 
+  // 48px, in line with the conversation header and the side-panel headers.
   .sidebar__header {
-    height: 56px;
-    flex: 0 0 56px;
+    height: 48px;
+    flex: 0 0 48px;
     display: flex;
     align-items: center;
     gap: var(--trinity-density-shell-gap);

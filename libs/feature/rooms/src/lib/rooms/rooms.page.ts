@@ -15,10 +15,12 @@ import {
   afterNextRender,
   effect,
   untracked,
+  signal,
   inject,
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import { escapeHtml, linkifyText } from '@trinity/util/matrix';
 import {
   InboundRoomLinkService,
   roomTitle,
@@ -175,6 +177,19 @@ export class RoomsPage {
     inject(DestroyRef),
   );
   /**
+   * The full topic as HTML: text is escaped by `linkifyText`/`escapeHtml` first, then links
+   * are made to open outside the app (Angular's sanitiser keeps `target` and `rel`).
+   */
+  protected readonly topicHtml = computed(() => {
+    const topic = this.vm.activeRoom()?.topic ?? '';
+    return (
+      linkifyText(topic)?.replace(
+        /<a href=/g,
+        '<a target="_blank" rel="noopener noreferrer" href=',
+      ) ?? escapeHtml(topic)
+    );
+  });
+  /**
    * Which way a message row is dragged to act on it, HERE and not in the list.
    *
    * The preference is only half the answer, and this page is the only place that knows the
@@ -330,11 +345,49 @@ export class RoomsPage {
   private readonly listView = viewChild<ElementRef<HTMLElement>>('listView');
   private readonly mainView = viewChild<ElementRef<HTMLElement>>('mainView');
 
+  private readonly headerSearch =
+    viewChild<ElementRef<HTMLInputElement>>('headerSearch');
+  private readonly messageSearch = viewChild(MessageSearchComponent);
+
+  /** Shared by the header field and the search panel's own field. */
+  protected readonly searchQuery = signal('');
+
+  protected readonly surfaceKind = computed(
+    () => this.roomSurfaces.renderedSurface()?.kind ?? null,
+  );
+
+  protected onHeaderSearch(value: string): void {
+    this.searchQuery.set(value);
+    if (value && this.surfaceKind() !== 'search') {
+      this.messageActions.openMessageSearch();
+    }
+  }
+
+  protected clearHeaderSearch(event: Event): void {
+    const field = event.target as HTMLInputElement;
+    // Escape that clears text stops there; in an empty field it reaches onEscapeKey.
+    if (field.value) event.stopPropagation();
+    this.searchQuery.set('');
+    field.blur();
+  }
+
   constructor() {
     // The service cannot read the page's viewChild refs, so hand it the focus call.
     // In the constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle
     // hooks, so binding there left the callback unset for all 170 unit tests.
     this.nav.bindFocus(() => this.focusActiveView());
+    this.shortcutActions.bindSearchFocus(() => {
+      if (!this.vm.activeRoom()) return false;
+      // Below the members breakpoint the field is hidden: panels are drawers over it.
+      if (!this.roomSurfaces.membersAreDrawer()) {
+        this.headerSearch()?.nativeElement.focus();
+      } else if (this.surfaceKind() === 'search') {
+        this.messageSearch()?.focusField();
+      } else {
+        this.messageActions.openMessageSearch();
+      }
+      return true;
+    });
     // ShellStatusService presents runWithBusy failures directly. In the zoneless app,
     // a component effect that only reads the error signal is not a reliable render
     // trigger when the failed action changes no template-read state.
@@ -381,6 +434,8 @@ export class RoomsPage {
     });
     effect((onCleanup) => {
       const roomId = this.store.activeRoomId();
+      // A query typed for one room must not follow the reader into the next.
+      untracked(() => this.searchQuery.set(''));
       if (!roomId) return;
       this.imagePackService.connect(roomId);
       onCleanup(() => this.imagePackService.disconnect(roomId));
@@ -470,6 +525,8 @@ export class RoomsPage {
    * Drawer members remain an overlay and dismiss like the temporary surfaces.
    */
   onEscapeKey(): void {
+    // An open native popover (the topic) takes this Escape for itself.
+    if (document.querySelector('[popover]:popover-open')) return;
     this.roomSurfaces.transition({ kind: 'escape' });
   }
 }

@@ -147,8 +147,6 @@ test.describe('Mobile room navigation', () => {
     // Primary actions stay inline; the secondary ones are demoted (max-md:hidden).
     await expect(page.getByTestId('search-messages')).toBeVisible();
     await expect(page.getByTestId('open-threads')).toBeVisible();
-    await expect(page.getByTestId('invite-people')).toBeHidden();
-    await expect(page.getByTestId('open-room-settings')).toBeHidden();
     await expect(page.getByTestId('open-pinned')).toBeHidden();
     await expect(page.getByTestId('toggle-members')).toBeHidden();
 

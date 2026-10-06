@@ -6,24 +6,12 @@
   layout="fullscreen"
   class="safe-bottom flex flex-col"
 >
-  <div
-    class="panel-header flex items-center gap-2 border-b border-solid border-border"
-  >
-    <h2 class="flex-1 text-base font-semibold">Pinned messages</h2>
-    <button
-      trnBtn
-      variant="secondary"
-      presentation="ghost"
-      shape="icon"
-      size="md"
-      (click)="close()"
-      data-testid="pinned-close"
-      trnTooltip="Close pinned messages"
-      aria-label="Close pinned messages"
-    >
-      <trn-icon name="x" size="lg" motion="rotate" />
-    </button>
-  </div>
+  <trn-side-panel-header
+    title="Pinned messages"
+    closeLabel="Close pinned messages"
+    closeTestId="pinned-close"
+    (closed)="close()"
+  />
 
   <div class="pinned flex-1 overflow-y-auto max-members:touch-pan-y">
     @for (p of pinned(); track p.id) {

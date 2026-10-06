@@ -1,12 +1,23 @@
 @use '../styles/mixins' as *;
 
 @layer components {
+  // The header sits above the scroll host, not inside it: the windowing offsets are measured
+  // from the host's own scrollTop, so a header that scrolled with the rows would skew them.
+  :host {
+    display: flex;
+    flex-direction: column;
+  }
+
   .members {
     @include column(var(--trinity-surface-panel));
     @include scrollable;
     @include swipe-through;
 
-    width: 240px;
+    flex: 1 1 0;
+    min-height: 0;
+
+    // The host owns the 240px (and its 1px border); a fixed 240px here would overflow it.
+    width: 100%;
     padding: 16px var(--trinity-density-shell-padding-inline);
 
     // Windowing changes the rendered height on every scroll step, and the browser's scroll
@@ -29,6 +40,7 @@
   :host(.member-list--settings) .members {
     width: 100%;
     height: 100%;
+    flex: none;
     padding: 0;
     background: transparent;
 
@@ -81,6 +93,12 @@
     padding: 12px var(--trinity-density-shell-padding-inline) 4px;
   }
 
+  // Reads "ADMINS — 1": the casing is presentation, so the text stays sentence case. Size,
+  // weight and muted colour come from the `category-label` mixin.
+  .member-group__label {
+    text-transform: uppercase;
+  }
+
   // The role icon inherits the label's muted colour (currentColor) and sits a touch
   // larger than the 11px text so it reads as an icon, not a glyph.
   .members__section-icon {
@@ -94,37 +112,15 @@
     padding: 0;
   }
 
+  // Colour, hover, pressed and focus come from the `trnBtn` recipe, whose own height (32px,
+  // or a 44px minimum on touch) and centring out-rank a component-layer rule. The template
+  // therefore binds the height (from ROW_PX) and the density-driven inline padding on the
+  // element; the 44px here is what the layout specs pin. The name takes the free width so it reads from the start despite the centring.
   .member {
     box-sizing: border-box;
     height: 44px;
-    display: flex;
-    align-items: center;
-    gap: var(--trinity-density-shell-gap);
     width: 100%;
-    padding: 6px var(--trinity-density-shell-padding-inline);
-    border: 0;
-    border-radius: var(--trinity-shape-control-radius);
-    background: none;
-    color: inherit;
-    font: inherit;
     text-align: left;
-    cursor: pointer;
-    transition:
-      background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
-      color var(--trinity-duration-fast) var(--trinity-ease-standard);
-
-    &:hover {
-      background: var(--trinity-state-hover-surface);
-    }
-
-    &:active {
-      background: var(--trinity-state-pressed-surface);
-    }
-
-    &:focus-visible {
-      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-      outline-offset: calc(-1 * var(--trinity-focus-ring-width));
-    }
   }
 
   /* Offline members are de-emphasised (Discord-style): fade the avatar and mute the name
@@ -153,7 +149,20 @@
   .member__name {
     @include ellipsis;
 
+    flex: 1 1 auto;
+    min-width: 0;
     font-size: 14px;
+    font-weight: 400;
     color: var(--trinity-text);
+  }
+
+  // Two classes so the tint out-ranks `.member--offline .member__name`: a muted admin is
+  // still an admin, and the faded avatar already carries the offline cue.
+  .member .member__name--admin {
+    color: var(--trinity-danger);
+  }
+
+  .member .member__name--moderator {
+    color: var(--trinity-link);
   }
 }

@@ -46,7 +46,8 @@ test.describe('Room settings', () => {
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await expect(page.getByTestId('room-settings')).toBeVisible({
       timeout: 10_000,
     });
@@ -178,7 +179,8 @@ test.describe('Room settings', () => {
       timeout: 15_000,
     });
 
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await expect(page.getByTestId('room-settings')).toBeVisible({
       timeout: 10_000,
     });
@@ -286,7 +288,8 @@ test.describe('Room settings', () => {
       timeout: 15_000,
     });
 
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'access');
     // Both boxes start ticked because both are in `allow` — the dialog reports the
     // server's state, not the room's parentage.
@@ -362,7 +365,8 @@ test.describe('Room settings', () => {
       pass: memberPass,
     } as HomeserverSession);
     await openRoom(page, roomName);
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'access');
 
     await expect(page.getByTestId('room-settings-join-rule')).toContainText(

@@ -142,11 +142,24 @@
         </button>
 
         <!-- Projected into the shell's single <h1>: inline spans + icon only, no
-           nested heading. rooms' scoped .title-hash/.title-lock still apply. -->
+           nested heading. rooms' scoped .title-room/.title-lock still apply. -->
         <ng-container trnHeaderTitle>
           @if (vm.activeRoom(); as room) {
-            <span class="truncate">
-              <span class="title-hash">#</span>{{ room.name }}
+            <span
+              class="title-room"
+              [class.title-room--topic]="!!room.topic && !mobileMasterDetail()"
+              data-testid="room-title"
+            >
+              <trn-avatar
+                [mxc]="room.avatarMxc"
+                [accountId]="room.accountId"
+                [initial]="room.initial"
+                [name]="room.name"
+                [exactSize]="24"
+                [shape]="room.directUserId ? 'person' : 'place'"
+                aria-hidden="true"
+              />
+              <span class="truncate">{{ room.name }}</span>
             </span>
             @if (room.encrypted) {
               <trn-icon class="title-lock" name="lock" label="Encrypted room" />
@@ -172,6 +185,28 @@
                 <span class="title-account__name">{{ vm.userName() }}</span>
               </span>
             }
+            @if (room.topic && !mobileMasterDetail()) {
+              <span
+                class="title-divider"
+                data-testid="room-topic-divider"
+                aria-hidden="true"
+              ></span>
+              <button
+                type="button"
+                class="title-topic"
+                data-testid="room-topic"
+                popovertarget="room-topic-popover"
+                [attr.aria-label]="'Room topic: ' + room.topic"
+              >
+                {{ room.topic }}
+              </button>
+              <span
+                id="room-topic-popover"
+                popover
+                class="topic-popover"
+                [innerHTML]="topicHtml()"
+              ></span>
+            }
           } @else if (
             store.activeRoomId() && timeline.loadState().kind === 'loading'
           ) {
@@ -179,60 +214,24 @@
                  the room's actions (they live in the actions slot, behind activeRoom()). -->
             Loading room…
           } @else {
-            Trinity
+            <span class="sr-only">Trinity</span>
           }
         </ng-container>
 
         <ng-container trnHeaderActions>
-          @if (vm.activeRoom()) {
+          @if (vm.activeRoom(); as room) {
             <button
               trnBtn
               presentation="ghost"
               size="md"
               shape="icon"
-              (click)="messageActions.openMessageSearch()"
-              trnTooltip="Search messages in this room"
-              aria-label="Search messages in this room"
-              data-testid="search-messages"
-            >
-              <trn-icon size="lg" name="search" motion="pop" />
-            </button>
-            <button
-              trnBtn
-              presentation="ghost"
-              size="md"
-              shape="icon"
-              class="max-md:hidden"
-              (click)="roomActions.onInviteToRoom()"
-              [trnActionAllowed]="vm.roomInvitePermission().available"
-              [trnActionDisabledReason]="vm.roomInvitePermission().reason"
-              [trnTooltip]="vm.roomInvitePermission().reason ?? 'Invite people'"
-              aria-label="Invite people"
-              data-testid="invite-people"
-            >
-              <trn-icon size="lg" name="user-plus" motion="nudge-up-right" />
-            </button>
-            <button
-              trnBtn
-              presentation="ghost"
-              size="md"
-              shape="icon"
-              class="max-md:hidden"
-              (click)="roomActions.onOpenRoomSettings()"
-              trnTooltip="Room settings"
-              aria-label="Room settings"
-              data-testid="open-room-settings"
-            >
-              <trn-icon size="lg" name="settings" motion="rotate" />
-            </button>
-            <button
-              trnBtn
-              presentation="ghost"
-              size="md"
-              shape="icon"
+              class="header-toggle"
               (click)="messageActions.openThreadsList()"
               trnTooltip="Threads"
               aria-label="Threads"
+              [attr.aria-pressed]="
+                surfaceKind() === 'threads' || surfaceKind() === 'thread'
+              "
               data-testid="open-threads"
             >
               <trn-icon size="lg" name="messages-square" motion="pop" />
@@ -242,10 +241,11 @@
               presentation="ghost"
               size="md"
               shape="icon"
-              class="max-md:hidden"
+              class="header-toggle max-md:hidden"
               (click)="messageActions.openPinnedPanel()"
               [trnTooltip]="pinnedLabel()"
               [attr.aria-label]="pinnedLabel()"
+              [attr.aria-pressed]="surfaceKind() === 'pinned'"
               data-testid="open-pinned"
             >
               <trn-icon
@@ -260,7 +260,7 @@
               presentation="ghost"
               size="md"
               shape="icon"
-              class="max-md:hidden"
+              class="header-toggle max-md:hidden"
               (click)="toggleMembers()"
               [attr.aria-pressed]="roomSurfaces.membersVisible()"
               trnTooltip="Members"
@@ -270,11 +270,34 @@
               <trn-icon size="lg" name="users" motion="pop" />
             </button>
 
-            <!-- Present at EVERY breakpoint. Below md it also absorbs the demoted header
-               actions (each marked md:hidden inside), which are shown as their own buttons
-               above at md+. Actions that are rare rather than demoted — Jump to date — live
-               here at all widths rather than spending a permanent slot in a header that
-               already carries six. -->
+            <input
+              type="search"
+              class="header-search max-members:hidden"
+              data-testid="header-search"
+              #headerSearch
+              [placeholder]="'Search ' + room.name"
+              [attr.aria-label]="'Search messages in ' + room.name"
+              [value]="searchQuery()"
+              (input)="onHeaderSearch($any($event.target).value)"
+              (keydown.escape)="clearHeaderSearch($event)"
+            />
+            <button
+              trnBtn
+              presentation="ghost"
+              size="md"
+              shape="icon"
+              class="members:hidden"
+              (click)="messageActions.openMessageSearch()"
+              trnTooltip="Search messages in this room"
+              aria-label="Search messages in this room"
+              data-testid="search-messages"
+            >
+              <trn-icon size="lg" name="search" motion="pop" />
+            </button>
+
+            <!-- Present at EVERY breakpoint. It holds Invite, Room settings and Jump to date
+               at all widths; below md it also absorbs the demoted Pinned, Members and System
+               status actions (each marked md:hidden inside). -->
             <button
               trnBtn
               presentation="ghost"
@@ -291,7 +314,6 @@
             <ng-template #roomActionsMenu>
               <div trnDropdownMenu>
                 <button
-                  class="md:hidden"
                   trnDropdownMenuItem
                   (triggered)="roomActions.onInviteToRoom()"
                   [trnActionAllowed]="vm.roomInvitePermission().available"
@@ -305,7 +327,6 @@
                   Invite people
                 </button>
                 <button
-                  class="md:hidden"
                   trnDropdownMenuItem
                   (triggered)="roomActions.onOpenRoomSettings()"
                   data-testid="overflow-open-room-settings"
@@ -532,6 +553,7 @@
                     [availability]="vm.membersView().availability"
                     [direct]="vm.activeRoomIsDirect()"
                     (selectMember)="memberActions.onSelectMember($event)"
+                    (dismissed)="closeRightPanel()"
                   />
                 }
                 @case ('threads') {
@@ -574,6 +596,7 @@
                     role="complementary"
                     aria-label="Search messages"
                     [roomId]="room.id"
+                    [(query)]="searchQuery"
                     (selected)="messageActions.onPanelJump($event)"
                     (dismissed)="closeRightPanel()"
                   />

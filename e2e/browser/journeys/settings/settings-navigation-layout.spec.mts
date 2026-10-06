@@ -173,7 +173,8 @@ test.describe('Settings', () => {
     const room = page.locator('.channel', { hasText: roomName }).first();
     await room.waitFor({ state: 'visible', timeout: 30_000 });
     await room.click();
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await expect(page.getByTestId('room-settings')).toBeVisible();
     const roomFrame = await settingsLayoutMetrics(page, {
       rootTestId: 'room-settings',

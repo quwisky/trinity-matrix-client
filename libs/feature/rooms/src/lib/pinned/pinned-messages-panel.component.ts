@@ -5,6 +5,7 @@ import {
   inject,
   output,
 } from '@angular/core';
+import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { TrnButton } from '@trinity/components/controls';
@@ -34,6 +35,7 @@ import { TrnIconComponent } from '@trinity/components/foundations';
   selector: 'trn-pinned-messages-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    SidePanelHeaderComponent,
     EmptyStateComponent,
     TrnIconComponent,
     TrnButton,

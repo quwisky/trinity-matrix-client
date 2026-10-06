@@ -86,7 +86,8 @@ test.describe('Kit state styling', () => {
     test.setTimeout(150_000);
     await openRoom(page, request, 't');
 
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await expect(page.getByTestId('room-settings')).toBeVisible({
       timeout: 15_000,
     });

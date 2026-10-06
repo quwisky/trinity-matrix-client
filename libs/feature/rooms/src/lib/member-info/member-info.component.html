@@ -1,24 +1,13 @@
 @if (isPanel) {
   <!-- Panel mode only. As a dialog the backdrop and Escape close it; in the slot there is
        neither above the `members` breakpoint, so the header IS the way out. -->
-  <div
-    class="panel-header flex items-center gap-2 border-b border-solid border-border"
-  >
-    <h2 class="flex-1 text-base font-semibold">Member info</h2>
-    <button
-      trnBtn
-      variant="secondary"
-      presentation="ghost"
-      size="md"
-      shape="icon"
-      (click)="close()"
-      aria-label="Close member info"
-      data-testid="member-info-close"
-      data-right-panel-focus
-    >
-      <trn-icon name="x" size="lg" motion="rotate" />
-    </button>
-  </div>
+  <trn-side-panel-header
+    title="Member info"
+    closeLabel="Close member info"
+    closeTestId="member-info-close"
+    [focusClose]="true"
+    (closed)="close()"
+  />
 }
 <div class="member-info safe-bottom" data-testid="member-info">
   <trn-avatar
