@@ -114,6 +114,21 @@ describe('Workspace application-surface composition adapter', () => {
     });
   });
 
+  it('passes the requested Settings part through as the dialog initial part', async () => {
+    await firstValueFrom(
+      presenter().present({
+        surface: { kind: 'settings', section: 'appearance', part: 'timeline' },
+      }),
+    );
+
+    expect(dialogOpen).toHaveBeenCalledWith(
+      StubSettingsComponent,
+      expect.objectContaining({
+        inputs: { initialSection: 'appearance', initialPart: 'timeline' },
+      }),
+    );
+  });
+
   it('registers a modal Settings identity with Workspace Back', async () => {
     const request = {
       surface: { kind: 'settings', section: 'stickers' },

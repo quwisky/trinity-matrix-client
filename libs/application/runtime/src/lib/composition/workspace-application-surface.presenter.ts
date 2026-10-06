@@ -127,6 +127,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
       return this.presentDialog(request, this.settingsLoader, true, {
         inputs: {
           ...(surface.section ? { initialSection: surface.section } : {}),
+          ...(surface.part ? { initialPart: surface.part } : {}),
           ...(context?.sourceRoomId
             ? { initialSource: context.sourceRoomId }
             : {}),
@@ -237,6 +238,9 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
     return from(
       this.router.navigate([routeFor(request.surface)], {
         ...(Object.keys(queryParams).length > 0 ? { queryParams } : {}),
+        ...(request.surface.kind === 'settings' && request.surface.part
+          ? { fragment: request.surface.part }
+          : {}),
       }),
     ).pipe(
       map((accepted) => ({

@@ -3,6 +3,8 @@ export type WorkspaceApplicationSurface =
   | {
       readonly kind: 'settings';
       readonly section: string | null;
+      /** A part of the section to open at; presentation only, not part of the identity. */
+      readonly part?: string | null;
     }
   | {
       readonly kind: 'trust';
