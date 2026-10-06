@@ -72,7 +72,8 @@ describe('Room surface lifecycle boundary', () => {
     expect(template).toContain('roomSurfaces.jumpTarget()');
     expect(template).toContain('roomSurfaces.jumpRevision()');
     expect(template).not.toContain('store.rightPanel()');
-    expect(lifecycle).toContain('this.workspace.eventTarget()');
+    expect(accountRouting).toContain('this.workspace.eventTarget()');
+    expect(lifecycle).not.toContain('this.workspace.eventTarget()');
     expect(page).not.toContain('this.workspace.eventTarget()');
   });
 

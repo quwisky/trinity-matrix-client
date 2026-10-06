@@ -1,6 +1,7 @@
 import {
   DestroyRef,
   Directive,
+  afterNextRender,
   ElementRef,
   computed,
   effect,
@@ -211,6 +212,8 @@ export abstract class MessageListBase {
    * TimelineService.oldestEventId). Not the oldest rendered row: rows can be filtered out. */
   readonly oldestEventId = input<string | null>(null);
   readonly roomName = input('');
+  /** False while the Room is not held by the client: there is nothing to send to yet. */
+  readonly composerEnabled = input(true);
   /**
    * Active room id. The list instance is reused across room switches, so a change
    * here resets the per-room UI + scroll state (see {@link resetOnRoomChange}) —
@@ -232,7 +235,7 @@ export abstract class MessageListBase {
   readonly stickerPacks = input<readonly ImagePack[]>([]);
   /**
    * Event id to scroll into view, set by an external jump (e.g. in-room search).
-   * A no-op when the event isn't in the loaded timeline.
+   * Waits briefly for the event to load; a no-op once that limit passes.
    */
   readonly jumpToId = input<string | null>(null);
   /**
@@ -502,6 +505,11 @@ export abstract class MessageListBase {
    * removes the question.
    */
   private readonly listDestroyRef = inject(DestroyRef);
+  protected readonly injector = inject(Injector);
+
+  /** A requested jump whose row had not loaded yet; applied when it arrives, within the limit. */
+  private awaitedJumpId: string | null = null;
+  private awaitedJumpAt = 0;
 
   constructor() {
     // A host directive's outputs are not template-bound, so the subscription IS the wiring.
@@ -524,6 +532,30 @@ export abstract class MessageListBase {
     effect(() => {
       this.roomId();
       untracked(() => this.resetOnRoomChange());
+    });
+
+    // A jump requested before its row exists (a linked message in a room that is still
+    // syncing) is a no-op in `jumpTo`; remember it and apply it once the row loads. A newer
+    // request, or none, replaces it, so a superseded jump is never applied late.
+    effect(() => {
+      this.jumpToNonce();
+      const id = this.jumpToId();
+      untracked(() => {
+        if (!id) this.cancelPendingJump();
+        this.awaitedJumpId =
+          id && !this.messages().some((m) => m.id === id) ? id : null;
+        this.awaitedJumpAt = Date.now();
+      });
+    });
+    effect(() => {
+      const loaded = this.messages();
+      const id = this.awaitedJumpId;
+      if (!id || !loaded.some((m) => m.id === id)) return;
+      this.awaitedJumpId = null;
+      // Bounded like a width re-apply: a row that loads minutes later (the reader scrolled up
+      // and paged it in) must not yank them back.
+      if (Date.now() - this.awaitedJumpAt > JUMP_REAPPLY_MS) return;
+      afterNextRender(() => this.jumpTo(id), { injector: this.injector });
     });
 
     // Re-evaluate the jump-to-unread pill when the unread anchor or the message set
@@ -580,6 +612,7 @@ export abstract class MessageListBase {
     // A sheet is about ONE message in ONE room; leaving it standing over a different
     // room's timeline would offer actions against an event that is no longer on screen.
     this.messageSheet.close(this);
+    this.cancelPendingJump();
     this.announcement.set('');
     this.rowCache.clear();
     this.groupCache = new Map();
@@ -593,7 +626,8 @@ export abstract class MessageListBase {
    * `animationend`.
    */
   protected flash(el: Element | null | undefined): void {
-    if (!el) {
+    // A re-aim lands on the row the reader already saw flash; flashing again is flicker.
+    if (!el || this.reaiming) {
       return;
     }
     el.classList.remove('msg--flash');
@@ -668,6 +702,8 @@ export abstract class MessageListBase {
    */
   private pendingJumpId: string | null = null;
   private pendingJumpAt = 0;
+  private reaiming = false;
+  private userScrollWatched = false;
   private lastScrollerWidth = 0;
   private widthRo?: ResizeObserver;
   private stopHeightWatcher?: () => void;
@@ -678,11 +714,56 @@ export abstract class MessageListBase {
    */
   protected notePendingJump(messageId: string): void {
     this.pendingJumpId = messageId;
-    this.pendingJumpAt = Date.now();
+    // A re-aim keeps the deadline of the jump the reader asked for: re-aiming must never
+    // renew its own window, or measurements (or a drag) could hold the reader on the row.
+    if (!this.reaiming) this.pendingJumpAt = Date.now();
   }
 
   /**
-   * Watch the scroller's width and re-apply a recent jump when it changes.
+   * Stop re-aiming, and drop a jump still waiting for its row: the reader moved, or the
+   * jump was superseded or withdrawn.
+   */
+  protected cancelPendingJump(): void {
+    this.pendingJumpId = null;
+    this.awaitedJumpId = null;
+  }
+
+  /**
+   * Re-aim a recent jump at the layout that now exists (a width change, or the first real
+   * row measurements). One path and one window: {@link JUMP_REAPPLY_MS} from the original
+   * jump, never extended by a re-aim.
+   */
+  protected reapplyRecentJump(): void {
+    const id = this.pendingJumpId;
+    if (id && Date.now() - this.pendingJumpAt <= JUMP_REAPPLY_MS) {
+      this.reaiming = true;
+      try {
+        this.jumpTo(id);
+      } finally {
+        this.reaiming = false;
+      }
+    } else {
+      this.pendingJumpId = null;
+    }
+  }
+
+  /** Any reader-driven scroll (wheel, touch, keys, scrollbar drag) ends re-aiming. */
+  private watchUserScroll(el: HTMLElement): void {
+    if (this.userScrollWatched) return;
+    this.userScrollWatched = true;
+    const stop = () => this.cancelPendingJump();
+    const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
+    for (const type of events) {
+      el.addEventListener(type, stop, { passive: true });
+    }
+    this.listDestroyRef.onDestroy(() => {
+      for (const type of events) el.removeEventListener(type, stop);
+    });
+  }
+
+  /**
+   * Watch the scroller's width and re-aim a recent jump when it changes (the virtual list also
+   * re-aims after row measurements). Also starts the reader-scroll watcher that ends re-aiming.
    *
    * Width only: a height change is the keyboard opening or the composer growing, and
    * re-jumping there would fight the reader rather than help them. Started by the subclasses
@@ -690,6 +771,7 @@ export abstract class MessageListBase {
    */
   protected watchScrollerWidth(): void {
     const el = this.scrollEl()?.nativeElement;
+    if (el) this.watchUserScroll(el);
     if (!el || typeof ResizeObserver === 'undefined' || this.widthRo) {
       return;
     }
@@ -700,15 +782,7 @@ export abstract class MessageListBase {
         return;
       }
       this.lastScrollerWidth = width;
-      const id = this.pendingJumpId;
-      if (id && Date.now() - this.pendingJumpAt <= JUMP_REAPPLY_MS) {
-        // Re-aim at the same row against the layout that now exists. `jumpTo` calls
-        // `notePendingJump` again, which refreshes the deadline — deliberately, so a drag
-        // that resizes continuously keeps the reader on their row for its whole duration.
-        this.jumpTo(id);
-      } else {
-        this.pendingJumpId = null;
-      }
+      this.reapplyRecentJump();
     });
     this.widthRo.observe(el);
     this.listDestroyRef.onDestroy(() => this.widthRo?.disconnect());
