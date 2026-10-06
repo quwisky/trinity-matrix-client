@@ -4,7 +4,7 @@ import { hlm as trn } from '@trinity/helm/utils';
 /** Semantic status treatments supported by Trinity badges. */
 export type TrnBadgeVariant = Extract<
   TrnVariant,
-  'neutral' | 'success' | 'warning'
+  'neutral' | 'success' | 'warning' | 'danger'
 >;
 
 /** Compact badge geometry; badges never grow to control or display sizes. */
@@ -21,6 +21,8 @@ const variantClasses = {
     'border-transparent bg-[var(--trinity-status-success-surface)] text-[var(--trinity-status-success-surface-foreground)]',
   warning:
     'border-transparent bg-[var(--trinity-status-warning-surface)] text-[var(--trinity-status-warning-surface-foreground)]',
+  danger:
+    'border-transparent bg-[var(--trinity-status-danger-surface)] text-[var(--trinity-status-danger-surface-foreground)]',
 } as const satisfies Record<TrnBadgeVariant, string>;
 
 const sizeClasses = {

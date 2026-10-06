@@ -44,4 +44,13 @@ describe('TrnBadge', () => {
       expect(trnBadgeRecipe(variant, 'sm')).not.toMatch(/\bdark:/u);
     }
   });
+
+  it('offers a danger badge for mentions', () => {
+    expect(trnBadgeRecipe('danger', 'sm')).toContain(
+      'bg-[var(--trinity-status-danger-surface)]',
+    );
+    expect(trnBadgeRecipe('danger', 'sm')).toContain(
+      'text-[var(--trinity-status-danger-surface-foreground)]',
+    );
+  });
 });
