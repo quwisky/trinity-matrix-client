@@ -97,6 +97,63 @@ async function watchLeaks(
   }, bodies);
 }
 
+/** Records whether the "isn't available" error was EVER shown. */
+async function watchUnavailable(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __unavailableSeen: boolean };
+    w.__unavailableSeen = false;
+    new MutationObserver(() => {
+      if (document.body?.textContent?.includes("This room isn't available")) {
+        w.__unavailableSeen = true;
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+}
+const unavailableSeen = (page: Page) =>
+  page.evaluate(
+    () =>
+      (window as unknown as { __unavailableSeen: boolean }).__unavailableSeen,
+  );
+
+/**
+ * Wait until the SDK has persisted a sync for this user to its IndexedDB store, so the next
+ * load restores it from cache (a returning user) rather than starting cold.
+ */
+async function waitForPersistedSync(page: Page, user: string): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async (localpart) => {
+          const dbs = await indexedDB.databases();
+          const name = dbs
+            .map((d) => d.name ?? '')
+            .find((n) => n.includes(`trinity-sync:@${localpart}:`));
+          if (!name) return false;
+          const db = await new Promise<IDBDatabase>((resolve, reject) => {
+            const req = indexedDB.open(name);
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+          });
+          try {
+            if (!db.objectStoreNames.contains('sync')) return false;
+            const saved = await new Promise<unknown>((resolve, reject) => {
+              const req = db
+                .transaction('sync', 'readonly')
+                .objectStore('sync')
+                .get(['-']); // keyPath ["clobber"]: an array key
+              req.onsuccess = () => resolve(req.result);
+              req.onerror = () => reject(req.error);
+            });
+            return !!(saved as { nextBatch?: string } | undefined)?.nextBatch;
+          } finally {
+            db.close();
+          }
+        }, user),
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+}
+
 interface Fixture {
   hs: string;
   me: HomeserverSession;
@@ -270,7 +327,7 @@ test.describe('Timeline loading states', () => {
     await expect(page.getByTestId('timeline-skeleton')).toBeHidden();
   });
 
-  test('opens a linked room that has not synced yet: skeleton, then messages', async ({
+  test('opens a linked room joined since the sync cache: skeleton, then messages', async ({
     page,
     request,
   }) => {
@@ -279,7 +336,11 @@ test.describe('Timeline loading states', () => {
     await watchSkeleton(page);
     await login(page, f.me);
     const account = new URL(page.url()).searchParams.get('account') as string;
-    // Created after login, so the client has never synced it and cannot hydrate it from cache.
+    // A returning user: the reload restores this cached sync (the SDK reports it PREPARED)
+    // before any live /sync, and the cache predates the room.
+    await waitForPersistedSync(page, f.me.user as string);
+    await watchUnavailable(page);
+    // Created after the cache, so the client has never synced it and cannot hydrate it.
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
     await page.route('**/_matrix/client/**/sync*', async (route) => {
@@ -305,7 +366,8 @@ test.describe('Timeline loading states', () => {
     ).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('timeline-skeleton')).toBeHidden();
     await expect(page.getByTestId('composer-input')).toBeVisible();
-    expect(page.url()).toContain(`/rooms/${segment}`);
+    expect(page.url()).toContain(`/rooms/${segment}`); // The cached sync is not a live one: the room was loading throughout, never unavailable.
+    expect(await unavailableSeen(page)).toBe(false);
   });
 
   test('a linked message in a room that has not synced yet is scrolled into view once it loads', async ({
