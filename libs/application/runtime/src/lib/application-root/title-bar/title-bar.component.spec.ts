@@ -80,6 +80,35 @@ describe('TitleBarComponent', () => {
     expect(state.active()).toBe(false);
   });
 
+  it('renders nothing when the bridge lacks the titleBar capability', async () => {
+    const bridge = desktopBridgeFixture();
+    (globalThis as BridgeHost).trinityDesktop = {
+      ...bridge,
+      capabilities: { ...bridge.capabilities, titleBar: undefined },
+    };
+    const { fixture } = await render(TitleBarComponent, {
+      providers: [
+        provideTrnIcons(),
+        {
+          provide: WORKSPACE_SYSTEM_STATUS,
+          useValue: {
+            hasProblems: signal(false),
+            bannerSlot: signal(null),
+            show: vi.fn(),
+          },
+        },
+      ],
+    });
+    await fixture.whenStable();
+
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="title-bar-title"]'),
+    ).toBeNull();
+    expect(fixture.debugElement.injector.get(TitleBarState).active()).toBe(
+      false,
+    );
+  });
+
   it('renders nothing while the OS title bar is in use', async () => {
     const { container, state } = await setup({ systemBar: true });
 

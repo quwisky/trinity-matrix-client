@@ -5,6 +5,7 @@
       class="title-bar__button"
       type="button"
       aria-label="Application menu"
+      aria-haspopup="menu"
       data-testid="title-bar-menu"
       (click)="openMenu($event)"
     >
@@ -34,7 +35,7 @@
         type="button"
         aria-label="System status"
         data-testid="title-bar-status"
-        (click)="systemStatus.show()"
+        (click)="showStatus($event)"
       >
         <trn-icon name="shield-alert" />
       </button>

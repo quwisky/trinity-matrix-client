@@ -78,6 +78,11 @@ export class TitleBarComponent {
     });
   }
 
+  protected showStatus(event: MouseEvent): void {
+    const button = event.currentTarget as HTMLElement;
+    this.systemStatus.show(() => button.focus());
+  }
+
   private sendOverlayColors(): void {
     const style = getComputedStyle(document.documentElement);
     const color = cssColorToHex(
