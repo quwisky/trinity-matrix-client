@@ -1,9 +1,10 @@
 name: Land back-merge
 
 # main allows only squash merges, but a back-merge must land as its merge commit so release
-# tags stay reachable from main. Once CI passes on a back-merge/vX.Y.Z PR, the release App
-# (a bypass actor on main's ruleset) fast-forwards main to that exact commit.
-# scripts/land-back-merge.mjs re-checks everything live and never forces the push.
+# tags stay reachable from main. When CI completes on a back-merge/vX.Y.Z PR, the release
+# App (a bypass actor on main's ruleset) fast-forwards main to that exact commit.
+# scripts/land-back-merge.mjs re-checks the PR, the merge and main's required checks live,
+# and never forces the push.
 on:
   workflow_run:
     workflows: [CI]
@@ -11,21 +12,27 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: land-back-merge
+  cancel-in-progress: false
+
 jobs:
   land:
     name: Land the back-merge on main
-    # Same repository only: a fork can name its branch back-merge/* too.
+    # Any conclusion: the script judges main's required checks, so a failed optional job
+    # (Desktop, iOS) does not block landing. Same repository only: a fork can name its
+    # branch back-merge/* too.
     if: >-
-      ${{ github.event.workflow_run.conclusion == 'success'
-      && startsWith(github.event.workflow_run.head_branch, 'back-merge/')
+      ${{ startsWith(github.event.workflow_run.head_branch, 'back-merge/')
       && github.event.workflow_run.head_repository.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # The release App's private key lives only in this environment.
     environment: release-app
-    # GITHUB_TOKEN only reads the check runs; the App token does the push.
+    # GITHUB_TOKEN only reads the check runs and the PR; the App token does the push.
     permissions:
       checks: read
+      pull-requests: read
     steps:
       - name: Mint the App token
         id: app-token
@@ -33,6 +40,7 @@ jobs:
         with:
           client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
       # main's script, never the PR head's.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,4 +56,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
-        run: node scripts/land-back-merge.mjs --branch "$BRANCH"
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: node scripts/land-back-merge.mjs --branch "$BRANCH" --sha "$HEAD_SHA"
