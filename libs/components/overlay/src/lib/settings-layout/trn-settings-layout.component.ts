@@ -44,6 +44,7 @@ export class TrnSettingsLayoutComponent {
   private visibleParts = new Set<string>();
   private lastEmitted: string | null = null; // null: no fragment
   private emitTimer: ReturnType<typeof setTimeout> | undefined;
+  private settleTimer: ReturnType<typeof setTimeout> | undefined;
   private lockTimer: ReturnType<typeof setTimeout> | undefined;
   private scrollLocked = false;
   private readonly directory = viewChild<ElementRef<HTMLElement>>('directory');
@@ -117,6 +118,9 @@ export class TrnSettingsLayoutComponent {
         this.visibleParts = new Set();
         this.lastEmitted = null;
         this.endScrollLock();
+        clearTimeout(this.emitTimer);
+        clearTimeout(this.settleTimer);
+        this.settleTimer = undefined;
         this.registry.current.set(null);
         const detail = this.detail()?.nativeElement;
         if (detail) {
@@ -130,6 +134,8 @@ export class TrnSettingsLayoutComponent {
       untracked(() => {
         if (part && part !== this.registry.current()) {
           this.pendingPart = part;
+          clearTimeout(this.settleTimer);
+          this.settleTimer = undefined;
           this.resolvePending(this.registry.parts());
         }
       });
@@ -173,6 +179,7 @@ export class TrnSettingsLayoutComponent {
     // Keep the compact chip for the current part in view.
     effect(() => {
       const id = this.registry.current();
+      this.compact();
       const row = this.detail()?.nativeElement.querySelector<HTMLElement>(
         '.settings-layout__chips',
       );
@@ -186,21 +193,32 @@ export class TrnSettingsLayoutComponent {
     this.destroyRef.onDestroy(() => {
       clearTimeout(this.emitTimer);
       clearTimeout(this.lockTimer);
+      clearTimeout(this.settleTimer);
     });
   }
 
-  /** Scroll to the pending part once registered, or report that it does not exist. */
+  /**
+   * Scroll to the pending part once registered. A part that is still absent a moment
+   * later (groups may render late, e.g. behind a platform check) is reported as unknown.
+   */
   private resolvePending(parts: readonly { id: string }[]): void {
     untracked(() => {
-      if (!this.pendingPart || parts.length === 0) {
+      const id = this.pendingPart;
+      if (!id) {
         return;
       }
-      const id = this.pendingPart;
       if (parts.some((p) => p.id === id)) {
+        clearTimeout(this.settleTimer);
+        this.settleTimer = undefined;
         this.goToPart(id);
-      } else {
-        this.pendingPart = null;
-        this.partSelected.emit(null);
+      } else if (this.settleTimer === undefined) {
+        this.settleTimer = setTimeout(() => {
+          this.settleTimer = undefined;
+          if (this.pendingPart === id) {
+            this.pendingPart = null;
+            this.partSelected.emit(null);
+          }
+        }, 1000);
       }
     });
   }
@@ -215,9 +233,11 @@ export class TrnSettingsLayoutComponent {
       typeof matchMedia === 'function' &&
       matchMedia('(prefers-reduced-motion: reduce)').matches;
     // The spy ignores the headings a smooth scroll passes over until it settles.
-    this.scrollLocked = true;
-    clearTimeout(this.lockTimer);
-    this.lockTimer = setTimeout(this.endScrollLock, 800);
+    if (!reduce) {
+      this.scrollLocked = true;
+      clearTimeout(this.lockTimer);
+      this.lockTimer = setTimeout(this.endScrollLock, 800);
+    }
     part.heading.scrollIntoView({
       behavior: reduce ? 'auto' : 'smooth',
       block: 'start',

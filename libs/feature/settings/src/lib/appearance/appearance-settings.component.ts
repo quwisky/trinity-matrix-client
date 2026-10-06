@@ -33,11 +33,11 @@ import { AppearanceSettingsController } from './appearance-settings.controller';
 import { MessageGesturesBlockComponent } from './message-gestures-block.component';
 import { SystemTitleBarBlockComponent } from './system-title-bar-block.component';
 import { AppearancePreviewComponent } from './appearance-preview.component';
+import { TrnSettingsGroupComponent } from '@trinity/components/overlay';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.directive';
 import { SettingsFieldRowDirective } from '../shared/settings-field-row.directive';
 
-import { TrnSettingsGroupComponent } from '@trinity/components/overlay';
 /**
  * Appearance settings sub-page: Mode, Theme, text and code size,
  * how dates and times are written, how rooms are ordered inside a space, and which system

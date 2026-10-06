@@ -457,6 +457,9 @@ const partsStart: { section: string; part: string | null } = {
         <trn-settings-group title="Theme" />
         <trn-settings-group title="Messages" />
         <trn-settings-group title="Code blocks" />
+        @if (late()) {
+          <trn-settings-group title="Window" />
+        }
       }
     </trn-settings-layout>
   `,
@@ -465,6 +468,7 @@ class PartsHostComponent {
   readonly sections = sections;
   readonly selected = signal<string | null>(partsStart.section);
   readonly initialPart = signal<string | null>(partsStart.part);
+  readonly late = signal(false);
   readonly compact = signal(false);
   readonly partSelected = vi.fn();
 }
@@ -654,10 +658,61 @@ describe('TrnSettingsLayoutComponent parts', () => {
   });
 
   it('opens at the top and asks the host to clear an unknown initial part', async () => {
+    vi.useFakeTimers();
     const { host, detail } = await mount({ part: 'nope' });
+    expect(host.partSelected).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1500);
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(detail.scrollTop).toBe(0);
     expect(host.partSelected).toHaveBeenCalledExactlyOnceWith(null);
+  });
+
+  it('keeps a deep link pending for a group that registers late', async () => {
+    vi.useFakeTimers();
+    const { container, host, flush } = await mount({ part: 'window' });
+    vi.advanceTimersByTime(300);
+    expect(host.partSelected).not.toHaveBeenCalled();
+    host.late.set(true);
+    await flush();
+    expect(scrollIntoView.mock.contexts[0]).toBe(
+      container.querySelector('#part-window'),
+    );
+    vi.advanceTimersByTime(1500);
+    expect(host.partSelected).toHaveBeenCalledExactlyOnceWith('window');
+  });
+
+  it('clears a fragment on a section that has no parts', async () => {
+    vi.useFakeTimers();
+    const { host } = await mount({ section: 'advanced', part: 'theme' });
+    vi.advanceTimersByTime(1500);
+    expect(host.partSelected).toHaveBeenCalledExactlyOnceWith(null);
+  });
+
+  it('does not write the old part onto a new section from a queued spy emit', async () => {
+    vi.useFakeTimers();
+    const { host, detail, flush } = await mount();
+    detail.scrollTop = 100;
+    FakeObserver.live.report(['messages']);
+    host.selected.set('advanced');
+    await flush();
+    vi.advanceTimersByTime(1000);
+    expect(host.partSelected).not.toHaveBeenCalled();
+  });
+
+  it('starts following the scroll again after a click and an immediate section switch', async () => {
+    const { container, host, detail, flush } = await mount();
+    partRow(container, 'messages')!.click();
+    host.selected.set('advanced');
+    await flush();
+    host.selected.set('general');
+    await flush();
+    detail.scrollTop = 100;
+    FakeObserver.live.report(['code-blocks']);
+    await flush();
+    expect(partRow(container, 'code-blocks')).toHaveAttribute(
+      'aria-current',
+      'location',
+    );
   });
 
   it('drops a pending scroll target when the section changes', async () => {

@@ -173,6 +173,9 @@
 
   .settings-layout__chip {
     flex: none;
+    display: inline-flex;
+    min-block-size: max(28px, var(--trinity-interaction-target-min-size, 0px));
+    align-items: center;
     padding: var(--trinity-space-1) var(--trinity-space-3);
     border-radius: var(--trinity-radius-md);
     color: var(--trinity-text-muted);
