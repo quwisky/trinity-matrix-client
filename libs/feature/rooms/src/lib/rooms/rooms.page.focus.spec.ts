@@ -343,6 +343,7 @@ describe('RoomsPage rendered right-panel focus', () => {
       toggle!.click();
       fixture.detectChanges();
       TestBed.tick();
+      expect(document.activeElement).not.toBe(toggle);
       const close = host.querySelector<HTMLElement>(
         '[data-testid="close-members"]',
       );

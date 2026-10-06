@@ -35,25 +35,7 @@ import { TrnTooltip } from '@trinity/components/generic-content';
       <trn-icon name="x" size="lg" motion="rotate" />
     </button>
   `,
-  styles: [
-    `
-      @layer components {
-        :host {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          flex: none;
-          block-size: calc(3rem + env(safe-area-inset-top));
-          padding-block-start: env(safe-area-inset-top);
-          padding-inline: calc(0.75rem + env(safe-area-inset-left))
-            calc(0.75rem + env(safe-area-inset-right));
-          border-block-end: 1px solid var(--trinity-border-subtle);
-          background: var(--trinity-surface-panel);
-          color: var(--trinity-text-bright);
-        }
-      }
-    `,
-  ],
+  styleUrl: './side-panel-header.component.scss',
 })
 export class SidePanelHeaderComponent {
   readonly title = input.required<string>();
