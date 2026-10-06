@@ -334,9 +334,13 @@ describe('TitleBarComponent', () => {
       expect(read('apps/trinity/src/global.scss')).toMatch(
         /\.trn-title-row\s*{\s*--trinity-title-row-inset: env\(\s*titlebar-area-height,\s*var\(--trinity-title-bar-height\)\s*\);/,
       );
-      expect(read('apps/trinity/src/global.scss')).toMatch(
-        /\.cdk-overlay-container\s*{[^}]*inset-block: var\(--trinity-title-row-inset, 0\) 0;/,
+      // Only the global overlay layers move; the container stays at the viewport origin
+      // so anchored menus keep their viewport coordinates.
+      const global = read('apps/trinity/src/global.scss');
+      expect(global).toMatch(
+        /\.trn-title-row :is\(\.cdk-global-overlay-wrapper, \.cdk-overlay-backdrop\)\s*{\s*inset-block: var\(--trinity-title-row-inset\) 0 !important;/,
       );
+      expect(global).not.toMatch(/\.cdk-overlay-container\s*{/);
       for (const file of [
         'libs/application/runtime/src/lib/application-root/system-status/system-status.component.scss',
         'libs/feature/rooms/src/lib/rooms/rooms.page.scss',

@@ -3,11 +3,20 @@ import path from 'node:path';
 import { type ElectronApplication } from 'playwright';
 import { expect, test, type Page } from './fixtures.mts';
 import { createElectronProfile, launchApp } from './support/launch.mts';
+import { homeserverSession, login, type Navigate } from '../support/app.mts';
 
 // The frameless title row is a Windows/Linux and macOS shell feature; the CI lanes run linux.
 test.skip(process.platform !== 'linux', 'asserts the linux title row');
 
 const HEX = /^#[0-9a-f]{6}$/;
+const session = homeserverSession();
+
+const electronNavigate: Navigate = async (page: Page, path: string) => {
+  const baseUrl = page.url() === 'about:blank' ? 'trinity://app/' : page.url();
+  await page.goto(new URL(path, baseUrl).href, {
+    waitUntil: 'domcontentloaded',
+  });
+};
 
 interface OverlayCall {
   color: string;
@@ -50,20 +59,7 @@ test.describe('frameless title row', () => {
     expect(region).toBe('drag');
   });
 
-  test('starts full-screen layers below the row so their close buttons stay clickable', async () => {
-    // The CDK overlay container hosts every dialog, the lightbox and the widget frame.
-    const overlayTop = await page.evaluate(() => {
-      const probe = document.createElement('div');
-      probe.className = 'cdk-overlay-container';
-      probe.append(document.createElement('span'));
-      document.body.append(probe);
-      const { top, bottom } = probe.getBoundingClientRect();
-      probe.remove();
-      return { top, bottom, viewport: innerHeight };
-    });
-    expect(overlayTop.top).toBe(32);
-    expect(overlayTop.bottom).toBe(overlayTop.viewport);
-
+  test('starts the system status layer below the row so its close button stays clickable', async () => {
     // System status is its own viewport-fixed layer and opens before sign-in. At the
     // minimum window height its card fills the viewport, so its header reaches the top.
     await app.evaluate(({ BrowserWindow }) =>
@@ -183,4 +179,77 @@ test('draws no title row and keeps the OS menu bar with the system title bar sav
   } finally {
     await app.close();
   }
+});
+
+test.describe('title row over CDK overlays', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+
+  test('starts dialogs below the row and keeps anchored menus on their trigger', async () => {
+    test.slow();
+    const app = await launchApp();
+    try {
+      const page = await app.firstWindow();
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]?.setSize(1280, 600),
+      );
+      await login(page, session, electronNavigate);
+
+      // An anchored menu: CDK positions it in viewport coordinates inside the overlay
+      // container, so the container must stay at the viewport origin.
+      const trigger = page.getByTestId('user-menu-trigger');
+      await trigger.click();
+      const menu = page.getByRole('menu');
+      await expect(menu).toBeVisible();
+      const triggerBox = (await trigger.boundingBox())!;
+      const menuBox = (await menu.boundingBox())!;
+      // `side="top"`: the menu's bottom edge sits on the trigger, not 32px below it.
+      expect(
+        Math.abs(menuBox.y + menuBox.height - triggerBox.y),
+      ).toBeLessThanOrEqual(12);
+      await page.keyboard.press('Escape');
+      await expect(menu).toHaveCount(0);
+
+      // A global dialog, opened after CDK injected its own unlayered overlay styles.
+      await page.getByTestId('open-settings').click();
+      await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible({
+        timeout: 30_000,
+      });
+      const layers = await page.evaluate(() => {
+        const rect = (selector: string) => {
+          const el = document.querySelector(selector);
+          if (!el) throw new Error(`${selector} is missing`);
+          const { top, bottom } = el.getBoundingClientRect();
+          return { top, bottom };
+        };
+        return {
+          container: rect('.cdk-overlay-container'),
+          wrapper: rect('.cdk-global-overlay-wrapper'),
+          backdrop: rect('.cdk-overlay-backdrop'),
+          viewport: innerHeight,
+        };
+      });
+      expect(layers.container.top).toBe(0);
+      expect(layers.wrapper).toEqual({ top: 32, bottom: layers.viewport });
+      expect(layers.backdrop).toEqual({ top: 32, bottom: layers.viewport });
+
+      const close = page.getByTestId('close-settings');
+      expect((await close.boundingBox())!.y).toBeGreaterThanOrEqual(32);
+      expect(
+        await close.evaluate((el) => {
+          const { left, top, width, height } = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(
+            left + width / 2,
+            top + height / 2,
+          );
+          return hit !== null && el.contains(hit);
+        }),
+      ).toBe(true);
+      await close.click();
+      await expect(page.getByRole('dialog', { name: 'Settings' })).toHaveCount(
+        0,
+      );
+    } finally {
+      await app.close();
+    }
+  });
 });
