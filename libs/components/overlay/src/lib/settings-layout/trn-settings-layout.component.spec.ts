@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Component, signal } from '@angular/core';
+import { ApplicationRef, Component, signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { TrnDialogService } from '../dialog/trn-dialog.service';
 import { render } from '@trinity/testing';
 import { provideTrnIcons } from '@trinity/components/foundations';
-import { expectTypeOf } from 'vitest';
+import { afterEach, expectTypeOf } from 'vitest';
 import {
   TrnSettingsLayoutComponent,
   type TrnSettingsLayoutSection,
@@ -137,50 +139,172 @@ describe('TrnSettingsLayoutComponent', () => {
       expect(closeRequested).toHaveBeenCalledTimes(1);
     });
 
-    it('closes on Escape and handles it once', async () => {
-      const closeRequested = vi.fn();
-      const { container } = await render(TrnSettingsLayoutComponent, {
-        inputs: { title: 'Preferences', sections, selectedSection: 'general' },
-        on: { closeRequested },
-        providers: [provideTrnIcons()],
-      });
-      const reachedBody = vi.fn();
-      document.body.addEventListener('keydown', reachedBody);
-      const event = new KeyboardEvent('keydown', {
-        key: 'Escape',
-        bubbles: true,
-        cancelable: true,
-      });
-      container.querySelector('button')!.dispatchEvent(event);
-      document.body.removeEventListener('keydown', reachedBody);
-      expect(closeRequested).toHaveBeenCalledTimes(1);
-      // The CDK dialog listens on the body; it must not also close the layer.
-      expect(reachedBody).not.toHaveBeenCalled();
-    });
-
-    it('returns to the directory on Escape when compact with a section open', async () => {
+    it('leaves Escape to the dialog unless compact with a section open', async () => {
       const closeRequested = vi.fn();
       const backRequested = vi.fn();
-      const { container } = await render(TrnSettingsLayoutComponent, {
+      const { container, fixture } = await render(TrnSettingsLayoutComponent, {
         inputs: {
           title: 'Preferences',
           sections,
           selectedSection: 'general',
-          compact: true,
-          directoryVisible: false,
         },
         on: { closeRequested, backRequested },
         providers: [provideTrnIcons()],
       });
-      container.querySelector('button')!.dispatchEvent(
+      const setInputs = (
+        f: {
+          componentRef: { setInput(n: string, v: unknown): void };
+          detectChanges(): void;
+        },
+        values: Record<string, unknown>,
+      ): void => {
+        for (const [k, v] of Object.entries(values))
+          f.componentRef.setInput(k, v);
+        f.detectChanges();
+      };
+      const press = (): { reachedBody: boolean; prevented: boolean } => {
+        const reached = vi.fn();
+        document.body.addEventListener('keydown', reached);
+        const event = new KeyboardEvent('keydown', {
+          key: 'Escape',
+          bubbles: true,
+          cancelable: true,
+        });
+        container.querySelector('button')!.dispatchEvent(event);
+        document.body.removeEventListener('keydown', reached);
+        return {
+          reachedBody: reached.mock.calls.length > 0,
+          prevented: event.defaultPrevented,
+        };
+      };
+      // Wide: the dialog's own Escape (and its guard) owns the close.
+      expect(press()).toEqual({ reachedBody: true, prevented: false });
+      // Compact with the directory showing: still the dialog's close.
+      setInputs(fixture, {
+        title: 'Preferences',
+        sections,
+        selectedSection: 'general',
+        compact: true,
+        directoryVisible: true,
+      });
+      expect(press().reachedBody).toBe(true);
+      expect(backRequested).not.toHaveBeenCalled();
+      // Compact with a section open: back to the list, and the dialog stays open.
+      setInputs(fixture, {
+        title: 'Preferences',
+        sections,
+        selectedSection: 'general',
+        compact: true,
+        directoryVisible: false,
+      });
+      expect(press()).toEqual({ reachedBody: false, prevented: true });
+      expect(backRequested).toHaveBeenCalledTimes(1);
+      expect(closeRequested).not.toHaveBeenCalled();
+    });
+
+    it('keeps a close button and heading on the compact list', async () => {
+      const closeRequested = vi.fn();
+      const { container, getByRole } = await render(
+        TrnSettingsLayoutComponent,
+        {
+          inputs: {
+            title: 'Preferences',
+            sections,
+            selectedSection: null,
+            compact: true,
+            directoryVisible: true,
+          },
+          on: { closeRequested },
+          providers: [provideTrnIcons()],
+        },
+      );
+      const nav = container.querySelector('nav')!;
+      const close = getByRole('button', { name: 'Close settings' });
+      expect(nav.contains(close)).toBe(true);
+      expect(nav.querySelector('h1[data-settings-autofocus]')).toBeTruthy();
+      expect(container.querySelectorAll('h1')).toHaveLength(1);
+      expect(
+        container.querySelectorAll('.settings-layout__close'),
+      ).toHaveLength(1);
+      close.click();
+      expect(closeRequested).toHaveBeenCalledTimes(1);
+    });
+
+    it('names the close action and keeps the workspace test id', async () => {
+      const { container, getByRole } = await render(
+        TrnSettingsLayoutComponent,
+        {
+          inputs: {
+            title: 'System status',
+            sections,
+            selectedSection: 'general',
+            closeLabel: 'Close System status',
+          },
+          providers: [provideTrnIcons()],
+        },
+      );
+      expect(getByRole('button', { name: 'Close System status' })).toBeTruthy();
+      expect(
+        container.querySelector('[data-testid="settings-workspace"]'),
+      ).toBeTruthy();
+    });
+  });
+
+  describe('inside the dialog stack', () => {
+    @Component({
+      imports: [TrnSettingsLayoutComponent],
+      template: `<trn-settings-layout
+        title="Preferences"
+        [sections]="sections"
+        selectedSection="general"
+        (closeRequested)="closed = true"
+      />`,
+    })
+    class LayerComponent {
+      readonly sections = sections;
+      closed = false;
+    }
+
+    @Component({ template: '<p>Inner overlay</p>' })
+    class InnerComponent {}
+
+    afterEach(() => TestBed.inject(TrnDialogService).closeAll());
+
+    const escape = (): void => {
+      document.body.dispatchEvent(
         new KeyboardEvent('keydown', {
           key: 'Escape',
+          keyCode: 27,
           bubbles: true,
           cancelable: true,
         }),
       );
-      expect(backRequested).toHaveBeenCalledTimes(1);
-      expect(closeRequested).not.toHaveBeenCalled();
+    };
+
+    it('closes an inner overlay first, then asks the dismiss guard once', () => {
+      const guard = vi.fn(() => false);
+      const dialogs = TestBed.inject(TrnDialogService);
+      dialogs.open(LayerComponent, {
+        placement: 'fullscreen',
+        dismissGuard: guard,
+      });
+      TestBed.inject(ApplicationRef).tick();
+      dialogs.open(InnerComponent);
+      TestBed.inject(ApplicationRef).tick();
+      expect(document.querySelectorAll('.cdk-dialog-container')).toHaveLength(
+        2,
+      );
+
+      escape();
+      TestBed.inject(ApplicationRef).tick();
+      expect(document.querySelectorAll('.cdk-dialog-container')).toHaveLength(
+        1,
+      );
+      expect(guard).not.toHaveBeenCalled();
+
+      escape();
+      expect(guard).toHaveBeenCalledOnce();
+      expect(dialogs.hasOpen()).toBe(true);
     });
   });
 

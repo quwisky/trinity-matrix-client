@@ -92,26 +92,6 @@ test.describe('Settings', () => {
     expect(activeBackground).not.toBe(idleBackground);
   });
 
-  test('desktop: the full-screen layer keeps the nav clear of the content at 200% text', async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.evaluate(() => {
-      document.documentElement.style.fontSize = '200%';
-    });
-    const nav = page.locator('nav[aria-label="Settings sections"]');
-    await expect(nav).toBeVisible();
-    const [navBox, detailBox] = await Promise.all([
-      nav.boundingBox(),
-      page.getByTestId('settings-detail').boundingBox(),
-    ]);
-    if (navBox && detailBox) {
-      expect(navBox.x + navBox.width).toBeLessThanOrEqual(detailBox.x + 1);
-    }
-    await page.keyboard.press('Escape');
-    await expect(page.getByTestId('settings-dialog')).toBeHidden();
-  });
-
   test('desktop: Room and Space use the same scaled settings frame', async ({
     page,
     request,

@@ -94,9 +94,11 @@ test.describe('Electron settings geometry', () => {
       });
       expect(geometry.detail.scrollbarWidth).not.toBe('none');
       expect(geometry.detail.webkitDisplay).not.toBe('none');
-      expect(geometry.frame.left).toBeGreaterThan(0);
-      expect(geometry.frame.right).toBeLessThan(geometry.viewport.width);
-      expect(geometry.frame.top).toBeGreaterThan(0);
+      expect(geometry.frame.left).toBeGreaterThanOrEqual(0);
+      expect(geometry.frame.right).toBeLessThanOrEqual(
+        geometry.viewport.width + 1,
+      );
+      expect(geometry.frame.top).toBeGreaterThanOrEqual(0);
       expect(geometry.frame.bottom).toBeLessThanOrEqual(
         geometry.viewport.height + 1,
       );

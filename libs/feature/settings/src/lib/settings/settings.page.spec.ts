@@ -158,8 +158,9 @@ describe('SettingsPage (shell)', () => {
       ),
     ).toEqual(['Appearance', 'Notifications', 'Privacy']);
     expect(
-      Array.from(root.querySelectorAll('.settings-nav__group'), (item) =>
-        item.textContent?.trim(),
+      Array.from(
+        root.querySelectorAll('.settings-layout__group-label'),
+        (item) => item.textContent?.trim(),
       ),
     ).toEqual(['Preferences']);
   });
@@ -175,7 +176,7 @@ describe('SettingsPage (shell)', () => {
     search.dispatchEvent(new Event('input', { bubbles: true }));
     harness.detectChanges();
     root
-      .querySelector<HTMLAnchorElement>(
+      .querySelector<HTMLButtonElement>(
         '[data-testid="settings-nav-appearance"]',
       )!
       .click();
@@ -288,10 +289,6 @@ describe('SettingsPage (shell)', () => {
 
     const active = el.querySelector('[data-testid="settings-nav-appearance"]');
     const other = el.querySelector('[data-testid="settings-nav-profile"]');
-    // `is-active` is the marker `routerLinkActive` applies; it carries no styles of its
-    // own and exists so the icon's `group-[.is-active]` variant has something to key on —
-    // a child cannot see its parent's active state any other way. The visible cues sit in
-    // the same `routerLinkActive` string as md-prefixed utilities.
     expect(active?.classList.contains('is-active')).toBe(true);
     expect(active?.getAttribute('aria-current')).toBe('page');
     expect(other?.classList.contains('is-active')).toBe(false);
@@ -327,7 +324,7 @@ describe('SettingsPage (shell)', () => {
     // breakpoint utility competing with the unlayered settings stylesheet.
     const el = harness.fixture.nativeElement as HTMLElement;
     const nav = el.querySelector('nav')!;
-    const detail = el.querySelector('section')!;
+    const detail = el.querySelector('[data-testid="settings-detail"]')!;
     expect(nav.classList.contains('settings-pane--hidden')).toBe(true);
     expect(detail.classList.contains('settings-pane--hidden')).toBe(false);
   });
@@ -391,7 +388,7 @@ describe('SettingsPage (shell)', () => {
     expect(historyGo).not.toHaveBeenCalled();
   });
 
-  it('leaves settings via history when the header back button is clicked at the index', async () => {
+  it('leaves settings via history when the close button is clicked at the index', async () => {
     stubMatchMedia(false);
     const { harness } = await harnessAt('/settings');
     const back = vi
@@ -401,7 +398,7 @@ describe('SettingsPage (shell)', () => {
     // Click the real button to exercise the (click)/aria-label template wiring.
     const el = harness.fixture.nativeElement as HTMLElement;
     el.querySelector<HTMLButtonElement>(
-      'header button[aria-label=Back]',
+      '[data-testid="close-settings"]',
     )?.click();
 
     expect(back).toHaveBeenCalled();
@@ -414,7 +411,7 @@ describe('SettingsPage (shell)', () => {
 
     const el = harness.fixture.nativeElement as HTMLElement;
     el.querySelector<HTMLButtonElement>(
-      'header button[aria-label=Back]',
+      'button[aria-label="Back to sections"]',
     )?.click();
 
     // Deterministic "up": routes to the list (history may not hold it), not back().
@@ -431,7 +428,7 @@ describe('SettingsPage (shell)', () => {
 
     const el = harness.fixture.nativeElement as HTMLElement;
     el.querySelector<HTMLButtonElement>(
-      'header button[aria-label=Back]',
+      '[data-testid="close-settings"]',
     )?.click();
 
     // Desktop: section links replace history, so Back exits through history rather

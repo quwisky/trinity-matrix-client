@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -25,7 +26,7 @@ export interface TrnSettingsLayoutSection {
 @Component({
   selector: 'trn-settings-layout',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnIconComponent],
+  imports: [NgTemplateOutlet, TrnButton, TrnIconComponent],
   providers: [TrnSettingsParts],
   templateUrl: './trn-settings-layout.component.html',
   styleUrl: './trn-settings-layout.component.scss',
@@ -53,6 +54,8 @@ export class TrnSettingsLayoutComponent {
   readonly detailTestId = input<string | null>(null);
   /** Optional compatibility prefix for directory item test hooks. */
   readonly navItemTestIdPrefix = input<string | null>(null);
+  /** Accessible name of the close action. */
+  readonly closeLabel = input('Close settings');
   /** Optional compatibility hook for the close action. */
   readonly closeTestId = input<string | null>(null);
 
@@ -60,6 +63,10 @@ export class TrnSettingsLayoutComponent {
   readonly backRequested = output<void>();
   readonly closeRequested = output<void>();
 
+  /** Compact and showing only the directory: the close and title live in the list. */
+  protected readonly listView = computed(
+    () => this.compact() && this.directoryVisible(),
+  );
   protected readonly directoryLabel = computed(
     () => `${this.title()} sections`,
   );
@@ -74,22 +81,21 @@ export class TrnSettingsLayoutComponent {
   );
 
   /**
-   * Escape is handled here and stops there. The CDK dialog also closes on Escape from a
-   * body-level listener, which would skip this layer's own compact "back" step; stopping
-   * the event leaves `closeRequested` as the one close path, where the owner's unsaved
-   * changes guard runs.
+   * Escape closes the layer through its owner: the CDK dialog closes on a body-level
+   * Escape (running the unsaved-changes guard, and giving an open inner overlay the key
+   * first), so this only takes the compact "back to the list" step, which the dialog
+   * cannot know about. An Escape something else already handled is left alone.
    */
   protected onEscape(event: Event): void {
-    if (event.defaultPrevented) {
+    if (
+      event.defaultPrevented ||
+      !(this.compact() && this.selectedSection() && !this.directoryVisible())
+    ) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
-    if (this.compact() && this.selectedSection() && !this.directoryVisible()) {
-      this.backRequested.emit();
-    } else {
-      this.closeRequested.emit();
-    }
+    this.backRequested.emit();
   }
 
   protected selectSection(id: string): void {

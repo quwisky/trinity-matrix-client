@@ -1,85 +1,105 @@
+<ng-template #heading>
+  <h1 data-autofocus data-settings-autofocus tabindex="-1">
+    {{ title() }}
+  </h1>
+</ng-template>
+<ng-template #closeButton>
+  <button
+    type="button"
+    class="settings-layout__close"
+    [attr.aria-label]="closeLabel()"
+    [attr.data-testid]="resolvedCloseTestId()"
+    (click)="closeRequested.emit()"
+  >
+    <span class="settings-layout__close-icon"
+      ><trn-icon name="x" motion="rotate"
+    /></span>
+    <span class="settings-layout__close-caption" aria-hidden="true">ESC</span>
+  </button>
+</ng-template>
 <div
   class="settings-layout"
   [attr.data-compact]="compact()"
   [attr.data-testid]="testId()"
 >
-  <nav
-    #directory
-    class="settings-layout__nav no-scrollbar"
-    [class.settings-pane--hidden]="compact() && !directoryVisible()"
-    [attr.aria-label]="directoryLabel()"
-    [attr.data-testid]="testId() + '-directory'"
-  >
-    <div class="settings-layout__nav-inner">
-      <ng-content select="[settings-directory-header]" />
-      @for (section of sections(); track section.id; let index = $index) {
-        @if (isGroupStart(index)) {
-          <p class="settings-layout__group-label">{{ section.group }}</p>
-        }
-        <button
-          type="button"
-          class="settings-layout__nav-item"
-          [class.is-active]="selectedSection() === section.id"
-          [attr.aria-current]="selectedSection() === section.id ? 'page' : null"
-          [attr.data-testid]="sectionTestId(section)"
-          [attr.data-trn-settings-section]="section.id"
-          (click)="selectSection(section.id)"
-        >
-          <trn-icon
-            [name]="section.icon"
-            size="md"
-            [variant]="selectedSection() === section.id ? 'accent' : 'muted'"
-          />
-          <span class="settings-layout__nav-label">{{ section.label }}</span>
-          @if (compact()) {
-            <trn-icon name="chevron-right" size="md" variant="muted" />
-          }
-        </button>
-      }
-      <div class="settings-layout__nav-footer">
-        <ng-content select="[settings-nav-footer]" />
-      </div>
-    </div>
-  </nav>
-
-  <main
-    #detail
-    [class]="detailClasses()"
-    [class.settings-pane--hidden]="compact() && directoryVisible()"
-    [attr.data-testid]="resolvedDetailTestId()"
-  >
-    <div class="settings-layout__column">
-      @if (compact() && !directoryVisible() && selectedSection()) {
-        <button
-          trnBtn
-          presentation="ghost"
-          shape="icon"
-          size="md"
-          aria-label="Back to sections"
-          [attr.data-testid]="testId() + '-mobile-back'"
-          (click)="backRequested.emit()"
-        >
-          <trn-icon name="arrow-left" motion="nudge-left" />
-        </button>
-      }
-      <ng-content select="[settings-context]" />
-      <ng-content select="[settings-warning]" />
-      <h1 data-autofocus data-settings-autofocus tabindex="-1">
-        {{ title() }}
-      </h1>
-      <ng-content />
-    </div>
-    <button
-      type="button"
-      class="settings-layout__close"
-      aria-label="Close settings"
-      [attr.data-testid]="resolvedCloseTestId()"
-      (click)="closeRequested.emit()"
+  <div class="settings-layout__workspace" data-testid="settings-workspace">
+    <nav
+      #directory
+      class="settings-layout__nav no-scrollbar"
+      [class.settings-pane--hidden]="compact() && !directoryVisible()"
+      [attr.aria-label]="directoryLabel()"
+      [attr.data-testid]="testId() + '-directory'"
     >
-      <span class="settings-layout__close-icon"
-        ><trn-icon name="x" motion="rotate"
-      /></span>
-      <span class="settings-layout__close-caption" aria-hidden="true">ESC</span>
-    </button>
-  </main>
+      <div class="settings-layout__nav-inner">
+        @if (listView()) {
+          <div class="settings-layout__list-head">
+            <ng-container [ngTemplateOutlet]="heading" />
+            <ng-container [ngTemplateOutlet]="closeButton" />
+          </div>
+        }
+        <ng-content select="[settings-directory-header]" />
+        @for (section of sections(); track section.id; let index = $index) {
+          @if (isGroupStart(index)) {
+            <p class="settings-layout__group-label">{{ section.group }}</p>
+          }
+          <button
+            type="button"
+            class="settings-layout__nav-item"
+            [class.is-active]="selectedSection() === section.id"
+            [attr.aria-current]="
+              selectedSection() === section.id ? 'page' : null
+            "
+            [attr.data-testid]="sectionTestId(section)"
+            [attr.data-trn-settings-section]="section.id"
+            (click)="selectSection(section.id)"
+          >
+            <trn-icon
+              [name]="section.icon"
+              size="md"
+              [variant]="selectedSection() === section.id ? 'accent' : 'muted'"
+            />
+            <span class="settings-layout__nav-label">{{ section.label }}</span>
+            @if (compact()) {
+              <trn-icon name="chevron-right" size="md" variant="muted" />
+            }
+          </button>
+        }
+        <div class="settings-layout__nav-footer">
+          <ng-content select="[settings-nav-footer]" />
+        </div>
+      </div>
+    </nav>
+
+    <main
+      #detail
+      [class]="detailClasses()"
+      [class.settings-pane--hidden]="compact() && directoryVisible()"
+      [attr.data-testid]="resolvedDetailTestId()"
+    >
+      <div class="settings-layout__column">
+        @if (compact() && !directoryVisible() && selectedSection()) {
+          <button
+            trnBtn
+            presentation="ghost"
+            shape="icon"
+            size="md"
+            aria-label="Back to sections"
+            [attr.data-testid]="testId() + '-mobile-back'"
+            (click)="backRequested.emit()"
+          >
+            <trn-icon name="arrow-left" motion="nudge-left" />
+          </button>
+        }
+        <ng-content select="[settings-context]" />
+        <ng-content select="[settings-warning]" />
+        @if (!listView()) {
+          <ng-container [ngTemplateOutlet]="heading" />
+        }
+        <ng-content />
+      </div>
+      @if (!listView()) {
+        <ng-container [ngTemplateOutlet]="closeButton" />
+      }
+    </main>
+  </div>
 </div>

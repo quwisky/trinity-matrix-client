@@ -7,6 +7,7 @@ import {
 import { registerUser } from '../../../support/account.mts';
 import {
   closeSettings,
+  openSettingsFromRooms,
   openSettingsSection,
 } from '../../../support/journeys/navigation.mts';
 
@@ -509,5 +510,71 @@ test.describe('Code line numbers', () => {
 
     expect(starts).toHaveLength(12);
     expect(new Set(starts).size).toBe(1);
+  });
+
+  test('keeps the full-screen settings layer usable at 200% text', async ({
+    page,
+  }) => {
+    await login(page, session);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '200%';
+    });
+    await openSettingsFromRooms(page);
+    const viewport = page.viewportSize()!;
+    const dialog = page.getByTestId('settings-dialog');
+    const nav = page.getByTestId('settings-dialog-directory');
+    const close = page.getByRole('button', { name: 'Close settings' });
+
+    // 200% text puts the layer in its compact flow: the list alone, with its own close.
+    await expect(nav).toBeVisible();
+    await expect(page.getByTestId('settings-detail')).toBeHidden();
+    await expect(close).toBeVisible();
+    const boxes = async (locator: typeof nav) =>
+      (await locator.evaluateAll((els) =>
+        els.map((el) => {
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, right: r.right, bottom: r.bottom };
+        }),
+      )) as { x: number; y: number; right: number; bottom: number }[];
+    const items = await boxes(page.locator('[data-trn-settings-section]'));
+    expect(items.length).toBeGreaterThan(3);
+    for (let i = 1; i < items.length; i++) {
+      expect(items[i].y).toBeGreaterThanOrEqual(items[i - 1].bottom - 1);
+    }
+    for (const item of items) {
+      expect(item.right).toBeLessThanOrEqual(viewport.width + 1);
+    }
+    const [closeBox] = await boxes(close);
+    expect(closeBox.right).toBeLessThanOrEqual(viewport.width + 1);
+    expect(closeBox.y).toBeGreaterThanOrEqual(0);
+    expect(
+      await dialog.evaluate((el) => el.scrollWidth - el.clientWidth),
+    ).toBeLessThanOrEqual(1);
+
+    // Opening a section swaps to the content column, which neither overflows nor runs
+    // under the close button.
+    await page.getByTestId('settings-nav-appearance').click();
+    const heading = page.locator('.settings-layout__column h1');
+    await expect(heading).toBeVisible();
+    await expect(nav).toBeHidden();
+    const [titleBox] = await boxes(heading);
+    const [sectionClose] = await boxes(close);
+    expect(sectionClose.right).toBeLessThanOrEqual(viewport.width + 1);
+    expect(
+      titleBox.right <= sectionClose.x + 1 ||
+        titleBox.bottom <= sectionClose.y + 1,
+    ).toBe(true);
+    expect(
+      await page
+        .getByTestId('settings-detail')
+        .evaluate((el) => el.scrollWidth - el.clientWidth),
+    ).toBeLessThanOrEqual(1);
+
+    // Escape steps back to the list first, then leaves settings.
+    await page.keyboard.press('Escape');
+    await expect(nav).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
   });
 });
