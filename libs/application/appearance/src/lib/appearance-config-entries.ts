@@ -18,6 +18,7 @@ import {
   MODE_PREFERENCE,
   TEXT_SIZE_PREFERENCE,
   THEME_PREFERENCE,
+  THEME_RENAMES,
 } from './design-system-appearance-preferences';
 
 /** Register the six portable Appearance axes under one descriptor-backed config group. */
@@ -55,9 +56,6 @@ export function provideAppearanceConfigEntries(): EnvironmentProviders {
     ];
   });
 }
-
-/** Retired theme ids that an older exported document may still carry. */
-const THEME_RENAMES: Readonly<Record<string, string>> = { onyx: 'midnight' };
 
 function appearanceEntry<T extends string>(
   path: string,

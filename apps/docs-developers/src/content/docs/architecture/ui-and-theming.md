@@ -29,11 +29,11 @@ Appearance has three independent choices: mode (light, dark, or system), theme, 
 | Theme    | Notes                                                                             |
 | -------- | --------------------------------------------------------------------------------- |
 | Graphite | The default (id `trinity`). Neutral greys, warm in light mode.                    |
-| Classic  | The previous look, kept verbatim.                                                 |
+| Classic  | Keeps the previous colours; the inset pane and rail tiles apply to every Theme.   |
 | Midnight | Formerly Onyx. A stored `onyx` preference migrates to Midnight without a warning. |
 | Amethyst | The purple theme.                                                                 |
 
-The shell uses two surface roles. `--trinity-surface-app` is the app background behind the rail, sidebar, and user panel. `--trinity-surface-pane` is the inset conversation pane. Consume them instead of a hard-coded color when a shell region needs one of those meanings.
+The shell uses two surface roles. `--trinity-surface-app` is the app background behind the rail, sidebar, and user panel. `--trinity-surface-sidebar` is the channel sidebar tone: it follows the app background, and Classic overrides it with its previous sidebar colour. `--trinity-surface-pane` is the inset conversation pane. Consume them instead of a hard-coded color when a shell region needs one of those meanings.
 
 Density has three options: cosy, compact, and spacious. Density changes spacing and sizing only and never sets colors; touch targets keep their 44px floor.
 
