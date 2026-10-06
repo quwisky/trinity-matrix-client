@@ -90,6 +90,8 @@ export class TrnDialogShellComponent {
   /** Keep the `h2` for screen readers, which still name the dialog by it, but hide it. */
   readonly titleHidden = input(false);
   readonly size = input<TrnOverlaySurfaceSize>('md');
+  /** Extra classes for the scrolling body, e.g. `p-0` for content that fills it edge to edge. */
+  readonly bodyClass = input('');
   /**
    * The X was pressed. Bind it to run your own close path; left unbound, the shell dismisses
    * its dialog without a result, which runs the opener's `dismissGuard` like Escape does.

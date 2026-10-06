@@ -1,21 +1,5 @@
-<div
-  trnOverlaySurface
-  variant="neutral"
-  size="lg"
-  layout="dialog"
-  class="p-6"
-  role="alertdialog"
-  aria-labelledby="push-gateway-trust-heading"
-  aria-describedby="push-gateway-trust-body"
->
-  <h2
-    id="push-gateway-trust-heading"
-    class="text-lg leading-none font-semibold tracking-tight"
-  >
-    Trust this push gateway?
-  </h2>
-
-  <div id="push-gateway-trust-body" class="mt-3 space-y-3 text-sm">
+<trn-dialog-shell size="lg" title="Trust this push gateway?">
+  <div id="push-gateway-trust-body" class="space-y-3 text-sm">
     <p class="text-muted-foreground">
       Your homeserver will send
       <strong class="text-foreground">{{ host() }}</strong>
@@ -48,10 +32,10 @@
     }
   </div>
 
-  <div class="mt-6 flex justify-end gap-2">
+  <div trnDialogActions>
     <button
       trnBtn
-      presentation="outline"
+      presentation="link"
       (click)="cancel()"
       data-testid="push-gateway-trust-cancel"
     >
@@ -66,4 +50,4 @@
       Use this gateway
     </button>
   </div>
-</div>
+</trn-dialog-shell>

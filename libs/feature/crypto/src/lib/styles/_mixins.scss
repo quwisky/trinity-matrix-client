@@ -48,21 +48,6 @@
   }
 }
 
-@mixin modal-header {
-  display: flex;
-  min-height: 56px;
-  align-items: center;
-  gap: var(--trinity-space-3);
-  padding: var(--trinity-space-4) var(--trinity-space-5);
-  border-bottom: 1px solid var(--trinity-border-subtle);
-  background: var(--trinity-surface-navigation-header);
-}
-
-@mixin modal-body {
-  overflow-y: auto;
-  padding: var(--trinity-space-6);
-}
-
 @mixin lead {
   margin: 0;
   color: var(--trinity-text-muted);

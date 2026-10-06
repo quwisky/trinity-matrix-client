@@ -144,7 +144,6 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
           ...(context?.offerReset ? { offerReset: true } : {}),
         },
         disableClose: true,
-        ariaLabel: 'Encryption',
       });
     }
     if (context?.placement === 'nested') {

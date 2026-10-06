@@ -315,16 +315,12 @@ describe('migrated application design-system consumers', () => {
       surfaces
         .map(([, tag]) => tag.match(/\bsize="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
-    ).toEqual(['2xl', 'lg', ...Array(9).fill('md'), ...Array(2).fill('sm')]);
+    ).toEqual([...Array(7).fill('md'), ...Array(2).fill('sm')]);
     expect(
       surfaces
         .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
-    ).toEqual([
-      ...Array(3).fill('dialog'),
-      ...Array(4).fill('fullscreen'),
-      ...Array(6).fill('popover'),
-    ]);
+    ).toEqual([...Array(3).fill('fullscreen'), ...Array(6).fill('popover')]);
 
     // Room dialogs build on the shared shell, which picks the dialog, sheet or fullscreen
     // presentation itself; none keeps its own surface or its own sheet switch.

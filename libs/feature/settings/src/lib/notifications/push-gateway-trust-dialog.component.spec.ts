@@ -1,5 +1,5 @@
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { render } from '@trinity/testing';
+import { render, screen, within } from '@trinity/testing';
 import { describe, expect, it, vi } from 'vitest';
 import {
   PushGatewayTrustDialogComponent,
@@ -23,6 +23,22 @@ const HTTPS: PushGatewayTrustData = {
 };
 
 describe('PushGatewayTrustDialogComponent', () => {
+  it('shows its title and actions in the shared dialog shell', async () => {
+    await setup(HTTPS);
+
+    expect(
+      within(screen.getByTestId('dialog-surface')).getByRole('heading', {
+        level: 2,
+        name: 'Trust this push gateway?',
+      }),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('dialog-footer')).getByTestId(
+        'push-gateway-trust-confirm',
+      ),
+    ).toBeTruthy();
+  });
+
   it('names the gateway host and what it can see', async () => {
     const { container } = await setup(HTTPS);
 

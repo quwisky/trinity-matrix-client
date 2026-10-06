@@ -103,14 +103,14 @@ test.describe('Security settings', () => {
     await expect(verify).toBeVisible({ timeout: 15_000 });
     await verify.click();
 
-    const encryption = page.getByRole('dialog', { name: 'Encryption' });
+    const encryption = page.getByRole('dialog', { name: 'Verify this device' });
     await expect(encryption).toBeVisible({
       timeout: 20_000,
     });
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
     await expect(page).toHaveURL(roomUrl);
 
-    await encryption.getByRole('button', { name: 'Close' }).click();
+    await encryption.getByTestId('dialog-close').click();
     await expect(encryption).toBeHidden();
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
     await expect(page).toHaveURL(roomUrl);

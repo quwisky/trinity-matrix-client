@@ -21,6 +21,7 @@ import { TrustVerificationService } from '@trinity/data-access/trust';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
 import { PageHeaderComponent } from '@trinity/components/navigation-layout';
 import { TrnButton } from '@trinity/components/controls';
+import { TrnDialogShellComponent } from '@trinity/components/overlay';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { QrScannerComponent } from '@trinity/components/controls';
 import { QrCodeService } from '@trinity/platform-native';
@@ -42,6 +43,7 @@ import { SasCompareComponent } from './sas-compare.component';
     NgTemplateOutlet,
     PageHeaderComponent,
     TrnButton,
+    TrnDialogShellComponent,
     TrnOverlaySurfaceDirective,
     SasCompareComponent,
     QrScannerComponent,

@@ -31,6 +31,17 @@ describe('TrnActionSheetService', () => {
     expect(handler).toHaveBeenCalledOnce();
   });
 
+  it('titles the sheet in the shared dialog shell style', () => {
+    const svc = TestBed.inject(TrnActionSheetService);
+    svc.open({ header: 'New message', buttons: [{ text: 'Cancel' }] });
+    render();
+
+    const title = [...document.querySelectorAll('p')].find(
+      (p) => p.textContent?.trim() === 'New message',
+    );
+    expect(title).toHaveClass('text-[17px]', 'font-bold');
+  });
+
   it('does not run a handler for the cancel button', () => {
     const svc = TestBed.inject(TrnActionSheetService);
     const handler = vi.fn();

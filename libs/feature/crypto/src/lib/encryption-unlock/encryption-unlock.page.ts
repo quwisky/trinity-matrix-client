@@ -20,6 +20,7 @@ import { ExternalBrowserService } from '@trinity/platform-native';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
 import { PageHeaderComponent } from '@trinity/components/navigation-layout';
 import { TrnButton } from '@trinity/components/controls';
+import { TrnDialogShellComponent } from '@trinity/components/overlay';
 import { TrnInput } from '@trinity/components/controls';
 import { TrnFieldImports } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
@@ -57,6 +58,7 @@ import {
     PageHeaderComponent,
     RecoveryKeySaveComponent,
     TrnButton,
+    TrnDialogShellComponent,
     TrnFieldImports,
     TrnInput,
     TrnOverlaySurfaceDirective,

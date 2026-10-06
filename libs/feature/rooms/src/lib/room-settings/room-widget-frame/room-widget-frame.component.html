@@ -1,32 +1,13 @@
-<div
-  trnOverlaySurface
-  variant="neutral"
+<trn-dialog-shell
+  [title]="widget().name"
   size="2xl"
-  layout="fullscreen"
-  class="widget-frame grid"
+  bodyClass="flex flex-col p-0"
+  (closed)="close()"
 >
-  <header class="widget-frame__header">
-    <div class="widget-frame__heading">
-      <h2>{{ widget().name }}</h2>
-      <p>{{ embed().origin }}</p>
-    </div>
-    <button
-      trnBtn
-      type="button"
-      variant="secondary"
-      presentation="outline"
-      data-autofocus
-      data-testid="room-widget-frame-close"
-      (click)="close()"
-    >
-      Close
-    </button>
-  </header>
-
   <p class="widget-frame__notice">
-    This third-party site can use its existing cookies and storage. Trinity does
-    not grant it Matrix messages, account data, OpenID, media, client
-    navigation, or TURN access through the Widget API.
+    {{ embed().origin }}. This third-party site can use its existing cookies and
+    storage. Trinity does not grant it Matrix messages, account data, OpenID,
+    media, client navigation, or TURN access through the Widget API.
   </p>
 
   <p
@@ -62,4 +43,4 @@
     "
     [attr.title]="widget().name + ' widget'"
   ></iframe>
-</div>
+</trn-dialog-shell>

@@ -291,7 +291,7 @@
   },
   "libs/feature/rooms/src/lib/room-settings/room-widget-frame/room-widget-frame.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 3
+      "count": 1
     }
   },
   "libs/feature/rooms/src/lib/shared/avatar-field/avatar-field.component.scss": {

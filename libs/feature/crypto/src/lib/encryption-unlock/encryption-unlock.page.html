@@ -1,21 +1,7 @@
 @if (asModal()) {
-  <div
-    trnOverlaySurface
-    variant="neutral"
-    size="md"
-    layout="dialog"
-    class="crypto-modal flex flex-col"
-  >
-    <div class="crypto-modal__header">
-      <h2 class="crypto-modal__title">{{ title() }}</h2>
-      <button trnBtn presentation="ghost" size="sm" (click)="close()">
-        Close
-      </button>
-    </div>
-    <div class="crypto-modal__body">
-      <ng-container [ngTemplateOutlet]="body" />
-    </div>
-  </div>
+  <trn-dialog-shell [title]="title()" (closed)="close()">
+    <ng-container [ngTemplateOutlet]="body" />
+  </trn-dialog-shell>
 } @else {
   <trn-page-header [title]="title()" />
 

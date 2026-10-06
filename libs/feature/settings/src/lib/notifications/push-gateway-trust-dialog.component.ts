@@ -6,8 +6,9 @@ import {
   input,
 } from '@angular/core';
 import {
+  TrnDialogActions,
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
 } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 
@@ -33,7 +34,7 @@ export interface PushGatewayTrustData {
   selector: 'trn-push-gateway-trust-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './push-gateway-trust-dialog.component.html',
-  imports: [TrnButton, TrnOverlaySurfaceDirective],
+  imports: [TrnButton, TrnDialogActions, TrnDialogShellComponent],
 })
 export class PushGatewayTrustDialogComponent {
   private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);

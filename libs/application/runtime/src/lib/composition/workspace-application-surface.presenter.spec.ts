@@ -187,7 +187,6 @@ describe('Workspace application-surface composition adapter', () => {
     expect(dialogOpen).toHaveBeenNthCalledWith(2, StubVerifyComponent, {
       inputs: { asModal: true },
       disableClose: true,
-      ariaLabel: 'Encryption',
     });
     await expect(
       firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
@@ -224,7 +223,6 @@ describe('Workspace application-surface composition adapter', () => {
     expect(dialogOpen).toHaveBeenCalledWith(StubVerifyComponent, {
       inputs: { asModal: true },
       disableClose: true,
-      ariaLabel: 'Encryption',
     });
     await expect(
       firstValueFrom(TestBed.inject(WorkspaceBackService).back()),

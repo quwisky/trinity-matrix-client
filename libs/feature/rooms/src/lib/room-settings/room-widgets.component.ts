@@ -155,8 +155,6 @@ export class RoomWidgetsComponent implements OnInit {
       RoomWidgetFrameComponent,
       {
         placement: 'fullscreen',
-        ariaLabel: `${widget.name} widget`,
-        autoFocus: '[data-autofocus]',
         inputs: {
           roomId: this.target().roomId,
           widget,

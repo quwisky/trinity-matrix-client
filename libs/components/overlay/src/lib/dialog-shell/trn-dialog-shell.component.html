@@ -45,7 +45,7 @@
     </header>
   }
   <!-- The description scrolls with the body, so a long one never pushes the footer away. -->
-  <div class="dialog-shell__body">
+  <div class="dialog-shell__body" [class]="bodyClass()">
     @if (description()) {
       <p
         class="dialog-shell__description text-sm whitespace-pre-line text-muted-foreground"

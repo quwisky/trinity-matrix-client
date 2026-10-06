@@ -143,7 +143,7 @@ export interface ActionSheetData {
       @if (data.header) {
         <p
           trnSheetDragHandle
-          class="shrink-0 px-3 py-2 text-center text-xs font-medium text-muted-foreground"
+          class="shrink-0 px-3 py-2 text-center text-[17px] leading-snug font-bold text-[var(--trinity-text-bright)]"
         >
           {{ data.header }}
         </p>
