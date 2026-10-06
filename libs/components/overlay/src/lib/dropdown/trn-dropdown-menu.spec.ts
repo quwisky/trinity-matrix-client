@@ -81,6 +81,19 @@ describe('Trinity dropdown menu', () => {
     expect(fixture.componentInstance.chosen).toBe(1);
   });
 
+  it('draws the panel border from the overlay role instead of a ring', async () => {
+    const { fixture } = await render(HostComponent);
+
+    fixture.componentInstance.trigger().open();
+    TestBed.tick();
+
+    const panel = document.querySelector<HTMLElement>('[trnDropdownMenu]');
+    expect(panel?.classList).toContain(
+      'border-[var(--trinity-border-overlay)]',
+    );
+    expect(panel?.classList).toContain('ring-0');
+  });
+
   it('opens programmatically through the Trinity trigger API', async () => {
     const { fixture } = await render(HostComponent);
 

@@ -255,6 +255,9 @@ describe('cascade layer contract', () => {
       ":is(button, a)[data-trn-icon-button]:not( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] ) > &:active",
       ":is(button, a)[data-trn-icon-button]:is( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] )",
       '.trn-title-row :is(.cdk-global-overlay-wrapper, .cdk-overlay-backdrop)',
+      '.cdk-overlay-dark-backdrop',
+      '@media (prefers-reduced-motion: no-preference)',
+      '@media (prefers-reduced-motion: no-preference) > .cdk-overlay-dark-backdrop',
       '@media (forced-colors: active)',
       '@media (forced-colors: active) > :focus-visible',
       '@media (prefers-reduced-motion: reduce)',
@@ -390,6 +393,9 @@ describe('cascade layer contract', () => {
       // declaration can move the global overlay layers below the desktop title row.
       'apps/trinity/src/global.scss:inset-block:var(--trinity-title-row-inset) 0 !important',
       'apps/trinity/src/global.scss:height:auto !important',
+      // CDK's runtime `@layer cdk-overlay` scrim out-ranks every declared layer.
+      'apps/trinity/src/global.scss:background:var(--trinity-overlay-scrim) !important',
+      'apps/trinity/src/global.scss:transition:opacity var(--trinity-duration-overlay) ease-out !important',
       'apps/trinity/src/global.scss:animation-duration:0.01ms !important',
       'apps/trinity/src/global.scss:animation-iteration-count:1 !important',
       'apps/trinity/src/global.scss:transition-property:none !important',
