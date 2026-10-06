@@ -9,6 +9,7 @@ import {
   computed,
   effect,
   inject,
+  linkedSignal,
   signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -24,7 +25,7 @@ import {
   type TrnSettingsLayoutSection,
 } from '@trinity/components/overlay';
 import { BUILD_INFO } from '@trinity/platform-native';
-import { MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
+import { textScaledViewportSignal } from '@trinity/util/ui';
 import {
   SETTINGS_SECTIONS,
   matchingSettingsSections,
@@ -51,6 +52,7 @@ import { SettingsDirectorySearchComponent } from '../shared/settings-directory-s
   // descendant overflow in the document and paint a second scrollbar beside the detail pane.
   host: {
     class: 'settings-page',
+    '(keydown.escape)': 'onEscape($event)',
   },
   imports: [
     SettingsDirectorySearchComponent,
@@ -102,6 +104,15 @@ export class SettingsPage {
     initialValue: null,
   });
 
+  /**
+   * The part to scroll to: the fragment, then whatever the user picked or scrolled to.
+   * The address bar mirrors it without telling the router, so a part result for the part
+   * the router still holds is set here directly instead of through a navigation.
+   */
+  protected readonly partTarget = linkedSignal<string | null>(() =>
+    this.fragment(),
+  );
+
   /** The open section's name, the page's h1. */
   protected readonly activeLabel = computed(
     () =>
@@ -116,13 +127,10 @@ export class SettingsPage {
    * Wide layout: both panes show, the index auto-selects the first section, and
    * section links replace rather than push (lateral switches must not stack history,
    * so one Back leaves settings instead of retracing visited sections). Template-read.
-   *
-   * This used to hand-roll `mediaQuerySignal`: the same single MediaQueryList, the same
-   * seed-then-listen, the same teardown on `destroyRef` — beside its own copy of the
-   * breakpoint string. Both are shared now, so the `md` boundary is defined once and the
-   * live-resize behaviour cannot drift between the two screens that branch on it.
+   * The same text-scaled 48rem signal as the settings dialog, so both presentations
+   * switch layout at the same width.
    */
-  protected readonly wide = mediaQuerySignal(MD_QUERY, this.destroyRef);
+  protected readonly wide = textScaledViewportSignal(48, this.destroyRef);
 
   constructor() {
     // Browser Back, Android hardware Back and iOS history gestures bypass goBack(). When
@@ -214,7 +222,15 @@ export class SettingsPage {
 
   /** Open the section of a search hit; the fragment names the part to scroll to. */
   protected openResult({ section, part }: SettingsSearchResult): void {
+    if (part && section.path === this.activePath()) {
+      this.partTarget.set(part.id);
+    }
     this.selectSection(section.path, part?.id);
+  }
+
+  protected onPartSelected(part: string | null): void {
+    this.partTarget.set(part);
+    this.setFragment(part);
   }
 
   /**
@@ -228,6 +244,21 @@ export class SettingsPage {
       '',
       this.location.getState(),
     );
+  }
+
+  /**
+   * Escape closes the page like its close button. The layout takes the compact "back"
+   * step first, and an expanded select or popover trigger closes itself first.
+   */
+  protected onEscape(event: Event): void {
+    if (
+      event.defaultPrevented ||
+      (event.target as Element | null)?.closest?.('[aria-expanded="true"]')
+    ) {
+      return;
+    }
+    event.preventDefault();
+    this.close();
   }
 
   /** Leave settings altogether, whichever pane is open. */
