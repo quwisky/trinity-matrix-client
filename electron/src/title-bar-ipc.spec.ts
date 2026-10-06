@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   handlers: new Map<string, Handler>(),
   mainWindowRef: {
     current: null as {
-      webContents: object;
+      webContents: { getZoomFactor: () => number };
       setTitleBarOverlay: ReturnType<typeof vi.fn>;
     } | null,
   },
@@ -16,7 +16,8 @@ const mocks = vi.hoisted(() => ({
   popup: vi.fn(),
   getApplicationMenu: vi.fn(),
   relaunch: vi.fn(),
-  exit: vi.fn(),
+  quit: vi.fn(),
+  zoom: { current: 1 },
   readWindowPrefs: vi.fn(() => ({ ...mocks.stored })),
   writeWindowPrefs: vi.fn((prefs: { systemTitleBar: boolean }) => {
     mocks.stored = { ...prefs };
@@ -24,7 +25,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('electron', () => ({
-  app: { relaunch: mocks.relaunch, exit: mocks.exit },
+  app: { relaunch: mocks.relaunch, quit: mocks.quit },
   ipcMain: {
     on: (channel: string, handler: Handler) =>
       mocks.listeners.set(channel, handler),
@@ -73,8 +74,9 @@ describe('title-bar IPC', () => {
   beforeEach(() => {
     mocks.listeners.clear();
     mocks.handlers.clear();
+    mocks.zoom.current = 1;
     mocks.mainWindowRef.current = {
-      webContents: {},
+      webContents: { getZoomFactor: () => mocks.zoom.current },
       setTitleBarOverlay: vi.fn(),
     };
     mocks.getApplicationMenu.mockReturnValue({ popup: mocks.popup });
@@ -187,6 +189,25 @@ describe('title-bar IPC', () => {
       expect(mocks.popup).not.toHaveBeenCalled();
     });
 
+    it('scales the point from CSS pixels to window pixels by the page zoom', () => {
+      mocks.zoom.current = 1.25;
+      send('popup-menu', ownSender(), { x: 8, y: 32 });
+      expect(mocks.popup).toHaveBeenCalledWith({
+        window: mocks.mainWindowRef.current,
+        x: 10,
+        y: 40,
+      });
+    });
+
+    it('swallows a native popup failure', () => {
+      mocks.popup.mockImplementationOnce(() => {
+        throw new Error('no display');
+      });
+      expect(() =>
+        send('popup-menu', ownSender(), { x: 8, y: 32 }),
+      ).not.toThrow();
+    });
+
     it('does nothing without an application menu', () => {
       mocks.getApplicationMenu.mockReturnValue(null);
       expect(() =>
@@ -263,19 +284,44 @@ describe('title-bar IPC', () => {
   });
 
   describe('relaunch', () => {
-    it('relaunches and exits from the main window', () => {
+    const originalArgv = process.argv;
+    const originalAppImage = process.env['APPIMAGE'];
+
+    afterEach(() => {
+      process.argv = originalArgv;
+      if (originalAppImage === undefined) delete process.env['APPIMAGE'];
+      else process.env['APPIMAGE'] = originalAppImage;
+    });
+
+    it('relaunches the same executable and quits through the quit handlers', () => {
+      delete process.env['APPIMAGE'];
+      process.argv = [process.execPath, '/app/main.js', '--flag'];
       send('relaunch', ownSender());
-      expect(mocks.relaunch).toHaveBeenCalled();
-      expect(mocks.exit).toHaveBeenCalledWith(0);
+      expect(mocks.relaunch).toHaveBeenCalledWith({
+        execPath: process.execPath,
+        args: ['/app/main.js', '--flag'],
+      });
+      expect(mocks.quit).toHaveBeenCalledOnce();
       expect(mocks.relaunch.mock.invocationCallOrder[0]).toBeLessThan(
-        mocks.exit.mock.invocationCallOrder[0],
+        mocks.quit.mock.invocationCallOrder[0],
       );
+    });
+
+    it('relaunches the AppImage, not its temporary mount', () => {
+      process.env['APPIMAGE'] = '/home/user/Trinity.AppImage';
+      process.argv = ['/tmp/.mount_x/trinity', '--flag'];
+      send('relaunch', ownSender());
+      expect(mocks.relaunch).toHaveBeenCalledWith({
+        execPath: '/home/user/Trinity.AppImage',
+        args: ['--flag'],
+      });
+      expect(mocks.quit).toHaveBeenCalledOnce();
     });
 
     it('ignores a foreign sender', () => {
       send('relaunch', {});
       expect(mocks.relaunch).not.toHaveBeenCalled();
-      expect(mocks.exit).not.toHaveBeenCalled();
+      expect(mocks.quit).not.toHaveBeenCalled();
     });
   });
 

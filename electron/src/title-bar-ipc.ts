@@ -64,7 +64,18 @@ export function registerTitleBarIpc(): void {
     if (!win || !raw || typeof raw !== 'object') return;
     const { x, y } = raw as Record<string, unknown>;
     if (!isMenuCoordinate(x) || !isMenuCoordinate(y)) return;
-    Menu.getApplicationMenu()?.popup({ window: win, x, y });
+    // The renderer measures in CSS pixels; `popup` wants window pixels, which differ by
+    // the page zoom (View → Zoom).
+    const zoom = win.webContents.getZoomFactor();
+    try {
+      Menu.getApplicationMenu()?.popup({
+        window: win,
+        x: Math.round(x * zoom),
+        y: Math.round(y * zoom),
+      });
+    } catch {
+      // A throw in an `ipcMain.on` listener would raise the main-process error dialog.
+    }
   });
 
   // `saved` drives the settings toggle; `active` says whether this session's window
@@ -101,7 +112,13 @@ export function registerTitleBarIpc(): void {
 
   ipcMain.on(RELAUNCH_CHANNEL, (event) => {
     if (!trustedWindow(event)) return;
-    app.relaunch();
-    app.exit(0);
+    // An AppImage runs from a temporary mount that is gone once we exit, so relaunch the
+    // image itself. `quit` (not `exit`) runs before-quit/will-quit and unloads the
+    // renderer, so pending storage writes flush and the window closes instead of hiding.
+    app.relaunch({
+      execPath: process.env['APPIMAGE'] ?? process.execPath,
+      args: process.argv.slice(1),
+    });
+    app.quit();
   });
 }
