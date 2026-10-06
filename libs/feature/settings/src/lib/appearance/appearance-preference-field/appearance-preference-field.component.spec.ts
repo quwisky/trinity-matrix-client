@@ -35,7 +35,7 @@ describe('AppearancePreferenceFieldComponent', () => {
     expect(container.querySelector('strong')?.textContent).toContain('Theme');
     expect(
       container.querySelector('[data-testid=theme-select]')?.textContent,
-    ).toContain('Trinity');
+    ).toContain('Graphite');
     expect(
       container
         .querySelector('[data-testid=theme-select]')

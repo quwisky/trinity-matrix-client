@@ -22,6 +22,21 @@ The root theme foundation defines color, spacing, shape, typography, motion, and
 
 Global CSS owns resets, app-wide document behavior, and explicitly registered vendor surfaces. Component geometry stays in the component stylesheet. Avoid selectors that reach into another component's private DOM.
 
+## Choose a theme, surfaces, and density {#themes-and-density}
+
+Appearance has three independent choices: mode (light, dark, or system), theme, and density. Themes only override governed color roles, so every theme must pass the contrast matrix in both modes.
+
+| Theme    | Notes                                                                             |
+| -------- | --------------------------------------------------------------------------------- |
+| Graphite | The default (id `trinity`). Neutral greys, warm in light mode.                    |
+| Classic  | Keeps the previous colours; the inset pane and rail tiles apply to every Theme.   |
+| Midnight | Formerly Onyx. A stored `onyx` preference migrates to Midnight without a warning. |
+| Amethyst | The purple theme.                                                                 |
+
+The shell uses two surface roles. `--trinity-surface-app` is the app background behind the rail, sidebar, and user panel. `--trinity-surface-sidebar` is the channel sidebar tone: it follows the app background, and Classic overrides it with its previous sidebar colour. `--trinity-surface-pane` is the inset conversation pane. Consume them instead of a hard-coded color when a shell region needs one of those meanings.
+
+Density has three options: cosy, compact, and spacious. Density changes spacing and sizing only and never sets colors; touch targets keep their 44px floor.
+
 ## Keep overlay behavior centralized {#overlay-behavior}
 
 Dialogs, menus, tooltips, and other overlays use the Trinity overlay defaults and public component APIs. Preserve focus management, keyboard dismissal, stacking, and theme inheritance. Do not create a parallel overlay root for a single feature.

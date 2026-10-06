@@ -174,6 +174,20 @@ describe('Appearance config entries', () => {
     });
   });
 
+  it('imports a retired Onyx theme as Midnight', async () => {
+    const { config } = await setup();
+
+    const plan = config.validate({
+      version: CONFIG_EXPORT_VERSION,
+      settings: { appearance: { theme: 'onyx' } },
+    });
+
+    expect(plan.ok).toBe(true);
+    expect(plan.ok && plan.changes).toEqual([
+      expect.objectContaining({ path: 'appearance.theme', to: 'midnight' }),
+    ]);
+  });
+
   it('uses descriptor validation for imported values', async () => {
     const { config } = await setup();
 
@@ -184,7 +198,7 @@ describe('Appearance config entries', () => {
 
     expect(plan.ok).toBe(false);
     expect(plan.ok === false && plan.problems).toEqual([
-      "appearance.theme: 'removed-theme' is not a supported theme (expected trinity, amethyst or onyx)",
+      "appearance.theme: 'removed-theme' is not a supported theme (expected trinity, classic, midnight or amethyst)",
     ]);
   });
 });

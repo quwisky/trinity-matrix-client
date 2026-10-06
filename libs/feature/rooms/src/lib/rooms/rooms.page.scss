@@ -6,13 +6,13 @@
   // status bar. env() is 0 off notched devices, so this is inert on web/desktop.
   .rooms-shell {
     padding-top: env(safe-area-inset-top);
-    background: var(--trinity-surface-frame);
+    background: var(--trinity-surface-app);
   }
 
   // Paint-only recessing: this must not add padding, borders or clipping because the shell's
   // pane geometry, outward focus rings and negative-margin resize handles are contractual.
   .rooms-workspace {
-    background: var(--trinity-surface-frame);
+    background: var(--trinity-surface-app);
     box-shadow: inset 0 0 0 1px var(--trinity-border-subtle);
   }
 
@@ -66,7 +66,7 @@
     width: 100%;
     height: 100%;
     min-height: 0;
-    background: var(--trinity-surface-frame);
+    background: var(--trinity-surface-app);
 
     // One measurement owns the shell-spanning dock and the clearance inherited by both
     // independent navigation scrollers.
@@ -128,8 +128,68 @@
     // Outer-right column: keep content clear of a right-side landscape cutout. The top
     // inset lives on .rooms-shell (above the banners).
     padding-right: env(safe-area-inset-right);
-    background: var(--trinity-surface-workspace);
-    box-shadow: inset 1px 0 0 var(--trinity-border-subtle);
+    background: var(--trinity-surface-pane);
+    box-shadow:
+      inset 1px 0 0 var(--trinity-border-subtle),
+      inset 0 1px 0 var(--trinity-border-subtle);
+  }
+
+  // The inset pane's rounded corner and 1px top/left edges, beside the rail only: below md the
+  // conversation fills the screen and stays square. They are painted, not clipped. A radius on
+  // `.main` (which clips with overflow:hidden) rounds the clip around the composited timeline
+  // and forces an offscreen render pass: ~430 MB of GPU IOSurface memory on macOS. Thin
+  // unclipped overlays draw them instead, above the header and timeline backgrounds that
+  // cover `.main`'s own inset edge shadows.
+  @media #{$md} {
+    .main {
+      --corner: var(--trinity-shape-pane-radius);
+      --corner-at: 100% 100%;
+      --edge-x: 0;
+
+      position: relative;
+    }
+
+    .main:dir(rtl) {
+      --corner-at: 0 100%;
+      --edge-x: 100%;
+    }
+
+    // The corner arc over the app ground, then the straight edge beside the rail.
+    .main::before {
+      content: '';
+      position: absolute;
+      inset-block: 0;
+      inset-inline-start: 0;
+      z-index: var(--trinity-z-sticky);
+      inline-size: var(--corner);
+      pointer-events: none;
+      background:
+        radial-gradient(
+            circle at var(--corner-at),
+            transparent calc(var(--corner) - 1px),
+            var(--trinity-border-subtle) calc(var(--corner) - 1px),
+            var(--trinity-border-subtle) var(--corner),
+            var(--trinity-surface-app) var(--corner)
+          )
+          0 0 / var(--corner) var(--corner) no-repeat,
+        linear-gradient(
+            var(--trinity-border-subtle),
+            var(--trinity-border-subtle)
+          )
+          var(--edge-x) var(--corner) / 1px calc(100% - var(--corner)) no-repeat;
+    }
+
+    // The straight top edge, after the corner.
+    .main::after {
+      content: '';
+      position: absolute;
+      inset-block-start: 0;
+      inset-inline: var(--corner) 0;
+      z-index: var(--trinity-z-sticky);
+      block-size: 1px;
+      pointer-events: none;
+      background: var(--trinity-border-subtle);
+    }
   }
 
   // Below md the rail + sidebar (room list) and the chat are separate full-screen
@@ -178,7 +238,7 @@
     display: flex;
     min-height: 0;
     overflow: hidden; // bound the row so message-list/member-list scroll internally
-    background: var(--trinity-surface-workspace);
+    background: var(--trinity-surface-pane);
   }
 
   .chat-members {

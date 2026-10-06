@@ -193,7 +193,7 @@ test.describe('Room settings widgets on a phone', () => {
       theme: document.documentElement.getAttribute('data-theme'),
       fontSize: document.documentElement.style.fontSize,
     }));
-    for (const theme of [null, 'amethyst', 'onyx'] as const) {
+    for (const theme of [null, 'classic', 'midnight', 'amethyst'] as const) {
       for (const dark of [false, true]) {
         await page.evaluate(
           ({ selectedTheme, selectedDark }) => {

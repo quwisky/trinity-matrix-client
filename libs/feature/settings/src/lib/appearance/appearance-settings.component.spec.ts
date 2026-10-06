@@ -138,21 +138,21 @@ describe('AppearanceSettingsComponent', () => {
 
     expect(preview).not.toBeNull();
     expect(preview?.getAttribute('aria-hidden')).toBe('true');
-    expect(state?.textContent).toContain('dark · Trinity · Cosy');
+    expect(state?.textContent).toContain('dark · Graphite · Cosy');
 
     resolved.set({
       mode: 'light',
-      theme: 'onyx',
+      theme: 'midnight',
       textSize: 'default',
       density: 'compact',
       codeSize: 'default',
       codeLinePresentation: 'auto',
     });
-    fixture.componentInstance.appearance.update('theme', 'onyx');
+    fixture.componentInstance.appearance.update('theme', 'midnight');
     fixture.componentInstance.appearance.update('density', 'compact');
     fixture.detectChanges();
 
-    expect(state?.textContent).toContain('light · Onyx · Compact');
+    expect(state?.textContent).toContain('light · Midnight · Compact');
   });
 
   it('applies the chosen Mode on change', async () => {
@@ -419,6 +419,16 @@ describe('AppearanceSettingsComponent', () => {
     expect(select?.querySelector('button')).not.toBeNull();
   });
 
+  it('offers Spacious in the density select', async () => {
+    const { fixture } = await renderPage();
+
+    expect(
+      selectFor(fixture, 'density-select')
+        ?.options()
+        .map(({ value, label }) => [value, label]),
+    ).toContainEqual(['spacious', 'Spacious']);
+  });
+
   // #168, and the quietest of the three: the Theme dropdown lost only a capital letter,
   // reading `amethyst` under an option labelled 'Amethyst'. `toContain` is case-sensitive,
   // which is the whole reason the negative half of this assertion can still fail.
@@ -462,7 +472,7 @@ describe('AppearanceSettingsComponent', () => {
     const trigger = container.querySelector(
       '[data-testid="theme-select"] hlm-select-trigger',
     );
-    expect(trigger?.textContent).toContain('Trinity');
+    expect(trigger?.textContent).toContain('Graphite');
     expect(
       container.querySelector('[data-testid=theme-select-failure]'),
     ).not.toBeNull();

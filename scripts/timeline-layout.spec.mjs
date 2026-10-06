@@ -149,7 +149,7 @@ describe('modern timeline layout contracts', () => {
     );
   });
 
-  it('defines both density recipes and keeps specialized toolbar danger stronger', () => {
+  it('defines cosy, compact and spacious density recipes and keeps specialized toolbar danger stronger', () => {
     for (const token of [
       '--trinity-density-message-column-gap',
       '--trinity-density-composer-padding-inline',
@@ -157,7 +157,8 @@ describe('modern timeline layout contracts', () => {
       '--trinity-density-composer-field-inset',
       '--trinity-density-composer-action-size',
     ]) {
-      expect(variables.match(new RegExp(`${token}\\s*:`, 'g'))?.length).toBe(2);
+      // One declaration per density block: base, compact and spacious.
+      expect(variables.match(new RegExp(`${token}\\s*:`, 'g'))?.length).toBe(3);
     }
     expect(toolbarCss).toContain('&:hover:where(:not(:disabled))');
     expect(toolbarCss).toMatch(

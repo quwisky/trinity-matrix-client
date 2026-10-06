@@ -57,7 +57,7 @@ export function storybookThemeGlobals(
         readonly theme: ThemeId;
         readonly mode: ResolvedThemeMode;
       },
-  density?: 'cosy' | 'compact',
+  density?: 'cosy' | 'compact' | 'spacious',
 ): string {
   const theme =
     typeof preview.theme === 'string' ? preview.theme : preview.theme.id;

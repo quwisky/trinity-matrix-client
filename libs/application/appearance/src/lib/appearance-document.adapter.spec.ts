@@ -45,11 +45,29 @@ describe('BrowserAppearanceDocumentAdapter', () => {
     expect(root.getAttribute('data-code-lines')).toBe('always');
   });
 
+  it('sets data-density for spacious and clears it again for cosy', () => {
+    const documentAdapter = adapter();
+    const base: ResolvedAppearance = {
+      mode: 'light',
+      theme: 'trinity',
+      textSize: 'default',
+      density: 'spacious',
+      codeSize: 'default',
+      codeLinePresentation: 'auto',
+    };
+
+    documentAdapter.apply(base);
+    expect(root.getAttribute('data-density')).toBe('spacious');
+
+    documentAdapter.apply({ ...base, density: 'cosy' });
+    expect(root.hasAttribute('data-density')).toBe(false);
+  });
+
   it('removes every optional carrier for default axes', () => {
     const documentAdapter = adapter();
     documentAdapter.apply({
       mode: 'dark',
-      theme: 'onyx',
+      theme: 'midnight',
       textSize: 'small',
       density: 'compact',
       codeSize: 'smaller',

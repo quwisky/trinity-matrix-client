@@ -74,6 +74,7 @@ const ROLES = [
     on: [
       '--trinity-chat',
       '--trinity-sidebar',
+      '--trinity-surface-sidebar',
       '--trinity-rail',
       '--trinity-hover',
       '--trinity-active',
@@ -84,6 +85,7 @@ const ROLES = [
     on: [
       '--trinity-chat',
       '--trinity-sidebar',
+      '--trinity-surface-sidebar',
       '--trinity-rail',
       '--trinity-hover',
       '--trinity-active',
@@ -94,6 +96,7 @@ const ROLES = [
     on: [
       '--trinity-chat',
       '--trinity-sidebar',
+      '--trinity-surface-sidebar',
       '--trinity-hover',
       '--trinity-active',
     ],
@@ -103,6 +106,7 @@ const ROLES = [
     on: [
       '--trinity-chat',
       '--trinity-sidebar',
+      '--trinity-surface-sidebar',
       '--trinity-rail',
       '--trinity-hover',
       '--trinity-active',
@@ -116,6 +120,7 @@ const ROLES = [
     on: [
       '--trinity-chat',
       '--trinity-sidebar',
+      '--trinity-surface-sidebar',
       '--trinity-rail',
       '--trinity-hover',
       '--trinity-active',
@@ -126,6 +131,7 @@ const ROLES = [
     on: [
       '--trinity-chat',
       '--trinity-sidebar',
+      '--trinity-surface-sidebar',
       '--trinity-rail',
       '--trinity-hover',
       '--trinity-active',
@@ -139,6 +145,7 @@ const ROLES = [
     on: [
       '--trinity-chat',
       '--trinity-sidebar',
+      '--trinity-surface-sidebar',
       '--trinity-rail',
       '--trinity-hover',
       '--trinity-active',
@@ -200,7 +207,6 @@ const NON_TEXT_ROLES = [
     foreground: '--trinity-focus-ring',
     on: [
       '--trinity-surface-frame',
-      '--trinity-surface-navigation',
       '--trinity-surface-workspace',
       '--trinity-surface-raised',
       '--trinity-surface-floating',
@@ -692,6 +698,25 @@ describe('contrast matrix', () => {
     expect(authoredColours).toBeGreaterThan(120);
     expect(invalidNotation).toEqual([]);
     expect(outOfGamut).toEqual([]);
+  });
+
+  it('keeps chromatic colours off the hues Axe cannot parse after a colour mix', () => {
+    // Tailwind's `/30` opacity utilities (Helm's `dark:bg-input/30`) compile to
+    // `color-mix(in oklab, …)`. At 90, 180 or 270deg one oklab axis is a float residue, Chromium
+    // serialises it as `9.53990e-11`, and Axe 4.13 cannot parse exponents, so every control
+    // on that ground drops out of its contrast check as "incomplete".
+    const residueHues = [
+      ...productionSource.matchAll(
+        /oklch\(\s*[\d.]+%?\s+([\d.]+)\s+(-?[\d.]+)(?:deg)?/giu,
+      ),
+    ]
+      .filter(([, chroma, hue]) => {
+        const turn = ((Number(hue) % 360) + 360) % 360;
+        return Number(chroma) > 0 && turn !== 0 && turn % 90 === 0;
+      })
+      .map(([colour]) => colour);
+
+    expect([...new Set(residueHues)].sort()).toEqual([]);
   });
 
   it('measures something, so an empty matrix cannot pass as a clean one', () => {
