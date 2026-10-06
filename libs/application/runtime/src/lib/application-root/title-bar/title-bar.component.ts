@@ -14,6 +14,8 @@ import {
 import { TrnIconButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { getTrinityDesktopBridge } from '@trinity/platform-native';
+import { HostCapabilitiesService } from '@trinity/runtime/host';
+import { firstValueFrom } from 'rxjs';
 import { cssColorToHex } from './overlay-colors';
 
 /**
@@ -49,8 +51,10 @@ export class TitleBarComponent {
     const destroyRef = inject(DestroyRef);
     let destroyed = false;
     destroyRef.onDestroy(() => (destroyed = true));
-    titleBar
-      .getSystemTitleBar()
+    // The bridge answers `active: false` until startup negotiation grants `title-bar`, which
+    // would draw our row over the OS bar; ask only once the grant exists.
+    firstValueFrom(inject(HostCapabilitiesService).manifest())
+      .then(() => titleBar.getSystemTitleBar())
       .then(({ active }) => !destroyed && this.systemTitleBar.set(active))
       // An unanswerable host keeps the OS bar's assumption: no row.
       .catch(() => undefined);

@@ -8,6 +8,11 @@ import {
 } from '@trinity/application/workspace';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import { desktopBridgeFixture, render } from '@trinity/testing';
+import {
+  HOST_CAPABILITY_NEGOTIATOR,
+  unavailableHostManifest,
+} from '@trinity/runtime/host';
+import { Subject } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TitleBarComponent } from './title-bar.component';
 
@@ -116,6 +121,43 @@ describe('TitleBarComponent', () => {
       container.querySelector('[data-testid="title-bar-title"]'),
     ).toBeNull();
     expect(state.active()).toBe(false);
+  });
+
+  it('asks for the system title bar only after host negotiation settles', async () => {
+    const negotiated = new Subject<
+      ReturnType<typeof unavailableHostManifest>
+    >();
+    const getSystemTitleBar = vi.fn(async () => ({
+      saved: true,
+      active: true,
+    }));
+    (globalThis as BridgeHost).trinityDesktop = desktopBridgeFixture({
+      capabilities: {
+        titleBar: { setOverlayColors: vi.fn(), getSystemTitleBar },
+      },
+    });
+    const { fixture } = await render(TitleBarComponent, {
+      providers: [
+        provideTrnIcons(),
+        {
+          provide: HOST_CAPABILITY_NEGOTIATOR,
+          useValue: { manifest: () => negotiated },
+        },
+        {
+          provide: WORKSPACE_SYSTEM_STATUS,
+          useValue: {
+            hasProblems: signal(false),
+            bannerSlot: signal(null),
+            show: vi.fn(),
+          },
+        },
+      ],
+    });
+
+    expect(getSystemTitleBar).not.toHaveBeenCalled();
+    negotiated.next(unavailableHostManifest('not-supported'));
+    await fixture.whenStable();
+    expect(getSystemTitleBar).toHaveBeenCalledTimes(1);
   });
 
   it('shows the title and marks the row active on a frameless desktop window', async () => {
