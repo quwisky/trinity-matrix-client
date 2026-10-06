@@ -138,7 +138,9 @@ test.describe('Room settings', () => {
     } as HomeserverSession);
     await openRoom(page, roomName);
 
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+
+    await page.getByTestId('overflow-open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'members');
     await page.getByTestId('members-settings-banned').click();
     await expect(page.getByTestId('banned-members')).toBeVisible({
@@ -251,7 +253,8 @@ test.describe('Room settings', () => {
       pass: adminPass,
     } as HomeserverSession);
     await openRoom(page, roomName);
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'members');
 
     const roster = page.getByTestId('member-list');
@@ -444,7 +447,9 @@ test.describe('Room settings', () => {
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+
+    await page.getByTestId('overflow-open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'addresses');
     await expect(page.getByTestId('room-aliases')).toBeVisible({
       timeout: 10_000,

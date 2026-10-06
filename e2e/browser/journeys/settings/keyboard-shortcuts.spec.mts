@@ -61,6 +61,9 @@ test.describe('Keyboard shortcuts settings', () => {
     await openSettingsSection(page, 'shortcuts');
     const hopRow = page.getByTestId('shortcut-room.hop.back');
     await expect(hopRow).toContainText('Hop to the previous room');
+    await expect(page.getByTestId('shortcut-room.search')).toContainText(
+      'Search messages in this room',
+    );
     await page.getByTestId('shortcut-edit-room.hop.back').click();
     await expect(page.getByTestId('capture-hint')).toBeVisible();
     await page.keyboard.press('Alt+J');

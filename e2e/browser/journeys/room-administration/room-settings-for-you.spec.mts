@@ -77,7 +77,8 @@ async function seedSharedRoom(
 }
 
 async function openForYou(page: Page): Promise<void> {
-  await page.getByTestId('open-room-settings').click();
+  await page.getByTestId('room-actions-overflow').click();
+  await page.getByTestId('overflow-open-room-settings').click();
   await expect(page.getByTestId('room-settings')).toBeVisible({
     timeout: 10_000,
   });
@@ -185,7 +186,9 @@ test.describe('Room settings · For you', () => {
       await route.continue();
     });
 
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+
+    await page.getByTestId('overflow-open-room-settings').click();
     await expect(page.getByTestId('room-settings')).toBeVisible({
       timeout: 10_000,
     });

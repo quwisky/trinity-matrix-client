@@ -79,6 +79,13 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     rebindable: true,
   },
   {
+    id: 'room.search',
+    category: 'Navigation',
+    description: 'Search messages in this room',
+    defaultChord: A({ accel: true, key: 'f' }),
+    rebindable: true,
+  },
+  {
     id: 'room.hop.back',
     category: 'Navigation',
     description: 'Hop to the previous room (repeat to go further back)',

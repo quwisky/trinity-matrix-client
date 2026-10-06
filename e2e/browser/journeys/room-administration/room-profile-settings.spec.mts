@@ -53,7 +53,8 @@ test.describe('Room settings', () => {
     await openRoom(page, originalName);
 
     // Open the room settings dialog and rename the room.
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     const settings = page.getByTestId('room-settings');
     await expect(settings).toBeVisible({
       timeout: 10_000,
@@ -174,7 +175,9 @@ test.describe('Room settings', () => {
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+
+    await page.getByTestId('overflow-open-room-settings').click();
     await expect(page.getByTestId('room-settings')).toBeVisible({
       timeout: 10_000,
     });
@@ -213,7 +216,8 @@ test.describe('Room settings', () => {
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
 
     let nameWrites = 0;
     let topicWrites = 0;
@@ -301,7 +305,8 @@ test.describe('Room settings', () => {
       .filter({ hasText: `@${userA}:` })
       .click();
     await openRoom(page, roomName);
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await expect(page.getByTestId('room-settings-account')).toContainText(
       userA,
     );

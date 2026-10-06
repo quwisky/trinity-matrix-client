@@ -212,47 +212,7 @@
         </ng-container>
 
         <ng-container trnHeaderActions>
-          @if (vm.activeRoom()) {
-            <button
-              trnBtn
-              presentation="ghost"
-              size="md"
-              shape="icon"
-              (click)="messageActions.openMessageSearch()"
-              trnTooltip="Search messages in this room"
-              aria-label="Search messages in this room"
-              data-testid="search-messages"
-            >
-              <trn-icon size="lg" name="search" motion="pop" />
-            </button>
-            <button
-              trnBtn
-              presentation="ghost"
-              size="md"
-              shape="icon"
-              class="max-md:hidden"
-              (click)="roomActions.onInviteToRoom()"
-              [trnActionAllowed]="vm.roomInvitePermission().available"
-              [trnActionDisabledReason]="vm.roomInvitePermission().reason"
-              [trnTooltip]="vm.roomInvitePermission().reason ?? 'Invite people'"
-              aria-label="Invite people"
-              data-testid="invite-people"
-            >
-              <trn-icon size="lg" name="user-plus" motion="nudge-up-right" />
-            </button>
-            <button
-              trnBtn
-              presentation="ghost"
-              size="md"
-              shape="icon"
-              class="max-md:hidden"
-              (click)="roomActions.onOpenRoomSettings()"
-              trnTooltip="Room settings"
-              aria-label="Room settings"
-              data-testid="open-room-settings"
-            >
-              <trn-icon size="lg" name="settings" motion="rotate" />
-            </button>
+          @if (vm.activeRoom(); as room) {
             <button
               trnBtn
               presentation="ghost"
@@ -261,6 +221,7 @@
               (click)="messageActions.openThreadsList()"
               trnTooltip="Threads"
               aria-label="Threads"
+              [attr.aria-pressed]="surfaceKind() === 'threads'"
               data-testid="open-threads"
             >
               <trn-icon size="lg" name="messages-square" motion="pop" />
@@ -274,6 +235,7 @@
               (click)="messageActions.openPinnedPanel()"
               [trnTooltip]="pinnedLabel()"
               [attr.aria-label]="pinnedLabel()"
+              [attr.aria-pressed]="surfaceKind() === 'pinned'"
               data-testid="open-pinned"
             >
               <trn-icon
@@ -298,6 +260,31 @@
               <trn-icon size="lg" name="users" motion="pop" />
             </button>
 
+            <input
+              type="search"
+              class="header-search max-md:hidden"
+              data-testid="header-search"
+              #headerSearch
+              [placeholder]="'Search ' + room.name"
+              [attr.aria-label]="'Search messages in ' + room.name"
+              [value]="searchQuery()"
+              (input)="onHeaderSearch($any($event.target).value)"
+              (keydown.escape)="clearHeaderSearch($event)"
+            />
+            <button
+              trnBtn
+              presentation="ghost"
+              size="md"
+              shape="icon"
+              class="md:hidden"
+              (click)="messageActions.openMessageSearch()"
+              trnTooltip="Search messages in this room"
+              aria-label="Search messages in this room"
+              data-testid="search-messages"
+            >
+              <trn-icon size="lg" name="search" motion="pop" />
+            </button>
+
             <!-- Present at EVERY breakpoint. Below md it also absorbs the demoted header
                actions (each marked md:hidden inside), which are shown as their own buttons
                above at md+. Actions that are rare rather than demoted — Jump to date — live
@@ -319,7 +306,6 @@
             <ng-template #roomActionsMenu>
               <div trnDropdownMenu>
                 <button
-                  class="md:hidden"
                   trnDropdownMenuItem
                   (triggered)="roomActions.onInviteToRoom()"
                   [trnActionAllowed]="vm.roomInvitePermission().available"
@@ -333,7 +319,6 @@
                   Invite people
                 </button>
                 <button
-                  class="md:hidden"
                   trnDropdownMenuItem
                   (triggered)="roomActions.onOpenRoomSettings()"
                   data-testid="overflow-open-room-settings"
@@ -596,6 +581,7 @@
                   role="complementary"
                   aria-label="Search messages"
                   [roomId]="room.id"
+                  [(query)]="searchQuery"
                   (selected)="messageActions.onPanelJump($event)"
                   (dismissed)="closeRightPanel()"
                 />

@@ -15,6 +15,7 @@ import {
   afterNextRender,
   effect,
   untracked,
+  signal,
   inject,
   viewChild,
 } from '@angular/core';
@@ -332,11 +333,39 @@ export class RoomsPage {
   private readonly listView = viewChild<ElementRef<HTMLElement>>('listView');
   private readonly mainView = viewChild<ElementRef<HTMLElement>>('mainView');
 
+  private readonly headerSearch =
+    viewChild<ElementRef<HTMLInputElement>>('headerSearch');
+
+  /** Shared by the header field and the search panel's own field. */
+  protected readonly searchQuery = signal('');
+
+  protected readonly surfaceKind = computed(
+    () => this.roomSurfaces.renderedSurface()?.kind ?? null,
+  );
+
+  protected onHeaderSearch(value: string): void {
+    this.searchQuery.set(value);
+    if (value && this.surfaceKind() !== 'search') {
+      this.messageActions.openMessageSearch();
+    }
+  }
+
+  protected clearHeaderSearch(event: Event): void {
+    event.stopPropagation(); // keep Escape from also closing the panel via onEscapeKey
+    this.searchQuery.set('');
+    (event.target as HTMLInputElement).blur();
+  }
+
   constructor() {
     // The service cannot read the page's viewChild refs, so hand it the focus call.
     // In the constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle
     // hooks, so binding there left the callback unset for all 170 unit tests.
     this.nav.bindFocus(() => this.focusActiveView());
+    this.shortcutActions.bindSearchFocus(() => {
+      const field = this.headerSearch()?.nativeElement;
+      if (field && getComputedStyle(field).display !== 'none') field.focus();
+      else this.messageActions.openMessageSearch();
+    });
     // ShellStatusService presents runWithBusy failures directly. In the zoneless app,
     // a component effect that only reads the error signal is not a reliable render
     // trigger when the failed action changes no template-read state.
@@ -383,6 +412,8 @@ export class RoomsPage {
     });
     effect((onCleanup) => {
       const roomId = this.store.activeRoomId();
+      // A query typed for one room must not follow the reader into the next.
+      untracked(() => this.searchQuery.set(''));
       if (!roomId) return;
       this.imagePackService.connect(roomId);
       onCleanup(() => this.imagePackService.disconnect(roomId));

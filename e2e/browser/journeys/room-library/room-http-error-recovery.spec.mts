@@ -105,7 +105,8 @@ test.describe('Room HTTP error recovery', () => {
     });
 
     const target = '@remote-user:remote.example';
-    await page.getByTestId('invite-people').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-invite-people').click();
     await page.getByLabel('@user:server or a name').fill(target);
     await page.getByRole('button', { name: 'Invite', exact: true }).click();
 
@@ -114,9 +115,10 @@ test.describe('Room HTTP error recovery', () => {
     ).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByTestId('invite-people')).toBeEnabled();
 
-    await page.getByTestId('invite-people').click();
+    await page.getByTestId('room-actions-overflow').click();
+
+    await page.getByTestId('overflow-invite-people').click();
     await page.getByLabel('@user:server or a name').fill(target);
     await page.getByRole('button', { name: 'Invite', exact: true }).click();
 

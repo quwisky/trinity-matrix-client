@@ -77,13 +77,21 @@ test.describe('Search dialogs', () => {
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
-    await page.getByTestId('search-messages').click();
+    // Ctrl/Cmd+F lands in the header field; typing there opens the panel with the same
+    // query and leaves the caret where it was.
+    const headerField = page.getByTestId('header-search');
+    await page.keyboard.press('ControlOrMeta+f');
+    await expect(headerField).toBeFocused({ timeout: 10_000 });
+    await page.keyboard.type('hello');
 
     const query = page.getByPlaceholder('Search this conversation');
     await expect(query).toBeVisible({ timeout: 15_000 });
-    await expect(query).toBeFocused({ timeout: 10_000 });
-
-    await page.keyboard.type('hello');
     await expect(query).toHaveValue('hello');
+    await expect(headerField).toBeFocused();
+
+    // Escape clears the field and takes focus out of it.
+    await page.keyboard.press('Escape');
+    await expect(headerField).toHaveValue('');
+    await expect(headerField).not.toBeFocused();
   });
 });

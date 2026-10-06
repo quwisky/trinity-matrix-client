@@ -75,6 +75,10 @@ export class ShellShortcutsService {
         e.preventDefault();
         void this.openSwitcher();
         break;
+      case 'room.search':
+        e.preventDefault();
+        this.focusSearch();
+        break;
       case 'room.hop.back':
         e.preventDefault();
         this.hopRoom('back');
@@ -110,6 +114,13 @@ export class ShellShortcutsService {
         }
         break;
     }
+  }
+
+  private focusSearch: () => void = () => undefined;
+
+  /** The page owns the header field, so it hands over the "focus or open search" call. */
+  bindSearchFocus(focus: () => void): void {
+    this.focusSearch = focus;
   }
 
   /** Whether the shell's right-hand slot is showing something ON TOP of the timeline. */

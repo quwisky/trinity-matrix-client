@@ -169,6 +169,24 @@
     max-inline-size: 60%;
   }
 
+  .header-search {
+    inline-size: 160px;
+    block-size: 28px;
+    border-radius: var(--trinity-radius-md);
+    background: var(--trinity-surface-app);
+    border: 0;
+    padding-inline: var(--trinity-space-3);
+    color: var(--trinity-text-bright);
+
+    &::placeholder {
+      color: var(--trinity-text-muted);
+    }
+
+    &:focus-visible {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    }
+  }
+
   .title-divider {
     inline-size: 1px;
     block-size: 20px;

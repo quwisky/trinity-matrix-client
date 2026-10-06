@@ -260,6 +260,14 @@ function renderHeader(
           provide: ConversationRuntime,
           useFactory: () => ({
             timeline: new ConversationTimelineStub(),
+            search: {
+              searchLoaded: () => ({
+                hits: [],
+                encrypted: false,
+                serverAvailable: false,
+                scanned: 0,
+              }),
+            },
             threads: { summaries: signal({}), list: signal([]) },
             pins: {
               messages: pinMessages.asReadonly(),
@@ -303,9 +311,20 @@ function renderHeader(
         { provide: ReadStateService, useValue: {} },
         {
           provide: MessageActionsService,
-          useValue: { uploadProgress: signal(null) },
+          useFactory: (surfaces: RoomSurfaceLifecycle) => ({
+            uploadProgress: signal(null),
+            openThreadsList: () =>
+              surfaces.transition({ kind: 'open-threads' }),
+            openPinnedPanel: () => surfaces.transition({ kind: 'open-pinned' }),
+            openMessageSearch: () =>
+              surfaces.transition({ kind: 'open-search' }),
+          }),
+          deps: [RoomSurfaceLifecycle],
         },
-        { provide: ShellShortcutsService, useValue: {} },
+        {
+          provide: ShellShortcutsService,
+          useValue: { bindSearchFocus: vi.fn() },
+        },
         { provide: SessionActionsService, useValue: {} },
       ],
       imports: [
@@ -500,5 +519,109 @@ describe('RoomsPage topic popover stylesheet', () => {
       expect(supports![0]).toContain(decl);
     }
     expect(scss.replace(supports![0], '')).not.toMatch(/anchor\(|margin: 0;/);
+  });
+});
+
+describe('RoomsPage header actions and search field', () => {
+  const byId = (root: ParentNode, id: string) =>
+    root.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+
+  function surfaces() {
+    return lastRender.fixture.debugElement.injector.get(RoomSurfaceLifecycle);
+  }
+
+  async function typeInHeader(root: HTMLElement, value: string) {
+    const field = byId(root, 'header-search') as HTMLInputElement;
+    field.value = value;
+    field.dispatchEvent(new Event('input'));
+    lastRender.fixture.detectChanges();
+    await lastRender.fixture.whenStable();
+    lastRender.fixture.detectChanges();
+    return field;
+  }
+
+  it('orders threads, pinned, members, the search field, then the overflow', () => {
+    const root = renderHeader(0);
+    const actions = [
+      'open-threads',
+      'open-pinned',
+      'toggle-members',
+      'header-search',
+      'room-actions-overflow',
+    ].map((id) => byId(root, id) as HTMLElement);
+    actions.forEach((el, i) => {
+      if (i > 0) {
+        expect(
+          actions[i - 1].compareDocumentPosition(el) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      }
+    });
+  });
+
+  it('moves invite and room settings into the overflow menu', () => {
+    const root = renderHeader(0);
+    expect(byId(root, 'invite-people')).toBeNull();
+    expect(byId(root, 'open-room-settings')).toBeNull();
+    const source = readFileSync(join(__dirname, 'rooms.page.html'), 'utf8');
+    expect(source).toContain('data-testid="overflow-invite-people"');
+    expect(source).toContain('data-testid="overflow-open-room-settings"');
+  });
+
+  it('marks only the open panel button as pressed', () => {
+    const root = renderHeader(0);
+    const pressed = () =>
+      ['open-threads', 'open-pinned', 'toggle-members'].map((id) =>
+        byId(root, id)?.getAttribute('aria-pressed'),
+      );
+    expect(pressed()).toEqual(['false', 'false', 'false']);
+    surfaces().transition({ kind: 'open-threads' });
+    lastRender.fixture.detectChanges();
+    expect(pressed()).toEqual(['true', 'false', 'false']);
+    surfaces().transition({ kind: 'open-pinned' });
+    lastRender.fixture.detectChanges();
+    expect(pressed()).toEqual(['false', 'true', 'false']);
+    surfaces().transition({ kind: 'open-members' });
+    lastRender.fixture.detectChanges();
+    expect(pressed()).toEqual(['false', 'false', 'true']);
+  });
+
+  it('names the field after the room', () => {
+    const field = byId(renderHeader(0), 'header-search');
+    expect(field?.getAttribute('placeholder')).toBe('Search General');
+  });
+
+  it('opens the search panel with the typed query', async () => {
+    const root = renderHeader(0);
+    await typeInHeader(root, 'hello');
+    const panelField = root.querySelector<HTMLInputElement>(
+      'trn-message-search input',
+    );
+    expect(panelField?.value).toBe('hello');
+  });
+
+  it('focuses the field when the search shortcut asks for it', () => {
+    const root = renderHeader(0);
+    document.body.append(root);
+    const bindSearchFocus = lastRender.fixture.debugElement.injector.get(
+      ShellShortcutsService,
+    ).bindSearchFocus as ReturnType<typeof vi.fn>;
+    bindSearchFocus.mock.calls.at(-1)?.[0]();
+    expect(document.activeElement).toBe(byId(root, 'header-search'));
+    root.remove();
+  });
+
+  it('clears and blurs the field on Escape', async () => {
+    const root = renderHeader(0);
+    document.body.append(root);
+    const field = await typeInHeader(root, 'hello');
+    field.focus();
+    field.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    lastRender.fixture.detectChanges();
+    expect(field.value).toBe('');
+    expect(document.activeElement).not.toBe(field);
+    root.remove();
   });
 });

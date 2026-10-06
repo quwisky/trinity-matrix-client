@@ -557,7 +557,8 @@ test.describe('Member role sections', () => {
 
     await login(page, reader);
     await openRoomWithMembers(page, roomName);
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     const settings = page.getByTestId('room-settings');
     await expect(settings).toBeVisible();
     const name = page.getByTestId('room-settings-name');

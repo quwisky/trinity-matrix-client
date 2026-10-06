@@ -1379,6 +1379,44 @@ describe('RoomsPage keyboard room switching', () => {
     expect(shell.store.activeRoomId()).toBe('!b:hs');
   });
 
+  it('opens in-room search with Ctrl/Cmd+F when no header field is visible', async () => {
+    const shell = build();
+    await visitABC(shell);
+
+    const handled = key({ key: 'f', ctrlKey: true });
+    shell.shortcuts.onGlobalKeydown(handled);
+    expect(handled.preventDefault).toHaveBeenCalled();
+    expect(shell.surfaces.renderedSurface()?.kind).toBe('search');
+  });
+
+  it('clears the header search when the room changes', async () => {
+    const shell = build();
+    await visitABC(shell);
+    const query = (
+      shell.page as unknown as { searchQuery: WritableSignal<string> }
+    ).searchQuery;
+    query.set('hello');
+    shell.surfaces.transition({ kind: 'open-search' });
+
+    shell.nav.onSelectRoom({ roomId: '!b:hs', accountId: '@me:hs' });
+    await settleWorkspace();
+    TestBed.tick();
+
+    expect(query()).toBe('');
+    expect(shell.surfaces.renderedSurface()?.kind).not.toBe('search');
+  });
+
+  it('leaves Ctrl+F to the browser while an overlay owns the screen', async () => {
+    const shell = build();
+    await visitABC(shell);
+    dialogOpen = true;
+
+    const ignored = key({ key: 'f', ctrlKey: true });
+    shell.shortcuts.onGlobalKeydown(ignored);
+    expect(ignored.preventDefault).not.toHaveBeenCalled();
+    expect(shell.surfaces.renderedSurface()).toBeNull();
+  });
+
   it('stays quiet while an overlay owns the screen', async () => {
     const shell = build();
     await visitABC(shell);

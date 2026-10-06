@@ -705,7 +705,7 @@ test.describe('Modern room shell layout', () => {
       expect(
         await header.evaluate((el) => el.scrollWidth <= el.clientWidth),
       ).toBe(true);
-      await expect(page.getByTestId('search-messages')).toBeVisible();
+      await expect(page.getByTestId('header-search')).toBeVisible();
       await expect(page.getByTestId('room-actions-overflow')).toBeVisible();
       await page.setViewportSize(headerViewport);
 

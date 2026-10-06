@@ -7,6 +7,7 @@ import {
   computed,
   inject,
   input,
+  model,
   output,
   signal,
   viewChild,
@@ -93,7 +94,10 @@ export class MessageSearchComponent {
     // After the first render, not on construction: the input does not exist yet at
     // construction time, and `afterNextRender` is the zoneless-safe hook for reaching into
     // the DOM once.
-    afterNextRender(() => this.queryField()?.nativeElement.focus());
+    afterNextRender(() => {
+      // Skip when opened by typing in the header field, so that typing isn't interrupted.
+      if (!this.query()) this.queryField()?.nativeElement.focus();
+    });
   }
 
   /** Active room the search is scoped to, bound by whoever hosts the panel. */
@@ -105,7 +109,7 @@ export class MessageSearchComponent {
   readonly dismissed = output<void>();
 
   /** Current query text. */
-  readonly query = signal('');
+  readonly query = model('');
 
   /** Whether the server (full-history) results are being shown instead of loaded. */
   readonly serverMode = signal(false);

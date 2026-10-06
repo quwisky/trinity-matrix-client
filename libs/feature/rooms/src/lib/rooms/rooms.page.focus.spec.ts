@@ -279,7 +279,10 @@ function buildPage() {
           provide: MessageActionsService,
           useValue: { uploadProgress: signal(null) },
         },
-        { provide: ShellShortcutsService, useValue: {} },
+        {
+          provide: ShellShortcutsService,
+          useValue: { bindSearchFocus: vi.fn() },
+        },
         { provide: SessionActionsService, useValue: {} },
       ],
       imports: [

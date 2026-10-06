@@ -105,6 +105,26 @@ describe('MessageSearchComponent', () => {
     expect(document.activeElement).toBe(query);
   });
 
+  it('shows a bound query in its field and does not steal focus for it', async () => {
+    const { fixture, container } = await build(loaded());
+    fixture.componentRef.setInput('query', 'abc');
+    fixture.detectChanges();
+
+    const field = container.querySelector<HTMLInputElement>('[data-autofocus]');
+    expect(field?.value).toBe('abc');
+  });
+
+  it('writes typing back to the bound query model', async () => {
+    const { fixture, c } = await build(loaded());
+    const changes: string[] = [];
+    c.query.subscribe((value) => changes.push(value));
+    setQuery('typed', c);
+    fixture.detectChanges();
+
+    expect(c.query()).toBe('typed');
+    expect(changes).toEqual(['typed']);
+  });
+
   it('renders the loaded-timeline matches as result rows', async () => {
     const { container } = await build(
       loaded({ hits: [hit({ eventId: '$1' }), hit({ eventId: '$2' })] }),
