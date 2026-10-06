@@ -272,7 +272,7 @@ describe('titleBarOptions', () => {
   it('hides the frame with a themed overlay on Windows', () => {
     expect(titleBarOptions('win32', { systemTitleBar: false })).toEqual({
       titleBarStyle: 'hidden',
-      titleBarOverlay: { color: '#29292e', symbolColor: '#dbdee1', height: 32 },
+      titleBarOverlay: { color: '#0d0d0f', symbolColor: '#dddee1', height: 32 },
     });
   });
 
@@ -344,6 +344,24 @@ describe('createWindow title bar', () => {
     create();
     expect(setMenuBarVisibility).not.toHaveBeenCalled();
   });
+
+  it('paints the Graphite dark app surface before the renderer loads', () => {
+    expect(create()['backgroundColor']).toBe('#0d0d0f');
+  });
+
+  it.each([
+    [false, '--trinity-title-bar=row'],
+    [true, '--trinity-title-bar=system'],
+  ])(
+    'tells the renderer the running title-bar mode (system bar %s)',
+    (systemTitleBar, argument) => {
+      vi.mocked(readWindowPrefs).mockReturnValueOnce({ systemTitleBar });
+      const webPreferences = create()['webPreferences'] as {
+        additionalArguments?: string[];
+      };
+      expect(webPreferences.additionalArguments).toEqual([argument]);
+    },
+  );
 
   it('passes the frameless options', () => {
     expect(create()).toMatchObject({

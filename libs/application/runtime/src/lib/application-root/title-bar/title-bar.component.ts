@@ -2,10 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  computed,
-  effect,
   inject,
-  signal,
 } from '@angular/core';
 import {
   TitleBarState,
@@ -17,6 +14,8 @@ import { getTrinityDesktopBridge } from '@trinity/platform-native';
 import { HostCapabilitiesService } from '@trinity/runtime/host';
 import { firstValueFrom } from 'rxjs';
 import { cssColorToHex } from './overlay-colors';
+
+const TITLE_ROW_CLASS = 'trn-title-row';
 
 /**
  * The 32px desktop title row. It renders only in the Electron shell, and only while this
@@ -30,48 +29,46 @@ import { cssColorToHex } from './overlay-colors';
   imports: [TrnIconButton, TrnIconComponent],
   host: {
     class: 'title-bar',
-    '[class.title-bar--visible]': 'visible()',
+    '[class.title-bar--visible]': 'visible',
     '[class.title-bar--mac]': 'isMac',
   },
 })
 export class TitleBarComponent {
   private readonly bridge = getTrinityDesktopBridge();
-  private readonly systemTitleBar = signal<boolean | null>(null);
 
   protected readonly titleBar = inject(TitleBarState);
   protected readonly systemStatus = inject(WORKSPACE_SYSTEM_STATUS);
   protected readonly isMac = this.bridge?.platform === 'darwin';
-  protected readonly visible = computed(
-    () => !!this.bridge && this.systemTitleBar() === false,
-  );
+  // The shell passes its launch mode synchronously, so the first render already knows;
+  // anything but 'row' keeps the OS bar's assumption: no row.
+  protected readonly visible =
+    this.bridge?.capabilities.titleBar?.mode === 'row';
 
   constructor() {
-    const titleBar = this.bridge?.capabilities.titleBar;
-    if (!titleBar) return;
-    const destroyRef = inject(DestroyRef);
-    let destroyed = false;
-    destroyRef.onDestroy(() => (destroyed = true));
-    // The bridge answers `active: false` until startup negotiation grants `title-bar`, which
-    // would draw our row over the OS bar; ask only once the grant exists.
-    firstValueFrom(inject(HostCapabilitiesService).manifest())
-      .then(() => titleBar.getSystemTitleBar())
-      .then(({ active }) => !destroyed && this.systemTitleBar.set(active))
-      // An unanswerable host keeps the OS bar's assumption: no row.
-      .catch(() => undefined);
+    if (!this.visible) return;
+    const root = document.documentElement;
+    // Global styles start viewport-fixed layers (overlays, drawers) below the row.
+    root.classList.add(TITLE_ROW_CLASS);
+    this.titleBar.setActive(true);
 
-    effect(() => this.titleBar.setActive(this.visible()));
-    effect((onCleanup) => {
-      if (!this.visible()) return;
-      const send = () => this.sendOverlayColors();
-      send();
-      const observer = new MutationObserver(send);
-      observer.observe(document.documentElement, {
-        attributes: true,
-        attributeFilter: ['class', 'data-theme'],
-      });
-      onCleanup(() => observer.disconnect());
+    const send = () => this.sendOverlayColors();
+    const observer = new MutationObserver(send);
+    observer.observe(root, {
+      attributes: true,
+      attributeFilter: ['class', 'data-theme'],
     });
-    destroyRef.onDestroy(() => this.titleBar.setActive(false));
+    let destroyed = false;
+    inject(DestroyRef).onDestroy(() => {
+      destroyed = true;
+      observer.disconnect();
+      root.classList.remove(TITLE_ROW_CLASS);
+      this.titleBar.setActive(false);
+    });
+    // The overlay operation is granted by startup negotiation; colours sent before it are
+    // dropped, so send once it settles. A failed negotiation keeps the default colours.
+    firstValueFrom(inject(HostCapabilitiesService).manifest())
+      .then(() => !destroyed && send())
+      .catch(() => undefined);
   }
 
   protected openMenu(event: MouseEvent): void {

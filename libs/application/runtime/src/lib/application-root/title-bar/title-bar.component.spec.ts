@@ -12,7 +12,7 @@ import {
   HOST_CAPABILITY_NEGOTIATOR,
   unavailableHostManifest,
 } from '@trinity/runtime/host';
-import { Subject } from 'rxjs';
+import { Subject, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TitleBarComponent } from './title-bar.component';
 
@@ -24,6 +24,7 @@ describe('TitleBarComponent', () => {
     const root = document.documentElement;
     root.classList.remove('dark');
     root.removeAttribute('data-theme');
+    root.classList.remove('trn-title-row');
     root.style.removeProperty('--trinity-surface-app');
     root.style.removeProperty('--trinity-text');
   });
@@ -32,7 +33,7 @@ describe('TitleBarComponent', () => {
     opts: {
       bridge?: boolean;
       platform?: string;
-      systemBar?: boolean;
+      mode?: string | null;
       problems?: boolean;
     } = {},
   ) {
@@ -47,12 +48,9 @@ describe('TitleBarComponent', () => {
         platform: opts.platform ?? 'linux',
         capabilities: {
           titleBar: {
+            mode: (opts.mode === undefined ? 'row' : opts.mode) as 'row',
             setOverlayColors,
             popupMenu,
-            getSystemTitleBar: async () => ({
-              saved: false,
-              active: opts.systemBar ?? false,
-            }),
           },
         },
       });
@@ -115,25 +113,42 @@ describe('TitleBarComponent', () => {
   });
 
   it('renders nothing while the OS title bar is in use', async () => {
-    const { container, state } = await setup({ systemBar: true });
+    const { container, state } = await setup({ mode: 'system' });
 
     expect(
       container.querySelector('[data-testid="title-bar-title"]'),
     ).toBeNull();
     expect(state.active()).toBe(false);
+    expect(document.documentElement.classList).not.toContain('trn-title-row');
   });
 
-  it('asks for the system title bar only after host negotiation settles', async () => {
+  it.each([null, 'frame'])(
+    'never draws the row over an OS bar when the launch mode is %s',
+    async (mode) => {
+      const { container, state } = await setup({ mode });
+
+      expect(
+        container.querySelector('[data-testid="title-bar-title"]'),
+      ).toBeNull();
+      expect(state.active()).toBe(false);
+    },
+  );
+
+  it('draws the row at first render, before negotiation and without asking the host', async () => {
     const negotiated = new Subject<
       ReturnType<typeof unavailableHostManifest>
     >();
     const getSystemTitleBar = vi.fn(async () => ({
-      saved: true,
-      active: true,
+      saved: false,
+      active: false,
     }));
+    const setOverlayColors = vi.fn();
+    const root = document.documentElement;
+    root.style.setProperty('--trinity-surface-app', 'rgb(18, 18, 20)');
+    root.style.setProperty('--trinity-text', 'rgb(219, 222, 225)');
     (globalThis as BridgeHost).trinityDesktop = desktopBridgeFixture({
       capabilities: {
-        titleBar: { setOverlayColors: vi.fn(), getSystemTitleBar },
+        titleBar: { mode: 'row', setOverlayColors, getSystemTitleBar },
       },
     });
     const { fixture } = await render(TitleBarComponent, {
@@ -154,11 +169,58 @@ describe('TitleBarComponent', () => {
       ],
     });
 
+    expect(screen.getByTestId('title-bar-title')).toBeTruthy();
+    expect(fixture.debugElement.injector.get(TitleBarState).active()).toBe(
+      true,
+    );
     expect(getSystemTitleBar).not.toHaveBeenCalled();
+    // The overlay grant arrives with negotiation; colours wait for it.
+    expect(setOverlayColors).not.toHaveBeenCalled();
     negotiated.next(unavailableHostManifest('not-supported'));
-    await fixture.whenStable();
-    expect(getSystemTitleBar).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(setOverlayColors).toHaveBeenCalledTimes(1));
   });
+
+  it('keeps the row when negotiation fails', async () => {
+    const setOverlayColors = vi.fn();
+    const root = document.documentElement;
+    root.style.setProperty('--trinity-surface-app', 'rgb(18, 18, 20)');
+    root.style.setProperty('--trinity-text', 'rgb(219, 222, 225)');
+    (globalThis as BridgeHost).trinityDesktop = desktopBridgeFixture({
+      capabilities: { titleBar: { mode: 'row', setOverlayColors } },
+    });
+    const { fixture } = await render(TitleBarComponent, {
+      providers: [
+        provideTrnIcons(),
+        {
+          provide: HOST_CAPABILITY_NEGOTIATOR,
+          useValue: { manifest: () => throwError(() => new Error('down')) },
+        },
+        {
+          provide: WORKSPACE_SYSTEM_STATUS,
+          useValue: {
+            hasProblems: signal(false),
+            bannerSlot: signal(null),
+            show: vi.fn(),
+          },
+        },
+      ],
+    });
+    await fixture.whenStable();
+
+    expect(screen.getByTestId('title-bar-title')).toBeTruthy();
+    expect(setOverlayColors).not.toHaveBeenCalled();
+  });
+
+  it.each(['linux', 'darwin'])(
+    'moves overlays below the row on %s while it shows',
+    async (platform) => {
+      const { fixture } = await setup({ platform });
+
+      expect(document.documentElement.classList).toContain('trn-title-row');
+      fixture.destroy();
+      expect(document.documentElement.classList).not.toContain('trn-title-row');
+    },
+  );
 
   it('shows the title and marks the row active on a frameless desktop window', async () => {
     const { state } = await setup();
@@ -244,6 +306,40 @@ describe('TitleBarComponent', () => {
       expect(scss).toMatch(
         /\.title-bar__button\s*{[^}]*-webkit-app-region: no-drag/,
       );
+    });
+
+    it('follows the native overlay height so zoom keeps the row and buttons aligned', () => {
+      expect(scss).toMatch(
+        /height: env\(\s*titlebar-area-height,\s*var\(--trinity-title-bar-height\)\s*\)/,
+      );
+    });
+
+    it('starts viewport-fixed layers below the row while it shows', () => {
+      const workspaceRoot = join(import.meta.dirname, '../../../../../../..');
+      const read = (file: string) =>
+        readFileSync(join(workspaceRoot, file), 'utf8');
+      const inset = 'inset-block-start: var(--trinity-title-row-inset, 0)';
+
+      expect(read('apps/trinity/src/global.scss')).toMatch(
+        /\.trn-title-row\s*{\s*--trinity-title-row-inset: env\(\s*titlebar-area-height,\s*var\(--trinity-title-bar-height\)\s*\);/,
+      );
+      expect(read('apps/trinity/src/global.scss')).toMatch(
+        /\.cdk-overlay-container\s*{[^}]*inset-block: var\(--trinity-title-row-inset, 0\) 0;/,
+      );
+      for (const file of [
+        'libs/application/runtime/src/lib/application-root/system-status/system-status.component.scss',
+        'libs/feature/rooms/src/lib/rooms/rooms.page.scss',
+      ]) {
+        expect(read(file), file).toContain(inset);
+      }
+      expect(
+        read('libs/feature/rooms/src/lib/rooms/rooms.page.html'),
+      ).toContain('top-[var(--trinity-title-row-inset,0px)]');
+      expect(
+        read(
+          'libs/feature/rooms/src/lib/media-attachment/lightbox/lightbox.component.scss',
+        ),
+      ).toContain('calc(100dvh - var(--trinity-title-row-inset, 0px))');
     });
 
     it('truncates the title and keeps actions inside the overlay area', () => {

@@ -9,7 +9,9 @@
     display: flex;
     flex: 0 0 auto;
     align-items: center;
-    height: var(--trinity-title-bar-height);
+
+    // The native buttons' strip, which grows and shrinks with page zoom in CSS pixels.
+    height: env(titlebar-area-height, var(--trinity-title-bar-height));
 
     // The native window buttons own everything past the overlay's titlebar area; keep the
     // right-hand actions inside it.

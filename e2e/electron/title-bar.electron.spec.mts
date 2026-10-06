@@ -50,6 +50,42 @@ test.describe('frameless title row', () => {
     expect(region).toBe('drag');
   });
 
+  test('starts full-screen layers below the row so their close buttons stay clickable', async () => {
+    // The CDK overlay container hosts every dialog, the lightbox and the widget frame.
+    const overlayTop = await page.evaluate(() => {
+      const probe = document.createElement('div');
+      probe.className = 'cdk-overlay-container';
+      probe.append(document.createElement('span'));
+      document.body.append(probe);
+      const { top, bottom } = probe.getBoundingClientRect();
+      probe.remove();
+      return { top, bottom, viewport: innerHeight };
+    });
+    expect(overlayTop.top).toBe(32);
+    expect(overlayTop.bottom).toBe(overlayTop.viewport);
+
+    // System status is its own viewport-fixed layer and opens before sign-in. At the
+    // minimum window height its card fills the viewport, so its header reaches the top.
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setSize(1280, 600),
+    );
+    await expect.poll(() => page.evaluate(() => innerHeight)).toBe(600);
+    await page.getByTestId('system-status-access').click();
+    const dialog = page.getByRole('dialog', { name: 'System status' });
+    const close = page.getByTestId('system-status-close');
+    await expect(close).toBeVisible();
+    expect((await dialog.boundingBox())?.y).toBeGreaterThanOrEqual(32);
+    expect((await close.boundingBox())?.y).toBeGreaterThanOrEqual(32);
+    const reachable = await close.evaluate((el) => {
+      const { left, top, width, height } = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(left + width / 2, top + height / 2);
+      return hit !== null && el.contains(hit);
+    });
+    expect(reachable).toBe(true);
+    await close.click();
+    await expect(close).toHaveCount(0);
+  });
+
   test('pops the application menu from the ☰ button', async () => {
     await app.evaluate(({ Menu }) => {
       const menu = Menu.getApplicationMenu();
@@ -123,8 +159,8 @@ test.describe('frameless title row', () => {
       luminance(dark.symbolColor),
     );
     expect(luminance(dark.color)).toBeLessThan(luminance(dark.symbolColor));
-    // A different theme re-sends different colours.
-    expect(midnight).not.toEqual(dark);
+    // A different theme re-sends a different surface, not just a different symbol.
+    expect(midnight.color).not.toBe(dark.color);
   });
 });
 

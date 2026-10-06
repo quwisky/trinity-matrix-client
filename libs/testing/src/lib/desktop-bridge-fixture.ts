@@ -60,6 +60,7 @@ export interface DesktopBridgeFixture {
       } | null>;
     };
     readonly titleBar: {
+      readonly mode: 'row' | 'system' | null;
       readonly setOverlayColors: (colors: {
         color: string;
         symbolColor: string;
@@ -133,6 +134,7 @@ export function desktopBridgeFixture(
       },
       location: { approximate: async () => null },
       titleBar: {
+        mode: 'row',
         setOverlayColors: () => undefined,
         popupMenu: () => undefined,
         getSystemTitleBar: async () => ({ saved: false, active: false }),

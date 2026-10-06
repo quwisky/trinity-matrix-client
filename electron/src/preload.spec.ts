@@ -385,3 +385,33 @@ function deferred<T>(): {
   });
   return { promise, resolve };
 }
+
+describe('preload title-bar running mode', () => {
+  const originalArgv = process.argv;
+
+  async function modeFor(argv: string[]): Promise<unknown> {
+    process.argv = [...originalArgv.slice(0, 1), ...argv];
+    vi.resetModules();
+    await import('./preload');
+    process.argv = originalArgv;
+    return (exposed.value as { capabilities: { titleBar: { mode: unknown } } })
+      .capabilities.titleBar.mode;
+  }
+
+  it.each([
+    [['--trinity-title-bar=row'], 'row'],
+    [['--other', '--trinity-title-bar=system'], 'system'],
+  ])('reads %j synchronously, before any negotiation', async (argv, mode) => {
+    expect(await modeFor(argv)).toBe(mode);
+    expect(invoke).not.toHaveBeenCalledWith(
+      'trinity:host:v1:title-bar:get-system-title-bar',
+    );
+  });
+
+  it.each([[[]], [['--trinity-title-bar=']], [['--trinity-title-bar=frame']]])(
+    'reports no mode for %j, so the renderer never draws a row over an OS bar',
+    async (argv) => {
+      expect(await modeFor(argv)).toBeNull();
+    },
+  );
+});

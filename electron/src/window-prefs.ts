@@ -15,6 +15,20 @@ export interface WindowPrefsIo {
   path: string;
 }
 
+/**
+ * R1's Graphite dark `--trinity-surface-app` (oklch(16% 0.004 270deg)) and `--trinity-text`
+ * (oklch(90% 0.004 270deg)) as sRGB hex, converted once by hand: the window background and
+ * the native button strip paint these until the renderer sends the live theme's colours.
+ * Update them together with the tokens in libs/theme-foundation/styles/internal/variables.scss.
+ */
+export const GRAPHITE_DARK_SURFACE_APP = '#0d0d0f';
+const GRAPHITE_DARK_TEXT = '#dddee1';
+
+/** The renderer reads this switch to know whether to draw its own title row. */
+export function titleBarArgument(prefs: WindowPrefs): string {
+  return `--trinity-title-bar=${prefs.systemTitleBar ? 'system' : 'row'}`;
+}
+
 const defaultPrefs: WindowPrefs = { systemTitleBar: false };
 
 function defaultIo(): WindowPrefsIo {
@@ -46,10 +60,7 @@ export function writeWindowPrefs(
   );
 }
 
-/**
- * Frameless window options. The initial overlay colours are the Graphite dark
- * app/text values; the renderer corrects them on load.
- */
+/** Frameless window options; the renderer corrects the overlay colours on load. */
 export function titleBarOptions(
   platform: NodeJS.Platform,
   prefs: WindowPrefs,
@@ -62,6 +73,10 @@ export function titleBarOptions(
   }
   return {
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#29292e', symbolColor: '#dbdee1', height: 32 },
+    titleBarOverlay: {
+      color: GRAPHITE_DARK_SURFACE_APP,
+      symbolColor: GRAPHITE_DARK_TEXT,
+      height: 32,
+    },
   };
 }

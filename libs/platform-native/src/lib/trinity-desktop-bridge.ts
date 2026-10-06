@@ -64,6 +64,12 @@ export interface TrinityDesktopBridge {
     };
     /** Trinity's own title row: overlay colours, the app menu and the system-bar opt-out. */
     titleBar: {
+      /**
+       * The mode this window was launched with, readable at first render without
+       * negotiation: `'row'` means Trinity draws its title row. `null` (or anything
+       * unexpected from an older shell) means it must not, so the row never covers an OS bar.
+       */
+      readonly mode: 'row' | 'system' | null;
       /** `#rrggbb` colours for the Windows/Linux window-controls overlay. */
       setOverlayColors: (colors: {
         color: string;
@@ -73,8 +79,7 @@ export interface TrinityDesktopBridge {
       popupMenu: (at: { x: number; y: number }) => void;
       /**
        * `saved` is the stored preference (applies after `relaunch()`); `active` is
-       * whether this session's window uses the OS title bar. Draw the title row only
-       * while `active` is false.
+       * whether this session's window uses the OS title bar. Rendering reads `mode`.
        */
       getSystemTitleBar: () => Promise<{ saved: boolean; active: boolean }>;
       /** Store the preference; it applies after `relaunch()`. */

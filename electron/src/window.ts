@@ -3,7 +3,12 @@ import * as path from 'node:path';
 import { isAppUrl, START_URL } from './scheme';
 import { processDeepLinkQueue } from './deep-link';
 import { windowIconOptions } from './icons';
-import { readWindowPrefs, titleBarOptions } from './window-prefs';
+import {
+  GRAPHITE_DARK_SURFACE_APP,
+  readWindowPrefs,
+  titleBarArgument,
+  titleBarOptions,
+} from './window-prefs';
 
 let mainWindow: BrowserWindow | null = null;
 // The mode the current window was created with; the saved pref applies only after a relaunch.
@@ -119,7 +124,7 @@ export function createWindow(): void {
     minWidth: 940,
     minHeight: 600,
     show: false,
-    backgroundColor: '#1e1f22',
+    backgroundColor: GRAPHITE_DARK_SURFACE_APP,
     // Windows/Linux taskbar and window icon (packaged builds also embed it; dev runs
     // would otherwise show Electron's default). macOS uses the bundle's .icns.
     ...windowIconOptions(process.platform),
@@ -128,6 +133,9 @@ export function createWindow(): void {
     autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      // The running title-bar mode, read synchronously by preload so the first render
+      // already knows whether to draw the title row.
+      additionalArguments: [titleBarArgument(prefs)],
       // Hardened defaults — see .agents/skills/electron/ipc-security.md.
       contextIsolation: true,
       nodeIntegration: false,

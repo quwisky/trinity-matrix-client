@@ -45,6 +45,15 @@ const GET_SYSTEM_TITLE_BAR_CHANNEL =
 const SET_SYSTEM_TITLE_BAR_CHANNEL =
   'trinity:host:v1:title-bar:set-system-title-bar';
 const RELAUNCH_CHANNEL = 'trinity:host:v1:title-bar:relaunch';
+// window.ts appends the running title-bar mode to argv; anything else means "no row".
+const TITLE_BAR_ARGUMENT = '--trinity-title-bar=';
+const titleBarArgument = process.argv
+  .find((arg) => arg.startsWith(TITLE_BAR_ARGUMENT))
+  ?.slice(TITLE_BAR_ARGUMENT.length);
+const titleBarMode =
+  titleBarArgument === 'row' || titleBarArgument === 'system'
+    ? titleBarArgument
+    : null;
 const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 
 /** Payload accepted by `showNotification`; mirrors core's `DesktopNotification`. */
@@ -287,6 +296,8 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
           : Promise.resolve(null),
     },
     titleBar: {
+      // Not a privilege: the mode this window was created with, known before negotiation.
+      mode: titleBarMode,
       setOverlayColors: (colors: {
         color: string;
         symbolColor: string;
