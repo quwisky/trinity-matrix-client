@@ -28,7 +28,11 @@ import { SettingsToggleRowDirective } from '../settings-toggle-row.directive';
 export class PreferenceCatalogSectionComponent {
   private readonly store = inject(PreferenceStoreService);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly busyIds = signal<ReadonlySet<string>>(new Set());
+  // Values shown while their save is in flight, so a controlled switch does not snap back;
+  // dropped when the save settles, leaving the store's value (the old one after a failure).
+  private readonly pendingById = signal<ReadonlyMap<string, boolean>>(
+    new Map(),
+  );
   private readonly failureById = signal<ReadonlyMap<string, string>>(new Map());
 
   readonly section = input.required<string>();
@@ -38,11 +42,11 @@ export class PreferenceCatalogSectionComponent {
   );
 
   checked(entry: PreferenceCatalogEntry): boolean {
-    return entry.state().value === true;
+    return this.pendingById().get(entry.id) ?? entry.state().value === true;
   }
 
   busy(id: string): boolean {
-    return this.busyIds().has(id);
+    return this.pendingById().has(id);
   }
 
   failure(id: string): string | undefined {
@@ -51,14 +55,14 @@ export class PreferenceCatalogSectionComponent {
 
   update(entry: PreferenceCatalogEntry, value: boolean): void {
     if (this.busy(entry.id)) return;
-    this.setBusy(entry.id, true);
+    this.setPending(entry.id, value);
     this.clearFailure(entry.id);
     entry
       .set(value)
       .pipe(
         take(1),
         takeUntilDestroyed(this.destroyRef),
-        finalize(() => this.setBusy(entry.id, false)),
+        finalize(() => this.setPending(entry.id, null)),
       )
       .subscribe({
         next: (outcome) => this.handleOutcome(entry.id, outcome),
@@ -81,11 +85,11 @@ export class PreferenceCatalogSectionComponent {
     this.setFailure(id, message);
   }
 
-  private setBusy(id: string, busy: boolean): void {
-    this.busyIds.update((current) => {
-      const next = new Set(current);
-      if (busy) next.add(id);
-      else next.delete(id);
+  private setPending(id: string, value: boolean | null): void {
+    this.pendingById.update((current) => {
+      const next = new Map(current);
+      if (value === null) next.delete(id);
+      else next.set(id, value);
       return next;
     });
   }

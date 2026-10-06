@@ -58,11 +58,35 @@ describe('SystemTitleBarBlockComponent', () => {
     expect(container.textContent?.trim()).toBe('');
   });
 
-  it('shows the saved value, not the running one', async () => {
+  it('shows the saved value and still offers the restart after Settings reopens', async () => {
+    // The window reads the preference at launch, so a saved value that differs from the
+    // running one is a change made earlier in this session.
     const { container } = await setup({ saved: true, active: false });
     await waitFor(() => expect(toggle(container)).not.toBeNull());
     expect(toggle(container)?.checked).toBe(true);
+    expect(screen.getByText('Restart to apply')).toBeTruthy();
+  });
+
+  it('shows no restart prompt while the saved value is the running one', async () => {
+    const { container } = await setup({ saved: true, active: true });
+    await waitFor(() => expect(toggle(container)).not.toBeNull());
     expect(screen.queryByText('Restart to apply')).toBeNull();
+  });
+
+  it('ignores another toggle while a save is in flight', async () => {
+    let finish: (outcome: SetOutcome) => void = () => undefined;
+    const { container, setSystemTitleBar } = await setup();
+    setSystemTitleBar.mockImplementationOnce(
+      () => new Promise<SetOutcome>((resolve) => (finish = resolve)),
+    );
+    await waitFor(() => expect(toggle(container)).not.toBeNull());
+    toggle(container)?.click();
+    toggle(container)?.click();
+
+    expect(setSystemTitleBar).toHaveBeenCalledExactlyOnceWith(true);
+    finish({ kind: 'completed' });
+    expect(await screen.findByText('Restart to apply')).toBeTruthy();
+    expect(toggle(container)?.checked).toBe(true);
   });
 
   it('saves a change, then offers a restart that relaunches', async () => {

@@ -32,15 +32,16 @@ export class SystemTitleBarBlockComponent {
   private readonly state = signal<{ saved: boolean; active: boolean } | null>(
     null,
   );
-  /** Set once a save completed, so a stale mismatch never prompts before the user acts. */
-  private readonly saveCompleted = signal(false);
+  private readonly saving = signal(false);
 
   protected readonly supported = !!this.titleBar;
   protected readonly loaded = computed(() => this.state() !== null);
   protected readonly saved = computed(() => this.state()?.saved ?? false);
+  // The window reads the preference at launch, so any difference is a change saved during
+  // this session, also after Settings was closed and reopened.
   protected readonly needsRestart = computed(() => {
     const state = this.state();
-    return this.saveCompleted() && !!state && state.saved !== state.active;
+    return !this.saving() && !!state && state.saved !== state.active;
   });
   protected readonly failed = signal(false);
 
@@ -57,7 +58,8 @@ export class SystemTitleBarBlockComponent {
 
   protected async onChange(value: boolean): Promise<void> {
     const previous = this.state();
-    if (!this.titleBar || !previous) return;
+    if (!this.titleBar || !previous || this.saving()) return;
+    this.saving.set(true);
     this.failed.set(false);
     this.state.set({ ...previous, saved: value });
     let completed = false;
@@ -67,9 +69,8 @@ export class SystemTitleBarBlockComponent {
     } catch {
       completed = false;
     }
-    if (completed) {
-      this.saveCompleted.set(true);
-    } else {
+    this.saving.set(false);
+    if (!completed) {
       this.state.set(previous);
       this.failed.set(true);
     }
