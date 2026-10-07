@@ -9,6 +9,9 @@ export const CODE_JOB_IDS = Object.freeze([
   'renderer',
   'desktop',
   'e2e',
+  'browser-e2e',
+  'storybook',
+  'e2e-result',
   'mobile-e2e',
   'ios-native-build',
 ]);

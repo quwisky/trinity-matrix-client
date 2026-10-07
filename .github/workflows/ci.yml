@@ -191,20 +191,20 @@ jobs:
         if: ${{ !cancelled() }}
         run: git diff --exit-code
 
+  # The renderer-backed part of the E2E tier: it needs the verified production artifact,
+  # so it still waits for `renderer`. The browser journeys and the Storybook check run in
+  # their own jobs below, and `e2e-result` reports all three under the required check name.
   e2e:
     needs: [classify, renderer]
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' }}
-    name: E2E (Playwright + homeserver)
+    name: E2E (renderer, styling, QR)
     runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: read
-    # 110 canonical browser specs, each doing a cold UI login (Rust-crypto init + first
-    # /sync), at workers: 2 with one diagnostic retry — plus browser installation, three Docker image
-    # pulls and a full development build. The measured critical path is 8-11 minutes
-    # (developer testing guide); the 75-minute ceiling is hang containment, not an
-    # expected duration. Keep this count synchronized with the executable E2E registry.
-    timeout-minutes: 75
+    # Production renderer, styling and QR take about 3 minutes after setup; the ceiling is
+    # hang containment, not an expected duration.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -221,23 +221,11 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
         with:
-          name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.job }}
           path: dist/.ci/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
-
-      # Separate from the homeserver suite: this builds and serves the component Storybook, then
-      # verifies its palette × mode canvas and focused text contrast in the installed browser.
-      - id: storybook
-        run: |
-          echo 'started=true' >> "$GITHUB_OUTPUT"
-          node scripts/ci-run-command.mjs --timeout-ms 600000 -- pnpm exec nx run trinity-e2e-components:storybook
-      - uses: ./.github/actions/upload-playwright-diagnostics
-        if: ${{ !cancelled() && steps.storybook.outputs.started == 'true' }}
-        with:
-          surface: storybook
-          report-path: dist/.playwright/trinity-e2e-components/*/components.storybook/**
 
       - uses: ./.github/actions/restore-verified-renderer
         with:
@@ -274,21 +262,10 @@ jobs:
 
       # No env var needed to make this strict: the harness's graceful "Docker is missing,
       # skip the authenticated specs" fallback turns itself off whenever CI is set, so a
-      # runner that cannot reach Docker Hub fails here instead of reporting a green E2E
-      # job that tested almost nothing. See e2e/playwright/support/global-setup.mts.
-      - id: browser
-        run: |
-          echo 'started=true' >> "$GITHUB_OUTPUT"
-          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e
-      - uses: ./.github/actions/upload-playwright-diagnostics
-        if: ${{ !cancelled() && steps.browser.outputs.started == 'true' }}
-        with:
-          surface: browser
-          report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
-
-      # The QR protocol harness owns the same fixed homeserver stack, so run it only after
-      # the main suite has completed and torn its stack down. Its synthetic camera feeds
-      # a real SDK payload through production rendering, decoding and reciprocation.
+      # runner that cannot reach Docker Hub fails here instead of reporting a green job.
+      # The QR protocol harness is the only homeserver suite in this job. Its synthetic
+      # camera feeds a real SDK payload through production rendering, decoding and
+      # reciprocation.
       - id: qr
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
@@ -298,6 +275,103 @@ jobs:
         with:
           surface: qr
           report-path: dist/.playwright/trinity-e2e-protocol/*/protocol.verify-qr/**
+
+  # The app journeys, driven against a disposable homeserver (Tuwunel) + Caddy stack in
+  # Docker, split into three Playwright shards. Each shard job starts its own homeserver,
+  # so the per-homeserver worker cap in e2e/browser/playwright.config.mts holds per job.
+  # The journeys use the development build, not the production renderer, so they start
+  # without waiting for `renderer`.
+  browser-e2e:
+    needs: classify
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
+    name: E2E browser journeys (${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    # 110 canonical browser specs, each doing a cold UI login (Rust-crypto init + first
+    # /sync), at workers: 2 with one diagnostic retry, split across three jobs — plus
+    # browser installation, three Docker image pulls and a full development build per job.
+    # Keep this count synchronized with the executable E2E registry. The ceiling is hang
+    # containment, not an expected duration.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      - uses: ./.github/actions/setup-playwright
+        with:
+          install: 'false'
+      - name: Prepare e2e prerequisites
+        id: prerequisites
+        run: node scripts/ci-prerequisites.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
+        with:
+          name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.job }}-${{ matrix.shard }}
+          path: dist/.ci/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+      # The registry validator pins this command line, so the shard is an environment
+      # variable read by the Playwright config rather than a --shard argument.
+      - id: browser
+        env:
+          TRINITY_E2E_SHARD: ${{ matrix.shard }}/3
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.browser.outputs.started == 'true' }}
+        with:
+          surface: browser
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
+
+  # Builds and serves the component Storybook, then verifies its palette × mode canvas and
+  # focused text contrast in the installed browsers. It needs neither the renderer nor a
+  # homeserver, so it starts as soon as `classify` finishes.
+  storybook:
+    needs: classify
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
+    name: E2E Storybook
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/setup-playwright
+      - id: storybook
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 600000 -- pnpm exec nx run trinity-e2e-components:storybook
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.storybook.outputs.started == 'true' }}
+        with:
+          surface: storybook
+          report-path: dist/.playwright/trinity-e2e-components/*/components.storybook/**
+
+  # Branch rules require the check "E2E (Playwright + homeserver)". The work behind it now
+  # runs in several jobs, so this job reports under that name and succeeds only when every
+  # one of them succeeded. A skipped job (for example after a renderer failure) fails it.
+  e2e-result:
+    needs: [classify, e2e, browser-e2e, storybook]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
+    name: E2E (Playwright + homeserver)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every split job to succeed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key) \(.value.result)"'
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' > /dev/null
 
   # WebdriverIO + Appium on the installed app: it boots an API 36 emulator because browser
   # E2E cannot substitute for native Back, process relaunch, Android TLS policy, or the
