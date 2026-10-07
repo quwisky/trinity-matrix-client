@@ -95,7 +95,7 @@
         System status
       </button>
     }
-    <router-outlet></router-outlet>
+    <router-outlet #outlet (activate)="markRoutedPage(outlet)" />
     <trn-verification-host />
   }
 </div>

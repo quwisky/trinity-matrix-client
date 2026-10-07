@@ -19,6 +19,7 @@ import {
   TrnSpinnerComponent,
 } from '@trinity/components/generic-content';
 import { TrnToasterComponent } from '@trinity/components/overlay';
+import { markRoutedPage } from '@trinity/util/ui';
 import { filter, map, take } from 'rxjs';
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import type {
@@ -83,6 +84,7 @@ export class ApplicationRootComponent {
     recoveryAction(this.blocked()?.failure.recovery ?? 'retry-startup'),
   );
 
+  protected readonly markRoutedPage = markRoutedPage;
   protected readonly isShellRoute = computed(
     () =>
       this.router.parseUrl(this.routeUrl()).root.children[PRIMARY_OUTLET]

@@ -22,6 +22,9 @@
     [results]="results()"
     (resultSelected)="openResult($event)"
   />
-  <router-outlet (activate)="onSectionActivated()" />
+  <router-outlet
+    #outlet
+    (activate)="markRoutedPage(outlet); onSectionActivated()"
+  />
   <p settings-nav-footer data-testid="settings-build">{{ buildLabel }}</p>
 </trn-settings-layout>

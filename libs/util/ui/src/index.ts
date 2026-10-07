@@ -16,3 +16,4 @@ export { textScaledViewportSignal } from './lib/text-scaled-viewport';
 export * from './lib/reduced-motion';
 export * from './lib/internal-url';
 export * from './lib/latest-guard';
+export * from './lib/routed-page';
