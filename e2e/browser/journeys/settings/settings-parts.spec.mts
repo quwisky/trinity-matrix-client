@@ -78,21 +78,21 @@ test.describe('Settings parts', () => {
     const back = page.getByRole('button', { name: 'Back to sections' });
     const close = page.getByRole('button', { name: 'Close settings' });
     await expect(close).toBeVisible({ timeout: 20_000 });
-    const [backBox, closeBox] = await Promise.all([
-      back.boundingBox(),
-      close.boundingBox(),
-    ]);
-    expect(
-      Math.abs(
-        (backBox?.y ?? 0) +
-          (backBox?.height ?? 0) / 2 -
-          ((closeBox?.y ?? 0) + (closeBox?.height ?? 0) / 2),
-      ),
-    ).toBeLessThan(8);
+    await expect(back).toBeVisible();
+    const centre = async (button: typeof back): Promise<number> => {
+      const box = await button.boundingBox();
+      return box ? box.y + box.height / 2 : Number.NaN;
+    };
+    // Measured until the section has settled; the first frame can catch the top bar mid-layout.
+    await expect
+      .poll(async () => Math.abs((await centre(back)) - (await centre(close))))
+      .toBeLessThan(8);
     const row = page.locator('[data-slot="settings-row"]').first();
-    const rowBox = await row.boundingBox();
-    const left = rowBox?.x ?? 0;
-    const right = 390 - left - (rowBox?.width ?? 0);
-    expect(Math.abs(left - right)).toBeLessThan(2);
+    await expect
+      .poll(async () => {
+        const box = await row.boundingBox();
+        return box ? Math.abs(box.x - (390 - box.x - box.width)) : Number.NaN;
+      })
+      .toBeLessThan(2);
   });
 });
