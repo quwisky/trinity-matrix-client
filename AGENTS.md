@@ -20,6 +20,7 @@ when version compatibility matters.
 - Keep prototypes, screenshots, GIF proof and pixel baselines in ignored output,
   never in commits, including throwaway branches. Attach proof to authorized PRs;
   tracked application assets belong in their platform/app asset directories.
+- Claude Code hooks in `.claude/settings.json` block staging `docs/superpowers`/`.superpowers`, `pgrep -f` wait loops, and a `git push` whose affected typecheck fails; see [.claude/README.md](.claude/README.md).
 
 ## Skills and delegation
 
