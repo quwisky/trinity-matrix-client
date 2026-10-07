@@ -220,11 +220,11 @@ export class TrnSettingsLayoutComponent {
       for (const part of parts) observer.observe(part.heading);
       const onScroll = (): void => this.followScroll(detail);
       detail.addEventListener('scroll', onScroll, { passive: true });
-      detail.addEventListener('scrollend', this.endScrollLock);
+      detail.addEventListener('scrollend', this.onScrollEnd);
       onCleanup(() => {
         observer.disconnect();
         detail.removeEventListener('scroll', onScroll);
-        detail.removeEventListener('scrollend', this.endScrollLock);
+        detail.removeEventListener('scrollend', this.onScrollEnd);
       });
     });
 
@@ -316,6 +316,17 @@ export class TrnSettingsLayoutComponent {
   private readonly endScrollLock = (): void => {
     this.scrollLocked = false;
     clearTimeout(this.lockTimer);
+  };
+
+  /**
+   * The scroll has really stopped. A scroll the reader started while the spy was held
+   * (a wheel back up during a part's smooth scroll) was ignored, so catch up with it.
+   */
+  private readonly onScrollEnd = (): void => {
+    const held = this.scrollLocked;
+    this.endScrollLock();
+    const detail = this.detail()?.nativeElement;
+    if (held && detail) this.followScroll(detail);
   };
 
   private emitNow(id: string | null): void {

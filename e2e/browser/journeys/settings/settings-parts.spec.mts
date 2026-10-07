@@ -34,6 +34,23 @@ test.describe('Settings parts', () => {
     await expect(page).toHaveURL(/\/settings\/appearance$/);
   });
 
+  test('follows a scroll that starts while a part click is still scrolling', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 400 });
+    await page.goto('/settings/appearance');
+    await expect(page.getByTestId('settings-part-code-blocks')).toBeVisible({
+      timeout: 20_000,
+    });
+    // Straight back to the top while the click's smooth scroll still holds the spy.
+    await page.getByTestId('settings-part-code-blocks').click();
+    await page.getByTestId('settings-detail').hover();
+    await page.mouse.wheel(0, -10_000);
+    await expect(
+      page.locator('.settings-layout__part[aria-current="location"]'),
+    ).toHaveCount(0);
+  });
+
   test('opens at the top and clears the fragment for an unknown part', async ({
     page,
   }) => {
