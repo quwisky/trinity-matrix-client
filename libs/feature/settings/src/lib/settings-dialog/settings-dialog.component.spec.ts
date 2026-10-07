@@ -2,8 +2,10 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { within } from '@testing-library/dom';
+import { WorkspaceBackService } from '@trinity/application/workspace';
 import { BUILD_INFO, FeatureFlagsService } from '@trinity/platform-native';
 import { TrnDialogRef, TrnSettingsParts } from '@trinity/components/overlay';
+import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { matchingSettingsSections } from '../settings-sections';
 import { SettingsDialogComponent } from './settings-dialog.component';
@@ -154,6 +156,26 @@ describe('SettingsDialogComponent', () => {
     expect(group).not.toBeNull();
     const registry = group.injector.get(TrnSettingsParts, null);
     expect(registry).not.toBeNull();
+    fixture.destroy();
+  });
+
+  it('steps a phone sheet back from a section to the list on Back, then lets it close', async () => {
+    vi.stubGlobal('innerWidth', 390);
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    fixture.detectChanges();
+    const dialog = fixture.componentInstance;
+    const back = TestBed.inject(WorkspaceBackService);
+    // With the list showing, Settings has no step of its own; the opener closes it.
+    expect(back.hasActive()).toBe(false);
+
+    dialog.selectSection('appearance');
+    fixture.detectChanges();
+    const outcome = await firstValueFrom(back.back());
+
+    expect(outcome.kind).toBe('dismissed');
+    expect(dialog.selectedPath()).toBeNull();
+    expect(close).not.toHaveBeenCalled();
+    expect(back.hasActive()).toBe(false);
     fixture.destroy();
   });
 

@@ -223,6 +223,23 @@ describe('TrnSettingsLayoutComponent', () => {
     expect(container.querySelectorAll('h1')).toHaveLength(1);
   });
 
+  it('leaves the list title to a framed header, keeping it for focus and screen readers', async () => {
+    const { container } = await render(TrnSettingsLayoutComponent, {
+      inputs: {
+        title: 'Settings',
+        sections,
+        selectedSection: null,
+        compact: true,
+        directoryVisible: true,
+        presentation: 'sheet',
+      },
+      providers: [provideTrnIcons()],
+    });
+    const listHead = container.querySelector('.settings-layout__list-head');
+    expect(listHead?.querySelector('h1')?.textContent?.trim()).toBe('Settings');
+    expect(listHead?.classList).toContain('sr-only');
+  });
+
   it('has no dialog shell outside a centred dialog', async () => {
     const { container, getByRole } = await render(TrnSettingsLayoutComponent, {
       inputs: { title: 'Settings', sections, selectedSection: 'general' },

@@ -58,7 +58,11 @@
       >
         <div class="settings-layout__nav-inner">
           @if (listView()) {
-            <div class="settings-layout__list-head">
+            <!-- A framed header already shows the title; keep it for focus and readers. -->
+            <div
+              class="settings-layout__list-head"
+              [class.sr-only]="framing() !== 'fullscreen'"
+            >
               <ng-container [ngTemplateOutlet]="heading" />
               <ng-container [ngTemplateOutlet]="closeButton" />
             </div>

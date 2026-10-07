@@ -14,7 +14,10 @@ import {
 import { registerUser } from '../../../support/account.mts';
 import type { TouchPlatform } from '../../../support/platform-contracts.mts';
 
-import { expectRowLabelsAlignedWithTitle } from '../../support/room-settings-journey.mts';
+import {
+  expectRowLabelsAlignedWithTitle,
+  expectSettingsSheet,
+} from '../../support/room-settings-journey.mts';
 
 const session = homeserverSession();
 
@@ -145,12 +148,7 @@ test.describe('Space settings on a phone', () => {
 
     const settings = page.getByTestId('space-settings');
     await expect(settings).toBeVisible({ timeout: 10_000 });
-    const box = await settings.boundingBox();
-    const viewport = page.viewportSize();
-    expect(box?.width ?? 0).toBeGreaterThanOrEqual((viewport?.width ?? 0) - 1);
-    expect(box?.height ?? 0).toBeGreaterThanOrEqual(
-      (viewport?.height ?? 0) - 1,
-    );
+    await expectSettingsSheet(page, 'space-settings');
     const directory = page.getByTestId('space-settings-directory');
     const general = page.getByTestId('space-settings-tab-general');
     await expect(directory).toBeVisible();

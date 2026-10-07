@@ -225,7 +225,7 @@ describe('RoomsPage panels, pins and media', () => {
     });
   });
 
-  it('opens Room settings fullscreen below md', async () => {
+  it('opens Room settings centred below md, which the dialog service shows as a sheet', async () => {
     const restore = stubLiveLayout({ [BELOW_MD_QUERY]: true });
     const shell = build();
     roomsSignal.set([
@@ -255,7 +255,7 @@ describe('RoomsPage panels, pins and media', () => {
 
     expect(dialogOpen).toHaveBeenCalledWith(
       RoomSettingsComponent,
-      expect.objectContaining({ placement: 'fullscreen' }),
+      expect.objectContaining({ placement: 'center' }),
     );
     restore();
   });

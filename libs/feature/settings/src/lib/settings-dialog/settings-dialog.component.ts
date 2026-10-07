@@ -17,11 +17,14 @@ import {
 } from '@angular/core';
 import {
   TrnDialogRef,
+  TrnDialogService,
   TrnSettingsLayoutComponent,
   type TrnSettingsLayoutSection,
 } from '@trinity/components/overlay';
+import { WorkspaceBackService } from '@trinity/application/workspace';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { textScaledViewportSignal } from '@trinity/util/ui';
+import { of } from 'rxjs';
 import { provideConfigEditor } from '../advanced/config-editor-loader';
 import {
   SETTINGS_SECTIONS,
@@ -50,6 +53,7 @@ export class SettingsDialogComponent {
   private readonly injector = inject(Injector);
   private readonly environmentInjector = inject(EnvironmentInjector);
   private readonly document = inject(DOCUMENT);
+  private readonly dialog = inject(TrnDialogService);
   private readonly layout = viewChild(TrnSettingsLayoutComponent);
   private readonly directorySearch = viewChild(
     SettingsDirectorySearchComponent,
@@ -94,6 +98,22 @@ export class SettingsDialogComponent {
   );
 
   constructor() {
+    // On a phone sheet or small screen, Back steps from a section to the list first; with
+    // the list showing, Settings offers nothing and its opener closes the dialog.
+    const unregister = inject(WorkspaceBackService).register({
+      surface: () => {
+        const section = this.selectedPath();
+        return !this.wide() && section !== null
+          ? { layer: 'application', surface: { kind: 'settings', section } }
+          : null;
+      },
+      dismiss: () => {
+        this.goBackOrClose();
+        return of('dismissed' as const);
+      },
+      ownsTopmostOverlay: () => this.dialog.isTopmost(this.ref),
+    });
+    this.destroyRef.onDestroy(unregister);
     this.destroyRef.onDestroy(() => this.advancedInjector.destroy());
     effect(() => {
       const initial = this.initialSection();

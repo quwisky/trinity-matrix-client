@@ -14,7 +14,7 @@ import {
   TrnDialogService,
 } from '@trinity/components/overlay';
 import { matrixRequestErrorHandling } from '@trinity/util/matrix';
-import { BELOW_MD_QUERY, matchesQuery, runWithBusy } from '@trinity/util/ui';
+import { runWithBusy } from '@trinity/util/ui';
 import { isMobileOs } from '@trinity/platform-native';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import {
@@ -343,10 +343,9 @@ export class RoomActionsService {
         RoomSettingsComponent,
         {
           ariaLabel: 'Room settings',
-          placement:
-            isMobileOs() || matchesQuery(BELOW_MD_QUERY)
-              ? 'fullscreen'
-              : 'center',
+          // A sheet on a phone or tablet; centred elsewhere, which the dialog service shows
+          // as a sheet on a small screen.
+          placement: isMobileOs() ? 'bottom' : 'center',
           autoFocus: '[data-autofocus]',
           dismissGuard: (component) =>
             component?.requestExternalDismiss() ?? true,
