@@ -1,4 +1,5 @@
 /** The CI graph must fail closed and preserve diagnostics independently of suite success. */
+import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
@@ -293,6 +294,41 @@ describe('Unit test selection', () => {
       '{workspaceRoot}/vite.base.config.ts',
       '{workspaceRoot}/test-setup.base.ts',
     ]);
+  });
+
+  it('tests the projects whose specs read files outside their own graph', () => {
+    // These specs grep or read other projects' files with no import edge, so only their
+    // declared test inputs make `nx affected` pick them up.
+    const affected = (file) =>
+      JSON.parse(
+        execFileSync(
+          'pnpm',
+          [
+            'exec',
+            'nx',
+            'show',
+            'projects',
+            '--affected',
+            `--files=${file}`,
+            '--json',
+          ],
+          { cwd: root, encoding: 'utf8' },
+        ),
+      );
+    for (const file of [
+      'libs/feature/rooms/src/lib/rooms/rooms.page.html',
+      'libs/feature/rooms/src/lib/rooms/rooms.component.ts',
+    ]) {
+      expect(affected(file), file).toEqual(
+        expect.arrayContaining([
+          'components-foundations',
+          'application-runtime',
+        ]),
+      );
+    }
+    expect(affected('apps/trinity/src/global.scss')).toContain(
+      'application-runtime',
+    );
   });
 
   const runs = (id) =>
