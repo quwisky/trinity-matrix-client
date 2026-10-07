@@ -83,6 +83,7 @@ const compositeIconFiles = new Set([
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html',
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.html',
   'libs/feature/rooms/src/lib/location-share/location.component.html',
+  'libs/feature/rooms/src/lib/media-bubble/media-bubble.component.html',
   'libs/feature/rooms/src/lib/message-composer/composer-format-menu/composer-format-menu.component.html',
   'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.html',
   'libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.html',
