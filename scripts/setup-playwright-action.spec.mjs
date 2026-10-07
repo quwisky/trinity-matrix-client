@@ -103,3 +103,36 @@ describe('setup-playwright install attempts', () => {
     expect(run(2).status).toBe(42);
   });
 });
+
+describe('setup-playwright system packages', () => {
+  const install = steps.find((step) =>
+    String(step.run ?? '').includes('playwright install'),
+  );
+  const args = (withDeps) => {
+    const script = install.run.replace(/timeout -k \d+ 360 pnpm exec/, 'echo');
+    return spawnSync('bash', ['-c', script], {
+      env: {
+        ...process.env,
+        PLAYWRIGHT_BROWSERS: 'chromium webkit',
+        WITH_DEPS: withDeps,
+      },
+      encoding: 'utf8',
+    }).stdout.trim();
+  };
+
+  it('installs host libraries unless the input opts out explicitly', () => {
+    expect(action.inputs['with-deps'].default).toBe('true');
+    expect(args('true')).toBe('playwright install --with-deps chromium webkit');
+    expect(args('false')).toBe('playwright install chromium webkit');
+    expect(install.env.WITH_DEPS).toBe('${{ inputs.with-deps }}');
+  });
+
+  it('skips the apt cache when no packages are installed', () => {
+    const gated = steps.filter(
+      (step) => step.id === 'apt' || step.with?.path?.includes('apt'),
+    );
+    expect(gated).toHaveLength(2);
+    for (const step of gated)
+      expect(step.if).toContain("inputs.with-deps == 'true'");
+  });
+});

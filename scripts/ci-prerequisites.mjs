@@ -25,11 +25,19 @@ export async function runPrerequisites({
   const browsers = (env.TRINITY_PLAYWRIGHT_BROWSERS ?? 'chromium webkit')
     .split(/\s+/)
     .filter(Boolean);
+  // Explicit opt-out only; the ubuntu image ships the libraries Chromium needs, WebKit's are not.
+  const withDeps = env.TRINITY_PLAYWRIGHT_WITH_DEPS !== 'false';
   const commands = [
     {
       label: 'playwright-install',
       command: 'pnpm',
-      args: ['exec', 'playwright', 'install', '--with-deps', ...browsers],
+      args: [
+        'exec',
+        'playwright',
+        'install',
+        ...(withDeps ? ['--with-deps'] : []),
+        ...browsers,
+      ],
       mandatory: true,
     },
     {

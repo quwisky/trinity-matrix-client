@@ -248,4 +248,24 @@ describe('runPrerequisites', () => {
       ).toHaveLength(1);
     });
   });
+
+  it.each([
+    [{}, true],
+    [{ TRINITY_PLAYWRIGHT_WITH_DEPS: 'true' }, true],
+    [{ TRINITY_PLAYWRIGHT_WITH_DEPS: 'false' }, false],
+    // Never inferred from the browser list.
+    [{ TRINITY_PLAYWRIGHT_BROWSERS: 'chromium' }, true],
+  ])('passes --with-deps only unless opted out (%o)', async (env, withDeps) => {
+    const calls = [];
+    await runPrerequisites({
+      logDir: makeLogDir(),
+      env,
+      run: async (spec) => {
+        calls.push(spec);
+        return { label: spec.label, exitCode: 0, signal: null };
+      },
+    });
+    const install = calls.find(({ label }) => label === 'playwright-install');
+    expect(install.args.includes('--with-deps')).toBe(withDeps);
+  });
 });

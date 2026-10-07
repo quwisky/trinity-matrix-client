@@ -79,7 +79,11 @@ points apt at `~/.cache/apt-archives` (a drop-in setting `Dir::Cache::Archives`)
 `.deb` files under `apt-<OS>-<ImageOS>-<ImageVersion>-<browsers>-<lockfile hash>`, with a prefix
 fallback. A hit skips the package downloads; `apt-get update` still fetches the index, and a missing
 or corrupt `.deb` is downloaded again, so a stale cache cannot fail the job. A new runner image
-version starts a new cache.
+version starts a new cache. Each `playwright install` attempt (in the action and in
+`scripts/ci-prerequisites.mjs`) is bounded to six minutes and retried once, with a
+`::warning::` naming the first failure. The Chromium-only browser shards skip `--with-deps`
+through `with-deps: 'false'` and `TRINITY_PLAYWRIGHT_WITH_DEPS`, because the hosted Ubuntu image
+already ships Chrome's libraries; every job that installs WebKit keeps the system packages.
 
 ## The CI jobs
 

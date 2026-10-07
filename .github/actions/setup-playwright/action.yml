@@ -7,6 +7,9 @@ inputs:
   install:
     description: Set false when the prerequisite helper owns concurrent installation.
     default: 'true'
+  with-deps:
+    description: Set false to skip the host-library install (Chromium on the hosted Ubuntu image).
+    default: 'true'
 runs:
   using: composite
   steps:
@@ -14,7 +17,7 @@ runs:
     # mirror timed that install out. Keep the .debs in a user-owned directory that
     # actions/cache can save. The hosted image has no docker-clean, but pin the keep anyway.
     - id: apt
-      if: runner.os == 'Linux'
+      if: runner.os == 'Linux' && inputs.with-deps == 'true'
       shell: bash
       run: |
         archives="$HOME/.cache/apt-archives"
@@ -26,7 +29,7 @@ runs:
         echo "image=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
     # Only the .debs are cached: partial/ belongs to _apt and lock is root-only, so tar
     # cannot read either.
-    - if: runner.os == 'Linux'
+    - if: runner.os == 'Linux' && inputs.with-deps == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cache/apt-archives/*.deb
@@ -41,12 +44,15 @@ runs:
       shell: bash
       env:
         PLAYWRIGHT_BROWSERS: ${{ inputs.browsers }}
+        WITH_DEPS: ${{ inputs.with-deps }}
       run: |
         read -r -a browsers <<< "$PLAYWRIGHT_BROWSERS"
+        flags=()
+        if [ "$WITH_DEPS" = true ]; then flags=(--with-deps); fi
         # A stalled mirror made this step hang for tens of minutes: bound each attempt, retry once.
         for attempt in 1 2; do
           rc=0
-          timeout -k 10 360 pnpm exec playwright install --with-deps "${browsers[@]}" || rc=$?
+          timeout -k 10 360 pnpm exec playwright install "${flags[@]}" "${browsers[@]}" || rc=$?
           if [ "$rc" -eq 0 ]; then exit 0; fi
           if [ "$attempt" -eq 1 ]; then
             echo "::warning::playwright install attempt 1 failed (rc=$rc); retrying"

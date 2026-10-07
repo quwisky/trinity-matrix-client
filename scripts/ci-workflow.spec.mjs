@@ -191,13 +191,26 @@ describe('split E2E jobs', () => {
         (step) => step.uses === './.github/actions/setup-playwright',
       );
       const prerequisites = steps.find((step) => step.id === 'prerequisites');
-      return { setup: setup.with?.browsers, env: prerequisites?.env };
+      return {
+        setup: setup.with?.browsers,
+        withDeps: setup.with?.['with-deps'],
+        env: prerequisites?.env,
+      };
     };
+    // The ubuntu image ships Chrome's libraries, so only the Chromium shards skip --with-deps.
     expect(install('browser-e2e')).toEqual({
       setup: 'chromium',
-      env: { TRINITY_PLAYWRIGHT_BROWSERS: 'chromium' },
+      withDeps: 'false',
+      env: {
+        TRINITY_PLAYWRIGHT_BROWSERS: 'chromium',
+        TRINITY_PLAYWRIGHT_WITH_DEPS: 'false',
+      },
     });
-    expect(install('e2e')).toEqual({ setup: undefined, env: undefined });
+    expect(install('e2e')).toEqual({
+      setup: undefined,
+      withDeps: undefined,
+      env: undefined,
+    });
     expect(
       jobs.storybook.steps.find(
         (step) => step.uses === './.github/actions/setup-playwright',
