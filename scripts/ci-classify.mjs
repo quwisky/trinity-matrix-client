@@ -13,6 +13,7 @@ export const CODE_JOB_IDS = Object.freeze([
   'storybook',
   'e2e-result',
   'mobile-e2e',
+  'mobile-e2e-result',
   'ios-native-build',
 ]);
 export const DOCS_JOB_IDS = Object.freeze(['docs-gate']);

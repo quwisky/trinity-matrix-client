@@ -1,5 +1,5 @@
 /** The CI graph must fail closed and preserve diagnostics independently of suite success. */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
 import { CODE_JOB_IDS } from './ci-classify.mjs';
@@ -212,6 +212,62 @@ describe('split E2E jobs', () => {
     expect(name('browser-e2e')).toContain(
       '${{ github.job }}-${{ matrix.shard }}',
     );
+  });
+});
+
+describe('Android E2E split', () => {
+  const job = workflow.jobs['mobile-e2e'];
+  const steps = job.steps;
+  const specsOf = ({ specs }) => specs.split(',').map((spec) => spec.trim());
+
+  it('splits every Android spec file across two disjoint shards', () => {
+    const include = job.strategy.matrix.include;
+    expect(job.strategy['fail-fast']).toBe(false);
+    expect(include.map(({ shard }) => shard)).toEqual([1, 2]);
+    const selected = include.flatMap(specsOf);
+    const files = readdirSync(resolve(root, 'e2e/mobile/specs'))
+      .filter((file) => file.endsWith('.e2e.mts'))
+      .map((file) => `./specs/${file}`);
+    expect([...selected].sort()).toEqual(files.sort());
+    expect(new Set(selected).size).toBe(selected.length);
+    for (const entry of include)
+      expect(specsOf(entry).length).toBeGreaterThan(0);
+  });
+
+  it('selects the shard specs and names the artifact by shard', () => {
+    const emulator = steps.find((step) => step.id === 'mobile');
+    expect(emulator.env.TRINITY_MOBILE_SPECS).toBe('${{ matrix.specs }}');
+    expect(job.name).toContain('${{ matrix.shard }}');
+    expect(diagnosticsUpload(job).with.shard).toBe('${{ matrix.shard }}');
+  });
+
+  it('builds the app while the emulator boots and starts the suite only after the build', () => {
+    const build = steps.find((step) => step.id === 'android-prebuild');
+    const pull = steps.find((step) => step.id === 'homeserver-pull');
+    const emulator = steps.find((step) => step.id === 'mobile');
+    expect(build.background).toBe(true);
+    expect(build['timeout-minutes']).toBeGreaterThan(0);
+    expect(build.run).toContain('pnpm android:build:prebuilt');
+    expect(build.run).toContain('assembleSecondaryDebug');
+    expect(build.run).toContain('> dist/.ci/android-prebuild.status');
+    expect(pull.background).toBe(true);
+    expect(pull['continue-on-error']).toBe(true);
+    expect(steps.indexOf(build)).toBeLessThan(steps.indexOf(emulator));
+    expect(steps.indexOf(pull)).toBeLessThan(steps.indexOf(emulator));
+    const lines = emulator.with.script.trim().split('\n');
+    expect(lines[0]).toMatch(/^timeout \d+ sh -c '/);
+    expect(lines[0]).toContain('dist/.ci/android-prebuild.status');
+    expect(lines[1]).toBe(`echo 'started=true' >> "$GITHUB_OUTPUT"`);
+    const wait = steps[steps.indexOf(emulator) + 1];
+    expect(wait.wait).toEqual(['android-prebuild', 'homeserver-pull']);
+  });
+
+  it('reports both Android jobs under the required check name', () => {
+    const gate = workflow.jobs['mobile-e2e-result'];
+    expect(gate.name).toBe('Mobile E2E (Android)');
+    expect(gate.needs).toEqual(['classify', 'mobile-e2e']);
+    expect(gate.steps).toEqual([RESULT_GATE_STEP]);
+    expect(job.name).not.toBe('Mobile E2E (Android)');
   });
 });
 
