@@ -273,6 +273,9 @@ test.describe('Responsive auth, crypto, and overlay surfaces', () => {
         element.contains(document.activeElement),
       ),
     ).toBe(true);
+    // Tab order follows the visual order: Download, then Close.
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('lightbox-download')).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(close).toBeFocused();
 
