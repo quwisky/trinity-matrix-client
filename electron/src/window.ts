@@ -10,6 +10,9 @@ import {
   titleBarOptions,
 } from './window-prefs';
 
+// preload.ts mirrors this by string value.
+const CLOSE_WINDOW_CHANNEL = 'trinity:window:close';
+
 let mainWindow: BrowserWindow | null = null;
 // The mode the current window was created with; the saved pref applies only after a relaunch.
 let systemTitleBarActive = false;
@@ -178,6 +181,13 @@ export function createWindow(): void {
       mainWindow?.hide();
     }
   });
+
+  // A page's `window.close()` destroys the WebContents, and with it the window, without
+  // ever emitting the cancellable `close` above. Preload sends it here instead, so it
+  // takes the same path as a user close.
+  mainWindow.webContents.ipc.on(CLOSE_WINDOW_CHANNEL, () =>
+    mainWindow?.close(),
+  );
 
   mainWindow.on('closed', () => {
     mainWindow = null;

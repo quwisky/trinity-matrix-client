@@ -1,19 +1,27 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { exposed, invoke, on, send, removeListener } = vi.hoisted(() => ({
-  exposed: { value: undefined as unknown },
-  invoke: vi.fn<(channel: string, request?: unknown) => Promise<unknown>>(() =>
-    Promise.resolve({ kind: 'completed' }),
-  ),
-  on: vi.fn(),
-  send: vi.fn(),
-  removeListener: vi.fn(),
-}));
+const { exposed, mainWorldScripts, invoke, on, send, removeListener } =
+  vi.hoisted(() => ({
+    exposed: { value: undefined as unknown },
+    mainWorldScripts: [] as {
+      func: (...args: unknown[]) => unknown;
+      args?: unknown[];
+    }[],
+    invoke: vi.fn<(channel: string, request?: unknown) => Promise<unknown>>(
+      () => Promise.resolve({ kind: 'completed' }),
+    ),
+    on: vi.fn(),
+    send: vi.fn(),
+    removeListener: vi.fn(),
+  }));
 
 vi.mock('electron', () => ({
   contextBridge: {
     exposeInMainWorld: (_name: string, value: unknown) => {
       exposed.value = value;
+    },
+    executeInMainWorld: (script: (typeof mainWorldScripts)[number]) => {
+      mainWorldScripts.push(script);
     },
   },
   ipcRenderer: { invoke, on, send, removeListener },
@@ -414,4 +422,22 @@ describe('preload title-bar running mode', () => {
       expect(await modeFor(argv)).toBeNull();
     },
   );
+});
+
+describe('preload window.close()', () => {
+  it('asks main to close the window instead of destroying the page', async () => {
+    mainWorldScripts.length = 0;
+    vi.resetModules();
+    await import('./preload');
+    const page = globalThis as { close?: () => unknown };
+    vi.stubGlobal('close', () => 'destroyed');
+    try {
+      for (const { func, args = [] } of mainWorldScripts) func(...args);
+      send.mockClear();
+      page.close?.();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(send).toHaveBeenCalledExactlyOnceWith('trinity:window:close');
+  });
 });

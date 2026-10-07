@@ -311,7 +311,11 @@ describe('createWindow title bar', () => {
     ) {
       options = opts as Record<string, unknown>;
       return {
-        webContents: { setWindowOpenHandler: vi.fn(), on: vi.fn() },
+        webContents: {
+          setWindowOpenHandler: vi.fn(),
+          on: vi.fn(),
+          ipc: { on: vi.fn() },
+        },
         once: vi.fn(),
         on: vi.fn(),
         loadURL: vi.fn(() => Promise.resolve()),
@@ -376,5 +380,32 @@ describe('createWindow title bar', () => {
     expect(options['titleBarStyle']).toBeUndefined();
     expect(options['autoHideMenuBar']).toBe(false);
     expect(setMenuBarVisibility).not.toHaveBeenCalled();
+  });
+});
+
+describe('createWindow close requested by the page', () => {
+  it('closes the window like a user close, which hides it to the tray', () => {
+    const close = vi.fn();
+    const ipcOn = vi.fn();
+    vi.mocked(BrowserWindow).mockImplementation(function () {
+      return {
+        webContents: {
+          setWindowOpenHandler: vi.fn(),
+          on: vi.fn(),
+          ipc: { on: ipcOn },
+        },
+        once: vi.fn(),
+        on: vi.fn(),
+        loadURL: vi.fn(() => Promise.resolve()),
+        setMenuBarVisibility: vi.fn(),
+        close,
+      };
+    } as never);
+    createWindow();
+
+    const [channel, listener] = ipcOn.mock.calls[0] ?? [];
+    expect(channel).toBe('trinity:window:close');
+    (listener as () => void)();
+    expect(close).toHaveBeenCalledOnce();
   });
 });
