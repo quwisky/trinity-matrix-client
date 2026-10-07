@@ -2,7 +2,11 @@ import { defineConfig, devices } from '@playwright/test';
 import { nxE2EPreset } from '@nx/playwright/preset';
 import { appE2EConfig } from './support/app-e2e-config.mts';
 import { BROWSER_CANONICAL_SUITE } from '../registry/suites/browser.mts';
-import { e2eEndpoint, e2eReportConfig } from '../support/playwright-config.mts';
+import {
+  e2eEndpoint,
+  e2eReportConfig,
+  e2eShard,
+} from '../support/playwright-config.mts';
 
 // Base URL of the invocation-owned development artifact server. The config is a
 // fail-closed joiner and never starts or tears down application infrastructure.
@@ -27,11 +31,13 @@ export default defineConfig({
   // Pairs with `trace: 'retain-on-failure'` below.
   retries: process.env['CI'] ? 1 : 0,
   failOnFlakyTests: Boolean(process.env['CI']),
-  // Every spec drives the same single disposable Synapse; the default worker count
-  // (≈half the cores) oversubscribes it, and the resulting slow /sync + round-trips
-  // are what make the sync-dependent specs flaky. Cap at 2 to keep the homeserver
-  // responsive — trades some wall-clock for a materially steadier run.
+  // Every spec in this invocation drives the same single disposable homeserver; the
+  // default worker count (≈half the cores) oversubscribes it, and the resulting slow
+  // /sync + round-trips are what make the sync-dependent specs flaky. Cap at 2. CI
+  // splits the suite into shards (TRINITY_E2E_SHARD) that each start their own
+  // homeserver, so the cap applies per shard.
   workers: 2,
+  shard: e2eShard(),
   // Per-test budget. Playwright's 30s default is too tight for these login-heavy Matrix
   // flows: a cold UI login (Rust-crypto init + first /sync ≈ 15-40s under load) plus a
   // state-event sync echo can exceed it mid-wait, which surfaced as flakes across the
