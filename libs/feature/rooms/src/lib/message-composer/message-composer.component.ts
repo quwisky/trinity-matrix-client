@@ -41,6 +41,7 @@ import { ComposerFormatMenuComponent } from './composer-format-menu/composer-for
 import { ComposerAttachmentStripComponent } from './composer-attachment-strip/composer-attachment-strip.component';
 import { ComposerInsertMenuComponent } from './composer-insert-menu/composer-insert-menu.component';
 import { ComposerSuggestionsComponent } from './composer-suggestions/composer-suggestions.component';
+import { CodeHighlightDirective } from '../message-presentation/code-highlight.directive';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
@@ -126,6 +127,7 @@ let nextPickerId = 0;
     ComposerInsertMenuComponent,
     ComposerSuggestionsComponent,
     TrnAnchoredOverlayDirective,
+    CodeHighlightDirective,
     SpoilerRevealDirective,
     MatrixLinkDirective,
   ],
@@ -385,6 +387,8 @@ export class MessageComposerComponent {
   private wasRoomId: string | null | undefined = undefined;
 
   constructor() {
+    // Warm the lazy emoji index so a quickly typed `:shortcode:` still converts.
+    void this.emojiIndex.load();
     this.field = new ComposerTextField(this.textarea, this.text, this.injector);
     this.menus = new ComposerAutocompletes(this.emojiIndex, this.members, {
       text: this.text,

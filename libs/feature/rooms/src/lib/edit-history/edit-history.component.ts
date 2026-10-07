@@ -24,6 +24,7 @@ import {
 } from '@trinity/util/matrix';
 import { filter, switchMap, timer } from 'rxjs';
 import { runWithBusy } from '@trinity/util/ui';
+import { CodeHighlightDirective } from '../message-presentation/code-highlight.directive';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import {
   type MatrixLinkClick,
@@ -60,6 +61,7 @@ const REFRESH_DELAY_MS = 600;
     TrnButton,
     TrnSpinnerComponent,
     TrnDialogShellComponent,
+    CodeHighlightDirective,
     SpoilerRevealDirective,
     MatrixLinkDirective,
     InlineMxcImagesDirective,

@@ -1,8 +1,6 @@
-import { afterAll, describe, expect, it } from 'vitest';
-import { sanitizeMatrixHtml, setCodeHighlighter } from '@trinity/util/matrix';
-// Importing the module registers the real highlighter by side effect — the same way the
-// lazily-loaded rooms route does it in the app.
-import './code-highlight';
+import { describe, expect, it } from 'vitest';
+import { sanitizeMatrixHtml } from '@trinity/util/matrix';
+import { MAX_CODE_CHARS, highlightLines } from './code-highlight';
 
 /** Highlight a fenced block the way the render path does, and hand back the <code>. */
 function highlight(lang: string, source: string): HTMLElement {
@@ -13,7 +11,21 @@ function highlight(lang: string, source: string): HTMLElement {
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;')}</code></pre>`,
   );
-  return el.querySelector('code') as HTMLElement;
+  const code = el.querySelector('code') as HTMLElement;
+  const lines = highlightLines(source, lang, document);
+  if (lines) {
+    // Same placement the directive uses: into the sanitizer's line wrappers.
+    const wrappers = [...code.children];
+    wrappers.forEach((wrapper, i) => wrapper.replaceChildren(lines[i]));
+    if (wrappers.length === 0) {
+      code.replaceChildren(
+        ...lines.flatMap((line, i) =>
+          i ? [document.createTextNode('\n'), line] : [line],
+        ),
+      );
+    }
+  }
+  return code;
 }
 
 /** The line wrapper renderCodeBlocks adds; structural, not a colouring role. */
@@ -35,12 +47,6 @@ const roles = (code: HTMLElement) =>
   allClasses(code).filter((token) => token !== CODE_LINE);
 
 describe('code highlighting', () => {
-  afterAll(() => {
-    // Module-scoped registration; setCodeHighlighter also clears the sanitize memo,
-    // which is process-lived and would otherwise leak highlighted output into later specs.
-    setCodeHighlighter(null);
-  });
-
   it('colours keywords, strings, comments and numbers', () => {
     const code = highlight(
       'python',
@@ -139,7 +145,10 @@ describe('code highlighting', () => {
   });
 
   it('leaves an oversized block unhighlighted rather than freezing the timeline', () => {
-    const code = highlight('typescript', 'const a = 1;\n'.repeat(1000));
+    const code = highlight(
+      'typescript',
+      'const a = 1;\n'.repeat(Math.ceil(MAX_CODE_CHARS / 12) + 1),
+    );
 
     expect(roles(code)).toEqual([]);
   });

@@ -9,17 +9,18 @@ no skill invocation tool, read the file with the tools it exposes.
 
 [AGENTS.md](../AGENTS.md) provides shared instructions and conditional references.
 [skill overrides](skill-overrides.md) adapt upstream workflows to Trinity.
-Roles select work responsibilities and model defaults; skills supply task guidance.
+Skills supply task guidance. Claude Code subagents in `.claude/agents` take bounded
+roles with a pinned model; see [Claude configuration](../.claude/README.md).
 
-The checkout contains **19 CLI-managed skill imports and four local skill entrypoints**.
+The checkout contains **nine CLI-managed skill imports and three local skill entrypoints**.
 The [lockfile](../skills-lock.json) records managed sources, source paths, and content
-hashes; it does not record immutable commit references. Keep managed files under CLI
-ownership and put Trinity-specific behavior in the overrides. The four local
+hashes; it does not record immutable commit references, and it still lists entries for
+imports since removed from the checkout. Keep managed files under CLI
+ownership and put Trinity-specific behavior in the overrides. The three local
 references below are maintained directly in this repository.
 
 `.claude/skills` and `.claude/rules` are directory symlinks to the canonical `.agents/`
-folders. Discovery and automatic loading depend on the client. Use the explicit
-paths below for the three nested UX entrypoints; CLI listing alone does not prove
+folders. Discovery and automatic loading depend on the client; CLI listing alone does not prove
 that an agent loaded a skill.
 
 ## Superpowers process skills
@@ -52,9 +53,11 @@ A skill mentioning an external service does not require installing or paying for
 
 ## Use a repository-owned reference
 
-| Reference                                                   | Task                                                                  |
-| ----------------------------------------------------------- | --------------------------------------------------------------------- |
-| [Electron](skills/electron/SKILL.md)                        | Trace desktop host capabilities, IPC, storage, packaging, or signing. |
+| Reference                                          | Task                                                                        |
+| -------------------------------------------------- | --------------------------------------------------------------------------- |
+| [Electron](skills/electron/SKILL.md)               | Trace desktop host capabilities, IPC, storage, packaging, or signing.       |
+| [validate-change](skills/validate-change/SKILL.md) | Select and run the checks a change needs; list browser journeys to run.     |
+| [pr-evidence](skills/pr-evidence/SKILL.md)         | User-invoked: attach dark phone and desktop screenshots to a pull request.  |
 
 ## Maintain managed imports
 

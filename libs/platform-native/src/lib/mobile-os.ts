@@ -39,6 +39,14 @@ export function isInstalledNativePlatform(): boolean {
  * wrong in either direction.
  */
 export function isMobileOs(): boolean {
+  // Platform, shell and user agent are fixed for the life of the page, and every timeline
+  // row asks while it is built, so the answer is worked out once.
+  return (mobileOs ??= detectMobileOs());
+}
+
+let mobileOs: boolean | undefined;
+
+function detectMobileOs(): boolean {
   const platform = Capacitor.getPlatform();
   if (platform === 'ios' || platform === 'android') {
     return true;

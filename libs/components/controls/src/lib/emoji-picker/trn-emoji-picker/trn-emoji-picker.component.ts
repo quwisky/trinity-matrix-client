@@ -2,17 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   ViewEncapsulation,
-  computed,
   input,
   output,
 } from '@angular/core';
-import { PickerComponent } from '@ctrl/ngx-emoji-mart';
 import type { EmojiEvent } from '@ctrl/ngx-emoji-mart/ngx-emoji';
 import type { TrnEmojiPick } from '../trn-emoji.model';
-import {
-  trnEmojiPickerGlyphSize,
-  type TrnEmojiPickerSize,
-} from './trn-emoji-picker-recipe';
+import { TrnEmojiPickerPanelComponent } from './trn-emoji-picker-panel.component';
+import type { TrnEmojiPickerSize } from './trn-emoji-picker-recipe';
 
 export type { TrnEmojiPickerSize } from './trn-emoji-picker-recipe';
 
@@ -59,7 +55,7 @@ export type { TrnEmojiPickerSize } from './trn-emoji-picker-recipe';
   selector: 'trn-emoji-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
   encapsulation: ViewEncapsulation.None,
-  imports: [PickerComponent],
+  imports: [TrnEmojiPickerPanelComponent],
   templateUrl: './trn-emoji-picker.component.html',
   styleUrl: './trn-emoji-picker.component.scss',
   host: {
@@ -78,18 +74,6 @@ export class TrnEmojiPickerComponent {
   readonly pickerId = input<string | null>(null);
   /** Trinity-owned ordinal size; the vendor's pixel input stays private. */
   readonly size = input<TrnEmojiPickerSize>('md');
-
-  protected readonly vendorEmojiSize = computed(() =>
-    trnEmojiPickerGlyphSize(this.size()),
-  );
-
-  /**
-   * Trinity's accent, handed to the vendor as its own `color`.
-   *
-   * A token rather than a literal, and passed rather than overridden: the vendor writes
-   * this value into inline styles, which a stylesheet cannot outrank without `!important`.
-   */
-  protected readonly accent = 'var(--trinity-accent)';
 
   /** A usable pick. Entries without a `native` character never reach here. */
   readonly picked = output<TrnEmojiPick>();

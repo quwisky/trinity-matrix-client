@@ -28,6 +28,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
 import { MediaAttachmentComponent } from '../media-attachment/media-attachment.component';
+import { CodeHighlightDirective } from '../message-presentation/code-highlight.directive';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import {
   type MatrixLinkClick,
@@ -162,6 +163,7 @@ export type MessageSwipeAction = 'edit' | 'reply';
     MediaAttachmentComponent,
     MessageReactionsComponent,
     MessageToolbarComponent,
+    CodeHighlightDirective,
     SpoilerRevealDirective,
     MatrixLinkDirective,
     PollComponent,
@@ -188,6 +190,7 @@ export class MessageRowComponent {
   private readonly injector = inject(Injector);
 
   private readonly toolbar = viewChild(MessageToolbarComponent);
+  private readonly stamp = viewChild<ElementRef<HTMLElement>>('stamp');
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
   private longPressOrigin: {
     x: number;
@@ -201,6 +204,8 @@ export class MessageRowComponent {
 
   /** Whether the pointer or focus is on this row, which is what mounts its toolbar. */
   readonly toolbarActive = signal(false);
+  /** Whether the time's tooltip exists yet; see {@link armTimeTip}. */
+  readonly timeTipArmed = signal(false);
 
   /**
    * Whether this row's action bar is pinned open, which is how touch reaches it.
@@ -638,10 +643,43 @@ export class MessageRowComponent {
    * Mount the toolbar on hover. A toolbar that already exists is re-placed against the live
    * scrollport; a new one places itself after its first render.
    */
-  onPointerEnter(): void {
+  onPointerEnter(event?: PointerEvent): void {
+    this.armTimeTip(event, false);
     this.pointerInside = true;
     this.toolbarActive.set(true);
     this.toolbar()?.placeToolbar();
+  }
+
+  /**
+   * Create the time's tooltip when a mouse or pen first reaches the row. A tooltip registers
+   * window listeners and a focus monitor, which is a lot to pay for every row a scroll builds.
+   * Touch never opens one, and the `<time>` is not focusable, so nothing else needs it earlier.
+   *
+   * When the pointer is already on the time, the element is replaced as it arrives, so the
+   * tooltip never sees that entry and is given it again.
+   */
+  armTimeTip(event: PointerEvent | undefined, onTime: boolean): void {
+    const pointerType = event?.pointerType;
+    if (pointerType !== 'mouse' && pointerType !== 'pen') {
+      return;
+    }
+    // The row's own enter fires first and arms the tip, so a time entered in the same move
+    // still has to be handed its entry: its old element is about to be replaced.
+    if (this.timeTipArmed() && !onTime) {
+      return;
+    }
+    this.timeTipArmed.set(true);
+    if (onTime) {
+      afterNextRender(
+        {
+          read: () =>
+            this.stamp()?.nativeElement.dispatchEvent(
+              new PointerEvent('pointerenter', { pointerType }),
+            ),
+        },
+        { injector: this.injector },
+      );
+    }
   }
 
   onPointerLeave(): void {

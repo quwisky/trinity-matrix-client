@@ -20,6 +20,7 @@ when version compatibility matters.
 - Keep prototypes, screenshots, GIF proof and pixel baselines in ignored output,
   never in commits, including throwaway branches. Attach proof to authorized PRs;
   tracked application assets belong in their platform/app asset directories.
+- Claude Code hooks in `.claude/settings.json` block staging `docs/superpowers`/`.superpowers`, `pgrep -f` wait loops, and a `git push` whose affected typecheck fails; see [.claude/README.md](.claude/README.md).
 
 ## Skills and delegation
 
@@ -31,7 +32,7 @@ for selection or maintenance. Local skills live in `.agents/skills`, shared thro
 
 Load the matching skill and relevant references once; reuse them until changed.
 Without a Skill tool, read its `SKILL.md`. The active tool schema determines available
-capabilities and parameters; examples below do not establish tool availability.
+capabilities and parameters.
 
 Delegate bounded work only when useful work can proceed
 alongside it; keep one writer per file set. The coordinator owns user decisions,
@@ -58,7 +59,7 @@ Repository paths in reference prose are relative to the root.
 
 - Use **pnpm** and repository Nx targets. `apps/trinity` builds to root `www/`,
   shared by Capacitor and Electron. Cross-library imports use `@trinity/*`;
-  within-library imports stay relative. `@trinity/core` no longer exists.
+  within-library imports stay relative.
 - Respect Nx `type:*`, `scope:*` and `ui:*` boundaries. Features never import other
   features. Product UI uses `@trinity/components/*`; vendors and `@trinity/helm/*`
   stay behind that tier. Components never import `matrix-js-sdk`.

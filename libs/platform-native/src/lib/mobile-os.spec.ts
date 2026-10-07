@@ -10,7 +10,19 @@ vi.mock('./trinity-desktop-bridge', () => ({
   isElectronRenderer: () => electron.is,
 }));
 
-import { isMobileOs, isNativeIos } from './mobile-os';
+import { isNativeIos } from './mobile-os';
+
+/**
+ * A fresh evaluation: `isMobileOs` memoises for the life of the module, so each scenario
+ * re-imports it. Callers get one answer per page load, which is the point.
+ */
+async function freshModule(): Promise<typeof import('./mobile-os')> {
+  vi.resetModules();
+  return import('./mobile-os');
+}
+async function isMobileOs(): Promise<boolean> {
+  return (await freshModule()).isMobileOs();
+}
 
 /** Stand in for a device: its user agent, touch points and UA-Client-Hints. */
 function device(over: {
@@ -43,79 +55,95 @@ describe('isMobileOs', () => {
     vi.unstubAllGlobals();
   });
 
-  it('trusts Capacitor on a native build', () => {
+  it('trusts Capacitor on a native build', async () => {
     device({ ua: UA.mac }); // deliberately a desktop UA — the platform wins
     for (const platform of ['ios', 'android']) {
       capacitor.platform = platform;
-      expect(isMobileOs()).toBe(true);
+      expect(await isMobileOs()).toBe(true);
     }
   });
 
-  it('is false in the Electron shell, whatever its user agent says', () => {
+  it('is false in the Electron shell, whatever its user agent says', async () => {
     // The shell reports `web` and runs under a Macintosh UA. It has to be excluded before
     // any string test, or the iPad branch below would misread a touchscreen desktop.
     electron.is = true;
     device({ ua: UA.mac, touchPoints: 10 });
 
-    expect(isMobileOs()).toBe(false);
+    expect(await isMobileOs()).toBe(false);
   });
 
-  it('recognises a phone on the web', () => {
+  it('recognises a phone on the web', async () => {
     device({ ua: UA.android });
-    expect(isMobileOs()).toBe(true);
+    expect(await isMobileOs()).toBe(true);
 
     device({ ua: UA.iphone });
-    expect(isMobileOs()).toBe(true);
+    expect(await isMobileOs()).toBe(true);
   });
 
-  it('recognises an Android TABLET, which UA-Client-Hints calls not-mobile', () => {
+  it('recognises an Android TABLET, which UA-Client-Hints calls not-mobile', async () => {
     // The reason `Android` is tested directly rather than through `userAgentData.mobile`:
     // Chrome reports `mobile: false` on a large-screen Android, so trusting it as a
     // negative would exclude exactly the devices this exists to include.
     device({ ua: UA.androidTablet, uaDataMobile: false });
 
-    expect(isMobileOs()).toBe(true);
+    expect(await isMobileOs()).toBe(true);
   });
 
-  it('recognises an iPad behind its desktop user agent', () => {
+  it('recognises an iPad behind its desktop user agent', async () => {
     // iPadOS 13+ reports a Macintosh UA. Touch points are the only thing that separates
     // it from a MacBook, which reports 0.
     device({ ua: UA.ipad, touchPoints: 5 });
 
-    expect(isMobileOs()).toBe(true);
+    expect(await isMobileOs()).toBe(true);
   });
 
-  it('is false on a Mac and on Windows', () => {
+  it('is false on a Mac and on Windows', async () => {
     device({ ua: UA.mac });
-    expect(isMobileOs()).toBe(false);
+    expect(await isMobileOs()).toBe(false);
 
     device({ ua: UA.windows });
-    expect(isMobileOs()).toBe(false);
+    expect(await isMobileOs()).toBe(false);
   });
 
-  it('is false on a Windows laptop with a touchscreen', () => {
+  it('is false on a Windows laptop with a touchscreen', async () => {
     // The case the whole predicate exists for: a finger can drive this, so
     // `(pointer: coarse)` is true of it — but it is not a phone, and an iOS-style bottom
     // sheet is the wrong idiom. Only asking the OS gets this right.
     device({ ua: UA.windows, touchPoints: 10 });
 
-    expect(isMobileOs()).toBe(false);
+    expect(await isMobileOs()).toBe(false);
   });
 
-  it('reads UA-Client-Hints only as a yes, never as a no', () => {
+  it('reads UA-Client-Hints only as a yes, never as a no', async () => {
     device({ ua: 'Mozilla/5.0 (Unknown)', uaDataMobile: true });
-    expect(isMobileOs()).toBe(true);
+    expect(await isMobileOs()).toBe(true);
 
     device({ ua: UA.iphone, uaDataMobile: false });
-    expect(isMobileOs()).toBe(true);
+    expect(await isMobileOs()).toBe(true);
   });
 
-  it('says no when there is no navigator at all', () => {
+  it('answers once per module and does not re-read the user agent', async () => {
+    device({ ua: UA.android });
+    const { isMobileOs: memoised } = await freshModule();
+    expect(memoised()).toBe(true);
+
+    const read = vi.fn(() => UA.windows);
+    vi.stubGlobal('navigator', {
+      get userAgent() {
+        return read();
+      },
+      maxTouchPoints: 0,
+    });
+    expect(memoised()).toBe(true);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('says no when there is no navigator at all', async () => {
     // Server-side rendering or a worker: the safe fallback is the desktop behaviour, which
     // works everywhere. A wrong yes would change an interaction model.
     vi.stubGlobal('navigator', undefined);
 
-    expect(isMobileOs()).toBe(false);
+    expect(await isMobileOs()).toBe(false);
   });
 });
 
