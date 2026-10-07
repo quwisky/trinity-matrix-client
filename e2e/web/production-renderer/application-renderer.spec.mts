@@ -500,7 +500,17 @@ test.describe('@production-renderer application surface', () => {
     const settingsNavigation = page.getByRole('navigation', {
       name: 'Settings sections',
     });
-    if ((page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) < 768) {
+    // Settings is two-pane from 48rem of the current text size, not 768px, so
+    // larger text turns a mid-width window into the single-pane layout.
+    const settingsIsWide = await page.evaluate(
+      () =>
+        window.innerWidth >=
+        48 *
+          (Number.parseFloat(
+            getComputedStyle(document.documentElement).fontSize,
+          ) || 16),
+    );
+    if (!settingsIsWide) {
       await expect(settingsNavigation).toBeHidden();
     } else {
       await expect(settingsNavigation).toBeVisible();

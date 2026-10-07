@@ -261,9 +261,9 @@ describe('Android navigation', () => {
       $('//*[self::h1 or self::h2][normalize-space()="Profile"]'),
     ).toBeFocused({ wait: 10_000 });
 
-    await clickButton('Back');
+    await clickButton('Back to sections');
     await waitForPath((path) => path === '/settings', '/settings');
-    await clickButton('Back');
+    await clickButton('Close settings');
     await waitForRooms();
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
     // The phone layout hides the pane holding the shell's <h1>; focus must still

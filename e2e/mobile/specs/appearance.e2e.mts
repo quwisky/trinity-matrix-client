@@ -133,20 +133,20 @@ describe('Android Appearance', () => {
     const darkStatusBar = await readNativeStatusBar();
 
     const geometry = await browser.execute(() => {
-      const header = document.querySelector<HTMLElement>(
-        'header[data-trn-layout="page"]',
+      const column = document.querySelector<HTMLElement>(
+        '[data-testid="settings-detail"] .settings-layout__column',
       );
-      const heading = header?.querySelector<HTMLElement>('h1');
+      const heading = column?.querySelector<HTMLElement>('h1');
       const controls = [
         '[data-testid="mode-dark"]',
         '[data-testid="theme-select"] button',
         '[data-testid="density-select"] button',
         '[data-testid="text-scale-select"] button',
       ].map((selector) => document.querySelector<HTMLElement>(selector));
-      if (!header || !heading || controls.some((control) => !control)) {
+      if (!column || !heading || controls.some((control) => !control)) {
         throw new Error('Android Appearance geometry is incomplete');
       }
-      const headerStyle = getComputedStyle(header);
+      const headerStyle = getComputedStyle(column);
       return {
         headerPaddingTop: Number.parseFloat(headerStyle.paddingTop),
         headingTop: heading.getBoundingClientRect().top,
