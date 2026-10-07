@@ -25,7 +25,7 @@ import {
   type TrnSettingsLayoutSection,
 } from '@trinity/components/overlay';
 import { BUILD_INFO } from '@trinity/platform-native';
-import { textScaledViewportSignal } from '@trinity/util/ui';
+import { markRoutedPage, textScaledViewportSignal } from '@trinity/util/ui';
 import {
   SETTINGS_SECTIONS,
   matchingSettingsSections,
@@ -87,6 +87,8 @@ export class SettingsPage {
   /** A narrow directory click adds `/settings` behind the section in history. */
   private readonly narrowSectionPushed = signal(false);
 
+  /** Classes each section page so global.scss lays it out as a routed page. */
+  protected readonly markRoutedPage = markRoutedPage;
   /** "Trinity v0.0.1 · a1b2c3d" for the settings footer. */
   readonly buildLabel = `Trinity v${this.build.version} · ${this.build.commit}`;
 

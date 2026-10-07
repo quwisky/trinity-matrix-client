@@ -1,6 +1,7 @@
 import { DOCUMENT } from '@angular/common';
 import { Injectable, inject } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
+import { ROUTED_PAGE_CLASS } from '@trinity/util/ui';
 import { Observable, filter } from 'rxjs';
 
 /** Moves DOM focus into each entering routed page for keyboard and screen-reader users. */
@@ -48,7 +49,9 @@ export class NavigationFocusService {
    * take focus, so keep the first candidate the browser actually focuses (#859).
    */
   focusEnteringPage(): void {
-    const page = this.document.querySelector<HTMLElement>('router-outlet + *');
+    const page = this.document.querySelector<HTMLElement>(
+      `.${ROUTED_PAGE_CLASS}`,
+    );
     if (!page) return;
     const candidates = [
       ...page.querySelectorAll<HTMLElement>('[data-route-focus]'),

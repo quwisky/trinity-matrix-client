@@ -32,7 +32,8 @@ describe('NavigationFocusService', () => {
   });
 
   function mountPage(html: string): void {
-    document.body.innerHTML = `<router-outlet></router-outlet>${html}`;
+    document.body.innerHTML = html;
+    document.body.firstElementChild?.classList.add('trn-routed-page');
   }
 
   it('focuses only after NavigationEnd while Application Runtime owns the stream', () => {
@@ -58,7 +59,7 @@ describe('NavigationFocusService', () => {
       document.querySelector('[data-route-focus]'),
     );
 
-    document.body.innerHTML = '<router-outlet></router-outlet>';
+    document.body.innerHTML = '';
     expect(() => service.focusEnteringPage()).not.toThrow();
   });
 
