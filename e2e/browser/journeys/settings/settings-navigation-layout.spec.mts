@@ -82,6 +82,18 @@ test.describe('Settings', () => {
         name: 'Close settings',
       }),
     ).toBeVisible();
+    // Body and header are one surface, as in every other dialog: the nav lines up with
+    // the title, sits a gap below the header and has no ground of its own.
+    const headerTitle = await dialog
+      .locator('.dialog-shell__title')
+      .boundingBox();
+    const header = await dialog.locator('.dialog-shell__header').boundingBox();
+    const search = await dialog
+      .getByRole('searchbox', { name: 'Search settings' })
+      .boundingBox();
+    expect(Math.abs(search!.x - headerTitle!.x)).toBeLessThanOrEqual(1);
+    expect(search!.y - (header!.y + header!.height)).toBeGreaterThanOrEqual(8);
+    await expect(nav).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(page.locator('.settings-layout__column h1')).toBeVisible();
     const closeBox = await page
       .getByRole('button', { name: 'Close settings' })

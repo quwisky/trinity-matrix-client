@@ -204,6 +204,25 @@ describe('TrnSettingsLayoutComponent', () => {
     expect(getAllByRole('button', { name: 'Close settings' })).toHaveLength(1);
   });
 
+  it('puts Back and the section heading on one row under a framed header', async () => {
+    const { container, getByRole } = await render(TrnSettingsLayoutComponent, {
+      inputs: {
+        title: 'System status',
+        heading: 'Overview',
+        sections,
+        selectedSection: 'general',
+        compact: true,
+        directoryVisible: false,
+        presentation: 'sheet',
+      },
+      providers: [provideTrnIcons()],
+    });
+    const back = getByRole('button', { name: 'Back to sections' });
+    const heading = getByRole('heading', { level: 1, name: 'Overview' });
+    expect(back.parentElement).toBe(heading.parentElement);
+    expect(container.querySelectorAll('h1')).toHaveLength(1);
+  });
+
   it('has no dialog shell outside a centred dialog', async () => {
     const { container, getByRole } = await render(TrnSettingsLayoutComponent, {
       inputs: { title: 'Settings', sections, selectedSection: 'general' },

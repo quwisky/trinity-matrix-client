@@ -270,7 +270,7 @@
   .settings-layout__topbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: var(--trinity-space-2);
     margin-block-end: var(--trinity-space-2);
   }
 
@@ -299,8 +299,32 @@
     block-size: auto;
     background: transparent;
 
-    --settings-layout-inset: var(--trinity-space-6);
-    --settings-layout-gutter: var(--trinity-space-6);
+    // The shell body's own insets: a gap under the header and the title's side inset.
+    --settings-layout-inset: var(--trinity-space-4);
+    --settings-layout-gutter: var(--trinity-space-5);
+  }
+
+  // One surface with the header, as in every other dialog, split by a hairline.
+  :host(:not([data-presentation='fullscreen'])) .settings-layout__nav,
+  :host(:not([data-presentation='fullscreen'])) .settings-layout__content {
+    background: transparent;
+  }
+
+  :host(:not([data-presentation='fullscreen'])) .settings-layout__nav {
+    padding-inline: var(--settings-layout-gutter);
+    border-inline-end: 1px solid var(--trinity-border-subtle);
+  }
+
+  :host(:not([data-presentation='fullscreen']))
+    .settings-layout[data-compact='true']
+    .settings-layout__nav {
+    border-inline-end: 0;
+  }
+
+  :host(:not([data-presentation='fullscreen']))
+    .settings-layout[data-compact='true']
+    .settings-layout__column {
+    padding-inline: var(--settings-layout-gutter);
   }
 
   :host([data-presentation='dialog']) .settings-layout {
@@ -325,5 +349,10 @@
   :host(:not([data-presentation='fullscreen'])) .settings-layout__nav-inner {
     inline-size: 100%;
     margin-inline-start: 0;
+  }
+
+  // The section name beside Back, in the row's line rather than with the page's margin.
+  :host(:not([data-presentation='fullscreen'])) .settings-layout__topbar h1 {
+    margin: 0;
   }
 }

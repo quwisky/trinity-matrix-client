@@ -17,7 +17,7 @@ import type { SettingsSearchResult } from '../../settings-sections';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [TrnButton, TrnInput, TrnIconComponent],
   templateUrl: './settings-directory-search.component.html',
-  host: { class: 'block min-w-0 p-2' },
+  host: { class: 'block min-w-0 py-2' },
 })
 export class SettingsDirectorySearchComponent {
   private readonly search =

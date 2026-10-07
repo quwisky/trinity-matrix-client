@@ -143,12 +143,16 @@
                   <trn-icon name="arrow-left" motion="nudge-left" />
                 </button>
               }
+              <!-- Under a framed header, Back and the section name share one row. -->
+              @if (framing() !== 'fullscreen') {
+                <ng-container [ngTemplateOutlet]="heading" />
+              }
               <ng-container [ngTemplateOutlet]="closeButton" />
             </div>
           }
           <ng-content select="[settings-context]" />
           <ng-content select="[settings-warning]" />
-          @if (!listView()) {
+          @if (!listView() && !(compact() && framing() !== 'fullscreen')) {
             <ng-container [ngTemplateOutlet]="heading" />
           }
           @if (compact() && !listView() && hasParts()) {
