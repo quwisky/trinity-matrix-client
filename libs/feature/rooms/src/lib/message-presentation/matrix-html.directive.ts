@@ -14,15 +14,17 @@ import { CodeHighlightDirective } from './code-highlight.directive';
 @Directive({
   selector: '[trnMatrixHtml]',
   hostDirectives: [
-    SpoilerRevealDirective,
-    { directive: MatrixLinkDirective, outputs: ['matrixLink'] },
+    { directive: SpoilerRevealDirective, inputs: [], outputs: [] },
+    { directive: MatrixLinkDirective, inputs: [], outputs: ['matrixLink'] },
     {
       directive: InlineMxcImagesDirective,
       inputs: ['trnInlineMxcImages: trnMatrixHtml'],
+      outputs: [],
     },
     {
       directive: CodeHighlightDirective,
       inputs: ['trnCodeHighlight: trnMatrixHtml'],
+      outputs: [],
     },
   ],
   host: { '[innerHTML]': 'html()' },
