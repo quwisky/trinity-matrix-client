@@ -1,0 +1,13 @@
+<span>This choice could not be saved.</span>
+@if (retryable()) {
+  <button
+    trnBtn
+    type="button"
+    presentation="outline"
+    size="sm"
+    [attr.data-testid]="retryTestId()"
+    (click)="retry.emit()"
+  >
+    Try again
+  </button>
+}
