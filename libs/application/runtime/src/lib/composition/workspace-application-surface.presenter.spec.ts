@@ -98,6 +98,20 @@ describe('Workspace application-surface composition adapter', () => {
     return TestBed.inject(WorkspaceApplicationSurfacePresenterAdapter);
   }
 
+  it('leaves System status to the application root', async () => {
+    await expect(
+      firstValueFrom(
+        presenter().present({
+          surface: { kind: 'system-status', section: 'overview' },
+        }),
+      ),
+    ).resolves.toEqual({
+      kind: 'unavailable',
+      surface: { kind: 'system-status', section: 'overview' },
+    });
+    expect(dialogOpen).not.toHaveBeenCalled();
+  });
+
   it('keeps routed presentation cold and maps semantic return destinations at the adapter', async () => {
     const request = {
       surface: { kind: 'trust', flow: 'setup' },

@@ -17,10 +17,7 @@ import {
   TrnIconComponent,
   type TrnIconName,
 } from '@trinity/components/foundations';
-import {
-  TrnDialogRef,
-  type TrnDialogPresentation,
-} from '../dialog/trn-dialog-ref';
+import { TrnDialogRef } from '../dialog/trn-dialog-ref';
 import { TrnDialogShellComponent } from '../dialog-shell/trn-dialog-shell.component';
 import { TrnSettingsParts } from './trn-settings-parts';
 
@@ -80,7 +77,7 @@ export class TrnSettingsLayoutComponent {
    * full-screen dialog and the routed page fill the viewport.
    */
   protected readonly framing = computed(() => {
-    const presentation = this.presentation() ?? this.openedAs;
+    const presentation = this.openedAs;
     return presentation === 'dialog' || presentation === 'sheet'
       ? presentation
       : 'fullscreen';
@@ -96,11 +93,6 @@ export class TrnSettingsLayoutComponent {
   readonly sections = input<readonly TrnSettingsLayoutSection[]>([]);
   /** The selected entry, or null while a compact layout shows only its directory. */
   readonly selectedSection = input<string | null>(null);
-  /**
-   * A layout its host presents outside the dialog service, such as System status, says
-   * how; otherwise it follows the dialog that opened it. Fixed at open, like a dialog's.
-   */
-  readonly presentation = input<TrnDialogPresentation | null>(null);
   /** Whether this presentation fills the viewport and swaps directory/detail panes. */
   readonly compact = input(false);
   /** Whether the directory pane is presently visible. */

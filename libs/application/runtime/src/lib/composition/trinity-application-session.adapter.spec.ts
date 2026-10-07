@@ -65,7 +65,6 @@ import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapte
 import { TrinityApplicationSessionAdapter } from './trinity-application-session.adapter';
 import { BackgroundMemoryRelease } from './background-memory-release.service';
 import { CapabilityHealthService } from '../capability-health.service';
-import { SystemStatusVisibilityService } from '../system-status-visibility.service';
 
 interface SessionHarness {
   readonly adapter: TrinityApplicationSessionAdapter;
@@ -99,7 +98,6 @@ interface SessionHarness {
   readonly recoverTrust: ReturnType<typeof vi.fn>;
   readonly recoverPresentation: ReturnType<typeof vi.fn>;
   readonly recoverRoomAdministration: ReturnType<typeof vi.fn>;
-  readonly statusVisibility: SystemStatusVisibilityService;
 }
 
 function setup(
@@ -261,7 +259,6 @@ function setup(
     recoverTrust,
     recoverPresentation,
     recoverRoomAdministration,
-    statusVisibility: TestBed.inject(SystemStatusVisibilityService),
   };
 }
 
@@ -366,9 +363,11 @@ describe('TrinityApplicationSessionAdapter', () => {
     const sessionOwner = test.adapter.run(readiness).subscribe();
 
     expect(test.backIntents.observed).toBe(true);
-    test.statusVisibility.show();
+    test.dialogOpen.set(true);
+    test.closeTopmost.mockReturnValue(true);
     test.backIntents.next({ canGoBack: true });
-    expect(test.statusVisibility.open()).toBe(false);
+    expect(test.closeTopmost).toHaveBeenCalledOnce();
+    test.dialogOpen.set(false);
     expect(test.locationBack).not.toHaveBeenCalled();
 
     readiness.next();
@@ -377,32 +376,6 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     startupOwner.unsubscribe();
     sessionOwner.unsubscribe();
-  });
-
-  it('returns from a topmost confirmation to System status before returning to the blocker', () => {
-    const test = setup();
-    const owner = test.adapter.runInteractions().subscribe();
-    test.statusVisibility.show();
-    const sectionBack = vi.fn();
-    const unregister = test.statusVisibility.registerBackHandler(sectionBack);
-    test.dialogOpen.set(true);
-    test.closeTopmost.mockReturnValue(true);
-
-    test.backIntents.next({ canGoBack: false });
-    expect(test.closeTopmost).toHaveBeenCalledOnce();
-    expect(sectionBack).not.toHaveBeenCalled();
-    expect(test.statusVisibility.open()).toBe(true);
-    expect(test.background).not.toHaveBeenCalled();
-
-    test.dialogOpen.set(false);
-    test.backIntents.next({ canGoBack: false });
-    expect(sectionBack).toHaveBeenCalledOnce();
-    expect(test.statusVisibility.open()).toBe(true);
-    unregister();
-    test.backIntents.next({ canGoBack: false });
-    expect(test.statusVisibility.open()).toBe(false);
-    expect(test.background).not.toHaveBeenCalled();
-    owner.unsubscribe();
   });
 
   it('maps blocked Room Library preparation without opening live streams', () => {

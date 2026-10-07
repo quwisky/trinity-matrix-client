@@ -49,9 +49,11 @@ test.describe('System status on desktop', () => {
           surface.getAnimations().map((animation) => animation.finished),
         ),
       );
-    await expect(page.locator('trn-system-status')).not.toHaveClass(
-      /system-status--sheet/,
-    );
+    await expect(
+      page
+        .getByRole('dialog', { name: 'System status' })
+        .getByTestId('dialog-surface'),
+    ).toHaveAttribute('data-trn-layout', 'dialog');
 
     const directory = dialog.getByRole('navigation', {
       name: 'System status sections',
@@ -249,9 +251,11 @@ test.describe('System status on a touch-capable desktop', () => {
 
   test('keeps the desktop interaction model', async ({ page }) => {
     await openStatus(page);
-    await expect(page.locator('trn-system-status')).not.toHaveClass(
-      /system-status--sheet/,
-    );
+    await expect(
+      page
+        .getByRole('dialog', { name: 'System status' })
+        .getByTestId('dialog-surface'),
+    ).toHaveAttribute('data-trn-layout', 'dialog');
   });
 });
 
@@ -269,11 +273,12 @@ test.describe('System status on a mobile OS', () => {
     page,
   }, testInfo) => {
     await openStatus(page);
-    const host = page.locator('trn-system-status');
     const dialog = page.getByRole('dialog', { name: 'System status' });
-    await expect(host).toHaveClass(/system-status--sheet/);
-    await expect(dialog).toHaveCSS('border-bottom-left-radius', '0px');
-    const box = await dialog.boundingBox();
+    const surface = dialog.getByTestId('dialog-surface');
+    await expect(surface).toHaveAttribute('data-trn-layout', 'sheet');
+    await expect(dialog.getByTestId('sheet-handle')).toBeVisible();
+    await expect(surface).toHaveCSS('border-bottom-left-radius', '0px');
+    const box = await surface.boundingBox();
     expect(box).not.toBeNull();
     expect(
       Math.abs((box?.y ?? 0) + (box?.height ?? 0) - profile.viewport.height),

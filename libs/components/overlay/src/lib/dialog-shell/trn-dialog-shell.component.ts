@@ -12,11 +12,7 @@ import { outputFromObservable } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { Subject } from 'rxjs';
-import {
-  TrnDialogRef,
-  dialogTitleId,
-  type TrnDialogPresentation,
-} from '../dialog/trn-dialog-ref';
+import { TrnDialogRef, dialogTitleId } from '../dialog/trn-dialog-ref';
 import { TrnSheetFrameComponent } from '../sheet-frame/trn-sheet-frame.component';
 import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';
 import type {
@@ -60,23 +56,16 @@ export class TrnDialogShellComponent {
   protected readonly titleId = this.ref?.titleId ?? dialogTitleId();
   protected readonly actions = contentChild(TrnDialogActions);
   protected readonly layout = computed<TrnOverlaySurfaceLayout>(() => {
-    const presentation = this.presentation() ?? this.ref?.presentation;
+    const presentation = this.ref?.presentation;
     return presentation === 'sheet' || presentation === 'fullscreen'
       ? presentation
       : 'dialog';
   });
 
   /** A sheet the dialog service opened renders through the sheet frame, handle and swipe included. */
-  protected readonly framed = computed(
-    () => this.layout() === 'sheet' && this.ref !== null,
-  );
+  protected readonly framed = computed(() => this.layout() === 'sheet');
 
   readonly title = input.required<string>();
-  /**
-   * For a shell its host presents itself, outside the dialog service. Its sheet has no
-   * swipe handle, because only the service can dismiss on a swipe.
-   */
-  readonly presentation = input<TrnDialogPresentation | null>(null);
   readonly description = input<string>();
   readonly closable = input(true);
   /** The X's accessible name; "Close" unless the host names what it closes. */

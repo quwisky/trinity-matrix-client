@@ -46,10 +46,15 @@ interface ActiveApplicationDialog {
 }
 
 function routeFor(surface: WorkspaceApplicationSurface): string {
-  if (surface.kind === 'settings') {
-    return surface.section ? `/settings/${surface.section}` : '/settings';
+  switch (surface.kind) {
+    case 'settings':
+      return surface.section ? `/settings/${surface.section}` : '/settings';
+    case 'trust':
+      return `/encryption/${surface.flow}`;
+    case 'system-status':
+      // Not routed: the application root presents it over whatever route is showing.
+      return '/';
   }
-  return `/encryption/${surface.flow}`;
 }
 
 /** Host adapter combining Router, placement policy, lazy features, and UI dialogs. */
@@ -119,7 +124,11 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
     request: WorkspaceApplicationSurfaceRequest,
   ): Observable<WorkspaceApplicationSurfaceOutcome> {
     const { surface, context } = request;
-    if (!this.ownerIsActive(request) || !this.canPresentOverActive(request)) {
+    if (
+      surface.kind === 'system-status' ||
+      !this.ownerIsActive(request) ||
+      !this.canPresentOverActive(request)
+    ) {
       return of({ kind: 'unavailable', surface });
     }
     if (surface.kind === 'settings') {
