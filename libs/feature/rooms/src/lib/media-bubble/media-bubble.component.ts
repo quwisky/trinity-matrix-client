@@ -116,6 +116,16 @@ export class MediaBubbleComponent {
     return this.loadedRatio() ?? DEFAULT_MEDIA_RATIO;
   });
 
+  /**
+   * Only an image whose size the event states may load lazily. Its box is reserved up front,
+   * so deferring the decode cannot move anything. Without `info.w`/`info.h` the box is a 16 / 9
+   * guess that the image corrects on load; deferring that load would make the correction land
+   * while the reader scrolls, shifting rows the virtual list has already measured. Those stay eager.
+   */
+  readonly hasIntrinsicSize = computed(
+    () => !!this.item().width && !!this.item().height,
+  );
+
   /** File-card subtitle: human-readable size, falling back to the MIME type. */
   readonly subtitle = computed(
     () => formatSize(this.item().size) ?? this.item().mimeType,

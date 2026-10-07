@@ -98,9 +98,21 @@ const POSTER_TIMEOUT_MS = 3000;
 /** Cap on cached object URLs; pinned (on-screen) entries are never evicted. */
 const CACHE_LIMIT = 64;
 
+/**
+ * Cap on the blob bytes behind the cached URLs, enforced alongside {@link CACHE_LIMIT}.
+ * The count alone says nothing about memory: 64 thumbnails are a few MB, but 64 full-size
+ * photos (2-10 MB each) or videos are hundreds. 96 MB holds a dozen full-size photos or a
+ * few hundred thumbnails, enough to scroll back through a conversation without refetching,
+ * and still leaves a phone WebView room for the rest of the app. Pinned entries (on screen,
+ * so the budget can be exceeded by what the user is actually looking at) are exempt.
+ */
+const CACHE_BYTE_LIMIT = 96 * 1024 * 1024;
+
 interface CacheEntry {
   url: string;
   blob: Blob;
+  /** `blob.size` recorded at creation, so the running total never re-reads blobs. */
+  bytes: number;
 }
 
 interface MediaSource {
@@ -131,6 +143,8 @@ export class MediaService {
 
   /** Insertion-ordered cache of resolved object URLs (oldest first for LRU). */
   private readonly cache = new Map<string, CacheEntry>();
+  /** Sum of {@link CacheEntry.bytes} over {@link cache}. */
+  private cachedBytes = 0;
   /** In-flight resolutions, keyed like {@link cache}, so concurrent subscribers
    * to the same bytes share one fetch+decrypt instead of racing. */
   private readonly inFlight = new Map<string, Observable<string>>();
@@ -158,6 +172,9 @@ export class MediaService {
     const key = this.cacheKey(client, source);
     const hit = this.cache.get(key);
     if (hit) {
+      // Re-insert so the Map's insertion order is recency order (LRU, not FIFO).
+      this.cache.delete(key);
+      this.cache.set(key, hit);
       return of(hit.url);
     }
     // Share one fetch+decrypt across concurrent resolves of the same bytes — two
@@ -338,6 +355,7 @@ export class MediaService {
       URL.revokeObjectURL(url);
     }
     this.cache.clear();
+    this.cachedBytes = 0;
     this.inFlight.clear();
     this.pinned.clear();
     // Re-probe authed-media support on the next request: after a logout→login the
@@ -454,31 +472,40 @@ export class MediaService {
     // replacing so its object URL can't leak. Pinned (on-screen) URLs are left for
     // their owner to release.
     const prev = this.cache.get(key);
-    if (prev && !this.pinned.has(prev.url)) {
-      URL.revokeObjectURL(prev.url);
+    if (prev) {
+      this.cachedBytes -= prev.bytes;
+      if (!this.pinned.has(prev.url)) {
+        URL.revokeObjectURL(prev.url);
+      }
     }
     const url = URL.createObjectURL(blob);
-    this.cache.set(key, { url, blob });
-    this.evict();
+    this.cache.set(key, { url, blob, bytes: blob.size });
+    this.cachedBytes += blob.size;
+    this.evict(key);
     return url;
   }
 
-  /** Evict the oldest unpinned entries until the cache is within its limit. */
-  private evict(): void {
-    while (this.cache.size > CACHE_LIMIT) {
-      let removed = false;
-      for (const [key, entry] of this.cache) {
-        if (!this.pinned.has(entry.url)) {
-          this.cache.delete(key);
-          URL.revokeObjectURL(entry.url);
-          removed = true;
-          break;
-        }
+  /**
+   * Evict least recently used unpinned entries until the count and byte caps both hold.
+   * `keep` is the entry just stored: its URL has not reached a component to be pinned yet,
+   * so a single blob over the byte cap must survive until the next store, not be revoked
+   * before it is ever shown.
+   */
+  private evict(keep: string): void {
+    for (const [key, entry] of this.cache) {
+      if (
+        this.cache.size <= CACHE_LIMIT &&
+        this.cachedBytes <= CACHE_BYTE_LIMIT
+      ) {
+        return;
       }
-      if (!removed) {
-        break; // everything left is pinned (on screen)
+      if (key !== keep && !this.pinned.has(entry.url)) {
+        this.cache.delete(key);
+        this.cachedBytes -= entry.bytes;
+        URL.revokeObjectURL(entry.url);
       }
     }
+    // Falling out of the loop means everything left is pinned (on screen).
   }
 }
 

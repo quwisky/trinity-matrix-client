@@ -46,6 +46,9 @@ function okResponse(): Response {
   } as unknown as Response;
 }
 
+/** Mirrors the (non-exported) AVATAR_CACHE_LIMIT in avatar.service.ts. */
+const CACHE_LIMIT = 256;
+
 describe('AvatarService', () => {
   let fetchMock: Mock;
   let createObjectURL: Mock;
@@ -216,6 +219,131 @@ describe('AvatarService', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe('bounded cache', () => {
+    async function fill(svc: AvatarService, count: number, from = 0) {
+      const urls: string[] = [];
+      for (let i = from; i < from + count; i++) {
+        urls.push((await firstValueFrom(svc.resolve(`mxc://hs/${i}`)))!);
+      }
+      return urls;
+    }
+
+    it('revokes the least recently used URL once the cap is exceeded', async () => {
+      const { svc } = setup();
+      const urls = await fill(svc, CACHE_LIMIT + 1);
+
+      expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+      expect(revokeObjectURL).toHaveBeenCalledWith(urls[0]);
+    });
+
+    it('evicts in recency order: a re-resolved key outlives an older one', async () => {
+      const { svc } = setup();
+      const urls = await fill(svc, CACHE_LIMIT);
+      await firstValueFrom(svc.resolve('mxc://hs/0')); // touch the oldest
+      await fill(svc, 1, CACHE_LIMIT);
+
+      expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+      expect(revokeObjectURL).toHaveBeenCalledWith(urls[1]);
+    });
+
+    it('never revokes a URL a live subscriber is still showing', async () => {
+      const { svc } = setup();
+      const shown: (string | null)[] = [];
+      const sub = svc.resolve('mxc://hs/0').subscribe((u) => shown.push(u));
+      await new Promise((r) => setTimeout(r));
+      await fill(svc, CACHE_LIMIT + 5, 1);
+
+      expect(revokeObjectURL).not.toHaveBeenCalledWith(shown[0]);
+
+      // Once the row is gone the URL becomes evictable again.
+      sub.unsubscribe();
+      await fill(svc, 1, CACHE_LIMIT + 10);
+      expect(revokeObjectURL).toHaveBeenCalledWith(shown[0]);
+    });
+
+    it('re-resolves an evicted key with a fresh fetch and URL', async () => {
+      const { svc } = setup();
+      const urls = await fill(svc, CACHE_LIMIT + 1);
+      fetchMock.mockClear();
+
+      const again = await firstValueFrom(svc.resolve('mxc://hs/0'));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(again).not.toBe(urls[0]);
+    });
+  });
+
+  describe('fetches that land after releaseAll', () => {
+    /** A fetch the test settles by hand. */
+    function deferFetch(): { ok: () => void } {
+      let settle!: (r: Response) => void;
+      fetchMock.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            settle = resolve;
+          }),
+      );
+      return { ok: () => settle(okResponse()) };
+    }
+    const tick = () => new Promise((r) => setTimeout(r));
+
+    it('does not create an object URL nobody can revoke', async () => {
+      const { svc } = setup();
+      const late = deferFetch();
+      const seen: (string | null)[] = [];
+      svc.resolve('mxc://hs/slow').subscribe((u) => seen.push(u));
+      svc.releaseAll();
+
+      late.ok();
+      await tick();
+
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(seen).toEqual([null]);
+    });
+
+    it('does not let a late failure delete or cool down the newer entry', async () => {
+      const { svc } = setup();
+      vi.useFakeTimers();
+      try {
+        // Call 1 (the stale fetch) hangs until failed by hand, call 2 (the fresh entry)
+        // succeeds, and every retry the stale fetch makes after that fails too.
+        let calls = 0;
+        let failFirst!: () => void;
+        fetchMock.mockImplementation(() => {
+          calls++;
+          if (calls === 1) {
+            return new Promise((_, reject) => {
+              failFirst = () => reject(new TypeError('Failed to fetch'));
+            });
+          }
+          return calls === 2
+            ? Promise.resolve(okResponse())
+            : Promise.reject(new TypeError('Failed to fetch'));
+        });
+        svc.resolve('mxc://hs/slow').subscribe();
+        svc.releaseAll();
+        // Re-resolve in between: a new entry for the same key.
+        const fresh: (string | null)[] = [];
+        svc.resolve('mxc://hs/slow').subscribe((u) => fresh.push(u));
+        await vi.advanceTimersByTimeAsync(10);
+        expect(fresh).toEqual(['blob:av-1']);
+
+        failFirst();
+        await vi.runAllTimersAsync();
+
+        // Still cached (no refetch) and not cooling down.
+        fetchMock.mockClear();
+        const again: (string | null)[] = [];
+        svc.resolve('mxc://hs/slow').subscribe((u) => again.push(u));
+        await vi.advanceTimersByTimeAsync(10);
+        expect(again).toEqual(['blob:av-1']);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('releaseAll revokes every cached avatar URL and clears the cache', async () => {

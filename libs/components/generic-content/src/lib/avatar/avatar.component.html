@@ -2,6 +2,8 @@
   [style.width.px]="resolvedSize()"
   [style.height.px]="resolvedSize()"
 >
+  <!-- Not lazy: BrnAvatar keeps this img out of the DOM until it fires `load`, and a lazy
+       image that is not rendered has no viewport to wait for, so engines may never start it. -->
   @if (src()) {
     <img decoding="async" hlmAvatarImage [src]="src()" [alt]="name()" />
   }
@@ -42,6 +44,7 @@
       <img
         class="account-badge__img"
         decoding="async"
+        loading="lazy"
         [src]="badgeUrl"
         alt=""
         (error)="onBadgeImageError()"

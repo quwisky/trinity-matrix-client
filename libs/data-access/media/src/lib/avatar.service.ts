@@ -27,10 +27,10 @@ const DPR = 2;
  * very authenticated-media-only servers this exists for.
  *
  * Avatars are small and reused across the app (sidebar, members, every timeline
- * sender), so successful resolutions are cached for the session keyed by mxc+size;
- * the cache is revoked on logout/login ({@link releaseAll}). The cache is unbounded
- * within a session, which is fine for small decorative thumbnails cleared on every
- * session change.
+ * sender), so successful resolutions are cached keyed by mxc+size+account and revoked
+ * together on logout/login ({@link releaseAll}). Within a session the cache is an LRU
+ * capped at {@link AVATAR_CACHE_LIMIT}; evicting revokes the object URL, but never one a
+ * subscriber still holds (see {@link CacheEntry.holders}).
  *
  * A failure is remembered only for {@link FAILURE_COOLDOWN_MS}. Never remembering it
  * pins nothing to initials for the session — the original reason — but it also means a
@@ -43,18 +43,44 @@ const DPR = 2;
 /** How long a failed avatar resolution is remembered before it may be retried. */
 const FAILURE_COOLDOWN_MS = 30_000;
 
+/**
+ * Cap on cached avatar object URLs. What one screen shows at once: a timeline window of
+ * roughly 40 rows (viewport plus 800px overscan) with at most as many distinct senders, a
+ * virtualised member list of ~50 rows, a sidebar of ~100 room and space rows, and a handful
+ * of account badges. That is about 200 at the very most, and those are held by their
+ * subscribers regardless of the cap. 256 therefore keeps every avatar a user flicks between
+ * warm, while bounding a long session (hundreds of rooms and members seen) at 256 thumbnails
+ * of ~10-30 KB each, a few MB, instead of one per avatar ever seen.
+ */
+const AVATAR_CACHE_LIMIT = 256;
+
+interface CacheEntry {
+  /** Shared fetch+blob, replayed to every subscriber. */
+  readonly resolved: Observable<string | null>;
+  /** The object URL once resolved; null while in flight or after a failure. */
+  url: string | null;
+  /** Subscribers currently showing this entry's URL; it is never evicted while above 0. */
+  holders: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AvatarService {
   private readonly matrix = inject(MatrixClientService);
 
-  /** Shared resolutions keyed by `mxc|size` (one fetch+blob per avatar). */
-  private readonly cache = new Map<string, Observable<string | null>>();
-  /** Object URLs created, revoked together on {@link releaseAll}. */
-  private readonly urls = new Set<string>();
+  /** Resolutions keyed by `mxc|size|account`, least recently used first. */
+  private readonly cache = new Map<string, CacheEntry>();
   /** Keys that failed, and the moment (ms epoch) they may be attempted again. */
   private readonly retryAfter = new Map<string, number>();
 
-  /** Resolve an `mxc://` avatar to a cached `blob:` URL, or null when unset/failed. */
+  /**
+   * Resolve an `mxc://` avatar to a cached `blob:` URL, or null when unset/failed.
+   *
+   * Each subscription looks the entry up afresh, so an entry evicted since the last
+   * subscribe is fetched again instead of replaying a revoked URL. The subscription holds
+   * the entry for as long as it stays subscribed (the avatar component keeps it until the
+   * input changes or it is destroyed) and, to keep that hold alive, never completes: a
+   * completing observable would release the hold the moment the URL arrived.
+   */
   resolve(
     mxc: string | null,
     sizePx = AVATAR_PX,
@@ -67,39 +93,22 @@ export class AvatarService {
     // different request, and sharing one entry would defeat the point of routing a
     // foreign account's media through its own client.
     const key = `${mxc}|${sizePx}|${accountId ?? ''}`;
-    const hit = this.cache.get(key);
-    if (hit) {
-      return hit;
-    }
-    const coolingUntil = this.retryAfter.get(key);
-    if (coolingUntil !== undefined) {
-      if (Date.now() < coolingUntil) {
-        return of(null); // still cooling off — show the initial without another attempt
+    return new Observable<string | null>((subscriber) => {
+      const entry = this.entryFor(key, mxc, sizePx, accountId);
+      if (!entry) {
+        subscriber.next(null); // still cooling off — show the initial without another attempt
+        return;
       }
-      this.retryAfter.delete(key);
-    }
-    const edge = Math.ceil(sizePx * DPR);
-    const client =
-      (accountId ? this.matrix.clientFor(accountId) : null) ??
-      this.matrix.instance;
-    const resolved = fetchMediaBytes(
-      client,
-      mxc,
-      { w: edge, h: edge },
-      true,
-    ).pipe(
-      map((bytes) => this.store(new Blob([bytes]))),
-      // An avatar is decorative — on failure fall back to initials (null), and drop the
-      // cache entry so a transient failure can be retried, but not before the cooldown.
-      catchError(() => {
-        this.cache.delete(key);
-        this.retryAfter.set(key, Date.now() + FAILURE_COOLDOWN_MS);
-        return of<string | null>(null);
-      }),
-      shareReplay(1),
-    );
-    this.cache.set(key, resolved);
-    return resolved;
+      entry.holders++;
+      const sub = entry.resolved.subscribe({
+        next: (url) => subscriber.next(url),
+      });
+      return () => {
+        sub.unsubscribe();
+        entry.holders--;
+        this.evict();
+      };
+    });
   }
 
   /** Upload avatar bytes through the owning Account's media repository. */
@@ -120,19 +129,88 @@ export class AvatarService {
 
   /** Revoke every cached avatar object URL and clear the cache (logout/login). */
   releaseAll(): void {
-    for (const url of this.urls) {
-      URL.revokeObjectURL(url);
+    for (const { url } of this.cache.values()) {
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
     }
-    this.urls.clear();
     this.cache.clear();
     // A new session may be a different account on a different homeserver, so nothing
     // that failed under the old one should still be serving initials from a cooldown.
     this.retryAfter.clear();
   }
 
-  private store(blob: Blob): string {
-    const url = URL.createObjectURL(blob);
-    this.urls.add(url);
-    return url;
+  /** The live entry for a key (touched as most recent), a new fetch, or null in cooldown. */
+  private entryFor(
+    key: string,
+    mxc: string,
+    sizePx: number,
+    accountId: string | undefined,
+  ): CacheEntry | null {
+    const hit = this.cache.get(key);
+    if (hit) {
+      this.cache.delete(key);
+      this.cache.set(key, hit);
+      return hit;
+    }
+    const coolingUntil = this.retryAfter.get(key);
+    if (coolingUntil !== undefined) {
+      if (Date.now() < coolingUntil) {
+        return null;
+      }
+      this.retryAfter.delete(key);
+    }
+    const edge = Math.ceil(sizePx * DPR);
+    const client =
+      (accountId ? this.matrix.clientFor(accountId) : null) ??
+      this.matrix.instance;
+    const entry: CacheEntry = {
+      url: null,
+      holders: 0,
+      resolved: fetchMediaBytes(client, mxc, { w: edge, h: edge }, true).pipe(
+        map((bytes) => {
+          // releaseAll cannot cancel a fetch already in flight. If this one lands after
+          // it, the entry is no longer cached, so no later releaseAll or eviction would
+          // ever find its URL: don't create one.
+          if (this.cache.get(key) !== entry) {
+            return null;
+          }
+          entry.url = URL.createObjectURL(new Blob([bytes]));
+          this.evict();
+          return entry.url;
+        }),
+        // An avatar is decorative — on failure fall back to initials (null), and drop the
+        // cache entry so a transient failure can be retried, but not before the cooldown.
+        catchError(() => {
+          // A failure from a released entry says nothing about a newer one for this key.
+          if (this.cache.get(key) === entry) {
+            this.cache.delete(key);
+            this.retryAfter.set(key, Date.now() + FAILURE_COOLDOWN_MS);
+          }
+          return of<string | null>(null);
+        }),
+        shareReplay(1),
+      ),
+    };
+    this.cache.set(key, entry);
+    return entry;
+  }
+
+  /** Revoke least recently used unheld URLs until at most {@link AVATAR_CACHE_LIMIT} remain. */
+  private evict(): void {
+    let resolved = 0;
+    for (const { url } of this.cache.values()) {
+      resolved += url ? 1 : 0;
+    }
+    for (const [key, entry] of this.cache) {
+      if (resolved <= AVATAR_CACHE_LIMIT) {
+        return;
+      }
+      if (entry.url && entry.holders === 0) {
+        this.cache.delete(key);
+        URL.revokeObjectURL(entry.url);
+        resolved--;
+      }
+    }
   }
 }
