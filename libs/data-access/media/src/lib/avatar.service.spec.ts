@@ -357,6 +357,29 @@ describe('AvatarService', () => {
     await firstValueFrom(svc.resolve('mxc://hs/abc'));
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('releaseUnpinned revokes only avatars no subscriber is showing', async () => {
+    const { svc } = setup();
+    let shownUrl: string | null = null;
+    const shown = svc.resolve('mxc://hs/shown').subscribe((url) => {
+      shownUrl = url;
+    });
+    await vi.waitFor(() => expect(shownUrl).not.toBeNull());
+    const unused = await firstValueFrom(svc.resolve('mxc://hs/unused'));
+    fetchMock.mockClear();
+
+    svc.releaseUnpinned();
+
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith(unused);
+    // The held avatar is still cached; the released one fetches again.
+    await expect(firstValueFrom(svc.resolve('mxc://hs/shown'))).resolves.toBe(
+      shownUrl,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    await firstValueFrom(svc.resolve('mxc://hs/unused'));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    shown.unsubscribe();
+  });
 });
 
 // In the mixed-account view a row can belong to a signed-in account that isn't active.

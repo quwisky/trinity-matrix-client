@@ -362,6 +362,20 @@ export class MediaService {
     }
   }
 
+  /**
+   * Revoke every cached URL that is not on screen, so a hidden app holds only what it
+   * shows. Unlike {@link releaseAll}, in-flight work and pins survive: the next use of a
+   * released source simply fetches it again.
+   */
+  releaseUnpinned(): void {
+    for (const [key, entry] of this.cache) {
+      if (this.pinned.has(entry.url)) continue;
+      this.cache.delete(key);
+      this.cachedBytes -= entry.bytes;
+      URL.revokeObjectURL(entry.url);
+    }
+  }
+
   /** Revoke every cached object URL and clear the cache (room close / logout). */
   releaseAll(): void {
     // Cancel in-flight resolutions first: with shareReplay(refCount:false) their

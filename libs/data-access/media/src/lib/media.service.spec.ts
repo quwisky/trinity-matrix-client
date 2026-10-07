@@ -950,6 +950,45 @@ describe('MediaService', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('releaseUnpinned drops unpinned entries and keeps pinned ones resolvable from cache', async () => {
+    const { svc } = setup();
+    const pinned = await firstValueFrom(
+      svc.resolveMedia(plainMedia('mxc://hs/on-screen'), 'full'),
+    );
+    svc.pin(pinned);
+    const offScreen = await firstValueFrom(
+      svc.resolveMedia(plainMedia('mxc://hs/off-screen'), 'full'),
+    );
+    fetchMock.mockClear();
+
+    svc.releaseUnpinned();
+
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith(offScreen);
+    // The pinned entry is still cached: resolving it again neither refetches nor changes URL.
+    await expect(
+      firstValueFrom(
+        svc.resolveMedia(plainMedia('mxc://hs/on-screen'), 'full'),
+      ),
+    ).resolves.toBe(pinned);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // The released one is fetched again on its next use.
+    await firstValueFrom(
+      svc.resolveMedia(plainMedia('mxc://hs/off-screen'), 'full'),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('releaseUnpinned lets in-flight resolutions finish', async () => {
+    const { svc } = setup();
+    const pending = firstValueFrom(
+      svc.resolveMedia(plainMedia('mxc://hs/loading'), 'full'),
+    );
+
+    svc.releaseUnpinned();
+
+    await expect(pending).resolves.toMatch(/^blob:/);
+  });
+
   it('downloadMedia returns the full bytes paired with the filename', async () => {
     const { svc } = setup();
     const media = plainMedia('mxc://hs/doc');
