@@ -278,11 +278,15 @@ test.describe('System status on a mobile OS', () => {
     await expect(surface).toHaveAttribute('data-trn-layout', 'sheet');
     await expect(dialog.getByTestId('sheet-handle')).toBeVisible();
     await expect(surface).toHaveCSS('border-bottom-left-radius', '0px');
-    const box = await surface.boundingBox();
-    expect(box).not.toBeNull();
-    expect(
-      Math.abs((box?.y ?? 0) + (box?.height ?? 0) - profile.viewport.height),
-    ).toBeLessThanOrEqual(1);
+    // The sheet slides up on entry; it is seated once its bottom edge meets the viewport.
+    await expect
+      .poll(async () => {
+        const box = await surface.boundingBox();
+        return Math.abs(
+          (box?.y ?? 0) + (box?.height ?? 0) - profile.viewport.height,
+        );
+      })
+      .toBeLessThanOrEqual(1);
     const back = dialog.getByRole('button', { name: 'Back to sections' });
     const directory = dialog.getByRole('navigation', {
       name: 'System status sections',
