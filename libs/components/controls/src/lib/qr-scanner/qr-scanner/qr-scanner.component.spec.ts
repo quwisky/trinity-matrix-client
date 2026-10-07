@@ -123,4 +123,39 @@ describe('QrScannerComponent', () => {
     expect(container.querySelector('video')!.srcObject).toBeNull();
     expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
   });
+
+  it('shows a friendly error and stops the camera when the QR library fails to load', async () => {
+    const stream = { getTracks: () => [] } as unknown as MediaStream;
+    const closeCamera = vi.fn();
+    const load = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new TypeError('Failed to fetch dynamically imported module: /chunk.js'),
+      )
+      .mockResolvedValue({});
+    const { container, fixture } = await render(QrScannerComponent, {
+      providers: [
+        MockProvider(QrCodeService, {
+          openCamera: vi.fn().mockResolvedValue(stream),
+          closeCamera,
+          load,
+        }),
+      ],
+    });
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.status()).toBe('error'),
+    );
+    await fixture.whenStable();
+
+    expect(container.textContent).toContain('QR scanner couldn’t be loaded');
+    expect(container.textContent).not.toContain('dynamically imported');
+    expect(closeCamera).toHaveBeenCalledWith(stream);
+
+    fireEvent.click(container.querySelector('button')!);
+
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.status()).toBe('scanning'),
+    );
+    expect(load).toHaveBeenCalledTimes(2);
+  });
 });

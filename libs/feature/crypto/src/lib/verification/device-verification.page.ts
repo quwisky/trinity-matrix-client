@@ -116,12 +116,12 @@ export class DeviceVerificationPage {
     this.run(this.verification.startSas());
   }
   showQr(): void {
-    const request = ++this.qrRequest;
     runWithBusy(this.verification.showQr(), {
       busy: this.busy,
       error: this.error,
       destroyRef: this.destroyRef,
     }).subscribe((data) => {
+      const request = ++this.qrRequest;
       this.qrCode
         .createDataUrl(data)
         .then((url) => {
@@ -129,7 +129,11 @@ export class DeviceVerificationPage {
             this.qrCodeUrl.set(url);
           }
         })
-        .catch(() => this.error.set('Couldn’t render the QR code.'));
+        .catch(() => {
+          if (request === this.qrRequest) {
+            this.error.set('Couldn’t render the QR code.');
+          }
+        });
     });
   }
   hideQr(): void {

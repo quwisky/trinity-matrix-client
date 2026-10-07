@@ -11,7 +11,7 @@ import {
   TrustVerificationService,
   type VerificationView,
 } from '@trinity/data-access/trust';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { DeviceVerificationPage } from './device-verification.page';
 
@@ -250,6 +250,54 @@ describe('DeviceVerificationPage', () => {
     await fixture.whenStable();
 
     expect(fixture.componentInstance.qrCodeUrl()).toBeNull();
+  });
+
+  it('still shows the code when the request is republished while it renders', async () => {
+    const active = signal(view({ stage: 'ready', qrShowAvailable: true }));
+    const { fixture, svc } = await renderPage(active);
+    const data = new Subject<Uint8ClampedArray>();
+    vi.mocked(svc.showQr).mockReturnValue(data);
+
+    fixture.componentInstance.showQr();
+    active.set(view({ stage: 'ready', qrShowAvailable: true }));
+    fixture.detectChanges();
+    active.set(view({ stage: 'qr-shown' }));
+    fixture.detectChanges();
+    data.next(new Uint8ClampedArray([1, 2, 3]));
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.qrCodeUrl()).not.toBeNull();
+  });
+
+  it('reports a failed render while its code is still wanted', async () => {
+    const active = signal(view({ stage: 'ready', qrShowAvailable: true }));
+    const { fixture } = await renderPage(active);
+    vi.mocked(TestBed.inject(QrCodeService).createDataUrl).mockRejectedValue(
+      new Error('boom'),
+    );
+
+    fixture.componentInstance.showQr();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.error()).toBe(
+      'Couldn’t render the QR code.',
+    );
+  });
+
+  it('does not report a render that failed after the code was hidden', async () => {
+    const active = signal(view({ stage: 'ready', qrShowAvailable: true }));
+    const { fixture } = await renderPage(active);
+    let rejectUrl!: (error: Error) => void;
+    vi.mocked(TestBed.inject(QrCodeService).createDataUrl).mockReturnValue(
+      new Promise((_, reject) => (rejectUrl = reject)),
+    );
+
+    fixture.componentInstance.showQr();
+    fixture.componentInstance.hideQr();
+    rejectUrl(new Error('boom'));
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.error()).toBeNull();
   });
 
   it('passes decoded scanner bytes to the verification service', async () => {
