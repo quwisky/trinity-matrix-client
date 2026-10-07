@@ -94,13 +94,12 @@ const THUMBNAIL_ALPHA_MIME = 'image/webp';
  */
 const DECRYPTED_THUMBNAIL_PX = 640;
 
-/** Types that may be animated, or are vector: shown as sent, never rasterized. */
-const NEVER_DOWNSCALED_MIMES = new Set([
-  'image/gif',
-  'image/webp',
-  'image/apng',
-  'image/svg+xml',
-]);
+/**
+ * The only types a thumbnail is rendered from. Anything else (GIF, WebP, AVIF, HEIF,
+ * SVG, BMP, ICO, TIFF, ...) may be animated, vector, or carry an alpha channel that a
+ * JPEG re-encode would flatten to black, so it is shown as sent.
+ */
+const DOWNSCALED_MIMES = new Set(['image/jpeg', 'image/jpg', 'image/png']);
 
 /** How long to wait for an audio/video element to report its metadata. */
 const METADATA_TIMEOUT_MS = 5000;
@@ -402,7 +401,7 @@ export class MediaService {
         file: media.file,
         mimeType: media.mimeType,
         resize: media.file ? null : { w: THUMBNAIL_PX, h: THUMBNAIL_PX },
-        ...(media.file && isDownscalable(media.mimeType)
+        ...(media.file && needsDownscale(media)
           ? { downscaleTo: DECRYPTED_THUMBNAIL_PX }
           : {}),
       };
@@ -650,10 +649,27 @@ async function renderThumbnail(
   return blob ? { blob, w, h } : null;
 }
 
-/** Whether a still raster image of this type may be shrunk for its thumbnail. */
-function isDownscalable(mimeType: string): boolean {
-  const mime = mimeType.toLowerCase();
-  return mime.startsWith('image/') && !NEVER_DOWNSCALED_MIMES.has(mime);
+/** Whether an attachment is a JPEG/PNG the event does not already say fits the thumbnail. */
+function needsDownscale({ mimeType, width, height }: MediaPayload): boolean {
+  const known = width && height ? Math.max(width, height) : Infinity;
+  return (
+    DOWNSCALED_MIMES.has(mimeType.toLowerCase()) &&
+    known > DECRYPTED_THUMBNAIL_PX
+  );
+}
+
+/** Whether PNG bytes carry an `acTL` (animation control) chunk before the first `IDAT`. */
+function isAnimatedPng(bytes: ArrayBuffer): boolean {
+  const view = new DataView(bytes);
+  for (let at = 8; at + 8 <= view.byteLength;) {
+    const type = String.fromCharCode(
+      ...new Uint8Array(bytes, at + 4, 4), // chunk header: 4-byte length, 4-byte type
+    );
+    if (type === 'acTL') return true;
+    if (type === 'IDAT') return false;
+    at += 12 + view.getUint32(at); // header + data + CRC
+  }
+  return false;
 }
 
 /**
@@ -667,7 +683,11 @@ async function downscaleImage(blob: Blob, maxEdge: number): Promise<Blob> {
   }
   let decoded: ImageBitmap | undefined;
   let resized: ImageBitmap | undefined;
+  const isPng = blob.type.toLowerCase() === 'image/png';
   try {
+    if (isPng && isAnimatedPng(await blob.arrayBuffer())) {
+      return blob; // an animated PNG would freeze on its first frame
+    }
     // `from-image` applies EXIF orientation, as in analyzeImage.
     decoded = await createImageBitmap(blob, { imageOrientation: 'from-image' });
     const { w, h } = fitWithin(decoded.width, decoded.height, maxEdge);
@@ -679,9 +699,16 @@ async function downscaleImage(blob: Blob, maxEdge: number): Promise<Blob> {
       resizeHeight: h,
       resizeQuality: 'high',
     });
-    const type =
-      blob.type === 'image/png' ? THUMBNAIL_ALPHA_MIME : THUMBNAIL_MIME;
-    return (await encodeBitmap(resized, w, h, type)) ?? blob;
+    // The full-size bitmap is the big one: free it before the encode, not after.
+    decoded.close();
+    decoded = undefined;
+    const encoded = await encodeBitmap(
+      resized,
+      w,
+      h,
+      isPng ? THUMBNAIL_ALPHA_MIME : THUMBNAIL_MIME,
+    );
+    return encoded && encoded.size < blob.size ? encoded : blob;
   } catch {
     return blob;
   } finally {
