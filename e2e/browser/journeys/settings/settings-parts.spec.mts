@@ -9,6 +9,9 @@ test.describe('Settings parts', () => {
   test('deep-links to a part, scrolls on click, and follows the scroll', async ({
     page,
   }) => {
+    // Short enough that Timeline can scroll to the top; on a taller window the last
+    // parts share the end of the page and the spy rightly reports the last one.
+    await page.setViewportSize({ width: 1280, height: 400 });
     await page.goto('/settings/appearance#timeline');
     const timeline = page.locator('#part-timeline');
     await expect(timeline).toBeInViewport({ timeout: 20_000 });
@@ -65,5 +68,31 @@ test.describe('Settings parts', () => {
     const box = await chips.boundingBox();
     expect(box?.y ?? -1).toBeGreaterThanOrEqual(0);
     expect(box?.y ?? Infinity).toBeLessThan(120);
+  });
+
+  test('uses the full phone width with the close button in the top bar', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/settings/appearance');
+    const back = page.getByRole('button', { name: 'Back to sections' });
+    const close = page.getByRole('button', { name: 'Close settings' });
+    await expect(close).toBeVisible({ timeout: 20_000 });
+    const [backBox, closeBox] = await Promise.all([
+      back.boundingBox(),
+      close.boundingBox(),
+    ]);
+    expect(
+      Math.abs(
+        (backBox?.y ?? 0) +
+          (backBox?.height ?? 0) / 2 -
+          ((closeBox?.y ?? 0) + (closeBox?.height ?? 0) / 2),
+      ),
+    ).toBeLessThan(8);
+    const row = page.locator('[data-slot="settings-row"]').first();
+    const rowBox = await row.boundingBox();
+    const left = rowBox?.x ?? 0;
+    const right = 390 - left - (rowBox?.width ?? 0);
+    expect(Math.abs(left - right)).toBeLessThan(2);
   });
 });

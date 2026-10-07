@@ -7,10 +7,10 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
   host: {
     'data-slot': 'settings-row',
     class:
-      'grid grid-cols-[1fr_auto] items-center gap-4 border-b border-[var(--trinity-border-subtle)] py-3 max-sm:grid-cols-1',
+      'flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[var(--trinity-border-subtle)] py-3',
   },
   template: `
-    <div class="min-w-0">
+    <div class="min-w-0 flex-[1_1_12rem]">
       @if (for()) {
         <label
           [for]="for()"
@@ -35,7 +35,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
         </p>
       }
     </div>
-    <div><ng-content /></div>
+    <div class="ms-auto max-w-full min-w-0"><ng-content /></div>
   `,
 })
 export class TrnSettingsRowComponent {

@@ -103,18 +103,23 @@
       [attr.data-testid]="resolvedDetailTestId()"
     >
       <div class="settings-layout__column">
-        @if (compact() && !directoryVisible() && selectedSection()) {
-          <button
-            trnBtn
-            presentation="ghost"
-            shape="icon"
-            size="md"
-            aria-label="Back to sections"
-            [attr.data-testid]="testId() + '-mobile-back'"
-            (click)="backRequested.emit()"
-          >
-            <trn-icon name="arrow-left" motion="nudge-left" />
-          </button>
+        @if (compact() && !listView()) {
+          <div class="settings-layout__topbar">
+            @if (selectedSection()) {
+              <button
+                trnBtn
+                presentation="ghost"
+                shape="icon"
+                size="md"
+                aria-label="Back to sections"
+                [attr.data-testid]="testId() + '-mobile-back'"
+                (click)="backRequested.emit()"
+              >
+                <trn-icon name="arrow-left" motion="nudge-left" />
+              </button>
+            }
+            <ng-container [ngTemplateOutlet]="closeButton" />
+          </div>
         }
         <ng-content select="[settings-context]" />
         <ng-content select="[settings-warning]" />
@@ -143,7 +148,7 @@
         }
         <ng-content />
       </div>
-      @if (!listView()) {
+      @if (!listView() && !compact()) {
         <ng-container [ngTemplateOutlet]="closeButton" />
       }
     </section>

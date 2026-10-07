@@ -94,6 +94,44 @@ describe('TrnSettingsLayoutComponent', () => {
     expect(container.querySelector('nav')).toHaveClass('settings-pane--hidden');
   });
 
+  it('puts the close button in the compact top bar beside Back', async () => {
+    const compact = await render(TrnSettingsLayoutComponent, {
+      inputs: {
+        title: 'Settings',
+        sections,
+        selectedSection: 'general',
+        compact: true,
+        directoryVisible: false,
+      },
+      providers: [provideTrnIcons()],
+    });
+    const bar = compact.container.querySelector('.settings-layout__topbar');
+    expect(bar).toBeTruthy();
+    expect(bar?.querySelector('[aria-label="Back to sections"]')).toBeTruthy();
+    expect(
+      bar?.querySelector(
+        '[data-testid="settings-close"], .settings-layout__close',
+      ),
+    ).toBeTruthy();
+    expect(
+      compact.getByRole('button', { name: 'Close settings' }),
+    ).toBeTruthy();
+    expect(
+      compact.container.querySelectorAll('.settings-layout__close'),
+    ).toHaveLength(1);
+  });
+
+  it('keeps the close button beside the column, not in a top bar, when wide', async () => {
+    const wide = await render(TrnSettingsLayoutComponent, {
+      inputs: { title: 'Settings', sections, selectedSection: 'general' },
+      providers: [provideTrnIcons()],
+    });
+    expect(wide.container.querySelector('.settings-layout__topbar')).toBeNull();
+    expect(
+      wide.container.querySelectorAll('.settings-layout__close'),
+    ).toHaveLength(1);
+  });
+
   describe('full-screen layer', () => {
     const css = readFileSync(
       join(import.meta.dirname, 'trn-settings-layout.component.scss'),

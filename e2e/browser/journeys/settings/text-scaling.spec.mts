@@ -563,7 +563,8 @@ test.describe('Code line numbers', () => {
     expect(sectionClose.right).toBeLessThanOrEqual(viewport.width + 1);
     expect(
       titleBox.right <= sectionClose.x + 1 ||
-        titleBox.bottom <= sectionClose.y + 1,
+        titleBox.bottom <= sectionClose.y + 1 ||
+        titleBox.y >= sectionClose.bottom - 1,
     ).toBe(true);
     expect(
       await page

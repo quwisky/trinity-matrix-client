@@ -75,4 +75,19 @@ describe('TrnSettingsRowComponent', () => {
       [],
     );
   });
+
+  it('wraps instead of stacking: the label flexes and the control stays at the end', async () => {
+    const { fixture } = await render(TrnSettingsRowComponent, {
+      inputs: { label: 'Theme' },
+    });
+    const row = fixture.nativeElement as HTMLElement;
+    expect(row.classList.contains('flex')).toBe(true);
+    expect(row.classList.contains('flex-wrap')).toBe(true);
+    expect(row.className).not.toContain('grid-cols');
+    expect(row.className).not.toContain('max-sm:');
+    const [label, control] = Array.from(row.children) as HTMLElement[];
+    expect(label.className).toContain('flex-[1_1_12rem]');
+    expect(control.className).toContain('ms-auto');
+    expect(control.className).toContain('max-w-full');
+  });
 });

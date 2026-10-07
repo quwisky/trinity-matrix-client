@@ -289,10 +289,24 @@
     padding-block-start: max(var(--trinity-space-4), env(safe-area-inset-top));
   }
 
-  .settings-layout[data-compact='true'] .settings-layout__close {
-    inset-block-start: max(var(--trinity-space-4), env(safe-area-inset-top));
-    margin-block-start: max(var(--trinity-space-4), env(safe-area-inset-top));
-    margin-inline: 0 var(--trinity-space-3);
+  .settings-layout__topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-block-end: var(--trinity-space-2);
+  }
+
+  .settings-layout[data-compact='true']
+    .settings-layout__topbar
+    .settings-layout__close {
+    position: static;
+    margin: 0 0 0 auto;
+  }
+
+  .settings-layout[data-compact='true']
+    .settings-layout__topbar
+    .settings-layout__close-caption {
+    display: none;
   }
 
   .settings-layout[data-compact='true']
