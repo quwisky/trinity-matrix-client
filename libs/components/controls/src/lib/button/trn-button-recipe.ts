@@ -8,7 +8,7 @@ export type TrnButtonVariant = Extract<
 >;
 export type TrnButtonSize = Extract<TrnSize, 'xs' | 'sm' | 'md' | 'lg'>;
 export type TrnButtonPresentation = 'solid' | 'outline' | 'ghost' | 'link';
-export type TrnButtonShape = 'label' | 'icon';
+export type TrnButtonShape = 'label' | 'icon' | 'row';
 
 interface TrnButtonRecipeOptions {
   presentation: TrnButtonPresentation;
@@ -79,6 +79,9 @@ const nonSolidTone = {
 const focusRing =
   'focus-visible:border-[color:var(--trinity-focus-ring)] focus-visible:ring-[color:var(--trinity-focus-ring)] dark:focus-visible:ring-[color:var(--trinity-focus-ring)]';
 
+/** A full-width list row: the label starts at the inline start and wraps instead of clipping. */
+const rowShape = 'h-auto w-full justify-start text-start whitespace-normal';
+
 /**
  * A private adapter from Trinity concepts to the current Helm class substrate.
  *
@@ -99,5 +102,10 @@ export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
         : ''
       : nonSolidTone[options.variant][options.presentation];
 
-  return hlm(buttonVariants({ variant, size }), tone, focusRing);
+  return hlm(
+    buttonVariants({ variant, size }),
+    options.shape === 'row' ? rowShape : '',
+    tone,
+    focusRing,
+  );
 }
