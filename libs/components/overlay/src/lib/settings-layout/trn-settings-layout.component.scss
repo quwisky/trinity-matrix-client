@@ -8,6 +8,10 @@
     min-block-size: 0;
     background: var(--trinity-surface-app);
 
+    // A full-screen dialog sits in the overlay container, outside the app root, so the
+    // layout gives its own text colour as the dialog shell's surface does.
+    color: var(--trinity-text-bright);
+
     // The Discord-style top and side gutters of the content column.
     --settings-layout-inset: 60px;
     --settings-layout-gutter: 40px;

@@ -124,6 +124,28 @@ test.describe('Settings directory search', () => {
     expect(clipped).toBe(false);
   });
 
+  test('a full-screen phone dialog draws part results in the theme text colour', async ({
+    page,
+  }) => {
+    await page.goto('/settings/appearance');
+    await page.getByTestId('mode-dark').click();
+    await expect(page.locator('html')).toHaveClass(/dark/);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await openSettingsFromRooms(page);
+    await search(page).fill('code');
+    const result = page.getByRole('button', {
+      name: 'Appearance › Code blocks',
+      exact: true,
+    });
+    await expect(result).toBeVisible();
+    // The overlay sits outside the app root, so the layout has to give its own text
+    // colour; without it the result inherits the document's black.
+    const heading = page.locator('.settings-layout__list-head h1');
+    const bright = await heading.evaluate((el) => getComputedStyle(el).color);
+    await expect(result).toHaveCSS('color', bright);
+  });
+
   test.describe('Pixel 5 routed history', () => {
     test.use({
       viewport: devices['Pixel 5'].viewport,
