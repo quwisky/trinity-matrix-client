@@ -7,6 +7,9 @@ const LOG_DIR = join(ROOT, 'dist', '.ci');
 
 export { runCommand };
 
+// A stalled mirror can hang apt for tens of minutes: bound each install attempt and retry once.
+const INSTALL_ATTEMPT_MS = 6 * 60 * 1000;
+
 export async function runPrerequisites({
   root = ROOT,
   logDir = LOG_DIR,
@@ -50,9 +53,22 @@ export async function runPrerequisites({
       mandatory: true,
     },
   ];
+  const start = (spec, limit = timeoutMs) =>
+    run({ ...spec, cwd: root, logDir, timeoutMs: limit, abortSignal });
+  const installWithRetry = async (spec) => {
+    const first = await start(spec, INSTALL_ATTEMPT_MS);
+    const rc = resultExitCode(first);
+    if (rc === 0 || first.aborted) return first;
+    console.warn(
+      `::warning::playwright install attempt 1 failed (rc=${rc}); retrying`,
+    );
+    return start(spec, INSTALL_ATTEMPT_MS);
+  };
   const results = await Promise.all(
     commands.map((spec) =>
-      run({ ...spec, cwd: root, logDir, timeoutMs, abortSignal }),
+      spec.label === 'playwright-install'
+        ? installWithRetry(spec)
+        : start(spec),
     ),
   );
   const [playwright, docker, build] = results;

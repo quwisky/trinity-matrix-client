@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runCommand, runPrerequisites } from './ci-prerequisites.mjs';
 
 const tempDirs = [];
@@ -177,4 +177,75 @@ describe('runPrerequisites', () => {
       ]);
     },
   );
+
+  describe('playwright-install attempts', () => {
+    const sixMinutes = 6 * 60 * 1000;
+    const attempts = async (exitCodes, extra = {}) => {
+      const calls = [];
+      const warnings = [];
+      const warn = vi.spyOn(console, 'warn').mockImplementation((line) => {
+        warnings.push(line);
+      });
+      try {
+        const outcome = await runPrerequisites({
+          logDir: makeLogDir(),
+          timeoutMs: 1234,
+          run: async (spec) => {
+            calls.push(spec);
+            const install = spec.label === 'playwright-install';
+            const exitCode = install ? (exitCodes.shift() ?? 0) : 0;
+            return {
+              label: spec.label,
+              exitCode,
+              signal: null,
+              timedOut: install && exitCode === 124,
+              aborted: false,
+              ...extra,
+            };
+          },
+        });
+        return { outcome, calls, warnings };
+      } finally {
+        warn.mockRestore();
+      }
+    };
+
+    it('bounds each attempt to six minutes and keeps the other timeouts', async () => {
+      const { calls } = await attempts([0]);
+      const byLabel = Object.fromEntries(
+        calls.map(({ label, timeoutMs }) => [label, timeoutMs]),
+      );
+      expect(byLabel).toEqual({
+        'playwright-install': sixMinutes,
+        'docker-pull': 1234,
+        'development-build': 1234,
+      });
+    });
+
+    it('retries once after a failed attempt and logs the retry', async () => {
+      const { outcome, calls, warnings } = await attempts([23, 0]);
+      expect(
+        calls.filter(({ label }) => label === 'playwright-install'),
+      ).toHaveLength(2);
+      expect(outcome.exitCode).toBe(0);
+      expect(warnings).toContain(
+        '::warning::playwright install attempt 1 failed (rc=23); retrying',
+      );
+    });
+
+    it('reports the second attempt when both fail, including a timeout', async () => {
+      const { outcome, calls } = await attempts([23, 124, 0]);
+      expect(
+        calls.filter(({ label }) => label === 'playwright-install'),
+      ).toHaveLength(2);
+      expect(outcome.exitCode).toBe(124);
+    });
+
+    it('does not retry a cancelled install', async () => {
+      const { calls } = await attempts([143], { aborted: true });
+      expect(
+        calls.filter(({ label }) => label === 'playwright-install'),
+      ).toHaveLength(1);
+    });
+  });
 });

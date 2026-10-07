@@ -1,4 +1,5 @@
 /** Playwright's host packages come from an actions cache so a slow mirror cannot time the install out. */
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
@@ -54,5 +55,51 @@ describe('setup-playwright apt archive cache', () => {
     );
     expect(steps.indexOf(prepare)).toBeLessThan(aptCache);
     expect(prepare.run).toContain('Keep-Downloaded-Packages');
+  });
+});
+
+describe('setup-playwright install attempts', () => {
+  const install = steps.find((step) =>
+    String(step.run ?? '').includes('playwright install'),
+  );
+
+  it('bounds each attempt to six minutes and retries once', () => {
+    expect(install.run).toMatch(
+      /timeout (-k \d+ )?360 pnpm exec playwright install/,
+    );
+    expect(install.run).toContain(
+      '::warning::playwright install attempt 1 failed (rc=$rc); retrying',
+    );
+    expect(install.run).toMatch(/for attempt in 1 2/);
+    // The second attempt's status is the step's status.
+    expect(install.run).toMatch(/exit "\$rc"/);
+  });
+
+  it('fails with the second attempt exit status when both attempts fail', () => {
+    const script = install.run.replace(
+      /timeout (-k \d+ )?360 pnpm exec playwright install/g,
+      'fake-install',
+    );
+    const run = (counterStart) =>
+      spawnSync(
+        'bash',
+        [
+          '-c',
+          `fake-install() { n=$((n+1)); [ $n -le ${counterStart} ] && return $((n+40)); return 0; }; ${script}`,
+        ],
+        {
+          env: {
+            ...process.env,
+            PLAYWRIGHT_BROWSERS: 'chromium',
+            WITH_DEPS: 'true',
+          },
+          encoding: 'utf8',
+        },
+      );
+    expect(run(0).status).toBe(0);
+    const once = run(1);
+    expect(once.status).toBe(0);
+    expect(once.stdout).toContain('attempt 1 failed (rc=41); retrying');
+    expect(run(2).status).toBe(42);
   });
 });

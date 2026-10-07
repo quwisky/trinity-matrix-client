@@ -43,4 +43,13 @@ runs:
         PLAYWRIGHT_BROWSERS: ${{ inputs.browsers }}
       run: |
         read -r -a browsers <<< "$PLAYWRIGHT_BROWSERS"
-        pnpm exec playwright install --with-deps "${browsers[@]}"
+        # A stalled mirror made this step hang for tens of minutes: bound each attempt, retry once.
+        for attempt in 1 2; do
+          rc=0
+          timeout -k 10 360 pnpm exec playwright install --with-deps "${browsers[@]}" || rc=$?
+          if [ "$rc" -eq 0 ]; then exit 0; fi
+          if [ "$attempt" -eq 1 ]; then
+            echo "::warning::playwright install attempt 1 failed (rc=$rc); retrying"
+          fi
+        done
+        exit "$rc"
