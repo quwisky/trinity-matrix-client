@@ -60,6 +60,69 @@
     background: var(--trinity-media-matte);
   }
 
+  // The still a video shows until it is played: one button, so the whole poster is the target.
+  .media--poster {
+    position: relative;
+    overflow: hidden;
+    min-height: 8rem;
+    background: var(--trinity-media-matte);
+    color: var(--trinity-text);
+  }
+
+  .media--poster .media__img,
+  .media__placeholder {
+    position: absolute;
+    inset: 0;
+  }
+
+  .media__placeholder {
+    background: var(--trinity-surface-raised);
+  }
+
+  .media__play {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    height: fit-content;
+
+    // The icon sets the size, not `--trinity-interaction-target-min-size`: that token is 0 for
+    // a fine pointer and only 44px under touch, which would collapse the circle on desktop.
+    padding: var(--trinity-space-4);
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-accent);
+    color: var(--trinity-accent-foreground);
+    transition: background-color var(--trinity-duration-fast)
+      var(--trinity-ease-standard);
+  }
+
+  .media--poster:hover .media__play {
+    background: var(--trinity-accent-hover);
+  }
+
+  // Opaque surface tokens rather than a tint over the poster: the label must stay readable
+  // over any still in either theme.
+  .media__badge {
+    position: absolute;
+    inset-block-end: var(--trinity-space-3);
+    inset-inline-start: var(--trinity-space-3);
+    padding: var(--trinity-space-1) var(--trinity-space-3);
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-surface-raised);
+    color: var(--trinity-text);
+    font-size: var(--trinity-type-metadata-size);
+    font-variant-numeric: var(--trinity-type-metadata-numeric);
+    font-weight: var(--trinity-type-metadata-weight);
+    line-height: var(--trinity-type-metadata-line-height);
+
+    &:empty {
+      display: none;
+    }
+  }
+
   .media--file {
     display: flex;
     align-items: center;

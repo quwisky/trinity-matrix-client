@@ -7,9 +7,10 @@ import {
   inject,
   input,
   signal,
+  type WritableSignal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Subscription } from 'rxjs';
+import { EMPTY, Subscription, catchError } from 'rxjs';
 import { BELOW_MD_QUERY, matchesQuery, runWithBusy } from '@trinity/util/ui';
 import { MediaBubbleComponent } from '../media-bubble/media-bubble.component';
 import {
@@ -28,6 +29,10 @@ import { LightboxComponent } from './lightbox/lightbox.component';
  * {@link MediaBubbleComponent}: resolves the thumbnail object URL via
  * {@link MediaPipeline}, pins it on screen so
  * the cache won't revoke it, and drives full-resolution view + download.
+ *
+ * A video or audio clip is the exception to "resolve on render": the whole file would be
+ * fetched, decrypted and pinned for every row on screen, so only a video's bundled thumbnail
+ * (its poster) is resolved up front and the clip itself waits for {@link play}.
  */
 @Component({
   selector: 'trn-media-attachment',
@@ -44,6 +49,8 @@ export class MediaAttachmentComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly src = signal<string | null>(null);
+  /** A video's bundled thumbnail, shown behind its play button until the clip is played. */
+  readonly poster = signal<string | null>(null);
   readonly loading = signal(false);
   readonly errorMsg = signal<string | null>(null);
   readonly hasError = computed(() => this.errorMsg() !== null);
@@ -52,7 +59,8 @@ export class MediaAttachmentComponent {
   private pinnedUrl: string | null = null;
   /** Currently-pinned full-resolution URL while the lightbox is open. */
   private lightboxPinnedUrl: string | null = null;
-  private thumbnailSub?: Subscription;
+  /** The poster or full-file resolve in flight; at most one, so a late poster cannot unpin a clip. */
+  private mediaSub?: Subscription;
   private lightboxRef: TrnDialogRef<void> | null = null;
   /**
    * Whether a lightbox is open or on its way.
@@ -71,8 +79,9 @@ export class MediaAttachmentComponent {
     // across `@for` rows, so each new `media` re-fetches and re-pins.
     effect(() => {
       const media = this.media();
-      this.thumbnailSub?.unsubscribe();
+      this.mediaSub?.unsubscribe();
       this.src.set(null);
+      this.poster.set(null);
       this.errorMsg.set(null);
       this.repin(null);
       // Note what is NOT here any more: a force-close of the lightbox. While it rendered
@@ -81,29 +90,28 @@ export class MediaAttachmentComponent {
       // an unrelated button. An overlay is not inside the row — it holds its own URL, pinned
       // for as long as it is open — so a message arriving under it is no longer its problem,
       // and the image the reader opened stays open.
-      // A file card is a pure download affordance — it never binds `src`. Skip
-      // thumbnail resolution for it: otherwise an encrypted file would be fetched
-      // and fully AES-decrypted into pinned memory on every render, just to be
-      // discarded (an OOM/privacy hazard when scrolling a room of attachments).
-      if (media.kind === 'file') {
-        return;
+      // A file card is a pure download affordance — it never binds `src`, so it resolves
+      // nothing: an encrypted file would otherwise be fetched and fully AES-decrypted into
+      // pinned memory on every render, just to be discarded (an OOM/privacy hazard when
+      // scrolling a room of attachments). Video and audio get the same treatment below.
+      if (media.kind === 'image') {
+        // Only an image may stand in with its thumbnail: a <video>/<audio> plays its src, and a
+        // bundled thumbnail is a still JPEG.
+        this.mediaSub = this.resolveInto(media, 'thumbnail', this.src);
+      } else if (media.kind === 'video' && media.hasThumbnail) {
+        // Never the 'thumbnail' variant without a bundled one: it would resolve the whole video.
+        // A missing or broken poster is cosmetic, so its failure is not the bubble's error.
+        this.mediaSub = this.mediaPipeline
+          .resolveMedia(media, 'thumbnail')
+          .pipe(
+            takeUntilDestroyed(this.destroyRef),
+            catchError(() => EMPTY),
+          )
+          .subscribe((url) => {
+            this.repin(url);
+            this.poster.set(url);
+          });
       }
-      // Only an image may stand in with its thumbnail. A <video>/<audio> plays its src, and a
-      // bundled thumbnail is a still JPEG — binding it left videos with a thumbnail unplayable.
-      this.thumbnailSub = runWithBusy(
-        this.mediaPipeline.resolveMedia(
-          media,
-          media.kind === 'image' ? 'thumbnail' : 'full',
-        ),
-        {
-          busy: this.loading,
-          error: this.errorMsg,
-          destroyRef: this.destroyRef,
-        },
-      ).subscribe((url) => {
-        this.repin(url);
-        this.src.set(url);
-      });
     });
 
     this.destroyRef.onDestroy(() => {
@@ -113,6 +121,21 @@ export class MediaAttachmentComponent {
       // image still on screen.
       this.closeLightbox();
     });
+  }
+
+  /** Load a video or audio clip on the reader's first press of play; the bubble then plays it. */
+  play(): void {
+    const { kind } = this.media();
+    if (
+      (kind !== 'video' && kind !== 'audio') ||
+      this.src() ||
+      this.loading()
+    ) {
+      return;
+    }
+    // Replaces any poster still in flight; the full URL takes over the single pin below.
+    this.mediaSub?.unsubscribe();
+    this.mediaSub = this.resolveInto(this.media(), 'full', this.src);
   }
 
   /** Open the full-resolution image over the app, in a modal dialog. */
@@ -172,6 +195,22 @@ export class MediaAttachmentComponent {
   /** Save the full-resolution attachment — native share sheet or web download. */
   download(): void {
     this.mediaSave.save(this.media());
+  }
+
+  /** Resolve one rendition with the busy/error convention, pinning and publishing the URL. */
+  private resolveInto(
+    media: PresentedMediaReference,
+    variant: 'thumbnail' | 'full',
+    target: WritableSignal<string | null>,
+  ): Subscription {
+    return runWithBusy(this.mediaPipeline.resolveMedia(media, variant), {
+      busy: this.loading,
+      error: this.errorMsg,
+      destroyRef: this.destroyRef,
+    }).subscribe((url) => {
+      this.repin(url);
+      target.set(url);
+    });
   }
 
   /** Swap the pinned thumbnail URL: unpin the previous, pin the next. */

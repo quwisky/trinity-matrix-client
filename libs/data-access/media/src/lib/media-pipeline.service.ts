@@ -315,6 +315,9 @@ export class MediaPipeline {
       ...(media.durationMs === undefined
         ? {}
         : { durationMs: media.durationMs }),
+      ...(media.thumbnailMxc || media.thumbnailFile
+        ? { hasThumbnail: true }
+        : {}),
       ...(media.isVoice ? { isVoice: true } : {}),
       ...(media.waveform
         ? { waveform: Object.freeze([...media.waveform]) }

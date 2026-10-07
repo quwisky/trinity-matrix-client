@@ -14,6 +14,8 @@ export interface PresentedMediaReference {
   readonly width?: number;
   readonly height?: number;
   readonly durationMs?: number;
+  /** Whether the event bundles its own thumbnail, which `'thumbnail'` then resolves. */
+  readonly hasThumbnail?: boolean;
   readonly isVoice?: boolean;
   readonly waveform?: readonly number[];
 }

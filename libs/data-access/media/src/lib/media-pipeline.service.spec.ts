@@ -216,6 +216,32 @@ describe('MediaPipeline', () => {
     );
   });
 
+  it.each([
+    ['a plaintext thumbnail', { thumbnailMxc: 'mxc://example.org/t' }, true],
+    ['an encrypted thumbnail', { thumbnailFile: uploaded().file }, true],
+    ['no thumbnail', {}, false],
+  ])(
+    'presents whether the event bundles a thumbnail (%s)',
+    (_name, thumb, has) => {
+      const { pipeline } = setup();
+      const reference = pipeline.present({
+        kind: 'video',
+        mxc: 'mxc://example.org/clip',
+        file: null,
+        filename: 'clip.mp4',
+        mimeType: 'video/mp4',
+        thumbnailMxc: null,
+        thumbnailFile: null,
+        ...thumb,
+      });
+
+      // The thumbnail's source stays opaque; only whether it exists is safe to show.
+      expect(reference.hasThumbnail ?? false).toBe(has);
+      expect(reference).not.toHaveProperty('thumbnailMxc');
+      expect(reference).not.toHaveProperty('thumbnailFile');
+    },
+  );
+
   it.each(['removed', 'replaced'])(
     'rejects reads created before the source Account client is %s',
     async (transition) => {
