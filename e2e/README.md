@@ -76,7 +76,10 @@ Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed
 - Artifacts land in `dist/.playwright/trinity-e2e-mobile/<run-id>/mobile.android/wdio`
   (Appium log, JUnit, failure screenshots and native hierarchies). Text artifacts are
   scrubbed of Matrix ids, tokens and passwords when the run completes.
-- CI runs this as the `mobile-e2e` job, with no retries.
+- CI runs this as two `mobile-e2e` jobs, with no retries. Each selects half the specs
+  through `TRINITY_MOBILE_SPECS` (comma-separated paths relative to `e2e/mobile`, listed in
+  `.github/workflows/ci.yml`); `TRINITY_MOBILE_SPECS=./specs/smoke.e2e.mts pnpm e2e:mobile`
+  narrows a local run the same way.
 
 ## MSC2545 image-pack management
 

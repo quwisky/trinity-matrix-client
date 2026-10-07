@@ -381,15 +381,41 @@ jobs:
   # WebdriverIO + Appium on the installed app: it boots an API 36 emulator because browser
   # E2E cannot substitute for native Back, process relaunch, Android TLS policy, or the
   # packaged application itself. See e2e/README.md.
+  #
+  # Two jobs, each with its own emulator and homeserver, split the spec files by measured
+  # duration (run 37659485183): navigation (~2:20) and deep-link (~1:30) are the slow ones
+  # and sit in different shards, about 4:50 of specs each. Put a new spec in the lighter
+  # shard; scripts/ci-workflow.spec.mjs fails while a spec file is in neither.
   mobile-e2e:
     needs: [classify, renderer]
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' }}
-    name: Mobile E2E (Android)
+    name: Mobile E2E (Android ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: read
     timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: 1
+            specs: >-
+              ./specs/app-shell.e2e.mts,
+              ./specs/appearance.e2e.mts,
+              ./specs/location.e2e.mts,
+              ./specs/navigation.e2e.mts,
+              ./specs/notifications.e2e.mts
+          - shard: 2
+            specs: >-
+              ./specs/attachments.e2e.mts,
+              ./specs/composer-format-native.e2e.mts,
+              ./specs/deep-link.e2e.mts,
+              ./specs/native-capabilities.e2e.mts,
+              ./specs/session.e2e.mts,
+              ./specs/share.e2e.mts,
+              ./specs/smoke.e2e.mts,
+              ./specs/sso.e2e.mts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -431,8 +457,32 @@ jobs:
           sudo udevadm settle --timeout=30
           test -r /dev/kvm -a -w /dev/kvm
 
+      # Parallel steps: the app build and the homeserver image pull run while the emulator
+      # action installs its system image and boots (~1:50 measured). The emulator script's
+      # first line waits for the build's status file, so the suite's own sync and Gradle
+      # run find everything up to date and never race this build.
+      - name: Build the Android app while the emulator boots
+        id: android-prebuild
+        background: true
+        timeout-minutes: 20
+        run: |
+          set +e
+          pnpm android:build:prebuilt && ./android/gradlew -p android assembleSecondaryDebug
+          status=$?
+          mkdir -p dist/.ci
+          echo "$status" > dist/.ci/android-prebuild.status
+          exit "$status"
+      - name: Pull the homeserver images while the emulator boots
+        id: homeserver-pull
+        background: true
+        # Optional, like the browser prerequisites' pre-pull: the suite pulls what is missing.
+        continue-on-error: true
+        run: docker compose -f e2e/support/homeserver/docker-compose.yml -f e2e/support/homeserver/tuwunel/docker-compose.yml pull -q
+
       - id: mobile
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          TRINITY_MOBILE_SPECS: ${{ matrix.specs }}
         with:
           api-level: 36
           target: google_apis
@@ -444,9 +494,15 @@ jobs:
           ram-size: 4096M
           cores: 4
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          # The action runs each line as its own `sh -c`. The first line fails the step with
+          # the background build's exit code, or after 15 minutes without one.
           script: |
+            timeout 900 sh -c 'until [ -s dist/.ci/android-prebuild.status ]; do sleep 5; done; exit "$(cat dist/.ci/android-prebuild.status)"'
             echo 'started=true' >> "$GITHUB_OUTPUT"
             TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:mobile
+
+      - name: Wait for the background build and image pull
+        wait: [android-prebuild, homeserver-pull]
 
       # Also covers dist/.ci (full run stdout) and a run killed before its own cleanup.
       - name: Scrub identifiers from mobile artifacts
@@ -458,11 +514,28 @@ jobs:
         if: ${{ !cancelled() && steps.mobile.outputs.started == 'true' && steps.mobile-scrub.outcome == 'success' }}
         with:
           surface: mobile
+          shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-mobile/*/mobile.android/**
 
       - name: Verify Mobile E2E left the worktree unchanged
         if: ${{ !cancelled() }}
         run: git diff --exit-code
+
+  # Branch rules require the check "Mobile E2E (Android)"; both Android jobs report under
+  # it through this job, which succeeds only when both succeeded.
+  mobile-e2e-result:
+    needs: [classify, mobile-e2e]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
+    name: Mobile E2E (Android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every split job to succeed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key) \(.value.result)"'
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' > /dev/null
 
   ios-native-build:
     name: iOS Native Build
