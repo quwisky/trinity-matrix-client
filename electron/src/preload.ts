@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webFrame } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 
 /**
@@ -37,6 +37,8 @@ const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
 // as with SHOW_NOTIFICATION_CHANNEL / NOTIFICATION_CLICK_CHANNEL above).
 const SET_BADGE_COUNT_CHANNEL = 'trinity:host:v1:badge:set';
 const HOST_NEGOTIATE_CHANNEL = 'trinity:host:v1:negotiate';
+// Mirrors window.ts by string value: main reports the window leaving or returning to the screen.
+const VISIBILITY_CHANNEL = 'trinity:host:v1:lifecycle:visibility';
 // Mirror title-bar-ipc.ts by string value; main re-validates every payload.
 const SET_OVERLAY_CHANNEL = 'trinity:host:v1:title-bar:set-overlay';
 const POPUP_MENU_CHANNEL = 'trinity:host:v1:title-bar:popup-menu';
@@ -306,6 +308,25 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
               lng: number;
             } | null>)
           : Promise.resolve(null),
+    },
+    lifecycle: {
+      subscribeVisibility(
+        callback: (visibility: 'visible' | 'hidden') => void,
+      ): () => void {
+        if (!grantedOperations.has('lifecycle')) return () => undefined;
+        const listener = (_event: IpcRendererEvent, visibility: unknown) => {
+          if (!grantedOperations.has('lifecycle')) return;
+          if (visibility === 'visible' || visibility === 'hidden') {
+            callback(visibility);
+          }
+        };
+        ipcRenderer.on(VISIBILITY_CHANNEL, listener);
+        return () => ipcRenderer.removeListener(VISIBILITY_CHANNEL, listener);
+      },
+      // Electron advises this only after an event that lowers memory use, such as hiding.
+      releaseMemory: (): void => {
+        if (grantedOperations.has('lifecycle')) webFrame.clearCache();
+      },
     },
     titleBar: {
       // Not a privilege: the mode this window was created with, known before negotiation.

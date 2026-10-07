@@ -155,6 +155,7 @@ test('negotiates the grouped protocol-v1 bridge without exposing Node', async ()
   expect(exposure.capabilityGroups).toEqual([
     'badge',
     'deepLinks',
+    'lifecycle',
     'location',
     'networkCors',
     'notificationPresentation',
