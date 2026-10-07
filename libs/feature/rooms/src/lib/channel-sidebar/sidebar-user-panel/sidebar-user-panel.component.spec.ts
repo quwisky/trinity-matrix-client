@@ -110,6 +110,24 @@ describe('SidebarUserPanelComponent', () => {
     expect(reauthRow?.querySelector('trn-avatar')?.textContent).toContain('D');
   });
 
+  it('falls back to the mxid initial when an account has no visible display name', async () => {
+    const { fixture, container } = await render(SidebarUserPanelComponent, {
+      inputs: {
+        user: USER,
+        accounts: [{ ...ACCOUNTS[0], displayName: '@' }, ACCOUNTS[1]],
+        activeUserId: '@alice:hs',
+      },
+    });
+
+    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
+    fixture.detectChanges();
+
+    const accountRow = document.querySelector<HTMLElement>(
+      '[data-testid="account-row"]',
+    );
+    expect(accountRow?.querySelector('trn-avatar')?.textContent).toContain('A');
+  });
+
   it('shows name and handle and no accounts chip with a single account', async () => {
     const { container } = await render(SidebarUserPanelComponent, {
       inputs: {

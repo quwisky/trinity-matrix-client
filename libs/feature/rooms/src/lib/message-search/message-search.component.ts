@@ -22,6 +22,7 @@ import {
   type MessageHit,
   ConversationRuntime,
 } from '@trinity/data-access/timeline';
+import { initialOf } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
@@ -261,10 +262,7 @@ export class MessageSearchComponent {
     return parts;
   }
 
-  initialOf(name: string): string {
-    const stripped = name.replace(/^[#@!]+/, '').trim();
-    return (stripped[0] ?? '?').toUpperCase();
-  }
+  readonly initialOf = initialOf;
 
   /** Only the latest server request may write results; `runWithBusy` also bounds it to the component. */
   private inFlight: Subscription | null = null;

@@ -17,6 +17,7 @@ import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
 import { AvatarComponent } from '@trinity/components/generic-content';
+import { accountInitial } from '../shared/account-initial';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 
 /**
@@ -95,10 +96,7 @@ export class AccountPickerComponent {
     }
   }
 
-  initialOf(account: AccountSummary): string {
-    const stripped = account.displayName.replace(/^[#@!]+/, '').trim();
-    return (stripped[0] ?? account.userId[1] ?? '?').toUpperCase();
-  }
+  readonly initialOf = accountInitial;
 
   close(): void {
     this.dialogRef.close();
