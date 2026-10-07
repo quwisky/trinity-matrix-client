@@ -56,7 +56,7 @@
     (keydown.shift.f10)="onContextMenu($event)"
     (keydown.contextmenu)="onContextMenu($event)"
     (pointerdown)="onPointerDown($event)"
-    (pointerenter)="onPointerEnter()"
+    (pointerenter)="onPointerEnter($event)"
     (pointermove)="onPointerMove($event)"
     (pointerup)="onPointerUp($event)"
     (pointercancel)="onPointerCancel()"
@@ -99,12 +99,22 @@
       />
     } @else {
       @if (isoTime(r.timestamp); as iso) {
-        <time
-          class="msg__gutter"
-          [attr.datetime]="iso"
-          [trnTooltip]="fmt.dateTime(r.timestamp)"
-          >{{ fmt.time(r.timestamp) }}</time
-        >
+        @if (timeTipArmed()) {
+          <time
+            #stamp
+            class="msg__gutter"
+            [attr.datetime]="iso"
+            [trnTooltip]="fmt.dateTime(r.timestamp)"
+            >{{ fmt.time(r.timestamp) }}</time
+          >
+        } @else {
+          <time
+            class="msg__gutter"
+            [attr.datetime]="iso"
+            (pointerenter)="armTimeTip($event, true)"
+            >{{ fmt.time(r.timestamp) }}</time
+          >
+        }
       } @else {
         <span class="msg__gutter">{{ fmt.time(r.timestamp) }}</span>
       }
@@ -120,12 +130,22 @@
           <div class="msg__head">
             <span class="msg__author">{{ r.senderName }}</span>
             @if (isoTime(r.timestamp); as iso) {
-              <time
-                class="msg__time"
-                [attr.datetime]="iso"
-                [trnTooltip]="fmt.dateTime(r.timestamp)"
-                >{{ fmt.time(r.timestamp) }}</time
-              >
+              @if (timeTipArmed()) {
+                <time
+                  #stamp
+                  class="msg__time"
+                  [attr.datetime]="iso"
+                  [trnTooltip]="fmt.dateTime(r.timestamp)"
+                  >{{ fmt.time(r.timestamp) }}</time
+                >
+              } @else {
+                <time
+                  class="msg__time"
+                  [attr.datetime]="iso"
+                  (pointerenter)="armTimeTip($event, true)"
+                  >{{ fmt.time(r.timestamp) }}</time
+                >
+              }
             } @else {
               <span class="msg__time">{{ fmt.dateTime(r.timestamp) }}</span>
             }
