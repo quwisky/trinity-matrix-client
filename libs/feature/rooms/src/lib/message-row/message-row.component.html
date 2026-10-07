@@ -183,6 +183,7 @@
               trnMatrixLink
               [trnInlineMxcImages]="r.captionHtml ?? ''"
               (matrixLink)="matrixLink.emit($event)"
+              [trnCodeHighlight]="r.captionHtml"
               [innerHTML]="r.captionHtml"
             ></div>
           } @else if (r.caption) {
@@ -195,6 +196,7 @@
             trnMatrixLink
             [trnInlineMxcImages]="r.html ?? ''"
             (matrixLink)="matrixLink.emit($event)"
+            [trnCodeHighlight]="r.html"
             [innerHTML]="r.html"
           ></div>
         } @else {

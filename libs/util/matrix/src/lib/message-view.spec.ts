@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import {
   MAX_NAMED_REACTORS,
@@ -12,7 +12,6 @@ import {
   readReceiptsFor,
   sanitizeMatrixHtml,
   sanitizeOutgoingHtml,
-  setCodeHighlighter,
 } from './message-view';
 
 describe('parseGeoUri', () => {
@@ -430,129 +429,14 @@ describe('sanitizeMatrixHtml — code language label', () => {
   });
 });
 
-describe('sanitizeMatrixHtml — code highlighting', () => {
-  afterEach(() => {
-    // The highlighter and the memo are module-scoped and live for the whole process;
-    // setCodeHighlighter(null) clears both, so a spec that installs one must call it.
-    setCodeHighlighter(null);
-  });
-
-  /** A highlighter that wraps the whole source in one token span. */
-  function fakeHighlighter(code: string, lang: string, doc: Document) {
-    const frag = doc.createDocumentFragment();
-    const span = doc.createElement('span');
-    span.className = `tok-keyword lang-${lang}`;
-    span.textContent = code;
-    frag.appendChild(span);
-    return frag;
-  }
-
-  const BLOCK = '<pre><code class="language-python">x = 1</code></pre>';
-
-  it('leaves the code itself untouched when no highlighter is installed', () => {
-    const clean = sanitizeMatrixHtml(BLOCK);
-
-    expect(clean).not.toContain('tok-');
-    expect(parse(clean).querySelector('code')?.textContent).toBe('x = 1');
-  });
-
-  it('keeps token classes the sender allowlist would have stripped', () => {
-    // The whole reason highlighting runs AFTER DOMPurify: ALLOWED_CLASS permits only
-    // `language-*` and `mx-spoiler`, so `tok-*` could not survive the scrub itself.
-    setCodeHighlighter(fakeHighlighter);
-
-    const clean = sanitizeMatrixHtml(BLOCK);
-
-    expect(clean).toContain('tok-keyword');
-    expect(clean).toContain('lang-python');
-    expect(parse(clean).querySelector('code')?.textContent).toBe('x = 1');
-  });
-
-  it('ignores a block with no language and one with no content', () => {
-    setCodeHighlighter(fakeHighlighter);
-
-    expect(sanitizeMatrixHtml('<pre><code>x = 1</code></pre>')).not.toContain(
-      'tok-',
-    );
-    expect(
-      sanitizeMatrixHtml('<pre><code class="language-py"></code></pre>'),
-    ).not.toContain('tok-');
-  });
-
-  it('leaves the block alone when the highlighter declines the language', () => {
-    setCodeHighlighter(() => null);
-
-    expect(sanitizeMatrixHtml(BLOCK)).not.toContain('tok-');
-  });
-
-  it('leaves a block containing markup alone', () => {
-    // The Matrix allowlist permits inline markup inside <code> — a link, bold, a spoiler.
-    // Replacing the children would delete it, and only for languages we have a grammar
-    // for, so the same body would render differently depending on its fence tag.
-    setCodeHighlighter(fakeHighlighter);
-
+describe('sanitizeMatrixHtml — code blocks', () => {
+  it('leaves code as plain text; colouring is applied later at the render leaf', () => {
     const clean = sanitizeMatrixHtml(
-      '<pre><code class="language-python"><b>x</b> = 1</code></pre>',
+      '<pre><code class="language-python">x = 1</code></pre>',
     );
 
-    expect(clean).toContain('<b>x</b>');
     expect(clean).not.toContain('tok-');
-  });
-
-  describe('the per-message tokenization budget', () => {
-    /** Records what the highlighter was actually asked to tokenize. */
-    function recorder() {
-      const seen: number[] = [];
-      setCodeHighlighter((code, _lang, doc) => {
-        seen.push(code.length);
-        return doc.createDocumentFragment();
-      });
-      return seen;
-    }
-
-    const block = (chars: number) =>
-      `<pre><code class="language-python">${'x'.repeat(chars)}</code></pre>`;
-
-    it('stops tokenizing once a message has spent its budget', () => {
-      const seen = recorder();
-
-      // 20_000 of budget: the first two fit, the third does not.
-      sanitizeMatrixHtml(block(9_000) + block(9_000) + block(9_000));
-
-      expect(seen).toEqual([9_000, 9_000]);
-    });
-
-    it('still highlights a small block after one too large to fit', () => {
-      // `continue`, not `break`: one oversized listing must not un-colour everything
-      // below it.
-      const seen = recorder();
-
-      sanitizeMatrixHtml(block(19_000) + block(5_000) + block(500));
-
-      expect(seen).toEqual([19_000, 500]);
-    });
-
-    it('does not charge for a block the highlighter declines', () => {
-      // A declined block costs nothing to tokenize, so charging for it would starve
-      // blocks that could have been highlighted.
-      const seen: number[] = [];
-      setCodeHighlighter((code, _lang, doc) => {
-        seen.push(code.length);
-        return code.length > 15_000 ? null : doc.createDocumentFragment();
-      });
-
-      sanitizeMatrixHtml(block(16_000) + block(9_000) + block(9_000));
-
-      expect(seen).toEqual([16_000, 9_000, 9_000]);
-    });
-  });
-
-  it('re-sanitizes after the highlighter changes, rather than serving a stale memo', () => {
-    expect(sanitizeMatrixHtml(BLOCK)).not.toContain('tok-');
-
-    setCodeHighlighter(fakeHighlighter);
-
-    expect(sanitizeMatrixHtml(BLOCK)).toContain('tok-keyword');
+    expect(parse(clean).querySelector('code')?.textContent).toBe('x = 1');
   });
 });
 

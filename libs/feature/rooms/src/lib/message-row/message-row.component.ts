@@ -28,6 +28,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
 import { MediaAttachmentComponent } from '../media-attachment/media-attachment.component';
+import { CodeHighlightDirective } from '../message-presentation/code-highlight.directive';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import {
   type MatrixLinkClick,
@@ -162,6 +163,7 @@ export type MessageSwipeAction = 'edit' | 'reply';
     MediaAttachmentComponent,
     MessageReactionsComponent,
     MessageToolbarComponent,
+    CodeHighlightDirective,
     SpoilerRevealDirective,
     MatrixLinkDirective,
     PollComponent,
