@@ -83,6 +83,8 @@ export interface MessageRowCaps {
   canThread: boolean;
   /** Whether this message has text worth pulling into the composer as a quote. */
   canQuote: boolean;
+  /** Which kind of media this message can be saved as; null when it has none. */
+  saveMedia: 'image' | 'video' | null;
   /** Hide the hover toolbar + retry affordance (view-only thread panel). */
   readOnly: boolean;
 }
@@ -724,6 +726,7 @@ export class MessageRowComponent {
     pinned: false,
     canThread: true,
     canQuote: false,
+    saveMedia: null,
     readOnly: false,
   });
 
@@ -841,6 +844,7 @@ export class MessageRowComponent {
       pinned: c.pinned,
       canThread: c.canThread,
       canQuote: c.canQuote,
+      saveMedia: c.saveMedia,
     };
   });
 

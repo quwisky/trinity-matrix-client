@@ -6,6 +6,7 @@ import { messagePermalink } from '@trinity/util/matrix';
 import { defer, filter, take } from 'rxjs';
 import { type EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { type ForwardService } from '../forward/forward.service';
+import { type MediaSaveService } from '../media-attachment/media-save.service';
 import { type MatrixLinkClickTarget } from '../matrix-link/matrix-link.directive';
 import {
   type MessageRow,
@@ -23,6 +24,7 @@ export interface SharedRowActionContext {
   readonly dialog: Pick<TrnDialogService, 'open' | 'openAndWait$'>;
   readonly timeline: Pick<ConversationRuntime['timeline'], 'rawEvent'>;
   readonly forward: Pick<ForwardService, 'forward$'>;
+  readonly mediaSave: Pick<MediaSaveService, 'save'>;
   readonly report: Pick<ReportService, 'report$'>;
   readonly reactions: Pick<ReactionsDialogService, 'open$'>;
   readonly editHistory: Pick<EditHistoryDialogService, 'openHistory$'>;
@@ -43,6 +45,7 @@ type SharedRowAction = Extract<
       | 'quote'
       | 'copy'
       | 'copy-link'
+      | 'save-media'
       | 'view-source'
       | 'forward'
       | 'report'
@@ -87,6 +90,9 @@ export function dispatchSharedRowAction(
       return true;
     case 'copy-link':
       void navigator.clipboard?.writeText(messagePermalink(ctx.roomId, row.id));
+      return true;
+    case 'save-media':
+      if (row.media) ctx.mediaSave.save(row.media);
       return true;
     case 'view-source': {
       const raw = ctx.timeline.rawEvent(ctx.roomId, row.id);

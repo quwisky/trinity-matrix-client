@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
@@ -48,6 +48,7 @@ function lightboxImage(): HTMLImageElement | null {
 describe('MediaAttachmentComponent', () => {
   let mediaService: MediaServiceStub;
   let fileSave: { save: Mock };
+  let toast: { show: Mock };
 
   afterEach(() => {
     // The overlay outlives the fixture; leaving it attached leaks into the next test.
@@ -68,6 +69,7 @@ describe('MediaAttachmentComponent', () => {
     };
     // HostFileExportService owns the host contract; stub it so the component test
     // doesn't touch the object-URL API / native plugins.
+    toast = { show: vi.fn() };
     fileSave = {
       save: vi.fn().mockReturnValue(of({ kind: 'completed' as const })),
     };
@@ -86,6 +88,7 @@ describe('MediaAttachmentComponent', () => {
       providers: [
         MockProvider(MediaPipeline, mediaService),
         MockProvider(HostFileExportService, fileSave),
+        MockProvider(TrnToastService, toast),
       ],
     });
   }
@@ -301,13 +304,16 @@ describe('MediaAttachmentComponent', () => {
     expect(fixture.componentInstance.hasError()).toBe(false);
   });
 
-  it('download() surfaces an error when saving fails', async () => {
+  it('download() toasts instead of breaking the bubble when saving fails', async () => {
     fileSave.save.mockReturnValue(throwError(() => new Error('save failed')));
     const { fixture } = await renderMedia(imageMedia());
 
     fixture.componentInstance.download();
 
-    expect(fixture.componentInstance.hasError()).toBe(true);
+    expect(toast.show).toHaveBeenCalledWith("Couldn't save image", {
+      variant: 'danger',
+    });
+    expect(fixture.componentInstance.hasError()).toBe(false);
   });
 
   it('download() surfaces an explicit unavailable host outcome', async () => {
@@ -318,7 +324,24 @@ describe('MediaAttachmentComponent', () => {
 
     fixture.componentInstance.download();
 
-    expect(fixture.componentInstance.hasError()).toBe(true);
+    expect(toast.show).toHaveBeenCalledWith("Couldn't save image", {
+      variant: 'danger',
+    });
+  });
+
+  it('opens the lightbox with a download button wired to the same save', async () => {
+    const { fixture } = await renderMedia(imageMedia());
+
+    fixture.componentInstance.openLightbox();
+    TestBed.tick();
+    document
+      .querySelector<HTMLButtonElement>(
+        '.cdk-overlay-container [data-testid="lightbox-download"]',
+      )!
+      .click();
+
+    expect(mediaService.downloadMedia).toHaveBeenCalledWith(imageMedia());
+    expect(fileSave.save).toHaveBeenCalledTimes(1);
   });
 
   it('ignores a second download() while a save is in flight', async () => {

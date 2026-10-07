@@ -166,6 +166,16 @@ export class MessageActionSheetService {
         testId: 'sheet-copy-link',
         handler: act('copy-link'),
       },
+      ...(caps.saveMedia
+        ? [
+            {
+              text: `Save ${caps.saveMedia}`,
+              icon: 'download' as const,
+              testId: 'sheet-save-media',
+              handler: act('save-media'),
+            },
+          ]
+        : []),
       {
         text: 'Forward',
         icon: 'forward',

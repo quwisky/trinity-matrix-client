@@ -122,6 +122,58 @@ describe('MessageListBase — the mobile action sheet', () => {
     expect(open.mock.calls.at(-1)?.[1]).toBe('Message actions');
   });
 
+  it.each([
+    ['image', 'Save image'],
+    ['video', 'Save video'],
+  ] as const)('offers "%s" save for a %s message', (kind, label) => {
+    const { fixture, cmp, open } = build();
+    const media = { id: 'm', kind, filename: 'a', mimeType: 'x/y' };
+    fixture.componentRef.setInput('messages', [{ ...msg('$1'), kind, media }]);
+    fixture.detectChanges();
+
+    cmp.onRowLongPress(cmp.rows()[0]);
+
+    const button = lastSheet(open).buttons.find(
+      (b) => b.testId === 'sheet-save-media',
+    );
+    expect(button?.text).toBe(label);
+  });
+
+  it('lists Save image after Copy link, as the desktop menu does', () => {
+    const { fixture, cmp, open } = build();
+    const media = { id: 'm', kind: 'image', filename: 'a', mimeType: 'x/y' };
+    fixture.componentRef.setInput('messages', [
+      { ...msg('$1'), kind: 'image', media },
+    ]);
+    fixture.detectChanges();
+
+    cmp.onRowLongPress(cmp.rows()[0]);
+
+    const ids = lastSheet(open).buttons.map((b) => b.testId);
+    expect(ids.indexOf('sheet-save-media')).toBe(
+      ids.indexOf('sheet-copy-link') + 1,
+    );
+  });
+
+  it('offers no save for a text message or a file', () => {
+    const { fixture, cmp, open } = build();
+
+    cmp.onRowLongPress(cmp.rows()[0]);
+    expect(lastSheet(open).buttons.map((b) => b.testId)).not.toContain(
+      'sheet-save-media',
+    );
+
+    const media = { id: 'm', kind: 'file', filename: 'a', mimeType: 'x/y' };
+    fixture.componentRef.setInput('messages', [
+      { ...msg('$1'), kind: 'file', media },
+    ]);
+    fixture.detectChanges();
+    cmp.onRowLongPress(cmp.rows()[0]);
+    expect(lastSheet(open).buttons.map((b) => b.testId)).not.toContain(
+      'sheet-save-media',
+    );
+  });
+
   it('dispatches through the same handler the hover toolbar uses', () => {
     const { cmp, open } = build();
     const onRowAction = vi.spyOn(cmp, 'onRowAction');

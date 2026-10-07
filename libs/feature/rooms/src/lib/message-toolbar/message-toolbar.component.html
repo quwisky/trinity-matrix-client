@@ -122,6 +122,16 @@
       <trn-icon name="link" />
       Copy link
     </button>
+    @if (caps().saveMedia; as kind) {
+      <button
+        trnDropdownMenuItem
+        (triggered)="action.emit({ type: 'save-media' })"
+        data-testid="msg-save-media"
+      >
+        <trn-icon name="download" />
+        Save {{ kind }}
+      </button>
+    }
     <button
       trnDropdownMenuItem
       (triggered)="action.emit({ type: 'forward' })"
