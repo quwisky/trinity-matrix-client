@@ -95,6 +95,7 @@
   >
     <div class="packs__stack">
       <form [formRoot]="sourceForm" class="packs__form" (submit)="find()">
+        @let sourceError = shownError(sourceForm.source);
         <label trnLabel for="image-pack-source">Room ID or alias</label>
         <div class="packs__form-row">
           <input
@@ -104,15 +105,9 @@
             autocomplete="off"
             placeholder="#stickers:example.org"
             [formField]="sourceForm.source"
-            [attr.aria-invalid]="
-              sourceForm.source().touched() && sourceForm.source().invalid()
-                ? 'true'
-                : null
-            "
+            [attr.aria-invalid]="sourceError ? 'true' : null"
             [attr.aria-describedby]="
-              sourceForm.source().touched() && sourceForm.source().invalid()
-                ? 'image-pack-source-error'
-                : null
+              sourceError ? 'image-pack-source-error' : null
             "
             data-testid="image-pack-source"
           />
@@ -126,9 +121,9 @@
             {{ finding() ? 'Finding…' : 'Find packs' }}
           </button>
         </div>
-        @if (sourceForm.source().touched() && sourceForm.source().invalid()) {
+        @if (sourceError) {
           <p id="image-pack-source-error" class="packs__error" role="alert">
-            {{ sourceForm.source().errors()[0]?.message }}
+            {{ sourceError.message }}
           </p>
         }
       </form>
