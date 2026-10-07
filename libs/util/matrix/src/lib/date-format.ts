@@ -74,10 +74,21 @@ type Shape =
 //    is the key rather than the zone name because it is what decides the rendered value, and
 //    reading it is ~430x cheaper (0.06µs vs 25µs) — probing the name per call would cost as
 //    much as the construction the cache exists to avoid.
-const formatters = new Map<string, Intl.DateTimeFormat>();
+//
+// Each entry also remembers the strings it produced: the timeline formats the same few
+// instants whenever a row is built, and a row built again after scrolling away and back asks
+// for the same ones. Bounded, because history is unbounded.
+const MAX_MEMOISED_STRINGS = 2000;
+
+interface CachedFormatter {
+  readonly formatter: Intl.DateTimeFormat;
+  readonly text: Map<number, string>;
+}
+
+const formatters = new Map<string, CachedFormatter>();
 let cachedOffset: number | undefined;
 
-function formatterFor(shape: Shape, prefs: DateTimePrefs): Intl.DateTimeFormat {
+function formatterFor(shape: Shape, prefs: DateTimePrefs): CachedFormatter {
   const offset = new Date().getTimezoneOffset();
   if (offset !== cachedOffset) {
     cachedOffset = offset;
@@ -88,12 +99,25 @@ function formatterFor(shape: Shape, prefs: DateTimePrefs): Intl.DateTimeFormat {
   if (cached) {
     return cached;
   }
-  const built = new Intl.DateTimeFormat(
-    prefs.locales,
-    optionsFor(shape, prefs),
-  );
+  const built: CachedFormatter = {
+    formatter: new Intl.DateTimeFormat(prefs.locales, optionsFor(shape, prefs)),
+    text: new Map(),
+  };
   formatters.set(key, built);
   return built;
+}
+
+function formatWith(shape: Shape, prefs: DateTimePrefs, ts: number): string {
+  const { formatter, text } = formatterFor(shape, prefs);
+  let formatted = text.get(ts);
+  if (formatted === undefined) {
+    if (text.size >= MAX_MEMOISED_STRINGS) {
+      text.clear();
+    }
+    formatted = formatter.format(ts);
+    text.set(ts, formatted);
+  }
+  return formatted;
 }
 
 function clockOptions(
@@ -182,15 +206,13 @@ export function formatClockTime(
   prefs: DateTimePrefs,
   withSeconds = false,
 ): string {
-  return formatterFor(withSeconds ? 'clock-seconds' : 'clock', prefs).format(
-    ts,
-  );
+  return formatWith(withSeconds ? 'clock-seconds' : 'clock', prefs, ts);
 }
 
 /** A numeric date alone — "7/24/2026" / "24/07/2026" / "2026-07-24". */
 export function formatDateOnly(ts: number, prefs: DateTimePrefs): string {
   return prefs.date === 'system'
-    ? formatterFor('date', prefs).format(ts)
+    ? formatWith('date', prefs, ts)
     : explicitDate(ts, prefs.date);
 }
 
@@ -208,10 +230,11 @@ export function formatDateTime(
   withSeconds = false,
 ): string {
   if (prefs.date === 'system') {
-    return formatterFor(
+    return formatWith(
       withSeconds ? 'date-time-seconds' : 'date-time',
       prefs,
-    ).format(ts);
+      ts,
+    );
   }
   return `${explicitDate(ts, prefs.date)}, ${formatClockTime(ts, prefs, withSeconds)}`;
 }
@@ -230,7 +253,7 @@ export function formatDaySeparator(
   if (prefs.date !== 'system') {
     return explicitDate(ts, prefs.date);
   }
-  return formatterFor(withYear ? 'day-with-year' : 'day', prefs).format(ts);
+  return formatWith(withYear ? 'day-with-year' : 'day', prefs, ts);
 }
 
 // Both accept `undefined` as well as `null` so a caller can narrow the value it actually

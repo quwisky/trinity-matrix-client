@@ -267,6 +267,27 @@ describe('formatter cache', () => {
     }
   });
 
+  // A row's gutter, header and tooltip format the same instant on every mount, and scrolling
+  // back over history remounts the same rows, so the string is reused, not re-derived.
+  it('formats an instant once per formatter and reuses the string', () => {
+    const p = prefs('h24', 'system', ['en-US']);
+    expect(formatClockTime(instant, p)).toBe('15:45'); // warm
+    // `format` is a bound getter at runtime, but lib.d.ts types it as a method.
+    const format = vi.spyOn(
+      Intl.DateTimeFormat.prototype as unknown as { readonly format: unknown },
+      'format',
+      'get',
+    );
+    try {
+      expect(formatClockTime(instant, p)).toBe('15:45');
+      expect(format).not.toHaveBeenCalled();
+      expect(formatClockTime(instant + 60_000, p)).toBe('15:46');
+      expect(format).toHaveBeenCalledTimes(1);
+    } finally {
+      format.mockRestore();
+    }
+  });
+
   // The bug the key exists to prevent: changing a format in Settings must not hand back the
   // formatter built for the old one.
   it('does not serve a stale formatter after the preference changes', () => {
