@@ -15,6 +15,7 @@ const caps = (over: Partial<MessageToolbarCaps> = {}): MessageToolbarCaps => ({
   pinned: false,
   canThread: true,
   canQuote: false,
+  saveMedia: null,
   ...over,
 });
 
@@ -224,5 +225,31 @@ describe('MessageToolbarComponent quote', () => {
 
     // A reply points at the event; a quote brings its words. Same toolbar, different act.
     expect(seen).toEqual([{ type: 'quote' }]);
+  });
+});
+
+describe('MessageToolbarComponent save media', () => {
+  it.each([
+    ['image', 'Save image'],
+    ['video', 'Save video'],
+  ] as const)('offers "%s" save only for media', async (kind, label) => {
+    const { fixture, container } = await render(MessageToolbarComponent, {
+      inputs: { caps: caps() },
+    });
+    const seen: MessageAction[] = [];
+    fixture.componentInstance.action.subscribe((a) => seen.push(a));
+
+    openMenu(container, fixture);
+    expect(document.querySelector('[data-testid="msg-save-media"]')).toBeNull();
+
+    fixture.componentRef.setInput('caps', caps({ saveMedia: kind }));
+    fixture.detectChanges();
+    const item = document.querySelector<HTMLButtonElement>(
+      '[data-testid="msg-save-media"]',
+    )!;
+
+    expect(item.textContent).toContain(label);
+    item.click();
+    expect(seen).toEqual([{ type: 'save-media' }]);
   });
 });

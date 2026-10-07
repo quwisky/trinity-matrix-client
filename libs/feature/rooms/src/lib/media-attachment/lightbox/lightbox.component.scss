@@ -13,11 +13,16 @@
     cursor: zoom-out;
   }
 
-  .lightbox__close {
+  .lightbox__actions {
     position: absolute;
     z-index: 1;
     inset-block-start: max(var(--trinity-space-5), env(safe-area-inset-top));
     inset-inline-end: max(var(--trinity-space-5), env(safe-area-inset-right));
+    display: flex;
+    gap: var(--trinity-space-3);
+  }
+
+  .lightbox__action {
     border: 1px solid var(--trinity-border-subtle);
     box-shadow: var(--trinity-shadow-floating);
   }

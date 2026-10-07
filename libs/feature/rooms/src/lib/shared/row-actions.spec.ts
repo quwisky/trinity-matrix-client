@@ -26,6 +26,7 @@ function setup(overrides: Partial<SharedRowActionContext> = {}) {
     editHistory: { openHistory$: vi.fn(() => of(null)) },
     react: vi.fn(),
     quote: vi.fn(),
+    mediaSave: { save: vi.fn() },
     ...overrides,
   };
   return ctx as typeof ctx & SharedRowActionContext;
@@ -33,6 +34,29 @@ function setup(overrides: Partial<SharedRowActionContext> = {}) {
 
 describe('dispatchSharedRowAction', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it('saves the row media through the shared save service', () => {
+    const media = { id: 'm', kind: 'image' } as MessageRow['media'];
+    const ctx = setup();
+
+    expect(
+      dispatchSharedRowAction({ type: 'save-media' }, { ...row, media }, ctx),
+    ).toBe(true);
+
+    expect(ctx.mediaSave.save).toHaveBeenCalledWith(media);
+  });
+
+  it('does nothing for save-media on a row without media', () => {
+    const ctx = setup();
+
+    dispatchSharedRowAction(
+      { type: 'save-media' },
+      { ...row, media: null },
+      ctx,
+    );
+
+    expect(ctx.mediaSave.save).not.toHaveBeenCalled();
+  });
 
   it('leaves host-specific actions unhandled', () => {
     const ctx = setup();

@@ -1,16 +1,35 @@
-<button
-  trnBtn
-  type="button"
-  variant="secondary"
-  presentation="ghost"
-  shape="icon"
-  size="lg"
-  class="lightbox__close"
-  aria-label="Close image viewer"
-  data-testid="lightbox-close"
->
-  <trn-icon name="x" motion="rotate" />
-</button>
+<div class="lightbox__actions">
+  <button
+    trnBtn
+    type="button"
+    variant="secondary"
+    presentation="ghost"
+    shape="icon"
+    size="lg"
+    class="lightbox__action lightbox__download"
+    [attr.aria-label]="'Download ' + media().kind"
+    [loading]="busy()"
+    [attr.aria-disabled]="busy() ? 'true' : null"
+    (click)="download($event)"
+    data-testid="lightbox-download"
+  >
+    <trn-icon name="download" motion="nudge-down" />
+  </button>
+
+  <button
+    trnBtn
+    type="button"
+    variant="secondary"
+    presentation="ghost"
+    shape="icon"
+    size="lg"
+    class="lightbox__action lightbox__close"
+    aria-label="Close image viewer"
+    data-testid="lightbox-close"
+  >
+    <trn-icon name="x" motion="rotate" />
+  </button>
+</div>
 
 <img
   decoding="async"
