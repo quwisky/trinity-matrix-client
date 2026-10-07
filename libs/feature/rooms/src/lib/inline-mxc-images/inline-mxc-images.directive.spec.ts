@@ -85,3 +85,26 @@ describe('InlineMxcImagesDirective', () => {
     expect(fixture.nativeElement.querySelector('img')).toBeNull();
   });
 });
+
+describe('InlineMxcImagesDirective without custom emoji', () => {
+  it('does not parse a body that declares none', async () => {
+    const media = { resolveMedia: vi.fn(), pin: vi.fn(), unpin: vi.fn() };
+    await TestBed.configureTestingModule({
+      imports: [HostComponent],
+      providers: [{ provide: MediaService, useValue: media }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(HostComponent);
+    const body = '<p>plain <b>text</b></p>';
+    fixture.componentInstance.html.set(body);
+    const parse = vi.spyOn(DOMParser.prototype, 'parseFromString');
+    try {
+      fixture.detectChanges();
+      await Promise.resolve();
+      // Angular's own sanitizer also parses, but never the bare body.
+      expect(parse).not.toHaveBeenCalledWith(body, 'text/html');
+      expect(media.resolveMedia).not.toHaveBeenCalled();
+    } finally {
+      parse.mockRestore();
+    }
+  });
+});

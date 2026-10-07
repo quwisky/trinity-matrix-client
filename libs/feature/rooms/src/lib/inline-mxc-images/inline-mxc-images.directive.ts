@@ -40,8 +40,13 @@ export class InlineMxcImagesDirective implements OnDestroy {
   }
 
   private resolve(sourceHtml: string): void {
-    const source = new DOMParser().parseFromString(sourceHtml, 'text/html');
-    const declarations = [...source.querySelectorAll('img[data-mx-emoticon]')]
+    // Most bodies declare no custom emoji, and parsing every one of them is real work.
+    const source = sourceHtml.includes('data-mx-emoticon')
+      ? new DOMParser().parseFromString(sourceHtml, 'text/html')
+      : null;
+    const declarations = [
+      ...(source?.querySelectorAll('img[data-mx-emoticon]') ?? []),
+    ]
       .map((image) => ({
         mxc: image.getAttribute('src') ?? '',
         alt: image.getAttribute('alt') ?? 'custom emoji',
