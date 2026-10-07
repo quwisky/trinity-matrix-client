@@ -8,9 +8,11 @@ file, not a symlink.
 - [settings.json](settings.json) declares the Nx plugin and its marketplace, and the hooks below.
 - `skills/` and `rules/` are directory symlinks to `.agents/skills` and `.agents/rules`.
   Edit the canonical files under `.agents/`, following the [catalog ownership rules](../.agents/README.md).
-- `agents/` holds the subagents below. [`.mcp.json`](../.mcp.json) adds the context7
-  MCP server for library documentation no installed skill covers (matrix-js-sdk,
-  Capacitor, Electron, WebdriverIO/Appium); it runs `npx -y @upstash/context7-mcp`.
+- `agents/` holds the subagents below.
+- [`.mcp.json`](../.mcp.json) declares two project MCP servers: `nx-mcp` (`npx nx mcp`,
+  the workspace's Nx MCP server for projects, targets and Nx docs) and context7
+  (`npx -y @upstash/context7-mcp`) for library documentation no installed skill covers
+  (matrix-js-sdk, Capacitor, Electron, WebdriverIO/Appium).
 
 ## Hooks
 
