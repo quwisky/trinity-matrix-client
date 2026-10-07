@@ -5,17 +5,11 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 // `app.whenReady().then(cb)`. We capture that `cb` so the test can drive the
 // startup sequence deterministically instead of racing microtasks.
 // vi.hoisted so these exist when the hoisted vi.mock factories run.
-const { readyRef, requestSingleInstanceLock } = vi.hoisted(() => ({
-  readyRef: { cb: undefined as undefined | (() => void) },
-  requestSingleInstanceLock: vi.fn(() => true),
-}));
-
-vi.mock('electron', () => ({
-  app: {
-    requestSingleInstanceLock,
-    quit: vi.fn(),
-    on: vi.fn(),
-    setAppUserModelId: vi.fn(),
+const { appendSwitch, readyRef, requestSingleInstanceLock, whenReady } =
+  vi.hoisted(() => ({
+    appendSwitch: vi.fn(),
+    readyRef: { cb: undefined as undefined | (() => void) },
+    requestSingleInstanceLock: vi.fn(() => true),
     // Return a thenable that captures the ready callback (never auto-invokes it).
     whenReady: vi.fn(() => ({
       then: (cb: () => void) => {
@@ -23,6 +17,16 @@ vi.mock('electron', () => ({
         return Promise.resolve();
       },
     })),
+  }));
+
+vi.mock('electron', () => ({
+  app: {
+    requestSingleInstanceLock,
+    quit: vi.fn(),
+    on: vi.fn(),
+    setAppUserModelId: vi.fn(),
+    commandLine: { appendSwitch },
+    whenReady,
   },
   // Sentinel default session — installMatrixCors must receive exactly this.
   session: { defaultSession: { __brand: 'defaultSession' } },
@@ -98,6 +102,14 @@ describe('main bootstrap', () => {
     expect(firstOrder(vi.mocked(registerPrivilegedScheme))).toBeLessThan(
       firstOrder(vi.mocked(registerAppProtocol)),
     );
+  });
+
+  it('caps the compositor tile budget before the app is ready', () => {
+    expect(appendSwitch).toHaveBeenCalledWith(
+      'force-gpu-mem-available-mb',
+      '256',
+    );
+    expect(firstOrder(appendSwitch)).toBeLessThan(firstOrder(whenReady));
   });
 
   it('installs the CORS shim on session.defaultSession', () => {

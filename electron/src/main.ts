@@ -52,6 +52,12 @@ const APP_USER_MODEL_ID = 'eu.qwky.trinity';
 // Custom schemes must be registered as privileged BEFORE the app is ready.
 registerPrivilegedScheme();
 
+// Cap the compositor's raster tile budget. Without this, desktop Chromium allows
+// max(512 MB, a display-area scaled value up to 1152 MB), which fast timeline scrolls
+// fill (#1016). Trade-off: a lower cap can checkerboard during very fast scrolls.
+// Must be set before `ready`.
+app.commandLine.appendSwitch('force-gpu-mem-available-mb', '256');
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
