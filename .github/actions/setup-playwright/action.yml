@@ -10,6 +10,28 @@ inputs:
 runs:
   using: composite
   steps:
+    # Playwright's --with-deps downloads about 115 MB of host packages with apt, and a slow
+    # mirror timed that install out. Keep the .debs in a user-owned directory that
+    # actions/cache can save. The hosted image has no docker-clean, but pin the keep anyway.
+    - id: apt
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        archives="$HOME/.cache/apt-archives"
+        mkdir -p "$archives/partial"
+        # apt downloads as the sandbox user _apt, which must be able to write partial/.
+        sudo chown _apt "$archives/partial"
+        printf 'Dir::Cache::Archives "%s";\nAPT::Keep-Downloaded-Packages "true";\n' "$archives" |
+          sudo tee /etc/apt/apt.conf.d/99trinity-archives > /dev/null
+        echo "image=${ImageOS}-${ImageVersion}" >> "$GITHUB_OUTPUT"
+    # Only the .debs are cached: partial/ belongs to _apt and lock is root-only, so tar
+    # cannot read either.
+    - if: runner.os == 'Linux'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/apt-archives/*.deb
+        key: apt-${{ runner.os }}-${{ steps.apt.outputs.image }}-${{ inputs.browsers }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: apt-${{ runner.os }}-${{ steps.apt.outputs.image }}-${{ inputs.browsers }}-
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cache/ms-playwright
