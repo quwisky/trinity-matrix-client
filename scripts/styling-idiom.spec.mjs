@@ -156,6 +156,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/settings/src/lib/image-packs/image-packs-section.component.scss',
   'libs/feature/settings/src/lib/settings-dialog/settings-dialog.component.scss',
   'libs/feature/settings/src/lib/settings/settings.page.scss',
+  'libs/feature/settings/src/lib/shared/settings-directory-search/settings-directory-search.component.scss',
 ];
 
 /**

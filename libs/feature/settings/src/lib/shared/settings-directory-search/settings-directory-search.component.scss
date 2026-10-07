@@ -1,0 +1,9 @@
+@layer components {
+  .part-result {
+    block-size: auto;
+    inline-size: 100%;
+    justify-content: flex-start;
+    text-align: start;
+    white-space: normal;
+  }
+}
