@@ -56,22 +56,17 @@ describe('Android Appearance', () => {
     await waitForRooms();
 
     await $('[data-testid="open-settings"]').click();
-    await browser.waitUntil(
-      async () =>
-        new URL(await browser.getUrl()).pathname.startsWith('/settings'),
-      { timeout: 20_000, timeoutMsg: 'never reached /settings' },
+    // On a phone Settings opens as a bottom sheet over Rooms, so the URL stays put.
+    await expect($('[role="dialog"][aria-label="Settings"]')).toBeDisplayed({
+      wait: 20_000,
+    });
+    expect(new URL(await browser.getUrl()).pathname).not.toMatch(
+      /^\/settings/u,
     );
     await expect($('nav[aria-label="Settings sections"]')).toBeDisplayed({
       wait: 20_000,
     });
     await $('[data-testid="settings-nav-appearance"]').click();
-    await browser.waitUntil(
-      async () =>
-        /\/settings\/appearance$/u.test(
-          new URL(await browser.getUrl()).pathname,
-        ),
-      { timeout: 20_000, timeoutMsg: 'never reached /settings/appearance' },
-    );
     const heading = $('[data-testid="settings-detail"] h1');
     await expect(heading).toHaveText('Appearance');
     await expect(heading).toBeFocused();
@@ -151,9 +146,10 @@ describe('Android Appearance', () => {
       for (let el: HTMLElement | null = heading; el; el = el.parentElement) {
         el.scrollTop = 0;
       }
-      const headerStyle = getComputedStyle(column);
+      const sheet = column.closest<HTMLElement>('[role="dialog"]');
+      if (!sheet) throw new Error('Android Appearance is not in a sheet');
       return {
-        headerPaddingTop: Number.parseFloat(headerStyle.paddingTop),
+        sheetTop: sheet.getBoundingClientRect().top,
         headingTop: heading.getBoundingClientRect().top,
         hostAppliedVerticalInset: Math.max(
           0,
@@ -169,12 +165,11 @@ describe('Android Appearance', () => {
     });
     expect(geometry.minimumTarget).toBeGreaterThanOrEqual(44);
     expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1);
+    // The sheet carries no safe-area padding of its own: it must sit below the status bar.
     expect(
-      geometry.hostAppliedVerticalInset + geometry.headerPaddingTop,
+      geometry.hostAppliedVerticalInset + geometry.sheetTop,
     ).toBeGreaterThanOrEqual(darkStatusBar.height - 1);
-    expect(geometry.headingTop).toBeGreaterThanOrEqual(
-      geometry.headerPaddingTop - 1,
-    );
+    expect(geometry.headingTop).toBeGreaterThanOrEqual(geometry.sheetTop - 1);
 
     await $('[data-testid="theme-select"] button').click();
     await expect($('[data-testid="theme-midnight"]')).toBeDisplayed();
