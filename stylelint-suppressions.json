@@ -101,7 +101,7 @@
   },
   "libs/feature/rooms/src/lib/message-composer/message-composer.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 6
+      "count": 2
     }
   },
   "libs/feature/rooms/src/lib/message-list/_message-list-shared.scss": {
@@ -292,6 +292,16 @@
   "libs/feature/rooms/src/lib/shared/settings-load-state-card/settings-load-state-card.component.scss": {
     "declaration-property-value-disallowed-list": {
       "count": 1
+    }
+  },
+  "libs/feature/rooms/src/lib/message-composer/composer-banner/composer-banner.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 2
+    }
+  },
+  "libs/feature/rooms/src/lib/message-composer/composer-voice-bar/composer-voice-bar.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 2
     }
   }
 }

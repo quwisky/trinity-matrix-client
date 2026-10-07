@@ -1,0 +1,88 @@
+@layer components {
+  :host {
+    display: contents;
+  }
+
+  // Voice-recording bar, shown in place of the input row while capturing a clip.
+  .composer__recording {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--trinity-density-row-gap);
+    width: 100%;
+    min-height: var(--composer-resting-field-height);
+    padding-inline: var(--trinity-density-composer-field-inset);
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-container-radius);
+    background: var(--trinity-surface-raised);
+  }
+
+  .composer__recording-cancel,
+  .composer__recording-send {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--trinity-density-composer-action-size);
+    height: var(--trinity-density-composer-action-size);
+    border: none;
+    border-radius: var(--trinity-shape-control-radius);
+    background: none;
+    color: var(--trinity-text-muted);
+    font-size: 1.125rem;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--trinity-state-hover-surface);
+      color: var(--trinity-state-hover-foreground);
+    }
+
+    &:focus-visible {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+      outline-offset: calc(-1 * var(--trinity-focus-ring-width));
+    }
+  }
+
+  .composer__recording-send {
+    color: var(--trinity-link);
+  }
+
+  .composer__recording-dot {
+    flex: 0 0 auto;
+    width: 10px;
+    height: 10px;
+    border-radius: var(--trinity-radius-pill);
+
+    // A filled shape, not text, so it takes the solid fill rather than the
+    // `--trinity-danger` text/icon role.
+    background: var(--trinity-danger-solid);
+    animation: composer-recording-pulse var(--trinity-duration-pulse)
+      ease-in-out infinite;
+  }
+
+  .composer__recording-time {
+    flex: 1;
+    color: var(--trinity-text-bright);
+    font-size: 0.875rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @keyframes composer-recording-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.3;
+    }
+  }
+
+  @media (pointer: coarse) {
+    .composer__recording-cancel,
+    .composer__recording-send {
+      min-width: var(--trinity-interaction-target-min-size);
+      min-height: var(--trinity-interaction-target-min-size);
+    }
+  }
+}
