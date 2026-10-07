@@ -70,6 +70,18 @@ test.describe('Settings', () => {
       Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
     );
     expect(navBox!.width).toBeCloseTo(16 * rem, 0);
+    // The same frame as every other dialog: the shell's surface and header, whose X is
+    // the only close.
+    const dialog = page.getByRole('dialog', { name: 'Settings' });
+    await expect(dialog.getByTestId('dialog-surface')).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Close settings' }),
+    ).toHaveCount(1);
+    await expect(
+      dialog.locator('.dialog-shell__header').getByRole('button', {
+        name: 'Close settings',
+      }),
+    ).toBeVisible();
     await expect(page.locator('.settings-layout__column h1')).toBeVisible();
     const closeBox = await page
       .getByRole('button', { name: 'Close settings' })
