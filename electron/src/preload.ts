@@ -45,6 +45,8 @@ const GET_SYSTEM_TITLE_BAR_CHANNEL =
 const SET_SYSTEM_TITLE_BAR_CHANNEL =
   'trinity:host:v1:title-bar:set-system-title-bar';
 const RELAUNCH_CHANNEL = 'trinity:host:v1:title-bar:relaunch';
+// Mirrors window.ts by string value; main only closes the window, as a user close does.
+const CLOSE_WINDOW_CHANNEL = 'trinity:window:close';
 // window.ts appends the running title-bar mode to argv; anything else means "no row".
 const TITLE_BAR_ARGUMENT = '--trinity-title-bar=';
 const titleBarArgument = process.argv
@@ -165,6 +167,16 @@ async function negotiate(operations: readonly string[]): Promise<unknown> {
     throw error;
   }
 }
+
+// A page's `window.close()` would destroy the renderer, skipping close-to-tray and
+// stopping `/sync`. Route it to main, which closes the window like a user close.
+contextBridge.executeInMainWorld({
+  func: (requestClose: () => void) => {
+    // The main world's globalThis is its window; Node typings carry no DOM lib.
+    (globalThis as { close?: () => void }).close = () => requestClose();
+  },
+  args: [() => ipcRenderer.send(CLOSE_WINDOW_CHANNEL)],
+});
 
 contextBridge.exposeInMainWorld('trinityDesktop', {
   protocolVersion: 1,
