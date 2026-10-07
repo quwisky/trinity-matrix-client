@@ -14,7 +14,8 @@ import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
 import { filter, map, Observable, of, switchMap, throwError } from 'rxjs';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
 import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
-import { runWithBusy } from '@trinity/util/ui';
+import { BELOW_MD_QUERY, matchesQuery, runWithBusy } from '@trinity/util/ui';
+import { isMobileOs } from '@trinity/platform-native';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -326,7 +327,10 @@ export class SpaceActionsService {
     this.dialog
       .openAndWait$(SpaceSettingsComponent, {
         ariaLabel: 'Space settings',
-        placement: 'fullscreen',
+        placement:
+          isMobileOs() || matchesQuery(BELOW_MD_QUERY)
+            ? 'fullscreen'
+            : 'center',
         autoFocus: '[data-autofocus]',
         dismissGuard: (component) =>
           component?.requestExternalDismiss() ?? true,

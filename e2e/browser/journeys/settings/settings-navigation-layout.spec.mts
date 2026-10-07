@@ -55,10 +55,21 @@ test.describe('Settings', () => {
     expect(detailBox).not.toBeNull();
     // Beside, not stacked: the detail starts after the nav ends.
     expect(detailBox!.x).toBeGreaterThanOrEqual(navBox!.x + navBox!.width - 1);
-    // The nav is 35% of the viewport and the content column sits on the pane beside it.
+    // Desktop settings is a centred dialog card with a margin around it, not a
+    // full-screen layer, and its nav keeps a fixed 16rem width.
     const viewport = page.viewportSize()!;
-    expect(navBox!.width).toBeGreaterThanOrEqual(218 - 1);
-    expect(navBox!.width).toBeCloseTo(viewport.width * 0.35, -1);
+    const card = await page
+      .getByRole('dialog', { name: 'Settings' })
+      .boundingBox();
+    expect(card).not.toBeNull();
+    expect(card!.x).toBeGreaterThan(0);
+    expect(card!.y).toBeGreaterThan(0);
+    expect(card!.x + card!.width).toBeLessThan(viewport.width);
+    expect(card!.y + card!.height).toBeLessThan(viewport.height);
+    const rem = await page.evaluate(() =>
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+    );
+    expect(navBox!.width).toBeCloseTo(16 * rem, 0);
     await expect(page.locator('.settings-layout__column h1')).toBeVisible();
     const closeBox = await page
       .getByRole('button', { name: 'Close settings' })

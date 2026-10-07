@@ -319,4 +319,33 @@
   .settings-pane--hidden {
     display: none;
   }
+
+  // A centred dialog is the overlay surface's workspace card, not a full-screen layer: the
+  // nav keeps a fixed width without the layer's centring gutter, and Esc needs no caption.
+  :host([data-presentation='dialog']) {
+    block-size: auto;
+
+    --settings-layout-inset: var(--trinity-space-6);
+    --settings-layout-gutter: var(--trinity-space-6);
+  }
+
+  // The workspace card is a flex row, so the workspace has to grow to fill it.
+  :host([data-presentation='dialog']) .settings-layout__workspace {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
+  :host([data-presentation='dialog']) .settings-layout__nav {
+    flex-basis: 16rem;
+    min-inline-size: 0;
+  }
+
+  :host([data-presentation='dialog']) .settings-layout__nav-inner {
+    inline-size: 100%;
+    margin-inline-start: 0;
+  }
+
+  :host([data-presentation='dialog']) .settings-layout__close-caption {
+    display: none;
+  }
 }

@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 const workspaceRoot = join(import.meta.dirname, '..');
 const allowed = new Set([
   'trn-dialog-shell.component.html',
+  'trn-settings-layout.component.html',
   'trn-action-sheet.component.ts',
   // The R4 header panels.
   'pinned-messages-panel.component.html',

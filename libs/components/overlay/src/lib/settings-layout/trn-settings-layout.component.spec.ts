@@ -2,9 +2,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ApplicationRef, Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { TrnDialogRef } from '../dialog/trn-dialog-ref';
 import { TrnDialogService } from '../dialog/trn-dialog.service';
 import { render } from '@trinity/testing';
 import { provideTrnIcons } from '@trinity/components/foundations';
+import { Subject } from 'rxjs';
 import { afterEach, beforeEach, expectTypeOf } from 'vitest';
 import { TrnSettingsGroupComponent } from './trn-settings-group.component';
 import {
@@ -94,6 +96,33 @@ describe('TrnSettingsLayoutComponent', () => {
     expect(container.querySelector('nav')).toHaveClass('settings-pane--hidden');
   });
 
+  it.each([
+    ['a centred dialog', 'dialog', 'dialog'],
+    ['a full-screen dialog', 'fullscreen', 'fullscreen'],
+    ['the routed page', null, 'fullscreen'],
+  ] as const)('sizes itself for %s', async (_, presentation, expected) => {
+    const { fixture } = await render(TrnSettingsLayoutComponent, {
+      inputs: { title: 'Settings', sections, selectedSection: 'general' },
+      providers: [
+        provideTrnIcons(),
+        ...(presentation
+          ? [
+              {
+                provide: TrnDialogRef,
+                useValue: new TrnDialogRef(
+                  { closed: new Subject(), close: () => undefined },
+                  presentation,
+                ),
+              },
+            ]
+          : []),
+      ],
+    });
+    expect(fixture.nativeElement.getAttribute('data-presentation')).toBe(
+      expected,
+    );
+  });
+
   it('puts the close button in the compact top bar beside Back', async () => {
     const compact = await render(TrnSettingsLayoutComponent, {
       inputs: {
@@ -148,7 +177,10 @@ describe('TrnSettingsLayoutComponent', () => {
       });
       expect(container.querySelector('.settings-layout__nav')).toBeTruthy();
       expect(container.querySelector('.settings-layout__content')).toBeTruthy();
-      expect(container.querySelector('[trnoverlaysurface]')).toBeNull();
+      // Outside a centred dialog the surface is the full-screen layer, never a card.
+      expect(
+        container.querySelector('[trnoverlaysurface]')?.className,
+      ).toContain('rounded-none');
       const nav = rule('.settings-layout__nav');
       expect(nav).toContain('background: var(--trinity-surface-app)');
       expect(nav).toContain('flex: 0 0 35%');

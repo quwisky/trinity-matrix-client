@@ -17,6 +17,8 @@ import {
   TrnIconComponent,
   type TrnIconName,
 } from '@trinity/components/foundations';
+import { TrnDialogRef } from '../dialog/trn-dialog-ref';
+import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';
 import { TrnSettingsParts } from './trn-settings-parts';
 
 /** One selectable entry in a domain-neutral settings directory. */
@@ -30,7 +32,12 @@ export interface TrnSettingsLayoutSection {
 @Component({
   selector: 'trn-settings-layout',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgTemplateOutlet, TrnButton, TrnIconComponent],
+  imports: [
+    NgTemplateOutlet,
+    TrnButton,
+    TrnIconComponent,
+    TrnOverlaySurfaceDirective,
+  ],
   // A wrapper that projects the sections itself provides the registry the layout then shares:
   // projected sections resolve their injector from where they are declared, outside the layout.
   providers: [
@@ -43,7 +50,10 @@ export interface TrnSettingsLayoutSection {
   ],
   templateUrl: './trn-settings-layout.component.html',
   styleUrl: './trn-settings-layout.component.scss',
-  host: { '(keydown.escape)': 'onEscape($event)' },
+  host: {
+    '[attr.data-presentation]': 'presentation',
+    '(keydown.escape)': 'onEscape($event)',
+  },
 })
 export class TrnSettingsLayoutComponent {
   private readonly registry = inject(TrnSettingsParts);
@@ -58,6 +68,15 @@ export class TrnSettingsLayoutComponent {
   private scrollLocked = false;
   private readonly directory = viewChild<ElementRef<HTMLElement>>('directory');
   private readonly detail = viewChild<ElementRef<HTMLElement>>('detail');
+
+  /**
+   * A centred dialog sizes the layout to its card; a full-screen dialog and the routed
+   * page fill the viewport. Fixed at open, like the dialog's own presentation.
+   */
+  protected readonly presentation =
+    inject(TrnDialogRef, { optional: true })?.presentation === 'dialog'
+      ? 'dialog'
+      : 'fullscreen';
 
   /** Plain-text title for the shared header. */
   readonly title = input.required<string>();

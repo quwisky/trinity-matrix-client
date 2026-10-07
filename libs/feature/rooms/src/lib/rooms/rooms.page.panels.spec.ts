@@ -212,7 +212,7 @@ describe('RoomsPage panels, pins and media', () => {
     expect(canManageAliases).not.toHaveBeenCalled();
     expect(dialogOpen).toHaveBeenCalledWith(RoomSettingsComponent, {
       ariaLabel: 'Room settings',
-      placement: 'fullscreen',
+      placement: 'center',
       autoFocus: '[data-autofocus]',
       dismissGuard: expect.any(Function),
       inputs: {
@@ -225,8 +225,8 @@ describe('RoomsPage panels, pins and media', () => {
     });
   });
 
-  it('opens Room settings fullscreen on a wide layout too', async () => {
-    const restore = stubLiveLayout({ [BELOW_MD_QUERY]: false });
+  it('opens Room settings fullscreen below md', async () => {
+    const restore = stubLiveLayout({ [BELOW_MD_QUERY]: true });
     const shell = build();
     roomsSignal.set([
       {

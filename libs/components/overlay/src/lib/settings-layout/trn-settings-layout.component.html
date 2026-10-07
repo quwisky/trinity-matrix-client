@@ -23,6 +23,10 @@
   </button>
 </ng-template>
 <div
+  trnOverlaySurface
+  variant="neutral"
+  size="2xl"
+  [layout]="presentation === 'dialog' ? 'workspace' : 'fullscreen'"
   class="settings-layout"
   [attr.data-compact]="compact()"
   [attr.data-testid]="testId()"
