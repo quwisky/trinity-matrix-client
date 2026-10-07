@@ -310,6 +310,12 @@
     background: transparent;
   }
 
+  // The sticky chip row stays opaque over the content scrolling under it, in the
+  // shell's surface rather than the pane colour of the full-screen layer.
+  :host(:not([data-presentation='fullscreen'])) .settings-layout__chips {
+    background: var(--trinity-surface-overlay);
+  }
+
   :host(:not([data-presentation='fullscreen'])) .settings-layout__nav {
     padding-inline: var(--settings-layout-gutter);
     border-inline-end: 1px solid var(--trinity-border-subtle);
