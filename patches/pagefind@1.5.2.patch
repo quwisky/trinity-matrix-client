@@ -1,0 +1,38 @@
+diff --git a/lib/index.js b/lib/index.js
+index df28eb1ae02e62a0eec0698604fb7f1d5b11de47..f74b95cf3cd23971e3a00852e5a23f3f4c4adf39 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -1,5 +1,7 @@
+ import { PagefindService } from "./service.js";
+ import { decode } from "./encoding.js";
++import { mkdir, writeFile } from "node:fs/promises";
++import { dirname, resolve as resolvePath } from "node:path";
+ 
+ /**
+  * @typedef {import('pagefindInternal').InternalResponseCallback} InternalResponseCallback
+@@ -219,7 +221,24 @@ const addDirectory = (indexId, dir) => new Promise((resolve, reject) => {
+  * @param {import('pagefindService').WriteOptions=} options
+  * @returns {Promise<WriteFilesResponse>}
+  */
+-const writeFiles = (indexId, options) => new Promise((resolve, reject) => {
++const writeFiles = async (indexId, options) => {
++    if (!options?.outputPath) return writeFilesInBackend(indexId, options);
++    // Trinity patch: the backend acknowledges WriteFiles before its tokio writes reach
++    // the disk and close() kills it, which left files empty or truncated (Pagefind#1271,
++    // fixed by #1272 after 1.5.2). Write the in-memory files here so they are complete
++    // when this resolves. Drop this patch once a release contains #1272.
++    const { errors, files } = await getFiles(indexId);
++    if (errors.length > 0) return { errors };
++    const outputPath = resolvePath(options.outputPath);
++    await Promise.all(files.map(async ({ path, content }) => {
++        const target = resolvePath(outputPath, path);
++        await mkdir(dirname(target), { recursive: true });
++        await writeFile(target, content);
++    }));
++    return { errors, outputPath };
++};
++
++const writeFilesInBackend = (indexId, options) => new Promise((resolve, reject) => {
+     const action = 'WriteFiles';
+     launch().sendMessage(
+         {

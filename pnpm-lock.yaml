@@ -166,6 +166,7 @@ patchedDependencies:
   '@spartan-ng/brain@1.5.0': 0779a0141f07aae23e171c954aafebe172e6ec409ff4e3685ddd7d00dd8c1955
   matrix-js-sdk@42.4.0: dea6ee05b217488675e414b4f408821a59eaf0c2ed222914261b551f9a99edcc
   matrix-widget-api@1.19.0: 91cea261f6205a2447b8841d35ae12e99d438546e56e4aeffe6bf8d7acd1a79c
+  pagefind@1.5.2: f9b8a0c9dfa656ac64bbbe9bfa2144b3bd8e195a65de0ce4fca0758fbce8f64f
 
 importers:
 
@@ -14215,7 +14216,7 @@ snapshots:
       mdast-util-directive: 3.1.0(supports-color@8.1.1)
       mdast-util-to-markdown: 2.1.2
       mdast-util-to-string: 4.0.0
-      pagefind: 1.5.2
+      pagefind: 1.5.2(patch_hash=f9b8a0c9dfa656ac64bbbe9bfa2144b3bd8e195a65de0ce4fca0758fbce8f64f)
       remark-directive: 4.0.0(supports-color@8.1.1)
       satteri: 0.10.5
       ultrahtml: 1.7.0
@@ -24920,7 +24921,7 @@ snapshots:
 
   package-manager-detector@1.8.0: {}
 
-  pagefind@1.5.2:
+  pagefind@1.5.2(patch_hash=f9b8a0c9dfa656ac64bbbe9bfa2144b3bd8e195a65de0ce4fca0758fbce8f64f):
     optionalDependencies:
       '@pagefind/darwin-arm64': 1.5.2
       '@pagefind/darwin-x64': 1.5.2
