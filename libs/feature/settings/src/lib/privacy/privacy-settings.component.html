@@ -1,15 +1,14 @@
-<trn-settings-section-heading
-  title="Privacy"
+<trn-settings-group
   description="Control receipts and link previews stored on this device."
-  [primary]="true"
-/>
-<trn-preference-catalog-section section="privacy" />
+>
+  <trn-preference-catalog-section section="privacy" />
 
-@if (privacy.linkPreviews() && previewsSupported() === false) {
-  <p
-    class="block px-4 py-2 text-13 text-muted-foreground"
-    data-testid="privacy-link-previews-unsupported"
-  >
-    ⚠ Your homeserver doesn't provide link previews, so none will appear.
-  </p>
-}
+  @if (privacy.linkPreviews() && previewsSupported() === false) {
+    <p
+      class="m-0 py-3 text-13 text-muted-foreground"
+      data-testid="privacy-link-previews-unsupported"
+    >
+      ⚠ Your homeserver doesn't provide link previews, so none will appear.
+    </p>
+  }
+</trn-settings-group>

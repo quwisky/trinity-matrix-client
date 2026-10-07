@@ -27,10 +27,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 
-const platform = vi.hoisted(() => ({ native: false }));
+const platform = vi.hoisted(() => ({ native: false, mobile: false }));
 vi.mock('@trinity/platform-native', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@trinity/platform-native')>()),
   isInstalledNativePlatform: () => platform.native,
+  isMobileOs: () => platform.mobile,
 }));
 
 @Component({ template: '' })
@@ -50,6 +51,7 @@ describe('Workspace application-surface composition adapter', () => {
 
   beforeEach(() => {
     platform.native = false;
+    platform.mobile = false;
     settingsLoad = () => of(StubSettingsComponent as Type<unknown>);
     vi.clearAllMocks();
     vi.stubGlobal(
@@ -124,6 +126,21 @@ describe('Workspace application-surface composition adapter', () => {
     });
   });
 
+  it('passes the requested Settings part through as the dialog initial part', async () => {
+    await firstValueFrom(
+      presenter().present({
+        surface: { kind: 'settings', section: 'appearance', part: 'timeline' },
+      }),
+    );
+
+    expect(dialogOpen).toHaveBeenCalledWith(
+      StubSettingsComponent,
+      expect.objectContaining({
+        inputs: { initialSection: 'appearance', initialPart: 'timeline' },
+      }),
+    );
+  });
+
   it('registers a modal Settings identity with Workspace Back', async () => {
     const request = {
       surface: { kind: 'settings', section: 'stickers' },
@@ -150,7 +167,7 @@ describe('Workspace application-surface composition adapter', () => {
     expect(close).toHaveBeenCalled();
   });
 
-  it('opens Settings fullscreen below md, where a sheet pane would clip it', async () => {
+  it('opens Settings centred below md too, which the dialog service shows as a sheet', async () => {
     vi.stubGlobal(
       'matchMedia',
       vi.fn((query: string) => ({ matches: query === BELOW_MD_QUERY })),
@@ -164,12 +181,13 @@ describe('Workspace application-surface composition adapter', () => {
 
     expect(dialogOpen).toHaveBeenCalledWith(
       StubSettingsComponent,
-      expect.objectContaining({ placement: 'fullscreen' }),
+      expect.objectContaining({ placement: 'center' }),
     );
   });
 
-  it('keeps Settings routed in installed Capacitor hosts', async () => {
+  it('opens Settings as a sheet on a phone or tablet, installed apps included', async () => {
     platform.native = true;
+    platform.mobile = true;
 
     await firstValueFrom(
       presenter().present({
@@ -177,8 +195,14 @@ describe('Workspace application-surface composition adapter', () => {
       }),
     );
 
-    expect(navigate).toHaveBeenCalledWith(['/settings/security'], {});
-    expect(dialogOpen).not.toHaveBeenCalled();
+    expect(dialogOpen).toHaveBeenCalledWith(
+      StubSettingsComponent,
+      expect.objectContaining({
+        placement: 'bottom',
+        inputs: expect.objectContaining({ initialSection: 'security' }),
+      }),
+    );
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('opens a nested trust flow over modal Settings and makes it the active surface', async () => {

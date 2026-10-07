@@ -12,13 +12,16 @@ import { FormField, form } from '@angular/forms/signals';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSwitchComponent } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
-import { TrnToastService } from '@trinity/components/overlay';
 import {
   KeywordRulesService,
   KeywordValidationError,
   type KeywordRule,
 } from '@trinity/data-access/notifications';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+  TrnToastService,
+} from '@trinity/components/overlay';
 
 /**
  * The keyword list in Settings → Notifications: words that notify wherever they are said.
@@ -36,11 +39,12 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './keyword-rules-block.component.html',
   imports: [
+    TrnSettingsRowComponent,
+    TrnSettingsGroupComponent,
     FormField,
     TrnButton,
     TrnSwitchComponent,
     TrnInput,
-    SettingsSectionHeadingComponent,
   ],
 })
 export class KeywordRulesBlockComponent implements OnInit {

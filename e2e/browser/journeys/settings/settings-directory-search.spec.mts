@@ -30,6 +30,8 @@ test.describe('Settings directory search', () => {
     const field = search(page);
     const resultStatus = status(page);
     await expect(resultStatus).toHaveAttribute('aria-live', 'polite');
+    // The count is read aloud only: a screen-reader-only box, not a visible line.
+    await expect(resultStatus).toHaveClass(/sr-only/);
     const initialUrl = page.url();
     await field.fill('  PREF ');
 
@@ -58,7 +60,6 @@ test.describe('Settings directory search', () => {
 
     await field.fill('does-not-exist');
     await expect(resultStatus).toContainText('0 sections found');
-    await expect(resultStatus).toContainText('No sections found.');
     await expect(
       page.getByText('No sections found.', { exact: true }),
     ).toBeVisible();
@@ -90,6 +91,71 @@ test.describe('Settings directory search', () => {
     await expect(page.getByRole('heading', { name: 'Privacy' })).toBeFocused();
   });
 
+  test('a part result opens its section and scrolls to the part', async ({
+    page,
+  }) => {
+    const field = search(page);
+    await field.fill('timeline');
+    await expect(status(page)).toHaveText('1 section found');
+    await page
+      .getByRole('button', { name: 'Appearance › Timeline', exact: true })
+      .click();
+
+    await expect(page.getByTestId('settings-nav-appearance')).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(page.locator('#part-timeline')).toBeInViewport({
+      timeout: 20_000,
+    });
+    await expect(page.locator('#part-timeline')).toBeFocused();
+  });
+
+  test('shows a long part result in full inside the nav', async ({ page }) => {
+    await search(page).fill('theme');
+    const result = page.getByRole('button', {
+      name: 'Appearance › Mode and theme',
+      exact: true,
+    });
+    await expect(result).toBeVisible();
+    const clipped = await result.evaluate(
+      (element) => element.scrollWidth > element.clientWidth,
+    );
+    expect(clipped).toBe(false);
+  });
+
+  test('a phone sheet draws part results and its chip row in the sheet colours', async ({
+    page,
+  }) => {
+    await page.goto('/settings/appearance');
+    await page.getByTestId('mode-dark').click();
+    await expect(page.locator('html')).toHaveClass(/dark/);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await openSettingsFromRooms(page);
+    await search(page).fill('code');
+    const result = page.getByRole('button', {
+      name: 'Appearance › Code blocks',
+      exact: true,
+    });
+    await expect(result).toBeVisible();
+    // The overlay sits outside the app root, so the layout has to give its own text
+    // colour; without it the result inherits the document's black.
+    const heading = page.locator('.settings-layout__list-head h1');
+    const bright = await heading.evaluate((el) => getComputedStyle(el).color);
+    await expect(result).toHaveCSS('color', bright);
+
+    // The sticky chip row covers content scrolling under it, so it is opaque, and in
+    // the sheet's own surface colour rather than a darker strip.
+    await result.click();
+    const chips = page.locator('.settings-layout__chips');
+    await expect(chips).toBeVisible();
+    const sheet = await page
+      .getByTestId('dialog-surface')
+      .evaluate((el) => getComputedStyle(el).backgroundColor);
+    await expect(chips).toHaveCSS('background-color', sheet);
+  });
+
   test.describe('Pixel 5 routed history', () => {
     test.use({
       viewport: devices['Pixel 5'].viewport,
@@ -112,7 +178,7 @@ test.describe('Settings directory search', () => {
       await page.getByRole('button', { name: 'Back' }).click();
       await expect(page).toHaveURL(/\/settings$/);
       await expect(search(page)).toBeEmpty();
-      await page.getByRole('button', { name: 'Back' }).click();
+      await page.getByRole('button', { name: 'Close settings' }).click();
       await expect(page).toHaveURL(/\/rooms/);
       await page.goto('/settings');
       await expect(page.getByTestId('settings-nav-appearance')).toBeVisible();
@@ -139,7 +205,7 @@ test.describe('Settings directory search', () => {
       await page.getByRole('button', { name: 'Back' }).click();
       await expect(page).toHaveURL(/\/settings$/);
       await expect(field).toHaveValue('  noti ');
-      await page.getByRole('button', { name: 'Back' }).click();
+      await page.getByRole('button', { name: 'Close settings' }).click();
       await expect(page).toHaveURL(/\/rooms/);
 
       await page.goto('/settings');
@@ -215,10 +281,6 @@ test.describe('Settings directory search', () => {
       await page.evaluate(() => {
         document.documentElement.style.fontSize = '125%';
       });
-      await expect(page.locator('.settings-layout')).toHaveAttribute(
-        'data-trn-layout',
-        'workspace',
-      );
       await expect(page.getByTestId('settings-detail')).toBeVisible();
       await search(page).fill('preferences');
       await expect(status(page)).toHaveText('3 sections found');

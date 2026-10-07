@@ -1,11 +1,7 @@
-<div>
-  <trn-settings-section-heading
-    title="Advanced"
-    description="Inspect, move or reset the preferences stored on this device."
-    [primary]="true"
-  />
-
-  <p class="block px-4 py-2 text-13 text-muted-foreground">
+<trn-settings-group
+  description="Inspect, move or reset the preferences stored on this device."
+>
+  <p class="m-0 py-3 text-13 text-muted-foreground">
     Every setting Trinity keeps on this device, in one document — to copy to
     another device, keep a copy before experimenting, or paste into a support
     thread. It carries preferences only: no accounts, no access tokens, no
@@ -23,7 +19,7 @@
     }
   </p>
 
-  <div class="px-4 py-2">
+  <div class="py-3">
     @if (editor(); as loaded) {
       <!-- Not a <label for>: the editor's own text area is built by CodeMirror and has no id
            to point at, so it carries the accessible name itself (aria-label). -->
@@ -61,7 +57,7 @@
     }
   </div>
 
-  <div class="flex flex-wrap items-center gap-2 px-4 py-2">
+  <div class="flex flex-wrap items-center gap-2 py-3">
     <button
       trnBtn
       presentation="outline"
@@ -124,7 +120,7 @@
   </div>
 
   @if (canEdit) {
-    <div class="flex flex-wrap items-center gap-2 px-4 py-2">
+    <div class="flex flex-wrap items-center gap-2 py-3">
       <button
         trnBtn
         size="sm"
@@ -137,7 +133,7 @@
     </div>
   } @else {
     <p
-      class="block px-4 py-2 text-13 text-muted-foreground"
+      class="m-0 py-3 text-13 text-muted-foreground"
       data-testid="advanced-editing-unavailable"
     >
       Editing this document isn't offered in the mobile app — a JSON editor over
@@ -149,7 +145,7 @@
   }
 
   @if (problems().length > 0) {
-    <div class="px-4 py-2" role="alert" data-testid="advanced-apply-problems">
+    <div class="py-3" role="alert" data-testid="advanced-apply-problems">
       <p class="text-13 font-medium text-danger">
         Nothing was applied. This document can't be read:
       </p>
@@ -162,7 +158,7 @@
   }
 
   @if (warnings().length > 0) {
-    <div class="px-4 py-2" data-testid="advanced-apply-warnings">
+    <div class="py-3" data-testid="advanced-apply-warnings">
       <div class="rounded-md bg-warning px-3 py-2 text-warning-foreground">
         <p class="text-13 font-medium">Some of this won't apply here:</p>
         <ul class="pt-1">
@@ -180,7 +176,7 @@
 
   @if (nothingToChange()) {
     <p
-      class="block px-4 py-2 text-13 text-muted-foreground"
+      class="m-0 py-3 text-13 text-muted-foreground"
       data-testid="advanced-apply-nothing"
     >
       Your settings already match this document, so there is nothing to change.
@@ -188,7 +184,7 @@
   }
 
   @if (changeLines().length > 0) {
-    <div class="px-4 py-2" data-testid="advanced-apply-summary">
+    <div class="py-3" data-testid="advanced-apply-summary">
       <div class="rounded-md border border-solid border-border px-3 py-2">
         <p class="text-13 font-medium">
           These settings will change. Nothing has been written yet.
@@ -226,7 +222,7 @@
 
   @if (!canExportFile()) {
     <p
-      class="block px-4 py-2 text-13 text-muted-foreground"
+      class="m-0 py-3 text-13 text-muted-foreground"
       data-testid="advanced-export-unavailable"
     >
       Saving a file isn't offered here — the mobile app has no reliable
@@ -234,11 +230,10 @@
       note, or a message to yourself, to get it onto another device.
     </p>
   }
+</trn-settings-group>
 
-  <h3 class="px-4 pt-4 pb-1 text-13 font-semibold">
-    What this document leaves out
-  </h3>
-  <ul class="px-4 pb-2" data-testid="advanced-exclusions">
+<trn-settings-group title="What this document leaves out">
+  <ul class="m-0 list-none p-0 pt-3" data-testid="advanced-exclusions">
     @for (note of exclusions; track note.what) {
       <li class="py-1 text-13 text-muted-foreground">
         <span class="font-medium text-foreground">{{ note.what }}</span> —
@@ -247,14 +242,16 @@
     }
   </ul>
 
-  <p class="block px-4 py-2 text-13 text-muted-foreground">
+  <p class="m-0 py-3 text-13 text-muted-foreground">
     A document written on another platform can name settings this one has no use
     for — a desktop keyboard shortcut on a phone, say. Trinity applies the rest
     and tells you which ones it left, rather than quietly dropping them from
     your document.
   </p>
+</trn-settings-group>
 
-  <div class="border-t border-solid border-border px-4 py-3">
+<trn-settings-group title="Reset to defaults">
+  <div class="py-3">
     <button
       trnBtn
       variant="danger"
@@ -304,4 +301,4 @@
       </div>
     }
   </div>
-</div>
+</trn-settings-group>

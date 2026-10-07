@@ -26,6 +26,19 @@ function pressWindow(init: Partial<KeyboardEvent>): void {
   window.dispatchEvent(event);
 }
 
+/** The heading levels in document order, as a section sits under its page's h1. */
+function skippedHeadingLevel(root: HTMLElement): string | null {
+  let previous = 1;
+  for (const heading of root.querySelectorAll('h1, h2, h3, h4, h5, h6')) {
+    const level = Number(heading.tagName.slice(1));
+    if (level > previous + 1) {
+      return `${heading.tagName} "${heading.textContent?.trim()}" follows h${previous}`;
+    }
+    previous = level;
+  }
+  return null;
+}
+
 describe('ShortcutsSectionComponent', () => {
   let confirm: Mock;
   let toast: Mock;
@@ -54,6 +67,12 @@ describe('ShortcutsSectionComponent', () => {
     rendered.fixture.detectChanges();
     return { ...rendered, svc };
   }
+
+  it('skips no heading level under the page heading', async () => {
+    const { container } = await setup();
+    expect(container.querySelector('h2')).not.toBeNull();
+    expect(skippedHeadingLevel(container)).toBeNull();
+  });
 
   it('lists a row per shortcut with its binding', async () => {
     const { container } = await setup();

@@ -522,7 +522,7 @@ describe('RoomsPage action error feedback', () => {
     });
   });
 
-  it('opens Space settings fullscreen below md', async () => {
+  it('opens Space settings centred below md, which the dialog service shows as a sheet', async () => {
     const restore = stubLiveLayout({ [BELOW_MD_QUERY]: true });
     const shell = build();
     shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
@@ -532,7 +532,7 @@ describe('RoomsPage action error feedback', () => {
 
     expect(dialogOpen).toHaveBeenCalledWith(
       SpaceSettingsComponent,
-      expect.objectContaining({ placement: 'fullscreen' }),
+      expect.objectContaining({ placement: 'center' }),
     );
     restore();
   });

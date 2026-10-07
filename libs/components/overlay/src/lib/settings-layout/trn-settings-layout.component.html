@@ -1,106 +1,190 @@
-<section
-  trnOverlaySurface
-  variant="neutral"
-  size="2xl"
-  [layout]="resolvedSurfaceLayout()"
-  class="settings-layout"
-  [attr.data-compact]="compact()"
-  [style.width]="compact() ? '100vw' : null"
-  [style.height]="surfaceHeight()"
-  [style.max-height]="
-    resolvedSurfaceLayout() === 'sheet' ? surfaceHeight() : null
-  "
-  [attr.data-testid]="testId()"
->
-  <header class="settings-layout__header">
-    @if (compact() && !directoryVisible() && selectedSection()) {
-      <button
-        trnBtn
-        presentation="ghost"
-        shape="icon"
-        size="md"
-        aria-label="Back to sections"
-        [attr.data-testid]="testId() + '-mobile-back'"
-        (click)="backRequested.emit()"
-      >
-        <trn-icon name="arrow-left" motion="nudge-left" />
-      </button>
-    }
-    <div class="settings-layout__heading">
-      <h1 data-autofocus data-settings-autofocus tabindex="-1">
-        {{ title() }}
-      </h1>
-      <ng-content select="[settings-context]" />
-    </div>
+<ng-template #heading>
+  <h1
+    data-autofocus
+    data-settings-autofocus
+    tabindex="-1"
+    [attr.data-testid]="headingTestId()"
+  >
+    {{ headingText() }}
+  </h1>
+</ng-template>
+<ng-template #closeButton>
+  <!-- A framed dialog closes from its shell's X alone. -->
+  @if (framing() === 'fullscreen') {
     <button
       trnBtn
+      type="button"
       presentation="ghost"
       shape="icon"
-      size="md"
-      [attr.aria-label]="'Close ' + title()"
+      size="sm"
+      class="settings-layout__close"
+      [attr.aria-label]="closeLabel()"
       [attr.data-testid]="resolvedCloseTestId()"
       (click)="closeRequested.emit()"
     >
       <trn-icon name="x" motion="rotate" />
     </button>
-  </header>
-
-  <div class="settings-layout__warning">
-    <ng-content select="[settings-warning]" />
-  </div>
-
-  <div class="settings-layout__workspace" data-testid="settings-workspace">
-    <nav
-      #directory
-      class="settings-layout__directory no-scrollbar"
-      [class.settings-pane--hidden]="compact() && !directoryVisible()"
-      [attr.aria-label]="directoryLabel()"
-      [attr.data-testid]="testId() + '-directory'"
-    >
-      <ng-content select="[settings-directory-header]" />
-      @for (section of sections(); track section.id; let index = $index) {
-        @if (isGroupStart(index)) {
-          <p class="settings-layout__group">{{ section.group }}</p>
-        }
-        <button
-          trnBtn
-          [variant]="selectedSection() === section.id ? 'secondary' : 'primary'"
-          [presentation]="selectedSection() === section.id ? 'solid' : 'ghost'"
-          size="md"
-          class="settings-layout__directory-item"
-          [class.is-active]="selectedSection() === section.id"
-          [attr.aria-current]="selectedSection() === section.id ? 'page' : null"
-          [attr.data-testid]="sectionTestId(section)"
-          [attr.data-trn-settings-section]="section.id"
-          (click)="selectSection(section.id)"
-        >
-          <trn-icon
-            [name]="section.icon"
-            size="md"
-            [variant]="selectedSection() === section.id ? 'accent' : 'muted'"
-          />
-          <span class="settings-layout__directory-label">{{
-            section.label
-          }}</span>
-          @if (compact()) {
-            <trn-icon name="chevron-right" size="md" variant="muted" />
+  }
+</ng-template>
+<!-- A centred dialog or a sheet uses the same shell, header and close as every other dialog. -->
+@if (framing() !== 'fullscreen') {
+  <trn-dialog-shell
+    [title]="title()"
+    [presentation]="framing()"
+    size="2xl"
+    bodyClass="p-0"
+    [closeLabel]="closeLabel()"
+    [closeTestId]="resolvedCloseTestId()"
+    (closed)="closeRequested.emit()"
+  >
+    <ng-container [ngTemplateOutlet]="layout" />
+  </trn-dialog-shell>
+} @else {
+  <ng-container [ngTemplateOutlet]="layout" />
+}
+<ng-template #layout>
+  <div
+    class="settings-layout"
+    [attr.data-compact]="compact()"
+    [attr.data-testid]="testId()"
+  >
+    <div class="settings-layout__workspace" data-testid="settings-workspace">
+      <nav
+        #directory
+        class="settings-layout__nav no-scrollbar"
+        [class.settings-pane--hidden]="compact() && !directoryVisible()"
+        [attr.aria-label]="directoryLabel()"
+        [attr.data-testid]="testId() + '-directory'"
+      >
+        <div class="settings-layout__nav-inner">
+          @if (listView()) {
+            <!-- A framed header already shows the title; keep it for focus and readers. -->
+            <div
+              class="settings-layout__list-head"
+              [class.sr-only]="framing() !== 'fullscreen'"
+            >
+              <ng-container [ngTemplateOutlet]="heading" />
+              <ng-container [ngTemplateOutlet]="closeButton" />
+            </div>
           }
-        </button>
-      }
-      <div class="settings-layout__directory-footer">
-        <ng-content select="[settings-nav-footer]" />
-      </div>
-    </nav>
+          <ng-content select="[settings-directory-header]" />
+          @for (section of sections(); track section.id; let index = $index) {
+            @if (isGroupStart(index)) {
+              <p class="settings-layout__group-label">{{ section.group }}</p>
+            }
+            <button
+              type="button"
+              class="settings-layout__nav-item"
+              [class.is-active]="selectedSection() === section.id"
+              [attr.aria-current]="
+                selectedSection() === section.id ? 'page' : null
+              "
+              [attr.data-testid]="sectionTestId(section)"
+              [attr.data-trn-settings-section]="section.id"
+              (click)="selectSection(section.id)"
+            >
+              <trn-icon
+                [name]="section.icon"
+                size="md"
+                [variant]="
+                  selectedSection() === section.id ? 'accent' : 'muted'
+                "
+              />
+              <span class="settings-layout__nav-label">{{
+                section.label
+              }}</span>
+              @if (compact()) {
+                <trn-icon name="chevron-right" size="md" variant="muted" />
+              }
+            </button>
+            @if (selectedSection() === section.id && !compact() && hasParts()) {
+              <ul class="settings-layout__parts">
+                @for (part of parts(); track part.id) {
+                  <li>
+                    <button
+                      type="button"
+                      class="settings-layout__part"
+                      [class.is-current]="currentPart() === part.id"
+                      [attr.aria-current]="
+                        currentPart() === part.id ? 'location' : null
+                      "
+                      [attr.data-testid]="'settings-part-' + part.id"
+                      (click)="goToPart(part.id)"
+                    >
+                      {{ part.label }}
+                    </button>
+                  </li>
+                }
+              </ul>
+            }
+          }
+          <div class="settings-layout__nav-footer">
+            <ng-content select="[settings-nav-footer]" />
+          </div>
+        </div>
+      </nav>
 
-    <section
-      #detail
-      [class]="detailClasses()"
-      [class.settings-pane--hidden]="compact() && directoryVisible()"
-      [attr.data-testid]="resolvedDetailTestId()"
-    >
-      <div class="settings-layout__detail-content">
-        <ng-content />
-      </div>
-    </section>
+      <section
+        #detail
+        [class]="detailClasses()"
+        [attr.aria-label]="headingText()"
+        [class.settings-pane--hidden]="compact() && directoryVisible()"
+        [attr.data-testid]="resolvedDetailTestId()"
+      >
+        <div class="settings-layout__column">
+          @if (compact() && !listView()) {
+            <div class="settings-layout__topbar">
+              @if (selectedSection()) {
+                <button
+                  trnBtn
+                  presentation="ghost"
+                  shape="icon"
+                  size="md"
+                  aria-label="Back to sections"
+                  [attr.data-testid]="testId() + '-mobile-back'"
+                  (click)="backRequested.emit()"
+                >
+                  <trn-icon name="arrow-left" motion="nudge-left" />
+                </button>
+              }
+              <!-- Under a framed header, Back and the section name share one row. -->
+              @if (framing() !== 'fullscreen') {
+                <ng-container [ngTemplateOutlet]="heading" />
+              }
+              <ng-container [ngTemplateOutlet]="closeButton" />
+            </div>
+          }
+          <ng-content select="[settings-context]" />
+          <ng-content select="[settings-warning]" />
+          @if (!listView() && !(compact() && framing() !== 'fullscreen')) {
+            <ng-container [ngTemplateOutlet]="heading" />
+          }
+          @if (compact() && !listView() && hasParts()) {
+            <nav
+              class="settings-layout__chips no-scrollbar"
+              [attr.aria-label]="'Parts of ' + selectedLabel()"
+            >
+              @for (part of parts(); track part.id) {
+                <a
+                  class="settings-layout__chip"
+                  [class.is-current]="currentPart() === part.id"
+                  [attr.href]="'#part-' + part.id"
+                  [attr.aria-current]="
+                    currentPart() === part.id ? 'location' : null
+                  "
+                  [attr.data-part]="part.id"
+                  (click)="$event.preventDefault(); goToPart(part.id)"
+                  >{{ part.label }}</a
+                >
+              }
+            </nav>
+          }
+          <ng-content />
+        </div>
+        @if (!listView() && !compact()) {
+          <ng-container [ngTemplateOutlet]="closeButton" />
+        }
+      </section>
+    </div>
   </div>
-</section>
+</ng-template>

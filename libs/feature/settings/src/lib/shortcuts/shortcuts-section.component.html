@@ -1,11 +1,8 @@
-<div>
-  <div class="flex items-center justify-between pr-4">
-    <trn-settings-section-heading
-      title="Keyboard shortcuts"
-      description="Review and personalize the key combinations saved on this device."
-      [primary]="true"
-    />
-    @if (hasCustomBindings()) {
+<trn-settings-group
+  description="Review and personalize the key combinations saved on this device."
+>
+  @if (hasCustomBindings()) {
+    <div class="flex justify-end pt-3">
       <button
         trnBtn
         presentation="ghost"
@@ -15,102 +12,102 @@
       >
         Reset all to defaults
       </button>
-    }
-  </div>
+    </div>
+  }
 
   @for (group of groups(); track group.category) {
-    <h3
-      class="px-4 pt-5 pb-2 text-sm font-semibold text-foreground"
+    <h2
+      class="m-0 pt-6 text-sm font-semibold text-[var(--trinity-text-bright)]"
       [attr.data-testid]="'shortcut-group-' + group.category.toLowerCase()"
     >
       {{ group.category }}
-    </h3>
-    <ul class="px-2">
+    </h2>
+    <ul class="m-0 list-none p-0">
       @for (row of group.rows; track row.id) {
-        <li
-          class="flex items-center gap-3 border-b border-solid border-border px-2 py-3"
-          [attr.data-testid]="'shortcut-' + row.id"
-        >
-          <div class="min-w-0 flex-1">
-            <p class="truncate text-sm font-medium">{{ row.description }}</p>
-            @if (row.desktopOnly) {
-              <p class="text-xs text-muted-foreground">Desktop app only</p>
-            } @else if (row.desktopAlias) {
-              <p class="text-xs text-muted-foreground">
-                Also Ctrl+Tab in the desktop app
-              </p>
-            }
-          </div>
-
-          @if (capturingId() === row.id) {
-            <span
-              class="text-sm text-muted-foreground"
-              data-testid="capture-hint"
-            >
-              Press a combination… (Esc to cancel)
-            </span>
-            <button
-              trnBtn
-              presentation="ghost"
-              size="sm"
-              (click)="cancelCapture()"
-            >
-              Cancel
-            </button>
-          } @else {
-            <span
-              class="flex items-center gap-1"
-              data-testid="shortcut-binding"
-            >
-              @if (row.rebindable) {
-                @if (row.isUnset) {
-                  <span class="text-sm text-muted-foreground">Unset</span>
-                } @else {
-                  @for (cap of row.caps; track $index) {
-                    <kbd
-                      class="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium"
-                      >{{ cap }}</kbd
-                    >
-                  }
-                }
-              } @else {
-                <!-- Fixed family (e.g. the numbered jump): shown for discovery, not editable. -->
-                <kbd
-                  class="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium"
-                  >Ctrl/Cmd</kbd
+        <li>
+          <trn-settings-row
+            [label]="row.description"
+            [description]="
+              row.desktopOnly
+                ? 'Desktop app only'
+                : row.desktopAlias
+                  ? 'Also Ctrl+Tab in the desktop app'
+                  : undefined
+            "
+            [attr.data-testid]="'shortcut-' + row.id"
+          >
+            <div class="flex flex-wrap items-center justify-end gap-2">
+              @if (capturingId() === row.id) {
+                <span
+                  class="text-sm text-muted-foreground"
+                  data-testid="capture-hint"
                 >
-                <kbd
-                  class="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium"
-                  >1–9</kbd
-                >
-              }
-            </span>
-
-            @if (row.rebindable) {
-              <button
-                trnBtn
-                presentation="outline"
-                size="sm"
-                (click)="edit(row)"
-                [attr.data-testid]="'shortcut-edit-' + row.id"
-              >
-                Edit
-              </button>
-              @if (!row.isDefault) {
+                  Press a combination… (Esc to cancel)
+                </span>
                 <button
                   trnBtn
                   presentation="ghost"
                   size="sm"
-                  (click)="reset(row.id)"
-                  [attr.data-testid]="'shortcut-reset-' + row.id"
+                  (click)="cancelCapture()"
                 >
-                  Reset
+                  Cancel
                 </button>
+              } @else {
+                <span
+                  class="flex items-center gap-1"
+                  data-testid="shortcut-binding"
+                >
+                  @if (row.rebindable) {
+                    @if (row.isUnset) {
+                      <span class="text-sm text-muted-foreground">Unset</span>
+                    } @else {
+                      @for (cap of row.caps; track $index) {
+                        <kbd
+                          class="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium"
+                          >{{ cap }}</kbd
+                        >
+                      }
+                    }
+                  } @else {
+                    <!-- Fixed family (e.g. the numbered jump): shown for discovery, not editable. -->
+                    <kbd
+                      class="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium"
+                      >Ctrl/Cmd</kbd
+                    >
+                    <kbd
+                      class="rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium"
+                      >1–9</kbd
+                    >
+                  }
+                </span>
+
+                @if (row.rebindable) {
+                  <button
+                    trnBtn
+                    presentation="outline"
+                    size="sm"
+                    (click)="edit(row)"
+                    [attr.data-testid]="'shortcut-edit-' + row.id"
+                  >
+                    Edit
+                  </button>
+                  @if (!row.isDefault) {
+                    <button
+                      trnBtn
+                      presentation="ghost"
+                      size="sm"
+                      (click)="reset(row.id)"
+                      [attr.data-testid]="'shortcut-reset-' + row.id"
+                    >
+                      Reset
+                    </button>
+                  }
+                }
               }
-            }
-          }
+            </div>
+          </trn-settings-row>
         </li>
       }
     </ul>
   }
-</div>
+</trn-settings-group>

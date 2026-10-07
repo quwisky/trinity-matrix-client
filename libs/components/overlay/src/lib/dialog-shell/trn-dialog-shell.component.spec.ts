@@ -59,6 +59,22 @@ class HandledCloseHostComponent {
   readonly onClosed = vi.fn();
 }
 
+@Component({
+  imports: [TrnDialogShellComponent],
+  template: `<trn-dialog-shell
+    title="Settings"
+    closeLabel="Close settings"
+    closeTestId="close-settings"
+  />`,
+})
+class NamedCloseHostComponent {}
+
+@Component({
+  imports: [TrnDialogShellComponent],
+  template: `<trn-dialog-shell title="Status" presentation="sheet" />`,
+})
+class SelfPresentedSheetHostComponent {}
+
 function refFor(presentation: TrnDialogPresentation): {
   close: ReturnType<typeof vi.fn>;
   providers: Provider[];
@@ -149,6 +165,19 @@ describe('TrnDialogShellComponent', () => {
     expect(close).not.toHaveBeenCalled();
   });
 
+  it('lets the host name the X and give it a test id', async () => {
+    const named = await render(NamedCloseHostComponent);
+    const close = named.getByRole('button', { name: 'Close settings' });
+    expect(close.getAttribute('data-testid')).toBe('close-settings');
+  });
+
+  it('labels the X Close with the dialog-close test id by default', async () => {
+    const { getByRole } = await render(HandledCloseHostComponent);
+    expect(
+      getByRole('button', { name: 'Close' }).getAttribute('data-testid'),
+    ).toBe('dialog-close');
+  });
+
   it('closes its dialog from the X when nobody handles closed', async () => {
     const { close, providers } = refFor('dialog');
     await render(PlainHostComponent, { providers });
@@ -175,6 +204,14 @@ describe('TrnDialogShellComponent', () => {
 
     expect(screen.getByTestId('sheet-handle')).toBeTruthy();
     expect(screen.queryByTestId('dialog-close')).toBeNull();
+  });
+
+  it('takes its presentation from the host when no dialog ref opened it', async () => {
+    await render(SelfPresentedSheetHostComponent);
+
+    expect(surface().getAttribute('data-trn-layout')).toBe('sheet');
+    // Only the dialog service can dismiss on a swipe, so there is no handle to drag.
+    expect(screen.queryByTestId('sheet-handle')).toBeNull();
   });
 
   it('presents a centred dialog with the dialog entrance and no handle', async () => {

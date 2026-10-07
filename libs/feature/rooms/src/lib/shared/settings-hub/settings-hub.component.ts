@@ -8,6 +8,7 @@ import {
 import type { TrnIconName } from '@trinity/components/foundations';
 import {
   TrnSettingsLayoutComponent,
+  TrnSettingsParts,
   type TrnSettingsLayoutSection,
 } from '@trinity/components/overlay';
 
@@ -24,6 +25,7 @@ export interface SettingsHubSection {
   selector: 'trn-settings-hub',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [TrnSettingsLayoutComponent],
+  providers: [TrnSettingsParts],
   templateUrl: './settings-hub.component.html',
   styleUrl: './settings-hub.component.scss',
 })

@@ -22,7 +22,11 @@ import {
   TrnSettingsLayoutComponent,
   type TrnSettingsLayoutSection,
 } from '@trinity/components/overlay';
-import { textScaledViewportSignal } from '@trinity/util/ui';
+import {
+  BELOW_MD_QUERY,
+  matchesQuery,
+  textScaledViewportSignal,
+} from '@trinity/util/ui';
 import { isMobileOs } from '@trinity/platform-native';
 import type { CapabilityRecoveryOutcome } from '@trinity/runtime/projection';
 import { take } from 'rxjs';
@@ -46,7 +50,7 @@ import { ApplicationRecoveryPresenter } from '../application-recovery.presenter'
   templateUrl: './system-status.component.html',
   styleUrl: './system-status.component.scss',
   host: {
-    '[class.system-status--mobile]': 'mobile',
+    '[class.system-status--sheet]': "presentation === 'sheet'",
     '(document:keydown)': 'keydown($event)',
   },
 })
@@ -61,7 +65,12 @@ export class SystemStatusComponent implements AfterViewInit {
   private readonly layout = viewChild(TrnSettingsLayoutComponent);
 
   readonly status = inject(CapabilityStatusService);
-  readonly mobile = isMobileOs();
+  /**
+   * Fixed at open, as a dialog's is: a sheet on a phone, otherwise a centred dialog. It
+   * opens outside the dialog service, so it tells the layout how it is presented.
+   */
+  readonly presentation =
+    isMobileOs() || matchesQuery(BELOW_MD_QUERY) ? 'sheet' : 'dialog';
   readonly wide = textScaledViewportSignal(48, this.destroyRef);
   readonly selectedSection = signal<string | null>('overview');
   readonly sections = computed<readonly TrnSettingsLayoutSection[]>(() => [
@@ -74,6 +83,12 @@ export class SystemStatusComponent implements AfterViewInit {
     })),
     { id: 'support', label: 'Support details', icon: 'code', group: 'Support' },
   ]);
+  /** The open section's name heads the content; the shell header already names the dialog. */
+  readonly heading = computed(
+    () =>
+      this.sections().find(({ id }) => id === this.selectedSection())?.label ??
+      null,
+  );
   readonly displayedGroups = computed(() =>
     this.status
       .groups()

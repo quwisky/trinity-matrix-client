@@ -16,6 +16,7 @@ import {
 } from '../../support/multi-account-journey.mts';
 import {
   configureRoomSettingsSuite,
+  expectRowLabelsAlignedWithTitle,
   openRoom,
   session,
 } from '../../support/room-settings-journey.mts';
@@ -260,6 +261,9 @@ test.describe('Room settings · For you', () => {
     await expect(
       page.getByTestId('room-settings-favourite').getByRole('checkbox'),
     ).not.toBeChecked();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('For you');
+    expect(page.viewportSize()!.width).toBeGreaterThanOrEqual(1280);
+    await expectRowLabelsAlignedWithTitle(page, 'room-settings');
 
     // Native radio keyboard behavior reaches the component output; staged checkboxes use
     // Space. This covers the section without bypassing user events through evaluate().

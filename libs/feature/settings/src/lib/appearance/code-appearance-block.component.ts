@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { SettingsGroupComponent } from '../shared/settings-group/settings-group.component';
+import { TrnSettingsGroupComponent } from '@trinity/components/overlay';
 import {
   AppearancePreferenceFieldComponent,
   type AppearancePreferenceField,
@@ -16,7 +16,7 @@ import {
   selector: 'trn-code-appearance-block',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './code-appearance-block.component.html',
-  imports: [AppearancePreferenceFieldComponent, SettingsGroupComponent],
+  imports: [AppearancePreferenceFieldComponent, TrnSettingsGroupComponent],
 })
 export class CodeAppearanceBlockComponent {
   readonly codeSizeField = {

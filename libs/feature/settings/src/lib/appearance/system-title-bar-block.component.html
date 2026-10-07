@@ -1,30 +1,27 @@
 @if (supported && loaded()) {
   <trn-settings-group
     title="Window"
-    headingId="appearance-window-heading"
     description="Choose how the desktop app draws its window frame."
     data-testid="appearance-window"
   >
-    <label trnSettingsToggleRow>
+    <trn-settings-row
+      label="Use system title bar"
+      for="system-title-bar-switch"
+      description="Show your operating system's window frame and menu bar instead of Trinity's title row."
+    >
       <trn-switch
         data-testid="system-title-bar-toggle"
+        inputId="system-title-bar-switch"
+        aria-describedby="system-title-bar-switch-description"
+        for="system-title-bar-switch"
         [checked]="saved()"
         (checkedChange)="onChange($event)"
       />
-      <span class="min-w-0">
-        <strong class="block text-sm font-semibold"
-          >Use system title bar</strong
-        >
-        <small class="block text-13 text-[var(--trinity-text-muted)]"
-          >Show your operating system's window frame and menu bar instead of
-          Trinity's title row.</small
-        >
-      </span>
-    </label>
+    </trn-settings-row>
     @if (failed()) {
       <p
         role="alert"
-        class="text-13 text-danger"
+        class="m-0 pt-3 text-13 text-danger"
         data-testid="system-title-bar-error"
       >
         This choice could not be saved.
@@ -32,7 +29,7 @@
     }
     @if (needsRestart()) {
       <div
-        class="flex flex-wrap items-center justify-between gap-2 text-13"
+        class="flex flex-wrap items-center justify-between gap-2 pt-3 text-13"
         data-testid="system-title-bar-restart-prompt"
       >
         <span>Restart to apply</span>

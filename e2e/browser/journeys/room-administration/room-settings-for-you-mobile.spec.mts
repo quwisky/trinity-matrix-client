@@ -4,6 +4,7 @@ import { registerUser } from '../../../support/account.mts';
 import { apiLogin } from '../../support/multi-account-journey.mts';
 import {
   configureRoomSettingsSuite,
+  expectRowLabelsAlignedWithTitle,
   openRoom,
   session,
 } from '../../support/room-settings-journey.mts';
@@ -69,6 +70,8 @@ test.describe('Room settings · For you on a phone', () => {
       timeout: 15_000,
     });
 
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectRowLabelsAlignedWithTitle(page, 'room-settings');
     const mute = page
       .getByTestId('room-settings-notify-mute')
       .getByRole('radio');
@@ -77,6 +80,20 @@ test.describe('Room settings · For you on a phone', () => {
       .getByRole('checkbox');
     await expect(mute).toBeEnabled();
     await expect(favourite).toBeEnabled();
+    // A compact control stays inline at the end of its row instead of stacking below.
+    for (const control of [mute, favourite]) {
+      const row = control.locator(
+        'xpath=ancestor::*[@data-slot="settings-row"]',
+      );
+      const label = row.locator('label, [id]').first();
+      const [controlBox, labelBox] = await Promise.all([
+        control.boundingBox(),
+        label.boundingBox(),
+      ]);
+      expect(controlBox?.y ?? 0).toBeLessThan(
+        (labelBox?.y ?? 0) + (labelBox?.height ?? 0),
+      );
+    }
     await touchPlatform.tap(
       page,
       page.getByTestId('room-settings-notify-mute'),

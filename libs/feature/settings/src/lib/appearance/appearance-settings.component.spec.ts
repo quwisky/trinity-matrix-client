@@ -123,11 +123,45 @@ describe('AppearanceSettingsComponent', () => {
       container.querySelector('[data-testid=appearance-layout]'),
     ).not.toBeNull();
     expect(
-      container.querySelectorAll('[trnSettingsFieldRow]').length,
+      container.querySelectorAll('trn-settings-row').length,
     ).toBeGreaterThanOrEqual(5);
     expect(
       container.querySelector('trn-radio-group')?.getAttribute('data-layout'),
     ).toBe('segmented');
+  });
+
+  it('builds every Appearance control on the shared settings row', async () => {
+    const { container } = await renderPage();
+
+    // The ad-hoc `text-sm font-semibold` labels are gone: the row owns label typography.
+    expect(
+      container.querySelectorAll('.text-sm.font-semibold, strong.block'),
+    ).toHaveLength(0);
+    for (const testId of [
+      'theme-select',
+      'density-select',
+      'room-list-select',
+      'text-scale-select',
+      'code-scale-select',
+      'code-lines-select',
+      'time-format-select',
+      'date-format-select',
+      'space-order-select',
+      'message-swipe-select',
+      'timeline-show-membership',
+    ]) {
+      const control = container.querySelector(`[data-testid=${testId}]`);
+      expect(control, testId).not.toBeNull();
+      expect(
+        control!.closest('trn-settings-row') ??
+          (control!.matches('trn-settings-row') ? control : null),
+        testId,
+      ).not.toBeNull();
+    }
+    // Rows carry no inline padding or margin of their own: the content column owns it.
+    expect(
+      container.querySelectorAll('trn-settings-row[class*="px-"]'),
+    ).toHaveLength(0);
   });
 
   it('renders a labelled live preview of the active appearance recipe', async () => {

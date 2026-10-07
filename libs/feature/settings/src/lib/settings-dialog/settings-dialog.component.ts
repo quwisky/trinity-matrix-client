@@ -11,20 +11,26 @@ import {
   effect,
   inject,
   input,
+  linkedSignal,
   signal,
   viewChild,
 } from '@angular/core';
 import {
   TrnDialogRef,
+  TrnDialogService,
   TrnSettingsLayoutComponent,
   type TrnSettingsLayoutSection,
 } from '@trinity/components/overlay';
+import { WorkspaceBackService } from '@trinity/application/workspace';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { textScaledViewportSignal } from '@trinity/util/ui';
+import { of } from 'rxjs';
 import { provideConfigEditor } from '../advanced/config-editor-loader';
 import {
   SETTINGS_SECTIONS,
   matchingSettingsSections,
+  sectionsOfResults,
+  type SettingsSearchResult,
   type SettingsSectionDefinition,
 } from '../settings-sections';
 import { SettingsDirectorySearchComponent } from '../shared/settings-directory-search/settings-directory-search.component';
@@ -47,6 +53,7 @@ export class SettingsDialogComponent {
   private readonly injector = inject(Injector);
   private readonly environmentInjector = inject(EnvironmentInjector);
   private readonly document = inject(DOCUMENT);
+  private readonly dialog = inject(TrnDialogService);
   private readonly layout = viewChild(TrnSettingsLayoutComponent);
   private readonly directorySearch = viewChild(
     SettingsDirectorySearchComponent,
@@ -55,16 +62,22 @@ export class SettingsDialogComponent {
 
   readonly initialSection = input<string>();
   readonly initialSource = input<string>();
+  /** A part of the initial section to scroll to; the dialog owns no URL, so none is written back. */
+  readonly initialPart = input<string | null>(null);
   readonly query = signal('');
+  /**
+   * The part the layout should scroll to. It follows the layout's own scroll tracking, so
+   * picking a part again after scrolling away still scrolls; the dialog writes no URL.
+   */
+  readonly partTarget = linkedSignal<string | null>(() => this.initialPart());
+  readonly results = computed(() => matchingSettingsSections(this.query()));
   readonly layoutSections = computed<readonly TrnSettingsLayoutSection[]>(() =>
-    matchingSettingsSections(this.query()).map(
-      ({ path, label, icon, group }) => ({
-        id: path,
-        label,
-        icon,
-        group,
-      }),
-    ),
+    sectionsOfResults(this.results()).map(({ path, label, icon, group }) => ({
+      id: path,
+      label,
+      icon,
+      group,
+    })),
   );
   readonly buildLabel = `Trinity v${this.build.version} · ${this.build.commit}`;
   readonly wide = textScaledViewportSignal(48, this.destroyRef);
@@ -85,6 +98,22 @@ export class SettingsDialogComponent {
   );
 
   constructor() {
+    // On a phone sheet or small screen, Back steps from a section to the list first; with
+    // the list showing, Settings offers nothing and its opener closes the dialog.
+    const unregister = inject(WorkspaceBackService).register({
+      surface: () => {
+        const section = this.selectedPath();
+        return !this.wide() && section !== null
+          ? { layer: 'application', surface: { kind: 'settings', section } }
+          : null;
+      },
+      dismiss: () => {
+        this.goBackOrClose();
+        return of('dismissed' as const);
+      },
+      ownsTopmostOverlay: () => this.dialog.isTopmost(this.ref),
+    });
+    this.destroyRef.onDestroy(unregister);
     this.destroyRef.onDestroy(() => this.advancedInjector.destroy());
     effect(() => {
       const initial = this.initialSection();
@@ -105,12 +134,28 @@ export class SettingsDialogComponent {
 
   selectSection(path: string): void {
     this.selectedPath.set(path);
+    this.partTarget.set(null);
+    this.focusSectionHeadingLater();
+  }
+
+  /** Open the section of a search hit, then scroll to the part it names. */
+  openResult({ section, part }: SettingsSearchResult): void {
+    this.selectedPath.set(section.path);
+    this.partTarget.set(part?.id ?? null);
+    this.clearRouteFocusTargets();
+    // The layout focuses the part's heading itself once it has scrolled there.
+    if (!part) {
+      this.focusSectionHeadingLater();
+    }
+  }
+
+  private focusSectionHeadingLater(): void {
     afterNextRender(() => this.layout()?.focusSectionHeading(), {
       injector: this.injector,
     });
   }
 
-  sectionInjector(section: SettingsSectionDefinition): Injector {
+  sectionInjector(section: SettingsSectionDefinition): EnvironmentInjector {
     return section.path === 'advanced'
       ? this.advancedInjector
       : this.environmentInjector;

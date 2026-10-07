@@ -15,22 +15,29 @@
     background: var(--trinity-overlay-scrim);
   }
 
+  // The shared dialog shell inside the layout draws the surface, header and close.
   trn-settings-layout {
     position: relative;
     min-width: 0;
+    max-inline-size: 100%;
   }
 
+  // A phone gets a bottom sheet.
+  :host.system-status--sheet {
+    place-items: end center;
+    padding: 0;
+  }
+
+  @media (max-width: 48rem) {
+    :host {
+      padding: 0;
+    }
+  }
+
+  // The layout's column already pads the sides; the content lines up with its heading.
   .system-status__content {
-    padding: var(--trinity-space-5);
+    padding-block: var(--trinity-space-5);
     overflow-wrap: anywhere;
-  }
-
-  .system-status__title {
-    margin: 0 0 var(--trinity-space-3);
-    color: var(--trinity-text-bright);
-    font-size: var(--trinity-type-title-size);
-    line-height: var(--trinity-type-title-line-height);
-    font-weight: var(--trinity-type-title-weight);
   }
 
   .system-status__intro {
@@ -57,7 +64,7 @@
     margin-top: 1.5rem;
   }
 
-  .system-status__group > h2:not(.system-status__title),
+  .system-status__group > h2,
   .system-status__empty h2 {
     margin-bottom: 0.75rem;
     font-size: var(--trinity-type-control-size);
@@ -118,16 +125,5 @@
     background: var(--trinity-surface-control);
     font-size: 0.75rem;
     white-space: pre-wrap;
-  }
-
-  :host.system-status--mobile {
-    place-items: end center;
-    padding: 0;
-  }
-
-  @media (max-width: 48rem) {
-    :host {
-      padding: 0;
-    }
   }
 }

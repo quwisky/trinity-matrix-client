@@ -36,23 +36,27 @@
     }
     @case ('members') {
       <section data-testid="space-settings-panel-members">
-        <trn-members-settings
-          [showUnavailableReason]="draft.targetAvailable()"
-          [accountId]="accountId()"
-          [roomId]="spaceId()"
-          [targetName]="draft.model().name || spaceDisplayName()"
-          noun="Space"
-        />
+        <trn-settings-group>
+          <trn-members-settings
+            [showUnavailableReason]="draft.targetAvailable()"
+            [accountId]="accountId()"
+            [roomId]="spaceId()"
+            [targetName]="draft.model().name || spaceDisplayName()"
+            noun="Space"
+          />
+        </trn-settings-group>
       </section>
     }
     @case ('addresses') {
       <section data-testid="space-settings-panel-addresses">
-        <trn-room-aliases
-          [accountId]="accountId()"
-          [roomId]="spaceId()"
-          [available]="draft.targetAvailable()"
-          noun="Space"
-        />
+        <trn-settings-group>
+          <trn-room-aliases
+            [accountId]="accountId()"
+            [roomId]="spaceId()"
+            [available]="draft.targetAvailable()"
+            noun="Space"
+          />
+        </trn-settings-group>
       </section>
     }
   }

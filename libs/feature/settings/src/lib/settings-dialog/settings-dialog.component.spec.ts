@@ -1,7 +1,13 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { BUILD_INFO } from '@trinity/platform-native';
-import { TrnDialogRef } from '@trinity/components/overlay';
+import { By } from '@angular/platform-browser';
+import { within } from '@testing-library/dom';
+import { WorkspaceBackService } from '@trinity/application/workspace';
+import { BUILD_INFO, FeatureFlagsService } from '@trinity/platform-native';
+import { TrnDialogRef, TrnSettingsParts } from '@trinity/components/overlay';
+import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { matchingSettingsSections } from '../settings-sections';
 import { SettingsDialogComponent } from './settings-dialog.component';
 
 describe('SettingsDialogComponent', () => {
@@ -33,6 +39,13 @@ describe('SettingsDialogComponent', () => {
     vi.clearAllMocks();
   });
 
+  it('keeps Log out out of the navigation', () => {
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    fixture.detectChanges();
+    const nav = (fixture.nativeElement as HTMLElement).querySelector('nav')!;
+    expect(within(nav).queryByRole('button', { name: /log out/i })).toBeNull();
+  });
+
   it('filters groups, reports no matches and clears without closing', async () => {
     const fixture = TestBed.createComponent(SettingsDialogComponent);
     fixture.detectChanges();
@@ -52,15 +65,18 @@ describe('SettingsDialogComponent', () => {
       ),
     ).toEqual(['Appearance', 'Notifications', 'Privacy']);
     expect(
-      Array.from(root.querySelectorAll('.settings-layout__group'), (item) =>
-        item.textContent?.trim(),
+      Array.from(
+        root.querySelectorAll('.settings-layout__group-label'),
+        (item) => item.textContent?.trim(),
       ),
     ).toEqual(['Preferences']);
     input('no matching section');
     expect(root.querySelectorAll('[data-trn-settings-section]')).toHaveLength(
       0,
     );
-    expect(root.querySelectorAll('.settings-layout__group')).toHaveLength(0);
+    expect(root.querySelectorAll('.settings-layout__group-label')).toHaveLength(
+      0,
+    );
     expect(root.querySelector('[role="status"]')?.textContent).toContain(
       '0 sections found',
     );
@@ -88,12 +104,87 @@ describe('SettingsDialogComponent', () => {
     ).toBe('');
   });
 
+  it('opens the section of a part result and hands the part to the layout', () => {
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    fixture.detectChanges();
+    const dialog = fixture.componentInstance;
+    const [result] = matchingSettingsSections('code');
+
+    dialog.openResult(result);
+    expect(dialog.selectedPath()).toBe('appearance');
+    expect(dialog.partTarget()).toBe('code-blocks');
+
+    // Picking the same part again after scrolling elsewhere must scroll again.
+    dialog.partTarget.set('timeline');
+    dialog.openResult(result);
+    expect(dialog.partTarget()).toBe('code-blocks');
+
+    // A plain section pick drops the part.
+    dialog.selectSection('privacy');
+    expect(dialog.partTarget()).toBeNull();
+    fixture.destroy();
+  });
+
+  it('titles the page with the open section, not with Settings', async () => {
+    TestBed.overrideProvider(FeatureFlagsService, {
+      useValue: { virtualTimeline: signal(false), setVirtualTimeline: vi.fn() },
+    });
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    fixture.componentRef.setInput('initialSection', 'experimental');
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const headings = root.querySelectorAll('h1');
+    expect(headings).toHaveLength(1);
+    expect(headings[0].textContent?.trim()).toBe('Experimental');
+    expect(root.querySelector('nav')?.getAttribute('aria-label')).toBe(
+      'Settings sections',
+    );
+    fixture.destroy();
+  });
+
+  it('renders a section inside the layout, so its groups register as parts', async () => {
+    TestBed.overrideProvider(FeatureFlagsService, {
+      useValue: { virtualTimeline: signal(false), setVirtualTimeline: vi.fn() },
+    });
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    fixture.componentRef.setInput('initialSection', 'experimental');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const group = fixture.debugElement.query(By.css('trn-settings-group'));
+    expect(group).not.toBeNull();
+    const registry = group.injector.get(TrnSettingsParts, null);
+    expect(registry).not.toBeNull();
+    fixture.destroy();
+  });
+
+  it('steps a phone sheet back from a section to the list on Back, then lets it close', async () => {
+    vi.stubGlobal('innerWidth', 390);
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    fixture.detectChanges();
+    const dialog = fixture.componentInstance;
+    const back = TestBed.inject(WorkspaceBackService);
+    // With the list showing, Settings has no step of its own; the opener closes it.
+    expect(back.hasActive()).toBe(false);
+
+    dialog.selectSection('appearance');
+    fixture.detectChanges();
+    const outcome = await firstValueFrom(back.back());
+
+    expect(outcome.kind).toBe('dismissed');
+    expect(dialog.selectedPath()).toBeNull();
+    expect(close).not.toHaveBeenCalled();
+    expect(back.hasActive()).toBe(false);
+    fixture.destroy();
+  });
+
   it('renders the accessible settings directory and closes explicitly', () => {
     const fixture = TestBed.createComponent(SettingsDialogComponent);
     fixture.detectChanges();
     const root = fixture.nativeElement as HTMLElement;
 
-    expect(root.querySelector('h1')?.textContent).toContain('Settings');
+    expect(root.querySelector('h1')?.textContent).toContain('Profile');
     expect(root.querySelector('nav')?.getAttribute('aria-label')).toBe(
       'Settings sections',
     );

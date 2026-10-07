@@ -18,7 +18,11 @@ import {
   TrnSheetDragHandle,
   sheetDismissFor,
 } from './trn-sheet-drag.directive';
-import { TrnDialogRef, dialogTitleId } from '../dialog/trn-dialog-ref';
+import {
+  TrnDialogRef,
+  dialogTitleId,
+  type TrnDialogPresentation,
+} from '../dialog/trn-dialog-ref';
 import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';
 import type {
   TrnOverlaySurfaceLayout,
@@ -70,7 +74,7 @@ export class TrnDialogShellComponent {
   protected readonly titleId = this.ref?.titleId ?? dialogTitleId();
   protected readonly actions = contentChild(TrnDialogActions);
   protected readonly layout = computed<TrnOverlaySurfaceLayout>(() => {
-    const presentation = this.ref?.presentation;
+    const presentation = this.presentation() ?? this.ref?.presentation;
     return presentation === 'sheet' || presentation === 'fullscreen'
       ? presentation
       : 'dialog';
@@ -78,12 +82,21 @@ export class TrnDialogShellComponent {
 
   /** A sheet follows a swipe unless it was opened `disableClose`; `closable` only governs the X. */
   protected readonly swipeable = computed(
-    () => this.layout() === 'sheet' && !(this.ref?.disableClose ?? false),
+    () =>
+      this.layout() === 'sheet' && this.ref !== null && !this.ref.disableClose,
   );
 
   readonly title = input.required<string>();
+  /**
+   * For a shell its host presents itself, outside the dialog service. Its sheet has no
+   * swipe handle, because only the service can dismiss on a swipe.
+   */
+  readonly presentation = input<TrnDialogPresentation | null>(null);
   readonly description = input<string>();
   readonly closable = input(true);
+  /** The X's accessible name; "Close" unless the host names what it closes. */
+  readonly closeLabel = input('Close');
+  readonly closeTestId = input('dialog-close');
   /** Keep the `h2` for screen readers, which still name the dialog by it, but hide it. */
   readonly titleHidden = input(false);
   readonly size = input<TrnOverlaySurfaceSize>('md');

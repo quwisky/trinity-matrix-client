@@ -1,6 +1,6 @@
 import { Injectable, inject, signal, type Type } from '@angular/core';
 import { NavigationStart, Router } from '@angular/router';
-import { isInstalledNativePlatform } from '@trinity/platform-native';
+import { isMobileOs } from '@trinity/platform-native';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   SETTINGS_DIALOG_COMPONENT,
@@ -21,7 +21,7 @@ import {
   TrnDialogService,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { BELOW_MD_QUERY, MD_QUERY, matchesQuery } from '@trinity/util/ui';
+import { MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import {
   Observable,
   Subject,
@@ -123,20 +123,22 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
       return of({ kind: 'unavailable', surface });
     }
     if (surface.kind === 'settings') {
-      // The shared artifact runs unchanged in every host. Installed Capacitor apps keep
-      // native history; Web/PWA and Electron use the application dialog presenter.
-      if (isInstalledNativePlatform() || !this.settingsLoader) {
+      // Every host opens Settings as a dialog: a sheet on a phone or tablet (installed
+      // apps included) and on a small screen, a centred dialog otherwise. Direct
+      // `/settings` links still render the routed page.
+      if (!this.settingsLoader) {
         return this.navigate(request);
       }
       return this.presentDialog(request, this.settingsLoader, true, {
         inputs: {
           ...(surface.section ? { initialSection: surface.section } : {}),
+          ...(surface.part ? { initialPart: surface.part } : {}),
           ...(context?.sourceRoomId
             ? { initialSource: context.sourceRoomId }
             : {}),
         },
         ariaLabel: 'Settings',
-        placement: matchesQuery(BELOW_MD_QUERY) ? 'fullscreen' : 'center',
+        placement: isMobileOs() ? 'bottom' : 'center',
         autoFocus: '[data-settings-autofocus]',
       });
     }
@@ -241,6 +243,9 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
     return from(
       this.router.navigate([routeFor(request.surface)], {
         ...(Object.keys(queryParams).length > 0 ? { queryParams } : {}),
+        ...(request.surface.kind === 'settings' && request.surface.part
+          ? { fragment: request.surface.part }
+          : {}),
       }),
     ).pipe(
       map((accepted) => ({

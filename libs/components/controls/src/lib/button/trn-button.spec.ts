@@ -74,6 +74,26 @@ describe('TrnButton', () => {
     }
   });
 
+  it('lets a row shape wrap its label instead of keeping the fixed height and nowrap', () => {
+    const row = trnButtonRecipe({
+      presentation: 'ghost',
+      shape: 'row',
+      size: 'sm',
+      variant: 'primary',
+    }).split(' ');
+
+    expect(row).toEqual(
+      expect.arrayContaining([
+        'h-auto',
+        'w-full',
+        'justify-start',
+        'whitespace-normal',
+      ]),
+    );
+    expect(row).not.toContain('h-7');
+    expect(row).not.toContain('whitespace-nowrap');
+  });
+
   it('renders a solid danger action as a filled danger button, not a tint', () => {
     const solidDanger = trnButtonRecipe({
       presentation: 'solid',

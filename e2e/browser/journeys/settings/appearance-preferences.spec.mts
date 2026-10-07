@@ -17,7 +17,6 @@ import {
   openSection,
   themeAttr,
   session,
-  settingsTitleAlignment,
 } from '../../support/settings-journey.mts';
 import {
   AA_NORMAL_TEXT,
@@ -78,9 +77,12 @@ test.describe('Settings', () => {
       .toEqual(selectText);
 
     await openSection(page, 'notifications');
-    const switchLabel = page.locator('[data-testid^="notif-"]').first();
-    await switchLabel.evaluate((element) => {
-      element.setAttribute('data-testid', 'dark-switch-label');
+    const switchRow = page.locator('[data-testid^="notif-"]').first();
+    // The row's label element carries the text paint; tag that one for the measurement.
+    await switchRow.evaluate((element) => {
+      element
+        .querySelector(':scope > div > :first-child')!
+        .setAttribute('data-testid', 'dark-switch-label');
     });
     const switchPaint = await measureContrast(page, 'dark-switch-label');
     expect(switchPaint.text).toEqual(
@@ -184,9 +186,6 @@ test.describe('Settings', () => {
     await expect.poll(densityAttr).toBe('compact');
     await expect.poll(spaceToken).toBe('12px');
     await expect.poll(previewGap).toBe('8px');
-    await expect
-      .poll(async () => Math.abs(await settingsTitleAlignment(page)))
-      .toBeLessThanOrEqual(1);
 
     await expect(page.getByTestId('appearance-preview-state')).toContainText(
       'Compact',

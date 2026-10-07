@@ -2,8 +2,13 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { FormRoot } from '@angular/forms/signals';
 import {
   TrnButton,
+  TrnRadioComponent,
   TrnRadioGroupComponent,
 } from '@trinity/components/controls';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+} from '@trinity/components/overlay';
 import { SpaceSettingsForYouDraftService } from './space-settings-for-you-draft.service';
 import { SettingsLoadStateCardComponent } from '../../shared/settings-load-state-card/settings-load-state-card.component';
 
@@ -13,7 +18,10 @@ import { SettingsLoadStateCardComponent } from '../../shared/settings-load-state
   imports: [
     FormRoot,
     TrnButton,
+    TrnRadioComponent,
     TrnRadioGroupComponent,
+    TrnSettingsGroupComponent,
+    TrnSettingsRowComponent,
     SettingsLoadStateCardComponent,
   ],
   templateUrl: './space-settings-for-you.component.html',

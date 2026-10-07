@@ -8,8 +8,10 @@ import {
 } from '@angular/core';
 import { TrnButton, TrnSwitchComponent } from '@trinity/components/controls';
 import { getTrinityDesktopBridge } from '@trinity/platform-native';
-import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.directive';
-import { SettingsGroupComponent } from '../shared/settings-group/settings-group.component';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+} from '@trinity/components/overlay';
 
 /**
  * Desktop-only choice between Trinity's title row and the operating system's window frame.
@@ -23,8 +25,8 @@ import { SettingsGroupComponent } from '../shared/settings-group/settings-group.
   imports: [
     TrnButton,
     TrnSwitchComponent,
-    SettingsToggleRowDirective,
-    SettingsGroupComponent,
+    TrnSettingsGroupComponent,
+    TrnSettingsRowComponent,
   ],
 })
 export class SystemTitleBarBlockComponent {

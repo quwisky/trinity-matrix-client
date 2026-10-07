@@ -88,6 +88,7 @@ const compositeIconFiles = new Set([
   'libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.html',
   'libs/feature/rooms/src/lib/quick-switcher/quick-switcher.component.html',
   'libs/feature/rooms/src/lib/rooms/rooms.page.html',
+  'libs/components/overlay/src/lib/settings-layout/trn-settings-layout.component.html',
 ]);
 
 const filesOutside = (controls, allowed) => [

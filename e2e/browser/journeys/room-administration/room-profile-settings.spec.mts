@@ -62,13 +62,10 @@ test.describe('Room settings', () => {
     await expect(page.getByTestId('room-settings-directory')).toBeVisible();
     await expect(page.getByTestId('room-settings-account')).toContainText(user);
     await expect(
-      settings.getByRole('heading', { name: 'Room settings', level: 1 }),
+      settings.getByRole('heading', { name: 'General', level: 1 }),
     ).toBeFocused();
     const settingsBox = await settings.boundingBox();
     expect(settingsBox?.width ?? 0).toBeGreaterThan(700);
-    expect(settingsBox?.width ?? Infinity).toBeLessThan(
-      page.viewportSize()?.width ?? Infinity,
-    );
     const openingViewport = page.viewportSize();
     if (!openingViewport) throw new Error('Room settings needs a viewport');
     await page.setViewportSize({ width: 700, height: 800 });

@@ -4,8 +4,13 @@ import {
   TrnButton,
   TrnCheckboxComponent,
   TrnRadioGroupComponent,
+  TrnRadioComponent,
   type TrnRadioOption,
 } from '@trinity/components/controls';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+} from '@trinity/components/overlay';
 import type { RoomNotifyMode } from '@trinity/data-access/notifications';
 import { RoomSettingsDraftService } from '../room-settings-draft.service';
 import { RoomSettingsForYouDraftService } from './room-settings-for-you-draft.service';
@@ -37,7 +42,10 @@ const NOTIFICATION_OPTIONS: readonly TrnRadioOption<RoomNotifyMode>[] = [
     FormRoot,
     TrnButton,
     TrnCheckboxComponent,
+    TrnRadioComponent,
     TrnRadioGroupComponent,
+    TrnSettingsGroupComponent,
+    TrnSettingsRowComponent,
     SettingsLoadStateCardComponent,
   ],
   templateUrl: './room-settings-for-you.component.html',

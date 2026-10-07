@@ -130,8 +130,8 @@ test.describe('Settings scrollbars', () => {
     // survives a count. Notifications and Appearance are the sections whose own content is
     // long enough to scroll here; Privacy's is not.
     const expected: Record<string, string[]> = {
-      notifications: ['SECTION[settings-detail]'],
-      appearance: ['SECTION[settings-detail]'],
+      notifications: ['MAIN[settings-detail]'],
+      appearance: ['MAIN[settings-detail]'],
       privacy: [],
     };
 
@@ -181,9 +181,9 @@ test.describe('Settings scrollbars', () => {
         expect(geometry.frame.right).toBeLessThanOrEqual(viewport.width + 1);
         expect(geometry.frame.top).toBeGreaterThanOrEqual(0);
         expect(geometry.frame.bottom).toBeLessThanOrEqual(viewport.height + 1);
-        expect(geometry.frame.left).toBeGreaterThan(0);
-        expect(geometry.frame.right).toBeLessThan(viewport.width);
-        expect(geometry.frame.top).toBeGreaterThan(0);
+        expect(geometry.frame.left).toBeGreaterThanOrEqual(0);
+        expect(geometry.frame.right).toBeLessThanOrEqual(viewport.width + 1);
+        expect(geometry.frame.top).toBeGreaterThanOrEqual(0);
       }
     }
   });
@@ -239,7 +239,7 @@ test.describe('Settings scrollbars', () => {
       .toBe('hidden');
     await expect
       .poll(() => scrollbarPainters(page))
-      .toEqual(['SECTION[settings-detail]']);
+      .toEqual(['MAIN[settings-detail]']);
   });
 
   test('uses the shared visible design across Mode and Theme changes', async ({
@@ -254,7 +254,7 @@ test.describe('Settings scrollbars', () => {
     const nav = page.locator('nav[aria-label="Settings sections"]');
     await expect
       .poll(() => scrollbarPainters(page))
-      .toEqual(['SECTION[settings-detail]']);
+      .toEqual(['MAIN[settings-detail]']);
 
     const railColours: string[] = [];
     for (const theme of [

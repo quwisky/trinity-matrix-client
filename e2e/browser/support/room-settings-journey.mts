@@ -85,3 +85,51 @@ export async function linkIntoSpace(
 export function configureRoomSettingsSuite(): void {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 }
+
+/**
+ * Every settings row label starts where the section title starts: inline padding comes from
+ * the content column only, so a group, row or card must add none.
+ */
+export async function expectRowLabelsAlignedWithTitle(
+  page: Page,
+  settingsTestId: 'room-settings' | 'space-settings',
+): Promise<void> {
+  // Rows line up with the page's leading edge: the title's, or, where a sheet puts the
+  // title beside Back on one row, that row's.
+  const heading = page.getByTestId(`${settingsTestId}-section-heading`);
+  const topbar = page
+    .locator('.settings-layout__topbar')
+    .filter({ has: heading });
+  const title = await ((await topbar.count()) > 0
+    ? topbar.boundingBox()
+    : heading.boundingBox());
+  expect(title).not.toBeNull();
+  const labels = page.locator(
+    `[data-testid="${settingsTestId}"] [data-slot="settings-row"] label`,
+  );
+  const count = await labels.count();
+  expect(count).toBeGreaterThan(0);
+  for (let index = 0; index < count; index++) {
+    const box = await labels.nth(index).boundingBox();
+    expect(box).not.toBeNull();
+    expect(Math.abs(box!.x - title!.x)).toBeLessThanOrEqual(1);
+  }
+}
+
+/** On a phone, Room and Space settings are the shared bottom sheet, across the full width. */
+export async function expectSettingsSheet(
+  page: Page,
+  settingsTestId: 'room-settings' | 'space-settings',
+): Promise<void> {
+  const surface = page
+    .getByTestId(settingsTestId)
+    .locator('xpath=ancestor::*[@data-testid="dialog-surface"]');
+  await expect(surface).toHaveAttribute('data-trn-layout', 'sheet');
+  await surface.evaluate((element) =>
+    Promise.all(element.getAnimations().map((animation) => animation.finished)),
+  );
+  const box = await surface.boundingBox();
+  const viewport = page.viewportSize()!;
+  expect(box!.width).toBeGreaterThanOrEqual(viewport.width - 1);
+  expect(box!.y + box!.height).toBeGreaterThanOrEqual(viewport.height - 1);
+}

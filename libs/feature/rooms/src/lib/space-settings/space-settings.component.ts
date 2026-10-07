@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import type { SpaceContentsTarget } from '@trinity/data-access/room-library';
+import { TrnSettingsGroupComponent } from '@trinity/components/overlay';
 import { MembersSettingsComponent } from '../members-settings/members-settings.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
 import {
@@ -83,6 +84,7 @@ const SECTIONS: readonly (SettingsHubSection & {
     MembersSettingsComponent,
     RoomAliasesComponent,
     SettingsHubComponent,
+    TrnSettingsGroupComponent,
     SpaceSettingsAccessComponent,
     SpaceSettingsContentsComponent,
     SpaceSettingsForYouComponent,

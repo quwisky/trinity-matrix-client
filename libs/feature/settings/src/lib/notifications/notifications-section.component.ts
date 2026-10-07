@@ -10,7 +10,6 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnSwitchComponent } from '@trinity/components/controls';
-import { TrnToastService } from '@trinity/components/overlay';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   NotificationSoundService,
@@ -20,8 +19,11 @@ import {
 } from '@trinity/data-access/notifications';
 import { KeywordRulesBlockComponent } from './keyword-rules-block.component';
 import { PushGatewayBlockComponent } from './push-gateway-block.component';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
-import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.directive';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { Subject, takeUntil } from 'rxjs';
 
 /**
@@ -35,11 +37,11 @@ import { Subject, takeUntil } from 'rxjs';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './notifications-section.component.html',
   imports: [
+    TrnSettingsRowComponent,
+    TrnSettingsGroupComponent,
     TrnSwitchComponent,
     KeywordRulesBlockComponent,
     PushGatewayBlockComponent,
-    SettingsSectionHeadingComponent,
-    SettingsToggleRowDirective,
   ],
 })
 export class NotificationsSectionComponent implements OnInit, OnDestroy {

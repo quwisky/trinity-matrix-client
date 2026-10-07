@@ -294,6 +294,26 @@ async function build(options: BuildOptions = {}) {
 }
 
 describe('RoomSettingsComponent', () => {
+  it('titles the page with the open section and lists its groups as parts', async () => {
+    const { cmp, fixture, container } = await build();
+    cmp.selectSection('access');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const h1 = container.querySelector('h1');
+    expect(h1?.textContent?.trim()).toBe('Access');
+    expect(h1?.getAttribute('data-testid')).toBe(
+      'room-settings-section-heading',
+    );
+    expect(container.querySelectorAll('h2')).toHaveLength(2);
+    expect(
+      [...container.querySelectorAll('[data-testid^="settings-part-"]')].map(
+        (part) => part.textContent?.trim(),
+      ),
+    ).toEqual(['Joining', 'History']);
+  });
+
   it('opens General with the exact Account identity and readable Room details', async () => {
     const { cmp, container } = await build();
 

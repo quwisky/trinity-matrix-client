@@ -9,7 +9,6 @@ import {
   configureSettingsSuite,
   openSection,
   session,
-  settingsTitleAlignment,
 } from '../../support/settings-journey.mts';
 import { settingsLayoutMetrics } from '../../support/settings-layout.mts';
 
@@ -56,23 +55,52 @@ test.describe('Settings', () => {
     expect(detailBox).not.toBeNull();
     // Beside, not stacked: the detail starts after the nav ends.
     expect(detailBox!.x).toBeGreaterThanOrEqual(navBox!.x + navBox!.width - 1);
-    // Device-scale conversion can report CSS-pixel geometry as a float
-    // (for example 255.999992px for this exact 16rem pane).
-    expect(navBox!.width).toBeCloseTo(256, 4);
-    await expect
-      .poll(async () => Math.abs(await settingsTitleAlignment(page)))
-      .toBeLessThanOrEqual(1);
-
-    const settingsDialog = page.getByTestId('settings-dialog');
-    await settingsDialog.evaluate((element) => {
-      element.setAttribute('dir', 'rtl');
-    });
-    await expect
-      .poll(async () => Math.abs(await settingsTitleAlignment(page)))
-      .toBeLessThanOrEqual(1);
-    await settingsDialog.evaluate((element) => {
-      element.setAttribute('dir', 'ltr');
-    });
+    // Desktop settings is a centred dialog card with a margin around it, not a
+    // full-screen layer, and its nav keeps a fixed 16rem width.
+    const viewport = page.viewportSize()!;
+    const card = await page
+      .getByRole('dialog', { name: 'Settings' })
+      .boundingBox();
+    expect(card).not.toBeNull();
+    expect(card!.x).toBeGreaterThan(0);
+    expect(card!.y).toBeGreaterThan(0);
+    expect(card!.x + card!.width).toBeLessThan(viewport.width);
+    expect(card!.y + card!.height).toBeLessThan(viewport.height);
+    const rem = await page.evaluate(() =>
+      Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+    );
+    expect(navBox!.width).toBeCloseTo(16 * rem, 0);
+    // The same frame as every other dialog: the shell's surface and header, whose X is
+    // the only close.
+    const dialog = page.getByRole('dialog', { name: 'Settings' });
+    await expect(dialog.getByTestId('dialog-surface')).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Close settings' }),
+    ).toHaveCount(1);
+    await expect(
+      dialog.locator('.dialog-shell__header').getByRole('button', {
+        name: 'Close settings',
+      }),
+    ).toBeVisible();
+    // Body and header are one surface, as in every other dialog: the nav lines up with
+    // the title, sits a gap below the header and has no ground of its own.
+    const headerTitle = await dialog
+      .locator('.dialog-shell__title')
+      .boundingBox();
+    const header = await dialog.locator('.dialog-shell__header').boundingBox();
+    const search = await dialog
+      .getByRole('searchbox', { name: 'Search settings' })
+      .boundingBox();
+    expect(Math.abs(search!.x - headerTitle!.x)).toBeLessThanOrEqual(1);
+    expect(search!.y - (header!.y + header!.height)).toBeGreaterThanOrEqual(8);
+    await expect(nav).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(page.locator('.settings-layout__column h1')).toBeVisible();
+    const closeBox = await page
+      .getByRole('button', { name: 'Close settings' })
+      .boundingBox();
+    expect(closeBox).not.toBeNull();
+    expect(closeBox!.x + closeBox!.width).toBeLessThanOrEqual(viewport.width);
+    expect(closeBox!.y).toBeGreaterThanOrEqual(0);
 
     // The mobile drill-in chevron is suppressed in the sidebar — and it is suppressed by
     // NOT BEING RENDERED, which is why this asserts absence rather than a computed style.
@@ -148,7 +176,6 @@ test.describe('Settings', () => {
     );
 
     const expectSharedFrame = (actual: typeof main): void => {
-      expect(actual.headerHeight).toBeCloseTo(main.headerHeight, 4);
       expect(actual.directoryWidth).toBeCloseTo(main.directoryWidth, 4);
       expect(actual.directoryIconWidth).toBeCloseTo(main.directoryIconWidth, 4);
       expect(actual.directoryLabelFontSize).toBeCloseTo(
@@ -188,7 +215,7 @@ test.describe('Settings', () => {
     });
     const roomHeader = page
       .getByTestId('room-settings')
-      .locator('.settings-layout__header');
+      .locator('.settings-layout__column');
     await expect(roomHeader.getByTestId('room-settings-room-name')).toHaveText(
       roomName,
     );
@@ -215,7 +242,7 @@ test.describe('Settings', () => {
     });
     const spaceHeader = page
       .getByTestId('space-settings')
-      .locator('.settings-layout__header');
+      .locator('.settings-layout__column');
     await expect(
       spaceHeader.getByTestId('space-settings-space-name'),
     ).toHaveText(spaceName);
@@ -234,7 +261,7 @@ test.describe('Settings', () => {
     await expect(mode).toBeVisible();
     await expect(layout).toBeVisible();
     await expect(
-      page.getByRole('radiogroup', { name: 'Mode and theme' }),
+      page.getByRole('radiogroup', { name: 'Mode', exact: true }),
     ).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Theme' })).toBeVisible();
     await expect(
@@ -381,6 +408,37 @@ test.describe('Settings', () => {
       )
       .toBe('solid');
   });
+
+  for (const viewport of [
+    { width: 1280, height: 800 },
+    { width: 390, height: 844 },
+  ]) {
+    test(`${viewport.width}px: every row label starts where the section title starts`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      for (const section of ['appearance', 'notifications', 'privacy']) {
+        await page.goto(`/settings/${section}`);
+        const title = page.locator('.settings-layout__column h1');
+        await expect(title).toBeVisible({ timeout: 20_000 });
+        const rows = page.locator('[data-slot="settings-row"]');
+        await expect(rows.first()).toBeVisible();
+        const titleX = (await title.boundingBox())!.x;
+        const labelXs = await rows.evaluateAll((elements) =>
+          elements.map(
+            (row) =>
+              row
+                .querySelector(':scope > div > :first-child')!
+                .getBoundingClientRect().left,
+          ),
+        );
+        expect(labelXs.length, section).toBeGreaterThan(0);
+        for (const x of labelXs) {
+          expect(Math.abs(x - titleX), section).toBeLessThanOrEqual(1);
+        }
+      }
+    });
+  }
 
   test('desktop: close leaves settings without changing the room route', async ({
     page,

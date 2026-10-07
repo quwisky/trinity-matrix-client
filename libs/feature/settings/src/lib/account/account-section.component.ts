@@ -17,13 +17,15 @@ import {
 } from '@angular/forms/signals';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
-import { TrnLabel } from '@trinity/components/controls';
-import { TrnToastService } from '@trinity/components/overlay';
 import { runWithBusy } from '@trinity/util/ui';
 import { AuthService, type AccountManagement } from '@trinity/data-access/auth';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+  TrnToastService,
+} from '@trinity/components/overlay';
 
 /** Minimum length we require for a new password (a light client-side guard). */
 const MIN_PASSWORD = 8;
@@ -90,13 +92,13 @@ const passwordSchema = schema<PasswordModel>((path) => {
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './account-section.component.html',
   imports: [
+    TrnSettingsRowComponent,
+    TrnSettingsGroupComponent,
     FormField,
     FormRoot,
     TrnIconComponent,
-    SettingsSectionHeadingComponent,
     TrnButton,
     TrnInput,
-    TrnLabel,
   ],
 })
 export class AccountSectionComponent {

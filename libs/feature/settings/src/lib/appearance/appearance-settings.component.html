@@ -1,12 +1,5 @@
-<trn-settings-section-heading
-  title="Appearance"
+<trn-settings-group
   description="Tune theme, type and spacing together, with a live preview of the result."
-  headingId="appearance-heading"
-  [primary]="true"
-/>
-
-<div
-  class="grid gap-[var(--trinity-space-7)] px-[var(--trinity-space-4)] pb-[var(--trinity-space-7)] md:px-0"
 >
   <trn-appearance-preview
     [modeLabel]="resolvedMode()"
@@ -18,7 +11,7 @@
   @if (appearance.hydrationWarning()) {
     <div
       role="alert"
-      class="flex flex-wrap items-center justify-between gap-3 rounded-[var(--trinity-shape-control-radius)] border border-danger p-[var(--trinity-space-4)] text-13 text-danger"
+      class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--trinity-shape-control-radius)] border border-danger p-[var(--trinity-space-4)] text-13 text-danger"
       data-testid="appearance-hydration-warning"
     >
       <span
@@ -38,12 +31,17 @@
       </button>
     </div>
   }
+</trn-settings-group>
 
-  <trn-settings-group
-    title="Mode and theme"
-    headingId="appearance-mode-heading"
-    description="Choose the surface contrast and colour accents that feel most comfortable."
-    data-testid="appearance-mode-theme"
+<trn-settings-group
+  title="Mode and theme"
+  description="Choose the surface contrast and colour accents that feel most comfortable."
+  data-testid="appearance-mode-theme"
+>
+  <trn-settings-row
+    label="Mode"
+    labelId="appearance-mode-heading"
+    [description]="'Showing the ' + resolvedMode() + ' mode.'"
   >
     <trn-radio-group
       layout="segmented"
@@ -53,165 +51,152 @@
       [disabled]="appearance.hydrationBusy() || appearance.status.mode.busy()"
       (valueChange)="onModeChange($event)"
     />
-    <p class="text-13 text-[var(--trinity-text-muted)]">
-      Showing the {{ resolvedMode() }} mode.
-    </p>
-    @if (appearance.status.mode.failed()) {
-      <div
-        role="alert"
-        class="flex flex-wrap items-center justify-end gap-2 text-13 text-danger"
-        data-testid="theme-mode-failure"
-      >
-        <span>This choice could not be saved.</span>
-        <button
-          trnBtn
-          type="button"
-          presentation="outline"
-          size="sm"
-          data-testid="theme-mode-retry"
-          (click)="appearance.retry('mode')"
-        >
-          Try again
-        </button>
-      </div>
-    }
-    <trn-appearance-preference-field [field]="themeField" />
-  </trn-settings-group>
-
-  <trn-settings-group
-    title="Layout"
-    headingId="appearance-layout-heading"
-    description="Density changes spacing while accessible targets stay the same size."
-    data-testid="appearance-layout"
-  >
-    <trn-appearance-preference-field [field]="densityField" />
-    <trn-appearance-preference-field [field]="roomListField" />
-    <trn-appearance-preference-field [field]="textSizeField" />
-  </trn-settings-group>
-
-  <trn-code-appearance-block />
-
-  <trn-settings-group
-    title="Date and time"
-    headingId="appearance-date-time-heading"
-    description="Choose how timestamps are written throughout Trinity."
-  >
-    <div trnSettingsFieldRow>
-      <span class="min-w-0">
-        <strong
-          id="appearance-time-heading"
-          class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
-          >Time format</strong
-        >
-        <small class="block text-13 text-[var(--trinity-text-muted)]"
-          >12-hour, 24-hour or your system preference</small
-        >
-      </span>
-      <trn-select
-        data-testid="time-format-select"
-        aria-labelledby="appearance-time-heading"
-        placeholder="Select a time format"
-        [options]="timeFormatOptions()"
-        [value]="format.timeFormat()"
-        (valueChange)="onTimeFormatChange($event)"
-      />
-    </div>
-    <div trnSettingsFieldRow>
-      <span class="min-w-0">
-        <strong
-          id="appearance-date-heading"
-          class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
-          >Date format</strong
-        >
-        <small class="block text-13 text-[var(--trinity-text-muted)]"
-          >Day first, month first, ISO or system</small
-        >
-      </span>
-      <trn-select
-        data-testid="date-format-select"
-        aria-labelledby="appearance-date-heading"
-        placeholder="Select a date format"
-        [options]="dateFormatOptions()"
-        [value]="format.dateFormat()"
-        (valueChange)="onDateFormatChange($event)"
-      />
-    </div>
-    <p
-      class="text-13 text-[var(--trinity-text-muted)]"
-      data-testid="date-time-showing"
+  </trn-settings-row>
+  @if (appearance.status.mode.failed()) {
+    <div
+      role="alert"
+      class="flex flex-wrap items-center justify-end gap-2 py-2 text-13 text-danger"
+      data-testid="theme-mode-failure"
     >
-      Showing {{ format.dateTime(sample) }}. Match system follows your device's
-      language.
-    </p>
-  </trn-settings-group>
-
-  <trn-settings-group
-    title="Room lists"
-    headingId="appearance-room-lists-heading"
-    description="Choose the default order for rooms inside spaces."
-  >
-    <div trnSettingsFieldRow>
-      <span class="min-w-0">
-        <strong
-          id="appearance-space-order-heading"
-          class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
-          >Room order in spaces</strong
-        >
-        <small class="block text-13 text-[var(--trinity-text-muted)]"
-          >Saved per account on this device</small
-        >
-      </span>
-      <trn-select
-        data-testid="space-order-select"
-        aria-labelledby="appearance-space-order-heading"
-        placeholder="Select an order"
-        [options]="spaceOrderOptions"
-        [value]="spaceOrder.defaultMode()"
-        (valueChange)="onSpaceOrderChange($event)"
-      />
+      <span>This choice could not be saved.</span>
+      <button
+        trnBtn
+        type="button"
+        presentation="outline"
+        size="sm"
+        data-testid="theme-mode-retry"
+        (click)="appearance.retry('mode')"
+      >
+        Try again
+      </button>
     </div>
-    <p class="text-13 text-[var(--trinity-text-muted)]">
-      A space you order individually keeps its own choice. Favourites always
-      stay in their own group.
-    </p>
-  </trn-settings-group>
+  }
+  <trn-appearance-preference-field [field]="themeField" />
+</trn-settings-group>
 
-  <trn-settings-group
-    title="Timeline"
-    headingId="appearance-timeline-heading"
-    description="Reduce membership and profile churn in busy or bridged rooms without changing unread counts."
+<trn-settings-group
+  title="Layout"
+  description="Density changes spacing while accessible targets stay the same size."
+  data-testid="appearance-layout"
+>
+  <trn-appearance-preference-field [field]="densityField" />
+  <trn-appearance-preference-field [field]="roomListField" />
+  <trn-appearance-preference-field [field]="textSizeField" />
+</trn-settings-group>
+
+<trn-code-appearance-block />
+
+<trn-settings-group
+  title="Date and time"
+  description="Choose how timestamps are written throughout Trinity."
+>
+  <trn-settings-row
+    label="Time format"
+    labelId="appearance-time-heading"
+    description="12-hour, 24-hour or your system preference"
   >
-    <label trnSettingsToggleRow data-testid="timeline-show-membership">
-      <trn-switch
-        [checked]="systemLines.showMembership()"
-        (checkedChange)="systemLines.setShowMembership($event)"
-      />
-      Show joins and leaves
-    </label>
-    <p class="text-13 text-[var(--trinity-text-muted)]">
-      Includes invites, knocks, kicks and bans.
-    </p>
-    <label trnSettingsToggleRow data-testid="timeline-show-profile">
-      <trn-switch
-        [checked]="systemLines.showProfile()"
-        (checkedChange)="systemLines.setShowProfile($event)"
-      />
-      Show display name and avatar changes
-    </label>
-    <label trnSettingsToggleRow data-testid="timeline-show-room-changes">
-      <trn-switch
-        [checked]="systemLines.showRoomChanges()"
-        (checkedChange)="systemLines.setShowRoomChanges($event)"
-      />
-      Show room changes
-    </label>
-    <p class="text-13 text-[var(--trinity-text-muted)]">
-      Includes name, topic, avatar, address and access changes, plus room
-      creation and encryption notices.
-    </p>
-  </trn-settings-group>
+    <trn-select
+      class="w-48 max-sm:w-full"
+      data-testid="time-format-select"
+      aria-labelledby="appearance-time-heading"
+      placeholder="Select a time format"
+      [options]="timeFormatOptions()"
+      [value]="format.timeFormat()"
+      (valueChange)="onTimeFormatChange($event)"
+    />
+  </trn-settings-row>
+  <trn-settings-row
+    label="Date format"
+    labelId="appearance-date-heading"
+    description="Day first, month first, ISO or system"
+  >
+    <trn-select
+      class="w-48 max-sm:w-full"
+      data-testid="date-format-select"
+      aria-labelledby="appearance-date-heading"
+      placeholder="Select a date format"
+      [options]="dateFormatOptions()"
+      [value]="format.dateFormat()"
+      (valueChange)="onDateFormatChange($event)"
+    />
+  </trn-settings-row>
+  <p
+    class="m-0 pt-3 text-sm text-[var(--trinity-text-muted)]"
+    data-testid="date-time-showing"
+  >
+    Showing {{ format.dateTime(sample) }}. Match system follows your device's
+    language.
+  </p>
+</trn-settings-group>
 
-  <trn-message-gestures-block />
+<trn-settings-group
+  title="Room lists"
+  description="Choose the default order for rooms inside spaces."
+>
+  <trn-settings-row
+    label="Room order in spaces"
+    labelId="appearance-space-order-heading"
+    description="Saved per account on this device"
+  >
+    <trn-select
+      class="w-48 max-sm:w-full"
+      data-testid="space-order-select"
+      aria-labelledby="appearance-space-order-heading"
+      placeholder="Select an order"
+      [options]="spaceOrderOptions"
+      [value]="spaceOrder.defaultMode()"
+      (valueChange)="onSpaceOrderChange($event)"
+    />
+  </trn-settings-row>
+  <p class="m-0 pt-3 text-sm text-[var(--trinity-text-muted)]">
+    A space you order individually keeps its own choice. Favourites always stay
+    in their own group.
+  </p>
+</trn-settings-group>
 
-  <trn-system-title-bar-block />
-</div>
+<trn-settings-group
+  title="Timeline"
+  description="Reduce membership and profile churn in busy or bridged rooms without changing unread counts."
+>
+  <trn-settings-row
+    label="Show joins and leaves"
+    description="Includes invites, knocks, kicks and bans."
+    for="timeline-show-membership-switch"
+    data-testid="timeline-show-membership"
+  >
+    <trn-switch
+      inputId="timeline-show-membership-switch"
+      aria-describedby="timeline-show-membership-switch-description"
+      [checked]="systemLines.showMembership()"
+      (checkedChange)="systemLines.setShowMembership($event)"
+    />
+  </trn-settings-row>
+  <trn-settings-row
+    label="Show display name and avatar changes"
+    for="timeline-show-profile-switch"
+    data-testid="timeline-show-profile"
+  >
+    <trn-switch
+      inputId="timeline-show-profile-switch"
+      [checked]="systemLines.showProfile()"
+      (checkedChange)="systemLines.setShowProfile($event)"
+    />
+  </trn-settings-row>
+  <trn-settings-row
+    label="Show room changes"
+    description="Includes name, topic, avatar, address and access changes, plus room creation and encryption notices."
+    for="timeline-show-room-changes-switch"
+    data-testid="timeline-show-room-changes"
+  >
+    <trn-switch
+      inputId="timeline-show-room-changes-switch"
+      aria-describedby="timeline-show-room-changes-switch-description"
+      [checked]="systemLines.showRoomChanges()"
+      (checkedChange)="systemLines.setShowRoomChanges($event)"
+    />
+  </trn-settings-row>
+</trn-settings-group>
+
+<trn-message-gestures-block />
+
+<trn-system-title-bar-block />

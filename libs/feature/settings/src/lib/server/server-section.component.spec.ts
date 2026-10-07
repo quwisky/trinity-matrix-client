@@ -162,9 +162,14 @@ describe('ServerSectionComponent', () => {
     ).toContain('Trinity v9.9.9 · abc1234');
   });
 
-  it('gives the section a heading the assistive tree can use', async () => {
+  it('introduces the section under the page heading, without repeating its name', async () => {
     const { container } = await setup(['@me:one.org']);
 
-    expect(container.querySelector('h2')?.textContent?.trim()).toBe('Server');
+    expect(container.textContent).toContain(
+      "See what each signed-in account's homeserver is running.",
+    );
+    expect(
+      container.querySelector('h2:not([data-testid="hs-account"])'),
+    ).toBeNull();
   });
 });

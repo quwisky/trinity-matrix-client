@@ -8,6 +8,7 @@ import {
   input,
   signal,
 } from '@angular/core';
+import { TrnSettingsRowComponent } from '@trinity/components/overlay';
 import { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { runWithBusy } from '@trinity/util/ui';
@@ -28,7 +29,8 @@ import { runWithBusy } from '@trinity/util/ui';
   selector: 'trn-homeserver-block',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './homeserver-block.component.html',
-  styleUrl: './homeserver-block.component.scss',
+  host: { class: 'block' },
+  imports: [TrnSettingsRowComponent],
 })
 export class HomeserverBlockComponent implements OnInit {
   private readonly homeservers = inject(HomeserverInfoService);
@@ -36,6 +38,13 @@ export class HomeserverBlockComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly userId = input.required<string>();
+
+  /**
+   * A remote value in a row's control column. Long ones (a version with a build tag, a
+   * homeserver URL with no spaces) wrap rather than widen the page.
+   */
+  protected readonly valueClass =
+    'block max-w-64 text-end [overflow-wrap:anywhere] max-sm:max-w-none max-sm:text-start';
 
   protected readonly loading = signal(false);
   protected readonly error = signal<string | null>(null);

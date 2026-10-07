@@ -10,7 +10,11 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnDialogService,
+  TrnSettingsGroupComponent,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   HomeserverInfoService,
   roomVersionStatus,
@@ -43,7 +47,7 @@ const NOT_ALLOWED: ActionAvailability = { available: false, reason: null };
 @Component({
   selector: 'trn-room-settings-advanced',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnActionAvailability, TrnButton],
+  imports: [TrnActionAvailability, TrnButton, TrnSettingsGroupComponent],
   templateUrl: './room-settings-advanced.component.html',
   styleUrl: './room-settings-advanced.component.scss',
 })

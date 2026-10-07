@@ -33,10 +33,10 @@ import { AppearanceSettingsController } from './appearance-settings.controller';
 import { MessageGesturesBlockComponent } from './message-gestures-block.component';
 import { SystemTitleBarBlockComponent } from './system-title-bar-block.component';
 import { AppearancePreviewComponent } from './appearance-preview.component';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
-import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.directive';
-import { SettingsFieldRowDirective } from '../shared/settings-field-row.directive';
-import { SettingsGroupComponent } from '../shared/settings-group/settings-group.component';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+} from '@trinity/components/overlay';
 
 /**
  * Appearance settings sub-page: Mode, Theme, text and code size,
@@ -61,10 +61,8 @@ import { SettingsGroupComponent } from '../shared/settings-group/settings-group.
     MessageGesturesBlockComponent,
     SystemTitleBarBlockComponent,
     AppearancePreviewComponent,
-    SettingsSectionHeadingComponent,
-    SettingsToggleRowDirective,
-    SettingsFieldRowDirective,
-    SettingsGroupComponent,
+    TrnSettingsGroupComponent,
+    TrnSettingsRowComponent,
   ],
 })
 export class AppearanceSettingsComponent {

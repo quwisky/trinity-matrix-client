@@ -1,63 +1,32 @@
-/** Shared section presentation for Room and Space settings. */
+/** What the shared settings group and row do not cover, for Room and Space sections. */
 @mixin layout($prefix: 'room-settings') {
   :host {
     display: block;
     min-width: 0;
   }
 
-  .#{$prefix}__form,
-  .#{$prefix}__fields,
-  .#{$prefix}__field {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-  }
-
   .#{$prefix}__form {
-    gap: var(--trinity-space-7);
-  }
-
-  .#{$prefix}__fields,
-  .#{$prefix}__card {
-    gap: var(--trinity-space-4);
-  }
-
-  .#{$prefix}__card {
     display: flex;
     min-width: 0;
     flex-direction: column;
-
-    h3,
-    p {
-      margin: 0;
-    }
-
-    h3 {
-      color: var(--trinity-text-bright);
-      font-size: var(--trinity-type-body-size);
-      line-height: var(--trinity-type-body-line-height);
-      font-weight: 600;
-    }
-
-    :where(p) {
-      max-width: 65ch;
-      color: var(--trinity-text-muted);
-      font-size: var(--trinity-type-caption-size);
-      line-height: var(--trinity-type-caption-line-height);
-    }
   }
 
+  /* A field that is not a row: a text control needs the full width under its label. */
   .#{$prefix}__field {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
     gap: var(--trinity-space-2);
+    padding-block: var(--trinity-space-4);
+    border-bottom: 1px solid var(--trinity-border-subtle);
   }
 
   .#{$prefix}__label {
-    color: var(--trinity-text);
-    font-size: var(--trinity-type-control-size);
-    line-height: var(--trinity-type-control-line-height);
+    color: var(--trinity-text-bright);
     font-weight: 600;
   }
 
+  .#{$prefix}__note,
   .#{$prefix}__hint,
   .#{$prefix}__restriction,
   .#{$prefix}__feedback {
@@ -68,9 +37,18 @@
     line-height: var(--trinity-type-caption-line-height);
   }
 
+  .#{$prefix}__note {
+    max-width: 65ch;
+    padding-block: var(--trinity-space-4);
+  }
+
   .#{$prefix}__restriction,
   .#{$prefix}__feedback--danger {
     color: var(--trinity-danger);
+  }
+
+  .#{$prefix}__feedback {
+    margin-block-start: var(--trinity-space-4);
   }
 
   .#{$prefix}__actions {
@@ -81,8 +59,9 @@
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: var(--trinity-space-2);
+    margin-block-start: var(--trinity-space-4);
     padding-block: var(--trinity-space-3);
     border-top: 1px solid var(--trinity-border-subtle);
-    background: var(--trinity-surface-raised);
+    background: var(--trinity-surface-pane);
   }
 }

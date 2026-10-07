@@ -7,8 +7,10 @@ import {
   MessageGestureSettingsService,
   isSwipeAction,
 } from '@trinity/platform-native';
-import { SettingsFieldRowDirective } from '../shared/settings-field-row.directive';
-import { SettingsGroupComponent } from '../shared/settings-group/settings-group.component';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+} from '@trinity/components/overlay';
 
 /**
  * How a touch gesture acts on a message, as its own block on the Appearance page.
@@ -24,8 +26,8 @@ import { SettingsGroupComponent } from '../shared/settings-group/settings-group.
   templateUrl: './message-gestures-block.component.html',
   imports: [
     TrnSelectComponent,
-    SettingsFieldRowDirective,
-    SettingsGroupComponent,
+    TrnSettingsGroupComponent,
+    TrnSettingsRowComponent,
   ],
 })
 export class MessageGesturesBlockComponent {
