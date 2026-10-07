@@ -44,7 +44,9 @@ async function renderPage(
       MockProvider(TrustVerificationService, { active }),
       MockProvider(QrCodeService, {
         cameraSupported: true,
-        createDataUrl: vi.fn(() => 'data:image/gif;base64,AA=='),
+        createDataUrl: vi.fn(() =>
+          Promise.resolve('data:image/gif;base64,AA=='),
+        ),
         openCamera: vi.fn().mockRejectedValue(new Error('camera unavailable')),
       }),
       MockProvider(Router),
@@ -207,6 +209,7 @@ describe('DeviceVerificationPage', () => {
 
     fixture.componentInstance.showQr();
     active.set(view({ stage: 'qr-shown' }));
+    await fixture.whenStable();
     fixture.detectChanges();
 
     expect(
@@ -222,11 +225,28 @@ describe('DeviceVerificationPage', () => {
 
     fixture.componentInstance.showQr();
     active.set(view({ stage: 'qr-shown' }));
+    await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.componentInstance.qrCodeUrl()).not.toBeNull();
 
     active.set(view({ requestId: 1, stage: 'waiting' }));
     fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.qrCodeUrl()).toBeNull();
+  });
+
+  it('does not show a QR code that finished rendering after it was hidden', async () => {
+    const active = signal(view({ stage: 'ready', qrShowAvailable: true }));
+    const { fixture } = await renderPage(active);
+    let resolveUrl!: (url: string) => void;
+    vi.mocked(TestBed.inject(QrCodeService).createDataUrl).mockReturnValue(
+      new Promise((resolve) => (resolveUrl = resolve)),
+    );
+
+    fixture.componentInstance.showQr();
+    fixture.componentInstance.hideQr();
+    resolveUrl('data:image/gif;base64,AA==');
     await fixture.whenStable();
 
     expect(fixture.componentInstance.qrCodeUrl()).toBeNull();

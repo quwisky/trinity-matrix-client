@@ -1,6 +1,11 @@
 import { Injectable } from '@angular/core';
-import encodeQr from 'qr';
-import decodeQr from 'qr/decode.js';
+import type encodeQr from 'qr';
+import type decodeQr from 'qr/decode.js';
+
+interface QrCodec {
+  readonly encode: typeof encodeQr;
+  readonly decode: typeof decodeQr;
+}
 
 /** RGB or RGBA pixels which may contain a QR code. */
 export interface QrCodeFrame {
@@ -12,6 +17,9 @@ export interface QrCodeFrame {
 /** Binary-safe QR rendering, decoding, and camera access for every app shell. */
 @Injectable({ providedIn: 'root' })
 export class QrCodeService {
+  private codec: QrCodec | null = null;
+  private loading: Promise<QrCodec> | null = null;
+
   /** Whether this runtime can open a camera through the standard media API. */
   get cameraSupported(): boolean {
     return (
@@ -20,9 +28,23 @@ export class QrCodeService {
     );
   }
 
+  /** Load the QR library on first use so it stays out of the initial bundle. */
+  load(): Promise<QrCodec> {
+    this.loading ??= Promise.all([import('qr'), import('qr/decode.js')]).then(
+      ([encoder, decoder]) =>
+        (this.codec = { encode: encoder.default, decode: decoder.default }),
+      (error: unknown) => {
+        this.loading = null;
+        throw error;
+      },
+    );
+    return this.loading;
+  }
+
   /** Render arbitrary bytes without converting them through a text encoding. */
-  createDataUrl(data: Uint8ClampedArray): string {
-    const gif = encodeQr('trinity-verification', 'gif', {
+  async createDataUrl(data: Uint8ClampedArray): Promise<string> {
+    const { encode } = await this.load();
+    const gif = encode('trinity-verification', 'gif', {
       border: 4,
       ecc: 'medium',
       encoding: 'byte',
@@ -32,11 +54,18 @@ export class QrCodeService {
     return `data:image/gif;base64,${toBase64(gif)}`;
   }
 
-  /** Decode the raw byte segments in a frame, or `null` when it has no QR code. */
+  /**
+   * Decode the raw byte segments in a frame, or `null` when it has no QR code.
+   * Frames that arrive before the decoder has loaded are skipped.
+   */
   decodeFrame(frame: QrCodeFrame): Uint8ClampedArray | null {
+    if (!this.codec) {
+      this.load().catch(() => undefined);
+      return null;
+    }
     const segments: Uint8Array[] = [];
     try {
-      decodeQr(frame, {
+      this.codec.decode(frame, {
         textDecoder: (bytes: Uint8Array) => {
           segments.push(Uint8Array.from(bytes));
           return '';
@@ -63,6 +92,7 @@ export class QrCodeService {
     if (!this.cameraSupported) {
       throw new Error('QR scanning isn’t available on this device.');
     }
+    this.load().catch(() => undefined); // warm the decoder while the camera starts
     return navigator.mediaDevices.getUserMedia({
       audio: false,
       video: { facingMode: { ideal: 'environment' } },
