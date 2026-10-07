@@ -284,6 +284,18 @@ describe('Android E2E split', () => {
   });
 });
 
+describe('Unit test selection', () => {
+  it('re-runs every Vitest project when the shared Vitest setup changes', () => {
+    const nx = JSON.parse(readFileSync(resolve(root, 'nx.json'), 'utf8'));
+    expect(nx.targetDefaults.test.inputs).toEqual([
+      'default',
+      '^production',
+      '{workspaceRoot}/vite.base.config.ts',
+      '{workspaceRoot}/test-setup.base.ts',
+    ]);
+  });
+});
+
 describe('iOS nightly E2E workflow', () => {
   const ios = yaml('.github/workflows/e2e-ios-nightly.yml');
   const steps = ios.jobs.ios.steps;
