@@ -97,6 +97,11 @@ jobs:
       - run: pnpm stylelint
       # `format:check` verifies and exits non-zero on drift, where `pnpm format` fixes.
       - run: pnpm format:check
+      # Specs are excluded from every project's tsconfig.json AND from the type-aware
+      # ESLint block, and Vitest transpiles them without checking — so this is the only CI
+      # step that runs the compiler over test files. It checks every project here, in the
+      # job with spare time, so `Unit tests` can skip projects a pull request leaves alone.
+      - run: pnpm exec nx run-many -t typecheck
 
   test:
     needs: classify
@@ -108,14 +113,22 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup
-      # Specs are excluded from every project's tsconfig.json AND from the type-aware
-      # ESLint block, and Vitest transpiles them without checking — so before this step
-      # existed nothing in CI ever ran the compiler over a single test file. Runs BEFORE
-      # `pnpm test`: a spec whose mock has drifted out of shape with the code it doubles
-      # should fail as the type error it is, not as a downstream assertion nobody can
-      # read.
-      - run: pnpm exec nx run-many -t typecheck
-      - run: pnpm test
+      # Pull requests test only the projects their diff affects, by the Nx project graph
+      # against the PR base. Any root-level file or anything under .github/ runs every
+      # project: Nx maps files such as .nvmrc or the setup action to no project. Pushes to
+      # main, release/** and renovate/patch-** always run every project.
+      - id: unit
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            pnpm test
+          elif git diff --name-only "$BASE...HEAD" | grep -E '^[^/]+$|^\.github/' > /dev/null; then
+            echo 'Root-level or workflow files changed; testing every project.'
+            pnpm test
+          else
+            pnpm nx affected -t test --base="$BASE" --head=HEAD
+          fi
 
   # The production AOT build remains independent of unit/type checks.
   renderer:

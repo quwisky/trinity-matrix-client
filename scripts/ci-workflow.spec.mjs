@@ -294,6 +294,55 @@ describe('Unit test selection', () => {
       '{workspaceRoot}/test-setup.base.ts',
     ]);
   });
+
+  const runs = (id) =>
+    workflow.jobs[id].steps.flatMap((step) => (step.run ? [step.run] : []));
+  const unit = () =>
+    workflow.jobs.test.steps.find((step) => step.id === 'unit');
+
+  it('type-checks every project in Lint & format, not in Unit tests', () => {
+    expect(workflow.jobs.quality.name).toBe('Lint & format');
+    expect(runs('quality')).toContain('pnpm exec nx run-many -t typecheck');
+    expect(runs('test').join('\n')).not.toContain('typecheck');
+  });
+
+  it('tests affected projects against the pull request base and everything otherwise', () => {
+    expect(workflow.jobs.test.name).toBe('Unit tests');
+    expect(workflow.jobs.test.steps[0].with['fetch-depth']).toBe(0);
+    const step = unit();
+    expect(step.env.BASE).toBe('${{ github.event.pull_request.base.sha }}');
+    expect(step.run).toContain(
+      'if [ "$GITHUB_EVENT_NAME" != pull_request ]; then\n  pnpm test\n',
+    );
+    expect(step.run).toContain(
+      'pnpm nx affected -t test --base="$BASE" --head=HEAD',
+    );
+  });
+
+  it('tests every project when a root-level or workflow file changes', () => {
+    const pattern = new RegExp(
+      unit().run.match(/grep -E '([^']+)' > \/dev\/null/)[1],
+    );
+    for (const path of [
+      'vite.base.config.ts',
+      'test-setup.base.ts',
+      '.nvmrc',
+      'package.json',
+      'pnpm-lock.yaml',
+      '.github/actions/setup/action.yml',
+      '.github/workflows/ci.yml',
+    ]) {
+      expect(pattern.test(path), path).toBe(true);
+    }
+    for (const path of [
+      'libs/feature/rooms/src/index.ts',
+      'apps/trinity/vite.config.ts',
+      'scripts/ci-classify.mjs',
+      'e2e/browser/playwright.config.mts',
+    ]) {
+      expect(pattern.test(path), path).toBe(false);
+    }
+  });
 });
 
 describe('iOS nightly E2E workflow', () => {
