@@ -2,3 +2,5 @@
 // are internal routing targets, referenced relatively by settings.routes.ts.
 export * from './lib/settings.routes';
 export * from './lib/settings-dialog/settings-dialog.component';
+
+// Probe for #1037; this branch is deleted after measuring CI.
