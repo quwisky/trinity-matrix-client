@@ -190,6 +190,8 @@ describe('TrnDialogShellComponent', () => {
   it('presents a sheet with a decorative handle and the sheet entrance', async () => {
     await render(PlainHostComponent, { providers: refFor('sheet').providers });
 
+    // Every sheet renders through the one sheet frame.
+    expect(surface().tagName).toBe('TRN-SHEET-FRAME');
     expect(surface().getAttribute('data-trn-layout')).toBe('sheet');
     expect(surface().classList).toContain('trn-overlay-enter-sheet');
     expect(screen.getByTestId('sheet-handle').getAttribute('aria-hidden')).toBe(

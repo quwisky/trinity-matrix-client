@@ -75,6 +75,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/components/generic-content/src/lib/spinner/trn-spinner.component.scss',
   'libs/components/overlay/src/lib/dialog-shell/trn-dialog-shell.component.scss',
   'libs/components/overlay/src/lib/settings-layout/trn-settings-layout.component.scss',
+  'libs/components/overlay/src/lib/sheet-frame/trn-sheet-frame.component.scss',
   'libs/feature/auth/src/lib/auth-card/auth-card.component.scss',
   'libs/feature/auth/src/lib/login/login.page.scss',
   'libs/feature/auth/src/lib/registration/registration.page.scss',

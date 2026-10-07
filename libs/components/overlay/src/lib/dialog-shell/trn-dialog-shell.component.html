@@ -1,27 +1,9 @@
-<section
-  trnOverlaySurface
-  [trnSheetDrag]="swipeable()"
-  variant="neutral"
-  [size]="size()"
-  [layout]="layout()"
-  class="flex flex-col border-[var(--trinity-border-overlay)] bg-[var(--trinity-surface-overlay)]"
-  [class.trn-overlay-enter-sheet]="layout() === 'sheet'"
-  [class.trn-overlay-enter-dialog]="layout() === 'dialog'"
-  data-testid="dialog-surface"
->
-  @if (layout() === 'sheet' && swipeable()) {
-    <div
-      class="dialog-shell__handle"
-      data-testid="sheet-handle"
-      aria-hidden="true"
-      trnSheetDragHandle
-    ></div>
-  }
+<ng-template #header>
   @if (titleHidden() && !closable()) {
     <!-- Nothing visible would sit in the header, so the band is dropped; the h2 still names the dialog. -->
     <h2 [id]="titleId" class="sr-only">{{ title() }}</h2>
   } @else {
-    <header class="dialog-shell__header" trnSheetDragHandle>
+    <header class="dialog-shell__header">
       <h2
         [id]="titleId"
         class="dialog-shell__title text-[17px] leading-snug font-bold text-[var(--trinity-text-bright)]"
@@ -44,6 +26,8 @@
       }
     </header>
   }
+</ng-template>
+<ng-template #content>
   <!-- The description scrolls with the body, so a long one never pushes the footer away. -->
   <div class="dialog-shell__body" [class]="bodyClass()">
     @if (description()) {
@@ -60,4 +44,27 @@
       <ng-content select="[trnDialogActions]" />
     </footer>
   }
-</section>
+</ng-template>
+@if (framed()) {
+  <trn-sheet-frame [size]="size()" testId="dialog-surface">
+    <ng-container
+      ngProjectAs="[trnSheetFrameHeader]"
+      [ngTemplateOutlet]="header"
+    />
+    <ng-container [ngTemplateOutlet]="content" />
+  </trn-sheet-frame>
+} @else {
+  <section
+    trnOverlaySurface
+    variant="neutral"
+    [size]="size()"
+    [layout]="layout()"
+    class="flex flex-col border-[var(--trinity-border-overlay)] bg-[var(--trinity-surface-overlay)]"
+    [class.trn-overlay-enter-sheet]="layout() === 'sheet'"
+    [class.trn-overlay-enter-dialog]="layout() === 'dialog'"
+    data-testid="dialog-surface"
+  >
+    <ng-container [ngTemplateOutlet]="header" />
+    <ng-container [ngTemplateOutlet]="content" />
+  </section>
+}

@@ -7,22 +7,17 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { Dialog } from '@angular/cdk/dialog';
+import { NgTemplateOutlet } from '@angular/common';
 import { outputFromObservable } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { Subject } from 'rxjs';
 import {
-  TRN_SHEET_DISMISS,
-  TrnSheetDrag,
-  TrnSheetDragHandle,
-  sheetDismissFor,
-} from './trn-sheet-drag.directive';
-import {
   TrnDialogRef,
   dialogTitleId,
   type TrnDialogPresentation,
 } from '../dialog/trn-dialog-ref';
+import { TrnSheetFrameComponent } from '../sheet-frame/trn-sheet-frame.component';
 import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';
 import type {
   TrnOverlaySurfaceLayout,
@@ -41,26 +36,17 @@ export class TrnDialogActions {}
  * for projected `[trnDialogActions]`.
  *
  * The layout follows the opening dialog's {@link TrnDialogRef.presentation}: a centred card,
- * a bottom sheet with a handle on phones, or a fullscreen surface.
+ * a bottom sheet through `trn-sheet-frame` (handle and swipe), or a fullscreen surface.
  */
 @Component({
   selector: 'trn-dialog-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    NgTemplateOutlet,
     TrnButton,
     TrnIconComponent,
     TrnOverlaySurfaceDirective,
-    TrnSheetDrag,
-    TrnSheetDragHandle,
-  ],
-  providers: [
-    {
-      provide: TRN_SHEET_DISMISS,
-      useFactory: () => {
-        const ref = inject(TrnDialogRef, { optional: true });
-        return ref ? sheetDismissFor(ref, inject(Dialog)) : () => false;
-      },
-    },
+    TrnSheetFrameComponent,
   ],
   templateUrl: './trn-dialog-shell.component.html',
   styleUrl: './trn-dialog-shell.component.scss',
@@ -80,10 +66,9 @@ export class TrnDialogShellComponent {
       : 'dialog';
   });
 
-  /** A sheet follows a swipe unless it was opened `disableClose`; `closable` only governs the X. */
-  protected readonly swipeable = computed(
-    () =>
-      this.layout() === 'sheet' && this.ref !== null && !this.ref.disableClose,
+  /** A sheet the dialog service opened renders through the sheet frame, handle and swipe included. */
+  protected readonly framed = computed(
+    () => this.layout() === 'sheet' && this.ref !== null,
   );
 
   readonly title = input.required<string>();
