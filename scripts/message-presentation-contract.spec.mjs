@@ -108,12 +108,13 @@ describe('Message Presentation production boundary', () => {
   it('keeps syntax highlighting lazy and feature-local', () => {
     const paths = source('tsconfig.base.json');
     const contract = source('architecture/contract.json');
-    const roomsPage = source('libs/feature/rooms/src/lib/rooms/rooms.page.ts');
+    const directive = source(
+      'libs/feature/rooms/src/lib/message-presentation/code-highlight.directive.ts',
+    );
 
     expect(paths).not.toContain('@trinity/util/matrix/code-highlight');
     expect(contract).not.toContain('@trinity/util/matrix/code-highlight');
-    expect(roomsPage).toContain(
-      "import '../message-presentation/code-highlight';",
-    );
+    expect(directive).toContain("import('./code-highlight')");
+    expect(directive).not.toMatch(/^import .* from '\.\/code-highlight'/m);
   });
 });
