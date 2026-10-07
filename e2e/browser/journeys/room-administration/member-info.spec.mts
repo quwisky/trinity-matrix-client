@@ -66,6 +66,22 @@ async function openMembers(page: Page): Promise<void> {
   await expect(page.locator('.chat-members')).toBeVisible();
 }
 
+/** The member-info surface spans its slot: same right edge, no wider and no narrower. */
+async function expectSurfaceFillsSlot(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.locator('trn-member-info').evaluate((host) => {
+        const slot = host.getBoundingClientRect();
+        const surface = host.firstElementChild!.getBoundingClientRect();
+        return {
+          right: Math.round(surface.right - slot.right),
+          inside: surface.left >= slot.left - 0.5,
+        };
+      }),
+    )
+    .toEqual({ right: 0, inside: true });
+}
+
 test.describe('Member info panel', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
@@ -191,6 +207,31 @@ test.describe('Member info panel', () => {
     expect(surface.row).toBeGreaterThan(0);
     expect(Math.abs(surface.height - surface.row)).toBeLessThanOrEqual(1);
 
+    // And as wide as the slot, which owns the width: the visible surface must end where the
+    // slot does, before, during and after a drag of the panel handle. A fixed-width surface
+    // overflowed the default 480px slot (clipping the close button) and, once the drag
+    // widened the slot, left an empty strip between the panel and the window edge.
+    await expectSurfaceFillsSlot(page);
+    const divider = page.getByRole('separator', { name: 'Panel width' });
+    const grip = (await divider.boundingBox())!;
+    const startX = grip.x + grip.width / 2;
+    const gripY = grip.y + grip.height / 2;
+    await page.mouse.move(startX, gripY);
+    await page.mouse.down();
+    for (const step of [40, 80, 120])
+      await page.mouse.move(startX - step, gripY);
+    await expectSurfaceFillsSlot(page);
+    await page.mouse.up();
+    // The drag landed (480px default + 120px), so the checks measured a wider slot.
+    await expect
+      .poll(() =>
+        page
+          .locator('trn-member-info')
+          .evaluate((host) => Math.round(host.getBoundingClientRect().width)),
+      )
+      .toBe(600);
+    await expectSurfaceFillsSlot(page);
+
     // Exercise the platform clipboard rather than stubbing writeText: the unique full MXID
     // must paste back exactly, while the deliberately different display name must not.
     // Browsers model the user's clipboard-write choice as a context permission.
@@ -225,5 +266,17 @@ test.describe('Member info panel', () => {
     await expect(
       page.locator('[data-testid="member-row"]').first(),
     ).toBeVisible({ timeout: 10_000 });
+
+    // Below the `members` breakpoint the slot is a 480px drawer; the panel must fit inside
+    // it, close button included, rather than run off the window's right edge.
+    await page.setViewportSize({ width: 1000, height: 800 });
+    await expect(page.locator('.chat-members')).toBeHidden();
+    await openMembers(page);
+    await memberRow.first().click();
+    await expect(panel).toBeVisible({ timeout: 10_000 });
+    await expectSurfaceFillsSlot(page);
+    await expect(page.getByTestId('member-info-close')).toBeInViewport({
+      ratio: 1,
+    });
   });
 });

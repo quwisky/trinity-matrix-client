@@ -320,11 +320,7 @@ describe('migrated application design-system consumers', () => {
       surfaces
         .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
-    ).toEqual([
-      ...Array(3).fill('fullscreen'),
-      'panel',
-      ...Array(6).fill('popover'),
-    ]);
+    ).toEqual([...Array(4).fill('fullscreen'), ...Array(6).fill('popover')]);
 
     // Room dialogs build on the shared shell, which picks the dialog, sheet or fullscreen
     // presentation itself; none keeps its own surface or its own sheet switch.

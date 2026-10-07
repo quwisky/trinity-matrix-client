@@ -12,7 +12,8 @@ const workspaceRoot = join(import.meta.dirname, '..');
 const allowed = new Set([
   'trn-dialog-shell.component.html',
   'trn-action-sheet.component.ts',
-  // The R4 header panels.
+  // The R4 header panels, and member info, which fills the same slot beside them.
+  'member-info.component.html',
   'pinned-messages-panel.component.html',
   'thread-view.component.html',
   'threads-list.component.html',

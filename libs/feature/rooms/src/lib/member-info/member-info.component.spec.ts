@@ -206,6 +206,17 @@ describe('MemberInfoComponent', () => {
     expect(container.querySelector('trn-dialog-shell')).toBeNull();
   });
 
+  it('fills its slot as the panel rather than drawing a fixed-width edge panel', async () => {
+    // The slot owns the width: `--shell-right-panel-w` on a desktop, the drawer below the
+    // `members` breakpoint, the detail pane in settings. The `panel` overlay layout is a
+    // 32rem portal recipe, which overflowed a 480px slot (clipping the close button) and
+    // left a strip of empty slot beside it once the handle dragged the slot wider.
+    const { container } = await buildPanel();
+
+    const surface = container.querySelector('[trnoverlaysurface]');
+    expect(surface?.getAttribute('data-trn-layout')).toBe('fullscreen');
+  });
+
   it('carries its own close button as the panel, where nothing else closes it', async () => {
     // In the slot there is no backdrop, and above the `members` breakpoint no Escape either
     // — without this the panel was a dead end: the roster it replaced is gone, so there is
