@@ -12,7 +12,10 @@ import {
   WorkspaceBackService,
 } from '@trinity/application/workspace';
 import { parseTrinityRoomLink } from '@trinity/util/matrix';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   NotificationLifetime,
   type NotificationLifetimeEvent,
@@ -81,7 +84,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly badge = inject(BadgeCoordinator);
   private readonly swUpdate = inject(SwUpdate);
   private readonly toast = inject(TrnToastService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly workspaceBack = inject(WorkspaceBackService);
   private readonly nativeNavigation = inject(NativeNavigationService);
   private readonly hostDeepLinks = inject(HostDeepLinksService);

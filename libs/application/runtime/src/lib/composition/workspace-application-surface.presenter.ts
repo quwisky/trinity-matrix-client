@@ -1,6 +1,5 @@
 import { Injectable, inject, signal, type Type } from '@angular/core';
 import { NavigationStart, Router } from '@angular/router';
-import { isMobileOs } from '@trinity/platform-native';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   SETTINGS_DIALOG_COMPONENT,
@@ -18,7 +17,7 @@ import {
 } from '@trinity/application/workspace';
 import {
   TrnDialogRef,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { MD_QUERY, matchesQuery } from '@trinity/util/ui';
@@ -61,7 +60,7 @@ function routeFor(surface: WorkspaceApplicationSurface): string {
 @Injectable({ providedIn: 'root' })
 export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApplicationSurfacePresenter {
   private readonly router = inject(Router);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly toast = inject(TrnToastService);
   private readonly back = inject(WorkspaceBackService);
   private readonly encryptionLoaders = inject(ENCRYPTION_DIALOG_COMPONENTS, {
@@ -132,9 +131,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
       return of({ kind: 'unavailable', surface });
     }
     if (surface.kind === 'settings') {
-      // Every host opens Settings as a dialog: a sheet on a phone or tablet (installed
-      // apps included) and on a small screen, a centred dialog otherwise. Direct
-      // `/settings` links still render the routed page.
+      // Every host opens Settings as a modal surface; the surface service picks a sheet or a centred dialog. Direct `/settings` links still render the routed page.
       if (!this.settingsLoader) {
         return this.navigate(request);
       }
@@ -147,7 +144,6 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
             : {}),
         },
         ariaLabel: 'Settings',
-        placement: isMobileOs() ? 'bottom' : 'center',
         autoFocus: '[data-settings-autofocus]',
       });
     }
@@ -173,7 +169,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
     request: WorkspaceApplicationSurfaceRequest,
     load: ApplicationDialogLoader,
     dismissible: boolean,
-    options: Parameters<TrnDialogService['open']>[1],
+    options: Parameters<TrnSurfaceService['open']>[1],
   ): Observable<WorkspaceApplicationSurfaceOutcome> {
     if (this.pending) {
       return sameWorkspaceApplicationSurface(

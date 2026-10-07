@@ -14,7 +14,10 @@ import {
   WorkspaceBackService,
   WorkspaceNavigationService,
 } from '@trinity/application/workspace';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   NotificationLifetime,
   NativePushLifetime,
@@ -204,7 +207,7 @@ function setup(
       MockProvider(HostLifecycleService, { events: lifecycleEvents }),
       MockProvider(BackgroundMemoryRelease, { run: () => memoryRelease }),
       MockProvider(HostUpdatesService, { check: hostUpdateCheck }),
-      MockProvider(TrnDialogService, {
+      MockProvider(TrnSurfaceService, {
         openState: dialogOpen,
         hasOpen: hasDialog,
         closeTopmost,

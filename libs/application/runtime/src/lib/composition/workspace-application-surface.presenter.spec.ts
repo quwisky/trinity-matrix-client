@@ -12,7 +12,7 @@ import {
 } from '@trinity/application/workspace';
 import {
   TrnDialogRef,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import {
@@ -24,7 +24,6 @@ import {
   type Subscription,
 } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 
 const platform = vi.hoisted(() => ({ native: false, mobile: false }));
@@ -66,7 +65,7 @@ describe('Workspace application-surface composition adapter', () => {
         WorkspaceApplicationSurfacePresenterAdapter,
         { provide: Router, useValue: { navigate, events } },
         {
-          provide: TrnDialogService,
+          provide: TrnSurfaceService,
           useValue: { open: dialogOpen, isTopmost: vi.fn(() => true) },
         },
         { provide: TrnToastService, useValue: { show: vi.fn() } },
@@ -169,7 +168,6 @@ describe('Workspace application-surface composition adapter', () => {
         initialSource: '!room:example.org',
       },
       ariaLabel: 'Settings',
-      placement: 'center',
       autoFocus: '[data-settings-autofocus]',
     });
     await expect(
@@ -181,26 +179,7 @@ describe('Workspace application-surface composition adapter', () => {
     expect(close).toHaveBeenCalled();
   });
 
-  it('opens Settings centred below md too, which the dialog service shows as a sheet', async () => {
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn((query: string) => ({ matches: query === BELOW_MD_QUERY })),
-    );
-
-    await firstValueFrom(
-      presenter().present({
-        surface: { kind: 'settings', section: 'stickers' },
-      }),
-    );
-
-    expect(dialogOpen).toHaveBeenCalledWith(
-      StubSettingsComponent,
-      expect.objectContaining({ placement: 'center' }),
-    );
-  });
-
-  it('opens Settings as a sheet on a phone or tablet, installed apps included', async () => {
-    platform.native = true;
+  it('leaves the sheet-or-dialog choice to the surface service', async () => {
     platform.mobile = true;
 
     await firstValueFrom(
@@ -209,13 +188,10 @@ describe('Workspace application-surface composition adapter', () => {
       }),
     );
 
-    expect(dialogOpen).toHaveBeenCalledWith(
-      StubSettingsComponent,
-      expect.objectContaining({
-        placement: 'bottom',
-        inputs: expect.objectContaining({ initialSection: 'security' }),
-      }),
-    );
+    const options = dialogOpen.mock.calls[0]?.[1];
+    expect(options).not.toHaveProperty('placement');
+    expect(options).not.toHaveProperty('kind');
+    expect(options.inputs).toEqual({ initialSection: 'security' });
     expect(navigate).not.toHaveBeenCalled();
   });
 
