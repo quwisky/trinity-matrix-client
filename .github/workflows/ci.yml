@@ -101,7 +101,8 @@ jobs:
       # ESLint block, and Vitest transpiles them without checking — so this is the only CI
       # step that runs the compiler over test files. It checks every project here, in the
       # job with spare time, so `Unit tests` can skip projects a pull request leaves alone.
-      - run: pnpm exec nx run-many -t typecheck
+      - if: ${{ !cancelled() }}
+        run: pnpm exec nx run-many -t typecheck
 
   test:
     needs: classify

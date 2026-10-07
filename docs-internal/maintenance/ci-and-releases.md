@@ -71,7 +71,8 @@ The desktop shell is a second pnpm project, so omitting its lockfile makes its
 dependency changes miss cache saves. There is deliberately no Nx cache sharing
 between hosted runners: Nx's local result index is machine-specific, and this
 repository has no remote Nx cache. Treat a repeated build in another CI job as
-an independent build, not a cache regression. Pull requests instead save time by testing only affected projects (see the `test` job below); there is still no cache.
+an independent build, not a cache regression. Pull requests instead save
+time by testing only affected projects (see the `test` job below); there is still no cache.
 
 Playwright's `--with-deps` installs its host libraries with apt, which once timed out on a slow
 Ubuntu mirror. The [Playwright action](../../.github/actions/setup-playwright/action.yml) therefore
