@@ -122,7 +122,7 @@ const POPOVER_POSITIONS: ConnectedPosition[] = [
 ];
 
 /** Touch pointers get the centred modal; see {@link DialogOptions.anchor}. */
-function prefersCentred(): boolean {
+export function prefersCentred(): boolean {
   return (
     typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
   );

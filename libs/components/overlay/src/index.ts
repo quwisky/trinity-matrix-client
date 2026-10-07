@@ -15,6 +15,12 @@ export {
   TrnDialogShellComponent,
 } from './lib/dialog-shell/trn-dialog-shell.component';
 export {
+  TrnSurfaceService,
+  type TrnActionsOptions,
+  type TrnSurfaceKind,
+  type TrnSurfaceOptions,
+} from './lib/surface-service/trn-surface.service';
+export {
   TrnAlertService,
   type ConfirmOptions,
   type PromptOptions,
