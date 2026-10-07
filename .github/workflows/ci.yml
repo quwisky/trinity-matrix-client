@@ -302,15 +302,18 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
 
-      # The browser project is Chromium only, so skip WebKit's host libraries.
+      # The browser project is Chromium only: skip WebKit and the host libraries the
+      # ubuntu image already provides for Chrome.
       - uses: ./.github/actions/setup-playwright
         with:
           browsers: chromium
           install: 'false'
+          with-deps: 'false'
       - name: Prepare e2e prerequisites
         id: prerequisites
         env:
           TRINITY_PLAYWRIGHT_BROWSERS: chromium
+          TRINITY_PLAYWRIGHT_WITH_DEPS: 'false'
         run: node scripts/ci-prerequisites.mjs
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
