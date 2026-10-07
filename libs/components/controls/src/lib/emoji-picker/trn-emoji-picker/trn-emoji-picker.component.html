@@ -1,27 +1,14 @@
 <!--
-  `isNative`, `showPreview`, and `useButton` are pinned, not inputs: native glyphs mean no
-  sprite-sheet requests, the preview row is dead weight in both call sites, and emoji are
-  actions rather than labelled generic spans. `title` and `emoji` are deliberately absent —
-  the vendor guards its preview with `*ngIf="showPreview"`, so with the preview off both were
-  inert, and a `title` that renders nowhere is a lie in the diff.
-
-  `darkMode` is pinned OFF rather than left unbound, which is not the same thing: the
-  vendor defaults it to `matchMedia('(prefers-color-scheme: dark)').matches`, so an absent
-  binding means "follow the OS", not "off". Unbound, every user on a dark desktop would
-  carry `.emoji-mart-dark` whatever the Trinity theme said.
-
-  `color` is the vendor's accent, and at both places it lands it is an INLINE style — the
-  anchor bar's background, and `color` on the selected category anchor, whose icon picks it
-  up through `fill: currentColor`. No rule in our stylesheet can outrank an inline style
-  without `!important`, so the token goes in through the vendor's own input instead of
-  being fought in CSS. See the component's note on theming.
+  The vendor picker (and its emoji data) is about 1 MB, so it loads when this element first
+  renders instead of with the app. Both call sites only render it while open. The placeholder
+  holds the medium picker's footprint so the surrounding overlay does not jump on arrival;
+  the vendor pins and theming notes live in the panel's template.
 -->
-<emoji-mart
-  [isNative]="true"
-  [showPreview]="false"
-  [useButton]="true"
-  [darkMode]="false"
-  [color]="accent"
-  [emojiSize]="vendorEmojiSize()"
-  (emojiSelect)="onSelect($event)"
-/>
+@defer (on immediate) {
+  <trn-emoji-picker-panel [size]="size()" (emojiSelect)="onSelect($event)" />
+} @placeholder {
+  <div
+    class="trn-emoji-picker__placeholder"
+    data-testid="emoji-picker-placeholder"
+  ></div>
+}
