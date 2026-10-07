@@ -1,60 +1,52 @@
 import { Injectable, inject } from '@angular/core';
-import { Dialog } from '@angular/cdk/dialog';
-import { Overlay } from '@angular/cdk/overlay';
-import { TrnDialogRef } from '../dialog/trn-dialog-ref';
+import { TrnDialogService } from '../dialog/trn-dialog.service';
 import { TrnActionSheetRef } from './trn-action-sheet-ref';
 import {
-  TrnActionSheetComponent,
+  TrnActionListComponent,
   type ActionSheetData,
-} from './trn-action-sheet.component';
+} from './trn-action-list.component';
 
 export interface TrnActionSheetOptions {
   /** Let the opener own restoration when choosing a row launches another surface. */
   restoreFocus?: boolean;
+  /** Present as a menu beside this element; a bottom sheet without one. */
+  anchor?: HTMLElement;
 }
 
 /**
- * Bottom-sheet action menu — the spartan replacement for Ionic's
- * `ActionSheetController`. Opens {@link TrnActionSheetComponent} in a
- * bottom-anchored CDK dialog. Call `open({ header?, buttons })`.
+ * Opens {@link TrnActionListComponent}, internal to the overlay library: features call
+ * `TrnSurfaceService.openActions()`, which decides whether an anchor applies.
  *
- * `open()` RETURNS its handle. A sheet that cannot be closed by whoever opened it is a
- * menu that outlives the thing it acts on: the message timeline destroys a row when it
- * is redacted, edited, or scrolled out of the virtual window, and a sheet still standing
- * over a dead row offers actions that quietly do nothing. The opener closes it.
- *
- * `ariaLabel` for the same reason `TrnDialogService` takes one: CDK renders
- * `role="dialog"` with no accessible name, so a screen reader announces a bare "dialog".
- * The header is a muted caption, not a heading, and does not fill that gap.
+ * `open()` returns its handle: the message timeline destroys a row when it is redacted,
+ * edited or scrolled out of the virtual window, and a list still standing over a dead row
+ * offers actions that quietly do nothing. The opener closes it.
  */
 @Injectable({ providedIn: 'root' })
 export class TrnActionSheetService {
-  private readonly dialog = inject(Dialog);
-  private readonly overlay = inject(Overlay);
+  private readonly dialogs = inject(TrnDialogService);
 
   open(
     data: ActionSheetData,
     ariaLabel?: string,
     options: TrnActionSheetOptions = {},
   ): TrnActionSheetRef {
-    const ref = this.dialog.open<
-      void,
-      ActionSheetData,
-      TrnActionSheetComponent
-    >(TrnActionSheetComponent, {
-      data,
-      ariaLabel: ariaLabel ?? data.header,
-      restoreFocus: options.restoreFocus ?? true,
-      backdropClass: ['cdk-overlay-dark-backdrop'],
-      positionStrategy: this.overlay
-        .position()
-        .global()
-        .centerHorizontally()
-        .bottom('0'),
-    });
+    const ref = this.dialogs.open<void, TrnActionListComponent>(
+      TrnActionListComponent,
+      {
+        inputs: { data },
+        // CDK's role="dialog" has no name otherwise; the header is a caption, not a heading.
+        ariaLabel: ariaLabel ?? data.header,
+        restoreFocus: options.restoreFocus,
+        // A menu takes focus itself, so the arrow keys work at once.
+        ...(options.anchor
+          ? { anchor: options.anchor, autoFocus: '[role="menu"]' }
+          : { placement: 'bottom' as const }),
+      },
+    );
     return new TrnActionSheetRef(
-      new TrnDialogRef<void>(ref, 'sheet'),
-      () => ref.componentInstance?.surface ?? null,
+      ref,
+      () =>
+        this.dialogs.componentOf<TrnActionListComponent>(ref)?.surface ?? null,
     );
   }
 }

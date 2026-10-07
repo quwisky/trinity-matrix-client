@@ -36,12 +36,11 @@ export {
   type TrnActionSheetOptions,
 } from './lib/action-sheet/trn-action-sheet.service';
 export {
-  TrnActionSheetComponent,
   type ActionSheetButton,
   type ActionSheetData,
   type ActionSheetReaction,
   type TrnActionSheetButtonVariant,
-} from './lib/action-sheet/trn-action-sheet.component';
+} from './lib/action-sheet/trn-action-list.component';
 export { TrnActionSheetRef } from './lib/action-sheet/trn-action-sheet-ref';
 export {
   TrnToastService,

@@ -251,7 +251,7 @@ export class ComposerInsertMenuComponent {
         this.ownedSheet = null;
         this.mobileSheetOpen.set(false);
       }
-      // `TrnActionSheetComponent` closes before it runs the handler. Defer this check
+      // `TrnActionListComponent` closes before it runs the handler. Defer this check
       // one microtask so the chosen action can publish its focus-transfer contract.
       queueMicrotask(() => {
         if (owned.restoreOnDismiss) {

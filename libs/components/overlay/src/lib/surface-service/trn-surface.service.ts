@@ -3,7 +3,7 @@ import { isMobileOs } from '@trinity/platform-native';
 import { BELOW_MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import type { Observable } from 'rxjs';
 import type { TrnActionSheetRef } from '../action-sheet/trn-action-sheet-ref';
-import type { ActionSheetData } from '../action-sheet/trn-action-sheet.component';
+import type { ActionSheetData } from '../action-sheet/trn-action-list.component';
 import { TrnActionSheetService } from '../action-sheet/trn-action-sheet.service';
 import type { TrnDialogRef } from '../dialog/trn-dialog-ref';
 import {
@@ -86,8 +86,14 @@ export class TrnSurfaceService {
     data: ActionSheetData,
     options: TrnActionsOptions = {},
   ): TrnActionSheetRef {
+    // A menu only where it fits: a large screen and a fine pointer, beside the pressed element.
+    const anchor =
+      options.anchor && !this.prefersSheet() && !prefersCentred()
+        ? options.anchor
+        : undefined;
     return this.actionSheets.open(data, options.ariaLabel, {
       restoreFocus: options.restoreFocus,
+      anchor,
     });
   }
 

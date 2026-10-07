@@ -1,0 +1,119 @@
+@if (popover) {
+  <div
+    trnDropdownMenu
+    class="max-h-[calc(100dvh-var(--trinity-title-row-inset,0px)-1rem)] min-w-56"
+    data-testid="action-list-menu"
+    [attr.aria-label]="data().header ?? null"
+  >
+    @if (data().header) {
+      <div trnDropdownMenuLabel>{{ data().header }}</div>
+    }
+    @if (data().reactions?.length) {
+      <div
+        class="flex items-center gap-0.5 px-1 pb-1"
+        role="group"
+        aria-label="Quick reactions"
+      >
+        @for (reaction of data().reactions; track reaction.key) {
+          <button
+            trnBtn
+            type="button"
+            variant="secondary"
+            presentation="ghost"
+            size="sm"
+            class="min-w-8 px-0 text-lg"
+            [attr.aria-label]="'React with ' + reaction.key"
+            [attr.data-testid]="'sheet-react-' + reaction.key"
+            (click)="onReact(reaction)"
+          >
+            {{ reaction.key }}
+          </button>
+        }
+      </div>
+      <div trnDropdownMenuSeparator role="separator"></div>
+    }
+    @for (button of rows(); track $index) {
+      @if (button.separatorBefore) {
+        <div trnDropdownMenuSeparator role="separator"></div>
+      }
+      <button
+        trnDropdownMenuItem
+        type="button"
+        [variant]="buttonVariant(button)"
+        [disabled]="button.disabled ?? false"
+        [attr.data-testid]="button.testId"
+        (click)="onClick(button)"
+      >
+        @if (button.icon) {
+          <trn-icon [name]="button.icon" />
+        }
+        {{ button.text }}
+      </button>
+    }
+  </div>
+} @else {
+  <!-- No entrance: the message viewport measures the sheet the moment it opens, and a sheet
+       still sliding in would put its top at the screen edge. -->
+  <trn-sheet-frame
+    testId="action-sheet-surface"
+    class="animate-none px-1.5 pt-1.5"
+  >
+    @if (data().header) {
+      <p
+        trnSheetFrameHeader
+        class="shrink-0 px-3 py-2 text-center text-[17px] leading-snug font-bold text-[var(--trinity-text-bright)]"
+      >
+        {{ data().header }}
+      </p>
+    }
+    @if (data().reactions?.length) {
+      <div
+        class="flex shrink-0 items-center justify-around gap-1 px-1 pb-1.5"
+        role="group"
+        aria-label="Quick reactions"
+      >
+        @for (reaction of data().reactions; track reaction.key) {
+          <button
+            trnBtn
+            type="button"
+            variant="secondary"
+            presentation="ghost"
+            size="lg"
+            class="min-h-11 min-w-11 px-0 text-xl"
+            [attr.aria-label]="'React with ' + reaction.key"
+            [attr.data-testid]="'sheet-react-' + reaction.key"
+            (click)="onReact(reaction)"
+          >
+            {{ reaction.key }}
+          </button>
+        }
+      </div>
+    }
+    <!-- The scroller. min-h-0 because a flex child will not shrink below its content
+         height without it, which would push the max-height back off the screen. -->
+    <div class="min-h-0 flex-1 overflow-y-auto pb-1.5">
+      @for (button of rows(); track $index) {
+        @if (button.separatorBefore) {
+          <div class="my-1 h-px bg-border" role="separator"></div>
+        }
+        <button
+          trnBtn
+          [variant]="
+            buttonVariant(button) === 'danger' ? 'danger' : 'secondary'
+          "
+          presentation="ghost"
+          class="min-h-11 w-full justify-start gap-3"
+          [disabled]="button.disabled"
+          [attr.data-trn-variant]="buttonVariant(button)"
+          [attr.data-testid]="button.testId"
+          (click)="onClick(button)"
+        >
+          @if (button.icon) {
+            <trn-icon [name]="button.icon" />
+          }
+          {{ button.text }}
+        </button>
+      }
+    </div>
+  </trn-sheet-frame>
+}

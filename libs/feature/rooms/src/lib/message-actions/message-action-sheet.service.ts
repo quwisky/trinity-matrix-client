@@ -101,7 +101,7 @@ export class MessageActionSheetService {
   ): void {
     let viewport: MessageSheetViewportSession | null = null;
     const run = (action: MessageRowAction) => {
-      // TrnActionSheetComponent closes before invoking a handler. Whether `closed` emits
+      // TrnActionListComponent closes before invoking a handler. Whether `closed` emits
       // synchronously or on the next turn, this captured session makes restoration happen
       // before the action edits, redacts, or replaces the anchor.
       viewport?.release();

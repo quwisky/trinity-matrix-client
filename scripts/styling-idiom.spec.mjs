@@ -170,7 +170,6 @@ const INLINE_STYLE_LEDGER = [
   'libs/components/controls/src/lib/checkbox/trn-checkbox.component.ts',
   'libs/components/controls/src/lib/radio-group/trn-radio-group.component.ts',
   'libs/components/controls/src/lib/switch/trn-switch.component.ts',
-  'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',
 ];
 
 const inlineStyled = inlineStyleSheets();
@@ -232,7 +231,7 @@ describe('styling idiom', () => {
     // component as having no inline CSS, and both this ledger and `shorthand-overrides`
     // then sweep nothing while staying green.
     const css = inlineStyled.map(({ css }) => css).join('\n');
-    expect(css).toContain('safe-area-inset-bottom');
+    expect(css).toContain('--trinity-interaction-target-min-size');
     expect(css.match(/\{/g)?.length ?? 0).toBeGreaterThanOrEqual(
       INLINE_STYLE_LEDGER.length,
     );

@@ -75,6 +75,8 @@ export interface DialogOptions<C = object> {
    * screen has nowhere to go and lands under a thumb; touch keeps the centred modal.
    */
   anchor?: HTMLElement;
+  /** `false` when the opener restores focus itself, e.g. after a row opens another surface. */
+  restoreFocus?: boolean;
 }
 
 /** The viewport height left below the desktop title row (the full viewport elsewhere). */
@@ -279,6 +281,7 @@ export class TrnDialogService {
       // a spread, so an `autoFocus: undefined` key would clobber the default instead of
       // falling back to it.
       autoFocus: opts.autoFocus ?? 'first-tabbable',
+      restoreFocus: opts.restoreFocus ?? true,
       ...pane,
       // Give the component and opener the same vendor-neutral handle. Besides closing, this
       // lets a semantic surface prove that its own dialog is topmost without exposing CDK.
@@ -303,6 +306,11 @@ export class TrnDialogService {
   /** Whether a ref returned by this wrapper is currently the top shared overlay. */
   isTopmost(ref: TrnDialogRef<unknown>): boolean {
     return this.refs.get(ref) === this.dialog.openDialogs.at(-1);
+  }
+
+  /** The component an open ref presents, for overlay internals that measure their own DOM. */
+  componentOf<C>(ref: TrnDialogRef<unknown>): C | null {
+    return (this.refs.get(ref)?.componentInstance as C | undefined) ?? null;
   }
 
   /** Open and resolve the component's close value (null if dismissed without one). */

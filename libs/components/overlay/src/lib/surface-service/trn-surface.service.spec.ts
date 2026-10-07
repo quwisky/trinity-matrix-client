@@ -147,12 +147,20 @@ describe('TrnSurfaceService', () => {
     await expect(result).resolves.toBeNull();
   });
 
-  it('hands an action list to the action sheet', () => {
+  it('hands an action list to the action sheet, anchored only where a menu fits', () => {
     const open = vi.spyOn(TestBed.inject(TrnActionSheetService), 'open');
     const data = { header: 'New message', buttons: [{ text: 'Create' }] };
+    const button = anchor();
 
     surfaces.openActions(data, { ariaLabel: 'New', restoreFocus: false });
+    surfaces.openActions(data, { anchor: button });
+    platform.mobile = true;
+    surfaces.openActions(data, { anchor: button });
 
-    expect(open).toHaveBeenCalledWith(data, 'New', { restoreFocus: false });
+    expect(open.mock.calls.map((call) => call[2])).toEqual([
+      { restoreFocus: false, anchor: undefined },
+      { restoreFocus: undefined, anchor: button },
+      { restoreFocus: undefined, anchor: undefined },
+    ]);
   });
 });

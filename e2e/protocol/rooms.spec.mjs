@@ -124,12 +124,12 @@ async function fillAlertAndConfirm(page, placeholder, value, buttonName) {
 }
 
 /**
- * Wait for TrnActionSheetService's bottom sheet (<trn-action-sheet> in a CDK
+ * Wait for the action list (<trn-action-list> in a CDK
  * dialog — replaces Ionic's <ion-action-sheet>) to appear, click a named
  * button, then wait for it to dismiss.
  */
 async function clickActionSheetButton(page, buttonText) {
-  const sheet = page.locator('trn-action-sheet');
+  const sheet = page.locator('trn-action-list');
   await sheet.waitFor({ state: 'visible', timeout: 15_000 });
   await sheet.getByRole('button', { name: buttonText }).click();
   await sheet.waitFor({ state: 'detached', timeout: 15_000 });
@@ -249,7 +249,7 @@ async function main(protocolBrowser) {
     // The Home "+" button (aria-label set when spaceActive() is false).
     await page.click('button[aria-label="New room or direct message"]');
 
-    // trn-action-sheet: "New message" with "Create a room" / "Start a direct
+    // trn-action-list: "New message" with "Create a room" / "Start a direct
     // message" / "Cancel" buttons.
     await clickActionSheetButton(page, 'Create a room');
 

@@ -56,7 +56,7 @@ test.describe('Room directory', () => {
 
     // Home "+" → the new-message action sheet → Explore public rooms.
     await page.click('button[aria-label="New room or direct message"]');
-    const sheet = page.locator('trn-action-sheet');
+    const sheet = page.locator('trn-action-list');
     await sheet.waitFor({ state: 'visible', timeout: 15_000 });
     await sheet.getByRole('button', { name: 'Explore public rooms' }).click();
 
