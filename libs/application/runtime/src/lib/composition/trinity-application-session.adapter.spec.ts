@@ -63,6 +63,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
 import { TrinityApplicationSessionAdapter } from './trinity-application-session.adapter';
+import { BackgroundMemoryRelease } from './background-memory-release.service';
 import { CapabilityHealthService } from '../capability-health.service';
 import { SystemStatusVisibilityService } from '../system-status-visibility.service';
 
@@ -75,6 +76,7 @@ interface SessionHarness {
   readonly lifecycleEvents: Subject<
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >;
+  readonly memoryRelease: Subject<never>;
   readonly navigate: ReturnType<typeof vi.fn>;
   readonly workspaceNavigate: ReturnType<typeof vi.fn>;
   readonly closeAuthentication: ReturnType<typeof vi.fn>;
@@ -121,6 +123,7 @@ function setup(
   const lifecycleEvents = new Subject<
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >();
+  const memoryRelease = new Subject<never>();
   const navigate = vi.fn().mockResolvedValue(true);
   const workspaceNavigate = vi.fn(() =>
     of({ kind: 'ready', change: 'committed' } as const),
@@ -201,6 +204,7 @@ function setup(
         background,
       }),
       MockProvider(HostLifecycleService, { events: lifecycleEvents }),
+      MockProvider(BackgroundMemoryRelease, { run: () => memoryRelease }),
       MockProvider(HostUpdatesService, { check: hostUpdateCheck }),
       MockProvider(TrnDialogService, {
         openState: dialogOpen,
@@ -234,6 +238,7 @@ function setup(
     notificationEvents,
     pushActivations,
     lifecycleEvents,
+    memoryRelease,
     navigate,
     workspaceNavigate,
     closeAuthentication,
@@ -330,6 +335,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.notificationEvents.observed).toBe(false);
     expect(test.backIntents.observed).toBe(false);
     expect(test.lifecycleEvents.observed).toBe(false);
+    expect(test.memoryRelease.observed).toBe(false);
     expect(test.hostUpdateCheck).not.toHaveBeenCalled();
 
     preparation.next({ kind: 'prepared' });
@@ -343,9 +349,11 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.notificationEvents.observed).toBe(true);
     expect(test.backIntents.observed).toBe(true);
     expect(test.lifecycleEvents.observed).toBe(true);
+    expect(test.memoryRelease.observed).toBe(true);
     expect(test.hostUpdateCheck).toHaveBeenCalledOnce();
 
     lifetime.unsubscribe();
+    expect(test.memoryRelease.observed).toBe(false);
     expect(preparation.observed).toBe(false);
     expect(test.deepLinks.observed).toBe(false);
     expect(test.notificationEvents.observed).toBe(false);

@@ -62,6 +62,15 @@ export interface TrinityDesktopBridge {
       /** Resolve an opt-in, city-level IP estimate or `null` when unavailable. */
       approximate: () => Promise<{ lat: number; lng: number } | null>;
     };
+    /** Window visibility, which `document.visibilityState` never reports in the shell. */
+    lifecycle: {
+      /** Subscribe to the window leaving (`hidden`) or returning to (`visible`) the screen. */
+      subscribeVisibility: (
+        callback: (visibility: 'visible' | 'hidden') => void,
+      ) => () => void;
+      /** Clear Blink's resource caches; call only after memory use went down. */
+      releaseMemory: () => void;
+    };
     /** Trinity's own title row: overlay colours, the app menu and the system-bar opt-out. */
     titleBar: {
       /**
@@ -145,6 +154,9 @@ export function getTrinityDesktopBridge(): TrinityDesktopBridge | undefined {
     typeof capabilities.networkCors.allowOrigin === 'function' &&
     !!capabilities.location &&
     typeof capabilities.location.approximate === 'function' &&
+    !!capabilities.lifecycle &&
+    typeof capabilities.lifecycle.subscribeVisibility === 'function' &&
+    typeof capabilities.lifecycle.releaseMemory === 'function' &&
     !!capabilities.titleBar &&
     typeof capabilities.titleBar.setOverlayColors === 'function' &&
     typeof capabilities.titleBar.popupMenu === 'function' &&

@@ -1,19 +1,27 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { exposed, mainWorldScripts, invoke, on, send, removeListener } =
-  vi.hoisted(() => ({
-    exposed: { value: undefined as unknown },
-    mainWorldScripts: [] as {
-      func: (...args: unknown[]) => unknown;
-      args?: unknown[];
-    }[],
-    invoke: vi.fn<(channel: string, request?: unknown) => Promise<unknown>>(
-      () => Promise.resolve({ kind: 'completed' }),
-    ),
-    on: vi.fn(),
-    send: vi.fn(),
-    removeListener: vi.fn(),
-  }));
+const {
+  exposed,
+  mainWorldScripts,
+  invoke,
+  on,
+  send,
+  removeListener,
+  clearCache,
+} = vi.hoisted(() => ({
+  exposed: { value: undefined as unknown },
+  mainWorldScripts: [] as {
+    func: (...args: unknown[]) => unknown;
+    args?: unknown[];
+  }[],
+  invoke: vi.fn<(channel: string, request?: unknown) => Promise<unknown>>(() =>
+    Promise.resolve({ kind: 'completed' }),
+  ),
+  on: vi.fn(),
+  send: vi.fn(),
+  removeListener: vi.fn(),
+  clearCache: vi.fn(),
+}));
 
 vi.mock('electron', () => ({
   contextBridge: {
@@ -25,6 +33,7 @@ vi.mock('electron', () => ({
     },
   },
   ipcRenderer: { invoke, on, send, removeListener },
+  webFrame: { clearCache },
 }));
 
 type ExposedBridge = {
@@ -56,6 +65,12 @@ type ExposedBridge = {
         lat: number;
         lng: number;
       } | null>;
+    };
+    readonly lifecycle: {
+      readonly subscribeVisibility: (
+        callback: (visibility: 'visible' | 'hidden') => void,
+      ) => () => void;
+      readonly releaseMemory: () => void;
     };
     readonly titleBar: {
       readonly setOverlayColors: (colors: unknown) => void;
@@ -100,6 +115,7 @@ describe('preload host capabilities', () => {
     on.mockClear();
     send.mockClear();
     removeListener.mockClear();
+    clearCache.mockClear();
   });
 
   it('exposes protocol v1 without leaking ipcRenderer', () => {
@@ -111,6 +127,7 @@ describe('preload host capabilities', () => {
     expect(Object.keys(bridge.capabilities).sort()).toEqual([
       'badge',
       'deepLinks',
+      'lifecycle',
       'location',
       'networkCors',
       'notificationPresentation',
@@ -164,6 +181,9 @@ describe('preload host capabilities', () => {
     });
     bridge.capabilities.titleBar.popupMenu({ x: 8, y: 32 });
     bridge.capabilities.titleBar.relaunch();
+    bridge.capabilities.lifecycle.subscribeVisibility(vi.fn());
+    bridge.capabilities.lifecycle.releaseMemory();
+    expect(clearCache).not.toHaveBeenCalled();
     await expect(
       bridge.capabilities.titleBar.getSystemTitleBar(),
     ).resolves.toEqual({ saved: false, active: false });
@@ -349,6 +369,38 @@ describe('preload host capabilities', () => {
 
     unsubscribe();
     expect(removeListener).toHaveBeenCalledWith('notification-click', listener);
+  });
+
+  it('forwards window visibility only while lifecycle is granted', async () => {
+    await bridge.negotiate(['lifecycle']);
+    const seen = vi.fn();
+    const unsubscribe = bridge.capabilities.lifecycle.subscribeVisibility(seen);
+    const listener = on.mock.calls.find(
+      ([channel]) => channel === 'trinity:host:v1:lifecycle:visibility',
+    )?.[1] as (event: unknown, visibility: unknown) => void;
+
+    listener({}, 'hidden');
+    listener({}, 'gone');
+    listener({}, 'visible');
+    expect(seen.mock.calls).toEqual([['hidden'], ['visible']]);
+
+    await bridge.negotiate(['badge']);
+    listener({}, 'hidden');
+    expect(seen).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    expect(removeListener).toHaveBeenCalledWith(
+      'trinity:host:v1:lifecycle:visibility',
+      listener,
+    );
+  });
+
+  it('clears the Blink caches on request once lifecycle is granted', async () => {
+    await bridge.negotiate(['lifecycle']);
+
+    bridge.capabilities.lifecycle.releaseMemory();
+
+    expect(clearCache).toHaveBeenCalledOnce();
   });
 
   it('rejects malformed notification destinations before IPC', async () => {

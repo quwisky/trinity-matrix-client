@@ -71,6 +71,7 @@ import { RoomOrderHealthService } from './room-order-health.service';
 import { HostSessionHealthService } from './host-session-health.service';
 import { NotificationSessionService } from './notification-session.service';
 import { SystemStatusVisibilityService } from '../system-status-visibility.service';
+import { BackgroundMemoryRelease } from './background-memory-release.service';
 
 /** Owns every live host and Workspace subscription for one Application Runtime session. */
 @Injectable({ providedIn: 'root' })
@@ -87,6 +88,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly hostDeepLinks = inject(HostDeepLinksService);
   private readonly hostBack = inject(HostBackService);
   private readonly hostLifecycle = inject(HostLifecycleService);
+  private readonly memoryRelease = inject(BackgroundMemoryRelease);
   private readonly hostHealth = inject(HostSessionHealthService);
   private readonly navigationFocus = inject(NavigationFocusService);
   private readonly routedSurfaces = inject(WorkspaceRoutedSurfaceAdapter);
@@ -264,6 +266,7 @@ export class TrinityApplicationSessionAdapter {
       this.runDeepLinks().pipe(ignoreElements()),
       this.runInteractions(),
       this.runUpdates().pipe(ignoreElements()),
+      this.memoryRelease.run(),
     );
   }
 

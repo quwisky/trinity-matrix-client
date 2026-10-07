@@ -409,3 +409,45 @@ describe('createWindow close requested by the page', () => {
     expect(close).toHaveBeenCalledOnce();
   });
 });
+
+describe('createWindow visibility', () => {
+  function create() {
+    const listeners = new Map<string, () => void>();
+    const send = vi.fn();
+    vi.mocked(BrowserWindow).mockImplementation(function () {
+      return {
+        webContents: {
+          setWindowOpenHandler: vi.fn(),
+          on: vi.fn(),
+          ipc: { on: vi.fn() },
+          send,
+          isDestroyed: () => false,
+        },
+        once: vi.fn(),
+        on: vi.fn((event: string, listener: () => void) =>
+          listeners.set(event, listener),
+        ),
+        loadURL: vi.fn(() => Promise.resolve()),
+        setMenuBarVisibility: vi.fn(),
+      };
+    } as never);
+    createWindow();
+    return { listeners, send };
+  }
+
+  it.each([
+    ['hide', 'hidden'],
+    ['minimize', 'hidden'],
+    ['show', 'visible'],
+    ['restore', 'visible'],
+  ])('tells the renderer it is %s', (event, visibility) => {
+    const { listeners, send } = create();
+
+    listeners.get(event)?.();
+
+    expect(send).toHaveBeenCalledExactlyOnceWith(
+      'trinity:host:v1:lifecycle:visibility',
+      visibility,
+    );
+  });
+});
