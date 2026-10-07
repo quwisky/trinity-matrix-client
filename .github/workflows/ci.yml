@@ -365,6 +365,7 @@ jobs:
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
     name: E2E (Playwright + homeserver)
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Require every split job to succeed
         env:
