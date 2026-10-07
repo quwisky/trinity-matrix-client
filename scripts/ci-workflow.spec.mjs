@@ -8,6 +8,17 @@ const root = resolve(import.meta.dirname, '..');
 const yaml = (path) => parse(readFileSync(resolve(root, path), 'utf8'));
 const workflow = yaml('.github/workflows/ci.yml');
 
+/** The single step of every result job that reports split jobs under one required check. */
+const RESULT_GATE_STEP = {
+  name: 'Require every split job to succeed',
+  env: { NEEDS: '${{ toJSON(needs) }}' },
+  run: `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key) \\(.value.result)"'\necho "$NEEDS" | jq -e 'all(.[]; .result == "success")' > /dev/null\n`,
+};
+const diagnosticsUpload = (job) =>
+  job.steps.find(
+    (step) => step.uses === './.github/actions/upload-playwright-diagnostics',
+  );
+
 describe('CI execution contract', () => {
   it('classifies every PR and preserves the full code graph', () => {
     expect(workflow.on.pull_request?.['paths-ignore']).toBeUndefined();
@@ -126,6 +137,81 @@ describe('CI execution contract', () => {
           !step.with.path.includes('.gradle'),
       ),
     ).toBe(true);
+  });
+});
+
+describe('split E2E jobs', () => {
+  const jobs = workflow.jobs;
+
+  it('shards the browser journeys across three jobs that do not wait for the renderer', () => {
+    const job = jobs['browser-e2e'];
+    expect([job.needs].flat()).toEqual(['classify']);
+    expect(job.strategy['fail-fast']).toBe(false);
+    expect(job.strategy.matrix.shard).toEqual([1, 2, 3]);
+    expect(job.name).toContain('${{ matrix.shard }}');
+    const browser = job.steps.find((step) => step.id === 'browser');
+    expect(browser.env.TRINITY_E2E_SHARD).toBe('${{ matrix.shard }}/3');
+    expect(browser.run).toContain('pnpm exec nx run trinity-e2e-browser:e2e');
+    expect(diagnosticsUpload(job).with.shard).toBe('${{ matrix.shard }}');
+    expect(job.steps.some((step) => step.id === 'prerequisites')).toBe(true);
+  });
+
+  it('runs the Storybook check without the renderer or the homeserver prerequisites', () => {
+    const job = jobs.storybook;
+    expect([job.needs].flat()).toEqual(['classify']);
+    expect(job.steps.some((step) => step.id === 'prerequisites')).toBe(false);
+    expect(job.steps.find((step) => step.id === 'storybook').run).toContain(
+      'pnpm exec nx run trinity-e2e-components:storybook',
+    );
+  });
+
+  it('keeps only the renderer-backed checks in the e2e job', () => {
+    expect(jobs.e2e.steps.map((step) => step.id).filter(Boolean)).toEqual([
+      'prerequisites',
+      'renderer',
+      'styling',
+      'qr',
+    ]);
+  });
+
+  it('reports the split E2E jobs under the required check name', () => {
+    const gate = jobs['e2e-result'];
+    expect(gate.name).toBe('E2E (Playwright + homeserver)');
+    expect(gate.needs).toEqual(['classify', 'e2e', 'browser-e2e', 'storybook']);
+    expect(gate.steps).toEqual([RESULT_GATE_STEP]);
+    for (const id of ['e2e', 'browser-e2e', 'storybook']) {
+      expect(jobs[id].name).not.toBe('E2E (Playwright + homeserver)');
+    }
+  });
+
+  it('installs only Chromium for the browser shards and keeps WebKit elsewhere', () => {
+    const install = (id) => {
+      const steps = jobs[id].steps;
+      const setup = steps.find(
+        (step) => step.uses === './.github/actions/setup-playwright',
+      );
+      const prerequisites = steps.find((step) => step.id === 'prerequisites');
+      return { setup: setup.with?.browsers, env: prerequisites?.env };
+    };
+    expect(install('browser-e2e')).toEqual({
+      setup: 'chromium',
+      env: { TRINITY_PLAYWRIGHT_BROWSERS: 'chromium' },
+    });
+    expect(install('e2e')).toEqual({ setup: undefined, env: undefined });
+    expect(
+      jobs.storybook.steps.find(
+        (step) => step.uses === './.github/actions/setup-playwright',
+      ).with,
+    ).toBeUndefined();
+  });
+
+  it('names each prerequisites artifact by job, and by shard in the matrix', () => {
+    const name = (id) =>
+      jobs[id].steps.find((step) => step.with?.path === 'dist/.ci/').with.name;
+    expect(name('e2e')).toContain('${{ github.job }}');
+    expect(name('browser-e2e')).toContain(
+      '${{ github.job }}-${{ matrix.shard }}',
+    );
   });
 });
 

@@ -9,6 +9,7 @@ import {
   e2eEndpoint,
   e2eLifecycleConfig,
   e2eReportConfig,
+  e2eShard,
 } from './playwright-config.mts';
 import {
   E2E_SESSION_ENV,
@@ -280,4 +281,23 @@ describe('Playwright config primitives', () => {
     });
     expect(config.projects).toBeUndefined();
   });
+});
+
+describe('e2eShard', () => {
+  it('runs the whole suite when no shard is selected', () => {
+    expect(e2eShard(undefined)).toBeNull();
+    expect(e2eShard('')).toBeNull();
+  });
+
+  it('selects one shard of the suite', () => {
+    expect(e2eShard('1/3')).toEqual({ current: 1, total: 3 });
+    expect(e2eShard('3/3')).toEqual({ current: 3, total: 3 });
+  });
+
+  it.each(['0/3', '4/3', '0/0', '1-3', '1/', '/3', 'a/b', ' 1/3', '1/3 '])(
+    'rejects %j instead of running an unintended slice',
+    (value) => {
+      expect(() => e2eShard(value)).toThrow(/TRINITY_E2E_SHARD/);
+    },
+  );
 });

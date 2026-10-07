@@ -102,6 +102,9 @@ describe('CI change classifier', () => {
       'renderer',
       'desktop',
       'e2e',
+      'browser-e2e',
+      'storybook',
+      'e2e-result',
       'mobile-e2e',
       'ios-native-build',
     ]);
