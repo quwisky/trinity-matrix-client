@@ -181,6 +181,29 @@ describe('TrnSettingsLayoutComponent', () => {
     },
   );
 
+  it('frames a sheet its host presents in the same shell', async () => {
+    const { container, getAllByRole } = await render(
+      TrnSettingsLayoutComponent,
+      {
+        inputs: {
+          title: 'System status',
+          sections,
+          selectedSection: 'general',
+          compact: true,
+          directoryVisible: false,
+          presentation: 'sheet',
+        },
+        providers: [provideTrnIcons()],
+      },
+    );
+    expect(
+      container
+        .querySelector('trn-dialog-shell [data-testid="dialog-surface"]')
+        ?.getAttribute('data-trn-layout'),
+    ).toBe('sheet');
+    expect(getAllByRole('button', { name: 'Close settings' })).toHaveLength(1);
+  });
+
   it('has no dialog shell outside a centred dialog', async () => {
     const { container, getByRole } = await render(TrnSettingsLayoutComponent, {
       inputs: { title: 'Settings', sections, selectedSection: 'general' },

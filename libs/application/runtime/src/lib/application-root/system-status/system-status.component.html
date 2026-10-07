@@ -8,6 +8,8 @@
   aria-modal="true"
   aria-label="System status"
   title="System status"
+  [presentation]="presentation"
+  [heading]="heading()"
   closeLabel="Close System status"
   [sections]="sections()"
   [selectedSection]="selectedSection()"
@@ -21,13 +23,7 @@
 >
   <div class="system-status__content">
     @if (selectedSection() === 'support') {
-      <section
-        class="system-status__support"
-        aria-labelledby="system-status-support-heading"
-      >
-        <h2 id="system-status-support-heading" class="system-status__title">
-          Support details
-        </h2>
+      <section class="system-status__support" aria-label="Support details">
         <p>
           Contains only a scoped reference, capability, operation, startup
           stage, attempt, version, platform, condition, and safe reason code. It
@@ -51,10 +47,9 @@
       </section>
     } @else if (selectedSection()) {
       @if (selectedSection() === 'overview') {
-        <header class="system-status__intro">
-          <h2 class="system-status__title">Overview</h2>
-          <p>Current capability health and recovery.</p>
-        </header>
+        <p class="system-status__intro">
+          Current capability health and recovery.
+        </p>
       }
       @if (
         selectedSection() === 'overview' && status.startupBlockers().length > 0
@@ -107,14 +102,17 @@
         @for (group of displayedGroups(); track group.capability) {
           <section
             class="system-status__group"
-            [attr.aria-labelledby]="'status-' + $index"
+            [attr.aria-labelledby]="
+              selectedSection() === 'overview' ? 'status-' + $index : null
+            "
+            [attr.aria-label]="
+              selectedSection() === 'overview' ? null : group.capability
+            "
           >
-            <h2
-              [id]="'status-' + $index"
-              [class.system-status__title]="selectedSection() !== 'overview'"
-            >
-              {{ group.capability }}
-            </h2>
+            <!-- A capability's own section is already headed by its name. -->
+            @if (selectedSection() === 'overview') {
+              <h2 [id]="'status-' + $index">{{ group.capability }}</h2>
+            }
             <div class="system-status__entries">
               @for (entry of group.entries; track entry.problem.reference) {
                 <article

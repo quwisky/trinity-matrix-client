@@ -9,8 +9,8 @@
   </h1>
 </ng-template>
 <ng-template #closeButton>
-  <!-- A centred dialog closes from its shell's X alone. -->
-  @if (presentation !== 'dialog') {
+  <!-- A framed dialog closes from its shell's X alone. -->
+  @if (framing() === 'fullscreen') {
     <button
       trnBtn
       type="button"
@@ -26,10 +26,11 @@
     </button>
   }
 </ng-template>
-<!-- A centred dialog uses the same shell, header and close as every other dialog. -->
-@if (presentation === 'dialog') {
+<!-- A centred dialog or a sheet uses the same shell, header and close as every other dialog. -->
+@if (framing() !== 'fullscreen') {
   <trn-dialog-shell
     [title]="title()"
+    [presentation]="framing()"
     size="2xl"
     bodyClass="p-0"
     [closeLabel]="closeLabel()"

@@ -28,8 +28,9 @@ async function openStatus(page: Page): Promise<Locator> {
   await expect(
     page.getByRole('dialog', { name: 'System status' }),
   ).toBeVisible();
+  // The shell header names the dialog; focus lands on the open section's heading.
   await expect(
-    page.getByRole('heading', { name: 'System status', level: 1 }),
+    page.getByRole('heading', { name: 'Overview', level: 1 }),
   ).toBeFocused();
   return trigger;
 }
@@ -40,8 +41,16 @@ test.describe('System status on desktop', () => {
   }, testInfo) => {
     const initialTrigger = await openStatus(page);
     const dialog = page.getByRole('dialog', { name: 'System status' });
+    // Measure the settled card, not the shell's scale-in entrance.
+    await dialog
+      .getByTestId('dialog-surface')
+      .evaluate((surface) =>
+        Promise.all(
+          surface.getAnimations().map((animation) => animation.finished),
+        ),
+      );
     await expect(page.locator('trn-system-status')).not.toHaveClass(
-      /system-status--mobile/,
+      /system-status--sheet/,
     );
 
     const directory = dialog.getByRole('navigation', {
@@ -175,7 +184,8 @@ test.describe('System status on desktop', () => {
       body: await page.screenshot({ animations: 'disabled' }),
       contentType: 'image/png',
     });
-    const surface = dialog;
+    // The shared dialog shell inside System status paints the surface.
+    const surface = dialog.getByTestId('dialog-surface');
     const lightBackground = await surface.evaluate(
       (element) => getComputedStyle(element).backgroundColor,
     );
@@ -240,7 +250,7 @@ test.describe('System status on a touch-capable desktop', () => {
   test('keeps the desktop interaction model', async ({ page }) => {
     await openStatus(page);
     await expect(page.locator('trn-system-status')).not.toHaveClass(
-      /system-status--mobile/,
+      /system-status--sheet/,
     );
   });
 });
@@ -261,7 +271,7 @@ test.describe('System status on a mobile OS', () => {
     await openStatus(page);
     const host = page.locator('trn-system-status');
     const dialog = page.getByRole('dialog', { name: 'System status' });
-    await expect(host).toHaveClass(/system-status--mobile/);
+    await expect(host).toHaveClass(/system-status--sheet/);
     await expect(dialog).toHaveCSS('border-bottom-left-radius', '0px');
     const box = await dialog.boundingBox();
     expect(box).not.toBeNull();

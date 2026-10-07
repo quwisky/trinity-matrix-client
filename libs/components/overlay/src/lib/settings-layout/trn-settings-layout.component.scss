@@ -249,11 +249,13 @@
     }
   }
 
+  // The section list shares the section page's inline padding, so the two line up.
   .settings-layout[data-compact='true'] .settings-layout__nav {
     flex: 1;
     min-inline-size: 0;
     padding-block: max(var(--trinity-space-4), env(safe-area-inset-top))
       var(--trinity-space-4);
+    padding-inline: var(--trinity-space-4);
   }
 
   .settings-layout[data-compact='true'] .settings-layout__nav-inner {
@@ -290,10 +292,10 @@
     display: none;
   }
 
-  // In a centred dialog the shell draws the card, header and close; the layout fills its
-  // body at a fixed height so both panes scroll, and the nav keeps a fixed width without
-  // the full-screen layer's centring gutter.
-  :host([data-presentation='dialog']) {
+  // In a centred dialog or a sheet the shell draws the surface, header and close; the
+  // layout fills its body at a fixed height so both panes scroll, and the nav keeps a
+  // fixed width without the full-screen layer's centring gutter.
+  :host(:not([data-presentation='fullscreen'])) {
     block-size: auto;
     background: transparent;
 
@@ -308,12 +310,19 @@
     );
   }
 
-  :host([data-presentation='dialog']) .settings-layout__nav {
+  // The sheet's own cap, less its header band.
+  :host([data-presentation='sheet']) .settings-layout {
+    block-size: calc(
+      min(90svh, 100dvh - var(--trinity-title-row-inset, 0px)) - 4rem
+    );
+  }
+
+  :host(:not([data-presentation='fullscreen'])) .settings-layout__nav {
     flex-basis: 16rem;
     min-inline-size: 0;
   }
 
-  :host([data-presentation='dialog']) .settings-layout__nav-inner {
+  :host(:not([data-presentation='fullscreen'])) .settings-layout__nav-inner {
     inline-size: 100%;
     margin-inline-start: 0;
   }

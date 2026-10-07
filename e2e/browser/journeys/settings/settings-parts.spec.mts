@@ -95,4 +95,32 @@ test.describe('Settings parts', () => {
       })
       .toBeLessThan(2);
   });
+
+  test('lines the phone section list up with a section page', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/settings');
+    const listTitle = page.locator('.settings-layout__list-head h1');
+    await expect(listTitle).toBeVisible({ timeout: 20_000 });
+    const close = page.getByRole('button', { name: 'Close settings' });
+    const [titleBox, closeBox] = await Promise.all([
+      listTitle.boundingBox(),
+      close.boundingBox(),
+    ]);
+    // The X sits as far from the right edge as the title does from the left.
+    expect(
+      Math.abs(
+        (titleBox?.x ?? 0) -
+          (390 - (closeBox?.x ?? 0) - (closeBox?.width ?? 0)),
+      ),
+    ).toBeLessThan(8);
+
+    await page.getByTestId('settings-nav-appearance').click();
+    const sectionTitle = page.locator('.settings-layout__column h1');
+    await expect(sectionTitle).toBeVisible();
+    await expect
+      .poll(async () => (await sectionTitle.boundingBox())?.x)
+      .toBeCloseTo(titleBox?.x ?? -1, 0);
+  });
 });
