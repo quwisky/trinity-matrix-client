@@ -184,6 +184,27 @@ describe('split E2E jobs', () => {
     }
   });
 
+  it('installs only Chromium for the browser shards and keeps WebKit elsewhere', () => {
+    const install = (id) => {
+      const steps = jobs[id].steps;
+      const setup = steps.find(
+        (step) => step.uses === './.github/actions/setup-playwright',
+      );
+      const prerequisites = steps.find((step) => step.id === 'prerequisites');
+      return { setup: setup.with?.browsers, env: prerequisites?.env };
+    };
+    expect(install('browser-e2e')).toEqual({
+      setup: 'chromium',
+      env: { TRINITY_PLAYWRIGHT_BROWSERS: 'chromium' },
+    });
+    expect(install('e2e')).toEqual({ setup: undefined, env: undefined });
+    expect(
+      jobs.storybook.steps.find(
+        (step) => step.uses === './.github/actions/setup-playwright',
+      ).with,
+    ).toBeUndefined();
+  });
+
   it('names each prerequisites artifact by job, and by shard in the matrix', () => {
     const name = (id) =>
       jobs[id].steps.find((step) => step.with?.path === 'dist/.ci/').with.name;

@@ -302,11 +302,15 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
 
+      # The browser project is Chromium only, so skip WebKit's host libraries.
       - uses: ./.github/actions/setup-playwright
         with:
+          browsers: chromium
           install: 'false'
       - name: Prepare e2e prerequisites
         id: prerequisites
+        env:
+          TRINITY_PLAYWRIGHT_BROWSERS: chromium
         run: node scripts/ci-prerequisites.mjs
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}

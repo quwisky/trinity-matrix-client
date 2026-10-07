@@ -147,4 +147,34 @@ describe('runPrerequisites', () => {
       }
     },
   );
+
+  it.each([
+    [{}, ['chromium', 'webkit']],
+    [{ TRINITY_PLAYWRIGHT_BROWSERS: 'chromium' }, ['chromium']],
+    [
+      { TRINITY_PLAYWRIGHT_BROWSERS: ' chromium  firefox ' },
+      ['chromium', 'firefox'],
+    ],
+  ])(
+    'installs the selected Playwright browsers (%o)',
+    async (env, browsers) => {
+      const calls = [];
+      await runPrerequisites({
+        logDir: makeLogDir(),
+        env,
+        run: async (spec) => {
+          calls.push(spec);
+          return { label: spec.label, exitCode: 0, signal: null };
+        },
+      });
+      const install = calls.find(({ label }) => label === 'playwright-install');
+      expect(install.args).toEqual([
+        'exec',
+        'playwright',
+        'install',
+        '--with-deps',
+        ...browsers,
+      ]);
+    },
+  );
 });

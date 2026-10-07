@@ -18,18 +18,15 @@ export async function runPrerequisites({
   // The images of the homeserver this job will actually start (TRINITY_E2E_HOMESERVER).
   const homeserver = 'e2e/support/homeserver';
   const kind = resolveHomeserverKind(env);
+  // Space-separated; jobs that drive one browser skip the other's host libraries.
+  const browsers = (env.TRINITY_PLAYWRIGHT_BROWSERS ?? 'chromium webkit')
+    .split(/\s+/)
+    .filter(Boolean);
   const commands = [
     {
       label: 'playwright-install',
       command: 'pnpm',
-      args: [
-        'exec',
-        'playwright',
-        'install',
-        '--with-deps',
-        'chromium',
-        'webkit',
-      ],
+      args: ['exec', 'playwright', 'install', '--with-deps', ...browsers],
       mandatory: true,
     },
     {
