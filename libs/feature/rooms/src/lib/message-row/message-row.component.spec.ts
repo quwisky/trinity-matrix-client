@@ -1,5 +1,7 @@
-import { signal } from '@angular/core';
+import { type DebugElement, signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { TestBed } from '@angular/core/testing';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import { fireEvent, render, waitFor } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
@@ -174,6 +176,72 @@ describe('MessageRowComponent', () => {
       await waitFor(() => {
         const found = document.body.querySelector('.cdk-overlay-container');
         expect(found?.textContent).toContain(fmt.dateTime(ts));
+      });
+    });
+
+    // Each tooltip registers window keydown and scroll listeners and a focus monitor, and a
+    // timeline builds rows continuously while it scrolls, so the time's tooltip is created when
+    // a mouse or pen first reaches the row rather than when the row is built.
+    describe('time tooltip mounting', () => {
+      const ts = Date.UTC(2026, 9, 5, 18, 56);
+      // Only the time's: the hover toolbar that mounts with the row has its own.
+      const tooltips = (fixture: { debugElement: DebugElement }) =>
+        fixture.debugElement
+          .queryAll(By.directive(TrnTooltip))
+          .filter((el) => el.nativeElement.tagName === 'TIME');
+
+      it('is not created while the row is only scrolled past', async () => {
+        const { fixture } = await renderRow({ row: row({ timestamp: ts }) });
+
+        expect(tooltips(fixture)).toHaveLength(0);
+      });
+
+      it('is created when a mouse reaches the row, and still opens', async () => {
+        const { container, fixture } = await renderRow({
+          row: row({ timestamp: ts }),
+        });
+        fireEvent.pointerEnter(container.querySelector('.msg') as HTMLElement, {
+          pointerType: 'mouse',
+        });
+        fixture.detectChanges();
+
+        expect(tooltips(fixture)).toHaveLength(1);
+      });
+
+      it('receives the entry when the mouse lands straight on the time', async () => {
+        const { container, fixture } = await renderRow({
+          row: row({ timestamp: ts }),
+        });
+        const time = container.querySelector('time') as HTMLElement;
+        const enter = vi.spyOn(HTMLElement.prototype, 'dispatchEvent');
+        // Parents enter first, so the row arms before the time's own handler runs.
+        fireEvent.pointerEnter(container.querySelector('.msg') as HTMLElement, {
+          pointerType: 'mouse',
+        });
+        fireEvent.pointerEnter(time, { pointerType: 'mouse' });
+        fixture.detectChanges();
+        await fixture.whenStable();
+
+        const replayed = enter.mock.calls.filter(
+          ([e]) =>
+            e.type === 'pointerenter' &&
+            (e.target as HTMLElement | null)?.tagName === 'TIME' &&
+            e.target !== time,
+        );
+        enter.mockRestore();
+        expect(replayed.length).toBeGreaterThan(0);
+      });
+
+      it('is not created for a touch pointer', async () => {
+        const { container, fixture } = await renderRow({
+          row: row({ timestamp: ts }),
+        });
+        fireEvent.pointerEnter(container.querySelector('.msg') as HTMLElement, {
+          pointerType: 'touch',
+        });
+        fixture.detectChanges();
+
+        expect(tooltips(fixture)).toHaveLength(0);
       });
     });
 
