@@ -272,7 +272,8 @@ test.describe('Space curation', () => {
     await expect(panel).toBeVisible({
       timeout: 10_000,
     });
-    await expectOpaque(page, 'space-settings');
+    // The settings layout paints its surface on the component host, around the test id.
+    await expectOpaque(page, 'space-settings', 'xpath=..');
 
     // Personal ordering is a separate Account-and-device preference. Give it a
     // non-default value before shared curation so the shared writes below can prove they

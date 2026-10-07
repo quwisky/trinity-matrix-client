@@ -146,6 +146,11 @@ describe('Android Appearance', () => {
       if (!column || !heading || controls.some((control) => !control)) {
         throw new Error('Android Appearance geometry is incomplete');
       }
+      // The heading scrolls with the column, and the steps above changed controls further
+      // down, so measure it from the top of the page.
+      for (let el: HTMLElement | null = heading; el; el = el.parentElement) {
+        el.scrollTop = 0;
+      }
       const headerStyle = getComputedStyle(column);
       return {
         headerPaddingTop: Number.parseFloat(headerStyle.paddingTop),
