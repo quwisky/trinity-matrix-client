@@ -2,7 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { GeolocationService } from '@trinity/platform-native';
 import { LocationShareService } from './location-share.service';
@@ -28,7 +31,7 @@ function setup(
         supportsPrecise: () => over.supportsPrecise ?? true,
       }),
       MockProvider(TimelineActionsService, { sendLocation }),
-      MockProvider(TrnDialogService, { openAndWait$ }),
+      MockProvider(TrnSurfaceService, { openAndWait$ }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });

@@ -38,7 +38,7 @@ import {
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import {
   TrnAlertService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
@@ -170,7 +170,7 @@ describe('RoomsPage panels, pins and media', () => {
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(JumpToDateService),
-        MockProvider(TrnDialogService, { openAndWait$: dialogOpen }),
+        MockProvider(TrnSurfaceService, { openAndWait$: dialogOpen }),
         MockProvider(TrnToastService, { show: toastShow }),
         MockProvider(RoomNotificationsService, {
           setModeForAccounts: setNotifyMode,
@@ -212,7 +212,6 @@ describe('RoomsPage panels, pins and media', () => {
     expect(canManageAliases).not.toHaveBeenCalled();
     expect(dialogOpen).toHaveBeenCalledWith(RoomSettingsComponent, {
       ariaLabel: 'Room settings',
-      placement: 'center',
       autoFocus: '[data-autofocus]',
       dismissGuard: expect.any(Function),
       inputs: {
@@ -225,7 +224,7 @@ describe('RoomsPage panels, pins and media', () => {
     });
   });
 
-  it('opens Room settings centred below md, which the dialog service shows as a sheet', async () => {
+  it('opens Room settings without choosing a placement of its own', async () => {
     const restore = stubLiveLayout({ [BELOW_MD_QUERY]: true });
     const shell = build();
     roomsSignal.set([
@@ -253,10 +252,7 @@ describe('RoomsPage panels, pins and media', () => {
     await settleWorkspace();
     shell.rooms.onOpenRoomSettings();
 
-    expect(dialogOpen).toHaveBeenCalledWith(
-      RoomSettingsComponent,
-      expect.objectContaining({ placement: 'center' }),
-    );
+    expect(dialogOpen.mock.calls.at(-1)?.[1]).not.toHaveProperty('placement');
     restore();
   });
 

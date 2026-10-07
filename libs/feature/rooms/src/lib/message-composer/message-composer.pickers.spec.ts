@@ -21,7 +21,10 @@ import { type BatchItem } from '../shared/send-media-batch';
 import { MockProvider } from 'ng-mocks';
 import { VoiceRecorderService } from '@trinity/platform-native';
 import { GifService, GifSettingsService } from '@trinity/data-access/gif';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { LocationShareService } from '../location-share/location-share.service';
 import { MediaService, type ImagePack } from '@trinity/data-access/media';
@@ -66,7 +69,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     const { fixture, container } = await renderComposer({}, [
       MockProvider(CreatePollService, {
         open$: vi.fn(() => {
-          TestBed.inject(TrnDialogService).open(CreatePollDialogComponent, {
+          TestBed.inject(TrnSurfaceService).open(CreatePollDialogComponent, {
             ariaLabel: 'Create poll',
             autoFocus: '[data-testid=poll-question]',
           });

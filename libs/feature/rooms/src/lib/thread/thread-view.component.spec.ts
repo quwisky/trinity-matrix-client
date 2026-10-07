@@ -4,7 +4,7 @@ import { By } from '@angular/platform-browser';
 import {
   TrnAlertService,
   TrnActionSheetService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
@@ -247,7 +247,7 @@ async function build(
       },
       MockProvider(TimelineActionsService),
       MockProvider(RoomMembersService, { membersFor }),
-      MockProvider(TrnDialogService, { open: sourceOpen }),
+      MockProvider(TrnSurfaceService, { open: sourceOpen }),
       MockProvider(TrnAlertService, { confirm$ }),
       MockProvider(TrnToastService, { show: toastShow }),
       { provide: TrnActionSheetService, useValue: { open: sheetOpen } },

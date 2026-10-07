@@ -38,7 +38,7 @@ import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
   TrnActionSheetService,
   TrnAlertService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
@@ -155,7 +155,7 @@ describe('RoomsPage space actions', () => {
               ),
           ),
         }),
-        MockProvider(TrnDialogService),
+        MockProvider(TrnSurfaceService),
         MockProvider(TrnAlertService, {
           confirm$: alertConfirm,
           prompt$: alertPrompt,
@@ -548,7 +548,7 @@ describe('RoomsPage room / DM / invite actions', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(TrnDialogService, {
+        MockProvider(TrnSurfaceService, {
           openAndWait$: dialogOpen,
         }),
         MockProvider(TrnAlertService, { prompt$: alertPrompt }),
@@ -615,6 +615,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(dialogOpen).toHaveBeenCalledWith(UserCardComponent, {
       ariaLabel: 'User',
       inputs: { userId: '@bob:hs' },
+      kind: 'popover',
       anchor: mention,
     });
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
@@ -635,6 +636,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(dialogOpen).toHaveBeenCalledWith(UserCardComponent, {
       ariaLabel: 'User',
       inputs: { userId: '@bob:hs' },
+      kind: 'popover',
       anchor: undefined,
     });
     expect(createDirectMessage).not.toHaveBeenCalled();
@@ -1529,7 +1531,7 @@ describe('RoomsPage space hierarchy actions', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(TrnDialogService),
+        MockProvider(TrnSurfaceService),
         MockProvider(TrnAlertService, { confirm$: alertConfirm }),
         MockProvider(TrnToastService),
       ],

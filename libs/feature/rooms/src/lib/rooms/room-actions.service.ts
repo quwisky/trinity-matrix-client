@@ -11,11 +11,10 @@ import {
 import {
   TrnActionSheetService,
   TrnAlertService,
-  TrnDialogService,
+  TrnSurfaceService,
 } from '@trinity/components/overlay';
 import { matrixRequestErrorHandling } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
-import { isMobileOs } from '@trinity/platform-native';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import {
   RoomDirectoryComponent,
@@ -52,7 +51,7 @@ export class RoomActionsService {
   private readonly selected = inject(SelectedRoomLibraryService);
   private readonly userPicker = inject(UserPickerService);
   private readonly alert = inject(TrnAlertService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly actionSheet = inject(TrnActionSheetService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -343,9 +342,6 @@ export class RoomActionsService {
         RoomSettingsComponent,
         {
           ariaLabel: 'Room settings',
-          // A sheet on a phone or tablet; centred elsewhere, which the dialog service shows
-          // as a sheet on a small screen.
-          placement: isMobileOs() ? 'bottom' : 'center',
           autoFocus: '[data-autofocus]',
           dismissGuard: (component) =>
             component?.requestExternalDismiss() ?? true,
