@@ -711,15 +711,16 @@ test.describe('Modern room shell layout', () => {
       await expect(page.getByTestId('header-search')).toBeVisible();
       await expect(page.getByTestId('room-actions-overflow')).toBeVisible();
       await page.setViewportSize(headerViewport);
-      // Crossing the drawer breakpoint closes the roster; reopen it for the member rows.
-      if (
-        (await page
-          .getByTestId('toggle-members')
-          .getAttribute('aria-pressed')) !== 'true'
-      ) {
-        await activate(page.getByTestId('toggle-members'));
-      }
-      await expect(page.locator('.members')).toBeVisible({ timeout: 20_000 });
+      // Crossing the drawer breakpoint closes the roster from an effect that can land after
+      // the resize resolves, so a single aria-pressed read can see it still open. Retry the
+      // read-and-reopen until the roster is actually on screen.
+      const toggleMembers = page.getByTestId('toggle-members');
+      await expect(async () => {
+        if ((await toggleMembers.getAttribute('aria-pressed')) !== 'true') {
+          await activate(toggleMembers);
+        }
+        await expect(page.locator('.members')).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 20_000 });
 
       await expect(page.locator('.member').first()).toHaveCSS('height', '44px');
       await expect(page.locator('.member').first()).toHaveCSS(
