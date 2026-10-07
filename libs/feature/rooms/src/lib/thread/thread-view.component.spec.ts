@@ -855,6 +855,30 @@ describe('ThreadViewComponent members', () => {
     });
   });
 
+  it('keeps the caps object of rows whose capabilities did not change', async () => {
+    // Every thread event hands the panel a new messages array. A row that is re-handed a
+    // fresh caps object re-renders even though nothing about it changed.
+    const { fixture, threadMessages } = await build([
+      msg('$1', '@ada:hs', 'first'),
+      msg('$2', '@ada:hs', 'second'),
+    ]);
+    const cmp = fixture.componentInstance;
+    const [first, second] = cmp.rows();
+    const firstBefore = cmp.rowCaps(first);
+    const secondBefore = cmp.rowCaps(second);
+
+    threadMessages.set([
+      msg('$1', '@ada:hs', 'first'),
+      { ...msg('$2', '@ada:hs', 'second'), isOwn: true },
+    ]);
+    fixture.detectChanges();
+    const [firstAfter, secondAfter] = cmp.rows();
+
+    expect(cmp.rowCaps(firstAfter)).toBe(firstBefore);
+    expect(cmp.rowCaps(secondAfter)).not.toBe(secondBefore);
+    expect(cmp.rowCaps(secondAfter).deletable).toBe(true);
+  });
+
   it('closes its own action sheet when the panel is destroyed', async () => {
     // The asymmetric consumer, and the reason `MessageActionSheetService` exists at all:
     // this panel renders `trn-message-row` but does NOT extend `MessageListBase`, so it

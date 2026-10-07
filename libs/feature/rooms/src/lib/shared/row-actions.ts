@@ -1,7 +1,13 @@
 import { type DestroyRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { type TrnDialogService } from '@trinity/components/overlay';
-import { type ConversationRuntime } from '@trinity/data-access/timeline';
+import {
+  type ConversationRuntime,
+  type MessageView,
+  isEditableMessage,
+  isQuotableMessage,
+  savableMediaKind,
+} from '@trinity/data-access/timeline';
 import { messagePermalink } from '@trinity/util/matrix';
 import { defer, filter, take } from 'rxjs';
 import { type EditHistoryDialogService } from '../edit-history/edit-history.service';
@@ -11,6 +17,7 @@ import { type MatrixLinkClickTarget } from '../matrix-link/matrix-link.directive
 import {
   type MessageRow,
   type MessageRowAction,
+  type MessageRowCaps,
 } from '../message-row/message-row.component';
 import { MessageSourceComponent } from '../message-source/message-source.component';
 import { ReactionPickerComponent } from '../reaction-picker/reaction-picker.component';
@@ -34,6 +41,71 @@ export interface SharedRowActionContext {
   readonly quote: (row: MessageRow) => void;
   /** A permalink followed inside the edit-history dialog; omitted where none are routed. */
   readonly onHistoryLink?: (target: MatrixLinkClickTarget) => void;
+}
+
+/** What a host decides for every row; the rest of a row's caps derive from the row itself. */
+export interface RowCapsPolicy {
+  readonly canRedactOthers: boolean;
+  readonly canPin: boolean;
+  readonly canThread: boolean;
+  readonly pinnedIds: readonly string[];
+}
+
+/** One row's capabilities under a host's {@link RowCapsPolicy}. */
+export function buildRowCaps(
+  message: MessageView,
+  policy: RowCapsPolicy,
+): MessageRowCaps {
+  // An unsent message is only a local echo: its id is the SDK's `~roomId:txnId`
+  // placeholder, which the homeserver has never seen. Threading off it would make
+  // that placeholder the thread root — every reply then relates to an event the
+  // server can't resolve — and pinning it would write it into `m.room.pinned_events`
+  // room state. Both wait for the remote echo to swap in the real event id.
+  const unsent = !!message.status;
+  return {
+    editable: isEditableMessage(message),
+    // Own messages are always deletable; a moderator can also redact others'.
+    deletable: (message.isOwn || policy.canRedactOthers) && !unsent,
+    canPin: policy.canPin && !unsent,
+    pinned: policy.pinnedIds.includes(message.id),
+    canThread: policy.canThread && !unsent,
+    canQuote: isQuotableMessage(message),
+    saveMedia: savableMediaKind(message),
+    readOnly: false,
+  };
+}
+
+/** Whether two caps carry the same capabilities — all eight fields are flat primitives. */
+export function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
+  return (
+    a.editable === b.editable &&
+    a.deletable === b.deletable &&
+    a.canPin === b.canPin &&
+    a.pinned === b.pinned &&
+    a.canThread === b.canThread &&
+    a.canQuote === b.canQuote &&
+    a.saveMedia === b.saveMedia &&
+    a.readOnly === b.readOnly
+  );
+}
+
+/**
+ * Caps for every row keyed by event id, reusing the `previous` object when nothing about
+ * a row's caps changed. A host's message array gets a new identity on every timeline event;
+ * without this reuse each event would hand every OnPush row a fresh `caps` input.
+ */
+export function buildRowCapsMap(
+  messages: readonly MessageView[],
+  policy: RowCapsPolicy,
+  previous: ReadonlyMap<string, MessageRowCaps>,
+): Map<string, MessageRowCaps> {
+  const caps = new Map<string, MessageRowCaps>();
+  for (const message of messages) {
+    const next = buildRowCaps(message, policy);
+    const prev = previous.get(message.id);
+    caps.set(message.id, prev && sameRowCaps(prev, next) ? prev : next);
+  }
+  return caps;
 }
 
 type SharedRowAction = Extract<
