@@ -158,4 +158,52 @@ describe('QrScannerComponent', () => {
     );
     expect(load).toHaveBeenCalledTimes(2);
   });
+
+  describe.each([
+    ['cancelled', 'cancel'],
+    ['destroyed', 'destroy'],
+  ] as const)(
+    'when %s while the decoder is still loading',
+    (_label, action) => {
+      it('closes the camera that opened meanwhile and never starts scanning', async () => {
+        const stream = { getTracks: () => [] } as unknown as MediaStream;
+        let finishLoading!: () => void;
+        const closeCamera = vi.fn();
+        const openCamera = vi.fn().mockResolvedValue(stream);
+        const { container, fixture } = await render(QrScannerComponent, {
+          providers: [
+            MockProvider(QrCodeService, {
+              openCamera,
+              closeCamera,
+              load: () =>
+                new Promise<never>((r) => (finishLoading = r as never)),
+            }),
+          ],
+        });
+        const scanned = vi.fn();
+        fixture.componentInstance.scanned.subscribe(scanned);
+        await vi.waitFor(() => expect(openCamera).toHaveBeenCalled());
+        await new Promise((resolve) => setTimeout(resolve));
+
+        if (action === 'cancel') {
+          fireEvent.click(
+            [...container.querySelectorAll('button')].find((button) =>
+              button.textContent?.includes('Cancel scan'),
+            )!,
+          );
+        } else {
+          fixture.destroy();
+        }
+        finishLoading();
+        await vi.waitFor(() =>
+          expect(closeCamera).toHaveBeenCalledWith(stream),
+        );
+        await new Promise((resolve) => setTimeout(resolve));
+
+        expect(fixture.componentInstance.status()).not.toBe('scanning');
+        expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+        expect(scanned).not.toHaveBeenCalled();
+      });
+    },
+  );
 });

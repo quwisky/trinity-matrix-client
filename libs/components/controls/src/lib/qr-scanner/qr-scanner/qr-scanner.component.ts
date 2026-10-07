@@ -81,7 +81,12 @@ export class QrScannerComponent implements AfterViewInit, OnDestroy {
         this.qrCode.closeCamera(stream);
         return;
       }
-      if (!(await libraryLoaded)) {
+      const loaded = await libraryLoaded;
+      if (this.destroyed || !this.cameraOpen.isCurrent(token)) {
+        this.qrCode.closeCamera(stream);
+        return;
+      }
+      if (!loaded) {
         this.qrCode.closeCamera(stream);
         throw new Error(
           'The QR scanner couldn’t be loaded. Check your connection and try again.',
