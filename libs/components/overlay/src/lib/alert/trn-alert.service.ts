@@ -2,6 +2,8 @@ import { Injectable, inject } from '@angular/core';
 import { Dialog, type DialogConfig, type DialogRef } from '@angular/cdk/dialog';
 import { Overlay } from '@angular/cdk/overlay';
 import type { TrnVariant } from '@trinity/components/foundations';
+import { isMobileOs } from '@trinity/platform-native';
+import { BELOW_MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import { defer, map, take, type Observable } from 'rxjs';
 import { TrnDialogRef } from '../dialog/trn-dialog-ref';
 import { dialogPresentation } from '../dialog/trn-dialog.service';
@@ -109,14 +111,14 @@ export class TrnAlertService {
     });
   }
 
-  /** A centred alert, or a bottom sheet below `md`, like any centred dialog. */
+  /** A bottom sheet on a phone or tablet or below md, a centred alert otherwise. */
   private config<R>(
     data: AlertDialogData,
     opts: ConfirmOptions,
   ): DialogConfig<AlertDialogData, DialogRef<R, TrnAlertDialogComponent>> {
     const { pane, createRef } = dialogPresentation(
       this.overlay,
-      'center',
+      isMobileOs() || matchesQuery(BELOW_MD_QUERY) ? 'bottom' : 'center',
       null,
     );
     return {
