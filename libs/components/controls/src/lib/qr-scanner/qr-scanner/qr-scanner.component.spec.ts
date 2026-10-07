@@ -123,4 +123,87 @@ describe('QrScannerComponent', () => {
     expect(container.querySelector('video')!.srcObject).toBeNull();
     expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
   });
+
+  it('shows a friendly error and stops the camera when the QR library fails to load', async () => {
+    const stream = { getTracks: () => [] } as unknown as MediaStream;
+    const closeCamera = vi.fn();
+    const load = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new TypeError('Failed to fetch dynamically imported module: /chunk.js'),
+      )
+      .mockResolvedValue({});
+    const { container, fixture } = await render(QrScannerComponent, {
+      providers: [
+        MockProvider(QrCodeService, {
+          openCamera: vi.fn().mockResolvedValue(stream),
+          closeCamera,
+          load,
+        }),
+      ],
+    });
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.status()).toBe('error'),
+    );
+    await fixture.whenStable();
+
+    expect(container.textContent).toContain('QR scanner couldn’t be loaded');
+    expect(container.textContent).not.toContain('dynamically imported');
+    expect(closeCamera).toHaveBeenCalledWith(stream);
+
+    fireEvent.click(container.querySelector('button')!);
+
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.status()).toBe('scanning'),
+    );
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  describe.each([
+    ['cancelled', 'cancel'],
+    ['destroyed', 'destroy'],
+  ] as const)(
+    'when %s while the decoder is still loading',
+    (_label, action) => {
+      it('closes the camera that opened meanwhile and never starts scanning', async () => {
+        const stream = { getTracks: () => [] } as unknown as MediaStream;
+        let finishLoading!: () => void;
+        const closeCamera = vi.fn();
+        const openCamera = vi.fn().mockResolvedValue(stream);
+        const { container, fixture } = await render(QrScannerComponent, {
+          providers: [
+            MockProvider(QrCodeService, {
+              openCamera,
+              closeCamera,
+              load: () =>
+                new Promise<never>((r) => (finishLoading = r as never)),
+            }),
+          ],
+        });
+        const scanned = vi.fn();
+        fixture.componentInstance.scanned.subscribe(scanned);
+        await vi.waitFor(() => expect(openCamera).toHaveBeenCalled());
+        await new Promise((resolve) => setTimeout(resolve));
+
+        if (action === 'cancel') {
+          fireEvent.click(
+            [...container.querySelectorAll('button')].find((button) =>
+              button.textContent?.includes('Cancel scan'),
+            )!,
+          );
+        } else {
+          fixture.destroy();
+        }
+        finishLoading();
+        await vi.waitFor(() =>
+          expect(closeCamera).toHaveBeenCalledWith(stream),
+        );
+        await new Promise((resolve) => setTimeout(resolve));
+
+        expect(fixture.componentInstance.status()).not.toBe('scanning');
+        expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+        expect(scanned).not.toHaveBeenCalled();
+      });
+    },
+  );
 });

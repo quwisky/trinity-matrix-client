@@ -75,10 +75,22 @@ export class QrScannerComponent implements AfterViewInit, OnDestroy {
     this.status.set('starting');
     this.error.set(null);
     try {
+      const libraryLoaded = this.loadLibrary();
       const stream = await this.qrCode.openCamera();
       if (this.destroyed || !this.cameraOpen.isCurrent(token)) {
         this.qrCode.closeCamera(stream);
         return;
+      }
+      const loaded = await libraryLoaded;
+      if (this.destroyed || !this.cameraOpen.isCurrent(token)) {
+        this.qrCode.closeCamera(stream);
+        return;
+      }
+      if (!loaded) {
+        this.qrCode.closeCamera(stream);
+        throw new Error(
+          'The QR scanner couldn’t be loaded. Check your connection and try again.',
+        );
       }
       this.stream = stream;
       const preview = this.preview().nativeElement;
@@ -90,6 +102,16 @@ export class QrScannerComponent implements AfterViewInit, OnDestroy {
       this.stop();
       this.status.set('error');
       this.error.set(cameraErrorMessage(error));
+    }
+  }
+
+  /** Loads the decoder alongside the camera; resolves `false` instead of rejecting. */
+  private async loadLibrary(): Promise<boolean> {
+    try {
+      await this.qrCode.load();
+      return true;
+    } catch {
+      return false;
     }
   }
 

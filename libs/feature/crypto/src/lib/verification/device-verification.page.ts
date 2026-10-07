@@ -75,12 +75,13 @@ export class DeviceVerificationPage {
   };
   readonly cameraSupported = this.qrCode.cameraSupported;
   readonly qrCodeUrl = signal<string | null>(null);
+  private qrRequest = 0;
 
   private readonly synchronizeQrUi = effect(() => {
     const active = this.active();
     const scanning = this.scanning();
     if (active?.stage !== 'qr-shown') {
-      this.qrCodeUrl.set(null);
+      this.clearQr();
     }
 
     const heading = this.stageHeading();
@@ -111,7 +112,7 @@ export class DeviceVerificationPage {
   }
   startSas(): void {
     this.scannerRequestId.set(null);
-    this.qrCodeUrl.set(null);
+    this.clearQr();
     this.run(this.verification.startSas());
   }
   showQr(): void {
@@ -119,10 +120,24 @@ export class DeviceVerificationPage {
       busy: this.busy,
       error: this.error,
       destroyRef: this.destroyRef,
-    }).subscribe((data) => this.qrCodeUrl.set(this.qrCode.createDataUrl(data)));
+    }).subscribe((data) => {
+      const request = ++this.qrRequest;
+      this.qrCode
+        .createDataUrl(data)
+        .then((url) => {
+          if (request === this.qrRequest) {
+            this.qrCodeUrl.set(url);
+          }
+        })
+        .catch(() => {
+          if (request === this.qrRequest) {
+            this.error.set('Couldn’t render the QR code.');
+          }
+        });
+    });
   }
   hideQr(): void {
-    this.qrCodeUrl.set(null);
+    this.clearQr();
     this.verification.hideQr();
   }
   startQrScan(): void {
@@ -134,7 +149,7 @@ export class DeviceVerificationPage {
   }
   scanQr(data: Uint8ClampedArray): void {
     this.scannerRequestId.set(null);
-    this.qrCodeUrl.set(null);
+    this.clearQr();
     this.run(this.verification.scanQr(data));
   }
   confirmQr(): void {
@@ -148,6 +163,12 @@ export class DeviceVerificationPage {
   }
   cancel(): void {
     this.run(this.verification.cancel());
+  }
+
+  /** Drop the sensitive code and any render still in flight. */
+  private clearQr(): void {
+    this.qrRequest++;
+    this.qrCodeUrl.set(null);
   }
 
   /** Finish: drop the verification and leave (close the modal / go to /rooms). */
