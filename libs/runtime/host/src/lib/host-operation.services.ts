@@ -156,6 +156,12 @@ export class HostLifecycleService implements HostLifecycleOperation {
   });
 
   readonly events = defer(() => this.adapter?.events ?? EMPTY);
+
+  releaseMemory(): Observable<HostOperationOutcome> {
+    return defer(
+      () => this.adapter?.releaseMemory?.() ?? of(unavailableOutcome()),
+    );
+  }
 }
 
 @Injectable({ providedIn: 'root' })

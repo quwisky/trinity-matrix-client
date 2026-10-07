@@ -59,6 +59,12 @@ export interface DesktopBridgeFixture {
         lng: number;
       } | null>;
     };
+    readonly lifecycle: {
+      readonly subscribeVisibility: (
+        callback: (visibility: 'visible' | 'hidden') => void,
+      ) => () => void;
+      readonly releaseMemory: () => void;
+    };
     readonly titleBar: {
       readonly mode: 'row' | 'system' | null;
       readonly setOverlayColors: (colors: {
@@ -133,6 +139,10 @@ export function desktopBridgeFixture(
         allowOrigin: () => undefined,
       },
       location: { approximate: async () => null },
+      lifecycle: {
+        subscribeVisibility: () => () => undefined,
+        releaseMemory: () => undefined,
+      },
       titleBar: {
         mode: 'row',
         setOverlayColors: () => undefined,
@@ -168,6 +178,10 @@ export function desktopBridgeFixture(
       location: {
         ...defaults.capabilities.location,
         ...capabilities?.location,
+      },
+      lifecycle: {
+        ...defaults.capabilities.lifecycle,
+        ...capabilities?.lifecycle,
       },
       titleBar: {
         ...defaults.capabilities.titleBar,
