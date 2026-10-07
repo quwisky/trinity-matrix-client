@@ -170,15 +170,22 @@
         {{ state.unavailableReason }}
       </p>
     } @else if (state.hierarchyError) {
-      <div
-        class="space-contents__state space-contents__state--danger"
+      <trn-empty-state
+        layout="line"
+        variant="danger"
         role="alert"
+        [body]="'Space contents could not be loaded: ' + state.hierarchyError"
       >
-        <p>Space contents could not be loaded: {{ state.hierarchyError }}</p>
-        <button trnBtn type="button" variant="secondary" (click)="refresh()">
+        <button
+          trnEmptyStateActions
+          trnBtn
+          type="button"
+          variant="secondary"
+          (click)="refresh()"
+        >
           Try again
         </button>
-      </div>
+      </trn-empty-state>
     } @else {
       <trn-space-settings-contents-list
         [target]="target()"

@@ -55,21 +55,25 @@
   </div>
 
   @if (loadFailed()) {
-    <div class="rounded-md border border-border p-3" role="status">
-      <p class="text-sm">Addresses could not be loaded for this account.</p>
+    <trn-empty-state
+      layout="line"
+      variant="danger"
+      role="status"
+      body="Addresses could not be loaded for this account."
+    >
       <button
+        trnEmptyStateActions
         trnBtn
         type="button"
         variant="secondary"
         presentation="outline"
         size="sm"
-        class="mt-2"
         (click)="load()"
         data-testid="room-aliases-retry"
       >
         Try again
       </button>
-    </div>
+    </trn-empty-state>
   } @else if (loading()) {
     <p class="text-13 text-muted-foreground" role="status">
       Loading addresses…
