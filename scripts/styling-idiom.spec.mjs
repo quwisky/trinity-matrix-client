@@ -134,6 +134,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/room-settings/room-widgets.component.scss',
   'libs/feature/rooms/src/lib/rooms/rooms.page.scss',
   'libs/feature/rooms/src/lib/server-rail/server-rail.component.scss',
+  'libs/feature/rooms/src/lib/shared/account-pick-label/account-pick-label.component.scss',
   'libs/feature/rooms/src/lib/shared/avatar-field/avatar-field.component.scss',
   'libs/feature/rooms/src/lib/shared/settings-hub/settings-hub.component.scss',
   'libs/feature/rooms/src/lib/shared/settings-identity-card/settings-identity-card.component.scss',

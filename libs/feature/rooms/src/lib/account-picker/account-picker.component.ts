@@ -16,8 +16,7 @@ import {
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
-import { AvatarComponent } from '@trinity/components/generic-content';
-import { accountInitial } from '../shared/account-initial';
+import { AccountPickLabelComponent } from '../shared/account-pick-label/account-pick-label.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 
 /**
@@ -40,7 +39,7 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
   templateUrl: './account-picker.component.html',
   styleUrl: './account-picker.component.scss',
   imports: [
-    AvatarComponent,
+    AccountPickLabelComponent,
     TrnButton,
     TrnIconComponent,
     TrnLockedSelectionDirective,
@@ -95,8 +94,6 @@ export class AccountPickerComponent {
         });
     }
   }
-
-  readonly initialOf = accountInitial;
 
   close(): void {
     this.dialogRef.close();
