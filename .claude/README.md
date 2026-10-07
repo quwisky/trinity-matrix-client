@@ -18,12 +18,12 @@ file, not a symlink.
 
 | Event                                  | Script                                                  | Effect                                                                                                                                                                                                                                                                                  |
 | -------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PreToolUse` `Bash`                    | [claude-guard.mjs](../scripts/claude-guard.mjs)         | Blocks staging `docs/superpowers` or `.superpowers`, `pgrep -f` wait loops, and a `git push` whose `node scripts/nx.mjs affected -t typecheck --base=origin/main` fails (branch deletions skip the typecheck). |
-| `PostToolUse` `Edit\|Write\|MultiEdit` | [claude-format.mjs](../scripts/claude-format.mjs)       | Runs the repository Prettier on the edited file; skips unsupported and `.prettierignore` paths and never blocks.                                                                                                                                                                       |
+| `PreToolUse` `Bash`                    | [agent-guard.mjs](../scripts/agent-guard.mjs)         | Blocks staging `docs/superpowers` or `.superpowers`, `pgrep -f` wait loops, and a `git push` whose `node scripts/nx.mjs affected -t typecheck --base=origin/main` fails (branch deletions skip the typecheck). |
+| `PostToolUse` `Edit\|Write\|MultiEdit` | [agent-format.mjs](../scripts/agent-format.mjs)       | Runs the repository Prettier on the edited file; skips unsupported and `.prettierignore` paths and never blocks.                                                                                                                                                                       |
 
 To turn a hook off for yourself, set `"disableAllHooks": true` in your untracked
 `.claude/settings.local.json`, or remove its entry from `hooks` in `settings.json` for
-everyone. `scripts/claude-guard.spec.mjs` covers the guard.
+everyone. `scripts/agent-guard.spec.mjs` covers the guard.
 
 ## Subagents
 

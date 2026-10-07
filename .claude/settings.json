@@ -18,7 +18,7 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/scripts/claude-guard.mjs"],
+            "args": ["${CLAUDE_PROJECT_DIR}/scripts/agent-guard.mjs"],
             "timeout": 900
           }
         ]
@@ -31,7 +31,7 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/scripts/claude-format.mjs"],
+            "args": ["${CLAUDE_PROJECT_DIR}/scripts/agent-format.mjs"],
             "timeout": 60
           }
         ]

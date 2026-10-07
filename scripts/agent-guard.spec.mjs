@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
-const guard = join(import.meta.dirname, 'claude-guard.mjs');
-const repo = mkdtempSync(join(tmpdir(), 'claude-guard-'));
+const guard = join(import.meta.dirname, 'agent-guard.mjs');
+const repo = mkdtempSync(join(tmpdir(), 'agent-guard-'));
 const git = (...args) =>
   execFileSync('git', args, { cwd: repo, stdio: 'ignore' });
 git('init', '-q');
@@ -18,7 +18,7 @@ const hook = (command, cwd = repo) =>
 
 afterAll(() => rmSync(repo, { recursive: true, force: true }));
 
-describe('claude-guard PreToolUse hook', () => {
+describe('agent-guard PreToolUse hook', () => {
   it('allows unrelated and clean git commands', () => {
     expect(hook('ls -la').status).toBe(0);
     expect(hook('git commit -m "chore(agents): add guard"').status).toBe(0);
