@@ -8,14 +8,13 @@ import {
   signal,
 } from '@angular/core';
 
-/** Renderable media category (mirrors `@trinity/core` MediaKind). */
+/** Renderable media category (mirrors `MediaKind` in `@trinity/util/matrix`). */
 export type MediaBubbleKind = 'image' | 'file' | 'video' | 'audio';
 
 /**
- * The metadata a media bubble renders. A structural subset of `@trinity/core`'s
- * `MediaPayload`, redeclared locally so this presentational leaf keeps its "no
- * `@trinity/core` dependency" contract — the smart wrapper passes its `MediaPayload`
- * straight in (extra fields are ignored).
+ * The metadata a media bubble renders. A structural subset of `MediaPayload`,
+ * redeclared locally so this presentational leaf stays free of Matrix utilities;
+ * the smart wrapper passes its `MediaPayload` straight in (extra fields are ignored).
  */
 export interface MediaBubbleItem {
   kind: MediaBubbleKind;
