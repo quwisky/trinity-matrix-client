@@ -319,6 +319,14 @@ describe('Unit test selection', () => {
     );
   });
 
+  it('lists changed paths unquoted and without rename detection', () => {
+    // A root file moved into a subdirectory must still list its old root path, and
+    // non-ASCII paths must not come back quoted, or the root-level guard misses them.
+    expect(unit().run).toContain(
+      'git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD"',
+    );
+  });
+
   it('tests every project when a root-level or workflow file changes', () => {
     const pattern = new RegExp(
       unit().run.match(/grep -E '([^']+)' > \/dev\/null/)[1],
