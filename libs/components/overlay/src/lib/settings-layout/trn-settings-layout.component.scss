@@ -96,8 +96,7 @@
     cursor: pointer;
   }
 
-  .settings-layout__nav-item:focus-visible,
-  .settings-layout__close:focus-visible {
+  .settings-layout__nav-item:focus-visible {
     outline: 2px solid var(--trinity-focus-ring);
     outline-offset: 2px;
   }
@@ -230,41 +229,14 @@
     outline: none;
   }
 
+  // The close is the dialog shell's own icon button; this only places it.
   .settings-layout__close {
     position: sticky;
     inset-block-start: var(--settings-layout-inset);
-    display: flex;
     flex: 0 0 auto;
-    flex-direction: column;
-    align-items: center;
     align-self: flex-start;
-    gap: var(--trinity-space-1);
     margin-block-start: var(--settings-layout-inset);
     margin-inline: var(--trinity-space-4) var(--trinity-space-4);
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: var(--trinity-text-muted);
-    cursor: pointer;
-  }
-
-  .settings-layout__close-icon {
-    display: grid;
-    inline-size: 36px;
-    block-size: 36px;
-    place-items: center;
-    border: 2px solid currentcolor;
-    border-radius: var(--trinity-radius-pill);
-  }
-
-  .settings-layout__close:hover {
-    color: var(--trinity-text-bright);
-  }
-
-  .settings-layout__close-caption {
-    font-size: var(--trinity-type-caption-size);
-    line-height: var(--trinity-type-caption-line-height);
-    font-weight: 700;
   }
 
   @media (min-width: 48rem) {
@@ -304,12 +276,6 @@
   }
 
   .settings-layout[data-compact='true']
-    .settings-layout__topbar
-    .settings-layout__close-caption {
-    display: none;
-  }
-
-  .settings-layout[data-compact='true']
     .settings-layout__list-head
     .settings-layout__close {
     position: static;
@@ -320,19 +286,22 @@
     display: none;
   }
 
-  // A centred dialog is the overlay surface's workspace card, not a full-screen layer: the
-  // nav keeps a fixed width without the layer's centring gutter, and Esc needs no caption.
+  // In a centred dialog the shell draws the card, header and close; the layout fills its
+  // body at a fixed height so both panes scroll, and the nav keeps a fixed width without
+  // the full-screen layer's centring gutter.
   :host([data-presentation='dialog']) {
     block-size: auto;
+    background: transparent;
 
     --settings-layout-inset: var(--trinity-space-6);
     --settings-layout-gutter: var(--trinity-space-6);
   }
 
-  // The workspace card is a flex row, so the workspace has to grow to fill it.
-  :host([data-presentation='dialog']) .settings-layout__workspace {
-    flex: 1 1 auto;
-    min-inline-size: 0;
+  :host([data-presentation='dialog']) .settings-layout {
+    block-size: min(
+      44rem,
+      calc(100dvh - var(--trinity-title-row-inset, 0px) - 6rem)
+    );
   }
 
   :host([data-presentation='dialog']) .settings-layout__nav {
@@ -343,9 +312,5 @@
   :host([data-presentation='dialog']) .settings-layout__nav-inner {
     inline-size: 100%;
     margin-inline-start: 0;
-  }
-
-  :host([data-presentation='dialog']) .settings-layout__close-caption {
-    display: none;
   }
 }

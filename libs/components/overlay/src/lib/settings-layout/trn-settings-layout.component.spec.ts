@@ -123,6 +123,73 @@ describe('TrnSettingsLayoutComponent', () => {
     );
   });
 
+  it('frames a centred dialog with the same shell as every other dialog', async () => {
+    const closeRequested = vi.fn();
+    const { container, getAllByRole } = await render(
+      TrnSettingsLayoutComponent,
+      {
+        inputs: { title: 'Settings', sections, selectedSection: 'general' },
+        on: { closeRequested },
+        providers: [
+          provideTrnIcons(),
+          {
+            provide: TrnDialogRef,
+            useValue: new TrnDialogRef(
+              { closed: new Subject(), close: () => undefined },
+              'dialog',
+            ),
+          },
+        ],
+      },
+    );
+    const shell = container.querySelector('trn-dialog-shell');
+    expect(shell?.querySelector('h2')?.textContent?.trim()).toBe('Settings');
+    expect(shell?.querySelector('.settings-layout__nav')).toBeTruthy();
+    // One close: the shell's X, named for settings, not a second one in the column.
+    const closes = getAllByRole('button', { name: 'Close settings' });
+    expect(closes).toHaveLength(1);
+    expect(shell?.querySelector('header')?.contains(closes[0])).toBe(true);
+    closes[0].click();
+    expect(closeRequested).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([true, false])(
+    'keeps the shell X the only close in a compact centred dialog (list: %s)',
+    async (directoryVisible) => {
+      const { getAllByRole } = await render(TrnSettingsLayoutComponent, {
+        inputs: {
+          title: 'Settings',
+          sections,
+          selectedSection: 'general',
+          compact: true,
+          directoryVisible,
+        },
+        providers: [
+          provideTrnIcons(),
+          {
+            provide: TrnDialogRef,
+            useValue: new TrnDialogRef(
+              { closed: new Subject(), close: () => undefined },
+              'dialog',
+            ),
+          },
+        ],
+      });
+      expect(getAllByRole('button', { name: 'Close settings' })).toHaveLength(
+        1,
+      );
+    },
+  );
+
+  it('has no dialog shell outside a centred dialog', async () => {
+    const { container, getByRole } = await render(TrnSettingsLayoutComponent, {
+      inputs: { title: 'Settings', sections, selectedSection: 'general' },
+      providers: [provideTrnIcons()],
+    });
+    expect(container.querySelector('trn-dialog-shell')).toBeNull();
+    expect(getByRole('button', { name: 'Close settings' })).toBeTruthy();
+  });
+
   it('puts the close button in the compact top bar beside Back', async () => {
     const compact = await render(TrnSettingsLayoutComponent, {
       inputs: {
@@ -177,10 +244,7 @@ describe('TrnSettingsLayoutComponent', () => {
       });
       expect(container.querySelector('.settings-layout__nav')).toBeTruthy();
       expect(container.querySelector('.settings-layout__content')).toBeTruthy();
-      // Outside a centred dialog the surface is the full-screen layer, never a card.
-      expect(
-        container.querySelector('[trnoverlaysurface]')?.className,
-      ).toContain('rounded-none');
+      expect(container.querySelector('[trnoverlaysurface]')).toBeNull();
       const nav = rule('.settings-layout__nav');
       expect(nav).toContain('background: var(--trinity-surface-app)');
       expect(nav).toContain('flex: 0 0 35%');
@@ -218,7 +282,7 @@ describe('TrnSettingsLayoutComponent', () => {
       expect(column.children[1]?.textContent).toContain('Warning');
     });
 
-    it('closes from a round close button with a hidden ESC caption', async () => {
+    it('closes from the same icon button as every other dialog', async () => {
       const closeRequested = vi.fn();
       const { getByRole, container } = await render(
         TrnSettingsLayoutComponent,
@@ -233,14 +297,10 @@ describe('TrnSettingsLayoutComponent', () => {
         },
       );
       const close = getByRole('button', { name: 'Close settings' });
-      expect(
-        container
-          .querySelector('.settings-layout__close-caption')
-          ?.getAttribute('aria-hidden'),
-      ).toBe('true');
-      expect(
-        container.querySelector('.settings-layout__close-caption')?.textContent,
-      ).toContain('ESC');
+      // The dialog shell's close: a small ghost icon `trnBtn`, with no caption.
+      expect(close.hasAttribute('data-trn-icon-button')).toBe(true);
+      expect(close.textContent?.trim()).toBe('');
+      expect(container.textContent).not.toContain('ESC');
       close.click();
       expect(closeRequested).toHaveBeenCalledTimes(1);
     });

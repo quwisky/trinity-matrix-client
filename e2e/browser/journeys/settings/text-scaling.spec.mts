@@ -512,9 +512,7 @@ test.describe('Code line numbers', () => {
     expect(new Set(starts).size).toBe(1);
   });
 
-  test('keeps the full-screen settings layer usable at 200% text', async ({
-    page,
-  }) => {
+  test('keeps settings usable at 200% text', async ({ page }) => {
     await login(page, session);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.evaluate(() => {
@@ -526,7 +524,7 @@ test.describe('Code line numbers', () => {
     const nav = page.getByTestId('settings-dialog-directory');
     const close = page.getByRole('button', { name: 'Close settings' });
 
-    // 200% text puts the layer in its compact flow: the list alone, with its own close.
+    // 200% text puts settings in its compact flow: the list alone, closed from the X.
     await expect(nav).toBeVisible();
     await expect(page.getByTestId('settings-detail')).toBeHidden();
     await expect(close).toBeVisible();

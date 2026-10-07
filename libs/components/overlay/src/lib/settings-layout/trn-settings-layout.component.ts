@@ -18,7 +18,7 @@ import {
   type TrnIconName,
 } from '@trinity/components/foundations';
 import { TrnDialogRef } from '../dialog/trn-dialog-ref';
-import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';
+import { TrnDialogShellComponent } from '../dialog-shell/trn-dialog-shell.component';
 import { TrnSettingsParts } from './trn-settings-parts';
 
 /** One selectable entry in a domain-neutral settings directory. */
@@ -36,7 +36,7 @@ export interface TrnSettingsLayoutSection {
     NgTemplateOutlet,
     TrnButton,
     TrnIconComponent,
-    TrnOverlaySurfaceDirective,
+    TrnDialogShellComponent,
   ],
   // A wrapper that projects the sections itself provides the registry the layout then shares:
   // projected sections resolve their injector from where they are declared, outside the layout.

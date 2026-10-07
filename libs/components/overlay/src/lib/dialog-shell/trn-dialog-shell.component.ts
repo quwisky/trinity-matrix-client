@@ -84,6 +84,9 @@ export class TrnDialogShellComponent {
   readonly title = input.required<string>();
   readonly description = input<string>();
   readonly closable = input(true);
+  /** The X's accessible name; "Close" unless the host names what it closes. */
+  readonly closeLabel = input('Close');
+  readonly closeTestId = input('dialog-close');
   /** Keep the `h2` for screen readers, which still name the dialog by it, but hide it. */
   readonly titleHidden = input(false);
   readonly size = input<TrnOverlaySurfaceSize>('md');

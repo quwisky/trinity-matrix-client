@@ -35,8 +35,8 @@
           presentation="ghost"
           shape="icon"
           size="sm"
-          aria-label="Close"
-          data-testid="dialog-close"
+          [attr.aria-label]="closeLabel()"
+          [attr.data-testid]="closeTestId()"
           (click)="requestClose()"
         >
           <trn-icon name="x" motion="rotate" />

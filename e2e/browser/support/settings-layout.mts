@@ -25,6 +25,17 @@ export async function settingsLayoutMetrics(
     readonly detailTestId: string;
   },
 ): Promise<SettingsLayoutMetrics> {
+  // A centred dialog scales in through its shell; measure the settled frame, not a
+  // mid-entrance one.
+  await page
+    .getByTestId(rootTestId)
+    .evaluate((root) =>
+      Promise.all(
+        (
+          root.closest('[data-testid="dialog-surface"]')?.getAnimations() ?? []
+        ).map((animation) => animation.finished),
+      ),
+    );
   return page.getByTestId(rootTestId).evaluate(
     (root, { directoryTestId, detailTestId }) => {
       const title = root.querySelector<HTMLElement>(
