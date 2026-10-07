@@ -179,11 +179,7 @@
         tabindex="-1"
         [class.msg__text--html]="preview().rich"
         data-testid="composer-preview"
-        trnSpoilerReveal
-        trnMatrixLink
-        [trnInlineMxcImages]="preview().rich ? preview().html : ''"
-        [trnCodeHighlight]="preview().html"
-        [innerHTML]="preview().html"
+        [trnMatrixHtml]="preview().html"
       ></div>
     }
     <textarea

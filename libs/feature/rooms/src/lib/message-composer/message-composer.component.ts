@@ -41,9 +41,7 @@ import { ComposerFormatMenuComponent } from './composer-format-menu/composer-for
 import { ComposerAttachmentStripComponent } from './composer-attachment-strip/composer-attachment-strip.component';
 import { ComposerInsertMenuComponent } from './composer-insert-menu/composer-insert-menu.component';
 import { ComposerSuggestionsComponent } from './composer-suggestions/composer-suggestions.component';
-import { CodeHighlightDirective } from '../message-presentation/code-highlight.directive';
-import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
-import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
+import { MatrixHtmlDirective } from '../message-presentation/matrix-html.directive';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { ComposerAttachmentsService } from './composer-attachments.service';
 import {
@@ -63,7 +61,6 @@ import {
 } from '@trinity/components/controls';
 import { type MentionMember } from './mention-autocomplete';
 import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
-import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images.directive';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 
 /**
@@ -115,21 +112,18 @@ let nextPickerId = 0;
   selector: 'trn-message-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    MatrixHtmlDirective,
     TrnIconButton,
     TrnIconComponent,
     TrnTooltip,
     TrnEmojiPickerComponent,
     GifPickerComponent,
     StickerPickerComponent,
-    InlineMxcImagesDirective,
     ComposerFormatMenuComponent,
     ComposerAttachmentStripComponent,
     ComposerInsertMenuComponent,
     ComposerSuggestionsComponent,
     TrnAnchoredOverlayDirective,
-    CodeHighlightDirective,
-    SpoilerRevealDirective,
-    MatrixLinkDirective,
   ],
   // Per composer instance, not per app: the room composer and the thread composer are alive
   // at once and each needs its own staged file, GIF grid and recording.
