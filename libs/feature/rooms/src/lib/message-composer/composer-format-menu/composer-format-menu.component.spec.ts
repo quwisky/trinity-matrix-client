@@ -111,8 +111,11 @@ describe('ComposerFormatMenuComponent', () => {
       emitted.push(action),
     );
     trigger.click();
-    const sheet = document.querySelector('[data-testid=action-sheet-surface]');
-    expect(sheet).not.toBeNull();
+    await vi.waitFor(() =>
+      expect(
+        document.querySelector('[data-testid=action-sheet-surface]'),
+      ).not.toBeNull(),
+    );
     document
       .querySelector<HTMLButtonElement>('[data-testid=format-cancel]')
       ?.click();

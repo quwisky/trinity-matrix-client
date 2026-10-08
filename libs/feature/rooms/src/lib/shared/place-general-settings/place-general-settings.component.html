@@ -1,0 +1,170 @@
+@let d = draft();
+@let p = prefix();
+<form
+  [formRoot]="d.form"
+  class="place-settings__form"
+  [attr.data-testid]="p + '-panel-general'"
+  (submit)="d.saveGeneral()"
+>
+  <trn-settings-identity-card
+    class="place-settings__photo"
+    [heading]="noun() + ' photo'"
+    [permissionReason]="
+      d.mayEditAvatar() ? null : d.permissions().avatar.reason
+    "
+  >
+    <trn-avatar-field
+      [accountId]="accountId()"
+      [roomId]="placeId()"
+      [name]="d.model().name || displayName()"
+      [avatarMxc]="d.snapshot()?.identity?.avatarMxc ?? null"
+      [initial]="initial()"
+      [editable]="d.mayEditAvatar()"
+      [noun]="noun()"
+      [testid]="p + '-avatar'"
+    />
+  </trn-settings-identity-card>
+
+  <trn-settings-group [title]="noun() + ' details'">
+    <div class="place-settings__field">
+      <span [id]="p + '-name-label'" class="place-settings__label">Name</span>
+      @if (d.mayEditName()) {
+        <input
+          trnInput
+          class="w-full"
+          [formField]="d.form.name"
+          autocomplete="off"
+          [attr.data-testid]="p + '-name'"
+          [attr.aria-labelledby]="p + '-name-label'"
+          [aria-describedby]="p + '-name-help'"
+        />
+      } @else if (d.nameHasPermissionBlockedEdit()) {
+        <input
+          trnInput
+          class="place-settings__readonly-value w-full"
+          [value]="d.model().name"
+          readonly
+          aria-readonly="true"
+          [attr.data-testid]="p + '-name'"
+          [attr.aria-labelledby]="p + '-name-label'"
+          [aria-describedby]="p + '-name-help ' + p + '-name-blocked'"
+        />
+      } @else {
+        <p
+          class="place-settings__static-value"
+          [attr.data-testid]="p + '-name'"
+        >
+          {{ d.model().name || 'No name set.' }}
+        </p>
+      }
+      <span [id]="p + '-name-help'" class="place-settings__hint">
+        {{ hint() }}
+      </span>
+      @if (d.nameHasPermissionBlockedEdit()) {
+        <span [id]="p + '-name-blocked'" class="place-settings__restriction">
+          This unsaved Name edit is now read-only.
+          {{ d.permissions().name.reason }}
+          Discard it to return to the saved value.
+        </span>
+      } @else if (d.nameEmpty?.()) {
+        <span class="place-settings__restriction">A space needs a name.</span>
+      } @else if (!d.mayEditName()) {
+        <span class="place-settings__restriction">
+          {{ d.permissions().name.reason }}
+        </span>
+      }
+    </div>
+
+    <div class="place-settings__field">
+      <span [id]="p + '-topic-label'" class="place-settings__label">Topic</span>
+      @if (d.mayEditTopic()) {
+        <textarea
+          trnTextarea
+          class="place-settings__topic w-full"
+          [formField]="d.form.topic"
+          rows="4"
+          [attr.data-testid]="p + '-topic'"
+          [attr.aria-labelledby]="p + '-topic-label'"
+        ></textarea>
+      } @else if (d.topicHasPermissionBlockedEdit()) {
+        <textarea
+          trnTextarea
+          class="place-settings__readonly-value place-settings__topic w-full"
+          [value]="d.model().topic"
+          readonly
+          aria-readonly="true"
+          rows="4"
+          [attr.data-testid]="p + '-topic'"
+          [attr.aria-labelledby]="p + '-topic-label'"
+          [aria-describedby]="p + '-topic-blocked'"
+        ></textarea>
+      } @else {
+        <p
+          class="place-settings__static-value"
+          [attr.data-testid]="p + '-topic'"
+        >
+          {{ d.model().topic || 'No topic set.' }}
+        </p>
+      }
+      @if (d.topicHasPermissionBlockedEdit()) {
+        <span [id]="p + '-topic-blocked'" class="place-settings__restriction">
+          This unsaved Topic edit is now read-only.
+          {{ d.permissions().topic.reason }}
+          Discard it to return to the saved value.
+        </span>
+      } @else if (!d.mayEditTopic()) {
+        <span class="place-settings__restriction">
+          {{ d.permissions().topic.reason }}
+        </span>
+      }
+    </div>
+  </trn-settings-group>
+
+  <ng-content />
+
+  @if (d.generalFeedback(); as feedback) {
+    <p
+      class="place-settings__feedback"
+      [class.place-settings__feedback--danger]="feedback.tone === 'danger'"
+      role="status"
+      aria-live="polite"
+      [attr.data-testid]="p + '-general-feedback'"
+    >
+      {{ feedback.message }}
+    </p>
+  }
+
+  @if (d.generalDirty()) {
+    <div
+      class="place-settings__actions"
+      [attr.data-testid]="p + '-general-actions'"
+    >
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        presentation="ghost"
+        [disabled]="d.saving() === 'general'"
+        [attr.data-testid]="p + '-discard'"
+        (click)="d.discardGeneral()"
+      >
+        Discard
+      </button>
+      <button
+        trnBtn
+        type="submit"
+        [trnActionAllowed]="d.mayEditName() || d.mayEditTopic()"
+        [trnActionDisabledReason]="d.generalSaveUnavailableReason()"
+        [trnTooltip]="d.generalSaveUnavailableReason()"
+        [disabled]="
+          !d.generalHasWritableChanges() ||
+          d.nameEmpty?.() ||
+          d.saving() === 'general'
+        "
+        [attr.data-testid]="p + '-save'"
+      >
+        {{ d.saving() === 'general' ? 'Saving…' : 'Save changes' }}
+      </button>
+    </div>
+  }
+</form>

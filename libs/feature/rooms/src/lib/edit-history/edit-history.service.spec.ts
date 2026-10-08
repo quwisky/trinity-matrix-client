@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of, Subject, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { EditHistoryDialogService } from './edit-history.service';
 import { EditHistoryComponent } from './edit-history.component';
 import { type MatrixLinkClickTarget } from '../matrix-link/matrix-link.directive';
@@ -15,8 +15,8 @@ function setup(result: MatrixLinkClickTarget | null | 'pending' = null) {
   TestBed.configureTestingModule({
     providers: [
       EditHistoryDialogService,
-      MockProvider(TrnDialogService, {
-        openAndWait$: openAndWait$ as TrnDialogService['openAndWait$'],
+      MockProvider(TrnSurfaceService, {
+        openAndWait$: openAndWait$ as TrnSurfaceService['openAndWait$'],
       }),
     ],
   });

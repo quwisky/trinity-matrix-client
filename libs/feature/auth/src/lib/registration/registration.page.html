@@ -21,20 +21,12 @@
     </div>
   } @else if (baseUrl()) {
     @if (!started() || stage().kind === 'credentials') {
-      <trn-field
-        class="registration-card__field"
-        [invalid]="
-          credentialsForm.username().touched() &&
-          credentialsForm.username().errors().length > 0
-        "
-      >
+      @let usernameError = shownError(credentialsForm.username);
+      <trn-field class="registration-card__field" [invalid]="!!usernameError">
         <trn-field-label
           controlId="registration-username"
           emphasis="strong"
-          [invalid]="
-            credentialsForm.username().touched() &&
-            credentialsForm.username().errors().length > 0
-          "
+          [invalid]="!!usernameError"
         >
           Username
         </trn-field-label>
@@ -46,41 +38,26 @@
           autocorrect="off"
           [formField]="credentialsForm.username"
           [attr.aria-describedby]="
-            credentialsForm.username().touched() &&
-            credentialsForm.username().errors().length
-              ? 'registration-username-error'
-              : null
+            usernameError ? 'registration-username-error' : null
           "
           (keyup.enter)="createAccount()"
         />
-        @if (
-          credentialsForm.username().touched() &&
-            credentialsForm.username().errors()[0];
-          as validation
-        ) {
+        @if (usernameError) {
           <p
             id="registration-username-error"
             class="registration-card__field-error text-danger"
           >
-            {{ validation.message }}
+            {{ usernameError.message }}
           </p>
         }
       </trn-field>
 
-      <trn-field
-        class="registration-card__field"
-        [invalid]="
-          credentialsForm.password().touched() &&
-          credentialsForm.password().errors().length > 0
-        "
-      >
+      @let passwordError = shownError(credentialsForm.password);
+      <trn-field class="registration-card__field" [invalid]="!!passwordError">
         <trn-field-label
           controlId="registration-password"
           emphasis="strong"
-          [invalid]="
-            credentialsForm.password().touched() &&
-            credentialsForm.password().errors().length > 0
-          "
+          [invalid]="!!passwordError"
         >
           Password
         </trn-field-label>
@@ -91,41 +68,29 @@
             autocomplete="new-password"
             [formField]="credentialsForm.password"
             [attr.aria-describedby]="
-              credentialsForm.password().touched() &&
-              credentialsForm.password().errors().length
-                ? 'registration-password-error'
-                : null
+              passwordError ? 'registration-password-error' : null
             "
           />
         </trn-password-input>
-        @if (
-          credentialsForm.password().touched() &&
-            credentialsForm.password().errors()[0];
-          as validation
-        ) {
+        @if (passwordError) {
           <p
             id="registration-password-error"
             class="registration-card__field-error text-danger"
           >
-            {{ validation.message }}
+            {{ passwordError.message }}
           </p>
         }
       </trn-field>
 
+      @let confirmPasswordError = shownError(credentialsForm.confirmPassword);
       <trn-field
         class="registration-card__field"
-        [invalid]="
-          credentialsForm.confirmPassword().touched() &&
-          credentialsForm.confirmPassword().errors().length > 0
-        "
+        [invalid]="!!confirmPasswordError"
       >
         <trn-field-label
           controlId="registration-confirm-password"
           emphasis="strong"
-          [invalid]="
-            credentialsForm.confirmPassword().touched() &&
-            credentialsForm.confirmPassword().errors().length > 0
-          "
+          [invalid]="!!confirmPasswordError"
         >
           Confirm password
         </trn-field-label>
@@ -136,24 +101,19 @@
             autocomplete="new-password"
             [formField]="credentialsForm.confirmPassword"
             [attr.aria-describedby]="
-              credentialsForm.confirmPassword().touched() &&
-              credentialsForm.confirmPassword().errors().length
+              confirmPasswordError
                 ? 'registration-confirm-password-error'
                 : null
             "
             (keyup.enter)="createAccount()"
           />
         </trn-password-input>
-        @if (
-          credentialsForm.confirmPassword().touched() &&
-            credentialsForm.confirmPassword().errors()[0];
-          as validation
-        ) {
+        @if (confirmPasswordError) {
           <p
             id="registration-confirm-password-error"
             class="registration-card__field-error text-danger"
           >
-            {{ validation.message }}
+            {{ confirmPasswordError.message }}
           </p>
         }
       </trn-field>
@@ -180,20 +140,12 @@
             This homeserver requires an email address to verify your
             registration.
           </p>
-          <trn-field
-            class="registration-card__field"
-            [invalid]="
-              emailForm.email().touched() &&
-              emailForm.email().errors().length > 0
-            "
-          >
+          @let emailError = shownError(emailForm.email);
+          <trn-field class="registration-card__field" [invalid]="!!emailError">
             <trn-field-label
               controlId="registration-email"
               emphasis="strong"
-              [invalid]="
-                emailForm.email().touched() &&
-                emailForm.email().errors().length > 0
-              "
+              [invalid]="!!emailError"
             >
               Email address
             </trn-field-label>
@@ -204,21 +156,16 @@
               autocomplete="email"
               [formField]="emailForm.email"
               [attr.aria-describedby]="
-                emailForm.email().touched() && emailForm.email().errors().length
-                  ? 'registration-email-error'
-                  : null
+                emailError ? 'registration-email-error' : null
               "
               (keyup.enter)="provideEmail()"
             />
-            @if (
-              emailForm.email().touched() && emailForm.email().errors()[0];
-              as validation
-            ) {
+            @if (emailError) {
               <p
                 id="registration-email-error"
                 class="registration-card__field-error text-danger"
               >
-                {{ validation.message }}
+                {{ emailError.message }}
               </p>
             }
           </trn-field>
@@ -290,20 +237,12 @@
           <p class="registration-card__copy">
             This homeserver requires an invitation or registration token.
           </p>
-          <trn-field
-            class="registration-card__field"
-            [invalid]="
-              tokenForm.token().touched() &&
-              tokenForm.token().errors().length > 0
-            "
-          >
+          @let tokenError = shownError(tokenForm.token);
+          <trn-field class="registration-card__field" [invalid]="!!tokenError">
             <trn-field-label
               controlId="registration-token"
               emphasis="strong"
-              [invalid]="
-                tokenForm.token().touched() &&
-                tokenForm.token().errors().length > 0
-              "
+              [invalid]="!!tokenError"
             >
               Registration token
             </trn-field-label>
@@ -313,21 +252,16 @@
               autocomplete="off"
               [formField]="tokenForm.token"
               [attr.aria-describedby]="
-                tokenForm.token().touched() && tokenForm.token().errors().length
-                  ? 'registration-token-error'
-                  : null
+                tokenError ? 'registration-token-error' : null
               "
               (keyup.enter)="submitToken()"
             />
-            @if (
-              tokenForm.token().touched() && tokenForm.token().errors()[0];
-              as validation
-            ) {
+            @if (tokenError) {
               <p
                 id="registration-token-error"
                 class="registration-card__field-error text-danger"
               >
-                {{ validation.message }}
+                {{ tokenError.message }}
               </p>
             }
           </trn-field>

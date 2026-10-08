@@ -120,6 +120,11 @@ describe('GifPickerComponent', () => {
     cmp.failed.set(true);
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain("Couldn't load");
+    expect(
+      fixture.nativeElement.querySelector(
+        'trn-empty-state [data-testid="gif-retry"]',
+      ),
+    ).not.toBeNull();
   });
 
   it('retries the current query after a load failure', async () => {

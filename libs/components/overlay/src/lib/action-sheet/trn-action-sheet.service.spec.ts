@@ -75,7 +75,7 @@ describe('TrnActionSheetService', () => {
     render();
 
     expect(handler).not.toHaveBeenCalled();
-    expect(document.querySelector('trn-action-sheet')).not.toBeNull();
+    expect(document.querySelector('trn-action-list')).not.toBeNull();
   });
 });
 
@@ -101,7 +101,7 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     ref.close();
     render();
 
-    expect(document.querySelector('trn-action-sheet')).toBeNull();
+    expect(document.querySelector('trn-action-list')).toBeNull();
   });
 
   it('names the dialog, so a screen reader does not just say "dialog"', () => {
@@ -147,7 +147,7 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     render();
 
     expect(react).toHaveBeenCalledTimes(1);
-    expect(document.querySelector('trn-action-sheet')).toBeNull();
+    expect(document.querySelector('trn-action-list')).toBeNull();
   });
 
   it('marks a destructive row with text-danger, not text-destructive', () => {

@@ -41,7 +41,7 @@ export interface DirectoryJoin {
  * Loads the first page on open, filters on a search term, toggles between Rooms and
  * Spaces, and paginates with "Load more". Joining closes the dialog resolving the joined
  * id + whether it's a space so the host can open it appropriately; closing otherwise
- * resolves null. Presented via {@link TrnDialogService}.
+ * resolves null. Presented via {@link TrnSurfaceService}.
  */
 @Component({
   selector: 'trn-room-directory',

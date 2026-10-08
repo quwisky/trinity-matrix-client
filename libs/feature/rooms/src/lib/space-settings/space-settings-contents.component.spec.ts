@@ -287,5 +287,8 @@ describe('SpaceSettingsContentsComponent', () => {
       'Space contents could not be loaded',
     );
     expect(container.textContent).not.toContain('This space is empty');
+    expect(
+      container.querySelector('trn-empty-state[role="alert"]'),
+    ).not.toBeNull();
   });
 });

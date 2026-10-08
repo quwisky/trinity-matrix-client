@@ -1,3 +1,4 @@
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -44,7 +45,13 @@ const SEARCH_DEBOUNCE_MS = 350;
 @Component({
   selector: 'trn-gif-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnInput, GifThumbComponent, TrnOverlaySurfaceDirective],
+  imports: [
+    EmptyStateComponent,
+    TrnButton,
+    TrnInput,
+    GifThumbComponent,
+    TrnOverlaySurfaceDirective,
+  ],
   templateUrl: './gif-picker.component.html',
   styleUrl: './gif-picker.component.scss',
 })

@@ -45,6 +45,7 @@ import {
   TrnAlertService,
   TrnSettingsGroupComponent,
 } from '@trinity/components/overlay';
+import { shownError } from '@trinity/util/ui';
 
 interface SourceFormModel {
   source: string;
@@ -81,6 +82,7 @@ export class ImagePacksSectionComponent {
 
   /** Initial room/account source supplied by the modal presenter. */
   readonly initialSource = input<string>();
+  readonly shownError = shownError;
   readonly installed = this.management.installed;
   readonly discovery = signal<ImagePackDiscovery | null>(null);
   readonly finding = signal(false);

@@ -15,23 +15,12 @@
       (valueChange)="update($event)"
     />
     @if (status().failed()) {
-      <div
-        role="alert"
-        class="mt-2 flex flex-wrap items-center justify-end gap-2 text-13 text-danger"
+      <trn-save-failure
+        class="mt-2 justify-end"
         [attr.data-testid]="field().testId + '-failure'"
-      >
-        <span>This choice could not be saved.</span>
-        <button
-          trnBtn
-          type="button"
-          presentation="outline"
-          size="sm"
-          [attr.data-testid]="field().testId + '-retry'"
-          (click)="retry()"
-        >
-          Try again
-        </button>
-      </div>
+        [retryTestId]="field().testId + '-retry'"
+        (retry)="retry()"
+      />
     }
   </div>
 </trn-settings-row>
