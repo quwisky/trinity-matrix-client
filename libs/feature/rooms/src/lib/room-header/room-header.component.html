@@ -1,0 +1,257 @@
+<trn-page-header variant="neutral" layout="toolbar">
+  <button
+    trnHeaderLeading
+    trnBtn
+    presentation="ghost"
+    size="md"
+    shape="icon"
+    class="md:hidden"
+    (click)="action.emit({ type: 'back' })"
+    trnTooltip="Back to rooms"
+    aria-label="Back to rooms"
+    data-testid="back-to-rooms"
+  >
+    <trn-icon size="lg" name="arrow-left" motion="nudge-left" />
+  </button>
+
+  <!-- Projected into the shell's single <h1>: inline spans + icon only, no
+       nested heading. This component's scoped styles style .title-room/.title-lock. -->
+  <ng-container trnHeaderTitle>
+    @if (room(); as room) {
+      <span
+        class="title-room"
+        [class.title-room--topic]="!!room.topic && !compact()"
+        data-testid="room-title"
+      >
+        <trn-avatar
+          [mxc]="room.avatarMxc"
+          [accountId]="room.accountId"
+          [initial]="room.initial"
+          [name]="room.name"
+          [exactSize]="24"
+          [shape]="room.directUserId ? 'person' : 'place'"
+          aria-hidden="true"
+        />
+        <span class="truncate">{{ room.name }}</span>
+      </span>
+      @if (room.encrypted) {
+        <trn-icon class="title-lock" name="lock" label="Encrypted room" />
+      }
+      <!-- Which identity you are acting as. Opening another account's room switches
+           the active account silently, and below md the sidebar (the only other
+           indicator) is off-screen entirely — so without this you can send a message
+           with nothing on screen saying who from. -->
+      @if (actingAs(); as acting) {
+        <span
+          class="title-account"
+          data-testid="active-account-chip"
+          [attr.aria-label]="'Acting as ' + acting.name"
+          [title]="acting.userId"
+        >
+          <trn-avatar
+            [mxc]="acting.avatarMxc"
+            [accountId]="acting.userId"
+            [initial]="acting.initial"
+            [name]="acting.name"
+            [exactSize]="18"
+          />
+          <span class="title-account__name">{{ acting.name }}</span>
+        </span>
+      }
+      @if (room.topic && !compact()) {
+        <span
+          class="title-divider"
+          data-testid="room-topic-divider"
+          aria-hidden="true"
+        ></span>
+        <button
+          type="button"
+          class="title-topic"
+          data-testid="room-topic"
+          popovertarget="room-topic-popover"
+          [attr.aria-label]="'Room topic: ' + room.topic"
+        >
+          {{ room.topic }}
+        </button>
+        <span
+          id="room-topic-popover"
+          popover
+          class="topic-popover"
+          [innerHTML]="topicHtml()"
+        ></span>
+      }
+    } @else if (loading()) {
+      <!-- A linked room the client has not synced yet: no name to show, and none of
+           the room's actions (they live in the actions slot, behind activeRoom()). -->
+      Loading room…
+    } @else {
+      <span class="sr-only">Trinity</span>
+    }
+  </ng-container>
+
+  <ng-container trnHeaderActions>
+    @if (room(); as room) {
+      <button
+        trnBtn
+        presentation="ghost"
+        size="md"
+        shape="icon"
+        class="header-toggle"
+        (click)="action.emit({ type: 'threads' })"
+        trnTooltip="Threads"
+        aria-label="Threads"
+        [attr.aria-pressed]="
+          surfaceKind() === 'threads' || surfaceKind() === 'thread'
+        "
+        data-testid="open-threads"
+      >
+        <trn-icon size="lg" name="messages-square" motion="pop" />
+      </button>
+      <button
+        trnBtn
+        presentation="ghost"
+        size="md"
+        shape="icon"
+        class="header-toggle max-md:hidden"
+        (click)="action.emit({ type: 'pinned' })"
+        [trnTooltip]="pinnedLabel()"
+        [attr.aria-label]="pinnedLabel()"
+        [attr.aria-pressed]="surfaceKind() === 'pinned'"
+        data-testid="open-pinned"
+      >
+        <trn-icon
+          size="lg"
+          name="pin"
+          motion="nudge-up"
+          [variant]="pinnedCount() > 0 ? 'accent' : null"
+        />
+      </button>
+      <button
+        trnBtn
+        presentation="ghost"
+        size="md"
+        shape="icon"
+        class="header-toggle max-md:hidden"
+        (click)="action.emit({ type: 'members' })"
+        [attr.aria-pressed]="surfaceKind() === 'members'"
+        trnTooltip="Members"
+        aria-label="Members"
+        data-testid="toggle-members"
+      >
+        <trn-icon size="lg" name="users" motion="pop" />
+      </button>
+
+      <input
+        type="search"
+        class="header-search max-members:hidden"
+        data-testid="header-search"
+        #searchField
+        [placeholder]="'Search ' + room.name"
+        [attr.aria-label]="'Search messages in ' + room.name"
+        [value]="searchQuery()"
+        (input)="onSearchInput($any($event.target).value)"
+        (keydown.escape)="clearSearch($event)"
+      />
+      <button
+        trnBtn
+        presentation="ghost"
+        size="md"
+        shape="icon"
+        class="members:hidden"
+        (click)="action.emit({ type: 'search' })"
+        trnTooltip="Search messages in this room"
+        aria-label="Search messages in this room"
+        data-testid="search-messages"
+      >
+        <trn-icon size="lg" name="search" motion="pop" />
+      </button>
+
+      <!-- Present at EVERY breakpoint. It holds Invite, Room settings and Jump to date
+           at all widths; below md it also absorbs the demoted Pinned, Members and System
+           status actions (each marked md:hidden inside). -->
+      <button
+        trnBtn
+        presentation="ghost"
+        size="md"
+        shape="icon"
+        [trnDropdownMenuTrigger]="roomActionsMenu"
+        align="end"
+        aria-label="More actions"
+        data-testid="room-actions-overflow"
+      >
+        <trn-icon size="lg" name="ellipsis-vertical" motion="pop" />
+      </button>
+      <ng-template #roomActionsMenu>
+        <div trnDropdownMenu>
+          <button
+            trnDropdownMenuItem
+            (triggered)="action.emit({ type: 'invite' })"
+            [trnActionAllowed]="invitePermission().available"
+            [trnActionDisabledReason]="invitePermission().reason"
+            [trnTooltip]="invitePermission().reason ?? 'Invite people'"
+            data-testid="overflow-invite-people"
+          >
+            <trn-icon name="user-plus" />
+            Invite people
+          </button>
+          <button
+            trnDropdownMenuItem
+            (triggered)="action.emit({ type: 'settings' })"
+            data-testid="overflow-open-room-settings"
+          >
+            <trn-icon name="settings" />
+            Room settings
+          </button>
+          <button
+            class="md:hidden"
+            trnDropdownMenuItem
+            (triggered)="action.emit({ type: 'pinned' })"
+            data-testid="overflow-open-pinned"
+          >
+            <trn-icon
+              name="pin"
+              [variant]="pinnedCount() > 0 ? 'accent' : null"
+            />
+            {{ pinnedLabel() }}
+          </button>
+          <button
+            trnDropdownMenuItem
+            (triggered)="action.emit({ type: 'jump-to-date' })"
+            data-testid="overflow-jump-to-date"
+          >
+            <trn-icon name="calendar-search" />
+            Jump to date
+          </button>
+          <button
+            class="md:hidden"
+            trnDropdownMenuItem
+            (triggered)="action.emit({ type: 'members' })"
+            data-testid="overflow-toggle-members"
+          >
+            <trn-icon name="users" />
+            Members
+          </button>
+          <div
+            trnDropdownMenuSeparator
+            class="md:hidden"
+            role="separator"
+          ></div>
+          <button
+            class="md:hidden"
+            trnDropdownMenuItem
+            (triggered)="action.emit({ type: 'system-status' })"
+            data-testid="overflow-open-system-status"
+          >
+            <trn-icon name="shield-alert" />
+            System status
+            @if (systemStatusProblems()) {
+              <span class="ml-auto text-danger" aria-label="Needs attention"
+                >●</span
+              >
+            }
+          </button>
+        </div>
+      </ng-template>
+    }
+  </ng-container>
+</trn-page-header>
