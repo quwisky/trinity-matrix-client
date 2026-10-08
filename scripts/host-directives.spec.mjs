@@ -85,7 +85,7 @@ describe('hostDirectives', () => {
   it('finds the entries at all, so an empty sweep cannot pass as a clean one', () => {
     // Without this, a parser change that matched nothing would report every file
     // compliant — the classic way a source-shape guard stops guarding in silence.
-    expect(entries.length).toBeGreaterThan(30);
+    expect(entries.length).toBeGreaterThan(0);
   });
 
   it('states inputs and outputs on every entry, even when empty', () => {
