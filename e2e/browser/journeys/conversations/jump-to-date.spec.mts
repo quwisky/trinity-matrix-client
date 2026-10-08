@@ -1,6 +1,7 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
   login,
+  seedPreference,
   homeserverSession,
   type HomeserverSession,
 } from '../../../support/app.mts';
@@ -39,84 +40,111 @@ function isoToday(): string {
 test.describe('Jump to date', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('pages history back to reach a message that was not loaded', async ({
-    page,
-    request,
-  }) => {
-    test.slow(); // seeds ~120 messages over the API
+  for (const windowed of [true, false]) {
+    test(`pages history back to reach a message that was not loaded${windowed ? '' : ' (windowing off)'}`, async ({
+      page,
+      request,
+    }) => {
+      test.slow(); // seeds ~120 messages over the API
 
-    const hs = session.hs as string;
-    const runId = `${testResourceId('run')}j`;
-    const user = `jump-${runId}`;
-    const pass = `${user}-pass`;
-    const roomName = `Jump ${runId}`;
-    const marker = `first-of-the-day ${runId}`;
+      const hs = session.hs as string;
+      const runId = `${testResourceId('run')}j`;
+      const user = `jump-${runId}`;
+      const pass = `${user}-pass`;
+      const roomName = `Jump ${runId}`;
+      const marker = `first-of-the-day ${runId}`;
 
-    await registerUser(request, user, pass);
-    const token = await request
-      .post(`${hs}/_matrix/client/v3/login`, {
-        data: {
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user },
-          password: pass,
-        },
-      })
-      .then((r) => r.json())
-      .then((j) => j.access_token as string);
-    const headers = { Authorization: `Bearer ${token}` };
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers,
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
+      await registerUser(request, user, pass);
+      const token = await request
+        .post(`${hs}/_matrix/client/v3/login`, {
+          data: {
+            type: 'm.login.password',
+            identifier: { type: 'm.id.user', user },
+            password: pass,
+          },
+        })
+        .then((r) => r.json())
+        .then((j) => j.access_token as string);
+      const headers = { Authorization: `Bearer ${token}` };
+      const roomId = await request
+        .post(`${hs}/_matrix/client/v3/createRoom`, {
+          headers,
+          data: { name: roomName, preset: 'private_chat' },
+        })
+        .then((r) => r.json())
+        .then((j) => j.room_id as string);
 
-    // The marker goes FIRST, then enough traffic to push it well outside the initial
-    // window, so reaching it requires the backfill loop rather than luck.
-    const send = (body: string, txn: string) =>
-      request.put(
-        `${hs}/_matrix/client/v3/rooms/${roomId}/send/m.room.message/${txn}`,
-        { headers, data: { msgtype: 'm.text', body } },
-      );
-    await send(marker, `${runId}-marker`);
-    // In batches rather than one at a time: 120 sequential round trips took minutes and
-    // dominated the whole suite. Ordering among the fillers does not matter — only that
-    // every one of them lands after the marker, which the await above guarantees.
-    for (let batch = 0; batch < 120; batch += 20) {
-      await Promise.all(
-        Array.from({ length: 20 }, (_, n) =>
-          send(`filler ${batch + n} ${runId}`, `${runId}-f${batch + n}`),
-        ),
-      );
-    }
+      // The marker goes FIRST, then enough traffic to push it well outside the initial
+      // window, so reaching it requires the backfill loop rather than luck.
+      const send = (body: string, txn: string) =>
+        request.put(
+          `${hs}/_matrix/client/v3/rooms/${roomId}/send/m.room.message/${txn}`,
+          { headers, data: { msgtype: 'm.text', body } },
+        );
+      await send(marker, `${runId}-marker`);
+      // In batches rather than one at a time: 120 sequential round trips took minutes and
+      // dominated the whole suite. Ordering among the fillers does not matter — only that
+      // every one of them lands after the marker, which the await above guarantees.
+      for (let batch = 0; batch < 120; batch += 20) {
+        await Promise.all(
+          Array.from({ length: 20 }, (_, n) =>
+            send(`filler ${batch + n} ${runId}`, `${runId}-f${batch + n}`),
+          ),
+        );
+      }
 
-    await login(page, { available: true, hs, user, pass } as HomeserverSession);
-    await openRoom(page, roomName);
+      if (!windowed) {
+        await seedPreference(page, 'trinity.flags.virtual-timeline', 'false');
+      }
+      await login(page, {
+        available: true,
+        hs,
+        user,
+        pass,
+      } as HomeserverSession);
+      await openRoom(page, roomName);
 
-    // The newest messages are on screen; the marker is not.
-    await expect(
-      page.locator('.scroll .msg', { hasText: `filler 119 ${runId}` }).first(),
-    ).toBeVisible({ timeout: 30_000 });
-    await expect(page.locator('.scroll .msg', { hasText: marker })).toHaveCount(
-      0,
-    );
+      // The newest messages are on screen; the marker is not.
+      await expect(
+        page
+          .locator('.scroll .msg', { hasText: `filler 119 ${runId}` })
+          .first(),
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(
+        page.locator('.scroll .msg', { hasText: marker }),
+      ).toHaveCount(0);
 
-    await page.getByTestId('room-actions-overflow').click();
-    await page.getByTestId('overflow-jump-to-date').click();
+      await page.getByTestId('room-actions-overflow').click();
+      await page.getByTestId('overflow-jump-to-date').click();
 
-    // Everything was sent today, so today's midnight resolves to the marker — the first
-    // message on or after it.
-    const input = page.getByTestId('jump-to-date-input');
-    await expect(input).toBeVisible({ timeout: 10_000 });
-    await input.fill(isoToday());
-    await page.getByTestId('jump-to-date-confirm').click();
+      // Everything was sent today, so today's midnight resolves to the marker — the first
+      // message on or after it.
+      const input = page.getByTestId('jump-to-date-input');
+      await expect(input).toBeVisible({ timeout: 10_000 });
+      await input.fill(isoToday());
+      await page.getByTestId('jump-to-date-confirm').click();
 
-    // The marker is now rendered, which can only happen if the loop paged it in.
-    await expect(
-      page.locator('.scroll .msg', { hasText: marker }).first(),
-    ).toBeVisible({ timeout: 60_000 });
-  });
+      // The marker is now rendered, which can only happen if the loop paged it in.
+      await expect(
+        page.locator('.scroll .msg', { hasText: marker }).first(),
+      ).toBeVisible({ timeout: 60_000 });
+
+      // Both modes render the two spacers. With windowing off every loaded row is in the DOM
+      // (the marker pulled in all ~121), and the marker stays put rather than snapping back.
+      await expect(page.locator('.scroll > .vpad')).toHaveCount(2);
+      if (!windowed) {
+        expect(await page.locator('.scroll .msg').count()).toBeGreaterThan(100);
+      }
+      // Stay in view past JUMP_REAPPLY_MS (3s), when a re-aim or a snap-back can happen.
+      const markerRow = page
+        .locator('.scroll .msg', { hasText: marker })
+        .first();
+      for (let i = 0; i < 14; i++) {
+        await page.waitForTimeout(250);
+        await expect(markerRow).toBeInViewport({ timeout: 250 });
+      }
+    });
+  }
 
   test('reports a date with nothing on it instead of jumping', async ({
     page,

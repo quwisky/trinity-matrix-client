@@ -6,29 +6,11 @@ import {
   input,
   model,
   output,
+  viewChild,
 } from '@angular/core';
+import { TrnIconButton, TrnInput } from '@trinity/components/controls';
 import {
-  TrnActionAvailability,
-  TrnButton,
-  TrnIconButton,
-} from '@trinity/components/controls';
-import { TrnTooltip } from '@trinity/components/generic-content';
-import {
-  TrnDropdownMenu,
-  TrnDropdownMenuItem,
-  TrnDropdownMenuItemSubIndicatorComponent,
-  TrnDropdownMenuLabel,
-  TrnDropdownMenuRadio,
-  TrnDropdownMenuRadioIndicatorComponent,
-  TrnDropdownMenuSeparator,
-  TrnDropdownMenuSub,
-  TrnDropdownMenuSubTrigger,
-  TrnDropdownMenuTrigger,
-} from '@trinity/components/overlay';
-import { EmptyStateComponent } from '@trinity/components/generic-content';
-import { TrnInput } from '@trinity/components/controls';
-import {
-  AvatarComponent,
+  TrnTooltip,
   type AccountBadge,
 } from '@trinity/components/generic-content';
 import {
@@ -42,8 +24,6 @@ import {
   matchesRoomFilter,
   normalizeRoomFilter,
   RoomLibraryService,
-  SpacesService,
-  TRINITY_ROOM_SORTS,
   type RoomSortMode,
   type RoomSummary,
   type SpaceChildRoom,
@@ -52,7 +32,12 @@ import {
   RoomNotificationsService,
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
+import { SpaceChildrenListComponent } from './space-children-list/space-children-list.component';
 import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
+import {
+  SidebarSpaceHeaderComponent,
+  type SidebarSpaceAction,
+} from './sidebar-space-header/sidebar-space-header.component';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
 /** Discord channel sidebar: space header, invites, and room list. */
@@ -60,31 +45,19 @@ import { TrnIconComponent } from '@trinity/components/foundations';
   selector: 'trn-channel-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    TrnButton,
     TrnIconButton,
-    TrnActionAvailability,
     TrnTooltip,
-    EmptyStateComponent,
     SidebarRoomListComponent,
-    AvatarComponent,
+    SidebarSpaceHeaderComponent,
+    SpaceChildrenListComponent,
     TrnIconComponent,
     TrnInput,
-    TrnDropdownMenuTrigger,
-    TrnDropdownMenu,
-    TrnDropdownMenuItem,
-    TrnDropdownMenuItemSubIndicatorComponent,
-    TrnDropdownMenuLabel,
-    TrnDropdownMenuRadio,
-    TrnDropdownMenuRadioIndicatorComponent,
-    TrnDropdownMenuSeparator,
-    TrnDropdownMenuSub,
-    TrnDropdownMenuSubTrigger,
   ],
   templateUrl: './channel-sidebar.component.html',
   styleUrl: './channel-sidebar.component.scss',
 })
 export class ChannelSidebarComponent {
-  private readonly spacesSvc = inject(SpacesService);
+  private readonly spaceChildren = viewChild(SpaceChildrenListComponent);
   private readonly selectedLibrary = inject(SelectedRoomLibraryService);
   private readonly roomsSvc = inject(RoomLibraryService);
   /**
@@ -143,7 +116,7 @@ export class ChannelSidebarComponent {
   readonly filterQuery = model('');
 
   /** The folded query, computed once per keystroke rather than once per row below. */
-  private readonly normalizedFilter = computed(() =>
+  protected readonly normalizedFilter = computed(() =>
     normalizeRoomFilter(this.filterQuery()),
   );
 
@@ -160,8 +133,7 @@ export class ChannelSidebarComponent {
     const count =
       this.rooms().length +
       this.filteredInvites().length +
-      this.filteredJoinableRooms().length +
-      this.filteredChildSpaces().length;
+      (this.spaceChildren()?.matchCount() ?? 0);
     return count === 1 ? '1 result' : `${count} results`;
   });
 
@@ -182,28 +154,6 @@ export class ChannelSidebarComponent {
     this.clearFilter();
   }
 
-  /** Not-yet-joined channels of the active space (the "More Channels" list). */
-  readonly joinableRooms = this.spacesSvc.notJoinedRooms;
-  /** Sub-spaces of the active space (joined → Open, otherwise Join). */
-  readonly childSpaces = this.spacesSvc.childSpaces;
-
-  // The filter box sits above the whole scroll area, so it narrows everything under it —
-  // not just the joined rooms. A box that visibly ignored the two lists below the fold
-  // would read as broken.
-  protected readonly filteredJoinableRooms = computed(() =>
-    this.joinableRooms().filter((child) =>
-      matchesRoomFilter(child.name, this.normalizedFilter()),
-    ),
-  );
-  protected readonly filteredChildSpaces = computed(() =>
-    this.childSpaces().filter((child) =>
-      matchesRoomFilter(child.name, this.normalizedFilter()),
-    ),
-  );
-  /** Whether the active space's child hierarchy is still loading. */
-  readonly childrenLoading = this.spacesSvc.childrenLoading;
-  /** Non-null when the active space's child hierarchy failed to load. */
-  readonly childrenError = this.spacesSvc.childrenError;
   /** Pending invites from the same selected generation as the Room and Space lists. */
   readonly invites = computed<readonly PendingInvite[]>(
     () => this.selectedLibrary.view().invitations,
@@ -291,16 +241,36 @@ export class ChannelSidebarComponent {
    */
   readonly setSortMode = output<RoomSortMode | null>();
 
-  /** The orderings offered in the "Order rooms" submenu. */
-  readonly sortModes = TRINITY_ROOM_SORTS;
-
-  /** What the "Order rooms" row announces — the effective order, override or not. */
-  readonly sortModeLabel = computed(() => this.labelFor(this.sortMode()));
-
-  /** An ordering's human label. */
-  labelFor(mode: RoomSortMode): string {
-    return TRINITY_ROOM_SORTS.find((option) => option.id === mode)?.label ?? '';
+  protected onSpaceAction(action: SidebarSpaceAction): void {
+    switch (action.kind) {
+      case 'open-switcher':
+        return this.openSwitcher.emit();
+      case 'create-room':
+        return this.createRoom.emit();
+      case 'mark-all-read':
+        return this.markAllRead.emit();
+      case 'new-chat':
+        return this.newChat.emit(action.anchor);
+      case 'invite':
+        return this.inviteToSpace.emit();
+      case 'members':
+        return this.openSpaceMembers.emit();
+      case 'add-rooms':
+        return this.addToSpace.emit();
+      case 'manage-rooms':
+        return this.manageSpaceRooms.emit();
+      case 'create-subspace':
+        return this.createSubspace.emit();
+      case 'settings':
+        return this.openSpaceSettings.emit();
+      case 'leave':
+        return this.leaveSpace.emit();
+      case 'sort':
+        return this.setSortMode.emit(action.mode);
+      default: {
+        const unhandled: never = action;
+        return unhandled;
+      }
+    }
   }
-
-  /** Cap an unread count for a room-row badge, Discord-style ("99+"). */
 }

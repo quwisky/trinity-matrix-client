@@ -120,7 +120,7 @@ async function build(
   const openThread = vi.fn();
   const closeThread = vi.fn();
   const paginateOpenThread = vi.fn().mockReturnValue(of(void 0));
-  const sendToThread = vi.fn().mockReturnValue(of(void 0));
+  const sendToThread = vi.fn();
   const editInThread = vi.fn().mockReturnValue(of(void 0));
   const replyInThread = vi.fn().mockReturnValue(of(void 0));
   const toggleReactionInThread = vi.fn().mockReturnValue(of(void 0));
@@ -200,8 +200,7 @@ async function build(
                   }),
                   send: vi.fn((body: string, mentions: readonly unknown[]) => {
                     sentRoots(rootEventId);
-                    sendToThread(body, mentions);
-                    return applied('send');
+                    return sendToThread(body, mentions) ?? applied('send');
                   }),
                   edit: vi.fn(
                     (
@@ -390,6 +389,18 @@ describe('ThreadViewComponent', () => {
     expect(sendToThread).toHaveBeenCalledWith('hello thread', []);
     expect(editInThread).not.toHaveBeenCalled();
     expect(replyInThread).not.toHaveBeenCalled();
+  });
+
+  it('toasts when the thread rejects a submit', async () => {
+    const { fixture, sendToThread, toastShow } = await build();
+    sendToThread.mockReturnValueOnce(of({ kind: 'rejected' }));
+
+    fixture.componentInstance.onSubmit({ text: 'hello thread', mentions: [] });
+
+    expect(toastShow).toHaveBeenCalledWith('Could not send the message.', {
+      duration: 4000,
+      variant: 'danger',
+    });
   });
 
   it('routes a submit to an edit while editing, then leaves edit mode', async () => {
@@ -729,6 +740,70 @@ describe('ThreadViewComponent members', () => {
 
     streams[1].next({ kind: 'progress', phase: 'uploading', fraction: 0.95 });
     expect(cmp.uploadProgress()).toBeNull();
+  });
+
+  describe('switching threads under a command', () => {
+    const png = () => new File(['x'], 'pic.png', { type: 'image/png' });
+
+    it('drops an edit in progress, so the next submit is a plain send', async () => {
+      const { fixture, editInThread, sendToThread } = await build();
+      const cmp = fixture.componentInstance;
+      cmp.startEdit(row('$r1', '@me:hs', 'typo'));
+      expect(cmp.editingId()).toBe('$r1');
+
+      fixture.componentRef.setInput('rootEventId', '$next');
+      fixture.detectChanges();
+      cmp.onSubmit({ text: 'fresh', mentions: [] });
+
+      expect(cmp.editingId()).toBeNull();
+      expect(editInThread).not.toHaveBeenCalled();
+      expect(sendToThread).toHaveBeenCalledWith('fresh', []);
+    });
+
+    it('drops a reply in progress', async () => {
+      const { fixture, replyInThread } = await build();
+      const cmp = fixture.componentInstance;
+      cmp.startReply(row('$r1', '@b:hs', 'hi'));
+
+      fixture.componentRef.setInput('rootEventId', '$next');
+      fixture.detectChanges();
+      cmp.onSubmit({ text: 'fresh', mentions: [] });
+
+      expect(cmp.replyingToId()).toBeNull();
+      expect(replyInThread).not.toHaveBeenCalled();
+    });
+
+    it('clears upload progress and ignores the old batch afterwards', async () => {
+      const { fixture, sendMediaToThread } = await build();
+      const cmp = fixture.componentInstance;
+      const stream = new Subject<MediaTransferEvent>();
+      sendMediaToThread.mockReturnValue(stream.asObservable());
+      cmp.onSendMedia({
+        items: [{ id: 'a', file: png(), media: staged('a') }],
+        caption: '',
+        onOutcomes: () => undefined,
+      });
+      expect(cmp.uploadProgress()).not.toBeNull();
+
+      fixture.componentRef.setInput('rootEventId', '$next');
+      fixture.detectChanges();
+      expect(cmp.uploadProgress()).toBeNull();
+
+      stream.next({ kind: 'progress', phase: 'uploading', fraction: 0.9 });
+      expect(cmp.uploadProgress()).toBeNull();
+    });
+
+    it('retries against the thread that is open now', async () => {
+      const { fixture, retryInThread, releasedRoots } = await build();
+
+      fixture.componentRef.setInput('rootEventId', '$next');
+      fixture.detectChanges();
+      fixture.componentInstance.onRetry('$echo');
+
+      expect(releasedRoots).toHaveBeenCalledWith('$root');
+      expect(retryInThread).toHaveBeenCalledTimes(1);
+      expect(retryInThread).toHaveBeenCalledWith('$echo');
+    });
   });
 
   it('says what happened when a thread batch fails, and why', async () => {

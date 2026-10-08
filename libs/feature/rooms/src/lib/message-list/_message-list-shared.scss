@@ -1,7 +1,5 @@
-// Shared styling for the simple and virtual message lists — they render the same
-// timeline chrome (scroll region, dividers, jump pills, empty state) and
-// only differ in windowing. @use'd by both component stylesheets so a token or
-// contrast fix lives in one place.
+// Timeline chrome for the message list (scroll region, dividers, jump pills, empty
+// state), shared by windowed and unwindowed rendering. @use'd by the component stylesheet.
 @use '../styles/mixins' as *;
 
 @mixin message-list-shared {

@@ -1,9 +1,7 @@
-import { type Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SimpleMessageListComponent } from './simple-message-list/simple-message-list.component';
-import { VirtualMessageListComponent } from './virtual-message-list/virtual-message-list.component';
+import { MessageListComponent } from './message-list.component';
 import type { MessageView } from '@trinity/data-access/timeline';
 import type { MessageListBase } from './message-list-base';
 
@@ -54,14 +52,9 @@ function msg(id: string): MessageView {
  * enough to pin the decision being tested — which is *when* the list re-aims, not what the
  * browser computes.
  */
-const LISTS: readonly (readonly [string, Type<MessageListBase>])[] = [
-  ['simple', SimpleMessageListComponent],
-  ['virtual (the default)', VirtualMessageListComponent],
-];
-
-describe.each(LISTS)('message list — jump across a resize (%s)', (_l, List) => {
+describe('message list — jump across a resize', () => {
   /**
-   * Every observer callback either list creates, fired together.
+   * Every observer callback the list creates, fired together.
    *
    * Not just the width watcher's: the windowed list also observes its rows and its container
    * through the same stubbed constructor, and there is no way to tell those apart by target
@@ -79,7 +72,7 @@ describe.each(LISTS)('message list — jump across a resize (%s)', (_l, List) =>
   beforeEach(() => {
     vi.useFakeTimers();
     observers = [];
-    // jsdom implements neither of these, and both lists' `jumpTo` ends in one of them.
+    // jsdom implements neither of these, and `jumpTo` ends in one of them.
     Element.prototype.scrollIntoView = vi.fn();
     vi.stubGlobal(
       'ResizeObserver',
@@ -102,7 +95,7 @@ describe.each(LISTS)('message list — jump across a resize (%s)', (_l, List) =>
   });
 
   async function create() {
-    const result = await render(List, {
+    const result = await render(MessageListComponent, {
       inputs: { messages: [msg('$a:hs'), msg('$b:hs')] },
     });
     TestBed.tick();

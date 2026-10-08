@@ -9,10 +9,10 @@ import { formatTypingNotice } from '@trinity/util/matrix';
 /**
  * The "X is typing" line above the composer, with its three animated dots.
  *
- * One component because three places render it — the simple list, the windowed list and the
+ * One component because two places render it — the message list and the
  * thread panel — and a typing row that reads differently in one of them is a bug nobody
- * would look for. It was copy-pasted between the two lists before the thread panel wanted
- * it too, which is where copy-paste stopped being defensible.
+ * would look for. It was copy-pasted between two list components before the thread panel
+ * wanted it too, which is where copy-paste stopped being defensible.
  *
  * Presentational: it takes the names and formats them, and knows nothing about the client,
  * the room, or who the local user is. The caller excludes the local user (see

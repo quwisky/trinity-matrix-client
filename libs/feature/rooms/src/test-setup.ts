@@ -44,7 +44,7 @@ beforeEach(() => {
 // jsdom has no ResizeObserver. This controllable stub lets the message-list tests
 // drive the measurement path: it records the observed elements and its callback, and
 // a static `instances` registry + `emit()` let a test deliver synthetic resize
-// entries. (The virtualized list also feature-detects RO and degrades to render-all
+// entries. (Windowed mode also feature-detects RO and degrades to render-all
 // without one, so this needs to exist regardless.)
 class TestResizeObserver {
   static readonly instances: TestResizeObserver[] = [];

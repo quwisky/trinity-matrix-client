@@ -1,5 +1,5 @@
-// The virtual list adds windowing on top of the shared timeline chrome.
-@use '../message-list-shared' as shared;
+// The room timeline: the shared chrome, plus the spacers windowing needs.
+@use './message-list-shared' as shared;
 
 @layer components {
   @include shared.message-list-shared;

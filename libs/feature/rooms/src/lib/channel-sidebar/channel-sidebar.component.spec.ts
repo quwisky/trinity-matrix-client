@@ -1854,7 +1854,12 @@ describe('ChannelSidebarComponent room filter', () => {
           room({ id: '!a:hs', name: 'design' }),
           room({ id: '!b:hs', name: 'design docs' }),
         ],
+        spaceActive: true,
       },
+      joinableRooms: [
+        child({ roomId: '!j1:hs', name: 'design crit' }),
+        child({ roomId: '!j2:hs', name: 'ops' }),
+      ],
     });
     const status = () =>
       container
@@ -1864,8 +1869,9 @@ describe('ChannelSidebarComponent room filter', () => {
     // Silent when nothing is typed — the unfiltered list is not news.
     expect(status()).toBe('');
 
+    // Two joined rooms plus the one joinable child the child list renders.
     type(fixture, 'design');
-    expect(status()).toBe('2 results');
+    expect(status()).toBe('3 results');
   });
 
   it('keeps Mark all as read while the filter hides the unread room', async () => {

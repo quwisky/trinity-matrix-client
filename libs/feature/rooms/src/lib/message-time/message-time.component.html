@@ -1,0 +1,23 @@
+@let cls = variant() === 'head' ? 'msg__time' : 'msg__gutter';
+@if (iso(); as iso) {
+  @if (armed()) {
+    <time
+      #stamp
+      [class]="cls"
+      [attr.datetime]="iso"
+      [trnTooltip]="fmt.dateTime(timestamp())"
+      >{{ fmt.time(timestamp()) }}</time
+    >
+  } @else {
+    <time
+      [class]="cls"
+      [attr.datetime]="iso"
+      (pointerenter)="onPointerEnter($event)"
+      >{{ fmt.time(timestamp()) }}</time
+    >
+  }
+} @else {
+  <span [class]="cls">{{
+    variant() === 'head' ? fmt.dateTime(timestamp()) : fmt.time(timestamp())
+  }}</span>
+}

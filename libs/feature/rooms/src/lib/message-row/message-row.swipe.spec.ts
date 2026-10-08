@@ -525,6 +525,17 @@ describe('MessageRowComponent — the sideways swipe', () => {
       return reached;
     }
 
+    it('replies by swipe without the drawer ever seeing the press', async () => {
+      const { msg, swiped } = await renderRow('right');
+      const seen = vi.fn();
+      (msg.parentElement as HTMLElement).addEventListener('pointerdown', seen);
+
+      drag(msg, 300, 300 + FAR);
+
+      expect(swiped).toEqual(['reply']);
+      expect(seen).not.toHaveBeenCalled();
+    });
+
     it('takes the press away from the drawer once the swipe arms', async () => {
       expect(await pointerDownReachesParent('right', 300)).toBe(false);
     });

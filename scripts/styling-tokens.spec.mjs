@@ -205,15 +205,7 @@ describe('styling tokens', () => {
       // and take vertical scrolling away from the timeline.
       {
         template:
-          'libs/feature/rooms/src/lib/message-list/virtual-message-list/virtual-message-list.component.html',
-        directive: 'swipeDirection',
-        styles:
-          'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
-        selector: '.scroll',
-      },
-      {
-        template:
-          'libs/feature/rooms/src/lib/message-list/simple-message-list/simple-message-list.component.html',
+          'libs/feature/rooms/src/lib/message-list/message-list.component.html',
         directive: 'swipeDirection',
         styles:
           'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',

@@ -88,7 +88,7 @@ describe('RoomAliasesComponent', () => {
     // Enter would implicitly submit it — saving and CLOSING the dialog without ever adding
     // the address the user just typed.
     const { cmp, addAlias } = await build();
-    cmp.aliasForm.localpart().value.set('team');
+    cmp.controller.aliasForm.localpart().value.set('team');
     const event = { preventDefault: vi.fn() } as unknown as Event;
 
     cmp.onEnter(event);
@@ -99,7 +99,7 @@ describe('RoomAliasesComponent', () => {
 
   it('loads and lists the room’s local aliases on init', async () => {
     const { cmp, container } = await build({ aliases: ['#a:hs.example'] });
-    expect(cmp.aliases()).toEqual(['#a:hs.example']);
+    expect(cmp.controller.aliases()).toEqual(['#a:hs.example']);
     expect(container.textContent).toContain('#a:hs.example');
   });
 
@@ -117,7 +117,7 @@ describe('RoomAliasesComponent', () => {
 
     expect(localAliases).toHaveBeenCalledOnce();
     expect(localAliases).toHaveBeenCalledWith(TARGET);
-    expect(cmp.aliases()).toEqual(['#available:hs.example']);
+    expect(cmp.controller.aliases()).toEqual(['#available:hs.example']);
   });
 
   it('offers Try again in a danger panel when the addresses cannot be loaded', async () => {
@@ -150,13 +150,13 @@ describe('RoomAliasesComponent', () => {
 
   it('adds a `#localpart:server` alias, appends it, and toasts', async () => {
     const { cmp, addAlias, toastShow } = await build({ aliases: [] });
-    cmp.aliasForm.localpart().value.set('lounge');
+    cmp.controller.aliasForm.localpart().value.set('lounge');
 
-    cmp.add();
+    cmp.controller.add();
 
     expect(addAlias).toHaveBeenCalledWith(TARGET, '#lounge:hs.example');
-    expect(cmp.aliases()).toEqual(['#lounge:hs.example']);
-    expect(cmp.aliasForm.localpart().value()).toBe('');
+    expect(cmp.controller.aliases()).toEqual(['#lounge:hs.example']);
+    expect(cmp.controller.aliasForm.localpart().value()).toBe('');
     expect(toastShow).toHaveBeenCalledWith(
       'Added #lounge:hs.example.',
       expect.objectContaining({ variant: 'success' }),
@@ -165,9 +165,9 @@ describe('RoomAliasesComponent', () => {
 
   it('rejects an invalid localpart without calling the service', async () => {
     const { cmp, addAlias, toastShow } = await build();
-    cmp.aliasForm.localpart().value.set('has spaces');
+    cmp.controller.aliasForm.localpart().value.set('has spaces');
 
-    cmp.add();
+    cmp.controller.add();
 
     expect(addAlias).not.toHaveBeenCalled();
     expect(toastShow).toHaveBeenCalledWith(
@@ -180,9 +180,9 @@ describe('RoomAliasesComponent', () => {
     const { cmp, addAlias, toastShow } = await build({
       aliases: ['#dup:hs.example'],
     });
-    cmp.aliasForm.localpart().value.set('dup');
+    cmp.controller.aliasForm.localpart().value.set('dup');
 
-    cmp.add();
+    cmp.controller.add();
 
     expect(addAlias).not.toHaveBeenCalled();
     expect(toastShow).toHaveBeenCalledWith(
@@ -197,11 +197,11 @@ describe('RoomAliasesComponent', () => {
       canonical: '#a:hs.example',
     });
 
-    cmp.remove('#a:hs.example');
+    cmp.controller.remove('#a:hs.example');
 
     expect(removeAlias).toHaveBeenCalledWith(TARGET, '#a:hs.example');
-    expect(cmp.aliases()).toEqual([]);
-    expect(cmp.canonical()).toBeNull(); // it was the main address
+    expect(cmp.controller.aliases()).toEqual([]);
+    expect(cmp.controller.canonical()).toBeNull(); // it was the main address
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('Removed'),
       expect.objectContaining({ variant: 'success' }),
@@ -213,22 +213,22 @@ describe('RoomAliasesComponent', () => {
       aliases: ['#a:hs.example', '#b:hs.example'],
     });
 
-    cmp.setPrimary('#b:hs.example');
+    cmp.controller.setPrimary('#b:hs.example');
 
     expect(setCanonicalAlias).toHaveBeenCalledWith(TARGET, '#b:hs.example');
-    expect(cmp.canonical()).toBe('#b:hs.example');
+    expect(cmp.controller.canonical()).toBe('#b:hs.example');
   });
 
   it('keeps aliases readable while removing every administration action live', async () => {
     const { cmp, container, fixture, canManage, addAlias, removeAlias } =
       await build({ aliases: ['#a:hs.example', '#b:hs.example'] });
-    cmp.aliasForm.localpart().value.set('draft');
+    cmp.controller.aliasForm.localpart().value.set('draft');
 
     canManage.set(false);
     await fixture.whenStable();
 
     expect(container.textContent).toContain('#a:hs.example');
-    expect(cmp.aliasForm.localpart().value()).toBe('draft');
+    expect(cmp.controller.aliasForm.localpart().value()).toBe('draft');
     expect(
       container.querySelector('[data-testid=room-aliases-read-only]')
         ?.textContent,
@@ -248,8 +248,8 @@ describe('RoomAliasesComponent', () => {
       container.querySelector('[data-testid=room-alias-link]'),
     ).not.toBeNull();
 
-    cmp.add();
-    cmp.remove('#a:hs.example');
+    cmp.controller.add();
+    cmp.controller.remove('#a:hs.example');
     expect(addAlias).not.toHaveBeenCalled();
     expect(removeAlias).not.toHaveBeenCalled();
   });
@@ -274,9 +274,9 @@ describe('RoomAliasesComponent', () => {
       { removeAlias },
     );
 
-    cmp.remove('#a:hs.example');
+    cmp.controller.remove('#a:hs.example');
 
-    expect(cmp.aliases()).toEqual(['#a:hs.example']); // unchanged on failure
+    expect(cmp.controller.aliases()).toEqual(['#a:hs.example']); // unchanged on failure
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('Could not remove'),
       expect.objectContaining({ variant: 'danger' }),
@@ -286,11 +286,11 @@ describe('RoomAliasesComponent', () => {
   it('preserves the entered local address when creation fails', async () => {
     const addAlias = vi.fn(() => throwError(() => new Error('rejected')));
     const { cmp, toastShow } = await build({}, { addAlias });
-    cmp.aliasForm.localpart().value.set('correct-me');
+    cmp.controller.aliasForm.localpart().value.set('correct-me');
 
-    cmp.add();
+    cmp.controller.add();
 
-    expect(cmp.aliasForm.localpart().value()).toBe('correct-me');
+    expect(cmp.controller.aliasForm.localpart().value()).toBe('correct-me');
     expect(toastShow).toHaveBeenCalledWith(
       'Could not add #correct-me:hs.example.',
       expect.objectContaining({ variant: 'danger' }),
@@ -305,10 +305,10 @@ describe('RoomAliasesComponent', () => {
       { setCanonicalAlias },
     );
 
-    cmp.setPrimary('#a:hs.example');
+    cmp.controller.setPrimary('#a:hs.example');
     await fixture.whenStable();
 
-    expect(cmp.settingPrimary()).toBe('#a:hs.example');
+    expect(cmp.controller.settingPrimary()).toBe('#a:hs.example');
     expect(
       container
         .querySelector('[data-testid=room-alias-set-main]')
@@ -316,7 +316,7 @@ describe('RoomAliasesComponent', () => {
     ).toBe('true');
 
     result.error(new Error('rejected'));
-    expect(cmp.settingPrimary()).toBeNull();
+    expect(cmp.controller.settingPrimary()).toBeNull();
     expect(toastShow).toHaveBeenCalledWith(
       'Could not make #a:hs.example the primary address.',
       expect.objectContaining({ variant: 'danger' }),
@@ -330,7 +330,7 @@ describe('RoomAliasesComponent', () => {
       { confirm },
     );
 
-    cmp.remove('#community:hs.example');
+    cmp.controller.remove('#community:hs.example');
 
     expect(alertConfirm).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -350,7 +350,7 @@ describe('RoomAliasesComponent', () => {
       { aliases: ['#a:hs.example'] },
       { confirm },
     );
-    cmp.remove('#a:hs.example');
+    cmp.controller.remove('#a:hs.example');
 
     canManage.set(false);
     answer.next(true);
@@ -372,7 +372,7 @@ describe('RoomAliasesComponent', () => {
     await fixture.whenStable();
     oldLoad.next(['#stale:hs.example']);
 
-    expect(cmp.aliases()).toEqual(['#second:hs.example']);
+    expect(cmp.controller.aliases()).toEqual(['#second:hs.example']);
   });
 
   it('shows a canonical address even when it is not a local alias', async () => {

@@ -11,7 +11,7 @@ import {
 import { HostFileExportService } from '@trinity/runtime/host';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { of, throwError } from 'rxjs';
+import { NEVER, of, throwError } from 'rxjs';
 import {
   afterEach,
   beforeEach,
@@ -490,11 +490,12 @@ describe('AdvancedSettingsComponent', () => {
 
   it('resets nothing when the gate is cancelled', async () => {
     alertPrompt.mockReturnValue(of(null));
-    const { fixture } = await render(AdvancedSettingsComponent, {
+    const { container } = await render(AdvancedSettingsComponent, {
       providers: mockedConfig(),
     });
 
-    await fixture.componentInstance.reset();
+    button(container, 'advanced-reset')?.click();
+    await flush();
 
     expect(resetToDefaults).not.toHaveBeenCalled();
     expect(toastShow).not.toHaveBeenCalled();
@@ -502,11 +503,12 @@ describe('AdvancedSettingsComponent', () => {
 
   it('resets nothing on a mistype, and says why', async () => {
     alertPrompt.mockReturnValue(of('defaluts'));
-    const { fixture } = await render(AdvancedSettingsComponent, {
+    const { container } = await render(AdvancedSettingsComponent, {
       providers: mockedConfig(),
     });
 
-    await fixture.componentInstance.reset();
+    button(container, 'advanced-reset')?.click();
+    await flush();
 
     expect(resetToDefaults).not.toHaveBeenCalled();
     expect(toastShow).toHaveBeenCalledWith(
@@ -524,15 +526,28 @@ describe('AdvancedSettingsComponent', () => {
       providers: mockedConfig(),
     });
 
-    await fixture.componentInstance.reset();
+    button(container, 'advanced-reset')?.click();
+    await flush();
     fixture.detectChanges();
 
-    expect(fixture.componentInstance.resetting()).toBe(false);
     expect(button(container, 'advanced-reset')?.disabled).toBe(false);
     expect(toastShow).toHaveBeenCalledWith(
       'Could not reset every setting.',
       expect.objectContaining({ variant: 'danger' }),
     );
+  });
+
+  it('disables the reset button while the reset runs', async () => {
+    resetToDefaults.mockReturnValue(NEVER);
+    const { container, fixture } = await render(AdvancedSettingsComponent, {
+      providers: mockedConfig(),
+    });
+
+    button(container, 'advanced-reset')?.click();
+    await flush();
+    fixture.detectChanges();
+
+    expect(button(container, 'advanced-reset')?.disabled).toBe(true);
   });
 
   it('shows only outstanding reset entries and retries the exact attempt', async () => {
@@ -891,6 +906,50 @@ describe('AdvancedSettingsComponent', () => {
       ).toBeNull();
       expect(textareaValue(container)).toContain('amethyst');
       expect(button(container, 'advanced-apply')?.disabled).toBe(false);
+    });
+
+    it('disables the review buttons while the write is in flight', async () => {
+      const { container, fixture, config } = await open();
+      vi.spyOn(config, 'apply').mockReturnValue(NEVER);
+      typeInto(container, documentJson({ theme: { palette: 'amethyst' } }));
+      button(container, 'advanced-apply')?.click();
+      fixture.detectChanges();
+
+      button(container, 'advanced-apply-confirm')?.click();
+      fixture.detectChanges();
+
+      expect(button(container, 'advanced-apply-confirm')?.disabled).toBe(true);
+      expect(button(container, 'advanced-apply-cancel')?.disabled).toBe(true);
+    });
+
+    it('pluralises the confirm button by the number of changes', async () => {
+      const { container, fixture } = await open();
+      typeInto(
+        container,
+        documentJson({
+          theme: { palette: 'amethyst' },
+          gif: { apiKey: 'new' },
+        }),
+      );
+      button(container, 'advanced-apply')?.click();
+      fixture.detectChanges();
+
+      expect(
+        textOf(container, 'advanced-apply-confirm').replace(/\s+/g, ' ').trim(),
+      ).toBe('Apply 2 changes');
+    });
+
+    it('drops an edit when the reset runs', async () => {
+      const { container, fixture } = await open();
+      typeInto(container, documentJson({ theme: { palette: 'amethyst' } }));
+      fixture.detectChanges();
+      expect(button(container, 'advanced-discard')).not.toBeNull();
+
+      button(container, 'advanced-reset')?.click();
+      await flush();
+      fixture.detectChanges();
+
+      expect(button(container, 'advanced-discard')).toBeNull();
     });
   });
 });

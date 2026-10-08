@@ -1,0 +1,72 @@
+<span class="flex min-w-0 items-start gap-2">
+  <code
+    #address
+    tabindex="-1"
+    class="min-w-0 flex-1 text-sm break-all text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    data-testid="room-alias-value"
+    >{{ alias() }}</code
+  >
+  @if (primary()) {
+    <span
+      class="rounded shrink-0 bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+      data-testid="room-alias-main"
+    >
+      Primary
+    </span>
+  }
+</span>
+<span class="flex flex-wrap items-center gap-1">
+  <button
+    trnBtn
+    type="button"
+    variant="secondary"
+    presentation="ghost"
+    size="sm"
+    (click)="copyAddress.emit(address)"
+    data-testid="room-alias-copy"
+  >
+    Copy
+  </button>
+  <a
+    trnBtn
+    variant="secondary"
+    presentation="ghost"
+    size="sm"
+    [href]="link()"
+    target="_blank"
+    rel="noopener noreferrer"
+    data-testid="room-alias-link"
+  >
+    Open link
+  </a>
+  @if (canEdit() && !primary()) {
+    <button
+      trnBtn
+      type="button"
+      variant="secondary"
+      presentation="ghost"
+      size="sm"
+      [disabled]="settingPrimary() !== null || removing()"
+      [loading]="settingPrimary() === alias()"
+      (click)="setPrimary.emit()"
+      data-testid="room-alias-set-main"
+    >
+      {{ settingPrimary() === alias() ? 'Making primary…' : 'Make primary' }}
+    </button>
+  }
+  @if (canEdit()) {
+    <button
+      trnBtn
+      type="button"
+      variant="secondary"
+      presentation="outline"
+      size="sm"
+      [disabled]="removing() || confirming()"
+      [loading]="removing()"
+      (click)="remove.emit()"
+      data-testid="room-alias-remove"
+    >
+      {{ removing() ? 'Removing…' : 'Remove' }}
+    </button>
+  }
+</span>

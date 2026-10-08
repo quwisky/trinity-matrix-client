@@ -102,6 +102,11 @@
       "matchPackageNames": ["@spartan-ng/**"]
     },
     {
+      "description": "The icon component and its icon sets release in lockstep; one pull request keeps @ng-icons/core and the sets on the same version.",
+      "groupName": "ng-icons",
+      "matchPackageNames": ["@ng-icons/**"]
+    },
+    {
       "description": "The Playwright runner and its browser package must match, or the browsers are re-downloaded and the versions disagree.",
       "groupName": "playwright",
       "matchPackageNames": ["playwright", "@playwright/test"]

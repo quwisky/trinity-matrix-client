@@ -46,8 +46,7 @@ import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.comp
 import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
-import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
-import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
+import { MessageListComponent } from '../message-list/message-list.component';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
 import { ThreadViewComponent } from '../thread/thread-view.component';
@@ -112,6 +111,7 @@ let lastRender: {
   activeAccountId: WritableSignal<string | null>;
 };
 let lastFixture: ComponentFixture<RoomsPage>;
+const windowingFlag = signal(false);
 
 function renderHeader(
   pinCount: number,
@@ -122,6 +122,7 @@ function renderHeader(
     presenceByUser?: Record<string, WritableSignal<PresenceState | null>>;
   } = {},
 ) {
+  windowingFlag.set(false);
   const presenceByUser = opts.presenceByUser ?? {};
   const pinMessages = signal<readonly unknown[]>(
     Array.from({ length: pinCount }, (_, id) => ({ id })),
@@ -217,7 +218,7 @@ function renderHeader(
       }),
       MockProvider(InvitesService),
       MockProvider(TimelineActionsService),
-      MockProvider(FeatureFlagsService, { virtualTimeline: signal(false) }),
+      MockProvider(FeatureFlagsService, { virtualTimeline: windowingFlag }),
       MockProvider(MatrixClientService, {
         activeUserId: signal<string | null>('@me:hs'),
       }),
@@ -256,8 +257,7 @@ function renderHeader(
         ChannelSidebarComponent,
         SidebarUserPanelComponent,
         PaneHandleComponent,
-        SimpleMessageListComponent,
-        VirtualMessageListComponent,
+        MessageListComponent,
         EncryptionBannerComponent,
         ConnectivityBannerComponent,
         TombstoneBannerComponent,
@@ -345,8 +345,7 @@ function renderHeader(
         MockComponent(ChannelSidebarComponent),
         MockComponent(SidebarUserPanelComponent),
         MockComponent(PaneHandleComponent),
-        MockComponent(SimpleMessageListComponent),
-        MockComponent(VirtualMessageListComponent),
+        MockComponent(MessageListComponent),
         MockComponent(EncryptionBannerComponent),
         MockComponent(ConnectivityBannerComponent),
         MockComponent(TombstoneBannerComponent),
@@ -535,14 +534,28 @@ describe('RoomsPage header for a linked room the client does not hold yet', () =
       reason: 'room-unavailable',
     };
     const host = pending(state);
-    const list = ngMocks.find(
-      lastFixture.debugElement,
-      SimpleMessageListComponent,
-    );
+    const list = ngMocks.find(lastFixture.debugElement, MessageListComponent);
     expect(list.componentInstance.loadState()).toEqual(state);
     expect(list.componentInstance.composerEnabled()).toBe(false);
     expect(list.componentInstance.roomId()).toBe('!pending:hs');
     expect(host.querySelector('[data-testid="chat-empty"]')).toBeNull();
+  });
+});
+
+describe('RoomsPage timeline', () => {
+  it('renders one list, binds the windowing flag to it, and keeps it when the flag flips', () => {
+    renderHeader(0);
+    const lists = () =>
+      ngMocks.findAll(lastFixture.debugElement, MessageListComponent);
+    expect(lists()).toHaveLength(1);
+    const list = lists()[0].componentInstance;
+    expect(list.windowed()).toBe(false);
+
+    windowingFlag.set(true);
+    lastFixture.detectChanges();
+    expect(lists()).toHaveLength(1);
+    expect(lists()[0].componentInstance).toBe(list);
+    expect(list.windowed()).toBe(true);
   });
 });
 
@@ -559,7 +572,7 @@ describe('RoomsPage body for a room the client holds but the user has not joined
       });
       expect(host.querySelector('[data-testid="chat-empty"]')).not.toBeNull();
       expect(
-        ngMocks.findAll(lastFixture.debugElement, SimpleMessageListComponent),
+        ngMocks.findAll(lastFixture.debugElement, MessageListComponent),
       ).toHaveLength(0);
     });
   }

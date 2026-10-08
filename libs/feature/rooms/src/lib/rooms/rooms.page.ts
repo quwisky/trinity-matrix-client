@@ -49,8 +49,7 @@ import { MessageSearchComponent } from '../message-search/message-search.compone
 import { MemberInfoComponent } from '../member-info/member-info.component';
 import { PaneHandleComponent } from './pane-handle.component';
 import { DrawerSwipeDirective } from './drawer-swipe.directive';
-import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
-import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
+import { MessageListComponent } from '../message-list/message-list.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
@@ -126,8 +125,7 @@ const PANEL_DRAWER_PX = 480;
     MemberInfoComponent,
     PaneHandleComponent,
     DrawerSwipeDirective,
-    SimpleMessageListComponent,
-    VirtualMessageListComponent,
+    MessageListComponent,
     EncryptionBannerComponent,
     ConnectivityBannerComponent,
     TombstoneBannerComponent,
