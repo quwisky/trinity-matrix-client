@@ -54,6 +54,7 @@ import {
 import { ComposerTextField } from './composer-text-field';
 import { ComposerBatchSender } from './composer-batch-sender';
 import { ComposerAutocompletes } from './composer-autocompletes';
+import { ComposerDrafts } from './composer-drafts';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnAnchoredOverlayDirective } from '@trinity/components/overlay';
 import {
@@ -405,11 +406,7 @@ export class MessageComposerComponent {
   }));
   /** Resolves the user's (rebindable) formatting chords — see {@link onKeydown}. */
   private readonly shortcuts = inject(KeyboardShortcutsService);
-  private wasEditing = false;
-  private wasEditTargetId: string | null = null;
   private wasReplying = false;
-
-  private wasRoomId: string | null | undefined = undefined;
 
   constructor() {
     // Warm the lazy emoji index so a quickly typed `:shortcode:` still converts.
@@ -469,41 +466,37 @@ export class MessageComposerComponent {
       openFileDialog: () => this.fileInput()?.nativeElement.click(),
     });
 
-    // On a room/thread change: drop the staged (unsent) attachment — it was staged
-    // to send here — and swap drafts. The composer instance is reused across rooms,
-    // so without this a half-typed message would leak into the next conversation.
-    effect(() => {
-      const id = this.roomId();
-      if (id !== this.wasRoomId) {
-        const prev = this.wasRoomId;
-        this.wasRoomId = id;
-        untracked(() => {
-          this.clearStaged();
-          if (prev !== undefined) {
-            this.batches.release();
-          }
-          // A recording belongs to the room it was started in — cancel it on a
-          // room/thread switch so the mic doesn't stay open and a later Send can't
-          // post the clip to the wrong room.
-          if (this.attachments.recordingVoice()) {
-            this.cancelVoiceRecording();
-          }
-          this.menus.clearChosen(); // they belong to the old conversation
-          this.formatSelection = null;
-          this.previewing.set(false); // the new room opens ready to write, not to read
-          // Drafts only apply to compose mode; in edit mode `text` is the edit body.
-          if (!this.editing()) {
-            const managedDraft = this.composeDraft();
-            if (managedDraft === null && prev != null) {
-              this.drafts.set(prev, this.text());
-            }
-            this.text.set(
-              managedDraft ?? (id != null ? this.drafts.get(id) : ''),
-            );
-            queueMicrotask(() => this.field.autoGrow());
-          }
-        });
-      }
+    new ComposerDrafts({
+      roomId: this.roomId,
+      editing: this.editing,
+      editTargetId: this.editTargetId,
+      draft: this.draft,
+      composeDraft: this.composeDraft,
+      text: this.text,
+      store: this.drafts,
+      emitDraft: (draft) => this.composeDraftChange.emit(draft),
+      leaveRoom: (prev) => {
+        this.clearStaged();
+        if (prev !== undefined) {
+          this.batches.release();
+        }
+        // A recording belongs to the room it was started in — cancel it on a
+        // room/thread switch so the mic doesn't stay open and a later Send can't
+        // post the clip to the wrong room.
+        if (this.attachments.recordingVoice()) {
+          this.cancelVoiceRecording();
+        }
+        this.menus.clearChosen(); // they belong to the old conversation
+        this.formatSelection = null;
+        this.previewing.set(false); // the new room opens ready to write, not to read
+      },
+      leavePreview: () => this.previewing.set(false),
+      autoGrow: () => this.field.autoGrow(),
+      focusAtEnd: () => {
+        const el = this.textarea()?.nativeElement;
+        el?.focus();
+        el?.setSelectionRange(el.value.length, el.value.length);
+      },
     });
 
     // Formatting UI belongs to the exact Account, Conversation and editing target.
@@ -535,71 +528,6 @@ export class MessageComposerComponent {
         queueMicrotask(() => this.field.focus());
       }
       this.wasReplying = replying;
-    });
-    // Prefill on entering edit mode, or when the edit TARGET changes while still
-    // editing (a different message was selected). Keyed on editTargetId — not the
-    // draft body — and draft() is read untracked, so a mid-edit body change of the
-    // same target (redaction, concurrent multi-device edit, a late echo) neither
-    // fires this effect nor overwrites the user's in-progress text. Clear on
-    // leaving edit mode. Typing never re-fires this (it updates `text`, unread here).
-    effect(() => {
-      const editing = this.editing();
-      const targetId = this.editTargetId();
-      if (editing && (!this.wasEditing || targetId !== this.wasEditTargetId)) {
-        this.text.set(untracked(() => this.draft()));
-        // Both branches replace the text wholesale, so a preview left open would be showing
-        // content that is no longer there — and the focus() below cannot land on a hidden
-        // textarea, leaving edit mode apparently unresponsive.
-        this.previewing.set(false);
-        queueMicrotask(() => {
-          const el = this.textarea()?.nativeElement;
-          el?.focus();
-          el?.setSelectionRange(el.value.length, el.value.length);
-          this.field.autoGrow();
-        });
-      } else if (!editing && this.wasEditing) {
-        // Leaving edit mode restores the conversation's compose draft (empty when
-        // none), so an edit interlude doesn't discard a half-typed message.
-        const id = untracked(() => this.roomId());
-        const managedDraft = untracked(() => this.composeDraft());
-        this.text.set(managedDraft ?? (id != null ? this.drafts.get(id) : ''));
-        this.previewing.set(false);
-        queueMicrotask(() => this.field.autoGrow());
-      }
-      this.wasEditing = editing;
-      this.wasEditTargetId = targetId;
-    });
-
-    // Persist the compose draft on any text change (typing, emoji insert, inline
-    // autocomplete). Gated to compose mode and the settled conversation so a room
-    // switch's load never cross-saves; sending blanks the field, dropping the draft.
-    effect(() => {
-      const value = this.text();
-      const id = this.roomId();
-      untracked(() => {
-        if (id != null && id === this.wasRoomId) {
-          if (this.composeDraft() === null && !this.editing()) {
-            this.drafts.set(id, value);
-          } else if (this.composeDraft() !== null) {
-            this.composeDraftChange.emit(value);
-          }
-        }
-      });
-    });
-
-    // A failed or cancelled runtime send restores its durable draft after this component
-    // optimistically clears the textarea. Mirror only external changes; caret-local typing
-    // does not trigger this effect because `text` is read untracked.
-    effect(() => {
-      const managedDraft = this.composeDraft();
-      const editing = this.editing();
-      if (managedDraft === null || editing) return;
-      untracked(() => {
-        if (this.text() !== managedDraft) {
-          this.text.set(managedDraft);
-          queueMicrotask(() => this.field.autoGrow());
-        }
-      });
     });
   }
 
