@@ -36,10 +36,10 @@ import {
 } from '@trinity/data-access/room-library';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
-  TrnActionSheetService,
   TrnAlertService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
+  type TrnActionSheetRef,
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { defer, map, of, Subject, tap, throwError } from 'rxjs';
@@ -155,7 +155,7 @@ describe('RoomsPage space actions', () => {
               ),
           ),
         }),
-        MockProvider(TrnDialogService),
+        MockProvider(TrnSurfaceService),
         MockProvider(TrnAlertService, {
           confirm$: alertConfirm,
           prompt$: alertPrompt,
@@ -548,7 +548,7 @@ describe('RoomsPage room / DM / invite actions', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(TrnDialogService, {
+        MockProvider(TrnSurfaceService, {
           openAndWait$: dialogOpen,
         }),
         MockProvider(TrnAlertService, { prompt$: alertPrompt }),
@@ -615,6 +615,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(dialogOpen).toHaveBeenCalledWith(UserCardComponent, {
       ariaLabel: 'User',
       inputs: { userId: '@bob:hs' },
+      kind: 'popover',
       anchor: mention,
     });
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
@@ -635,6 +636,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(dialogOpen).toHaveBeenCalledWith(UserCardComponent, {
       ariaLabel: 'User',
       inputs: { userId: '@bob:hs' },
+      kind: 'popover',
       anchor: undefined,
     });
     expect(createDirectMessage).not.toHaveBeenCalled();
@@ -1411,15 +1413,16 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(declineInvite).toHaveBeenCalledWith('!i:hs', '@me:hs');
   });
 
-  it('opens the new-chat action sheet on Home', async () => {
+  it('opens the new-chat actions beside the Home "+"', async () => {
     const shell = build();
-    const sheetOpen = TestBed.inject(TrnActionSheetService).open as ReturnType<
-      typeof vi.fn
-    >;
+    const openActions = vi
+      .spyOn(TestBed.inject(TrnSurfaceService), 'openActions')
+      .mockReturnValue({} as TrnActionSheetRef);
+    const plus = document.createElement('button');
 
-    shell.rooms.onNewChat();
+    shell.rooms.onNewChat(plus);
 
-    expect(sheetOpen).toHaveBeenCalledWith(
+    expect(openActions).toHaveBeenCalledWith(
       expect.objectContaining({
         buttons: expect.arrayContaining([
           expect.objectContaining({ text: 'Create a room' }),
@@ -1427,6 +1430,7 @@ describe('RoomsPage room / DM / invite actions', () => {
           expect.objectContaining({ text: 'Start a direct message' }),
         ]),
       }),
+      { anchor: plus },
     );
   });
 });
@@ -1529,7 +1533,7 @@ describe('RoomsPage space hierarchy actions', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(TrnDialogService),
+        MockProvider(TrnSurfaceService),
         MockProvider(TrnAlertService, { confirm$: alertConfirm }),
         MockProvider(TrnToastService),
       ],

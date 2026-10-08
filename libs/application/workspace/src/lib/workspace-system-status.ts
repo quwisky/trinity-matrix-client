@@ -5,7 +5,8 @@ export interface WorkspaceSystemStatus {
   readonly hasProblems: Signal<boolean>;
   /** Which prompt owns the one global banner slot; `null` means no global banner. */
   readonly bannerSlot: Signal<'status' | 'encryption' | null>;
-  show(restoreFocus?: () => void): void;
+  /** Open System status; closing it returns focus to whatever had it. */
+  show(): void;
 }
 
 export const WORKSPACE_SYSTEM_STATUS =

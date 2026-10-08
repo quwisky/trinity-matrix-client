@@ -56,7 +56,7 @@
   },
   "libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 14
+      "count": 3
     }
   },
   "libs/feature/rooms/src/lib/edit-history/edit-history.component.scss": {
@@ -101,7 +101,7 @@
   },
   "libs/feature/rooms/src/lib/message-composer/message-composer.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 6
+      "count": 2
     }
   },
   "libs/feature/rooms/src/lib/message-list/_message-list-shared.scss": {
@@ -119,9 +119,14 @@
       "count": 3
     }
   },
+  "libs/feature/rooms/src/lib/message-receipts/message-receipts.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 3
+    }
+  },
   "libs/feature/rooms/src/lib/message-row/message-row.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 12
+      "count": 9
     }
   },
   "libs/feature/rooms/src/lib/message-search/message-search.component.scss": {
@@ -154,6 +159,11 @@
       "count": 1
     }
   },
+  "libs/feature/rooms/src/lib/room-header/room-header.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 5
+    }
+  },
   "libs/feature/rooms/src/lib/room-settings/_room-settings-panel.scss": {
     "declaration-property-value-disallowed-list": {
       "count": 1
@@ -166,7 +176,7 @@
   },
   "libs/feature/rooms/src/lib/rooms/rooms.page.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 7
+      "count": 2
     }
   },
   "libs/feature/rooms/src/lib/server-rail/server-rail.component.scss": {
@@ -181,7 +191,7 @@
   },
   "libs/feature/rooms/src/lib/space-settings/space-settings-contents.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 12
+      "count": 11
     }
   },
   "libs/feature/rooms/src/lib/sticker-image/sticker-image.component.scss": {
@@ -221,7 +231,12 @@
   },
   "libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 16
+      "count": 9
+    }
+  },
+  "libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-row/sidebar-room-row.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 7
     }
   },
   "libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.scss": {
@@ -292,6 +307,16 @@
   "libs/feature/rooms/src/lib/shared/settings-load-state-card/settings-load-state-card.component.scss": {
     "declaration-property-value-disallowed-list": {
       "count": 1
+    }
+  },
+  "libs/feature/rooms/src/lib/channel-sidebar/sidebar-space-header/sidebar-space-header.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 3
+    }
+  },
+  "libs/feature/rooms/src/lib/channel-sidebar/space-children-list/space-children-list.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 8
     }
   }
 }

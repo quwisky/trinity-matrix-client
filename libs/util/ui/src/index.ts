@@ -17,3 +17,4 @@ export * from './lib/reduced-motion';
 export * from './lib/internal-url';
 export * from './lib/latest-guard';
 export * from './lib/routed-page';
+export * from './lib/shown-error';

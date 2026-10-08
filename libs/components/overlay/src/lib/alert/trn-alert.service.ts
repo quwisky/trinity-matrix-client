@@ -4,7 +4,7 @@ import { Overlay } from '@angular/cdk/overlay';
 import type { TrnVariant } from '@trinity/components/foundations';
 import { defer, map, take, type Observable } from 'rxjs';
 import { TrnDialogRef } from '../dialog/trn-dialog-ref';
-import { dialogPresentation } from '../dialog/trn-dialog.service';
+import { dialogPresentation, prefersSheet } from '../dialog/trn-dialog.service';
 import {
   TrnAlertDialogComponent,
   type AlertDialogData,
@@ -109,14 +109,14 @@ export class TrnAlertService {
     });
   }
 
-  /** A centred alert, or a bottom sheet below `md`, like any centred dialog. */
+  /** A bottom sheet on a phone or tablet or below md, a centred alert otherwise. */
   private config<R>(
     data: AlertDialogData,
     opts: ConfirmOptions,
   ): DialogConfig<AlertDialogData, DialogRef<R, TrnAlertDialogComponent>> {
     const { pane, createRef } = dialogPresentation(
       this.overlay,
-      'center',
+      prefersSheet() ? 'bottom' : 'center',
       null,
     );
     return {

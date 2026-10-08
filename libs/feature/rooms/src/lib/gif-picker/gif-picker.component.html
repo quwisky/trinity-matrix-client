@@ -20,9 +20,14 @@
     @if (loading()) {
       <p class="gif-picker__status" aria-live="polite">Loading…</p>
     } @else if (failed()) {
-      <div class="gif-picker__status" aria-live="polite">
-        <p>Couldn't load GIFs.</p>
+      <trn-empty-state
+        layout="line"
+        variant="danger"
+        aria-live="polite"
+        body="Couldn't load GIFs."
+      >
         <button
+          trnEmptyStateActions
           trnBtn
           type="button"
           variant="secondary"
@@ -33,7 +38,7 @@
         >
           Try again
         </button>
-      </div>
+      </trn-empty-state>
     } @else if (results().length === 0) {
       <p class="gif-picker__status" aria-live="polite">No GIFs found.</p>
     } @else {

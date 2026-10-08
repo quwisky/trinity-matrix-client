@@ -24,6 +24,7 @@ import {
   TrnDropdownMenuTrigger,
 } from '@trinity/components/overlay';
 import { type PresenceState, initialOf } from '@trinity/util/matrix';
+import { AccountPickLabelComponent } from '../../shared/account-pick-label/account-pick-label.component';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
@@ -44,6 +45,7 @@ const PRESENCE_NAMES = {
   selector: 'trn-sidebar-user-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    AccountPickLabelComponent,
     TrnButton,
     TrnTooltip,
     TrnBadge,

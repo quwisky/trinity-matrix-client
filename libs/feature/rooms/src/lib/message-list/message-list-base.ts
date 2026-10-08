@@ -14,7 +14,10 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
+import {
+  TrnAlertService,
+  TrnSurfaceService,
+} from '@trinity/components/overlay';
 import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { ForwardService } from '../forward/forward.service';
@@ -24,8 +27,6 @@ import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 import {
   isEditableMessage,
-  isQuotableMessage,
-  savableMediaKind,
   ConversationRuntime,
   type MessageView,
   type ThreadSummary,
@@ -52,7 +53,10 @@ import {
   type BatchOutcome,
   type BatchProgress,
 } from '../shared/send-media-batch';
-import { dispatchSharedRowAction } from '../shared/row-actions';
+import {
+  buildRowCapsMap,
+  dispatchSharedRowAction,
+} from '../shared/row-actions';
 import {
   type MessageLongPressContext,
   type MessageRow,
@@ -98,20 +102,6 @@ interface RowCacheEntry {
   readonly row: MessageRow;
 }
 
-/** Whether two caps carry the same capabilities — all eight fields are flat primitives. */
-function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
-  return (
-    a.editable === b.editable &&
-    a.deletable === b.deletable &&
-    a.canPin === b.canPin &&
-    a.pinned === b.pinned &&
-    a.canThread === b.canThread &&
-    a.canQuote === b.canQuote &&
-    a.saveMedia === b.saveMedia &&
-    a.readOnly === b.readOnly
-  );
-}
-
 const LOAD_ERROR_COPY: Readonly<
   Record<Extract<TimelineLoadState, { kind: 'error' }>['reason'], string>
 > = {
@@ -123,11 +113,9 @@ const LOAD_ERROR_COPY: Readonly<
 /**
  * Shared domain logic for the room timeline, independent of scroll strategy: the
  * inputs/outputs, the edit/reply state + action handlers, and the Discord-style row
- * grouping. {@link SimpleMessageListComponent} (plain scroll) and
- * {@link VirtualMessageListComponent} (windowed) extend this and add only their own
- * scroll container, effects and template — the feature flag selects which one the
- * room renders. Kept an abstract `@Directive()` (no selector) so Angular wires the
- * inherited inputs/outputs/queries for the subclasses.
+ * grouping. {@link MessageListComponent} extends this and adds the scroll container, windowing,
+ * anchoring and template. Kept an abstract `@Directive()` so this domain half stays
+ * testable without the scroll half (`message-list-base.spec.ts`).
  */
 @Directive()
 export abstract class MessageListBase {
@@ -155,7 +143,7 @@ export abstract class MessageListBase {
    * every backfill is judged on its own duration.
    *
    * Why the removal has to be synchronous at all: the strip is IN FLOW above the rows, and
-   * `VirtualMessageListComponent.rowsRegionTop()` folds its height into the scroll restore
+   * `MessageListComponent.rowsRegionTop()` folds its height into the scroll restore
    * that keeps the reader's place across a prepend. `TimelineService.loadOlder` prepends the
    * rows and clears `loadingOlder` in one synchronous block, so a strip held past that point
    * has the restore measure 36px that is about to disappear — and `.scroll` sets
@@ -315,7 +303,7 @@ export abstract class MessageListBase {
   protected readonly alert = inject(TrnAlertService);
   private readonly dayBoundary = inject(DayBoundaryService);
   private readonly dateFormat = inject(DateTimeFormatService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
   private readonly mediaSave = inject(MediaSaveService);
@@ -444,7 +432,7 @@ export abstract class MessageListBase {
     return grouped;
   });
 
-  /** The rows both lists render. */
+  /** The grouped rows the list renders. */
   readonly rows = computed(() => this.grouping().rows);
 
   /** Member event id → the id of the group row that holds it. */
@@ -714,7 +702,7 @@ export abstract class MessageListBase {
   private stopHeightWatcher?: () => void;
 
   /**
-   * Remember a jump so a width change can re-apply it. Called BY the subclasses' `jumpTo`,
+   * Remember a jump so a width change can re-apply it. Called BY `jumpTo`,
    * not instead of it — the base cannot know how each strategy scrolls.
    */
   protected notePendingJump(messageId: string): void {
@@ -767,12 +755,12 @@ export abstract class MessageListBase {
   }
 
   /**
-   * Watch the scroller's width and re-aim a recent jump when it changes (the virtual list also
+   * Watch the scroller's width and re-aim a recent jump when it changes (windowed mode also
    * re-aims after row measurements). Also starts the reader-scroll watcher that ends re-aiming.
    *
    * Width only: a height change is the keyboard opening or the composer growing, and
-   * re-jumping there would fight the reader rather than help them. Started by the subclasses
-   * once they have a scroll element, and torn down with the component.
+   * re-jumping there would fight the reader rather than help them. Started once the
+   * component has a scroll element, and torn down with the component.
    */
   protected watchScrollerWidth(): void {
     const el = this.scrollEl()?.nativeElement;
@@ -797,8 +785,8 @@ export abstract class MessageListBase {
    * Keep a bottom-pinned conversation pinned when the composer, formatting bar or software
    * keyboard changes the scroller's viewport height. A reader who has scrolled up needs no
    * compensation: the scroller's top edge and scrollTop remain unchanged, so their anchor
-   * stays put. This exact pin is intentionally separate from the subclasses' 120px
-   * near-bottom state for incoming messages. The optional callback lets the virtual list
+   * stays put. This exact pin is intentionally separate from the 120px
+   * near-bottom state for incoming messages. The optional callback lets windowed mode
    * keep its window-height signal in step with the same observation.
    */
   protected watchScrollerHeight(
@@ -822,37 +810,17 @@ export abstract class MessageListBase {
    * time would defeat the OnPush `MessageRowComponent` and re-render every row.
    */
   private readonly rowCapsById = computed<Map<string, MessageRowCaps>>(() => {
-    const canPin = this.canPin();
-    const canRedactOthers = this.canRedactOthers();
-    const pinnedIds = this.pinnedIds();
-    const caps = new Map<string, MessageRowCaps>();
-    for (const message of this.messages()) {
-      // An unsent message is only a local echo: its id is the SDK's `~roomId:txnId`
-      // placeholder, which the homeserver has never seen. Threading off it would make
-      // that placeholder the thread root — every reply then relates to an event the
-      // server can't resolve — and pinning it would write it into `m.room.pinned_events`
-      // room state. Both wait for the remote echo to swap in the real event id.
-      const unsent = !!message.status;
-      const next: MessageRowCaps = {
-        editable: isEditableMessage(message),
-        // Own messages are always deletable; a moderator can also redact others'.
-        deletable: (message.isOwn || canRedactOthers) && !unsent,
-        canPin: canPin && !unsent,
-        pinned: pinnedIds.includes(message.id),
-        canThread: !unsent,
-        canQuote: isQuotableMessage(message),
-        saveMedia: savableMediaKind(message),
-        readOnly: false,
-      };
-      // Reuse the previous object when nothing about this row's caps changed, exactly
-      // as rowCache does for the row itself. `messages()` gets a NEW array identity on
-      // every timeline event, so without this every incoming message would hand every
-      // rendered row a fresh `caps` input and re-render it.
-      const prev = this.prevRowCaps.get(message.id);
-      caps.set(message.id, prev && sameRowCaps(prev, next) ? prev : next);
-    }
-    this.prevRowCaps = caps;
-    return caps;
+    this.prevRowCaps = buildRowCapsMap(
+      this.messages(),
+      {
+        canRedactOthers: this.canRedactOthers(),
+        canPin: this.canPin(),
+        canThread: true,
+        pinnedIds: this.pinnedIds(),
+      },
+      this.prevRowCaps,
+    );
+    return this.prevRowCaps;
   });
 
   /** Last computed caps, for identity reuse (mirrors {@link rowCache}). */

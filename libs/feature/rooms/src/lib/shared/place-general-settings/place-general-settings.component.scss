@@ -1,0 +1,23 @@
+@use '../../room-settings/room-settings-panel' as panel;
+
+@layer components {
+  @include panel.layout('place-settings');
+
+  .place-settings__topic {
+    min-height: 88px;
+    resize: vertical;
+  }
+
+  .place-settings__static-value {
+    color: var(--trinity-text);
+    font-size: var(--trinity-type-body-size);
+    line-height: var(--trinity-type-body-line-height);
+    overflow-wrap: anywhere;
+    user-select: text;
+    white-space: pre-wrap;
+  }
+
+  .place-settings__readonly-value {
+    cursor: text;
+  }
+}

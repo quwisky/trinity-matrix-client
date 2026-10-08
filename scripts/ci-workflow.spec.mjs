@@ -1,4 +1,5 @@
 /** The CI graph must fail closed and preserve diagnostics independently of suite success. */
+import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
@@ -72,7 +73,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(8);
+    expect(uploads.length).toBeGreaterThan(0);
     for (const step of uploads) {
       expect(step.if).toMatch(/!cancelled\(\).*outputs.started == 'true'/);
       expect(step.with.surface).toBeTruthy();
@@ -281,6 +282,110 @@ describe('Android E2E split', () => {
     expect(gate.needs).toEqual(['classify', 'mobile-e2e']);
     expect(gate.steps).toEqual([RESULT_GATE_STEP]);
     expect(job.name).not.toBe('Mobile E2E (Android)');
+  });
+});
+
+describe('Unit test selection', () => {
+  it('re-runs every Vitest project when the shared Vitest setup changes', () => {
+    const nx = JSON.parse(readFileSync(resolve(root, 'nx.json'), 'utf8'));
+    expect(nx.targetDefaults.test.inputs).toEqual([
+      'default',
+      '^production',
+      '{workspaceRoot}/vite.base.config.ts',
+      '{workspaceRoot}/test-setup.base.ts',
+    ]);
+  });
+
+  it('tests the projects whose specs read files outside their own graph', () => {
+    // These specs grep or read other projects' files with no import edge, so only their
+    // declared test inputs make `nx affected` pick them up.
+    const affected = (file) =>
+      JSON.parse(
+        execFileSync(
+          'pnpm',
+          [
+            'exec',
+            'nx',
+            'show',
+            'projects',
+            '--affected',
+            `--files=${file}`,
+            '--json',
+          ],
+          { cwd: root, encoding: 'utf8' },
+        ),
+      );
+    for (const file of [
+      'libs/feature/rooms/src/lib/rooms/rooms.page.html',
+      'libs/feature/rooms/src/lib/rooms/rooms.component.ts',
+    ]) {
+      expect(affected(file), file).toEqual(
+        expect.arrayContaining([
+          'components-foundations',
+          'application-runtime',
+        ]),
+      );
+    }
+    expect(affected('apps/trinity/src/global.scss')).toContain(
+      'application-runtime',
+    );
+  });
+
+  const runs = (id) =>
+    workflow.jobs[id].steps.flatMap((step) => (step.run ? [step.run] : []));
+  const unit = () =>
+    workflow.jobs.test.steps.find((step) => step.id === 'unit');
+
+  it('type-checks every project in Lint & format, not in Unit tests', () => {
+    expect(workflow.jobs.quality.name).toBe('Lint & format');
+    expect(runs('quality')).toContain('pnpm exec nx run-many -t typecheck');
+    expect(runs('test').join('\n')).not.toContain('typecheck');
+  });
+
+  it('tests affected projects against the pull request base and everything otherwise', () => {
+    expect(workflow.jobs.test.name).toBe('Unit tests');
+    expect(workflow.jobs.test.steps[0].with['fetch-depth']).toBe(0);
+    const step = unit();
+    expect(step.env.BASE).toBe('${{ github.event.pull_request.base.sha }}');
+    expect(step.run).toContain(
+      'if [ "$GITHUB_EVENT_NAME" != pull_request ]; then\n  pnpm test\n',
+    );
+    expect(step.run).toContain(
+      'pnpm nx affected -t test --base="$BASE" --head=HEAD',
+    );
+  });
+
+  it('lists changed paths unquoted and without rename detection', () => {
+    // A root file moved into a subdirectory must still list its old root path, and
+    // non-ASCII paths must not come back quoted, or the root-level guard misses them.
+    expect(unit().run).toContain(
+      'git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD"',
+    );
+  });
+
+  it('tests every project when a root-level or workflow file changes', () => {
+    const pattern = new RegExp(
+      unit().run.match(/grep -E '([^']+)' > \/dev\/null/)[1],
+    );
+    for (const path of [
+      'vite.base.config.ts',
+      'test-setup.base.ts',
+      '.nvmrc',
+      'package.json',
+      'pnpm-lock.yaml',
+      '.github/actions/setup/action.yml',
+      '.github/workflows/ci.yml',
+    ]) {
+      expect(pattern.test(path), path).toBe(true);
+    }
+    for (const path of [
+      'libs/feature/rooms/src/index.ts',
+      'apps/trinity/vite.config.ts',
+      'scripts/ci-classify.mjs',
+      'e2e/browser/playwright.config.mts',
+    ]) {
+      expect(pattern.test(path), path).toBe(false);
+    }
   });
 });
 

@@ -1,11 +1,8 @@
-import { type Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SimpleMessageListComponent } from './simple-message-list/simple-message-list.component';
-import { VirtualMessageListComponent } from './virtual-message-list/virtual-message-list.component';
-import type { MessageListBase } from './message-list-base';
+import { MessageListComponent } from './message-list.component';
 import type {
   MessageView,
   TimelineLoadState,
@@ -15,7 +12,7 @@ import { MessageComposerComponent } from '../message-composer/message-composer.c
 /**
  * The "Loading older messages…" strip, and when it is allowed to appear.
  *
- * A new file rather than more tests in `simple-message-list.component.spec.ts`: that one is
+ * A new file rather than more tests in `message-list.component.unwindowed.spec.ts`: that one is
  * already at 48 TestBed tests, and a TestBed test retains enough that a single file has
  * previously died part-way through and reported the rest as never run.
  *
@@ -25,25 +22,7 @@ import { MessageComposerComponent } from '../message-composer/message-composer.c
  * now, and these pin the two ends of that: nothing for a quick load, and once shown it stays
  * long enough to be read.
  */
-/**
- * Both lists, and the windowed one is not optional.
- *
- * `DEFAULT_VIRTUAL_TIMELINE` is true, so `VirtualMessageListComponent` is what ships. An
- * earlier version of this file tested only the simple list — the whole binding could be
- * reverted on the virtual one with the entire workspace still green, which is exactly how a
- * scroll-anchoring regression got through review.
- */
-// Typed as the shared BASE rather than left to inference. `describe.each` widens the pair to
-// a union of the two classes, and `render<T>(component: Type<T>, …)` cannot infer one `T` from
-// a union — the two lists are not structurally compatible (`atBottom` exists on one only). The
-// base is also the honest type: what this file tests is `MessageListBase.showLoadingOlder`,
-// which is why both lists belong in the same table.
-const LISTS: readonly (readonly [string, Type<MessageListBase>])[] = [
-  ['simple', SimpleMessageListComponent],
-  ['virtual (the default)', VirtualMessageListComponent],
-];
-
-describe.each(LISTS)('message list — loading older (%s)', (_label, List) => {
+describe('message list — loading older', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
@@ -56,7 +35,7 @@ describe.each(LISTS)('message list — loading older (%s)', (_label, List) => {
     container.querySelector('.load-older');
 
   async function create() {
-    const result = await render(List, {
+    const result = await render(MessageListComponent, {
       inputs: { messages: [], loadingOlder: false },
     });
     TestBed.tick();
@@ -167,146 +146,149 @@ function fakeMessage(id: string, body: string): MessageView {
   };
 }
 
-describe.each(LISTS)(
-  'message list — conversation load state (%s)',
-  (_label, List) => {
-    beforeEach(() => vi.useFakeTimers());
-    afterEach(() => {
-      vi.useRealTimers();
-      vi.unstubAllGlobals();
-    });
-    const advance = (ms: number) => {
-      vi.advanceTimersByTime(ms);
-      TestBed.tick();
-    };
-    const loading = (partial = false): TimelineLoadState => ({
-      kind: 'loading',
-      reason: 'backfill',
-      partial,
-    });
-    const skeleton = (c: HTMLElement) =>
-      c.querySelector('[data-testid="timeline-skeleton"]');
-    const emptyState = (c: HTMLElement) => c.querySelector('trn-empty-state');
+describe('message list — conversation load state', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+  const advance = (ms: number) => {
+    vi.advanceTimersByTime(ms);
+    TestBed.tick();
+  };
+  const loading = (partial = false): TimelineLoadState => ({
+    kind: 'loading',
+    reason: 'backfill',
+    partial,
+  });
+  const skeleton = (c: HTMLElement) =>
+    c.querySelector('[data-testid="timeline-skeleton"]');
+  const emptyState = (c: HTMLElement) => c.querySelector('trn-empty-state');
 
-    async function create(
-      loadState: TimelineLoadState,
-      messages: MessageView[] = [],
-    ) {
-      const result = await render(List, { inputs: { messages, loadState } });
-      TestBed.tick();
-      return result;
-    }
-
-    it('shows the skeleton only after 150 ms of loading and never the empty state meanwhile', async () => {
-      const { container } = await create(loading());
-      expect(skeleton(container)).toBeNull();
-      expect(emptyState(container)).toBeNull();
-      advance(200);
-      expect(skeleton(container)).not.toBeNull();
-      expect(emptyState(container)).toBeNull();
+  async function create(
+    loadState: TimelineLoadState,
+    messages: MessageView[] = [],
+  ) {
+    const result = await render(MessageListComponent, {
+      inputs: { messages, loadState },
     });
+    TestBed.tick();
+    return result;
+  }
 
-    it('removes the skeleton the instant loading ends', async () => {
-      const { container, fixture } = await create(loading());
-      advance(200);
-      fixture.componentRef.setInput('loadState', { kind: 'empty' });
-      TestBed.tick();
-      expect(skeleton(container)).toBeNull();
-      expect(emptyState(container)).not.toBeNull();
-    });
+  it('shows the skeleton only after 150 ms of loading and never the empty state meanwhile', async () => {
+    const { container } = await create(loading());
+    expect(skeleton(container)).toBeNull();
+    expect(emptyState(container)).toBeNull();
+    advance(200);
+    expect(skeleton(container)).not.toBeNull();
+    expect(emptyState(container)).toBeNull();
+  });
 
-    it('never shows a skeleton for a ready empty Room', async () => {
-      const { container } = await create({ kind: 'empty' });
-      advance(1000);
-      expect(skeleton(container)).toBeNull();
-      expect(emptyState(container)).not.toBeNull();
-    });
+  it('removes the skeleton the instant loading ends', async () => {
+    const { container, fixture } = await create(loading());
+    advance(200);
+    fixture.componentRef.setInput('loadState', { kind: 'empty' });
+    TestBed.tick();
+    expect(skeleton(container)).toBeNull();
+    expect(emptyState(container)).not.toBeNull();
+  });
 
-    it('renders the skeleton above messages when partial', async () => {
-      const { container } = await create(loading(true), [
-        fakeMessage('$1', 'hello'),
-      ]);
-      advance(200);
-      const sk = skeleton(container)!;
-      const firstRow = container.querySelector('trn-message-row')!;
-      expect(
-        sk.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
-    });
+  it('never shows a skeleton for a ready empty Room', async () => {
+    const { container } = await create({ kind: 'empty' });
+    advance(1000);
+    expect(skeleton(container)).toBeNull();
+    expect(emptyState(container)).not.toBeNull();
+  });
 
-    it('shows the reason copy with Retry on error and emits retryLoad', async () => {
-      const { container, fixture } = await create({
-        kind: 'error',
-        reason: 'backfill-failed',
-      });
-      const retry = vi.fn();
-      fixture.componentInstance.retryLoad.subscribe(retry);
-      expect(
-        container.querySelector('[data-testid="timeline-load-error"]')
-          ?.textContent,
-      ).toContain("Couldn't load messages.");
-      expect(emptyState(container)).toBeNull();
-      (
-        container.querySelector(
-          '[data-testid="timeline-load-retry"]',
-        ) as HTMLButtonElement
-      ).click();
-      expect(retry).toHaveBeenCalledOnce();
-    });
+  it('renders the skeleton above messages when partial', async () => {
+    const { container } = await create(loading(true), [
+      fakeMessage('$1', 'hello'),
+    ]);
+    advance(200);
+    const sk = skeleton(container)!;
+    const firstRow = container.querySelector('trn-message-row')!;
+    expect(
+      sk.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
 
-    it('blocks sending while loading or failed, not when settled', async () => {
-      const { fixture } = await create(loading());
-      const composer = () =>
-        fixture.debugElement.query(By.directive(MessageComposerComponent))
-          .componentInstance as MessageComposerComponent;
-      expect(composer().sendBlocked()).toBe(true);
-      fixture.componentRef.setInput('loadState', { kind: 'ready' });
-      TestBed.tick();
-      expect(composer().sendBlocked()).toBe(false);
-      fixture.componentRef.setInput('loadState', {
-        kind: 'error',
-        reason: 'sync-stopped',
-      });
-      TestBed.tick();
-      expect(composer().sendBlocked()).toBe(true);
+  it('shows the reason copy with Retry on error and emits retryLoad', async () => {
+    const { container, fixture } = await create({
+      kind: 'error',
+      reason: 'backfill-failed',
     });
+    const retry = vi.fn();
+    fixture.componentInstance.retryLoad.subscribe(retry);
+    expect(
+      container.querySelector('[data-testid="timeline-load-error"]')
+        ?.textContent,
+    ).toContain("Couldn't load messages.");
+    const panel = emptyState(container);
+    expect(panel?.getAttribute('data-testid')).toBe('timeline-load-error');
+    expect(panel?.getAttribute('role')).toBe('alert');
+    expect(container.querySelectorAll('trn-empty-state')).toHaveLength(1);
+    expect(container.textContent).not.toContain('No messages yet');
+    (
+      container.querySelector(
+        '[data-testid="timeline-load-retry"]',
+      ) as HTMLButtonElement
+    ).click();
+    expect(retry).toHaveBeenCalledOnce();
+  });
 
-    it('retries the viewport fill once when loading ends with the same messages', async () => {
-      const frames: FrameRequestCallback[] = [];
-      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-        frames.push(cb);
-        return 0;
-      });
-      const flush = () => frames.splice(0).forEach((cb) => cb(0));
-      const { fixture } = await create(loading(), [fakeMessage('$1', 'hi')]);
-      const loadOlder = vi.fn();
-      fixture.componentInstance.loadOlder.subscribe(loadOlder);
-      fixture.componentRef.setInput('canLoadOlder', true);
-      fixture.componentRef.setInput('oldestEventId', '$1');
-      TestBed.tick();
-      flush();
-      expect(loadOlder).not.toHaveBeenCalled();
-      fixture.componentRef.setInput('loadState', { kind: 'ready' });
-      TestBed.tick();
-      flush();
-      expect(loadOlder).toHaveBeenCalledOnce();
+  it('blocks sending while loading or failed, not when settled', async () => {
+    const { fixture } = await create(loading());
+    const composer = () =>
+      fixture.debugElement.query(By.directive(MessageComposerComponent))
+        .componentInstance as MessageComposerComponent;
+    expect(composer().sendBlocked()).toBe(true);
+    fixture.componentRef.setInput('loadState', { kind: 'ready' });
+    TestBed.tick();
+    expect(composer().sendBlocked()).toBe(false);
+    fixture.componentRef.setInput('loadState', {
+      kind: 'error',
+      reason: 'sync-stopped',
     });
+    TestBed.tick();
+    expect(composer().sendBlocked()).toBe(true);
+  });
 
-    it('does not auto-load older while loading', async () => {
-      const frames: FrameRequestCallback[] = [];
-      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-        frames.push(cb);
-        return 0;
-      });
-      const { fixture } = await create(loading());
-      const loadOlder = vi.fn();
-      fixture.componentInstance.loadOlder.subscribe(loadOlder);
-      fixture.componentRef.setInput('canLoadOlder', true);
-      fixture.componentRef.setInput('oldestEventId', '$1');
-      TestBed.tick();
-      frames.splice(0).forEach((cb) => cb(0));
-      advance(500);
-      expect(loadOlder).not.toHaveBeenCalled();
+  it('retries the viewport fill once when loading ends with the same messages', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      frames.push(cb);
+      return 0;
     });
-  },
-);
+    const flush = () => frames.splice(0).forEach((cb) => cb(0));
+    const { fixture } = await create(loading(), [fakeMessage('$1', 'hi')]);
+    const loadOlder = vi.fn();
+    fixture.componentInstance.loadOlder.subscribe(loadOlder);
+    fixture.componentRef.setInput('canLoadOlder', true);
+    fixture.componentRef.setInput('oldestEventId', '$1');
+    TestBed.tick();
+    flush();
+    expect(loadOlder).not.toHaveBeenCalled();
+    fixture.componentRef.setInput('loadState', { kind: 'ready' });
+    TestBed.tick();
+    flush();
+    expect(loadOlder).toHaveBeenCalledOnce();
+  });
+
+  it('does not auto-load older while loading', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      frames.push(cb);
+      return 0;
+    });
+    const { fixture } = await create(loading());
+    const loadOlder = vi.fn();
+    fixture.componentInstance.loadOlder.subscribe(loadOlder);
+    fixture.componentRef.setInput('canLoadOlder', true);
+    fixture.componentRef.setInput('oldestEventId', '$1');
+    TestBed.tick();
+    frames.splice(0).forEach((cb) => cb(0));
+    advance(500);
+    expect(loadOlder).not.toHaveBeenCalled();
+  });
+});

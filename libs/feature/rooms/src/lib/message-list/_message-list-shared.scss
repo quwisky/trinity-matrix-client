@@ -1,7 +1,5 @@
-// Shared styling for the simple and virtual message lists — they render the same
-// timeline chrome (scroll region, dividers, jump pills, empty state) and
-// only differ in windowing. @use'd by both component stylesheets so a token or
-// contrast fix lives in one place.
+// Timeline chrome for the message list (scroll region, dividers, jump pills, empty
+// state), shared by windowed and unwindowed rendering. @use'd by the component stylesheet.
 @use '../styles/mixins' as *;
 
 @mixin message-list-shared {
@@ -61,18 +59,6 @@
     font-size: var(--trinity-type-control-size);
     line-height: var(--trinity-type-control-line-height);
     color: var(--trinity-text-muted);
-  }
-
-  .load-error {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: var(--trinity-space-2);
-    padding: var(--trinity-space-3) var(--trinity-space-4);
-    color: var(--trinity-text-muted);
-    font-size: var(--trinity-type-control-size);
-    line-height: var(--trinity-type-control-line-height);
   }
 
   // The day and unread dividers are styled by `trn-timeline-divider`, which owns their markup.

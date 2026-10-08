@@ -5,7 +5,11 @@ import { MessageSourceComponent } from '../message-source/message-source.compone
 import { ReactionPickerComponent } from '../reaction-picker/reaction-picker.component';
 import { type MessageRow } from '../message-row/message-row.component';
 import {
+  buildRowCaps,
+  buildRowCapsMap,
   dispatchSharedRowAction,
+  sameRowCaps,
+  type RowCapsPolicy,
   type SharedRowActionContext,
 } from './row-actions';
 
@@ -156,5 +160,78 @@ describe('dispatchSharedRowAction', () => {
     dispatchSharedRowAction({ type: 'edit-history' }, row, ctx);
 
     expect(followed).toHaveBeenCalledWith(target);
+  });
+});
+
+describe('row caps', () => {
+  const policy: RowCapsPolicy = {
+    canRedactOthers: false,
+    canPin: true,
+    canThread: true,
+    pinnedIds: [],
+  };
+  const text = (id: string, over: Partial<MessageRow> = {}) =>
+    ({
+      id,
+      kind: 'text',
+      body: 'hello',
+      isOwn: false,
+      status: null,
+      media: null,
+      ...over,
+    }) as MessageRow;
+
+  it('lets a moderator delete others but never a local echo', () => {
+    const moderator = { ...policy, canRedactOthers: true };
+
+    expect(buildRowCaps(text('$a'), moderator).deletable).toBe(true);
+    expect(buildRowCaps(text('$a'), policy).deletable).toBe(false);
+    expect(buildRowCaps(text('$a', { isOwn: true }), policy).deletable).toBe(
+      true,
+    );
+    expect(
+      buildRowCaps(text('$a', { isOwn: true, status: 'sending' }), policy)
+        .deletable,
+    ).toBe(false);
+  });
+
+  it('waits to pin or thread a local echo and honours the policy', () => {
+    const echo = text('~!r:hs:1', { status: 'sending' });
+
+    expect(buildRowCaps(echo, policy)).toMatchObject({
+      canPin: false,
+      canThread: false,
+    });
+    expect(buildRowCaps(text('$a'), policy)).toMatchObject({
+      canPin: true,
+      canThread: true,
+    });
+    expect(
+      buildRowCaps(text('$a'), { ...policy, canPin: false, canThread: false }),
+    ).toMatchObject({ canPin: false, canThread: false });
+    expect(
+      buildRowCaps(text('$a'), { ...policy, pinnedIds: ['$a'] }).pinned,
+    ).toBe(true);
+  });
+
+  it('compares every capability', () => {
+    const caps = buildRowCaps(text('$a'), policy);
+
+    expect(sameRowCaps(caps, { ...caps })).toBe(true);
+    expect(sameRowCaps(caps, { ...caps, pinned: true })).toBe(false);
+    expect(sameRowCaps(caps, { ...caps, saveMedia: 'image' })).toBe(false);
+  });
+
+  it('reuses the previous caps object for rows that did not change', () => {
+    const first = buildRowCapsMap([text('$1'), text('$2')], policy, new Map());
+
+    const next = buildRowCapsMap(
+      [text('$1'), text('$2', { isOwn: true })],
+      policy,
+      first,
+    );
+
+    expect(next.get('$1')).toBe(first.get('$1'));
+    expect(next.get('$2')).not.toBe(first.get('$2'));
   });
 });
