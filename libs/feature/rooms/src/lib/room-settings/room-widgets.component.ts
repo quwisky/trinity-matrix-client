@@ -17,7 +17,7 @@ import { filter, switchMap, tap } from 'rxjs';
 import {
   TrnAlertService,
   TrnDialogRef,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnSettingsGroupComponent,
   TrnToastService,
 } from '@trinity/components/overlay';
@@ -57,7 +57,7 @@ export class RoomWidgetsComponent implements OnInit {
   private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly toast = inject(TrnToastService);
   private readonly alert = inject(TrnAlertService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
   private connectedTarget: RoomWidgetTarget | null = null;
   private activeWidgetFrame: TrnDialogRef<void> | null = null;
@@ -155,7 +155,7 @@ export class RoomWidgetsComponent implements OnInit {
     const frameRef = this.dialog.open<void, RoomWidgetFrameComponent>(
       RoomWidgetFrameComponent,
       {
-        placement: 'fullscreen',
+        kind: 'fullscreen',
         inputs: {
           roomId: this.target().roomId,
           widget,

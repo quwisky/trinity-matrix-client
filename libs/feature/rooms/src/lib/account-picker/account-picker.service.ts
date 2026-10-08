@@ -1,6 +1,6 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { asapScheduler, finalize, scheduled, switchMap } from 'rxjs';
 import { AccountPickerComponent } from './account-picker.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
@@ -21,7 +21,7 @@ export interface AccountPickerOptions {
  */
 @Injectable({ providedIn: 'root' })
 export class AccountPickerService {
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
   private showing = false;
 

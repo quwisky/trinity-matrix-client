@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   effect,
   inject,
   input,
@@ -11,6 +12,7 @@ import {
   type Meta,
   type StoryObj,
 } from '@storybook/angular-vite';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { of } from 'rxjs';
@@ -21,15 +23,19 @@ import { SystemStatusComponent } from './system-status.component';
 @Component({
   selector: 'trn-system-status-story',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SystemStatusComponent],
-  template: '<trn-system-status />',
+  template: '',
 })
 class SystemStatusStoryComponent {
   readonly degraded = input(true);
   private readonly health = inject(CapabilityHealthService);
   private readonly context = Symbol('storybook-account');
+  private readonly opened = inject(TrnSurfaceService).open(
+    SystemStatusComponent,
+    { ariaLabel: 'System status' },
+  );
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => this.opened.close());
     effect(() => {
       if (!this.degraded()) {
         this.health.reset();

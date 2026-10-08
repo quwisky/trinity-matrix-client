@@ -11,10 +11,12 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, type ParamMap } from '@angular/router';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
-import { AuthService } from '@trinity/data-access/auth';
+import {
+  AuthService,
+  OidcStateStore,
+  SsoStateStore,
+} from '@trinity/data-access/auth';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
-import { SsoStateStore } from '../sso-state.store';
-import { OidcStateStore } from '../oidc-state.store';
 import { accountEstablishmentError } from '../account-establishment-outcome';
 
 /**

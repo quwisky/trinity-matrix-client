@@ -12,7 +12,10 @@ import {
   WorkspaceBackService,
 } from '@trinity/application/workspace';
 import { parseTrinityRoomLink } from '@trinity/util/matrix';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   NotificationLifetime,
   type NotificationLifetimeEvent,
@@ -70,7 +73,6 @@ import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapte
 import { RoomOrderHealthService } from './room-order-health.service';
 import { HostSessionHealthService } from './host-session-health.service';
 import { NotificationSessionService } from './notification-session.service';
-import { SystemStatusVisibilityService } from '../system-status-visibility.service';
 import { BackgroundMemoryRelease } from './background-memory-release.service';
 
 /** Owns every live host and Workspace subscription for one Application Runtime session. */
@@ -82,7 +84,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly badge = inject(BadgeCoordinator);
   private readonly swUpdate = inject(SwUpdate);
   private readonly toast = inject(TrnToastService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly workspaceBack = inject(WorkspaceBackService);
   private readonly nativeNavigation = inject(NativeNavigationService);
   private readonly hostDeepLinks = inject(HostDeepLinksService);
@@ -105,7 +107,6 @@ export class TrinityApplicationSessionAdapter {
   private readonly notificationLifetime = inject(NotificationLifetime);
   private readonly roomAdministration = inject(RoomAdministrationLifetime);
   private readonly notificationSession = inject(NotificationSessionService);
-  private readonly statusVisibility = inject(SystemStatusVisibilityService);
   private readonly inboundRoomLink = inject(InboundRoomLinkService);
   private readonly interactions = defer(() =>
     merge(
@@ -383,10 +384,6 @@ export class TrinityApplicationSessionAdapter {
                 !this.workspaceBack.activeOwnsTopmostOverlay()
               ) {
                 this.dialog.closeTopmost();
-                return of(void 0);
-              }
-              if (this.statusVisibility.open()) {
-                this.statusVisibility.back();
                 return of(void 0);
               }
               if (this.workspaceBack.hasActive()) {

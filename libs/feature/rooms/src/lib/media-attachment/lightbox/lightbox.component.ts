@@ -14,7 +14,7 @@ import { MediaSaveService } from '../media-save.service';
 /**
  * A full-resolution image, filling the viewport over a dark backdrop.
  *
- * Opened through {@link TrnDialogService} rather than rendered inline in the timeline row
+ * Opened through {@link TrnSurfaceService} rather than rendered inline in the timeline row
  * that owns the attachment, which is what the row used to do. That version worked, and every
  * part of it that worked was hand-rolled: a `position: fixed` element at `z-index: 1000`, a
  * `tabindex="-1"` host focused by an effect, an Escape binding, and a remembered element to

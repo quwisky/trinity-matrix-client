@@ -205,22 +205,7 @@
           <span class="account-pick__indicator" aria-hidden="true">
             <trn-dropdown-menu-checkbox-indicator />
           </span>
-          <trn-avatar
-            [mxc]="account.avatarMxc"
-            [accountId]="account.userId"
-            [initial]="initialFor(account)"
-            [name]="account.displayName"
-            size="md"
-          />
-          <span class="account-pick__id">
-            <span class="account-pick__name">{{ account.displayName }}</span>
-            <!-- The mxid, because two accounts can share a display name and the tick alone
-                 would not say which server you are blending in. -->
-            <span class="account-pick__handle">{{ account.userId }}</span>
-            @if (isActive) {
-              <span class="account-pick__active">Always included</span>
-            }
-          </span>
+          <trn-account-pick-label [account]="account" [locked]="isActive" />
         </button>
       }
     </div>
