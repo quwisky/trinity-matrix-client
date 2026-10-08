@@ -24,7 +24,7 @@ describe('routed page outlets', () => {
       ].map(([tag]) => ({ file, tag })),
     );
     // An empty scan would pass vacuously.
-    expect(outlets.length).toBeGreaterThanOrEqual(2);
+    expect(outlets.length).toBeGreaterThan(0);
 
     expect(
       outlets

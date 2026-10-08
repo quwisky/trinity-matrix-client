@@ -15,7 +15,7 @@ describe('release publishing', () => {
     for (const name of complete) {
       expect(missingAssets(complete.filter((n) => n !== name))).toHaveLength(1);
     }
-    expect(missingAssets([])).toHaveLength(6);
+    expect(missingAssets([])).toHaveLength(complete.length);
   });
 
   it('marks only the highest stable release as latest', () => {
