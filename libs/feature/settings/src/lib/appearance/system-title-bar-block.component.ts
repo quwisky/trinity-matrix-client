@@ -12,6 +12,7 @@ import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
 } from '@trinity/components/overlay';
+import { SaveFailureComponent } from './save-failure/save-failure.component';
 
 /**
  * Desktop-only choice between Trinity's title row and the operating system's window frame.
@@ -23,6 +24,7 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './system-title-bar-block.component.html',
   imports: [
+    SaveFailureComponent,
     TrnButton,
     TrnSwitchComponent,
     TrnSettingsGroupComponent,

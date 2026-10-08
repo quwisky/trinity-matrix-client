@@ -1,0 +1,39 @@
+@layer components {
+  :host {
+    display: contents;
+  }
+
+  .composer__banner {
+    display: flex;
+    align-items: center;
+    gap: var(--trinity-density-item-gap);
+    min-height: calc(
+      var(--trinity-density-control-size) + 2 * var(--trinity-space-2)
+    );
+    margin-inline: var(--trinity-density-composer-padding-inline);
+    padding: var(--trinity-space-2) var(--trinity-space-3);
+    border-left: 2px solid var(--trinity-accent);
+    border-radius: var(--trinity-shape-control-radius)
+      var(--trinity-shape-control-radius) 0 0;
+    background: var(--trinity-surface-raised);
+    font-size: var(--trinity-type-metadata-size);
+    line-height: var(--trinity-type-metadata-line-height);
+    color: var(--trinity-text-muted);
+
+    kbd {
+      padding: var(--trinity-space-1) var(--trinity-space-2);
+      border-radius: var(--trinity-radius-sm);
+      background: var(--trinity-surface-frame);
+      font-family: inherit;
+      font-size: var(--trinity-text-xs);
+    }
+
+    strong {
+      color: var(--trinity-text-bright);
+    }
+  }
+
+  .composer__cancel {
+    margin-left: auto;
+  }
+}

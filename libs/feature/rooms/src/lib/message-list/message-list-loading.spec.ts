@@ -245,7 +245,11 @@ describe.each(LISTS)(
         container.querySelector('[data-testid="timeline-load-error"]')
           ?.textContent,
       ).toContain("Couldn't load messages.");
-      expect(emptyState(container)).toBeNull();
+      const panel = emptyState(container);
+      expect(panel?.getAttribute('data-testid')).toBe('timeline-load-error');
+      expect(panel?.getAttribute('role')).toBe('alert');
+      expect(container.querySelectorAll('trn-empty-state')).toHaveLength(1);
+      expect(container.textContent).not.toContain('No messages yet');
       (
         container.querySelector(
           '[data-testid="timeline-load-retry"]',

@@ -4,58 +4,6 @@
     background: var(--trinity-surface-workspace);
   }
 
-  .composer__banner {
-    display: flex;
-    align-items: center;
-    gap: var(--trinity-density-item-gap);
-    min-height: calc(
-      var(--trinity-density-control-size) + 2 * var(--trinity-space-2)
-    );
-    margin-inline: var(--trinity-density-composer-padding-inline);
-    padding: var(--trinity-space-2) var(--trinity-space-3);
-    border-left: 2px solid var(--trinity-accent);
-    border-radius: var(--trinity-shape-control-radius)
-      var(--trinity-shape-control-radius) 0 0;
-    background: var(--trinity-surface-raised);
-    font-size: var(--trinity-type-metadata-size);
-    line-height: var(--trinity-type-metadata-line-height);
-    color: var(--trinity-text-muted);
-
-    kbd {
-      padding: 1px 4px;
-      border-radius: var(--trinity-radius-sm);
-      background: var(--trinity-surface-frame);
-      font-family: inherit;
-      font-size: var(--trinity-text-xs);
-    }
-
-    strong {
-      color: var(--trinity-text-bright);
-    }
-  }
-
-  .composer__cancel {
-    margin-left: auto;
-    min-width: var(--trinity-density-control-size);
-    min-height: var(--trinity-density-control-size);
-    border: none;
-    border-radius: var(--trinity-shape-control-radius);
-    background: none;
-    color: var(--trinity-text-muted);
-    font-size: 0.75rem;
-    cursor: pointer;
-
-    &:hover:where(:not(:disabled)) {
-      background: var(--trinity-state-hover-surface);
-      color: var(--trinity-state-hover-foreground);
-    }
-
-    &:focus-visible {
-      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-      outline-offset: calc(-1 * var(--trinity-focus-ring-width));
-    }
-  }
-
   .composer {
     // The one type size the field and its preview share. Touch devices lift it to the 16px
     // text-entry floor so iOS does not zoom on focus (#974); the preview follows so the cell
@@ -154,7 +102,7 @@
   // textarea in the DOM so its draft and caret survive, but remove its box while the recording
   // control owns this plane. Both rows derive from the same action-size token, so their resting
   // heights remain equal in precise- and coarse-pointer layouts.
-  .composer:has(.composer__recording) .composer__field {
+  .composer--recording .composer__field {
     display: none;
   }
 
@@ -212,81 +160,6 @@
   // timeline's white-space rules had.
   .composer__input.composer__input--hidden {
     display: none;
-  }
-
-  // Voice-recording bar, shown in place of the input row while capturing a clip.
-  .composer__recording {
-    display: flex;
-    flex: 1;
-    align-items: center;
-    gap: var(--trinity-density-row-gap);
-    width: 100%;
-    min-height: var(--composer-resting-field-height);
-    padding-inline: var(--trinity-density-composer-field-inset);
-    border: 1px solid var(--trinity-border-subtle);
-    border-radius: var(--trinity-shape-container-radius);
-    background: var(--trinity-surface-raised);
-  }
-
-  .composer__recording-cancel,
-  .composer__recording-send {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--trinity-density-composer-action-size);
-    height: var(--trinity-density-composer-action-size);
-    border: none;
-    border-radius: var(--trinity-shape-control-radius);
-    background: none;
-    color: var(--trinity-text-muted);
-    font-size: 1.125rem;
-    cursor: pointer;
-
-    &:hover {
-      background: var(--trinity-state-hover-surface);
-      color: var(--trinity-state-hover-foreground);
-    }
-
-    &:focus-visible {
-      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-      outline-offset: calc(-1 * var(--trinity-focus-ring-width));
-    }
-  }
-
-  .composer__recording-send {
-    color: var(--trinity-link);
-  }
-
-  .composer__recording-dot {
-    flex: 0 0 auto;
-    width: 10px;
-    height: 10px;
-    border-radius: var(--trinity-radius-pill);
-
-    // A filled shape, not text, so it takes the solid fill rather than the
-    // `--trinity-danger` text/icon role.
-    background: var(--trinity-danger-solid);
-    animation: composer-recording-pulse var(--trinity-duration-pulse)
-      ease-in-out infinite;
-  }
-
-  .composer__recording-time {
-    flex: 1;
-    color: var(--trinity-text-bright);
-    font-size: 0.875rem;
-    font-variant-numeric: tabular-nums;
-  }
-
-  @keyframes composer-recording-pulse {
-    0%,
-    100% {
-      opacity: 1;
-    }
-
-    50% {
-      opacity: 0.3;
-    }
   }
 
   // Emoji and send are the field's trailing grid items (the `+` matches them from its own
@@ -400,14 +273,7 @@
   // devices only (inert on a mouse, so desktop keeps its 36/40px buttons).
   @media (pointer: coarse) {
     .composer__emoji,
-    .composer__send,
-    .composer__recording-cancel,
-    .composer__recording-send {
-      min-width: var(--trinity-interaction-target-min-size);
-      min-height: var(--trinity-interaction-target-min-size);
-    }
-
-    .composer__cancel {
+    .composer__send {
       min-width: var(--trinity-interaction-target-min-size);
       min-height: var(--trinity-interaction-target-min-size);
     }
