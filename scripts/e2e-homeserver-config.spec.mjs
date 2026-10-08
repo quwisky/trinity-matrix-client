@@ -135,6 +135,11 @@ describe('Nightly Synapse workflow', () => {
   const path = '.github/workflows/e2e-synapse-nightly.yml';
   const workflow = () => parse(read(path));
   const commands = (job) => job.steps.map((step) => step.run ?? '').join('\n');
+  /** The suite jobs; `notify` only calls the reusable alert workflow and has no steps. */
+  const suites = () =>
+    Object.entries(workflow().jobs)
+      .filter(([id]) => id !== 'notify')
+      .map(([, job]) => job);
 
   it('runs daily and on demand, outside ci.yml', () => {
     const { on } = workflow();
@@ -146,13 +151,12 @@ describe('Nightly Synapse workflow', () => {
   });
 
   it('runs the browser, Electron full and protocol suites against Synapse', () => {
-    const { env, jobs } = workflow();
-    expect(env.TRINITY_E2E_HOMESERVER).toBe('synapse');
-    const all = Object.values(jobs).map(commands).join('\n');
+    expect(workflow().env.TRINITY_E2E_HOMESERVER).toBe('synapse');
+    const all = suites().map(commands).join('\n');
     expect(all).toContain('pnpm exec nx run trinity-e2e-browser:e2e');
     expect(all).toContain('xvfb-run -a pnpm nx run trinity-e2e-electron:full');
     expect(all).toContain('pnpm e2e:protocol');
-    for (const job of Object.values(jobs)) {
+    for (const job of suites()) {
       expect(job['timeout-minutes']).toBeGreaterThan(0);
       expect(
         job.steps.some(

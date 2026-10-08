@@ -103,3 +103,14 @@ jobs:
         with:
           surface: protocol-synapse
           report-path: dist/.playwright/trinity-e2e-protocol/**
+
+  # A red cron run notifies nobody: open (or update) an issue, and close it on the next green run.
+  notify:
+    name: Nightly failure issue
+    needs: [browser, electron, protocol]
+    if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    permissions:
+      issues: write
+    uses: ./.github/workflows/_nightly-alert.yml
+    with:
+      needs: ${{ toJSON(needs) }}
