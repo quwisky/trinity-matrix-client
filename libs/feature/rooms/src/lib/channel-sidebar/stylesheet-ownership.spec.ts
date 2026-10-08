@@ -27,7 +27,9 @@ const ROW = join(
   'sidebar-room-row.component',
 );
 const LIST = join('sidebar-room-list', 'sidebar-room-list.component');
+const HEADER = join('sidebar-space-header', 'sidebar-space-header.component');
 const PAIRS = [
+  [PARENT, HEADER],
   [PARENT, LIST],
   [PARENT, ROW],
   [LIST, ROW],

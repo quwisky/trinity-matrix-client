@@ -8,25 +8,14 @@ import {
   output,
 } from '@angular/core';
 import {
-  TrnActionAvailability,
   TrnButton,
   TrnIconButton,
+  TrnInput,
 } from '@trinity/components/controls';
-import { TrnTooltip } from '@trinity/components/generic-content';
 import {
-  TrnDropdownMenu,
-  TrnDropdownMenuItem,
-  TrnDropdownMenuItemSubIndicatorComponent,
-  TrnDropdownMenuLabel,
-  TrnDropdownMenuRadio,
-  TrnDropdownMenuRadioIndicatorComponent,
-  TrnDropdownMenuSeparator,
-  TrnDropdownMenuSub,
-  TrnDropdownMenuSubTrigger,
-  TrnDropdownMenuTrigger,
-} from '@trinity/components/overlay';
-import { EmptyStateComponent } from '@trinity/components/generic-content';
-import { TrnInput } from '@trinity/components/controls';
+  EmptyStateComponent,
+  TrnTooltip,
+} from '@trinity/components/generic-content';
 import {
   AvatarComponent,
   type AccountBadge,
@@ -43,7 +32,6 @@ import {
   normalizeRoomFilter,
   RoomLibraryService,
   SpacesService,
-  TRINITY_ROOM_SORTS,
   type RoomSortMode,
   type RoomSummary,
   type SpaceChildRoom,
@@ -53,6 +41,10 @@ import {
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
 import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
+import {
+  SidebarSpaceHeaderComponent,
+  type SidebarSpaceAction,
+} from './sidebar-space-header/sidebar-space-header.component';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
 /** Discord channel sidebar: space header, invites, and room list. */
@@ -62,23 +54,13 @@ import { TrnIconComponent } from '@trinity/components/foundations';
   imports: [
     TrnButton,
     TrnIconButton,
-    TrnActionAvailability,
     TrnTooltip,
     EmptyStateComponent,
     SidebarRoomListComponent,
+    SidebarSpaceHeaderComponent,
     AvatarComponent,
     TrnIconComponent,
     TrnInput,
-    TrnDropdownMenuTrigger,
-    TrnDropdownMenu,
-    TrnDropdownMenuItem,
-    TrnDropdownMenuItemSubIndicatorComponent,
-    TrnDropdownMenuLabel,
-    TrnDropdownMenuRadio,
-    TrnDropdownMenuRadioIndicatorComponent,
-    TrnDropdownMenuSeparator,
-    TrnDropdownMenuSub,
-    TrnDropdownMenuSubTrigger,
   ],
   templateUrl: './channel-sidebar.component.html',
   styleUrl: './channel-sidebar.component.scss',
@@ -291,16 +273,32 @@ export class ChannelSidebarComponent {
    */
   readonly setSortMode = output<RoomSortMode | null>();
 
-  /** The orderings offered in the "Order rooms" submenu. */
-  readonly sortModes = TRINITY_ROOM_SORTS;
-
-  /** What the "Order rooms" row announces — the effective order, override or not. */
-  readonly sortModeLabel = computed(() => this.labelFor(this.sortMode()));
-
-  /** An ordering's human label. */
-  labelFor(mode: RoomSortMode): string {
-    return TRINITY_ROOM_SORTS.find((option) => option.id === mode)?.label ?? '';
+  protected onSpaceAction(action: SidebarSpaceAction): void {
+    switch (action.kind) {
+      case 'open-switcher':
+        return this.openSwitcher.emit();
+      case 'create-room':
+        return this.createRoom.emit();
+      case 'mark-all-read':
+        return this.markAllRead.emit();
+      case 'new-chat':
+        return this.newChat.emit(action.anchor);
+      case 'invite':
+        return this.inviteToSpace.emit();
+      case 'members':
+        return this.openSpaceMembers.emit();
+      case 'add-rooms':
+        return this.addToSpace.emit();
+      case 'manage-rooms':
+        return this.manageSpaceRooms.emit();
+      case 'create-subspace':
+        return this.createSubspace.emit();
+      case 'settings':
+        return this.openSpaceSettings.emit();
+      case 'leave':
+        return this.leaveSpace.emit();
+      case 'sort':
+        return this.setSortMode.emit(action.mode);
+    }
   }
-
-  /** Cap an unread count for a room-row badge, Discord-style ("99+"). */
 }
