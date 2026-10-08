@@ -3,7 +3,11 @@
     Editing message — <kbd>Esc</kbd> to cancel
     <button
       type="button"
-      trnIconButton
+      trnBtn
+      shape="icon"
+      presentation="ghost"
+      variant="secondary"
+      size="sm"
       class="composer__cancel"
       aria-label="Cancel edit"
       (click)="cancelEdit.emit()"
@@ -16,7 +20,11 @@
     Replying to <strong>{{ replyingTo() }}</strong>
     <button
       type="button"
-      trnIconButton
+      trnBtn
+      shape="icon"
+      presentation="ghost"
+      variant="secondary"
+      size="sm"
       class="composer__cancel"
       aria-label="Cancel reply"
       (click)="cancelReply.emit()"

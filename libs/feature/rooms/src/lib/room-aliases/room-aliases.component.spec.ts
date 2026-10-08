@@ -128,7 +128,7 @@ describe('RoomAliasesComponent', () => {
     const { container, fixture } = await build({}, { localAliases });
 
     expect(
-      container.querySelector('trn-empty-state[role="status"]')?.textContent,
+      container.querySelector('trn-empty-state[role="alert"]')?.textContent,
     ).toContain('Addresses could not be loaded');
     (
       container.querySelector(

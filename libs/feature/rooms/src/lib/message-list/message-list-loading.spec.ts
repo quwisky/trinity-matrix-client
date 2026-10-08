@@ -248,6 +248,8 @@ describe.each(LISTS)(
       const panel = emptyState(container);
       expect(panel?.getAttribute('data-testid')).toBe('timeline-load-error');
       expect(panel?.getAttribute('role')).toBe('alert');
+      expect(container.querySelectorAll('trn-empty-state')).toHaveLength(1);
+      expect(container.textContent).not.toContain('No messages yet');
       (
         container.querySelector(
           '[data-testid="timeline-load-retry"]',

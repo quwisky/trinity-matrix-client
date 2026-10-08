@@ -24,7 +24,6 @@ import {
   TrnDropdownMenuTrigger,
 } from '@trinity/components/overlay';
 import { type PresenceState, initialOf } from '@trinity/util/matrix';
-import { accountInitial } from '../../shared/account-initial';
 import { AccountPickLabelComponent } from '../../shared/account-pick-label/account-pick-label.component';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
 import { TrnIconComponent } from '@trinity/components/foundations';
@@ -79,7 +78,7 @@ export class SidebarUserPanelComponent {
   /** The signed-in user's presence for the avatar dot; null (unknown) draws no dot. */
   readonly presence = input<PresenceState | null>(null);
   /** First letter of the display name, for the avatar fallback. */
-  readonly userInitial = computed(() => accountInitial(this.user()));
+  readonly userInitial = computed(() => initialOf(this.user().displayName));
   /** Every signed-in account, for the switcher list. */
   readonly accounts = input<AccountSummary[]>([]);
   /** The user id of the account currently in view (marked with a check). */
@@ -145,7 +144,7 @@ export class SidebarUserPanelComponent {
 
   /** First letter of an account's display name, for its avatar fallback. */
   initialFor(account: AccountSummary): string {
-    return accountInitial(account);
+    return initialOf(account.displayName);
   }
 
   /** First letter of a signed-out account's Matrix ID for its avatar fallback. */

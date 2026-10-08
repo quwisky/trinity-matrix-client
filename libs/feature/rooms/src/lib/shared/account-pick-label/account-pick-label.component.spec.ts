@@ -23,12 +23,12 @@ describe('AccountPickLabelComponent', () => {
     );
   });
 
-  it('falls back to the Matrix ID initial for an account with no visible name', async () => {
+  it('shows ? for an account with no visible name', async () => {
     const { container } = await render(AccountPickLabelComponent, {
       inputs: { account: { ...ACCOUNT, displayName: '' } },
     });
 
-    expect(container.querySelector('trn-avatar')?.textContent).toContain('A');
+    expect(container.querySelector('trn-avatar')?.textContent).toContain('?');
   });
 
   it('does not say "Always included" for an unlocked account', async () => {

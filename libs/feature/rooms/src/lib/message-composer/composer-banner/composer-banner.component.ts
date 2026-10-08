@@ -4,7 +4,7 @@ import {
   input,
   output,
 } from '@angular/core';
-import { TrnIconButton } from '@trinity/components/controls';
+import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
 /**
@@ -17,7 +17,7 @@ import { TrnIconComponent } from '@trinity/components/foundations';
 @Component({
   selector: 'trn-composer-banner',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnIconButton, TrnIconComponent],
+  imports: [TrnButton, TrnIconComponent],
   templateUrl: './composer-banner.component.html',
   styleUrl: './composer-banner.component.scss',
 })

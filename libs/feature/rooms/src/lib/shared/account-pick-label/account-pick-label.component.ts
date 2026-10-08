@@ -6,7 +6,7 @@ import {
 } from '@angular/core';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { type IdentityProfile } from '@trinity/data-access/identity';
-import { accountInitial } from '../account-initial';
+import { initialOf } from '@trinity/util/matrix';
 
 /**
  * The avatar, name and Matrix ID of an account in an "Accounts in view" row. Shared by
@@ -23,5 +23,5 @@ export class AccountPickLabelComponent {
   readonly account = input.required<IdentityProfile>();
   /** The account is always included, so the row says so. */
   readonly locked = input(false);
-  readonly initial = computed(() => accountInitial(this.account()));
+  readonly initial = computed(() => initialOf(this.account().displayName));
 }

@@ -29,7 +29,7 @@
     border-radius: var(--trinity-shape-control-radius);
     background: none;
     color: var(--trinity-text-muted);
-    font-size: 1.125rem;
+    font-size: var(--trinity-text-lg);
     cursor: pointer;
 
     &:hover {
@@ -63,7 +63,7 @@
   .composer__recording-time {
     flex: 1;
     color: var(--trinity-text-bright);
-    font-size: 0.875rem;
+    font-size: var(--trinity-text-sm);
     font-variant-numeric: tabular-nums;
   }
 
