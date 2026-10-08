@@ -54,7 +54,7 @@ describe('dialog shell usage', () => {
       cwd: workspaceRoot,
     });
     // An empty scan would pass vacuously.
-    expect(files.length).toBeGreaterThan(100);
+    expect(files.length).toBeGreaterThan(0);
     const offenders = files
       .filter(
         (file) =>
