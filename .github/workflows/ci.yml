@@ -20,9 +20,11 @@ on:
     branches: [main, 'release/**', 'renovate/patch-**']
   pull_request:
 
-# A newer push to the same branch makes the run in flight obsolete.
+# A newer push to the same branch makes the run in flight obsolete. The weekly cron run reports
+# to an issue and its ref is main too, so it gets its own group: a push must not cancel it, and
+# a cancelled run would open a false "Nightly E2E failing" issue.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'schedule' && '-schedule' || '' }}
   cancel-in-progress: true
 
 permissions:

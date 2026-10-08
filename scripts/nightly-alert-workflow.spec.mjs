@@ -29,6 +29,8 @@ describe('Nightly E2E failure issue', () => {
       expect(notify.with).toEqual({ needs: '${{ toJSON(needs) }}' });
       // Issue write access stays on the one job that files issues.
       expect(notify.permissions).toEqual({ issues: 'write' });
+      // No `secrets:` (nor `secrets: inherit`): the alert only needs the job's own token.
+      expect(notify).not.toHaveProperty('secrets');
       expect(workflow.permissions).toEqual({ contents: 'read' });
       for (const id of needs) expect(workflow.jobs[id], id).toBeDefined();
     },
@@ -41,6 +43,17 @@ describe('Nightly E2E failure issue', () => {
     for (const file of scheduled) {
       expect(Object.keys(NIGHTLY), file).toContain(file);
     }
+  });
+
+  it('keeps pushes to main from cancelling the weekly ci.yml run', () => {
+    // The cron run's ref is main, like a push to main. Left in the push group, a push cancels
+    // it mid-run and the alert reads that as a failure. Pushes and pull requests keep the
+    // plain `<workflow>-<ref>` group; only the scheduled run gets its own.
+    expect(yaml('ci.yml').concurrency).toEqual({
+      group:
+        "${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'schedule' && '-schedule' || '' }}",
+      'cancel-in-progress': true,
+    });
   });
 
   describe('reusable workflow', () => {
@@ -57,6 +70,11 @@ describe('Nightly E2E failure issue', () => {
       expect(job.permissions).toEqual({ issues: 'write' });
       expect(job.env.GH_TOKEN).toBe('${{ github.token }}');
       expect(job.steps.some((step) => step.uses)).toBe(false);
+    });
+
+    it('interpolates nothing into a shell script', () => {
+      // Expressions go through `env:`; a `${{ }}` inside `run:` would be shell-injectable.
+      expect(script()).not.toContain('${{');
     });
 
     it('opens or reuses one issue per workflow, comments, and closes it when green', () => {
