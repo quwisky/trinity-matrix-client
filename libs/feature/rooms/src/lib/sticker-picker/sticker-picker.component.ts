@@ -9,6 +9,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { StickerImageComponent } from '../sticker-image/sticker-image.component';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
@@ -17,7 +18,11 @@ import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
 @Component({
   selector: 'trn-sticker-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [StickerImageComponent, TrnOverlaySurfaceDirective],
+  imports: [
+    EmptyStateComponent,
+    StickerImageComponent,
+    TrnOverlaySurfaceDirective,
+  ],
   templateUrl: './sticker-picker.component.html',
   styleUrl: './sticker-picker.component.scss',
 })

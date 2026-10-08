@@ -16,7 +16,10 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AvatarComponent } from '@trinity/components/generic-content';
+import {
+  AvatarComponent,
+  EmptyStateComponent,
+} from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import {
@@ -48,6 +51,7 @@ export interface RoomLinkPreviewResult {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AvatarComponent,
+    EmptyStateComponent,
     TrnButton,
     TrnIconComponent,
     TrnSpinnerComponent,

@@ -73,18 +73,6 @@ $below-md: '(max-width: 767.98px)';
   overflow: hidden;
 }
 
-@mixin picker-status {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--trinity-space-4);
-  padding: var(--trinity-space-5);
-  color: var(--trinity-text-muted);
-  font-size: var(--trinity-type-body-size);
-  line-height: var(--trinity-type-body-line-height);
-  text-align: center;
-}
-
 /// Full-height vertical column surface.
 @mixin column($background) {
   height: 100%;

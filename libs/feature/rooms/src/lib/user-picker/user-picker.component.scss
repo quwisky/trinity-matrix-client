@@ -18,8 +18,4 @@
     padding: var(--trinity-space-3);
     text-align: start;
   }
-
-  .picker-status {
-    @include picker-status;
-  }
 }

@@ -16,7 +16,10 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnSpinnerComponent } from '@trinity/components/generic-content';
+import {
+  EmptyStateComponent,
+  TrnSpinnerComponent,
+} from '@trinity/components/generic-content';
 import { EditHistoryService } from '@trinity/data-access/timeline';
 import {
   annotateRevision,
@@ -55,6 +58,7 @@ const REFRESH_DELAY_MS = 600;
   templateUrl: './edit-history.component.html',
   styleUrl: './edit-history.component.scss',
   imports: [
+    EmptyStateComponent,
     MatrixHtmlDirective,
     TrnButton,
     TrnSpinnerComponent,

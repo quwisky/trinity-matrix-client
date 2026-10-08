@@ -102,3 +102,61 @@ describe('banner recipe adoption', () => {
     );
   });
 });
+
+describe('empty-state recipe adoption: pickers and dialog states', () => {
+  const rooms = 'libs/feature/rooms/src/lib';
+
+  it('retires the picker-status mixin', () => {
+    expect(read(`${rooms}/styles/_mixins.scss`)).not.toMatch(
+      /@mixin picker-status\b/u,
+    );
+    for (const file of [
+      'gif-picker/gif-picker.component.scss',
+      'sticker-picker/sticker-picker.component.scss',
+      'user-picker/user-picker.component.scss',
+    ]) {
+      expect(read(`${rooms}/${file}`), file).not.toMatch(
+        /@include picker-status\b/u,
+      );
+    }
+  });
+
+  it('shows picker loading and no-result states as line empty states', () => {
+    for (const [file, text] of [
+      ['gif-picker/gif-picker.component.html', 'No GIFs found.'],
+      ['gif-picker/gif-picker.component.html', 'Loading…'],
+      ['sticker-picker/sticker-picker.component.html', 'No stickers found.'],
+    ]) {
+      const tag = openingTag(`${rooms}/${file}`, `body="${text}"`);
+      expect(tag, file).toMatch(/^<trn-empty-state\b/u);
+      expect(tag, file).toMatch(/\blayout="line"/u);
+    }
+    const userPicker = read(`${rooms}/user-picker/user-picker.component.html`);
+    expect(userPicker).not.toMatch(/class="picker-status"/u);
+    expect(userPicker).toMatch(
+      /<trn-empty-state\b[^>]*layout="line"[^>]*>\s*<trn-spinner\b/u,
+    );
+  });
+
+  it('gives edit history and the room preview panel states', () => {
+    const history = `${rooms}/edit-history/edit-history.component`;
+    expect(read(`${history}.html`)).not.toMatch(/class="center"/u);
+    const historyError = openingTag(
+      `${history}.html`,
+      'data-testid="edit-history-error"',
+    );
+    expect(historyError).toMatch(/^<trn-empty-state\b/u);
+    expect(historyError).toMatch(/\bvariant="danger"/u);
+
+    const preview = `${rooms}/room-link-preview/room-link-preview.component`;
+    const loadError = openingTag(
+      `${preview}.html`,
+      'data-testid="room-link-load-error"',
+    );
+    expect(loadError).toMatch(/^<trn-empty-state\b/u);
+    expect(loadError).toMatch(/\bvariant="danger"/u);
+    expect(styleRule(`${preview}.scss`, '.room-preview__status')).not.toMatch(
+      /\b(?:color|text-align|gap)\s*:/u,
+    );
+  });
+});

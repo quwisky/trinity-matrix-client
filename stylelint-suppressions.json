@@ -59,11 +59,6 @@
       "count": 3
     }
   },
-  "libs/feature/rooms/src/lib/edit-history/edit-history.component.scss": {
-    "declaration-property-value-disallowed-list": {
-      "count": 1
-    }
-  },
   "libs/feature/rooms/src/lib/jump-to-date/jump-to-date.component.scss": {
     "declaration-property-value-disallowed-list": {
       "count": 2
