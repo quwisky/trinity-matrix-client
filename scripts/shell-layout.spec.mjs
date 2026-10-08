@@ -43,6 +43,9 @@ const railCss = read(
 const sidebarCss = read(
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.scss',
 );
+const headerCss = read(
+  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-space-header/sidebar-space-header.component.scss',
+);
 const roomListCss = read(
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.scss',
 );
@@ -98,7 +101,7 @@ describe('modern room shell layout contracts', () => {
     }
     expect(ruleBody(railCss, '.rail')).toContain(app);
     expect(ruleBody(sidebarCss, '.sidebar')).toContain(sidebarSurface);
-    expect(ruleBody(sidebarCss, '.sidebar__header')).toContain(
+    expect(ruleBody(headerCss, '.sidebar__header')).toContain(
       'background: var(--trinity-surface-navigation-header)',
     );
     expect(ruleBody(userPanelCss, '.userbar')).toContain(
@@ -165,7 +168,7 @@ describe('modern room shell layout contracts', () => {
   it('keeps every raw shell control on the shared coarse-pointer floor', () => {
     const controls = [
       [railCss, '.pill'],
-      [sidebarCss, '.sidebar__action'],
+      [headerCss, '.sidebar__action'],
       [sidebarCss, '.sidebar__filter-clear'],
       [roomListCss, '.invite__btn'],
       [roomRowCss, '.channel'],
