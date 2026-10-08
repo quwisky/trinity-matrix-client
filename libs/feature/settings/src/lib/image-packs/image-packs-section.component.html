@@ -90,9 +90,11 @@
           </div>
         </article>
       } @empty {
-        <p class="packs__empty" data-testid="no-installed-image-packs">
-          You have no image packs installed yet.
-        </p>
+        <trn-empty-state
+          layout="line"
+          body="You have no image packs installed yet."
+          data-testid="no-installed-image-packs"
+        />
       }
     </section>
   </trn-settings-group>

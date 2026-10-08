@@ -6,13 +6,16 @@
 
 <trn-settings-group title="Widgets in this room">
   @if (widgets().length === 0) {
-    <p class="room-widgets__note" data-testid="room-settings-widgets-empty">
-      {{
+    <trn-empty-state
+      layout="line"
+      class="room-widgets__note"
+      data-testid="room-settings-widgets-empty"
+      [body]="
         available()
           ? 'No widgets are declared in this room.'
           : 'No last-known widgets are available.'
-      }}
-    </p>
+      "
+    />
   } @else {
     <p class="room-widgets__note">
       Widgets are third-party websites. Trinity shows the room’s declaration

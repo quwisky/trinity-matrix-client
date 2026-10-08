@@ -32,7 +32,7 @@
   {{ count() }} {{ count() === 1 ? 'section' : 'sections' }} found
 </p>
 @if (count() === 0) {
-  <p class="mt-2 text-sm text-muted-foreground">No sections found.</p>
+  <trn-empty-state layout="line" class="mt-2" body="No sections found." />
 }
 @if (partResults().length) {
   <ul class="m-0 mt-2 list-none p-0" aria-label="Matching settings">

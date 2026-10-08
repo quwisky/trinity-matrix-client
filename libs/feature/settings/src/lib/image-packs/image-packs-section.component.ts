@@ -47,6 +47,7 @@ import {
   TrnSettingsGroupComponent,
 } from '@trinity/components/overlay';
 import { shownError } from '@trinity/util/ui';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 
 interface SourceFormModel {
   source: string;
@@ -56,6 +57,7 @@ interface SourceFormModel {
   selector: 'trn-image-packs-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    EmptyStateComponent,
     TrnCardImports,
     TrnSettingsGroupComponent,
     FormField,

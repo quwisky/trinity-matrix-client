@@ -36,6 +36,7 @@ import { TrnButton } from '@trinity/components/controls';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { RoomWidgetFrameComponent } from './room-widget-frame/room-widget-frame.component';
 import { RoomWidgetCreateComponent } from './room-widget-create/room-widget-create.component';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 
 interface WidgetEntry {
   readonly widget: RoomWidget;
@@ -47,7 +48,12 @@ interface WidgetEntry {
 @Component({
   selector: 'trn-room-widgets',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnSettingsGroupComponent, RoomWidgetCreateComponent],
+  imports: [
+    EmptyStateComponent,
+    TrnButton,
+    TrnSettingsGroupComponent,
+    RoomWidgetCreateComponent,
+  ],
   templateUrl: './room-widgets.component.html',
   styleUrl: './room-widgets.component.scss',
 })

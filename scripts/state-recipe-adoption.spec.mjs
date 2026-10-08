@@ -160,3 +160,70 @@ describe('empty-state recipe adoption: pickers and dialog states', () => {
     );
   });
 });
+
+describe('empty-state recipe adoption: lists', () => {
+  const lineSites = [
+    [
+      'libs/feature/rooms/src/lib/room-directory/room-directory.component.html',
+      'data-testid="directory-empty"',
+    ],
+    [
+      'libs/feature/rooms/src/lib/room-directory/room-directory.component.html',
+      'data-testid="directory-loading"',
+    ],
+    [
+      'libs/feature/rooms/src/lib/room-settings/room-widgets.component.html',
+      'data-testid="room-settings-widgets-empty"',
+    ],
+    [
+      'libs/feature/rooms/src/lib/banned-members/banned-members.component.html',
+      'data-testid="banned-members-empty"',
+    ],
+    [
+      'libs/feature/rooms/src/lib/room-state-viewer/room-state-viewer.component.html',
+      'data-testid="state-viewer-empty"',
+    ],
+    [
+      'libs/feature/settings/src/lib/image-packs/image-packs-section.component.html',
+      'data-testid="no-installed-image-packs"',
+    ],
+    [
+      'libs/feature/settings/src/lib/notifications/keyword-rules-block.component.html',
+      'data-testid="keyword-empty"',
+    ],
+    [
+      'libs/feature/settings/src/lib/shared/settings-directory-search/settings-directory-search.component.html',
+      'body="No sections found."',
+    ],
+  ];
+
+  it.each(lineSites)('%s shows %s as a line empty state', (file, marker) => {
+    const tag = openingTag(file, marker);
+    expect(tag).toMatch(/^<trn-empty-state\b/u);
+    expect(tag).toMatch(/\blayout="line"/u);
+  });
+
+  it('gives System Status its all-clear as a titled panel', () => {
+    const tag = openingTag(
+      'libs/application/runtime/src/lib/application-root/system-status/system-status.component.html',
+      'data-testid="system-status-all-working"',
+    );
+    expect(tag).toMatch(/^<trn-empty-state\b/u);
+    expect(tag).toMatch(/\btitleAs="h2"/u);
+  });
+
+  it('marks the pinned and threads panels with an icon', () => {
+    expect(
+      openingTag(
+        'libs/feature/rooms/src/lib/pinned/pinned-messages-panel.component.html',
+        'data-testid="pinned-empty"',
+      ),
+    ).toMatch(/\bicon="pin"/u);
+    expect(
+      openingTag(
+        'libs/feature/rooms/src/lib/thread/threads-list.component.html',
+        'body="No threads in this room yet."',
+      ),
+    ).toMatch(/\bicon="messages-square"/u);
+  });
+});

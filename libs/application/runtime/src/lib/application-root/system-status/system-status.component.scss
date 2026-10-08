@@ -21,7 +21,6 @@
 
   .system-status__intro,
   .system-status__entry p,
-  .system-status__empty p,
   .system-status__support p {
     color: var(--trinity-text-muted);
     font-size: var(--trinity-type-caption-size);
@@ -33,8 +32,7 @@
     margin-top: 1.5rem;
   }
 
-  .system-status__group > h2,
-  .system-status__empty h2 {
+  .system-status__group > h2 {
     margin-bottom: 0.75rem;
     font-size: var(--trinity-type-control-size);
     font-weight: 700;

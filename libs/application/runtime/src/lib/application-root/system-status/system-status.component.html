@@ -75,14 +75,14 @@
       @if (
         status.startupBlockers().length === 0 && status.groups().length === 0
       ) {
-        <section
+        <trn-empty-state
           class="system-status__empty"
+          titleAs="h2"
           role="status"
           data-testid="system-status-all-working"
-        >
-          <h2>All systems are working</h2>
-          <p>There are no active capability problems.</p>
-        </section>
+          title="All systems are working"
+          body="There are no active capability problems."
+        />
       } @else {
         @if (selectedSection() === 'overview') {
           <p class="system-status__count" aria-live="polite">
