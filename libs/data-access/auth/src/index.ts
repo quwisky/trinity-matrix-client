@@ -17,3 +17,8 @@ export type {
 // boundary. `AuthMetadata` is the name this workspace uses; only this line tracks theirs.
 export type { ValidatedAuthMetadata as AuthMetadata } from 'matrix-js-sdk';
 export * from './lib/homeserver-discovery.port';
+export { OidcStateStore } from './lib/oidc-state.store';
+export type { OidcStateSave, OidcStateStash } from './lib/oidc-state.store';
+export { SsoStateStore } from './lib/sso-state.store';
+export type { SsoStateStash } from './lib/sso-state.store';
+export { SignInRedirectService } from './lib/sign-in-redirect.service';
