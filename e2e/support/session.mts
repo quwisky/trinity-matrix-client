@@ -50,6 +50,14 @@ export interface HomeserverSessionDescriptor {
   readonly unavailable?: readonly HomeserverFeature[];
   /** Caddy's local root certificate, for hosts that must trust it (the iOS Simulator). */
   readonly caddyRoot?: string;
+  /** The opt-in MAS stack's account (TRINITY_E2E_MAS=1); absent when it is not running. */
+  readonly mas?: {
+    readonly hs: string;
+    readonly serverName: string;
+    readonly issuer: string;
+    readonly user: string;
+    readonly pass: string;
+  };
 }
 
 export interface E2ESessionDescriptor {
@@ -140,6 +148,16 @@ function assertHomeserver(
     }
     if (withheld.has('remote') && value['secondary'] !== undefined) {
       throw new Error('E2E session both offers and withholds remote');
+    }
+    const mas = value['mas'];
+    if (
+      mas !== undefined &&
+      (!isObject(mas) ||
+        (['hs', 'serverName', 'issuer', 'user', 'pass'] as const).some(
+          (key) => typeof mas[key] !== 'string' || mas[key] === '',
+        ))
+    ) {
+      throw new Error('E2E session has an invalid MAS account');
     }
     if (
       value['caddyRoot'] !== undefined &&

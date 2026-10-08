@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import {
   DATA,
+  MAS_DATA,
   REMOTE_DATA,
   STATE_DIR,
   composeFiles,
@@ -74,7 +75,8 @@ export async function stop({ keepData = false, signal } = {}) {
         'docker',
         [
           'compose',
-          ...composeFiles(teardownKind(), networkContainer),
+          // Always name the MAS services, whatever TRINITY_E2E_MAS is now.
+          ...composeFiles(teardownKind(), networkContainer, { mas: true }),
           'down',
           '-v',
           '--remove-orphans',
@@ -100,8 +102,9 @@ export async function stop({ keepData = false, signal } = {}) {
       await Promise.all([
         rm(DATA, { recursive: true, force: true }),
         rm(REMOTE_DATA, { recursive: true, force: true }),
+        rm(MAS_DATA, { recursive: true, force: true }),
       ]);
-      log('removed ./data and ./remote-data');
+      log('removed ./data, ./remote-data and ./mas-data');
     } catch (err) {
       failures.push(err);
     }

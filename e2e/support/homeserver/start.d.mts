@@ -27,11 +27,28 @@ export declare const SSO_PASS: string;
 export declare const SSO_USER: string;
 export declare const SSO_RESET_EMAIL: string;
 export declare const SSO_RESET_USER: string;
+export declare const MAS_HS_TLS: string;
+export declare const MAS_SERVER_NAME: string;
+export declare const MAS_ISSUER: string;
+export declare const MAS_SHARED_SECRET: string;
+export declare const MAS_USER: string;
+export declare const MAS_PASS: string;
 
 /** A Dex-backed account: the homeserver creates it on the first completed round-trip. */
 export interface HomeserverSsoAccount {
   user: string;
   email: string;
+  pass: string;
+}
+
+/** The seeded account on the opt-in MAS stack (TRINITY_E2E_MAS=1). */
+export interface HomeserverMasAccount {
+  /** The delegating homeserver's TLS base URL. */
+  hs: string;
+  serverName: string;
+  /** MAS's issuer, with its trailing slash. */
+  issuer: string;
+  user: string;
   pass: string;
 }
 
@@ -60,6 +77,7 @@ export interface HomeserverHarness {
   sso?: HomeserverSsoAccount;
   /** A second SSO account, permanently seeded for the recovery-reset spec. */
   ssoReset?: HomeserverSsoAccount;
+  mas?: HomeserverMasAccount;
   /** Caddy's local root certificate (native runtime), for hosts that must trust it. */
   caddyRoot?: string;
 }

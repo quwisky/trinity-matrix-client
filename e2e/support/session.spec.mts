@@ -198,4 +198,25 @@ describe('E2E session contract', () => {
       }),
     ).toThrow(/Caddy root/);
   });
+
+  it('carries the MAS account and rejects an incomplete one', () => {
+    const value = descriptor('/workspace');
+    const mas = {
+      hs: 'https://localhost:8450',
+      serverName: 'localhost:8450',
+      issuer: 'https://localhost:8451/',
+      user: 'mas-e2e',
+      pass: 'p',
+    };
+    expect(
+      validateSession({ ...value, homeserver: { ...value.homeserver!, mas } })
+        .homeserver?.mas,
+    ).toEqual(mas);
+    expect(() =>
+      validateSession({
+        ...value,
+        homeserver: { ...value.homeserver!, mas: { ...mas, pass: '' } },
+      }),
+    ).toThrow(/invalid MAS account/);
+  });
 });

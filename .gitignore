@@ -113,6 +113,7 @@ storybook-static
 /e2e/**/*-snapshots/
 /e2e/support/homeserver/data/
 /e2e/support/homeserver/remote-data/
+/e2e/support/homeserver/mas-data/
 /e2e/support/homeserver/native-venv/
 
 # Repo-local APPIUM_HOME (pinned drivers and downloaded chromedrivers)

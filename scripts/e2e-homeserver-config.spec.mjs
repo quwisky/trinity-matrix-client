@@ -15,7 +15,13 @@ import {
   HOMESERVER_RUNTIMES,
   resolveHomeserverKind,
   resolveHomeserverRuntime,
+  resolveMasEnabled,
 } from '../e2e/support/homeserver/kind.mts';
+import {
+  MAS_HS_TLS,
+  MAS_ISSUER,
+  MAS_SERVER_NAME,
+} from '../e2e/support/homeserver/constants.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
 const HERE = 'e2e/support/homeserver';
@@ -234,5 +240,103 @@ describe('Synapse adapter config generation', () => {
     const yaml = readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8');
     expect(yaml).toContain('idp_id: dex');
     expect(yaml).toContain('url_preview_ip_range_blacklist: []');
+  });
+});
+
+describe('Opt-in MAS stack', () => {
+  const masCompose = () => parse(read(`${HERE}/mas/docker-compose.yml`));
+  const masConfig = () => parse(read(`${HERE}/mas/mas.yaml`));
+
+  it('is off unless TRINITY_E2E_MAS=1, and runs only on Docker', () => {
+    expect(resolveMasEnabled({})).toBe(false);
+    expect(resolveMasEnabled({ TRINITY_E2E_MAS: '0' })).toBe(false);
+    expect(resolveMasEnabled({ TRINITY_E2E_MAS: '1' })).toBe(true);
+    expect(() => resolveMasEnabled({ TRINITY_E2E_MAS: 'yes' })).toThrow(
+      /TRINITY_E2E_MAS/,
+    );
+    expect(() =>
+      resolveMasEnabled({
+        TRINITY_E2E_MAS: '1',
+        TRINITY_E2E_HOMESERVER: 'synapse',
+        TRINITY_E2E_HOMESERVER_RUNTIME: 'native',
+      }),
+    ).toThrow(/Docker/);
+  });
+
+  it('layers its compose file only when enabled', async () => {
+    const { composeFiles } =
+      await import('../e2e/support/homeserver/paths.mjs');
+    expect(composeFiles('tuwunel', '').join(' ')).not.toContain(
+      'mas/docker-compose.yml',
+    );
+    expect(composeFiles('tuwunel', '', { mas: true }).join(' ')).toContain(
+      'mas/docker-compose.yml',
+    );
+  });
+
+  it('pins MAS, PostgreSQL and the Synapse the Synapse adapter runs', () => {
+    const { services } = masCompose();
+    expect(services.mas.image).toBe(
+      'ghcr.io/element-hq/matrix-authentication-service:1.26.0',
+    );
+    expect(services['mas-db'].image).toBe('postgres:17.6-alpine');
+    expect(services['homeserver-mas'].image).toBe(
+      parse(read(`${HERE}/synapse/docker-compose.yml`)).services.homeserver
+        .image,
+    );
+  });
+
+  it("issues 60 s access tokens and accepts the web app's registration", () => {
+    const config = masConfig();
+    expect(config.experimental.access_token_ttl).toBe(60);
+    expect(config.policy.data.client_registration).toEqual({
+      allow_insecure_uris: true,
+      allow_host_mismatch: true,
+    });
+    expect(config.http).toEqual({
+      public_base: MAS_ISSUER,
+      issuer: MAS_ISSUER,
+    });
+    expect(config.matrix).toMatchObject({
+      homeserver: MAS_SERVER_NAME,
+      endpoint: 'http://homeserver-mas:8008/',
+    });
+    // Secrets and signing keys are generated into mas-data at start, never committed.
+    expect(config.secrets).toBeUndefined();
+  });
+
+  it('delegates its Synapse to MAS with the shared secret, once', async () => {
+    const { delegateToMas } =
+      await import('../e2e/support/homeserver/mas/adapter.mjs');
+    const generated =
+      'server_name: "localhost:8450"\ntrusted_key_servers:\n  - server_name: "matrix.org"\n';
+    const once = delegateToMas(generated);
+    expect(delegateToMas(once)).toBe(once);
+    const yaml = parse(once);
+    expect(yaml.matrix_authentication_service).toEqual({
+      enabled: true,
+      endpoint: 'http://mas:8080/',
+      secret: masConfig().matrix.secret,
+    });
+    expect(yaml.password_config).toEqual({ enabled: false });
+    expect(yaml.trusted_key_servers).toEqual([]);
+    expect(yaml.public_baseurl).toBe(`${MAS_HS_TLS}/`);
+  });
+
+  it('serves its Synapse on 8008, not the port generate derives', async () => {
+    const { delegateToMas } =
+      await import('../e2e/support/homeserver/mas/adapter.mjs');
+    // Synapse's `generate` listens on the server name's port minus 400: 8050 here.
+    const generated =
+      'server_name: "localhost:8450"\nlisteners:\n  - port: 8050\n    type: http\n';
+    expect(parse(delegateToMas(generated)).listeners[0].port).toBe(8008);
+  });
+
+  it('fronts the MAS homeserver and MAS on TLS', () => {
+    const caddy = read(`${HERE}/Caddyfile`);
+    expect(caddy).toContain('https://localhost:8450 {');
+    expect(caddy).toContain('reverse_proxy homeserver-mas:8008');
+    expect(caddy).toContain('https://localhost:8451 {');
+    expect(caddy).toContain('reverse_proxy mas:8080');
   });
 });
