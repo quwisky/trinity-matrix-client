@@ -7,17 +7,9 @@ import {
   model,
   output,
 } from '@angular/core';
+import { TrnIconButton, TrnInput } from '@trinity/components/controls';
 import {
-  TrnButton,
-  TrnIconButton,
-  TrnInput,
-} from '@trinity/components/controls';
-import {
-  EmptyStateComponent,
   TrnTooltip,
-} from '@trinity/components/generic-content';
-import {
-  AvatarComponent,
   type AccountBadge,
 } from '@trinity/components/generic-content';
 import {
@@ -40,6 +32,7 @@ import {
   RoomNotificationsService,
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
+import { SpaceChildrenListComponent } from './space-children-list/space-children-list.component';
 import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
 import {
   SidebarSpaceHeaderComponent,
@@ -52,13 +45,11 @@ import { TrnIconComponent } from '@trinity/components/foundations';
   selector: 'trn-channel-sidebar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    TrnButton,
     TrnIconButton,
     TrnTooltip,
-    EmptyStateComponent,
     SidebarRoomListComponent,
     SidebarSpaceHeaderComponent,
-    AvatarComponent,
+    SpaceChildrenListComponent,
     TrnIconComponent,
     TrnInput,
   ],
@@ -125,7 +116,7 @@ export class ChannelSidebarComponent {
   readonly filterQuery = model('');
 
   /** The folded query, computed once per keystroke rather than once per row below. */
-  private readonly normalizedFilter = computed(() =>
+  protected readonly normalizedFilter = computed(() =>
     normalizeRoomFilter(this.filterQuery()),
   );
 
@@ -169,9 +160,7 @@ export class ChannelSidebarComponent {
   /** Sub-spaces of the active space (joined → Open, otherwise Join). */
   readonly childSpaces = this.spacesSvc.childSpaces;
 
-  // The filter box sits above the whole scroll area, so it narrows everything under it —
-  // not just the joined rooms. A box that visibly ignored the two lists below the fold
-  // would read as broken.
+  // Only counted here, for the live region: `trn-space-children-list` renders the rows.
   protected readonly filteredJoinableRooms = computed(() =>
     this.joinableRooms().filter((child) =>
       matchesRoomFilter(child.name, this.normalizedFilter()),
@@ -182,10 +171,6 @@ export class ChannelSidebarComponent {
       matchesRoomFilter(child.name, this.normalizedFilter()),
     ),
   );
-  /** Whether the active space's child hierarchy is still loading. */
-  readonly childrenLoading = this.spacesSvc.childrenLoading;
-  /** Non-null when the active space's child hierarchy failed to load. */
-  readonly childrenError = this.spacesSvc.childrenError;
   /** Pending invites from the same selected generation as the Room and Space lists. */
   readonly invites = computed<readonly PendingInvite[]>(
     () => this.selectedLibrary.view().invitations,

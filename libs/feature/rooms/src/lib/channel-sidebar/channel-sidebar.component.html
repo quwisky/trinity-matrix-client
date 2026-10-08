@@ -85,100 +85,11 @@
       (priorityChange)="priorityChange.emit($event)"
     />
     @if (spaceActive()) {
-      @if (childrenLoading()) {
-        <!-- Pending and failed, not empty — the same line in the same place, which is why the
-             one rule styled all three. `variant="danger"` is what makes the failure read as one
-             without reaching for `--destructive`, whose dark value is a near-black maroon. -->
-        <trn-empty-state layout="line" body="Loading rooms…" />
-      } @else if (childrenError()) {
-        <trn-empty-state
-          layout="line"
-          variant="danger"
-          body="Couldn’t load this space’s rooms."
-        />
-      } @else {
-        @if (filteredJoinableRooms().length) {
-          <div class="category">More rooms</div>
-          @for (child of filteredJoinableRooms(); track child.roomId) {
-            <div class="joinable">
-              <span class="joinable__hash">#</span>
-              <div class="joinable__text">
-                <span
-                  class="joinable__name"
-                  [trnTooltip]="child.topic || child.name"
-                  >{{ child.name }}</span
-                >
-                @if (child.suggested) {
-                  <span class="joinable__tag">Suggested</span>
-                }
-              </div>
-              <button
-                trnBtn
-                variant="secondary"
-                presentation="outline"
-                size="sm"
-                class="joinable__action"
-                (click)="joinRoom.emit(child)"
-                [attr.aria-label]="'Join ' + child.name"
-                [attr.data-testid]="'join-child-' + child.roomId"
-              >
-                Join
-              </button>
-            </div>
-          }
-        }
-
-        @if (filteredChildSpaces().length) {
-          <div class="category">Spaces</div>
-          @for (child of filteredChildSpaces(); track child.roomId) {
-            <div class="joinable joinable--space">
-              <trn-avatar
-                class="joinable__avatar"
-                [mxc]="child.avatarMxc"
-                [initial]="child.initial"
-                [name]="child.name"
-                size="sm"
-                shape="place"
-              />
-              <div class="joinable__text">
-                <span class="joinable__name" [trnTooltip]="child.name">{{
-                  child.name
-                }}</span>
-              </div>
-              @if (child.joined) {
-                <button
-                  trnBtn
-                  variant="secondary"
-                  presentation="outline"
-                  size="sm"
-                  class="joinable__action"
-                  (click)="
-                    openChildSpace.emit({
-                      spaceId: child.roomId,
-                      accountId: child.accountId,
-                    })
-                  "
-                  [attr.aria-label]="'Open ' + child.name"
-                >
-                  Open
-                </button>
-              } @else {
-                <button
-                  trnBtn
-                  variant="secondary"
-                  presentation="outline"
-                  size="sm"
-                  class="joinable__action"
-                  (click)="joinRoom.emit(child)"
-                  [attr.aria-label]="'Join ' + child.name"
-                >
-                  Join
-                </button>
-              }
-            </div>
-          }
-        }
-      }
+      <trn-space-children-list
+        [filter]="normalizedFilter()"
+        (join)="joinRoom.emit($event)"
+        (open)="openChildSpace.emit($event)"
+      />
     }
   </div>
 </div>

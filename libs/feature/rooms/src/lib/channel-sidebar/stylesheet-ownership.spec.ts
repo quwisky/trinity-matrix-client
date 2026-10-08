@@ -28,8 +28,10 @@ const ROW = join(
 );
 const LIST = join('sidebar-room-list', 'sidebar-room-list.component');
 const HEADER = join('sidebar-space-header', 'sidebar-space-header.component');
+const KIDS = join('space-children-list', 'space-children-list.component');
 const PAIRS = [
   [PARENT, HEADER],
+  [PARENT, KIDS],
   [PARENT, LIST],
   [PARENT, ROW],
   [LIST, ROW],
