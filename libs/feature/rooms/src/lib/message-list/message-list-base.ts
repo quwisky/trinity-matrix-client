@@ -432,7 +432,7 @@ export abstract class MessageListBase {
     return grouped;
   });
 
-  /** The rows both lists render. */
+  /** The grouped rows the list renders. */
   readonly rows = computed(() => this.grouping().rows);
 
   /** Member event id → the id of the group row that holds it. */

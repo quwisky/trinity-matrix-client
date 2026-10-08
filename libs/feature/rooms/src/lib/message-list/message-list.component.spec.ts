@@ -1277,7 +1277,7 @@ describe('MessageListComponent', () => {
 
   it('is a drop target too — this is the list that ships', async () => {
     // `DEFAULT_VIRTUAL_TIMELINE` is true, so this is the list users get. The drop wiring was
-    // covered only on the simple list, which means removing `hostDirectives` HERE would have
+    // covered by a spec for the old simple list only, so removing `hostDirectives` HERE would have
     // shipped green. The composer is mocked, so `stageFiles` is the seam: proving it is
     // called proves the directive, the subscription in the base and the viewChild together.
     const { fixture, container } = await renderList({
