@@ -71,3 +71,12 @@ in the developer guide.
 Report problems on [GitHub Issues](https://github.com/quwisky/trinity-matrix-client/issues).
 
 <!-- x-release-please-end -->
+
+## Server requirements {#server-requirements}
+
+Signing in through your server's own sign-in page (OAuth 2.0, also called
+next-generation authentication) needs Synapse 1.138 or newer when the server uses
+Matrix Authentication Service (MAS). Tuwunel 1.6 or newer and Continuwuity 26.6
+or newer are fine. On an older Synapse with MAS, Trinity cannot offer that sign-in
+page, and an account that is already signed in is signed out the next time its
+access token expires.
