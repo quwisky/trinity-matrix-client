@@ -14,6 +14,7 @@ import {
 } from '@angular/core';
 import { DateTimeFormatService, isMobileOs } from '@trinity/platform-native';
 import { AvatarComponent } from '@trinity/components/generic-content';
+import { MatrixHtmlDirective } from '../message-presentation/matrix-html.directive';
 import {
   MessageSwipeDirective,
   SWIPE_DEAD_ZONE_PX,
