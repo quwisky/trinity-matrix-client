@@ -62,7 +62,7 @@ async function renderRows(
 }
 
 describe('SidebarRoomListComponent rows', () => {
-  it('re-reads a row’s notification level only when that row changes', async () => {
+  it('re-reads the notification level of only the rows whose summary object changed', async () => {
     const a = room({ id: '!a:hs' });
     const b = room({ id: '!b:hs', name: 'other' });
     const { fixture } = await renderRows([a, b]);

@@ -59,10 +59,13 @@ export type SidebarRoomAction =
  * One room in the sidebar list: the select button, the kebab and its menu with the
  * Notifications submenu.
  *
- * Everything the old row template computed per change detection (`typingIn`, `presenceOf`,
- * `notifyMode`, the badge label) is a `computed()` here, so a list update that leaves this
- * row's inputs alone leaves its derived state alone too. The host is `display: contents`
- * so `.channel-row` lays out as a direct child of the scrolling list.
+ * Everything the old row template called per change detection (`typingIn`, `presenceOf`,
+ * `notifyMode`, the badge label) is a `computed()` here, so typing, active-room, presence,
+ * filter and style changes no longer re-run those helpers. It is not memoised across syncs:
+ * `projectSelectedRooms` rebuilds every `RoomSummary` on each sync, so every row's `room`
+ * input changes then and its computeds re-read the push rule and presence (a few cheap
+ * lookups). The host is `display: contents` so `.channel-row` lays out as a direct child of
+ * the scrolling list.
  */
 @Component({
   selector: 'trn-sidebar-room-row',

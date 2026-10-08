@@ -189,10 +189,10 @@ describe('ChannelSidebarComponent', () => {
       },
     });
     // Presence tracks the DM's other participant; a non-DM room gets null (no dot).
-    // The DM row renders a presence dot; the plain room does not.
-    expect(
-      fixture.nativeElement.querySelectorAll('.presence-dot'),
-    ).toHaveLength(1);
+    // The DM row renders its counterpart's presence dot; the plain room does not.
+    const dots = fixture.nativeElement.querySelectorAll('.presence-dot');
+    expect(dots).toHaveLength(1);
+    expect(dots[0].getAttribute('data-presence')).toBe('online');
   });
 
   it('lists rooms and emits selectRoom when one is clicked', async () => {

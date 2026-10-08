@@ -26,8 +26,9 @@ import {
 } from './sidebar-room-row/sidebar-room-row.component';
 
 /**
- * The scrolling body of the channel sidebar: pending invites, the favourite and
- * everything-else partitions, the empty state, and the `trn-sidebar-room-row`s both partitions render.
+ * The scrolling body of the channel sidebar: pending invites, the three room partitions
+ * (favourites, other, low priority), the empty state, and the `trn-sidebar-room-row`s
+ * those partitions render.
  *
  * Extracted from `ChannelSidebarComponent`, whose template was 561 lines — past the 250-300
  * refactor threshold in `.claude/rules/code-quality.md`, and the single region that every
@@ -163,6 +164,8 @@ export class SidebarRoomListComponent {
           accountIds,
           mode: action.mode,
         });
+      default:
+        action satisfies never;
     }
   }
 }

@@ -99,6 +99,23 @@ describe('SidebarRoomRowComponent', () => {
     expect(modeForAccounts).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    [99, '99'],
+    [100, '99+'],
+  ])('labels %i mentions as %s on the badge', async (highlightCount, label) => {
+    const { container } = await renderRow({
+      room: room({
+        hasUnread: true,
+        unreadCount: highlightCount,
+        highlightCount,
+      }),
+    });
+
+    expect(container.querySelector('[trnBadge]')!.textContent!.trim()).toBe(
+      label,
+    );
+  });
+
   it('shows the typing notice in place of the preview', async () => {
     const { container, fixture } = await renderRow({
       room: room({ lastMessage: 'hello' }),
