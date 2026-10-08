@@ -43,6 +43,7 @@ export class RoomAliasesController {
   private readonly destroyRef = inject(DestroyRef);
   private readonly removing = signal<ReadonlySet<string>>(new Set());
   private readonly confirmingRemoval = signal<ReadonlySet<string>>(new Set());
+  /** Set by {@link connect}, which must run before the controller is used. */
   private source!: RoomAliasesSource;
   private readonly aliasModel = signal({ localpart: '' });
   private readonly targetSwitch = latestGuard();
@@ -106,7 +107,7 @@ export class RoomAliasesController {
       });
   }
 
-  /** Bind the host's inputs. Called once from the host's constructor, before any read. */
+  /** Bind the host's inputs. Call before any other member; the host's constructor does. */
   connect(source: RoomAliasesSource): void {
     this.source = source;
   }

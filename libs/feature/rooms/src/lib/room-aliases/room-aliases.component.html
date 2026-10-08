@@ -93,19 +93,25 @@
       </p>
     }
   } @else {
+    <!-- role="list": Safari drops list semantics from a bullet-less list without it. -->
     <ul role="list" class="flex flex-col gap-2">
       @for (alias of controller.aliases(); track alias) {
-        <trn-room-alias-row
-          [alias]="alias"
-          [primary]="alias === controller.canonical()"
-          [canEdit]="permission.available"
-          [removing]="controller.isRemoving(alias)"
-          [confirming]="controller.isConfirmingRemoval(alias)"
-          [settingPrimary]="controller.settingPrimary()"
-          (copyAddress)="copy(alias, $event)"
-          (setPrimary)="controller.setPrimary(alias)"
-          (remove)="controller.remove(alias)"
-        />
+        <li
+          class="flex min-w-0 flex-col gap-3 rounded-md border border-border p-3"
+          data-testid="room-alias"
+        >
+          <trn-room-alias-row
+            [alias]="alias"
+            [primary]="alias === controller.canonical()"
+            [canEdit]="permission.available"
+            [removing]="controller.isRemoving(alias)"
+            [confirming]="controller.isConfirmingRemoval(alias)"
+            [settingPrimary]="controller.settingPrimary()"
+            (copyAddress)="copy(alias, $event)"
+            (setPrimary)="controller.setPrimary(alias)"
+            (remove)="controller.remove(alias)"
+          />
+        </li>
       }
     </ul>
   }

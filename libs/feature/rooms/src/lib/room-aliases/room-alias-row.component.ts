@@ -14,17 +14,14 @@ export function matrixToUrl(alias: string): string {
 
 /**
  * One published address: its value, a Primary badge, and Copy / Open link, plus Make primary
- * and Remove when `canEdit`. Presentational: it announces what was pressed and the host does it.
+ * and Remove when `canEdit`. Render it inside an `<li>`. Presentational: it announces what was pressed and the host does it.
  */
 @Component({
   selector: 'trn-room-alias-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './room-alias-row.component.html',
-  host: {
-    role: 'listitem',
-    class: 'flex min-w-0 flex-col gap-3 rounded-md border border-border p-3',
-    'data-testid': 'room-alias',
-  },
+  // The host's `<li>` owns the box and the list semantics; its children lay out in that flex column.
+  host: { class: 'contents' },
   imports: [TrnButton],
 })
 export class RoomAliasRowComponent {
