@@ -41,8 +41,10 @@ export interface ComposerDraftsPorts {
  * switch, the edit prefill, the persistence and the external mirror. They fire in creation
  * order within one change-detection pass when inputs move together, and the `untracked`
  * reads decide which inputs may re-fire them — reordering either changes what a draft
- * becomes. A plain class, like the other composer controllers; construct it in the
- * component's constructor.
+ * becomes. In particular, typing and an external draft landing in the same pass emit the
+ * typed text first and the external draft second (persistence before mirror); mirror-first
+ * would emit only the external one. A plain class, like the other composer controllers;
+ * construct it in the component's constructor.
  */
 export class ComposerDrafts {
   private wasEditing = false;

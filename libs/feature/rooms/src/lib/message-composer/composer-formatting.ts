@@ -71,13 +71,16 @@ export class ComposerFormatting {
   ) {
     // Formatting UI belongs to the exact Account, Conversation and editing target.
     // Draft persistence remains with its existing Conversation owner.
-    effect(() => {
-      ports.context();
-      untracked(() => {
-        this.selection = null;
-        ports.previewing.set(false);
-      });
-    });
+    effect(
+      () => {
+        ports.context();
+        untracked(() => {
+          this.selection = null;
+          ports.previewing.set(false);
+        });
+      },
+      { injector },
+    );
   }
 
   /** Forget the saved selection, which belonged to text that is gone. */

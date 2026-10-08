@@ -397,6 +397,8 @@ export class MessageComposerComponent {
       openFileDialog: () => this.fileInput()?.nativeElement.click(),
     });
 
+    // Unassigned on purpose: its effects are its whole lifetime, and `drafts` is already taken
+    // by DraftStoreService.
     new ComposerDrafts({
       roomId: this.roomId,
       editing: this.editing,
@@ -418,6 +420,7 @@ export class MessageComposerComponent {
           this.cancelVoiceRecording();
         }
         this.menus.clearChosen(); // they belong to the old conversation
+        // Safe before `formatting` is assigned below: effects first run after construction.
         this.formatting.clearSelection();
         this.previewing.set(false); // the new room opens ready to write, not to read
       },

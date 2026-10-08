@@ -423,6 +423,24 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
       expect(cmp.text()).toBe('external');
       expect(changes.at(-1)).toBe('external');
     });
+
+    it('emits the typed text and then the external draft when both change in one pass', async () => {
+      const { fixture } = await renderComposer({
+        roomId: '!a:hs',
+        composeDraft: 'one',
+      });
+      const cmp = fixture.componentInstance;
+      const changes: string[] = [];
+      cmp.composeDraftChange.subscribe((draft) => changes.push(draft));
+
+      cmp.text.set('typed');
+      fixture.componentRef.setInput('composeDraft', 'external');
+      fixture.detectChanges();
+
+      // Persistence runs before the mirror, so the typed text is reported first.
+      expect(changes).toEqual(['typed', 'external']);
+      expect(cmp.text()).toBe('external');
+    });
   });
 
   describe('typing notifications', () => {
