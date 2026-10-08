@@ -121,7 +121,7 @@ async function build(
   const openThread = vi.fn();
   const closeThread = vi.fn();
   const paginateOpenThread = vi.fn().mockReturnValue(of(void 0));
-  const sendToThread = vi.fn().mockReturnValue(of(void 0));
+  const sendToThread = vi.fn();
   const editInThread = vi.fn().mockReturnValue(of(void 0));
   const replyInThread = vi.fn().mockReturnValue(of(void 0));
   const toggleReactionInThread = vi.fn().mockReturnValue(of(void 0));
@@ -198,8 +198,7 @@ async function build(
                   }),
                   send: vi.fn((body: string, mentions: readonly unknown[]) => {
                     sentRoots(rootEventId);
-                    sendToThread(body, mentions);
-                    return applied('send');
+                    return sendToThread(body, mentions) ?? applied('send');
                   }),
                   edit: vi.fn(
                     (
@@ -386,6 +385,18 @@ describe('ThreadViewComponent', () => {
     expect(sendToThread).toHaveBeenCalledWith('hello thread', []);
     expect(editInThread).not.toHaveBeenCalled();
     expect(replyInThread).not.toHaveBeenCalled();
+  });
+
+  it('toasts when the thread rejects a submit', async () => {
+    const { fixture, sendToThread, toastShow } = await build();
+    sendToThread.mockReturnValueOnce(of({ kind: 'rejected' }));
+
+    fixture.componentInstance.onSubmit({ text: 'hello thread', mentions: [] });
+
+    expect(toastShow).toHaveBeenCalledWith('Could not send the message.', {
+      duration: 4000,
+      variant: 'danger',
+    });
   });
 
   it('routes a submit to an edit while editing, then leaves edit mode', async () => {

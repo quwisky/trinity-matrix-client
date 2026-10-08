@@ -168,7 +168,7 @@ export class AdvancedSettingsComponent {
   /** The editor component, once its chunk has arrived; null until then, and on native. */
   readonly editor = signal<Type<ConfigEditorHost> | null>(null);
 
-  /** True while an apply is in flight, for the same reason. */
+  /** True while an apply is in flight; the review disables Apply and Cancel meanwhile. */
   readonly applying = signal(false);
 
   /**
