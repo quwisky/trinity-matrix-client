@@ -323,6 +323,16 @@ describe('TrnDialogService', () => {
     expect(svc.hasOpen()).toBe(false);
   });
 
+  it('leaves browser Back to the route guard instead of closing on popstate', () => {
+    const svc = TestBed.inject(TrnDialogService);
+    svc.open(TestDialogComponent);
+    TestBed.inject(ApplicationRef).tick();
+
+    window.dispatchEvent(new PopStateEvent('popstate'));
+
+    expect(svc.hasOpen()).toBe(true);
+  });
+
   it('leaves a disableClose dialog alone, which CDK would not', async () => {
     // The flag exists so a flow-critical dialog cannot be dismissed out from under
     // itself — encryption-unlock and device-verification both set it. CDK enforces it

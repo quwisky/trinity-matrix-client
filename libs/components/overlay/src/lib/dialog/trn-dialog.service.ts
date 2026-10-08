@@ -272,7 +272,9 @@ export class TrnDialogService {
         ? ['cdk-overlay-transparent-backdrop']
         : ['cdk-overlay-dark-backdrop'],
       disableClose: opts.disableClose ?? false,
-      closeOnNavigation: !opts.dismissGuard,
+      // CDK would close on popstate before the router's Back guard can run the surface's own
+      // Back step; that guard closes the topmost surface and keeps the route instead.
+      closeOnNavigation: false,
       closePredicate: (result, _config, instance) =>
         result !== undefined ||
         !opts.dismissGuard ||

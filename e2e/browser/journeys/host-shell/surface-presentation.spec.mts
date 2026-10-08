@@ -79,6 +79,17 @@ async function swipeDown(page: Page, dialog: Locator): Promise<void> {
   await page.mouse.up();
 }
 
+/** Open System status the way its own buttons do, wherever the shell has put them. */
+async function showStatus(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const root = document.querySelector('trn-root')!;
+    const target = window as unknown as {
+      ng: { getComponent(e: Element): { status: { show(): void } } };
+    };
+    target.ng.getComponent(root).status.show();
+  });
+}
+
 /** System status (from the login page), New message, the directory and Settings as sheets. */
 async function sheetsEverywhere(
   page: Page,
@@ -114,8 +125,11 @@ async function sheetsEverywhere(
     .getByRole('dialog')
     .filter({ has: page.getByTestId('room-directory') });
   await expectSheet(page, directory);
+  const url = page.url();
   await page.goBack();
   await expect(directory).toBeHidden();
+  // Back spends itself on the sheet; the route behind it stays.
+  await expect(page).toHaveURL(url);
   await expect(page.getByTestId('rail-rooms')).toBeVisible();
 
   await page.getByTestId('open-settings').click();
@@ -266,6 +280,59 @@ test.describe('Modal surfaces', () => {
       await discard.getByRole('button', { name: 'Keep editing' }).click();
       await expect(settings).toBeVisible();
       await expect(settings.getByTestId('sheet-handle')).toBeVisible();
+    });
+  });
+
+  test.describe('on a narrow desktop browser', () => {
+    test.use({ viewport: { width: 600, height: 900 } });
+
+    test('Back steps System status back to its sections, then closes it, and keeps the route', async ({
+      page,
+      request,
+    }) => {
+      await signIn(page, request, 'narrow');
+      await page.getByTestId('rail-rooms').click();
+      await page.getByTestId('rail-recent').click();
+      const url = page.url();
+      await showStatus(page);
+      const status = page.getByRole('dialog', { name: 'System status' });
+      await expectSheet(page, status);
+      const sections = status.getByRole('navigation', {
+        name: 'System status sections',
+      });
+      await expect(sections).toBeHidden();
+
+      await page.goBack();
+      await expect(sections).toBeVisible();
+      await expect(status).toBeVisible();
+      await expect(page).toHaveURL(url);
+
+      await page.goBack();
+      await expect(status).toBeHidden();
+      await expect(page).toHaveURL(url);
+    });
+
+    test('Back closes System status opened over Settings and leaves Settings open', async ({
+      page,
+      request,
+    }) => {
+      await signIn(page, request, 'stack');
+      await page.getByTestId('rail-rooms').click();
+      await page.getByTestId('rail-recent').click();
+      const url = page.url();
+      await page.getByTestId('open-settings').click();
+      const settings = page.getByRole('dialog', { name: 'Settings' });
+      await expectSheet(page, settings);
+      await showStatus(page);
+      const status = page.getByRole('dialog', { name: 'System status' });
+      await expectSheet(page, status);
+      // Step to the section list first so the next Back closes rather than steps.
+      await status.getByRole('button', { name: 'Back to sections' }).click();
+
+      await page.goBack();
+      await expect(status).toBeHidden();
+      await expect(settings).toBeVisible();
+      await expect(page).toHaveURL(url);
     });
   });
 
