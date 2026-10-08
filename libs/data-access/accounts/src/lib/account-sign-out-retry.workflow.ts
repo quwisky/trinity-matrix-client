@@ -121,7 +121,12 @@ export class AccountSignOutRetryWorkflow {
       );
     }
     const logoutScope = remoteLogoutScope(context);
-    if (retryable.has(logoutScope)) {
+    // Without a client or a stored OAuth session there is nothing to log out with, and
+    // resolving the residue anyway would claim a revocation that never happened.
+    if (
+      retryable.has(logoutScope) &&
+      (context.client || context.session?.oidc)
+    ) {
       operations.push(
         this.retryStep(
           attempt,
