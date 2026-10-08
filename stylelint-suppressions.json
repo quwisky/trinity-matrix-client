@@ -154,6 +154,11 @@
       "count": 1
     }
   },
+  "libs/feature/rooms/src/lib/room-header/room-header.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 5
+    }
+  },
   "libs/feature/rooms/src/lib/room-settings/_room-settings-panel.scss": {
     "declaration-property-value-disallowed-list": {
       "count": 1
@@ -166,7 +171,7 @@
   },
   "libs/feature/rooms/src/lib/rooms/rooms.page.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 7
+      "count": 2
     }
   },
   "libs/feature/rooms/src/lib/server-rail/server-rail.component.scss": {
