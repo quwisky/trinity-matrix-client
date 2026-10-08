@@ -23,7 +23,10 @@ import {
   type BatchOutcome,
   type BatchProgress,
 } from '../shared/send-media-batch';
-import { dispatchSharedRowAction } from '../shared/row-actions';
+import {
+  buildRowCapsMap,
+  dispatchSharedRowAction,
+} from '../shared/row-actions';
 import {
   HapticsService,
   MessageGestureSettingsService,
@@ -38,7 +41,7 @@ import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TypingIndicatorComponent } from '../message-list/typing-indicator/typing-indicator.component';
 import {
   TrnAlertService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnOverlaySurfaceDirective,
   TrnToastService,
 } from '@trinity/components/overlay';
@@ -46,8 +49,6 @@ import {
   TimelineActionsService,
   ConversationRuntime,
   isEditableMessage,
-  isQuotableMessage,
-  savableMediaKind,
   type ConversationThread,
   type ConversationThreadOutcome,
 } from '@trinity/data-access/timeline';
@@ -125,7 +126,7 @@ export class ThreadViewComponent implements OnDestroy {
   private readonly openedThread = signal<ConversationThread | null>(null);
   private readonly messageSheet = inject(MessageActionSheetService);
   private readonly roomMembers = inject(RoomMembersService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
   private readonly mediaSave = inject(MediaSaveService);
@@ -517,23 +518,21 @@ export class ThreadViewComponent implements OnDestroy {
    * per CD would defeat the OnPush {@link MessageRowComponent} and re-render every row.
    */
   private readonly rowCapsById = computed<Map<string, MessageRowCaps>>(() => {
-    const canRedactOthers = this.timeline.canRedactOthers();
-    const caps = new Map<string, MessageRowCaps>();
-    for (const row of this.rows()) {
-      caps.set(row.id, {
-        editable: isEditableMessage(row),
-        // Own messages are always deletable; a moderator can also redact others'.
-        deletable: (row.isOwn || canRedactOthers) && !row.status,
+    this.prevRowCaps = buildRowCapsMap(
+      this.rows(),
+      {
+        canRedactOthers: this.timeline.canRedactOthers(),
         canPin: false,
-        pinned: false,
         canThread: false,
-        canQuote: isQuotableMessage(row),
-        saveMedia: savableMediaKind(row),
-        readOnly: false,
-      });
-    }
-    return caps;
+        pinnedIds: [],
+      },
+      this.prevRowCaps,
+    );
+    return this.prevRowCaps;
   });
+
+  /** Last computed caps, for identity reuse across thread events. */
+  private prevRowCaps = new Map<string, MessageRowCaps>();
 
   /** Per-row capabilities/state for a thread row (no pinning or nested threads). */
   rowCaps(row: MessageRow): MessageRowCaps {

@@ -14,7 +14,10 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
+import {
+  TrnAlertService,
+  TrnSurfaceService,
+} from '@trinity/components/overlay';
 import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { ForwardService } from '../forward/forward.service';
@@ -24,8 +27,6 @@ import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 import {
   isEditableMessage,
-  isQuotableMessage,
-  savableMediaKind,
   ConversationRuntime,
   type MessageView,
   type ThreadSummary,
@@ -52,7 +53,10 @@ import {
   type BatchOutcome,
   type BatchProgress,
 } from '../shared/send-media-batch';
-import { dispatchSharedRowAction } from '../shared/row-actions';
+import {
+  buildRowCapsMap,
+  dispatchSharedRowAction,
+} from '../shared/row-actions';
 import {
   type MessageLongPressContext,
   type MessageRow,
@@ -96,20 +100,6 @@ interface RowCacheEntry {
   readonly showHeader: boolean;
   readonly daySeparator: string | null;
   readonly row: MessageRow;
-}
-
-/** Whether two caps carry the same capabilities — all eight fields are flat primitives. */
-function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
-  return (
-    a.editable === b.editable &&
-    a.deletable === b.deletable &&
-    a.canPin === b.canPin &&
-    a.pinned === b.pinned &&
-    a.canThread === b.canThread &&
-    a.canQuote === b.canQuote &&
-    a.saveMedia === b.saveMedia &&
-    a.readOnly === b.readOnly
-  );
 }
 
 const LOAD_ERROR_COPY: Readonly<
@@ -315,7 +305,7 @@ export abstract class MessageListBase {
   protected readonly alert = inject(TrnAlertService);
   private readonly dayBoundary = inject(DayBoundaryService);
   private readonly dateFormat = inject(DateTimeFormatService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
   private readonly mediaSave = inject(MediaSaveService);
@@ -822,37 +812,17 @@ export abstract class MessageListBase {
    * time would defeat the OnPush `MessageRowComponent` and re-render every row.
    */
   private readonly rowCapsById = computed<Map<string, MessageRowCaps>>(() => {
-    const canPin = this.canPin();
-    const canRedactOthers = this.canRedactOthers();
-    const pinnedIds = this.pinnedIds();
-    const caps = new Map<string, MessageRowCaps>();
-    for (const message of this.messages()) {
-      // An unsent message is only a local echo: its id is the SDK's `~roomId:txnId`
-      // placeholder, which the homeserver has never seen. Threading off it would make
-      // that placeholder the thread root — every reply then relates to an event the
-      // server can't resolve — and pinning it would write it into `m.room.pinned_events`
-      // room state. Both wait for the remote echo to swap in the real event id.
-      const unsent = !!message.status;
-      const next: MessageRowCaps = {
-        editable: isEditableMessage(message),
-        // Own messages are always deletable; a moderator can also redact others'.
-        deletable: (message.isOwn || canRedactOthers) && !unsent,
-        canPin: canPin && !unsent,
-        pinned: pinnedIds.includes(message.id),
-        canThread: !unsent,
-        canQuote: isQuotableMessage(message),
-        saveMedia: savableMediaKind(message),
-        readOnly: false,
-      };
-      // Reuse the previous object when nothing about this row's caps changed, exactly
-      // as rowCache does for the row itself. `messages()` gets a NEW array identity on
-      // every timeline event, so without this every incoming message would hand every
-      // rendered row a fresh `caps` input and re-render it.
-      const prev = this.prevRowCaps.get(message.id);
-      caps.set(message.id, prev && sameRowCaps(prev, next) ? prev : next);
-    }
-    this.prevRowCaps = caps;
-    return caps;
+    this.prevRowCaps = buildRowCapsMap(
+      this.messages(),
+      {
+        canRedactOthers: this.canRedactOthers(),
+        canPin: this.canPin(),
+        canThread: true,
+        pinnedIds: this.pinnedIds(),
+      },
+      this.prevRowCaps,
+    );
+    return this.prevRowCaps;
   });
 
   /** Last computed caps, for identity reuse (mirrors {@link rowCache}). */

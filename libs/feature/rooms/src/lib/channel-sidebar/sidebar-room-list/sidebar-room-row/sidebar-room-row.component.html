@@ -1,0 +1,196 @@
+@let r = room();
+<div class="channel-row">
+  <button
+    class="channel"
+    [class.channel--selected]="active()"
+    [class.channel--unread]="r.hasUnread"
+    [class.channel--muted]="mode() === 'mute'"
+    (click)="action.emit({ kind: 'select', room: r })"
+  >
+    <trn-avatar
+      class="channel__avatar"
+      [mxc]="r.avatarMxc"
+      [accountId]="r.accountId"
+      [initial]="r.initial"
+      [name]="r.name"
+      [exactSize]="avatarSize()"
+      [shape]="r.directUserId ? 'person' : 'place'"
+      [presence]="presence()"
+      [accountBadge]="accountBadge()"
+    />
+    <div class="channel__text">
+      <span class="channel__name">{{ r.name }}</span>
+      @if (typingNotice(); as notice) {
+        <span class="channel__preview channel__preview--typing">{{
+          notice
+        }}</span>
+      } @else if (r.lastMessage) {
+        <span class="channel__preview">{{ r.lastMessage }}</span>
+      }
+      @if (r.highlightCount > 0) {
+        <span class="sr-only">, {{ r.highlightCount }} mentions</span>
+      } @else if (r.hasUnread && !r.markedUnread) {
+        <span class="sr-only">, unread</span>
+      }
+    </div>
+    @if (mode() !== 'all') {
+      <trn-icon
+        class="channel__muted"
+        name="bell-off"
+        size="xs"
+        [label]="
+          mode() === 'mentions'
+            ? 'Room muted; mentions and keywords still notify'
+            : mode() === 'mute'
+              ? 'Room fully muted'
+              : 'Notification settings differ between accounts'
+        "
+        data-testid="room-muted"
+      />
+    }
+    @if (r.highlightCount > 0) {
+      <span trnBadge variant="danger" size="xs" aria-hidden="true">{{
+        highlightLabel()
+      }}</span>
+    } @else if (r.markedUnread) {
+      <!-- Flagged with nothing new in it: a count would read "0", so it is a dot. -->
+      <span
+        class="channel__dot"
+        role="img"
+        aria-label="Marked unread"
+        data-testid="room-unread-dot"
+      ></span>
+    }
+  </button>
+  <button
+    trnIconButton
+    class="channel__menu"
+    [trnDropdownMenuTrigger]="roomMenu"
+    align="end"
+    [attr.aria-label]="'Options for ' + r.name"
+    trnTooltip="Room options"
+    position="right"
+  >
+    <trn-icon name="ellipsis-vertical" motion="pop" />
+  </button>
+</div>
+
+<ng-template #roomMenu>
+  <div trnDropdownMenu>
+    <button
+      trnDropdownMenuItem
+      (triggered)="action.emit({ kind: 'favourite', room: r })"
+      data-testid="room-favourite"
+    >
+      <trn-icon name="star" />
+      {{ r.favourite ? 'Unfavourite' : 'Favourite' }}
+    </button>
+    <button
+      trnDropdownMenuItem
+      (triggered)="action.emit({ kind: 'low-priority', room: r })"
+      data-testid="room-low-priority"
+    >
+      <trn-icon name="arrow-down-wide-narrow" />
+      {{ r.lowPriority ? 'Restore to list' : 'Low priority' }}
+    </button>
+    @if (r.hasUnread) {
+      <button
+        trnDropdownMenuItem
+        (triggered)="action.emit({ kind: 'mark-read', room: r })"
+        data-testid="room-mark-read"
+      >
+        <trn-icon name="check-check" />
+        Mark as read
+      </button>
+    } @else if (!active()) {
+      <!-- Not offered for the room being read: the flag is cleared when a room is
+         opened, and this one already is, so it would stick until you left. -->
+      <button
+        trnDropdownMenuItem
+        (triggered)="action.emit({ kind: 'mark-unread', room: r })"
+        data-testid="room-mark-unread"
+      >
+        <trn-icon name="mail-open" />
+        Mark as unread
+      </button>
+    }
+    <div trnDropdownMenuSeparator></div>
+    <button
+      trnDropdownMenuItem
+      [trnDropdownMenuSubTrigger]="notifyMenu"
+      data-testid="room-notify"
+    >
+      <trn-icon name="bell" />
+      Notifications
+      <trn-dropdown-menu-item-sub-indicator />
+    </button>
+    <div trnDropdownMenuSeparator></div>
+    @if (spaceActive()) {
+      <button
+        trnDropdownMenuItem
+        variant="danger"
+        (triggered)="action.emit({ kind: 'remove', room: r })"
+        [trnActionAllowed]="canCurate()"
+        [trnActionDisabledReason]="curateReason()"
+        [trnTooltip]="curateReason() ?? 'Remove from space'"
+        data-testid="room-remove"
+      >
+        <trn-icon name="circle-minus" />
+        Remove from space
+      </button>
+    }
+    <button
+      trnDropdownMenuItem
+      variant="danger"
+      (triggered)="action.emit({ kind: 'leave', room: r })"
+      data-testid="room-leave"
+    >
+      <trn-icon name="log-out" />
+      Leave room
+    </button>
+  </div>
+
+  <ng-template #notifyMenu>
+    <div trnDropdownMenuSub>
+      @if (mode() === 'mixed') {
+        <p
+          class="notify-menu__mixed"
+          role="status"
+          data-testid="room-notify-mixed"
+        >
+          Different across accounts
+        </p>
+      }
+      <button
+        trnDropdownMenuRadio
+        [checked]="mode() === 'all'"
+        [keepOpen]="false"
+        (triggered)="action.emit({ kind: 'notify', room: r, mode: 'all' })"
+        data-testid="room-notify-all"
+      >
+        <trn-dropdown-menu-radio-indicator />
+        All messages
+      </button>
+      <button
+        trnDropdownMenuRadio
+        [checked]="mode() === 'mentions'"
+        [keepOpen]="false"
+        (triggered)="action.emit({ kind: 'notify', room: r, mode: 'mentions' })"
+        data-testid="room-notify-mentions"
+      >
+        <trn-dropdown-menu-radio-indicator />
+        Mute except mentions &amp; keywords
+      </button>
+      <button
+        trnDropdownMenuRadio
+        [checked]="mode() === 'mute'"
+        [keepOpen]="false"
+        (triggered)="action.emit({ kind: 'notify', room: r, mode: 'mute' })"
+        data-testid="room-notify-mute"
+      >
+        <trn-dropdown-menu-radio-indicator />
+        Mute everything
+      </button>
+    </div>
+  </ng-template>
+</ng-template>

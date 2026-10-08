@@ -21,7 +21,17 @@ import { describe, expect, it } from 'vitest';
 
 const DIR = join(__dirname);
 const PARENT = 'channel-sidebar.component';
-const CHILD = join('sidebar-room-list', 'sidebar-room-list.component');
+const ROW = join(
+  'sidebar-room-list',
+  'sidebar-room-row',
+  'sidebar-room-row.component',
+);
+const LIST = join('sidebar-room-list', 'sidebar-room-list.component');
+const PAIRS = [
+  [PARENT, LIST],
+  [PARENT, ROW],
+  [LIST, ROW],
+] as const;
 
 /**
  * Utility classes come from Tailwind's global sheet, which is not component-scoped and so
@@ -73,48 +83,44 @@ function styledClasses(scss: string): Set<string> {
   return found;
 }
 
-describe('channel sidebar stylesheet ownership', () => {
-  const parentHtml = renderedClasses(read(PARENT, 'html'));
-  const childHtml = renderedClasses(read(CHILD, 'html'));
-  const parentScss = styledClasses(read(PARENT, 'scss'));
-  const childScss = styledClasses(read(CHILD, 'scss'));
+describe.each(PAIRS)('stylesheet ownership of %s and %s', (a, b) => {
+  const aHtml = renderedClasses(read(a, 'html'));
+  const bHtml = renderedClasses(read(b, 'html'));
+  const aScss = styledClasses(read(a, 'scss'));
+  const bScss = styledClasses(read(b, 'scss'));
 
-  it('does not leave the parent depending on the child’s stylesheet', () => {
-    const orphaned = [...parentHtml].filter(
-      (name) => childScss.has(name) && !parentScss.has(name),
-    );
-    expect(
-      orphaned,
-      `channel-sidebar.component.html renders ${orphaned.join(', ')}, styled only in ` +
-        `sidebar-room-list.component.scss — emulated encapsulation means those rules ` +
-        `cannot match. Copy them into channel-sidebar.component.scss.`,
-    ).toEqual([]);
-  });
+  it.each([
+    ['first', a, aHtml, aScss, b, bScss],
+    ['second', b, bHtml, bScss, a, aScss],
+  ] as const)(
+    'does not leave the %s depending on the other’s stylesheet',
+    (_label, own, html, ownScss, other, otherScss) => {
+      const orphaned = [...html].filter(
+        (name) => otherScss.has(name) && !ownScss.has(name),
+      );
+      expect(
+        orphaned,
+        `${own}.html renders ${orphaned.join(', ')}, styled only in ${other}.scss — ` +
+          `emulated encapsulation means those rules cannot match. Copy them into ` +
+          `${own}.scss.`,
+      ).toEqual([]);
+    },
+  );
+});
 
-  it('does not leave the child depending on the parent’s stylesheet', () => {
-    const orphaned = [...childHtml].filter(
-      (name) => parentScss.has(name) && !childScss.has(name),
-    );
-    expect(
-      orphaned,
-      `sidebar-room-list.component.html renders ${orphaned.join(', ')}, styled only in ` +
-        `channel-sidebar.component.scss — emulated encapsulation means those rules ` +
-        `cannot match. Copy them into sidebar-room-list.component.scss.`,
-    ).toEqual([]);
-  });
-
+describe('channel sidebar touch affordances', () => {
   it('keeps the touch affordances with the markup they target', () => {
     // The specific rules the extraction stranded. The menu reveal remains a local media
     // query; the target floor now comes from a shared responsive token, but it still has
     // to be consumed by the child rules because parent styles cannot cross encapsulation.
-    const childScssText = read(CHILD, 'scss');
+    const childScssText = read(ROW, 'scss');
     expect(childScssText).toMatch(
       /@media \(hover: none\)[\s\S]*?\.channel__menu/,
     );
     expect(childScssText).toMatch(
       /\.channel__menu\s*\{[\s\S]*?var\(--trinity-interaction-target-min-size\)/,
     );
-    expect(childScssText).toMatch(
+    expect(read(LIST, 'scss')).toMatch(
       /\.invite__btn\s*\{[\s\S]*?var\(--trinity-interaction-target-min-size\)/,
     );
   });

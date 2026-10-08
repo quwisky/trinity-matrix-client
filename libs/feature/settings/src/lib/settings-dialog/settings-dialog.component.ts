@@ -17,7 +17,7 @@ import {
 } from '@angular/core';
 import {
   TrnDialogRef,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnSettingsLayoutComponent,
   type TrnSettingsLayoutSection,
 } from '@trinity/components/overlay';
@@ -53,7 +53,7 @@ export class SettingsDialogComponent {
   private readonly injector = inject(Injector);
   private readonly environmentInjector = inject(EnvironmentInjector);
   private readonly document = inject(DOCUMENT);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly layout = viewChild(TrnSettingsLayoutComponent);
   private readonly directorySearch = viewChild(
     SettingsDirectorySearchComponent,

@@ -1,0 +1,197 @@
+@use '../../../styles/mixins' as *;
+
+@layer components {
+  // Each row is a box-less wrapper: the list lays `.channel-row` out as if it were its child.
+  :host {
+    display: contents;
+  }
+
+  .channel-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+
+    // Reveal the kebab on hover/focus, and keep it visible while its menu is open
+    // (the CDK menu overlay lives outside this row, so focus-within won't cover it).
+    &:hover .channel__menu,
+    &:focus-within .channel__menu,
+    .channel__menu[aria-expanded='true'] {
+      opacity: 1;
+    }
+  }
+
+  .channel {
+    @include interactive-row;
+
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: var(--trinity-interaction-target-min-size);
+    padding: var(--trinity-density-channel-padding-block)
+      var(--trinity-density-shell-padding-inline);
+    margin-top: 1px;
+    text-align: left;
+
+    // A list row, not a button control: it stays a semantic <button> styled by row tokens,
+    // because the button recipe's fixed height and centred label would change the layout.
+    position: relative;
+
+    // Muted rooms recede: dimmed avatar and muted-role text. Opacity is kept off the text
+    // and the badge so the name keeps AA contrast and a mention badge stays full strength.
+    // Placed before the selected and unread states so those still win.
+    &.channel--muted {
+      color: var(--trinity-text-muted);
+
+      .channel__avatar {
+        opacity: 0.55;
+      }
+    }
+
+    &.channel--selected {
+      background: var(--trinity-state-selected-surface);
+      color: var(--trinity-state-selected-foreground);
+
+      // The preview is muted at rest but must stay readable on the selected ground.
+      .channel__preview {
+        color: var(--trinity-state-selected-foreground);
+      }
+
+      &:hover {
+        background: var(--trinity-state-selected-hover-surface);
+        color: var(--trinity-state-selected-hover-foreground);
+
+        .channel__preview {
+          color: var(--trinity-state-selected-hover-foreground);
+        }
+      }
+    }
+
+    // Unread rooms read brighter and bolder (messenger-style emphasis).
+    &.channel--unread {
+      color: var(--trinity-text-bright);
+
+      // The 4x8px unread marker at the row's inline start.
+      &::before {
+        content: '';
+        position: absolute;
+        inset-inline-start: 0;
+        inset-block-start: 50%;
+        width: 4px;
+        height: 8px;
+        transform: translateY(-50%);
+        border-radius: var(--trinity-radius-pill);
+        background: var(--trinity-text-bright);
+      }
+
+      .channel__name {
+        font-weight: 600;
+      }
+
+      .channel__preview {
+        color: var(--trinity-text);
+      }
+    }
+  }
+
+  .channel__avatar {
+    flex: 0 0 auto;
+  }
+
+  .channel__text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .channel__name {
+    @include ellipsis;
+
+    min-width: 0;
+    font-size: var(--trinity-text-base);
+  }
+
+  .channel__preview {
+    @include ellipsis;
+
+    min-width: 0;
+    font-size: 0.75rem;
+    color: var(--trinity-text-muted);
+  }
+
+  // Italic, matching the timeline's typing row, so the two read as the same idea. No dots
+  // here: the line already truncates, and the state is transient enough that a second
+  // moving thing beside the unread badge is noise.
+  // This rule belongs to THIS stylesheet and not the parent sidebar's, because the class is
+  // rendered by this template — `stylesheet-ownership.spec.ts` fails otherwise, and it
+  // exists because this exact pair got it wrong four times in one commit.
+  .channel__preview--typing {
+    font-style: italic;
+  }
+
+  .channel__muted {
+    flex: 0 0 auto;
+    color: var(--trinity-text-muted);
+  }
+
+  .notify-menu__mixed {
+    padding: 0.375rem 0.5rem;
+    color: var(--trinity-text-muted);
+    font-size: 0.75rem;
+  }
+
+  // A room flagged unread with nothing new in it has no number to show, so it gets an 8px
+  // dot rather than a "0".
+  .channel__dot {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-text-muted);
+  }
+
+  .channel__menu {
+    @include interactive-row;
+
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
+    font-size: 1.125rem;
+    opacity: 0;
+
+    &:hover {
+      color: var(--trinity-text-bright);
+    }
+  }
+
+  // Touch devices have no hover, so the kebab — the only way into a room's options and its
+  // Notifications submenu — would be invisible. Keep it shown there. (Keyboard users still
+  // reveal it via the :focus-within rule on .channel-row above.)
+  // Lives here rather than in the parent stylesheet: `.channel__menu` is rendered by THIS
+  // component, and under emulated encapsulation the parent's copy was attributed to the
+  // parent's elements and silently matched nothing.
+  @media (hover: none) {
+    .channel__menu {
+      opacity: 1;
+    }
+  }
+
+  // Compact rows: one line and no preview. The 20px avatar comes from the ROOM_LIST_STYLE
+  // token through `exactSize`, so its presence dot and account badge keep their floors.
+  :host-context(html[data-room-list='compact']) .channel__preview {
+    display: none;
+  }
+
+  // Spacious has the room for a preview line, so compact brings it back there.
+  :host-context(html[data-room-list='compact'][data-density='spacious'])
+    .channel__preview {
+    display: block;
+  }
+}

@@ -37,6 +37,7 @@ import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
 } from '@trinity/components/overlay';
+import { SaveFailureComponent } from './save-failure/save-failure.component';
 
 /**
  * Appearance settings sub-page: Mode, Theme, text and code size,
@@ -52,6 +53,7 @@ import {
   templateUrl: './appearance-settings.component.html',
   providers: [AppearanceSettingsController],
   imports: [
+    SaveFailureComponent,
     TrnButton,
     TrnRadioGroupComponent,
     TrnSelectComponent,

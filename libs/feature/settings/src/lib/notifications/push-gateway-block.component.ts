@@ -30,7 +30,7 @@ import {
   type Observable,
 } from 'rxjs';
 import {
-  TrnDialogService,
+  TrnSurfaceService,
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
 } from '@trinity/components/overlay';
@@ -61,7 +61,7 @@ import {
 export class PushGatewayBlockComponent {
   private readonly gateway = inject(PushGatewayService);
   private readonly push = inject(PushService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
 
   // PushService.registration drives the status line via appliedAccounts/errorMessage.

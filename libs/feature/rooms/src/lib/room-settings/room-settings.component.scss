@@ -2,4 +2,14 @@
   :host {
     display: block;
   }
+
+  .room-settings__note {
+    max-width: 65ch;
+    margin: 0;
+    padding-block: var(--trinity-space-4);
+    overflow-wrap: anywhere;
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+  }
 }

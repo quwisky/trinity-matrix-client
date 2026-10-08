@@ -76,7 +76,9 @@ const settingsTemplates = templates.filter((file) =>
 const roomNavigationTemplates = templates.filter(
   (file) =>
     migratedRoomNavigationRoots.some((root) => file.startsWith(`${root}/`)) ||
-    file === 'libs/feature/rooms/src/lib/rooms/rooms.page.html',
+    file === 'libs/feature/rooms/src/lib/rooms/rooms.page.html' ||
+    file ===
+      'libs/feature/rooms/src/lib/room-header/room-header.component.html',
 );
 const conversationTemplates = templates.filter((file) =>
   migratedConversationRoots.some((root) => file.startsWith(`${root}/`)),
@@ -153,12 +155,12 @@ describe('migrated application design-system consumers', () => {
       );
     }
 
-    expect(roomNavigationTemplates).toHaveLength(6);
+    expect(roomNavigationTemplates).toHaveLength(7);
     const roomNavigationAvatars = tagsFrom(
       roomNavigationTemplates,
       /<trn-avatar\b[^>]*>/gu,
     );
-    expect(roomNavigationAvatars.length).toBeGreaterThan(9);
+    expect(roomNavigationAvatars.length).toBeGreaterThan(6);
     for (const [file, tag] of roomNavigationAvatars) {
       expect(tag, file).not.toMatch(
         /(?:\[size\]|\bsize)\s*=\s*['"](?:\d+(?:\.\d+)?|\d+(?:\.\d+)?(?:px|rem|em))['"]/u,

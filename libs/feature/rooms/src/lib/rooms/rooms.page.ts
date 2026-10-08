@@ -14,23 +14,14 @@ import {
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { escapeHtml, linkifyText } from '@trinity/util/matrix';
 import {
   InboundRoomLinkService,
   roomTitle,
   TitleBarState,
   WORKSPACE_SYSTEM_STATUS,
 } from '@trinity/application/workspace';
-import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
-import {
-  TrnDropdownMenu,
-  TrnDropdownMenuItem,
-  TrnDropdownMenuSeparator,
-  TrnDropdownMenuTrigger,
-} from '@trinity/components/overlay';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
-import { TrnTooltip } from '@trinity/components/generic-content';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ImagePackService } from '@trinity/data-access/media';
 import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
@@ -42,8 +33,10 @@ import {
   FeatureFlagsService,
   ShellLayoutService,
 } from '@trinity/platform-native';
-import { AvatarComponent } from '@trinity/components/generic-content';
-import { PageHeaderComponent } from '@trinity/components/navigation-layout';
+import {
+  RoomHeaderComponent,
+  type RoomHeaderAction,
+} from '../room-header/room-header.component';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
@@ -76,7 +69,6 @@ import { ReadStateService } from './read-state.service';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
-import { TrnIconComponent } from '@trinity/components/foundations';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
@@ -119,16 +111,7 @@ const PANEL_DRAWER_PX = 480;
   styleUrls: ['rooms.page.scss'],
   imports: [
     EmptyStateComponent,
-    PageHeaderComponent,
-    TrnButton,
-    TrnActionAvailability,
-    TrnDropdownMenu,
-    TrnDropdownMenuItem,
-    TrnDropdownMenuSeparator,
-    TrnDropdownMenuTrigger,
-    TrnTooltip,
-    TrnIconComponent,
-    AvatarComponent,
+    RoomHeaderComponent,
     ServerRailComponent,
     ChannelSidebarComponent,
     SidebarUserPanelComponent,
@@ -170,19 +153,6 @@ export class RoomsPage {
     BELOW_MD_QUERY,
     inject(DestroyRef),
   );
-  /**
-   * The full topic as HTML: text is escaped by `linkifyText`/`escapeHtml` first, then links
-   * are made to open outside the app (Angular's sanitiser keeps `target` and `rel`).
-   */
-  protected readonly topicHtml = computed(() => {
-    const topic = this.vm.activeRoom()?.topic ?? '';
-    return (
-      linkifyText(topic)?.replace(
-        /<a href=/g,
-        '<a target="_blank" rel="noopener noreferrer" href=',
-      ) ?? escapeHtml(topic)
-    );
-  });
   /**
    * Which way a message row is dragged to act on it, HERE and not in the list.
    *
@@ -264,11 +234,6 @@ export class RoomsPage {
   });
   readonly threads = this.conversations.threads;
   readonly pinned = this.conversations.pins;
-  /** Doubles as tooltip, accessible name and phone menu label, so the count has no badge. */
-  protected readonly pinnedLabel = computed(() => {
-    const count = this.pinned.messages().length;
-    return count > 0 ? `Pinned messages (${count})` : 'Pinned messages';
-  });
   private readonly imagePackService = inject(ImagePackService);
   readonly flags = inject(FeatureFlagsService);
   private readonly matrix = inject(MatrixClientService);
@@ -298,15 +263,6 @@ export class RoomsPage {
     const userId = this.vm.activeAccountId();
     return userId ? this.presence.presenceFor(userId)() : null;
   });
-  private readonly roomActionsOverflow = viewChild<ElementRef<HTMLElement>>(
-    'roomActionsOverflow',
-  );
-
-  protected openSystemStatus(): void {
-    this.systemStatus.show(() =>
-      this.roomActionsOverflow()?.nativeElement.focus(),
-    );
-  }
 
   /** Phones use a dialog because the narrow navigation has no room for the desktop submenu. */
   protected onOpenAccountPicker(): void {
@@ -339,9 +295,20 @@ export class RoomsPage {
   private readonly listView = viewChild<ElementRef<HTMLElement>>('listView');
   private readonly mainView = viewChild<ElementRef<HTMLElement>>('mainView');
 
-  private readonly headerSearch =
-    viewChild<ElementRef<HTMLInputElement>>('headerSearch');
+  private readonly header = viewChild(RoomHeaderComponent);
   private readonly messageSearch = viewChild(MessageSearchComponent);
+
+  /** The identity the header names while accounts are mixed. */
+  protected readonly actingAs = computed(() =>
+    this.mixedOn()
+      ? {
+          userId: this.vm.userId(),
+          name: this.vm.userName(),
+          initial: this.vm.userInitial(),
+          avatarMxc: this.vm.userAvatarMxc(),
+        }
+      : null,
+  );
 
   /** Shared by the header field and the search panel's own field. */
   protected readonly searchQuery = signal('');
@@ -350,19 +317,27 @@ export class RoomsPage {
     () => this.roomSurfaces.renderedSurface()?.kind ?? null,
   );
 
-  protected onHeaderSearch(value: string): void {
-    this.searchQuery.set(value);
-    if (value && this.surfaceKind() !== 'search') {
-      this.messageActions.openMessageSearch();
+  protected onHeaderAction(action: RoomHeaderAction): void {
+    switch (action.type) {
+      case 'back':
+        return this.backToList();
+      case 'threads':
+        return this.messageActions.openThreadsList();
+      case 'pinned':
+        return this.messageActions.openPinnedPanel();
+      case 'members':
+        return this.toggleMembers();
+      case 'search':
+        return this.messageActions.openMessageSearch();
+      case 'invite':
+        return this.roomActions.onInviteToRoom();
+      case 'settings':
+        return this.roomActions.onOpenRoomSettings();
+      case 'jump-to-date':
+        return this.messageActions.jumpToDate();
+      case 'system-status':
+        return this.systemStatus.show();
     }
-  }
-
-  protected clearHeaderSearch(event: Event): void {
-    const field = event.target as HTMLInputElement;
-    // Escape that clears text stops there; in an empty field it reaches onEscapeKey.
-    if (field.value) event.stopPropagation();
-    this.searchQuery.set('');
-    field.blur();
   }
 
   constructor() {
@@ -374,7 +349,7 @@ export class RoomsPage {
       if (!this.vm.activeRoom()) return false;
       // Below the members breakpoint the field is hidden: panels are drawers over it.
       if (!this.roomSurfaces.membersAreDrawer()) {
-        this.headerSearch()?.nativeElement.focus();
+        this.header()?.focusSearch();
       } else if (this.surfaceKind() === 'search') {
         this.messageSearch()?.focusField();
       } else {
