@@ -147,8 +147,9 @@ async function anchorCase(
     await scroll.evaluate((el) => (el.scrollTop = el.scrollHeight / 2));
     await page.waitForTimeout(1500);
     await holdHistory();
-    // Proves the list really renders a slice: at least `preload` rows are loaded, fewer are in the DOM.
-    expect(await rowCount()).toBeLessThan(c.preload);
+    // Windowed: at least `preload` rows are loaded, fewer are in the DOM. Windowing off: all render.
+    if (c.windowed) expect(await rowCount()).toBeLessThan(c.preload);
+    else expect(await rowCount()).toBeGreaterThanOrEqual(c.preload);
   }
 
   /** The oldest seeded line in the DOM, negated so that more history is a larger number. */
@@ -277,20 +278,18 @@ async function anchorCase(
 test.describe('Timeline anchoring', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  for (const windowed of [true, false]) {
-    for (const position of ['top', 'near-bottom'] as const) {
-      test(`keeps the reader in place when older history pages in (${position}${windowed ? '' : ', windowing off'})`, async ({
-        page,
-        request,
-      }) => {
-        await anchorCase(page, request, {
-          position,
-          windowed,
-          seed: MESSAGE_COUNT,
-          preload: 0,
-        });
+  for (const position of ['top', 'near-bottom'] as const) {
+    test(`keeps the reader in place when older history pages in (${position})`, async ({
+      page,
+      request,
+    }) => {
+      await anchorCase(page, request, {
+        position,
+        windowed: true,
+        seed: MESSAGE_COUNT,
+        preload: 0,
       });
-    }
+    });
   }
 
   test('keeps the reader in place when older history pages into a windowed large room', async ({
@@ -301,6 +300,19 @@ test.describe('Timeline anchoring', () => {
     await anchorCase(page, request, {
       position: 'top',
       windowed: true,
+      seed: 160,
+      preload: 100,
+    });
+  });
+
+  test('keeps the reader in place when older history pages into a long room with windowing off', async ({
+    page,
+    request,
+  }) => {
+    test.slow(); // seeds 160 messages and pages 100 of them in first
+    await anchorCase(page, request, {
+      position: 'top',
+      windowed: false,
       seed: 160,
       preload: 100,
     });
