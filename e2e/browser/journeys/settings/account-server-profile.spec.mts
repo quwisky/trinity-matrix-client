@@ -115,10 +115,12 @@ test.describe('Settings', () => {
         ).size,
       }));
     expect(flagRows.count).toBeGreaterThan(1);
+    // At least two flags to a line on average. One shared line out of ~40 flags passed a bare
+    // "fewer rows than flags" while a 16rem column held the list to a flag per line.
     expect(
       flagRows.rows,
       'flags wrap compactly instead of one flag per line',
-    ).toBeLessThan(flagRows.count);
+    ).toBeLessThanOrEqual(flagRows.count / 2);
   });
 
   test('re-checks the server on demand', async ({ page }) => {

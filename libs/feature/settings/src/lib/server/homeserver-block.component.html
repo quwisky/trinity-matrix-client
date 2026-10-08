@@ -95,7 +95,14 @@
             the list, but the count answers "is this server running anything unusual?" at a
             glance, which is the same question the version row answers.
           -->
-          <details [class]="valueClass" data-testid="hs-unstable">
+          <!--
+            Not `valueClass`: its 16rem cap leaves room for one flag per line, since flags run to
+            45 characters, so the open list takes the row's width instead.
+          -->
+          <details
+            class="block text-end max-sm:text-start"
+            data-testid="hs-unstable"
+          >
             <summary class="cursor-pointer">
               {{ server.unstableFeatures.length }} enabled
             </summary>
