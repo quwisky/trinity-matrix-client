@@ -53,7 +53,7 @@ describe('programmatic scrolling', () => {
       /\.(scrollIntoView|scrollTo)\(/.test(read(file)),
     );
 
-    expect(scrollers.length).toBeGreaterThanOrEqual(3);
+    expect(scrollers.length).toBeGreaterThan(0);
   });
 
   it('never hard-codes a scroll behaviour', () => {

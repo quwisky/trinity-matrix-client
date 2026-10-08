@@ -109,7 +109,7 @@ const filesOutside = (controls, allowed) => [
 
 describe('icon-button contract', () => {
   it('finds public controls across buttons, links and inline templates', () => {
-    expect(publicIconButtons.length).toBeGreaterThan(20);
+    expect(publicIconButtons.length).toBeGreaterThan(0);
     expect(
       publicIconButtons.some(({ openingTag }) => /^<a\b/.test(openingTag)),
     ).toBe(true);

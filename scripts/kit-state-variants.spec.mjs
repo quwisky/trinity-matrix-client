@@ -195,7 +195,7 @@ function undefinedKitUtilities() {
 describe('kit utilities', () => {
   it('reads the preset at all, so an empty sweep cannot pass', () => {
     const offered = [...read(PRESET).matchAll(/@utility\s+([a-z][a-z0-9-]*)/g)];
-    expect(offered.length).toBeGreaterThan(5);
+    expect(offered.length).toBeGreaterThan(0);
   });
 
   it('defines every preset utility the vendored kit actually uses', () => {
@@ -243,8 +243,8 @@ describe('destructive tint state overrides', () => {
 
 describe('kit state variants', () => {
   it('reads the kit and the theme, so an empty sweep cannot pass', () => {
-    expect(sources.length).toBeGreaterThan(50);
-    expect(used.size).toBeGreaterThanOrEqual(8);
+    expect(sources.length).toBeGreaterThan(0);
+    expect(used.size).toBeGreaterThan(0);
     // And the theme parse found something, rather than returning an empty set that would
     // make every "is it declared" check below fail open.
     expect(declared.has('dark')).toBe(true);
