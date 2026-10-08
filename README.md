@@ -101,7 +101,8 @@ or from the `Trinity-Web-X.Y.Z.zip` attached to each
 — not offered by that app. Element X is Element's mobile app, so Element Web/Desktop
 shows — for Android and iOS. Trinity's macOS builds are Apple Silicon only, and its
 Linux builds are x86-64 only.
-OAuth 2.0 sign-in needs Synapse 1.138 or newer when the server uses MAS; see
+From Trinity 0.3, OAuth 2.0 sign-in needs Synapse 1.138 or newer when the server uses
+Matrix Authentication Service (MAS); see
 [Server requirements](https://quwisky.github.io/trinity-matrix-client/users/#server-requirements).
 
 Trinity also supports polls, voice messages, location sharing, stickers and GIFs, jump
