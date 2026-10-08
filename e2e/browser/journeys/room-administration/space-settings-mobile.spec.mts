@@ -535,4 +535,58 @@ test.describe('Space settings on a phone', () => {
       contentType: 'image/png',
     });
   });
+
+  test('keeps a long Space contents load error inside its box', async ({
+    page,
+    request,
+    touchPlatform,
+  }, testInfo) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}sperror`;
+    const user = `space-error-${runId}`;
+    const pass = `${user}-pass`;
+    const spaceName = `Contents error ${runId}`;
+    await registerUser(request, user, pass);
+    const token = await tokenFor(request, hs, user, pass);
+    await createSpace(request, hs, token, spaceName);
+
+    await page.emulateMedia({ colorScheme: 'dark' });
+    // 400 is not retried as transient, so the error state appears at once.
+    await page.route('**/hierarchy**', (route) =>
+      route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          errcode: 'M_UNKNOWN',
+          error: `https://example.invalid/${'unbreakable-segment-'.repeat(8)}end`,
+        }),
+      }),
+    );
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
+    await openSpaceSettings(page, spaceName, touchPlatform);
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('space-settings-tab-contents'),
+    );
+
+    const error = page.getByRole('alert').filter({ hasText: 'could not be' });
+    await expect(error).toBeVisible({ timeout: 15_000 });
+    const text = error.locator('p', { hasText: 'could not be' });
+    const box = page.locator('.space-contents__state');
+    await testInfo.attach('space-contents-error', {
+      body: await page
+        .getByTestId('space-settings-panel-contents')
+        .screenshot(),
+      contentType: 'image/png',
+    });
+    const [textBox, boxBox] = await Promise.all([
+      text.boundingBox(),
+      box.boundingBox(),
+    ]);
+    expect(textBox && boxBox).toBeTruthy();
+    expect(textBox!.x).toBeGreaterThanOrEqual(boxBox!.x - 0.5);
+    expect(textBox!.x + textBox!.width).toBeLessThanOrEqual(
+      boxBox!.x + boxBox!.width + 0.5,
+    );
+  });
 });
