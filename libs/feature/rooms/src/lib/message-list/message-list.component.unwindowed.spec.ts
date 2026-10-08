@@ -116,6 +116,8 @@ const afterDivider = (el: Element | null | undefined): Element | null => {
 };
 
 describe('MessageListComponent with windowing off', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   beforeEach(() => {
     const compose = new ConversationComposeStub();
     TestBed.overrideProvider(ConversationRuntime, {
@@ -823,7 +825,6 @@ describe('MessageListComponent with windowing off', () => {
     expect(scroll.scrollTop).toBe(1000);
     expect(notAtBottom(cmp)).toBe(false);
     expect(container.querySelector('[data-testid=jump-to-latest]')).toBeNull();
-    vi.unstubAllGlobals();
   });
 
   it('announces a new incoming message, but not the first load or own messages', async () => {
@@ -862,7 +863,6 @@ describe('MessageListComponent with windowing off', () => {
         return 0;
       }),
     );
-    afterEach(() => vi.unstubAllGlobals());
 
     // A window that projects to NOTHING (every row hidden by a timeline filter) must still
     // pull history: there are no rows, so there is no scrollbar and onScroll can never fire
@@ -938,8 +938,7 @@ describe('MessageListComponent with windowing off', () => {
     });
   });
 
-  // Handlers provided by MessageListBase (shared with MessageListComponent),
-  // exercised here through the plain component.
+  // Handlers provided by MessageListBase, exercised here with windowing off.
   describe('shared behaviour (base)', () => {
     const row = (id: string) => ({
       ...msg(id, '@a:hs', 'A', 1),

@@ -54,7 +54,7 @@ function msg(id: string): MessageView {
  */
 describe('message list — jump across a resize', () => {
   /**
-   * Every observer callback either list creates, fired together.
+   * Every observer callback the list creates, fired together.
    *
    * Not just the width watcher's: the windowed list also observes its rows and its container
    * through the same stubbed constructor, and there is no way to tell those apart by target
@@ -72,7 +72,7 @@ describe('message list — jump across a resize', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     observers = [];
-    // jsdom implements neither of these, and both lists' `jumpTo` ends in one of them.
+    // jsdom implements neither of these, and `jumpTo` ends in one of them.
     Element.prototype.scrollIntoView = vi.fn();
     vi.stubGlobal(
       'ResizeObserver',

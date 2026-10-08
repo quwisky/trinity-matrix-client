@@ -702,7 +702,7 @@ export abstract class MessageListBase {
   private stopHeightWatcher?: () => void;
 
   /**
-   * Remember a jump so a width change can re-apply it. Called BY the subclasses' `jumpTo`,
+   * Remember a jump so a width change can re-apply it. Called BY `jumpTo`,
    * not instead of it — the base cannot know how each strategy scrolls.
    */
   protected notePendingJump(messageId: string): void {
@@ -755,12 +755,12 @@ export abstract class MessageListBase {
   }
 
   /**
-   * Watch the scroller's width and re-aim a recent jump when it changes (the virtual list also
+   * Watch the scroller's width and re-aim a recent jump when it changes (windowed mode also
    * re-aims after row measurements). Also starts the reader-scroll watcher that ends re-aiming.
    *
    * Width only: a height change is the keyboard opening or the composer growing, and
-   * re-jumping there would fight the reader rather than help them. Started by the subclasses
-   * once they have a scroll element, and torn down with the component.
+   * re-jumping there would fight the reader rather than help them. Started once the
+   * component has a scroll element, and torn down with the component.
    */
   protected watchScrollerWidth(): void {
     const el = this.scrollEl()?.nativeElement;
@@ -785,8 +785,8 @@ export abstract class MessageListBase {
    * Keep a bottom-pinned conversation pinned when the composer, formatting bar or software
    * keyboard changes the scroller's viewport height. A reader who has scrolled up needs no
    * compensation: the scroller's top edge and scrollTop remain unchanged, so their anchor
-   * stays put. This exact pin is intentionally separate from the subclasses' 120px
-   * near-bottom state for incoming messages. The optional callback lets the virtual list
+   * stays put. This exact pin is intentionally separate from the 120px
+   * near-bottom state for incoming messages. The optional callback lets windowed mode
    * keep its window-height signal in step with the same observation.
    */
   protected watchScrollerHeight(

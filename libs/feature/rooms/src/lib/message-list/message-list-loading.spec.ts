@@ -22,14 +22,6 @@ import { MessageComposerComponent } from '../message-composer/message-composer.c
  * now, and these pin the two ends of that: nothing for a quick load, and once shown it stays
  * long enough to be read.
  */
-/**
- * Both lists, and the windowed one is not optional.
- *
- * `DEFAULT_VIRTUAL_TIMELINE` is true, so `MessageListComponent` is what ships. An
- * earlier version of this file tested only the simple list — the whole binding could be
- * reverted on the virtual one with the entire workspace still green, which is exactly how a
- * scroll-anchoring regression got through review.
- */
 describe('message list — loading older', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

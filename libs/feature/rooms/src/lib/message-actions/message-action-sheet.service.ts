@@ -66,7 +66,7 @@ type PayloadFreeAction = Exclude<
  * message list extends `MessageListBase`, but {@link ThreadViewComponent} does not — it
  * carries its own `onRowAction`. A long press on a thread reply consequently emitted into
  * nothing and every action on it was unreachable by touch, with the Android `contextmenu`
- * fallback removed as well. Shared here so a fourth consumer inherits the behaviour instead
+ * fallback removed as well. Shared here so a third consumer inherits the behaviour instead
  * of having to remember it.
  *
  * ## Why `open` and `close` take an owner
