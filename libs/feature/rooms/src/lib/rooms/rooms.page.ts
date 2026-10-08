@@ -295,7 +295,7 @@ export class RoomsPage {
   private readonly listView = viewChild<ElementRef<HTMLElement>>('listView');
   private readonly mainView = viewChild<ElementRef<HTMLElement>>('mainView');
 
-  private readonly header = viewChild.required(RoomHeaderComponent);
+  private readonly header = viewChild(RoomHeaderComponent);
   private readonly messageSearch = viewChild(MessageSearchComponent);
 
   /** The identity the header names while accounts are mixed. */
@@ -349,7 +349,7 @@ export class RoomsPage {
       if (!this.vm.activeRoom()) return false;
       // Below the members breakpoint the field is hidden: panels are drawers over it.
       if (!this.roomSurfaces.membersAreDrawer()) {
-        this.header().focusSearch();
+        this.header()?.focusSearch();
       } else if (this.surfaceKind() === 'search') {
         this.messageSearch()?.focusField();
       } else {

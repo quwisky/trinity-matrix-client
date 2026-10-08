@@ -21,7 +21,9 @@ import {
   TrnDropdownMenuSeparator,
   TrnDropdownMenuTrigger,
 } from '@trinity/components/overlay';
+import { type ActionAvailability } from '@trinity/data-access/room-administration';
 import { type RoomSummary } from '@trinity/data-access/room-library';
+import { type RenderedRoomSurface } from '../rooms/room-surface-lifecycle';
 import { escapeHtml, linkifyText } from '@trinity/util/matrix';
 
 /** A user intent raised from the room header; the page decides what it does. */
@@ -79,13 +81,12 @@ export class RoomHeaderComponent {
   readonly compact = input(false);
   readonly actingAs = input<RoomHeaderActingAs | null>(null);
   /** Kind of the surface open in the right-hand slot, for the pressed toggles. */
-  readonly surfaceKind = input<string | null>(null);
+  readonly surfaceKind = input<RenderedRoomSurface['kind'] | null>(null);
   readonly pinnedCount = input(0);
-  readonly membersVisible = input(false);
-  readonly invitePermission = input<{
-    available: boolean;
-    reason: string | null;
-  }>({ available: false, reason: null });
+  readonly invitePermission = input<ActionAvailability>({
+    available: false,
+    reason: null,
+  });
   readonly systemStatusProblems = input(false);
   /** Shared by the header field and the search panel's own field. */
   readonly searchQuery = model('');

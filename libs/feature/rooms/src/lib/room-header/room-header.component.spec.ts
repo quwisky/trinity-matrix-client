@@ -253,8 +253,7 @@ describe('RoomHeaderComponent actions and search field', () => {
     fixture.componentRef.setInput('surfaceKind', 'pinned');
     fixture.detectChanges();
     expect(pressed()).toEqual(['false', 'true', 'false']);
-    fixture.componentRef.setInput('surfaceKind', null);
-    fixture.componentRef.setInput('membersVisible', true);
+    fixture.componentRef.setInput('surfaceKind', 'members');
     fixture.detectChanges();
     expect(pressed()).toEqual(['false', 'false', 'true']);
   });
@@ -398,12 +397,5 @@ describe('RoomHeaderComponent for a linked room the client does not hold yet', (
     const { root, byId } = await build({ room: null, loading: true });
     expect(root.querySelector('h1')?.textContent).toContain('Loading room…');
     for (const id of roomActions) expect(byId(id), id).toBeNull();
-  });
-
-  it('drops the loading title once the room is known to be unavailable', async () => {
-    const { root } = await build({ room: null, loading: false });
-    expect(root.querySelector('h1')?.textContent).not.toContain(
-      'Loading room…',
-    );
   });
 });

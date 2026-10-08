@@ -15,7 +15,7 @@
   </button>
 
   <!-- Projected into the shell's single <h1>: inline spans + icon only, no
-           nested heading. rooms' scoped .title-room/.title-lock still apply. -->
+       nested heading. This component's scoped styles style .title-room/.title-lock. -->
   <ng-container trnHeaderTitle>
     @if (room(); as room) {
       <span
@@ -38,9 +38,9 @@
         <trn-icon class="title-lock" name="lock" label="Encrypted room" />
       }
       <!-- Which identity you are acting as. Opening another account's room switches
-                 the active account silently, and below md the sidebar (the only other
-                 indicator) is off-screen entirely — so without this you can send a message
-                 with nothing on screen saying who from. -->
+           the active account silently, and below md the sidebar (the only other
+           indicator) is off-screen entirely — so without this you can send a message
+           with nothing on screen saying who from. -->
       @if (actingAs(); as acting) {
         <span
           class="title-account"
@@ -82,7 +82,7 @@
       }
     } @else if (loading()) {
       <!-- A linked room the client has not synced yet: no name to show, and none of
-                 the room's actions (they live in the actions slot, behind activeRoom()). -->
+           the room's actions (they live in the actions slot, behind activeRoom()). -->
       Loading room…
     } @else {
       <span class="sr-only">Trinity</span>
@@ -133,7 +133,7 @@
         shape="icon"
         class="header-toggle max-md:hidden"
         (click)="action.emit({ type: 'members' })"
-        [attr.aria-pressed]="membersVisible()"
+        [attr.aria-pressed]="surfaceKind() === 'members'"
         trnTooltip="Members"
         aria-label="Members"
         data-testid="toggle-members"
@@ -167,8 +167,8 @@
       </button>
 
       <!-- Present at EVERY breakpoint. It holds Invite, Room settings and Jump to date
-               at all widths; below md it also absorbs the demoted Pinned, Members and System
-               status actions (each marked md:hidden inside). -->
+           at all widths; below md it also absorbs the demoted Pinned, Members and System
+           status actions (each marked md:hidden inside). -->
       <button
         trnBtn
         presentation="ghost"

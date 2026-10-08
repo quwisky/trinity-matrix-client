@@ -477,16 +477,14 @@ describe('RoomsPage header actions and search field', () => {
 });
 
 describe('RoomsPage Escape with the topic popover open', () => {
+  // Characterization: pins that the page's Escape guard is present (jsdom has no Popover API,
+  // so the popover is faked open). The real ordering against the browser's own popover
+  // handling is pinned by shell-layout.spec.mts:836-845.
   it('closes only the popover, leaving the open panel alone', async () => {
     const root = renderHeader(0, {
       room: { ...ROOM, topic: 'Release planning' },
     });
     document.body.append(root);
-    const surfaces =
-      lastRender.fixture.debugElement.injector.get(RoomSurfaceLifecycle);
-    surfaces.transition({ kind: 'open-threads' });
-    lastRender.fixture.detectChanges();
-    // jsdom has no Popover API: report the popover as open to the page's guard.
     const query = document.querySelector.bind(document);
     const spy = vi
       .spyOn(document, 'querySelector')
@@ -495,12 +493,20 @@ describe('RoomsPage Escape with the topic popover open', () => {
           ? (root.querySelector('#room-topic-popover') as Element)
           : query(selector),
       );
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    expect(surfaces.renderedSurface()?.kind).toBe('threads');
-    spy.mockRestore();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    expect(surfaces.renderedSurface()).toBeNull();
-    root.remove();
+    try {
+      const surfaces =
+        lastRender.fixture.debugElement.injector.get(RoomSurfaceLifecycle);
+      surfaces.transition({ kind: 'open-threads' });
+      lastRender.fixture.detectChanges();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(surfaces.renderedSurface()?.kind).toBe('threads');
+      spy.mockRestore();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(surfaces.renderedSurface()).toBeNull();
+    } finally {
+      spy.mockRestore();
+      root.remove();
+    }
   });
 });
 
@@ -514,6 +520,13 @@ describe('RoomsPage header for a linked room the client does not hold yet', () =
       partial: false,
     });
     expect(host.querySelector('h1')?.textContent).toContain('Loading room…');
+  });
+
+  it('drops the loading title once the room is known to be unavailable', () => {
+    const host = pending({ kind: 'error', reason: 'room-unavailable' });
+    expect(host.querySelector('h1')?.textContent).not.toContain(
+      'Loading room…',
+    );
   });
 
   it('still renders the timeline, fed the load state, but not the composer', () => {
