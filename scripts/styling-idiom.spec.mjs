@@ -124,6 +124,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/quick-switcher/quick-switcher.component.scss',
   'libs/feature/rooms/src/lib/reaction-picker/reaction-picker.component.scss',
   'libs/feature/rooms/src/lib/reactions-dialog/reactions-dialog.component.scss',
+  'libs/feature/rooms/src/lib/room-header/room-header.component.scss',
   'libs/feature/rooms/src/lib/room-link-preview/room-link-preview.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-settings-access.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-settings-advanced.component.scss',
