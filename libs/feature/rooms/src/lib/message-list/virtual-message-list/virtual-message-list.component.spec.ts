@@ -11,6 +11,7 @@ import {
 import { MessageComposerComponent } from '../../message-composer/message-composer.component';
 import { DayBoundaryService } from '../day-boundary.service';
 import { VirtualMessageListComponent } from './virtual-message-list.component';
+import { TypingIndicatorComponent } from '../typing-indicator/typing-indicator.component';
 import {
   ConversationComposeStub,
   ConversationMessagesStub,
@@ -832,6 +833,27 @@ describe('VirtualMessageListComponent', () => {
       }),
     );
 
+    it('backfills an empty projection that still has history behind it', () => {
+      const fixture = TestBed.createComponent(VirtualMessageListComponent);
+      let emits = 0;
+      fixture.componentInstance.loadOlder.subscribe(() => emits++);
+      fixture.detectChanges();
+
+      fixture.componentRef.setInput('messages', []);
+      fixture.componentRef.setInput('canLoadOlder', true);
+      fixture.detectChanges();
+      // No oldest event known yet: nothing to page back from, so no request.
+      expect(emits).toBe(0);
+
+      fixture.componentRef.setInput('oldestEventId', '$join');
+      fixture.detectChanges();
+      expect(emits).toBe(1);
+
+      fixture.componentRef.setInput('oldestEventId', '$older-join');
+      fixture.detectChanges();
+      expect(emits).toBe(2);
+    });
+
     it('backfills a short room until it fills, then stops (id-based guard)', () => {
       // A detached TestBed fixture (not ATL render()) is deliberate: render()
       // attaches the component to ApplicationRef, so the signal write from the
@@ -1271,5 +1293,44 @@ describe('VirtualMessageListComponent', () => {
     fixture.detectChanges();
     expect(container.querySelector('.typing-indicator')).toBeNull();
     expect(container.querySelector('.typing-slot')).not.toBeNull();
+
+    // The list owns the typing announcement; only the thread panel opts out (#1056 moved
+    // this here from scripts/message-list-bindings.spec.mjs).
+    const indicator = fixture.debugElement.query(
+      By.directive(TypingIndicatorComponent),
+    );
+    expect(indicator.componentInstance.announce()).toBe(true);
+  });
+
+  it('offers the jump-to-unread pill while the divider is windowed out, and jumping renders it', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const { fixture, container } = await renderList({ messages: many(200) });
+    const cmp = fixture.componentInstance;
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+    let st = 0;
+    Object.defineProperty(scroll, 'scrollTop', {
+      get: () => st,
+      set: (v: number) => (st = v),
+      configurable: true,
+    });
+
+    fixture.componentRef.setInput('firstUnreadId', '$20');
+    fixture.detectChanges();
+    // Pinned to the newest rows, so the divider above $20 is not in the DOM.
+    expect(
+      scroll.querySelector('[data-testid=new-messages-divider]'),
+    ).toBeNull();
+    // The base schedules this on a frame (stubbed out in this file); run it directly.
+    (cmp as unknown as { updateJumpToUnread(): void }).updateJumpToUnread();
+    fixture.detectChanges();
+    expect(
+      container.querySelector('[data-testid=jump-to-unread]'),
+    ).not.toBeNull();
+
+    cmp.jumpToUnread();
+    fixture.detectChanges();
+    expect(
+      scroll.querySelector('[data-testid=new-messages-divider]'),
+    ).not.toBeNull();
   });
 });

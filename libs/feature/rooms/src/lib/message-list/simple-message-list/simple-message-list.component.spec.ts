@@ -12,6 +12,7 @@ import { By } from '@angular/platform-browser';
 import { SimpleMessageListComponent } from './simple-message-list.component';
 import { MessageComposerComponent } from '../../message-composer/message-composer.component';
 import { DayBoundaryService } from '../day-boundary.service';
+import { TypingIndicatorComponent } from '../typing-indicator/typing-indicator.component';
 import { MessageSourceComponent } from '../../message-source/message-source.component';
 import { EMPTY, of } from 'rxjs';
 import {
@@ -992,6 +993,13 @@ describe('SimpleMessageListComponent', () => {
       expect(container.querySelector('.typing-indicator')).toBeNull();
       // The slot stays: it is what keeps the scroll region from resizing.
       expect(container.querySelector('.typing-slot')).not.toBeNull();
+
+      // The list owns the typing announcement; only the thread panel opts out (#1056 moved
+      // this here from scripts/message-list-bindings.spec.mjs).
+      const indicator = fixture.debugElement.query(
+        By.directive(TypingIndicatorComponent),
+      );
+      expect(indicator.componentInstance.announce()).toBe(true);
     });
 
     it('routes an edit submit through the Conversation command and retains intent until settlement', async () => {
