@@ -120,6 +120,23 @@ describe('SignInRedirectService', () => {
       await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
     });
 
+    it('does not redirect when unsubscribed while the stash write is pending', async () => {
+      let release!: () => void;
+      const { service, open, saveSso } = setup({
+        saveSso: () => new Promise<void>((resolve) => (release = resolve)),
+      });
+
+      const subscription = service
+        .startSso('https://hs.example', 'replace')
+        .subscribe();
+      await vi.waitFor(() => expect(saveSso).toHaveBeenCalled());
+      subscription.unsubscribe();
+      release();
+      await new Promise((resolve) => setTimeout(resolve));
+
+      expect(open).not.toHaveBeenCalled();
+    });
+
     it('does not redirect, and errors, when the stash write fails', async () => {
       const failure = new Error('preferences unavailable');
       const { service, open } = setup({
@@ -148,6 +165,21 @@ describe('SignInRedirectService', () => {
       service.startOidc(request);
 
       expect(build).not.toHaveBeenCalled();
+    });
+
+    it('does not redirect when unsubscribed while the stash write is pending', async () => {
+      let release!: () => void;
+      const { service, open, saveOidc } = setup({
+        saveOidc: () => new Promise<void>((resolve) => (release = resolve)),
+      });
+
+      const subscription = service.startOidc(request).subscribe();
+      await vi.waitFor(() => expect(saveOidc).toHaveBeenCalled());
+      subscription.unsubscribe();
+      release();
+      await new Promise((resolve) => setTimeout(resolve));
+
+      expect(open).not.toHaveBeenCalled();
     });
 
     it('builds the request, stashes the whole PKCE context, then redirects', async () => {

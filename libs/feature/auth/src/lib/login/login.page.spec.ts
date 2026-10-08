@@ -16,7 +16,7 @@ import {
 import { TrnAlertService } from '@trinity/components/overlay';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, map, of, throwError, type Observable } from 'rxjs';
+import { NEVER, Subject, map, of, throwError, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { LoginPage } from './login.page';
 import { ConnectionError, MatrixError } from '@trinity/util/matrix';
@@ -525,8 +525,10 @@ describe('LoginPage', () => {
   });
 
   it('starts SSO through the redirect service under the busy state', async () => {
+    const handoff = new Subject<void>();
     const { cmp, redirect } = await renderLogin(
       {} as unknown as Partial<AuthService>,
+      { redirect: { startSso: vi.fn(() => handoff) } },
     );
     cmp.baseUrl.set('https://hs.example');
 
@@ -537,6 +539,10 @@ describe('LoginPage', () => {
       'replace',
       undefined,
     );
+    expect(cmp.busy()).toBe(true);
+
+    handoff.complete();
+    expect(cmp.busy()).toBe(false);
   });
 
   it('re-auth SSO is add mode bound to the existing device', async () => {
@@ -831,7 +837,10 @@ describe('LoginPage', () => {
     });
 
     it('hands the discovered provider to the redirect service, under the busy state', async () => {
-      const { cmp, redirect } = await renderOidcReady();
+      const handoff = new Subject<void>();
+      const { cmp, redirect } = await renderOidcReady({
+        startOidc: vi.fn(() => handoff),
+      });
 
       cmp.startOidc('create');
 
@@ -842,6 +851,10 @@ describe('LoginPage', () => {
         prompt: 'create',
         expectedUserId: null,
       });
+      expect(cmp.busy()).toBe(true);
+
+      handoff.complete();
+      expect(cmp.busy()).toBe(false);
     });
 
     it('re-auth reuses the stored device and expects the same account back', async () => {
