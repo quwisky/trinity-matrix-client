@@ -10,7 +10,7 @@
 </ng-template>
 <ng-template #closeButton>
   <!-- A framed dialog closes from its shell's X alone. -->
-  @if (framing() === 'fullscreen') {
+  @if (framing === 'fullscreen') {
     <button
       trnBtn
       type="button"
@@ -27,7 +27,7 @@
   }
 </ng-template>
 <!-- A centred dialog or a sheet uses the same shell, header and close as every other dialog. -->
-@if (framing() !== 'fullscreen') {
+@if (framing !== 'fullscreen') {
   <trn-dialog-shell
     [title]="title()"
     size="2xl"
@@ -60,7 +60,7 @@
             <!-- A framed header already shows the title; keep it for focus and readers. -->
             <div
               class="settings-layout__list-head"
-              [class.sr-only]="framing() !== 'fullscreen'"
+              [class.sr-only]="framing !== 'fullscreen'"
             >
               <ng-container [ngTemplateOutlet]="heading" />
               <ng-container [ngTemplateOutlet]="closeButton" />
@@ -147,7 +147,7 @@
                 </button>
               }
               <!-- Under a framed header, Back and the section name share one row. -->
-              @if (framing() !== 'fullscreen') {
+              @if (framing !== 'fullscreen') {
                 <ng-container [ngTemplateOutlet]="heading" />
               }
               <ng-container [ngTemplateOutlet]="closeButton" />
@@ -155,7 +155,7 @@
           }
           <ng-content select="[settings-context]" />
           <ng-content select="[settings-warning]" />
-          @if (!listView() && !(compact() && framing() !== 'fullscreen')) {
+          @if (!listView() && !(compact() && framing !== 'fullscreen')) {
             <ng-container [ngTemplateOutlet]="heading" />
           }
           @if (compact() && !listView() && hasParts()) {

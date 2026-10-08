@@ -138,7 +138,6 @@ export class ComposerFormatMenuComponent {
       {
         ariaLabel: 'Format message',
         restoreFocus: false,
-        anchor: this.trigger()?.nativeElement,
       },
     );
     this.sheet = ref;

@@ -51,7 +51,7 @@ export interface TrnSettingsLayoutSection {
   templateUrl: './trn-settings-layout.component.html',
   styleUrl: './trn-settings-layout.component.scss',
   host: {
-    '[attr.data-presentation]': 'framing()',
+    '[attr.data-presentation]': 'framing',
     '(keydown.escape)': 'onEscape($event)',
   },
 })
@@ -76,12 +76,10 @@ export class TrnSettingsLayoutComponent {
    * A centred dialog or a sheet is framed by the shared dialog shell and sized to it; a
    * full-screen dialog and the routed page fill the viewport.
    */
-  protected readonly framing = computed(() => {
-    const presentation = this.openedAs;
-    return presentation === 'dialog' || presentation === 'sheet'
-      ? presentation
+  protected readonly framing =
+    this.openedAs === 'dialog' || this.openedAs === 'sheet'
+      ? this.openedAs
       : 'fullscreen';
-  });
 
   /** Plain-text title for the shared header. */
   readonly title = input.required<string>();

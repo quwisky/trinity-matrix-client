@@ -2,11 +2,9 @@ import { Injectable, inject } from '@angular/core';
 import { Dialog, type DialogConfig, type DialogRef } from '@angular/cdk/dialog';
 import { Overlay } from '@angular/cdk/overlay';
 import type { TrnVariant } from '@trinity/components/foundations';
-import { isMobileOs } from '@trinity/platform-native';
-import { BELOW_MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import { defer, map, take, type Observable } from 'rxjs';
 import { TrnDialogRef } from '../dialog/trn-dialog-ref';
-import { dialogPresentation } from '../dialog/trn-dialog.service';
+import { dialogPresentation, prefersSheet } from '../dialog/trn-dialog.service';
 import {
   TrnAlertDialogComponent,
   type AlertDialogData,
@@ -118,7 +116,7 @@ export class TrnAlertService {
   ): DialogConfig<AlertDialogData, DialogRef<R, TrnAlertDialogComponent>> {
     const { pane, createRef } = dialogPresentation(
       this.overlay,
-      isMobileOs() || matchesQuery(BELOW_MD_QUERY) ? 'bottom' : 'center',
+      prefersSheet() ? 'bottom' : 'center',
       null,
     );
     return {

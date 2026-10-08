@@ -6,6 +6,7 @@ import {
   type ConnectedPosition,
   type PositionStrategy,
 } from '@angular/cdk/overlay';
+import { isMobileOs } from '@trinity/platform-native';
 import { BELOW_MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import { defer, map, merge, take, type Observable } from 'rxjs';
 import {
@@ -29,8 +30,7 @@ export interface DialogOptions<C = object> {
    * Where the panel sits. `'center'` (default) is a centered modal card;
    * `'inline-end'` pins it full-height against the logical end edge — the
    * split-pane side panel (the surface recipe supplies its own bounded geometry).
-   * Replaces the Ionic `justify-content: flex-end` modal css. Below `md`, `'center'` opens
-   * as a full-width bottom sheet instead; see {@link TrnDialogRef.presentation}.
+   * `'bottom'` is a full-width bottom sheet; the surface service picks it by {@link prefersSheet}.
    */
   placement?: TrnDialogPlacement;
   /** Prevent backdrop/escape close (Ionic backdropDismiss: false). */
@@ -123,6 +123,11 @@ const POPOVER_POSITIONS: ConnectedPosition[] = [
   },
 ];
 
+/** The sheet rule: any phone or tablet, or any screen narrower than `md`. */
+export function prefersSheet(): boolean {
+  return isMobileOs() || matchesQuery(BELOW_MD_QUERY);
+}
+
 /** Touch pointers get the centred modal; see {@link DialogOptions.anchor}. */
 export function prefersCentred(): boolean {
   return (
@@ -165,8 +170,7 @@ export function dialogPresentation(
       ? 'fullscreen'
       : anchor
         ? 'popover'
-        : placement === 'bottom' ||
-            (placement === 'center' && matchesQuery(BELOW_MD_QUERY))
+        : placement === 'bottom'
           ? 'sheet'
           : 'dialog';
   const fullScreen = presentation === 'fullscreen';
@@ -202,7 +206,9 @@ export function dialogPresentation(
         maxWidth: '100vw',
         maxHeight: VIEWPORT_BELOW_TITLE_ROW,
       }),
-      ...(presentation === 'popover' && { maxHeight: 'calc(100dvh - 16px)' }),
+      ...(presentation === 'popover' && {
+        maxHeight: 'calc(100dvh - var(--trinity-title-row-inset, 0px) - 1rem)',
+      }),
       ...(sheet && {
         width: '100vw',
         maxWidth: '100vw',

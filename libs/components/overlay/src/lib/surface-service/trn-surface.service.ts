@@ -1,6 +1,4 @@
 import { Injectable, inject, type Type } from '@angular/core';
-import { isMobileOs } from '@trinity/platform-native';
-import { BELOW_MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import type { Observable } from 'rxjs';
 import type { TrnActionSheetRef } from '../action-sheet/trn-action-sheet-ref';
 import type { ActionSheetData } from '../action-sheet/trn-action-list.component';
@@ -9,12 +7,13 @@ import type { TrnDialogRef } from '../dialog/trn-dialog-ref';
 import {
   TrnDialogService,
   prefersCentred,
+  prefersSheet,
   type DialogOptions,
   type TrnDialogAutoFocus,
 } from '../dialog/trn-dialog.service';
 
 /** `'auto'` applies the sheet-or-dialog rule; the others are explicit opt-outs. */
-export type TrnSurfaceKind = 'auto' | 'fullscreen' | 'panel' | 'popover';
+export type TrnSurfaceKind = 'auto' | 'fullscreen' | 'popover';
 
 export interface TrnSurfaceOptions<C = object> {
   /** Set on the opened component's inputs after creation. */
@@ -60,7 +59,7 @@ export class TrnSurfaceService {
 
   /** The rule: any phone or tablet, or any screen narrower than `md`. */
   prefersSheet(): boolean {
-    return isMobileOs() || matchesQuery(BELOW_MD_QUERY);
+    return prefersSheet();
   }
 
   open<R = unknown, C = object>(
@@ -120,7 +119,6 @@ export class TrnSurfaceService {
     ...rest
   }: TrnSurfaceOptions<C>): DialogOptions<C> {
     if (kind === 'fullscreen') return { ...rest, placement: 'fullscreen' };
-    if (kind === 'panel') return { ...rest, placement: 'inline-end' };
     if (kind === 'popover' && anchor && !prefersCentred()) {
       return { ...rest, anchor };
     }

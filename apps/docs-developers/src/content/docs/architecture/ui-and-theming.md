@@ -41,7 +41,7 @@ Density has three options: cosy, compact, and spacious. Density changes spacing 
 
 Dialogs, menus, tooltips, and other overlays use the Trinity overlay defaults and public component APIs. Preserve focus management, keyboard dismissal, stacking, and theme inheritance. Do not create a parallel overlay root for a single feature.
 
-Open every modal surface through `TrnSurfaceService` from `@trinity/components/overlay`. It applies one rule: a bottom sheet on any phone or tablet and below `md`, a centred dialog otherwise, and an anchored menu for an action list opened from a button on a large screen. Use `kind: 'fullscreen'`, `'panel'` or `'popover'` only for those explicit layouts. `scripts/surface-service-usage.spec.mjs` keeps the dialog and action-sheet services it wraps inside the overlay library.
+Open every modal surface through `TrnSurfaceService` from `@trinity/components/overlay`. It applies one rule: a bottom sheet on any phone or tablet and below `md`, a centred dialog otherwise, and an anchored menu for an action list opened from a button on a large screen. Use `kind: 'fullscreen'` or `'popover'` only for those explicit layouts; side panels keep their own non-modal components. `scripts/surface-service-usage.spec.mjs` keeps the dialog and action-sheet services it wraps inside the overlay library.
 
 ## Treat responsive layout as behavior {#responsive-layout}
 

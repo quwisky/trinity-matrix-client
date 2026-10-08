@@ -75,20 +75,20 @@ describe('TrnSurfaceService', () => {
     },
   );
 
-  it.each([
-    ['fullscreen', 'fullscreen'],
-    ['panel', 'inline-end'],
-  ] as const)('passes the explicit %s kind through', (kind, placement) => {
-    platform.mobile = true;
-    const open = vi.spyOn(TestBed.inject(TrnDialogService), 'open');
+  it.each([['fullscreen', 'fullscreen']] as const)(
+    'passes the explicit %s kind through',
+    (kind, placement) => {
+      platform.mobile = true;
+      const open = vi.spyOn(TestBed.inject(TrnDialogService), 'open');
 
-    surfaces.open(PlainComponent, { kind, ariaLabel: 'Probe' });
+      surfaces.open(PlainComponent, { kind, ariaLabel: 'Probe' });
 
-    expect(open).toHaveBeenCalledWith(PlainComponent, {
-      ariaLabel: 'Probe',
-      placement,
-    });
-  });
+      expect(open).toHaveBeenCalledWith(PlainComponent, {
+        ariaLabel: 'Probe',
+        placement,
+      });
+    },
+  );
 
   it('anchors a popover on a fine pointer', () => {
     const ref = surfaces.open(PlainComponent, {

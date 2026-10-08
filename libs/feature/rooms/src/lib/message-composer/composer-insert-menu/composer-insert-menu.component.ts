@@ -234,7 +234,6 @@ export class ComposerInsertMenuComponent {
       { header: 'Add to message', buttons },
       {
         ariaLabel: 'Add to message',
-        anchor: this.mobileTrigger()?.nativeElement,
         // Selection can open a poll, GIF or sticker surface. CDK restoring the `+`
         // afterward would steal focus from it, so this invocation owns restoration and
         // applies it only to dismissals and actions that do not launch a focus owner.
