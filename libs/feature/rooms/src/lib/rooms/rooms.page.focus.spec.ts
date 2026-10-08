@@ -42,7 +42,7 @@ import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
-import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
+import { MessageListComponent } from '../message-list/message-list.component';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
 import { AccountRoutingService } from './account-routing.service';
@@ -227,7 +227,7 @@ function buildPage() {
         SidebarUserPanelComponent,
         PaneHandleComponent,
         SimpleMessageListComponent,
-        VirtualMessageListComponent,
+        MessageListComponent,
         EncryptionBannerComponent,
         ConnectivityBannerComponent,
         TombstoneBannerComponent,
@@ -291,7 +291,7 @@ function buildPage() {
         MockComponent(SidebarUserPanelComponent),
         MockComponent(PaneHandleComponent),
         MockComponent(SimpleMessageListComponent),
-        MockComponent(VirtualMessageListComponent),
+        MockComponent(MessageListComponent),
         MockComponent(EncryptionBannerComponent),
         MockComponent(ConnectivityBannerComponent),
         MockComponent(TombstoneBannerComponent),

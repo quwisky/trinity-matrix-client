@@ -4,7 +4,7 @@ import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SimpleMessageListComponent } from './simple-message-list/simple-message-list.component';
-import { VirtualMessageListComponent } from './virtual-message-list/virtual-message-list.component';
+import { MessageListComponent } from './message-list.component';
 import type { MessageListBase } from './message-list-base';
 import type {
   MessageView,
@@ -28,7 +28,7 @@ import { MessageComposerComponent } from '../message-composer/message-composer.c
 /**
  * Both lists, and the windowed one is not optional.
  *
- * `DEFAULT_VIRTUAL_TIMELINE` is true, so `VirtualMessageListComponent` is what ships. An
+ * `DEFAULT_VIRTUAL_TIMELINE` is true, so `MessageListComponent` is what ships. An
  * earlier version of this file tested only the simple list — the whole binding could be
  * reverted on the virtual one with the entire workspace still green, which is exactly how a
  * scroll-anchoring regression got through review.
@@ -40,7 +40,7 @@ import { MessageComposerComponent } from '../message-composer/message-composer.c
 // which is why both lists belong in the same table.
 const LISTS: readonly (readonly [string, Type<MessageListBase>])[] = [
   ['simple', SimpleMessageListComponent],
-  ['virtual (the default)', VirtualMessageListComponent],
+  ['windowed (the default)', MessageListComponent],
 ];
 
 describe.each(LISTS)('message list — loading older (%s)', (_label, List) => {

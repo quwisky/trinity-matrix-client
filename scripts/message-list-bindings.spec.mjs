@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 /**
  * The two message lists must be bound identically.
  *
- * `rooms.page.html` picks between `trn-virtual-message-list` and `trn-simple-message-list` on
+ * `rooms.page.html` picks between `trn-message-list` and `trn-simple-message-list` on
  * a feature flag, and both extend `MessageListBase`, so the two elements carry the same 30
  * bindings. Written out twice, they drift: an input added to one and forgotten on the other
  * gives a timeline that behaves differently depending on a flag most people never touch, and
@@ -89,7 +89,7 @@ function inlineBindingsOf(elementName, source) {
 
 const listTemplates = {
   virtual:
-    'libs/feature/rooms/src/lib/message-list/virtual-message-list/virtual-message-list.component.html',
+    'libs/feature/rooms/src/lib/message-list/message-list.component.html',
   simple:
     'libs/feature/rooms/src/lib/message-list/simple-message-list/simple-message-list.component.html',
 };
@@ -104,7 +104,7 @@ const typingBindings = Object.fromEntries(
   ]),
 );
 
-const virtual = bindingsOf('trn-virtual-message-list');
+const virtual = bindingsOf('trn-message-list');
 const simple = bindingsOf('trn-simple-message-list');
 
 describe('message list bindings', () => {

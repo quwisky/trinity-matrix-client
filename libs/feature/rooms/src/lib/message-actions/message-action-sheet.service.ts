@@ -50,7 +50,7 @@ type PayloadFreeAction = Exclude<
  *
  * A row is destroyed by any of the things that routinely happen to a message — a redaction,
  * an edit, the local-echo id swap when your own send lands, or simply scrolling out of the
- * virtual window, which happens behind the sheet's own backdrop where the reader cannot see
+ * list's window, which happens behind the sheet's own backdrop where the reader cannot see
  * it. An `output()` on a destroyed component is a SILENT no-op, so a sheet holding the row's
  * handlers would be a menu where every row is still tappable and nothing happens.
  *

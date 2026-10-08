@@ -918,7 +918,7 @@ describe('SimpleMessageListComponent', () => {
     });
   });
 
-  // Handlers provided by MessageListBase (shared with VirtualMessageListComponent),
+  // Handlers provided by MessageListBase (shared with MessageListComponent),
   // exercised here through the plain component.
   describe('shared behaviour (base)', () => {
     const row = (id: string) => ({

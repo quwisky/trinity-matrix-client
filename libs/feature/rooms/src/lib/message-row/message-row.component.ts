@@ -122,7 +122,7 @@ export type MessageSwipeAction = 'edit' | 'reply';
 
 /**
  * One presentational message row, shared by the main timeline ({@link
- * SimpleMessageListComponent} / {@link VirtualMessageListComponent}) and the thread
+ * SimpleMessageListComponent} / {@link MessageListComponent}) and the thread
  * view so all render identically — sender
  * header/continuation, reply preview, media/markdown/text body, reactions, the
  * hover toolbar, and (main timeline only) a thread indicator.

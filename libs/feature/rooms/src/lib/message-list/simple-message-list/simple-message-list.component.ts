@@ -37,7 +37,7 @@ const MAX_BACKFILL_ROUNDS = 20;
 /**
  * Discord-style message list for the active room — the plain, non-virtualized
  * timeline (renders every loaded row). The windowed variant
- * ({@link VirtualMessageListComponent}) is selected instead when the experimental
+ * ({@link MessageListComponent}) is selected instead when the experimental
  * virtualized-timeline flag is on. Shared logic lives in {@link MessageListBase}.
  */
 @Component({

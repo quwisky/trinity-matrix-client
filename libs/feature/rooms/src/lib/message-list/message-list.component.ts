@@ -1,6 +1,6 @@
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
-import { TimelineSkeletonComponent } from '../timeline-skeleton/timeline-skeleton.component';
+import { TimelineSkeletonComponent } from './timeline-skeleton/timeline-skeleton.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -10,17 +10,18 @@ import {
   computed,
   effect,
   inject,
+  input,
   signal,
   untracked,
   viewChildren,
 } from '@angular/core';
-import { MessageComposerComponent } from '../../message-composer/message-composer.component';
-import { MessageRowComponent } from '../../message-row/message-row.component';
-import { MessageListBase } from '../message-list-base';
-import { TrnFileDropDirective } from '../../shared/file-drop.directive';
-import { DropOverlayComponent } from '../drop-overlay/drop-overlay.component';
-import { TimelineDividerComponent } from '../timeline-divider/timeline-divider.component';
-import { TypingIndicatorComponent } from '../typing-indicator/typing-indicator.component';
+import { MessageComposerComponent } from '../message-composer/message-composer.component';
+import { MessageRowComponent } from '../message-row/message-row.component';
+import { MessageListBase } from './message-list-base';
+import { TrnFileDropDirective } from '../shared/file-drop.directive';
+import { DropOverlayComponent } from './drop-overlay/drop-overlay.component';
+import { TimelineDividerComponent } from './timeline-divider/timeline-divider.component';
+import { TypingIndicatorComponent } from './typing-indicator/typing-indicator.component';
 import { scrollBehavior } from '@trinity/util/ui';
 import {
   buildPrefixSums,
@@ -29,7 +30,7 @@ import {
   scrollCompensation,
   type HeightChange,
   type WindowResult,
-} from '../virtual-window';
+} from './virtual-window';
 
 /** Trigger older-history loading when the scroll top gets within this many px. */
 const AUTO_LOAD_THRESHOLD_PX = 150;
@@ -53,16 +54,17 @@ const OVERSCAN_PX = 800;
 const SMALL_LIST_ROWS = 80;
 
 /**
- * Windowed (virtualized) variant of the room timeline: renders only the rows in (and
- * near) the viewport plus top/bottom spacer divs, bounding the DOM in long rooms.
- * Selected in place of {@link SimpleMessageListComponent} when the experimental
- * virtualized-timeline flag is on; shared logic lives in {@link MessageListBase}.
+ * The room timeline. With `windowed` on (the default) it renders only the rows in and near
+ * the viewport, plus top and bottom spacers, so the DOM stays bounded in long rooms. With it
+ * off (Settings → Experimental) it renders every loaded row through the same anchoring,
+ * measurement and jump code. Rooms of {@link SMALL_LIST_ROWS} rows or fewer render in full
+ * either way. Domain logic lives in {@link MessageListBase}.
  *
- * Trade-off vs the plain list: native in-page find (Ctrl-F), linear screen-reader
- * reading order, and cross-row text selection only cover the rendered rows.
+ * Trade-off of windowing: native in-page find (Ctrl-F), linear screen-reader reading order
+ * and cross-row text selection only cover the rendered rows.
  */
 @Component({
-  selector: 'trn-virtual-message-list',
+  selector: 'trn-message-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     EmptyStateComponent,
@@ -87,10 +89,10 @@ const SMALL_LIST_ROWS = 80;
       outputs: [],
     },
   ],
-  templateUrl: './virtual-message-list.component.html',
-  styleUrl: './virtual-message-list.component.scss',
+  templateUrl: './message-list.component.html',
+  styleUrl: './message-list.component.scss',
 })
-export class VirtualMessageListComponent extends MessageListBase {
+export class MessageListComponent extends MessageListBase {
   private lastId = '';
   /** Whether the user is scrolled to (or near) the bottom — gates auto-scroll and
    * pins the window to the newest row. A signal so windowing reacts to it. */
@@ -159,11 +161,14 @@ export class VirtualMessageListComponent extends MessageListBase {
         overscanPx: OVERSCAN_PX,
         pinBottom: this.atBottomSig(),
         smallListThreshold: SMALL_LIST_ROWS,
-        enabled: true,
+        enabled: this.windowed(),
       },
       this.prefix(),
     ),
   );
+
+  /** Render only the rows near the viewport. Off (Settings → Experimental) renders every loaded row. */
+  readonly windowed = input(true);
 
   /** The rows actually rendered — the full list sliced to the window. */
   readonly windowedRows = computed(() => {

@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SimpleMessageListComponent } from './simple-message-list/simple-message-list.component';
-import { VirtualMessageListComponent } from './virtual-message-list/virtual-message-list.component';
+import { MessageListComponent } from './message-list.component';
 import type { MessageView } from '@trinity/data-access/timeline';
 import type { MessageListBase } from './message-list-base';
 
@@ -56,7 +56,7 @@ function msg(id: string): MessageView {
  */
 const LISTS: readonly (readonly [string, Type<MessageListBase>])[] = [
   ['simple', SimpleMessageListComponent],
-  ['virtual (the default)', VirtualMessageListComponent],
+  ['windowed (the default)', MessageListComponent],
 ];
 
 describe.each(LISTS)('message list — jump across a resize (%s)', (_l, List) => {

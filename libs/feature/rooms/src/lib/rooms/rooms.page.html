@@ -430,7 +430,7 @@
              windowing to be a MODE of one list rather than a second component, which is a
              larger change than this phase. -->
           @if (flags.virtualTimeline()) {
-            <trn-virtual-message-list
+            <trn-message-list
               [messages]="timeline.messages()"
               [threadSummaries]="threads.summaries()"
               [canPin]="pinned.canMutate()"

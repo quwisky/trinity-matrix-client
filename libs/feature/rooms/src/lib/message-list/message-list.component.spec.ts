@@ -8,14 +8,14 @@ import {
   ConversationRuntime,
   type MessageView,
 } from '@trinity/data-access/timeline';
-import { MessageComposerComponent } from '../../message-composer/message-composer.component';
-import { DayBoundaryService } from '../day-boundary.service';
-import { VirtualMessageListComponent } from './virtual-message-list.component';
-import { TypingIndicatorComponent } from '../typing-indicator/typing-indicator.component';
+import { MessageComposerComponent } from '../message-composer/message-composer.component';
+import { DayBoundaryService } from './day-boundary.service';
+import { MessageListComponent } from './message-list.component';
+import { TypingIndicatorComponent } from './typing-indicator/typing-indicator.component';
 import {
   ConversationComposeStub,
   ConversationMessagesStub,
-} from '../../testing/conversation-timeline.stub';
+} from '../testing/conversation-timeline.stub';
 
 function msg(
   id: string,
@@ -54,10 +54,10 @@ const EST = 64;
 
 /** `notAtBottom` drives the jump pill and is protected (template-only); read it
  * through a narrow view rather than widening the component's API for a test. */
-const notAtBottom = (cmp: VirtualMessageListComponent): boolean =>
+const notAtBottom = (cmp: MessageListComponent): boolean =>
   (cmp as unknown as { notAtBottom: () => boolean }).notAtBottom();
 
-describe('VirtualMessageListComponent', () => {
+describe('MessageListComponent', () => {
   beforeEach(() => {
     const compose = new ConversationComposeStub();
     TestBed.overrideProvider(ConversationRuntime, {
@@ -88,9 +88,10 @@ describe('VirtualMessageListComponent', () => {
       jumpToId: string;
       jumpToNonce: number;
       canLoadOlder: boolean;
+      windowed: boolean;
     }> = {},
   ) {
-    return render(VirtualMessageListComponent, {
+    return render(MessageListComponent, {
       inputs,
       imports: [MockComponent(MessageComposerComponent)],
     });
@@ -145,7 +146,7 @@ describe('VirtualMessageListComponent', () => {
     }
 
     function renderDays() {
-      return render(VirtualMessageListComponent, {
+      return render(MessageListComponent, {
         inputs: { messages: acrossThreeDays() },
         imports: [MockComponent(MessageComposerComponent)],
         providers: [
@@ -834,7 +835,7 @@ describe('VirtualMessageListComponent', () => {
     );
 
     it('backfills an empty projection that still has history behind it', () => {
-      const fixture = TestBed.createComponent(VirtualMessageListComponent);
+      const fixture = TestBed.createComponent(MessageListComponent);
       let emits = 0;
       fixture.componentInstance.loadOlder.subscribe(() => emits++);
       fixture.detectChanges();
@@ -842,7 +843,8 @@ describe('VirtualMessageListComponent', () => {
       fixture.componentRef.setInput('messages', []);
       fixture.componentRef.setInput('canLoadOlder', true);
       fixture.detectChanges();
-      // No oldest event known yet: nothing to page back from, so no request.
+      // No oldest event known yet: nothing to page back from, so no request. (Pins the null
+      // sentinel in lastBackfillOldestId.)
       expect(emits).toBe(0);
 
       fixture.componentRef.setInput('oldestEventId', '$join');
@@ -860,7 +862,7 @@ describe('VirtualMessageListComponent', () => {
       // synchronous-rAF backfill re-enters the zoneless scheduler ("cannot
       // synchronously execute watches while scheduling"). A detached fixture only
       // ticks on our explicit fixture.detectChanges().
-      const fixture = TestBed.createComponent(VirtualMessageListComponent);
+      const fixture = TestBed.createComponent(MessageListComponent);
       fixture.componentRef.setInput('canLoadOlder', true);
       fixture.detectChanges();
 
@@ -903,11 +905,11 @@ describe('VirtualMessageListComponent', () => {
       // anchor restore re-enters the zoneless scheduler ("cannot synchronously
       // execute watches while scheduling"). A detached fixture only ticks on our
       // explicit fixture.detectChanges().
-      TestBed.overrideComponent(VirtualMessageListComponent, {
+      TestBed.overrideComponent(MessageListComponent, {
         remove: { imports: [MessageComposerComponent] },
         add: { imports: [MockComponent(MessageComposerComponent)] },
       });
-      const fixture = TestBed.createComponent(VirtualMessageListComponent);
+      const fixture = TestBed.createComponent(MessageListComponent);
       fixture.componentRef.setInput('canLoadOlder', true);
       fixture.componentRef.setInput('messages', many(30)); // short → all rendered
       fixture.detectChanges();
@@ -1025,11 +1027,11 @@ describe('VirtualMessageListComponent', () => {
       (userScrollTop) => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
         try {
-          TestBed.overrideComponent(VirtualMessageListComponent, {
+          TestBed.overrideComponent(MessageListComponent, {
             remove: { imports: [MessageComposerComponent] },
             add: { imports: [MockComponent(MessageComposerComponent)] },
           });
-          const fixture = TestBed.createComponent(VirtualMessageListComponent);
+          const fixture = TestBed.createComponent(MessageListComponent);
           fixture.componentRef.setInput('canLoadOlder', true);
           fixture.componentRef.setInput('messages', many(30));
           fixture.detectChanges();
@@ -1090,11 +1092,11 @@ describe('VirtualMessageListComponent', () => {
     ])(
       'keeps a scroll made while %s was loading when it lands',
       (_label, prepended) => {
-        TestBed.overrideComponent(VirtualMessageListComponent, {
+        TestBed.overrideComponent(MessageListComponent, {
           remove: { imports: [MessageComposerComponent] },
           add: { imports: [MockComponent(MessageComposerComponent)] },
         });
-        const fixture = TestBed.createComponent(VirtualMessageListComponent);
+        const fixture = TestBed.createComponent(MessageListComponent);
         fixture.componentRef.setInput('canLoadOlder', true);
         fixture.componentRef.setInput('messages', many(30));
         fixture.detectChanges();
@@ -1149,11 +1151,11 @@ describe('VirtualMessageListComponent', () => {
     );
 
     it('falls back to prefix offsets when a large prepend windows the anchor out', () => {
-      TestBed.overrideComponent(VirtualMessageListComponent, {
+      TestBed.overrideComponent(MessageListComponent, {
         remove: { imports: [MessageComposerComponent] },
         add: { imports: [MockComponent(MessageComposerComponent)] },
       });
-      const fixture = TestBed.createComponent(VirtualMessageListComponent);
+      const fixture = TestBed.createComponent(MessageListComponent);
       fixture.componentRef.setInput('messages', many(120));
       fixture.detectChanges();
       const container = fixture.nativeElement as HTMLElement;
@@ -1278,7 +1280,7 @@ describe('VirtualMessageListComponent', () => {
   // Before the extraction the markup was copy-pasted here and asserted only in the simple
   // list, so the windowed copy could drift silently.
   it('feeds the typing names to the indicator', async () => {
-    const { fixture, container } = await render(VirtualMessageListComponent, {
+    const { fixture, container } = await render(MessageListComponent, {
       inputs: { typingNames: ['Alice', 'Bob'] },
       imports: [MockComponent(MessageComposerComponent)],
     });
@@ -1332,5 +1334,59 @@ describe('VirtualMessageListComponent', () => {
     expect(
       scroll.querySelector('[data-testid=new-messages-divider]'),
     ).not.toBeNull();
+  });
+
+  describe('windowed input', () => {
+    it('renders every row, with empty spacers, when windowing is off', async () => {
+      const { fixture, container } = await renderList({
+        messages: many(200),
+        windowed: false,
+      });
+      expect(container.querySelectorAll('.msg')).toHaveLength(200);
+      expect(
+        [...container.querySelectorAll<HTMLElement>('.vpad')].map(
+          (p) => p.style.height,
+        ),
+      ).toEqual(['0px', '0px']);
+      expect(fixture.componentInstance.windowedRows()).toHaveLength(200);
+    });
+
+    it('re-windows in place, keeping the reader, when windowing is switched off and on', async () => {
+      const { fixture, container } = await renderList({ messages: many(200) });
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      let st = 5000;
+      Object.defineProperty(scroll, 'scrollTop', {
+        get: () => st,
+        set: (v: number) => (st = v),
+        configurable: true,
+      });
+      Object.defineProperty(scroll, 'clientHeight', {
+        value: 600,
+        configurable: true,
+      });
+      Object.defineProperty(scroll, 'scrollHeight', {
+        value: 200 * EST,
+        configurable: true,
+      });
+      cmp.onScroll();
+      fixture.detectChanges();
+      const reading = `$${Math.floor(5000 / EST)}`; // the row at the viewport top
+      expect(scroll.querySelector(`[data-mid="${reading}"]`)).not.toBeNull();
+      expect(scroll.querySelectorAll('.msg').length).toBeLessThan(200);
+
+      fixture.componentRef.setInput('windowed', false);
+      fixture.detectChanges();
+      expect(fixture.componentInstance).toBe(cmp);
+      expect(scroll.querySelectorAll('.msg')).toHaveLength(200);
+      expect(cmp.topPad()).toBe(0);
+      expect(st).toBe(5000);
+
+      fixture.componentRef.setInput('windowed', true);
+      fixture.detectChanges();
+      expect(scroll.querySelector(`[data-mid="${reading}"]`)).not.toBeNull();
+      expect(cmp.topPad()).toBeGreaterThan(0);
+      expect(st).toBe(5000);
+    });
   });
 });

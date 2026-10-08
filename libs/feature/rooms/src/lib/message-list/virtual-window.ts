@@ -28,7 +28,7 @@ export interface WindowInput {
   readonly pinBottom: boolean;
   /** At or below this row count, render everything (no windowing). */
   readonly smallListThreshold: number;
-  /** Master switch — when false, always render everything (feature flag off). */
+  /** Master switch: when false, render everything (the list's `windowed` input). */
   readonly enabled: boolean;
 }
 

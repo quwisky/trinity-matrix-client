@@ -132,7 +132,7 @@ test.describe('Message grouping', () => {
     }
 
     // The group gap, measured rather than read off the stylesheet — and specifically as
-    // PADDING inside the border box. `virtual-message-list` sizes every row with
+    // PADDING inside the border box. `message-list` sizes every row with
     // `entry.borderBoxSize[0].blockSize`, which margins sit outside of, so a gap applied as
     // `margin-top` would look identical on screen here and silently undercount the windowed
     // scroll by the gap on every group start. Asserting the border box is what tells the two
@@ -165,7 +165,7 @@ test.describe('Message grouping', () => {
     expect(gap.start.paddingTop).toBeGreaterThanOrEqual(16);
     expect(gap.cont.paddingTop).toBe(0);
     // And it is not margin — which is the half a screenshot could not tell you, and the half
-    // that matters: `virtual-message-list` sizes rows from `borderBoxSize[0].blockSize`, and
+    // that matters: `message-list` sizes rows from `borderBoxSize[0].blockSize`, and
     // padding is inside the border box while margin is outside it. These two lines together
     // ARE the proof; there is no third measurement to take.
     //

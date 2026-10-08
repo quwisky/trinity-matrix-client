@@ -33,7 +33,7 @@
     // Bleed into the scroll's horizontal padding so the hover highlight spans
     // the full width (Discord-style); content position is unchanged.
     // The top value is the GROUP GAP, and it is padding rather than margin on purpose:
-    // `virtual-message-list` measures each row with `entry.borderBoxSize[0].blockSize`, which
+    // `message-list` measures each row with `entry.borderBoxSize[0].blockSize`, which
     // margins sit outside of. A `margin-top` here would be invisible to that measurement, so
     // every group start would be undercounted by the gap and the windowed scroll would drift
     // by 16px per group. `:host { display: contents }` means there is no host box to observe
@@ -409,7 +409,7 @@
   // The action revealed behind a row as it slides. Counter-translated by the same custom property, so it holds still while the row moves over
   // it — the alternative, a sibling of `.msg`, does not exist: `:host { display: contents }`
   // means there is no box to put one in, and adding a wrapper would break both the
-  // `[data-mid]` height measurement in `virtual-message-list` and `.msg`'s negative margin.
+  // `[data-mid]` height measurement in `message-list` and `.msg`'s negative margin.
   .msg__swipe {
     position: absolute;
     inset-block: 0;

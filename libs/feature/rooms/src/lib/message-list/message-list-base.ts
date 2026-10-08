@@ -111,7 +111,7 @@ const LOAD_ERROR_COPY: Readonly<
  * Shared domain logic for the room timeline, independent of scroll strategy: the
  * inputs/outputs, the edit/reply state + action handlers, and the Discord-style row
  * grouping. {@link SimpleMessageListComponent} (plain scroll) and
- * {@link VirtualMessageListComponent} (windowed) extend this and add only their own
+ * {@link MessageListComponent} (windowed) extend this and add only their own
  * scroll container, effects and template — the feature flag selects which one the
  * room renders. Kept an abstract `@Directive()` (no selector) so Angular wires the
  * inherited inputs/outputs/queries for the subclasses.
@@ -142,7 +142,7 @@ export abstract class MessageListBase {
    * every backfill is judged on its own duration.
    *
    * Why the removal has to be synchronous at all: the strip is IN FLOW above the rows, and
-   * `VirtualMessageListComponent.rowsRegionTop()` folds its height into the scroll restore
+   * `MessageListComponent.rowsRegionTop()` folds its height into the scroll restore
    * that keeps the reader's place across a prepend. `TimelineService.loadOlder` prepends the
    * rows and clears `loadingOlder` in one synchronous block, so a strip held past that point
    * has the restore measure 36px that is about to disappear — and `.scroll` sets

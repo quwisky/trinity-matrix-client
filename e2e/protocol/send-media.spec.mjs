@@ -303,10 +303,8 @@ async function main(protocolBrowser) {
     // unit tests duck-type both — this is the only place the real ones are exercised, against
     // the real message list, with the real host bindings.
     log('dropping two files onto the conversation');
-    const listSelector = (await page
-      .locator('trn-virtual-message-list')
-      .count())
-      ? 'trn-virtual-message-list'
+    const listSelector = (await page.locator('trn-message-list').count())
+      ? 'trn-message-list'
       : 'trn-simple-message-list';
     const list = page.locator(listSelector);
 

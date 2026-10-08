@@ -18,7 +18,7 @@ import { registerUser } from '../../../support/account.mts';
  * Paging in older history must not move what the reader is looking at.
  *
  * This is the invariant the windowed timeline exists to maintain, and it is one that can be
- * broken from a distance. `VirtualMessageListComponent` captures an anchor before it asks
+ * broken from a distance. `MessageListComponent` captures an anchor before it asks
  * for more history and restores the scroll position afterwards, while fresh rows move from
  * estimated heights to real browser measurements.
  *
