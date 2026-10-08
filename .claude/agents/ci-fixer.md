@@ -42,7 +42,7 @@ gh run list --branch main --workflow <workflow> --limit 10 \
   change the guard only when the PR intentionally changes the contract.
 - Validate with the `validate-change` skill
   (`node .agents/skills/validate-change/validate-change.mjs --run`) plus the focused failing
-  test. Run typecheck before pushing: CI runs it before unit tests and Vitest skips it.
+  test. Run typecheck before pushing: CI runs it in `Lint & format` and Vitest skips it.
 - Commit with Conventional Commits, no tool attribution, staging only files you changed.
   Push, then follow the new run with `gh run watch <run-id> --exit-status`.
 

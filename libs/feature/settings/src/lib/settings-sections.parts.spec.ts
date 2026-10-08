@@ -14,7 +14,7 @@ import { AvatarComponent } from '@trinity/components/generic-content';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import {
   TrnAlertService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnSettingsParts,
   TrnToastService,
 } from '@trinity/components/overlay';
@@ -202,7 +202,7 @@ const SETUPS: Record<string, () => Setup> = {
       MockProvider(PushService, {
         registration: signal({ status: 'idle' as const }).asReadonly(),
       }),
-      MockProvider(TrnDialogService),
+      MockProvider(TrnSurfaceService),
     ],
   }),
   privacy: () => ({

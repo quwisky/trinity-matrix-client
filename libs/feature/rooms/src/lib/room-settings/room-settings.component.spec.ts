@@ -4,7 +4,7 @@ import { render } from '@trinity/testing';
 import {
   TrnAlertService,
   TrnDialogRef,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import {
@@ -262,7 +262,7 @@ async function build(options: BuildOptions = {}) {
       }),
       MockProvider(WidgetManagementService),
       MockProvider(ExternalBrowserService, { open: () => of(true) }),
-      MockProvider(TrnDialogService, {
+      MockProvider(TrnSurfaceService, {
         openAndWait$: (() => of(options.upgradeResult ?? null)) as never,
       }),
       MockProvider(TrnDialogRef, { close }),
