@@ -13,7 +13,6 @@ import {
   viewChild,
 } from '@angular/core';
 import { DateTimeFormatService, isMobileOs } from '@trinity/platform-native';
-import { hasUsableTimestamp } from '@trinity/util/matrix';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import {
   MessageSwipeDirective,
@@ -44,6 +43,7 @@ import {
 } from '@trinity/components/foundations';
 import { MessageReplyPreviewComponent } from '../message-reply-preview/message-reply-preview.component';
 import { MessageReceiptsComponent } from '../message-receipts/message-receipts.component';
+import { MessageTimeComponent } from '../message-time/message-time.component';
 import { MessageThreadSummaryComponent } from '../message-thread-summary/message-thread-summary.component';
 
 /** A collapsed run of adjacent system lines (see `groupSystemRuns`). */
@@ -149,6 +149,7 @@ export type MessageSwipeAction = 'edit' | 'reply';
     MessageReplyPreviewComponent,
     MessageThreadSummaryComponent,
     MessageReceiptsComponent,
+    MessageTimeComponent,
     MessageSwipeDirective,
   ],
   templateUrl: './message-row.component.html',
@@ -167,7 +168,6 @@ export class MessageRowComponent {
 
   private readonly toolbar = viewChild(MessageToolbarComponent);
   private readonly swipeGesture = viewChild(MessageSwipeDirective);
-  private readonly stamp = viewChild<ElementRef<HTMLElement>>('stamp');
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
   private longPressOrigin: {
     x: number;
@@ -181,7 +181,7 @@ export class MessageRowComponent {
 
   /** Whether the pointer or focus is on this row, which is what mounts its toolbar. */
   readonly toolbarActive = signal(false);
-  /** Whether the time's tooltip exists yet; see {@link armTimeTip}. */
+  /** Whether the time's tooltip exists yet; see {@link MessageTimeComponent}. */
   readonly timeTipArmed = signal(false);
 
   /**
@@ -201,13 +201,6 @@ export class MessageRowComponent {
       this.cancelLongPress();
       this.hideToolbar();
     });
-  }
-
-  /** ISO form of a timestamp for `<time datetime>`, or null when it isn't usable. */
-  protected isoTime(timestamp: number): string | null {
-    return hasUsableTimestamp(timestamp)
-      ? new Date(timestamp).toISOString()
-      : null;
   }
 
   /**
@@ -430,7 +423,7 @@ export class MessageRowComponent {
    * scrollport; a new one places itself after its first render.
    */
   onPointerEnter(event?: PointerEvent): void {
-    this.armTimeTip(event, false);
+    this.armTimeTip(event);
     this.pointerInside = true;
     this.toolbarActive.set(true);
     this.toolbar()?.placeToolbar();
@@ -440,31 +433,10 @@ export class MessageRowComponent {
    * Create the time's tooltip when a mouse or pen first reaches the row. A tooltip registers
    * window listeners and a focus monitor, which is a lot to pay for every row a scroll builds.
    * Touch never opens one, and the `<time>` is not focusable, so nothing else needs it earlier.
-   *
-   * When the pointer is already on the time, the element is replaced as it arrives, so the
-   * tooltip never sees that entry and is given it again.
    */
-  armTimeTip(event: PointerEvent | undefined, onTime: boolean): void {
-    const pointerType = event?.pointerType;
-    if (pointerType !== 'mouse' && pointerType !== 'pen') {
-      return;
-    }
-    // The row's own enter fires first and arms the tip, so a time entered in the same move
-    // still has to be handed its entry: its old element is about to be replaced.
-    if (this.timeTipArmed() && !onTime) {
-      return;
-    }
-    this.timeTipArmed.set(true);
-    if (onTime) {
-      afterNextRender(
-        {
-          read: () =>
-            this.stamp()?.nativeElement.dispatchEvent(
-              new PointerEvent('pointerenter', { pointerType }),
-            ),
-        },
-        { injector: this.injector },
-      );
+  private armTimeTip(event: PointerEvent | undefined): void {
+    if (event?.pointerType === 'mouse' || event?.pointerType === 'pen') {
+      this.timeTipArmed.set(true);
     }
   }
 

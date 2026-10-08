@@ -120,6 +120,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/message-row/message-row.component.scss',
   'libs/feature/rooms/src/lib/message-search/message-search.component.scss',
   'libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.scss',
+  'libs/feature/rooms/src/lib/message-time/message-time.component.scss',
   'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.scss',
   'libs/feature/rooms/src/lib/pinned/pinned-messages-panel.component.scss',
   'libs/feature/rooms/src/lib/poll/poll.component.scss',

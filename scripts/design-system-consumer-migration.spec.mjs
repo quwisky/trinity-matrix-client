@@ -32,6 +32,7 @@ const migratedConversationRoots = [
   'libs/feature/rooms/src/lib/message-reply-preview',
   'libs/feature/rooms/src/lib/message-row',
   'libs/feature/rooms/src/lib/message-thread-summary',
+  'libs/feature/rooms/src/lib/message-time',
   'libs/feature/rooms/src/lib/message-toolbar',
   'libs/feature/rooms/src/lib/media-attachment',
   'libs/feature/rooms/src/lib/media-bubble',
