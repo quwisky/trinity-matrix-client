@@ -98,7 +98,7 @@ export function provideTrinityApplication(
         return {
           hasProblems: computed(() => health.problems().length > 0),
           bannerSlot: status.bannerSlot,
-          show: (restoreFocus) => visibility.show(restoreFocus),
+          show: () => visibility.show(),
         };
       },
     },

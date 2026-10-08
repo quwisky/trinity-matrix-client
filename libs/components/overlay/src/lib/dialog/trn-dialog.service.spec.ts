@@ -1,8 +1,8 @@
+import { FlexibleConnectedPositionStrategy } from '@angular/cdk/overlay';
 import { ApplicationRef, Component, inject, input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom, NEVER } from 'rxjs';
-import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@trinity/testing';
 import { TrnAlertService } from '../alert/trn-alert.service';
@@ -322,6 +322,16 @@ describe('TrnDialogService', () => {
     expect(svc.hasOpen()).toBe(false);
   });
 
+  it('leaves browser Back to the route guard instead of closing on popstate', () => {
+    const svc = TestBed.inject(TrnDialogService);
+    svc.open(TestDialogComponent);
+    TestBed.inject(ApplicationRef).tick();
+
+    window.dispatchEvent(new PopStateEvent('popstate'));
+
+    expect(svc.hasOpen()).toBe(true);
+  });
+
   it('leaves a disableClose dialog alone, which CDK would not', async () => {
     // The flag exists so a flow-critical dialog cannot be dismissed out from under
     // itself — encryption-unlock and device-verification both set it. CDK enforces it
@@ -413,32 +423,12 @@ describe('TrnDialogService', () => {
 });
 
 describe('TrnDialogService — presentation', () => {
-  let phone = false;
+  afterEach(() => TestBed.inject(TrnDialogService).closeAll());
 
-  function stubViewport(): void {
-    vi.spyOn(window, 'matchMedia').mockImplementation(
-      (query: string) =>
-        ({
-          matches: query === BELOW_MD_QUERY && phone,
-          media: query,
-          addEventListener: () => undefined,
-          removeEventListener: () => undefined,
-        }) as unknown as MediaQueryList,
-    );
-  }
-
-  afterEach(() => {
-    TestBed.inject(TrnDialogService).closeAll();
-    phone = false;
-    vi.restoreAllMocks();
-  });
-
-  it('opens a centred dialog as a full-width bottom sheet on a phone', () => {
-    phone = true;
-    stubViewport();
+  it('opens a bottom placement as a full-width sheet', () => {
     const svc = TestBed.inject(TrnDialogService);
 
-    const ref = svc.open(TestDialogComponent);
+    const ref = svc.open(TestDialogComponent, { placement: 'bottom' });
     TestBed.inject(ApplicationRef).tick();
 
     expect(ref.presentation).toBe('sheet');
@@ -455,33 +445,10 @@ describe('TrnDialogService — presentation', () => {
     expect(wrapper?.style.alignItems).toBe('flex-end');
   });
 
-  it('keeps a fullscreen dialog fullscreen on a phone', () => {
-    phone = true;
-    stubViewport();
-    const svc = TestBed.inject(TrnDialogService);
-
-    expect(
-      svc.open(TestDialogComponent, { placement: 'fullscreen' }).presentation,
-    ).toBe('fullscreen');
-  });
-
-  it('keeps a centred dialog a dialog at desktop width', () => {
-    stubViewport();
+  it('keeps a centre placement a dialog; the surface service picks the sheet', () => {
     const svc = TestBed.inject(TrnDialogService);
 
     expect(svc.open(TestDialogComponent).presentation).toBe('dialog');
-  });
-
-  it('keeps the presentation it opened with when the viewport crosses md', () => {
-    stubViewport();
-    const svc = TestBed.inject(TrnDialogService);
-    const ref = svc.open(TestDialogComponent);
-    TestBed.inject(ApplicationRef).tick();
-
-    phone = true;
-    TestBed.inject(ApplicationRef).tick();
-
-    expect(ref.presentation).toBe('dialog');
   });
 });
 
@@ -513,6 +480,25 @@ describe('TrnDialogService — anchored presentation', () => {
     expect(
       document.querySelector('.cdk-overlay-connected-position-bounding-box'),
     ).not.toBeNull();
+  });
+
+  it('keeps the popover clear of the viewport edges and bounded by its height', () => {
+    // CDK only pushes a popover back on screen against a viewport margin, and a pane with no
+    // max height can outgrow a short window; the sibling anchored overlay uses the same 8px.
+    const margin = vi.spyOn(
+      FlexibleConnectedPositionStrategy.prototype,
+      'withViewportMargin',
+    );
+    const svc = TestBed.inject(TrnDialogService);
+
+    svc.open(TestDialogComponent, { anchor: anchorElement() });
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(margin).toHaveBeenCalledWith(8);
+    const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
+    expect(pane?.style.maxHeight).toBe(
+      'calc(100dvh - var(--trinity-title-row-inset, 0px) - 1rem)',
+    );
   });
 
   it('drops the scrim for an anchored panel', () => {

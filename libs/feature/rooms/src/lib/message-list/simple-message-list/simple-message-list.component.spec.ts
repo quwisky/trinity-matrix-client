@@ -7,7 +7,10 @@ import {
   ConversationRuntime,
   type MessageView,
 } from '@trinity/data-access/timeline';
-import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
+import {
+  TrnAlertService,
+  TrnSurfaceService,
+} from '@trinity/components/overlay';
 import { By } from '@angular/platform-browser';
 import { SimpleMessageListComponent } from './simple-message-list.component';
 import { MessageComposerComponent } from '../../message-composer/message-composer.component';
@@ -944,7 +947,7 @@ describe('SimpleMessageListComponent', () => {
       const { fixture } = await render(SimpleMessageListComponent, {
         providers: [
           MockProvider(TrnAlertService),
-          MockProvider(TrnDialogService, {
+          MockProvider(TrnSurfaceService, {
             openAndWait$: (() => of('🚀')) as never,
           }),
         ],
@@ -962,7 +965,7 @@ describe('SimpleMessageListComponent', () => {
       const { fixture } = await render(SimpleMessageListComponent, {
         providers: [
           MockProvider(TrnAlertService),
-          MockProvider(TrnDialogService, {
+          MockProvider(TrnSurfaceService, {
             openAndWait$: (() => EMPTY) as never,
           }),
         ],
@@ -1143,7 +1146,7 @@ describe('SimpleMessageListComponent', () => {
         inputs: { roomId: '!a:hs' },
         providers: [
           MockProvider(TrnAlertService),
-          MockProvider(TrnDialogService, { open }),
+          MockProvider(TrnSurfaceService, { open }),
         ],
       });
 

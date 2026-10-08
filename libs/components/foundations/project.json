@@ -12,7 +12,16 @@
     "capability:design-system"
   ],
   "targets": {
-    "test": {},
+    "test": {
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/vite.base.config.ts",
+        "{workspaceRoot}/test-setup.base.ts",
+        "{workspaceRoot}/libs/{feature,components,application}/**/*.{html,ts}",
+        "{workspaceRoot}/apps/**/*.{html,ts}"
+      ]
+    },
     "typecheck": {}
   }
 }

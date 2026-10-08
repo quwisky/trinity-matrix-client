@@ -26,9 +26,15 @@
       <trn-timeline-skeleton />
     }
     @if (loadError(); as message) {
-      <div class="load-error" role="alert" data-testid="timeline-load-error">
-        <span>{{ message }}</span>
+      <trn-empty-state
+        layout="line"
+        variant="danger"
+        role="alert"
+        data-testid="timeline-load-error"
+        [body]="message"
+      >
         <button
+          trnEmptyStateActions
           trnBtn
           type="button"
           presentation="outline"
@@ -38,7 +44,7 @@
         >
           Retry
         </button>
-      </div>
+      </trn-empty-state>
     }
 
     <div class="vpad" [style.height.px]="topPad()"></div>

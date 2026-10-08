@@ -3,7 +3,7 @@ import { render } from '@trinity/testing';
 import {
   TrnAlertService,
   TrnDialogRef,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import {
@@ -202,7 +202,7 @@ async function build(options: BuildOptions = {}) {
         }),
       }),
       MockProvider(RoomModerationService, { unban: () => of(undefined) }),
-      MockProvider(TrnDialogService, { isTopmost: () => true }),
+      MockProvider(TrnSurfaceService, { isTopmost: () => true }),
       MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnAlertService, { confirm$: confirm }),
       MockProvider(TrnToastService, { show: toast }),
@@ -336,6 +336,20 @@ describe('SpaceSettingsComponent', () => {
 
     expect(cmp.draft.model().name).toBe('Typed after submit');
     expect(cmp.draft.generalDirty()).toBe(true);
+  });
+
+  it('disables Save and explains a cleared Space name', async () => {
+    const { cmp, fixture, container } = await build();
+
+    cmp.draft.form.name().value.set('');
+    fixture.detectChanges();
+
+    expect(container.textContent).toContain('A space needs a name.');
+    expect(
+      container.querySelector<HTMLButtonElement>(
+        '[data-testid="space-settings-save"]',
+      )?.disabled,
+    ).toBe(true);
   });
 
   it('shows an ordinary read-only Space detail as a selectable value with its reason', async () => {

@@ -65,7 +65,7 @@ export class ReactionsDialogComponent implements OnInit {
   /** Keep the directory and detail panes together only when the text scale permits it. */
   readonly wide = textScaledViewportSignal(48, inject(DestroyRef));
 
-  // Read here, not in the constructor: TrnDialogService sets the inputs after the
+  // Read here, not in the constructor: TrnSurfaceService sets the inputs after the
   // component is created but before the first change detection. Nothing to react to
   // afterwards — the list is a snapshot.
   ngOnInit(): void {

@@ -15,6 +15,7 @@ import {
 import { DateTimeFormatService, isMobileOs } from '@trinity/platform-native';
 import { hasUsableTimestamp } from '@trinity/util/matrix';
 import { AvatarComponent } from '@trinity/components/generic-content';
+import { MatrixHtmlDirective } from '../message-presentation/matrix-html.directive';
 import {
   MessageToolbarComponent,
   type MessageAction,
@@ -28,12 +29,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
 import { MediaAttachmentComponent } from '../media-attachment/media-attachment.component';
-import { CodeHighlightDirective } from '../message-presentation/code-highlight.directive';
-import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
-import {
-  type MatrixLinkClick,
-  MatrixLinkDirective,
-} from '../matrix-link/matrix-link.directive';
+import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { PollComponent } from '../poll/poll.component';
 import { LinkPreviewComponent } from '../link-preview/link-preview.component';
 import { LocationComponent } from '../location-share/location.component';
@@ -42,7 +38,6 @@ import {
   TrnIconComponent,
   type TrnIconName,
 } from '@trinity/components/foundations';
-import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images.directive';
 import { MessageReplyPreviewComponent } from '../message-reply-preview/message-reply-preview.component';
 import { MessageThreadSummaryComponent } from '../message-thread-summary/message-thread-summary.component';
 
@@ -158,20 +153,17 @@ export type MessageSwipeAction = 'edit' | 'reply';
   selector: 'trn-message-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    MatrixHtmlDirective,
     AvatarComponent,
     TrnIconComponent,
     MediaAttachmentComponent,
     MessageReactionsComponent,
     MessageToolbarComponent,
-    CodeHighlightDirective,
-    SpoilerRevealDirective,
-    MatrixLinkDirective,
     PollComponent,
     LinkPreviewComponent,
     LocationComponent,
     VoiceMessageComponent,
     TrnTooltip,
-    InlineMxcImagesDirective,
     MessageReplyPreviewComponent,
     MessageThreadSummaryComponent,
   ],
