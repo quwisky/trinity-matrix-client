@@ -109,6 +109,16 @@ requirements.
 | `scheduled-e2e`         | Chromium, Firefox, and WebKit scheduled suite                                                                                                                                                                                                                                                            | This weekly Sunday 03:23 UTC job is separate from pull-request jobs; diagnose its browser-specific artifact and environment.                                                                                                                                                                                                                       |
 | `E2E (Synapse nightly)` | Separate `e2e-synapse-nightly.yml` workflow: browser, Electron full and protocol suites with `TRINITY_E2E_HOMESERVER=synapse`, daily at 02:47 UTC and on demand                                                                                                                                          | Reproduce locally with the same variable, for example `TRINITY_E2E_HOMESERVER=synapse pnpm e2e:browser`. A failure that Tuwunel does not show is a server difference: branch the expectation on `homeserverSession().kind`.                                                                                                                        |
 
+A red scheduled run notifies nobody, so `scheduled-e2e` and every job of the Synapse nightly feed a
+`notify` job that calls the reusable [`_nightly-alert.yml`](../../.github/workflows/_nightly-alert.yml).
+On `main`, a failed (or cancelled) job opens one `Nightly E2E failing: <workflow name>` issue labelled
+`ci-nightly`, or reuses the open one, and comments with the run URL, the failed job ids and the date. The
+next all-green run comments and closes it. Pull requests and other branches never touch it, and the job
+holds only `issues: write`. Because a cancelled job counts as failed, the weekly `ci.yml` run has its own
+concurrency group: a push to `main` cancels the in-flight push run but never the scheduled one. Give any
+new scheduled E2E workflow the same `notify` job and list it in `scripts/nightly-alert-workflow.spec.mjs`,
+which fails until it does.
+
 Started Playwright suites upload hidden `dist/.playwright/` output through the
 [diagnostics action](../../.github/actions/upload-playwright-diagnostics/action.yml).
 Each artifact identifies the run, attempt, commit, job, surface and shard, with

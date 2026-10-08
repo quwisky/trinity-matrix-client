@@ -20,9 +20,11 @@ on:
     branches: [main, 'release/**', 'renovate/patch-**']
   pull_request:
 
-# A newer push to the same branch makes the run in flight obsolete.
+# A newer push to the same branch makes the run in flight obsolete. The weekly cron run reports
+# to an issue and its ref is main too, so it gets its own group: a push must not cancel it, and
+# a cancelled run would open a false "Nightly E2E failing" issue.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'schedule' && '-schedule' || '' }}
   cancel-in-progress: true
 
 permissions:
@@ -626,3 +628,14 @@ jobs:
         with:
           surface: scheduled
           report-path: dist/.playwright/**/**
+
+  # Weekly run only: opens, updates and closes the "Nightly E2E failing" issue.
+  notify:
+    name: Scheduled E2E issue
+    needs: [scheduled-e2e]
+    if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    permissions:
+      issues: write
+    uses: ./.github/workflows/_nightly-alert.yml
+    with:
+      needs: ${{ toJSON(needs) }}

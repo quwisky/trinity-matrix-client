@@ -1,0 +1,47 @@
+name: Nightly E2E failure issue
+
+# Called by the `notify` job of every scheduled E2E workflow (see scripts/nightly-alert-workflow.spec.mjs).
+# A red cron run sends nobody a notification, so this keeps one open "Nightly E2E failing:
+# <workflow>" issue per workflow: a failed run opens it (or reuses it) and comments with the run,
+# the failed jobs and the date; the next all-green run comments and closes it.
+on:
+  workflow_call:
+    inputs:
+      needs:
+        description: toJSON(needs) of the calling job, one entry per E2E job it waits for.
+        required: true
+        type: string
+
+jobs:
+  issue:
+    name: Nightly failure issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The caller grants the same single scope; nothing here checks out or reads the repository.
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      NEEDS: ${{ inputs.needs }}
+      WORKFLOW: ${{ github.workflow }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open, update or close the tracking issue
+        run: |
+          set -euo pipefail
+          title="Nightly E2E failing: $WORKFLOW"
+          today=$(date -u +%F)
+          # A cancelled job counts as failed: a hung job killed at its deadline must not pass silently.
+          failed=$(jq -r '[to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key] | join(", ")' <<< "$NEEDS")
+          number=$(gh issue list --state open --label ci-nightly --limit 100 --json number,title | jq -r --arg t "$title" 'map(select(.title == $t))[0].number // empty')
+          if [ -n "$failed" ]; then
+            if [ -z "$number" ]; then
+              gh label create ci-nightly --color B60205 --description 'A scheduled E2E run failed on main' --force
+              url=$(gh issue create --label ci-nightly --title "$title" --body "The scheduled $WORKFLOW run on main failed. Each failing run adds a comment here; the issue closes itself on the next green run.")
+              number=${url##*/}
+            fi
+            gh issue comment "$number" --body "Failed on $today: $failed. Run: $RUN_URL"
+          elif [ -n "$number" ] && jq -e 'all(.[]; .result == "success")' <<< "$NEEDS" > /dev/null; then
+            gh issue close "$number" --comment "Green on $today. Run: $RUN_URL"
+          fi
