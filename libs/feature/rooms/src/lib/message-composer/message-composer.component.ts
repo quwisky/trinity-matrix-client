@@ -25,15 +25,12 @@ import {
 import { type GifResult } from '@trinity/data-access/gif';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 import {
-  applyFormat,
-  continueList,
   escapeHtml,
   linkifyText,
   renderMarkdown,
   sanitizeMatrixHtml,
   slashCommandContent,
   textMessageContent,
-  type EditResult,
   type FormatAction,
   type Mention,
 } from '@trinity/util/matrix';
@@ -55,6 +52,7 @@ import { ComposerTextField } from './composer-text-field';
 import { ComposerBatchSender } from './composer-batch-sender';
 import { ComposerAutocompletes } from './composer-autocompletes';
 import { ComposerDrafts } from './composer-drafts';
+import { ComposerFormatting } from './composer-formatting';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnAnchoredOverlayDirective } from '@trinity/components/overlay';
 import {
@@ -77,26 +75,6 @@ export interface ComposerSubmit {
   text: string;
   mentions: Mention[];
 }
-
-interface FormatSelection {
-  readonly context: object;
-  readonly text: string;
-  readonly start: number;
-  readonly end: number;
-}
-
-/**
- * Which formatting action each shortcut applies. An explicit table rather than deriving the
- * action from the id: a `format.*` id with no entry here is simply not a formatting shortcut,
- * where slicing the prefix off would have produced a bogus action and applied nothing.
- */
-const SHORTCUT_ACTIONS: Readonly<Record<string, FormatAction>> = {
-  'format.bold': 'bold',
-  'format.italic': 'italic',
-  'format.strike': 'strike',
-  'format.code': 'code',
-  'format.link': 'link',
-};
 
 /** Instance counter behind {@link MessageComposerComponent.pickerId}. */
 let nextPickerId = 0;
@@ -396,7 +374,7 @@ export class MessageComposerComponent {
   private readonly emojiIndex = inject(TrnEmojiIndex);
 
   private readonly drafts = inject(DraftStoreService);
-  private formatSelection: FormatSelection | null = null;
+  protected readonly formatting: ComposerFormatting;
   protected readonly composing = signal(false);
   protected readonly formatContext = computed(() => ({
     accountId: this.accountId(),
@@ -487,7 +465,7 @@ export class MessageComposerComponent {
           this.cancelVoiceRecording();
         }
         this.menus.clearChosen(); // they belong to the old conversation
-        this.formatSelection = null;
+        this.formatting.clearSelection();
         this.previewing.set(false); // the new room opens ready to write, not to read
       },
       leavePreview: () => this.previewing.set(false),
@@ -499,15 +477,23 @@ export class MessageComposerComponent {
       },
     });
 
-    // Formatting UI belongs to the exact Account, Conversation and editing target.
-    // Draft persistence remains with its existing Conversation owner.
-    effect(() => {
-      this.formatContext();
-      untracked(() => {
-        this.formatSelection = null;
-        this.previewing.set(false);
-      });
-    });
+    this.formatting = new ComposerFormatting(
+      {
+        text: this.text,
+        previewing: this.previewing,
+        composing: this.composing,
+        editing: this.editing,
+        context: this.formatContext,
+        textarea: this.textarea,
+        previewPanel: this.previewPanel,
+        shortcuts: this.shortcuts,
+        write: (result) => this.field.write(result),
+        autoGrow: () => this.field.autoGrow(),
+        syncMenus: () => this.menus.sync(),
+        typing: (hasText) => this.typing.emit(hasText),
+      },
+      this.injector,
+    );
 
     // Highlight the first suggestion whenever either result set changes.
     effect(() => {
@@ -546,165 +532,20 @@ export class MessageComposerComponent {
     }
   }
 
-  /**
-   * The keys the composer owns that Angular's per-key bindings cannot express.
-   *
-   * Two jobs. **Formatting chords** are user-rebindable, so they are data rather than a
-   * template string and have to be resolved through the registry. Only `format.` ids are
-   * claimed — everything else (the quick switcher, the room hops) is left to bubble to the
-   * page handler, so those still work while typing. `stopPropagation` is what keeps a claimed
-   * chord off that handler, and `preventDefault` is not optional: Chrome and Firefox bind
-   * Ctrl+B to the bookmarks bar.
-   *
-   * **Shift+Enter** continues a list. It cannot live in `onEnter`, which Angular only fires
-   * when no modifier is held — the newline today is the browser's own default.
-   */
   onKeydown(event: Event): void {
-    const keyEvent = event as KeyboardEvent;
-    // Never rewrite the buffer mid-composition; the same reason onInput and onEnter guard.
-    if (keyEvent.isComposing) {
-      return;
-    }
-
-    if (keyEvent.key === 'Enter' && keyEvent.shiftKey) {
-      this.continueListAtCaret(keyEvent);
-      return;
-    }
-
-    const hit = this.shortcuts.resolve(keyEvent);
-    const action = hit ? SHORTCUT_ACTIONS[hit.id] : undefined;
-    if (!action) {
-      return; // not a formatting chord — let it reach the page-level handler
-    }
-    keyEvent.preventDefault();
-    keyEvent.stopPropagation();
-    this.onFormat(action);
+    this.formatting.onKeydown(event);
   }
 
-  /** Carry a list or quote marker onto the next line, or end the list on an empty item. */
-  private continueListAtCaret(event: KeyboardEvent): void {
-    const el = this.textarea()?.nativeElement;
-    const caret = el?.selectionStart ?? this.text().length;
-    // Only meaningful for a collapsed caret: with a selection, Shift+Enter replaces it, which
-    // is the browser's job.
-    if (el && el.selectionStart !== el.selectionEnd) {
-      return;
-    }
-    const result = continueList(this.text(), caret);
-    if (!result) {
-      return; // not in a list — let the browser insert its newline
-    }
-    event.preventDefault();
-    this.applyEdit(result);
-  }
-
-  /**
-   * Put a message's text into the composer as a blockquote to write around.
-   *
-   * Called by the host list when a row raises `quote`, rather than driven by an input,
-   * because quoting is a one-shot event and not a state the composer should be able to
-   * re-enter: an input would need a token to distinguish "quoted twice" from "re-rendered".
-   *
-   * The block goes ABOVE anything already typed and the caret lands at the very end.
-   * Whatever is in the box is the response being written, so the quote belongs before it
-   * and the caret belongs after it; quoting a second message stacks rather than replaces.
-   * Routed through the same `applyEdit` a formatting chord uses, so the textarea, the
-   * autocompletes and the typing notice all stay in step.
-   */
   insertQuote(block: string): void {
-    if (!block) {
-      return;
-    }
-    // Quoting out of an edit has to wait for the edit to actually end.
-    //
-    // The host clears its `editingId` and calls this in the SAME tick, so `editing()` is
-    // still true here — the input only changes on the next change detection. The effect
-    // above then takes its `!editing && wasEditing` branch and does an unconditional
-    // `text.set(draft)`, which would land AFTER this insert and silently discard the
-    // quote. afterNextRender runs after that effect, so the quote survives.
-    //
-    // afterNextRender, NOT queueMicrotask: the app is zoneless, so the host's signal write
-    // only schedules change detection (rAF) and a microtask would still run before the
-    // effect. Same reason `onTogglePreview` uses it.
-    if (this.editing()) {
-      afterNextRender(() => this.insertQuoteNow(block), {
-        injector: this.injector,
-      });
-      return;
-    }
-    this.insertQuoteNow(block);
+    this.formatting.insertQuote(block);
   }
 
-  private insertQuoteNow(block: string): void {
-    // A preview hides the textarea, and `applyEdit` focuses it — on a `display: none`
-    // element that is a no-op, stranding the caret on <body>. Quoting means you are about
-    // to write, so drop back to the editor first.
-    this.previewing.set(false);
-    const existing = this.text();
-    const text = existing ? block + existing : block;
-    this.applyEdit({
-      text,
-      selectionStart: text.length,
-      selectionEnd: text.length,
-    });
-  }
-
-  /** Apply a formatting action to the current selection. */
   onFormat(action: FormatAction): void {
-    if (this.composing()) return;
-    const el = this.textarea()?.nativeElement;
-    const value = this.text();
-    const start = el?.selectionStart ?? value.length;
-    const end = el?.selectionEnd ?? value.length;
-    this.applyEdit(applyFormat(value, start, end, action));
+    this.formatting.onFormat(action);
   }
 
-  /** Apply the selection saved before focus moved into the Format surface. */
-  protected onMenuFormat(action: FormatAction): void {
-    const saved = this.formatSelection;
-    if (!saved || !this.isFormatSelectionCurrent(saved) || this.composing())
-      return;
-    const result = applyFormat(saved.text, saved.start, saved.end, action);
-    this.previewing.set(false);
-    this.applyEdit(result);
-    this.formatSelection = {
-      context: saved.context,
-      text: result.text,
-      start: result.selectionStart,
-      end: result.selectionEnd,
-    };
-    this.restoreFormatSelection(true);
-  }
-
-  /** Land an edit in the field, then do the bookkeeping a keystroke would have done. */
-  private applyEdit(result: EditResult): void {
-    this.field.write(result);
-    // Without this an open mention menu keeps a query anchored to a caret that has moved —
-    // accepting it then splices at a stale offset — and a message begun entirely from the
-    // format action never announces that anyone is typing.
-    this.menus.sync();
-    this.typing.emit(result.text.trim().length > 0);
-  }
-
-  /** Swap between writing and previewing, returning focus to the input on the way back. */
   onTogglePreview(): void {
-    if (this.composing()) return;
-    const next = !this.previewing();
-    if (next) this.captureFormatSelection();
-    this.previewing.set(next);
-    if (next) {
-      const context = this.formatContext();
-      afterNextRender(
-        () => {
-          if (context === this.formatContext() && this.previewing()) {
-            this.previewPanel()?.nativeElement.focus();
-          }
-        },
-        { injector: this.injector },
-      );
-    } else {
-      this.restoreFormatSelection(true);
-    }
+    this.formatting.onTogglePreview();
   }
 
   onEnter(event: Event): void {
@@ -798,7 +639,7 @@ export class MessageComposerComponent {
     this.resetMenus();
     // Clear the saved Aa selection when the message is sent so it cannot be applied to a later
     // draft.
-    this.formatSelection = null;
+    this.formatting.clearSelection();
     if (!this.editing() && this.composeDraft() === null) {
       // Conversation-owned text clears from the authoritative input signal. The legacy
       // thread composer still owns its local draft and therefore clears it here.
@@ -862,36 +703,6 @@ export class MessageComposerComponent {
     // options cancel their `mousedown` for the same reason.
     event.preventDefault();
     this.field.focus();
-  }
-
-  /** Save the exact caret or selection before the Aa trigger takes focus. */
-  protected captureFormatSelection(): void {
-    const el = this.textarea()?.nativeElement;
-    if (!el || this.composing()) return;
-    this.formatSelection = {
-      context: this.formatContext(),
-      text: this.text(),
-      start: el.selectionStart,
-      end: el.selectionEnd,
-    };
-  }
-
-  protected restoreFormatSelection(focus = false): void {
-    const saved = this.formatSelection;
-    if (!saved) return;
-    const restore = () => {
-      if (!this.isFormatSelectionCurrent(saved) || this.composing()) return;
-      const el = this.textarea()?.nativeElement;
-      if (focus) el?.focus();
-      el?.setSelectionRange(saved.start, saved.end);
-      this.field.autoGrow();
-    };
-    restore();
-    if (focus) afterNextRender(restore, { injector: this.injector });
-  }
-
-  private isFormatSelectionCurrent(saved: FormatSelection): boolean {
-    return saved.context === this.formatContext() && saved.text === this.text();
   }
 
   /** Toggle the emoji picker, closing the other overlays (only one at a time). */

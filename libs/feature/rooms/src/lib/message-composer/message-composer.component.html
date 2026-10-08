@@ -176,10 +176,10 @@
         contextUploadProgress() !== null ||
         attachments.recordingVoice()
       "
-      (beforeOpen)="captureFormatSelection()"
-      (format)="onMenuFormat($event)"
+      (beforeOpen)="formatting.captureSelection()"
+      (format)="formatting.onMenuFormat($event)"
       (preview)="onTogglePreview()"
-      (dismissed)="restoreFormatSelection()"
+      (dismissed)="formatting.restoreSelection()"
     />
     <button
       type="button"
