@@ -184,6 +184,10 @@ type Story = StoryObj;
 
 /** The complete public Controls treatment inventory in one Theme-aware canvas. */
 export const CompleteCatalog: Story = {
+  // The addon would scan this whole canvas after every render, holding the preview's main
+  // thread for several seconds while the browser journey waits on it. The journey runs its own
+  // scan with explicit exclusions (`controls-catalog.spec.mts`), so the automatic one is off.
+  parameters: { a11y: { test: 'off' } },
   render: () => ({
     props: {
       buttonPresentations: BUTTON_PRESENTATIONS,
