@@ -59,6 +59,8 @@ const iconActionControls = controlBlocks.filter(({ source, openingTag }) =>
 const bespokeIconFiles = new Set([
   'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.html',
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.html',
+  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-space-header/sidebar-space-header.component.html',
+  'libs/feature/rooms/src/lib/channel-sidebar/space-children-list/space-children-list.component.html',
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html',
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-row/sidebar-room-row.component.html',
   'libs/feature/rooms/src/lib/message-composer/composer-attachment-strip/composer-attachment-strip.component.html',
@@ -82,6 +84,8 @@ const compositeIconFiles = new Set([
   'libs/feature/rooms/src/lib/account-picker/account-picker.component.html',
   'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.html',
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.html',
+  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-space-header/sidebar-space-header.component.html',
+  'libs/feature/rooms/src/lib/channel-sidebar/space-children-list/space-children-list.component.html',
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html',
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-row/sidebar-room-row.component.html',
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.html',
