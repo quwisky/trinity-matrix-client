@@ -1,11 +1,6 @@
 // Domain-neutral overlays. The vendor implementation stays private and this API stays explicit.
 export { provideTrnOverlayDefaults } from './lib/provide-overlay-defaults';
-export {
-  TrnDialogService,
-  type DialogOptions,
-  type TrnDialogAutoFocus,
-  type TrnDialogPlacement,
-} from './lib/dialog/trn-dialog.service';
+export { type TrnDialogAutoFocus } from './lib/dialog/trn-dialog.service';
 export {
   TrnDialogRef,
   type TrnDialogPresentation,
@@ -31,10 +26,6 @@ export {
   type AlertDialogData,
   type AlertDialogResult,
 } from './lib/alert/trn-alert-dialog.component';
-export {
-  TrnActionSheetService,
-  type TrnActionSheetOptions,
-} from './lib/action-sheet/trn-action-sheet.service';
 export {
   type ActionSheetButton,
   type ActionSheetData,
