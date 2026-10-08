@@ -24,10 +24,6 @@
   overflow-y: auto;
   padding: clamp(var(--trinity-space-5), 4vw, var(--trinity-space-7));
   background: var(--trinity-surface-frame);
-
-  @media (max-width: 479px) {
-    padding: 0;
-  }
 }
 
 @mixin lead {

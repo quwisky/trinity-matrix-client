@@ -148,7 +148,7 @@
   }
 
   @media (max-width: 31.98rem) {
-    .pack-card,
+    .pack-card__row,
     .packs__form-row {
       align-items: stretch;
       flex-direction: column;
@@ -156,7 +156,7 @@
   }
 
   @media (pointer: coarse) {
-    .pack-card > button,
+    .pack-card__row > button,
     .packs__form-row > button,
     .packs__form-row > input {
       min-height: var(--trinity-interaction-target-min-size);
