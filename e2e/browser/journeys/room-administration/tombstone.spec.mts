@@ -93,9 +93,7 @@ test.describe('Room tombstone', () => {
     const timelineShare = await page.evaluate(() => {
       const row = document.querySelector('.chat-body')?.getBoundingClientRect();
       const list = document
-        .querySelector(
-          '.chat-body trn-simple-message-list, .chat-body trn-virtual-message-list',
-        )
+        .querySelector('.chat-body trn-message-list')
         ?.getBoundingClientRect();
       return row && list && row.width > 0 ? list.width / row.width : 0;
     });

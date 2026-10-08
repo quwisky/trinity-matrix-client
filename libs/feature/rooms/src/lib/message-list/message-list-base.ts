@@ -113,11 +113,9 @@ const LOAD_ERROR_COPY: Readonly<
 /**
  * Shared domain logic for the room timeline, independent of scroll strategy: the
  * inputs/outputs, the edit/reply state + action handlers, and the Discord-style row
- * grouping. {@link SimpleMessageListComponent} (plain scroll) and
- * {@link VirtualMessageListComponent} (windowed) extend this and add only their own
- * scroll container, effects and template — the feature flag selects which one the
- * room renders. Kept an abstract `@Directive()` (no selector) so Angular wires the
- * inherited inputs/outputs/queries for the subclasses.
+ * grouping. {@link MessageListComponent} extends this and adds the scroll container, windowing,
+ * anchoring and template. Kept an abstract `@Directive()` so this domain half stays
+ * testable without the scroll half (`message-list-base.spec.ts`).
  */
 @Directive()
 export abstract class MessageListBase {
@@ -145,7 +143,7 @@ export abstract class MessageListBase {
    * every backfill is judged on its own duration.
    *
    * Why the removal has to be synchronous at all: the strip is IN FLOW above the rows, and
-   * `VirtualMessageListComponent.rowsRegionTop()` folds its height into the scroll restore
+   * `MessageListComponent.rowsRegionTop()` folds its height into the scroll restore
    * that keeps the reader's place across a prepend. `TimelineService.loadOlder` prepends the
    * rows and clears `loadingOlder` in one synchronous block, so a strip held past that point
    * has the restore measure 36px that is about to disappear — and `.scroll` sets
@@ -434,7 +432,7 @@ export abstract class MessageListBase {
     return grouped;
   });
 
-  /** The rows both lists render. */
+  /** The grouped rows the list renders. */
   readonly rows = computed(() => this.grouping().rows);
 
   /** Member event id → the id of the group row that holds it. */
@@ -704,7 +702,7 @@ export abstract class MessageListBase {
   private stopHeightWatcher?: () => void;
 
   /**
-   * Remember a jump so a width change can re-apply it. Called BY the subclasses' `jumpTo`,
+   * Remember a jump so a width change can re-apply it. Called BY `jumpTo`,
    * not instead of it — the base cannot know how each strategy scrolls.
    */
   protected notePendingJump(messageId: string): void {
@@ -757,12 +755,12 @@ export abstract class MessageListBase {
   }
 
   /**
-   * Watch the scroller's width and re-aim a recent jump when it changes (the virtual list also
+   * Watch the scroller's width and re-aim a recent jump when it changes (windowed mode also
    * re-aims after row measurements). Also starts the reader-scroll watcher that ends re-aiming.
    *
    * Width only: a height change is the keyboard opening or the composer growing, and
-   * re-jumping there would fight the reader rather than help them. Started by the subclasses
-   * once they have a scroll element, and torn down with the component.
+   * re-jumping there would fight the reader rather than help them. Started once the
+   * component has a scroll element, and torn down with the component.
    */
   protected watchScrollerWidth(): void {
     const el = this.scrollEl()?.nativeElement;
@@ -787,8 +785,8 @@ export abstract class MessageListBase {
    * Keep a bottom-pinned conversation pinned when the composer, formatting bar or software
    * keyboard changes the scroller's viewport height. A reader who has scrolled up needs no
    * compensation: the scroller's top edge and scrollTop remain unchanged, so their anchor
-   * stays put. This exact pin is intentionally separate from the subclasses' 120px
-   * near-bottom state for incoming messages. The optional callback lets the virtual list
+   * stays put. This exact pin is intentionally separate from the 120px
+   * near-bottom state for incoming messages. The optional callback lets windowed mode
    * keep its window-height signal in step with the same observation.
    */
   protected watchScrollerHeight(

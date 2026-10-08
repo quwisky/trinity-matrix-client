@@ -111,9 +111,8 @@ test.describe('Timeline virtualization', () => {
     };
     await expect(rows.first()).toBeVisible({ timeout: 30_000 });
 
-    // The flag selected the windowed component (not the simple one).
-    await expect(page.locator('trn-virtual-message-list')).toBeVisible();
-    expect(await page.locator('trn-simple-message-list').count()).toBe(0);
+    // The list (windowing is asserted by the bounded row count below).
+    await expect(page.locator('trn-message-list')).toBeVisible();
 
     // Opens pinned to the bottom: the newest seeded message is on screen.
     await expect(
