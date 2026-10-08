@@ -61,6 +61,11 @@ describe('card recipe adoption', () => {
       expect(tag).toMatch(/\bvariant="muted"/u);
       expect(tag).toMatch(/\bsize="md"/u);
       expect(read(`${file}.scss`)).not.toMatch(/@include surface\b/u);
+      const rule = styleRule(`${file}.scss`, '.crypto-surface');
+      expect(rule, `${file}: width cap`).toMatch(
+        /\bwidth:\s*min\(100%,\s*640px\)/u,
+      );
+      expect(rule, `${file}: centred`).toMatch(/\bmargin-inline:\s*auto/u);
     }
   });
 

@@ -9,6 +9,11 @@
     @include route;
   }
 
+  .crypto-surface {
+    width: min(100%, 640px);
+    margin-inline: auto;
+  }
+
   .crypto-flow > .text-muted-foreground,
   .center p {
     @include lead;
