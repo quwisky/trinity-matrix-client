@@ -83,9 +83,8 @@ export class TitleBarComponent {
     });
   }
 
-  protected showStatus(event: MouseEvent): void {
-    const button = event.currentTarget as HTMLElement;
-    this.systemStatus.show(() => button.focus());
+  protected showStatus(): void {
+    this.systemStatus.show();
   }
 
   private sendOverlayColors(): void {

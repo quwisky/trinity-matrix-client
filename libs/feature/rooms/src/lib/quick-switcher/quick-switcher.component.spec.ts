@@ -1,6 +1,6 @@
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { TrnDialogRef, TrnDialogService } from '@trinity/components/overlay';
+import { TrnDialogRef, TrnSurfaceService } from '@trinity/components/overlay';
 import {
   GlobalSearchService,
   type SwitcherResult,
@@ -127,7 +127,7 @@ describe('QuickSwitcherComponent', () => {
 
   it('lands focus in the search field when opened through the service', async () => {
     // The full production path in one test — real QuickSwitcherService, real
-    // TrnDialogService, real CDK dialog — because that is where the bug lived: the
+    // TrnSurfaceService, real CDK dialog — because that is where the bug lived: the
     // component's own focus() ran first and CDK's focus pass then overrode it with the
     // header's Close button. Only the search backend is stubbed.
     TestBed.configureTestingModule({
@@ -149,7 +149,7 @@ describe('QuickSwitcherComponent', () => {
     expect(search).not.toBeNull();
     expect(document.activeElement).toBe(search);
 
-    TestBed.inject(TrnDialogService).closeAll();
+    TestBed.inject(TrnSurfaceService).closeAll();
     expect(await picked).toBeNull();
   });
 

@@ -19,13 +19,11 @@
       />
     </trn-settings-row>
     @if (failed()) {
-      <p
-        role="alert"
-        class="m-0 pt-3 text-13 text-danger"
+      <trn-save-failure
+        class="pt-3"
         data-testid="system-title-bar-error"
-      >
-        This choice could not be saved.
-      </p>
+        [retryable]="false"
+      />
     }
     @if (needsRestart()) {
       <div

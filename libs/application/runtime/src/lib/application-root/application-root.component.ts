@@ -3,8 +3,10 @@ import {
   Component,
   DestroyRef,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import {
@@ -18,7 +20,11 @@ import {
   BannerComponent,
   TrnSpinnerComponent,
 } from '@trinity/components/generic-content';
-import { TrnToasterComponent } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnSurfaceService,
+  TrnToasterComponent,
+} from '@trinity/components/overlay';
 import { markRoutedPage } from '@trinity/util/ui';
 import { filter, map, take } from 'rxjs';
 import { ApplicationRuntimeService } from '../application-runtime.service';
@@ -45,7 +51,6 @@ import { TrinityApplicationSessionAdapter } from '../composition/trinity-applica
     VerificationHostComponent,
     TrnToasterComponent,
     TrnSpinnerComponent,
-    SystemStatusComponent,
     TitleBarComponent,
   ],
 })
@@ -55,6 +60,7 @@ export class ApplicationRootComponent {
   private readonly recovery = inject(ApplicationRecoveryPresenter);
   private readonly session = inject(TrinityApplicationSessionAdapter);
   private readonly router = inject(Router);
+  private readonly surfaces = inject(TrnSurfaceService);
   private readonly showStartupDetail = signal(false);
   private readonly routeUrl = toSignal(
     this.router.events.pipe(
@@ -101,6 +107,7 @@ export class ApplicationRootComponent {
       500,
     );
     this.destroyRef.onDestroy(() => window.clearTimeout(timer));
+    this.presentSystemStatus();
   }
 
   dismissSummary(): void {
@@ -115,6 +122,32 @@ export class ApplicationRootComponent {
       .confirmAndRecover(recovery)
       .pipe(take(1), takeUntilDestroyed(this.destroyRef))
       .subscribe((outcome) => this.recovery.present(outcome));
+  }
+
+  /** System status follows its state as a surface; any close of the surface clears the state. */
+  private presentSystemStatus(): void {
+    let ref: TrnDialogRef<void> | null = null;
+    effect(() => {
+      const open = this.status.open();
+      untracked(() => {
+        if (open && !ref) {
+          const opened = this.surfaces.open<void, SystemStatusComponent>(
+            SystemStatusComponent,
+            { ariaLabel: 'System status', autoFocus: '[data-autofocus]' },
+          );
+          ref = opened;
+          opened.closed.subscribe(() => {
+            if (ref !== opened) return;
+            ref = null;
+            this.status.close();
+          });
+        } else if (!open && ref) {
+          const closing = ref;
+          ref = null;
+          closing.close();
+        }
+      });
+    });
   }
 }
 

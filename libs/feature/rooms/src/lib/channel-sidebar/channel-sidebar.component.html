@@ -64,9 +64,10 @@
           </button>
         }
         <button
+          #newChatButton
           trnIconButton
           class="sidebar__action"
-          (click)="newChat.emit()"
+          (click)="newChat.emit(newChatButton)"
           aria-label="New room or direct message"
           trnTooltip="New room or direct message"
         >

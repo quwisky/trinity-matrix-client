@@ -60,10 +60,12 @@ const bespokeIconFiles = new Set([
   'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.html',
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.html',
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html',
+  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-row/sidebar-room-row.component.html',
   'libs/feature/rooms/src/lib/message-composer/composer-attachment-strip/composer-attachment-strip.component.html',
   'libs/feature/rooms/src/lib/message-composer/composer-format-menu/composer-format-menu.component.html',
   'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.html',
   'libs/feature/rooms/src/lib/message-composer/message-composer.component.html',
+  'libs/feature/rooms/src/lib/message-composer/composer-voice-bar/composer-voice-bar.component.html',
   'libs/feature/rooms/src/lib/message-reactions/message-reactions.component.html',
   'libs/feature/rooms/src/lib/server-rail/server-rail.component.html',
   'libs/feature/rooms/src/lib/voice-message/voice-message.component.html',
@@ -81,6 +83,7 @@ const compositeIconFiles = new Set([
   'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.html',
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.html',
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html',
+  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-row/sidebar-room-row.component.html',
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.html',
   'libs/feature/rooms/src/lib/location-share/location.component.html',
   'libs/feature/rooms/src/lib/media-bubble/media-bubble.component.html',
@@ -88,8 +91,10 @@ const compositeIconFiles = new Set([
   'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.html',
   'libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.html',
   'libs/feature/rooms/src/lib/quick-switcher/quick-switcher.component.html',
+  'libs/feature/rooms/src/lib/room-header/room-header.component.html',
   'libs/feature/rooms/src/lib/rooms/rooms.page.html',
   'libs/components/overlay/src/lib/settings-layout/trn-settings-layout.component.html',
+  'libs/components/overlay/src/lib/action-sheet/trn-action-list.component.html',
 ]);
 
 const filesOutside = (controls, allowed) => [

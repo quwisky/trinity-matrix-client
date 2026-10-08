@@ -46,6 +46,9 @@ const sidebarCss = read(
 const roomListCss = read(
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.scss',
 );
+const roomRowCss = read(
+  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-row/sidebar-room-row.component.scss',
+);
 const userPanelCss = read(
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.scss',
 );
@@ -165,8 +168,8 @@ describe('modern room shell layout contracts', () => {
       [sidebarCss, '.sidebar__action'],
       [sidebarCss, '.sidebar__filter-clear'],
       [roomListCss, '.invite__btn'],
-      [roomListCss, '.channel'],
-      [roomListCss, '.channel__menu'],
+      [roomRowCss, '.channel'],
+      [roomRowCss, '.channel__menu'],
       [userPanelCss, '.userbar__trigger'],
       [userPanelCss, '.userbar__settings'],
     ];

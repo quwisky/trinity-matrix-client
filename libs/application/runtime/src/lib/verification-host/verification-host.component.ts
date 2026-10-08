@@ -13,7 +13,7 @@ import {
   type VerificationView,
 } from '@trinity/data-access/trust';
 import {
-  TrnDialogService,
+  TrnSurfaceService,
   type TrnDialogRef,
 } from '@trinity/components/overlay';
 import { defer, finalize, take } from 'rxjs';
@@ -26,7 +26,7 @@ import { defer, finalize, take } from 'rxjs';
 })
 export class VerificationHostComponent {
   private readonly verification = inject(TrustVerificationService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly errors = inject(ErrorHandler);
   private readonly dialogComponents = inject(ENCRYPTION_DIALOG_COMPONENTS, {

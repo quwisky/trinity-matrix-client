@@ -1,3 +1,4 @@
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 import {
   RoomActionPermissionsService,
   RoomAdministrationError,
@@ -35,7 +36,7 @@ const INVALID_LOCALPART = /[\s:#]/;
   selector: 'trn-room-aliases',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './room-aliases.component.html',
-  imports: [FormField, TrnButton, TrnInput],
+  imports: [EmptyStateComponent, FormField, TrnButton, TrnInput],
 })
 export class RoomAliasesComponent implements OnChanges {
   private readonly aliasesSvc = inject(RoomAliasesService);

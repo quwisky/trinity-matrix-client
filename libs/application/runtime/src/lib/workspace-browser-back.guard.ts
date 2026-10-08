@@ -1,7 +1,7 @@
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { WorkspaceBackService } from '@trinity/application/workspace';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { map, take, type Observable } from 'rxjs';
 import { WorkspaceRoutedSurfaceAdapter } from './composition/workspace-routed-surface.adapter';
 
@@ -9,7 +9,7 @@ import { WorkspaceRoutedSurfaceAdapter } from './composition/workspace-routed-su
 export function workspaceBrowserBackGuard(): boolean | Observable<boolean> {
   const router = inject(Router);
   const back = inject(WorkspaceBackService);
-  const dialog = inject(TrnDialogService);
+  const dialog = inject(TrnSurfaceService);
   const routed = inject(WorkspaceRoutedSurfaceAdapter);
   if (router.currentNavigation()?.trigger !== 'popstate') {
     return true;
