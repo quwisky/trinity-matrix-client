@@ -64,6 +64,7 @@ const bespokeIconFiles = new Set([
   'libs/feature/rooms/src/lib/message-composer/composer-format-menu/composer-format-menu.component.html',
   'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.html',
   'libs/feature/rooms/src/lib/message-composer/message-composer.component.html',
+  'libs/feature/rooms/src/lib/message-composer/composer-voice-bar/composer-voice-bar.component.html',
   'libs/feature/rooms/src/lib/message-reactions/message-reactions.component.html',
   'libs/feature/rooms/src/lib/server-rail/server-rail.component.html',
   'libs/feature/rooms/src/lib/voice-message/voice-message.component.html',

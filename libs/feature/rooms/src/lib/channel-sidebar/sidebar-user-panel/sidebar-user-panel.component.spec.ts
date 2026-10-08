@@ -110,6 +110,24 @@ describe('SidebarUserPanelComponent', () => {
     expect(reauthRow?.querySelector('trn-avatar')?.textContent).toContain('D');
   });
 
+  it('shows ? for an account whose display name is only a sigil', async () => {
+    const { fixture, container } = await render(SidebarUserPanelComponent, {
+      inputs: {
+        user: USER,
+        accounts: [{ ...ACCOUNTS[0], displayName: '@' }, ACCOUNTS[1]],
+        activeUserId: '@alice:hs',
+      },
+    });
+
+    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
+    fixture.detectChanges();
+
+    const accountRow = document.querySelector<HTMLElement>(
+      '[data-testid="account-row"]',
+    );
+    expect(accountRow?.querySelector('trn-avatar')?.textContent).toContain('?');
+  });
+
   it('shows name and handle and no accounts chip with a single account', async () => {
     const { container } = await render(SidebarUserPanelComponent, {
       inputs: {

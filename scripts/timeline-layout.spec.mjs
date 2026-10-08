@@ -39,6 +39,12 @@ const threadSummaryCss = stylesheet(
 const composerCss = stylesheet(
   'libs/feature/rooms/src/lib/message-composer/message-composer.component.scss',
 );
+const bannerCss = stylesheet(
+  'libs/feature/rooms/src/lib/message-composer/composer-banner/composer-banner.component.scss',
+);
+const voiceBarCss = stylesheet(
+  'libs/feature/rooms/src/lib/message-composer/composer-voice-bar/composer-voice-bar.component.scss',
+);
 const composerHtml = template(
   'libs/feature/rooms/src/lib/message-composer/message-composer.component.html',
 );
@@ -139,12 +145,12 @@ describe('modern timeline layout contracts', () => {
       /class="composer__input"[\s\S]*?\[class\.composer__input--hidden\]="previewing\(\)"/,
     );
     expect(composerCss).toMatch(
-      /\.composer:has\(\.composer__recording\) \.composer__field\s*\{[^}]*display:\s*none;/s,
+      /\.composer--recording \.composer__field\s*\{[^}]*display:\s*none;/s,
     );
-    expect(composerCss).toMatch(
+    expect(bannerCss).toMatch(
       /\.composer__banner\s*\{[\s\S]*?min-height:\s*calc\([\s\S]*?var\(--trinity-density-control-size\)[\s\S]*?var\(--trinity-space-2\)[\s\S]*?\);[\s\S]*?\.composer__cancel/s,
     );
-    expect(composerCss).toMatch(
+    expect(voiceBarCss).toMatch(
       /\.composer__recording\s*\{[\s\S]*?min-height:\s*var\(--composer-resting-field-height\);[\s\S]*?\.composer__recording-cancel/s,
     );
   });

@@ -15,6 +15,7 @@ import {
   type RoomSummary,
   type SpaceSummary,
 } from '@trinity/data-access/room-library';
+import { initialOf } from '@trinity/util/matrix';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { RoomShellStore } from './room-shell-store';
 import {
@@ -319,13 +320,7 @@ export class RoomShellViewModel {
   );
 
   /** First letter of the active account's display name, for the header chip's avatar. */
-  readonly userInitial = computed(() =>
-    (
-      this.userName()
-        .replace(/^[@#!]+/, '')
-        .trim()[0] ?? '?'
-    ).toUpperCase(),
-  );
+  readonly userInitial = computed(() => initialOf(this.userName()));
 
   /** The signed-in user's profile, bundled for the channel sidebar's user panel. */
   readonly userProfile = computed<IdentityProfile>(() => ({

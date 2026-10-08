@@ -20,7 +20,7 @@ import {
   UserDirectoryDiscoveryService,
   type DiscoveredUser,
 } from '@trinity/data-access/discovery';
-import { isValidUserId } from '@trinity/util/matrix';
+import { initialOf, isValidUserId } from '@trinity/util/matrix';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import {
@@ -141,8 +141,5 @@ export class UserPickerComponent {
   }
 
   /** First visible character (sans sigil), uppercased, for the avatar fallback. */
-  initialOf(name: string): string {
-    const stripped = name.replace(/^[#@!]+/, '').trim();
-    return (stripped[0] ?? '?').toUpperCase();
-  }
+  readonly initialOf = initialOf;
 }

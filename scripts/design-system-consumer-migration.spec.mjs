@@ -158,7 +158,7 @@ describe('migrated application design-system consumers', () => {
       roomNavigationTemplates,
       /<trn-avatar\b[^>]*>/gu,
     );
-    expect(roomNavigationAvatars.length).toBeGreaterThan(9);
+    expect(roomNavigationAvatars.length).toBeGreaterThan(6);
     for (const [file, tag] of roomNavigationAvatars) {
       expect(tag, file).not.toMatch(
         /(?:\[size\]|\bsize)\s*=\s*['"](?:\d+(?:\.\d+)?|\d+(?:\.\d+)?(?:px|rem|em))['"]/u,

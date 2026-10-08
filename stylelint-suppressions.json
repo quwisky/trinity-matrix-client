@@ -101,7 +101,7 @@
   },
   "libs/feature/rooms/src/lib/message-composer/message-composer.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 6
+      "count": 2
     }
   },
   "libs/feature/rooms/src/lib/message-list/_message-list-shared.scss": {
@@ -181,7 +181,7 @@
   },
   "libs/feature/rooms/src/lib/space-settings/space-settings-contents.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 12
+      "count": 11
     }
   },
   "libs/feature/rooms/src/lib/sticker-image/sticker-image.component.scss": {
