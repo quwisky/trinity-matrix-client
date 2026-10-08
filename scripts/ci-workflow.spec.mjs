@@ -436,6 +436,8 @@ describe('MAS sign-in journeys', () => {
       'patches/pagefind@1.5.3.patch',
       'e2e/support/homeserver/synapse/adapter.mjs',
       'e2e/support/homeserver/lease.mts',
+      'e2e/support/homeserver/start.mjs.bak',
+      'e2e/support/homeserver/Caddyfile.mas',
       'e2e/browser/journeys/accounts/oidc-login.spec.mts',
       'apps/trinity/src/main.ts',
     ])('skips the journeys when a pull request changes only %s', (path) => {
@@ -473,6 +475,7 @@ describe('MAS sign-in journeys', () => {
     it('fails, rather than answering false, when a pull request has no base', () => {
       const { result, output } = runStep('pull_request', '');
       expect(result.status).not.toBe(0);
+      expect(String(result.stderr)).toContain('pull request has no base sha');
       expect(output).toBe('');
     });
 
