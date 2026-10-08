@@ -134,7 +134,7 @@
     "dompurify": "^3.4.12",
     "marked": "^18.0.6",
     "matrix-js-sdk": "^42.1.0",
-    "matrix-widget-api": "1.19.0",
+    "matrix-widget-api": "1.20.0",
     "qr": "^0.7.0",
     "rxjs": "~7.8.2",
     "tailwind-merge": "^3.6.0",
