@@ -184,7 +184,15 @@ test.describe('Modal surfaces', () => {
       await expect(plus).toBeFocused();
 
       await page.keyboard.press('Enter');
+      // The menu moves focus to its first item after it opens; ArrowDown before that lands
+      // on nothing and Enter then activates "Create a room" instead of the directory.
+      await expect(
+        menu.getByRole('menuitem', { name: 'Create a room' }),
+      ).toBeFocused();
       await page.keyboard.press('ArrowDown');
+      await expect(
+        menu.getByRole('menuitem', { name: 'Explore public rooms' }),
+      ).toBeFocused();
       await page.keyboard.press('Enter');
       const directory = page
         .getByRole('dialog')
@@ -229,6 +237,14 @@ test.describe('Modal surfaces', () => {
         await plus.focus();
         await page.keyboard.press('Enter');
         await expect(menu).toBeVisible();
+        // The menu animates in; measure the settled box, not a mid-entrance one.
+        await menu.evaluate((element) =>
+          Promise.all(
+            element
+              .getAnimations({ subtree: true })
+              .map((animation) => animation.finished),
+          ),
+        );
 
         const box = (await menu.boundingBox())!;
         expect(box.y).toBeGreaterThanOrEqual(0);
