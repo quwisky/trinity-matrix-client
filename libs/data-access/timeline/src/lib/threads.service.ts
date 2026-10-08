@@ -441,7 +441,6 @@ export class ThreadsService {
       );
     }).pipe(
       tap(() => {
-        if (this.thread !== thread) return;
         // A page that brought no events at all (hidden replies the count still includes)
         // must not leave the button offering the same empty page again.
         if (thread.events.length === loadedBefore) {
