@@ -9,20 +9,11 @@ import {
   inject,
   input,
   output,
-  signal,
   viewChild,
 } from '@angular/core';
+import { ThreadCommands } from './thread-commands';
 import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { throwError, type Observable } from 'rxjs';
-import {
-  batchFailureToast,
-  sendMediaBatch,
-  sendViaCapability,
-  type BatchItem,
-  type BatchOutcome,
-  type BatchProgress,
-} from '../shared/send-media-batch';
 import {
   buildRowCapsMap,
   dispatchSharedRowAction,
@@ -40,18 +31,10 @@ import {
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TypingIndicatorComponent } from '../message-list/typing-indicator/typing-indicator.component';
 import {
-  TrnAlertService,
   TrnDialogService,
   TrnOverlaySurfaceDirective,
-  TrnToastService,
 } from '@trinity/components/overlay';
-import {
-  TimelineActionsService,
-  ConversationRuntime,
-  isEditableMessage,
-  type ConversationThread,
-  type ConversationThreadOutcome,
-} from '@trinity/data-access/timeline';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { RoomMembersService } from '@trinity/data-access/room-administration';
 import { quoteBlock } from '@trinity/util/matrix';
 import {
@@ -70,11 +53,9 @@ import { MediaSaveService } from '../media-attachment/media-save.service';
 import { ReportService } from '../report/report.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
-import { confirmMessageDeletion$ } from '../message-actions/confirm-message-deletion';
 import {
   scrollBehavior,
   BELOW_MEMBERS_QUERY,
-  latestGuard,
   mediaQuerySignal,
 } from '@trinity/util/ui';
 
@@ -118,12 +99,14 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
     MessageComposerComponent,
     TrnOverlaySurfaceDirective,
   ],
+  providers: [ThreadCommands],
   templateUrl: './thread-view.component.html',
   styleUrl: './thread-view.component.scss',
 })
 export class ThreadViewComponent implements OnDestroy {
   private readonly conversations = inject(ConversationRuntime);
-  private readonly openedThread = signal<ConversationThread | null>(null);
+  private readonly commands = inject(ThreadCommands);
+  private readonly openedThread = this.commands.thread;
   private readonly messageSheet = inject(MessageActionSheetService);
   private readonly roomMembers = inject(RoomMembersService);
   private readonly dialog = inject(TrnDialogService);
@@ -133,9 +116,6 @@ export class ThreadViewComponent implements OnDestroy {
   private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly timeline = this.conversations.timeline;
-  private readonly timelineActions = inject(TimelineActionsService);
-  private readonly alert = inject(TrnAlertService);
-  private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly roomId = input.required<string>();
@@ -149,14 +129,9 @@ export class ThreadViewComponent implements OnDestroy {
     return this.roomMembers.membersFor(this.roomId())();
   });
 
-  /** Id of the thread message being edited, or null. */
-  readonly editingId = signal<string | null>(null);
-  /** Id of the thread message being replied to, or null. */
-  readonly replyingToId = signal<string | null>(null);
-  /** Which file of how many is uploading, and how far along, or null when idle. */
-  readonly uploadProgress = signal<BatchProgress | null>(null);
-  /** Identity allocator and current owner for the progress signal shared by threads. */
-  private readonly uploads = latestGuard();
+  readonly editingId = this.commands.editingId;
+  readonly replyingToId = this.commands.replyingToId;
+  readonly uploadProgress = this.commands.uploadProgress;
   private readonly threadBinding = effect(() => {
     const roomId = this.roomId();
     const rootEventId = this.rootEventId();
@@ -170,10 +145,7 @@ export class ThreadViewComponent implements OnDestroy {
     if (current) {
       this.messageSheet.close(this);
       current.release();
-      this.editingId.set(null);
-      this.replyingToId.set(null);
-      this.uploads.invalidate();
-      this.uploadProgress.set(null);
+      this.commands.reset();
       this.timeline.setTyping(false, 'thread');
     }
     this.openedThread.set(this.conversations.threads.forRoot(rootEventId));
@@ -306,20 +278,8 @@ export class ThreadViewComponent implements OnDestroy {
       .subscribe();
   }
 
-  /** Composer submit — routes to an edit or reply when active, else a new send. */
-  /**
-   * A batch caption, posted plainly into the thread. Deliberately NOT routed through
-   * {@link onSubmit}: it was written before an upload that may have taken minutes, so the edit
-   * or reply the user has started since is not what it belongs to.
-   */
-  onBatchCaption({ text, mentions }: ComposerSubmit): void {
-    const thread = this.openedThread();
-    if (thread) {
-      this.runThreadAction(
-        thread.send(text, mentions),
-        'Could not send the caption.',
-      );
-    }
+  onBatchCaption(caption: ComposerSubmit): void {
+    this.commands.sendCaption(caption);
   }
 
   /**
@@ -342,101 +302,20 @@ export class ThreadViewComponent implements OnDestroy {
     this.timeline.setTyping(typing, 'thread');
   }
 
-  onSubmit({ text, mentions }: ComposerSubmit): void {
-    const editId = this.editingId();
-    const replyId = this.replyingToId();
-    if (editId) {
-      this.editingId.set(null);
-      const thread = this.openedThread();
-      if (thread) {
-        this.runThreadAction(
-          thread.edit(editId, text, mentions),
-          'Could not edit the message.',
-        );
-      }
-    } else if (replyId) {
-      this.replyingToId.set(null);
-      // The reply's local echo (and its failed/retry state) surfaces the result.
-      const thread = this.openedThread();
-      if (thread) {
-        this.runThreadAction(
-          thread.reply(replyId, text, mentions),
-          'Could not send the reply.',
-        );
-      }
-    } else {
-      const thread = this.openedThread();
-      if (thread) {
-        this.runThreadAction(
-          thread.send(text, mentions),
-          'Could not send the message.',
-        );
-      }
-    }
+  onSubmit(submit: ComposerSubmit): void {
+    this.commands.submit(submit);
   }
 
-  /** The thread's half of the batch send — see `MessageActionsService.onSendMedia`. */
-  onSendMedia({
-    items,
-    caption,
-    onOutcomes,
-  }: {
-    items: readonly BatchItem[];
-    caption: string;
-    onOutcomes: (outcomes: readonly BatchOutcome[]) => void;
-  }): void {
-    const token = this.uploads.next();
-    const reportProgress = (progress: BatchProgress | null): void => {
-      if (!this.uploads.isCurrent(token)) {
-        return;
-      }
-      if (progress === null) {
-        this.uploads.invalidate();
-      }
-      this.uploadProgress.set(progress);
-    };
-    // Pinned for the whole batch, for the same reason as the room path: the thread is
-    // resolved on SUBSCRIBE, and a batch subscribes item N long after it was pressed, so
-    // opening another thread mid-batch would deliver the rest into that one.
-    const pinnedThread = this.openedThread();
-    let abandoned = 0;
-    sendMediaBatch(
-      items,
-      caption,
-      (_file, itemCaption, progress, media) => {
-        if (!pinnedThread || this.openedThread() !== pinnedThread) {
-          abandoned++;
-          return throwError(() => new Error('thread changed mid-batch'));
-        }
-        return sendViaCapability(
-          pinnedThread.media.send(media, itemCaption),
-          progress,
-          (failure) => {
-            if (failure === 'conversation-unavailable') abandoned++;
-          },
-        );
-      },
-      reportProgress,
-    )
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((outcomes) => {
-        onOutcomes(outcomes);
-        const failed = outcomes.filter((outcome) => outcome.failed).length;
-        if (!failed) {
-          return;
-        }
-        void this.showError(batchFailureToast(failed, abandoned, 'thread'));
-      });
+  onSendMedia(batch: Parameters<ThreadCommands['sendMedia']>[0]): void {
+    this.commands.sendMedia(batch);
   }
 
   startEdit(row: MessageRow): void {
-    this.replyingToId.set(null);
-    this.editingId.set(row.id);
+    this.commands.startEdit(row.id);
   }
 
   startReply(row: MessageRow): void {
-    this.editingId.set(null);
-    this.replyingToId.set(row.id);
+    this.commands.startReply(row.id);
   }
 
   /** Pull a thread message's text into THIS panel's composer as a `>` block. */
@@ -445,28 +324,14 @@ export class ThreadViewComponent implements OnDestroy {
     this.composer()?.insertQuote(quoteBlock(row.body));
   }
 
-  /** Edit the most recent editable own message in the thread (Up-arrow shortcut). */
   editLastOwn(): void {
-    const msgs = this.openedThread()?.messages() ?? [];
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      if (isEditableMessage(msgs[i])) {
-        this.editingId.set(msgs[i].id);
-        return;
-      }
-    }
+    this.commands.editLastOwn();
   }
 
   onReact(messageId: string, key: string): void {
-    const thread = this.openedThread();
-    if (thread) {
-      this.runThreadAction(
-        thread.toggleReaction(messageId, key),
-        'Could not update the reaction.',
-      );
-    }
+    this.commands.react(messageId, key);
   }
 
-  /** Cast a vote on a poll in the thread (room-level m.poll.response). */
   onPollVote({
     pollId,
     answerIds,
@@ -474,42 +339,19 @@ export class ThreadViewComponent implements OnDestroy {
     pollId: string;
     answerIds: readonly string[];
   }): void {
-    this.runAction(
-      this.timelineActions.votePoll(pollId, answerIds),
-      'Could not cast your vote.',
-    );
+    this.commands.voteInPoll(pollId, answerIds);
   }
 
-  /** Close a poll from the thread view. */
   onPollEnd(pollId: string): void {
-    this.runAction(
-      this.timelineActions.endPoll(pollId),
-      'Could not end the poll.',
-    );
+    this.commands.endPoll(pollId);
   }
 
   onRetry(messageId: string): void {
-    const thread = this.openedThread();
-    if (thread) {
-      this.runThreadAction(
-        thread.retry(messageId),
-        'Could not retry the message.',
-      );
-    }
+    this.commands.retry(messageId);
   }
 
   onDelete(row: MessageRow): void {
-    confirmMessageDeletion$(this.alert)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
-        const thread = this.openedThread();
-        if (thread) {
-          this.runThreadAction(
-            thread.redact(row.id),
-            'Could not delete the message.',
-          );
-        }
-      });
+    this.commands.delete(row.id);
   }
 
   /**
@@ -595,28 +437,5 @@ export class ThreadViewComponent implements OnDestroy {
     this.scrollEl()
       ?.nativeElement.querySelector(`[data-mid="${messageId}"]`)
       ?.scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
-  }
-
-  /** Run a fire-and-forget thread action, surfacing a failure as a toast. */
-  private runAction(action: Observable<void>, failureMessage: string): void {
-    action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      error: () => void this.showError(failureMessage),
-    });
-  }
-
-  private runThreadAction(
-    action: Observable<ConversationThreadOutcome>,
-    failureMessage: string,
-  ): void {
-    action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (outcome) => {
-        if (outcome.kind === 'rejected') this.showError(failureMessage);
-      },
-      error: () => this.showError(failureMessage),
-    });
-  }
-
-  private showError(message: string): void {
-    this.toast.show(message, { duration: 4000, variant: 'danger' });
   }
 }
