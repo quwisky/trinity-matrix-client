@@ -4,6 +4,7 @@ import {
   ClientEvent,
   ConnectionError,
   HttpApiEvent,
+  MemoryStore,
   SyncState,
   TokenRefreshError,
   createClient,
@@ -1536,4 +1537,42 @@ describe('OAuth tokens through a real MatrixClient', () => {
       expectStillSignedIn(svc, client);
     },
   );
+
+  it('revokes an OAuth session once at the provider on signOutAll, with no POST /logout', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc } = await startReal();
+
+    await firstValueFrom(svc.signOutAll());
+
+    expect([...net.revocations].sort()).toEqual([
+      'access_token',
+      'refresh_token',
+    ]);
+    expect(net.calls.some((call) => call.endsWith('/logout'))).toBe(false);
+  });
+
+  it('logs a stored session with no live client out through a detached client', async () => {
+    const net = fakeNetwork('rotate');
+    await useRealClients();
+    const { svc } = setup();
+
+    await svc.detachedClient(OIDC_SESSION).logout(true);
+
+    const opts = vi.mocked(createClient).mock.calls.at(-1)![0];
+    expect(opts).toMatchObject({
+      baseUrl: 'https://hs.example',
+      userId: '@me:hs',
+      deviceId: 'DEV',
+      accessToken: 'tok',
+      refreshToken: 'refresh-tok',
+      oauthClientId: 'client-1',
+    });
+    // No persistent store: createClient() fills in its in-memory default, on these same opts.
+    expect(opts.store).toBeInstanceOf(MemoryStore);
+    expect([...net.revocations].sort()).toEqual([
+      'access_token',
+      'refresh_token',
+    ]);
+    expect(svc.accountIds()).toEqual([]);
+  });
 });

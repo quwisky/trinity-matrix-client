@@ -291,6 +291,22 @@ export class MatrixClientService {
   }
 
   /**
+   * An unstarted client for a stored session (no store, no crypto, no sync), for one-shot
+   * calls on an account that has no live client: `logout()` for a soft-logged-out OAuth
+   * account, whose tokens must still be revoked at its provider.
+   */
+  detachedClient(session: MatrixSession): MatrixClient {
+    return createClient({
+      baseUrl: session.baseUrl,
+      localTimeoutMs: MATRIX_REQUEST_TIMEOUT_MS,
+      accessToken: session.accessToken,
+      userId: session.userId,
+      deviceId: session.deviceId,
+      ...this.tokenOptions(session),
+    });
+  }
+
+  /**
    * Replace any signed-in accounts with this one and make it active. Cold: runs on
    * subscribe. The login-replaces-current path; use {@link add} to keep the others.
    * The new client is only published once it has fully started — a failed bootstrap
