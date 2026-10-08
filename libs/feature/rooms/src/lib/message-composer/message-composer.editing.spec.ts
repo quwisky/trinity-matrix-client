@@ -340,10 +340,9 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
       expect(cmp.text()).toBe('draft B');
     });
 
-    // Pinned as it behaves today, not as it should: the room effect runs before the prefill
-    // effect, sees `editing()` already false and files the edit body under the room being left.
-    // Reordering the effects changes this outcome, which is what this test is here to catch.
-    it('files the edit body under the old room when the edit ends in the same pass as a switch', async () => {
+    // The room effect runs before the prefill effect and sees `editing()` already false, so it
+    // must use `wasEditing` to know `text` is still the edit body and keep the old room's draft.
+    it('keeps the old room\u2019s draft when the edit ends in the same pass as a switch', async () => {
       const { fixture } = await renderComposer({ roomId: '!a:hs' });
       const cmp = fixture.componentInstance;
       const store = TestBed.inject(DraftStoreService);
@@ -360,7 +359,7 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
       fixture.detectChanges();
 
       expect(cmp.text()).toBe('');
-      expect(store.get('!a:hs')).toBe('edit body');
+      expect(store.get('!a:hs')).toBe('draft A');
     });
 
     it('persists the draft across a switch away and back, writing only the settled room', async () => {
