@@ -22,6 +22,10 @@ export function copyText(
   const lower = what.charAt(0).toLowerCase() + what.slice(1);
   void write.then(
     () => toast.show(`${what} copied.`, { duration: 2000 }),
-    () => toast.show(`Could not copy the ${lower}.`, { duration: 2000 }),
+    () =>
+      toast.show(`Could not copy the ${lower}.`, {
+        duration: 2000,
+        variant: 'danger',
+      }),
   );
 }

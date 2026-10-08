@@ -255,6 +255,7 @@ describe('RoomSettingsAdvancedComponent', () => {
     await vi.waitFor(() =>
       expect(show).toHaveBeenCalledWith('Could not copy the room ID.', {
         duration: 2000,
+        variant: 'danger',
       }),
     );
     expect(show).not.toHaveBeenCalledWith('Room ID copied.', expect.anything());
@@ -270,6 +271,7 @@ describe('RoomSettingsAdvancedComponent', () => {
     await vi.waitFor(() =>
       expect(show).toHaveBeenCalledWith('Could not copy the room ID.', {
         duration: 2000,
+        variant: 'danger',
       }),
     );
     expect(show).not.toHaveBeenCalledWith('Room ID copied.', expect.anything());

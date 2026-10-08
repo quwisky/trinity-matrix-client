@@ -215,7 +215,9 @@ export class EditHistoryComponent {
         // and one row failing is no reason to lose the history.
         error: () => {
           this.removing.set(null);
-          this.toast.show('Could not delete that version.');
+          this.toast.show('Could not delete that version.', {
+            variant: 'danger',
+          });
         },
       });
   }
