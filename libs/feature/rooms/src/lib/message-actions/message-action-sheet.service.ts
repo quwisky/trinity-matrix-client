@@ -51,7 +51,7 @@ type PayloadFreeAction = Exclude<
  *
  * A row is destroyed by any of the things that routinely happen to a message — a redaction,
  * an edit, the local-echo id swap when your own send lands, or simply scrolling out of the
- * virtual window, which happens behind the sheet's own backdrop where the reader cannot see
+ * list's window, which happens behind the sheet's own backdrop where the reader cannot see
  * it. An `output()` on a destroyed component is a SILENT no-op, so a sheet holding the row's
  * handlers would be a menu where every row is still tappable and nothing happens.
  *
@@ -62,11 +62,11 @@ type PayloadFreeAction = Exclude<
  *
  * ## Why a service, and not a method on the list
  *
- * It started as one, and that was wrong: `trn-message-row` has THREE consumers, not two. The
- * two message lists extend `MessageListBase`, but {@link ThreadViewComponent} does not — it
+ * It started as one, and that was wrong: `trn-message-row` has two consumers. The
+ * message list extends `MessageListBase`, but {@link ThreadViewComponent} does not — it
  * carries its own `onRowAction`. A long press on a thread reply consequently emitted into
  * nothing and every action on it was unreachable by touch, with the Android `contextmenu`
- * fallback removed as well. Shared here so a fourth consumer inherits the behaviour instead
+ * fallback removed as well. Shared here so a third consumer inherits the behaviour instead
  * of having to remember it.
  *
  * ## Why `open` and `close` take an owner

@@ -276,7 +276,7 @@ test.describe('Message actions on a phone', () => {
     const timeline = page.locator('[data-message-scroller]').first();
     const rows = timeline.locator('trn-message-row');
 
-    await expect(page.locator('trn-virtual-message-list')).toBeVisible();
+    await expect(page.locator('trn-message-list')).toBeVisible();
     await expect
       .poll(
         async () => {

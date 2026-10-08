@@ -79,7 +79,7 @@
     "icons:generate": "node scripts/generate-icons.mjs"
   },
   "private": true,
-  "packageManager": "pnpm@12.8.1",
+  "packageManager": "pnpm@12.9.1",
   "//engines": "The `>= 26` half of this range was removed rather than gaining a CI leg: nothing has ever built, tested or packaged this workspace on Node 26, so the range was advertising support that no gate backed. Widening it again is a deliberate act — add the matrix leg first (the Electron job alone rebuilds a native binary), then the range.",
   "engines": {
     "node": "^24.15.0",
@@ -134,7 +134,7 @@
     "dompurify": "^3.4.12",
     "marked": "^18.0.6",
     "matrix-js-sdk": "^42.1.0",
-    "matrix-widget-api": "1.19.0",
+    "matrix-widget-api": "1.20.0",
     "qr": "^0.7.0",
     "rxjs": "~7.8.2",
     "tailwind-merge": "^3.6.0",

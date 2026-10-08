@@ -1,0 +1,75 @@
+@if (problems().length > 0) {
+  <div class="py-3" role="alert" data-testid="advanced-apply-problems">
+    <p class="text-13 font-medium text-danger">
+      Nothing was applied. This document can't be read:
+    </p>
+    <ul class="pt-1">
+      @for (problem of problems(); track problem) {
+        <li class="py-0.5 text-13 text-danger">{{ problem }}</li>
+      }
+    </ul>
+  </div>
+}
+
+@if (warnings().length > 0) {
+  <div class="py-3" data-testid="advanced-apply-warnings">
+    <div class="rounded-md bg-warning px-3 py-2 text-warning-foreground">
+      <p class="text-13 font-medium">Some of this won't apply here:</p>
+      <ul class="pt-1">
+        @for (warning of warnings(); track warning) {
+          <li class="py-0.5 text-13">{{ warning }}</li>
+        }
+      </ul>
+      <p class="pt-1 text-13">
+        Everything else is applied as normal, and the document keeps these
+        values for the device they came from.
+      </p>
+    </div>
+  </div>
+}
+
+@if (nothingToChange()) {
+  <p
+    class="m-0 py-3 text-13 text-muted-foreground"
+    data-testid="advanced-apply-nothing"
+  >
+    Your settings already match this document, so there is nothing to change.
+  </p>
+}
+
+@if (changeLines().length > 0) {
+  <div class="py-3" data-testid="advanced-apply-summary">
+    <div class="rounded-md border border-solid border-border px-3 py-2">
+      <p class="text-13 font-medium">
+        These settings will change. Nothing has been written yet.
+      </p>
+      <ul class="pt-1" data-testid="advanced-apply-changes">
+        @for (line of changeLines(); track line) {
+          <li class="py-0.5 font-mono text-13 break-all">{{ line }}</li>
+        }
+      </ul>
+      <div class="flex flex-wrap items-center gap-2 pt-2">
+        <button
+          trnBtn
+          size="sm"
+          [disabled]="applying()"
+          (click)="confirmed.emit()"
+          data-testid="advanced-apply-confirm"
+        >
+          Apply {{ changeLines().length }}
+          {{ changeLines().length === 1 ? 'change' : 'changes' }}
+        </button>
+        <button
+          trnBtn
+          presentation="ghost"
+          size="sm"
+          [disabled]="applying()"
+          (click)="cancelled.emit()"
+          data-testid="advanced-apply-cancel"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+}

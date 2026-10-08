@@ -188,94 +188,45 @@
              shows the skeleton, or the unavailable error with Retry. Everything needing a real
              room stays behind activeRoom(): the composer (composerEnabled) and the panels.
 
-             The experimental flag swaps in the windowed timeline. Both take the
-             same inputs/outputs (MessageListBase); flipping the flag re-creates the
-             chosen component fresh.
-
-             The two binding lists are identical and must stay that way — an input added
-             to one and forgotten on the other gives a timeline that behaves differently
-             depending on a flag most people never touch, and nothing fails.
-             `scripts/message-list-bindings.spec.mjs` is what fails instead.
-
-             Not de-duplicated with `*ngComponentOutlet`: it can pass inputs but cannot
-             bind outputs, and half of these thirty are outputs. The real fix is for
-             windowing to be a MODE of one list rather than a second component, which is a
-             larger change than this phase. -->
-          @if (flags.virtualTimeline()) {
-            <trn-virtual-message-list
-              [messages]="timeline.messages()"
-              [threadSummaries]="threads.summaries()"
-              [canPin]="pinned.canMutate()"
-              [canRedactOthers]="timeline.canRedactOthers()"
-              [pinnedIds]="pinned.eventIds()"
-              [loadingOlder]="timeline.loadingOlder()"
-              [loadState]="timeline.loadState()"
-              (retryLoad)="timeline.retryLoad()"
-              [swipeDirection]="messageSwipeDirection()"
-              [canLoadOlder]="timeline.canLoadOlder()"
-              [oldestEventId]="timeline.oldestEventId()"
-              [roomId]="store.activeRoomId()"
-              [accountId]="store.activeAccountId()"
-              [members]="vm.members()"
-              [typingNames]="timeline.typingNames()"
-              [firstUnreadId]="timeline.firstUnreadId()"
-              [roomName]="vm.activeRoom()?.name ?? ''"
-              [composerEnabled]="!!vm.activeRoom()"
-              [uploadProgress]="messageActions.uploadProgress()"
-              [stickerPacks]="imagePacks()"
-              [jumpToId]="roomSurfaces.jumpTarget()"
-              [jumpToNonce]="roomSurfaces.jumpRevision()"
-              (loadOlder)="messageActions.loadOlder()"
-              (openThread)="messageActions.onOpenThread($event)"
-              (togglePin)="messageActions.onTogglePin($event)"
-              (send)="messageActions.onSend($event)"
-              (sendMedia)="messageActions.onSendMedia($event)"
-              (sendSticker)="messageActions.onSendSticker($event)"
-              (retry)="messageActions.onRetry($event)"
-              (deleteMessage)="messageActions.onDelete($event)"
-              (react)="messageActions.onReact($event)"
-              (matrixLink)="messageActions.onMatrixLink($event)"
-              (pollVote)="messageActions.onPollVote($event)"
-              (pollEnd)="messageActions.onPollEnd($event)"
-            />
-          } @else {
-            <trn-simple-message-list
-              [messages]="timeline.messages()"
-              [threadSummaries]="threads.summaries()"
-              [canPin]="pinned.canMutate()"
-              [canRedactOthers]="timeline.canRedactOthers()"
-              [pinnedIds]="pinned.eventIds()"
-              [loadingOlder]="timeline.loadingOlder()"
-              [loadState]="timeline.loadState()"
-              (retryLoad)="timeline.retryLoad()"
-              [swipeDirection]="messageSwipeDirection()"
-              [canLoadOlder]="timeline.canLoadOlder()"
-              [oldestEventId]="timeline.oldestEventId()"
-              [roomId]="store.activeRoomId()"
-              [accountId]="store.activeAccountId()"
-              [members]="vm.members()"
-              [typingNames]="timeline.typingNames()"
-              [firstUnreadId]="timeline.firstUnreadId()"
-              [roomName]="vm.activeRoom()?.name ?? ''"
-              [composerEnabled]="!!vm.activeRoom()"
-              [uploadProgress]="messageActions.uploadProgress()"
-              [stickerPacks]="imagePacks()"
-              [jumpToId]="roomSurfaces.jumpTarget()"
-              [jumpToNonce]="roomSurfaces.jumpRevision()"
-              (loadOlder)="messageActions.loadOlder()"
-              (openThread)="messageActions.onOpenThread($event)"
-              (togglePin)="messageActions.onTogglePin($event)"
-              (send)="messageActions.onSend($event)"
-              (sendMedia)="messageActions.onSendMedia($event)"
-              (sendSticker)="messageActions.onSendSticker($event)"
-              (retry)="messageActions.onRetry($event)"
-              (deleteMessage)="messageActions.onDelete($event)"
-              (react)="messageActions.onReact($event)"
-              (matrixLink)="messageActions.onMatrixLink($event)"
-              (pollVote)="messageActions.onPollVote($event)"
-              (pollEnd)="messageActions.onPollEnd($event)"
-            />
-          }
+             The experimental flag only switches windowing. Flipping it re-windows this same
+             list in place, so the reader keeps their position. -->
+          <trn-message-list
+            [windowed]="flags.virtualTimeline()"
+            [messages]="timeline.messages()"
+            [threadSummaries]="threads.summaries()"
+            [canPin]="pinned.canMutate()"
+            [canRedactOthers]="timeline.canRedactOthers()"
+            [pinnedIds]="pinned.eventIds()"
+            [loadingOlder]="timeline.loadingOlder()"
+            [loadState]="timeline.loadState()"
+            (retryLoad)="timeline.retryLoad()"
+            [swipeDirection]="messageSwipeDirection()"
+            [canLoadOlder]="timeline.canLoadOlder()"
+            [oldestEventId]="timeline.oldestEventId()"
+            [roomId]="store.activeRoomId()"
+            [accountId]="store.activeAccountId()"
+            [members]="vm.members()"
+            [typingNames]="timeline.typingNames()"
+            [firstUnreadId]="timeline.firstUnreadId()"
+            [roomName]="vm.activeRoom()?.name ?? ''"
+            [composerEnabled]="!!vm.activeRoom()"
+            [uploadProgress]="messageActions.uploadProgress()"
+            [stickerPacks]="imagePacks()"
+            [jumpToId]="roomSurfaces.jumpTarget()"
+            [jumpToNonce]="roomSurfaces.jumpRevision()"
+            (loadOlder)="messageActions.loadOlder()"
+            (openThread)="messageActions.onOpenThread($event)"
+            (togglePin)="messageActions.onTogglePin($event)"
+            (send)="messageActions.onSend($event)"
+            (sendMedia)="messageActions.onSendMedia($event)"
+            (sendSticker)="messageActions.onSendSticker($event)"
+            (retry)="messageActions.onRetry($event)"
+            (deleteMessage)="messageActions.onDelete($event)"
+            (react)="messageActions.onReact($event)"
+            (matrixLink)="messageActions.onMatrixLink($event)"
+            (pollVote)="messageActions.onPollVote($event)"
+            (pollEnd)="messageActions.onPollEnd($event)"
+          />
           @if (vm.activeRoom(); as room) {
             @if (roomSurfaces.renderedSurface(); as panel) {
               @if (panel.kind !== 'members') {

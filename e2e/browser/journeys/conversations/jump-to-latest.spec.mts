@@ -15,7 +15,7 @@ import { registerUser } from '../../../support/account.mts';
 // End-to-end for the message list's jump-to-latest pill: once the user scrolls up
 // away from the newest message a pill appears (`data-testid="jump-to-latest"`), and
 // clicking it scrolls back to the bottom and hides the pill again
-// (SimpleMessageListComponent.scrollToLatest / the notAtBottom signal). Seeds a room
+// (MessageListComponent.scrollToLatest / the notAtBottom signal). Seeds a room
 // with enough long messages that the loaded timeline overflows the viewport, so
 // scrolling up is actually possible. Needs a Synapse homeserver (Docker); self-skips.
 const session = homeserverSession();

@@ -68,7 +68,10 @@ export class ComposerDrafts {
           // Drafts only apply to compose mode; in edit mode `text` is the edit body.
           if (!editing()) {
             const managedDraft = composeDraft();
-            if (managedDraft === null && prev != null) {
+            // `editing()` can already be false in the pass that ends an edit and switches
+            // room together; `wasEditing` (updated by the prefill effect, later in this
+            // pass) still says `text` holds the edit body, which is not the old room's draft.
+            if (managedDraft === null && prev != null && !this.wasEditing) {
               store.set(prev, text());
             }
             text.set(managedDraft ?? (id != null ? store.get(id) : ''));

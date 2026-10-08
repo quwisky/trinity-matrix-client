@@ -1,5 +1,5 @@
 <section class="room-settings__field min-w-0" data-testid="room-aliases">
-  @let permission = availability();
+  @let permission = controller.availability();
   <span class="room-settings__label">Addresses</span>
   <p class="text-13 text-muted-foreground">
     Published Matrix addresses let people find and join this
@@ -10,14 +10,14 @@
     <span class="text-xs font-medium text-muted-foreground"
       >Primary address</span
     >
-    @if (canonical(); as primary) {
+    @if (controller.canonical(); as primary) {
       <code
         #primaryAddress
         class="mt-1 block text-sm break-all text-foreground"
         data-testid="room-alias-primary"
         >{{ primary }}</code
       >
-      @if (!canonicalIsLocal()) {
+      @if (!controller.canonicalIsLocal()) {
         <span class="mt-2 flex flex-wrap items-center gap-1">
           <button
             trnBtn
@@ -54,7 +54,7 @@
     }
   </div>
 
-  @if (loadFailed()) {
+  @if (controller.loadFailed()) {
     <trn-empty-state
       layout="line"
       variant="danger"
@@ -68,18 +68,18 @@
         variant="secondary"
         presentation="outline"
         size="sm"
-        (click)="load()"
+        (click)="controller.load()"
         data-testid="room-aliases-retry"
       >
         Try again
       </button>
     </trn-empty-state>
-  } @else if (loading()) {
+  } @else if (controller.loading()) {
     <p class="text-13 text-muted-foreground" role="status">
       Loading addresses…
     </p>
-  } @else if (hasNoLocalAddresses()) {
-    @if (canonical()) {
+  } @else if (controller.hasNoLocalAddresses()) {
+    @if (controller.canonical()) {
       <p
         class="text-13 text-muted-foreground"
         data-testid="room-aliases-local-empty"
@@ -93,88 +93,24 @@
       </p>
     }
   } @else {
-    <ul class="flex flex-col gap-2">
-      @for (alias of aliases(); track alias) {
+    <!-- role="list": Safari drops list semantics from a bullet-less list without it. -->
+    <ul role="list" class="flex flex-col gap-2">
+      @for (alias of controller.aliases(); track alias) {
         <li
           class="flex min-w-0 flex-col gap-3 rounded-md border border-border p-3"
           data-testid="room-alias"
         >
-          <span class="flex min-w-0 items-start gap-2">
-            <code
-              #address
-              tabindex="-1"
-              class="min-w-0 flex-1 text-sm break-all text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              data-testid="room-alias-value"
-              >{{ alias }}</code
-            >
-            @if (alias === canonical()) {
-              <span
-                class="rounded shrink-0 bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
-                data-testid="room-alias-main"
-              >
-                Primary
-              </span>
-            }
-          </span>
-          <span class="flex flex-wrap items-center gap-1">
-            <button
-              trnBtn
-              type="button"
-              variant="secondary"
-              presentation="ghost"
-              size="sm"
-              (click)="copy(alias, address)"
-              data-testid="room-alias-copy"
-            >
-              Copy
-            </button>
-            <a
-              trnBtn
-              variant="secondary"
-              presentation="ghost"
-              size="sm"
-              [href]="matrixToUrl(alias)"
-              target="_blank"
-              rel="noopener noreferrer"
-              data-testid="room-alias-link"
-            >
-              Open link
-            </a>
-            @if (permission.available && alias !== canonical()) {
-              <button
-                trnBtn
-                type="button"
-                variant="secondary"
-                presentation="ghost"
-                size="sm"
-                [disabled]="settingPrimary() !== null || isRemoving(alias)"
-                [loading]="settingPrimary() === alias"
-                (click)="setPrimary(alias)"
-                data-testid="room-alias-set-main"
-              >
-                {{
-                  settingPrimary() === alias
-                    ? 'Making primary…'
-                    : 'Make primary'
-                }}
-              </button>
-            }
-            @if (permission.available) {
-              <button
-                trnBtn
-                type="button"
-                variant="secondary"
-                presentation="outline"
-                size="sm"
-                [disabled]="isRemoving(alias) || isConfirmingRemoval(alias)"
-                [loading]="isRemoving(alias)"
-                (click)="remove(alias)"
-                data-testid="room-alias-remove"
-              >
-                {{ isRemoving(alias) ? 'Removing…' : 'Remove' }}
-              </button>
-            }
-          </span>
+          <trn-room-alias-row
+            [alias]="alias"
+            [primary]="alias === controller.canonical()"
+            [canEdit]="permission.available"
+            [removing]="controller.isRemoving(alias)"
+            [confirming]="controller.isConfirmingRemoval(alias)"
+            [settingPrimary]="controller.settingPrimary()"
+            (copyAddress)="copy(alias, $event)"
+            (setPrimary)="controller.setPrimary(alias)"
+            (remove)="controller.remove(alias)"
+          />
         </li>
       }
     </ul>
@@ -191,13 +127,13 @@
           <input
             trnInput
             class="min-w-0 flex-1"
-            [formField]="aliasForm.localpart"
+            [formField]="controller.aliasForm.localpart"
             placeholder="new-address"
             autocomplete="off"
             (keydown.enter)="onEnter($event)"
             data-testid="room-alias-input"
           />
-          @if (serverName(); as server) {
+          @if (controller.serverName(); as server) {
             <span class="max-w-40 text-sm break-all text-muted-foreground"
               >:{{ server }}</span
             >
@@ -211,12 +147,12 @@
         presentation="outline"
         size="sm"
         class="self-start sm:self-auto"
-        [disabled]="adding()"
-        [loading]="adding()"
-        (click)="add()"
+        [disabled]="controller.adding()"
+        [loading]="controller.adding()"
+        (click)="controller.add()"
         data-testid="room-alias-add"
       >
-        {{ adding() ? 'Adding…' : 'Add address' }}
+        {{ controller.adding() ? 'Adding…' : 'Add address' }}
       </button>
     </div>
   } @else {
@@ -226,7 +162,7 @@
       data-testid="room-aliases-read-only"
     >
       Existing addresses remain available to copy and open.
-      {{ restrictionReason() }}
+      {{ controller.restrictionReason() }}
     </p>
   }
 </section>
