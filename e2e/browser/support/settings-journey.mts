@@ -59,5 +59,13 @@ export function configureSettingsSuite(): void {
     await expect(page.getByTestId('settings-nav-profile')).toBeVisible({
       timeout: 20_000,
     });
+    // Settings opens as a surface that scales in; hand every spec the settled frame, not a
+    // mid-entrance one whose boxes are still scaled.
+    await page
+      .getByTestId('dialog-surface')
+      .first()
+      .evaluate((surface) =>
+        Promise.all(surface.getAnimations().map((a) => a.finished)),
+      );
   });
 }

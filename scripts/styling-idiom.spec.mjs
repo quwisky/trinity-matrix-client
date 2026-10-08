@@ -34,7 +34,6 @@ const SHARED_PARTIALS = [
   'libs/feature/crypto/src/lib/styles/_mixins.scss',
   'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
   'libs/feature/rooms/src/lib/room-settings/_room-settings-access.scss',
-  'libs/feature/rooms/src/lib/room-settings/_room-settings-general.scss',
   'libs/feature/rooms/src/lib/room-settings/_room-settings-panel.scss',
   'libs/feature/rooms/src/lib/space-settings/_space-settings-form.scss',
   'libs/feature/rooms/src/lib/styles/_mixins.scss',
@@ -75,6 +74,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/components/generic-content/src/lib/spinner/trn-spinner.component.scss',
   'libs/components/overlay/src/lib/dialog-shell/trn-dialog-shell.component.scss',
   'libs/components/overlay/src/lib/settings-layout/trn-settings-layout.component.scss',
+  'libs/components/overlay/src/lib/sheet-frame/trn-sheet-frame.component.scss',
   'libs/feature/auth/src/lib/auth-card/auth-card.component.scss',
   'libs/feature/auth/src/lib/login/login.page.scss',
   'libs/feature/auth/src/lib/registration/registration.page.scss',
@@ -129,7 +129,6 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/room-settings/room-settings-access.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-settings-advanced.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-settings-for-you/room-settings-for-you.component.scss',
-  'libs/feature/rooms/src/lib/room-settings/room-settings-general.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-settings.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-widget-create/room-widget-create.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-widget-frame/room-widget-frame.component.scss',
@@ -138,6 +137,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/server-rail/server-rail.component.scss',
   'libs/feature/rooms/src/lib/shared/account-pick-label/account-pick-label.component.scss',
   'libs/feature/rooms/src/lib/shared/avatar-field/avatar-field.component.scss',
+  'libs/feature/rooms/src/lib/shared/place-general-settings/place-general-settings.component.scss',
   'libs/feature/rooms/src/lib/shared/settings-hub/settings-hub.component.scss',
   'libs/feature/rooms/src/lib/shared/settings-identity-card/settings-identity-card.component.scss',
   'libs/feature/rooms/src/lib/shared/settings-load-state-card/settings-load-state-card.component.scss',
@@ -146,7 +146,6 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/space-settings/space-settings-contents-list.component.scss',
   'libs/feature/rooms/src/lib/space-settings/space-settings-contents.component.scss',
   'libs/feature/rooms/src/lib/space-settings/space-settings-for-you/space-settings-for-you.component.scss',
-  'libs/feature/rooms/src/lib/space-settings/space-settings-general.component.scss',
   'libs/feature/rooms/src/lib/space-settings/space-settings.component.scss',
   'libs/feature/rooms/src/lib/sticker-image/sticker-image.component.scss',
   'libs/feature/rooms/src/lib/sticker-picker/sticker-picker.component.scss',
@@ -172,7 +171,6 @@ const INLINE_STYLE_LEDGER = [
   'libs/components/controls/src/lib/checkbox/trn-checkbox.component.ts',
   'libs/components/controls/src/lib/radio-group/trn-radio-group.component.ts',
   'libs/components/controls/src/lib/switch/trn-switch.component.ts',
-  'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',
 ];
 
 const inlineStyled = inlineStyleSheets();
@@ -234,7 +232,7 @@ describe('styling idiom', () => {
     // component as having no inline CSS, and both this ledger and `shorthand-overrides`
     // then sweep nothing while staying green.
     const css = inlineStyled.map(({ css }) => css).join('\n');
-    expect(css).toContain('safe-area-inset-bottom');
+    expect(css).toContain('--trinity-interaction-target-min-size');
     expect(css.match(/\{/g)?.length ?? 0).toBeGreaterThanOrEqual(
       INLINE_STYLE_LEDGER.length,
     );

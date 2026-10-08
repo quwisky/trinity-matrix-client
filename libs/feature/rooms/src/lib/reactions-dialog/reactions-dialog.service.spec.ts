@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReactionsDialogComponent } from './reactions-dialog.component';
@@ -7,14 +7,14 @@ import { ReactionsDialogService } from './reactions-dialog.service';
 import { of, Subject } from 'rxjs';
 
 describe('ReactionsDialogService', () => {
-  let dialog: TrnDialogService;
+  let dialog: TrnSurfaceService;
   let svc: ReactionsDialogService;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [ReactionsDialogService, MockProvider(TrnDialogService)],
+      providers: [ReactionsDialogService, MockProvider(TrnSurfaceService)],
     });
-    dialog = TestBed.inject(TrnDialogService);
+    dialog = TestBed.inject(TrnSurfaceService);
     svc = TestBed.inject(ReactionsDialogService);
   });
 

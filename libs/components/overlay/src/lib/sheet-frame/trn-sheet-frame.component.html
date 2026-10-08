@@ -1,0 +1,12 @@
+<!-- The drag area: the handle and whatever header the content projects into it. -->
+<div class="sheet-frame__grab" trnSheetDragHandle>
+  @if (swipeable) {
+    <div
+      class="sheet-frame__handle"
+      data-testid="sheet-handle"
+      aria-hidden="true"
+    ></div>
+  }
+  <ng-content select="[trnSheetFrameHeader]" />
+</div>
+<ng-content />
