@@ -296,14 +296,9 @@ export class RoomsPage {
     const userId = this.vm.activeAccountId();
     return userId ? this.presence.presenceFor(userId)() : null;
   });
-  private readonly roomActionsOverflow = viewChild<ElementRef<HTMLElement>>(
-    'roomActionsOverflow',
-  );
 
   protected openSystemStatus(): void {
-    this.systemStatus.show(() =>
-      this.roomActionsOverflow()?.nativeElement.focus(),
-    );
+    this.systemStatus.show();
   }
 
   /** Phones use a dialog because the narrow navigation has no room for the desktop submenu. */

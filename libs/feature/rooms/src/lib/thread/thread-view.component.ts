@@ -41,7 +41,7 @@ import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TypingIndicatorComponent } from '../message-list/typing-indicator/typing-indicator.component';
 import {
   TrnAlertService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnOverlaySurfaceDirective,
   TrnToastService,
 } from '@trinity/components/overlay';
@@ -126,7 +126,7 @@ export class ThreadViewComponent implements OnDestroy {
   private readonly openedThread = signal<ConversationThread | null>(null);
   private readonly messageSheet = inject(MessageActionSheetService);
   private readonly roomMembers = inject(RoomMembersService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
   private readonly mediaSave = inject(MediaSaveService);

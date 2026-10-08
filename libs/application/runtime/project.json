@@ -11,7 +11,17 @@
     "capability:runtime"
   ],
   "targets": {
-    "test": {},
+    "test": {
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/vite.base.config.ts",
+        "{workspaceRoot}/test-setup.base.ts",
+        "{workspaceRoot}/apps/trinity/src/global.scss",
+        "{workspaceRoot}/libs/feature/rooms/src/lib/rooms/rooms.page.{scss,html}",
+        "{workspaceRoot}/libs/feature/rooms/src/lib/media-attachment/lightbox/lightbox.component.scss"
+      ]
+    },
     "typecheck": {}
   }
 }

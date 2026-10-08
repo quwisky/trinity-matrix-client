@@ -7,7 +7,10 @@ import {
   type Routes,
 } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { authGuard } from '@trinity/application/runtime';
+import {
+  authGuard,
+  workspaceBrowserBackGuard,
+} from '@trinity/application/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { routes } from './app.routes';
@@ -118,6 +121,24 @@ describe('app route guards', () => {
       if (!route) continue;
       expect(route.canActivate ?? [], `${path} must stay public`).toEqual([]);
     }
+  });
+
+  // Dialogs do not close on popstate themselves, so every page leaves browser Back to
+  // the guard that closes the topmost surface first. The recovery-key pages ask instead.
+  it('lets the Back guard close an open surface before leaving any page', () => {
+    const unguarded = routes
+      .filter((route) => !isRedirect(route))
+      .filter(
+        (route) =>
+          !['encryption/setup', 'encryption/unlock'].includes(route.path ?? ''),
+      )
+      .filter(
+        (route) =>
+          !(route.canDeactivate ?? []).includes(workspaceBrowserBackGuard),
+      )
+      .map((route) => route.path ?? 'rooms');
+
+    expect(unguarded).toEqual([]);
   });
 
   // A recovery key is displayed exactly once and never persisted, and on a narrow layout

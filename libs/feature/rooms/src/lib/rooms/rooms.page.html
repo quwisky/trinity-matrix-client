@@ -67,7 +67,7 @@
         [defaultSortMode]="vm.defaultSpaceSortMode()"
         (selectRoom)="routing.onSelectRoomSelection($event)"
         (openSwitcher)="shortcutActions.openSwitcher()"
-        (newChat)="roomActions.onNewChat()"
+        (newChat)="roomActions.onNewChat($event)"
         (createRoom)="spaceActions.onCreateChannel()"
         (inviteToSpace)="roomActions.onInviteToSpace()"
         (addToSpace)="spaceActions.onAddToSpace()"
@@ -307,7 +307,6 @@
               align="end"
               aria-label="More actions"
               data-testid="room-actions-overflow"
-              #roomActionsOverflow
             >
               <trn-icon size="lg" name="ellipsis-vertical" motion="pop" />
             </button>

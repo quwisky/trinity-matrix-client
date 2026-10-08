@@ -2,7 +2,7 @@ import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 import { DefaultUrlSerializer, Router } from '@angular/router';
 import { WorkspaceBackService } from '@trinity/application/workspace';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { WorkspaceRoutedSurfaceAdapter } from './composition/workspace-routed-surface.adapter';
 import {
   firstValueFrom,
@@ -57,7 +57,7 @@ function setup(
         },
       },
       {
-        provide: TrnDialogService,
+        provide: TrnSurfaceService,
         useValue: {
           hasOpen: () => options.dialogOpen ?? false,
           closeTopmost,
@@ -95,7 +95,7 @@ describe('workspaceBrowserBackGuard', () => {
         },
         { provide: Location, useValue: { back: vi.fn() } },
         {
-          provide: TrnDialogService,
+          provide: TrnSurfaceService,
           useValue: { hasOpen: () => false, closeTopmost: vi.fn() },
         },
       ],

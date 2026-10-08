@@ -75,6 +75,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/components/generic-content/src/lib/spinner/trn-spinner.component.scss',
   'libs/components/overlay/src/lib/dialog-shell/trn-dialog-shell.component.scss',
   'libs/components/overlay/src/lib/settings-layout/trn-settings-layout.component.scss',
+  'libs/components/overlay/src/lib/sheet-frame/trn-sheet-frame.component.scss',
   'libs/feature/auth/src/lib/auth-card/auth-card.component.scss',
   'libs/feature/auth/src/lib/login/login.page.scss',
   'libs/feature/auth/src/lib/registration/registration.page.scss',
@@ -173,7 +174,6 @@ const INLINE_STYLE_LEDGER = [
   'libs/components/controls/src/lib/checkbox/trn-checkbox.component.ts',
   'libs/components/controls/src/lib/radio-group/trn-radio-group.component.ts',
   'libs/components/controls/src/lib/switch/trn-switch.component.ts',
-  'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',
 ];
 
 const inlineStyled = inlineStyleSheets();
@@ -235,7 +235,7 @@ describe('styling idiom', () => {
     // component as having no inline CSS, and both this ledger and `shorthand-overrides`
     // then sweep nothing while staying green.
     const css = inlineStyled.map(({ css }) => css).join('\n');
-    expect(css).toContain('safe-area-inset-bottom');
+    expect(css).toContain('--trinity-interaction-target-min-size');
     expect(css.match(/\{/g)?.length ?? 0).toBeGreaterThanOrEqual(
       INLINE_STYLE_LEDGER.length,
     );
