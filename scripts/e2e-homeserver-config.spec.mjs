@@ -166,6 +166,16 @@ describe('Nightly Synapse workflow', () => {
       ).toBe(true);
     }
   });
+
+  it('runs the MAS journeys in their own job', () => {
+    const { jobs } = workflow();
+    expect(jobs.mas.env.TRINITY_E2E_MAS).toBe('1');
+    expect(commands(jobs.mas)).toContain(
+      'pnpm exec nx run trinity-e2e-browser:e2e -- accounts/mas-session.spec.mts',
+    );
+    // The full browser job stays MAS-free: it already runs close to its command budget.
+    expect(jobs.browser.env?.TRINITY_E2E_MAS).toBeUndefined();
+  });
 });
 
 describe('E2E homeserver runtime selection', () => {
