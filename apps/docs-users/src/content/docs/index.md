@@ -80,4 +80,6 @@ server uses Matrix Authentication Service (MAS). Tuwunel 1.6 or newer and
 Continuwuity 26.6 or newer provide OAuth 2.0 sign-in themselves; older releases do
 not. On an older Synapse with MAS, Trinity cannot offer that sign-in page, and an
 account that is already signed in is signed out the next time its access token
-expires.
+expires. Signing out like this also deletes that account's encryption keys on the
+device, so turn on key backup and save your recovery key before you update, or ask
+your server's admin to upgrade Synapse first.
