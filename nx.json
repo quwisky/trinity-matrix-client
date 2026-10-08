@@ -41,8 +41,13 @@
     },
     "test": {
       "cache": true,
-      "inputs": ["default", "^production"],
-      "//": "Memory is bounded by the vitest pool, not from here — see the `pool` comment in vite.base.config.ts. This used to set VITEST_MAX_THREADS=2 to cap each worker pool; that was aimed at the wrong thing (a CPU invariant for a memory-bound failure), it held while the suite still failed, and under the `forks` pool the variable is a no-op anyway since it only writes poolOptions.threads/vmThreads.",
+      "inputs": [
+        "default",
+        "^production",
+        "{workspaceRoot}/vite.base.config.ts",
+        "{workspaceRoot}/test-setup.base.ts"
+      ],
+      "//": "Memory is bounded by the vitest pool, not from here — see the `pool` comment in vite.base.config.ts. This used to set VITEST_MAX_THREADS=2 to cap each worker pool; that was aimed at the wrong thing (a CPU invariant for a memory-bound failure), it held while the suite still failed, and under the `forks` pool the variable is a no-op anyway since it only writes poolOptions.threads/vmThreads. The two root files are every project's shared Vitest config and setup; Nx maps root files to no project, so without them here an edit to either neither invalidated cached test results nor made any project affected.",
       "options": {
         "command": "vitest run",
         "cwd": "{projectRoot}"

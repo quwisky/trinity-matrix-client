@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { type LoginMode } from '@trinity/data-access/auth';
+import { type LoginMode } from './account-establishment';
 import { DevicePreferenceStorageService } from '@trinity/platform-native';
 import { isFresh } from './stash-freshness';
 

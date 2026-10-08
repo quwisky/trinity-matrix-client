@@ -42,7 +42,7 @@ export type { TrnEmojiPickerSize } from './trn-emoji-picker-recipe';
  * produced a dialog nested in a dialog; in the composer it is an inline, absolutely
  * positioned panel with no modality and no focus trap, and `role="dialog"` promises focus
  * management that does not exist. Naming belongs to whatever actually is the dialog — the
- * CDK container, via `TrnDialogService`'s `ariaLabel` — or to the trigger relationship,
+ * CDK container, via `TrnSurfaceService`'s `ariaLabel` — or to the trigger relationship,
  * which is what `pickerId` plus the caller's `aria-controls` expresses.
  *
  * `ViewEncapsulation.None` because the vendor's inner DOM carries no `_ngcontent`

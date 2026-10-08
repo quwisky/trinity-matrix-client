@@ -1,0 +1,35 @@
+@if (editing()) {
+  <div class="composer__banner">
+    Editing message — <kbd>Esc</kbd> to cancel
+    <button
+      type="button"
+      trnBtn
+      shape="icon"
+      presentation="ghost"
+      variant="secondary"
+      size="sm"
+      class="composer__cancel"
+      aria-label="Cancel edit"
+      (click)="cancelEdit.emit()"
+    >
+      <trn-icon name="x" motion="rotate" />
+    </button>
+  </div>
+} @else if (replyingTo()) {
+  <div class="composer__banner">
+    Replying to <strong>{{ replyingTo() }}</strong>
+    <button
+      type="button"
+      trnBtn
+      shape="icon"
+      presentation="ghost"
+      variant="secondary"
+      size="sm"
+      class="composer__cancel"
+      aria-label="Cancel reply"
+      (click)="cancelReply.emit()"
+    >
+      <trn-icon name="x" motion="rotate" />
+    </button>
+  </div>
+}

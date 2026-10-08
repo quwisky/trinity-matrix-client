@@ -14,7 +14,7 @@ import {
 import {
   TrnAlertService,
   TrnDialogRef,
-  TrnDialogService,
+  TrnSurfaceService,
 } from '@trinity/components/overlay';
 import { textScaledViewportSignal } from '@trinity/util/ui';
 import { Observable, defer, of, take } from 'rxjs';
@@ -35,7 +35,7 @@ interface SettingsHubControllerConfig<Section extends string> {
 /** Shared navigation and dismissal mechanics for Room and Space settings hubs. */
 export class SettingsHubController<Section extends string> {
   private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly alert = inject(TrnAlertService);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
