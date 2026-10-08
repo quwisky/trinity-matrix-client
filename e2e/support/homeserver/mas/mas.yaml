@@ -28,7 +28,7 @@ policy:
 rate_limiting:
   login:
     # MAS's default is a burst of 3 per IP, refilled at one per 20 s. Every journey signs in
-    # from this one address, so the fourth sign-in of a run was refused.
+    # from this one address, so a run's later sign-ins were refused.
     per_ip:
       burst: 100
       per_second: 10
