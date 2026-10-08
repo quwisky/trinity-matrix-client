@@ -237,6 +237,14 @@ test.describe('Modal surfaces', () => {
         await plus.focus();
         await page.keyboard.press('Enter');
         await expect(menu).toBeVisible();
+        // The menu animates in; measure the settled box, not a mid-entrance one.
+        await menu.evaluate((element) =>
+          Promise.all(
+            element
+              .getAnimations({ subtree: true })
+              .map((animation) => animation.finished),
+          ),
+        );
 
         const box = (await menu.boundingBox())!;
         expect(box.y).toBeGreaterThanOrEqual(0);
