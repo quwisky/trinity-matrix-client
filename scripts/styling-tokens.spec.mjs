@@ -211,14 +211,6 @@ describe('styling tokens', () => {
           'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
         selector: '.scroll',
       },
-      {
-        template:
-          'libs/feature/rooms/src/lib/message-list/simple-message-list/simple-message-list.component.html',
-        directive: 'swipeDirection',
-        styles:
-          'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
-        selector: '.scroll',
-      },
     ];
 
     // Scoped to the HOST RULE, not the file. `.pane-handle` in the same stylesheet declares

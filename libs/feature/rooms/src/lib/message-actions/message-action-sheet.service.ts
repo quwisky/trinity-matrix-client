@@ -61,8 +61,8 @@ type PayloadFreeAction = Exclude<
  *
  * ## Why a service, and not a method on the list
  *
- * It started as one, and that was wrong: `trn-message-row` has THREE consumers, not two. The
- * two message lists extend `MessageListBase`, but {@link ThreadViewComponent} does not — it
+ * It started as one, and that was wrong: `trn-message-row` has two consumers. The
+ * message list extends `MessageListBase`, but {@link ThreadViewComponent} does not — it
  * carries its own `onRowAction`. A long press on a thread reply consequently emitted into
  * nothing and every action on it was unreachable by touch, with the Android `contextmenu`
  * fallback removed as well. Shared here so a fourth consumer inherits the behaviour instead

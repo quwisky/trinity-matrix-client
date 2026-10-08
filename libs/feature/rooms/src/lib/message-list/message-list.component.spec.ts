@@ -822,6 +822,68 @@ describe('MessageListComponent', () => {
       rowObserver().emit([resizeEntry(row, EST + 100)]); // grow by 100
       expect(st).toBe(5100); // read position held
     });
+
+    it('re-sticks to the bottom as a row is measured with windowing off', async () => {
+      const { container } = await renderList({
+        messages: many(200),
+        windowed: false,
+      });
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      let st = 0;
+      Object.defineProperty(scroll, 'scrollTop', {
+        get: () => st,
+        set: (v: number) => (st = v),
+        configurable: true,
+      });
+      Object.defineProperty(scroll, 'scrollHeight', {
+        value: 12_800,
+        configurable: true,
+      });
+      expect(scroll.querySelectorAll('.msg')).toHaveLength(200);
+
+      rowObserver().emit([
+        resizeEntry(scroll.querySelector('[data-mid="$199"]') as Element, 120),
+      ]);
+      expect(st).toBe(12_800);
+    });
+
+    it('compensates an above-the-fold row in a long room with windowing off', async () => {
+      const { fixture, container } = await renderList({
+        messages: many(200),
+        windowed: false,
+      });
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      let st = 5000;
+      Object.defineProperty(scroll, 'scrollTop', {
+        get: () => st,
+        set: (v: number) => (st = v),
+        configurable: true,
+      });
+      Object.defineProperty(scroll, 'clientHeight', {
+        value: 600,
+        configurable: true,
+      });
+      Object.defineProperty(scroll, 'scrollHeight', {
+        value: 200 * EST,
+        configurable: true,
+      });
+      scroll.getBoundingClientRect = () => rect(0);
+      cmp.onScroll(); // scrolled up: not pinned
+      fixture.detectChanges();
+      (scroll.querySelector('.vpad') as HTMLElement).getBoundingClientRect =
+        () => rect(-st);
+      expect(scroll.querySelectorAll('.msg')).toHaveLength(200);
+
+      // An image above the fold finishes loading and the row grows by 100px.
+      rowObserver().emit([
+        resizeEntry(
+          scroll.querySelector('[data-mid="$3"]') as Element,
+          EST + 100,
+        ),
+      ]);
+      expect(st).toBe(5100);
+    });
   });
 
   // Backfill and row-measurement corrections use animation frames; run those
@@ -1296,8 +1358,7 @@ describe('MessageListComponent', () => {
     expect(container.querySelector('.typing-indicator')).toBeNull();
     expect(container.querySelector('.typing-slot')).not.toBeNull();
 
-    // The list owns the typing announcement; only the thread panel opts out (#1056 moved
-    // this here from scripts/message-list-bindings.spec.mjs).
+    // The list owns the typing announcement; only the thread panel opts out (#1056).
     const indicator = fixture.debugElement.query(
       By.directive(TypingIndicatorComponent),
     );

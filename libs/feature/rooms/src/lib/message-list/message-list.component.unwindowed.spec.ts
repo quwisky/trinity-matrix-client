@@ -9,16 +9,28 @@ import {
 } from '@trinity/data-access/timeline';
 import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
 import { By } from '@angular/platform-browser';
-import { SimpleMessageListComponent } from './simple-message-list.component';
-import { MessageComposerComponent } from '../../message-composer/message-composer.component';
-import { DayBoundaryService } from '../day-boundary.service';
-import { TypingIndicatorComponent } from '../typing-indicator/typing-indicator.component';
-import { MessageSourceComponent } from '../../message-source/message-source.component';
+import { MessageListComponent } from './message-list.component';
+import { MessageComposerComponent } from '../message-composer/message-composer.component';
+import { DayBoundaryService } from './day-boundary.service';
+import { TypingIndicatorComponent } from './typing-indicator/typing-indicator.component';
+import { MessageSourceComponent } from '../message-source/message-source.component';
 import { EMPTY, of } from 'rxjs';
 import {
   ConversationComposeStub,
   ConversationMessagesStub,
-} from '../../testing/conversation-timeline.stub';
+} from '../testing/conversation-timeline.stub';
+
+type ListOptions = NonNullable<
+  Parameters<typeof render<MessageListComponent>>[1]
+>;
+
+/** Every case in this file runs with windowing off: the Settings → Experimental opt-out. */
+function renderUnwindowed(options: ListOptions = {}) {
+  return render(MessageListComponent, {
+    ...options,
+    inputs: { ...options.inputs, windowed: false },
+  });
+}
 
 function msg(
   id: string,
@@ -52,7 +64,7 @@ function msg(
 
 /** The composer this list renders, for asserting what a quote put into it. */
 function composerOf(
-  fixture: ComponentFixture<SimpleMessageListComponent>,
+  fixture: ComponentFixture<MessageListComponent>,
 ): MessageComposerComponent {
   return fixture.debugElement.query(By.directive(MessageComposerComponent))
     .componentInstance as MessageComposerComponent;
@@ -69,7 +81,7 @@ function eventRow(id: string, summary: string, ts: number): MessageView {
 
 /** `notAtBottom` drives the jump pill and is protected (template-only); read it
  * through a narrow view rather than widening the component's API for a test. */
-const notAtBottom = (cmp: SimpleMessageListComponent): boolean =>
+const notAtBottom = (cmp: MessageListComponent): boolean =>
   (cmp as unknown as { notAtBottom: () => boolean }).notAtBottom();
 
 /**
@@ -100,7 +112,7 @@ const afterDivider = (el: Element | null | undefined): Element | null => {
     : next;
 };
 
-describe('SimpleMessageListComponent', () => {
+describe('MessageListComponent with windowing off', () => {
   beforeEach(() => {
     const compose = new ConversationComposeStub();
     TestBed.overrideProvider(ConversationRuntime, {
@@ -113,7 +125,7 @@ describe('SimpleMessageListComponent', () => {
   });
 
   it('renders a row per message and groups consecutive senders', async () => {
-    const { container } = await render(SimpleMessageListComponent, {
+    const { container } = await renderUnwindowed({
       inputs: {
         messages: [
           msg('$1', '@a:hs', 'Alice', 1000),
@@ -131,7 +143,7 @@ describe('SimpleMessageListComponent', () => {
 
   it('jumping to a system event hidden in a run expands the run and targets its row', async () => {
     Element.prototype.scrollIntoView = vi.fn();
-    const { fixture, container } = await render(SimpleMessageListComponent, {
+    const { fixture, container } = await renderUnwindowed({
       inputs: {
         messages: [
           msg('$m1', '@a:hs', 'Alice', 1000),
@@ -152,7 +164,7 @@ describe('SimpleMessageListComponent', () => {
   });
 
   it('renders state events as system lines that break sender grouping', async () => {
-    const { container } = await render(SimpleMessageListComponent, {
+    const { container } = await renderUnwindowed({
       inputs: {
         messages: [
           msg('$1', '@a:hs', 'Alice', 1000),
@@ -175,7 +187,7 @@ describe('SimpleMessageListComponent', () => {
   });
 
   it('marks others’ messages deletable only when canRedactOthers (moderator)', async () => {
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       inputs: {
         messages: [msg('$1', '@a:hs', 'Alice', 1000)], // not own
         canRedactOthers: false,
@@ -193,7 +205,7 @@ describe('SimpleMessageListComponent', () => {
   });
 
   it('renders no composer while the Room is not held by the client', async () => {
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       providers: [MockProvider(TrnAlertService)],
       inputs: { composerEnabled: false },
     });
@@ -210,7 +222,7 @@ describe('SimpleMessageListComponent', () => {
       kind: 'image',
       body: 'IMG_1234.jpg',
     };
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       providers: [MockProvider(TrnAlertService)],
       inputs: { messages: [text, media] },
     });
@@ -241,7 +253,7 @@ describe('SimpleMessageListComponent', () => {
       isOwn: true,
       status: 'sending',
     };
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       inputs: { messages: [sending], canPin: true },
     });
     const cmp = fixture.componentInstance;
@@ -265,7 +277,7 @@ describe('SimpleMessageListComponent', () => {
     // rendered row (each pulling ~12 child components) on every incoming message —
     // defeating the rowCache right next to this, which exists to preserve row identity.
     const first = msg('$1', '@a:hs', 'Alice', 1000);
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       inputs: { messages: [first], canRedactOthers: false },
     });
     const cmp = fixture.componentInstance;
@@ -287,7 +299,7 @@ describe('SimpleMessageListComponent', () => {
   });
 
   it('suppresses announcements while Conversation Runtime changes rooms', async () => {
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       inputs: {
         roomId: '!a:hs',
         messages: [msg('$1', '@a:hs', 'Alice', 1000)],
@@ -308,7 +320,7 @@ describe('SimpleMessageListComponent', () => {
   });
 
   it('renders formatted markdown via innerHTML', async () => {
-    const { container } = await render(SimpleMessageListComponent, {
+    const { container } = await renderUnwindowed({
       inputs: {
         messages: [
           {
@@ -343,7 +355,7 @@ describe('SimpleMessageListComponent', () => {
   });
 
   it('renders a reply preview above a reply message', async () => {
-    const { container } = await render(SimpleMessageListComponent, {
+    const { container } = await renderUnwindowed({
       inputs: {
         messages: [
           {
@@ -367,7 +379,7 @@ describe('SimpleMessageListComponent', () => {
   });
 
   it('shows the header on a reply even when it continues the same sender', async () => {
-    const { container } = await render(SimpleMessageListComponent, {
+    const { container } = await renderUnwindowed({
       inputs: {
         messages: [
           msg('$1', '@a:hs', 'Alice', 1000),
@@ -399,7 +411,7 @@ describe('SimpleMessageListComponent', () => {
   });
 
   it('editLastOwn selects the most recent editable own message', async () => {
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       inputs: {
         messages: [
           { ...msg('$1', '@me:hs', 'Me', 1000), isOwn: true },
@@ -431,7 +443,7 @@ describe('SimpleMessageListComponent', () => {
       jumped = this;
     });
 
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       inputs: {
         messages: [
           msg('$1', '@a:hs', 'Alice', 1000),
@@ -452,7 +464,7 @@ describe('SimpleMessageListComponent', () => {
     Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
       scrolled.push(this.getAttribute('data-mid'));
     });
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       inputs: { messages: [], jumpToId: '$2', jumpToNonce: 1 },
     });
     expect(scrolled).toEqual([]);
@@ -472,7 +484,7 @@ describe('SimpleMessageListComponent', () => {
     Element.prototype.scrollIntoView = scrollIntoView;
     const now = vi.spyOn(Date, 'now');
     now.mockReturnValue(1_000_000);
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       inputs: { messages: [], jumpToId: '$2', jumpToNonce: 1 },
     });
 
@@ -492,7 +504,7 @@ describe('SimpleMessageListComponent', () => {
     Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
       scrolled.push(this.getAttribute('data-mid'));
     });
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       inputs: { messages: [], jumpToId: '$1', jumpToNonce: 1 },
     });
 
@@ -512,7 +524,7 @@ describe('SimpleMessageListComponent', () => {
   describe('re-aiming a recent jump', () => {
     type Reapply = { reapplyRecentJump(): void };
     const scroller = (fixture: {
-      componentInstance: SimpleMessageListComponent;
+      componentInstance: MessageListComponent;
     }): HTMLElement =>
       (
         fixture.componentInstance as unknown as {
@@ -522,7 +534,7 @@ describe('SimpleMessageListComponent', () => {
     async function jumped() {
       const scrollIntoView = vi.fn();
       Element.prototype.scrollIntoView = scrollIntoView;
-      const { fixture } = await render(SimpleMessageListComponent, {
+      const { fixture } = await renderUnwindowed({
         inputs: {
           messages: [
             msg('$1', '@a:hs', 'Alice', 1000),
@@ -593,7 +605,7 @@ describe('SimpleMessageListComponent', () => {
   it('drops a not-yet-loaded jump once the reader scrolls', async () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       inputs: { messages: [], jumpToId: '$2', jumpToNonce: 1 },
     });
 
@@ -616,7 +628,7 @@ describe('SimpleMessageListComponent', () => {
   it('drops a not-yet-loaded jump once the request is withdrawn', async () => {
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       inputs: { messages: [], jumpToId: '$2', jumpToNonce: 1 },
     });
 
@@ -636,7 +648,7 @@ describe('SimpleMessageListComponent', () => {
     Element.prototype.scrollIntoView = scrollIntoView;
 
     // render() paints the rows first (the jump reads the DOM).
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       inputs: {
         messages: [
           msg('$1', '@a:hs', 'Alice', 1000),
@@ -667,7 +679,7 @@ describe('SimpleMessageListComponent', () => {
       eventRow('$e3', 'Alice left', 4000),
       msg('$m2', '@b:hs', 'Bob', 5000),
     ];
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       inputs: { messages },
     });
     const list = fixture.componentInstance;
@@ -694,7 +706,7 @@ describe('SimpleMessageListComponent', () => {
   it('flashes the jumped-to row', async () => {
     Element.prototype.scrollIntoView = vi.fn();
 
-    const { fixture, container } = await render(SimpleMessageListComponent, {
+    const { fixture, container } = await renderUnwindowed({
       inputs: {
         messages: [
           msg('$1', '@a:hs', 'Alice', 1000),
@@ -712,7 +724,7 @@ describe('SimpleMessageListComponent', () => {
   it('re-applies the flash class on a repeat jump to the same row', async () => {
     Element.prototype.scrollIntoView = vi.fn();
 
-    const { fixture, container } = await render(SimpleMessageListComponent, {
+    const { fixture, container } = await renderUnwindowed({
       inputs: {
         messages: [
           msg('$1', '@a:hs', 'Alice', 1000),
@@ -735,7 +747,7 @@ describe('SimpleMessageListComponent', () => {
   });
 
   it('emits loadOlder when scrolled near the top (and history remains)', async () => {
-    const { fixture, container } = await render(SimpleMessageListComponent, {
+    const { fixture, container } = await renderUnwindowed({
       inputs: { canLoadOlder: true },
     });
 
@@ -748,7 +760,7 @@ describe('SimpleMessageListComponent', () => {
   });
 
   it('does not auto-load when there is no more history', async () => {
-    const { fixture, container } = await render(SimpleMessageListComponent, {
+    const { fixture, container } = await renderUnwindowed({
       inputs: { canLoadOlder: false },
     });
 
@@ -760,11 +772,7 @@ describe('SimpleMessageListComponent', () => {
   });
 
   it('shows the jump-to-latest pill when scrolled up and returns to the bottom', async () => {
-    const scrollToSpy = vi.fn();
-    Element.prototype.scrollTo =
-      scrollToSpy as unknown as typeof Element.prototype.scrollTo;
-
-    const { fixture, container } = await render(SimpleMessageListComponent, {
+    const { fixture, container } = await renderUnwindowed({
       inputs: {
         messages: [
           msg('$1', '@a:hs', 'Alice', 1000),
@@ -799,17 +807,24 @@ describe('SimpleMessageListComponent', () => {
     );
     expect(pill).not.toBeNull();
 
-    // Jumping scrolls to the newest message and hides the pill.
+    // Jumping re-pins to the newest message on the next frame and hides the pill.
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      frames.push(cb);
+      return frames.length;
+    });
     pill!.click();
+    for (const frame of frames.splice(0)) frame(0);
     fixture.detectChanges();
 
-    expect(scrollToSpy).toHaveBeenCalledWith({ top: 1000, behavior: 'smooth' });
+    expect(scroll.scrollTop).toBe(1000);
     expect(notAtBottom(cmp)).toBe(false);
     expect(container.querySelector('[data-testid=jump-to-latest]')).toBeNull();
+    vi.unstubAllGlobals();
   });
 
   it('announces a new incoming message, but not the first load or own messages', async () => {
-    const { fixture } = await render(SimpleMessageListComponent); // render resolves the scroll viewchild
+    const { fixture } = await renderUnwindowed(); // render resolves the scroll viewchild
     const cmp = fixture.componentInstance;
 
     fixture.componentRef.setInput('messages', [
@@ -850,7 +865,8 @@ describe('SimpleMessageListComponent', () => {
     // pull history: there are no rows, so there is no scrollbar and onScroll can never fire
     // — without this the room is stuck showing "No messages yet." forever.
     it('backfills an empty projection that still has history behind it', () => {
-      const fixture = TestBed.createComponent(SimpleMessageListComponent);
+      const fixture = TestBed.createComponent(MessageListComponent);
+      fixture.componentRef.setInput('windowed', false);
       fixture.componentRef.setInput('canLoadOlder', true);
       fixture.detectChanges();
 
@@ -877,7 +893,8 @@ describe('SimpleMessageListComponent', () => {
       // synchronously execute watches while scheduling"). A detached fixture only
       // ticks on our explicit fixture.detectChanges(), which is what this timing
       // test needs.
-      const fixture = TestBed.createComponent(SimpleMessageListComponent);
+      const fixture = TestBed.createComponent(MessageListComponent);
+      fixture.componentRef.setInput('windowed', false);
       fixture.componentRef.setInput('canLoadOlder', true);
       fixture.detectChanges(); // resolve the scroll viewchild
 
@@ -927,7 +944,7 @@ describe('SimpleMessageListComponent', () => {
     });
 
     async function make() {
-      const { fixture } = await render(SimpleMessageListComponent, {
+      const { fixture } = await renderUnwindowed({
         providers: [MockProvider(TrnAlertService)],
       });
       return fixture.componentInstance;
@@ -942,7 +959,7 @@ describe('SimpleMessageListComponent', () => {
     });
 
     it('reacts with the emoji chosen from the full picker on react-more', async () => {
-      const { fixture } = await render(SimpleMessageListComponent, {
+      const { fixture } = await renderUnwindowed({
         providers: [
           MockProvider(TrnAlertService),
           MockProvider(TrnDialogService, {
@@ -960,7 +977,7 @@ describe('SimpleMessageListComponent', () => {
     });
 
     it('sends no reaction when the picker is dismissed', async () => {
-      const { fixture } = await render(SimpleMessageListComponent, {
+      const { fixture } = await renderUnwindowed({
         providers: [
           MockProvider(TrnAlertService),
           MockProvider(TrnDialogService, {
@@ -980,7 +997,7 @@ describe('SimpleMessageListComponent', () => {
     // The detail lives in `typing-indicator.component.spec.ts`; what the list owes is the
     // wiring — its own typingNames input reaching the child that renders them.
     it('feeds the typing names to the indicator', async () => {
-      const { fixture, container } = await render(SimpleMessageListComponent, {
+      const { fixture, container } = await renderUnwindowed({
         inputs: { typingNames: ['Alice', 'Bob'] },
         providers: [MockProvider(TrnAlertService)],
       });
@@ -994,8 +1011,7 @@ describe('SimpleMessageListComponent', () => {
       // The slot stays: it is what keeps the scroll region from resizing.
       expect(container.querySelector('.typing-slot')).not.toBeNull();
 
-      // The list owns the typing announcement; only the thread panel opts out (#1056 moved
-      // this here from scripts/message-list-bindings.spec.mjs).
+      // The list owns the typing announcement; only the thread panel opts out (#1056).
       const indicator = fixture.debugElement.query(
         By.directive(TypingIndicatorComponent),
       );
@@ -1023,7 +1039,7 @@ describe('SimpleMessageListComponent', () => {
     });
 
     it('quotes a message into the composer as a > block', async () => {
-      const { fixture } = await render(SimpleMessageListComponent, {
+      const { fixture } = await renderUnwindowed({
         providers: [MockProvider(TrnAlertService)],
         inputs: { messages: [msg('$1', '@a:hs', 'Alice', 1000)] },
       });
@@ -1040,7 +1056,7 @@ describe('SimpleMessageListComponent', () => {
     });
 
     it('keeps the reply target when quoting', async () => {
-      const { fixture } = await render(SimpleMessageListComponent, {
+      const { fixture } = await renderUnwindowed({
         providers: [MockProvider(TrnAlertService)],
         inputs: { messages: [msg('$1', '@a:hs', 'Alice', 1000)] },
       });
@@ -1064,7 +1080,7 @@ describe('SimpleMessageListComponent', () => {
       // inserts in the same tick, so the input only flips on the next change detection —
       // after the insert. Without ordering the two, the restore lands last and the quote
       // is silently discarded.
-      const { fixture } = await render(SimpleMessageListComponent, {
+      const { fixture } = await renderUnwindowed({
         providers: [MockProvider(TrnAlertService)],
         inputs: {
           roomId: '!r:hs',
@@ -1127,7 +1143,7 @@ describe('SimpleMessageListComponent', () => {
     });
 
     it('copies a matrix.to permalink for copy-link', async () => {
-      const { fixture } = await render(SimpleMessageListComponent, {
+      const { fixture } = await renderUnwindowed({
         inputs: { roomId: '!a:hs' },
         providers: [MockProvider(TrnAlertService)],
       });
@@ -1147,7 +1163,7 @@ describe('SimpleMessageListComponent', () => {
 
     it('opens the source dialog for view-source', async () => {
       const open = vi.fn();
-      const { fixture } = await render(SimpleMessageListComponent, {
+      const { fixture } = await renderUnwindowed({
         inputs: { roomId: '!a:hs' },
         providers: [
           MockProvider(TrnAlertService),
@@ -1174,7 +1190,7 @@ describe('SimpleMessageListComponent', () => {
     ];
 
     it('renders a "New messages" divider before the first unread row', async () => {
-      const { container } = await render(SimpleMessageListComponent, {
+      const { container } = await renderUnwindowed({
         inputs: { messages: three, firstUnreadId: '$2' },
       });
 
@@ -1191,7 +1207,7 @@ describe('SimpleMessageListComponent', () => {
     });
 
     it('renders no divider when nothing is unread', async () => {
-      const { container } = await render(SimpleMessageListComponent, {
+      const { container } = await renderUnwindowed({
         inputs: { messages: three, firstUnreadId: null },
       });
       expect(
@@ -1200,7 +1216,7 @@ describe('SimpleMessageListComponent', () => {
     });
 
     it('jumpToUnread scrolls to the first unread message', async () => {
-      const { fixture } = await render(SimpleMessageListComponent, {
+      const { fixture } = await renderUnwindowed({
         inputs: { messages: three, firstUnreadId: '$2' },
       });
       const cmp = fixture.componentInstance;
@@ -1212,7 +1228,7 @@ describe('SimpleMessageListComponent', () => {
     });
 
     it('jumpToUnread does not expand the run whose first member is the first unread', async () => {
-      const { fixture } = await render(SimpleMessageListComponent, {
+      const { fixture } = await renderUnwindowed({
         inputs: {
           messages: [
             msg('$m1', '@a:hs', 'Alice', 1000),
@@ -1256,7 +1272,7 @@ describe('SimpleMessageListComponent', () => {
       inputs: Record<string, unknown> = {},
       todayStart = signal(TODAY),
     ) {
-      return render(SimpleMessageListComponent, {
+      return renderUnwindowed({
         inputs: { messages, ...inputs },
         providers: [{ provide: DayBoundaryService, useValue: { todayStart } }],
       });
@@ -1443,7 +1459,7 @@ describe('SimpleMessageListComponent', () => {
     // The drop target is the whole room, which this component owns — but staging belongs to
     // the composer, two layers down. This is the wiring between them, and nothing else
     // exercises it: the directive's own spec stops at the output.
-    const { fixture, container } = await render(SimpleMessageListComponent, {
+    const { fixture, container } = await renderUnwindowed({
       inputs: { messages: [msg('$1', '@a:hs', 'Alice', 1000)] },
     });
     const host = fixture.nativeElement as HTMLElement;
@@ -1482,7 +1498,7 @@ describe('SimpleMessageListComponent', () => {
     // `onBatchCaption()` directly passes even with the binding deleted — which is exactly how
     // the thread shipped without one, since an unbound output is legal and the AOT build is
     // silent about it.
-    const { fixture } = await render(SimpleMessageListComponent, {
+    const { fixture } = await renderUnwindowed({
       inputs: { messages: [msg('$1', '@a:hs', 'Alice', 1000)] },
     });
     const cmp = fixture.componentInstance;

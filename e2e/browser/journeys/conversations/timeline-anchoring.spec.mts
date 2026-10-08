@@ -119,8 +119,8 @@ async function anchorCase(
   await expect(scroll).toBeVisible();
   await expect(
     scroll.locator(':scope > .vpad'),
-    'the windowed list renders two spacers; the unwindowed list renders none',
-  ).toHaveCount(c.windowed ? 2 : 0);
+    'both modes render the two spacers',
+  ).toHaveCount(2);
 
   // Settle by waiting for the NEWEST message to be on screen, rather than polling a
   // distance-from-bottom number. The windowed list renders a moving slice, so that number
@@ -147,6 +147,8 @@ async function anchorCase(
     await scroll.evaluate((el) => (el.scrollTop = el.scrollHeight / 2));
     await page.waitForTimeout(1500);
     await holdHistory();
+    // Proves the list really renders a slice: at least `preload` rows are loaded, fewer are in the DOM.
+    expect(await rowCount()).toBeLessThan(c.preload);
   }
 
   /** The oldest seeded line in the DOM, negated so that more history is a larger number. */
@@ -281,10 +283,6 @@ test.describe('Timeline anchoring', () => {
         page,
         request,
       }) => {
-        test.fail(
-          !windowed,
-          'simple list: anchored message moved ~676px after the prepend; fixed by the #1056 merge',
-        );
         await anchorCase(page, request, {
           position,
           windowed,

@@ -110,11 +110,9 @@ const LOAD_ERROR_COPY: Readonly<
 /**
  * Shared domain logic for the room timeline, independent of scroll strategy: the
  * inputs/outputs, the edit/reply state + action handlers, and the Discord-style row
- * grouping. {@link SimpleMessageListComponent} (plain scroll) and
- * {@link MessageListComponent} (windowed) extend this and add only their own
- * scroll container, effects and template — the feature flag selects which one the
- * room renders. Kept an abstract `@Directive()` (no selector) so Angular wires the
- * inherited inputs/outputs/queries for the subclasses.
+ * grouping. {@link MessageListComponent} extends this and adds the scroll container, windowing,
+ * anchoring and template. Kept an abstract `@Directive()` so this domain half stays
+ * testable without the scroll half (`message-list-base.spec.ts`).
  */
 @Directive()
 export abstract class MessageListBase {

@@ -103,7 +103,7 @@ export class MessageListComponent extends MessageListBase {
   private prevScrollHeight = 0;
   private prevScrollTop = 0;
 
-  // Backfill state — see SimpleMessageListComponent for the rationale (tracked by oldest id).
+  // Backfill state — tracked by oldest id.
   private backfilling = false;
   // Null (not '') so an EMPTY projection still counts as "history not yet requested" — a
   // room whose whole loaded window is hidden system lines would otherwise compare '' to ''

@@ -100,7 +100,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
  * the shared {@link MessageComposerComponent} so composing behaves identically
  * (Enter sends, edit/reply banners, emoji, attachments).
  *
- * Orchestration mirrors {@link SimpleMessageListComponent} but routes every action
+ * Orchestration mirrors {@link MessageListComponent} but routes every action
  * through the exact {@link ConversationThread} child, whose commands carry the thread
  * relation so sends/edits/replies stay in the thread. Presentational: rendered in the
  * rooms shell's right-hand panel slot, with `roomId`/`rootEventId` as signal inputs; it

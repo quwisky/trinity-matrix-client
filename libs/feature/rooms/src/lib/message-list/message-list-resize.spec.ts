@@ -1,8 +1,6 @@
-import { type Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SimpleMessageListComponent } from './simple-message-list/simple-message-list.component';
 import { MessageListComponent } from './message-list.component';
 import type { MessageView } from '@trinity/data-access/timeline';
 import type { MessageListBase } from './message-list-base';
@@ -54,12 +52,7 @@ function msg(id: string): MessageView {
  * enough to pin the decision being tested — which is *when* the list re-aims, not what the
  * browser computes.
  */
-const LISTS: readonly (readonly [string, Type<MessageListBase>])[] = [
-  ['simple', SimpleMessageListComponent],
-  ['windowed (the default)', MessageListComponent],
-];
-
-describe.each(LISTS)('message list — jump across a resize (%s)', (_l, List) => {
+describe('message list — jump across a resize', () => {
   /**
    * Every observer callback either list creates, fired together.
    *
@@ -102,7 +95,7 @@ describe.each(LISTS)('message list — jump across a resize (%s)', (_l, List) =>
   });
 
   async function create() {
-    const result = await render(List, {
+    const result = await render(MessageListComponent, {
       inputs: { messages: [msg('$a:hs'), msg('$b:hs')] },
     });
     TestBed.tick();

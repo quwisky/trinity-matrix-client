@@ -128,6 +128,19 @@ test.describe('Jump to date', () => {
       await expect(
         page.locator('.scroll .msg', { hasText: marker }).first(),
       ).toBeVisible({ timeout: 60_000 });
+
+      // Both modes render the two spacers. With windowing off every loaded row is in the DOM
+      // (the marker pulled in all ~121), and the marker stays put rather than snapping back.
+      await expect(page.locator('.scroll > .vpad')).toHaveCount(2);
+      if (!windowed) {
+        expect(await page.locator('.scroll .msg').count()).toBeGreaterThan(100);
+      }
+      for (let i = 0; i < 6; i++) {
+        await page.waitForTimeout(250);
+        await expect(
+          page.locator('.scroll .msg', { hasText: marker }).first(),
+        ).toBeVisible();
+      }
     });
   }
 
