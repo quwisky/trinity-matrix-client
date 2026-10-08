@@ -38,11 +38,15 @@ private documentation, and documentation-site code therefore retain full validat
 The `classify` job also runs a `mas` step that decides whether `mas-e2e` runs. For a pull request it
 reads the diff against the base and answers `true` when a path under `libs/data-access/auth/`,
 `libs/data-access/matrix-client/`, `libs/data-access/accounts/`, `patches/matrix-js-sdk*` or
-`e2e/support/homeserver/mas/` changed, when a MAS journey or its support file changed, or when a
-`matrix-js-sdk` line changed in `package.json`, `pnpm-lock.yaml` or `pnpm-workspace.yaml` (a version bump
-rewrites that dependency's entries; any other dependency leaves the answer `false`). Pushes answer `false`:
-the Synapse nightly runs the same journeys against `main`. It is a step, not an `on.pull_request.paths`
-filter, so a pull request that skips the journeys still reports every required check.
+`e2e/support/homeserver/mas/` changed, when a MAS journey or its support file changed, when a shared
+harness file the MAS stack uses changed (`e2e/support/homeserver/` `Caddyfile`, `start.mjs`, `stop.mjs`,
+`constants.mjs`, `kind.mts` or `paths.mjs`), or when a `matrix-js-sdk` or
+`@matrix-org/matrix-sdk-crypto-wasm` line changed in `package.json`, `pnpm-lock.yaml` or
+`pnpm-workspace.yaml` (a version bump rewrites that dependency's entries; any other dependency leaves the
+answer `false`). An empty base commit fails the step instead of answering `false`. Pushes answer `false`:
+the Synapse nightly runs the same journeys against `main`. Renovate `renovate/patch-**` pushes that
+automerge therefore skip `mas-e2e`, and the nightly covers them. It is a step, not an
+`on.pull_request.paths` filter, so a pull request that skips the journeys still reports every required check.
 
 The classifier emits its reason and expected jobs. Wiring an aggregate required-result
 status into branch rules belongs to the later protection slice

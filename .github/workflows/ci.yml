@@ -49,22 +49,24 @@ jobs:
       - id: classify
         run: node scripts/ci-classify.mjs
       # Whether a pull request touches what the `mas-e2e` journeys check: sign-in code, the
-      # matrix-js-sdk version or its patch, and the MAS harness with those journeys. It is a
-      # step here, not an `on.pull_request.paths` filter, so a pull request that skips the
-      # journeys still reports the required check. Pushes skip them: the Synapse nightly runs
-      # the same journeys against main. The diffs are read into variables first so a failing
-      # git command fails the step instead of quietly skipping the journeys.
+      # matrix-js-sdk or crypto-wasm version, the SDK patch, and the MAS harness with those
+      # journeys. It is a step here, not an `on.pull_request.paths` filter, so a pull request
+      # that skips the journeys still reports the required check. Pushes skip them: the Synapse
+      # nightly runs the same journeys against main. The diffs are read into variables first,
+      # and a missing base is rejected, so a failure fails the step instead of quietly skipping
+      # the journeys.
       - id: mas
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           run=false
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            paths='^(libs/data-access/(auth|matrix-client|accounts)/|patches/matrix-js-sdk|e2e/support/homeserver/mas/|e2e/browser/journeys/accounts/mas-[^/]*\.spec\.mts$|e2e/browser/support/mas\.mts$)'
+            : "${BASE:?}"
+            paths='^(libs/data-access/(auth|matrix-client|accounts)/|patches/matrix-js-sdk|e2e/support/homeserver/mas/|e2e/support/homeserver/(Caddyfile|start\.mjs|stop\.mjs|constants\.mjs|kind\.mts|paths\.mjs)|e2e/browser/journeys/accounts/mas-[^/]*\.spec\.mts$|e2e/browser/support/mas\.mts$)'
             changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
-            # A version bump rewrites the matrix-js-sdk entries (and its patch) in these manifests.
+            # A version bump rewrites the matrix-js-sdk or crypto-wasm entries in these manifests.
             manifests=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json pnpm-lock.yaml pnpm-workspace.yaml)
-            if grep -qE "$paths" <<< "$changed" || grep -qE '^[+-].*matrix-js-sdk' <<< "$manifests"; then
+            if grep -qE "$paths" <<< "$changed" || grep -qE '^[+-].*(matrix-js-sdk|@matrix-org/matrix-sdk-crypto-wasm)' <<< "$manifests"; then
               run=true
             fi
           fi
@@ -445,7 +447,7 @@ jobs:
           TRINITY_E2E_SPEC: accounts/mas-session.spec.mts
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
-          node scripts/ci-run-command.mjs --timeout-ms 900000 -- pnpm exec nx run trinity-e2e-browser:e2e
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.browser.outputs.started == 'true' }}
         with:

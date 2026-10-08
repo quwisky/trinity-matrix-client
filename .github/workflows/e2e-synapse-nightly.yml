@@ -143,7 +143,7 @@ jobs:
       - id: browser
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
-          node scripts/ci-run-command.mjs --timeout-ms 900000 -- pnpm exec nx run trinity-e2e-browser:e2e -- accounts/mas-session.spec.mts
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e -- accounts/mas-session.spec.mts
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.browser.outputs.started == 'true' }}
         with:

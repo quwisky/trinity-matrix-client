@@ -265,6 +265,8 @@ describe('MAS sign-in journeys', () => {
     expect(browser.run).toContain(
       '-- pnpm exec nx run trinity-e2e-browser:e2e\n',
     );
+    // The command budget covers setup of the stack and the build, not only the specs.
+    expect(browser.run).toContain('--timeout-ms 1200000 --');
     expect(job['timeout-minutes']).toBeGreaterThan(0);
     expect(
       job.steps.some((candidate) => candidate.id === 'prerequisites'),
@@ -331,9 +333,9 @@ describe('MAS sign-in journeys', () => {
       jobs.classify.steps.find((candidate) => candidate.id === 'mas').run;
     const files = {
       'package.json':
-        '{\n  "dependencies": {\n    "matrix-js-sdk": "^43.0.0",\n    "rxjs": "^7.8.0"\n  }\n}\n',
+        '{\n  "dependencies": {\n    "@matrix-org/matrix-sdk-crypto-wasm": "^18.4.0",\n    "matrix-js-sdk": "^43.0.0",\n    "rxjs": "^7.8.0"\n  }\n}\n',
       'pnpm-lock.yaml':
-        'importers:\n  .:\n    dependencies:\n      matrix-js-sdk:\n        specifier: ^43.0.0\n        version: 43.0.0\n      rxjs:\n        specifier: ^7.8.0\n        version: 7.8.0\npackages:\n  matrix-js-sdk@43.0.0:\n    resolution: {integrity: sha512-m}\n  rxjs@7.8.0:\n    resolution: {integrity: sha512-a}\n',
+        "importers:\n  .:\n    dependencies:\n      matrix-js-sdk:\n        specifier: ^43.0.0\n        version: 43.0.0\n      rxjs:\n        specifier: ^7.8.0\n        version: 7.8.0\npackages:\n  '@matrix-org/matrix-sdk-crypto-wasm@18.9.0':\n    resolution: {integrity: sha512-w}\n  matrix-js-sdk@43.0.0:\n    resolution: {integrity: sha512-m}\n  rxjs@7.8.0:\n    resolution: {integrity: sha512-a}\n",
       'pnpm-workspace.yaml':
         'patchedDependencies:\n  matrix-js-sdk@43.0.0: patches/matrix-js-sdk@43.0.0.patch\n  pagefind@1.5.2: patches/pagefind@1.5.2.patch\n',
       'libs/data-access/media/src/index.ts': 'export {};\n',
@@ -362,11 +364,8 @@ describe('MAS sign-in journeys', () => {
         writeFileSync(join(repo, path), content);
       }
     };
-    /** The `run` output of the classifier's `mas` step for a change on top of the base. */
-    const detect = (changes, event = 'pull_request') => {
-      write(changes);
-      sh('add', '-A');
-      sh('commit', '-m', 'change');
+    /** Runs the classifier's `mas` step in the repo; `output` is what it wrote to GITHUB_OUTPUT. */
+    const runStep = (event, baseSha) => {
       const output = join(repo, '.output');
       writeFileSync(output, '');
       const result = spawnSync('bash', ['-e', '-c', script()], {
@@ -374,14 +373,25 @@ describe('MAS sign-in journeys', () => {
         env: {
           ...process.env,
           ...git,
-          BASE: event === 'pull_request' ? base : '',
+          BASE: baseSha,
           GITHUB_EVENT_NAME: event,
           GITHUB_OUTPUT: output,
         },
         encoding: 'utf8',
       });
+      return { result, output: readFileSync(output, 'utf8').trim() };
+    };
+    /** The `run` output of the classifier's `mas` step for a change on top of the base. */
+    const detect = (changes, event = 'pull_request') => {
+      write(changes);
+      sh('add', '-A');
+      sh('commit', '-m', 'change');
+      const { result, output } = runStep(
+        event,
+        event === 'pull_request' ? base : '',
+      );
       expect(result.status, result.stderr).toBe(0);
-      return readFileSync(output, 'utf8').trim();
+      return output;
     };
     const replaceIn = (path, from, to) => ({
       [path]: files[path].replace(from, to),
@@ -409,6 +419,12 @@ describe('MAS sign-in journeys', () => {
       'e2e/support/homeserver/mas/mas.yaml',
       'e2e/browser/journeys/accounts/mas-session.spec.mts',
       'e2e/browser/support/mas.mts',
+      'e2e/support/homeserver/Caddyfile',
+      'e2e/support/homeserver/start.mjs',
+      'e2e/support/homeserver/stop.mjs',
+      'e2e/support/homeserver/constants.mjs',
+      'e2e/support/homeserver/kind.mts',
+      'e2e/support/homeserver/paths.mjs',
     ])('runs the journeys when a pull request changes %s', (path) => {
       expect(detect({ [path]: 'changed\n' })).toBe('run=true');
     });
@@ -419,6 +435,7 @@ describe('MAS sign-in journeys', () => {
       'libs/feature/rooms/src/index.ts',
       'patches/pagefind@1.5.3.patch',
       'e2e/support/homeserver/synapse/adapter.mjs',
+      'e2e/support/homeserver/lease.mts',
       'e2e/browser/journeys/accounts/oidc-login.spec.mts',
       'apps/trinity/src/main.ts',
     ])('skips the journeys when a pull request changes only %s', (path) => {
@@ -429,8 +446,14 @@ describe('MAS sign-in journeys', () => {
       ['package.json', '"^43.0.0"', '"^43.1.0"'],
       ['pnpm-lock.yaml', 'matrix-js-sdk@43.0.0:', 'matrix-js-sdk@43.1.0:'],
       ['pnpm-workspace.yaml', 'matrix-js-sdk@43.0.0', 'matrix-js-sdk@43.1.0'],
+      ['package.json', '"^18.4.0"', '"^18.5.0"'],
+      [
+        'pnpm-lock.yaml',
+        'matrix-sdk-crypto-wasm@18.9.0',
+        'matrix-sdk-crypto-wasm@18.9.1',
+      ],
     ])(
-      'runs the journeys when %s changes the matrix-js-sdk line',
+      'runs the journeys when %s changes the matrix-js-sdk or crypto-wasm line (%s)',
       (path, from, to) => {
         expect(detect(replaceIn(path, from, to))).toBe('run=true');
       },
@@ -446,6 +469,12 @@ describe('MAS sign-in journeys', () => {
         expect(detect(replaceIn(path, from, to))).toBe('run=false');
       },
     );
+
+    it('fails, rather than answering false, when a pull request has no base', () => {
+      const { result, output } = runStep('pull_request', '');
+      expect(result.status).not.toBe(0);
+      expect(output).toBe('');
+    });
 
     it('leaves pushes to the nightly run', () => {
       expect(
