@@ -52,7 +52,7 @@ const KIND_ICON: Record<SwitcherKind, TrnIconName> = {
 /**
  * Quick-switcher overlay (Ctrl/Cmd+K): a single search field over joined rooms,
  * spaces, DMs, and pending invites, with debounced directory-people results appended.
- * Presented by {@link QuickSwitcherService} as a {@link TrnDialogService} dialog;
+ * Presented by {@link QuickSwitcherService} as a {@link TrnSurfaceService} dialog;
  * renders a {@link GlobalSearchService} session over Room Library and Discovery.
  *
  * Local matches are an instant `computed` over the query signal; people are a

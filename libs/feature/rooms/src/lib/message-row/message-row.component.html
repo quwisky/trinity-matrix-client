@@ -179,12 +179,8 @@
           @if (r.captionHtml) {
             <div
               class="msg__text msg__text--html"
-              trnSpoilerReveal
-              trnMatrixLink
-              [trnInlineMxcImages]="r.captionHtml ?? ''"
+              [trnMatrixHtml]="r.captionHtml"
               (matrixLink)="matrixLink.emit($event)"
-              [trnCodeHighlight]="r.captionHtml"
-              [innerHTML]="r.captionHtml"
             ></div>
           } @else if (r.caption) {
             <p class="msg__text">{{ r.caption }}</p>
@@ -192,12 +188,8 @@
         } @else if (r.html) {
           <div
             class="msg__text msg__text--html"
-            trnSpoilerReveal
-            trnMatrixLink
-            [trnInlineMxcImages]="r.html ?? ''"
+            [trnMatrixHtml]="r.html"
             (matrixLink)="matrixLink.emit($event)"
-            [trnCodeHighlight]="r.html"
-            [innerHTML]="r.html"
           ></div>
         } @else {
           <p class="msg__text">{{ r.body }}</p>

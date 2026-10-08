@@ -75,17 +75,13 @@
                 {{ entry.body }}
               </p>
             } @else if (entry.html) {
-              <!-- trnSpoilerReveal / trnMatrixLink delegate from this container, so they
+              <!-- trnMatrixHtml delegates spoilers and links from this container, so it
                    must stay on whichever element holds the body. -->
               <div
                 class="revision__text"
                 [class.msg__text--html]="entry.rich"
-                trnSpoilerReveal
-                trnMatrixLink
-                [trnInlineMxcImages]="entry.html"
+                [trnMatrixHtml]="entry.html"
                 (matrixLink)="onMatrixLink($event)"
-                [trnCodeHighlight]="entry.html"
-                [innerHTML]="entry.html"
               ></div>
             } @else {
               <p class="revision__text">{{ entry.body }}</p>

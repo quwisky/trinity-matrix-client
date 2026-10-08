@@ -1,0 +1,19 @@
+@layer components {
+  // Clear of the home indicator. A footer band that wants its colour at the very edge
+  // reaches into this inset itself (see the dialog shell's sheet footer).
+  :host {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .sheet-frame__grab {
+    flex: none;
+  }
+
+  .sheet-frame__handle {
+    width: 36px;
+    height: 4px;
+    margin: var(--trinity-space-3) auto 0;
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-border-overlay);
+  }
+}

@@ -1,5 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { EMPTY, catchError, map, of, switchMap, type Observable } from 'rxjs';
 import {
@@ -14,7 +17,7 @@ import {
  */
 @Injectable({ providedIn: 'root' })
 export class CreatePollService {
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly timelineActions = inject(TimelineActionsService);
   private readonly toast = inject(TrnToastService);
 

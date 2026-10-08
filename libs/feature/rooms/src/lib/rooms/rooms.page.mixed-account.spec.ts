@@ -24,7 +24,10 @@ import {
   type SpaceSummary,
 } from '@trinity/data-access/room-library';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { of, switchMap } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
@@ -214,7 +217,7 @@ describe('RoomsPage mixed-account view', () => {
           activeAccountId: activeUserId.asReadonly(),
           switchActiveAccount: switchAccount,
         }),
-        MockProvider(TrnDialogService),
+        MockProvider(TrnSurfaceService),
         MockProvider(TrnToastService),
       ],
     });

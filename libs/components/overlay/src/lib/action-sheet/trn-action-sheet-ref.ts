@@ -1,5 +1,8 @@
 import type { Observable } from 'rxjs';
-import { TrnDialogRef } from '../dialog/trn-dialog-ref';
+import {
+  TrnDialogRef,
+  type TrnDialogPresentation,
+} from '../dialog/trn-dialog-ref';
 
 /**
  * Handle for one action-sheet invocation.
@@ -22,6 +25,11 @@ export class TrnActionSheetRef {
   /** The concrete box for this invocation, once Angular has rendered it. */
   get surface(): HTMLElement | null {
     return this.resolveSurface();
+  }
+
+  /** A `'sheet'`, or a `'popover'` menu beside its button; fixed at open. */
+  get presentation(): TrnDialogPresentation {
+    return this.dialogRef.presentation;
   }
 
   close(): void {

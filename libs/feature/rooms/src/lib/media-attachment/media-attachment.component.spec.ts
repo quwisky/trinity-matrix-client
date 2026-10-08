@@ -1,5 +1,8 @@
 import { TestBed } from '@angular/core/testing';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
@@ -333,13 +336,13 @@ describe('MediaAttachmentComponent', () => {
       vi.fn((query: string) => ({ matches: query === BELOW_MD_QUERY })),
     );
     const { fixture } = await renderMedia(imageMedia());
-    const open = vi.spyOn(TestBed.inject(TrnDialogService), 'open');
+    const open = vi.spyOn(TestBed.inject(TrnSurfaceService), 'open');
 
     fixture.componentInstance.openLightbox();
 
     expect(open).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ placement: 'fullscreen' }),
+      expect.objectContaining({ kind: 'fullscreen' }),
     );
     vi.unstubAllGlobals();
   });
