@@ -170,6 +170,8 @@ export class ThreadsService {
 
   // --- Opened thread --------------------------------------------------------
   private thread: Thread | null = null;
+  /** Root of the open thread once a page came back with nothing new, so no further page is offered. */
+  private exhaustedThreadRootId: string | null = null;
   /** The exact Account client {@link attachThreadRoot} inherited — see {@link summariesClient}. */
   private threadClient: MatrixClient | null = null;
   private threadRoom: Room | null = null;
@@ -381,6 +383,7 @@ export class ThreadsService {
     }
     this.threadClient = null;
     this.thread = null;
+    this.exhaustedThreadRootId = null;
     this.threadRoom = null;
     this.threadRoomId = null;
     this.threadReceiptSubscription?.unsubscribe();
@@ -422,10 +425,14 @@ export class ThreadsService {
     ) {
       return of(void 0);
     }
+    // Sampled before the request: the SDK adds the page's events (and re-enters
+    // refreshThread through the timeline events) before the promise resolves.
+    let loadedBefore = 0;
     return defer(() => {
       const client = this.threadClient;
       if (!client || this.thread !== thread) return of(void 0);
       this._loadingOlderThread.set(true);
+      loadedBefore = thread.events.length;
       return from(
         client.paginateEventTimeline(timeline, {
           backwards: true,
@@ -434,13 +441,13 @@ export class ThreadsService {
       );
     }).pipe(
       tap(() => {
-        const before = this._threadMessages().length;
-        this.refreshThread();
-        // A page that surfaced nothing (hidden or redacted replies the count still
-        // includes) must not leave the button offering the same empty page again.
-        if (this._threadMessages().length === before) {
-          this._canPaginateThread.set(false);
+        if (this.thread !== thread) return;
+        // A page that brought no events at all (hidden replies the count still includes)
+        // must not leave the button offering the same empty page again.
+        if (thread.events.length === loadedBefore) {
+          this.exhaustedThreadRootId = thread.id;
         }
+        this.refreshThread();
       }),
       finalize(() => this._loadingOlderThread.set(false)),
       map(() => void 0),
@@ -698,11 +705,13 @@ export class ThreadsService {
     // displayable replies and are not counted; a hidden event type keeps the button,
     // which is the safe side (a page that then finds nothing hides it, see paginateOpenThread).
     const timeline = thread?.liveTimeline ?? null;
+    // A redacted reply lowers the server count, so it must not count as loaded either.
     const loadedReplies = ordered.filter(
-      (e) => e.getId() !== rootEventId,
+      (e) => e.getId() !== rootEventId && !e.isRedacted(),
     ).length;
     this._canPaginateThread.set(
-      timeline !== null &&
+      this.exhaustedThreadRootId !== rootEventId &&
+        timeline !== null &&
         timeline.getPaginationToken(Direction.Backward) !== null &&
         loadedReplies < (thread?.length ?? 0),
     );

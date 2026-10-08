@@ -476,16 +476,17 @@ test.describe('Thread preview', () => {
     await expect(thread).toBeVisible({ timeout: 15_000 });
     const ordinary = thread.locator('.msg', { hasText: 'first reply' }).first();
     await expect(ordinary).toBeVisible({ timeout: 15_000 });
-    // Both replies arrived with the thread, so there is nothing older to page in.
-    await expect(
-      thread.getByRole('button', { name: 'Load older replies' }),
-    ).toHaveCount(0);
     await expect(ordinary.locator('.msg__reply')).toHaveCount(0);
     const latestOrdinary = thread
       .locator('.msg', { hasText: seeded.latestPrefix })
       .first();
     await expect(latestOrdinary).toHaveClass(/msg--cont/u);
     await expect(latestOrdinary.locator('.msg__avatar')).toHaveCount(0);
+
+    // Both replies arrived with the thread, so there is nothing older to page in.
+    await expect(
+      thread.getByRole('button', { name: 'Load older replies' }),
+    ).toHaveCount(0);
 
     // Use the real thread reply action so the SDK emits an explicit m.in_reply_to
     // relation with is_falling_back=false and the rich-reply fallback content.
