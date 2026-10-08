@@ -429,17 +429,14 @@ test.describe('Edit history', () => {
     await expect
       .poll(() => body.evaluate((el) => el.scrollHeight > el.clientHeight))
       .toBe(true);
-    // The dialog enters with a 150ms scale-in, so the header is still moving until it ends;
-    // a baseline taken mid-entrance (14.04 instead of 13) can never be matched again.
-    await expect
-      .poll(() =>
-        page.evaluate(() =>
-          document
-            .getAnimations()
-            .some((a) => (a as CSSAnimation).animationName === 'trn-dialog-in'),
+    // Measure the settled card, not the shell's scale-in entrance.
+    await dialog
+      .getByTestId('dialog-surface')
+      .evaluate((surface) =>
+        Promise.all(
+          surface.getAnimations().map((animation) => animation.finished),
         ),
-      )
-      .toBe(false);
+      );
     const headerY = (await header.boundingBox())!.y;
     await body.evaluate((el) => {
       el.scrollTop = el.scrollHeight;
