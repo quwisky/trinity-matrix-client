@@ -89,6 +89,7 @@ describe('MessageListComponent', () => {
       jumpToNonce: number;
       canLoadOlder: boolean;
       windowed: boolean;
+      introShown: boolean;
     }> = {},
   ) {
     return render(MessageListComponent, {
@@ -651,6 +652,12 @@ describe('MessageListComponent', () => {
     expect(cmp.topPad()).toBe(0);
     expect(cmp.bottomPad()).toBe(0);
     expect(container.textContent).toContain('No messages yet.');
+  });
+
+  it('adds no empty line while the room shows its own empty-room prompt', async () => {
+    const { container } = await renderList({ messages: [], introShown: true });
+
+    expect(container.textContent).not.toContain('No messages yet.');
   });
 
   it('jumps synchronously to an already-rendered row', async () => {

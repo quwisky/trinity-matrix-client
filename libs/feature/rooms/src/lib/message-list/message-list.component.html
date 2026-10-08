@@ -78,7 +78,7 @@
         (pollEnd)="pollEnd.emit($event)"
       />
     } @empty {
-      @if (settled()) {
+      @if (settled() && !introShown()) {
         <trn-empty-state body="No messages yet." />
       }
     }

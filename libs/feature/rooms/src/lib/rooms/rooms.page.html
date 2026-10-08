@@ -192,6 +192,7 @@
              list in place, so the reader keeps their position. -->
           <trn-message-list
             [windowed]="flags.virtualTimeline()"
+            [introShown]="roomIntro()"
             [messages]="timeline.messages()"
             [threadSummaries]="threads.summaries()"
             [canPin]="pinned.canMutate()"
