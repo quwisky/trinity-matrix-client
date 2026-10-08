@@ -37,8 +37,10 @@ private documentation, and documentation-site code therefore retain full validat
 
 The `classify` job also runs a `mas` step that decides whether `mas-e2e` runs. For a pull request it
 reads the diff against the base and answers `true` when a path under `libs/data-access/auth/`,
-`libs/data-access/matrix-client/`, `libs/data-access/accounts/`, `patches/matrix-js-sdk*` or
-`e2e/support/homeserver/mas/` changed, when a MAS journey or its support file changed, when a shared
+`libs/data-access/matrix-client/`, `libs/data-access/accounts/`, `libs/feature/auth/`,
+`patches/matrix-js-sdk*` or `e2e/support/homeserver/mas/` changed, when the session or secure storage
+service in `libs/platform-native`, the session model in `libs/util/matrix` or the factory reset's
+`application-capability.providers.ts` changed, when a MAS journey or its support file changed, when a shared
 harness file the MAS stack uses changed (`e2e/support/homeserver/` `Caddyfile`, `start.mjs`, `stop.mjs`,
 `constants.mjs`, `kind.mts` or `paths.mjs`), or when a `matrix-js-sdk` or
 `@matrix-org/matrix-sdk-crypto-wasm` line changed in `package.json`, `pnpm-lock.yaml` or

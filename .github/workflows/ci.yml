@@ -62,7 +62,7 @@ jobs:
           run=false
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             : "${BASE:?pull request has no base sha}"
-            paths='^(libs/data-access/(auth|matrix-client|accounts)/|patches/matrix-js-sdk|e2e/support/homeserver/mas/|e2e/support/homeserver/(Caddyfile|start\.mjs|stop\.mjs|constants\.mjs|kind\.mts|paths\.mjs)$|e2e/browser/journeys/accounts/mas-[^/]*\.spec\.mts$|e2e/browser/support/mas\.mts$)'
+            paths='^(libs/data-access/(auth|matrix-client|accounts)/|libs/feature/auth/|libs/platform-native/src/lib/(session|secure)-storage\.service\.ts$|libs/util/matrix/src/lib/session\.model\.ts$|libs/application/runtime/src/lib/composition/application-capability\.providers\.ts$|patches/matrix-js-sdk|e2e/support/homeserver/mas/|e2e/support/homeserver/(Caddyfile|start\.mjs|stop\.mjs|constants\.mjs|kind\.mts|paths\.mjs)$|e2e/browser/journeys/accounts/mas-[^/]*\.spec\.mts$|e2e/browser/support/mas\.mts$)'
             changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
             # A version bump rewrites the matrix-js-sdk or crypto-wasm entries in these manifests.
             manifests=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json pnpm-lock.yaml pnpm-workspace.yaml)
