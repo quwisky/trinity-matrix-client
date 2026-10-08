@@ -181,9 +181,8 @@ export class AccountLifecycleAdapter {
           },
           onSettled: (session) => {
             context.session = session;
-            if (!providerNeedsSession) {
-              attempt.resolveIssue('provider-session');
-            } else if (!session?.oidc) {
+            // Never resolves: a late read must not erase a failed revocation.
+            if (providerNeedsSession && !session?.oidc) {
               attempt.addIssue('provider-session', 'restart-application');
             }
           },

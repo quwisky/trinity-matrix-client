@@ -298,6 +298,45 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
   });
 
+  it('keeps a failed live revocation as provider residue when the session read settles late', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, matrix, storage, active } = setup('@oidc:hs');
+      const sessionRead = new Subject<MatrixSession | null>();
+      vi.mocked(matrix.clientFor).mockReturnValue({
+        logout: vi.fn(() => Promise.reject(new Error('provider unreachable'))),
+      } as never);
+      vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
+      vi.mocked(storage.load).mockReturnValue(sessionRead);
+      vi.mocked(matrix.remove).mockImplementation(() => {
+        active.set(null);
+        return of(void 0);
+      });
+      vi.mocked(storage.clear).mockReturnValue(of(void 0));
+      const outcomes: AccountSignOutOutcome[] = [];
+
+      adapter
+        .signOutAccount('@oidc:hs')
+        .subscribe((outcome) => outcomes.push(outcome));
+      await vi.advanceTimersByTimeAsync(
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.sessionRead,
+      );
+      sessionRead.next(OIDC_STORED);
+      sessionRead.complete();
+      await vi.runAllTimersAsync();
+
+      expect(outcomes.at(-1)).toEqual({
+        kind: 'partial-cleanup',
+        accountId: '@oidc:hs',
+        activeAccountId: null,
+        remainingAccountIds: [],
+        issues: [{ scope: 'provider-session', recovery: 'retry-sign-out' }],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('revokes an OIDC account without a live client through a detached client', async () => {
     const { adapter, matrix, storage, lifecycle } = setup(null);
     const detached = { logout: vi.fn(() => Promise.resolve()) };
