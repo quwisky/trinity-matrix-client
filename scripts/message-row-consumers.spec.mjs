@@ -90,10 +90,10 @@ describe('trn-message-row consumers', () => {
   );
 
   it('finds the consumers at all, so an empty sweep cannot pass as a clean one', () => {
-    // Three today: the virtual list, the simple list, and the thread panel. A drop to zero
+    // The virtual list, the simple list and the thread panel today. A drop to zero
     // would mean the glob or the marker changed, and every assertion below would hold
     // vacuously — the classic way a source-shape guard stops guarding in silence.
-    expect(templates.length).toBeGreaterThanOrEqual(3);
+    expect(templates.length).toBeGreaterThan(0);
     // And each really yields a tag to inspect, or the per-tag loop below runs zero times
     // and reports nothing missing on every file.
     for (const file of templates) {

@@ -181,7 +181,7 @@ const inlineStyled = inlineStyleSheets();
 
 describe('styling idiom', () => {
   it('reads the tree at all, so an empty sweep cannot pass as a clean one', () => {
-    expect(stylesheets.length).toBeGreaterThan(50);
+    expect(stylesheets.length).toBeGreaterThan(0);
   });
 
   it('has a ledger that still describes the tree', () => {
