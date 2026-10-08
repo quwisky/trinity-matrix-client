@@ -6,6 +6,7 @@ import {
   input,
   model,
   output,
+  viewChild,
 } from '@angular/core';
 import { TrnIconButton, TrnInput } from '@trinity/components/controls';
 import {
@@ -23,7 +24,6 @@ import {
   matchesRoomFilter,
   normalizeRoomFilter,
   RoomLibraryService,
-  SpacesService,
   type RoomSortMode,
   type RoomSummary,
   type SpaceChildRoom,
@@ -57,7 +57,7 @@ import { TrnIconComponent } from '@trinity/components/foundations';
   styleUrl: './channel-sidebar.component.scss',
 })
 export class ChannelSidebarComponent {
-  private readonly spacesSvc = inject(SpacesService);
+  private readonly spaceChildren = viewChild(SpaceChildrenListComponent);
   private readonly selectedLibrary = inject(SelectedRoomLibraryService);
   private readonly roomsSvc = inject(RoomLibraryService);
   /**
@@ -133,8 +133,7 @@ export class ChannelSidebarComponent {
     const count =
       this.rooms().length +
       this.filteredInvites().length +
-      this.filteredJoinableRooms().length +
-      this.filteredChildSpaces().length;
+      (this.spaceChildren()?.matchCount() ?? 0);
     return count === 1 ? '1 result' : `${count} results`;
   });
 
@@ -155,22 +154,6 @@ export class ChannelSidebarComponent {
     this.clearFilter();
   }
 
-  /** Not-yet-joined channels of the active space (the "More Channels" list). */
-  readonly joinableRooms = this.spacesSvc.notJoinedRooms;
-  /** Sub-spaces of the active space (joined → Open, otherwise Join). */
-  readonly childSpaces = this.spacesSvc.childSpaces;
-
-  // Only counted here, for the live region: `trn-space-children-list` renders the rows.
-  protected readonly filteredJoinableRooms = computed(() =>
-    this.joinableRooms().filter((child) =>
-      matchesRoomFilter(child.name, this.normalizedFilter()),
-    ),
-  );
-  protected readonly filteredChildSpaces = computed(() =>
-    this.childSpaces().filter((child) =>
-      matchesRoomFilter(child.name, this.normalizedFilter()),
-    ),
-  );
   /** Pending invites from the same selected generation as the Room and Space lists. */
   readonly invites = computed<readonly PendingInvite[]>(
     () => this.selectedLibrary.view().invitations,
@@ -284,6 +267,10 @@ export class ChannelSidebarComponent {
         return this.leaveSpace.emit();
       case 'sort':
         return this.setSortMode.emit(action.mode);
+      default: {
+        const unhandled: never = action;
+        return unhandled;
+      }
     }
   }
 }

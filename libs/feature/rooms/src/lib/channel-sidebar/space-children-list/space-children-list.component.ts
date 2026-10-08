@@ -36,14 +36,6 @@ import { type ExactSpaceSelection } from '../../shared/exact-selection';
 export class SpaceChildrenListComponent {
   protected readonly spaces = inject(SpacesService);
 
-  /** The sidebar's already-normalised filter query (`normalizeRoomFilter`). */
-  readonly filter = input('');
-
-  /** Join a not-yet-joined child room or sub-space. */
-  readonly join = output<SpaceChildRoom>();
-  /** Open a joined sub-space. */
-  readonly open = output<ExactSpaceSelection>();
-
   // The filter box narrows everything under it, so these two lists follow it too.
   protected readonly joinableRooms = computed(() =>
     this.spaces
@@ -55,4 +47,17 @@ export class SpaceChildrenListComponent {
       .childSpaces()
       .filter((child) => matchesRoomFilter(child.name, this.filter())),
   );
+
+  /** The sidebar's already-normalised filter query (`normalizeRoomFilter`). */
+  readonly filter = input('');
+
+  /** Rows shown after filtering — the sidebar's live region announces this. */
+  readonly matchCount = computed(
+    () => this.joinableRooms().length + this.childSpaces().length,
+  );
+
+  /** Join a not-yet-joined child room or sub-space. */
+  readonly join = output<SpaceChildRoom>();
+  /** Open a joined sub-space. */
+  readonly open = output<ExactSpaceSelection>();
 }

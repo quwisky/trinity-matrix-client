@@ -83,6 +83,14 @@ export type SidebarSpaceAction =
   ],
 })
 export class SidebarSpaceHeaderComponent {
+  /** The orderings offered in the "Order rooms" submenu. */
+  protected readonly sortModes = TRINITY_ROOM_SORTS;
+
+  /** What the "Order rooms" row announces — the effective order, override or not. */
+  protected readonly sortModeLabel = computed(() =>
+    this.labelFor(this.sortMode()),
+  );
+
   readonly spaceName = input('Direct messages');
   /** Whether a space (not Home) is selected — gates the space actions. */
   readonly spaceActive = input(false);
@@ -103,14 +111,6 @@ export class SidebarSpaceHeaderComponent {
   readonly defaultSortMode = input<RoomSortMode>(DEFAULT_ROOM_SORT);
 
   readonly spaceAction = output<SidebarSpaceAction>();
-
-  /** The orderings offered in the "Order rooms" submenu. */
-  protected readonly sortModes = TRINITY_ROOM_SORTS;
-
-  /** What the "Order rooms" row announces — the effective order, override or not. */
-  protected readonly sortModeLabel = computed(() =>
-    this.labelFor(this.sortMode()),
-  );
 
   protected labelFor(mode: RoomSortMode): string {
     return TRINITY_ROOM_SORTS.find((option) => option.id === mode)?.label ?? '';

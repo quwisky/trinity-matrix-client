@@ -1,7 +1,7 @@
 @if (spaces.childrenLoading()) {
-  <!-- Pending and failed, not empty — the same line in the same place, which is why the
-         one rule styled all three. `variant="danger"` is what makes the failure read as one
-         without reaching for `--destructive`, whose dark value is a near-black maroon. -->
+  <!-- Pending and failed, not empty — the same line in the same place. `variant="danger"`
+       is what makes the failure read as one without reaching for `--destructive`, whose
+       dark value is a near-black maroon. -->
   <trn-empty-state layout="line" body="Loading rooms…" />
 } @else if (spaces.childrenError()) {
   <trn-empty-state
