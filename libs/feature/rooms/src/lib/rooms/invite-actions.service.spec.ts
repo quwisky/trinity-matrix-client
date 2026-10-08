@@ -26,11 +26,15 @@ const invite: PendingInvite = {
 function setup(result: unknown) {
   const openAndWait$ = vi.fn(() => of(result));
   const onSelectRoomSelection = vi.fn();
+  const onSelectSpaceRow = vi.fn();
   TestBed.configureTestingModule({
     providers: [
       InviteActionsService,
       MockProvider(TrnSurfaceService, { openAndWait$ } as never),
-      MockProvider(AccountRoutingService, { onSelectRoomSelection } as never),
+      MockProvider(AccountRoutingService, {
+        onSelectRoomSelection,
+        onSelectSpaceRow,
+      } as never),
       MockProvider(ShellStatusService),
       MockProvider(InvitesService),
     ],
@@ -39,6 +43,7 @@ function setup(result: unknown) {
     svc: TestBed.inject(InviteActionsService),
     openAndWait$,
     onSelectRoomSelection,
+    onSelectSpaceRow,
   };
 }
 
@@ -69,6 +74,27 @@ describe('InviteActionsService.onPreviewInvite', () => {
       { roomId: '!inv:hs', accountId: '@work:hs' },
       'room-invitation',
     );
+  });
+
+  it('opens a direct message with the direct-invitation origin', () => {
+    const { svc, onSelectRoomSelection } = setup({ membershipChanged: true });
+    svc.onPreviewInvite({ ...invite, isDirect: true });
+    expect(onSelectRoomSelection).toHaveBeenCalledWith(
+      { roomId: '!inv:hs', accountId: '@work:hs' },
+      'direct-invitation',
+    );
+  });
+
+  it('opens an accepted space as the invited account', () => {
+    const { svc, onSelectRoomSelection, onSelectSpaceRow } = setup({
+      membershipChanged: true,
+    });
+    svc.onPreviewInvite({ ...invite, isSpace: true });
+    expect(onSelectSpaceRow).toHaveBeenCalledWith({
+      spaceId: '!inv:hs',
+      accountId: '@work:hs',
+    });
+    expect(onSelectRoomSelection).not.toHaveBeenCalled();
   });
 
   it('stays put when the preview is closed without accepting', () => {

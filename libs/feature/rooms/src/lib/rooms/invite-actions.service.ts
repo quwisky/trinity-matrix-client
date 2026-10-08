@@ -46,7 +46,15 @@ export class InviteActionsService {
       )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((result) => {
-        if (!result?.membershipChanged || invite.isSpace) return;
+        if (!result?.membershipChanged) return;
+        // The preview's Open step is an explicit request, so a joined space opens too.
+        if (invite.isSpace) {
+          this.routing.onSelectSpaceRow({
+            spaceId: invite.roomId,
+            accountId: invite.accountId,
+          });
+          return;
+        }
         this.routing.onSelectRoomSelection(
           { roomId: invite.roomId, accountId: invite.accountId },
           invite.isDirect ? 'direct-invitation' : 'room-invitation',

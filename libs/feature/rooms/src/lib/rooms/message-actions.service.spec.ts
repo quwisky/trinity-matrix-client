@@ -208,7 +208,7 @@ describe('MessageActionsService', () => {
 
       expect(toastShow).toHaveBeenCalledWith(
         'Sticker images are public homeserver media, even in encrypted rooms.',
-        { duration: 6000 },
+        { duration: 6000, variant: 'warning' },
       );
       expect(sendSticker).toHaveBeenCalledWith(sticker);
     });
