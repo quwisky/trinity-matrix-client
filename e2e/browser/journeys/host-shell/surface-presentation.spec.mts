@@ -96,6 +96,9 @@ async function sheetsEverywhere(
   await expect(status).toBeHidden();
 
   await signIn(page, request, tag);
+  // Two in-app moves put an app page behind the directory, so Back has history to pop.
+  await page.getByTestId('rail-rooms').click();
+  await page.getByTestId('rail-recent').click();
   const plus = page.getByRole('button', { name: 'New room or direct message' });
   await expect(plus).toBeVisible({ timeout: 30_000 });
   await plus.click();
@@ -111,8 +114,9 @@ async function sheetsEverywhere(
     .getByRole('dialog')
     .filter({ has: page.getByTestId('room-directory') });
   await expectSheet(page, directory);
-  await swipeDown(page, directory);
+  await page.goBack();
   await expect(directory).toBeHidden();
+  await expect(page.getByTestId('rail-rooms')).toBeVisible();
 
   await page.getByTestId('open-settings').click();
   const settings = page.getByRole('dialog', { name: 'Settings' });
@@ -189,43 +193,47 @@ test.describe('Modal surfaces', () => {
       await expect(settings).toBeHidden();
     });
 
-    // Known defect (#1036 follow-up): on a 220 px viewport the popover is not pushed back on
-    // screen and its last 3 px fall below it (CDK push sizes the pane before the menu renders).
-    test.fixme('keeps the menu inside a short viewport', async ({
+    test('keeps the menu inside a short viewport and scrolls it when it cannot fit', async ({
       page,
       request,
     }) => {
       await signIn(page, request, 'short');
-      await page.setViewportSize({ width: 1280, height: 220 });
-      // Let the resize reach the overlay's viewport ruler before opening.
-      await page.evaluate(
-        () =>
-          new Promise((done) =>
-            requestAnimationFrame(() => requestAnimationFrame(done)),
-          ),
-      );
       const plus = page.getByRole('button', {
         name: 'New room or direct message',
       });
-      await plus.click();
       const menu = page.getByRole('menu', { name: 'New message' });
-      await expect(menu).toBeVisible();
+      for (const height of [220, 120]) {
+        await page.setViewportSize({ width: 1280, height });
+        // Let the resize reach the overlay's viewport ruler before opening.
+        await page.evaluate(
+          () =>
+            new Promise((done) =>
+              requestAnimationFrame(() => requestAnimationFrame(done)),
+            ),
+        );
+        // A window this short lets the sidebar footer cover the button, so open by keyboard.
+        await plus.focus();
+        await page.keyboard.press('Enter');
+        await expect(menu).toBeVisible();
 
-      const box = (await menu.boundingBox())!;
-      expect(box.y).toBeGreaterThanOrEqual(0);
-      expect(box.y + box.height).toBeLessThanOrEqual(221);
-      const last = menu.getByRole('menuitem', {
-        name: 'Start a direct message',
-      });
-      await last.scrollIntoViewIfNeeded();
-      await expect(last).toBeInViewport();
+        const box = (await menu.boundingBox())!;
+        expect(box.y).toBeGreaterThanOrEqual(0);
+        expect(box.y + box.height).toBeLessThanOrEqual(height);
+        const last = menu.getByRole('menuitem', {
+          name: 'Start a direct message',
+        });
+        await last.scrollIntoViewIfNeeded();
+        await expect(last).toBeInViewport();
+        await page.keyboard.press('Escape');
+        await expect(menu).toBeHidden();
+      }
     });
   });
 
   test.describe('on a Pixel 5', () => {
     test.use(DESIGN_VIEWPORTS['phone-pixel-5']);
 
-    test('opens every surface as a sheet that swipe and Back close', async ({
+    test('opens every surface as a sheet; swipe closes them and Back closes the directory', async ({
       page,
       request,
     }) => {
@@ -274,7 +282,7 @@ test.describe('Modal surfaces', () => {
       );
     });
 
-    test('opens every surface as a sheet at desktop width', async ({
+    test('opens every surface as a sheet at desktop width; swipe closes them and Back closes the directory', async ({
       page,
       request,
     }) => {
