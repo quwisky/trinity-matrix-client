@@ -311,6 +311,16 @@ describe('Opt-in MAS stack', () => {
     expect(config.secrets).toBeUndefined();
   });
 
+  it('lets one run sign in more often than its default per-IP login limit', () => {
+    // MAS allows a burst of 3 logins per IP, refilled at one per 20 s, and answers the
+    // fourth with "too many requests". The MAS journeys sign in four times a run, from
+    // one address, and repeat.
+    expect(masConfig().rate_limiting.login.per_ip).toEqual({
+      burst: 100,
+      per_second: 10,
+    });
+  });
+
   it('delegates its Synapse to MAS with the shared secret, once', async () => {
     const { delegateToMas } =
       await import('../e2e/support/homeserver/mas/adapter.mjs');

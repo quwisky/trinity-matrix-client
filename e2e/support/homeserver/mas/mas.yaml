@@ -25,3 +25,10 @@ policy:
       # https://trinity.qwky.eu: an insecure redirect on another host.
       allow_insecure_uris: true
       allow_host_mismatch: true
+rate_limiting:
+  login:
+    # MAS's default is a burst of 3 per IP, refilled at one per 20 s. Every journey signs in
+    # from this one address, so the fourth sign-in of a run was refused.
+    per_ip:
+      burst: 100
+      per_second: 10
