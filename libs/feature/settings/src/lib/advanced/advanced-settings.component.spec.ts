@@ -490,11 +490,12 @@ describe('AdvancedSettingsComponent', () => {
 
   it('resets nothing when the gate is cancelled', async () => {
     alertPrompt.mockReturnValue(of(null));
-    const { fixture } = await render(AdvancedSettingsComponent, {
+    const { container } = await render(AdvancedSettingsComponent, {
       providers: mockedConfig(),
     });
 
-    await fixture.componentInstance.reset();
+    button(container, 'advanced-reset')?.click();
+    await flush();
 
     expect(resetToDefaults).not.toHaveBeenCalled();
     expect(toastShow).not.toHaveBeenCalled();
@@ -502,11 +503,12 @@ describe('AdvancedSettingsComponent', () => {
 
   it('resets nothing on a mistype, and says why', async () => {
     alertPrompt.mockReturnValue(of('defaluts'));
-    const { fixture } = await render(AdvancedSettingsComponent, {
+    const { container } = await render(AdvancedSettingsComponent, {
       providers: mockedConfig(),
     });
 
-    await fixture.componentInstance.reset();
+    button(container, 'advanced-reset')?.click();
+    await flush();
 
     expect(resetToDefaults).not.toHaveBeenCalled();
     expect(toastShow).toHaveBeenCalledWith(
@@ -524,10 +526,10 @@ describe('AdvancedSettingsComponent', () => {
       providers: mockedConfig(),
     });
 
-    await fixture.componentInstance.reset();
+    button(container, 'advanced-reset')?.click();
+    await flush();
     fixture.detectChanges();
 
-    expect(fixture.componentInstance.resetting()).toBe(false);
     expect(button(container, 'advanced-reset')?.disabled).toBe(false);
     expect(toastShow).toHaveBeenCalledWith(
       'Could not reset every setting.',

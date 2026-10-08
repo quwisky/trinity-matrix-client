@@ -32,6 +32,8 @@ import {
   readPickedConfigFile$,
 } from './import-config';
 import { AdvancedSettingsResetService } from './advanced-settings-reset.service';
+import { ConfigApplyReviewComponent } from './config-apply-review.component';
+import { ConfigResetGroupComponent } from './config-reset-group.component';
 import { defer, filter, throwError } from 'rxjs';
 import {
   TrnSettingsGroupComponent,
@@ -104,6 +106,8 @@ function exportFileName(now: Date): string {
   imports: [
     TrnSettingsGroupComponent,
     ConfigEditorOutletDirective,
+    ConfigApplyReviewComponent,
+    ConfigResetGroupComponent,
     TrnButton,
     TrnLabel,
     TrnTextarea,
@@ -114,7 +118,6 @@ export class AdvancedSettingsComponent {
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly files = inject(HostFileExportService);
-  private readonly resetWorkflow = inject(AdvancedSettingsResetService);
 
   /**
    * The rich editor, where this platform offers one and the app wired it up. Optional in the
@@ -164,11 +167,6 @@ export class AdvancedSettingsComponent {
 
   /** The editor component, once its chunk has arrived; null until then, and on native. */
   readonly editor = signal<Type<ConfigEditorHost> | null>(null);
-
-  /** True while a reset is in flight, so the button can't be pressed twice. */
-  readonly resetting = this.resetWorkflow.resetting;
-  readonly resetResult = this.resetWorkflow.result;
-  readonly outstandingResetEntries = this.resetWorkflow.outstandingEntries;
 
   /** True while an apply is in flight, for the same reason. */
   readonly applying = signal(false);
@@ -382,16 +380,6 @@ export class AdvancedSettingsComponent {
         }
         this.loadAndReview(text);
       });
-  }
-
-  /** Put every exported setting back to its default, behind the type-to-confirm gate. */
-  reset(): void {
-    this.resetWorkflow.start(() => this.discard());
-  }
-
-  /** Continue the exact observed attempt; completed entries are never written again. */
-  retryReset(): void {
-    this.resetWorkflow.retry(() => this.discard());
   }
 
   /**
