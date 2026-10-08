@@ -20,14 +20,18 @@ function openingTag(file, marker) {
   return found[0];
 }
 
-/** Declarations of the leaf rule whose selector list contains `selector`, or ''. */
+/**
+ * Declarations of the leaf rule whose selector list contains `selector`, or null when no
+ * such rule exists. `toMatch` on null throws, so a check on a removed rule fails loudly
+ * instead of passing on an empty string.
+ */
 function styleRule(file, selector) {
   const scss = read(file).replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/gu, '');
   for (const match of scss.matchAll(/([^{};]+)\{([^{}]*)\}/gu)) {
     const selectors = match[1].split(',').map((part) => part.trim());
     if (selectors.includes(selector)) return match[2];
   }
-  return '';
+  return null;
 }
 
 const surface = /\b(?:background|border|border-radius|box-shadow|padding)\s*:/u;
@@ -43,7 +47,8 @@ describe('card recipe adoption', () => {
       expect(tag).toMatch(/\bvariant="muted"/u);
       expect(tag).toMatch(/\bclass="pack-card"/u);
     }
-    expect(styleRule(`${packs}.scss`, '.pack-card')).not.toMatch(surface);
+    // The recipe owns the card surface, so no rule for the bare card remains.
+    expect(styleRule(`${packs}.scss`, '.pack-card')).toBeNull();
   });
 
   it('gives the encryption pages the card recipe instead of a surface mixin', () => {
@@ -85,10 +90,6 @@ describe('banner recipe adoption', () => {
     const note = openingTag(`${file}.html`, 'data-testid="e2ee-note"');
     expect(note).toMatch(/^<trn-banner\b/u);
     expect(note).toMatch(/\bvariant="neutral"/u);
-    expect(read(`${file}.html`)).not.toMatch(/<div\b[^>]*class="ms-banner"/u);
-    expect(styleRule(`${file}.scss`, '.ms-banner')).not.toMatch(
-      /\b(?:padding|border-bottom|display)\s*:/u,
-    );
   });
 
   it('shows the third-party widget notice as a neutral banner', () => {

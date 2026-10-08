@@ -24,7 +24,7 @@
 
   <div class="flex-1 overflow-y-auto max-members:touch-pan-y">
     @if (encrypted()) {
-      <trn-banner variant="neutral" class="ms-banner" data-testid="e2ee-note">
+      <trn-banner variant="neutral" data-testid="e2ee-note">
         <trn-icon trnBannerIcon name="lock" />
         Encrypted room — searching the {{ scanned() }} loaded
         {{ scanned() === 1 ? 'message' : 'messages' }} only.
@@ -46,7 +46,7 @@
         </span>
       </trn-banner>
     } @else if (query().trim()) {
-      <trn-banner variant="neutral" class="ms-banner">
+      <trn-banner variant="neutral">
         @if (serverMode()) {
           <span data-testid="server-summary">
             Showing {{ serverCount() }} server
@@ -54,22 +54,24 @@
             history.
           </span>
         } @else {
-          <button
-            trnBtn
-            variant="secondary"
-            presentation="outline"
-            size="sm"
-            [disabled]="searching()"
-            (click)="searchServer()"
-            data-testid="search-server"
-          >
-            @if (searching()) {
-              <trn-spinner />
-            } @else {
-              <trn-icon name="server" />
-            }
-            Search all messages
-          </button>
+          <span trnBannerActions>
+            <button
+              trnBtn
+              variant="secondary"
+              presentation="outline"
+              size="sm"
+              [disabled]="searching()"
+              (click)="searchServer()"
+              data-testid="search-server"
+            >
+              @if (searching()) {
+                <trn-spinner />
+              } @else {
+                <trn-icon name="server" />
+              }
+              Search all messages
+            </button>
+          </span>
         }
       </trn-banner>
     }
