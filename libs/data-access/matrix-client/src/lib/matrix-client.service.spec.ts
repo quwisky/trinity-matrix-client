@@ -1276,7 +1276,10 @@ describe('OAuth tokens through a real MatrixClient', () => {
     });
 
   /** A homeserver that accepts only the tokens the fake provider issued, and that provider. */
-  function fakeNetwork(rotation: Rotation = 'rotate') {
+  function fakeNetwork(
+    rotation: Rotation = 'rotate',
+    expiresIn: number | null = 30,
+  ) {
     const live = new Set<string>();
     const grants: URLSearchParams[] = [];
     const revocations: string[] = [];
@@ -1311,7 +1314,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
             token_type: 'Bearer',
             access_token: `at-${issued}`,
             // Under the SDK's 60 s window, so a later 401 reads as expiry, not revocation.
-            expires_in: 30,
+            ...(expiresIn === null ? {} : { expires_in: expiresIn }),
             ...(rotation === 'rotate'
               ? { refresh_token: `rt-${issued}` }
               : rotation === 'empty'
@@ -1421,6 +1424,20 @@ describe('OAuth tokens through a real MatrixClient', () => {
     expect(net.grants[1].get('refresh_token')).toBe('rt-2');
     expect(client.getAccessToken()).toBe('at-3');
     expectStillSignedIn(svc, client);
+  });
+
+  it('persists no expiry when the provider returns none', async () => {
+    fakeNetwork('rotate', null);
+    const { storage, client } = await startReal();
+
+    await expect(client.whoami()).resolves.toMatchObject({ user_id: '@me:hs' });
+
+    expect(vi.mocked(storage.updateTokens)).toHaveBeenCalledWith(
+      '@me:hs',
+      'at-2',
+      'rt-2',
+      undefined,
+    );
   });
 
   it('keeps the old pair in memory when the refreshed tokens cannot be persisted', async () => {
