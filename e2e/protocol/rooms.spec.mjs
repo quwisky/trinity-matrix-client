@@ -124,15 +124,14 @@ async function fillAlertAndConfirm(page, placeholder, value, buttonName) {
 }
 
 /**
- * Wait for TrnActionSheetService's bottom sheet (<trn-action-sheet> in a CDK
- * dialog — replaces Ionic's <ion-action-sheet>) to appear, click a named
- * button, then wait for it to dismiss.
+ * Pick a row from the Home "+" action list — a menu beside the button on this desktop
+ * viewport (a bottom sheet on a phone) — then wait for it to close.
  */
 async function clickActionSheetButton(page, buttonText) {
-  const sheet = page.locator('trn-action-sheet');
-  await sheet.waitFor({ state: 'visible', timeout: 15_000 });
-  await sheet.getByRole('button', { name: buttonText }).click();
-  await sheet.waitFor({ state: 'detached', timeout: 15_000 });
+  const menu = page.getByRole('menu', { name: 'New message' });
+  await menu.waitFor({ state: 'visible', timeout: 15_000 });
+  await menu.getByRole('menuitem', { name: buttonText }).click();
+  await menu.waitFor({ state: 'detached', timeout: 15_000 });
 }
 
 /**
@@ -249,8 +248,7 @@ async function main(protocolBrowser) {
     // The Home "+" button (aria-label set when spaceActive() is false).
     await page.click('button[aria-label="New room or direct message"]');
 
-    // trn-action-sheet: "New message" with "Create a room" / "Start a direct
-    // message" / "Cancel" buttons.
+    // The "New message" menu: "Create a room" / "Start a direct message".
     await clickActionSheetButton(page, 'Create a room');
 
     // trn-alert-dialog: header "Create a room", input placeholder "Room name".
@@ -328,14 +326,19 @@ async function main(protocolBrowser) {
 
     // Navigate to the room from scenario 1 (click it in the sidebar).
     // After scenario 2 the DM room is auto-selected; we need scenario-1 room active
-    // so the "Invite people" button appears in the toolbar for the correct room.
+    // so the "Invite people" action in the header's More actions menu targets the
+    // correct room.
     await page
       .locator('button.channel', { hasText: ROOM_NAME })
       .first()
       .click();
 
-    // The "Invite people" button is gated on activeRoom() being non-null.
-    const inviteBtn = page.getByTestId('invite-people');
+    // Since #1009 the header has no standalone invite button; it lives in the
+    // "More actions" menu, which is gated on activeRoom() being non-null.
+    const overflow = page.getByTestId('room-actions-overflow');
+    await overflow.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
+    await overflow.click();
+    const inviteBtn = page.getByTestId('overflow-invite-people');
     await inviteBtn.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
     await inviteBtn.click();
 

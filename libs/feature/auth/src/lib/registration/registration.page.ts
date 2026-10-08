@@ -36,6 +36,7 @@ import {
   type RegistrationPolicy,
 } from '@trinity/data-access/auth';
 import { ExternalBrowserService } from '@trinity/platform-native';
+import { shownError } from '@trinity/util/ui';
 
 @Component({
   selector: 'trn-registration',
@@ -68,6 +69,7 @@ export class RegistrationPage implements OnDestroy {
   readonly addMode = this.route.snapshot.queryParamMap.has('add');
   private readonly mode: LoginMode = this.addMode ? 'add' : 'replace';
 
+  readonly shownError = shownError;
   readonly baseUrl = signal<string | null>(null);
   readonly discovering = signal(false);
   readonly started = signal(false);

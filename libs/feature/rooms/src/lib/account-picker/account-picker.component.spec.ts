@@ -163,7 +163,7 @@ describe('AccountPickerComponent', () => {
     expect(close).toHaveBeenCalled();
   });
 
-  // TrnDialogService focuses `[data-autofocus]`; skip the disabled active account and land on
+  // TrnSurfaceService focuses `[data-autofocus]`; skip the disabled active account and land on
   // the first account the user can change.
   it('marks the first enabled account for autofocus', async () => {
     const { container } = await renderPicker();

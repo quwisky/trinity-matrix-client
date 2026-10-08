@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
   TrustVerificationService,
   type VerificationView,
@@ -37,7 +37,7 @@ async function setup(
   const { fixture } = await render(VerificationHostComponent, {
     providers: [
       MockProvider(TrustVerificationService, { active }),
-      MockProvider(TrnDialogService, { open }),
+      MockProvider(TrnSurfaceService, { open }),
       {
         provide: ENCRYPTION_DIALOG_COMPONENTS,
         useValue: {

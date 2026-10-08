@@ -2,7 +2,7 @@ import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { type WorkspaceRoomNavigationOrigin } from '@trinity/application/workspace';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
   type ConversationMessageOutcome,
   ConversationRuntime,
@@ -54,7 +54,7 @@ export class MessageActionsService {
   private readonly compose = this.conversations.compose;
   private readonly messageCommands = this.conversations.messages;
   private readonly timelineActions = inject(TimelineActionsService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
 
   /**
@@ -151,7 +151,7 @@ export class MessageActionsService {
    * Open the thread rooted at `rootEventId` (raised by a message's indicator).
    *
    * Writes the shell's one right-hand slot rather than opening a dialog. The three
-   * services that used to wrap `TrnDialogService` for these surfaces are gone: with the
+   * services that used to wrap `TrnSurfaceService` for these surfaces are gone: with the
    * presentation decided by the slot, their whole remaining job was indirection, and each
    * carried a re-entrancy guard that only existed because two dialogs could stack. One
    * slot makes "only one at a time" structural — there is one value.

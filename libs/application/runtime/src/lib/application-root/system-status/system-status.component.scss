@@ -1,37 +1,6 @@
 @layer components {
   :host {
-    position: fixed;
-    z-index: var(--trinity-z-panel);
-    inset: 0;
-    inset-block-start: var(--trinity-title-row-inset, 0);
-    display: grid;
-    place-items: center;
-    padding: var(--trinity-space-4);
-  }
-
-  .system-status__backdrop {
-    position: absolute;
-    inset: 0;
-    background: var(--trinity-overlay-scrim);
-  }
-
-  // The shared dialog shell inside the layout draws the surface, header and close.
-  trn-settings-layout {
-    position: relative;
-    min-width: 0;
-    max-inline-size: 100%;
-  }
-
-  // A phone gets a bottom sheet.
-  :host.system-status--sheet {
-    place-items: end center;
-    padding: 0;
-  }
-
-  @media (max-width: 48rem) {
-    :host {
-      padding: 0;
-    }
+    display: block;
   }
 
   // The layout's column already pads the sides; the content lines up with its heading.

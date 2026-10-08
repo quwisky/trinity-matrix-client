@@ -19,7 +19,10 @@ import {
   WorkspaceBackService,
   WorkspaceNavigationService,
 } from '@trinity/application/workspace';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   AccountRuntimeService,
   type AccountRestoreResult,
@@ -238,7 +241,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
           checkForUpdate: vi.fn().mockResolvedValue(false),
         }),
         MockProvider(TrnToastService),
-        MockProvider(TrnDialogService, {
+        MockProvider(TrnSurfaceService, {
           openState: dialogOpen,
           hasOpen: () => false,
         }),
