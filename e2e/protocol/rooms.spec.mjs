@@ -328,14 +328,19 @@ async function main(protocolBrowser) {
 
     // Navigate to the room from scenario 1 (click it in the sidebar).
     // After scenario 2 the DM room is auto-selected; we need scenario-1 room active
-    // so the "Invite people" button appears in the toolbar for the correct room.
+    // so the "Invite people" action in the header's More actions menu targets the
+    // correct room.
     await page
       .locator('button.channel', { hasText: ROOM_NAME })
       .first()
       .click();
 
-    // The "Invite people" button is gated on activeRoom() being non-null.
-    const inviteBtn = page.getByTestId('invite-people');
+    // Since #1009 the header has no standalone invite button; it lives in the
+    // "More actions" menu, which is gated on activeRoom() being non-null.
+    const overflow = page.getByTestId('room-actions-overflow');
+    await overflow.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
+    await overflow.click();
+    const inviteBtn = page.getByTestId('overflow-invite-people');
     await inviteBtn.waitFor({ state: 'visible', timeout: STEP_TIMEOUT });
     await inviteBtn.click();
 
