@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { defer, finalize, of, type Observable } from 'rxjs';
 import { EditHistoryComponent } from './edit-history.component';
 import { type MatrixLinkClickTarget } from '../matrix-link/matrix-link.directive';
@@ -16,7 +16,7 @@ import { type MatrixLinkClickTarget } from '../matrix-link/matrix-link.directive
  */
 @Injectable({ providedIn: 'root' })
 export class EditHistoryDialogService {
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private showing = false;
 
   /** Show the versions of `eventId` in `roomId`; resolves a followed permalink, or null. */

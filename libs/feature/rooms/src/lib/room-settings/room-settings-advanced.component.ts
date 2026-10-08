@@ -11,7 +11,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
 import {
-  TrnDialogService,
+  TrnSurfaceService,
   TrnSettingsGroupComponent,
   TrnToastService,
 } from '@trinity/components/overlay';
@@ -55,7 +55,7 @@ export class RoomSettingsAdvancedComponent implements OnInit {
   private readonly settings = inject(RoomSettingsService);
   private readonly upgrades = inject(RoomUpgradeService);
   private readonly homeservers = inject(HomeserverInfoService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly capabilities = computed(

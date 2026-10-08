@@ -6,6 +6,7 @@ import {
   type ConnectedPosition,
   type PositionStrategy,
 } from '@angular/cdk/overlay';
+import { isMobileOs } from '@trinity/platform-native';
 import { BELOW_MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import { defer, map, merge, take, type Observable } from 'rxjs';
 import {
@@ -29,8 +30,7 @@ export interface DialogOptions<C = object> {
    * Where the panel sits. `'center'` (default) is a centered modal card;
    * `'inline-end'` pins it full-height against the logical end edge — the
    * split-pane side panel (the surface recipe supplies its own bounded geometry).
-   * Replaces the Ionic `justify-content: flex-end` modal css. Below `md`, `'center'` opens
-   * as a full-width bottom sheet instead; see {@link TrnDialogRef.presentation}.
+   * `'bottom'` is a full-width bottom sheet; the surface service picks it by {@link prefersSheet}.
    */
   placement?: TrnDialogPlacement;
   /** Prevent backdrop/escape close (Ionic backdropDismiss: false). */
@@ -75,6 +75,8 @@ export interface DialogOptions<C = object> {
    * screen has nowhere to go and lands under a thumb; touch keeps the centred modal.
    */
   anchor?: HTMLElement;
+  /** `false` when the opener restores focus itself, e.g. after a row opens another surface. */
+  restoreFocus?: boolean;
 }
 
 /** The viewport height left below the desktop title row (the full viewport elsewhere). */
@@ -121,8 +123,13 @@ const POPOVER_POSITIONS: ConnectedPosition[] = [
   },
 ];
 
+/** The sheet rule: any phone or tablet, or any screen narrower than `md`. */
+export function prefersSheet(): boolean {
+  return isMobileOs() || matchesQuery(BELOW_MD_QUERY);
+}
+
 /** Touch pointers get the centred modal; see {@link DialogOptions.anchor}. */
-function prefersCentred(): boolean {
+export function prefersCentred(): boolean {
   return (
     typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
   );
@@ -163,8 +170,7 @@ export function dialogPresentation(
       ? 'fullscreen'
       : anchor
         ? 'popover'
-        : placement === 'bottom' ||
-            (placement === 'center' && matchesQuery(BELOW_MD_QUERY))
+        : placement === 'bottom'
           ? 'sheet'
           : 'dialog';
   const fullScreen = presentation === 'fullscreen';
@@ -176,6 +182,7 @@ export function dialogPresentation(
         .flexibleConnectedTo(anchor)
         .withPositions(POPOVER_POSITIONS)
         .withFlexibleDimensions(false)
+        .withViewportMargin(8)
         .withPush(true)
     : placement === 'inline-end'
       ? overlay.position().global().top('0').right('0')
@@ -198,6 +205,9 @@ export function dialogPresentation(
         height: VIEWPORT_BELOW_TITLE_ROW,
         maxWidth: '100vw',
         maxHeight: VIEWPORT_BELOW_TITLE_ROW,
+      }),
+      ...(presentation === 'popover' && {
+        maxHeight: 'calc(100dvh - var(--trinity-title-row-inset, 0px) - 1rem)',
       }),
       ...(sheet && {
         width: '100vw',
@@ -268,7 +278,9 @@ export class TrnDialogService {
         ? ['cdk-overlay-transparent-backdrop']
         : ['cdk-overlay-dark-backdrop'],
       disableClose: opts.disableClose ?? false,
-      closeOnNavigation: !opts.dismissGuard,
+      // CDK would close on popstate before the router's Back guard can run the surface's own
+      // Back step; that guard closes the topmost surface and keeps the route instead.
+      closeOnNavigation: false,
       closePredicate: (result, _config, instance) =>
         result !== undefined ||
         !opts.dismissGuard ||
@@ -279,6 +291,7 @@ export class TrnDialogService {
       // a spread, so an `autoFocus: undefined` key would clobber the default instead of
       // falling back to it.
       autoFocus: opts.autoFocus ?? 'first-tabbable',
+      restoreFocus: opts.restoreFocus ?? true,
       ...pane,
       // Give the component and opener the same vendor-neutral handle. Besides closing, this
       // lets a semantic surface prove that its own dialog is topmost without exposing CDK.
@@ -303,6 +316,11 @@ export class TrnDialogService {
   /** Whether a ref returned by this wrapper is currently the top shared overlay. */
   isTopmost(ref: TrnDialogRef<unknown>): boolean {
     return this.refs.get(ref) === this.dialog.openDialogs.at(-1);
+  }
+
+  /** The component an open ref presents, for overlay internals that measure their own DOM. */
+  componentOf<C>(ref: TrnDialogRef<unknown>): C | null {
+    return (this.refs.get(ref)?.componentInstance as C | undefined) ?? null;
   }
 
   /** Open and resolve the component's close value (null if dismissed without one). */

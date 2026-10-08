@@ -9,7 +9,7 @@ import {
 function setup(data: PushGatewayTrustData) {
   const close = vi.fn();
   return render(PushGatewayTrustDialogComponent, {
-    // `data` arrives as a required input, the way TrnDialogService.open applies its
+    // `data` arrives as a required input, the way TrnSurfaceService.open applies its
     // `inputs` bag — the render wrapper calls setInput before the first change
     // detection, so the computed that reads it never sees an unset signal.
     inputs: { data },

@@ -1,4 +1,3 @@
-import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import {
   RoomSettingsService,
   RoomAliasesService,
@@ -14,7 +13,6 @@ import {
   setRouteRoom,
   settleWorkspace,
   shellFrom,
-  stubLiveLayout,
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -35,7 +33,7 @@ import {
 } from '@trinity/data-access/room-library';
 import {
   TrnAlertService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
@@ -191,7 +189,7 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(JumpToDateService),
-        MockProvider(TrnDialogService, { openAndWait$: dialogOpen }),
+        MockProvider(TrnSurfaceService, { openAndWait$: dialogOpen }),
         MockProvider(TrnToastService, { show: toastShow }),
         MockProvider(RoomNotificationsService, {
           setModeForAccounts: setNotifyMode,
@@ -510,7 +508,6 @@ describe('RoomsPage action error feedback', () => {
 
     expect(dialogOpen).toHaveBeenCalledWith(SpaceSettingsComponent, {
       ariaLabel: 'Space settings',
-      placement: 'center',
       autoFocus: '[data-autofocus]',
       dismissGuard: expect.any(Function),
       inputs: {
@@ -522,8 +519,7 @@ describe('RoomsPage action error feedback', () => {
     });
   });
 
-  it('opens Space settings centred below md, which the dialog service shows as a sheet', async () => {
-    const restore = stubLiveLayout({ [BELOW_MD_QUERY]: true });
+  it('opens Space settings without choosing a placement of its own', async () => {
     const shell = build();
     shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
     await settleWorkspace();
@@ -532,9 +528,8 @@ describe('RoomsPage action error feedback', () => {
 
     expect(dialogOpen).toHaveBeenCalledWith(
       SpaceSettingsComponent,
-      expect.objectContaining({ placement: 'center' }),
+      expect.not.objectContaining({ placement: expect.anything() }),
     );
-    restore();
   });
 
   it('offers no history visibility to the space dialog', async () => {
@@ -640,7 +635,6 @@ describe('RoomsPage action error feedback', () => {
     // The label names the space, so the id alone is not enough to pass through.
     expect(dialogOpen).toHaveBeenCalledWith(RoomSettingsComponent, {
       ariaLabel: 'Room settings',
-      placement: 'center',
       autoFocus: '[data-autofocus]',
       dismissGuard: expect.any(Function),
       inputs: {

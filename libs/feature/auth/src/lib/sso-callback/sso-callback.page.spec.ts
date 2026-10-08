@@ -1,13 +1,17 @@
 import { Location } from '@angular/common';
 import { ActivatedRoute, Router, type ParamMap } from '@angular/router';
 import { render } from '@trinity/testing';
-import { AuthService } from '@trinity/data-access/auth';
+import {
+  AuthService,
+  OidcStateStore,
+  SsoStateStore,
+  type OidcStateStash,
+  type SsoStateStash,
+} from '@trinity/data-access/auth';
 import { MockProvider } from 'ng-mocks';
 import { from, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { SsoCallbackPage } from './sso-callback.page';
-import { SsoStateStore, type SsoStateStash } from '../sso-state.store';
-import { OidcStateStore, type OidcStateStash } from '../oidc-state.store';
 
 const EMPTY_SSO: SsoStateStash = {
   state: null,

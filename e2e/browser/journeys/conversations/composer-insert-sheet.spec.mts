@@ -117,7 +117,7 @@ test.describe('Mobile composer insert sheet', () => {
         );
         const rows = [
           ...document.querySelectorAll<HTMLElement>('[data-testid^=insert-]'),
-        ].filter((row) => row.closest('trn-action-sheet'));
+        ].filter((row) => row.closest('trn-action-list'));
         if (!surface || rows.length === 0)
           throw new Error('sheet is incomplete');
         const box = surface.getBoundingClientRect();

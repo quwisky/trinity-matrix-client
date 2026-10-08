@@ -19,6 +19,14 @@ const sections: readonly TrnSettingsLayoutSection[] = [
   { id: 'advanced', label: 'Advanced', icon: 'code', group: 'More' },
 ];
 
+const sheetRef = {
+  provide: TrnDialogRef,
+  useValue: new TrnDialogRef(
+    { closed: new Subject(), close: () => undefined },
+    'sheet',
+  ),
+};
+
 @Component({
   imports: [TrnSettingsLayoutComponent],
   template: `
@@ -181,7 +189,7 @@ describe('TrnSettingsLayoutComponent', () => {
     },
   );
 
-  it('frames a sheet its host presents in the same shell', async () => {
+  it('frames a sheet opened by the dialog service', async () => {
     const { container, getAllByRole } = await render(
       TrnSettingsLayoutComponent,
       {
@@ -191,9 +199,8 @@ describe('TrnSettingsLayoutComponent', () => {
           selectedSection: 'general',
           compact: true,
           directoryVisible: false,
-          presentation: 'sheet',
         },
-        providers: [provideTrnIcons()],
+        providers: [provideTrnIcons(), sheetRef],
       },
     );
     expect(
@@ -213,9 +220,8 @@ describe('TrnSettingsLayoutComponent', () => {
         selectedSection: 'general',
         compact: true,
         directoryVisible: false,
-        presentation: 'sheet',
       },
-      providers: [provideTrnIcons()],
+      providers: [provideTrnIcons(), sheetRef],
     });
     const back = getByRole('button', { name: 'Back to sections' });
     const heading = getByRole('heading', { level: 1, name: 'Overview' });
@@ -231,9 +237,8 @@ describe('TrnSettingsLayoutComponent', () => {
         selectedSection: null,
         compact: true,
         directoryVisible: true,
-        presentation: 'sheet',
       },
-      providers: [provideTrnIcons()],
+      providers: [provideTrnIcons(), sheetRef],
     });
     const listHead = container.querySelector('.settings-layout__list-head');
     expect(listHead?.querySelector('h1')?.textContent?.trim()).toBe('Settings');

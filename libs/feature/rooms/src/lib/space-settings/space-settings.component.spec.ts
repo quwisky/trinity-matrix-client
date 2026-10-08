@@ -3,7 +3,7 @@ import { render } from '@trinity/testing';
 import {
   TrnAlertService,
   TrnDialogRef,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import {
@@ -202,7 +202,7 @@ async function build(options: BuildOptions = {}) {
         }),
       }),
       MockProvider(RoomModerationService, { unban: () => of(undefined) }),
-      MockProvider(TrnDialogService, { isTopmost: () => true }),
+      MockProvider(TrnSurfaceService, { isTopmost: () => true }),
       MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnAlertService, { confirm$: confirm }),
       MockProvider(TrnToastService, { show: toast }),

@@ -37,7 +37,7 @@ import {
 } from '@trinity/data-access/timeline';
 import {
   TrnAlertService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
@@ -166,7 +166,7 @@ describe('RoomsPage quick switcher', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(TrnDialogService, { hasOpen: dialogHasOpen }),
+        MockProvider(TrnSurfaceService, { hasOpen: dialogHasOpen }),
         MockProvider(TrnAlertService),
         MockProvider(TrnToastService),
       ],
@@ -450,7 +450,7 @@ describe('RoomsPage mobile navigation', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(TrnDialogService),
+        MockProvider(TrnSurfaceService),
         MockProvider(TrnToastService),
       ],
     });
@@ -1081,7 +1081,7 @@ describe('RoomsPage account switcher summary', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(TrnDialogService),
+        MockProvider(TrnSurfaceService),
         MockProvider(TrnToastService),
       ],
     });
@@ -1184,7 +1184,7 @@ describe('RoomsPage keyboard room switching', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(TrnDialogService, { hasOpen: () => dialogOpen }),
+        MockProvider(TrnSurfaceService, { hasOpen: () => dialogOpen }),
         MockProvider(TrnToastService),
       ],
     });
@@ -1550,7 +1550,7 @@ describe('RoomsPage room-in-URL deep link', () => {
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
-        MockProvider(TrnDialogService),
+        MockProvider(TrnSurfaceService),
         MockProvider(TrnToastService),
       ],
     });

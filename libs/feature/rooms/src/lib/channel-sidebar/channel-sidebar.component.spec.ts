@@ -426,16 +426,19 @@ describe('ChannelSidebarComponent', () => {
     expect(document.querySelector('[data-testid="mark-all-read"]')).toBeNull();
   });
 
-  it('emits newChat from the Home "+" affordance', async () => {
+  it('emits newChat with the Home "+" button it was opened from', async () => {
     const { fixture, container } = await renderSidebar();
+    const opened: HTMLElement[] = [];
+    fixture.componentInstance.newChat.subscribe((anchor) =>
+      opened.push(anchor),
+    );
+    const plus = container.querySelector<HTMLElement>(
+      '[aria-label="New room or direct message"]',
+    )!;
 
-    let opened = false;
-    fixture.componentInstance.newChat.subscribe(() => (opened = true));
-    container
-      .querySelector<HTMLElement>('[aria-label="New room or direct message"]')!
-      .click();
+    plus.click();
 
-    expect(opened).toBe(true);
+    expect(opened).toEqual([plus]);
   });
 
   it('shows the space actions and emits createRoom / inviteToSpace / leaveSpace', async () => {
