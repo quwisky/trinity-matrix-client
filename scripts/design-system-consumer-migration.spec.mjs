@@ -155,7 +155,7 @@ describe('migrated application design-system consumers', () => {
       );
     }
 
-    expect(roomNavigationTemplates).toHaveLength(7);
+    expect(roomNavigationTemplates).toHaveLength(8);
     const roomNavigationAvatars = tagsFrom(
       roomNavigationTemplates,
       /<trn-avatar\b[^>]*>/gu,
