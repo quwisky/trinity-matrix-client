@@ -1,14 +1,5 @@
-<div
-  class="system-status__backdrop"
-  aria-hidden="true"
-  (click)="status.close()"
-></div>
 <trn-settings-layout
-  role="dialog"
-  aria-modal="true"
-  aria-label="System status"
   title="System status"
-  [presentation]="presentation"
   [heading]="heading()"
   closeLabel="Close System status"
   [sections]="sections()"
@@ -19,7 +10,7 @@
   closeTestId="system-status-close"
   (sectionSelected)="selectSection($event)"
   (backRequested)="back()"
-  (closeRequested)="status.close()"
+  (closeRequested)="close()"
 >
   <div class="system-status__content">
     @if (selectedSection() === 'support') {

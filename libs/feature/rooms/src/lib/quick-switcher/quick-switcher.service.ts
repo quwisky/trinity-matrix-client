@@ -1,11 +1,11 @@
 import { Injectable, inject } from '@angular/core';
 import { type SwitcherSelection } from '@trinity/application/search';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { defer, finalize, of, type Observable } from 'rxjs';
 import { QuickSwitcherComponent } from './quick-switcher.component';
 
 /**
- * Presents the {@link QuickSwitcherComponent} as a {@link TrnDialogService} dialog
+ * Presents the {@link QuickSwitcherComponent} as a {@link TrnSurfaceService} dialog
  * and resolves the chosen {@link SwitcherSelection} (or `null` when cancelled).
  * Wraps the dialog so its caller can hand the fully qualified result to Workspace —
  * mirroring {@link UserPickerService}.
@@ -15,7 +15,7 @@ import { QuickSwitcherComponent } from './quick-switcher.component';
  */
 @Injectable({ providedIn: 'root' })
 export class QuickSwitcherService {
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private open = false;
 
   /**

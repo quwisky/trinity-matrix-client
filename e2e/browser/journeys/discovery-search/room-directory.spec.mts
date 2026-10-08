@@ -54,11 +54,11 @@ test.describe('Room directory', () => {
       pass: joinerPass,
     } as HomeserverSession);
 
-    // Home "+" → the new-message action sheet → Explore public rooms.
+    // Home "+" → the new-message menu → Explore public rooms.
     await page.click('button[aria-label="New room or direct message"]');
-    const sheet = page.locator('trn-action-sheet');
-    await sheet.waitFor({ state: 'visible', timeout: 15_000 });
-    await sheet.getByRole('button', { name: 'Explore public rooms' }).click();
+    const menu = page.getByRole('menu', { name: 'New message' });
+    await menu.waitFor({ state: 'visible', timeout: 15_000 });
+    await menu.getByRole('menuitem', { name: 'Explore public rooms' }).click();
 
     // The directory dialog opens; search for the room by name.
     await expect(page.getByTestId('room-directory')).toBeVisible({

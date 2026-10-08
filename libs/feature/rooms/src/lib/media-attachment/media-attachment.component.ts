@@ -11,10 +11,10 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { EMPTY, Subscription, catchError } from 'rxjs';
-import { BELOW_MD_QUERY, matchesQuery, runWithBusy } from '@trinity/util/ui';
+import { runWithBusy } from '@trinity/util/ui';
 import { MediaBubbleComponent } from '../media-bubble/media-bubble.component';
 import {
-  TrnDialogService,
+  TrnSurfaceService,
   type TrnDialogRef,
 } from '@trinity/components/overlay';
 import {
@@ -44,7 +44,7 @@ export class MediaAttachmentComponent {
   readonly media = input.required<PresentedMediaReference>();
 
   private readonly mediaPipeline = inject(MediaPipeline);
-  private readonly dialogs = inject(TrnDialogService);
+  private readonly dialogs = inject(TrnSurfaceService);
   private readonly mediaSave = inject(MediaSaveService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -162,7 +162,7 @@ export class MediaAttachmentComponent {
                 media: this.media(),
               },
               ariaLabel: this.media().filename,
-              placement: matchesQuery(BELOW_MD_QUERY) ? 'fullscreen' : 'center',
+              kind: this.dialogs.prefersSheet() ? 'fullscreen' : 'auto',
               // Keep the full viewer container as the initial focus target. The visible close
               // button remains keyboard reachable, while Escape/backdrop dismissal stay intact.
               autoFocus: 'dialog',

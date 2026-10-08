@@ -223,8 +223,8 @@ export class ChannelSidebarComponent {
    */
   readonly accountBadges = input<ReadonlyMap<string, AccountBadge>>(new Map());
   readonly selectRoom = output<{ roomId: string; accountId: string }>();
-  /** Header "+" on Home — raise the new-room / new-DM chooser. */
-  readonly newChat = output<void>();
+  /** Header "+" on Home — raise the new-room / new-DM chooser beside this button. */
+  readonly newChat = output<HTMLElement>();
   /** Header "+" in a space — raise the create-a-channel flow. */
   readonly createRoom = output<void>();
   /** "Invite people", from the space overflow menu — raise the invite-to-space flow. */

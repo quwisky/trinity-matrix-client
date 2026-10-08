@@ -60,7 +60,7 @@ interface HighlightPart {
  *
  * The query field is focused when the panel appears, by this component.
  *
- * That used to be CDK's job: search was a dialog, and `TrnDialogService` was passed
+ * That used to be CDK's job: search was a dialog, and `TrnSurfaceService` was passed
  * `autoFocus: '[data-autofocus]'`. Rendered inline in the shell's panel slot there is no CDK
  * focus pass, so without the call below opening search would leave focus wherever it was and
  * a keyboard user would have to tab into the field they just asked for. The marker attribute
