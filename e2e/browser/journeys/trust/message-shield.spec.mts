@@ -295,6 +295,9 @@ test.describe('Message authenticity shields', () => {
           // The receipts are a `display: contents` component, so its host is the grid child.
           receiptIsBodyChild:
             receiptEl.closest('trn-message-receipts')?.parentElement === bodyEl,
+          receiptsHostDisplay: getComputedStyle(
+            receiptEl.closest('trn-message-receipts')!,
+          ).display,
           shieldTrailingGap: trailingGap(shieldBox),
           receiptTrailingGap: trailingGap(receipt),
           contentOverlapsShield: overlaps(content, shieldBox),
@@ -308,6 +311,7 @@ test.describe('Message authenticity shields', () => {
       expect(geometry).not.toBeNull();
       expect(geometry!.shieldIsBodyChild).toBe(true);
       expect(geometry!.receiptIsBodyChild).toBe(true);
+      expect(geometry!.receiptsHostDisplay).toBe('contents');
       expect(Math.abs(geometry!.shieldTrailingGap)).toBeLessThanOrEqual(1);
       expect(Math.abs(geometry!.receiptTrailingGap)).toBeLessThanOrEqual(1);
       expect(geometry!.contentOverlapsShield).toBe(false);

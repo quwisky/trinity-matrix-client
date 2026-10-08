@@ -17,6 +17,7 @@ import { AvatarComponent } from '@trinity/components/generic-content';
 import {
   MessageSwipeDirective,
   SWIPE_DEAD_ZONE_PX,
+  SWIPE_SLOP_PX,
   type SwipeDirection,
 } from './message-swipe.directive';
 import { MatrixHtmlDirective } from '../message-presentation/matrix-html.directive';
@@ -111,8 +112,8 @@ export type MessageRowAction =
 
 /** How long a press has to be held before it counts as one, in milliseconds. */
 const LONG_PRESS_MS = 500;
-/** How far the pointer may drift before the press is a scroll instead. */
-const LONG_PRESS_SLOP_PX = 10;
+/** How far the pointer may drift before the press is a scroll instead. Must equal the swipe's slop. */
+const LONG_PRESS_SLOP_PX = SWIPE_SLOP_PX;
 
 export { SWIPE_DEAD_ZONE_PX, type SwipeDirection };
 

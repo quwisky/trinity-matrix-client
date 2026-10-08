@@ -3,6 +3,7 @@
   class="msg__receipts msg__target"
   data-testid="read-receipts"
   [attr.aria-label]="seenByLabel()"
+  [attr.aria-expanded]="seenByOpen()"
   [trnTooltip]="seenByLabel()"
   (click)="seenByOpen.set(!seenByOpen())"
 >

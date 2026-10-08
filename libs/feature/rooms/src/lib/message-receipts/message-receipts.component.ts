@@ -24,8 +24,6 @@ import { type ReceiptView } from '@trinity/data-access/timeline';
   styleUrl: './message-receipts.component.scss',
 })
 export class MessageReceiptsComponent {
-  readonly receipts = input.required<readonly ReceiptView[]>();
-
   /** Whether the "seen by" reader list is expanded. */
   protected readonly seenByOpen = signal(false);
 
@@ -36,4 +34,6 @@ export class MessageReceiptsComponent {
         .map((r) => r.name)
         .join(', ')}`,
   );
+
+  readonly receipts = input.required<readonly ReceiptView[]>();
 }

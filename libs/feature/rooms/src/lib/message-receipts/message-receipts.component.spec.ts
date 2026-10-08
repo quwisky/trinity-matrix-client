@@ -24,9 +24,15 @@ describe('MessageReceiptsComponent', () => {
       { inputs: { receipts } },
     );
     expect(queryByTestId('seen-by-list')).toBeNull();
+    expect(getByTestId('read-receipts').getAttribute('aria-expanded')).toBe(
+      'false',
+    );
 
     getByTestId('read-receipts').click();
     fixture.detectChanges();
+    expect(getByTestId('read-receipts').getAttribute('aria-expanded')).toBe(
+      'true',
+    );
     expect(getByTestId('seen-by-list').textContent).toContain(
       'Seen by Alice, Bob',
     );

@@ -30,7 +30,7 @@ const SWIPE_COMMIT_FRACTION = 0.25;
 const SWIPE_VERTICAL_SLOP_PX = 12;
 
 /** Horizontal travel that makes a drag definitely a swipe; the row's long-press slop. */
-const SWIPE_SLOP_PX = 10;
+export const SWIPE_SLOP_PX = 10;
 
 /** Which way a row is dragged to act on it, as resolved by whoever renders the row. */
 export type SwipeDirection = 'off' | 'left' | 'right';

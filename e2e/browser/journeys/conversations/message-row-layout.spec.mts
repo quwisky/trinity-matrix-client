@@ -1,10 +1,8 @@
-import { writeFileSync } from 'node:fs';
 import {
   testResourceId,
   test,
   expect,
   devices,
-  type APIRequestContext,
   type Page,
 } from '../../../fixtures.mts';
 import {
@@ -13,35 +11,14 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { apiLogin } from '../../support/multi-account-journey.mts';
 
 // Pins the message row's grid placement: the gutter standing in for the avatar, the header
 // time, and the receipts with their "seen by" list sit where the stylesheet puts them. The
 // row host is `display: contents` and `.msg__body` is a grid, so a child component that
 // gained a box of its own would move these without any unit test noticing; jsdom does no
-// layout. Set TRN_ROW_LAYOUT_DUMP to a path to also write the raw measurements, which is how
-// a refactor of the row is compared before and after.
+// layout.
 const session = homeserverSession();
-
-async function apiLogin(
-  request: APIRequestContext,
-  hs: string,
-  user: string,
-  pass: string,
-) {
-  const json = await request
-    .post(`${hs}/_matrix/client/v3/login`, {
-      data: {
-        type: 'm.login.password',
-        identifier: { type: 'm.id.user', user },
-        password: pass,
-      },
-    })
-    .then((r) => r.json());
-  return {
-    userId: json.user_id as string,
-    headers: { Authorization: `Bearer ${json.access_token}` },
-  };
-}
 
 async function measure(page: Page) {
   return page.evaluate(() => {
@@ -172,14 +149,6 @@ for (const [name, use] of [
       expect(tail.seenBy!.y + tail.seenBy!.h).toBeLessThanOrEqual(
         tail.msg!.y + tail.msg!.h + 1,
       );
-
-      const dump = process.env['TRN_ROW_LAYOUT_DUMP'];
-      if (dump) {
-        writeFileSync(
-          `${dump}.${name.replace(' ', '')}.json`,
-          JSON.stringify(rows, null, 1),
-        );
-      }
     });
   });
 }

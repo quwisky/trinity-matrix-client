@@ -43,6 +43,7 @@
     }
   }
 
+  // Keep in sync with message-row.component.scss (the row's own `.msg__target`).
   .msg__target:focus-visible {
     outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
     outline-offset: var(--trinity-focus-ring-offset);
