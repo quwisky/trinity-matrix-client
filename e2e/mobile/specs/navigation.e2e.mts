@@ -127,6 +127,35 @@ describe('Android navigation', () => {
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
   });
 
+  it('steps System status back to its sections, then closes it, on hardware Back', async () => {
+    const { user, pass, roomName } = await seedComposerRoom();
+    await login(user, pass);
+    await tap('[data-testid="rail-rooms"]');
+    const room = $(
+      `//button[contains(@class,"channel")][contains(.,"${roomName}")]`,
+    );
+    await expect(room).toBeDisplayed({ wait: 30_000 });
+    await room.click();
+    await expect($('[data-testid="composer-input"]')).toBeDisplayed({
+      wait: 20_000,
+    });
+
+    await tap('[data-testid="room-actions-overflow"]');
+    await tap('[data-testid="overflow-open-system-status"]');
+    const status = $('[role="dialog"][aria-label="System status"]');
+    await expect(status).toBeDisplayed({ wait: 10_000 });
+    await expect($('[data-testid="sheet-handle"]')).toBeDisplayed();
+    const sections = $('nav[aria-label="System status sections"]');
+    await expect(sections).not.toBeDisplayed();
+
+    await pressBack();
+    await expect(sections).toBeDisplayed({ wait: 5_000 });
+    await expect(status).toBeDisplayed();
+    await pressBack();
+    await expect(status).not.toBeDisplayed({ wait: 10_000 });
+    await expect($('[data-testid="composer-input"]')).toBeDisplayed();
+  });
+
   it('dismisses the native keyboard before opening a bounded sheet and handles hardware Back', async () => {
     const { user, pass, roomName } = await seedComposerRoom();
     await login(user, pass);

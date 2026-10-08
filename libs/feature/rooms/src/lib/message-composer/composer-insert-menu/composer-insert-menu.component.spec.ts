@@ -21,7 +21,7 @@ function trayItems(): HTMLButtonElement[] {
 function sheetItems(): HTMLButtonElement[] {
   return [
     ...document.querySelectorAll<HTMLButtonElement>('[data-testid^=insert-]'),
-  ].filter((item) => item.closest('trn-action-sheet'));
+  ].filter((item) => item.closest('trn-action-list'));
 }
 
 describe('ComposerInsertMenuComponent', () => {
@@ -309,13 +309,13 @@ describe('ComposerInsertMenuComponent', () => {
       );
       trigger?.click();
       await fixture.whenStable();
-      expect(document.querySelector('trn-action-sheet')).not.toBeNull();
+      expect(document.querySelector('trn-action-list')).not.toBeNull();
 
       fixture.componentRef.setInput(inputName, nextValue);
       fixture.detectChanges();
       await fixture.whenStable();
 
-      expect(document.querySelector('trn-action-sheet')).toBeNull();
+      expect(document.querySelector('trn-action-list')).toBeNull();
       expect(
         container
           .querySelector('[data-testid=composer-insert]')

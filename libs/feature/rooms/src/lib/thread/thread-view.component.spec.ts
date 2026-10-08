@@ -3,8 +3,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import {
   TrnAlertService,
-  TrnActionSheetService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
@@ -153,9 +152,12 @@ async function build(
   const sheetClose = vi.fn();
   // `closed` too: the real `TrnDialogRef` has it, and the service subscribes to release
   // the dead ref. A stub missing part of the API turns a correct change into a red suite.
-  const sheetOpen = vi
-    .fn()
-    .mockReturnValue({ close: sheetClose, closed: new Subject() });
+  const sheetOpen = vi.fn().mockReturnValue({
+    close: sheetClose,
+    closed: new Subject(),
+    presentation: 'sheet',
+    surface: null,
+  });
   const membersFor = vi.fn((roomId: string | null) =>
     roomId === '!r:hs'
       ? roster.asReadonly()
@@ -248,10 +250,12 @@ async function build(
       },
       MockProvider(TimelineActionsService),
       MockProvider(RoomMembersService, { membersFor }),
-      MockProvider(TrnDialogService, { open: sourceOpen }),
+      MockProvider(TrnSurfaceService, {
+        open: sourceOpen,
+        openActions: sheetOpen,
+      }),
       MockProvider(TrnAlertService, { confirm$ }),
       MockProvider(TrnToastService, { show: toastShow }),
-      { provide: TrnActionSheetService, useValue: { open: sheetOpen } },
       // Seeded to a real direction. Left unprovided, the root service returns its `off`
       // default and every assertion below reads the value the guards would have produced
       // anyway — which is how three of these tests passed with both guards deleted.

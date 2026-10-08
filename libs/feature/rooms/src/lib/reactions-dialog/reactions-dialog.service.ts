@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { defer, EMPTY, finalize, map, type Observable } from 'rxjs';
 import { ReactionsDialogComponent } from './reactions-dialog.component';
 
@@ -12,7 +12,7 @@ import { ReactionsDialogComponent } from './reactions-dialog.component';
  */
 @Injectable({ providedIn: 'root' })
 export class ReactionsDialogService {
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private showing = false;
 
   /** Cold command showing who reacted to `eventId`, opening on its first reaction. */
