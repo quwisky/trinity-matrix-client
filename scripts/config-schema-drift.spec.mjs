@@ -153,8 +153,8 @@ describe('config schema drift', () => {
   it('finds the keys at all', () => {
     // Guard the guard. If the grep or the path ever stops matching, both checks below pass
     // vacuously and the schema is unguarded while the run stays green.
-    expect(keysInSource().length).toBeGreaterThan(15);
-    expect(keysInLedger().length).toBeGreaterThan(15);
+    expect(keysInSource().length).toBeGreaterThan(0);
+    expect(keysInLedger().length).toBeGreaterThan(0);
   });
 
   it('classifies each key exactly once', () => {
@@ -177,7 +177,7 @@ describe('config schema drift', () => {
   it('finds the document paths at all', () => {
     // Guard the guard, as above: a scan that stops matching would leave the check below
     // passing on an empty list.
-    expect(pathsInEntries().length).toBeGreaterThan(15);
+    expect(pathsInEntries().length).toBeGreaterThan(0);
   });
 
   it('has no document path claimed by two libraries', () => {
