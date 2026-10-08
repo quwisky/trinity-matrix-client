@@ -1423,7 +1423,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
   });
 
   it('keeps the old pair in memory when the refreshed tokens cannot be persisted', async () => {
-    fakeNetwork('rotate');
+    const net = fakeNetwork('rotate');
     const { svc, storage, client } = await startReal();
     vi.mocked(storage.updateTokens).mockReturnValue(
       throwError(() => new Error('secure store locked')),
@@ -1433,6 +1433,8 @@ describe('OAuth tokens through a real MatrixClient', () => {
 
     expect(client.getAccessToken()).toBe('tok');
     expect(client.getRefreshToken()).toBe('refresh-tok');
+    expect(net.grants).toHaveLength(1);
+    expect(storage.updateTokens).toHaveBeenCalledOnce();
     expectStillSignedIn(svc, client);
   });
 
@@ -1460,12 +1462,13 @@ describe('OAuth tokens through a real MatrixClient', () => {
 
     await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
 
+    expect(net.calls).toContain('POST op.example/token');
     expectStillSignedIn(svc, client);
   });
 
   it('refreshes once for concurrent expired requests', async () => {
     const net = fakeNetwork('rotate');
-    const { client } = await startReal();
+    const { svc, client } = await startReal();
 
     await Promise.all([client.whoami(), client.whoami()]);
 
@@ -1473,6 +1476,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
     expect(
       net.calls.filter((call) => call.endsWith('/auth_metadata')),
     ).toHaveLength(1);
+    expectStillSignedIn(svc, client);
   });
 
   it("persists each account's refreshed tokens under that account", async () => {
@@ -1502,10 +1506,34 @@ describe('OAuth tokens through a real MatrixClient', () => {
         client.getRefreshToken(),
         expect.any(Number),
       );
+      expectStillSignedIn(svc, client, userId);
     }
     expect(net.grants.map((grant) => grant.get('client_id')).sort()).toEqual([
       'client-1',
       'client-2',
     ]);
   });
+
+  it.each(['omit', 'empty'] as const)(
+    'keeps the current refresh token when the provider does not rotate it (%s)',
+    async (rotation) => {
+      const net = fakeNetwork(rotation);
+      const { svc, storage, client } = await startReal();
+
+      await expect(client.whoami()).resolves.toBeDefined();
+      expect(client.getRefreshToken()).toBe('refresh-tok');
+      expect(storage.updateTokens).toHaveBeenLastCalledWith(
+        '@me:hs',
+        'at-2',
+        'refresh-tok',
+        expect.any(Number),
+      );
+
+      // The second expiry is where unpatched 43 finds no refresh token, logs out and wipes.
+      net.expireAll();
+      await expect(client.whoami()).resolves.toBeDefined();
+      expect(net.grants[1].get('refresh_token')).toBe('refresh-tok');
+      expectStillSignedIn(svc, client);
+    },
+  );
 });
