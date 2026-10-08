@@ -626,3 +626,14 @@ jobs:
         with:
           surface: scheduled
           report-path: dist/.playwright/**/**
+
+  # Weekly run only: opens, updates and closes the "Nightly E2E failing" issue.
+  notify:
+    name: Scheduled E2E issue
+    needs: [scheduled-e2e]
+    if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    permissions:
+      issues: write
+    uses: ./.github/workflows/_nightly-alert.yml
+    with:
+      needs: ${{ toJSON(needs) }}
