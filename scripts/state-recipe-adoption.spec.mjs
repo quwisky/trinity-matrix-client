@@ -192,6 +192,10 @@ describe('empty-state recipe adoption: lists', () => {
       'data-testid="keyword-empty"',
     ],
     [
+      'libs/feature/settings/src/lib/notifications/keyword-rules-block.component.html',
+      'data-testid="keyword-loading"',
+    ],
+    [
       'libs/feature/settings/src/lib/shared/settings-directory-search/settings-directory-search.component.html',
       'body="No sections found."',
     ],

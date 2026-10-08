@@ -4,12 +4,11 @@
   data-testid="keyword-rules"
 >
   @if (isLoading()) {
-    <p
-      class="m-0 py-3 text-sm text-muted-foreground"
+    <trn-empty-state
+      layout="line"
+      body="Loading your keywords…"
       data-testid="keyword-loading"
-    >
-      Loading your keywords…
-    </p>
+    />
   } @else if (isEmpty()) {
     <trn-empty-state
       layout="line"
