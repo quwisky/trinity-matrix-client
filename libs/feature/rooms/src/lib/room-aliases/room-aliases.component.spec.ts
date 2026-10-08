@@ -141,6 +141,27 @@ describe('RoomAliasesComponent', () => {
     expect(container.textContent).toContain('#a:hs.example');
   });
 
+  it('offers Try again in a danger panel when the addresses cannot be loaded', async () => {
+    const localAliases = vi
+      .fn()
+      .mockReturnValueOnce(throwError(() => new Error('down')))
+      .mockReturnValue(of(['#a:hs.example']));
+    const { container, fixture } = await build({}, { localAliases });
+
+    expect(
+      container.querySelector('trn-empty-state[role="alert"]')?.textContent,
+    ).toContain('Addresses could not be loaded');
+    (
+      container.querySelector(
+        '[data-testid=room-aliases-retry]',
+      ) as HTMLButtonElement
+    ).click();
+    await fixture.whenStable();
+
+    expect(localAliases).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain('#a:hs.example');
+  });
+
   it('shows the empty state when the room has no addresses', async () => {
     const { container } = await build({ aliases: [] });
     expect(
