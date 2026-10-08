@@ -21,7 +21,6 @@ import {
   SWIPE_SLOP_PX,
   type SwipeDirection,
 } from './message-swipe.directive';
-import { MatrixHtmlDirective } from '../message-presentation/matrix-html.directive';
 import {
   MessageToolbarComponent,
   type MessageAction,
