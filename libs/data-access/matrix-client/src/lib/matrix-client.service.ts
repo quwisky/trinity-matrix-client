@@ -291,9 +291,9 @@ export class MatrixClientService {
   }
 
   /**
-   * An unstarted client for a stored session (no store, no crypto, no sync), for one-shot
-   * calls on an account that has no live client: `logout()` for a soft-logged-out OAuth
-   * account, whose tokens must still be revoked at its provider.
+   * An unstarted client for a stored session (no persistent store, no crypto, no sync),
+   * for one-shot calls on a stored account whose client never started: `logout()` for an
+   * OAuth account, whose tokens must still be revoked at its provider.
    */
   detachedClient(session: MatrixSession): MatrixClient {
     return createClient({

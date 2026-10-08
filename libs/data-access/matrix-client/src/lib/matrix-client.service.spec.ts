@@ -1559,6 +1559,10 @@ describe('OAuth tokens through a real MatrixClient', () => {
     await svc.detachedClient(OIDC_SESSION).logout(true);
 
     const opts = vi.mocked(createClient).mock.calls.at(-1)![0];
+    const c = vi.mocked(createClient).mock.results.at(-1)!.value;
+    expect(c.startClient).not.toHaveBeenCalled();
+    expect(c.initRustCrypto).not.toHaveBeenCalled();
+    expect(c.clearStores).not.toHaveBeenCalled();
     expect(opts).toMatchObject({
       baseUrl: 'https://hs.example',
       userId: '@me:hs',
