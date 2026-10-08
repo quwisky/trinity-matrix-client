@@ -1,0 +1,74 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+/**
+ * Each site here once re-implemented a public recipe in feature SCSS (#930 K5/E1). Every
+ * assertion names one site, so a regression points at the file that drifted. No totals:
+ * a new site is added as its own assertion, never by bumping a count.
+ */
+const root = join(import.meta.dirname, '..');
+const read = (file) => readFileSync(join(root, file), 'utf8');
+
+/** The one opening tag carrying `marker` (a testid, class or attribute), comments stripped. */
+function openingTag(file, marker) {
+  const html = read(file).replace(/<!--[\s\S]*?-->/gu, '');
+  const found = (html.match(/<[a-z][\w-]*\b[^>]*>/giu) ?? []).filter((tag) =>
+    tag.includes(marker),
+  );
+  expect(found, `${file}: ${marker}`).toHaveLength(1);
+  return found[0];
+}
+
+/** Declarations of the leaf rule whose selector list contains `selector`, or ''. */
+function styleRule(file, selector) {
+  const scss = read(file).replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/gu, '');
+  for (const match of scss.matchAll(/([^{};]+)\{([^{}]*)\}/gu)) {
+    const selectors = match[1].split(',').map((part) => part.trim());
+    if (selectors.includes(selector)) return match[2];
+  }
+  return '';
+}
+
+const surface = /\b(?:background|border|border-radius|box-shadow|padding)\s*:/u;
+
+describe('card recipe adoption', () => {
+  const packs =
+    'libs/feature/settings/src/lib/image-packs/image-packs-section.component';
+
+  it('renders installed and available image packs as muted cards', () => {
+    for (const testid of ['installed-image-pack', 'available-image-pack']) {
+      const tag = openingTag(`${packs}.html`, `data-testid="${testid}"`);
+      expect(tag).toMatch(/\btrnCard\b/u);
+      expect(tag).toMatch(/\bvariant="muted"/u);
+      expect(tag).toMatch(/\bclass="pack-card"/u);
+    }
+    expect(styleRule(`${packs}.scss`, '.pack-card')).not.toMatch(surface);
+  });
+
+  it('gives the encryption pages the card recipe instead of a surface mixin', () => {
+    expect(read('libs/feature/crypto/src/lib/styles/_mixins.scss')).not.toMatch(
+      /@mixin surface\b/u,
+    );
+    for (const page of [
+      'encryption-setup/encryption-setup.page',
+      'encryption-unlock/encryption-unlock.page',
+      'verification/device-verification.page',
+    ]) {
+      const file = `libs/feature/crypto/src/lib/${page}`;
+      const tag = openingTag(`${file}.html`, 'class="crypto-surface"');
+      expect(tag).toMatch(/\btrnCard\b/u);
+      expect(tag).toMatch(/\bvariant="muted"/u);
+      expect(tag).toMatch(/\bsize="md"/u);
+      expect(read(`${file}.scss`)).not.toMatch(/@include surface\b/u);
+    }
+  });
+
+  it('draws a poll as a muted card', () => {
+    const file = 'libs/feature/rooms/src/lib/poll/poll.component';
+    const tag = openingTag(`${file}.html`, 'data-testid="poll"');
+    expect(tag).toMatch(/\btrnCard\b/u);
+    expect(tag).toMatch(/\bvariant="muted"/u);
+    expect(styleRule(`${file}.scss`, '.poll')).not.toMatch(surface);
+  });
+});

@@ -146,7 +146,7 @@
   },
   "libs/feature/rooms/src/lib/poll/poll.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 9
+      "count": 8
     }
   },
   "libs/feature/rooms/src/lib/reactions-dialog/reactions-dialog.component.scss": {

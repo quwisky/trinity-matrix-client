@@ -1,3 +1,4 @@
+import { TrnCardImports } from '@trinity/components/navigation-layout';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -55,6 +56,7 @@ interface SourceFormModel {
   selector: 'trn-image-packs-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnCardImports,
     TrnSettingsGroupComponent,
     FormField,
     FormRoot,

@@ -7,79 +7,87 @@
         Installed for all rooms
       </h2>
       @for (pack of installed(); track pack.id) {
-        <article class="pack-card" data-testid="installed-image-pack">
-          <div class="pack-card__body">
-            <h3>{{ pack.name }}</h3>
-            <p class="pack-card__source">
-              {{ pack.roomName || pack.roomId }} · state key “{{
-                stateKeyText(pack.stateKey)
-              }}”
-            </p>
-            <div
-              class="pack-card__badges"
-              aria-label="Publisher-declared pack capabilities"
-            >
-              @if (pack.usage.includes('sticker')) {
-                <span>Stickers</span>
-              }
-              @if (pack.usage.includes('emoticon')) {
-                <span>Custom emoji</span>
-              }
-              @if (pack.eventType) {
-                <span>{{
-                  pack.eventType === 'stable' ? 'Stable' : 'Legacy'
-                }}</span>
-              }
-            </div>
-            <p [class.pack-card__problem]="pack.status !== 'available'">
-              {{ statusText(pack) }}
-            </p>
-            @if (pack.status === 'available') {
-              <fieldset class="pack-card__usage">
-                <legend>Use this pack for</legend>
+        <article
+          class="pack-card"
+          trnCard
+          variant="muted"
+          size="sm"
+          data-testid="installed-image-pack"
+        >
+          <div trnCardContent class="pack-card__row">
+            <div class="pack-card__body">
+              <h3>{{ pack.name }}</h3>
+              <p class="pack-card__source">
+                {{ pack.roomName || pack.roomId }} · state key “{{
+                  stateKeyText(pack.stateKey)
+                }}”
+              </p>
+              <div
+                class="pack-card__badges"
+                aria-label="Publisher-declared pack capabilities"
+              >
                 @if (pack.usage.includes('sticker')) {
-                  <label data-testid="image-pack-usage-sticker">
-                    <trn-checkbox
-                      [checked]="pack.enabledUsage.includes('sticker')"
-                      [disabled]="busyId() !== null && busyId() !== pack.id"
-                      (checkedChange)="setUsage(pack, 'sticker', $event)"
-                    />
-                    <span>Stickers</span>
-                  </label>
+                  <span>Stickers</span>
                 }
                 @if (pack.usage.includes('emoticon')) {
-                  <label data-testid="image-pack-usage-emoticon">
-                    <trn-checkbox
-                      [checked]="pack.enabledUsage.includes('emoticon')"
-                      [disabled]="busyId() !== null && busyId() !== pack.id"
-                      (checkedChange)="setUsage(pack, 'emoticon', $event)"
-                    />
-                    <span>Custom emoji</span>
-                  </label>
+                  <span>Custom emoji</span>
                 }
-                <p>
-                  These choices sync between Trinity devices. Custom emoji
-                  composition is not available yet.
-                </p>
-              </fieldset>
-            }
-            @if (pack.attribution) {
-              <p class="pack-card__attribution">{{ pack.attribution }}</p>
-            }
+                @if (pack.eventType) {
+                  <span>{{
+                    pack.eventType === 'stable' ? 'Stable' : 'Legacy'
+                  }}</span>
+                }
+              </div>
+              <p [class.pack-card__problem]="pack.status !== 'available'">
+                {{ statusText(pack) }}
+              </p>
+              @if (pack.status === 'available') {
+                <fieldset class="pack-card__usage">
+                  <legend>Use this pack for</legend>
+                  @if (pack.usage.includes('sticker')) {
+                    <label data-testid="image-pack-usage-sticker">
+                      <trn-checkbox
+                        [checked]="pack.enabledUsage.includes('sticker')"
+                        [disabled]="busyId() !== null && busyId() !== pack.id"
+                        (checkedChange)="setUsage(pack, 'sticker', $event)"
+                      />
+                      <span>Stickers</span>
+                    </label>
+                  }
+                  @if (pack.usage.includes('emoticon')) {
+                    <label data-testid="image-pack-usage-emoticon">
+                      <trn-checkbox
+                        [checked]="pack.enabledUsage.includes('emoticon')"
+                        [disabled]="busyId() !== null && busyId() !== pack.id"
+                        (checkedChange)="setUsage(pack, 'emoticon', $event)"
+                      />
+                      <span>Custom emoji</span>
+                    </label>
+                  }
+                  <p>
+                    These choices sync between Trinity devices. Custom emoji
+                    composition is not available yet.
+                  </p>
+                </fieldset>
+              }
+              @if (pack.attribution) {
+                <p class="pack-card__attribution">{{ pack.attribution }}</p>
+              }
+            </div>
+            <button
+              trnBtn
+              type="button"
+              presentation="outline"
+              size="sm"
+              [attr.aria-label]="'Remove ' + pack.name + ' from your account'"
+              data-testid="remove-image-pack"
+              #removeButton
+              [disabled]="busyId() !== null && busyId() !== pack.id"
+              (click)="remove(pack, removeButton)"
+            >
+              Remove
+            </button>
           </div>
-          <button
-            trnBtn
-            type="button"
-            presentation="outline"
-            size="sm"
-            [attr.aria-label]="'Remove ' + pack.name + ' from your account'"
-            data-testid="remove-image-pack"
-            #removeButton
-            [disabled]="busyId() !== null && busyId() !== pack.id"
-            (click)="remove(pack, removeButton)"
-          >
-            Remove
-          </button>
         </article>
       } @empty {
         <p class="packs__empty" data-testid="no-installed-image-packs">
@@ -134,54 +142,62 @@
             Available in {{ result.roomName || result.roomId }}
           </h2>
           @for (pack of result.packs; track pack.id) {
-            <article class="pack-card" data-testid="available-image-pack">
-              <div class="pack-card__body">
-                <h3>{{ pack.name }}</h3>
-                <p class="pack-card__source">
-                  State key “{{ stateKeyText(pack.stateKey) }}”
-                </p>
-                <div
-                  class="pack-card__badges"
-                  aria-label="Publisher-declared pack capabilities"
-                >
-                  @if (pack.usage.includes('sticker')) {
-                    <span>Stickers</span>
+            <article
+              class="pack-card"
+              trnCard
+              variant="muted"
+              size="sm"
+              data-testid="available-image-pack"
+            >
+              <div trnCardContent class="pack-card__row">
+                <div class="pack-card__body">
+                  <h3>{{ pack.name }}</h3>
+                  <p class="pack-card__source">
+                    State key “{{ stateKeyText(pack.stateKey) }}”
+                  </p>
+                  <div
+                    class="pack-card__badges"
+                    aria-label="Publisher-declared pack capabilities"
+                  >
+                    @if (pack.usage.includes('sticker')) {
+                      <span>Stickers</span>
+                    }
+                    @if (pack.usage.includes('emoticon')) {
+                      <span>Custom emoji</span>
+                    }
+                    <span>{{
+                      pack.eventType === 'stable' ? 'Stable' : 'Legacy'
+                    }}</span>
+                  </div>
+                  <p>{{ statusText(pack) }}</p>
+                  @if (pack.attribution) {
+                    <p class="pack-card__attribution">{{ pack.attribution }}</p>
                   }
-                  @if (pack.usage.includes('emoticon')) {
-                    <span>Custom emoji</span>
-                  }
-                  <span>{{
-                    pack.eventType === 'stable' ? 'Stable' : 'Legacy'
-                  }}</span>
                 </div>
-                <p>{{ statusText(pack) }}</p>
-                @if (pack.attribution) {
-                  <p class="pack-card__attribution">{{ pack.attribution }}</p>
-                }
+                <button
+                  trnBtn
+                  type="button"
+                  size="sm"
+                  #installButton
+                  [disabled]="
+                    (busyId() !== null && busyId() !== pack.id) ||
+                    installedIds().has(pack.id) ||
+                    pack.status !== 'available'
+                  "
+                  [attr.aria-busy]="busyId() === pack.id ? 'true' : null"
+                  [attr.aria-label]="'Install ' + pack.name + ' for all rooms'"
+                  data-testid="install-image-pack"
+                  (click)="install(pack, installButton)"
+                >
+                  {{
+                    installedIds().has(pack.id)
+                      ? 'Installed'
+                      : busyId() === pack.id
+                        ? 'Installing…'
+                        : 'Install'
+                  }}
+                </button>
               </div>
-              <button
-                trnBtn
-                type="button"
-                size="sm"
-                #installButton
-                [disabled]="
-                  (busyId() !== null && busyId() !== pack.id) ||
-                  installedIds().has(pack.id) ||
-                  pack.status !== 'available'
-                "
-                [attr.aria-busy]="busyId() === pack.id ? 'true' : null"
-                [attr.aria-label]="'Install ' + pack.name + ' for all rooms'"
-                data-testid="install-image-pack"
-                (click)="install(pack, installButton)"
-              >
-                {{
-                  installedIds().has(pack.id)
-                    ? 'Installed'
-                    : busyId() === pack.id
-                      ? 'Installing…'
-                      : 'Install'
-                }}
-              </button>
             </article>
           }
         </section>
