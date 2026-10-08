@@ -2,7 +2,7 @@ import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, switchMap } from 'rxjs';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import type { RoomSummary } from '@trinity/data-access/room-library';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { stepList, stepUnread } from '../shortcuts/room-navigation';
@@ -34,7 +34,7 @@ export class ShellShortcutsService {
   private readonly workspace = inject(WorkspaceNavigationService);
   private readonly switcher = inject(QuickSwitcherService);
   private readonly shortcuts = inject(KeyboardShortcutsService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
 
   /**

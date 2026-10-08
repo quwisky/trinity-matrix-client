@@ -1,7 +1,10 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { fireEvent, render } from '@trinity/testing';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   HomeserverInfoService,
   type HomeserverCapabilities,
@@ -126,7 +129,7 @@ async function build(
       MockProvider(HomeserverInfoService, { infos: infos.asReadonly(), load }),
       MockProvider(RoomSettingsService, { stateEvents }),
       MockProvider(RoomUpgradeService, { plan }),
-      MockProvider(TrnDialogService, {
+      MockProvider(TrnSurfaceService, {
         open,
         openAndWait$: openAndWait as never,
       }),

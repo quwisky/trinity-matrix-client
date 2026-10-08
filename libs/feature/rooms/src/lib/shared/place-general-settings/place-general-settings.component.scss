@@ -1,14 +1,14 @@
-@use './space-settings-form' as settings;
+@use '../../room-settings/room-settings-panel' as panel;
 
 @layer components {
-  @include settings.common;
+  @include panel.layout('place-settings');
 
-  .space-settings__topic {
+  .place-settings__topic {
     min-height: 88px;
     resize: vertical;
   }
 
-  .space-settings__static-value {
+  .place-settings__static-value {
     color: var(--trinity-text);
     font-size: var(--trinity-type-body-size);
     line-height: var(--trinity-type-body-line-height);
@@ -17,7 +17,7 @@
     white-space: pre-wrap;
   }
 
-  .space-settings__readonly-value {
+  .place-settings__readonly-value {
     cursor: text;
   }
 }

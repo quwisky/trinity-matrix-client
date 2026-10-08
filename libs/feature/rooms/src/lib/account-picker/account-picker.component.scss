@@ -39,35 +39,4 @@
     justify-content: center;
     color: var(--trinity-link);
   }
-
-  .account-pick__id {
-    display: flex;
-    min-width: 0;
-    flex: 1;
-    flex-direction: column;
-  }
-
-  .account-pick__name {
-    @include ellipsis;
-
-    font-size: var(--trinity-type-control-size);
-    line-height: var(--trinity-type-control-line-height);
-    font-weight: var(--trinity-type-control-weight);
-    color: var(--trinity-text-bright);
-  }
-
-  .account-pick__handle {
-    @include ellipsis;
-
-    font-size: var(--trinity-type-metadata-size);
-    line-height: var(--trinity-type-metadata-line-height);
-    color: var(--trinity-text-muted);
-  }
-
-  .account-pick__active {
-    font-size: var(--trinity-type-caption-size);
-    line-height: var(--trinity-type-caption-line-height);
-    font-weight: var(--trinity-type-control-weight);
-    color: var(--trinity-text-muted);
-  }
 }

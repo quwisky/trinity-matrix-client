@@ -15,10 +15,13 @@
 >
   @switch (selectedSection()) {
     @case ('general') {
-      <trn-space-settings-general
+      <trn-place-general-settings
+        [draft]="draft"
+        noun="Space"
         [accountId]="accountId()"
-        [spaceId]="spaceId()"
-        [spaceDisplayName]="spaceDisplayName()"
+        [placeId]="spaceId()"
+        [displayName]="spaceDisplayName()"
+        hint="Shown in the space rail and anywhere this space is linked."
       />
     }
     @case ('for-you') {
