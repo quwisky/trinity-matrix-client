@@ -14,7 +14,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnIconButton } from '@trinity/components/controls';
 import {
-  TrnActionSheetService,
+  TrnSurfaceService,
   TrnDropdownMenu,
   TrnDropdownMenuItem,
   TrnDropdownMenuTrigger,
@@ -67,7 +67,7 @@ interface FormatInvocation {
   styleUrl: './composer-format-menu.component.scss',
 })
 export class ComposerFormatMenuComponent {
-  private readonly actionSheet = inject(TrnActionSheetService);
+  private readonly actionSheet = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly trigger =
     viewChild<ElementRef<HTMLButtonElement>>('trigger');
@@ -133,10 +133,13 @@ export class ComposerFormatMenuComponent {
       },
       { text: 'Cancel', role: 'cancel', testId: 'format-cancel' },
     );
-    const ref = this.actionSheet.open(
+    const ref = this.actionSheet.openActions(
       { header: 'Format message', buttons },
-      'Format message',
-      { restoreFocus: false },
+      {
+        ariaLabel: 'Format message',
+        restoreFocus: false,
+        anchor: this.trigger()?.nativeElement,
+      },
     );
     this.sheet = ref;
     this.mobileSheetOpen.set(true);

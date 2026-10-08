@@ -3,7 +3,7 @@
     trnDropdownMenu
     class="max-h-[calc(100dvh-var(--trinity-title-row-inset,0px)-1rem)] min-w-56"
     data-testid="action-list-menu"
-    [attr.aria-label]="data().header ?? null"
+    [attr.aria-label]="data().header ?? label() ?? null"
   >
     @if (data().header) {
       <div trnDropdownMenuLabel>{{ data().header }}</div>

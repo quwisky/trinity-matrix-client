@@ -36,7 +36,6 @@ import {
 } from '@trinity/data-access/room-library';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import {
-  TrnActionSheetService,
   TrnAlertService,
   TrnSurfaceService,
   TrnToastService,
@@ -1413,15 +1412,17 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(declineInvite).toHaveBeenCalledWith('!i:hs', '@me:hs');
   });
 
-  it('opens the new-chat action sheet on Home', async () => {
+  it('opens the new-chat actions beside the Home "+"', async () => {
     const shell = build();
-    const sheetOpen = TestBed.inject(TrnActionSheetService).open as ReturnType<
-      typeof vi.fn
-    >;
+    const openActions = vi.spyOn(
+      TestBed.inject(TrnSurfaceService),
+      'openActions',
+    );
+    const plus = document.createElement('button');
 
-    shell.rooms.onNewChat();
+    shell.rooms.onNewChat(plus);
 
-    expect(sheetOpen).toHaveBeenCalledWith(
+    expect(openActions).toHaveBeenCalledWith(
       expect.objectContaining({
         buttons: expect.arrayContaining([
           expect.objectContaining({ text: 'Create a room' }),
@@ -1429,6 +1430,7 @@ describe('RoomsPage room / DM / invite actions', () => {
           expect.objectContaining({ text: 'Start a direct message' }),
         ]),
       }),
+      { anchor: plus },
     );
   });
 });

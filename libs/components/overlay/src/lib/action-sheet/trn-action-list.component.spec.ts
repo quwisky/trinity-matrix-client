@@ -110,6 +110,54 @@ describe('TrnActionListComponent', () => {
       expect(closed).toHaveBeenCalledOnce();
     });
 
+    it('names the menu from ariaLabel when it has no header', () => {
+      surfaces.openActions(
+        { buttons: [{ text: 'Reply', handler: vi.fn() }] },
+        { anchor: opener, ariaLabel: 'Message actions' },
+      );
+      tick();
+
+      expect(
+        screen.getByRole('menu', { name: 'Message actions' }),
+      ).toBeTruthy();
+    });
+
+    it('lets Tab walk from the reactions into the menu rows and back', () => {
+      surfaces.openActions(data(), { anchor: opener });
+      tick();
+      const menu = screen.getByRole('menu');
+      const react = screen.getByRole('button', { name: 'React with 👍' });
+      const tabbable = () =>
+        Array.from(
+          menu.querySelectorAll<HTMLButtonElement>('button:not([disabled])'),
+        ).filter((el) => el.tabIndex >= 0);
+      // jsdom has no native Tab, so follow the browser's rule: the key must not be
+      // cancelled, and focus goes to the next tabbable control in document order.
+      const tab = (shift = false) => {
+        const from = document.activeElement as HTMLElement;
+        const proceeds = fireEvent.keyDown(from, {
+          key: 'Tab',
+          keyCode: 9,
+          shiftKey: shift,
+        });
+        expect(proceeds).toBe(true);
+        const order = tabbable();
+        const to =
+          order[order.indexOf(from as HTMLButtonElement) + (shift ? -1 : 1)];
+        to?.focus();
+      };
+
+      react.focus();
+      expect(tabbable()).toContain(react);
+      tab();
+      expect(menu.contains(document.activeElement)).toBe(true);
+      expect(document.activeElement).not.toBe(react);
+      expect(document.activeElement?.getAttribute('role')).toBe('menuitem');
+      tab(true);
+      expect(document.activeElement).toBe(react);
+      expect(screen.getByRole('menu')).toBe(menu);
+    });
+
     it('moves between rows with the arrow keys and closes, then runs, on a pick', () => {
       const handler = vi.fn();
       surfaces.openActions(data(handler), { anchor: opener });

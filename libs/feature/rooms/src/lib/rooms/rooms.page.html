@@ -67,7 +67,7 @@
         [defaultSortMode]="vm.defaultSpaceSortMode()"
         (selectRoom)="routing.onSelectRoomSelection($event)"
         (openSwitcher)="shortcutActions.openSwitcher()"
-        (newChat)="roomActions.onNewChat()"
+        (newChat)="roomActions.onNewChat($event)"
         (createRoom)="spaceActions.onCreateChannel()"
         (inviteToSpace)="roomActions.onInviteToSpace()"
         (addToSpace)="spaceActions.onAddToSpace()"

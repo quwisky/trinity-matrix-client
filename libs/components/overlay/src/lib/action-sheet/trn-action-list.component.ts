@@ -97,6 +97,8 @@ export class TrnActionListComponent {
   );
 
   readonly data = input.required<ActionSheetData>();
+  /** The menu's name where there is no header to supply one. */
+  readonly label = input<string>();
 
   constructor() {
     // CDK's menu keeps a disabled row in the arrow-key order, but a natively disabled

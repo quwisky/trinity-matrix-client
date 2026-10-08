@@ -15,7 +15,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnIconButton } from '@trinity/components/controls';
 import {
-  TrnActionSheetService,
+  TrnSurfaceService,
   TrnDropdownMenu,
   TrnDropdownMenuItem,
   TrnDropdownMenuTrigger,
@@ -69,7 +69,7 @@ interface OwnedSheet {
   styleUrl: './composer-insert-menu.component.scss',
 })
 export class ComposerInsertMenuComponent {
-  private readonly actionSheet = inject(TrnActionSheetService);
+  private readonly actionSheet = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly mobileTrigger =
     viewChild<ElementRef<HTMLButtonElement>>('mobileTrigger');
@@ -230,13 +230,16 @@ export class ComposerInsertMenuComponent {
         action.run();
       },
     }));
-    const ref = this.actionSheet.open(
+    const ref = this.actionSheet.openActions(
       { header: 'Add to message', buttons },
-      'Add to message',
-      // Selection can open a poll, GIF or sticker surface. CDK restoring the `+`
-      // afterward would steal focus from it, so this invocation owns restoration and
-      // applies it only to dismissals and actions that do not launch a focus owner.
-      { restoreFocus: false },
+      {
+        ariaLabel: 'Add to message',
+        anchor: this.mobileTrigger()?.nativeElement,
+        // Selection can open a poll, GIF or sticker surface. CDK restoring the `+`
+        // afterward would steal focus from it, so this invocation owns restoration and
+        // applies it only to dismissals and actions that do not launch a focus owner.
+        restoreFocus: false,
+      },
     );
     const owned: OwnedSheet = {
       ref,

@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import {
-  TrnActionSheetService,
+  TrnSurfaceService,
   type TrnActionSheetRef,
   type ActionSheetButton,
 } from '@trinity/components/overlay';
@@ -44,7 +44,8 @@ type PayloadFreeAction = Exclude<
 >;
 
 /**
- * A message's actions as a bottom sheet, for the long press on a phone or tablet.
+ * A message's actions for the long press on a phone or tablet: a bottom sheet, or a menu beside
+ * the row where one fits.
  *
  * ## Why a service, and not the component that was pressed
  *
@@ -79,7 +80,7 @@ type PayloadFreeAction = Exclude<
  */
 @Injectable({ providedIn: 'root' })
 export class MessageActionSheetService {
-  private readonly sheet = inject(TrnActionSheetService);
+  private readonly surfaces = inject(TrnSurfaceService);
   private ref: TrnActionSheetRef | null = null;
   private owner: object | null = null;
   private viewport: MessageSheetViewportSession | null = null;
@@ -217,7 +218,7 @@ export class MessageActionSheetService {
 
     this.dismiss();
     this.owner = owner;
-    const ref = this.sheet.open(
+    const ref = this.surfaces.openActions(
       {
         buttons,
         reactions: QUICK_SHEET_REACTIONS.map((key) => ({
@@ -225,10 +226,11 @@ export class MessageActionSheetService {
           handler: () => run({ type: 'react', key }),
         })),
       },
-      'Message actions',
+      { ariaLabel: 'Message actions', anchor: context?.anchor },
     );
     this.ref = ref;
-    if (context) {
+    // Only a bottom sheet covers the timeline; a menu beside the row needs no clearance.
+    if (context && ref.presentation === 'sheet') {
       viewport = new MessageSheetViewportSession(context, () => ref.surface);
       this.viewport = viewport;
       viewport.start();

@@ -33,7 +33,7 @@ export class TrnActionSheetService {
     const ref = this.dialogs.open<void, TrnActionListComponent>(
       TrnActionListComponent,
       {
-        inputs: { data },
+        inputs: { data, label: ariaLabel },
         // CDK's role="dialog" has no name otherwise; the header is a caption, not a heading.
         ariaLabel: ariaLabel ?? data.header,
         restoreFocus: options.restoreFocus,
