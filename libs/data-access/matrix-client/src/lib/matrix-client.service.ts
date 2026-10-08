@@ -13,6 +13,8 @@ import {
   ClientEvent,
   HttpApiEvent,
   SyncState,
+  type AccessTokens,
+  type ICreateClientOpts,
   type MatrixError,
 } from 'matrix-js-sdk';
 import {
@@ -47,7 +49,6 @@ import {
   syncStoreIndexedDbName,
 } from '@trinity/util/matrix';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
-import { TrinityOidcTokenRefresher } from './oidc-token-refresher';
 
 /** Default deadline for ordinary Matrix HTTP requests made by an account client. */
 const MATRIX_REQUEST_TIMEOUT_MS = 30_000;
@@ -564,19 +565,6 @@ export class MatrixClientService {
           // Declared before the client is built, so the first requests it makes — inside
           // startClient(), which resolves only after them — are already served.
           this.allowCorsOrigin(session.baseUrl);
-          // OIDC ("next-gen auth") sessions carry a refresh token: give the SDK the
-          // token plus a per-account refresher so it silently rotates the short-lived
-          // access token and persists the result (see TrinityOidcTokenRefresher).
-          const refresher =
-            session.refreshToken && session.oidc
-              ? new TrinityOidcTokenRefresher({
-                  storage: this.storage,
-                  userId: session.userId,
-                  baseUrl: session.baseUrl,
-                  binding: session.oidc,
-                  deviceId: session.deviceId,
-                })
-              : null;
           created = createClient({
             baseUrl: session.baseUrl,
             // Without a client-level deadline, a socket that accepts a request and never
@@ -586,12 +574,7 @@ export class MatrixClientService {
             accessToken: session.accessToken,
             userId: session.userId,
             deviceId: session.deviceId,
-            ...(session.refreshToken
-              ? { refreshToken: session.refreshToken }
-              : {}),
-            ...(refresher
-              ? { tokenRefreshFunction: refresher.tokenRefreshFunction }
-              : {}),
+            ...this.tokenOptions(session),
             ...(store ? { store } : {}),
             // Lets the crypto stack read/write 4S using the recovery key the user
             // unlocks during the setup/recovery flows (held only in memory).
@@ -698,6 +681,41 @@ export class MatrixClientService {
         }),
       );
     });
+  }
+
+  /**
+   * What lets matrix-js-sdk 43 own an OAuth-native session's tokens: it refreshes them on
+   * a 401 or near expiry, and `logout()` revokes them at the provider instead of calling
+   * `POST /logout`. Without `oauthClientId` the SDK does not refresh at all, and the first
+   * 401 becomes a hard logout that deletes the account's crypto store.
+   *
+   * `onTokenRefresh` persists for THIS account only and returns the write: the SDK awaits
+   * it before adopting the new pair, so a failed write fails the refresh and the old
+   * tokens stay in memory.
+   */
+  private tokenOptions(
+    session: MatrixSession,
+  ): Pick<
+    ICreateClientOpts,
+    'refreshToken' | 'oauthClientId' | 'onTokenRefresh'
+  > {
+    return {
+      ...(session.refreshToken ? { refreshToken: session.refreshToken } : {}),
+      ...(session.oidc
+        ? {
+            oauthClientId: session.oidc.clientId,
+            onTokenRefresh: (tokens: AccessTokens) =>
+              firstValueFrom(
+                this.storage.updateTokens(
+                  session.userId,
+                  tokens.accessToken,
+                  tokens.refreshToken,
+                  tokens.expiry?.getTime(),
+                ),
+              ),
+          }
+        : {}),
+    };
   }
 
   private initializeCrypto(

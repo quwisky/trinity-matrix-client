@@ -162,7 +162,7 @@ export class SecureStorageService {
    * reject for the page lifetime. The reachable case is a startup race on desktop —
    * `createWindow()` loads the renderer before `registerSecureStoreIpc()` is installed, so
    * the availability probe can reject with nothing wrong with the keychain at all. Clearing
-   * the memo makes the next call retry (mirroring TrinityOidcTokenRefresher).
+   * the memo makes the next call retry (as matrix-js-sdk's TokenManager does for discovery).
    *
    * Deliberately NOT swallowed into the web fallback: on a device that has a keychain, a
    * transient IPC failure would then latch a plaintext token store for the whole session.

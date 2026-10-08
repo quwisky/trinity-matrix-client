@@ -13,16 +13,16 @@ export interface MatrixSession {
   refreshToken?: string;
   /**
    * Absolute epoch-ms expiry of {@link accessToken} (login/refresh time +
-   * `expires_in`). OIDC access tokens are short-lived; the SDK's token refresher uses
-   * this to refresh ahead of expiry. Absent for password/SSO sessions, whose tokens
-   * do not expire on a fixed schedule.
+   * `expires_in`). OIDC access tokens are short-lived; matrix-js-sdk 43 takes no initial
+   * expiry, so it refreshes on the first 401 after a restart and eagerly after that.
+   * Absent for password/SSO sessions, whose tokens do not expire on a fixed schedule.
    */
   accessTokenExpiresAt?: number;
   /**
    * OIDC provider binding, present only for OIDC-native accounts. Grouped so "is this
-   * an OIDC account" is a single truthiness check, and so the inputs needed to
-   * reconstruct the token refresher on restore stay together. All fields are
-   * non-secret (the secret is {@link refreshToken}).
+   * an OIDC account" is a single truthiness check, and so the inputs the SDK needs to
+   * refresh and revoke them (`clientId`) stay together. All fields are non-secret (the
+   * secret is {@link refreshToken}).
    */
   oidc?: OidcSessionBinding;
   /**
@@ -44,7 +44,7 @@ export interface OidcSessionBinding {
   issuer: string;
   /** This client's id as registered with the provider (dynamic or static registration). */
   clientId: string;
-  /** The redirect URI registered for this platform; needed to rebuild the refresher. */
+  /** The redirect URI registered for this platform; repeated in the code exchange. */
   redirectUri: string;
   /**
    * @deprecated Not written since matrix-js-sdk 42. That release dropped `oidc-client-ts`
