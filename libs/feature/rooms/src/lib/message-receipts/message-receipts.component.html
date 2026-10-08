@@ -1,0 +1,24 @@
+<button
+  type="button"
+  class="msg__receipts msg__target"
+  data-testid="read-receipts"
+  [attr.aria-label]="seenByLabel()"
+  [trnTooltip]="seenByLabel()"
+  (click)="seenByOpen.set(!seenByOpen())"
+>
+  @for (receipt of receipts(); track receipt.userId) {
+    <trn-avatar
+      class="msg__receipt"
+      aria-hidden="true"
+      [mxc]="receipt.avatarMxc"
+      [initial]="receipt.initial"
+      [name]="receipt.name"
+      size="2xs"
+    />
+  }
+</button>
+@if (seenByOpen()) {
+  <span class="msg__seen-by" data-testid="seen-by-list">
+    {{ seenByLabel() }}
+  </span>
+}

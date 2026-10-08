@@ -115,6 +115,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/message-list/typing-indicator/typing-indicator.component.scss',
   'libs/feature/rooms/src/lib/message-list/virtual-message-list/virtual-message-list.component.scss',
   'libs/feature/rooms/src/lib/message-reactions/message-reactions.component.scss',
+  'libs/feature/rooms/src/lib/message-receipts/message-receipts.component.scss',
   'libs/feature/rooms/src/lib/message-reply-preview/message-reply-preview.component.scss',
   'libs/feature/rooms/src/lib/message-row/message-row.component.scss',
   'libs/feature/rooms/src/lib/message-search/message-search.component.scss',

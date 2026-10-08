@@ -29,7 +29,6 @@ import {
 import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   type MessageView,
-  type ReceiptView,
   type ThreadSummary,
 } from '@trinity/data-access/timeline';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
@@ -44,6 +43,7 @@ import {
   type TrnIconName,
 } from '@trinity/components/foundations';
 import { MessageReplyPreviewComponent } from '../message-reply-preview/message-reply-preview.component';
+import { MessageReceiptsComponent } from '../message-receipts/message-receipts.component';
 import { MessageThreadSummaryComponent } from '../message-thread-summary/message-thread-summary.component';
 
 /** A collapsed run of adjacent system lines (see `groupSystemRuns`). */
@@ -148,6 +148,7 @@ export type MessageSwipeAction = 'edit' | 'reply';
     TrnTooltip,
     MessageReplyPreviewComponent,
     MessageThreadSummaryComponent,
+    MessageReceiptsComponent,
     MessageSwipeDirective,
   ],
   templateUrl: './message-row.component.html',
@@ -675,13 +676,5 @@ export class MessageRowComponent {
    * warning (red) and caution (grey) are distinguishable by shape, not colour alone. */
   shieldIcon(level: 'grey' | 'red'): TrnIconName {
     return level === 'red' ? 'shield-alert' : 'shield-question';
-  }
-
-  /** Whether the "seen by" reader list is expanded (toggled from the receipt cluster). */
-  readonly seenByOpen = signal(false);
-
-  /** Accessible label for the "seen by" receipt avatars (the avatars are decorative). */
-  seenByLabel(receipts: readonly ReceiptView[]): string {
-    return `Seen by ${receipts.map((r) => r.name).join(', ')}`;
   }
 }

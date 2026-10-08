@@ -468,11 +468,14 @@ describe('MessageRowComponent', () => {
     const body = container.querySelector('.msg__body');
     const children = [...(body?.children ?? [])];
 
-    expect(children.map((child) => child.className)).toEqual([
-      'msg__content',
-      expect.stringContaining('msg__shield'),
-      expect.stringContaining('msg__receipts'),
-    ]);
+    // The receipts are a `display: contents` component, so the host stands in the grid order.
+    expect(children.map((child) => child.className || child.localName)).toEqual(
+      [
+        'msg__content',
+        expect.stringContaining('msg__shield'),
+        'trn-message-receipts',
+      ],
+    );
   });
 
   // The marker is the only way into the edit history, and it has to work identically in

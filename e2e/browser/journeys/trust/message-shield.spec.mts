@@ -292,7 +292,9 @@ test.describe('Message authenticity shields', () => {
 
         return {
           shieldIsBodyChild: shieldEl.parentElement === bodyEl,
-          receiptIsBodyChild: receiptEl.parentElement === bodyEl,
+          // The receipts are a `display: contents` component, so its host is the grid child.
+          receiptIsBodyChild:
+            receiptEl.closest('trn-message-receipts')?.parentElement === bodyEl,
           shieldTrailingGap: trailingGap(shieldBox),
           receiptTrailingGap: trailingGap(receipt),
           contentOverlapsShield: overlaps(content, shieldBox),

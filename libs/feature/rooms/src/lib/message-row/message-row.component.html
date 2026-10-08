@@ -247,30 +247,7 @@
       }
 
       @if (r.readReceipts.length) {
-        <button
-          type="button"
-          class="msg__receipts msg__target"
-          data-testid="read-receipts"
-          [attr.aria-label]="seenByLabel(r.readReceipts)"
-          [trnTooltip]="seenByLabel(r.readReceipts)"
-          (click)="seenByOpen.set(!seenByOpen())"
-        >
-          @for (receipt of r.readReceipts; track receipt.userId) {
-            <trn-avatar
-              class="msg__receipt"
-              aria-hidden="true"
-              [mxc]="receipt.avatarMxc"
-              [initial]="receipt.initial"
-              [name]="receipt.name"
-              size="2xs"
-            />
-          }
-        </button>
-        @if (seenByOpen()) {
-          <span class="msg__seen-by" data-testid="seen-by-list">
-            {{ seenByLabel(r.readReceipts) }}
-          </span>
-        }
+        <trn-message-receipts [receipts]="r.readReceipts" />
       }
     </div>
 

@@ -30,6 +30,9 @@ const rowCss = stylesheet(
 const rowHtml = template(
   'libs/feature/rooms/src/lib/message-row/message-row.component.html',
 );
+const receiptsCss = stylesheet(
+  'libs/feature/rooms/src/lib/message-receipts/message-receipts.component.scss',
+);
 const replyPreviewCss = stylesheet(
   'libs/feature/rooms/src/lib/message-reply-preview/message-reply-preview.component.scss',
 );
@@ -123,14 +126,15 @@ describe('modern timeline layout contracts', () => {
       /\.msg__shield\s*\{[^}]*grid-row:\s*1;[^}]*grid-column:\s*2;[^}]*margin-inline-start:\s*var\(--trinity-space-3\);/s,
     );
     expect(rowCss).not.toMatch(/\.msg__body\s*\{[^}]*column-gap:/s);
-    expect(rowCss).toMatch(
+    expect(receiptsCss).toMatch(
       /\.msg__receipts\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*justify-self:\s*end;/s,
     );
-    expect(rowCss).not.toMatch(
-      /\.msg__(?:shield|receipts)\s*\{[^}]*position:\s*absolute;/s,
+    expect(rowCss).not.toMatch(/\.msg__shield\s*\{[^}]*position:\s*absolute;/s);
+    expect(receiptsCss).not.toMatch(
+      /\.msg__receipts\s*\{[^}]*position:\s*absolute;/s,
     );
     expect(rowHtml).toMatch(
-      /class="msg__content"[\s\S]*class="msg__shield msg__target"[\s\S]*class="msg__receipts msg__target"/,
+      /class="msg__content"[\s\S]*class="msg__shield msg__target"[\s\S]*<trn-message-receipts/,
     );
   });
 

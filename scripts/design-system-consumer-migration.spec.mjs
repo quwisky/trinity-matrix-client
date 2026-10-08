@@ -28,6 +28,7 @@ const migratedConversationRoots = [
   'libs/feature/rooms/src/lib/message-composer',
   'libs/feature/rooms/src/lib/message-list',
   'libs/feature/rooms/src/lib/message-reactions',
+  'libs/feature/rooms/src/lib/message-receipts',
   'libs/feature/rooms/src/lib/message-reply-preview',
   'libs/feature/rooms/src/lib/message-row',
   'libs/feature/rooms/src/lib/message-thread-summary',
