@@ -135,11 +135,13 @@ test.describe('Jump to date', () => {
       if (!windowed) {
         expect(await page.locator('.scroll .msg').count()).toBeGreaterThan(100);
       }
-      for (let i = 0; i < 6; i++) {
+      // Stay in view past JUMP_REAPPLY_MS (3s), when a re-aim or a snap-back can happen.
+      const markerRow = page
+        .locator('.scroll .msg', { hasText: marker })
+        .first();
+      for (let i = 0; i < 14; i++) {
         await page.waitForTimeout(250);
-        await expect(
-          page.locator('.scroll .msg', { hasText: marker }).first(),
-        ).toBeVisible();
+        await expect(markerRow).toBeInViewport({ timeout: 250 });
       }
     });
   }
