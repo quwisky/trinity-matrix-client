@@ -65,6 +65,9 @@ export class RoomLinkPreviewComponent implements OnInit {
   readonly target =
     input.required<Extract<MatrixLinkTarget, { kind: 'room' }>>();
 
+  /** The account to preview as; omitted for a pasted link, which uses the active account. */
+  readonly accountId = input<string>();
+
   private readonly dialogRef =
     inject<TrnDialogRef<RoomLinkPreviewResult | null>>(TrnDialogRef);
   private readonly roomLinks = inject(RoomLinkService);
@@ -180,7 +183,7 @@ export class RoomLinkPreviewComponent implements OnInit {
     this.actionError.set(null);
     this.success.set(null);
     this.roomLinks
-      .preview(this.target())
+      .preview(this.target(), this.accountId())
       .pipe(
         takeUntilDestroyed(this.destroyRef),
         finalize(() => this.loading.set(false)),

@@ -37,6 +37,7 @@ async function build(
     join?: ReturnType<typeof vi.fn>;
     knock?: ReturnType<typeof vi.fn>;
     accept?: ReturnType<typeof vi.fn>;
+    accountId?: string;
   } = {},
 ) {
   const close = vi.fn();
@@ -53,6 +54,7 @@ async function build(
         roomIdOrAlias: '!room:hs',
         via: ['hs'],
       },
+      ...(options.accountId ? { accountId: options.accountId } : {}),
     },
     providers: [
       MockProvider(TrnDialogRef, { close }),
@@ -81,6 +83,21 @@ describe('RoomLinkPreviewComponent', () => {
   });
 
   afterEach(() => vi.restoreAllMocks());
+
+  it('loads as the invited account when one is named', async () => {
+    const { load } = await build({ accountId: '@work:hs' });
+
+    expect(load).toHaveBeenCalledWith(
+      expect.objectContaining({ roomIdOrAlias: '!room:hs' }),
+      '@work:hs',
+    );
+  });
+
+  it('loads as the active account for a pasted link', async () => {
+    const { load } = await build();
+
+    expect(load).toHaveBeenCalledWith(expect.anything(), undefined);
+  });
 
   it('announces loading before a deferred preview resolves', async () => {
     const request = new Subject<RoomLinkPreview>();

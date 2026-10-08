@@ -201,6 +201,7 @@ export class ChannelSidebarComponent {
   /** Open a joined sub-space (select it in the rail), by room id. */
   readonly openChildSpace = output<ExactSpaceSelection>();
   /** Accept / decline a pending invite by room id. */
+  readonly previewInvite = output<PendingInvite>();
   readonly acceptInvite = output<PendingInvite>();
   readonly declineInvite = output<PendingInvite>();
   /** Header search icon — open the global quick switcher (Ctrl/Cmd+K). */

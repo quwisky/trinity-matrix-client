@@ -220,6 +220,35 @@ describe('SidebarRoomListComponent rows', () => {
     ).not.toBeNull();
     expect(container.querySelector('[trnBadge]')).toBeNull();
   });
+
+  it('previews an invite from its row, separately from Accept and Decline', async () => {
+    const invite = {
+      roomId: '!inv:hs',
+      accountId: '@me:hs',
+      name: 'Book club',
+      initial: 'B',
+      avatarMxc: null,
+      inviterName: 'Ann',
+      isSpace: false,
+      isDirect: false,
+    };
+    const { fixture, container } = await renderRows([], null, 'all', 'rich', {
+      invites: [invite],
+    });
+    const previewed = vi.fn();
+    fixture.componentInstance.previewInvite.subscribe(previewed);
+
+    const open = container.querySelector<HTMLButtonElement>(
+      '[data-testid="invite-open"]',
+    )!;
+    expect(open.getAttribute('aria-label')).toBe('Preview invite to Book club');
+    expect(open.querySelector('button')).toBeNull();
+    // Accept and Decline stay their own tab stops, siblings of the preview button.
+    expect(open.closest('.invite')!.querySelectorAll('button')).toHaveLength(3);
+    open.click();
+
+    expect(previewed).toHaveBeenCalledWith(invite);
+  });
 });
 
 function scssText(): string {

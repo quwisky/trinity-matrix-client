@@ -1,10 +1,16 @@
-import { Injectable, inject } from '@angular/core';
+import { DestroyRef, Injectable, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
   InvitesService,
   type PendingInvite,
 } from '@trinity/data-access/room-library';
 import { matrixRequestErrorHandling } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
+import {
+  RoomLinkPreviewComponent,
+  type RoomLinkPreviewResult,
+} from '../room-link-preview/room-link-preview.component';
 import { AccountRoutingService } from './account-routing.service';
 import { ShellStatusService } from './shell-status.service';
 
@@ -19,6 +25,34 @@ export class InviteActionsService {
   private readonly routing = inject(AccountRoutingService);
   private readonly status = inject(ShellStatusService);
   private readonly invites = inject(InvitesService);
+  private readonly surfaces = inject(TrnSurfaceService);
+  private readonly destroyRef = inject(DestroyRef);
+
+  /**
+   * The invite row itself: show the room before deciding. Accept in the preview joins as the
+   * invited account, exactly like the row's ✓, and then opens the room the same way.
+   */
+  onPreviewInvite(invite: PendingInvite): void {
+    this.surfaces
+      .openAndWait$<RoomLinkPreviewResult | null, RoomLinkPreviewComponent>(
+        RoomLinkPreviewComponent,
+        {
+          autoFocus: 'first-heading',
+          inputs: {
+            target: { kind: 'room', roomIdOrAlias: invite.roomId },
+            accountId: invite.accountId,
+          },
+        },
+      )
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((result) => {
+        if (!result?.membershipChanged || invite.isSpace) return;
+        this.routing.onSelectRoomSelection(
+          { roomId: invite.roomId, accountId: invite.accountId },
+          invite.isDirect ? 'direct-invitation' : 'room-invitation',
+        );
+      });
+  }
 
   /** Accept a pending invite (join); select the joined room when it's not a space. */
   onAcceptInvite(invite: PendingInvite): void {

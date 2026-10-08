@@ -2,25 +2,33 @@
   <div class="category">Invites</div>
   @for (invite of invites(); track invite.roomId) {
     <div class="invite">
-      <trn-avatar
-        class="invite__avatar"
-        [mxc]="invite.avatarMxc"
-        [accountId]="invite.accountId"
-        [accountBadge]="badgeFor(invite.accountId)"
-        [initial]="invite.initial"
-        [name]="invite.name"
-        size="lg"
-        [shape]="invite.isDirect ? 'person' : 'place'"
-      />
-      <div class="invite__text">
-        <span class="invite__name" [trnTooltip]="invite.name">{{
-          invite.name
-        }}</span>
-        <span class="invite__meta"
-          >{{ invite.isSpace ? 'Space' : invite.isDirect ? 'DM' : 'Room' }} ·
-          from {{ invite.inviterName }}</span
-        >
-      </div>
+      <button
+        type="button"
+        class="invite__open"
+        data-testid="invite-open"
+        [attr.aria-label]="'Preview invite to ' + invite.name"
+        (click)="previewInvite.emit(invite)"
+      >
+        <trn-avatar
+          class="invite__avatar"
+          [mxc]="invite.avatarMxc"
+          [accountId]="invite.accountId"
+          [accountBadge]="badgeFor(invite.accountId)"
+          [initial]="invite.initial"
+          [name]="invite.name"
+          size="lg"
+          [shape]="invite.isDirect ? 'person' : 'place'"
+        />
+        <span class="invite__text">
+          <span class="invite__name" [trnTooltip]="invite.name">{{
+            invite.name
+          }}</span>
+          <span class="invite__meta"
+            >{{ invite.isSpace ? 'Space' : invite.isDirect ? 'DM' : 'Room' }} ·
+            from {{ invite.inviterName }}</span
+          >
+        </span>
+      </button>
       <div class="invite__actions">
         <button
           trnIconButton

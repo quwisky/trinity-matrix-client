@@ -29,6 +29,19 @@
     background: var(--trinity-state-hover-surface);
   }
 
+  .invite__open {
+    @include interactive-row;
+
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    gap: var(--trinity-space-2);
+    padding: 0;
+    color: inherit;
+    text-align: start;
+  }
+
   .invite__avatar {
     flex: 0 0 auto;
   }
