@@ -126,7 +126,7 @@
   },
   "libs/feature/rooms/src/lib/message-search/message-search.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 9
+      "count": 5
     }
   },
   "libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.scss": {

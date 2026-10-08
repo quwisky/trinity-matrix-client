@@ -77,3 +77,28 @@ describe('card recipe adoption', () => {
     expect(styleRule(`${file}.scss`, '.poll')).not.toMatch(surface);
   });
 });
+
+describe('banner recipe adoption', () => {
+  it('shows the message-search notes as neutral banners', () => {
+    const file =
+      'libs/feature/rooms/src/lib/message-search/message-search.component';
+    const note = openingTag(`${file}.html`, 'data-testid="e2ee-note"');
+    expect(note).toMatch(/^<trn-banner\b/u);
+    expect(note).toMatch(/\bvariant="neutral"/u);
+    expect(read(`${file}.html`)).not.toMatch(/<div\b[^>]*class="ms-banner"/u);
+    expect(styleRule(`${file}.scss`, '.ms-banner')).not.toMatch(
+      /\b(?:padding|border-bottom|display)\s*:/u,
+    );
+  });
+
+  it('shows the third-party widget notice as a neutral banner', () => {
+    const file =
+      'libs/feature/rooms/src/lib/room-settings/room-widget-frame/room-widget-frame.component';
+    const notice = openingTag(`${file}.html`, 'widget-frame__notice');
+    expect(notice).toMatch(/^<trn-banner\b/u);
+    expect(notice).toMatch(/\bvariant="neutral"/u);
+    expect(styleRule(`${file}.scss`, '.widget-frame__notice')).not.toMatch(
+      /\bborder-bottom\s*:/u,
+    );
+  });
+});
