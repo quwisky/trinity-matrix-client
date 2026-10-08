@@ -131,7 +131,8 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
       return of({ kind: 'unavailable', surface });
     }
     if (surface.kind === 'settings') {
-      // Every host opens Settings as a modal surface; the surface service picks a sheet or a centred dialog. Direct `/settings` links still render the routed page.
+      // Every host opens Settings as a modal surface; the surface service picks a sheet or a
+      // centred dialog. Direct `/settings` links still render the routed page.
       if (!this.settingsLoader) {
         return this.navigate(request);
       }

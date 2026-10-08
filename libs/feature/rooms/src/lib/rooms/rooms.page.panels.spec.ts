@@ -13,9 +13,7 @@ import {
   setRouteRoom,
   settleWorkspace,
   shellFrom,
-  stubLiveLayout,
 } from './rooms-page.spec-harness';
-import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
@@ -225,7 +223,6 @@ describe('RoomsPage panels, pins and media', () => {
   });
 
   it('opens Room settings without choosing a placement of its own', async () => {
-    const restore = stubLiveLayout({ [BELOW_MD_QUERY]: true });
     const shell = build();
     roomsSignal.set([
       {
@@ -252,8 +249,10 @@ describe('RoomsPage panels, pins and media', () => {
     await settleWorkspace();
     shell.rooms.onOpenRoomSettings();
 
-    expect(dialogOpen.mock.calls.at(-1)?.[1]).not.toHaveProperty('placement');
-    restore();
+    expect(dialogOpen).toHaveBeenCalledWith(
+      RoomSettingsComponent,
+      expect.not.objectContaining({ placement: expect.anything() }),
+    );
   });
 
   it('opens the room directory and selects a room joined from it', async () => {

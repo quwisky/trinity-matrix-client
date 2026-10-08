@@ -189,7 +189,7 @@ describe('TrnSettingsLayoutComponent', () => {
     },
   );
 
-  it('frames a sheet its host presents in the same shell', async () => {
+  it('frames a sheet opened by the dialog service', async () => {
     const { container, getAllByRole } = await render(
       TrnSettingsLayoutComponent,
       {

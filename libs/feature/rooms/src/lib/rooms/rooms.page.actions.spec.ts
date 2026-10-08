@@ -39,6 +39,7 @@ import {
   TrnAlertService,
   TrnSurfaceService,
   TrnToastService,
+  type TrnActionSheetRef,
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { defer, map, of, Subject, tap, throwError } from 'rxjs';
@@ -1414,10 +1415,9 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('opens the new-chat actions beside the Home "+"', async () => {
     const shell = build();
-    const openActions = vi.spyOn(
-      TestBed.inject(TrnSurfaceService),
-      'openActions',
-    );
+    const openActions = vi
+      .spyOn(TestBed.inject(TrnSurfaceService), 'openActions')
+      .mockReturnValue({} as TrnActionSheetRef);
     const plus = document.createElement('button');
 
     shell.rooms.onNewChat(plus);

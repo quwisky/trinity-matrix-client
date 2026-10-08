@@ -1,4 +1,3 @@
-import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import {
   RoomSettingsService,
   RoomAliasesService,
@@ -14,7 +13,6 @@ import {
   setRouteRoom,
   settleWorkspace,
   shellFrom,
-  stubLiveLayout,
 } from './rooms-page.spec-harness';
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -522,15 +520,16 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('opens Space settings without choosing a placement of its own', async () => {
-    const restore = stubLiveLayout({ [BELOW_MD_QUERY]: true });
     const shell = build();
     shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
     shell.spaces.onOpenSpaceSettings();
 
-    expect(dialogOpen.mock.calls.at(-1)?.[1]).not.toHaveProperty('placement');
-    restore();
+    expect(dialogOpen).toHaveBeenCalledWith(
+      SpaceSettingsComponent,
+      expect.not.objectContaining({ placement: expect.anything() }),
+    );
   });
 
   it('offers no history visibility to the space dialog', async () => {
