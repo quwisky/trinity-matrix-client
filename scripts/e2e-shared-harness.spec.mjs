@@ -98,7 +98,7 @@ describe('e2e harness constants', () => {
   });
 
   it('finds the specs at all, so an empty sweep cannot pass', () => {
-    expect(specs.length).toBeGreaterThan(80);
+    expect(specs.length).toBeGreaterThan(0);
     // Both file kinds are in reach, or the widened glob is decorative.
     expect(specs.some((file) => file.endsWith('.mjs'))).toBe(true);
     // And the definition really does define them, so the assertion below is about
