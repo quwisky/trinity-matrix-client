@@ -38,6 +38,7 @@ jobs:
     outputs:
       mode: ${{ steps.classify.outputs.mode }}
       classification: ${{ steps.classify.outputs.classification }}
+      mas: ${{ steps.mas.outputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,6 +48,27 @@ jobs:
           node-version-file: .nvmrc
       - id: classify
         run: node scripts/ci-classify.mjs
+      # Whether a pull request touches what the `mas-e2e` journeys check: sign-in code, the
+      # matrix-js-sdk version or its patch, and the MAS harness with those journeys. It is a
+      # step here, not an `on.pull_request.paths` filter, so a pull request that skips the
+      # journeys still reports the required check. Pushes skip them: the Synapse nightly runs
+      # the same journeys against main. The diffs are read into variables first so a failing
+      # git command fails the step instead of quietly skipping the journeys.
+      - id: mas
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          run=false
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            paths='^(libs/data-access/(auth|matrix-client|accounts)/|patches/matrix-js-sdk|e2e/support/homeserver/mas/|e2e/browser/journeys/accounts/mas-[^/]*\.spec\.mts$|e2e/browser/support/mas\.mts$)'
+            changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
+            # A version bump rewrites the matrix-js-sdk entries (and its patch) in these manifests.
+            manifests=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json pnpm-lock.yaml pnpm-workspace.yaml)
+            if grep -qE "$paths" <<< "$changed" || grep -qE '^[+-].*matrix-js-sdk' <<< "$manifests"; then
+              run=true
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
 
   docs-gate:
     name: Documentation site
@@ -380,11 +402,62 @@ jobs:
           surface: storybook
           report-path: dist/.playwright/trinity-e2e-components/*/components.storybook/**
 
+  # The MAS-backed OAuth journeys (accounts/mas-session.spec.mts) against the opt-in MAS
+  # stack, only for a pull request that touches sign-in code (the `mas` step of `classify`).
+  # The refresh journey waits out two real 60 s token lifetimes (about three minutes), so the
+  # file takes about six minutes on two workers; the Synapse nightly runs it against main.
+  mas-e2e:
+    needs: classify
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mas == 'true' }}
+    name: E2E browser journeys (MAS)
+    runs-on: ubuntu-latest
+    # Hang containment. Expected ~12 min: setup and build ~5, images and stack ~1, specs ~6.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/setup-playwright
+        with:
+          browsers: chromium
+          install: 'false'
+          with-deps: 'false'
+      - name: Prepare e2e prerequisites
+        id: prerequisites
+        env:
+          TRINITY_PLAYWRIGHT_BROWSERS: chromium
+          TRINITY_PLAYWRIGHT_WITH_DEPS: 'false'
+        run: node scripts/ci-prerequisites.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
+        with:
+          name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.job }}
+          path: dist/.ci/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+      # The registry validator pins this command line, so the journey file is an environment
+      # variable read by the Playwright config (as the shard is), not an argument.
+      - id: browser
+        env:
+          TRINITY_E2E_MAS: '1'
+          TRINITY_E2E_SPEC: accounts/mas-session.spec.mts
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 900000 -- pnpm exec nx run trinity-e2e-browser:e2e
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.browser.outputs.started == 'true' }}
+        with:
+          surface: browser-mas
+          report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
+
   # Branch rules require the check "E2E (Playwright + homeserver)". The work behind it now
   # runs in several jobs, so this job reports under that name and succeeds only when every
-  # one of them succeeded. A skipped job (for example after a renderer failure) fails it.
+  # one of them succeeded. A skipped job (for example after a renderer failure) fails it,
+  # except `mas-e2e`, which is skipped by design when a pull request leaves sign-in code alone.
   e2e-result:
-    needs: [classify, e2e, browser-e2e, storybook]
+    needs: [classify, e2e, browser-e2e, storybook, mas-e2e]
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
     name: E2E (Playwright + homeserver)
     runs-on: ubuntu-latest
@@ -395,7 +468,7 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.key) \(.value.result)"'
-          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' > /dev/null
+          echo "$NEEDS" | jq -e 'to_entries | all(.[]; .value.result == "success" or (.key == "mas-e2e" and .value.result == "skipped"))' > /dev/null
 
   # WebdriverIO + Appium on the installed app: it boots an API 36 emulator because browser
   # E2E cannot substitute for native Back, process relaunch, Android TLS policy, or the
