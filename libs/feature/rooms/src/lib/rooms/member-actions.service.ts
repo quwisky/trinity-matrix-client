@@ -1,6 +1,6 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { runWithBusy } from '@trinity/util/ui';
@@ -26,7 +26,7 @@ export class MemberActionsService {
   private readonly nav = inject(RoomShellNavigationService);
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomLibraryService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
 
   /** Member-list row: open the member's info panel; "Message" opens/reuses a DM. */
@@ -118,13 +118,14 @@ export class MemberActionsService {
    * a mention sits inside the sentence it is part of, and a centred modal over that
    * sentence hides the context the card is being read against. Without one (an edit-history
    * permalink, whose dialog has already closed) it stays centred, and so does every touch
-   * pointer: see `DialogOptions.anchor`.
+   * pointer: see `TrnSurfaceOptions.anchor`.
    */
   openUserCard(userId: string, anchor?: HTMLElement): void {
     this.dialog
       .openAndWait$<string, UserCardComponent>(UserCardComponent, {
         ariaLabel: 'User',
         inputs: { userId },
+        kind: 'popover',
         anchor,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))

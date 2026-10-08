@@ -133,13 +133,6 @@
     color: var(--trinity-danger);
   }
 
-  .space-contents__state--danger {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-
   .space-contents__recovery {
     border: 1px solid var(--trinity-border-subtle);
   }
@@ -151,15 +144,14 @@
 
     .space-contents__heading,
     .space-contents__actions,
-    .space-contents__recovery,
-    .space-contents__state--danger {
+    .space-contents__recovery {
       align-items: stretch;
       flex-direction: column;
     }
 
     .space-contents__actions button,
     .space-contents__recovery button,
-    .space-contents__state--danger button {
+    .space-contents__retry {
       min-height: 44px;
       width: 100%;
     }

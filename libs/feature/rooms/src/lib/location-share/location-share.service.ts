@@ -7,7 +7,10 @@ import {
   throwError,
   timeout,
 } from 'rxjs';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { GeolocationService, type GeoPoint } from '@trinity/platform-native';
 import { ManualLocationDialogComponent } from './manual-location-dialog/manual-location-dialog.component';
@@ -29,7 +32,7 @@ export class LocationShareService {
   private readonly geo = inject(GeolocationService);
   private readonly timelineActions = inject(TimelineActionsService);
   private readonly toast = inject(TrnToastService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
 
   private readonly sharingSig = signal(false);
   /** True while a resolved location is being sent (drives the composer's busy state). */

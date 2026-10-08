@@ -41,9 +41,9 @@ import { ComposerFormatMenuComponent } from './composer-format-menu/composer-for
 import { ComposerAttachmentStripComponent } from './composer-attachment-strip/composer-attachment-strip.component';
 import { ComposerInsertMenuComponent } from './composer-insert-menu/composer-insert-menu.component';
 import { ComposerSuggestionsComponent } from './composer-suggestions/composer-suggestions.component';
-import { CodeHighlightDirective } from '../message-presentation/code-highlight.directive';
-import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
-import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
+import { ComposerBannerComponent } from './composer-banner/composer-banner.component';
+import { ComposerVoiceBarComponent } from './composer-voice-bar/composer-voice-bar.component';
+import { MatrixHtmlDirective } from '../message-presentation/matrix-html.directive';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { ComposerAttachmentsService } from './composer-attachments.service';
 import {
@@ -63,7 +63,6 @@ import {
 } from '@trinity/components/controls';
 import { type MentionMember } from './mention-autocomplete';
 import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
-import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images.directive';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 
 /**
@@ -115,21 +114,20 @@ let nextPickerId = 0;
   selector: 'trn-message-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ComposerBannerComponent,
+    ComposerVoiceBarComponent,
+    MatrixHtmlDirective,
     TrnIconButton,
     TrnIconComponent,
     TrnTooltip,
     TrnEmojiPickerComponent,
     GifPickerComponent,
     StickerPickerComponent,
-    InlineMxcImagesDirective,
     ComposerFormatMenuComponent,
     ComposerAttachmentStripComponent,
     ComposerInsertMenuComponent,
     ComposerSuggestionsComponent,
     TrnAnchoredOverlayDirective,
-    CodeHighlightDirective,
-    SpoilerRevealDirective,
-    MatrixLinkDirective,
   ],
   // Per composer instance, not per app: the room composer and the thread composer are alive
   // at once and each needs its own staged file, GIF grid and recording.
@@ -343,6 +341,34 @@ export class MessageComposerComponent {
   protected readonly contextUploadProgress: Signal<BatchProgress | null>;
   /** Whether a media send would be accepted right now (the send button says so). */
   protected readonly canSendMedia: Signal<boolean>;
+  /** The suggestion list the input controls, or null while none is open. */
+  protected readonly activeListId = computed(() =>
+    this.menus.mentionOpen()
+      ? 'mention-suggestions'
+      : this.menus.emojiOpen()
+        ? 'emoji-suggestions'
+        : this.menus.slashOpen()
+          ? 'slash-suggestions'
+          : null,
+  );
+  /** The highlighted suggestion option, which the input exposes as its active descendant. */
+  protected readonly activeOptionId = computed(() =>
+    this.menus.mentionOpen()
+      ? 'mention-suggestion-' + this.menus.mentionActiveIndex()
+      : this.menus.emojiOpen()
+        ? 'emoji-suggestion-' + this.menus.emojiActiveIndex()
+        : this.menus.slashOpen()
+          ? 'slash-suggestion-' + this.menus.slashActiveIndex()
+          : null,
+  );
+  /** Whether the send button would be accepted: something to send and nothing in the way. */
+  protected readonly canSubmit = computed(
+    () =>
+      !this.sendBlocked() &&
+      !this.textSending() &&
+      (!!this.text().trim() || this.attachments.hasStaged()) &&
+      (this.editing() || !this.attachments.hasStaged() || this.canSendMedia()),
+  );
   /**
    * Whether a leading slash is READ as a command on the way out.
    *
@@ -364,8 +390,7 @@ export class MessageComposerComponent {
   private readonly field: ComposerTextField;
   private readonly fileInput =
     viewChild<ElementRef<HTMLInputElement>>('fileInput');
-  private readonly voiceCancel =
-    viewChild<ElementRef<HTMLButtonElement>>('voiceCancel');
+  private readonly voiceBar = viewChild(ComposerVoiceBarComponent);
   private readonly injector = inject(Injector);
   private readonly emojiIndex = inject(TrnEmojiIndex);
 
@@ -991,7 +1016,7 @@ export class MessageComposerComponent {
   async startVoiceRecording(): Promise<void> {
     await this.attachments.startVoiceRecording();
     if (this.attachments.recordingVoice()) {
-      afterNextRender(() => this.voiceCancel()?.nativeElement.focus(), {
+      afterNextRender(() => this.voiceBar()?.focusCancel(), {
         injector: this.injector,
       });
     }

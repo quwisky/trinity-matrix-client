@@ -45,7 +45,6 @@ import {
   type WorkspaceApplicationSurfaceRequest,
 } from '@trinity/application/workspace';
 
-import { TrnActionSheetService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { BehaviorSubject, Subject, of, switchMap } from 'rxjs';
 import { vi } from 'vitest';
@@ -389,7 +388,6 @@ export const SHARED_MOCKS: Provider[] = [
     }),
   },
   ROUTE_PROVIDER,
-  MockProvider(TrnActionSheetService),
 ];
 
 /**

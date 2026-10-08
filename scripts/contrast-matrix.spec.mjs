@@ -867,7 +867,7 @@ describe('contrast matrix', () => {
     const sheet = readFileSync(
       join(
         workspaceRoot,
-        'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.scss',
+        'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-row/sidebar-room-row.component.scss',
       ),
       'utf8',
     );

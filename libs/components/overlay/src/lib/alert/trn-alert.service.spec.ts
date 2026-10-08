@@ -7,6 +7,12 @@ import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TrnAlertService } from './trn-alert.service';
 
+const platform = vi.hoisted(() => ({ mobile: false }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isMobileOs: () => platform.mobile,
+}));
+
 function render(): void {
   // CDK Dialog renders its portal via the ApplicationRef; flush a tick so the
   // dialog's buttons/input are in the DOM before we interact.
@@ -21,6 +27,25 @@ function clickButton(text: string): void {
 }
 
 describe('TrnAlertService', () => {
+  it('opens a confirm as a sheet on a tablet at desktop width', () => {
+    platform.mobile = true;
+    try {
+      TestBed.inject(TrnAlertService)
+        .confirm$({ header: 'Leave room?', confirmText: 'Leave' })
+        .subscribe();
+      render();
+
+      expect(
+        document
+          .querySelector('[data-testid=alert-surface] [data-trn-layout]')
+          ?.getAttribute('data-trn-layout'),
+      ).toBe('sheet');
+    } finally {
+      platform.mobile = false;
+      TestBed.inject(Dialog).closeAll();
+    }
+  });
+
   it('keeps the reactive confirmation command cold', async () => {
     const svc = TestBed.inject(TrnAlertService);
     const command = svc.confirm$({
