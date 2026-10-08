@@ -119,9 +119,14 @@
       "count": 3
     }
   },
+  "libs/feature/rooms/src/lib/message-receipts/message-receipts.component.scss": {
+    "declaration-property-value-disallowed-list": {
+      "count": 3
+    }
+  },
   "libs/feature/rooms/src/lib/message-row/message-row.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 12
+      "count": 9
     }
   },
   "libs/feature/rooms/src/lib/message-search/message-search.component.scss": {

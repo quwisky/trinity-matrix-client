@@ -49,6 +49,9 @@
     [class.msg--revealed]="revealed()"
     [class.msg--actions]="hasToolbar()"
     [attr.data-mid]="r.id"
+    [trnMessageSwipe]="swipeDirection()"
+    [swipeEnabled]="!caps().readOnly"
+    (swipe)="swipe.emit(swipeAction())"
     [attr.tabindex]="hasToolbar() ? 0 : null"
     [attr.role]="hasToolbar() ? 'article' : null"
     [attr.aria-label]="hasToolbar() ? rowLabel() : null"
@@ -98,26 +101,12 @@
         size="xl"
       />
     } @else {
-      @if (isoTime(r.timestamp); as iso) {
-        @if (timeTipArmed()) {
-          <time
-            #stamp
-            class="msg__gutter"
-            [attr.datetime]="iso"
-            [trnTooltip]="fmt.dateTime(r.timestamp)"
-            >{{ fmt.time(r.timestamp) }}</time
-          >
-        } @else {
-          <time
-            class="msg__gutter"
-            [attr.datetime]="iso"
-            (pointerenter)="armTimeTip($event, true)"
-            >{{ fmt.time(r.timestamp) }}</time
-          >
-        }
-      } @else {
-        <span class="msg__gutter">{{ fmt.time(r.timestamp) }}</span>
-      }
+      <trn-message-time
+        [timestamp]="r.timestamp"
+        [armed]="timeTipArmed()"
+        variant="gutter"
+        (arm)="timeTipArmed.set(true)"
+      />
     }
 
     <!-- One body for both layouts. It used to be written twice, character-identical
@@ -129,26 +118,12 @@
         @if (r.showHeader) {
           <div class="msg__head">
             <span class="msg__author">{{ r.senderName }}</span>
-            @if (isoTime(r.timestamp); as iso) {
-              @if (timeTipArmed()) {
-                <time
-                  #stamp
-                  class="msg__time"
-                  [attr.datetime]="iso"
-                  [trnTooltip]="fmt.dateTime(r.timestamp)"
-                  >{{ fmt.time(r.timestamp) }}</time
-                >
-              } @else {
-                <time
-                  class="msg__time"
-                  [attr.datetime]="iso"
-                  (pointerenter)="armTimeTip($event, true)"
-                  >{{ fmt.time(r.timestamp) }}</time
-                >
-              }
-            } @else {
-              <span class="msg__time">{{ fmt.dateTime(r.timestamp) }}</span>
-            }
+            <trn-message-time
+              [timestamp]="r.timestamp"
+              [armed]="timeTipArmed()"
+              variant="head"
+              (arm)="timeTipArmed.set(true)"
+            />
             @if (showEditedMarker()) {
               <button
                 type="button"
@@ -244,30 +219,7 @@
       }
 
       @if (r.readReceipts.length) {
-        <button
-          type="button"
-          class="msg__receipts msg__target"
-          data-testid="read-receipts"
-          [attr.aria-label]="seenByLabel(r.readReceipts)"
-          [trnTooltip]="seenByLabel(r.readReceipts)"
-          (click)="seenByOpen.set(!seenByOpen())"
-        >
-          @for (receipt of r.readReceipts; track receipt.userId) {
-            <trn-avatar
-              class="msg__receipt"
-              aria-hidden="true"
-              [mxc]="receipt.avatarMxc"
-              [initial]="receipt.initial"
-              [name]="receipt.name"
-              size="2xs"
-            />
-          }
-        </button>
-        @if (seenByOpen()) {
-          <span class="msg__seen-by" data-testid="seen-by-list">
-            {{ seenByLabel(r.readReceipts) }}
-          </span>
-        }
+        <trn-message-receipts [receipts]="r.readReceipts" />
       }
     </div>
 
