@@ -8,6 +8,7 @@ import {
 } from '../../../support/app.mts';
 import {
   masEndpoints,
+  openAddAccount,
   signInWithMas,
   trackMasTraffic,
   type MasAccount,
@@ -24,6 +25,12 @@ import {
 // minutes.
 const session = homeserverSession();
 const mas = session.mas;
+
+/** The stack's account; the describe below skips when there is none, so this is a guard. */
+function masAccount(): MasAccount {
+  if (!mas) throw new Error('the MAS stack is not running (TRINITY_E2E_MAS=1)');
+  return mas;
+}
 
 /** `whoami` status for an access token, straight at the MAS-backed homeserver. */
 async function whoamiStatus(
@@ -46,7 +53,7 @@ test.describe('MAS session lifecycle', () => {
     authPlatform,
     request,
   }) => {
-    const account = mas as MasAccount;
+    const account = masAccount();
     const endpoints = await masEndpoints(request, account);
     const authorize: URL[] = [];
     page.on('request', (r) => {
@@ -78,7 +85,7 @@ test.describe('MAS session lifecycle', () => {
   }) => {
     // Two real 60 s MAS access-token lifetimes, plus sign-in and a reload.
     test.setTimeout(360_000);
-    const account = mas as MasAccount;
+    const account = masAccount();
     const userId = `@${account.user}:${account.serverName}`;
     const traffic = trackMasTraffic(
       page,
@@ -91,6 +98,10 @@ test.describe('MAS session lifecycle', () => {
         .sort();
 
     await signInWithMas(page, authPlatform, account);
+    // The token that must be refused later starts out valid.
+    expect(
+      await whoamiStatus(request, account, await traffic.latestAccessToken()),
+    ).toBe(200);
     await expect
       .poll(async () => (await ownStores()).length)
       .toBeGreaterThanOrEqual(2);
@@ -104,6 +115,10 @@ test.describe('MAS session lifecycle', () => {
         intervals: [5_000],
       })
       .toBeGreaterThanOrEqual(2);
+    // The code exchange and both refreshes answered; the grants are only requests so far.
+    await expect
+      .poll(() => traffic.tokenResponses.length)
+      .toBeGreaterThanOrEqual(3);
 
     // MAS rotates, and each grant presented the refresh token the previous response issued.
     const [exchange, firstRefresh] = traffic.tokenResponses;
@@ -121,7 +136,7 @@ test.describe('MAS session lifecycle', () => {
     expect(await whoamiStatus(request, account, exchange.access_token)).toBe(
       401,
     );
-    // …while the app keeps syncing with the refreshed one.
+    // …while the app keeps syncing with the second refreshed one.
     const latest = `Bearer ${await traffic.latestAccessToken()}`;
     await expect
       .poll(
@@ -146,7 +161,7 @@ test.describe('MAS session lifecycle', () => {
     authPlatform,
     request,
   }) => {
-    const account = mas as MasAccount;
+    const account = masAccount();
     const userId = `@${account.user}:${account.serverName}`;
     const traffic = trackMasTraffic(
       page,
@@ -160,6 +175,8 @@ test.describe('MAS session lifecycle', () => {
       `@${account.user}:`,
     );
     const accessToken = await traffic.latestAccessToken();
+    // Valid until the sign-out ends the session.
+    expect(await whoamiStatus(request, account, accessToken)).toBe(200);
     await expect
       .poll(
         async () =>
@@ -180,16 +197,6 @@ test.describe('MAS session lifecycle', () => {
     await expect(page.getByTestId('account-row')).not.toContainText(userId);
     await page.keyboard.press('Escape');
 
-    // One revocation pass, by matrix-js-sdk's logout(): each token once, and no
-    // POST /logout. The switcher only updates after that step settled.
-    await expect
-      .poll(() => traffic.revocations.length)
-      .toBeGreaterThanOrEqual(2);
-    expect([...traffic.revocations].sort()).toEqual([
-      'access_token',
-      'refresh_token',
-    ]);
-    expect(traffic.logoutCalls).toEqual([]);
     // MAS ended the session, so the homeserver refuses its token.
     await expect
       .poll(() => whoamiStatus(request, account, accessToken), {
@@ -218,6 +225,14 @@ test.describe('MAS session lifecycle', () => {
         localStorage.getItem('CapacitorStorage.matrix.accounts'),
       ),
     ).not.toContain(userId);
+
+    // One revocation pass, by matrix-js-sdk's logout(): each token once, and no
+    // POST /logout. Read last, so a late second pass would be counted too.
+    expect([...traffic.revocations].sort()).toEqual([
+      'access_token',
+      'refresh_token',
+    ]);
+    expect(traffic.logoutCalls).toEqual([]);
   });
 
   test('factory reset completes for a MAS account and ends its session', async ({
@@ -225,7 +240,7 @@ test.describe('MAS session lifecycle', () => {
     authPlatform,
     request,
   }) => {
-    const account = mas as MasAccount;
+    const account = masAccount();
     const userId = `@${account.user}:${account.serverName}`;
     const traffic = trackMasTraffic(
       page,
@@ -234,10 +249,19 @@ test.describe('MAS session lifecycle', () => {
     );
     await signInWithMas(page, authPlatform, account);
     const accessToken = await traffic.latestAccessToken();
+    // Valid until the reset ends the session.
+    expect(await whoamiStatus(request, account, accessToken)).toBe(200);
+    await expect
+      .poll(
+        async () =>
+          (await databaseNames(page)).filter((n) => n.includes(userId)).length,
+      )
+      .toBeGreaterThanOrEqual(2);
 
-    // From ?add, with the client live and holding its databases open, as
-    // clear-all-data.spec.mts does.
-    await page.goto('/login?add', { waitUntil: 'domcontentloaded' });
+    // From ?add, reached inside the running app, so the client is live and holds its
+    // databases open when the reset runs. A page.goto loads a fresh document whose client
+    // may not have restarted yet, which leaves signOutAll nothing to sign out.
+    await openAddAccount(page);
     await page.getByTestId('clear-all-data').click();
     const dialog = page.locator('trn-alert-dialog', {
       hasText: 'Erase all Trinity data',
@@ -265,11 +289,21 @@ test.describe('MAS session lifecycle', () => {
         { timeout: 30_000 },
       )
       .toEqual([]);
-    // signOutAll()'s logout() revoked the session at MAS before the wipe.
     await expect
       .poll(() => whoamiStatus(request, account, accessToken), {
         timeout: 30_000,
       })
       .toBe(401);
+    // The reset revokes through both of its steps before the wipe: the SDK's
+    // logout(true) in signOutAll, and Trinity's own revokeProviderSession. Each revokes
+    // the access and the refresh token; MAS answers the second pass with an RFC 7009
+    // no-op 200. Neither sends POST /logout.
+    expect([...traffic.revocations].sort()).toEqual([
+      'access_token',
+      'access_token',
+      'refresh_token',
+      'refresh_token',
+    ]);
+    expect(traffic.logoutCalls).toEqual([]);
   });
 });

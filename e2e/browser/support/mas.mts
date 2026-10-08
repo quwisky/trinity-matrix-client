@@ -30,12 +30,28 @@ export async function masEndpoints(
     `${account.hs}/_matrix/client/v1/auth_metadata`,
   );
   expect(response.ok()).toBe(true);
-  const metadata = (await response.json()) as Record<string, string>;
-  return {
-    authorization: metadata['authorization_endpoint'],
-    token: metadata['token_endpoint'],
-    revocation: metadata['revocation_endpoint'],
+  const metadata = (await response.json()) as Record<string, unknown>;
+  const endpoint = (key: string): string => {
+    const value = metadata[key];
+    // An undefined endpoint would make every URL comparison below quietly never match.
+    expect(
+      typeof value === 'string' && value !== '',
+      `${key} is advertised`,
+    ).toBe(true);
+    return value as string;
   };
+  return {
+    authorization: endpoint('authorization_endpoint'),
+    token: endpoint('token_endpoint'),
+    revocation: endpoint('revocation_endpoint'),
+  };
+}
+
+/** From a signed-in app, open the login page that adds another account. */
+export async function openAddAccount(page: Page): Promise<void> {
+  await page.getByTestId('user-menu-trigger').click();
+  await page.getByTestId('add-account').click();
+  await expect(page.getByTestId('cancel-add')).toBeVisible();
 }
 
 /** Sign in, or add the account to a signed-in app, through MAS's login and consent pages. */
@@ -46,9 +62,7 @@ export async function signInWithMas(
   mode: 'first' | 'add' = 'first',
 ): Promise<void> {
   if (mode === 'add') {
-    await page.getByTestId('user-menu-trigger').click();
-    await page.getByTestId('add-account').click();
-    await expect(page.getByTestId('cancel-add')).toBeVisible();
+    await openAddAccount(page);
   } else {
     await webNavigate(page, '/login');
   }
@@ -69,6 +83,21 @@ export async function signInWithMas(
   await waitForRooms(page, 90_000);
 }
 
+export interface MasTraffic {
+  /** Form bodies of the `grant_type=refresh_token` requests to the token endpoint. */
+  readonly refreshGrants: URLSearchParams[];
+  /** Successful token endpoint responses, in arrival order: code exchange, then refreshes. */
+  readonly tokenResponses: MasTokenResponse[];
+  /** `token_type_hint` of every revocation request, in request order. */
+  readonly revocations: string[];
+  /** Paths of any `POST /logout` or `/logout/all` sent to the homeserver. */
+  readonly logoutCalls: string[];
+  /** The `/sync` responses: the bearer token each request carried, and its status. */
+  readonly syncs: { authorization: string | undefined; status: number }[];
+  /** The access token MAS issued last (code exchange or refresh). */
+  latestAccessToken(): Promise<string>;
+}
+
 /**
  * Record the OAuth and Matrix traffic the MAS journeys assert on. Tokens stay in memory
  * and are only ever compared, never printed.
@@ -77,7 +106,7 @@ export function trackMasTraffic(
   page: Page,
   account: MasAccount,
   endpoints: MasEndpoints,
-) {
+): MasTraffic {
   const refreshGrants: URLSearchParams[] = [];
   const tokenResponses: MasTokenResponse[] = [];
   const revocations: string[] = [];
@@ -105,9 +134,11 @@ export function trackMasTraffic(
       request.url() === endpoints.token &&
       response.ok()
     ) {
+      // A body that is gone (the page navigated away) must not become an unhandled rejection.
       void response
         .json()
-        .then((body: MasTokenResponse) => tokenResponses.push(body));
+        .then((body: MasTokenResponse) => tokenResponses.push(body))
+        .catch(() => undefined);
     }
     if (request.url().startsWith(`${account.hs}/_matrix/client/v3/sync`)) {
       syncs.push({
