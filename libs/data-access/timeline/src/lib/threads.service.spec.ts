@@ -971,6 +971,130 @@ describe('ThreadsService', () => {
       expect(svc.canPaginateThread()).toBe(true);
     });
 
+    it('reports nothing older once every reply the server counts is loaded', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({
+        id: '$r1',
+        sender: '@b:hs',
+        body: 'only reply',
+        ts: 1000,
+      });
+      const { svc } = setup([
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [root, reply],
+          length: 1,
+          paginationToken: 'tok',
+        }),
+      ]);
+      svc.attachThreadRoot('$root');
+
+      expect(svc.canPaginateThread()).toBe(false);
+    });
+
+    it('does not count an edit as a reply when deciding whether older replies remain', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({
+        id: '$r2',
+        sender: '@b:hs',
+        body: 'reply',
+        ts: 2000,
+      });
+      const edit = fakeEvent({
+        id: '$e2',
+        sender: '@b:hs',
+        body: '* reply',
+        ts: 2100,
+        editRelation: true,
+      });
+      const { svc } = setup([
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [root, reply, edit],
+          length: 2,
+          paginationToken: 'tok',
+        }),
+      ]);
+      svc.attachThreadRoot('$root');
+
+      expect(svc.canPaginateThread()).toBe(true);
+    });
+
+    it('offers no older replies when the server count is zero', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const { svc } = setup([
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [root],
+          length: 0,
+          paginationToken: 'tok',
+        }),
+      ]);
+      svc.attachThreadRoot('$root');
+
+      expect(svc.canPaginateThread()).toBe(false);
+    });
+
+    it('keeps the button hidden when a live reply grows the count and is loaded', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const first = fakeEvent({
+        id: '$r1',
+        sender: '@b:hs',
+        body: 'one',
+        ts: 1000,
+      });
+      const thread = fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root, first],
+        length: 1,
+        paginationToken: 'tok',
+      });
+      const { svc } = setup([thread]);
+      svc.attachThreadRoot('$root');
+      expect(svc.canPaginateThread()).toBe(false);
+
+      thread.events.push(
+        fakeEvent({ id: '$r2', sender: '@b:hs', body: 'two', ts: 2000 }),
+      );
+      thread.length = 2;
+      thread.emit(ThreadEvent.NewReply);
+
+      expect(svc.canPaginateThread()).toBe(false);
+    });
+
+    it('stops offering older replies when a page finds none despite the count', async () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({
+        id: '$r1',
+        sender: '@b:hs',
+        body: 'one',
+        ts: 1000,
+      });
+      // The count includes a redacted reply the client never shows; the token never clears.
+      const { svc, client } = setup([
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [root, reply],
+          length: 2,
+          paginationToken: 'tok',
+        }),
+      ]);
+      (
+        client as unknown as { paginateEventTimeline: () => Promise<boolean> }
+      ).paginateEventTimeline = () => Promise.resolve(true);
+      svc.attachThreadRoot('$root');
+      expect(svc.canPaginateThread()).toBe(true);
+
+      await firstValueFrom(svc.paginateOpenThread());
+
+      expect(svc.canPaginateThread()).toBe(false);
+    });
+
     it('pages older replies into the thread, then re-maps + clears the token', async () => {
       const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
       const newer = fakeEvent({

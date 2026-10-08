@@ -433,7 +433,15 @@ export class ThreadsService {
         }),
       );
     }).pipe(
-      tap(() => this.refreshThread()),
+      tap(() => {
+        const before = this._threadMessages().length;
+        this.refreshThread();
+        // A page that surfaced nothing (hidden or redacted replies the count still
+        // includes) must not leave the button offering the same empty page again.
+        if (this._threadMessages().length === before) {
+          this._canPaginateThread.set(false);
+        }
+      }),
       finalize(() => this._loadingOlderThread.set(false)),
       map(() => void 0),
     );
@@ -683,13 +691,20 @@ export class ThreadsService {
     // Resolve encrypted-message shields off the async crypto API; a change re-refreshes.
     void this.resolveThreadShields(room, false, ordered);
 
-    // A thread's own live timeline carries a backward pagination token while
-    // older replies remain server-side; absent (or no timeline) means none left.
+    // A thread's own live timeline carries a backward pagination token while older
+    // replies remain server-side. Tuwunel also leaves one on a first /relations page that
+    // already holds every reply, so the token alone would offer a Load older that finds
+    // nothing. The server's reply count (`thread.length`) settles it. Edits are not
+    // displayable replies and are not counted; a hidden event type keeps the button,
+    // which is the safe side (a page that then finds nothing hides it, see paginateOpenThread).
     const timeline = thread?.liveTimeline ?? null;
+    const loadedReplies = ordered.filter(
+      (e) => e.getId() !== rootEventId,
+    ).length;
     this._canPaginateThread.set(
-      timeline
-        ? timeline.getPaginationToken(Direction.Backward) !== null
-        : false,
+      timeline !== null &&
+        timeline.getPaginationToken(Direction.Backward) !== null &&
+        loadedReplies < (thread?.length ?? 0),
     );
 
     // The opened thread is being viewed, so mark its latest reply read (a
