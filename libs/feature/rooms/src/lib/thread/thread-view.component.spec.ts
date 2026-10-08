@@ -1,5 +1,5 @@
 import { inject, signal } from '@angular/core';
-import { type ComponentFixture } from '@angular/core/testing';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import {
   TrnAlertService,
@@ -47,6 +47,7 @@ import {
   RoomMembersService,
 } from '@trinity/data-access/room-administration';
 import { MockProvider } from 'ng-mocks';
+import { DraftStoreService } from '@trinity/platform-native';
 import {
   MessageGestureSettingsService,
   type SwipeAction,
@@ -414,6 +415,27 @@ describe('ThreadViewComponent', () => {
     expect(replyInThread).toHaveBeenCalledWith('$r1', 'replying', []);
     expect(sendToThread).not.toHaveBeenCalled();
     expect(cmp.replyingToId()).toBeNull();
+  });
+
+  it('keeps a thread\u2019s draft when the thread changes mid-edit', async () => {
+    const { fixture } = await build([msg('$r1', '@me:hs', 'mine')]);
+    const cmp = fixture.componentInstance;
+    const store = TestBed.inject(DraftStoreService);
+    composerOf(fixture).text.set('draft A');
+    fixture.detectChanges();
+
+    cmp.startEdit(row('$r1', '@me:hs', 'mine'));
+    fixture.detectChanges();
+    expect(composerOf(fixture).text()).toBe('mine');
+
+    fixture.componentRef.setInput('rootEventId', '$other');
+    fixture.detectChanges();
+    expect(store.get('$root')).toBe('draft A');
+
+    fixture.componentRef.setInput('rootEventId', '$root');
+    fixture.detectChanges();
+    expect(composerOf(fixture).text()).toBe('draft A');
+    expect(store.get('$root')).toBe('draft A');
   });
 
   it('quotes a thread message into the thread’s own composer', async () => {

@@ -1,5 +1,6 @@
 import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
 import {
+  clickRowMenuItem,
   clickRowToolbar,
   login,
   homeserverSession,
@@ -174,5 +175,76 @@ test.describe('Thread composer', () => {
 
     // And it does not announce: the list behind it carries the same room-scoped names.
     await expect(thread.getByTestId('typing-status')).toHaveCount(0);
+  });
+
+  test('keeps a thread draft when the thread changes mid-edit', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(180_000);
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}thd`;
+    const user = `thd-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Thread ${runId}`;
+    const rootA = `root A ${runId}`;
+    const rootB = `root B ${runId}`;
+    const reply = `reply A ${runId}`;
+
+    await registerUser(request, user, pass);
+    const token = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user },
+          password: pass,
+        },
+      })
+      .then((r) => r.json())
+      .then((j) => j.access_token as string);
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { name: roomName, preset: 'private_chat' },
+    });
+
+    await login(page, { available: true, hs, user, pass } as HomeserverSession);
+    await openRoom(page, roomName);
+
+    const composer = page.getByTestId('composer-input');
+    const rows = {} as Record<string, ReturnType<Page['locator']>>;
+    for (const body of [rootA, rootB]) {
+      await composer.fill(body);
+      await composer.press('Enter');
+      rows[body] = page
+        .locator('.scroll .msg[data-mid]', { hasText: body })
+        .first();
+      await expect(rows[body]).toBeVisible({ timeout: 20_000 });
+      await waitForSent(rows[body]);
+    }
+    const openThread = (body: string) =>
+      clickRowToolbar(
+        rows[body],
+        rows[body].getByRole('button', { name: 'Reply in thread' }),
+      );
+
+    await openThread(rootA);
+    const thread = page.getByTestId('thread-view');
+    const threadInput = thread.getByTestId('composer-input');
+    await expect(threadInput).toBeVisible({ timeout: 15_000 });
+    await threadInput.fill(reply);
+    await threadInput.press('Enter');
+    const replyRow = thread.locator('.msg[data-mid]', { hasText: reply });
+    await expect(replyRow.first()).toBeVisible({ timeout: 20_000 });
+    await waitForSent(replyRow.first());
+
+    // A half-typed reply is thread A's draft; editing then takes over the box.
+    await threadInput.fill('draft A');
+    await clickRowMenuItem(replyRow.first(), page.getByTestId('msg-edit'));
+    await expect(threadInput).toHaveValue(reply);
+
+    await openThread(rootB);
+    await openThread(rootA);
+
+    await expect(threadInput).toHaveValue('draft A');
   });
 });
