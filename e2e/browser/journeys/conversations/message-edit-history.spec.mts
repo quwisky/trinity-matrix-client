@@ -413,6 +413,14 @@ test.describe('Edit history', () => {
       header.getByRole('heading', { level: 2, name: 'Edit history' }),
     ).toBeVisible();
     await expect(header.getByTestId('dialog-close')).toBeVisible();
+    // Measure the settled card, not the shell's scale-in entrance.
+    await dialog
+      .getByTestId('dialog-surface')
+      .evaluate((surface) =>
+        Promise.all(
+          surface.getAnimations().map((animation) => animation.finished),
+        ),
+      );
     await expect(dialog.locator('footer')).toHaveCount(0);
     const toggle = dialog.getByTestId('edit-history-toggle');
     await expect(toggle).toBeVisible();
@@ -481,6 +489,14 @@ test.describe('Edit history', () => {
         request,
         `${testResourceId('run')}pixel5`,
       );
+      // Measure the settled card, not the shell's scale-in entrance.
+      await dialog
+        .getByTestId('dialog-surface')
+        .evaluate((surface) =>
+          Promise.all(
+            surface.getAnimations().map((animation) => animation.finished),
+          ),
+        );
       const viewport = page.viewportSize();
       const box = await dialog.boundingBox();
       expect(box).not.toBeNull();
