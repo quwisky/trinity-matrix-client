@@ -46,7 +46,9 @@ export class InviteActionsService {
       )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((result) => {
-        if (!result?.membershipChanged) return;
+        // Only the preview's Open step returns a result. It also offers Open when the invite
+        // was already accepted elsewhere (`membershipChanged` false), so that opens too.
+        if (!result) return;
         // The preview's Open step is an explicit request, so a joined space opens too.
         if (invite.isSpace) {
           this.routing.onSelectSpaceRow({

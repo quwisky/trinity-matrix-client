@@ -97,6 +97,20 @@ describe('InviteActionsService.onPreviewInvite', () => {
     expect(onSelectRoomSelection).not.toHaveBeenCalled();
   });
 
+  it('opens the room when the invite was already accepted elsewhere', () => {
+    const { svc, onSelectRoomSelection } = setup({
+      accountId: '@work:hs',
+      roomId: '!inv:hs',
+      isSpace: false,
+      membershipChanged: false,
+    });
+    svc.onPreviewInvite(invite);
+    expect(onSelectRoomSelection).toHaveBeenCalledWith(
+      { roomId: '!inv:hs', accountId: '@work:hs' },
+      'room-invitation',
+    );
+  });
+
   it('stays put when the preview is closed without accepting', () => {
     const { svc, onSelectRoomSelection } = setup(null);
     svc.onPreviewInvite(invite);

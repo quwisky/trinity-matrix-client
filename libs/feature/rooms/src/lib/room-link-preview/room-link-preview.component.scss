@@ -12,9 +12,8 @@
   }
 
   .room-preview__status {
-    display: grid;
     min-height: 180px;
-    place-content: center;
+    align-content: center;
   }
 
   .room-preview__identity {

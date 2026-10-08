@@ -241,7 +241,10 @@ describe('SidebarRoomListComponent rows', () => {
     const open = container.querySelector<HTMLButtonElement>(
       '[data-testid="invite-open"]',
     )!;
-    expect(open.getAttribute('aria-label')).toBe('Preview invite to Book club');
+    // The name carries the visible "Room · from Ann" line (label in name).
+    expect(open.getAttribute('aria-label')).toBe(
+      'Preview invite to Book club, Room from Ann',
+    );
     expect(open.querySelector('button')).toBeNull();
     // Accept and Decline stay their own tab stops, siblings of the preview button.
     expect(open.closest('.invite')!.querySelectorAll('button')).toHaveLength(3);

@@ -40,6 +40,11 @@
     padding: 0;
     color: inherit;
     text-align: start;
+
+    // The row already rests on the hover surface, so hover steps one surface further.
+    &:hover:where(:not(:disabled)):not(:active) {
+      background: var(--trinity-state-selected-hover-surface);
+    }
   }
 
   .invite__avatar {

@@ -1,12 +1,20 @@
 @if (invites().length) {
   <div class="category">Invites</div>
   @for (invite of invites(); track invite.roomId) {
+    @let kind = invite.isSpace ? 'Space' : invite.isDirect ? 'DM' : 'Room';
     <div class="invite">
       <button
         type="button"
         class="invite__open"
         data-testid="invite-open"
-        [attr.aria-label]="'Preview invite to ' + invite.name"
+        [attr.aria-label]="
+          'Preview invite to ' +
+          invite.name +
+          ', ' +
+          kind +
+          ' from ' +
+          invite.inviterName
+        "
         (click)="previewInvite.emit(invite)"
       >
         <trn-avatar
@@ -24,8 +32,7 @@
             invite.name
           }}</span>
           <span class="invite__meta"
-            >{{ invite.isSpace ? 'Space' : invite.isDirect ? 'DM' : 'Room' }} ·
-            from {{ invite.inviterName }}</span
+            >{{ kind }} · from {{ invite.inviterName }}</span
           >
         </span>
       </button>
