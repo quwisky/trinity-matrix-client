@@ -24,16 +24,7 @@ import {
 } from '@trinity/platform-native';
 import { type GifResult } from '@trinity/data-access/gif';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
-import {
-  escapeHtml,
-  linkifyText,
-  renderMarkdown,
-  sanitizeMatrixHtml,
-  slashCommandContent,
-  textMessageContent,
-  type FormatAction,
-  type Mention,
-} from '@trinity/util/matrix';
+import { type FormatAction, type Mention } from '@trinity/util/matrix';
 import { ComposerFormatMenuComponent } from './composer-format-menu/composer-format-menu.component';
 import { ComposerAttachmentStripComponent } from './composer-attachment-strip/composer-attachment-strip.component';
 import { ComposerInsertMenuComponent } from './composer-insert-menu/composer-insert-menu.component';
@@ -53,6 +44,7 @@ import { ComposerBatchSender } from './composer-batch-sender';
 import { ComposerAutocompletes } from './composer-autocompletes';
 import { ComposerDrafts } from './composer-drafts';
 import { ComposerFormatting } from './composer-formatting';
+import { composerPreview } from './composer-preview';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnAnchoredOverlayDirective } from '@trinity/components/overlay';
 import {
@@ -222,53 +214,14 @@ export class MessageComposerComponent {
   /** Whether the preview is showing in place of the input. */
   readonly previewing = signal(false);
 
-  /**
-   * The message as it will arrive, rendered through the timeline's own path so the two cannot
-   * disagree — including the slash commands wherever the send path parses them, because
-   * `/spoiler x` sends a concealed span and previewing the literal text would be a lie in
-   * exactly the case a preview is most useful. Where it does not parse them (reply, edit,
-   * caption) the lie runs the other way, so the preview shows the text as typed.
-   *
-   * `sanitizeMatrixHtml` is what adds the render-only normalisation the send path deliberately
-   * omits: the spoiler class the reveal directive needs, the code-block language caption and
-   * syntax highlighting.
-   */
-  readonly preview = computed<{ html: string; rich: boolean }>(() => {
-    const text = this.text().trim();
-    if (!text) {
-      return { html: '', rich: false };
-    }
-    const mentions = untracked(() => this.menus.activeMentions());
-    // Slash commands only where they are actually parsed on send:
-    // ordinary Conversation and exact-thread sends. A reply,
-    // an edit and an attachment caption route through `replyMessageContent` /
-    // `editMessageContent` / `mediaCaptionFields`, none of which look at a leading
-    // slash — so previewing `/spoiler x` concealed while replying would promise a
-    // spoiler and send the literal text.
-    const content = ((this.parsesCommands()
-      ? slashCommandContent(text, renderMarkdown, mentions)
-      : null) ?? textMessageContent(text, renderMarkdown(text), mentions)) as {
-      formatted_body?: string;
-      body?: string;
-    };
-    const html = content.formatted_body;
-    if (html) {
-      return { html: sanitizeMatrixHtml(html), rich: true };
-    }
-    // No formatted_body means it goes as plain text, which the timeline linkifies (falling
-    // back to the raw body when there is no URL) — mirror both, including which container it
-    // lands in. `linkifyText` replaces newlines with `<br>`, so its output belongs in the
-    // rendered-markdown container the timeline uses at `message-row.component.html:88`;
-    // without that class the link would render browser-blue instead of in the Theme.
-    // The fallback keeps raw newlines and so needs `pre-wrap`, which is what `rich: false`
-    // selects — hence `escapeHtml` and NOT `escapeInlineText`, whose `<br>`s would double
-    // every line break under it.
-    const body = content.body ?? text;
-    const linkified = linkifyText(body);
-    return linkified !== null
-      ? { html: linkified, rich: true }
-      : { html: escapeHtml(body), rich: false };
-  });
+  /** The message as it will arrive; see {@link composerPreview}. */
+  readonly preview = computed(() =>
+    composerPreview(
+      this.text(),
+      untracked(() => this.menus.activeMentions()),
+      this.parsesCommands(),
+    ),
+  );
 
   /**
    * Every way something other than typed text gets into the message: a picked, pasted or
