@@ -2,9 +2,9 @@
 //
 // `docker compose down -v --remove-orphans` stops every container of the project — also
 // one of the other homeserver kind, left by a run with a different TRINITY_E2E_HOMESERVER
-// — and drops the named volumes (Caddy CA/data). ./data and ./remote-data (generated
-// config, signing keys, databases) are removed too, so the next run starts from a clean
-// slate: a Tuwunel database is bound to its server_name for life.
+// — and drops the named volumes (Caddy CA/data). ./data, ./remote-data and ./mas-data
+// (generated config, signing keys, databases) are removed too, so the next run starts from
+// a clean slate: a Tuwunel database is bound to its server_name for life.
 import { execFile } from 'node:child_process';
 import { rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';

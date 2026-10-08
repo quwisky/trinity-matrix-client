@@ -13,8 +13,9 @@ import {
 import { containerUser } from '../synapse/adapter.mjs';
 
 const exec = promisify(execFile);
-const MAS_IMAGE = 'ghcr.io/element-hq/matrix-authentication-service:1.26.0';
-const SYNAPSE_IMAGE = 'matrixdotorg/synapse:v1.161.0';
+export const MAS_IMAGE =
+  'ghcr.io/element-hq/matrix-authentication-service:1.26.0';
+export const SYNAPSE_IMAGE = 'matrixdotorg/synapse:v1.161.0';
 const HS_DIR = join(MAS_DATA, 'homeserver');
 const MAS_DIR = join(MAS_DATA, 'mas');
 const HS_CONFIG = join(HS_DIR, 'homeserver.yaml');
@@ -99,6 +100,11 @@ export async function prepareMas({ signal, log }) {
     );
     await writeFile(GENERATED, stdout);
   }
-  // MAS runs as a non-root user; a restrictive umask must not hide its config.
-  await chmod(GENERATED, 0o644);
+  // MAS runs as a non-root user; a restrictive umask must not hide its config, nor
+  // the directories that lead to it.
+  await Promise.all([
+    chmod(MAS_DATA, 0o755),
+    chmod(MAS_DIR, 0o755),
+    chmod(GENERATED, 0o644),
+  ]);
 }

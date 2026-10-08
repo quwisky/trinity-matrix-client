@@ -28,4 +28,24 @@ describe('stop', () => {
       await rm(state, { recursive: true, force: true });
     }
   });
+
+  it('removes the generated MAS state', async () => {
+    const state = await mkdtemp(join(tmpdir(), 'homeserver-stop-'));
+    try {
+      const generated = join(state, 'mas-data', 'mas', 'generated.yaml');
+      await mkdir(join(state, 'mas-data', 'mas'), { recursive: true });
+      await writeFile(generated, 'secrets: {}\n', 'utf8');
+      vi.stubEnv('TRINITY_E2E_STATE_DIR', state);
+      vi.stubEnv('TRINITY_E2E_HOMESERVER', 'synapse');
+      vi.stubEnv('TRINITY_E2E_HOMESERVER_RUNTIME', 'native');
+      vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const { stop } = await import('./stop.mjs');
+
+      await stop();
+
+      await expect(access(generated)).rejects.toThrow();
+    } finally {
+      await rm(state, { recursive: true, force: true });
+    }
+  });
 });

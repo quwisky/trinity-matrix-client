@@ -3,6 +3,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -274,8 +275,13 @@ describe('Opt-in MAS stack', () => {
     );
   });
 
-  it('pins MAS, PostgreSQL and the Synapse the Synapse adapter runs', () => {
+  it('pins MAS, PostgreSQL and the Synapse the Synapse adapter runs', async () => {
     const { services } = masCompose();
+    // The adapter generates config with these images, so they must be the ones compose runs.
+    const { MAS_IMAGE, SYNAPSE_IMAGE } =
+      await import('../e2e/support/homeserver/mas/adapter.mjs');
+    expect(MAS_IMAGE).toBe(services.mas.image);
+    expect(SYNAPSE_IMAGE).toBe(services['homeserver-mas'].image);
     expect(services.mas.image).toBe(
       'ghcr.io/element-hq/matrix-authentication-service:1.26.0',
     );
@@ -321,6 +327,37 @@ describe('Opt-in MAS stack', () => {
     expect(yaml.password_config).toEqual({ enabled: false });
     expect(yaml.trusted_key_servers).toEqual([]);
     expect(yaml.public_baseurl).toBe(`${MAS_HS_TLS}/`);
+  });
+
+  it("leaves MAS's config readable to its non-root container under a umask of 077", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trinity-mas-'));
+    const previousUmask = process.umask(0o077);
+    try {
+      const mode = (path) => statSync(join(dir, path)).mode & 0o777;
+      // Existing config files mean prepareMas needs no Docker to generate them.
+      mkdirSync(join(dir, 'mas-data/homeserver'), { recursive: true });
+      mkdirSync(join(dir, 'mas-data/mas'), { recursive: true });
+      writeFileSync(
+        join(dir, 'mas-data/homeserver/homeserver.yaml'),
+        'server_name: "localhost:8450"\n',
+      );
+      writeFileSync(join(dir, 'mas-data/mas/generated.yaml'), 'secrets: {}\n');
+      vi.stubEnv('TRINITY_E2E_STATE_DIR', dir);
+      vi.resetModules();
+      const { prepareMas } =
+        await import('../e2e/support/homeserver/mas/adapter.mjs');
+
+      await prepareMas({ log: () => undefined });
+
+      expect(mode('mas-data')).toBe(0o755);
+      expect(mode('mas-data/mas')).toBe(0o755);
+      expect(mode('mas-data/mas/generated.yaml')).toBe(0o644);
+    } finally {
+      process.umask(previousUmask);
+      vi.unstubAllEnvs();
+      vi.resetModules();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('serves its Synapse on 8008, not the port generate derives', async () => {

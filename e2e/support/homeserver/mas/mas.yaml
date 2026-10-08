@@ -15,7 +15,8 @@ matrix:
   secret: trinity-e2e-mas-shared-secret
 experimental:
   # The minimum the MAS config schema allows. The refresh journey waits for two real
-  # expiries of it.
+  # expiries of it. It applies to OAuth sessions only: a password login through MAS's
+  # compatibility endpoints gets 300 s tokens, and the SDK does not refresh those.
   access_token_ttl: 60
 policy:
   data:
