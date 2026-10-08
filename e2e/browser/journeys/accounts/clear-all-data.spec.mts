@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '../../../fixtures.mts';
 import {
+  databaseNames,
   login,
   preferenceKeys,
   seedPreference,
@@ -39,17 +40,6 @@ function storageKeys(page: Page): Promise<string[]> {
   return preferenceKeys(page).then((keys) =>
     keys.map((key) => `CapacitorStorage.${key}`),
   );
-}
-
-/** Every IndexedDB database name, or [] where the browser cannot enumerate. */
-function databaseNames(page: Page): Promise<string[]> {
-  return page.evaluate(async () => {
-    if (typeof indexedDB.databases !== 'function') {
-      return [];
-    }
-    const dbs = await indexedDB.databases();
-    return dbs.map((d) => d.name).filter((n): n is string => !!n);
-  });
 }
 
 /**
