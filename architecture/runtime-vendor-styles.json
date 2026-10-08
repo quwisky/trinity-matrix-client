@@ -94,7 +94,7 @@
         }
       ],
       "seamMarkers": [
-        "TrnDialogService",
+        "TrnSurfaceService",
         "TrnDropdownMenuImports",
         "TrnToastService"
       ]

@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import {
   TrnAlertService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import {
@@ -87,7 +87,7 @@ async function build(
       MockProvider(ExternalBrowserService, { open: openExternal }),
       MockProvider(TrnToastService, { show: toastShow }),
       MockProvider(TrnAlertService, { confirm$: confirm }),
-      MockProvider(TrnDialogService, { open: openDialog }),
+      MockProvider(TrnSurfaceService, { open: openDialog }),
       MockProvider(WidgetManagementService, {
         create,
         remove,
@@ -355,7 +355,7 @@ describe('RoomWidgetsComponent', () => {
     expect(openDialog).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({
-        placement: 'fullscreen',
+        kind: 'fullscreen',
         inputs: expect.objectContaining({
           roomId: '!r:hs',
           widget: BOARD_WIDGET,

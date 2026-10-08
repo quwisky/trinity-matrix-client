@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { AccountPickerService } from './account-picker.service';
 import { AccountPickerComponent } from './account-picker.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
@@ -20,7 +20,7 @@ describe('AccountPickerService', () => {
     openAndWait$ = vi.fn(() => dialogClosed);
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
-      providers: [MockProvider(TrnDialogService, { openAndWait$ })],
+      providers: [MockProvider(TrnSurfaceService, { openAndWait$ })],
     });
   });
 
