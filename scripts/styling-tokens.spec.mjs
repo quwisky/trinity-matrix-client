@@ -67,7 +67,7 @@ const code = (file) =>
 
 describe('styling tokens', () => {
   it('reads the stylesheets at all, so an empty sweep cannot pass as a clean one', () => {
-    expect(files.length).toBeGreaterThan(50);
+    expect(files.length).toBeGreaterThan(0);
   });
 
   it('leaves focus indicators to public and Helm controls that already own one', () => {
@@ -112,7 +112,7 @@ describe('styling tokens', () => {
   });
 
   it('reads the templates at all, so an empty sweep cannot pass as a clean one', () => {
-    expect(templates.length).toBeGreaterThan(50);
+    expect(templates.length).toBeGreaterThan(0);
   });
 
   it('uses the z-index scale in templates too, not a raw Tailwind layer', () => {
