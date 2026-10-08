@@ -89,6 +89,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/add-to-space/add-to-space.component.scss',
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.scss',
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.scss',
+  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-row/sidebar-room-row.component.scss',
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.scss',
   'libs/feature/rooms/src/lib/edit-history/edit-history.component.scss',
   'libs/feature/rooms/src/lib/encryption-banner/encryption-banner.component.scss',

@@ -21,7 +21,12 @@ import { describe, expect, it } from 'vitest';
 
 const DIR = join(__dirname);
 const PARENT = 'channel-sidebar.component';
-const CHILD = join('sidebar-room-list', 'sidebar-room-list.component');
+const CHILD = join(
+  'sidebar-room-list',
+  'sidebar-room-row',
+  'sidebar-room-row.component',
+);
+const LIST = join('sidebar-room-list', 'sidebar-room-list.component');
 
 /**
  * Utility classes come from Tailwind's global sheet, which is not component-scoped and so
@@ -86,7 +91,7 @@ describe('channel sidebar stylesheet ownership', () => {
     expect(
       orphaned,
       `channel-sidebar.component.html renders ${orphaned.join(', ')}, styled only in ` +
-        `sidebar-room-list.component.scss — emulated encapsulation means those rules ` +
+        `sidebar-room-row.component.scss — emulated encapsulation means those rules ` +
         `cannot match. Copy them into channel-sidebar.component.scss.`,
     ).toEqual([]);
   });
@@ -97,9 +102,9 @@ describe('channel sidebar stylesheet ownership', () => {
     );
     expect(
       orphaned,
-      `sidebar-room-list.component.html renders ${orphaned.join(', ')}, styled only in ` +
+      `sidebar-room-row.component.html renders ${orphaned.join(', ')}, styled only in ` +
         `channel-sidebar.component.scss — emulated encapsulation means those rules ` +
-        `cannot match. Copy them into sidebar-room-list.component.scss.`,
+        `cannot match. Copy them into sidebar-room-row.component.scss.`,
     ).toEqual([]);
   });
 
@@ -114,7 +119,7 @@ describe('channel sidebar stylesheet ownership', () => {
     expect(childScssText).toMatch(
       /\.channel__menu\s*\{[\s\S]*?var\(--trinity-interaction-target-min-size\)/,
     );
-    expect(childScssText).toMatch(
+    expect(read(LIST, 'scss')).toMatch(
       /\.invite__btn\s*\{[\s\S]*?var\(--trinity-interaction-target-min-size\)/,
     );
   });
