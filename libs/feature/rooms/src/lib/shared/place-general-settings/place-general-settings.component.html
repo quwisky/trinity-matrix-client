@@ -36,7 +36,7 @@
           autocomplete="off"
           [attr.data-testid]="p + '-name'"
           [attr.aria-labelledby]="p + '-name-label'"
-          [attr.aria-describedby]="p + '-name-help'"
+          [aria-describedby]="p + '-name-help'"
         />
       } @else if (d.nameHasPermissionBlockedEdit()) {
         <input
@@ -47,7 +47,7 @@
           aria-readonly="true"
           [attr.data-testid]="p + '-name'"
           [attr.aria-labelledby]="p + '-name-label'"
-          [attr.aria-describedby]="p + '-name-help ' + p + '-name-blocked'"
+          [aria-describedby]="p + '-name-help ' + p + '-name-blocked'"
         />
       } @else {
         <p
@@ -67,9 +67,7 @@
           Discard it to return to the saved value.
         </span>
       } @else if (d.nameEmpty?.()) {
-        <span class="place-settings__restriction"
-          >A {{ noun().toLowerCase() }} needs a name.</span
-        >
+        <span class="place-settings__restriction">A space needs a name.</span>
       } @else if (!d.mayEditName()) {
         <span class="place-settings__restriction">
           {{ d.permissions().name.reason }}
@@ -98,7 +96,7 @@
           rows="4"
           [attr.data-testid]="p + '-topic'"
           [attr.aria-labelledby]="p + '-topic-label'"
-          [attr.aria-describedby]="p + '-topic-blocked'"
+          [aria-describedby]="p + '-topic-blocked'"
         ></textarea>
       } @else {
         <p

@@ -126,7 +126,6 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/room-settings/room-settings-access.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-settings-advanced.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-settings-for-you/room-settings-for-you.component.scss',
-  'libs/feature/rooms/src/lib/room-settings/room-settings-general.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-settings.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-widget-create/room-widget-create.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-widget-frame/room-widget-frame.component.scss',

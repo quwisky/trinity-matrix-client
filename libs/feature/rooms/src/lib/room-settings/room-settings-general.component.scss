@@ -1,5 +1,0 @@
-@use './room-settings-panel' as panel;
-
-@layer components {
-  @include panel.layout;
-}

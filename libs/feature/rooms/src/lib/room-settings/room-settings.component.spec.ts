@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { render } from '@trinity/testing';
+import { render, screen } from '@trinity/testing';
 import {
   TrnAlertService,
   TrnDialogRef,
@@ -340,6 +340,16 @@ describe('RoomSettingsComponent', () => {
       'widgets',
       'advanced',
     ]);
+  });
+
+  it('names the Name field and describes it with its hint', async () => {
+    await build();
+
+    const name = screen.getByRole('textbox', { name: 'Name' });
+
+    expect(name).toHaveAccessibleDescription(
+      'Shown in room lists and at the top of the conversation.',
+    );
   });
 
   it('protects Close when For you has an unsaved preference', async () => {

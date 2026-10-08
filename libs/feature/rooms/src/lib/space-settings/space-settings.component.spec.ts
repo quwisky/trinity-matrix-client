@@ -338,6 +338,20 @@ describe('SpaceSettingsComponent', () => {
     expect(cmp.draft.generalDirty()).toBe(true);
   });
 
+  it('disables Save and explains a cleared Space name', async () => {
+    const { cmp, fixture, container } = await build();
+
+    cmp.draft.form.name().value.set('');
+    fixture.detectChanges();
+
+    expect(container.textContent).toContain('A space needs a name.');
+    expect(
+      container.querySelector<HTMLButtonElement>(
+        '[data-testid="space-settings-save"]',
+      )?.disabled,
+    ).toBe(true);
+  });
+
   it('shows an ordinary read-only Space detail as a selectable value with its reason', async () => {
     const { container } = await build({
       initial: spaceSnapshot({ permissions: { name: DENIED } }),

@@ -3,15 +3,6 @@
 @layer components {
   @include panel.layout('place-settings');
 
-  .place-settings__photo {
-    --settings-identity-restriction-line-height: 1.45;
-  }
-
-  .place-settings__hint,
-  .place-settings__restriction {
-    line-height: 1.45;
-  }
-
   .place-settings__topic {
     min-height: 88px;
     resize: vertical;
