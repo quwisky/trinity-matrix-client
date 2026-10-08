@@ -1,6 +1,6 @@
 import { type DestroyRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { type TrnDialogService } from '@trinity/components/overlay';
+import { type TrnSurfaceService } from '@trinity/components/overlay';
 import { type ConversationRuntime } from '@trinity/data-access/timeline';
 import { messagePermalink } from '@trinity/util/matrix';
 import { defer, filter, take } from 'rxjs';
@@ -21,7 +21,7 @@ import { type ReportService } from '../report/report.service';
 export interface SharedRowActionContext {
   readonly roomId: string;
   readonly destroyRef: DestroyRef;
-  readonly dialog: Pick<TrnDialogService, 'open' | 'openAndWait$'>;
+  readonly dialog: Pick<TrnSurfaceService, 'open' | 'openAndWait$'>;
   readonly timeline: Pick<ConversationRuntime['timeline'], 'rawEvent'>;
   readonly forward: Pick<ForwardService, 'forward$'>;
   readonly mediaSave: Pick<MediaSaveService, 'save'>;

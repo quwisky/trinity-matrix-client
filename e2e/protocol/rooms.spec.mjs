@@ -124,15 +124,14 @@ async function fillAlertAndConfirm(page, placeholder, value, buttonName) {
 }
 
 /**
- * Wait for TrnActionSheetService's bottom sheet (<trn-action-sheet> in a CDK
- * dialog — replaces Ionic's <ion-action-sheet>) to appear, click a named
- * button, then wait for it to dismiss.
+ * Pick a row from the Home "+" action list — a menu beside the button on this desktop
+ * viewport (a bottom sheet on a phone) — then wait for it to close.
  */
 async function clickActionSheetButton(page, buttonText) {
-  const sheet = page.locator('trn-action-sheet');
-  await sheet.waitFor({ state: 'visible', timeout: 15_000 });
-  await sheet.getByRole('button', { name: buttonText }).click();
-  await sheet.waitFor({ state: 'detached', timeout: 15_000 });
+  const menu = page.getByRole('menu', { name: 'New message' });
+  await menu.waitFor({ state: 'visible', timeout: 15_000 });
+  await menu.getByRole('menuitem', { name: buttonText }).click();
+  await menu.waitFor({ state: 'detached', timeout: 15_000 });
 }
 
 /**
@@ -249,8 +248,7 @@ async function main(protocolBrowser) {
     // The Home "+" button (aria-label set when spaceActive() is false).
     await page.click('button[aria-label="New room or direct message"]');
 
-    // trn-action-sheet: "New message" with "Create a room" / "Start a direct
-    // message" / "Cancel" buttons.
+    // The "New message" menu: "Create a room" / "Start a direct message".
     await clickActionSheetButton(page, 'Create a room');
 
     // trn-alert-dialog: header "Create a room", input placeholder "Room name".

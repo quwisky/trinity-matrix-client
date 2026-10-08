@@ -13,16 +13,19 @@ import type {
 export const routes: Routes = [
   {
     path: 'login',
+    canDeactivate: [workspaceBrowserBackGuard],
     loadComponent: () =>
       import('@trinity/feature/auth').then((m) => m.LoginPage),
   },
   {
     path: 'sso-callback',
+    canDeactivate: [workspaceBrowserBackGuard],
     loadComponent: () =>
       import('@trinity/feature/auth').then((m) => m.SsoCallbackPage),
   },
   {
     path: 'register',
+    canDeactivate: [workspaceBrowserBackGuard],
     loadComponent: () =>
       import('@trinity/feature/auth').then((m) => m.RegistrationPage),
   },
@@ -60,6 +63,8 @@ export const routes: Routes = [
   {
     path: 'settings',
     canActivate: [authGuard],
+    canActivateChild: [workspaceBrowserBackGuard],
+    canDeactivate: [workspaceBrowserBackGuard],
     loadChildren: () =>
       import('@trinity/feature/settings').then((m) => m.settingsRoutes),
   },
@@ -90,6 +95,7 @@ export const routes: Routes = [
   {
     path: 'encryption/verify',
     canActivate: [authGuard],
+    canDeactivate: [workspaceBrowserBackGuard],
     loadComponent: () =>
       import('@trinity/feature/crypto').then((m) => m.DeviceVerificationPage),
   },
