@@ -1,7 +1,7 @@
 @if (popover) {
   <div
     trnDropdownMenu
-    class="max-h-[calc(100dvh-var(--trinity-title-row-inset,0px)-1rem)] min-w-56"
+    class="max-h-[calc(100dvh-var(--trinity-title-row-inset,0px)-1rem)] min-w-56 overflow-y-auto"
     data-testid="action-list-menu"
     [attr.aria-label]="data().header ?? label() ?? null"
   >

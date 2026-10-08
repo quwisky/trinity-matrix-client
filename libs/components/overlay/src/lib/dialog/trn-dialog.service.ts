@@ -178,6 +178,7 @@ export function dialogPresentation(
         .flexibleConnectedTo(anchor)
         .withPositions(POPOVER_POSITIONS)
         .withFlexibleDimensions(false)
+        .withViewportMargin(8)
         .withPush(true)
     : placement === 'inline-end'
       ? overlay.position().global().top('0').right('0')
@@ -201,6 +202,7 @@ export function dialogPresentation(
         maxWidth: '100vw',
         maxHeight: VIEWPORT_BELOW_TITLE_ROW,
       }),
+      ...(presentation === 'popover' && { maxHeight: 'calc(100dvh - 16px)' }),
       ...(sheet && {
         width: '100vw',
         maxWidth: '100vw',

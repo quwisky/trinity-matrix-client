@@ -1,3 +1,4 @@
+import { FlexibleConnectedPositionStrategy } from '@angular/cdk/overlay';
 import { ApplicationRef, Component, inject, input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
@@ -513,6 +514,23 @@ describe('TrnDialogService — anchored presentation', () => {
     expect(
       document.querySelector('.cdk-overlay-connected-position-bounding-box'),
     ).not.toBeNull();
+  });
+
+  it('keeps the popover clear of the viewport edges and bounded by its height', () => {
+    // CDK only pushes a popover back on screen against a viewport margin, and a pane with no
+    // max height can outgrow a short window; the sibling anchored overlay uses the same 8px.
+    const margin = vi.spyOn(
+      FlexibleConnectedPositionStrategy.prototype,
+      'withViewportMargin',
+    );
+    const svc = TestBed.inject(TrnDialogService);
+
+    svc.open(TestDialogComponent, { anchor: anchorElement() });
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(margin).toHaveBeenCalledWith(8);
+    const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
+    expect(pane?.style.maxHeight).toBe('calc(100dvh - 16px)');
   });
 
   it('drops the scrim for an anchored panel', () => {
