@@ -124,8 +124,11 @@ describe('macOS signing isolation', () => {
       const text = readFileSync(
         resolve(root, '.github/workflows', name),
         'utf8',
-      ).replace(/\s+/g, ' ');
-      for (const pattern of ['toJSON(secrets)', 'secrets[', 'secrets: inherit'])
+      )
+        .replace(/\s+/g, ' ')
+        .toLowerCase();
+      // Expression function names are case-insensitive, so toJson(secrets) counts too.
+      for (const pattern of ['tojson(secrets)', 'secrets[', 'secrets: inherit'])
         expect(text, `${name} ${pattern}`).not.toContain(pattern);
     }
   });
