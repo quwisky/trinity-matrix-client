@@ -4,6 +4,8 @@ name: E2E (Synapse nightly)
 # workflow keeps them honest against Synapse: the same browser, Electron full and protocol
 # suites with TRINITY_E2E_HOMESERVER=synapse, once a day and on demand. A failure turns the
 # run red. Kept out of ci.yml so the E2E registry's ci.yml entrypoint checks stay about PRs.
+# The browser journeys split into three shards, as in pull-request CI: one process no longer
+# finishes the suite inside its 20-minute ceiling.
 on:
   schedule:
     - cron: '47 2 * * *'
@@ -21,10 +23,14 @@ env:
 
 jobs:
   browser:
-    name: Browser E2E (Synapse)
+    name: Browser E2E (Synapse ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
     # Same ceiling as the pull-request E2E job: hang containment, not an expected duration.
     timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,12 +46,15 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
         with:
-          name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ matrix.shard }}
           path: dist/.ci/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
+      # The Playwright config reads the shard from the environment, like pull-request CI.
       - id: browser
+        env:
+          TRINITY_E2E_SHARD: ${{ matrix.shard }}/3
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
           node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e
@@ -53,6 +62,7 @@ jobs:
         if: ${{ !cancelled() && steps.browser.outputs.started == 'true' }}
         with:
           surface: browser-synapse
+          shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
 
   electron:

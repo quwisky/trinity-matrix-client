@@ -224,6 +224,23 @@ describe('HomeserverBlockComponent', () => {
     expect(details?.querySelectorAll('li').length).toBe(2);
   });
 
+  it('wraps the flags across the row, not inside the 16rem value column', async () => {
+    // Real flags run to 45 characters (`uk.half-shot.msc2666.query_mutual_rooms.stable`), so in
+    // the 16rem column that caps every other value no two of them share a line.
+    const { container } = await renderBlock(
+      info({
+        unstableFeatures: [
+          'org.matrix.msc4380.stable',
+          'uk.half-shot.msc2666.query_mutual_rooms.stable',
+        ],
+      }),
+    );
+
+    const details = container.querySelector('[data-testid="hs-unstable"]');
+    expect(details?.className).not.toMatch(/\bmax-w-/);
+    expect(details?.querySelector('ul')?.className).toContain('flex-wrap');
+  });
+
   it('omits the unstable row entirely when none are enabled', async () => {
     const { container } = await renderBlock(info({ unstableFeatures: [] }));
 
