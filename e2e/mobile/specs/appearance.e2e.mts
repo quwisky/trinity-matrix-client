@@ -1,5 +1,5 @@
 import { browser, expect } from '@wdio/globals';
-import { login, waitForRooms } from '../support/app.mts';
+import { login, tap, waitForRooms } from '../support/app.mts';
 import { registerUser, uniqueId } from '../support/matrix.mts';
 import { mobilePlatform } from '../support/platform.mts';
 import { resetApp } from '../support/session.mts';
@@ -67,7 +67,8 @@ describe('mobile Appearance', () => {
     await expect($('nav[aria-label="Settings sections"]')).toBeDisplayed({
       wait: 20_000,
     });
-    await $('[data-testid="settings-nav-appearance"]').click();
+    // The sheet is still sliding in: wait for the row to hold still before tapping it.
+    await tap('[data-testid="settings-nav-appearance"]');
     const heading = $('[data-testid="settings-detail"] h1');
     await expect(heading).toHaveText('Appearance');
     await expect(heading).toBeFocused();

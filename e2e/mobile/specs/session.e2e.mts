@@ -14,7 +14,8 @@ describe('mobile session', () => {
       // WKWebView ships with the OS, and Web Inspector names contexts by pid and page.
       expect(version).toMatch(/^iOS \d+\.\d+/u);
       expect(context).toMatch(/^WEBVIEW_\d+\.\d+$/u);
-      expect(await browser.getUrl()).toMatch(/^capacitor:\/\/localhost\//u);
+      // iOS 27 reports the root page without the trailing slash iOS 26 includes.
+      expect(await browser.getUrl()).toMatch(/^capacitor:\/\/localhost(\/|$)/u);
     } else {
       expect((await browser.getContexts()).map(String)).toContain(
         'WEBVIEW_eu.qwky.trinity',
