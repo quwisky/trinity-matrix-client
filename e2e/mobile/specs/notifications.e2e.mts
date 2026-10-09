@@ -18,6 +18,7 @@ import {
   shell,
   webview,
 } from '../support/session.mts';
+import { onlyOn } from '../support/platform.mts';
 
 const POST_NOTIFICATIONS = 'android.permission.POST_NOTIFICATIONS';
 // Android's ActivityManager state for an app whose process is alive but not on screen.
@@ -49,7 +50,13 @@ async function matrixApi(
 const roomButton = (name: string) =>
   $(`//button[contains(@class,"channel")][contains(.,"${name}")]`);
 
-describe('Android local notifications', () => {
+describe('mobile local notifications', () => {
+  before(
+    onlyOn(
+      'android',
+      'grants POST_NOTIFICATIONS and reads the Android notification shade; the harness cannot read iOS Notification Center',
+    ),
+  );
   beforeEach(resetApp);
 
   it('shows a notification for a message received in the background and opens its room when tapped', async () => {

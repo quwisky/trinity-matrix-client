@@ -8,6 +8,7 @@ import {
   uniqueId,
 } from '../support/matrix.mts';
 import { native, resetApp, webview } from '../support/session.mts';
+import { onlyOn } from '../support/platform.mts';
 
 const CHOOSER_PACKAGE = 'com.android.intentresolver';
 
@@ -53,7 +54,13 @@ async function sendFile(
   if (!send.ok) throw new Error(`send → ${send.status}`);
 }
 
-describe('Android share sheet', () => {
+describe('mobile share sheet', () => {
+  before(
+    onlyOn(
+      'android',
+      'drives the Android share sheet (intentresolver) through UiAutomator; the iOS share sheet is not adapted yet',
+    ),
+  );
   beforeEach(resetApp);
 
   it('opens the system chooser when a file attachment is downloaded, and returns to the room on dismiss', async () => {

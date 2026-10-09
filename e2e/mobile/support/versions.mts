@@ -38,8 +38,15 @@ export function webviewSwitchError(
   );
 }
 
-/** iOS launch race: FrontBoard has not registered a just-installed app yet. */
+/**
+ * iOS launch race after a reinstall: FrontBoard has not registered the app yet (NotFound),
+ * or still refuses to open it (RequestDenied), seen on iOS 27 right after a kill and relaunch.
+ */
 export function isAppNotYetKnown(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return message.includes('is unknown to FrontBoard');
+  return (
+    message.includes('is unknown to FrontBoard') ||
+    (message.includes('FBSOpenApplicationServiceErrorDomain') &&
+      message.includes('RequestDenied'))
+  );
 }

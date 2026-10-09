@@ -11,9 +11,10 @@ async function openSettingsSection(section: string): Promise<void> {
   });
 }
 
-describe('Android native capabilities', () => {
+describe('mobile native capabilities', () => {
   beforeEach(resetApp);
 
+  // Push delivery applies on iOS and Android (push-gateway-block); both offer the form.
   it('offers the push gateway form because the installed app has a push channel', async () => {
     const user = uniqueId('android-push');
     const pass = `${user}-pass`;

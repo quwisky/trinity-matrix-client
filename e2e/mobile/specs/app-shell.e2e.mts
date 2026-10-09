@@ -28,7 +28,7 @@ async function navigate(path: string): Promise<void> {
   }, target);
 }
 
-describe('Android app shell', () => {
+describe('mobile app shell', () => {
   beforeEach(resetApp);
 
   it('renders login and protects authenticated routes in the installed app', async () => {

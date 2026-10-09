@@ -5,20 +5,19 @@ name: E2E (iOS nightly)
 # requests, so it stays out of ci.yml; the E2E registry validates this file's `nightly`
 # entrypoint and report path.
 on:
-  # Draft only (#863): GitHub dispatches only workflows on the default branch, so the
-  # branch exercises itself on push. Part 3 replaces this with the nightly schedule.
-  push:
-    branches: [test/863-ios-mobile-runner]
+  schedule:
+    - cron: '13 4 * * *'
   workflow_dispatch:
     inputs:
       specs:
-        description: Comma-separated spec paths relative to e2e/mobile (default smoke only)
+        description: Comma-separated spec paths relative to e2e/mobile (default all mobile specs)
         required: false
         default: ''
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # A cancelled job counts as failed for the nightly alert, so never cancel a run in flight.
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -40,8 +39,31 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - name: Record toolchain
+        id: toolchain
         run: |
           { sw_vers; xcodebuild -version; xcrun --sdk iphonesimulator --show-sdk-version; xcrun simctl list runtimes; python3 --version; } | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "xcode=$(xcodebuild -version | tr -s '\n ' '--')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/trinity-caddy
+          key: caddy-${{ runner.os }}-${{ runner.arch }}-${{ env.CADDY_VERSION }}
+      # Synapse's wheels; native.mts holds the version pin.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/Library/Caches/pip
+          key: pip-synapse-${{ runner.os }}-${{ hashFiles('e2e/support/homeserver/native.mts') }}
+          restore-keys: pip-synapse-${{ runner.os }}-
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .appium
+          key: appium-ios-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'scripts/setup-appium.mjs') }}
+          restore-keys: appium-ios-${{ runner.os }}-
+      # The ~7 min WebDriverAgent build. Valid only for one Xcode build and one driver pin
+      # (setup-appium.mjs), so neither may fall back to an older key.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist/ios-wda
+          key: wda-${{ steps.toolchain.outputs.xcode }}-${{ hashFiles('scripts/setup-appium.mjs') }}
       - name: Install pinned Caddy
         shell: bash
         run: |
@@ -63,7 +85,7 @@ jobs:
       - id: mobile
         env:
           TRINITY_E2E_PREBUILT_WWW: '1'
-          TRINITY_MOBILE_SPECS: ${{ inputs.specs || './specs/smoke.e2e.mts' }}
+          TRINITY_MOBILE_SPECS: ${{ inputs.specs }}
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
           node scripts/ci-run-command.mjs --timeout-ms 3900000 -- pnpm e2e:mobile:ios
@@ -80,3 +102,14 @@ jobs:
       - name: Verify iOS E2E left the worktree unchanged
         if: ${{ !cancelled() }}
         run: git diff --exit-code
+
+  # A red cron run notifies nobody: open (or update) an issue, and close it on the next green run.
+  notify:
+    name: Nightly failure issue
+    needs: [ios]
+    if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    permissions:
+      issues: write
+    uses: ./.github/workflows/_nightly-alert.yml
+    with:
+      needs: ${{ toJSON(needs) }}

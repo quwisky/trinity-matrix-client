@@ -1,5 +1,5 @@
-import { execFile } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
+import { closeSync, mkdirSync, openSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { E2EInvocation } from '../support/invocation.mts';
@@ -32,6 +32,32 @@ const appPath = join(
 );
 
 let simulator: Simulator | undefined;
+let networkLog: ChildProcess | undefined;
+
+/**
+ * Stream the WebKit networking process's log for the whole run. `log show --last 10m` after
+ * the suite overflowed its buffer and only reached the last minutes, so a TLS stall in an
+ * early spec left no evidence.
+ */
+function streamNetworkLog(udid: string): void {
+  const out = openSync(join(artifactsDir(), 'webkit-networking.log'), 'a');
+  networkLog = spawn(
+    'xcrun',
+    [
+      'simctl',
+      'spawn',
+      udid,
+      'log',
+      'stream',
+      '--style',
+      'compact',
+      '--predicate',
+      'process == "com.apple.WebKit.Networking"',
+    ],
+    { stdio: ['ignore', out, out] },
+  );
+  closeSync(out);
+}
 let ownsBoot = false;
 
 const artifactsDir = (): string =>
@@ -117,6 +143,7 @@ async function main(invocation: E2EInvocation): Promise<void> {
   process.env['TRINITY_IOS_UDID'] = udid;
   process.env['TRINITY_IOS_APP'] = appPath;
   mkdirSync(artifactsDir(), { recursive: true });
+  streamNetworkLog(udid);
   // Keychain access needs entitlements; keep the evidence whatever the next run does.
   // Simulator builds embed them in the Mach-O __TEXT,__entitlements section, which
   // codesign does not print, so read both.
@@ -213,6 +240,7 @@ async function captureDiagnostics(): Promise<void> {
 }
 
 async function releaseDevice(): Promise<void> {
+  networkLog?.kill();
   await captureDiagnostics().catch(() => undefined);
   if (!simulator) return;
   await simctl('terminate', simulator.udid, APP_PACKAGE).catch(() => undefined);

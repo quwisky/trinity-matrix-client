@@ -187,7 +187,7 @@ export async function resetApp(): Promise<void> {
   await webview();
 }
 
-/** FrontBoard lags a fresh install by a moment: retry only its NotFound, for up to 15 s. */
+/** FrontBoard lags a fresh install by a moment: retry its NotFound or RequestDenied for up to 15 s. */
 async function activateWhenKnown(): Promise<void> {
   const deadline = Date.now() + 15_000;
   for (;;) {
@@ -196,6 +196,9 @@ async function activateWhenKnown(): Promise<void> {
       return;
     } catch (error) {
       if (!isAppNotYetKnown(error) || Date.now() > deadline) throw error;
+      console.log(
+        `[mobile] launch not ready yet, retrying: ${String(error).split('\n')[0].slice(0, 160)}`,
+      );
       await browser.pause(500);
     }
   }
@@ -208,7 +211,12 @@ export async function restartApp(): Promise<void> {
   await webview();
 }
 
-export async function pressBack(): Promise<void> {
+/**
+ * Android's system Back. iOS has no equivalent here: WebKit's edge swipe is off while a
+ * routed Settings page or panel is active (see the gesture policy in
+ * trinity-application-session.adapter), so iOS specs use the in-app Back button.
+ */
+export async function goBack(): Promise<void> {
   await native();
   await browser.pressKeyCode(4);
   await webview();

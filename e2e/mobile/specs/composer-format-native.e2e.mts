@@ -6,9 +6,21 @@ import {
   registerUser,
   uniqueId,
 } from '../support/matrix.mts';
-import { keyboardShown, pressBack, resetApp } from '../support/session.mts';
+import { keyboardShown, goBack, resetApp } from '../support/session.mts';
 
-describe('Android composer formatting', () => {
+/**
+ * Press a control while the composer holds the soft keyboard. On iOS, Appium converts a
+ * touch's web coordinates with the page's viewport, and the keyboard leaves WKWebView
+ * zoomed and offset (run 37294494885: innerHeight 530, visual viewport scale 1.067, offset
+ * 36): "Converted web coords {261,491} into real coords {357,1796}", off the screen, so the
+ * Aa tap hit nothing. A WebDriver element click does not depend on that conversion.
+ */
+async function press(selector: string): Promise<void> {
+  if (browser.isIOS) await $(selector).click();
+  else await tap(selector);
+}
+
+describe('mobile composer formatting', () => {
   beforeEach(resetApp);
 
   it('formats a selected word through Aa, restores the keyboard, and dismisses on Back', async () => {
@@ -20,8 +32,10 @@ describe('Android composer formatting', () => {
     await login(user, pass);
     await waitForRooms();
     await $('[data-testid="rail-rooms"]').click();
+    // A `button`, not `*`: `*` matches the outer `.channel-row` first, whose centre XCUITest
+    // atom clicks do not hit-test onto the button (#933 smoke).
     const room = $(
-      `//*[contains(@class,"channel")][contains(.,"${roomName}")]`,
+      `//button[contains(@class,"channel")][contains(.,"${roomName}")]`,
     );
     await expect(room).toBeDisplayed({ wait: 30_000 });
     await room.click();
@@ -29,7 +43,12 @@ describe('Android composer formatting', () => {
     await expect(composer).toBeDisplayed({ wait: 20_000 });
 
     await tap('[data-testid="composer-input"]');
-    await browser.keys('say hello');
+    if (browser.isIOS) {
+      // WebDriverAgent's native typing can't reach a script-focused WKWebView textarea (#933 smoke).
+      await $('[data-testid="composer-input"]').addValue('say hello');
+    } else {
+      await browser.keys('say hello');
+    }
     await browser.execute(() => {
       const input = document.querySelector<HTMLTextAreaElement>(
         '[data-testid="composer-input"]',
@@ -37,7 +56,7 @@ describe('Android composer formatting', () => {
       input.focus();
       input.setSelectionRange(4, 9);
     });
-    await tap('[data-testid="composer-format"]');
+    await press('[data-testid="composer-format"]');
     const menu = $('[data-testid="action-sheet-surface"]');
     await expect(menu).toBeDisplayed();
     const fit = await browser.execute(() => {
@@ -61,7 +80,7 @@ describe('Android composer formatting', () => {
     // WebView rounds its CSS viewport through native device-pixel ratios.
     expect(fit!.right).toBeLessThanOrEqual(fit!.width + 0.5);
     expect(fit!.bottom).toBeLessThanOrEqual(fit!.height + 0.5);
-    await tap(
+    await press(
       '[data-testid="action-sheet-surface"] [data-testid="format-italic"]',
     );
     await expect(composer).toHaveValue('say *hello*');
@@ -80,7 +99,7 @@ describe('Android composer formatting', () => {
       timeoutMsg: 'soft keyboard never restored',
     });
 
-    await tap('[data-testid="composer-format"]');
+    await press('[data-testid="composer-format"]');
     await expect($('[data-testid="format-cancel"]')).toBeDisplayed();
     const unchanged = await browser.execute(
       () =>
@@ -88,7 +107,12 @@ describe('Android composer formatting', () => {
           '[data-testid="composer-input"]',
         )!.value,
     );
-    await pressBack();
+    if (browser.isIOS) {
+      // No system Back on iOS, and the edge swipe is off while the sheet is open.
+      await press('[data-testid="format-cancel"]');
+    } else {
+      await goBack();
+    }
     await expect($('[data-testid="format-cancel"]')).not.toExist();
     await expect(composer).toHaveValue(unchanged);
   });

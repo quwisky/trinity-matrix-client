@@ -1,6 +1,7 @@
 import { browser, expect } from '@wdio/globals';
-import { login, waitForRooms } from '../support/app.mts';
+import { login, tap, waitForRooms } from '../support/app.mts';
 import { registerUser, uniqueId } from '../support/matrix.mts';
+import { mobilePlatform } from '../support/platform.mts';
 import { resetApp } from '../support/session.mts';
 
 interface NativeStatusBarInfo {
@@ -45,7 +46,7 @@ async function choose(select: string, option: string): Promise<void> {
   await expect(item).not.toExist();
 }
 
-describe('Android Appearance', () => {
+describe('mobile Appearance', () => {
   beforeEach(resetApp);
 
   it('projects Appearance into the installed WebView and native chrome @native-appearance', async () => {
@@ -66,7 +67,8 @@ describe('Android Appearance', () => {
     await expect($('nav[aria-label="Settings sections"]')).toBeDisplayed({
       wait: 20_000,
     });
-    await $('[data-testid="settings-nav-appearance"]').click();
+    // The sheet is still sliding in: wait for the row to hold still before tapping it.
+    await tap('[data-testid="settings-nav-appearance"]');
     const heading = $('[data-testid="settings-detail"] h1');
     await expect(heading).toHaveText('Appearance');
     await expect(heading).toBeFocused();
@@ -80,7 +82,7 @@ describe('Android Appearance', () => {
         ).Capacitor?.getPlatform(),
         coarsePointer: matchMedia('(pointer: coarse)').matches,
       })),
-    ).toEqual({ platform: 'android', coarsePointer: true });
+    ).toEqual({ platform: mobilePlatform(), coarsePointer: true });
 
     await $('[data-testid="mode-light"]').click();
     await choose('theme-select', 'theme-amethyst');
@@ -139,7 +141,7 @@ describe('Android Appearance', () => {
         '[data-testid="text-scale-select"] button',
       ].map((selector) => document.querySelector<HTMLElement>(selector));
       if (!column || !heading || controls.some((control) => !control)) {
-        throw new Error('Android Appearance geometry is incomplete');
+        throw new Error('Appearance geometry is incomplete');
       }
       // The heading scrolls with the column, and the steps above changed controls further
       // down, so measure it from the top of the page.
@@ -147,7 +149,7 @@ describe('Android Appearance', () => {
         el.scrollTop = 0;
       }
       const sheet = column.closest<HTMLElement>('[role="dialog"]');
-      if (!sheet) throw new Error('Android Appearance is not in a sheet');
+      if (!sheet) throw new Error('Appearance is not in a sheet');
       return {
         sheetTop: sheet.getBoundingClientRect().top,
         headingTop: heading.getBoundingClientRect().top,

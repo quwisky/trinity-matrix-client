@@ -30,6 +30,14 @@ pnpm ios:build
 
 The static verifier checks shared host contracts on any supported development machine. `verify-native` performs an unsigned simulator build and requires macOS and Xcode. A successful unsigned simulator build does not prove device signing, App Store packaging, notification delivery, Keychain behavior on a device, or production lifecycle.
 
+## Run the installed-app suite {#ios-e2e}
+
+```bash
+TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native pnpm e2e:mobile:ios
+```
+
+The WebdriverIO and Appium suite drives the simulator build through the XCUITest driver. It needs macOS, Xcode, the pinned iOS Simulator runtime, `python3` and `caddy` on `PATH`; Synapse runs from a venv instead of Docker, without SSO or a second homeserver. Read [desktop and native tests](../../testing/desktop-and-native-tests/) for what simulator evidence does and does not prove.
+
 ## Respect native ownership {#native-ownership}
 
 Keep plugin access in `libs/platform-native` adapters and consume shared host operations from application code. Test safe areas, keyboard resizing, system browser authentication, deep links, lifecycle, secure storage, notification activation, and Back behavior in the environment whose behavior changed.

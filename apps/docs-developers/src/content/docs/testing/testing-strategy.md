@@ -23,7 +23,7 @@ Validation is evidence about a specific claim. Choose the smallest check that ca
 | Matrix protocol behavior                     | Disposable-homeserver E2E journey                |
 | Electron, Android, or iOS behavior           | Launched target host on a suitable machine       |
 
-Playwright owns renderer journeys and Electron. `e2e/mobile` (WebdriverIO and Appium) owns installed-app behavior on Android. Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed app (native plugin, OS UI, hardware or system event, deep link). Everything else stays in `e2e/browser`.
+Playwright owns renderer journeys and Electron. `e2e/mobile` (WebdriverIO and Appium) owns installed-app behavior on Android and iOS (the Simulator). Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed app (native plugin, OS UI, hardware or system event, deep link). Everything else stays in `e2e/browser`.
 
 A passing unit test does not prove type safety or layout. A browser emulation does not prove a Capacitor plugin or installed WebView. A static host check does not prove launch behavior.
 
