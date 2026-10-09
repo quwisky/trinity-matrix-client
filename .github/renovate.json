@@ -54,7 +54,7 @@
     {
       "description": [
         "Patch updates are the one category that needs no human at any point: exempt from the dashboard gate, and merged by Renovate once CI is green. A patch is the update type least likely to change behaviour, and minimumReleaseAge already holds every release for three days, so a version yanked hours after publishing never reaches a branch in the first place. Everything else waits for a tick under the top-level dependencyDashboardApproval.",
-        "automergeType 'branch' means these never become pull requests: Renovate pushes renovate/*, waits for that branch's checks, and merges it into main itself. A PR is the fallback rather than the route — Renovate opens one if the branch goes red, or if its checks stay pending for 24 hours — so a failing patch still surfaces somewhere a human can see it, it just arrives as a PR instead of a merge. main's 'Protect main' ruleset requires a pull request and Renovate is not one of its bypass actors, so the direct merge into main is refused and these patches land through that fallback pull request too. platformAutomerge is deliberately NOT set here: it only governs GitHub's native auto-merge on a pull request, and there is no pull request in this path.",
+        "automergeType 'branch' asks Renovate to merge renovate/patch-* into main itself, without a pull request, once that branch's checks pass. A PR is the fallback: Renovate opens one if the branch goes red, or if its checks stay pending for 24 hours, so a failing patch still surfaces somewhere a human can see it. main's 'Protect main' ruleset requires a pull request, so unless Renovate is one of its bypass actors (the release guide says it is not) the direct merge is refused too, and recent patch updates have arrived as renovate/patch-* pull requests that a maintainer merged. platformAutomerge is deliberately NOT set here: it only governs GitHub's native auto-merge on a pull request, and the intended path has no pull request.",
         "additionalBranchPrefix puts these on renovate/patch-* instead of renovate/*, and it exists to keep ci.yml's push trigger narrow. CI has to run on the branch for any of this to work (below), but a trigger of renovate/** would also match every dashboard-approved update — which DOES get a pull request — and each rebase there would then fire a push run and a pull_request run of the same five jobs, e2e included. The prefix makes the push trigger match only the branches that never become a PR. Renovate composes branch names as branchPrefix + additionalBranchPrefix + branchTopic from the config resolved for each update, so a rule-level value is applied here and nowhere else.",
         "This rule depends on ci.yml running on push to renovate/patch-**, and the dependency is one-directional and silent. With no checks on the branch Renovate declines to merge (automerging an untested branch needs an explicit ignoreTests, which is not set), so it waits out the pending window and opens a PR. Removing that trigger therefore breaks nothing loudly — it quietly turns this whole rule back into ordinary pull requests.",
         "rebaseWhen is overridden because nothing reads these branches before they land. main's 'Protect main' ruleset does not require a branch to be up to date before it merges, so the green result Renovate merges on could otherwise have been produced against a base that has since moved. 'behind-base-branch' re-runs CI against the current base before that can happen. It costs extra CI on branches the base outpaces, which is the right way round for the only rule that merges with nobody looking."
@@ -180,9 +180,9 @@
     },
     {
       "description": [
-        "Shipped runtime code where a patch can change what users run: the HTML sanitizer, the Matrix SDK with its crypto WASM, the widget API and the desktop Chromium. They opt back OUT of the patch automerge above, like action digests, but keep its dashboard exemption, so a patch still opens a pull request straight away and waits for a human merge.",
-        "The empty additionalBranchPrefix keeps these pull requests off renovate/patch-*, which ci.yml treats as 'no pull request exists', and rebaseWhen goes back to the top-level 'conflicted' so a pull request waiting for review is not rebased and re-tested on every push to main. electron's patches therefore leave the 'electron shell' group's renovate/patch-* branch for a pull request.",
-        "Keep this rule LAST: the last matching rule wins each key, and it must win automerge over the patch rule."
+        "Shipped runtime code where a patch can change what users run: the HTML sanitizer, the Matrix SDK with its crypto WASM, the widget API and the desktop Chromium. Their patches opt back OUT of the patch automerge above, like action digests, but keep its dashboard exemption, so a patch still opens a pull request straight away and waits for a human merge. Their other updates follow the top-level rules unchanged.",
+        "additionalBranchPrefix 'runtime-' gives these patches branches of their own: off renovate/patch-*, which ci.yml treats as 'no pull request exists', and off the branch of a minor or major in the same group that is waiting for dashboard approval. rebaseWhen goes back to the top-level 'conflicted' so a pull request waiting for review is not rebased and re-tested on every push to main. electron's patches therefore leave the 'electron shell' group's patch branch for renovate/runtime-electron-shell.",
+        "Keep this rule LAST: the last matching rule wins each key, and it must win automerge over the patch rule. scripts/renovate-config.spec.mjs checks that no later rule sets automerge."
       ],
       "matchPackageNames": [
         "dompurify",
@@ -191,8 +191,9 @@
         "matrix-widget-api",
         "electron"
       ],
+      "matchUpdateTypes": ["patch"],
       "automerge": false,
-      "additionalBranchPrefix": "",
+      "additionalBranchPrefix": "runtime-",
       "rebaseWhen": "conflicted"
     }
   ]
