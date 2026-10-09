@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs';
 import { connect } from 'node:tls';
 import { browser, expect } from '@wdio/globals';
 import { HS_TLS } from '../../support/homeserver/start.mjs';
+import { readSession } from '../../support/session.mts';
 import { APP_PACKAGE, iosPreferences, native, webview } from './session.mts';
 
 /** Fill an input through its `<label for>`, like the browser suite's fillLabeledInput. */
@@ -34,8 +36,11 @@ export async function waitForRooms(timeout = 30_000): Promise<void> {
   );
 }
 
-/** Time a TLS handshake from this host to the native Caddy on one address family. */
-function probeHandshake(host: string): Promise<string> {
+/**
+ * Time a TLS handshake from this host to the native Caddy on one address family, verified
+ * against the run's own Caddy root: the one the runner trusts in the Simulator keychain.
+ */
+function probeHandshake(host: string, ca: Buffer): Promise<string> {
   const { port } = new URL(HS_TLS);
   return new Promise((resolve) => {
     const started = Date.now();
@@ -44,7 +49,7 @@ function probeHandshake(host: string): Promise<string> {
         host,
         port: Number(port),
         servername: 'localhost',
-        rejectUnauthorized: false,
+        ca,
         timeout: 10_000,
       },
       () => {
@@ -68,9 +73,13 @@ function probeHandshake(host: string): Promise<string> {
  * well-known fetch take from inside the WebView?
  */
 async function discoveryDiagnostics(): Promise<string> {
+  const caddyRoot = readSession().homeserver?.caddyRoot;
+  if (!caddyRoot)
+    return 'no Caddy root in the E2E session to probe the host with';
+  const ca = readFileSync(caddyRoot);
   const [v6, v4] = await Promise.all([
-    probeHandshake('::1'),
-    probeHandshake('127.0.0.1'),
+    probeHandshake('::1', ca),
+    probeHandshake('127.0.0.1', ca),
   ]);
   const webview = await browser
     .executeAsync((url: string, done: (result: string) => void) => {
