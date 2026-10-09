@@ -167,4 +167,26 @@ describe('AccountBadgesService', () => {
     });
     expect([...svc.everyAccount().keys()]).toEqual(['@a:hs', '@b:hs']);
   });
+
+  it('reports whether the view is mixed, and stays quiet while it only reselects', () => {
+    const { svc, mixing, selected } = harness({
+      mixing: false,
+      selected: ['@a:hs'],
+    });
+    let evaluations = 0;
+    const watcher = computed(() => {
+      evaluations++;
+      return svc.mixed();
+    });
+    expect(watcher()).toBe(false);
+
+    mixing.set(true);
+    expect(watcher()).toBe(true);
+    expect(evaluations).toBe(2);
+
+    // A new view object (a room-list sync, a tick of another account) is not a change.
+    selected.set(new Set(['@a:hs', '@b:hs']));
+    expect(watcher()).toBe(true);
+    expect(evaluations).toBe(2);
+  });
 });

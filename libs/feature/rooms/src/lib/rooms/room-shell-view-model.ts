@@ -295,7 +295,7 @@ export class RoomShellViewModel {
       mode: this.railUnreadPreference.mode(),
       open: onScreen ? { accountId, roomId } : null,
       activeAccountId: accountId,
-      mixed: this.selectedLibrary.view().mode === 'mixed',
+      mixed: this.accountBadgesSvc.mixed(),
       badges: this.accountBadgesSvc.everyAccount(),
     });
   });

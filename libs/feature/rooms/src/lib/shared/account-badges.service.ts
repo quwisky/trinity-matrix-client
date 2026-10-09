@@ -36,6 +36,12 @@ export class AccountBadgesService {
   private readonly selectedLibrary = inject(SelectedRoomLibraryService);
   private readonly identities = inject(AccountIdentitiesService);
 
+  /**
+   * Whether more than one account is being mixed. A boolean computed, so a consumer
+   * re-evaluates only when mixing starts or stops, not on every room-list sync.
+   */
+  readonly mixed = computed(() => this.selectedLibrary.view().mode === 'mixed');
+
   readonly badges = computed<ReadonlyMap<string, AccountBadge>>(() => {
     const badges = new Map<string, AccountBadge>();
     const view = this.selectedLibrary.view();
