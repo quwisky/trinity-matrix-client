@@ -46,7 +46,7 @@ describe('RAIL_UNREAD_CHATS_PREFERENCE', () => {
       editor: {
         kind: 'select',
         label: 'Unread chats in the space rail',
-        testId: 'rail-unread-chats',
+        testId: 'space-rail-unread-chats',
         options: [
           { value: 'up-to-5', label: 'Up to 5' },
           { value: 'all', label: 'All' },

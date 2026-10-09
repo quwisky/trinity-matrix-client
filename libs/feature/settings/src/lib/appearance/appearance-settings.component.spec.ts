@@ -122,10 +122,11 @@ describe('AppearanceSettingsComponent', () => {
       (candidate) => candidate.textContent?.includes('Space rail'),
     );
     expect(
-      group?.querySelector('[data-testid=rail-unread-chats]')?.textContent,
+      group?.querySelector('[data-testid=space-rail-unread-chats]')
+        ?.textContent,
     ).toContain('Unread chats in the space rail');
     expect(
-      group?.querySelector('[data-testid=rail-unread-chats-select]')
+      group?.querySelector('[data-testid=space-rail-unread-chats-select]')
         ?.textContent,
     ).toContain('Up to 5');
   });

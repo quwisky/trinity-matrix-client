@@ -32,7 +32,7 @@ import { openSection } from '../../support/settings-journey.mts';
 const escapeRegExp = (text: string): string =>
   text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** The rail's own section; the Settings row for the choice shares the same test id. */
+/** The rail's own section of unread chats. */
 const railSection = (page: Page) =>
   page.locator('trn-server-rail').getByTestId('rail-unread-chats');
 
@@ -261,14 +261,16 @@ async function chooseRailUnreadChats(
   await openSettingsFromRooms(page);
   await openSection(page, 'appearance');
   const dialog = page.getByRole('dialog', { name: 'Settings' });
-  await expect(dialog.getByTestId('rail-unread-chats')).toBeVisible();
+  await expect(dialog.getByTestId('space-rail-unread-chats')).toBeVisible();
   await dialog
-    .getByTestId('rail-unread-chats-select')
+    .getByTestId('space-rail-unread-chats-select')
     .locator('button')
     .click();
-  await page.getByTestId(`rail-unread-chats-${option}`).click();
+  await page.getByTestId(`space-rail-unread-chats-${option}`).click();
   // The options live in an overlay that goes once a choice is made.
-  await expect(page.getByTestId(`rail-unread-chats-${option}`)).toHaveCount(0);
+  await expect(
+    page.getByTestId(`space-rail-unread-chats-${option}`),
+  ).toHaveCount(0);
 }
 
 test.describe('Space rail unread chats', () => {
@@ -415,10 +417,10 @@ test.describe('Space rail unread chats', () => {
     // Off: the section goes altogether.
     await page
       .getByRole('dialog', { name: 'Settings' })
-      .getByTestId('rail-unread-chats-select')
+      .getByTestId('space-rail-unread-chats-select')
       .locator('button')
       .click();
-    await page.getByTestId('rail-unread-chats-off').click();
+    await page.getByTestId('space-rail-unread-chats-off').click();
     await expect(railSection(page)).toHaveCount(0);
     await expect(railEntries(page)).toHaveCount(0);
     await expect(overflowEntry(page)).toHaveCount(0);
@@ -448,7 +450,7 @@ test.describe('Space rail unread chats', () => {
     await expect(
       page
         .getByRole('dialog', { name: 'Settings' })
-        .getByTestId('rail-unread-chats-select')
+        .getByTestId('space-rail-unread-chats-select')
         .locator('button'),
     ).toHaveText('Off');
   });

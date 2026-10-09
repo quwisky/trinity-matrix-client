@@ -61,7 +61,7 @@ export const RAIL_UNREAD_CHATS_PREFERENCE = definePreference({
     kind: 'select',
     label: 'Unread chats in the space rail',
     description: 'Chats with new messages, newest first, under Rooms.',
-    testId: 'rail-unread-chats',
+    testId: 'space-rail-unread-chats',
     options: RAIL_UNREAD_CHAT_MODES.map(({ id, label }) => ({
       value: id,
       label,
