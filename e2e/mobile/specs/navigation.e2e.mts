@@ -11,7 +11,13 @@ import {
   registerUser,
   uniqueId,
 } from '../support/matrix.mts';
-import { goBack, resetApp, restartApp } from '../support/session.mts';
+import {
+  goBack,
+  resetApp,
+  restartApp,
+  historyGestures,
+  recordHistoryGestures,
+} from '../support/session.mts';
 import { onlyOn } from '../support/platform.mts';
 
 /** iOS has no system Back for an open panel: MainViewController turns the edge swipe off. */
@@ -146,6 +152,48 @@ describe('mobile navigation', () => {
     await expect($(settingsDialog)).not.toBeDisplayed({ wait: 10_000 });
     await waitForRooms();
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
+  });
+
+  it('turns the iOS history swipe on for a routed Settings page, whose Back is history', async function () {
+    onlyOn(
+      'ios',
+      "WebKit's edge swipe; Android's system Back on routed pages is covered above",
+    ).call(this);
+    const user = uniqueId('ios-swipe');
+    const pass = `${user}-pass`;
+    await registerUser(user, pass);
+    await login(user, pass);
+    await waitForRooms();
+    const { search } = new URL(await browser.getUrl());
+    await recordHistoryGestures();
+
+    // A phone opens Settings as a sheet; a direct link still renders the routed page.
+    // Push it as one in-app history entry, the way the router would follow such a link.
+    await browser.execute((path: string) => {
+      history.pushState(null, '', path);
+      dispatchEvent(new PopStateEvent('popstate', { state: null }));
+    }, `/settings/appearance${search}`);
+    await browser.waitUntil(
+      async () => (await pathname()) === '/settings/appearance',
+      { timeout: 20_000, timeoutMsg: 'routed Settings never opened' },
+    );
+    await expect($('trn-settings')).toBeDisplayed({ wait: 20_000 });
+    await browser.waitUntil(
+      async () => (await historyGestures()).at(-1) === true,
+      {
+        timeout: 10_000,
+        timeoutMsg: 'routed Settings never turned the history swipe on',
+      },
+    );
+
+    // The swipe itself is WebKit's: a synthesized edge pan fires it only intermittently on
+    // the Simulator, so the spec takes the same history step it would.
+    await browser.execute(() => history.back());
+    await browser.waitUntil(async () => (await pathname()) === '/rooms', {
+      timeout: 20_000,
+      timeoutMsg: 'history Back never left routed Settings',
+    });
+    await waitForRooms();
   });
 
   it('steps System status back to its sections, then closes it, on hardware Back', async function () {

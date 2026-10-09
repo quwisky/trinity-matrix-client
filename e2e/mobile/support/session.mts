@@ -212,14 +212,51 @@ export async function restartApp(): Promise<void> {
 }
 
 /**
- * Android's system Back. iOS has no equivalent here: WebKit's edge swipe is off while a
- * routed Settings page or panel is active (see the gesture policy in
- * trinity-application-session.adapter), so iOS specs use the in-app Back button.
+ * Android's system Back. iOS has no equivalent for an open dialog, sheet or panel: WebKit's
+ * edge swipe is off while one is active (see the gesture policy in
+ * trinity-application-session.adapter), so iOS specs use their in-app controls there. On a
+ * routed page the swipe is history Back; {@link historyGestures} shows it switched on.
  */
 export async function goBack(): Promise<void> {
   await native();
   await browser.pressKeyCode(4);
   await webview();
+}
+
+/**
+ * Record what the app asks MainViewController to do with WebKit's history swipe, by
+ * watching the `NativeNavigation.setGesturesEnabled` calls crossing the Capacitor bridge.
+ * Read them back with {@link historyGestures}; a reload clears the record.
+ */
+export async function recordHistoryGestures(): Promise<void> {
+  await browser.execute(() => {
+    const w = window as unknown as {
+      __trnHistoryGestures?: boolean[];
+      Capacitor: { toNative: (...args: unknown[]) => unknown };
+    };
+    if (w.__trnHistoryGestures) return;
+    w.__trnHistoryGestures = [];
+    const toNative = w.Capacitor.toNative;
+    w.Capacitor.toNative = (...args: unknown[]) => {
+      const [plugin, method, options] = args as [
+        string,
+        string,
+        { enabled?: unknown },
+      ];
+      if (plugin === 'NativeNavigation' && method === 'setGesturesEnabled')
+        w.__trnHistoryGestures?.push(options?.enabled === true);
+      return toNative.apply(w.Capacitor, args);
+    };
+  });
+}
+
+/** Every history-swipe switch since {@link recordHistoryGestures}, oldest first. */
+export async function historyGestures(): Promise<boolean[]> {
+  return browser.execute(
+    () =>
+      (window as unknown as { __trnHistoryGestures?: boolean[] })
+        .__trnHistoryGestures ?? [],
+  );
 }
 
 export async function webviewVersion(): Promise<string> {
