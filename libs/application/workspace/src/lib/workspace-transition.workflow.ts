@@ -119,10 +119,8 @@ export class WorkspaceTransitionWorkflow {
       }
       routeProjectionStarted = true;
       return this.location.project(resolved.destination, {
-        history:
-          options.history === 'replace' || resolved.repaired
-            ? 'replace'
-            : 'push',
+        history: resolved.repaired ? 'replace' : options.history,
+        overList: options.overList === true && !resolved.repaired,
         eventId: options.eventId,
       });
     };

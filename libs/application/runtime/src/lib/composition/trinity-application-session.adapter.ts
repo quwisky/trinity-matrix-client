@@ -10,6 +10,7 @@ import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
   InboundRoomLinkService,
   WorkspaceBackService,
+  WorkspaceNavigationService,
 } from '@trinity/application/workspace';
 import { parseTrinityRoomLink } from '@trinity/util/matrix';
 import {
@@ -86,6 +87,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly toast = inject(TrnToastService);
   private readonly dialog = inject(TrnSurfaceService);
   private readonly workspaceBack = inject(WorkspaceBackService);
+  private readonly workspaceNavigation = inject(WorkspaceNavigationService);
   private readonly nativeNavigation = inject(NativeNavigationService);
   private readonly hostDeepLinks = inject(HostDeepLinksService);
   private readonly hostBack = inject(HostBackService);
@@ -468,12 +470,16 @@ export class TrinityApplicationSessionAdapter {
     return new Observable(() => {
       const policy = effect(
         () => {
-          // A routed surface is browser history, as in workspaceBrowserBackGuard, so
-          // the history swipe may navigate it; dialogs and panels must consume Back.
+          // A routed surface, or a Conversation pushed over its list, is browser history,
+          // as in workspaceBrowserBackGuard, so the history swipe may navigate it; dialogs
+          // and panels must consume Back.
           const active = this.workspaceBack.activeSurface();
-          const interceptionActive =
-            this.dialog.openState() ||
-            (active !== null && !this.routedSurfaces.owns(active));
+          const historyBack =
+            active === null ||
+            this.routedSurfaces.owns(active) ||
+            (active.layer === 'conversation' &&
+              this.workspaceNavigation.conversationOverList());
+          const interceptionActive = this.dialog.openState() || !historyBack;
           this.nativeNavigation.setHistoryGesturesEnabled(!interceptionActive);
         },
         { injector: this.injector },

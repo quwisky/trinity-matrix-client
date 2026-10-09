@@ -28,10 +28,19 @@ function roomScope(
   );
 }
 
+/** What browser history holds under the current entry, as far as Workspace knows. */
+export interface WorkspaceHistoryContext {
+  /** The current entry is a Conversation pushed straight over its list (see `overList`). */
+  readonly listBelow: boolean;
+  /** List and Conversation are separate pages (below `md`), not one split view. */
+  readonly compact: boolean;
+}
+
 /** Resolve one Room-shell intent into the package-private transition protocol. */
 export function resolveWorkspaceNavigation(
   intent: WorkspaceNavigationIntent,
   current: WorkspaceView,
+  history: WorkspaceHistoryContext = { listBelow: false, compact: false },
 ): ResolvedWorkspaceNavigation | null {
   switch (intent.kind) {
     case 'account':
@@ -69,6 +78,13 @@ export function resolveWorkspaceNavigation(
         options: {
           source: intent.origin === 'room-hop' ? 'hop' : 'user',
           history: 'push',
+          // Opened from this account's compact list page: Back can pop back to it (#1113).
+          // Split view has no list page to return to; there Back leaves the Room as before.
+          ...(history.compact &&
+          current.pane === 'list' &&
+          current.accountId === intent.accountId
+            ? { overList: true }
+            : {}),
         },
       };
     case 'conversation':
@@ -136,7 +152,13 @@ export function resolveWorkspaceNavigation(
             : intent.origin === 'workspace-back'
               ? 'back'
               : 'user',
-          history: intent.origin === 'compact-close' ? 'push' : 'replace',
+          // Pop a Conversation opened over its list, so the entry below is the list Back
+          // returns to and WebKit's swipe agrees. Otherwise replace it: a pushed list entry
+          // would leave the Conversation one swipe back (#1113).
+          history:
+            !roomRemoved && history.listBelow && current.pane === 'conversation'
+              ? 'back'
+              : 'replace',
         },
       };
     }

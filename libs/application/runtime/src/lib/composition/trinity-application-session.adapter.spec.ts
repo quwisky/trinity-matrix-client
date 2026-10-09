@@ -90,6 +90,7 @@ interface SessionHarness {
   readonly closeTopmost: ReturnType<typeof vi.fn>;
   readonly workspaceActive: ReturnType<typeof signal<boolean>>;
   readonly workspaceSurface: ReturnType<typeof signal<WorkspaceSurface | null>>;
+  readonly conversationOverList: ReturnType<typeof signal<boolean>>;
   readonly routedSurface: ReturnType<typeof signal<WorkspaceSurface | null>>;
   readonly workspaceOwnsOverlay: ReturnType<typeof vi.fn>;
   readonly workspaceBack: ReturnType<typeof vi.fn>;
@@ -140,6 +141,7 @@ function setup(
   const closeTopmost = vi.fn(() => false);
   const workspaceActive = signal(false);
   const workspaceSurface = signal<WorkspaceSurface | null>(null);
+  const conversationOverList = signal(false);
   const routedSurface = signal<WorkspaceSurface | null>(null);
   const workspaceOwnsOverlay = vi.fn(() => false);
   const workspaceBack = vi.fn(() => of({ kind: 'unhandled' as const }));
@@ -226,7 +228,10 @@ function setup(
         activeOwnsTopmostOverlay: workspaceOwnsOverlay,
         back: workspaceBack,
       }),
-      MockProvider(WorkspaceNavigationService, { navigate: workspaceNavigate }),
+      MockProvider(WorkspaceNavigationService, {
+        navigate: workspaceNavigate,
+        conversationOverList: conversationOverList.asReadonly(),
+      }),
       MockProvider(NativeNavigationService, { setHistoryGesturesEnabled }),
       {
         provide: SwUpdate,
@@ -259,6 +264,7 @@ function setup(
     closeTopmost,
     workspaceActive,
     workspaceSurface,
+    conversationOverList,
     routedSurface,
     workspaceOwnsOverlay,
     workspaceBack,
@@ -1270,6 +1276,24 @@ describe('TrinityApplicationSessionAdapter', () => {
       lifetime.unsubscribe();
     },
   );
+
+  it('turns the native Back gesture on over a Conversation pushed over its list (#1113)', () => {
+    const test = setup();
+    test.workspaceSurface.set({
+      layer: 'conversation',
+      surface: { kind: 'conversation', accountId: 'a1', roomId: '!r:hs' },
+    });
+    test.conversationOverList.set(true);
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
+
+    // A panel over it, or a dialog, still owns Back.
+    test.workspaceSurface.set({ layer: 'room', surface: { kind: 'threads' } });
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(false);
+    lifetime.unsubscribe();
+  });
 
   it('keeps the native Back gesture off over a phone Conversation, which Workspace dismisses to the list', () => {
     const test = setup();
