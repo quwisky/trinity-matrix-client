@@ -292,6 +292,16 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
       'iOS host must delegate status-bar appearance to its view controller',
     );
   }
+  // Xcode 27 builds abort at launch without the UIScene lifecycle, and iOS only
+  // delivers the authentication redirect to the scene delegate once it is adopted.
+  if (
+    !iosInfo.includes('<key>UIApplicationSceneManifest</key>') ||
+    !/<key>UISceneDelegateClassName<\/key>\s*<string>\$\(PRODUCT_MODULE_NAME\)\.SceneDelegate<\/string>/u.test(
+      iosInfo,
+    )
+  ) {
+    errors.push('iOS host must adopt the UIScene lifecycle');
+  }
 }
 
 export function validateCurrentNativeHosts(selectedHosts) {
