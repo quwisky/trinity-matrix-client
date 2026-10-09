@@ -1,3 +1,5 @@
+import { setTimeout as wait } from 'node:timers/promises';
+import type { APIResponse } from '@playwright/test';
 import {
   expect,
   test,
@@ -56,6 +58,31 @@ const railEntryNames = (page: Page): Promise<(string | null)[]> =>
 const overflowEntry = (page: Page) =>
   page.locator('trn-server-rail').getByTestId('rail-unread-overflow');
 
+/**
+ * Synapse rate-limits joins per user (burst of 10, then one every ten seconds), and creating
+ * or joining a room counts as one. Seeding more than ten rooms for one account therefore
+ * meets a 429, so honour its `retry_after_ms` (bounded) and send again.
+ */
+async function sendWithRetry(
+  label: string,
+  send: () => Promise<APIResponse>,
+): Promise<APIResponse> {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const response = await send();
+    if (response.status() !== 429) {
+      expect(response.ok(), `${label}: ${response.status()}`).toBe(true);
+      return response;
+    }
+    const body = (await response.json().catch(() => ({}))) as {
+      retry_after_ms?: number;
+    };
+    await wait(
+      Math.min(Math.max(Number(body.retry_after_ms) || 1_000, 1), 15_000),
+    );
+  }
+  throw new Error(`${label}: still rate-limited after 6 attempts`);
+}
+
 /** Create a room as `reader`, bring `sender` in, and have `sender` post `messages` messages. */
 async function seedUnreadRoom(
   request: APIRequestContext,
@@ -66,17 +93,19 @@ async function seedUnreadRoom(
   txnPrefix: string,
   messages = 1,
 ): Promise<string> {
-  const created = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-    headers: reader.headers,
-    data: { name, preset: 'private_chat', invite: [sender.userId] },
-  });
-  expect(created.ok(), `createRoom ${name}`).toBe(true);
-  const roomId = (await created.json()).room_id as string;
-  const joined = await request.post(
-    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
-    { headers: sender.headers },
+  const created = await sendWithRetry(`createRoom ${name}`, () =>
+    request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: reader.headers,
+      data: { name, preset: 'private_chat', invite: [sender.userId] },
+    }),
   );
-  expect(joined.ok(), `join ${name}`).toBe(true);
+  const roomId = (await created.json()).room_id as string;
+  await sendWithRetry(`join ${name}`, () =>
+    request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
+      { headers: sender.headers },
+    ),
+  );
   for (let i = 0; i < messages; i++) {
     await postMessage(
       request,
@@ -103,6 +132,8 @@ async function setDisplayName(
   expect(res.ok(), `displayname ${displayname}`).toBe(true);
 }
 
+let probeCount = 0;
+
 /** The server's own unread notification count for `roomId`, as `reader` sees it. */
 async function serverUnreadCount(
   request: APIRequestContext,
@@ -110,10 +141,13 @@ async function serverUnreadCount(
   reader: ApiUser,
   roomId: string,
 ): Promise<number> {
+  // Synapse caches the response to an identical sync request for a couple of minutes, so a
+  // repeated probe would keep returning the first answer. A filter that differs by an unused
+  // account-data type is a different request every time.
   const filter = JSON.stringify({
     room: { rooms: [roomId], timeline: { limit: 1 } },
     presence: { types: [] },
-    account_data: { types: [] },
+    account_data: { types: [`probe.${++probeCount}.${Date.now()}`] },
   });
   const res = await request.get(
     `${hs}/_matrix/client/v3/sync?timeout=0&filter=${encodeURIComponent(filter)}`,
@@ -395,9 +429,9 @@ test.describe('Space rail unread chats', () => {
     await expect(page.getByText('Settings copied.')).toBeVisible();
     const copied = await page.evaluate(() => navigator.clipboard.readText());
     const exported = JSON.parse(copied) as {
-      spaceRail?: { unreadChats?: string };
+      settings?: { spaceRail?: { unreadChats?: string } };
     };
-    expect(exported.spaceRail).toEqual({ unreadChats: 'off' });
+    expect(exported.settings?.spaceRail).toEqual({ unreadChats: 'off' });
 
     // The choice is saved on this device: it survives a reload.
     await page.reload();
@@ -425,7 +459,9 @@ test.describe('Space rail unread chats', () => {
   }) => {
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}ru4`;
-    const seeded = await seedUnreadRooms(request, hs, runId, 16);
+    // Twelve rooms are past Synapse's burst of ten joins, so seeding waits out the limit.
+    test.setTimeout(240_000);
+    const seeded = await seedUnreadRooms(request, hs, runId, 12);
 
     await login(page, {
       available: true,
@@ -435,7 +471,7 @@ test.describe('Space rail unread chats', () => {
     });
     await expect(railEntries(page)).toHaveCount(5, { timeout: 30_000 });
     await chooseRailUnreadChats(page, 'all');
-    await expect(railEntries(page)).toHaveCount(16);
+    await expect(railEntries(page)).toHaveCount(12);
 
     // Back to the list page of a phone: with no chat open the rail is on screen.
     await closeSettings(page);
