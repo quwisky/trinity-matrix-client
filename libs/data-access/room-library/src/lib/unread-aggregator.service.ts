@@ -74,8 +74,9 @@ export class UnreadAggregatorService {
   });
   /**
    * Every unread chat on every signed-in account, under the app badge's rule: joined, not a
-   * space, and a notification count or the marked-unread flag. Muted rooms drop out because
-   * their push rules keep the count at zero. The same room on two accounts is two entries.
+   * space, and a notification count or the marked-unread flag. A muted room's push rules
+   * keep its count at zero, so it is listed only while marked unread. The same room on two
+   * accounts is two entries.
    */
   readonly unreadRooms = this._unreadRooms.asReadonly();
 
@@ -140,7 +141,9 @@ export class UnreadAggregatorService {
     const rooms: UnreadRoom[] = [];
     for (const userId of this.listeners.keys()) {
       const unread = this.unreadRoomsFor(userId);
-      // A flagged room with no count counts as one, exactly as before.
+      // A room flagged to come back to counts as one although the server's count for it is
+      // zero: that flag is the only thing saying it wants attention, and a badge that ignored
+      // it would leave "come back to this" visible nowhere but the sidebar row.
       counts.set(
         userId,
         unread.reduce((sum, room) => sum + (room.unreadCount || 1), 0),
@@ -152,12 +155,8 @@ export class UnreadAggregatorService {
   }
 
   /**
-   * An account's joined, non-space rooms that want attention.
-   *
-   * A room the user flagged to come back to counts as one, even though the server's count
-   * for it is zero — that flag is the only thing saying the room wants attention, and a
-   * badge that ignored it would leave "come back to this" visible nowhere but the one
-   * sidebar list that happens to show the room.
+   * An account's joined, non-space rooms that want attention: a notification count above
+   * zero, or the marked-unread flag even when the count is zero.
    */
   private unreadRoomsFor(userId: string): UnreadRoom[] {
     const client = this.matrix.clientFor(userId);

@@ -22,14 +22,15 @@ function badgeOf(
 }
 
 /**
- * Owning-account badges for the mixed-account view: account id → the avatar/initial/name
- * drawn in the corner of a room row, space pill or switcher result.
+ * Owning-account badges: account id → the avatar/initial/name drawn in the corner of a
+ * room row, space pill, rail unread chat or switcher result.
  *
- * Shared so every surface that renders mixed rows badges them identically — the sidebar,
- * the rail and the quick switcher would otherwise each derive this, and drift.
+ * Shared so every surface that badges rows does so identically — the sidebar, the rail
+ * and the quick switcher would otherwise each derive this, and drift.
  *
- * Empty unless more than one account is being mixed, which is what makes a badge meaningful
- * in the first place: with a single account every row belongs to it.
+ * {@link badges} is empty unless more than one account is being mixed, which is what makes
+ * a badge meaningful on mixed rows: with a single account every row belongs to it.
+ * {@link everyAccount} covers every signed-in account regardless.
  */
 @Injectable({ providedIn: 'root' })
 export class AccountBadgesService {
@@ -42,6 +43,7 @@ export class AccountBadgesService {
    */
   readonly mixed = computed(() => this.selectedLibrary.view().mode === 'mixed');
 
+  /** The mixed accounts' badges; empty unless more than one account is being mixed. */
   readonly badges = computed<ReadonlyMap<string, AccountBadge>>(() => {
     const badges = new Map<string, AccountBadge>();
     const view = this.selectedLibrary.view();
