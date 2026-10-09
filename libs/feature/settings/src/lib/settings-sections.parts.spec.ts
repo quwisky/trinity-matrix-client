@@ -40,6 +40,7 @@ import {
 import {
   SpaceRoomOrderService,
   TRINITY_ROOM_SORTS,
+  provideRoomLibraryPreferences,
 } from '@trinity/data-access/room-library';
 import {
   CONVERSATION_PRIVACY_PREFERENCES,
@@ -157,6 +158,7 @@ const SETUPS: Record<string, () => Setup> = {
     return {
       providers: [
         provideAppearancePreferences(),
+        provideRoomLibraryPreferences(),
         STORAGE,
         MockProvider(AppearanceEffects, {
           resolved: signal(undefined).asReadonly(),
