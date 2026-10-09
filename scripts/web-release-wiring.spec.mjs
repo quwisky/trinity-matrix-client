@@ -31,7 +31,7 @@ describe('release workflow web zip', () => {
 
   it('waits for the web zip and names it in a partial-release warning', () => {
     const draft = job(release, 'draft-release');
-    expect(draft).toMatch(/needs: \[verify, package, package-web\]/);
+    expect(draft).toMatch(/needs: \[verify, package, sign-mac, package-web\]/);
     expect(draft).toContain(
       'ls artifacts/Trinity-Web-*.zip >/dev/null 2>&1 || missing="$missing web"',
     );
@@ -137,11 +137,10 @@ describe('container workflow robustness', () => {
 });
 
 describe('release package timeouts', () => {
-  it('gives the macOS package 120 minutes for notarization and the others 45', () => {
+  it('gives macOS signing 120 minutes for notarization and the package legs 45', () => {
     const release = read('.github/workflows/release.yml');
-    expect(release).toContain(
-      "timeout-minutes: ${{ matrix.platform == 'mac' && 120 || 45 }}",
-    );
+    expect(job(release, 'sign-mac')).toContain('timeout-minutes: 120');
+    expect(job(release, 'package')).toContain('timeout-minutes: 45');
   });
 });
 

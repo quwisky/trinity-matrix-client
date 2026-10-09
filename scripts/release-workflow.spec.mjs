@@ -1,6 +1,6 @@
 /** Release packaging must not ship a half-signed macOS app. */
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
 
@@ -17,9 +17,16 @@ const SECRETS = [
   'APPLE_APP_SPECIFIC_PASSWORD',
   'APPLE_TEAM_ID',
 ];
+/** Every signing credential name, including Windows names that are not wired up yet. */
+const SIGNING_SECRETS = [...SECRETS, 'WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD'];
+const signJob = () => workflow.jobs['sign-mac'];
+const macLeg = () =>
+  workflow.jobs.package.strategy.matrix.include.find(
+    (leg) => leg.platform === 'mac',
+  );
 
 function signingStep() {
-  const steps = workflow.jobs.package.steps;
+  const steps = signJob().steps;
   const index = steps.findIndex(
     (step) => step.name === 'macOS signing secrets are complete',
   );
@@ -34,10 +41,9 @@ function runWith(names) {
 }
 
 describe('release macOS signing', () => {
-  it('checks the secrets on the mac leg before electron-builder runs', () => {
+  it('checks the secrets in the signing job before electron-builder runs', () => {
     const { steps, index, step } = signingStep();
     expect(index).toBeGreaterThanOrEqual(0);
-    expect(step.if).toBe("matrix.platform == 'mac'");
     const builder = steps.findIndex((s) =>
       s.name?.startsWith('electron-builder'),
     );
@@ -53,6 +59,130 @@ describe('release macOS signing', () => {
     expect(runWith(['MAC_CSC_LINK'])).not.toBe(0);
     expect(runWith(['APPLE_ID', 'APPLE_TEAM_ID'])).not.toBe(0);
     expect(runWith(SECRETS.slice(0, 4))).not.toBe(0);
+  });
+});
+
+describe('macOS signing isolation', () => {
+  const workflows = readdirSync(resolve(root, '.github/workflows')).filter(
+    (name) => /\.ya?ml$/.test(name),
+  );
+  const runs = (job) => job.steps.flatMap((step) => step.run ?? []);
+
+  it('reads the signing secrets only in the macOS signing job', () => {
+    expect(workflows.length).toBeGreaterThan(0);
+    for (const name of workflows) {
+      const { jobs } = parse(
+        readFileSync(resolve(root, '.github/workflows', name), 'utf8'),
+      );
+      for (const [id, job] of Object.entries(jobs)) {
+        if (name === 'release.yml' && id === 'sign-mac') continue;
+        const text = JSON.stringify(job);
+        for (const secret of SIGNING_SECRETS)
+          expect(text, `${name} ${id}`).not.toContain(`secrets.${secret}`);
+      }
+    }
+  });
+
+  it('passes the secrets to single steps, never to the whole job', () => {
+    const job = signJob();
+    expect(JSON.stringify(job.env ?? {})).not.toContain('secrets.');
+    const reading = job.steps
+      .filter((step) => JSON.stringify(step).includes('secrets.'))
+      .map((step) => step.name);
+    expect(reading).toEqual([
+      'macOS signing secrets are complete',
+      'electron-builder --mac',
+    ]);
+  });
+
+  it('keeps the release environment, and its reviewers, on the signing job alone', () => {
+    expect(signJob().environment).toBe('release');
+    for (const [id, job] of Object.entries(workflow.jobs)) {
+      if (id !== 'sign-mac') expect(job.environment, id).not.toBe('release');
+    }
+  });
+
+  it('installs no dependency scripts and runs no workspace build next to the secrets', () => {
+    const job = signJob();
+    for (const step of job.steps) {
+      expect(step.uses ?? '', step.name).not.toMatch(/^\.\//);
+    }
+    const commands = runs(job);
+    expect(commands.length).toBeGreaterThan(0);
+    for (const command of commands) {
+      if (/\bpnpm\b.*\b(?:install|i|add)\b/.test(command)) {
+        expect(command).toContain('--ignore-scripts');
+        expect(command).toContain('--frozen-lockfile');
+      }
+      expect(command).not.toMatch(
+        /\bnx\b|scripts\/|\bpnpm (?:run|build|test|electron:)|\bnpx\b/,
+      );
+    }
+    expect(commands).toContain(
+      'pnpm -C electron install --frozen-lockfile --ignore-scripts',
+    );
+  });
+
+  it('installs pnpm and Node from the pins the setup action uses', () => {
+    const setup = parse(
+      readFileSync(resolve(root, '.github/actions/setup/action.yml'), 'utf8'),
+    ).runs.steps;
+    for (const action of ['pnpm/action-setup@', 'actions/setup-node@']) {
+      const pinned = setup.find((s) => s.uses?.startsWith(action)).uses;
+      expect(signJob().steps.find((s) => s.uses?.startsWith(action)).uses).toBe(
+        pinned,
+      );
+    }
+  });
+
+  it('signs the shell the mac package leg built, not one it builds itself', () => {
+    const leg = macLeg();
+    expect(leg.artifact).not.toMatch(/^trinity-/);
+    expect(leg.assets.trim().split('\n')).toEqual([
+      'electron/dist',
+      'electron/www',
+    ]);
+    const builder = workflow.jobs.package.steps.find((s) =>
+      s.name?.startsWith('electron-builder'),
+    );
+    expect(builder.if).toBe("matrix.platform != 'mac'");
+    expect(JSON.stringify(workflow.jobs.package)).not.toContain('secrets.');
+
+    const job = signJob();
+    expect(job.needs).toEqual(['verify', 'package']);
+    expect(job.if).toBe(
+      "${{ !cancelled() && needs.verify.result == 'success' }}",
+    );
+    const download = job.steps.find((s) =>
+      s.uses?.startsWith('actions/download-artifact@'),
+    );
+    expect(download.with).toEqual({ name: leg.artifact, path: 'electron' });
+  });
+
+  it('packages and uploads the macOS installers under the name the draft collects', () => {
+    const job = signJob();
+    const builder = job.steps.find((s) => s.name === 'electron-builder --mac');
+    expect(builder['working-directory']).toBe('electron');
+    expect(builder.run).toBe(
+      'pnpm exec electron-builder --mac --publish never',
+    );
+    expect(builder.env).toEqual({
+      CSC_LINK: '${{ secrets.MAC_CSC_LINK }}',
+      CSC_KEY_PASSWORD: '${{ secrets.MAC_CSC_KEY_PASSWORD }}',
+      CSC_IDENTITY_AUTO_DISCOVERY: "${{ secrets.MAC_CSC_LINK != '' }}",
+      APPLE_ID: '${{ secrets.APPLE_ID }}',
+      APPLE_APP_SPECIFIC_PASSWORD: '${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}',
+      APPLE_TEAM_ID: '${{ secrets.APPLE_TEAM_ID }}',
+    });
+    const upload = job.steps.find((s) =>
+      s.uses?.startsWith('actions/upload-artifact@'),
+    );
+    expect(upload.with.name).toBe('trinity-mac');
+    expect(upload.with.path.trim().split('\n')).toEqual([
+      'electron/release/*.dmg',
+      'electron/release/*.zip',
+    ]);
+    expect(workflow.jobs['draft-release'].needs).toContain('sign-mac');
   });
 });
 

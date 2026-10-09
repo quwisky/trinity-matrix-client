@@ -60,7 +60,8 @@ the same site without uploading or deploying a Pages artifact.
 CI validation jobs and release verification/package jobs use the shared
 [setup action](../../.github/actions/setup/action.yml). Renovate uses its own App-token
 and container-action setup; the draft-release job consumes artifacts without installing
-the workspace.
+the workspace, and the macOS signing job installs only `electron/`'s lockfile, with
+`--ignore-scripts`.
 It installs pinned pnpm before Node because Node's pnpm cache lookup invokes pnpm.
 The pnpm version comes from `packageManager`; Node follows `.nvmrc`; and installation
 uses a frozen lockfile. A dependency or lockfile mismatch therefore fails at setup,
@@ -287,7 +288,7 @@ comments use the issues API). Its
 the jobs that mint the token (`back-merge` and `publish` in `release.yml`, `cut` in
 `release-stable.yml`, `backport.yml` and `land-back-merge.yml`) declare `environment: release-app`. Give
 `release-app` no required reviewers: they would stall every cut, publish, back-merge and
-backport. Reviewers belong on `release`, where they gate packaging only. The release App, not
+backport. Reviewers belong on `release`, where they gate macOS signing only. The release App, not
 Renovate, is the only bypass actor for `release/**` in the ruleset, and it is a bypass actor
 on `main`'s ruleset so it can push back-merge commits. Renovate keeps its
 own App and credentials.
@@ -462,8 +463,8 @@ run release-please.
    Make the release App, not Renovate, the only bypass actor for `release/**`.
 6. Change the deployment rules of the environments: `github-pages`, `homebrew` and `apt`
    (if present) to `main`, plus `release/**` where a job runs from a release tag. The
-   `release` environment, which gates packaging in `release.yml`, must allow `main` and
-   `release/**`; it may have required reviewers, which gate packaging only.
+   `release` environment, which gates macOS signing in `release.yml`, must allow `main` and
+   `release/**`; it may have required reviewers, which gate that job only.
 7. Update each local clone:
 
    ```bash
@@ -536,12 +537,14 @@ change before merging the release PR, following [testing](../../apps/docs-develo
 ## Package and review the draft
 
 After verification, the package matrix builds the desktop shell with publishing
-disabled. It uploads these artifacts for 30 days:
+disabled and without any signing secret. Its Linux and Windows legs package the installers;
+its macOS leg uploads only the compiled shell and renderer, which the `sign-mac` job packages,
+signs and notarizes. The jobs upload these artifacts for 30 days:
 
 | Host    | Current artifacts                                                             | Distribution boundary                                                                                                                                                    |
 | ------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Linux   | AppImage and `.deb`                                                           | The workflow packages them; it does not publish them to a download service.                                                                                              |
-| macOS   | `.dmg` and `.zip`, using the current `macos-26` runner's default architecture | Signing and notarization depend on configured credentials. Verify the archive architecture before merging the release PR; `publish` only checks that assets are present. |
+| macOS   | `.dmg` and `.zip` from `sign-mac`, using the `macos-26` runner's default arch | Signing and notarization depend on configured credentials. Verify the archive architecture before merging the release PR; `publish` only checks that assets are present. |
 | Windows | NSIS `.exe`                                                                   | The workflow packages the installer; distribution remains a maintainer action.                                                                                           |
 | Web     | `Trinity-Web-<version>.zip` from the `package-web` job                        | Publishing the release runs `container.yml`, which pushes the image built from this zip to GHCR.                                                                         |
 
@@ -559,19 +562,29 @@ stores, or check signing status for you.
 
 ### Signing and notarization
 
-The package jobs use the GitHub `release` environment, which holds the signing secrets.
-Its presence in YAML does not prove that required reviewers or environment protections
-are configured; maintainers must check the repository settings before relying on them.
-Reviewers on `release` gate packaging only: the release App jobs run in `release-app`.
+Only the `sign-mac` job reads the signing secrets, and only it uses the GitHub `release`
+environment. It installs `electron/`'s own lockfile with `--ignore-scripts` and runs
+electron-builder, with its `afterPack` hook, on the shell the macOS package leg built: no
+workspace install, Nx or renderer build runs next to the certificate. electron-builder
+signs and notarizes only while it packs, never a `--prepackaged` app, which is why the
+packing moved into this job. `scripts/release-workflow.spec.mjs` keeps every signing secret
+name out of all other jobs. Store the signing secrets in the `release` environment rather
+than as repository secrets, so no other job can read them.
+
+The environment's presence in YAML does not prove that required reviewers or environment
+protections are configured; maintainers must check the repository settings before relying
+on them. Reviewers on `release` gate macOS signing only: the release App jobs run in
+`release-app`.
 
 The workflow recognizes these secret names only:
 
 - macOS signing: `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`
-- Windows signing: `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`
 - macOS Apple ID notarization: `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`,
   `APPLE_TEAM_ID`
 
-Without the applicable credentials, packaging can produce unsigned artifacts.
+Without them, `sign-mac` produces unsigned macOS artifacts. Windows signing is not wired
+up: the Windows leg builds without credentials, and adding them needs a signing job like
+`sign-mac`.
 
 An unsigned Windows installer may be published. Windows SmartScreen shows
 "Windows protected your PC" until the user chooses **More info → Run anyway**,
@@ -618,9 +631,9 @@ commit predates `homebrew.yml` never triggers it; dispatch it from `main` instea
 
 1. Join the Apple Developer Program, create a **Developer ID Application**
    certificate, export it as `.p12`, and create an app-specific password. Set the
-   secrets `MAC_CSC_LINK` (base64 of the `.p12`), `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`,
-   `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`. `release.yml` fails the macOS
-   build when only some of them are set.
+   `release` environment secrets `MAC_CSC_LINK` (base64 of the `.p12`),
+   `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`.
+   `release.yml` fails the macOS signing job when only some of them are set.
 2. Create the public repository `quwisky/homebrew-trinity` **with an initial commit**
    (a README is enough); checkout and push fail on an empty repository.
 3. Create the environment `homebrew` in this repository. Under deployment branches
