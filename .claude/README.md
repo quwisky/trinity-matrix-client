@@ -29,7 +29,7 @@ everyone. `scripts/agent-guard.spec.mjs` covers the guard.
 
 | Agent                                                     | Model  | Use                                                                                                    |
 | --------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------ |
-| [ci-fixer](agents/ci-fixer.md)                            | Sonnet | Classify a PR's CI failures as branch-caused, pre-existing or flaky; fix and push branch-caused ones.  |
+| [ci-fixer](agents/ci-fixer.md)                            | Sonnet | Classify a PR's CI failures as branch-caused, pre-existing or flaky; fix and push branch-caused ones. Owner's same-repository PRs only, unless approved. |
 | [design-system-reviewer](agents/design-system-reviewer.md) | Sonnet | Read-only review of changed templates and styles against the design-system contracts.                  |
 
 Which instructions or plugins a client loads depends on its runtime and configuration.
