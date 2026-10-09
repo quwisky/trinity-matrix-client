@@ -106,8 +106,27 @@ describe('macOS signing isolation', () => {
 
   it('keeps the release environment, and its reviewers, on the signing job alone', () => {
     expect(signJob().environment).toBe('release');
-    for (const [id, job] of Object.entries(workflow.jobs)) {
-      if (id !== 'sign-mac') expect(job.environment, id).not.toBe('release');
+    for (const name of workflows) {
+      const { jobs } = parse(
+        readFileSync(resolve(root, '.github/workflows', name), 'utf8'),
+      );
+      for (const [id, job] of Object.entries(jobs)) {
+        if (name === 'release.yml' && id === 'sign-mac') continue;
+        // An environment is a name or { name, url }.
+        const environment = job.environment?.name ?? job.environment;
+        expect(environment, `${name} ${id}`).not.toBe('release');
+      }
+    }
+  });
+
+  it('never hands a job every secret at once', () => {
+    for (const name of workflows) {
+      const text = readFileSync(
+        resolve(root, '.github/workflows', name),
+        'utf8',
+      ).replace(/\s+/g, ' ');
+      for (const pattern of ['toJSON(secrets)', 'secrets[', 'secrets: inherit'])
+        expect(text, `${name} ${pattern}`).not.toContain(pattern);
     }
   });
 
