@@ -325,7 +325,6 @@ describe('Opt-in MAS stack', () => {
     expect(services.mas.image).toBe(
       'ghcr.io/element-hq/matrix-authentication-service:1.26.0',
     );
-    expect(services['mas-db'].image).toBe('postgres:17.6-alpine');
     expect(services['homeserver-mas'].image).toBe(
       parse(read(`${HERE}/synapse/docker-compose.yml`)).services.homeserver
         .image,

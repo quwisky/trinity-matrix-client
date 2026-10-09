@@ -28,7 +28,7 @@ services:
       - trinity-e2e
 
   caddy:
-    image: caddy:2.11-alpine
+    image: public.ecr.aws/docker/library/caddy:2.11-alpine
     container_name: trinity-e2e-caddy
     restart: 'no'
     volumes:

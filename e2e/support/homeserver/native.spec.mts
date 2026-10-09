@@ -104,7 +104,7 @@ describe('native homeserver runtime', () => {
       'utf8',
     );
     const images = [
-      ...compose.matchAll(/matrixdotorg\/synapse:v([\d.]+)/gu),
+      ...compose.matchAll(/ghcr\.io\/element-hq\/synapse:v([\d.]+)/gu),
     ].map((m) => m[1]);
     expect(images.length).toBeGreaterThan(0);
     expect(new Set(images)).toEqual(new Set([SYNAPSE_VERSION]));

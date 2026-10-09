@@ -8,7 +8,7 @@
 # what these services mount into ./mas-data, which stop.mjs deletes.
 services:
   mas-db:
-    image: postgres:17.6-alpine
+    image: public.ecr.aws/docker/library/postgres:17.6-alpine
     container_name: trinity-e2e-mas-db
     restart: 'no'
     environment:
@@ -44,7 +44,7 @@ services:
       - trinity-e2e
 
   homeserver-mas:
-    image: matrixdotorg/synapse:v1.161.0
+    image: ghcr.io/element-hq/synapse:v1.161.0
     container_name: trinity-e2e-homeserver-mas
     restart: 'no'
     environment:
