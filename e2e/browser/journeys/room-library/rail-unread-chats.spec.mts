@@ -362,6 +362,33 @@ test.describe('Space rail unread chats', () => {
     ).toBeVisible({ timeout: 15_000 });
     await expect(railEntry(page, s.roomA)).toHaveCount(0);
     await expect(railEntry(page, s.roomB)).toBeVisible();
+
+    // From the keyboard at desktop width: Enter opens the chat, and as its entry leaves the
+    // rail focus moves into the conversation instead of falling to the page.
+    await railEntry(page, s.roomB).getByRole('button').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.userbar__handle')).toContainText(
+      `@${s.userB}:`,
+      { timeout: 20_000 },
+    );
+    await expect(
+      page.locator('trn-channel-sidebar .channel.channel--selected', {
+        hasText: s.roomB,
+      }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(railEntry(page, s.roomB)).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const active = document.activeElement;
+          return (
+            !!active &&
+            active !== document.body &&
+            !!active.closest('main.main')
+          );
+        }),
+      )
+      .toBe(true);
   });
 
   test('Up to 5, All and Off choose how many unread chats the rail lists, and Off is saved and exported', async ({
