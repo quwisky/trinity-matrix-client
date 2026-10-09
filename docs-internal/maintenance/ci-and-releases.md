@@ -194,9 +194,10 @@ Electron package licenses remain MIT, with matching OCI metadata and preserved t
 notices. Releases publish it: `release.yml`'s `package-web` job attaches `Trinity-Web-<version>.zip`
 (the verified renderer, `LICENSE` and its web-bundle manifest) to the draft, and
 [`container.yml`](../../.github/workflows/container.yml) runs when the release is published. It
-verifies that zip against the tag commit, runs `trinity-web-container:smoke`, then pushes
-`linux/amd64` and `linux/arm64` to `ghcr.io/quwisky/trinity-web` with `X.Y.Z`, `X.Y` and `latest`
-(stable) or `X.Y.Z-next.N` and `next` (prerelease). Moving tags only follow the newest release on
+verifies that zip against the tag commit, runs `trinity-web-container:smoke` and stages the
+image context with a read-only token. Its `publish` job, the only one with the registry token,
+installs nothing and pushes that context as `linux/amd64` and `linux/arm64` to
+`ghcr.io/quwisky/trinity-web` with `X.Y.Z`, `X.Y` and `latest` (stable) or `X.Y.Z-next.N` and `next` (prerelease). Moving tags only follow the newest release on
 their line. To republish, run the Container workflow with the tag; recovery for a cancelled run or a
 missing zip is under [Recover a release run](#recover-a-release-run).
 

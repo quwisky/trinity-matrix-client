@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 
 const root = resolve(import.meta.dirname, '..');
 const read = (path) => readFileSync(join(root, path), 'utf8');
@@ -48,9 +49,6 @@ describe('container workflow', () => {
     expect(container).toContain('group: container');
     expect(container).toContain('cancel-in-progress: false');
     expect(container).toMatch(/permissions:\n  contents: read\n/);
-    expect(container).toMatch(
-      /permissions:\n      contents: read\n      packages: write/,
-    );
   });
 
   it('fails clearly without the web zip and verifies before any login or push', () => {
@@ -92,6 +90,63 @@ describe('web release docs', () => {
     expect(guide).toContain('package visibility to **Public**');
     expect(guide).toMatch(/Container run cancelled[^\n]*dispatch/i);
     expect(readme).toContain('ghcr.io/quwisky/trinity-web:latest');
+  });
+});
+
+describe('container registry token', () => {
+  const { jobs } = parse(read('.github/workflows/container.yml'));
+  const runs = (job) => job.steps.flatMap((step) => step.run ?? []).join('\n');
+  const usesOf = (job) => job.steps.flatMap((step) => step.uses ?? []);
+
+  it('verifies and smoke-tests with a read-only token', () => {
+    const { build } = jobs;
+    expect(build.permissions).toEqual({ contents: 'read' });
+    expect(usesOf(build)).toContain('./.github/actions/setup');
+    expect(runs(build)).toContain('pnpm nx run trinity-web-container:smoke');
+    expect(JSON.stringify(build)).not.toContain('packages');
+    expect(usesOf(build).join('\n')).not.toContain('docker/login-action@');
+    expect(runs(build)).not.toContain('--push');
+  });
+
+  it('pushes from a job that installs and runs nothing from the repository', () => {
+    const { publish } = jobs;
+    expect(publish.needs).toBe('build');
+    expect(publish.permissions).toEqual({ packages: 'write' });
+    for (const uses of usesOf(publish)) {
+      expect(uses).not.toMatch(/^\.\/|^actions\/checkout@/);
+    }
+    expect(runs(publish)).not.toMatch(/\bpnpm\b|\bnx\b|scripts\/|\bnpx\b/);
+    expect(runs(publish)).toContain('docker buildx build');
+    const login = publish.steps.find((step) =>
+      step.uses?.startsWith('docker/login-action@'),
+    );
+    expect(login.with.password).toBe('${{ github.token }}');
+  });
+
+  it('hands the staged context and its tags from build to publish', () => {
+    const { build, publish } = jobs;
+    const stage = build.steps.find((step) => step.id === 'stage');
+    expect(stage.run).toContain(
+      'node scripts/web-container.mjs stage dist/web-image-context',
+    );
+    expect(stage.run).toContain(
+      'tar -cf dist/web-image-context.tar -C dist web-image-context',
+    );
+    const upload = build.steps.find((step) =>
+      step.uses?.startsWith('actions/upload-artifact@'),
+    );
+    const download = publish.steps.find((step) =>
+      step.uses?.startsWith('actions/download-artifact@'),
+    );
+    expect(upload.with.path).toBe('dist/web-image-context.tar');
+    expect(download.with).toEqual({ name: upload.with.name, path: 'dist' });
+    expect(runs(publish)).toContain(
+      'tar -xf dist/web-image-context.tar -C dist',
+    );
+    for (const output of ['names', 'revision', 'version'])
+      expect(build.outputs[output], output).toBeTruthy();
+    expect(runs(publish)).toContain('"$REVISION"');
+    expect(runs(publish)).not.toContain('git rev-parse');
   });
 });
 
