@@ -10,6 +10,7 @@ import {
   e2eLifecycleConfig,
   e2eReportConfig,
   e2eShard,
+  e2eSpec,
 } from './playwright-config.mts';
 import {
   E2E_SESSION_ENV,
@@ -300,4 +301,39 @@ describe('e2eShard', () => {
       expect(() => e2eShard(value)).toThrow(/TRINITY_E2E_SHARD/);
     },
   );
+});
+
+describe('e2eSpec', () => {
+  it('runs every spec when none is selected', () => {
+    expect(e2eSpec(undefined)).toBeUndefined();
+    expect(e2eSpec('')).toBeUndefined();
+  });
+
+  it('matches only the selected journey file', () => {
+    const match = e2eSpec('accounts/mas-session.spec.mts');
+    const matches = (path: string) => match?.test(path);
+    expect(
+      matches('/repo/e2e/browser/journeys/accounts/mas-session.spec.mts'),
+    ).toBe(true);
+    expect(
+      matches('/repo/e2e/browser/journeys/accounts/oidc-login.spec.mts'),
+    ).toBe(false);
+    expect(
+      matches('/repo/e2e/browser/journeys/not-accounts/mas-session.spec.mts'),
+    ).toBe(false);
+    expect(
+      matches('/repo/e2e/browser/journeys/accounts/mas-session-spec-mts'),
+    ).toBe(false);
+  });
+
+  it.each([
+    'mas-session',
+    '../mas-session.spec.mts',
+    '/accounts/mas-session.spec.mts',
+    'accounts/*.spec.mts',
+    'accounts/mas session.spec.mts',
+    'accounts/mas-session.spec.mts ',
+  ])('rejects %j instead of running an unintended selection', (value) => {
+    expect(() => e2eSpec(value)).toThrow(/TRINITY_E2E_SPEC/);
+  });
 });

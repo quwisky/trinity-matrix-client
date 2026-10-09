@@ -4,10 +4,13 @@ import {
   ClientEvent,
   ConnectionError,
   HttpApiEvent,
+  MemoryStore,
   SyncState,
+  TokenRefreshError,
   createClient,
 } from 'matrix-js-sdk';
-import { Subject, firstValueFrom, of } from 'rxjs';
+import type { MatrixClient } from 'matrix-js-sdk';
+import { Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MATRIX_SYNC_PROJECTION_BASELINE,
@@ -20,6 +23,7 @@ import {
 } from '@trinity/runtime/projection';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 import { desktopBridgeFixture } from '@trinity/testing';
+import type { MatrixSession } from '@trinity/util/matrix';
 
 // A controllable fake sync store (the real IndexedDBStore needs a browser IDB).
 const storeMock = vi.hoisted(() => ({ startup: vi.fn(), destroy: vi.fn() }));
@@ -162,7 +166,7 @@ describe('MatrixClientService', () => {
     });
   });
 
-  it('wires refresh-token auto-renewal for an OIDC session', async () => {
+  it('hands an OIDC session to the SDK token manager', async () => {
     const client = fakeClient();
     vi.mocked(createClient).mockReturnValue(client as never);
     const { svc } = setup();
@@ -170,35 +174,46 @@ describe('MatrixClientService', () => {
     await firstValueFrom(svc.init(OIDC_SESSION));
 
     const opts = vi.mocked(createClient).mock.calls[0][0];
-    expect(opts.refreshToken).toBe('refresh-tok');
-    expect(typeof opts.tokenRefreshFunction).toBe('function');
+    // Without oauthClientId matrix-js-sdk 43 refuses to refresh, and the first 401 becomes
+    // a hard logout that deletes the crypto store.
+    expect(opts).toMatchObject({
+      refreshToken: 'refresh-tok',
+      oauthClientId: 'client-1',
+    });
+    expect(typeof opts.onTokenRefresh).toBe('function');
   });
 
-  it('points the refresher at the account homeserver, not some other session field', async () => {
-    // The refresher takes named options precisely because `userId`, `baseUrl` and
-    // `deviceId` are all plain strings — but naming them does not make a transposition a
-    // type error, and nothing else here observes which session value lands where. Drive
-    // the function far enough to see the discovery target: swapping userId and baseUrl
-    // would send it to '@me:hs', breaking refresh for every OIDC account with a fully
-    // green suite until each one soft-logged out.
+  it('persists refreshed tokens for its own account and hands the write back to the SDK', async () => {
     const client = fakeClient();
     vi.mocked(createClient).mockReturnValue(client as never);
-    const { svc } = setup();
+    const { svc, storage } = setup();
+    const write = new Subject<void>();
+    vi.mocked(storage.updateTokens).mockReturnValue(write);
     await firstValueFrom(svc.init(OIDC_SESSION));
     const opts = vi.mocked(createClient).mock.calls[0][0];
 
-    vi.mocked(createClient).mockReturnValue({
-      getAuthMetadata: vi
-        .fn()
-        .mockRejectedValue(new Error('discovery stopped')),
-    } as never);
-    await expect(opts.tokenRefreshFunction?.('r')).rejects.toThrow(
-      /discovery stopped/,
-    );
+    const pending = opts.onTokenRefresh?.({
+      accessToken: 'a2',
+      refreshToken: 'r2',
+      expiry: new Date(5_000),
+    }) as unknown;
 
-    expect(createClient).toHaveBeenLastCalledWith({
-      baseUrl: OIDC_SESSION.baseUrl,
-    });
+    expect(storage.updateTokens).toHaveBeenCalledWith(
+      '@me:hs',
+      'a2',
+      'r2',
+      5_000,
+    );
+    // The SDK awaits this before adopting the new pair; a bare void would let it run on
+    // tokens that never reached storage.
+    expect(pending).toBeInstanceOf(Promise);
+    let settled = false;
+    void (pending as Promise<void>).then(() => (settled = true));
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    write.next();
+    write.complete();
+    await expect(pending).resolves.toBeUndefined();
   });
 
   describe('signOutAll', () => {
@@ -253,7 +268,7 @@ describe('MatrixClientService', () => {
     });
   });
 
-  it('passes no refresh wiring for a non-OIDC (password/SSO) session', async () => {
+  it('passes no OAuth token wiring for a password or SSO session', async () => {
     const client = fakeClient();
     vi.mocked(createClient).mockReturnValue(client as never);
     const { svc } = setup();
@@ -262,7 +277,8 @@ describe('MatrixClientService', () => {
 
     const opts = vi.mocked(createClient).mock.calls[0][0];
     expect(opts.refreshToken).toBeUndefined();
-    expect(opts.tokenRefreshFunction).toBeUndefined();
+    expect(opts.oauthClientId).toBeUndefined();
+    expect(opts.onTokenRefresh).toBeUndefined();
   });
 
   it('does not publish the client until startClient resolves', async () => {
@@ -1231,5 +1247,353 @@ describe('MatrixClientService', () => {
       await expect(firstValueFrom(svc.init(SESSION))).resolves.not.toThrow();
       expect(svc.isInitialized).toBe(true);
     });
+  });
+});
+
+describe('OAuth tokens through a real MatrixClient', () => {
+  // Only the network is fake. The client, its TokenManager, discovery and the OAuth2
+  // refresh grant are matrix-js-sdk 43's own, built from the options start() passes.
+  const OP = 'https://op.example';
+  const METADATA = {
+    issuer: `${OP}/`,
+    authorization_endpoint: `${OP}/authorize`,
+    token_endpoint: `${OP}/token`,
+    revocation_endpoint: `${OP}/revoke`,
+    registration_endpoint: `${OP}/register`,
+    response_modes_supported: ['query', 'fragment'],
+    response_types_supported: ['code'],
+    grant_types_supported: ['authorization_code', 'refresh_token'],
+    code_challenge_methods_supported: ['S256'],
+  };
+
+  /** How the fake provider answers a refresh grant. */
+  type Rotation = 'rotate' | 'omit' | 'empty';
+
+  const json = (body: unknown, status = 200): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+
+  /** A homeserver that accepts only the tokens the fake provider issued, and that provider. */
+  function fakeNetwork(
+    rotation: Rotation = 'rotate',
+    expiresIn: number | null = 30,
+  ) {
+    const live = new Set<string>();
+    const grants: URLSearchParams[] = [];
+    const revocations: string[] = [];
+    const calls: string[] = [];
+    const state = {
+      discovery: 'up' as 'up' | 'down',
+      provider: 'up' as 'up' | 'down' | 503,
+    };
+    let issued = 1;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        );
+        const form = new URLSearchParams(String(init.body ?? ''));
+        calls.push(`${init.method ?? 'GET'} ${url.host}${url.pathname}`);
+        if (url.pathname === '/_matrix/client/v1/auth_metadata') {
+          if (state.discovery === 'down')
+            throw new TypeError('Failed to fetch');
+          return json(METADATA);
+        }
+        if (url.href === METADATA.token_endpoint) {
+          if (state.provider === 'down') throw new TypeError('Failed to fetch');
+          if (state.provider === 503) {
+            return json({ error: 'temporarily_unavailable' }, 503);
+          }
+          grants.push(form);
+          issued += 1;
+          live.add(`at-${issued}`);
+          return json({
+            token_type: 'Bearer',
+            access_token: `at-${issued}`,
+            // Under the SDK's 60 s window, so a later 401 reads as expiry, not revocation.
+            ...(expiresIn === null ? {} : { expires_in: expiresIn }),
+            ...(rotation === 'rotate'
+              ? { refresh_token: `rt-${issued}` }
+              : rotation === 'empty'
+                ? { refresh_token: '' }
+                : {}),
+          });
+        }
+        if (url.href === METADATA.revocation_endpoint) {
+          revocations.push(form.get('token_type_hint') ?? '');
+          return new Response('', { status: 200 });
+        }
+        if (url.pathname === '/_matrix/client/v3/account/whoami') {
+          const bearer = new Headers(init.headers).get('authorization') ?? '';
+          return live.has(bearer.replace(/^Bearer /, ''))
+            ? json({ user_id: '@me:hs', device_id: 'DEV' })
+            : json(
+                {
+                  errcode: 'M_UNKNOWN_TOKEN',
+                  error: 'expired',
+                  soft_logout: false,
+                },
+                401,
+              );
+        }
+        if (url.pathname.endsWith('/logout')) return json({});
+        throw new Error(`unexpected ${init.method ?? 'GET'} ${url.href}`);
+      }),
+    );
+    return {
+      live,
+      grants,
+      revocations,
+      calls,
+      state,
+      expireAll: () => live.clear(),
+    };
+  }
+
+  /** Let createClient build real clients; stub only crypto, sync and store deletion. */
+  async function useRealClients(): Promise<void> {
+    const actual =
+      await vi.importActual<typeof import('matrix-js-sdk')>('matrix-js-sdk');
+    vi.mocked(createClient).mockImplementation((opts) => {
+      const client = actual.createClient(opts);
+      vi.spyOn(client, 'initRustCrypto').mockResolvedValue(undefined);
+      vi.spyOn(client, 'startClient').mockResolvedValue(undefined);
+      vi.spyOn(client, 'clearStores').mockResolvedValue(undefined);
+      return client;
+    });
+    // jsdom has no IndexedDB; say so, so the client runs on its in-memory store.
+    vi.stubGlobal('indexedDB', undefined);
+  }
+
+  async function startReal() {
+    await useRealClients();
+    const ctx = setup();
+    vi.mocked(ctx.storage.updateTokens).mockReturnValue(of(undefined));
+    // If a refresh ever ends in a logout, let the logout path run to completion so the
+    // assertions see its effect rather than a mock error.
+    vi.mocked(ctx.storage.remove).mockReturnValue(of(undefined));
+    vi.mocked(ctx.storage.invalidateToken).mockReturnValue(of(undefined));
+    vi.mocked(ctx.storage.setActive).mockReturnValue(of(undefined));
+    await firstValueFrom(ctx.svc.init(OIDC_SESSION));
+    return { ...ctx, client: ctx.svc.instance };
+  }
+
+  /** Still signed in, nothing wiped: the hard-logout path deletes the sync and crypto stores. */
+  function expectStillSignedIn(
+    svc: MatrixClientService,
+    client: MatrixClient,
+    userId = OIDC_SESSION.userId,
+  ): void {
+    expect(svc.accountIds()).toContain(userId);
+    expect(svc.softLoggedOut()).not.toContain(userId);
+    expect(client.clearStores).not.toHaveBeenCalled();
+  }
+
+  beforeEach(() => {
+    vi.mocked(createClient).mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('refreshes at each expiry and persists the rotated pair under its own account', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, storage, client } = await startReal();
+    const before = Date.now();
+
+    await expect(client.whoami()).resolves.toMatchObject({ user_id: '@me:hs' });
+
+    // Discovery goes through the account's own homeserver, never the issuer.
+    expect(net.calls).toContain(
+      'GET hs.example/_matrix/client/v1/auth_metadata',
+    );
+    expect(net.grants[0].get('refresh_token')).toBe('refresh-tok');
+    expect(net.grants[0].get('client_id')).toBe('client-1');
+    const [userId, access, refresh, expiry] = vi.mocked(storage.updateTokens)
+      .mock.calls[0];
+    expect([userId, access, refresh]).toEqual(['@me:hs', 'at-2', 'rt-2']);
+    expect(expiry).toBeGreaterThanOrEqual(before + 30_000);
+    expect(expiry).toBeLessThanOrEqual(Date.now() + 30_000);
+
+    net.expireAll();
+    await expect(client.whoami()).resolves.toBeDefined();
+    expect(net.grants[1].get('refresh_token')).toBe('rt-2');
+    expect(client.getAccessToken()).toBe('at-3');
+    expectStillSignedIn(svc, client);
+  });
+
+  it('persists no expiry when the provider returns none', async () => {
+    fakeNetwork('rotate', null);
+    const { storage, client } = await startReal();
+
+    await expect(client.whoami()).resolves.toMatchObject({ user_id: '@me:hs' });
+
+    expect(vi.mocked(storage.updateTokens)).toHaveBeenCalledWith(
+      '@me:hs',
+      'at-2',
+      'rt-2',
+      undefined,
+    );
+  });
+
+  it('keeps the old pair in memory when the refreshed tokens cannot be persisted', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, storage, client } = await startReal();
+    vi.mocked(storage.updateTokens).mockReturnValue(
+      throwError(() => new Error('secure store locked')),
+    );
+
+    await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+
+    expect(client.getAccessToken()).toBe('tok');
+    expect(client.getRefreshToken()).toBe('refresh-tok');
+    expect(net.grants).toHaveLength(1);
+    expect(storage.updateTokens).toHaveBeenCalledOnce();
+    expectStillSignedIn(svc, client);
+  });
+
+  it('survives a refresh attempted while offline and recovers when the network returns', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, storage, client } = await startReal();
+
+    net.state.discovery = 'down';
+    await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+    net.state.discovery = 'up';
+    net.state.provider = 'down';
+    await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+    expect(storage.updateTokens).not.toHaveBeenCalled();
+    expectStillSignedIn(svc, client);
+
+    net.state.provider = 'up';
+    await expect(client.whoami()).resolves.toBeDefined();
+    expect(storage.updateTokens).toHaveBeenCalledOnce();
+  });
+
+  it('does not sign the account out when the provider answers 5xx', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, client } = await startReal();
+    net.state.provider = 503;
+
+    await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+
+    expect(net.calls).toContain('POST op.example/token');
+    expectStillSignedIn(svc, client);
+  });
+
+  it('refreshes once for concurrent expired requests', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, client } = await startReal();
+
+    await Promise.all([client.whoami(), client.whoami()]);
+
+    expect(net.grants).toHaveLength(1);
+    expect(
+      net.calls.filter((call) => call.endsWith('/auth_metadata')),
+    ).toHaveLength(1);
+    expectStillSignedIn(svc, client);
+  });
+
+  it("persists each account's refreshed tokens under that account", async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, storage } = await startReal();
+    const other: MatrixSession = {
+      ...OIDC_SESSION,
+      baseUrl: 'https://other.example',
+      userId: '@you:other',
+      deviceId: 'DEV2',
+      accessToken: 'tok2',
+      refreshToken: 'refresh-tok2',
+      oidc: { ...OIDC_SESSION.oidc, clientId: 'client-2' },
+    };
+    await firstValueFrom(svc.add(other));
+
+    await Promise.all([
+      svc.clientFor('@me:hs')!.whoami(),
+      svc.clientFor('@you:other')!.whoami(),
+    ]);
+
+    for (const userId of ['@me:hs', '@you:other']) {
+      const client = svc.clientFor(userId)!;
+      expect(storage.updateTokens).toHaveBeenCalledWith(
+        userId,
+        client.getAccessToken(),
+        client.getRefreshToken(),
+        expect.any(Number),
+      );
+      expectStillSignedIn(svc, client, userId);
+    }
+    expect(net.grants.map((grant) => grant.get('client_id')).sort()).toEqual([
+      'client-1',
+      'client-2',
+    ]);
+  });
+
+  it.each(['omit', 'empty'] as const)(
+    'keeps the current refresh token when the provider does not rotate it (%s)',
+    async (rotation) => {
+      const net = fakeNetwork(rotation);
+      const { svc, storage, client } = await startReal();
+
+      await expect(client.whoami()).resolves.toBeDefined();
+      expect(client.getRefreshToken()).toBe('refresh-tok');
+      expect(storage.updateTokens).toHaveBeenLastCalledWith(
+        '@me:hs',
+        'at-2',
+        'refresh-tok',
+        expect.any(Number),
+      );
+
+      // The second expiry is where unpatched 43 finds no refresh token, logs out and wipes.
+      net.expireAll();
+      await expect(client.whoami()).resolves.toBeDefined();
+      expect(net.grants[1].get('refresh_token')).toBe('refresh-tok');
+      expectStillSignedIn(svc, client);
+    },
+  );
+
+  it('revokes an OAuth session once at the provider on signOutAll, with no POST /logout', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc } = await startReal();
+
+    await firstValueFrom(svc.signOutAll());
+
+    expect([...net.revocations].sort()).toEqual([
+      'access_token',
+      'refresh_token',
+    ]);
+    expect(net.calls.some((call) => call.endsWith('/logout'))).toBe(false);
+  });
+
+  it('logs a stored session with no live client out through a detached client', async () => {
+    const net = fakeNetwork('rotate');
+    await useRealClients();
+    const { svc } = setup();
+
+    await svc.detachedClient(OIDC_SESSION).logout(true);
+
+    const opts = vi.mocked(createClient).mock.calls.at(-1)![0];
+    const c = vi.mocked(createClient).mock.results.at(-1)!.value;
+    expect(c.startClient).not.toHaveBeenCalled();
+    expect(c.initRustCrypto).not.toHaveBeenCalled();
+    expect(c.clearStores).not.toHaveBeenCalled();
+    expect(opts).toMatchObject({
+      baseUrl: 'https://hs.example',
+      userId: '@me:hs',
+      deviceId: 'DEV',
+      accessToken: 'tok',
+      refreshToken: 'refresh-tok',
+      oauthClientId: 'client-1',
+    });
+    // No persistent store: createClient() fills in its in-memory default, on these same opts.
+    expect(opts.store).toBeInstanceOf(MemoryStore);
+    expect([...net.revocations].sort()).toEqual([
+      'access_token',
+      'refresh_token',
+    ]);
+    expect(svc.accountIds()).toEqual([]);
   });
 });

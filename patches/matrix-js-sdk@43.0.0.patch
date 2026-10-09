@@ -66,3 +66,33 @@ index 151bff6d1155ee3ae928135aa9629c4a1b011917..160d8cde2ee355491f106656ae224f42
              this._currentUserParticipated = !!bundledRelationship.current_user_participated;
  
              const mapper = this.client.getEventMapper();
+diff --git a/lib/oauth/tokenRefresher.js b/lib/oauth/tokenRefresher.js
+index e5f1521..7d0bf2c 100644
+--- a/lib/oauth/tokenRefresher.js
++++ b/lib/oauth/tokenRefresher.js
+@@ -69,7 +69,9 @@ export class TokenRefresher {
+     const response = await this.auth.performRefreshTokenGrant(refreshToken);
+     const tokens = {
+       accessToken: response.access_token,
+-      refreshToken: response.refresh_token,
++      // Trinity patch: RFC 6749 section 6 lets a provider omit refresh_token (or send '');
++      // the current one then stays valid, so carry it forward.
++      refreshToken: response.refresh_token || refreshToken,
+       // We use the request start time to calculate the expiry time as we don't know when the server received our request
+       expiry: response.expires_in ? new Date(requestStart + response.expires_in * 1000) : undefined
+     };
+diff --git a/src/oauth/tokenRefresher.ts b/src/oauth/tokenRefresher.ts
+index d19d64c..48a0324 100644
+--- a/src/oauth/tokenRefresher.ts
++++ b/src/oauth/tokenRefresher.ts
+@@ -82,7 +82,9 @@ export class TokenRefresher {
+ 
+         const tokens = {
+             accessToken: response.access_token,
+-            refreshToken: response.refresh_token,
++            // Trinity patch: RFC 6749 section 6 lets a provider omit refresh_token (or send '');
++            // the current one then stays valid, so carry it forward.
++            refreshToken: response.refresh_token || refreshToken,
+             // We use the request start time to calculate the expiry time as we don't know when the server received our request
+             expiry: response.expires_in ? new Date(requestStart + response.expires_in * 1000) : undefined,
+         } satisfies AccessTokens;

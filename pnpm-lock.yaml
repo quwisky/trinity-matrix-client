@@ -164,7 +164,7 @@ settings:
 
 patchedDependencies:
   '@spartan-ng/brain@1.5.0': 0779a0141f07aae23e171c954aafebe172e6ec409ff4e3685ddd7d00dd8c1955
-  matrix-js-sdk@42.4.0: dea6ee05b217488675e414b4f408821a59eaf0c2ed222914261b551f9a99edcc
+  matrix-js-sdk@43.0.0: 91b2d02fc404a6627df8ddbdda6336870afa7dba0f2f3d4da01db7a5039d1365
   matrix-widget-api@1.20.0: 91cea261f6205a2447b8841d35ae12e99d438546e56e4aeffe6bf8d7acd1a79c
   pagefind@1.5.2: f9b8a0c9dfa656ac64bbbe9bfa2144b3bd8e195a65de0ce4fca0758fbce8f64f
 
@@ -314,8 +314,8 @@ importers:
         specifier: ^18.0.6
         version: 18.0.14
       matrix-js-sdk:
-        specifier: ^42.1.0
-        version: 42.4.0(patch_hash=dea6ee05b217488675e414b4f408821a59eaf0c2ed222914261b551f9a99edcc)
+        specifier: ^43.0.0
+        version: 43.0.0(patch_hash=91b2d02fc404a6627df8ddbdda6336870afa7dba0f2f3d4da01db7a5039d1365)
       matrix-widget-api:
         specifier: 1.20.0
         version: 1.20.0(patch_hash=91cea261f6205a2447b8841d35ae12e99d438546e56e4aeffe6bf8d7acd1a79c)
@@ -9762,8 +9762,8 @@ packages:
   matrix-events-sdk@0.0.1:
     resolution: {integrity: sha512-1QEOsXO+bhyCroIe2/A5OwaxHvBm7EsSQ46DEDn8RBIfQwN5HWBpFvyWWR4QY0KHPPnnJdI99wgRiAl7Ad5qaA==}
 
-  matrix-js-sdk@42.4.0:
-    resolution: {integrity: sha512-tlTU3kz9WmK+eJVDou+tMVPggVJdvj56XpEYBKgNx56mWd8rF6YfiK82o/aTjtAezuAoV50b+i4q3SGrfPiIGg==}
+  matrix-js-sdk@43.0.0:
+    resolution: {integrity: sha512-d2w/VPJoMgE9g015sAsHFqODe+B7KJ8zdm077i8luKTwG4PQrchCd74r65IiPqR5t97ZYz/8FZyujvamgB/7qQ==}
     engines: {node: '>=22.0.0'}
 
   matrix-widget-api@1.20.0:
@@ -23580,7 +23580,7 @@ snapshots:
 
   matrix-events-sdk@0.0.1: {}
 
-  matrix-js-sdk@42.4.0(patch_hash=dea6ee05b217488675e414b4f408821a59eaf0c2ed222914261b551f9a99edcc):
+  matrix-js-sdk@43.0.0(patch_hash=91b2d02fc404a6627df8ddbdda6336870afa7dba0f2f3d4da01db7a5039d1365):
     dependencies:
       '@babel/runtime': 8.0.5
       '@matrix-org/matrix-sdk-crypto-wasm': 18.9.0

@@ -24,7 +24,7 @@ These versions are checked against the root and Electron manifests. The site foo
 | Package         | Version   |
 | --------------- | --------- |
 | Angular         | `22.2.0`  |
-| `matrix-js-sdk` | `^42.1.0` |
+| `matrix-js-sdk` | `^43.0.0` |
 | RxJS            | `~7.8.2`  |
 | Capacitor Core  | `8.5.2`   |
 | Electron        | `44.5.1`  |

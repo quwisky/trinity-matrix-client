@@ -46,4 +46,13 @@ describe('homeserver lease', () => {
     );
     expect(existsSync(homeserverLockFile)).toBe(false);
   });
+
+  it('rejects a bad TRINITY_E2E_MAS before a lock exists', async () => {
+    vi.stubEnv('TRINITY_E2E_MAS', 'yes');
+    const { acquireHomeserverLease, homeserverLockFile } =
+      await import('./lease.mts');
+
+    await expect(acquireHomeserverLease()).rejects.toThrow(/TRINITY_E2E_MAS/);
+    expect(existsSync(homeserverLockFile)).toBe(false);
+  });
 });

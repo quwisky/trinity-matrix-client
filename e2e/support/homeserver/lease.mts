@@ -6,7 +6,11 @@ import {
   releaseProcessLock,
   type ProcessLock,
 } from '../process-lock.mts';
-import { resolveHomeserverKind, resolveHomeserverRuntime } from './kind.mts';
+import {
+  resolveHomeserverKind,
+  resolveHomeserverRuntime,
+  resolveMasEnabled,
+} from './kind.mts';
 import {
   nativePaths,
   nodeProcessApi,
@@ -29,6 +33,7 @@ export async function acquireHomeserverLease(
   // before a lock file or a container exists.
   resolveHomeserverKind();
   const runtime = resolveHomeserverRuntime();
+  resolveMasEnabled();
   const lease = acquireProcessLock(
     homeserverLockFile,
     'Homeserver E2E harness',

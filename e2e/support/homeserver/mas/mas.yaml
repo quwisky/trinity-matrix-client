@@ -1,0 +1,34 @@
+# Trinity e2e settings for matrix-authentication-service 1.26.0, merged over the generated
+# mas-data/mas/generated.yaml (secrets and signing keys, created at start and never
+# committed). MAS_CONFIG lists that file first, so these keys win. Test-only.
+http:
+  public_base: https://localhost:8451/
+  issuer: https://localhost:8451/
+database:
+  uri: postgresql://mas:mas@mas-db/mas
+matrix:
+  kind: synapse
+  homeserver: localhost:8450
+  endpoint: http://homeserver-mas:8008/
+  # Must equal MAS_SHARED_SECRET (constants.mjs), which mas/adapter.mjs writes into the
+  # delegating Synapse's matrix_authentication_service block.
+  secret: trinity-e2e-mas-shared-secret
+experimental:
+  # The minimum the MAS config schema allows. The refresh journey waits for two real
+  # expiries of it. It applies to OAuth sessions only: a password login through MAS's
+  # compatibility endpoints gets 300 s tokens, and the SDK does not refresh those.
+  access_token_ttl: 60
+policy:
+  data:
+    client_registration:
+      # The web app registers http://127.0.0.1:<port>/sso-callback under the client_uri
+      # https://trinity.qwky.eu: an insecure redirect on another host.
+      allow_insecure_uris: true
+      allow_host_mismatch: true
+rate_limiting:
+  login:
+    # MAS's default is a burst of 3 per IP, refilled at one per 20 s. Every journey signs in
+    # from this one address, so a run's later sign-ins were refused.
+    per_ip:
+      burst: 100
+      per_second: 10

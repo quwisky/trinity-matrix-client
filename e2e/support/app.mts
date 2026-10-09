@@ -35,6 +35,17 @@ export async function preferenceKeys(page: Page): Promise<string[]> {
   );
 }
 
+/** Every IndexedDB database name, or [] where the browser cannot enumerate. */
+export function databaseNames(page: Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    if (typeof indexedDB.databases !== 'function') {
+      return [];
+    }
+    const dbs = await indexedDB.databases();
+    return dbs.map((d) => d.name).filter((n): n is string => !!n);
+  });
+}
+
 /** Seed a preference before a journey reads it during application startup. */
 export async function seedPreference(
   page: Page,
@@ -87,6 +98,14 @@ export interface HomeserverSession {
    * `fullyParallel` runs the two SSO specs in different workers — see e2e/support/homeserver/dex.yaml.
    */
   ssoReset?: SsoAccount;
+  /** The opt-in MAS stack's account (TRINITY_E2E_MAS=1); absent when it is not running. */
+  mas?: {
+    hs: string;
+    serverName: string;
+    issuer: string;
+    user: string;
+    pass: string;
+  };
 }
 
 /** Read the homeserver session published by the invocation owner. */

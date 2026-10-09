@@ -170,7 +170,10 @@ export class MessageListComponent extends MessageListBase {
   /** Render only the rows near the viewport. Off (Settings → Experimental) renders every loaded row. */
   readonly windowed = input(true);
 
-  /** The room already shows its own empty-room prompt, so the list adds no empty line. */
+  /**
+   * The room already shows its own empty-room prompt, so the list adds no empty line. Bind it
+   * to the same condition as the `[trnMessageListIntro]` content: projection cannot report it.
+   */
   readonly introShown = input(false);
 
   /** The rows actually rendered — the full list sliced to the window. */
