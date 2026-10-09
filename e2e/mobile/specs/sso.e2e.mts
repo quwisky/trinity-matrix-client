@@ -1,4 +1,4 @@
-import { browser } from '@wdio/globals';
+import { browser, expect } from '@wdio/globals';
 import { HS_TLS } from '../../support/homeserver/start.mjs';
 import { readSession } from '../../support/session.mts';
 import { fillByLabel, tap, waitForRooms } from '../support/app.mts';
@@ -78,20 +78,22 @@ async function answerDexInSafariView(
   email: string,
   pass: string,
 ): Promise<void> {
-  const emailField = $(
-    '-ios predicate string:type == "XCUIElementTypeTextField"',
+  // Dex's own button first: it proves the Safari view is up, so the fields below are its
+  // and never the app's own sign-in form behind it.
+  const login = $(
+    '-ios predicate string:type == "XCUIElementTypeButton" AND label == "Login"',
   );
-  await emailField.waitForDisplayed({
+  await login.waitForExist({
     timeout: 90_000,
     timeoutMsg: 'the identity provider login never appeared in the Safari view',
   });
-  await emailField.setValue(email);
+  await $('-ios predicate string:type == "XCUIElementTypeTextField"').setValue(
+    email,
+  );
   await $(
     '-ios predicate string:type == "XCUIElementTypeSecureTextField"',
   ).setValue(pass);
-  await $(
-    '-ios predicate string:type == "XCUIElementTypeButton" AND label == "Login"',
-  ).click();
+  await login.click();
 }
 
 describe('mobile SSO sign-in', () => {
@@ -125,8 +127,17 @@ describe('mobile SSO sign-in', () => {
     if (!sso) throw new Error('the E2E stack came up without an SSO account');
 
     await fillByLabel('Homeserver', HS_TLS);
-    await tap('//button[normalize-space()="Continue"]');
-    await tap('//button[normalize-space()="Continue with SSO"]');
+    if (browser.isIOS) {
+      // As login() does: an element click reaches the button wherever the keyboard sits; a
+      // touch aimed at it missed on the iOS 26.5 Simulator.
+      await $('//button[normalize-space()="Continue"]').click();
+      const sso = $('//button[normalize-space()="Continue with SSO"]');
+      await expect(sso).toBeDisplayed({ wait: 30_000 });
+      await sso.click();
+    } else {
+      await tap('//button[normalize-space()="Continue"]');
+      await tap('//button[normalize-space()="Continue with SSO"]');
+    }
 
     await native();
     if (browser.isIOS) await answerDexInSafariView(sso.email, sso.pass);
