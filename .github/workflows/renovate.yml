@@ -40,6 +40,9 @@ jobs:
     # run as a burst of 401s — with branches pushed and their pull requests not yet
     # opened. Failing on the job timeout instead says what actually went wrong.
     timeout-minutes: 55
+    # The App's private key is a secret of this environment, which deploys from main only,
+    # so a workflow pushed to any other branch cannot read it.
+    environment: renovate
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -59,11 +62,11 @@ jobs:
       #
       # A Client ID is not sensitive (it is public by design in OAuth flows, and is in
       # the bot's public identity), hence a repository *variable*; the private key is the
-      # thing that must be a secret. Note these live on two different settings pages —
-      # Settings → Secrets and variables → Actions, then the **Variables** tab for the
-      # first and the **Secrets** tab for the second. A value put on the wrong tab reads
-      # back as empty here, which is what an "input must be set to a non-empty string"
-      # failure means.
+      # thing that must be a secret, and it lives in the `renovate` environment. Note these
+      # live on two different settings pages — Settings → Secrets and variables → Actions,
+      # **Variables** tab, for the first, and Settings → Environments → renovate for the
+      # second. A value put in the wrong place reads back as empty here, which is what an
+      # "input must be set to a non-empty string" failure means.
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: app-token
         with:

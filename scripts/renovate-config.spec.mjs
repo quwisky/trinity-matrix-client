@@ -1,6 +1,7 @@
 /** Renovate merges nothing shipped and security-sensitive on its own, and nothing brand new. */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { parse } from 'yaml';
 
 const source = readFileSync(
   resolve(import.meta.dirname, '../.github/renovate.json'),
@@ -60,5 +61,23 @@ describe('Renovate update policy', () => {
 
   it('describes main as protected by its ruleset', () => {
     expect(source).not.toMatch(/no protection rule|unprotected branch/);
+  });
+});
+
+describe('Renovate App key', () => {
+  const dir = resolve(import.meta.dirname, '../.github/workflows');
+
+  it('is read only by the Renovate job, inside the renovate environment', () => {
+    const readers = [];
+    for (const name of readdirSync(dir)) {
+      const { jobs } = parse(readFileSync(resolve(dir, name), 'utf8'));
+      for (const [id, job] of Object.entries(jobs)) {
+        if (JSON.stringify(job).includes('secrets.RENOVATE_APP_PRIVATE_KEY'))
+          readers.push(`${name} ${id}`);
+      }
+    }
+    expect(readers).toEqual(['renovate.yml renovate']);
+    const { jobs } = parse(readFileSync(resolve(dir, 'renovate.yml'), 'utf8'));
+    expect(jobs.renovate.environment).toBe('renovate');
   });
 });

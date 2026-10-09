@@ -688,9 +688,10 @@ re-run is reproducible by hash alone.
 
 Renovate runs daily at 00:00 UTC and can be manually dispatched with a dry-run
 and log-level choice. It reads [`.github/renovate.json`](../../.github/renovate.json)
-and authenticates with the `RENOVATE_APP_CLIENT_ID` repository variable and
-`RENOVATE_APP_PRIVATE_KEY` secret. Those names identify setup inputs only; never
-copy their values into a ticket or log.
+and authenticates with the `RENOVATE_APP_CLIENT_ID` repository variable and the
+`RENOVATE_APP_PRIVATE_KEY` secret of the `renovate` environment, which deploys from `main`
+only; `scripts/renovate-config.spec.mjs` keeps every other job from reading the key. Those
+names identify setup inputs only; never copy their values into a ticket or log.
 
 The workflow uses a GitHub App token instead of the default workflow token so
 the update pull requests can start CI. Its health check requires a completed
