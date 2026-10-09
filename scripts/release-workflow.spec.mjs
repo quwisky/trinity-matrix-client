@@ -256,6 +256,40 @@ describe('release branches', () => {
       expect(at('version')).toBeLessThan(at('first-release-pr'));
     });
 
+    it('installs the CLI from its own lockfile without install scripts', () => {
+      const pnpm = steps().find((s) =>
+        s.uses?.startsWith('pnpm/action-setup@'),
+      );
+      expect(pnpm.if).toBe(onReleaseBranch);
+      const install = step('release-please-cli');
+      expect(install.if).toBe("\${{ steps.version.outputs.version != '' }}");
+      expect(install.run).toBe(
+        'pnpm -C tools/release-please install --frozen-lockfile --ignore-scripts',
+      );
+      expect(at('release-please-cli')).toBeLessThan(at('first-release-pr'));
+      const manifest = readJson('tools/release-please/package.json');
+      expect(manifest.devDependencies['release-please']).toMatch(
+        /^\d+\.\d+\.\d+$/,
+      );
+      expect(
+        readFileSync(
+          resolve(root, 'tools/release-please/pnpm-lock.yaml'),
+          'utf8',
+        ),
+      ).toContain(
+        `release-please@${manifest.devDependencies['release-please']}`,
+      );
+    });
+
+    it('runs no unlocked package in any workflow', () => {
+      const dir = resolve(root, '.github/workflows');
+      for (const name of readdirSync(dir)) {
+        expect(readFileSync(resolve(dir, name), 'utf8'), name).not.toMatch(
+          /\bnpx\b|\bpnpm dlx\b/,
+        );
+      }
+    });
+
     it('opens the release PR with the pinned CLI and --release-as when there is a version', () => {
       const cli = step('first-release-pr');
       expect(cli.if).toBe("\${{ steps.version.outputs.version != '' }}");
@@ -269,9 +303,11 @@ describe('release branches', () => {
           .split(/\s+/)
           .filter((w) => w !== '\\'),
       ).toEqual([
-        'npx',
-        '--yes',
-        'release-please@17.11.2',
+        'pnpm',
+        '-C',
+        'tools/release-please',
+        'exec',
+        'release-please',
         'release-pr',
         '--token',
         '"$TOKEN"',

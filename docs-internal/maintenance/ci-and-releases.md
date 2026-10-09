@@ -245,7 +245,8 @@ to cut the same version twice.
    branch. While the branch has no stable `vX.Y.*` tag in its history,
    [`scripts/release-version.mjs`](../../scripts/release-version.mjs) takes the newest
    `vX.Y.Z-next.N` tag reachable from it and the `Release PR and tag` job runs the
-   release-please CLI (pinned to `17.11.2`) with `--release-as X.Y.Z`, which opens the
+   release-please CLI (locked by `tools/release-please/pnpm-lock.yaml` and installed with
+   `--ignore-scripts`) with `--release-as X.Y.Z`, which opens the
    stable release PR with version `X.Y.Z`, so stable ships exactly the tested code. The
    action then only tags and releases. Every later push before the release (a fix merged
    first, say) keeps the PR at `X.Y.Z` the same way. Once `vX.Y.Z` is tagged, the job runs the action alone and the stable config's

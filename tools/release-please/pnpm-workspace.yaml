@@ -1,0 +1,5 @@
+# Standalone pnpm project for the release-please CLI that release.yml runs on release branches.
+# Its own lockfile pins the CLI's whole dependency tree, and release.yml installs it with
+# --ignore-scripts, so nothing outside this lockfile runs next to the job's write token.
+packages: []
+minimumReleaseAge: 1440
