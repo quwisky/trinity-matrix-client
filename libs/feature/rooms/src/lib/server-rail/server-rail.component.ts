@@ -15,7 +15,14 @@ import { TrnButton, TrnIconButton } from '@trinity/components/controls';
 import { type SpaceSummary } from '@trinity/data-access/room-library';
 import { unreadBadgeLabel } from '../shared/unread-badge';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { type ExactSpaceSelection } from '../shared/exact-selection';
+import {
+  type ExactRoomSelection,
+  type ExactSpaceSelection,
+} from '../shared/exact-selection';
+import {
+  NO_RAIL_UNREAD_CHATS,
+  type RailUnreadChats,
+} from './rail-unread-chats';
 
 /** Unread and mention counts for one rail item. */
 export interface RailCounts {
@@ -77,6 +84,8 @@ export class ServerRailComponent {
    * initial/name. Empty when not in mixed mode — space pills then show no badge.
    */
   readonly accountBadges = input<ReadonlyMap<string, AccountBadge>>(new Map());
+  /** Chats with new messages, already filtered, ordered, capped and badged. */
+  readonly unreadChats = input<RailUnreadChats>(NO_RAIL_UNREAD_CHATS);
   readonly selectSpace = output<ExactSpaceSelection>();
   /** The "+" pill at the end of the rail — raise the create-a-space flow. */
   readonly createSpace = output<void>();
@@ -84,6 +93,8 @@ export class ServerRailComponent {
   readonly showRecent = output<void>();
   /** Show the Rooms view (non-DM rooms). */
   readonly showRooms = output<void>();
+  /** Open one unread chat on the account that owns it. */
+  readonly openUnreadChat = output<ExactRoomSelection>();
 
   selectHome(): void {
     const accountId = this.activeAccountId();
@@ -107,6 +118,15 @@ export class ServerRailComponent {
     if (!counts) return label;
     if (counts.mentions > 0) return `${label}, ${counts.mentions} mentions`;
     return counts.unread > 0 ? `${label}, unread` : label;
+  }
+
+  /** "+N" text; the count beyond 99 reads "+99". */
+  overflowText(count: number): string {
+    return `+${Math.min(count, 99)}`;
+  }
+
+  overflowLabel(count: number): string {
+    return `${count} more unread chats in Recent activity`;
   }
 
   /** Whether the item shows the plain unread dot (unread without mentions). */

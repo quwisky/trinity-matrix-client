@@ -3,7 +3,6 @@
 @layer components {
   .rail {
     @include column(var(--trinity-surface-app));
-    @include scrollable;
 
     // Ring the account badge against the rail surface, not the page background — the default
     // resolves to --background, which is near-black in dark themes and reads as a punched
@@ -12,8 +11,34 @@
 
     width: 72px;
     align-items: center;
-    padding: 12px 0;
+    padding: 12px 0 0;
+    overflow: hidden;
+  }
+
+  // Recent, Home and Rooms stay in view; only `.rail-scroll` moves.
+  .rail-fixed,
+  .rail-scroll {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: var(--trinity-density-shell-gap);
+  }
+
+  .rail-fixed {
+    flex: none;
+    width: 100%;
+    padding-block-end: var(--trinity-density-shell-gap);
+  }
+
+  .rail-scroll {
+    @include scrollable;
+
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+
+    // The rail's last row is `.add`, so close the column with the rail's old bottom edge.
+    padding-block-end: var(--trinity-space-4);
 
     @media #{$md} {
       // The identity dock spans this rail and the room list at desktop widths. Give the last
@@ -153,6 +178,35 @@
   .item.active .pill.rooms {
     background: var(--trinity-accent);
     color: var(--trinity-accent-foreground);
+  }
+
+  // Unread chats sit between Rooms and the separator, spaced like the rest of the rail.
+  .unread-chats {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--trinity-density-shell-gap);
+    width: 100%;
+  }
+
+  // A DM's avatar is round, so its pill's hover surface is round too.
+  .pill--person {
+    border-radius: var(--trinity-shape-person-radius);
+
+    --trn-icon-button-radius: var(--trinity-shape-person-radius);
+  }
+
+  // Only marked unread: a dot where the count would be.
+  .unread-dot {
+    width: var(--trinity-rail-indicator-unread);
+    height: var(--trinity-rail-indicator-unread);
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-text);
+  }
+
+  .pill.overflow {
+    font-size: var(--trinity-text-sm);
+    font-weight: 600;
   }
 
   trn-avatar {

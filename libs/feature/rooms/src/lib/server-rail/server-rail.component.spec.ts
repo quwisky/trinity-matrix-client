@@ -3,8 +3,11 @@ import { join } from 'node:path';
 import { render, screen } from '@trinity/testing';
 import { type SpaceSummary } from '@trinity/data-access/room-library';
 import { AvatarComponent } from '@trinity/components/generic-content';
-import { MockComponent } from 'ng-mocks';
+import { By } from '@angular/platform-browser';
+import { MockComponent, ngMocks } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
+import { type ExactRoomSelection } from '../shared/exact-selection';
+import { type RailUnreadChat } from './rail-unread-chats';
 import { ServerRailComponent, type RailUnread } from './server-rail.component';
 
 function space(over: Partial<SpaceSummary> = {}): SpaceSummary {
@@ -55,7 +58,7 @@ describe('ServerRailComponent', () => {
     expect(container.querySelector('.pill.home')).toBeTruthy();
     expect(container.querySelector('.pill.rooms')).toBeTruthy();
     const spacePills = container.querySelectorAll(
-      '.pill:not(.recent):not(.home):not(.add):not(.rooms)',
+      '.pill:not(.recent):not(.home):not(.add):not(.rooms):not(.unread-chat)',
     );
     expect(spacePills.length).toBe(2);
   });
@@ -98,7 +101,7 @@ describe('ServerRailComponent', () => {
     fixture.componentInstance.selectSpace.subscribe((v) => (selected = v));
     container
       .querySelector<HTMLElement>(
-        '.pill:not(.recent):not(.home):not(.add):not(.rooms)',
+        '.pill:not(.recent):not(.home):not(.add):not(.rooms):not(.unread-chat)',
       )!
       .click();
 
@@ -471,5 +474,161 @@ describe('ServerRailComponent', () => {
     fixture.componentRef.setInput('roomsActive', true);
     await fixture.whenStable();
     expect(avatar()?.getAttribute('data-shape')).toBe('place');
+  });
+});
+
+const unreadChat = (over: Partial<RailUnreadChat> = {}): RailUnreadChat => ({
+  key: '@me:hs\u0000!c:hs',
+  selection: { accountId: '@me:hs', roomId: '!c:hs' },
+  name: 'Team',
+  initial: 'T',
+  avatarMxc: null,
+  direct: false,
+  countLabel: '3',
+  accountBadge: null,
+  label: 'Team · 3 unread',
+  ...over,
+});
+
+describe('unread chats', () => {
+  it('sits between Rooms and the separator', async () => {
+    const { container } = await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: { entries: [unreadChat()], overflow: 0 },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    const fixed = container.querySelector('nav.rail > .rail-fixed')!;
+    const scroll = container.querySelector('nav.rail > .rail-scroll')!;
+    expect(fixed.lastElementChild?.querySelector('.pill.rooms')).toBeTruthy();
+    expect(
+      scroll.firstElementChild?.matches('[data-testid=rail-unread-chats]'),
+    ).toBe(true);
+    expect(scroll.children[1].matches('.separator')).toBe(true);
+  });
+
+  it('keeps Recent, Home and Rooms pinned outside the scrolling part', async () => {
+    const { container, getByTestId } = await render(ServerRailComponent, {
+      inputs: { spaces: [space()] },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    const fixed = container.querySelector('.rail-fixed')!;
+    expect(fixed.querySelector('.rail-scroll')).toBeNull();
+    expect(
+      fixed.querySelectorAll('.pill.recent, .pill.home, .pill.rooms'),
+    ).toHaveLength(3);
+    expect(fixed.querySelector('.pill.add')).toBeNull();
+    const scroll = getByTestId('rail-scroll');
+    expect(scroll.querySelector('.pill.add')).toBeTruthy();
+    expect(
+      scroll.querySelector('.pill.recent, .pill.home, .pill.rooms'),
+    ).toBeNull();
+  });
+
+  it('names each chat and opens it on its own account', async () => {
+    const { fixture } = await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: {
+          entries: [
+            unreadChat({
+              selection: { accountId: '@ben:hs', roomId: '!c:hs' },
+              label: 'Team · 3 unread · Ben',
+            }),
+          ],
+          overflow: 0,
+        },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    const opened: ExactRoomSelection[] = [];
+    fixture.componentInstance.openUnreadChat.subscribe((s) => opened.push(s));
+    screen.getByRole('button', { name: 'Team · 3 unread · Ben' }).click();
+    expect(opened).toEqual([{ accountId: '@ben:hs', roomId: '!c:hs' }]);
+  });
+
+  it('shows the count, or a dot for a chat only marked unread', async () => {
+    const { container } = await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: {
+          entries: [
+            unreadChat({ countLabel: '99+' }),
+            unreadChat({
+              key: 'k2',
+              countLabel: null,
+              label: 'Team · marked unread',
+            }),
+          ],
+          overflow: 0,
+        },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    expect(
+      container
+        .querySelector('[data-testid=rail-unread-count]')
+        ?.textContent?.trim(),
+    ).toBe('99+');
+    expect(
+      container.querySelectorAll('[data-testid=rail-unread-dot]'),
+    ).toHaveLength(1);
+  });
+
+  it('hands the account badge and avatar shape to the avatar', async () => {
+    const { fixture } = await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: {
+          entries: [
+            unreadChat({
+              direct: true,
+              accountBadge: {
+                id: '@ben:hs',
+                name: 'Ben',
+                initial: 'B',
+                avatarMxc: null,
+              },
+            }),
+          ],
+          overflow: 0,
+        },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    const avatar = ngMocks.find(
+      fixture.debugElement.query(By.css('[data-testid=rail-unread-chats]')),
+      AvatarComponent,
+    ).componentInstance;
+    expect(avatar.accountBadge()).toMatchObject({ id: '@ben:hs' });
+    expect(avatar.shape()).toBe('person');
+  });
+
+  it('offers +N for the rest, which opens Recent', async () => {
+    const { fixture } = await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: { entries: [unreadChat()], overflow: 4 },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    let recent = false;
+    fixture.componentInstance.showRecent.subscribe(() => (recent = true));
+    const more = screen.getByRole('button', {
+      name: '4 more unread chats in Recent activity',
+    });
+    expect(more.textContent?.trim()).toBe('+4');
+    more.click();
+    expect(recent).toBe(true);
+  });
+
+  it('renders no section without unread chats', async () => {
+    const { container } = await render(ServerRailComponent, {
+      imports: [MockComponent(AvatarComponent)],
+    });
+    expect(
+      container.querySelector('[data-testid=rail-unread-chats]'),
+    ).toBeNull();
   });
 });
