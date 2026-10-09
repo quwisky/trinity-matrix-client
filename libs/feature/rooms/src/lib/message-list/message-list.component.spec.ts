@@ -666,19 +666,27 @@ describe('MessageListComponent', () => {
     @Component({
       imports: [MessageListComponent],
       template: `
-        <trn-message-list [introShown]="true">
-          <p data-room-intro data-testid="intro">Just you</p>
+        <trn-message-list [introShown]="shown()">
+          @if (shown()) {
+            <p trnMessageListIntro data-testid="intro">Just you</p>
+          }
         </trn-message-list>
       `,
     })
-    class IntroHostComponent {}
+    class IntroHostComponent {
+      readonly shown = signal(true);
+    }
 
-    const { container } = await render(IntroHostComponent);
+    const { container, fixture } = await render(IntroHostComponent);
 
     const host = container.querySelector('trn-message-list');
     const intro = container.querySelector('[data-testid="intro"]');
     expect(intro?.parentElement).toBe(host);
-    expect(intro?.nextElementSibling?.classList.contains('list')).toBe(true);
+    expect(intro?.closest('.scroll')).toBeNull();
+
+    fixture.componentInstance.shown.set(false);
+    fixture.detectChanges();
+    expect(container.querySelector('[data-testid="intro"]')).toBeNull();
   });
 
   it('jumps synchronously to an already-rendered row', async () => {
