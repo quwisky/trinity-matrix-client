@@ -81,10 +81,11 @@ function pushTypecheck(command, dir) {
 
 /**
  * `gh pr create|ready` in command position (not quoted text), with any global `-R/--repo`
- * given before `pr`. Group 1: the global repo flag, 2: the subcommand, 3: its arguments.
+ * given before `pr`. Group 1: the global repo flag, 2: the subcommand, 3: its arguments,
+ * which run on through a `>&` redirection such as `2>&1` so that `words` drops it whole.
  */
 const GH_PR =
-  /(?:^|[;&|(\n]\s*)(?:\w+=\S*\s+)*gh((?:\s+(?:-R|--repo)(?:=|\s+)\S+)*)\s+pr\s+(create|ready)\b([^\n;&|]*)/g;
+  /(?:^|[;&|(\n]\s*)(?:\w+=\S*\s+)*gh((?:\s+(?:-R|--repo)(?:=|\s+)\S+)*)\s+pr\s+(create|ready)\b((?:>&|[^\n;&|])*)/g;
 
 /** Words of a simple argument list, without quotes, redirections or a trailing comment. */
 const words = (text) =>
