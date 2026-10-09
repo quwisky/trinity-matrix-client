@@ -37,10 +37,12 @@
         [roomsActive]="store.roomsView()"
         [unread]="vm.railUnread()"
         [accountBadges]="vm.accountBadges()"
+        [unreadChats]="vm.railUnreadChats()"
         (selectSpace)="routing.onSelectSpaceRow($event)"
         (createSpace)="spaceActions.onCreateSpace()"
         (showRecent)="nav.onShowRecent()"
         (showRooms)="nav.onShowRooms()"
+        (openUnreadChat)="routing.onSelectRoomSelection($event, 'rail-unread')"
       />
       <trn-channel-sidebar
         class="shell-side__rooms"
