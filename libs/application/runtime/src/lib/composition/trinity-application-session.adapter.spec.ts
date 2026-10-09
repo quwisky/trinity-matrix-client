@@ -730,6 +730,23 @@ describe('TrinityApplicationSessionAdapter', () => {
     lifetime.unsubscribe();
   });
 
+  it('keeps the provider iss on an OIDC callback', async () => {
+    // The callback page checks that the sign-in response comes from the provider it
+    // started with (RFC 9207), so the deep link must not drop `iss` on the way there.
+    const test = setup();
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+
+    test.deepLinks.next({
+      url: 'eu.qwky.trinity:/sso-callback?code=CODE&state=STATE&iss=https%3A%2F%2Fop.example%2F',
+    });
+
+    await vi.waitFor(() => expect(test.navigate).toHaveBeenCalledTimes(1));
+    expect(test.navigate).toHaveBeenCalledWith(['/sso-callback'], {
+      queryParams: { code: 'CODE', state: 'STATE', iss: 'https://op.example/' },
+    });
+    lifetime.unsubscribe();
+  });
+
   it('hands a valid room link to the Rooms shell and leaves SSO untouched', async () => {
     const test = setup();
     const inbound = TestBed.inject(InboundRoomLinkService);

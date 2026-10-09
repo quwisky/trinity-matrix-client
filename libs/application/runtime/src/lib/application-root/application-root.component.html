@@ -37,6 +37,19 @@
         >
           {{ recoveryAction().label }}
         </button>
+        @if (blockedState.failure.secondaryRecovery; as secondary) {
+          <button
+            trnBtn
+            variant="secondary"
+            presentation="outline"
+            type="button"
+            data-testid="app-startup-secondary-recovery"
+            [attr.data-recovery]="secondary"
+            (click)="recover(secondary)"
+          >
+            {{ secondaryLabel(secondary) }}
+          </button>
+        }
         <button
           trnBtn
           presentation="outline"

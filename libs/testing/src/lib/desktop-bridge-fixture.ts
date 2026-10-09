@@ -46,6 +46,7 @@ export interface DesktopBridgeFixture {
     readonly secureStore: {
       readonly isAvailable: () => Promise<boolean>;
       readonly get: (key: string) => Promise<string | null>;
+      readonly read?: (key: string) => Promise<unknown>;
       readonly set: (key: string, value: string) => Promise<boolean>;
       readonly delete: (key: string) => Promise<void>;
     };

@@ -1,4 +1,4 @@
-import { type MatrixEvent } from 'matrix-js-sdk';
+import { type MatrixEvent, type Room } from 'matrix-js-sdk';
 import {
   EventShieldColour,
   EventShieldReason,
@@ -10,7 +10,9 @@ import {
   shieldExplanationText,
   shieldKey,
   shieldReasonText,
+  shieldSubject,
   toShield,
+  unencryptedShieldFor,
 } from './shields';
 
 /** An encrypted event; only getId/isDecryptionFailure are read by the resolver. */
@@ -236,5 +238,193 @@ describe('resolveShieldsInto', () => {
 
     expect(changed).toBe(false);
     expect(shields.size).toBe(0);
+  });
+});
+
+/** A message-or-state event as the unencrypted-shield lookup reads it. */
+function sent(
+  id: string,
+  o: {
+    encrypted?: boolean;
+    status?: string | null;
+    state?: boolean;
+    redacted?: boolean;
+    ts?: number;
+    replacement?: MatrixEvent;
+  } = {},
+): MatrixEvent {
+  return {
+    getId: () => id,
+    getTs: () => o.ts ?? 0,
+    isState: () => o.state ?? false,
+    isRedacted: () => o.redacted ?? false,
+    isEncrypted: () => o.encrypted ?? false,
+    replacingEvent: () => o.replacement ?? null,
+    status: o.status ?? null,
+  } as unknown as MatrixEvent;
+}
+
+/** The two looks of a "Not encrypted" mark; the wording is the same, the tone is not. */
+const RED = {
+  level: 'unencrypted',
+  reason: 'Not encrypted',
+  explanation: 'This message was sent without end-to-end encryption.',
+};
+const GREY = {
+  level: 'unencrypted-history',
+  reason: 'Not encrypted',
+  explanation:
+    'This message is dated before the room turned on end-to-end encryption.',
+};
+
+/**
+ * A room as the lookup reads it: `encryptedAt` is the `origin_server_ts` of its current
+ * `m.room.encryption` state event, or null for a room with no such event.
+ */
+function roomEncryptedAt(encryptedAt: number | null): Room {
+  return {
+    getLiveTimeline: () => ({
+      getState: () => ({
+        getStateEvents: (type: string, key: string) =>
+          type === 'm.room.encryption' && key === '' && encryptedAt !== null
+            ? { getTs: () => encryptedAt }
+            : null,
+      }),
+    }),
+  } as unknown as Room;
+}
+
+describe('unencryptedShieldFor', () => {
+  const at = (encryptedAt: number | null, roomEncrypted = true) =>
+    unencryptedShieldFor(roomEncryptedAt(encryptedAt), roomEncrypted);
+
+  it('marks a message dated at or after the encryption event in the red tone', () => {
+    const lookup = at(1_000);
+
+    expect(lookup(sent('$later', { ts: 2_000 }))).toEqual(RED);
+    expect(lookup(sent('$same', { ts: 1_000 }))).toEqual(RED);
+  });
+
+  it('marks a message dated before the encryption event in the quieter grey tone', () => {
+    expect(at(1_000)(sent('$older', { ts: 999 }))).toEqual(GREY);
+  });
+
+  it('keeps a message with a zero or missing date in the red tone', () => {
+    const lookup = at(1_000);
+
+    expect(lookup(sent('$zero', { ts: 0 }))).toEqual(RED);
+    expect(
+      lookup({
+        ...sent('$missing'),
+        getTs: () => undefined,
+      } as unknown as MatrixEvent),
+    ).toEqual(RED);
+  });
+
+  it('marks every message in the red tone when the room has no encryption state event', () => {
+    // Only the crypto store says the room is encrypted, so there is no date to compare to.
+    const lookup = at(null);
+
+    expect(lookup(sent('$old', { ts: 1 }))).toEqual(RED);
+    expect(lookup(sent('$new', { ts: 9_999_999 }))).toEqual(RED);
+  });
+
+  // Dating a message earlier only changes how it looks; it is never a reason to leave
+  // a plaintext message unmarked.
+  it('never leaves a plaintext message unmarked on its date alone', () => {
+    const lookup = at(1_000);
+
+    for (const ts of [0, 1, 999, 1_000, 1_001, Number.MAX_SAFE_INTEGER]) {
+      expect(lookup(sent(`$${ts}`, { ts }))).not.toBeNull();
+    }
+  });
+
+  it('leaves an encrypted message unmarked, whatever its decryption outcome or date', () => {
+    expect(
+      at(1_000)(sent('$sealed', { encrypted: true, ts: 2_000 })),
+    ).toBeNull();
+    expect(
+      at(1_000)(sent('$old-sealed', { encrypted: true, ts: 1 })),
+    ).toBeNull();
+  });
+
+  it('marks nothing in a room that is not encrypted', () => {
+    expect(at(1_000, false)(sent('$plain', { ts: 2_000 }))).toBeNull();
+  });
+
+  it.each(['sending', 'encrypting', 'queued', 'not_sent', 'sent'])(
+    'skips a local echo that is still %s',
+    (status) => {
+      expect(at(1_000)(sent('$echo', { status, ts: 2_000 }))).toBeNull();
+    },
+  );
+
+  it('skips state events and redacted messages', () => {
+    const lookup = at(1_000);
+
+    expect(lookup(sent('$topic', { state: true, ts: 2_000 }))).toBeNull();
+    expect(lookup(sent('$gone', { redacted: true, ts: 2_000 }))).toBeNull();
+  });
+
+  // The text a row shows comes from its latest edit, and the SDK applies an edit without
+  // checking that it was encrypted, so the edit, and its date, are what get judged.
+  describe('for an edited message', () => {
+    it('marks an encrypted message whose later plaintext edit is dated after encryption in red', () => {
+      const original = sent('$orig', {
+        encrypted: true,
+        ts: 500,
+        replacement: sent('$edit', { ts: 2_000 }),
+      });
+
+      expect(at(1_000)(original)).toEqual(RED);
+    });
+
+    it('judges the date of the edit, not of the message it replaces', () => {
+      const lookup = at(1_000);
+      const oldEdit = sent('$orig', {
+        ts: 2_000,
+        replacement: sent('$edit', { ts: 500 }),
+      });
+
+      expect(lookup(oldEdit)).toEqual(GREY);
+    });
+
+    it('leaves an encrypted message with an encrypted edit unmarked', () => {
+      const original = sent('$orig', {
+        encrypted: true,
+        replacement: sent('$edit', { encrypted: true, ts: 2_000 }),
+      });
+
+      expect(at(1_000)(original)).toBeNull();
+    });
+
+    it('does not mark a message while its own edit is still being sent', () => {
+      const original = sent('$orig', {
+        encrypted: true,
+        replacement: sent('$edit', { status: 'sending', ts: 2_000 }),
+      });
+
+      expect(at(1_000)(original)).toBeNull();
+    });
+
+    it('does not mark a redacted message that still has an edit', () => {
+      const original = sent('$orig', {
+        redacted: true,
+        replacement: sent('$edit', { ts: 2_000 }),
+      });
+
+      expect(at(1_000)(original)).toBeNull();
+    });
+  });
+});
+
+describe('shieldSubject', () => {
+  it('is the latest edit when there is one, and the event itself otherwise', () => {
+    const edit = sent('$edit');
+    const edited = sent('$orig', { replacement: edit });
+    const plain = sent('$plain');
+
+    expect(shieldSubject(edited)).toBe(edit);
+    expect(shieldSubject(plain)).toBe(plain);
   });
 });

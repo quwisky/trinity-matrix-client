@@ -32,7 +32,10 @@ import type {
   ApplicationStartupRecovery,
   ApplicationStartupStage,
 } from '../application-runtime.models';
-import { CapabilityStatusService } from '../capability-status.service';
+import {
+  CapabilityStatusService,
+  secondaryRecoveryLabel,
+} from '../capability-status.service';
 import { VerificationHostComponent } from '../verification-host/verification-host.component';
 import { ApplicationRecoveryPresenter } from './application-recovery.presenter';
 import { SystemStatusComponent } from './system-status/system-status.component';
@@ -87,7 +90,10 @@ export class ApplicationRootComponent {
     return state.phase === 'blocked' ? state : null;
   });
   readonly recoveryAction = computed(() =>
-    recoveryAction(this.blocked()?.failure.recovery ?? 'retry-startup'),
+    recoveryAction(
+      this.blocked()?.failure.recovery ?? 'retry-startup',
+      this.blocked()?.failure.diagnostic.code,
+    ),
   );
 
   protected readonly markRoutedPage = markRoutedPage;
@@ -115,8 +121,10 @@ export class ApplicationRootComponent {
       this.status.dismiss(entry);
   }
 
-  recover(): void {
-    const recovery = this.blocked()?.failure.recovery;
+  readonly secondaryLabel = secondaryRecoveryLabel;
+
+  recover(choice?: ApplicationStartupRecovery): void {
+    const recovery = choice ?? this.blocked()?.failure.recovery;
     if (!recovery) return;
     this.recovery
       .confirmAndRecover(recovery)
@@ -168,10 +176,20 @@ function startupStep(stage: ApplicationStartupStage): string {
   }
 }
 
-function recoveryAction(recovery: ApplicationStartupRecovery): {
+function recoveryAction(
+  recovery: ApplicationStartupRecovery,
+  code?: string,
+): {
   readonly label: string;
   readonly detail: string;
 } {
+  if (code === 'account-secure-storage-unavailable') {
+    return {
+      label: 'Retry startup',
+      detail:
+        'Your system keychain is locked or unavailable. Unlock it and try again.',
+    };
+  }
   switch (recovery) {
     case 'reauthenticate':
       return {

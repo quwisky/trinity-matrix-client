@@ -22,6 +22,7 @@ import {
   type WidgetBridgeSession,
   type WidgetEmbed,
 } from '@trinity/data-access/widgets';
+import { isInstalledNativePlatform } from '@trinity/platform-native';
 
 @Component({
   selector: 'trn-room-widget-frame',
@@ -66,7 +67,8 @@ export class RoomWidgetFrameComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit(): void {
     const iframe = this.frame().nativeElement;
     const embed = this.embed();
-    if (!embed.url) {
+    // The installed mobile apps open widgets in the browser, so no page loads here.
+    if (!embed.url || isInstalledNativePlatform()) {
       this.startupFailed.set(true);
       return;
     }

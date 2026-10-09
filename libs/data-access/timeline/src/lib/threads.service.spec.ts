@@ -46,6 +46,19 @@ function emitter() {
   };
 }
 
+/** A settled edit as `replacingEvent()` returns it, in the clear unless told otherwise. */
+function fakeEdit(id: string, encrypted = false, ts = 0) {
+  return {
+    getId: () => `${id}~edit`,
+    getTs: () => ts,
+    isEncrypted: () => encrypted,
+    isDecryptionFailure: () => false,
+    isRedacted: () => false,
+    isState: () => false,
+    status: null,
+  };
+}
+
 function fakeEvent(o: {
   id: string;
   sender: string;
@@ -58,12 +71,16 @@ function fakeEvent(o: {
   replyTo?: string;
   status?: string | null;
   editRelation?: boolean;
+  stateKey?: string;
+  /** The event `replacingEvent()` returns: the latest edit of this one. */
+  replacement?: ReturnType<typeof fakeEdit>;
 }) {
   return {
     getId: () => o.id,
     getSender: () => o.sender,
     getTs: () => o.ts ?? 0,
     getType: () => o.type ?? 'm.room.message',
+    isState: () => o.stateKey !== undefined,
     getRoomId: () => '!r:hs',
     getContent: () => ({ body: o.body ?? '', msgtype: 'm.text' }),
     isRedacted: () => o.redacted ?? false,
@@ -72,7 +89,7 @@ function fakeEvent(o: {
     isRelation: (relType?: string) =>
       o.editRelation === true &&
       (relType === undefined || relType === 'm.replace'),
-    replacingEvent: () => (o.editRelation ? {} : null),
+    replacingEvent: () => o.replacement ?? (o.editRelation ? {} : null),
     replyEventId: o.replyTo,
     status: o.status ?? null,
   };
@@ -140,6 +157,9 @@ function setup(
   extraEvents: FakeEvent[] = [],
   _sendReadReceipts = true,
   getEncryptionInfoForEvent?: Mock,
+  roomEncrypted = false,
+  storeEncrypted = false,
+  encryptionTs?: number,
 ) {
   const all = [
     ...extraEvents,
@@ -148,8 +168,27 @@ function setup(
       ...t.events,
     ]),
   ];
+  // Thread replies live on their thread; only roots and plain messages are in the
+  // room's main timeline.
+  const mainTimeline = [
+    ...extraEvents,
+    ...threads.flatMap((t) => (t.rootEvent ? [t.rootEvent] : [])),
+  ];
   const room = {
     roomId: '!r:hs',
+    getLiveTimeline: () => ({
+      getEvents: () => mainTimeline,
+      // The room's current `m.room.encryption` state event, dated `encryptionTs`.
+      getState: () =>
+        encryptionTs === undefined
+          ? undefined
+          : {
+              getStateEvents: (type: string) =>
+                type === 'm.room.encryption'
+                  ? { getTs: () => encryptionTs }
+                  : null,
+            },
+    }),
     getThreads: () => threads,
     getThread: (id: string) => threads.find((t) => t.id === id) ?? null,
     findEventById: (id: string) => all.find((e) => e.getId() === id),
@@ -185,7 +224,7 @@ function setup(
           ? reactions[id]
           : undefined,
     },
-    hasEncryptionStateEvent: () => false,
+    hasEncryptionStateEvent: () => roomEncrypted,
     ...emitter(),
   };
   const client = {
@@ -236,8 +275,14 @@ function setup(
       sent.push(['resend', event.getId()]);
       return Promise.resolve({});
     },
-    ...(getEncryptionInfoForEvent
-      ? { getCrypto: () => ({ getEncryptionInfoForEvent }) }
+    ...(getEncryptionInfoForEvent || storeEncrypted
+      ? {
+          getCrypto: () => ({
+            getEncryptionInfoForEvent:
+              getEncryptionInfoForEvent ?? vi.fn(() => Promise.resolve(null)),
+            isEncryptionEnabledInRoom: () => Promise.resolve(storeEncrypted),
+          }),
+        }
       : {}),
     ...emitter(),
   };
@@ -665,6 +710,219 @@ describe('ThreadsService', () => {
       ).toBe('grey'),
     );
     expect(getInfo).toHaveBeenCalled();
+  });
+
+  describe('in a room with encryption enabled', () => {
+    function openEncryptedThread(
+      replies: FakeEvent[],
+      getInfo: Mock = vi.fn(),
+      {
+        stateEncrypted = true,
+        storeEncrypted = false,
+        encryptionTs,
+      }: {
+        stateEncrypted?: boolean;
+        storeEncrypted?: boolean;
+        encryptionTs?: number;
+      } = {},
+    ) {
+      const root = fakeEvent({
+        id: '$root',
+        sender: '@a:hs',
+        body: 'root',
+        encrypted: true,
+      });
+      const encryption = fakeEvent({
+        id: '$enc',
+        sender: '@a:hs',
+        type: 'm.room.encryption',
+        stateKey: '',
+      });
+      const made = setup(
+        [fakeThread({ id: '$root', rootEvent: root, events: replies })],
+        [],
+        {},
+        [encryption],
+        true,
+        getInfo,
+        stateEncrypted,
+        storeEncrypted,
+        encryptionTs,
+      );
+      made.svc.attachThreadRoot('$root');
+      return { ...made, getInfo };
+    }
+
+    const shieldOf = (
+      svc: ThreadsService,
+      id: string,
+    ): { level: string } | null =>
+      svc.threadMessages().find((m) => m.id === id)?.shield ?? null;
+
+    it('marks a plaintext thread reply as not encrypted', () => {
+      const { svc } = openEncryptedThread([
+        fakeEvent({ id: '$plain', sender: '@a:hs', body: 'hi' }),
+      ]);
+
+      expect(shieldOf(svc, '$plain')).toEqual({
+        level: 'unencrypted',
+        reason: 'Not encrypted',
+        explanation: 'This message was sent without end-to-end encryption.',
+      });
+    });
+
+    it('leaves an encrypted reply on its crypto-derived shield', async () => {
+      const getInfo = vi.fn().mockResolvedValue({
+        shieldColour: EventShieldColour.GREY,
+        shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+      });
+      const { svc } = openEncryptedThread(
+        [
+          fakeEvent({
+            id: '$sealed',
+            sender: '@a:hs',
+            body: 'hi',
+            encrypted: true,
+          }),
+        ],
+        getInfo,
+      );
+
+      await vi.waitFor(() =>
+        expect(shieldOf(svc, '$sealed')).toMatchObject({ level: 'grey' }),
+      );
+    });
+
+    it('marks a reply dated before encryption grey and one dated after it red', () => {
+      const { svc } = openEncryptedThread(
+        [
+          fakeEvent({ id: '$old', sender: '@a:hs', body: 'one', ts: 500 }),
+          fakeEvent({ id: '$new', sender: '@a:hs', body: 'two', ts: 1500 }),
+        ],
+        vi.fn(),
+        { encryptionTs: 1000 },
+      );
+
+      expect(shieldOf(svc, '$old')).toEqual({
+        level: 'unencrypted-history',
+        reason: 'Not encrypted',
+        explanation:
+          'This message is dated before the room turned on end-to-end encryption.',
+      });
+      expect(shieldOf(svc, '$new')).toMatchObject({ level: 'unencrypted' });
+    });
+
+    it('marks every reply red when the room has no encryption state event', () => {
+      const { svc } = openEncryptedThread([
+        fakeEvent({ id: '$old', sender: '@a:hs', body: 'one', ts: 1 }),
+        fakeEvent({ id: '$new', sender: '@a:hs', body: 'two', ts: 9999 }),
+      ]);
+
+      expect(shieldOf(svc, '$old')).toMatchObject({ level: 'unencrypted' });
+      expect(shieldOf(svc, '$new')).toMatchObject({ level: 'unencrypted' });
+    });
+
+    it('marks an encrypted reply whose plaintext edit is dated after encryption red', () => {
+      const { svc } = openEncryptedThread(
+        [
+          fakeEvent({
+            id: '$sealed',
+            sender: '@a:hs',
+            body: 'edited text',
+            encrypted: true,
+            ts: 500,
+            replacement: fakeEdit('$sealed', false, 1500),
+          }),
+        ],
+        vi.fn(),
+        { encryptionTs: 1000 },
+      );
+
+      expect(shieldOf(svc, '$sealed')).toMatchObject({ level: 'unencrypted' });
+    });
+
+    it('probes the crypto API with the edit, which supplies the text', async () => {
+      const getInfo = vi.fn().mockResolvedValue({
+        shieldColour: EventShieldColour.GREY,
+        shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+      });
+      const { svc } = openEncryptedThread(
+        [
+          fakeEvent({
+            id: '$sealed',
+            sender: '@a:hs',
+            body: 'edited text',
+            encrypted: true,
+            replacement: fakeEdit('$sealed', true),
+          }),
+        ],
+        getInfo,
+      );
+
+      await vi.waitFor(() =>
+        expect(shieldOf(svc, '$sealed')).toMatchObject({ level: 'grey' }),
+      );
+      const probed = getInfo.mock.calls.map(([event]) => event.getId());
+      expect(probed).toContain('$sealed~edit');
+      expect(probed).not.toContain('$sealed');
+    });
+
+    it('does not show a state event of a message type as a reply', () => {
+      const { svc } = openEncryptedThread([
+        fakeEvent({
+          id: '$state-message',
+          sender: '@a:hs',
+          body: 'keyed',
+          stateKey: 'x',
+        }),
+        fakeEvent({ id: '$real', sender: '@a:hs', body: 'real' }),
+      ]);
+
+      const ids = svc.threadMessages().map((m) => m.id);
+      expect(ids).not.toContain('$state-message');
+      expect(ids).toContain('$real');
+    });
+
+    // Same rule as the main timeline: the SDK encrypts when the state says so OR the crypto
+    // store has the room recorded as encrypted.
+    it('marks a plaintext reply when only the crypto store knows the room is encrypted', async () => {
+      const { svc } = openEncryptedThread(
+        [fakeEvent({ id: '$plain', sender: '@a:hs', body: 'hi' })],
+        vi.fn(),
+        { stateEncrypted: false, storeEncrypted: true },
+      );
+
+      await vi.waitFor(() =>
+        expect(shieldOf(svc, '$plain')).toMatchObject({ level: 'unencrypted' }),
+      );
+    });
+
+    it('does not mark a pending reply', () => {
+      const { svc } = openEncryptedThread([
+        fakeEvent({
+          id: '$echo',
+          sender: '@me:hs',
+          body: 'sending',
+          status: 'sending',
+        }),
+      ]);
+
+      expect(svc.threadMessages().map((m) => m.id)).toContain('$echo');
+      expect(shieldOf(svc, '$echo')).toBeNull();
+    });
+  });
+
+  it('shows no unencrypted shield in a room without encryption', () => {
+    const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+    const reply = fakeEvent({ id: '$r1', sender: '@a:hs', body: 'plain' });
+    const { svc } = setup([
+      fakeThread({ id: '$root', rootEvent: root, events: [reply] }),
+    ]);
+    svc.attachThreadRoot('$root');
+
+    expect(
+      svc.threadMessages().find((m) => m.id === '$r1')?.shield ?? null,
+    ).toBeNull();
   });
 
   it('renders the unable-to-decrypt fallback for an E2EE failure in a thread', () => {

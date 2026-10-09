@@ -12,9 +12,14 @@ import {
 import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { InboundRoomLinkService } from '@trinity/application/workspace';
+import {
+  InboundRoomLinkService,
+  WorkspaceApplicationSurfaceService,
+} from '@trinity/application/workspace';
 import {
   ACCOUNT_REMOVAL_CONSEQUENCES,
+  ROOM_KEYS_AT_RISK,
+  ROOM_KEYS_MAY_BE_LOST,
   AccountRuntimeService,
   type AccountSwitchCoordination,
 } from '@trinity/data-access/accounts';
@@ -62,6 +67,8 @@ beforeEach(() => setRouteRoom(null));
 describe('RoomsPage space actions', () => {
   let alertPrompt: Mock;
   let alertConfirm: Mock;
+  let alertChoose: Mock;
+  let roomKeysBackedUp: Mock;
   let createSpace: Mock;
   let createRoomInSpace: Mock;
   let leaveSpace: Mock;
@@ -74,6 +81,8 @@ describe('RoomsPage space actions', () => {
     const activeAccountId = signal<string | null>(activeUserId);
     alertPrompt = vi.fn(() => of(null));
     alertConfirm = vi.fn(() => of(false));
+    alertChoose = vi.fn(() => of('cancel'));
+    roomKeysBackedUp = vi.fn(() => of(true));
     createSpace = vi.fn(() => of('!new:hs'));
     createRoomInSpace = vi.fn(() =>
       of({
@@ -121,6 +130,7 @@ describe('RoomsPage space actions', () => {
           activeUserId: activeAccountId.asReadonly(),
           accountIds: signal<readonly string[]>(accountIds).asReadonly(),
           clientFor: () => clientStub(),
+          roomKeysBackedUp,
         }),
         MockProvider(UnreadAggregatorService, {
           unreadByAccount: signal<ReadonlyMap<string, number>>(
@@ -158,6 +168,7 @@ describe('RoomsPage space actions', () => {
         MockProvider(TrnSurfaceService),
         MockProvider(TrnAlertService, {
           confirm$: alertConfirm,
+          choose$: alertChoose,
           prompt$: alertPrompt,
         }),
         MockProvider(TrnToastService),
@@ -336,6 +347,89 @@ describe('RoomsPage space actions', () => {
     expect(router.navigateByUrl).not.toHaveBeenCalledWith('/login', {
       replaceUrl: true,
     });
+  });
+
+  it('asks to export room keys before removing when key backup is incomplete', () => {
+    const shell = build();
+    alertConfirm.mockReturnValue(of(true));
+    roomKeysBackedUp.mockReturnValue(of(false));
+    const accounts = TestBed.inject(AccountRuntimeService);
+
+    shell.session.logout('@me:hs');
+
+    expect(roomKeysBackedUp).toHaveBeenCalledWith('@me:hs');
+    expect(alertChoose).toHaveBeenCalledWith({
+      header: 'Room keys are not backed up',
+      message: `Account @me:hs\n\n${ROOM_KEYS_AT_RISK}`,
+      alternativeText: 'Export keys',
+      confirmText: 'Remove anyway',
+      variant: 'danger',
+    });
+    // Cancel (the mock's default) keeps the account.
+    expect(accounts.signOutAccount).not.toHaveBeenCalled();
+  });
+
+  it('warns without an export when the backup status cannot be read', () => {
+    const shell = build();
+    alertConfirm
+      .mockReturnValueOnce(of(true)) // Remove account
+      .mockReturnValueOnce(of(false)); // the warning: Cancel
+    roomKeysBackedUp.mockReturnValue(of(null));
+    const accounts = TestBed.inject(AccountRuntimeService);
+
+    shell.session.logout('@me:hs');
+
+    expect(alertChoose).not.toHaveBeenCalled();
+    expect(alertConfirm).toHaveBeenLastCalledWith({
+      header: 'Room keys may not be backed up',
+      message: `Account @me:hs\n\n${ROOM_KEYS_MAY_BE_LOST}`,
+      confirmText: 'Remove anyway',
+      variant: 'danger',
+    });
+    expect(accounts.signOutAccount).not.toHaveBeenCalled();
+  });
+
+  it('opens the existing key export from that step and keeps the account', () => {
+    const shell = build();
+    alertConfirm.mockReturnValue(of(true));
+    roomKeysBackedUp.mockReturnValue(of(false));
+    alertChoose.mockReturnValue(of('alternative'));
+    const accounts = TestBed.inject(AccountRuntimeService);
+    const open = vi.spyOn(
+      TestBed.inject(WorkspaceApplicationSurfaceService),
+      'open',
+    );
+
+    shell.session.logout('@me:hs');
+
+    expect(open).toHaveBeenCalledWith({
+      surface: { kind: 'settings', section: 'security' },
+    });
+    expect(accounts.signOutAccount).not.toHaveBeenCalled();
+  });
+
+  it('removes the account when that step is answered with Remove anyway', () => {
+    const shell = build();
+    alertConfirm.mockReturnValue(of(true));
+    roomKeysBackedUp.mockReturnValue(of(false));
+    alertChoose.mockReturnValue(of('confirm'));
+    const accounts = TestBed.inject(AccountRuntimeService);
+
+    shell.session.logout('@me:hs');
+
+    expect(accounts.signOutAccount).toHaveBeenCalledWith('@me:hs');
+  });
+
+  it('skips the export step when key backup holds every room key', () => {
+    const shell = build();
+    alertConfirm.mockReturnValue(of(true));
+    roomKeysBackedUp.mockReturnValue(of(true));
+    const accounts = TestBed.inject(AccountRuntimeService);
+
+    shell.session.logout('@me:hs');
+
+    expect(alertChoose).not.toHaveBeenCalled();
+    expect(accounts.signOutAccount).toHaveBeenCalledWith('@me:hs');
   });
 
   it('does not sign out when the confirm is cancelled', async () => {

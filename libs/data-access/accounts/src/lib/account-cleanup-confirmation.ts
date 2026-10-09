@@ -2,6 +2,21 @@
 export const ACCOUNT_REMOVAL_CONSEQUENCES =
   'Remove this account from Trinity on this device? Trinity will try to remove its push registration and sign out from its homeserver and identity provider, then delete its credentials, drafts, cached messages and local encryption keys. Other devices, the server account, rooms and messages are not deleted.';
 
+/** The extra step before this device deletes room keys that key backup may not hold. */
+export const ROOM_KEYS_AT_RISK =
+  'You’ll lose access to encrypted messages on this device. Export your room keys first?';
+
+/** The same step when the backup status cannot be read, so no export can be offered. */
+export const ROOM_KEYS_MAY_BE_LOST =
+  'You’ll lose access to encrypted messages on this device unless key backup holds their keys.';
+
+/** That step's title: `false` when backup is known to be incomplete, `null` when unknown. */
+export function roomKeysAtRiskHeader(backedUp: false | null): string {
+  return backedUp === false
+    ? 'Room keys are not backed up'
+    : 'Room keys may not be backed up';
+}
+
 /** Deliberately distinct from the narrower encryption-reset confirmation word. */
 export const CLEAR_DATA_CONFIRMATION_WORD = 'RESET TRINITY';
 

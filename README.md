@@ -102,8 +102,8 @@ or from the `Trinity-Web-X.Y.Z.zip` attached to each
 shows — for Android and iOS. Trinity's macOS builds are Apple Silicon only, and its
 Linux builds are x86-64 only.
 From Trinity 0.3, OAuth 2.0 sign-in needs Synapse 1.138 or newer when the server uses
-Matrix Authentication Service (MAS). On an older Synapse with MAS, accounts are signed
-out and lose their local encryption keys, so turn on key backup first; see
+Matrix Authentication Service (MAS). On an older Synapse with MAS, accounts stop
+connecting when their access token expires but keep their local encryption keys; see
 [Server requirements](https://quwisky.github.io/trinity-matrix-client/users/#server-requirements).
 
 Trinity also supports polls, voice messages, location sharing, stickers and GIFs, jump

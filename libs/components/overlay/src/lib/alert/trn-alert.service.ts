@@ -29,6 +29,15 @@ export interface ConfirmOptions {
   closeOnNavigation?: boolean;
 }
 
+/** A confirm with a second way forward, offered beside the confirm button. */
+export interface ChooseOptions extends ConfirmOptions {
+  /** Label for the alternative action. */
+  alternativeText: string;
+}
+
+/** Which button closed a {@link TrnAlertService.choose$}; backdrop and escape are 'cancel'. */
+export type TrnAlertChoice = 'confirm' | 'alternative' | 'cancel';
+
 export interface PromptOptions extends ConfirmOptions {
   placeholder?: string;
   /**
@@ -59,25 +68,12 @@ export class TrnAlertService {
 
   /** Emits true when confirmed, false on cancel / backdrop / escape. */
   confirm$(opts: ConfirmOptions): Observable<boolean> {
-    const data: AlertDialogData = {
-      kind: 'confirm',
-      header: opts.header,
-      message: opts.message,
-      confirmText: opts.confirmText,
-      cancelText: opts.cancelText ?? 'Cancel',
-      variant: opts.variant ?? 'neutral',
-    };
-    return defer(() => {
-      const ref = this.dialog.open<
-        boolean,
-        AlertDialogData,
-        TrnAlertDialogComponent
-      >(TrnAlertDialogComponent, this.config(data, opts));
-      return ref.closed.pipe(
-        take(1),
-        map((value) => value ?? false),
-      );
-    });
+    return this.openChoice(opts).pipe(map((choice) => choice === 'confirm'));
+  }
+
+  /** Emits which of the confirm, alternative and cancel actions closed the alert. */
+  choose$(opts: ChooseOptions): Observable<TrnAlertChoice> {
+    return this.openChoice(opts);
   }
 
   /** Emits the entered string, or null on cancel / backdrop / escape. */
@@ -105,6 +101,39 @@ export class TrnAlertService {
       return ref.closed.pipe(
         take(1),
         map((value) => value ?? null),
+      );
+    });
+  }
+
+  private openChoice(
+    opts: ConfirmOptions & { alternativeText?: string },
+  ): Observable<TrnAlertChoice> {
+    const data: AlertDialogData = {
+      kind: 'confirm',
+      header: opts.header,
+      message: opts.message,
+      confirmText: opts.confirmText,
+      cancelText: opts.cancelText ?? 'Cancel',
+      variant: opts.variant ?? 'neutral',
+      ...(opts.alternativeText
+        ? { alternativeText: opts.alternativeText }
+        : {}),
+    };
+    return defer(() => {
+      const ref = this.dialog.open<
+        boolean | 'alternative',
+        AlertDialogData,
+        TrnAlertDialogComponent
+      >(TrnAlertDialogComponent, this.config(data, opts));
+      return ref.closed.pipe(
+        take(1),
+        map((value) =>
+          value === true
+            ? 'confirm'
+            : value === 'alternative'
+              ? 'alternative'
+              : 'cancel',
+        ),
       );
     });
   }

@@ -88,6 +88,7 @@ describe('SsoStateStore', () => {
       'sso.startedAt': String(Date.now()),
       'sso.mode': 'add',
       'sso.deviceId': 'OLDDEV',
+      'sso.expectedUserId': '@bob:hs',
     });
 
     const stash = await store().peek();
@@ -97,6 +98,7 @@ describe('SsoStateStore', () => {
       baseUrl: 'https://hs.example',
       mode: 'add',
       deviceId: 'OLDDEV',
+      expectedUserId: '@bob:hs',
     });
     // A forged callback mustn't be able to wipe an in-flight login → peek never removes.
     expect(remove).not.toHaveBeenCalled();
@@ -113,6 +115,7 @@ describe('SsoStateStore', () => {
         'sso.startedAt',
         'sso.mode',
         'sso.deviceId',
+        'sso.expectedUserId',
       ]),
     );
   });
@@ -129,6 +132,7 @@ describe('SsoStateStore', () => {
       baseUrl: null,
       mode: 'replace',
       deviceId: null,
+      expectedUserId: null,
     });
   });
 
@@ -149,6 +153,7 @@ describe('SsoStateStore', () => {
       baseUrl: null,
       mode: 'replace',
       deviceId: null,
+      expectedUserId: null,
     });
   });
 
@@ -173,6 +178,7 @@ describe('SsoStateStore', () => {
       baseUrl: null,
       mode: 'replace',
       deviceId: null,
+      expectedUserId: null,
     });
   });
 
@@ -187,5 +193,40 @@ describe('SsoStateStore', () => {
     set.mockClear();
     await svc.save('NONCE', 'https://hs.example', 'replace');
     expect(set.mock.calls.some((c) => c[0].key === 'sso.deviceId')).toBe(false);
+  });
+
+  it('stashes the account a re-auth must return as, and clears it for an ordinary login', async () => {
+    const svc = store();
+    await svc.save('NONCE', 'https://hs.example', 'add', 'OLDDEV', '@bob:hs');
+    const reauth = Object.fromEntries(
+      set.mock.calls.map((c) => [c[0].key, c[0].value]),
+    );
+    expect(reauth['sso.expectedUserId']).toBe('@bob:hs');
+
+    set.mockClear();
+    remove.mockClear();
+
+    // An abandoned re-auth must not hand its expectation to the next, ordinary login.
+    await svc.save('NONCE2', 'https://hs.example', 'replace');
+
+    expect(set.mock.calls.some((c) => c[0].key === 'sso.expectedUserId')).toBe(
+      false,
+    );
+    expect(
+      remove.mock.calls.some((c) => c[0].key === 'sso.expectedUserId'),
+    ).toBe(true);
+  });
+
+  it('drops a stale re-auth device and expected user before it writes the new state', async () => {
+    // If the write fails part-way, the new state must never sit beside the old
+    // expectation of an abandoned re-auth.
+    await store().save('NONCE', 'https://hs.example', 'replace');
+
+    const removedAt = remove.mock.invocationCallOrder;
+    const writtenAt = set.mock.invocationCallOrder;
+    expect(remove.mock.calls.map((c) => c[0].key)).toEqual(
+      expect.arrayContaining(['sso.deviceId', 'sso.expectedUserId']),
+    );
+    expect(Math.max(...removedAt)).toBeLessThan(Math.min(...writtenAt));
   });
 });

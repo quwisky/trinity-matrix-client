@@ -431,6 +431,21 @@ describe('MediaService', () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
+    it.each([' IMAGE/JPEG; q=1 ', 'image/jpg', 'image/png; name="a;b"'])(
+      'downscales an encrypted image declared %j like its plain form',
+      async (declared) => {
+        stubBrowserImage(3000, 2000);
+        const { svc } = setup();
+
+        await firstValueFrom(
+          svc.resolveMedia(encryptedImage(declared), 'thumbnail'),
+        );
+
+        expect(bitmapMock).toHaveBeenCalled();
+        expect(storedBlob().size).toBe(DOWNSCALED_BYTES);
+      },
+    );
+
     it('re-encodes a PNG as WebP to keep transparency', async () => {
       stubBrowserImage(3000, 2000);
       const { svc } = setup();
@@ -998,6 +1013,134 @@ describe('MediaService', () => {
     expect(blob).toBeInstanceOf(Blob);
     expect(filename).toBe('pic.png');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  describe('display types of resolved blobs', () => {
+    const NOT_DISPLAYABLE = [
+      'image/svg+xml',
+      'image/svg+xml; charset=utf-8',
+      'image/svg+xml ',
+      'text/html',
+      'text/html; charset=utf-8',
+      'application/xhtml+xml',
+      'text/xml',
+      '',
+    ];
+    const OPAQUE = 'application/octet-stream';
+    const storedBlob = () => createObjectURL.mock.calls[0][0] as Blob;
+    const encryptedThumbnail = (thumbnailMimeType: string): MediaPayload => ({
+      ...plainMedia('mxc://hs/original'),
+      thumbnailFile: encryptedMedia().file,
+      thumbnailMimeType,
+    });
+
+    it.each(NOT_DISPLAYABLE)(
+      'gives a plaintext image declared %j an opaque blob type',
+      async (declared) => {
+        const { svc } = setup();
+
+        await firstValueFrom(
+          svc.resolveMedia(plainMedia('mxc://hs/a', declared), 'full'),
+        );
+
+        expect(storedBlob().type).toBe(OPAQUE);
+      },
+    );
+
+    it.each(NOT_DISPLAYABLE)(
+      'gives an encrypted image declared %j an opaque blob type',
+      async (declared) => {
+        const { svc } = setup();
+
+        await firstValueFrom(
+          svc.resolveMedia(
+            { ...encryptedMedia(), kind: 'image', mimeType: declared },
+            'full',
+          ),
+        );
+
+        expect(storedBlob().type).toBe(OPAQUE);
+      },
+    );
+
+    it.each(NOT_DISPLAYABLE)(
+      'gives a plaintext thumbnail declared %j an opaque blob type',
+      async (declared) => {
+        const { svc } = setup();
+
+        await firstValueFrom(
+          svc.resolveMedia(
+            {
+              ...plainMedia('mxc://hs/original'),
+              thumbnailMxc: 'mxc://hs/thumb',
+              thumbnailMimeType: declared,
+            },
+            'thumbnail',
+          ),
+        );
+
+        expect(storedBlob().type).toBe(OPAQUE);
+      },
+    );
+
+    it.each(NOT_DISPLAYABLE)(
+      'gives an encrypted thumbnail declared %j an opaque blob type',
+      async (declared) => {
+        const { svc } = setup();
+
+        await firstValueFrom(
+          svc.resolveMedia(encryptedThumbnail(declared), 'thumbnail'),
+        );
+
+        expect(storedBlob().type).toBe(OPAQUE);
+      },
+    );
+
+    it('gives a sticker or pack image, resolved without a bundled thumbnail, an opaque blob type', async () => {
+      const { svc } = setup();
+
+      await firstValueFrom(
+        svc.resolveMedia(
+          plainMedia('mxc://hs/inherit', 'image/svg+xml; charset=utf-8'),
+          'thumbnail',
+        ),
+      );
+
+      expect(storedBlob().type).toBe(OPAQUE);
+    });
+
+    it('gives a saved attachment an opaque blob type as well', async () => {
+      const { svc } = setup();
+
+      const { blob, filename } = await firstValueFrom(
+        svc.downloadMedia(plainMedia('mxc://hs/save', 'image/svg+xml')),
+      );
+
+      expect(blob.type).toBe(OPAQUE);
+      expect(filename).toBe('pic.png');
+    });
+
+    it.each([
+      ['image/png', 'image/png'],
+      ['IMAGE/JPEG; q=1', 'image/jpeg'],
+      [' image/webp ', 'image/webp'],
+      ['audio/ogg; codecs=opus', 'audio/ogg'],
+      ['video/mp4', 'video/mp4'],
+      ['image/jpg', 'image/jpeg'],
+      ['audio/3gpp', 'audio/3gpp'],
+      ['video/x-m4v', 'video/x-m4v'],
+    ])(
+      'types a plaintext attachment declared %j as %s',
+      async (declared, expected) => {
+        const { svc } = setup();
+
+        await firstValueFrom(
+          svc.resolveMedia(plainMedia('mxc://hs/ok', declared), 'full'),
+        );
+
+        expect(storedBlob().type).toBe(expected);
+      },
+    );
   });
 
   describe('uploadMedia', () => {

@@ -185,7 +185,9 @@ export class AvatarService {
           if (this.cache.get(key) !== entry) {
             return null;
           }
-          entry.url = URL.createObjectURL(new Blob([bytes]));
+          entry.url = URL.createObjectURL(
+            new Blob([bytes], { type: 'application/octet-stream' }),
+          );
           this.evict();
           return entry.url;
         }),

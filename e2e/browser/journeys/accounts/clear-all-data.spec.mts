@@ -97,6 +97,15 @@ test.describe('Clear all data', () => {
     expect(before.dbs.some((n) => n.endsWith('::matrix-sdk-crypto'))).toBe(
       true,
     );
+    // The crypto store's key, wrapped, and the IndexedDB database of its wrapping key.
+    expect(
+      before.keys.some((k) =>
+        k.startsWith(
+          'CapacitorStorage.secure.matrix.cryptoStoreKey:trinity-crypto:@',
+        ),
+      ),
+    ).toBe(true);
+    expect(before.dbs).toContain('trinity-crypto-store-keys');
 
     // Deliberately from ?add: the clients are LIVE, holding open the very databases the
     // wipe has to delete. That is the state the bounded-delete path exists for, and the

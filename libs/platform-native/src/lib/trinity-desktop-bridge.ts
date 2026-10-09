@@ -50,6 +50,11 @@ export interface TrinityDesktopBridge {
     secureStore: {
       isAvailable: () => Promise<boolean>;
       get: (key: string) => Promise<string | null>;
+      /**
+       * Read with "no entry" kept apart from "cannot decrypt now" (a `SecureStorageRead`,
+       * unvalidated). Optional so a shell without it still validates; `get` then stands in.
+       */
+      read?: (key: string) => Promise<unknown>;
       set: (key: string, value: string) => Promise<boolean>;
       delete: (key: string) => Promise<void>;
     };

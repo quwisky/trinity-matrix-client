@@ -1,8 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
+  ReauthAccountMismatchError,
   AuthService,
   AUTHENTICATION_HOMESERVER_DISCOVERY,
+  NewDeviceSignInCancelledError,
   OidcStateStore,
   RegistrationService,
   SignInRedirectService,
@@ -35,6 +37,8 @@ async function renderLogin(
     add?: boolean;
     reauth?: string;
     record?: unknown;
+    /** The device re-auth may reuse; defaults to the record's own. */
+    reusableDevice?: string | null;
     oidcStore?: Partial<OidcStateStore>;
     /** Overrides for the redirect handoff (cold Observables that complete). */
     redirect?: Partial<SignInRedirectService>;
@@ -91,6 +95,13 @@ async function renderLogin(
       }),
       MockProvider(SessionStorageService, {
         record: vi.fn(() => of(opts.record ?? null) as never),
+        reusableDeviceId: vi.fn((record: { deviceId: string }) =>
+          of(
+            opts.reusableDevice === undefined
+              ? record.deviceId
+              : opts.reusableDevice,
+          ),
+        ),
         list: vi.fn(() =>
           opts.listFails
             ? throwError(() => new Error('registry unreadable'))
@@ -381,6 +392,7 @@ describe('LoginPage', () => {
       'hunter2',
       'replace',
       undefined, // no device id → a fresh (not re-auth) login
+      undefined, // and no expected user
     );
     expect(router.navigateByUrl).toHaveBeenCalledWith('/rooms', {
       replaceUrl: true,
@@ -405,6 +417,7 @@ describe('LoginPage', () => {
       'bob',
       'hunter2',
       'add',
+      undefined,
       undefined,
     );
   });
@@ -444,6 +457,43 @@ describe('LoginPage', () => {
       'hunter2',
       'add',
       'OLDDEV',
+      '@bob:hs', // the callback must return as this account
+    );
+  });
+
+  it('re-auth signs in as a new device when the stored keys can no longer be unlocked', async () => {
+    const loginWithPassword = vi.fn(() => of(READY_OUTCOME));
+    const { cmp } = await renderLogin(
+      {
+        loginWithPassword,
+        getSupportedFlows: vi.fn(() => of(['m.login.password'])),
+        getDelegatedAuthConfig: vi.fn(() => of(null)),
+      } as unknown as Partial<AuthService>,
+      {
+        reauth: '@bob:hs',
+        record: {
+          baseUrl: 'https://hs.example',
+          userId: '@bob:hs',
+          deviceId: 'OLDDEV',
+          cryptoPrefix: 'trinity-crypto:@bob:hs:OLDDEV',
+          cryptoStoreKeyed: true,
+        },
+        reusableDevice: null,
+      },
+    );
+
+    cmp.credentialsForm.password().value.set('hunter2');
+    cmp.loginPassword();
+
+    // No device id: the server makes a new device, which gets a new store and key. The
+    // sign-in is still bound to the account being reconnected.
+    expect(loginWithPassword).toHaveBeenCalledWith(
+      'https://hs.example',
+      '@bob:hs',
+      'hunter2',
+      'add',
+      undefined,
+      '@bob:hs',
     );
   });
 
@@ -505,6 +555,22 @@ describe('LoginPage', () => {
     expect(cmp.credentialsError()).toBe("We couldn't sign you in. Try again.");
   });
 
+  it('explains a sign-in cancelled to keep a stored account’s keys', async () => {
+    const { cmp, router } = await renderLogin({
+      loginWithPassword: vi.fn(() =>
+        throwError(() => new NewDeviceSignInCancelledError('@me:hs')),
+      ),
+    } as unknown as Partial<AuthService>);
+    cmp.baseUrl.set('https://hs.example');
+
+    cmp.loginPassword();
+
+    expect(cmp.credentialsError()).toBe(
+      'Sign-in cancelled. @me:hs stays on this device with its keys.',
+    );
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
+  });
+
   it('surfaces an expected Account Runtime failure without navigating', async () => {
     const { cmp, router } = await renderLogin({
       loginWithPassword: vi.fn(() =>
@@ -524,6 +590,63 @@ describe('LoginPage', () => {
     expect(router.navigateByUrl).not.toHaveBeenCalled();
   });
 
+  it('names the stored account and its server when a sign-in is refused', async () => {
+    // A sign-in for a user id saved under another server is refused. The refusal is an
+    // ordinary sign-in error beside the password field, not a crash or a silent no-op.
+    const { cmp, router, fixture } = await renderLogin({
+      loginWithPassword: vi.fn(() =>
+        of({
+          kind: 'failed' as const,
+          accountId: '@alice:example.org',
+          placement: 'active' as const,
+          failure: 'homeserver-mismatch' as const,
+          storedBaseUrl: 'https://example.org',
+        }),
+      ),
+    } as unknown as Partial<AuthService>);
+    cmp.baseUrl.set('https://other-server.example');
+    cmp.passwordSupported.set(true);
+
+    cmp.loginPassword();
+    fixture.detectChanges();
+
+    expect(cmp.credentialsError()).toContain(
+      '@alice:example.org is already signed in through https://example.org',
+    );
+    // The way out matches the menu item that removes an account.
+    expect(cmp.credentialsError()).toContain(
+      'Remove that account from this device first',
+    );
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector<HTMLInputElement>('#password');
+    const described = root.querySelector(
+      `#${input?.getAttribute('aria-describedby')}`,
+    );
+    expect(described?.textContent).toContain(
+      '@alice:example.org is already signed in through https://example.org',
+    );
+  });
+
+  it('explains a password re-auth that came back as a different account', async () => {
+    const { cmp, router } = await renderLogin({
+      loginWithPassword: vi.fn(() =>
+        throwError(
+          () => new ReauthAccountMismatchError('@bob:hs', '@alice:hs'),
+        ),
+      ),
+    } as unknown as Partial<AuthService>);
+    cmp.baseUrl.set('https://hs.example');
+
+    cmp.loginPassword();
+
+    expect(cmp.credentialsError()).toMatch(/@bob:hs.*@alice:hs/);
+    expect(cmp.credentialsError()).not.toBe(
+      "We couldn't sign you in. Try again.",
+    );
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
+  });
+
   it('starts SSO through the redirect service under the busy state', async () => {
     const handoff = new Subject<void>();
     const { cmp, redirect } = await renderLogin(
@@ -537,6 +660,7 @@ describe('LoginPage', () => {
     expect(redirect.startSso).toHaveBeenCalledWith(
       'https://hs.example',
       'replace',
+      undefined,
       undefined,
     );
     expect(cmp.busy()).toBe(true);
@@ -567,6 +691,7 @@ describe('LoginPage', () => {
       'https://hs.example',
       'add',
       'OLDDEV',
+      '@bob:hs',
     );
   });
 

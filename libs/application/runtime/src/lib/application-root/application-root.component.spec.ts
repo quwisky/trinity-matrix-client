@@ -153,6 +153,58 @@ describe('ApplicationRootComponent', () => {
     expect(fixture.nativeElement.querySelector('router-outlet')).toBeTruthy();
   });
 
+  it('asks to unlock the keychain when it blocks startup', async () => {
+    const { getByTestId } = await setup({
+      phase: 'blocked',
+      attempt: 1,
+      failure: {
+        stage: 'account-restoration',
+        recovery: 'retry-startup',
+        secondaryRecovery: 'reauthenticate',
+        diagnostic: { code: 'account-secure-storage-unavailable' },
+      },
+      settlements: [],
+    });
+
+    expect(getByTestId('app-startup-blocked').textContent).toContain(
+      'Your system keychain is locked or unavailable. Unlock it and try again.',
+    );
+    expect(getByTestId('app-startup-recovery').textContent).toContain(
+      'Retry startup',
+    );
+  });
+
+  it('offers account removal behind a confirm when the keychain blocks startup', async () => {
+    const { fixture, getByTestId, recover, confirm } = await setup({
+      phase: 'blocked',
+      attempt: 1,
+      failure: {
+        stage: 'account-restoration',
+        recovery: 'retry-startup',
+        secondaryRecovery: 'reauthenticate',
+        diagnostic: { code: 'account-secure-storage-unavailable' },
+      },
+      settlements: [],
+    });
+    const remove = getByTestId('app-startup-secondary-recovery');
+    expect(remove.textContent).toContain('Remove account');
+
+    confirm.mockReturnValueOnce(of(false));
+    remove.click();
+    fixture.detectChanges();
+    expect(recover).not.toHaveBeenCalled();
+
+    remove.click();
+    fixture.detectChanges();
+    expect(confirm).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        header: 'Remove account and sign in again',
+        message: expect.stringContaining('local encryption keys'),
+      }),
+    );
+    expect(recover).toHaveBeenCalledExactlyOnceWith('reauthenticate');
+  });
+
   it('focuses blocked startup on user-function copy and confirms Account removal', async () => {
     const { fixture, getByTestId, recover, confirm } = await setup({
       phase: 'blocked',

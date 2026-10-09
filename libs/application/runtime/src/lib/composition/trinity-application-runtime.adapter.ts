@@ -15,7 +15,10 @@ import type {
   ApplicationStartupStageOutcome,
 } from '../application-runtime.models';
 import { APPLICATION_STARTUP_PRODUCER_POLICIES } from '../application-startup.policy';
-import { AccountRuntimeService } from '@trinity/data-access/accounts';
+import {
+  AccountRuntimeService,
+  type AccountRestoreResult,
+} from '@trinity/data-access/accounts';
 import {
   AppConfigService,
   DraftStoreService,
@@ -150,6 +153,19 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
           case 'restored-with-inactive-failures':
             return ready();
           case 'active-account-unavailable':
+            // A locked keychain is an outage: retrying after unlocking it opens the
+            // Account. Offering removal there would delete a store that is fine.
+            if (activeFailure(result) === 'secure-storage-unavailable') {
+              // Removal stays reachable as a confirmed second choice: a key that is truly
+              // gone but reads as unavailable (no keyring, a replaced one, an invalidated
+              // Keystore) would otherwise leave only retries. It is never run on its own.
+              return {
+                kind: 'blocked',
+                recovery: 'retry-startup',
+                secondaryRecovery: 'reauthenticate',
+                diagnostic: { code: 'account-secure-storage-unavailable' },
+              } as const;
+            }
             return {
               kind: 'blocked',
               recovery: 'reauthenticate',
@@ -517,4 +533,10 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
       }),
     );
   }
+}
+
+/** The active Account's restore failure, when it failed. */
+function activeFailure(result: AccountRestoreResult): string | null {
+  const active = result.accounts.find((account) => account.role === 'active');
+  return active?.kind === 'failed' ? active.failure : null;
 }

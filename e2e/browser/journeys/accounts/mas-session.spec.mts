@@ -156,6 +156,84 @@ test.describe('MAS session lifecycle', () => {
     await waitForRooms(page, 60_000);
   });
 
+  test('keeps the session and its keys while discovery briefly fails during a refresh', async ({
+    page,
+    authPlatform,
+    request,
+  }) => {
+    // One 60 s MAS access-token lifetime, the refused attempts, then the recovery.
+    test.setTimeout(300_000);
+    const account = masAccount();
+    const userId = `@${account.user}:${account.serverName}`;
+    const traffic = trackMasTraffic(
+      page,
+      account,
+      await masEndpoints(request, account),
+    );
+    const ownStores = async (): Promise<string[]> =>
+      (await databaseNames(page))
+        .filter((name) => name.includes(userId))
+        .sort();
+
+    await signInWithMas(page, authPlatform, account);
+    await expect
+      .poll(async () => (await ownStores()).length)
+      .toBeGreaterThanOrEqual(2);
+    const storesBefore = await ownStores();
+
+    // The first refresh discovers the provider through auth_metadata. Answer it with a
+    // temporary 503 and a Matrix-style JSON body, which used to end the session.
+    const discovery = `${account.hs}/_matrix/client/v1/auth_metadata`;
+    let refused = 0;
+    const syncsBeforeOutage = traffic.syncs.length;
+    await page.route(discovery, (route) => {
+      refused += 1;
+      return route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ errcode: 'M_UNKNOWN', error: 'Unavailable' }),
+      });
+    });
+    // The expired token is refused on /sync, which starts the refresh that meets the outage.
+    // Other callers of auth_metadata (account management) cannot satisfy these three.
+    await expect
+      .poll(
+        () =>
+          traffic.syncs
+            .slice(syncsBeforeOutage)
+            .some((sync) => sync.status === 401),
+        { timeout: 150_000, intervals: [2_000] },
+      )
+      .toBe(true);
+    await expect.poll(() => refused).toBeGreaterThanOrEqual(1);
+    // Discovery failed, so the refresh never reached the token endpoint.
+    expect(traffic.refreshGrants).toHaveLength(0);
+    await page.unroute(discovery);
+
+    // Discovery is back: the next attempt refreshes, and the app keeps syncing on it.
+    await expect
+      .poll(() => traffic.refreshGrants.length, {
+        timeout: 90_000,
+        intervals: [2_000],
+      })
+      .toBeGreaterThanOrEqual(1);
+    const latest = `Bearer ${await traffic.latestAccessToken()}`;
+    await expect
+      .poll(
+        () =>
+          traffic.syncs.some(
+            (s) => s.authorization === latest && s.status === 200,
+          ),
+        { timeout: 60_000 },
+      )
+      .toBe(true);
+    await expect(page).toHaveURL(/\/rooms/);
+    await expect(page.locator('.userbar__handle')).toContainText(
+      `@${account.user}:`,
+    );
+    expect(await ownStores()).toEqual(storesBefore);
+  });
+
   test('signs out with one revocation and forgets only that account', async ({
     page,
     authPlatform,
@@ -187,6 +265,8 @@ test.describe('MAS session lifecycle', () => {
     await page.getByTestId('user-menu-trigger').click();
     await page.getByTestId('logout').click();
     await page.getByTestId('alert-confirm').click();
+    // The MAS account has no key backup, so the removal offers the key export first.
+    await page.getByRole('button', { name: 'Remove anyway' }).click();
 
     // The password account survives and takes over; the switcher no longer lists MAS's.
     await expect(page.locator('.userbar__handle')).toContainText(

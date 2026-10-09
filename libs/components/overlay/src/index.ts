@@ -17,8 +17,10 @@ export {
 } from './lib/surface-service/trn-surface.service';
 export {
   TrnAlertService,
+  type ChooseOptions,
   type ConfirmOptions,
   type PromptOptions,
+  type TrnAlertChoice,
   type TrnAlertVariant,
 } from './lib/alert/trn-alert.service';
 export {

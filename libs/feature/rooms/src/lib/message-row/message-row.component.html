@@ -204,7 +204,7 @@
         <trn-icon
           [name]="shieldIcon(shield.level)"
           class="msg__shield msg__target"
-          [class.msg__shield--red]="shield.level === 'red'"
+          [class.msg__shield--red]="shieldIsRed(shield.level)"
           [trnTooltip]="shieldTip"
           tabindex="0"
           [label]="shield.reason"

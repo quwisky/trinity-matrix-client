@@ -1,5 +1,6 @@
 export * from './lib/secure-storage.service';
 export * from './lib/session-storage.service';
+export * from './lib/crypto-store-key.service';
 export * from './lib/indexed-db-wipe';
 export * from './lib/local-data-wipe.service';
 export * from './lib/app-restart.service';

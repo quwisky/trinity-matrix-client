@@ -16,10 +16,17 @@
       "
     />
   } @else {
-    <p class="room-widgets__note">
-      Widgets are third-party websites. Trinity shows the room’s declaration
-      here and loads it only after you choose where to open it.
-    </p>
+    @if (embedAvailable) {
+      <p class="room-widgets__note">
+        Widgets are third-party websites. Trinity shows the room’s declaration
+        here and loads it only after you choose where to open it.
+      </p>
+    } @else {
+      <p class="room-widgets__note">
+        Widgets are third-party websites. Trinity shows the room’s declaration
+        here. Widgets open in your browser.
+      </p>
+    }
     @for (entry of widgets(); track entry.widget.id) {
       <article
         class="room-widgets__widget"
@@ -50,7 +57,7 @@
             </p>
           }
           <div class="room-widgets__actions">
-            @if (entry.embed.url) {
+            @if (embedAvailable && entry.embed.url) {
               <button
                 trnBtn
                 type="button"
@@ -75,9 +82,10 @@
               Open in browser
             </a>
           </div>
-          @if (!entry.embed.url) {
+          @let warning = widgetWarning(entry.embed);
+          @if (warning) {
             <p class="room-widgets__warning">
-              {{ embedFailureText(entry.embed) }}
+              {{ warning }}
             </p>
           }
         } @else {

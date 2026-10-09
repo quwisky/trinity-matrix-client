@@ -23,6 +23,7 @@ import { TimelineService } from './timeline.service';
 import { TYPING_REFRESH_MS, TYPING_TIMEOUT_MS } from '@trinity/util/matrix';
 import {
   fakeClient,
+  fakeEdit,
   fakeEvent,
   fakeMember,
   fakeReaction,
@@ -597,6 +598,7 @@ describe('TimelineService', () => {
   it('resets loadingOlder after a failed scrollback so pagination can retry', async () => {
     const room = {
       roomId: '!r:hs',
+      hasEncryptionStateEvent: () => false,
       getLiveTimeline: () => ({
         getEvents: () => [],
         getPaginationToken: () => 'tok',
@@ -639,6 +641,7 @@ describe('TimelineService', () => {
     ];
     const room = {
       roomId: '!r:hs',
+      hasEncryptionStateEvent: () => false,
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -686,6 +689,7 @@ describe('TimelineService', () => {
       const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
       const room = {
         roomId: '!r:hs',
+        hasEncryptionStateEvent: () => false,
         getLiveTimeline: () => ({
           getEvents: () => events,
           getPaginationToken: () => null,
@@ -729,6 +733,7 @@ describe('TimelineService', () => {
     const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
     const room = {
       roomId: '!r:hs',
+      hasEncryptionStateEvent: () => false,
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -766,6 +771,7 @@ describe('TimelineService', () => {
     const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
     const room = {
       roomId: '!r:hs',
+      hasEncryptionStateEvent: () => false,
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -807,6 +813,7 @@ describe('TimelineService', () => {
     const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
     const room = {
       roomId: '!r:hs',
+      hasEncryptionStateEvent: () => false,
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -918,6 +925,7 @@ describe('TimelineService', () => {
     const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
     const room = {
       roomId: '!r:hs',
+      hasEncryptionStateEvent: () => false,
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -1029,6 +1037,7 @@ describe('TimelineService', () => {
     const events = [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })];
     const room = {
       roomId: '!r:hs',
+      hasEncryptionStateEvent: () => false,
       getLiveTimeline: () => ({
         getEvents: () => {
           scans++;
@@ -1084,6 +1093,7 @@ describe('TimelineService', () => {
     let timelineHandler: (() => void) | undefined;
     const room = {
       roomId: '!r:hs',
+      hasEncryptionStateEvent: () => false,
       getLiveTimeline: () => ({
         getEvents: () => events,
         getPaginationToken: () => null,
@@ -2002,6 +2012,7 @@ describe('TimelineService', () => {
       const events = [fakeEvent({ id: '$1', sender: '@a:hs', body: 'hi' })];
       const room = {
         roomId: '!r:hs',
+        hasEncryptionStateEvent: () => false,
         // Room state hangs off the live timeline (what liveRoomState() reads, and what
         // the SDK's deprecated `currentState` aliased).
         getLiveTimeline: () => ({
@@ -2120,14 +2131,27 @@ describe('TimelineService', () => {
     function shieldClient(
       events: ReturnType<typeof fakeEvent>[],
       getEncryptionInfoForEvent: Mock,
+      roomEncrypted = false,
+      storeEncrypted = false,
+      encryptionTs?: number,
     ) {
       const handlers = new Map<string, (...args: unknown[]) => void>();
       const room = {
         roomId: '!r:hs',
+        hasEncryptionStateEvent: () => roomEncrypted,
         getLiveTimeline: () => ({
           getEvents: () => events,
           getPaginationToken: () => null,
-          getState: () => undefined,
+          // The room's current `m.room.encryption` state event, dated `encryptionTs`.
+          getState: () =>
+            encryptionTs === undefined
+              ? undefined
+              : {
+                  getStateEvents: (type: string) =>
+                    type === 'm.room.encryption'
+                      ? { getTs: () => encryptionTs }
+                      : null,
+                },
         }),
         getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
         relations: { getChildEventsForEvent: () => undefined },
@@ -2147,17 +2171,37 @@ describe('TimelineService', () => {
         off: () => {},
         sendReadReceipt: () => Promise.resolve({}),
         setRoomReadMarkers: () => Promise.resolve({}),
-        getCrypto: () => ({ getEncryptionInfoForEvent }),
+        getCrypto: () => ({
+          getEncryptionInfoForEvent,
+          isEncryptionEnabledInRoom: () => Promise.resolve(storeEncrypted),
+        }),
         scrollback: () => Promise.resolve(room),
       };
     }
 
     function openWithShield(getEncryptionInfoForEvent: Mock, encrypted = true) {
+      return openWithEvents(
+        getEncryptionInfoForEvent,
+        [fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi', encrypted })],
+        false,
+      );
+    }
+
+    function openWithEvents(
+      getEncryptionInfoForEvent: Mock,
+      events: ReturnType<typeof fakeEvent>[],
+      roomEncrypted: boolean,
+      storeEncrypted = false,
+      encryptionTs?: number,
+    ) {
       vi.spyOn(document, 'hasFocus').mockReturnValue(true);
-      const events = [
-        fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi', encrypted }),
-      ];
-      const client = shieldClient(events, getEncryptionInfoForEvent);
+      const client = shieldClient(
+        events,
+        getEncryptionInfoForEvent,
+        roomEncrypted,
+        storeEncrypted,
+        encryptionTs,
+      );
       TestBed.configureTestingModule({
         providers: [TimelineService, matrixProvider(client)],
       });
@@ -2201,6 +2245,252 @@ describe('TimelineService', () => {
       await Promise.resolve();
       expect(svc.messages()[0].shield ?? null).toBeNull();
       expect(getInfo).not.toHaveBeenCalled();
+    });
+
+    describe('in a room with encryption enabled', () => {
+      const encryptionEvent = () =>
+        fakeEvent({
+          id: '$enc',
+          sender: '@a:hs',
+          type: 'm.room.encryption',
+          stateKey: '',
+          content: { algorithm: 'm.megolm.v1.aes-sha2' },
+        });
+
+      it('marks a plaintext message as not encrypted, with no crypto probe', () => {
+        const getInfo = vi.fn();
+        const { svc } = openWithEvents(
+          getInfo,
+          [
+            encryptionEvent(),
+            fakeEvent({ id: '$plain', sender: '@a:hs', body: 'hi' }),
+          ],
+          true,
+        );
+
+        expect(svc.messages().find((m) => m.id === '$plain')?.shield).toEqual({
+          level: 'unencrypted',
+          reason: 'Not encrypted',
+          explanation: 'This message was sent without end-to-end encryption.',
+        });
+        expect(getInfo).not.toHaveBeenCalled();
+      });
+
+      it('leaves an encrypted message on its crypto-derived shield', async () => {
+        const getInfo = vi.fn().mockResolvedValue({
+          shieldColour: EventShieldColour.GREY,
+          shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+        });
+        const { svc } = openWithEvents(
+          getInfo,
+          [
+            encryptionEvent(),
+            fakeEvent({
+              id: '$sealed',
+              sender: '@a:hs',
+              body: 'hi',
+              encrypted: true,
+            }),
+          ],
+          true,
+        );
+
+        await vi.waitFor(() =>
+          expect(
+            svc.messages().find((m) => m.id === '$sealed')?.shield,
+          ).toMatchObject({ level: 'grey' }),
+        );
+      });
+
+      it('does not mark a local echo or a state line', () => {
+        const { svc } = openWithEvents(
+          vi.fn(),
+          [
+            encryptionEvent(),
+            fakeEvent({
+              id: '$echo',
+              sender: '@me:hs',
+              body: 'sending',
+              status: 'sending',
+            }),
+            fakeEvent({
+              id: '$topic',
+              sender: '@a:hs',
+              type: 'm.room.topic',
+              stateKey: '',
+              content: { topic: 'new topic' },
+            }),
+          ],
+          true,
+        );
+
+        const echo = svc.messages().find((m) => m.id === '$echo');
+        expect(echo).toBeDefined();
+        expect(echo?.shield ?? null).toBeNull();
+        expect(
+          svc.messages().find((m) => m.id === '$topic')?.shield ?? null,
+        ).toBeNull();
+      });
+
+      // Every plaintext message is marked. The room's encryption event dates the change: a
+      // message dated before it gets the quieter grey mark, one at or after it the red mark.
+      it('marks a message dated before encryption grey and one dated after it red', () => {
+        const { svc } = openWithEvents(
+          vi.fn(),
+          [
+            fakeEvent({ id: '$old', sender: '@a:hs', body: 'before', ts: 500 }),
+            encryptionEvent(),
+            fakeEvent({ id: '$new', sender: '@a:hs', body: 'after', ts: 1500 }),
+          ],
+          true,
+          false,
+          1000,
+        );
+
+        const shieldOf = (id: string) =>
+          svc.messages().find((m) => m.id === id)?.shield;
+        expect(shieldOf('$old')).toEqual({
+          level: 'unencrypted-history',
+          reason: 'Not encrypted',
+          explanation:
+            'This message is dated before the room turned on end-to-end encryption.',
+        });
+        expect(shieldOf('$new')).toMatchObject({ level: 'unencrypted' });
+      });
+
+      it('marks a message dated exactly at the encryption event red', () => {
+        const { svc } = openWithEvents(
+          vi.fn(),
+          [fakeEvent({ id: '$same', sender: '@a:hs', body: 'now', ts: 1000 })],
+          true,
+          false,
+          1000,
+        );
+
+        expect(svc.messages()[0].shield?.level).toBe('unencrypted');
+      });
+
+      it('marks every message red when the room has no encryption state event', () => {
+        const { svc } = openWithEvents(
+          vi.fn(),
+          [
+            fakeEvent({ id: '$old', sender: '@a:hs', body: 'before', ts: 1 }),
+            fakeEvent({ id: '$new', sender: '@a:hs', body: 'after', ts: 9999 }),
+          ],
+          true,
+        );
+
+        expect(svc.messages().map((m) => m.shield?.level)).toEqual([
+          'unencrypted',
+          'unencrypted',
+        ]);
+      });
+
+      it('does not show a state event of a message type as a message row', () => {
+        const { svc } = openWithEvents(
+          vi.fn(),
+          [
+            encryptionEvent(),
+            fakeEvent({
+              id: '$state-message',
+              sender: '@a:hs',
+              body: 'keyed message',
+              stateKey: 'x',
+            }),
+            fakeEvent({ id: '$after', sender: '@a:hs', body: 'after' }),
+          ],
+          true,
+        );
+
+        expect(svc.messages().map((m) => m.id)).not.toContain('$state-message');
+        expect(svc.messages().map((m) => m.id)).toContain('$after');
+      });
+
+      it('marks an encrypted message whose plaintext edit is dated after encryption red', () => {
+        const { svc } = openWithEvents(
+          vi.fn().mockResolvedValue({ shieldColour: EventShieldColour.NONE }),
+          [
+            encryptionEvent(),
+            fakeEvent({
+              id: '$sealed',
+              sender: '@a:hs',
+              body: 'edited text',
+              encrypted: true,
+              ts: 500,
+              replacement: fakeEdit('$sealed', false, 1500),
+            }),
+          ],
+          true,
+          false,
+          1000,
+        );
+
+        expect(svc.messages().find((m) => m.id === '$sealed')?.shield).toEqual(
+          expect.objectContaining({ level: 'unencrypted' }),
+        );
+      });
+
+      it('probes the crypto API with the edit, which supplies the text, not the original', async () => {
+        const getInfo = vi.fn().mockResolvedValue({
+          shieldColour: EventShieldColour.GREY,
+          shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+        });
+        const edit = fakeEdit('$sealed', true);
+        const { svc } = openWithEvents(
+          getInfo,
+          [
+            encryptionEvent(),
+            fakeEvent({
+              id: '$sealed',
+              sender: '@a:hs',
+              body: 'edited text',
+              encrypted: true,
+              replacement: edit,
+            }),
+          ],
+          true,
+        );
+
+        await vi.waitFor(() =>
+          expect(
+            svc.messages().find((m) => m.id === '$sealed')?.shield,
+          ).toMatchObject({ level: 'grey' }),
+        );
+        expect(getInfo.mock.calls.map(([event]) => event.getId())).toEqual([
+          '$sealed~edit',
+        ]);
+      });
+
+      // matrix-js-sdk encrypts a send when the room state says so or its crypto store has
+      // the room recorded as encrypted. A room whose state lacks the encryption event but
+      // whose store has it is still one the client encrypts for.
+      it('marks a plaintext message when only the crypto store knows the room is encrypted', async () => {
+        const { svc } = openWithEvents(
+          vi.fn(),
+          [fakeEvent({ id: '$plain', sender: '@a:hs', body: 'hi' })],
+          false,
+          true,
+        );
+
+        await vi.waitFor(() =>
+          expect(
+            svc.messages().find((m) => m.id === '$plain')?.shield?.level,
+          ).toBe('unencrypted'),
+        );
+      });
+
+      it('marks nothing when neither the state nor the store says the room is encrypted', async () => {
+        const { svc } = openWithEvents(
+          vi.fn(),
+          [fakeEvent({ id: '$plain', sender: '@a:hs', body: 'hi' })],
+          false,
+          false,
+        );
+
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(svc.messages()[0].shield ?? null).toBeNull();
+      });
     });
 
     it('shows no shield when the colour resolves to NONE', async () => {
@@ -2487,6 +2777,7 @@ describe('TimelineService.jumpToDate', () => {
     const room = {
       ...fakeRoom([]),
       roomId: '!r:hs',
+      hasEncryptionStateEvent: () => false,
       getLiveTimeline: () => ({
         getEvents: () => shown,
         getPaginationToken: () => 'tok',
@@ -2741,6 +3032,7 @@ describe('TimelineService.jumpToDate', () => {
     const room = {
       ...fakeRoom([]),
       roomId: '!r:hs',
+      hasEncryptionStateEvent: () => false,
       getLiveTimeline: () => ({
         getEvents: () => shown,
         getPaginationToken: () => null,

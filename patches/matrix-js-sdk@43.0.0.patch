@@ -67,10 +67,20 @@ index 151bff6d1155ee3ae928135aa9629c4a1b011917..160d8cde2ee355491f106656ae224f42
  
              const mapper = this.client.getEventMapper();
 diff --git a/lib/oauth/tokenRefresher.js b/lib/oauth/tokenRefresher.js
-index e5f1521..7d0bf2c 100644
+index e5f1521..15b11c2 100644
 --- a/lib/oauth/tokenRefresher.js
 +++ b/lib/oauth/tokenRefresher.js
-@@ -69,7 +69,9 @@ export class TokenRefresher {
+@@ -62,14 +62,18 @@ export class TokenRefresher {
+   shouldLogoutOnError(error) {
+     // Treat as logout as per https://spec.matrix.org/v1.18/client-server-api/#refresh-token-grant
+     // after making sure it is an RFC 6749 section 5.2 error response
+-    return error instanceof OAuth2HTTPError && typeof error.httpStatus === "number" && error.httpStatus < 500 && error.httpStatus >= 400;
++    // Trinity patch: only an RFC 6749 section 5.2 refusal (400, or 401 for client authentication)
++    // ends the session; a temporary or proxy error (403, 404, 408, 429, 5xx) must not.
++    return error instanceof OAuth2HTTPError && (error.httpStatus === 400 || error.httpStatus === 401);
+   }
+   async getNewTokens(refreshToken) {
+     const requestStart = Date.now();
      const response = await this.auth.performRefreshTokenGrant(refreshToken);
      const tokens = {
        accessToken: response.access_token,
@@ -82,10 +92,26 @@ index e5f1521..7d0bf2c 100644
        expiry: response.expires_in ? new Date(requestStart + response.expires_in * 1000) : undefined
      };
 diff --git a/src/oauth/tokenRefresher.ts b/src/oauth/tokenRefresher.ts
-index d19d64c..48a0324 100644
+index d19d64c..4a1fd6b 100644
 --- a/src/oauth/tokenRefresher.ts
 +++ b/src/oauth/tokenRefresher.ts
-@@ -82,7 +82,9 @@ export class TokenRefresher {
+@@ -67,12 +67,9 @@ export class TokenRefresher {
+     private shouldLogoutOnError(error: HTTPError): boolean {
+         // Treat as logout as per https://spec.matrix.org/v1.18/client-server-api/#refresh-token-grant
+         // after making sure it is an RFC 6749 section 5.2 error response
+-        return (
+-            error instanceof OAuth2HTTPError &&
+-            typeof error.httpStatus === "number" &&
+-            error.httpStatus < 500 &&
+-            error.httpStatus >= 400
+-        );
++        // Trinity patch: only an RFC 6749 section 5.2 refusal (400, or 401 for client authentication)
++        // ends the session; a temporary or proxy error (403, 404, 408, 429, 5xx) must not.
++        return error instanceof OAuth2HTTPError && (error.httpStatus === 400 || error.httpStatus === 401);
+     }
+ 
+     private async getNewTokens(refreshToken: string): Promise<AccessTokens> {
+@@ -82,7 +79,9 @@ export class TokenRefresher {
  
          const tokens = {
              accessToken: response.access_token,
@@ -96,3 +122,37 @@ index d19d64c..48a0324 100644
              // We use the request start time to calculate the expiry time as we don't know when the server received our request
              expiry: response.expires_in ? new Date(requestStart + response.expires_in * 1000) : undefined,
          } satisfies AccessTokens;
+diff --git a/lib/http-api/refresh.js b/lib/http-api/refresh.js
+index 1a71479..a7ee87d 100644
+--- a/lib/http-api/refresh.js
++++ b/lib/http-api/refresh.js
+@@ -156,8 +156,10 @@ export class TokenManager {
+       // successfully got new tokens
+       return TokenRefreshOutcome.Success;
+     } catch (error) {
+-      // If we get a TokenError or MatrixError, we should log out, otherwise assume transient
+-      if (error instanceof TokenRefreshLogoutError || error instanceof MatrixError) {
++      // Trinity patch: a temporary server error during token refresh must not end the session.
++      // Only the token endpoint's OAuth 400/401 refusal (TokenRefreshLogoutError) logs out; a
++      // MatrixError (any JSON error body, e.g. from auth_metadata discovery) is retried later.
++      if (error instanceof TokenRefreshLogoutError) {
+         this.opts.logger?.error("Failed to refresh token", error);
+         return TokenRefreshOutcome.Logout;
+       }
+diff --git a/src/http-api/refresh.ts b/src/http-api/refresh.ts
+index c95d7fe..973a037 100644
+--- a/src/http-api/refresh.ts
++++ b/src/http-api/refresh.ts
+@@ -171,8 +171,10 @@ export class TokenManager {
+             // successfully got new tokens
+             return TokenRefreshOutcome.Success;
+         } catch (error) {
+-            // If we get a TokenError or MatrixError, we should log out, otherwise assume transient
+-            if (error instanceof TokenRefreshLogoutError || error instanceof MatrixError) {
++            // Trinity patch: a temporary server error during token refresh must not end the session.
++            // Only the token endpoint's OAuth 400/401 refusal (TokenRefreshLogoutError) logs out; a
++            // MatrixError (any JSON error body, e.g. from auth_metadata discovery) is retried later.
++            if (error instanceof TokenRefreshLogoutError) {
+                 this.opts.logger?.error("Failed to refresh token", error);
+                 return TokenRefreshOutcome.Logout;
+             }

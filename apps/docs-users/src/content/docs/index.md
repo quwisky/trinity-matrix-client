@@ -79,7 +79,8 @@ also called next-generation authentication) needs Synapse 1.138 or newer when th
 server uses Matrix Authentication Service (MAS). Tuwunel 1.6 or newer and
 Continuwuity 26.6 or newer provide OAuth 2.0 sign-in themselves; older releases do
 not. On an older Synapse with MAS, Trinity cannot offer that sign-in page, and an
-account that is already signed in is signed out the next time its access token
-expires. Signing out like this also deletes that account's encryption keys on the
-device, so turn on key backup and save your recovery key before you update, or ask
-your server's admin to upgrade Synapse first.
+account that is already signed in stops connecting the next time its access token
+expires. Trinity keeps the account and its encryption keys on the device. Before you
+update, turn on key backup, or ask your server's admin to upgrade Synapse first. If an
+account has already stopped connecting, export your room keys, then remove the account
+and sign in again.

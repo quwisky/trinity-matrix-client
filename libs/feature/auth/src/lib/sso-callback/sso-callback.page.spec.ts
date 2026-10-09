@@ -2,6 +2,7 @@ import { Location } from '@angular/common';
 import { ActivatedRoute, Router, type ParamMap } from '@angular/router';
 import { render } from '@trinity/testing';
 import {
+  ReauthAccountMismatchError,
   AuthService,
   OidcStateStore,
   SsoStateStore,
@@ -18,6 +19,7 @@ const EMPTY_SSO: SsoStateStash = {
   baseUrl: null,
   mode: 'replace',
   deviceId: null,
+  expectedUserId: null,
 };
 const EMPTY_OIDC: OidcStateStash = {
   state: null,
@@ -132,6 +134,7 @@ describe('SsoCallbackPage', () => {
           baseUrl: 'https://hs.example',
           mode: 'add',
           deviceId: 'OLDDEV',
+          expectedUserId: '@bob:hs',
         },
       });
 
@@ -141,6 +144,7 @@ describe('SsoCallbackPage', () => {
         'TOKEN',
         'add',
         'OLDDEV',
+        '@bob:hs',
       );
       expect(ssoClear).toHaveBeenCalledTimes(1); // consumed only after state matched
       expect(navigateByUrl).toHaveBeenCalledWith('/rooms', {
@@ -258,6 +262,50 @@ describe('SsoCallbackPage', () => {
       expect(navigateByUrl).not.toHaveBeenCalled();
     });
 
+    it('names the stored account and its server when the sign-in is refused', async () => {
+      const { cmp, navigateByUrl } = await renderPage({
+        auth: {
+          completeSsoLogin: vi.fn(() =>
+            of({
+              kind: 'failed' as const,
+              accountId: '@alice:example.org',
+              placement: 'active' as const,
+              failure: 'homeserver-mismatch' as const,
+              storedBaseUrl: 'https://example.org',
+            }),
+          ),
+        } as unknown as Partial<AuthService>,
+        params: { loginToken: 'TOKEN', sso_state: 'NONCE' },
+        ssoStash: { state: 'NONCE', baseUrl: 'https://other-server.example' },
+      });
+
+      expect(cmp.error()).toContain(
+        '@alice:example.org is already signed in through https://example.org',
+      );
+      expect(navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    it('explains a re-auth that came back as a different account', async () => {
+      const { cmp, navigateByUrl } = await renderPage({
+        auth: {
+          completeSsoLogin: vi.fn(() =>
+            throwError(
+              () => new ReauthAccountMismatchError('@bob:hs', '@alice:hs'),
+            ),
+          ),
+        } as unknown as Partial<AuthService>,
+        params: { loginToken: 'TOKEN', sso_state: 'NONCE' },
+        ssoStash: {
+          state: 'NONCE',
+          baseUrl: 'https://hs.example',
+          expectedUserId: '@alice:hs',
+        },
+      });
+
+      expect(cmp.error()).toMatch(/@bob:hs.*@alice:hs/);
+      expect(navigateByUrl).not.toHaveBeenCalled();
+    });
+
     it('surfaces an expected Account Runtime failure without navigating', async () => {
       const { cmp, navigateByUrl } = await renderPage({
         auth: {
@@ -297,6 +345,7 @@ describe('SsoCallbackPage', () => {
       clientId: 'CLIENT1',
       deviceId: 'DEVICE1',
       codeVerifier: 'VERIFIER1',
+      issuer: 'https://op.example',
     };
 
     it('completes the grant with the stashed PKCE context, then clears the stash + URL', async () => {
@@ -483,6 +532,38 @@ describe('SsoCallbackPage', () => {
       );
     });
 
+    it('forwards the provider iss so the exchange can check it', async () => {
+      // The exchange checks that the sign-in response comes from the provider it started
+      // with (RFC 9207); dropping `iss` here would leave only the metadata checks.
+      const completeOidcLogin = vi.fn(() => of(READY_OUTCOME));
+      await renderPage({
+        auth: { completeOidcLogin } as unknown as Partial<AuthService>,
+        params: { code: 'CODE', state: 'STATE1', iss: 'https://op.example' },
+        oidcStash: OIDC_STASH,
+      });
+
+      expect(completeOidcLogin).toHaveBeenCalledWith(
+        'CODE',
+        { ...GRANT_CONTEXT, iss: 'https://op.example' },
+        'replace',
+        null,
+      );
+    });
+
+    it('errors when the issuer is missing from the stash', async () => {
+      // Without the issuer the sign-in started with, nothing can tell whether the
+      // response comes from that provider, so refuse before sending the code.
+      const completeOidcLogin = vi.fn();
+      const { cmp } = await renderPage({
+        auth: { completeOidcLogin } as unknown as Partial<AuthService>,
+        params: { code: 'CODE', state: 'STATE1' },
+        oidcStash: { ...OIDC_STASH, issuer: null },
+      });
+
+      expect(completeOidcLogin).not.toHaveBeenCalled();
+      expect(cmp.error()).toMatch(/missing/i);
+    });
+
     it('errors when the redirect is missing from the stash', async () => {
       const completeOidcLogin = vi.fn();
       const { cmp } = await renderPage({
@@ -522,7 +603,12 @@ describe('SsoCallbackPage', () => {
         oidcStash: OIDC_STASH,
       });
 
-      expect(forgetOidcClientId).toHaveBeenCalledWith('https://op.example');
+      // Keyed on the homeserver as well: another homeserver naming the same issuer keeps
+      // its own registration.
+      expect(forgetOidcClientId).toHaveBeenCalledWith(
+        'https://hs.example',
+        'https://op.example',
+      );
       expect(cmp.error()).toMatch(/invalid_client/i);
       // The spent verifier is scrubbed even on failure: the stash was consumed up front.
       expect(oidcClear).toHaveBeenCalledTimes(1);

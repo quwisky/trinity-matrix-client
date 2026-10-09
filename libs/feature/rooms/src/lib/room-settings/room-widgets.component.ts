@@ -33,7 +33,10 @@ import {
   type WidgetLaunch,
 } from '@trinity/data-access/widgets';
 import { TrnButton } from '@trinity/components/controls';
-import { ExternalBrowserService } from '@trinity/platform-native';
+import {
+  ExternalBrowserService,
+  isInstalledNativePlatform,
+} from '@trinity/platform-native';
 import { RoomWidgetFrameComponent } from './room-widget-frame/room-widget-frame.component';
 import { RoomWidgetCreateComponent } from './room-widget-create/room-widget-create.component';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
@@ -73,6 +76,8 @@ export class RoomWidgetsComponent implements OnInit {
 
   readonly target = input.required<RoomWidgetTarget>();
   readonly available = input(true);
+  /** The installed mobile apps open widgets in the browser instead of a frame. */
+  readonly embedAvailable = !isInstalledNativePlatform();
   private readonly confirmingRemoval = signal<ReadonlySet<string>>(new Set());
   readonly removing = signal<ReadonlySet<string>>(new Set());
 
@@ -245,6 +250,16 @@ export class RoomWidgetsComponent implements OnInit {
           });
         },
       });
+  }
+
+  /** The card's note. On the installed apps nothing opens inside Trinity, so only the creator warning applies. */
+  widgetWarning(embed: WidgetEmbed): string | null {
+    if (this.embedAvailable) {
+      return embed.url ? null : this.embedFailureText(embed);
+    }
+    return embed.failure === 'missing-creator'
+      ? this.embedFailureText(embed)
+      : null;
   }
 
   embedFailureText(embed: WidgetEmbed): string {

@@ -10,13 +10,17 @@ import {
   createClient,
 } from 'matrix-js-sdk';
 import type { MatrixClient } from 'matrix-js-sdk';
+import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import { Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MATRIX_SYNC_PROJECTION_BASELINE,
   MatrixClientService,
 } from './matrix-client.service';
-import { SessionStorageService } from '@trinity/platform-native';
+import {
+  CryptoStoreKeyService,
+  SessionStorageService,
+} from '@trinity/platform-native';
 import {
   ProjectionRuntime,
   type ProjectionReadiness,
@@ -97,17 +101,24 @@ function fakeClient(baseUrl = 'https://hs.example') {
 
 function setup() {
   TestBed.configureTestingModule({
-    providers: [MatrixClientService, MockProvider(SessionStorageService)],
+    providers: [
+      MatrixClientService,
+      MockProvider(SessionStorageService),
+      MockProvider(CryptoStoreKeyService),
+    ],
   });
   const svc = TestBed.inject(MatrixClientService);
   const storage = TestBed.inject(SessionStorageService);
   const projections = TestBed.inject(ProjectionRuntime);
+  const storeKeys = TestBed.inject(CryptoStoreKeyService);
+  // Default: no key reads back (the tests that open keyed stores say otherwise).
+  vi.mocked(storeKeys.read).mockResolvedValue({ kind: 'missing' });
   // Default: no persisted session (mirrors the original hand-rolled stub); the
   // save/clear observables aren't exercised by these paths.
   vi.mocked(storage.load).mockReturnValue(of(null));
   // A wipe of a non-live account reads its registry record for the crypto prefix.
   vi.mocked(storage.record).mockReturnValue(of(null));
-  return { svc, storage, projections };
+  return { svc, storage, projections, storeKeys };
 }
 
 describe('MatrixClientService', () => {
@@ -164,6 +175,161 @@ describe('MatrixClientService', () => {
     expect(client.initRustCrypto).toHaveBeenCalledWith({
       cryptoDatabasePrefix: 'trinity-crypto:@me:hs',
     });
+  });
+
+  describe('crypto store key', () => {
+    const KEY = new Uint8Array(32).fill(7);
+    const KEYED = {
+      ...SESSION,
+      cryptoPrefix: 'trinity-crypto:@me:hs:DEV',
+      cryptoStoreKeyed: true as const,
+    };
+
+    it('opens a keyed store with the key named by that store', async () => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc, storeKeys } = setup();
+      vi.mocked(storeKeys.read).mockResolvedValue({
+        kind: 'present',
+        key: KEY,
+      });
+
+      await firstValueFrom(svc.init(KEYED));
+
+      expect(storeKeys.read).toHaveBeenCalledWith('trinity-crypto:@me:hs:DEV');
+      expect(client.initRustCrypto).toHaveBeenCalledWith({
+        cryptoDatabasePrefix: 'trinity-crypto:@me:hs:DEV',
+        storageKey: KEY,
+      });
+      expect(svc.cryptoStoreEncrypted()).toBe(true);
+    });
+
+    it('opens a store created before keys existed as it is, and says so', async () => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc, storeKeys } = setup();
+
+      await firstValueFrom(
+        svc.init({ ...SESSION, cryptoPrefix: 'trinity-crypto:@me:hs:DEV' }),
+      );
+
+      // A key on an existing unencrypted store would make it fail to open.
+      expect(storeKeys.read).not.toHaveBeenCalled();
+      expect(client.initRustCrypto).toHaveBeenCalledWith({
+        cryptoDatabasePrefix: 'trinity-crypto:@me:hs:DEV',
+      });
+      expect(svc.cryptoStoreEncrypted()).toBe(false);
+    });
+
+    it('never opens a keyed store whose key is missing, and asks to sign in again', async () => {
+      const client = fakeClient();
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc, storeKeys } = setup();
+      vi.mocked(storeKeys.read).mockResolvedValue({ kind: 'missing' });
+
+      const outcome = await firstValueFrom(
+        svc.restorePersisted(KEYED, 'activate'),
+      );
+
+      expect(outcome).toEqual({
+        kind: 'failed',
+        failure: 'crypto-store-key-lost',
+      });
+      expect(client.initRustCrypto).not.toHaveBeenCalled();
+      expect(svc.softLoggedOut()).toEqual(['@me:hs']);
+    });
+
+    it.each([
+      [
+        'an unavailable keychain',
+        () => Promise.resolve({ kind: 'unavailable' as const }),
+      ],
+      ['a failed read', () => Promise.reject(new Error('ipc failed'))],
+    ])(
+      'treats %s as an outage: no sign-in, no new device, the store is kept',
+      async (_case, read) => {
+        const client = fakeClient();
+        vi.mocked(createClient).mockReturnValue(client as never);
+        const { svc, storeKeys } = setup();
+        vi.mocked(storeKeys.read).mockImplementation(read);
+
+        const outcome = await firstValueFrom(
+          svc.restorePersisted(KEYED, 'activate'),
+        );
+
+        expect(outcome).toEqual({
+          kind: 'failed',
+          failure: 'secure-storage-unavailable',
+        });
+        expect(client.initRustCrypto).not.toHaveBeenCalled();
+        expect(svc.softLoggedOut()).toEqual([]);
+      },
+    );
+
+    it("opens each account's store with that store's own key", async () => {
+      const first = fakeClient();
+      const second = fakeClient('https://other.example');
+      vi.mocked(createClient)
+        .mockReturnValueOnce(first as never)
+        .mockReturnValueOnce(second as never);
+      const { svc, storeKeys } = setup();
+      const keyB = new Uint8Array(32).fill(9);
+      vi.mocked(storeKeys.read).mockImplementation(async (prefix) => ({
+        kind: 'present',
+        key: prefix === 'trinity-crypto:@you:other:DEV2' ? keyB : KEY,
+      }));
+
+      await firstValueFrom(svc.add(KEYED));
+      await firstValueFrom(
+        svc.add({
+          ...SESSION_B,
+          cryptoPrefix: 'trinity-crypto:@you:other:DEV2',
+          cryptoStoreKeyed: true,
+        }),
+      );
+
+      expect(first.initRustCrypto).toHaveBeenCalledWith(
+        expect.objectContaining({ storageKey: KEY }),
+      );
+      expect(second.initRustCrypto).toHaveBeenCalledWith(
+        expect.objectContaining({ storageKey: keyB }),
+      );
+    });
+
+    it('reports the active account, following a switch', async () => {
+      vi.mocked(createClient)
+        .mockReturnValueOnce(fakeClient() as never)
+        .mockReturnValueOnce(fakeClient('https://other.example') as never);
+      const { svc, storeKeys } = setup();
+      vi.mocked(storeKeys.read).mockResolvedValue({
+        kind: 'present',
+        key: KEY,
+      });
+      expect(svc.cryptoStoreEncrypted()).toBeNull();
+
+      await firstValueFrom(svc.add(KEYED));
+      await firstValueFrom(svc.add(SESSION_B));
+      expect(svc.cryptoStoreEncrypted()).toBe(false);
+
+      svc.setActive(SESSION.userId);
+      expect(svc.cryptoStoreEncrypted()).toBe(true);
+    });
+  });
+
+  it('builds a detached client that never saves refreshed tokens when asked', () => {
+    vi.mocked(createClient).mockReturnValue(fakeClient() as never);
+    const { svc } = setup();
+
+    svc.detachedClient(OIDC_SESSION, { persistRefreshedTokens: false });
+
+    const options = vi.mocked(createClient).mock.calls[0][0];
+    // It can still refresh and revoke at the provider...
+    expect(options).toMatchObject({
+      refreshToken: 'refresh-tok',
+      oauthClientId: 'client-1',
+    });
+    // ...but whatever it refreshes stays in memory.
+    expect(options).not.toHaveProperty('onTokenRefresh');
   });
 
   it('hands an OIDC session to the SDK token manager', async () => {
@@ -1019,6 +1185,68 @@ describe('MatrixClientService', () => {
     expect(svc.activeUserId()).toBeNull();
   });
 
+  describe('roomKeysBackedUp', () => {
+    /** A live client whose crypto reports this backup version (or rejects with it). */
+    async function startWithBackup(version: string | null | Error) {
+      const client = fakeClient();
+      client.getCrypto.mockReturnValue({
+        getActiveSessionBackupVersion: vi.fn(() =>
+          version instanceof Error
+            ? Promise.reject(version)
+            : Promise.resolve(version),
+        ),
+      });
+      vi.mocked(createClient).mockReturnValue(client as never);
+      const { svc } = setup();
+      await firstValueFrom(svc.init(SESSION));
+      const keysRemaining = (count: number): void =>
+        (
+          client.on.mock.calls.find(
+            ([evt]) => evt === CryptoEvent.KeyBackupSessionsRemaining,
+          )?.[1] as (remaining: number) => void
+        )(count);
+      return { svc, keysRemaining };
+    }
+
+    it('is true when key backup is active and nothing waits to upload', async () => {
+      const { svc, keysRemaining } = await startWithBackup('3');
+      keysRemaining(0);
+
+      expect(await firstValueFrom(svc.roomKeysBackedUp('@me:hs'))).toBe(true);
+    });
+
+    it('is not backed up right after start, before the SDK reports what waits to upload', async () => {
+      const { svc } = await startWithBackup('3');
+
+      expect(await firstValueFrom(svc.roomKeysBackedUp('@me:hs'))).toBe(false);
+    });
+
+    it('is false when key backup is off', async () => {
+      const { svc } = await startWithBackup(null);
+
+      expect(await firstValueFrom(svc.roomKeysBackedUp('@me:hs'))).toBe(false);
+    });
+
+    it('is false while keys are still waiting to upload', async () => {
+      const { svc, keysRemaining } = await startWithBackup('3');
+
+      keysRemaining(12);
+      expect(await firstValueFrom(svc.roomKeysBackedUp('@me:hs'))).toBe(false);
+
+      keysRemaining(0);
+      expect(await firstValueFrom(svc.roomKeysBackedUp('@me:hs'))).toBe(true);
+    });
+
+    it('is null when the account is not live or its crypto cannot answer', async () => {
+      const { svc } = await startWithBackup(new Error('store closed'));
+
+      expect(await firstValueFrom(svc.roomKeysBackedUp('@me:hs'))).toBeNull();
+      expect(
+        await firstValueFrom(svc.roomKeysBackedUp('@nobody:hs')),
+      ).toBeNull();
+    });
+  });
+
   describe('wiping an account that has no live client', () => {
     // L2. remove() is documented as "stop it + wipe its stores", and the account with
     // nothing to stop — soft-logged-out, or a failed background warm-up — is exactly the
@@ -1269,6 +1497,9 @@ describe('OAuth tokens through a real MatrixClient', () => {
   /** How the fake provider answers a refresh grant. */
   type Rotation = 'rotate' | 'omit' | 'empty';
 
+  /** `up` answers normally, `down` drops the connection, anything else is the error sent instead. */
+  type Endpoint = 'up' | 'down' | { status: number; body: unknown };
+
   const json = (body: unknown, status = 200): Response =>
     new Response(JSON.stringify(body), {
       status,
@@ -1285,8 +1516,8 @@ describe('OAuth tokens through a real MatrixClient', () => {
     const revocations: string[] = [];
     const calls: string[] = [];
     const state = {
-      discovery: 'up' as 'up' | 'down',
-      provider: 'up' as 'up' | 'down' | 503,
+      discovery: 'up' as Endpoint,
+      provider: 'up' as Endpoint,
     };
     let issued = 1;
     vi.stubGlobal(
@@ -1300,12 +1531,15 @@ describe('OAuth tokens through a real MatrixClient', () => {
         if (url.pathname === '/_matrix/client/v1/auth_metadata') {
           if (state.discovery === 'down')
             throw new TypeError('Failed to fetch');
+          if (state.discovery !== 'up') {
+            return json(state.discovery.body, state.discovery.status);
+          }
           return json(METADATA);
         }
         if (url.href === METADATA.token_endpoint) {
           if (state.provider === 'down') throw new TypeError('Failed to fetch');
-          if (state.provider === 503) {
-            return json({ error: 'temporarily_unavailable' }, 503);
+          if (state.provider !== 'up') {
+            return json(state.provider.body, state.provider.status);
           }
           grants.push(form);
           issued += 1;
@@ -1476,12 +1710,121 @@ describe('OAuth tokens through a real MatrixClient', () => {
   it('does not sign the account out when the provider answers 5xx', async () => {
     const net = fakeNetwork('rotate');
     const { svc, client } = await startReal();
-    net.state.provider = 503;
+    net.state.provider = {
+      status: 503,
+      body: { error: 'temporarily_unavailable' },
+    };
 
     await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
 
     expect(net.calls).toContain('POST op.example/token');
     expectStillSignedIn(svc, client);
+  });
+
+  it.each([
+    [
+      '503 with a JSON body',
+      { status: 503, body: { errcode: 'M_UNKNOWN', error: 'Unavailable' } },
+    ],
+    [
+      '429 with a JSON body',
+      {
+        status: 429,
+        body: { errcode: 'M_LIMIT_EXCEEDED', error: 'Too many requests' },
+      },
+    ],
+    [
+      '404 M_UNRECOGNIZED',
+      { status: 404, body: { errcode: 'M_UNRECOGNIZED', error: 'Unknown' } },
+    ],
+  ])(
+    'keeps the account and its keys when auth_metadata answers %s, then recovers',
+    async (_, answer) => {
+      const net = fakeNetwork('rotate');
+      const { svc, storage, client } = await startReal();
+      net.state.discovery = answer;
+
+      await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+
+      expectStillSignedIn(svc, client);
+      expect(storage.remove).not.toHaveBeenCalled();
+      expect(storage.invalidateToken).not.toHaveBeenCalled();
+
+      net.state.discovery = 'up';
+      await expect(client.whoami()).resolves.toMatchObject({
+        user_id: '@me:hs',
+      });
+      expect(storage.updateTokens).toHaveBeenCalledOnce();
+      expectStillSignedIn(svc, client);
+    },
+  );
+
+  it.each([
+    ['429 with an OAuth error', { status: 429, body: { error: 'slow_down' } }],
+    // A proxy in front of the provider can answer any status with an OAuth-shaped body;
+    // RFC 6749 section 5.2 refusals are 400 and 401 only.
+    ['403 with an OAuth error', { status: 403, body: { error: 'forbidden' } }],
+    ['404 with an OAuth error', { status: 404, body: { error: 'not_found' } }],
+    [
+      '429 with a Matrix error',
+      {
+        status: 429,
+        body: { errcode: 'M_LIMIT_EXCEEDED', error: 'Too many requests' },
+      },
+    ],
+  ])(
+    'keeps the account and its keys when the token endpoint answers %s, then recovers',
+    async (_, answer) => {
+      const net = fakeNetwork('rotate');
+      const { svc, storage, client } = await startReal();
+      net.state.provider = answer;
+
+      await expect(client.whoami()).rejects.toBeInstanceOf(TokenRefreshError);
+
+      expectStillSignedIn(svc, client);
+      expect(storage.remove).not.toHaveBeenCalled();
+
+      net.state.provider = 'up';
+      await expect(client.whoami()).resolves.toBeDefined();
+      expectStillSignedIn(svc, client);
+    },
+  );
+
+  it.each([
+    ['400 invalid_grant', { status: 400, body: { error: 'invalid_grant' } }],
+    ['401 invalid_client', { status: 401, body: { error: 'invalid_client' } }],
+  ])(
+    'signs the account out when the provider refuses the refresh (%s)',
+    async (_, answer) => {
+      const net = fakeNetwork('rotate');
+      const { svc, storage, client } = await startReal();
+      net.state.provider = answer;
+
+      await expect(client.whoami()).rejects.toMatchObject({
+        errcode: 'M_UNKNOWN_TOKEN',
+      });
+
+      expect(svc.accountIds()).not.toContain('@me:hs');
+      // The homeserver's 401 said soft_logout: false, so this is the hard path, as before.
+      expect(client.clearStores).toHaveBeenCalledOnce();
+      expect(storage.remove).toHaveBeenCalledWith('@me:hs');
+    },
+  );
+
+  it('still wipes the account when the homeserver revokes a token that has not expired', async () => {
+    const net = fakeNetwork('rotate', 3600);
+    const { svc, storage, client } = await startReal();
+    await client.whoami(); // refreshes once; the new token is good for an hour
+
+    net.expireAll(); // signed out from another device: M_UNKNOWN_TOKEN, soft_logout: false
+    await expect(client.whoami()).rejects.toMatchObject({
+      errcode: 'M_UNKNOWN_TOKEN',
+    });
+
+    expect(net.grants).toHaveLength(1); // no refresh was attempted
+    expect(svc.accountIds()).not.toContain('@me:hs');
+    expect(client.clearStores).toHaveBeenCalledOnce();
+    expect(storage.remove).toHaveBeenCalledWith('@me:hs');
   });
 
   it('refreshes once for concurrent expired requests', async () => {
