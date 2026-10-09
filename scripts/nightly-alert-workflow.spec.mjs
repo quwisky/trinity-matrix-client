@@ -11,6 +11,7 @@ const yaml = (file) => parse(read(file));
 const NIGHTLY = {
   'ci.yml': ['scheduled-e2e'],
   'e2e-synapse-nightly.yml': ['browser', 'electron', 'protocol', 'mas'],
+  'e2e-ios-nightly.yml': ['ios'],
 };
 const ALERT = './.github/workflows/_nightly-alert.yml';
 /** Scheduled runs and manual runs of `main`; never a pull request or another branch. */

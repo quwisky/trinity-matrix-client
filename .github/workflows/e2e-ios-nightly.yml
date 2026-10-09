@@ -16,7 +16,8 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # A cancelled job counts as failed for the nightly alert, so never cancel a run in flight.
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -101,3 +102,14 @@ jobs:
       - name: Verify iOS E2E left the worktree unchanged
         if: ${{ !cancelled() }}
         run: git diff --exit-code
+
+  # A red cron run notifies nobody: open (or update) an issue, and close it on the next green run.
+  notify:
+    name: Nightly failure issue
+    needs: [ios]
+    if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    permissions:
+      issues: write
+    uses: ./.github/workflows/_nightly-alert.yml
+    with:
+      needs: ${{ toJSON(needs) }}
