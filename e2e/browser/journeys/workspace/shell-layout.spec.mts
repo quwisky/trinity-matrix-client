@@ -163,6 +163,7 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
   const geometry = await page.evaluate(() => {
     const shell = document.querySelector<HTMLElement>('.shell-side');
     const rail = document.querySelector<HTMLElement>('.rail');
+    const railScroller = document.querySelector<HTMLElement>('.rail-scroll');
     const sidebar = document.querySelector<HTMLElement>('.sidebar');
     const roomScroller =
       document.querySelector<HTMLElement>('.sidebar__scroll');
@@ -172,11 +173,12 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
       '[data-testid="open-settings"]',
     );
     const settingsIcon = settingsButton?.querySelector<HTMLElement>('trn-icon');
-    const lastSpace = rail?.lastElementChild as HTMLElement | null;
+    const lastSpace = railScroller?.lastElementChild as HTMLElement | null;
     const lastRoom = roomScroller?.lastElementChild as HTMLElement | null;
     if (
       !shell ||
       !rail ||
+      !railScroller ||
       !sidebar ||
       !roomScroller ||
       !host ||
@@ -190,7 +192,7 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
     }
 
     shell.style.setProperty('--trinity-navigation-safe-area-bottom', '24px');
-    rail.scrollTop = rail.scrollHeight;
+    railScroller.scrollTop = railScroller.scrollHeight;
     roomScroller.scrollTop = roomScroller.scrollHeight;
     const shellBox = shell.getBoundingClientRect();
     const railBox = rail.getBoundingClientRect();
@@ -200,7 +202,7 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
     const settingsIconBox = settingsIcon.getBoundingClientRect();
     const spaceBox = lastSpace.getBoundingClientRect();
     const roomBox = lastRoom.getBoundingClientRect();
-    const railStyle = getComputedStyle(rail);
+    const railStyle = getComputedStyle(railScroller);
     const roomStyle = getComputedStyle(roomScroller);
     const result = {
       density: document.documentElement.dataset['density'] ?? 'cosy',
@@ -253,7 +255,7 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
   });
 
   for (const [testId, scrollerSelector] of [
-    ['dock-focus-space', '.rail'],
+    ['dock-focus-space', '.rail-scroll'],
     ['dock-focus-room', '.sidebar__scroll'],
   ] as const) {
     const beforeFocus = await page.evaluate(
@@ -429,7 +431,12 @@ async function expectScrollContract(
     .toEqual({ clientWidth: viewport.width, scrollWidth: viewport.width });
 
   const scrollOwners = await page.evaluate(() => {
-    const selectors = ['.rail', '.sidebar__scroll', '.scroll', '.members'];
+    const selectors = [
+      '.rail-scroll',
+      '.sidebar__scroll',
+      '.scroll',
+      '.members',
+    ];
     return selectors.map((selector) => {
       const element = document.querySelector<HTMLElement>(selector);
       if (!element) throw new Error(`missing shell scroll owner ${selector}`);
@@ -441,11 +448,13 @@ async function expectScrollContract(
     });
   });
   expect(scrollOwners).toEqual(
-    ['.rail', '.sidebar__scroll', '.scroll', '.members'].map((selector) => ({
-      selector,
-      overflowY: 'auto',
-      overflows: true,
-    })),
+    ['.rail-scroll', '.sidebar__scroll', '.scroll', '.members'].map(
+      (selector) => ({
+        selector,
+        overflowY: 'auto',
+        overflows: true,
+      }),
+    ),
   );
 
   const wrapperOverflow = await page.evaluate(() => {
@@ -508,7 +517,7 @@ async function fillNavigationScrollers(page: Page): Promise<void> {
         last?.setAttribute('data-testid', focusTestId);
       }
     };
-    fill('.rail', '.rail .item', 'dock-focus-space');
+    fill('.rail-scroll', '.rail-scroll .item', 'dock-focus-space');
     fill(
       '.sidebar__scroll',
       '.sidebar__scroll .channel-row',
@@ -654,7 +663,9 @@ test.describe('Modern room shell layout', () => {
       }
 
       const { gap: shellGap, padding: shellPadding } = shellSpacing[density];
-      await expect(page.locator('.rail')).toHaveCSS('gap', shellGap);
+      // Pinned and scrolling rail groups both space their items by the density gap.
+      await expect(page.locator('.rail-fixed')).toHaveCSS('gap', shellGap);
+      await expect(page.locator('.rail-scroll')).toHaveCSS('gap', shellGap);
       await expect(page.locator('.sidebar__header')).toHaveCSS(
         'padding-left',
         shellPadding,
@@ -685,7 +696,7 @@ test.describe('Modern room shell layout', () => {
       });
       await expect(accessibleSpacePill).toBeAttached();
       await accessibleSpacePill.scrollIntoViewIfNeeded();
-      await expectInside(accessibleSpacePill, page.locator('.rail'));
+      await expectInside(accessibleSpacePill, page.locator('.rail-scroll'));
 
       await row.locator('.channel').click();
       await expect(page.locator('.scroll')).toBeVisible({ timeout: 30_000 });
