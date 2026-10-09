@@ -1,6 +1,7 @@
 /** Each platform references the generated icons it needs. */
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { parse } from 'yaml';
 
 const root = resolve(import.meta.dirname, '..');
 const read = (path) => readFileSync(join(root, path), 'utf8');
@@ -107,9 +108,15 @@ describe('desktop icon wiring', () => {
     expect(
       existsSync(join(root, 'electron/build/Trinity.icon/icon.json')),
     ).toBe(true);
-    expect(read('.github/workflows/release.yml')).toMatch(
-      /- os: macos-26\n\s+platform: mac\n/,
+    // The job that packs the macOS app runs actool, so it needs Xcode 26.
+    const { jobs } = parse(read('.github/workflows/release.yml'));
+    const packing = Object.values(jobs).filter((job) =>
+      job.steps?.some((step) =>
+        /electron-builder --mac\b/.test(step.run ?? ''),
+      ),
     );
+    expect(packing.length).toBeGreaterThan(0);
+    for (const job of packing) expect(job['runs-on']).toBe('macos-26');
   });
 
   it('ships every runtime icon through extraResources', () => {
