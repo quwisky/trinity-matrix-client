@@ -22,7 +22,9 @@ function terminate(child, signal) {
     if (process.platform === 'win32') child.kill(signal);
     else process.kill(-child.pid, signal);
   } catch (error) {
-    if (error?.code !== 'ESRCH') throw error;
+    // No group left: Linux says ESRCH, while macOS answers EPERM for a group that holds
+    // only zombies. Thrown from the close handler, either would leave the run unsettled.
+    if (error?.code !== 'ESRCH' && error?.code !== 'EPERM') throw error;
   }
 }
 

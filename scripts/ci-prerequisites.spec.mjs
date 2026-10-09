@@ -79,6 +79,27 @@ describe('runCommand', () => {
     expect(existsSync(marker)).toBe(false);
   });
 
+  it('settles when signalling the reaped group reports EPERM, as macOS does for zombies', async () => {
+    const kill = process.kill.bind(process);
+    const spy = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+      if (pid < 0)
+        throw Object.assign(new Error('kill EPERM'), { code: 'EPERM' });
+      return kill(pid, signal);
+    });
+    try {
+      const result = await runCommand({
+        command: node,
+        args: ['-e', '0'],
+        label: 'eperm',
+        logDir: makeLogDir(),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(spy).toHaveBeenCalledWith(expect.any(Number), 'SIGTERM');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('aborts a running process group and reports cancellation', async () => {
     const controller = new AbortController();
     const promise = runCommand({
