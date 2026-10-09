@@ -468,8 +468,12 @@ export class TrinityApplicationSessionAdapter {
     return new Observable(() => {
       const policy = effect(
         () => {
+          // A routed surface is browser history, as in workspaceBrowserBackGuard, so
+          // the history swipe may navigate it; dialogs and panels must consume Back.
+          const active = this.workspaceBack.activeSurface();
           const interceptionActive =
-            this.dialog.openState() || this.workspaceBack.hasActive();
+            this.dialog.openState() ||
+            (active !== null && !this.routedSurfaces.owns(active));
           this.nativeNavigation.setHistoryGesturesEnabled(!interceptionActive);
         },
         { injector: this.injector },

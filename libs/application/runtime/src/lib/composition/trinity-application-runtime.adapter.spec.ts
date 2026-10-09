@@ -247,6 +247,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         }),
         MockProvider(WorkspaceBackService, {
           hasActive: workspaceActive,
+          activeSurface: signal(null),
           activeOwnsTopmostOverlay: () => false,
         }),
         MockProvider(WorkspaceNavigationService, {
