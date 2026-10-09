@@ -61,7 +61,7 @@ describe('mobile E2E version reporting', () => {
 });
 
 describe('iOS launch race classifier', () => {
-  it('retries only FrontBoard not-found errors', () => {
+  it('retries only FrontBoard not-found and launch-refused errors', () => {
     expect(
       isAppNotYetKnown(
         new Error(
@@ -69,6 +69,16 @@ describe('iOS launch race classifier', () => {
         ),
       ),
     ).toBe(true);
+    expect(
+      isAppNotYetKnown(
+        new Error(
+          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=1 "The request to open "eu.qwky.trinity" failed." UserInfo={BSErrorCodeDescription=RequestDenied}',
+        ),
+      ),
+    ).toBe(true);
+    expect(isAppNotYetKnown(new Error('RequestDenied by the proxy'))).toBe(
+      false,
+    );
     expect(isAppNotYetKnown(new Error('socket hang up'))).toBe(false);
     expect(isAppNotYetKnown('is unknown to FrontBoard')).toBe(true);
   });

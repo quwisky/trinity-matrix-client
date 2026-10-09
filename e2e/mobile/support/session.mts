@@ -187,7 +187,7 @@ export async function resetApp(): Promise<void> {
   await webview();
 }
 
-/** FrontBoard lags a fresh install by a moment: retry only its NotFound, for up to 15 s. */
+/** FrontBoard lags a fresh install by a moment: retry its NotFound or RequestDenied for up to 15 s. */
 async function activateWhenKnown(): Promise<void> {
   const deadline = Date.now() + 15_000;
   for (;;) {
@@ -196,6 +196,9 @@ async function activateWhenKnown(): Promise<void> {
       return;
     } catch (error) {
       if (!isAppNotYetKnown(error) || Date.now() > deadline) throw error;
+      console.log(
+        `[mobile] launch not ready yet, retrying: ${String(error).split('\n')[0].slice(0, 160)}`,
+      );
       await browser.pause(500);
     }
   }
