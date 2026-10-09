@@ -106,6 +106,17 @@ describe('agent-guard PreToolUse hook', () => {
     ).toBe(2);
   });
 
+  it.each([
+    'gh pr ready 1115 2>&1 | tail -1',
+    'gh pr ready 1115 &> /dev/null; echo done',
+    'gh pr ready 1115 >&2',
+  ])('passes only the pull request to gh pr checks from %s', (command) => {
+    expect(hook(command, repo, fakeGh(0)).status).toBe(0);
+    expect(readFileSync(join(repo, 'gh-args'), 'utf8').trim()).toBe(
+      'pr checks 1115',
+    );
+  });
+
   it('keeps a pull request a draft when gh cannot run', () => {
     const missing = hook('gh pr ready 12', repo, {
       ...process.env,
