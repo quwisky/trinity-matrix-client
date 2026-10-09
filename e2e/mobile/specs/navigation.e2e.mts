@@ -370,16 +370,10 @@ describe('mobile navigation', () => {
     await clickButton('Close');
     await expect(verify).not.toBeDisplayed({ wait: 10_000 });
     await expect($(settingsDialog)).toBeDisplayed();
-    // The stacked dialog restores focus to the control that opened it. WebKit never
-    // focuses a tapped button, so on iOS there is no opener to restore yet (#1109).
-    if (browser.isIOS) {
-      console.log(
-        '[mobile] skipped on ios: focus return to the Verify opener — WebKit does not focus a tapped button (#1109)',
-      );
-    } else {
-      await expect($('[data-testid="security-verify"]')).toBeFocused({
-        wait: 10_000,
-      });
-    }
+    // The stacked dialog restores focus to the control that opened it, also on iOS,
+    // where the tap never focused it (#1109).
+    await expect($('[data-testid="security-verify"]')).toBeFocused({
+      wait: 10_000,
+    });
   });
 });
