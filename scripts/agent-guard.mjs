@@ -3,7 +3,7 @@
  * Claude Code PreToolUse guard for Bash commands (registered in .claude/settings.json).
  *
  * Reads the hook payload on stdin and exits 2 with a reason on stderr to block the command;
- * exit 0 lets it run. Commands that never mention git or pgrep return immediately.
+ * exit 0 lets it run. Commands that never mention git, gh or pgrep return immediately.
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -79,13 +79,31 @@ function pushTypecheck(command, dir) {
   return `Push blocked: \`node scripts/nx.mjs affected -t typecheck --base=origin/main\` failed in ${root}. Fix the type errors, then push again.\n\n${tail}`;
 }
 
+/** Pull requests open as drafts and are marked ready only once every check passes. */
+function draftPullRequest(command, dir) {
+  const pr = command.match(/\bgh\s+pr\s+(create|ready)\b([^\n;&|]*)/);
+  if (!pr) return null;
+  const args = pr[2].trim().split(/\s+/).filter(Boolean);
+  if (pr[1] === 'create') {
+    if (args.includes('--draft') || args.includes('-d')) return null;
+    return 'Open pull requests as drafts: add --draft. Mark one ready with `gh pr ready <number>` only when its checks are green and its review is done (.agents/rules/git/draft-pull-requests.md).';
+  }
+  if (args.includes('--undo')) return null;
+  const checks = run('gh', ['pr', 'checks', ...args], dir, 30_000);
+  if (checks.status === 0) return null;
+  const output = `${checks.stdout ?? ''}${checks.stderr ?? ''}${checks.error?.message ?? ''}`;
+  const tail = output.trim().split('\n').slice(-15).join('\n');
+  return `Keep the pull request a draft: \`gh pr checks ${args.join(' ')}\` does not pass yet (exit ${checks.status}). Mark it ready once every check is green and its review is done.\n\n${tail}`;
+}
+
 export function check(payload) {
   const command = payload?.tool_input?.command;
-  if (typeof command !== 'string' || !/\b(?:git|pgrep)\b/.test(command))
+  if (typeof command !== 'string' || !/\b(?:git|gh|pgrep)\b/.test(command))
     return null;
   const dir = commandDir(command, payload.cwd ?? process.cwd());
   return (
     pgrepLoop(command) ??
+    draftPullRequest(command, dir) ??
     privateDocs(command, dir) ??
     pushTypecheck(command, dir)
   );

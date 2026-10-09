@@ -97,5 +97,6 @@ expanding always-loaded instructions.
 | [Branch protection](rules/git/branch-protection.md)       | Choose the authorized base and publication workflow.              |
 | [Conventional commits](rules/git/conventional-commits.md) | Prepare an authorized commit.                                     |
 | [Semantic versioning](rules/git/semver.md)                | Leave versions to release-please; never add `Release-As` footers. |
+| [Draft pull requests](rules/git/draft-pull-requests.md)   | Open pull requests as drafts; mark ready only when mergeable.     |
 | [Changelog](rules/docs/changelog.md)                      | Write user-facing commit subjects; release-please owns the log.   |
 | [README accuracy](rules/docs/readme-accuracy.md)          | Update affected entry-point claims and navigation.                |
