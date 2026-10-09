@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { stripMarkupComments } from './source-style-blocks.mjs';
 
 /**
  * Each site here once re-implemented a public recipe in feature SCSS (#930 K5/E1). Every
@@ -12,7 +13,7 @@ const read = (file) => readFileSync(join(root, file), 'utf8');
 
 /** The one opening tag carrying `marker` (a testid, class or attribute), comments stripped. */
 function openingTag(file, marker) {
-  const html = read(file).replace(/<!--[\s\S]*?-->/gu, '');
+  const html = stripMarkupComments(read(file));
   const found = (html.match(/<[a-z][\w-]*\b[^>]*>/giu) ?? []).filter((tag) =>
     tag.includes(marker),
   );
