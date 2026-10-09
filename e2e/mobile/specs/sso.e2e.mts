@@ -3,7 +3,6 @@ import { HS_TLS } from '../../support/homeserver/start.mjs';
 import { readSession } from '../../support/session.mts';
 import { fillByLabel, tap, waitForRooms } from '../support/app.mts';
 import { native, resetApp, shell, webview } from '../support/session.mts';
-import { onlyOn } from '../support/platform.mts';
 
 const CHROME = 'com.android.chrome';
 // Chrome reads this file on debuggable images (the google_apis emulator). `_` stands for
@@ -71,16 +70,46 @@ async function answerDexInCustomTab(
   await browser.pressKeyCode(66);
 }
 
-describe('mobile SSO sign-in', () => {
-  before(
-    onlyOn(
-      'android',
-      'iOS runs on the native homeserver runtime, which has no Dex, so SSO is Android-only for now',
-    ),
+/**
+ * Complete Dex's login form in the SFSafariViewController that Capacitor's Browser opens on
+ * iOS. Its page is part of the app's accessibility tree, so XCUITest fills it natively.
+ */
+async function answerDexInSafariView(
+  email: string,
+  pass: string,
+): Promise<void> {
+  const emailField = $(
+    '-ios predicate string:type == "XCUIElementTypeTextField"',
   );
+  await emailField.waitForDisplayed({
+    timeout: 90_000,
+    timeoutMsg: 'the identity provider login never appeared in the Safari view',
+  });
+  await emailField.setValue(email);
+  await $(
+    '-ios predicate string:type == "XCUIElementTypeSecureTextField"',
+  ).setValue(pass);
+  await $(
+    '-ios predicate string:type == "XCUIElementTypeButton" AND label == "Login"',
+  ).click();
+}
+
+describe('mobile SSO sign-in', () => {
+  before(function skipWithoutSso(this: Mocha.Context) {
+    if (readSession().homeserver?.sso) return;
+    // Dex is part of the Docker stack, and of the native one when `dex` is on PATH.
+    console.log(
+      `[mobile] skipped: ${this.test?.parent?.fullTitle() ?? 'mobile SSO sign-in'} — the homeserver came up without Dex, so there is no SSO account`,
+    );
+    this.skip();
+  });
 
   beforeEach(async () => {
     await native();
+    if (browser.isIOS) {
+      await resetApp();
+      return;
+    }
     // `adb shell` joins its arguments into one device command line, so pass the whole
     // script as the command: split into `sh -c` arguments, the redirect wrote an empty file.
     await shell(`echo '${CHROME_FLAGS}' > ${CHROME_FLAGS_FILE}`);
@@ -91,7 +120,7 @@ describe('mobile SSO sign-in', () => {
     await resetApp();
   });
 
-  it('signs in through the Custom Tab and returns on the eu.qwky.trinity callback', async () => {
+  it('signs in through the in-app browser and returns on the eu.qwky.trinity callback', async () => {
     const sso = readSession().homeserver?.sso;
     if (!sso) throw new Error('the E2E stack came up without an SSO account');
 
@@ -100,10 +129,12 @@ describe('mobile SSO sign-in', () => {
     await tap('//button[normalize-space()="Continue with SSO"]');
 
     await native();
-    await answerDexInCustomTab(sso.email, sso.pass);
+    if (browser.isIOS) await answerDexInSafariView(sso.email, sso.pass);
+    else await answerDexInCustomTab(sso.email, sso.pass);
 
-    // The homeserver redirects to eu.qwky.trinity://sso-callback, which Android hands to
-    // the app; the Rooms shell appearing proves the login token was exchanged.
+    // The homeserver redirects to eu.qwky.trinity://sso-callback, which the OS hands to the
+    // app (its scene delegate on iOS); the Rooms shell appearing proves the login token was
+    // exchanged.
     await webview();
     await waitForRooms(90_000);
   });
