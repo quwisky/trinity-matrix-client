@@ -431,12 +431,15 @@ git merge --no-ff vX.Y.Z
 # resolve the conflicts, then
 git add -A && git commit --no-edit
 git push -u origin back-merge/vX.Y.Z
-gh pr create --base main --head back-merge/vX.Y.Z \
+gh pr create --draft --base main --head back-merge/vX.Y.Z \
   --title "chore: back-merge vX.Y.Z into main" \
   --body "Merges release/X.Y.x at vX.Y.Z back into main; conflicts resolved by hand."
+# once CI is green
+gh pr ready <number>
 ```
 
-CI runs on the PR and `land-back-merge.yml` lands it when it passes, as above. If that run
+The PR opens as a draft, as every pull request does, and `land-back-merge.mjs` refuses drafts.
+Mark it ready once CI is green; `land-back-merge.yml` then lands it, as above. If that run
 refused or is gone, re-run the `Land back-merge` workflow once CI is green, or, as a bypass
 actor on `main`'s ruleset, land it yourself from an up-to-date clone with Node 24 or newer:
 
