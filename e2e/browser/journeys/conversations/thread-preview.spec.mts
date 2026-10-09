@@ -484,6 +484,11 @@ test.describe('Thread preview', () => {
     await expect(latestOrdinary).toHaveClass(/msg--cont/u);
     await expect(latestOrdinary.locator('.msg__avatar')).toHaveCount(0);
 
+    // Both replies arrived with the thread, so there is nothing older to page in.
+    await expect(
+      thread.getByRole('button', { name: 'Load older replies' }),
+    ).toHaveCount(0);
+
     // Use the real thread reply action so the SDK emits an explicit m.in_reply_to
     // relation with is_falling_back=false and the rich-reply fallback content.
     await clickRowToolbar(

@@ -70,17 +70,18 @@
 
     <div>
       @if (loading() && rooms().length === 0) {
-        <p
-          class="text-13 text-muted-foreground"
+        <trn-empty-state
+          layout="line"
           aria-live="polite"
+          body="Loading…"
           data-testid="directory-loading"
-        >
-          Loading…
-        </p>
+        />
       } @else if (isEmpty()) {
-        <p class="text-13 text-muted-foreground" data-testid="directory-empty">
-          No public rooms found.
-        </p>
+        <trn-empty-state
+          layout="line"
+          body="No public rooms found."
+          data-testid="directory-empty"
+        />
       } @else {
         <ul class="flex flex-col gap-1">
           @for (room of rooms(); track room.roomId) {

@@ -106,6 +106,7 @@ export class SidebarRoomListComponent {
     roomId: string;
     accountIds: readonly string[];
   }>();
+  readonly previewInvite = output<PendingInvite>();
   readonly acceptInvite = output<PendingInvite>();
   readonly declineInvite = output<PendingInvite>();
   readonly favouriteChange = output<RoomSummary>();

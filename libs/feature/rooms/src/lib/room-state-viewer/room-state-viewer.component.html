@@ -69,9 +69,12 @@
           }
         </section>
       } @empty {
-        <p class="py-2 text-sm text-muted-foreground" role="status">
-          No matching state events.
-        </p>
+        <trn-empty-state
+          layout="line"
+          role="status"
+          body="No matching state events."
+          data-testid="state-viewer-empty"
+        />
       }
     </div>
   </div>

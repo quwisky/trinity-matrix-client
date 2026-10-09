@@ -1,6 +1,7 @@
 import { type RoomLinkPreview } from '@trinity/data-access/discovery';
 import { render, screen, within } from '@trinity/testing';
 import { TrnDialogRef } from '@trinity/components/overlay';
+import { AVATAR_RESOLVER } from '@trinity/components/generic-content';
 import { InvitesService } from '@trinity/data-access/room-library';
 import { RoomLinkService } from '@trinity/data-access/discovery';
 import { MatrixError } from '@trinity/util/matrix';
@@ -37,6 +38,8 @@ async function build(
     join?: ReturnType<typeof vi.fn>;
     knock?: ReturnType<typeof vi.fn>;
     accept?: ReturnType<typeof vi.fn>;
+    accountId?: string;
+    resolveAvatar?: ReturnType<typeof vi.fn>;
   } = {},
 ) {
   const close = vi.fn();
@@ -53,11 +56,15 @@ async function build(
         roomIdOrAlias: '!room:hs',
         via: ['hs'],
       },
+      ...(options.accountId ? { accountId: options.accountId } : {}),
     },
     providers: [
       MockProvider(TrnDialogRef, { close }),
       { provide: RoomLinkService, useValue: { preview: load, join, knock } },
       { provide: InvitesService, useValue: { acceptInvite: accept } },
+      ...(options.resolveAvatar
+        ? [{ provide: AVATAR_RESOLVER, useValue: options.resolveAvatar }]
+        : []),
     ],
   });
   return { ...rendered, close, load, join, knock, accept };
@@ -81,6 +88,35 @@ describe('RoomLinkPreviewComponent', () => {
   });
 
   afterEach(() => vi.restoreAllMocks());
+
+  it('loads as the invited account when one is named', async () => {
+    const { load } = await build({ accountId: '@work:hs' });
+
+    expect(load).toHaveBeenCalledWith(
+      expect.objectContaining({ roomIdOrAlias: '!room:hs' }),
+      '@work:hs',
+    );
+  });
+
+  it("fetches the preview's avatar through the previewed account", async () => {
+    const resolveAvatar = vi.fn(() => of('blob:avatar'));
+    await build({
+      value: preview({ accountId: '@work:hs', avatarMxc: 'mxc://hs/avatar' }),
+      resolveAvatar,
+    });
+
+    expect(resolveAvatar).toHaveBeenCalledWith(
+      'mxc://hs/avatar',
+      expect.any(Number),
+      '@work:hs',
+    );
+  });
+
+  it('loads as the active account for a pasted link', async () => {
+    const { load } = await build();
+
+    expect(load).toHaveBeenCalledWith(expect.anything(), undefined);
+  });
 
   it('announces loading before a deferred preview resolves', async () => {
     const request = new Subject<RoomLinkPreview>();

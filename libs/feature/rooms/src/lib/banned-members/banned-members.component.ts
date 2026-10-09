@@ -11,7 +11,10 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnTooltip } from '@trinity/components/generic-content';
+import {
+  EmptyStateComponent,
+  TrnTooltip,
+} from '@trinity/components/generic-content';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
   RoomActionPermissionsService,
@@ -31,7 +34,7 @@ import { filter } from 'rxjs';
   selector: 'trn-banned-members',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './banned-members.component.html',
-  imports: [TrnButton, TrnTooltip],
+  imports: [EmptyStateComponent, TrnButton, TrnTooltip],
 })
 export class BannedMembersComponent {
   readonly accountId = input<string | null>(null);

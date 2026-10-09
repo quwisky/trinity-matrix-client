@@ -1026,7 +1026,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     );
     expect(test.showToast).toHaveBeenCalledWith(
       'That notification destination could not be opened.',
-      { duration: 4000 },
+      { duration: 4000, variant: 'danger' },
     );
     expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
@@ -1080,7 +1080,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     );
     expect(test.showToast).toHaveBeenCalledWith(
       'A notification could not be shown.',
-      { duration: 4000 },
+      { duration: 4000, variant: 'danger' },
     );
     expect(test.workspaceNavigate).not.toHaveBeenCalled();
     expect(lifetime.closed).toBe(false);

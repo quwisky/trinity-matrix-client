@@ -12,20 +12,8 @@
   }
 
   .room-preview__status {
-    display: flex;
     min-height: 180px;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--trinity-space-3);
-    color: var(--trinity-text-muted);
-    text-align: center;
-
-    h3 {
-      font-size: var(--trinity-type-title-size);
-      font-weight: 700;
-      color: var(--trinity-text-bright);
-    }
+    align-content: center;
   }
 
   .room-preview__identity {

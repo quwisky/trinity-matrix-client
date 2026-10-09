@@ -14,6 +14,7 @@ import { WorkspaceBackService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
 import {
   AvatarComponent,
+  EmptyStateComponent,
   TrnSpinnerComponent,
 } from '@trinity/components/generic-content';
 import {
@@ -38,6 +39,7 @@ import { ApplicationRecoveryPresenter } from '../application-recovery.presenter'
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AvatarComponent,
+    EmptyStateComponent,
     TrnButton,
     TrnSettingsLayoutComponent,
     TrnSpinnerComponent,

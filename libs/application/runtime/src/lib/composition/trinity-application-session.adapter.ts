@@ -252,6 +252,7 @@ export class TrinityApplicationSessionAdapter {
           if (this.hostHealth.badgeWrite(outcome))
             this.toast.show('The app badge could not be updated.', {
               duration: 4000,
+              variant: 'danger',
             });
         }),
         ignoreElements(),
@@ -459,6 +460,7 @@ export class TrinityApplicationSessionAdapter {
     this.hostHealth.incident('host', operation, code);
     this.toast.show('A host navigation action could not be completed.', {
       duration: 4000,
+      variant: 'danger',
     });
   }
 

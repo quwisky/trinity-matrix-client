@@ -4,19 +4,17 @@
   data-testid="keyword-rules"
 >
   @if (isLoading()) {
-    <p
-      class="m-0 py-3 text-sm text-muted-foreground"
+    <trn-empty-state
+      layout="line"
+      body="Loading your keywords…"
       data-testid="keyword-loading"
-    >
-      Loading your keywords…
-    </p>
+    />
   } @else if (isEmpty()) {
-    <p
-      class="m-0 py-3 text-sm text-muted-foreground"
+    <trn-empty-state
+      layout="line"
+      body="You have no keywords yet."
       data-testid="keyword-empty"
-    >
-      You have no keywords yet.
-    </p>
+    />
   } @else {
     @for (keyword of keywords(); track keyword.ruleId) {
       <trn-settings-row [label]="keyword.pattern" data-testid="keyword-row">

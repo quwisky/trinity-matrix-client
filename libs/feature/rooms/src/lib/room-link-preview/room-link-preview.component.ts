@@ -16,7 +16,10 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AvatarComponent } from '@trinity/components/generic-content';
+import {
+  AvatarComponent,
+  EmptyStateComponent,
+} from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import {
@@ -48,6 +51,7 @@ export interface RoomLinkPreviewResult {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AvatarComponent,
+    EmptyStateComponent,
     TrnButton,
     TrnIconComponent,
     TrnSpinnerComponent,
@@ -60,6 +64,9 @@ export interface RoomLinkPreviewResult {
 export class RoomLinkPreviewComponent implements OnInit {
   readonly target =
     input.required<Extract<MatrixLinkTarget, { kind: 'room' }>>();
+
+  /** The account to preview as; omitted for a pasted link, which uses the active account. */
+  readonly accountId = input<string>();
 
   private readonly dialogRef =
     inject<TrnDialogRef<RoomLinkPreviewResult | null>>(TrnDialogRef);
@@ -176,7 +183,7 @@ export class RoomLinkPreviewComponent implements OnInit {
     this.actionError.set(null);
     this.success.set(null);
     this.roomLinks
-      .preview(this.target())
+      .preview(this.target(), this.accountId())
       .pipe(
         takeUntilDestroyed(this.destroyRef),
         finalize(() => this.loading.set(false)),

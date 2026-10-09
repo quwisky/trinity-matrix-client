@@ -11,11 +11,12 @@ import {
 import { TrnButton, TrnInput } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import type { SettingsSearchResult } from '../../settings-sections';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 
 @Component({
   selector: 'trn-settings-directory-search',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnInput, TrnIconComponent],
+  imports: [EmptyStateComponent, TrnButton, TrnInput, TrnIconComponent],
   templateUrl: './settings-directory-search.component.html',
   host: { class: 'block min-w-0 py-2' },
 })

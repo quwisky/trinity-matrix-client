@@ -29,6 +29,31 @@
     background: var(--trinity-state-hover-surface);
   }
 
+  .invite__open {
+    @include interactive-row;
+
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+
+    // Same avatar-to-text gap the row had before the open button wrapped them.
+    gap: var(--trinity-space-3);
+    padding: 0;
+    color: inherit;
+    text-align: start;
+
+    // The row already rests on the hover surface, so hover steps one surface further.
+    &:hover:where(:not(:disabled)):not(:active) {
+      background: var(--trinity-state-selected-hover-surface);
+
+      // Muted meta text drops below 4.5:1 on this surface; take its foreground like room rows do.
+      .invite__meta {
+        color: var(--trinity-state-selected-hover-foreground);
+      }
+    }
+  }
+
   .invite__avatar {
     flex: 0 0 auto;
   }

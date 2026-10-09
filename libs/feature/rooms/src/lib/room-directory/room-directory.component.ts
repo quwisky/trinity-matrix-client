@@ -21,7 +21,10 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import { PublicRoomsService } from '@trinity/data-access/discovery';
-import { AvatarComponent } from '@trinity/components/generic-content';
+import {
+  AvatarComponent,
+  EmptyStateComponent,
+} from '@trinity/components/generic-content';
 import {
   describeMatrixRequestFailure,
   initialOf,
@@ -53,6 +56,7 @@ export interface DirectoryJoin {
     TrnButton,
     TrnInput,
     AvatarComponent,
+    EmptyStateComponent,
     TrnDialogActions,
     TrnDialogShellComponent,
   ],

@@ -10,7 +10,8 @@
   }
 
   .crypto-surface {
-    @include surface;
+    width: min(100%, 640px);
+    margin-inline: auto;
   }
 
   .crypto-flow > .text-muted-foreground,

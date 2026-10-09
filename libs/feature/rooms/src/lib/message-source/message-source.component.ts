@@ -5,6 +5,7 @@ import {
   input,
 } from '@angular/core';
 import { TrnButton } from '@trinity/components/controls';
+import { copyText } from '../shared/copy-text';
 import {
   TrnDialogRef,
   TrnDialogActions,
@@ -61,12 +62,7 @@ export class MessageSourceComponent {
 
   /** Copy the source, toasting only once the write resolves — never on a rejection. */
   copy(): void {
-    void (
-      navigator.clipboard?.writeText(this.source()) ?? Promise.reject()
-    ).then(
-      () => this.toast.show('Source copied.', { duration: 2000 }),
-      () => this.toast.show('Could not copy the source.', { duration: 2000 }),
-    );
+    copyText(this.source(), 'Source', this.toast);
   }
 
   close(): void {

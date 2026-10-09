@@ -10,6 +10,8 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { TrnIconComponent } from '@trinity/components/foundations';
+import { BannerComponent } from '@trinity/components/generic-content';
 import {
   TrnDialogRef,
   TrnDialogShellComponent,
@@ -24,7 +26,7 @@ import {
 @Component({
   selector: 'trn-room-widget-frame',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnDialogShellComponent],
+  imports: [BannerComponent, TrnDialogShellComponent, TrnIconComponent],
   templateUrl: './room-widget-frame.component.html',
   styleUrl: './room-widget-frame.component.scss',
 })

@@ -80,6 +80,7 @@
         (removeRoom)="spaceActions.onRemoveFromSpace($event)"
         (leaveRoom)="roomActions.onLeaveRoom($event)"
         (openChildSpace)="routing.onSelectSpaceRow($event)"
+        (previewInvite)="inviteActions.onPreviewInvite($event)"
         (acceptInvite)="inviteActions.onAcceptInvite($event)"
         (declineInvite)="inviteActions.onDeclineInvite($event)"
         (setNotifyMode)="readState.onSetNotifyMode($event)"
@@ -170,6 +171,7 @@
              list in place, so the reader keeps their position. -->
           <trn-message-list
             [windowed]="flags.virtualTimeline()"
+            [introShown]="roomIntro()"
             [messages]="timeline.messages()"
             [threadSummaries]="threads.summaries()"
             [canPin]="pinned.canMutate()"
@@ -204,7 +206,29 @@
             (matrixLink)="messageActions.onMatrixLink($event)"
             (pollVote)="messageActions.onPollVote($event)"
             (pollEnd)="messageActions.onPollEnd($event)"
-          />
+          >
+            @if (roomIntro()) {
+              <trn-empty-state
+                role="status"
+                icon="user-plus"
+                title="It’s just you here"
+                body="Invite people to start the conversation."
+                data-room-intro
+                data-testid="room-intro"
+              >
+                <button
+                  trnEmptyStateActions
+                  trnBtn
+                  type="button"
+                  size="sm"
+                  data-testid="room-intro-invite"
+                  (click)="roomActions.onInviteToRoom()"
+                >
+                  Invite people
+                </button>
+              </trn-empty-state>
+            }
+          </trn-message-list>
           @if (vm.activeRoom(); as room) {
             @if (roomSurfaces.renderedSurface(); as panel) {
               @if (panel.kind !== 'members') {

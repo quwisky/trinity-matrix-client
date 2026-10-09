@@ -24,7 +24,10 @@ import {
 } from '@trinity/data-access/timeline';
 import { initialOf } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
-import { EmptyStateComponent } from '@trinity/components/generic-content';
+import {
+  BannerComponent,
+  EmptyStateComponent,
+} from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
@@ -74,6 +77,7 @@ interface HighlightPart {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     SidePanelHeaderComponent,
+    BannerComponent,
     EmptyStateComponent,
     TrnIconComponent,
     AvatarComponent,

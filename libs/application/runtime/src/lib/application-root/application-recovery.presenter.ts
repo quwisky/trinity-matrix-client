@@ -59,7 +59,10 @@ export class ApplicationRecoveryPresenter {
           map(classifyClearDataIntent),
           switchMap((intent) => {
             if (intent === 'mistyped') {
-              this.toast.show(CLEAR_DATA_MISTYPED_MESSAGE, { duration: 4000 });
+              this.toast.show(CLEAR_DATA_MISTYPED_MESSAGE, {
+                duration: 4000,
+                variant: 'danger',
+              });
             }
             return intent === 'confirmed' ? this.runtime.recover() : EMPTY;
           }),
@@ -82,6 +85,7 @@ export class ApplicationRecoveryPresenter {
             if (intent === 'mistyped') {
               this.toast.show(RESET_CONFIG_MISTYPED_MESSAGE, {
                 duration: 4000,
+                variant: 'danger',
               });
             }
             return intent === 'confirmed' ? this.runtime.recover() : EMPTY;
@@ -108,7 +112,7 @@ export class ApplicationRecoveryPresenter {
         restartRequired
           ? 'Cleanup finished with some residue. Restart Trinity before trying recovery again.'
           : 'Cleanup finished with residue. Use recovery again to retry only the remaining safe work.',
-        { duration: 6000 },
+        { duration: 6000, variant: 'warning' },
       );
     }
   }

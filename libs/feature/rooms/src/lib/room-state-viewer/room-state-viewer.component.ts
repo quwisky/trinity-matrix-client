@@ -16,6 +16,7 @@ import {
 } from '@trinity/components/overlay';
 import type { RoomStateEntry } from '@trinity/data-access/room-administration';
 import { copyText } from '../shared/copy-text';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 
 /** One event type's current state events, in state-key order. */
 export interface RoomStateGroup {
@@ -32,6 +33,7 @@ export interface RoomStateGroup {
   selector: 'trn-room-state-viewer',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    EmptyStateComponent,
     FormField,
     TrnButton,
     TrnInput,

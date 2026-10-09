@@ -21,6 +21,7 @@ import {
   WORKSPACE_SYSTEM_STATUS,
 } from '@trinity/application/workspace';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
+import { TrnButton } from '@trinity/components/controls';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ImagePackService } from '@trinity/data-access/media';
@@ -54,6 +55,7 @@ import { EncryptionBannerComponent } from '../encryption-banner/encryption-banne
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
 import { type SwipeDirection } from '../message-row/message-row.component';
+import { showRoomIntro } from './room-intro';
 import { RoomShellStore } from './room-shell-store';
 import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 import { ShellStatusService } from './shell-status.service';
@@ -110,6 +112,7 @@ const PANEL_DRAWER_PX = 480;
   styleUrls: ['rooms.page.scss'],
   imports: [
     EmptyStateComponent,
+    TrnButton,
     RoomHeaderComponent,
     ServerRailComponent,
     ChannelSidebarComponent,
@@ -249,6 +252,18 @@ export class RoomsPage {
   readonly inviteActions = inject(InviteActionsService);
   readonly spaceActions = inject(SpaceActionsService);
   readonly roomActions = inject(RoomActionsService);
+
+  /** The empty-room Invite prompt; see showRoomIntro for when it shows. */
+  protected readonly roomIntro = computed(() =>
+    showRoomIntro({
+      hasRoom: !!this.vm.activeRoom(),
+      direct: this.vm.activeRoomIsDirect(),
+      canInvite: this.vm.roomInvitePermission().available,
+      loadState: this.timeline.loadState(),
+      joinedMembers: this.vm.membersView().current?.length ?? null,
+      messages: this.timeline.messages(),
+    }),
+  );
   readonly readState = inject(ReadStateService);
   readonly messageActions = inject(MessageActionsService);
   readonly shortcutActions = inject(ShellShortcutsService);

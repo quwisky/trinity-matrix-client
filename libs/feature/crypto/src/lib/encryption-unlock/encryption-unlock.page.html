@@ -6,8 +6,10 @@
   <trn-page-header [title]="title()" />
 
   <main class="crypto-route">
-    <section class="crypto-surface">
-      <ng-container [ngTemplateOutlet]="body" />
+    <section class="crypto-surface" trnCard variant="muted" size="md">
+      <div trnCardContent>
+        <ng-container [ngTemplateOutlet]="body" />
+      </div>
     </section>
   </main>
 }

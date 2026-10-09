@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
@@ -89,6 +89,7 @@ describe('MessageListComponent', () => {
       jumpToNonce: number;
       canLoadOlder: boolean;
       windowed: boolean;
+      introShown: boolean;
     }> = {},
   ) {
     return render(MessageListComponent, {
@@ -651,6 +652,33 @@ describe('MessageListComponent', () => {
     expect(cmp.topPad()).toBe(0);
     expect(cmp.bottomPad()).toBe(0);
     expect(container.textContent).toContain('No messages yet.');
+  });
+
+  it('adds no empty line while the room shows its own empty-room prompt', async () => {
+    const { container } = await renderList({ messages: [], introShown: true });
+
+    expect(container.textContent).not.toContain('No messages yet.');
+  });
+
+  it('projects the room intro into the timeline column, ahead of the list', async () => {
+    // A column-wide prompt above the chat row pushed an open side panel down with it, so the
+    // prompt has to live inside the list host, beside the timeline.
+    @Component({
+      imports: [MessageListComponent],
+      template: `
+        <trn-message-list [introShown]="true">
+          <p data-room-intro data-testid="intro">Just you</p>
+        </trn-message-list>
+      `,
+    })
+    class IntroHostComponent {}
+
+    const { container } = await render(IntroHostComponent);
+
+    const host = container.querySelector('trn-message-list');
+    const intro = container.querySelector('[data-testid="intro"]');
+    expect(intro?.parentElement).toBe(host);
+    expect(intro?.nextElementSibling?.classList.contains('list')).toBe(true);
   });
 
   it('jumps synchronously to an already-rendered row', async () => {

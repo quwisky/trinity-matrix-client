@@ -46,10 +46,6 @@
     }
   }
 
-  .gif-picker__status {
-    @include picker-status;
-  }
-
   .gif-picker__attribution {
     flex-shrink: 0;
     padding-top: var(--trinity-space-2);
