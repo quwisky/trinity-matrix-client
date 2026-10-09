@@ -1,5 +1,5 @@
 import { Location } from '@angular/common';
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import {
@@ -12,6 +12,7 @@ import { BadgeCoordinator } from '@trinity/application/badge';
 import {
   InboundRoomLinkService,
   WorkspaceBackService,
+  type WorkspaceSurface,
   WorkspaceNavigationService,
 } from '@trinity/application/workspace';
 import {
@@ -88,6 +89,8 @@ interface SessionHarness {
   readonly hasDialog: ReturnType<typeof vi.fn>;
   readonly closeTopmost: ReturnType<typeof vi.fn>;
   readonly workspaceActive: ReturnType<typeof signal<boolean>>;
+  readonly workspaceSurface: ReturnType<typeof signal<WorkspaceSurface | null>>;
+  readonly routedSurface: ReturnType<typeof signal<WorkspaceSurface | null>>;
   readonly workspaceOwnsOverlay: ReturnType<typeof vi.fn>;
   readonly workspaceBack: ReturnType<typeof vi.fn>;
   readonly setHistoryGesturesEnabled: ReturnType<typeof vi.fn>;
@@ -136,6 +139,8 @@ function setup(
   const hasDialog = vi.fn(() => dialogOpen());
   const closeTopmost = vi.fn(() => false);
   const workspaceActive = signal(false);
+  const workspaceSurface = signal<WorkspaceSurface | null>(null);
+  const routedSurface = signal<WorkspaceSurface | null>(null);
   const workspaceOwnsOverlay = vi.fn(() => false);
   const workspaceBack = vi.fn(() => of({ kind: 'unhandled' as const }));
   const setHistoryGesturesEnabled = vi.fn();
@@ -172,6 +177,7 @@ function setup(
       MockProvider(WorkspaceRoutedSurfaceAdapter, {
         roomProjectionDemand: roomProjectionDemand.asReadonly(),
         activeRoomId: activeRoomId.asReadonly(),
+        owns: (surface: WorkspaceSurface) => surface === routedSurface(),
         run: () => EMPTY,
       }),
       MockProvider(WorkspaceApplicationSurfacePresenterAdapter, {
@@ -213,7 +219,10 @@ function setup(
         closeTopmost,
       }),
       MockProvider(WorkspaceBackService, {
-        hasActive: workspaceActive,
+        hasActive: computed(
+          () => workspaceActive() || workspaceSurface() !== null,
+        ),
+        activeSurface: workspaceSurface,
         activeOwnsTopmostOverlay: workspaceOwnsOverlay,
         back: workspaceBack,
       }),
@@ -249,6 +258,8 @@ function setup(
     hasDialog,
     closeTopmost,
     workspaceActive,
+    workspaceSurface,
+    routedSurface,
     workspaceOwnsOverlay,
     workspaceBack,
     setHistoryGesturesEnabled,
@@ -1212,6 +1223,65 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.setHistoryGesturesEnabled).toHaveBeenCalledTimes(
       callsAfterStop,
     );
+  });
+
+  it('keeps the native Back gesture on a routed Settings page until a dialog or panel covers it', () => {
+    const test = setup();
+    const routedSettings: WorkspaceSurface = {
+      layer: 'application',
+      surface: { kind: 'settings', section: 'appearance' },
+    };
+    test.routedSurface.set(routedSettings);
+    test.workspaceSurface.set(routedSettings);
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
+
+    test.dialogOpen.set(true);
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(false);
+    test.dialogOpen.set(false);
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
+
+    test.workspaceSurface.set({ layer: 'room', surface: { kind: 'threads' } });
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(false);
+    test.workspaceSurface.set(routedSettings);
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
+    lifetime.unsubscribe();
+  });
+
+  it.each(['setup', 'unlock', 'verify'] as const)(
+    'keeps the native Back gesture on the routed Encryption %s page',
+    (flow) => {
+      const test = setup();
+      const routedTrust: WorkspaceSurface = {
+        layer: 'application',
+        surface: { kind: 'trust', flow },
+      };
+      test.routedSurface.set(routedTrust);
+      test.workspaceSurface.set(routedTrust);
+      const lifetime = test.adapter.run(of(void 0)).subscribe();
+      TestBed.tick();
+
+      expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
+      lifetime.unsubscribe();
+    },
+  );
+
+  it('keeps the native Back gesture off over a phone Conversation, which Workspace dismisses to the list', () => {
+    const test = setup();
+    test.workspaceSurface.set({
+      layer: 'conversation',
+      surface: { kind: 'conversation', accountId: 'a1', roomId: '!r:hs' },
+    });
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    TestBed.tick();
+
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(false);
+    lifetime.unsubscribe();
   });
 
   it('offers, activates and reloads a ready service-worker version', async () => {
