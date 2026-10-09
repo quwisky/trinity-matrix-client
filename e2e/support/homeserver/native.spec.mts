@@ -14,6 +14,8 @@ import {
   ensureSynapseVenv,
   generateSynapseConfig,
   nativeCaddyfile,
+  nativeDexConfig,
+  nativeDexVersion,
   nativePaths,
   readNativePids,
   runningNativeServices,
@@ -114,14 +116,18 @@ describe('native homeserver runtime', () => {
     await ensureSynapseVenv(paths, fake.api, { log: () => undefined });
     expect(fake.execCalls).toEqual([
       ['python3', '-m', 'venv', paths.venv],
-      [paths.python, '-c', 'import synapse; print(synapse.__version__)'],
+      [
+        paths.python,
+        '-c',
+        'import authlib; from importlib.metadata import version; print(version("matrix-synapse"))',
+      ],
       [
         paths.python,
         '-m',
         'pip',
         'install',
         '--quiet',
-        `matrix-synapse[url-preview]==${SYNAPSE_VERSION}`,
+        `matrix-synapse[url-preview,oidc]==${SYNAPSE_VERSION}`,
       ],
     ]);
   });
@@ -133,7 +139,11 @@ describe('native homeserver runtime', () => {
     const fake = fakeProcesses({ installed: SYNAPSE_VERSION });
     await ensureSynapseVenv(paths, fake.api, { log: () => undefined });
     expect(fake.execCalls).toEqual([
-      [paths.python, '-c', 'import synapse; print(synapse.__version__)'],
+      [
+        paths.python,
+        '-c',
+        'import authlib; from importlib.metadata import version; print(version("matrix-synapse"))',
+      ],
     ]);
   });
 
@@ -165,6 +175,62 @@ describe('native homeserver runtime', () => {
       'homeserver',
       'caddy',
     ]);
+  });
+
+  it('starts Dex third when asked, on the loopback config, and records its PID', async () => {
+    const paths = layout();
+    const fake = fakeProcesses();
+    startNativeServices(paths, fake.api, { PATH: '/bin' }, { dex: true });
+    expect(fake.spawns[2]).toMatchObject({
+      file: 'dex',
+      args: ['serve', paths.dexConfig],
+      logFile: paths.logs.dex,
+      env: { PATH: '/bin' },
+    });
+    expect(JSON.parse(readFileSync(paths.pidFile, 'utf8'))).toEqual({
+      homeserver: 4100,
+      caddy: 4101,
+      dex: 4102,
+    });
+    expect(runningNativeServices(paths.pidFile, fake.api)).toEqual([
+      'homeserver',
+      'caddy',
+      'dex',
+    ]);
+    await stopNativeServices(paths.pidFile, fake.api, {
+      graceMs: 50,
+      pollMs: 1,
+    });
+    expect(fake.signals).toContainEqual([-4102, 'SIGTERM']);
+    expect(fake.live.size).toBe(0);
+  });
+
+  it('serves the shared dex.yaml on loopback only', () => {
+    const shared = readFileSync(join(import.meta.dirname, 'dex.yaml'), 'utf8');
+    const native = nativeDexConfig(shared);
+    expect(native).toMatch(/^\s*http: 127\.0\.0\.1:5556$/mu);
+    expect(native).not.toContain('0.0.0.0');
+    // Everything else is the shared provider: issuer, client and static users.
+    expect(native).toContain('issuer: http://localhost:5556/dex');
+    expect(native).toContain('username: sso-reset-e2e');
+    expect(() => nativeDexConfig('issuer: x\n')).toThrow(
+      /no `http: 0.0.0.0:5556`/,
+    );
+  });
+
+  it('reads the installed Dex version, or null without a dex on PATH', async () => {
+    const versionOf = (exec: NativeProcessApi['exec']) =>
+      nativeDexVersion({ ...fakeProcesses().api, exec });
+    await expect(
+      versionOf(async () => ({
+        stdout: 'Dex Version: 2.46.0\nGo Version: go1.27.1\n',
+      })),
+    ).resolves.toBe('2.46.0');
+    await expect(
+      versionOf(async () => {
+        throw Object.assign(new Error('spawn dex ENOENT'), { code: 'ENOENT' });
+      }),
+    ).resolves.toBeNull();
   });
 
   it('records Synapse even when Caddy cannot start', () => {

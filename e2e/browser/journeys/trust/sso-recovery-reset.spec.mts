@@ -22,7 +22,8 @@ import {
 //
 // This used to be unit-tested only, against a fabricated 401. It is now driven against a
 // real password-less account, courtesy of the harness's Dex provider — see
-// e2e/support/homeserver/dex.yaml. Needs Docker; self-skips otherwise like the other web specs.
+// e2e/support/homeserver/dex.yaml. Needs Dex (Docker, or native with dex on PATH);
+// self-skips otherwise.
 //
 // It runs on `session.ssoReset`, NOT the general `session.sso`: everything it seeds is
 // permanent (a cross-signing master key can be replaced but never removed, and a
@@ -32,7 +33,11 @@ import {
 const session = homeserverSession();
 
 test.describe('Recovery reset on an SSO account', () => {
-  test.skip(!session.available, 'needs the Synapse + Dex harness (Docker)');
+  // `sso` is set only when Dex runs: Docker, or the native runtime with `dex` on PATH.
+  test.skip(
+    !session.available || !session.sso,
+    'needs the Synapse + Dex harness (Docker, or native with dex on PATH)',
+  );
   // Not part of the skip: the invocation owner fails before tests when the harness is missing
   // cannot report a green run, and start() cannot resolve without the sso block (it
   // waits on Dex's discovery document first). Gating the skip on it too would hand back
