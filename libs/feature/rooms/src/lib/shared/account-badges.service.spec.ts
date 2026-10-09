@@ -148,4 +148,23 @@ describe('AccountBadgesService', () => {
 
     expect(svc.badges().size).toBe(0);
   });
+
+  it('badges every signed-in account for surfaces outside the mix', () => {
+    const { svc } = harness({
+      mixing: false,
+      selected: ['@a:hs'],
+      profiles: {
+        '@a:hs': { displayName: 'Ann' },
+        '@b:hs': { displayName: 'Ben', avatarMxc: 'mxc://hs/b' },
+      },
+    });
+    expect(svc.badges().size).toBe(0);
+    expect(svc.everyAccount().get('@b:hs')).toEqual({
+      id: '@b:hs',
+      name: 'Ben',
+      initial: 'B',
+      avatarMxc: 'mxc://hs/b',
+    });
+    expect([...svc.everyAccount().keys()]).toEqual(['@a:hs', '@b:hs']);
+  });
 });

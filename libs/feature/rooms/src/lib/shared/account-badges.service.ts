@@ -1,8 +1,25 @@
 import { Injectable, computed, inject } from '@angular/core';
-import { AccountIdentitiesService } from '@trinity/data-access/identity';
+import {
+  AccountIdentitiesService,
+  type AccountIdentity,
+} from '@trinity/data-access/identity';
 import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
 import { type AccountBadge } from '@trinity/components/generic-content';
 import { initialOf } from '@trinity/util/matrix';
+
+/** Builds a badge for a user from their profile or id. */
+function badgeOf(
+  userId: string,
+  profile: AccountIdentity | undefined,
+): AccountBadge {
+  const name = profile?.displayName || userId;
+  return {
+    id: userId,
+    name,
+    initial: initialOf(name),
+    avatarMxc: profile?.avatarMxc ?? null,
+  };
+}
 
 /**
  * Owning-account badges for the mixed-account view: account id → the avatar/initial/name
@@ -34,13 +51,19 @@ export class AccountBadgesService {
     const profiles = this.identities.identities();
     for (const userId of view.accountIds) {
       const profile = profiles.get(userId);
-      const name = profile?.displayName || userId;
-      badges.set(userId, {
-        id: userId,
-        name,
-        initial: initialOf(name),
-        avatarMxc: profile?.avatarMxc ?? null,
-      });
+      badges.set(userId, badgeOf(userId, profile));
+    }
+    return badges;
+  });
+
+  /**
+   * Every signed-in account's badge, mixed or not. The rail's unread chats list other
+   * accounts' chats even with one account selected, so they cannot use {@link badges}.
+   */
+  readonly everyAccount = computed<ReadonlyMap<string, AccountBadge>>(() => {
+    const badges = new Map<string, AccountBadge>();
+    for (const [userId, profile] of this.identities.identities()) {
+      badges.set(userId, badgeOf(userId, profile));
     }
     return badges;
   });
