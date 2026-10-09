@@ -79,21 +79,46 @@ function pushTypecheck(command, dir) {
   return `Push blocked: \`node scripts/nx.mjs affected -t typecheck --base=origin/main\` failed in ${root}. Fix the type errors, then push again.\n\n${tail}`;
 }
 
+/**
+ * `gh pr create|ready` in command position (not quoted text), with any global `-R/--repo`
+ * given before `pr`. Group 1: the global repo flag, 2: the subcommand, 3: its arguments.
+ */
+const GH_PR =
+  /(?:^|[;&|(\n]\s*)(?:\w+=\S*\s+)*gh((?:\s+(?:-R|--repo)(?:=|\s+)\S+)*)\s+pr\s+(create|ready)\b([^\n;&|]*)/g;
+
+/** Words of a simple argument list, without quotes, redirections or a trailing comment. */
+const words = (text) =>
+  text
+    .replace(/\s#.*$/, '')
+    .replace(/\s\d?>&?\s*\S+/g, '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.replace(/^(["'])(.*)\1$/, '$2'));
+
 /** Pull requests open as drafts and are marked ready only once every check passes. */
 function draftPullRequest(command, dir) {
-  const pr = command.match(/\bgh\s+pr\s+(create|ready)\b([^\n;&|]*)/);
-  if (!pr) return null;
-  const args = pr[2].trim().split(/\s+/).filter(Boolean);
-  if (pr[1] === 'create') {
-    if (args.includes('--draft') || args.includes('-d')) return null;
-    return 'Open pull requests as drafts: add --draft. Mark one ready with `gh pr ready <number>` only when its checks are green and its review is done (.agents/rules/git/draft-pull-requests.md).';
+  for (const pr of command.matchAll(GH_PR)) {
+    const repo = words(pr[1]);
+    if (pr[2] === 'create') {
+      // Look past the first `&`, `;` or newline: a multi-line --body may come before --draft.
+      if (/\s(?:-d|--draft(?:=true)?)(?=\s|$)/.test(command.slice(pr.index)))
+        continue;
+      return 'Open pull requests as drafts: add --draft. Mark one ready with `gh pr ready <number>` only when its checks are green and its review is done (.agents/rules/git/draft-pull-requests.md).';
+    }
+    const args = [...words(pr[3]), ...repo];
+    if (args.includes('--undo')) continue;
+    const checks = run('gh', ['pr', 'checks', ...args], dir, 30_000);
+    if (checks.status === 0) continue;
+    const output = `${checks.stdout ?? ''}${checks.stderr ?? ''}${checks.error?.message ?? ''}`;
+    const tail = output.trim().split('\n').slice(-15).join('\n');
+    const reason =
+      checks.status === 1 || checks.status === 8
+        ? `\`gh pr checks ${args.join(' ')}\` does not pass yet`
+        : `\`gh pr checks ${args.join(' ')}\` could not run`;
+    return `Keep the pull request a draft: ${reason}. Mark it ready once every check is green and its review is done.\n\n${tail}`;
   }
-  if (args.includes('--undo')) return null;
-  const checks = run('gh', ['pr', 'checks', ...args], dir, 30_000);
-  if (checks.status === 0) return null;
-  const output = `${checks.stdout ?? ''}${checks.stderr ?? ''}${checks.error?.message ?? ''}`;
-  const tail = output.trim().split('\n').slice(-15).join('\n');
-  return `Keep the pull request a draft: \`gh pr checks ${args.join(' ')}\` does not pass yet (exit ${checks.status}). Mark it ready once every check is green and its review is done.\n\n${tail}`;
+  return null;
 }
 
 export function check(payload) {

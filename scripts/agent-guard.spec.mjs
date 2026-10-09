@@ -69,6 +69,18 @@ describe('agent-guard PreToolUse hook', () => {
     expect(result.stderr).toMatch(/--draft/);
     expect(hook('gh pr create --draft --base main').status).toBe(0);
     expect(hook('gh pr create -d -R owner/repo').status).toBe(0);
+    expect(hook('gh pr create --draft=true').status).toBe(0);
+    expect(hook('cd x && gh -R owner/repo pr create --fill').status).toBe(2);
+    expect(
+      hook(
+        'gh pr create --body "$(cat <<\'EOF\'\nQ & A\nEOF\n)" --draft --base main',
+      ).status,
+    ).toBe(0);
+  });
+
+  it('ignores gh pr commands that only appear as text', () => {
+    expect(hook('grep -rn "gh pr create" .agents').status).toBe(0);
+    expect(hook("rg 'gh pr ready' docs", repo, fakeGh(1)).status).toBe(0);
   });
 
   it('marks a pull request ready only when its checks pass', () => {
@@ -80,6 +92,27 @@ describe('agent-guard PreToolUse hook', () => {
     );
     expect(hook('gh pr ready 12', repo, fakeGh(0)).status).toBe(0);
     expect(hook('gh pr ready 12 --undo', repo, fakeGh(1)).status).toBe(0);
+  });
+
+  it('checks the repository named before pr and every pull request in the command', () => {
+    expect(hook('gh -R owner/repo pr ready "12"', repo, fakeGh(0)).status).toBe(
+      0,
+    );
+    expect(readFileSync(join(repo, 'gh-args'), 'utf8').trim()).toBe(
+      'pr checks 12 -R owner/repo',
+    );
+    expect(
+      hook('gh pr ready 1 2>&1 && gh pr ready 2', repo, fakeGh(1)).status,
+    ).toBe(2);
+  });
+
+  it('keeps a pull request a draft when gh cannot run', () => {
+    const missing = hook('gh pr ready 12', repo, {
+      ...process.env,
+      PATH: join(repo, 'no-such-bin'),
+    });
+    expect(missing.status).toBe(2);
+    expect(missing.stderr).toMatch(/could not run/);
   });
 
   it('blocks a push when the affected typecheck fails', () => {
