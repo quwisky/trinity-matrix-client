@@ -87,13 +87,22 @@ async function answerDexInSafariView(
     timeout: 90_000,
     timeoutMsg: 'the identity provider login never appeared in the Safari view',
   });
-  await $('-ios predicate string:type == "XCUIElementTypeTextField"').setValue(
-    email,
-  );
+  // By label, not position: on iOS 26 the Safari view's own address bar is a text field too.
   await $(
-    '-ios predicate string:type == "XCUIElementTypeSecureTextField"',
-  ).setValue(pass);
-  await login.click();
+    '-ios predicate string:type == "XCUIElementTypeTextField" AND (label CONTAINS[c] "email" OR placeholderValue CONTAINS[c] "email")',
+  ).setValue(email);
+  // Return submits Dex's form: the keyboard's accessory bar can cover the Login button.
+  await $(
+    '-ios predicate string:type == "XCUIElementTypeSecureTextField" AND label CONTAINS[c] "password"',
+  ).setValue(`${pass}\n`);
+  // The app closes the Safari view once the callback arrives; until then its WebView sits
+  // behind it, and reading the app page can stall.
+  await login.waitForExist({
+    reverse: true,
+    timeout: 90_000,
+    timeoutMsg:
+      'the Safari view never closed after signing in to the identity provider',
+  });
 }
 
 describe('mobile SSO sign-in', () => {
