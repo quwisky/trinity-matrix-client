@@ -4,7 +4,9 @@ import {
   MAX_NAMED_REACTORS,
   collectMessageSenders,
   firstUrl,
+  isDisplayableMessage,
   linkifyText,
+  normalizeMediaPayload,
   parseGeoUri,
   parseLocationInput,
   reactionDetailsFor,
@@ -863,4 +865,138 @@ describe('sanitizeMatrixHtml mention pills', () => {
     expect(sanitizeMatrixHtml(source, true)).toContain('mention--self');
     expect(sanitizeMatrixHtml(source, false)).not.toContain('mention--self');
   });
+});
+
+describe('normalizeMediaPayload — display types', () => {
+  const media = (
+    msgtype: string,
+    info: Record<string, unknown>,
+    extra: Record<string, unknown> = {},
+  ) =>
+    normalizeMediaPayload(
+      { msgtype, body: 'attachment', url: 'mxc://hs/a', info, ...extra },
+      msgtype,
+    );
+
+  it.each([
+    'image/svg+xml',
+    'image/svg+xml; charset=utf-8',
+    'image/svg+xml;',
+    'image/svg+xml ',
+    ' Image/SVG+XML ;charset=utf-8',
+    'text/html; charset=utf-8',
+    'application/xhtml+xml; charset=utf-8',
+    'text/xml',
+  ])('lists an m.image declaring %j as a download-only file', (mimetype) => {
+    expect(media('m.image', { mimetype })?.kind).toBe('file');
+  });
+
+  it.each([
+    ['a trailing comma', 'image/svg+xml,'],
+    ['a NUL suffix', 'image/png\u0000'],
+    ['a NUL suffix after a parameter', 'image/svg+xml\u0000; charset=utf-8'],
+    ['a zero-width-space suffix', 'image/png\u200b'],
+    ['a zero-width-space prefix', '\u200bimage/png'],
+    ['a quoted type', '"image/png"'],
+    ['an embedded newline', 'image/png\nimage/svg+xml'],
+    ['a comma-separated list', 'image/png,text/html'],
+    ['a quoted parameter on a document type', 'image/svg+xml; name="a;b"'],
+    ['a missing subtype', 'image/'],
+  ])('lists an m.image declaring %s as a download-only file', (_, mimetype) => {
+    expect(media('m.image', { mimetype })?.kind).toBe('file');
+  });
+
+  it.each([
+    ['m.video', 'video/mp4\u0000'],
+    ['m.video', 'video/mp4,'],
+    ['m.audio', 'audio/ogg\u200b; codecs=opus'],
+    ['m.audio', 'audio/ogg,'],
+  ])(
+    'lists an %s declaring %j as a download-only file',
+    (msgtype, mimetype) => {
+      expect(media(msgtype, { mimetype })?.kind).toBe('file');
+    },
+  );
+
+  it('keeps an m.image with a quoted parameter containing a semicolon inline', () => {
+    expect(media('m.image', { mimetype: 'image/png; name="a;b"' })?.kind).toBe(
+      'image',
+    );
+  });
+
+  it.each(['image/png', 'image/jpeg; q=0.9', ' IMAGE/WEBP ', 'image/gif;'])(
+    'keeps an m.image declaring %j inline',
+    (mimetype) => {
+      expect(media('m.image', { mimetype })?.kind).toBe('image');
+    },
+  );
+
+  it('keeps a voice message declaring audio/ogg; codecs=opus as inline audio', () => {
+    const voice = media(
+      'm.audio',
+      { mimetype: 'audio/ogg; codecs=opus', duration: 1200 },
+      { 'org.matrix.msc3245.voice': {} },
+    );
+
+    expect(voice?.kind).toBe('audio');
+    expect(voice?.isVoice).toBe(true);
+  });
+
+  it('does not carry a thumbnail type outside the display allowlist', () => {
+    const payload = media('m.image', {
+      mimetype: 'image/png',
+      thumbnail_url: 'mxc://hs/thumb',
+      thumbnail_info: { mimetype: 'image/svg+xml; charset=utf-8' },
+    });
+
+    expect(payload?.thumbnailMimeType).toBe('application/octet-stream');
+  });
+
+  it('keeps an allowlisted thumbnail type and leaves an undeclared one unset', () => {
+    const declared = media('m.image', {
+      thumbnail_url: 'mxc://hs/thumb',
+      thumbnail_info: { mimetype: 'image/jpeg' },
+    });
+    const undeclared = media('m.image', { thumbnail_url: 'mxc://hs/thumb' });
+
+    expect(declared?.thumbnailMimeType).toBe('image/jpeg');
+    expect(undeclared?.thumbnailMimeType).toBeUndefined();
+  });
+});
+
+describe('isDisplayableMessage', () => {
+  /** Only the reads isDisplayableMessage makes. */
+  const event = (o: {
+    type: string;
+    state?: boolean;
+    replace?: boolean;
+  }): MatrixEvent =>
+    ({
+      getType: () => o.type,
+      isState: () => o.state ?? false,
+      isRelation: (relType?: string) =>
+        o.replace === true &&
+        (relType === undefined || relType === 'm.replace'),
+    }) as unknown as MatrixEvent;
+
+  it('accepts a message, a sticker and a poll start', () => {
+    expect(isDisplayableMessage(event({ type: 'm.room.message' }))).toBe(true);
+    expect(isDisplayableMessage(event({ type: 'm.sticker' }))).toBe(true);
+    expect(isDisplayableMessage(event({ type: 'm.poll.start' }))).toBe(true);
+  });
+
+  it('rejects an edit', () => {
+    expect(
+      isDisplayableMessage(event({ type: 'm.room.message', replace: true })),
+    ).toBe(false);
+  });
+
+  // A state event is never a message row, whatever its type says: a state key makes it
+  // room state, and nothing about its sender or timing makes it a conversation turn.
+  it.each(['m.room.message', 'm.sticker', 'm.poll.start'])(
+    'rejects a state event of type %s',
+    (type) => {
+      expect(isDisplayableMessage(event({ type, state: true }))).toBe(false);
+    },
+  );
 });

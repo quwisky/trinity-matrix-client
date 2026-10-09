@@ -17,6 +17,7 @@ import {
   type ICreateClientOpts,
   type MatrixError,
 } from 'matrix-js-sdk';
+import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
   Observable,
   catchError,
@@ -32,6 +33,7 @@ import {
   throwError,
 } from 'rxjs';
 import {
+  CryptoStoreKeyService,
   HostNetworkPolicyService,
   SessionStorageService,
   deleteDatabase,
@@ -65,7 +67,11 @@ export type PersistedAccountStartOutcome =
   | {
       readonly kind: 'failed';
       readonly failure:
-        'reauthentication-required' | 'transient-network' | 'crypto-failure';
+        | 'reauthentication-required'
+        | 'transient-network'
+        | 'crypto-failure'
+        | 'crypto-store-key-lost'
+        | 'secure-storage-unavailable';
     };
 
 export type PersistedAccountActivation = 'activate' | 'background';
@@ -146,6 +152,8 @@ interface AccountClient {
    * userId-derived prefix) reopens a store whose device id mismatches the new one.
    */
   readonly cryptoPrefix: string | undefined;
+  /** Whether its crypto store is keyed (false for a store created before store keys). */
+  readonly cryptoStoreEncrypted: boolean;
   /** The account's persistent sync store, retained so its IndexedDB can be closed. */
   readonly syncStore: IndexedDBStore | null;
   /** This account's coarse sync state (null until its first sync transition). */
@@ -156,6 +164,8 @@ interface AccountClient {
   readonly onLoggedOut: (err: MatrixError) => void;
   /** Its own 4S key holder, wired into this client's crypto callbacks. */
   readonly holder: SecretStorageKeyHolder;
+  /** Room keys the SDK last reported as waiting for backup upload; null before any report. */
+  readonly backupKeysRemaining: () => number | null;
 }
 
 /**
@@ -165,7 +175,7 @@ interface AccountClient {
  * `this.matrix.instance` readers stay scoped to whichever account is in view.
  *
  * Lifecycle per account (see apps/docs-developers/src/content/docs/architecture/matrix-integration.md):
- *   createClient -> initRustCrypto({ cryptoDatabasePrefix }) -> startClient()
+ *   createClient -> initRustCrypto({ cryptoDatabasePrefix, storageKey }) -> startClient()
  *
  * Components must NOT import matrix-js-sdk directly — go through this service and
  * the feature services (auth, sync, timeline) layered on top.
@@ -173,6 +183,7 @@ interface AccountClient {
 @Injectable({ providedIn: 'root' })
 export class MatrixClientService {
   private readonly storage = inject(SessionStorageService);
+  private readonly storeKeys = inject(CryptoStoreKeyService);
   private readonly projections = inject(ProjectionRuntime);
   private readonly hostNetworkPolicy = inject(HostNetworkPolicyService);
 
@@ -249,6 +260,16 @@ export class MatrixClientService {
   });
 
   /**
+   * Whether the ACTIVE account's crypto store is encrypted at rest (null when none is
+   * active). False for a store created before store keys existed: it stays as it is until
+   * the account signs in again on this device, which creates a new, encrypted store.
+   */
+  readonly cryptoStoreEncrypted: Signal<boolean | null> = computed(() => {
+    this._accountIds();
+    return this.active()?.cryptoStoreEncrypted ?? null;
+  });
+
+  /**
    * Connectivity for the UI: `offline` once the active account's sync is erroring
    * or reconnecting, else `online` (including the pre-first-sync window, so a fresh
    * start doesn't flash offline). Cached data still renders while offline thanks to
@@ -291,18 +312,48 @@ export class MatrixClientService {
   }
 
   /**
+   * Whether removing this account's local keys would lose nothing: key backup is active
+   * and no room key is still waiting to upload. `null` when the account is not live or
+   * its crypto cannot answer, so the caller can warn without claiming a backup status.
+   */
+  roomKeysBackedUp(userId: string): Observable<boolean | null> {
+    return defer(async () => {
+      const account = this.clients.get(userId);
+      const crypto = account?.client.getCrypto();
+      if (!account || !crypto) {
+        return null;
+      }
+      const version = await crypto.getActiveSessionBackupVersion();
+      return version !== null && account.backupKeysRemaining() === 0;
+    }).pipe(catchError(() => of(null)));
+  }
+
+  /**
    * An unstarted client for a stored session (no persistent store, no crypto, no sync),
    * for one-shot calls on a stored account whose client never started: `logout()` for an
    * OAuth account, whose tokens must still be revoked at its provider.
+   *
+   * `persistRefreshedTokens: false` keeps any token refresh in memory: for a client acting
+   * on a device that is being replaced, whose tokens must never be saved over the new
+   * device's.
    */
-  detachedClient(session: MatrixSession): MatrixClient {
+  detachedClient(
+    session: MatrixSession,
+    options: { readonly persistRefreshedTokens: boolean } = {
+      persistRefreshedTokens: true,
+    },
+  ): MatrixClient {
+    const { onTokenRefresh, ...tokens } = this.tokenOptions(session);
     return createClient({
       baseUrl: session.baseUrl,
       localTimeoutMs: MATRIX_REQUEST_TIMEOUT_MS,
       accessToken: session.accessToken,
       userId: session.userId,
       deviceId: session.deviceId,
-      ...this.tokenOptions(session),
+      ...tokens,
+      ...(options.persistRefreshedTokens && onTokenRefresh
+        ? { onTokenRefresh }
+        : {}),
     });
   }
 
@@ -345,7 +396,12 @@ export class MatrixClientService {
       catchError((error: unknown) =>
         error instanceof MatrixClientStartupError
           ? defer(() => {
-              if (error.failure === 'reauthentication-required') {
+              // A lost store key also needs a sign-in: as a new device, which the
+              // re-auth flow chooses when the key no longer reads back.
+              if (
+                error.failure === 'reauthentication-required' ||
+                error.failure === 'crypto-store-key-lost'
+              ) {
                 this.requireReauthentication(session.userId);
               }
               return of({ kind: 'failed' as const, failure: error.failure });
@@ -552,6 +608,12 @@ export class MatrixClientService {
       let latestSyncState: SyncState | null = null;
       const onLoggedOut = (err: MatrixError): void =>
         this.handleServerLogout(session.userId, err);
+      // Not detached on teardown: it only updates this start's own counter. Null until the
+      // SDK's first report, so an unknown upload state never reads as "all backed up".
+      let backupKeysRemaining: number | null = null;
+      const onBackupKeysRemaining = (remaining: number): void => {
+        backupKeysRemaining = remaining;
+      };
       // Per-account 4S key holder, wired only into THIS client's callbacks so a
       // background account's key op can't read/overwrite another account's key.
       const holder = new SecretStorageKeyHolder();
@@ -607,12 +669,13 @@ export class MatrixClientService {
         switchMap(() =>
           preloadCryptoWasm().pipe(catchError(classifyCryptoStartupFailure)),
         ),
-        switchMap(() =>
+        switchMap(() => from(this.storeKey(session))),
+        switchMap((storageKey) =>
           // Per-account crypto store; unset prefix (migrated legacy account) → the
           // SDK default store, preserving its existing keys.
-          from(this.initializeCrypto(created!, session.cryptoPrefix)).pipe(
-            catchError(classifyCryptoStartupFailure),
-          ),
+          from(
+            this.initializeCrypto(created!, session.cryptoPrefix, storageKey),
+          ).pipe(catchError(classifyCryptoStartupFailure)),
         ),
         tap(() => {
           const client = created!;
@@ -643,6 +706,10 @@ export class MatrixClientService {
             }),
           });
           created!.on(HttpApiEvent.SessionLoggedOut, onLoggedOut);
+          created!.on(
+            CryptoEvent.KeyBackupSessionsRemaining,
+            onBackupKeysRemaining,
+          );
         }),
         switchMap(() =>
           from(
@@ -666,11 +733,13 @@ export class MatrixClientService {
             userId: session.userId,
             client: created!,
             cryptoPrefix: session.cryptoPrefix,
+            cryptoStoreEncrypted: session.cryptoStoreKeyed === true,
             syncStore: store,
             syncState,
             syncProjection,
             onLoggedOut,
             holder,
+            backupKeysRemaining: () => backupKeysRemaining,
           };
           account = started;
           this.clients.set(session.userId, started);
@@ -734,12 +803,49 @@ export class MatrixClientService {
     };
   }
 
+  /**
+   * The key a keyed store opens with, or null for a store created without one. A keyed
+   * store is never opened without its key. A missing key fails as `crypto-store-key-lost`:
+   * only a sign-in as a new device (a new store and key) recovers the account here. A key
+   * that cannot be reached right now (a locked keyring) fails as
+   * `secure-storage-unavailable`, to be retried, so an outage never replaces the store.
+   */
+  private async storeKey(session: MatrixSession): Promise<Uint8Array | null> {
+    if (!session.cryptoStoreKeyed || !session.cryptoPrefix) {
+      return null;
+    }
+    const read = await this.storeKeys
+      .read(session.cryptoPrefix)
+      .catch(() => ({ kind: 'unavailable' }) as const);
+    if (read.kind === 'present') {
+      return read.key;
+    }
+    throw read.kind === 'missing'
+      ? new MatrixClientStartupError(
+          'crypto-store-key-lost',
+          new Error('The crypto store key is missing on this device.'),
+        )
+      : new MatrixClientStartupError(
+          'secure-storage-unavailable',
+          new Error('Secure storage is unavailable right now.'),
+        );
+  }
+
+  /**
+   * Open the account's Rust crypto store, with its store key when it has one. A store
+   * created without a key is opened without one: the crypto WASM refuses to open an
+   * existing unencrypted store with a key, and has no way to encrypt it in place.
+   */
   private initializeCrypto(
     client: MatrixClient,
     cryptoDatabasePrefix: string | undefined,
+    storageKey: Uint8Array | null,
   ): Promise<void> {
     const result = this.cryptoInitializationQueue.then(() =>
-      client.initRustCrypto({ cryptoDatabasePrefix }),
+      client.initRustCrypto({
+        cryptoDatabasePrefix,
+        ...(storageKey ? { storageKey } : {}),
+      }),
     );
     this.cryptoInitializationQueue = result.then(
       () => undefined,

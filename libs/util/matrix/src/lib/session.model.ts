@@ -36,6 +36,12 @@ export interface MatrixSession {
    * crypto store is preserved (no re-verification on upgrade), until its device changes.
    */
   cryptoPrefix?: string;
+  /**
+   * Set when {@link cryptoPrefix}'s store was created with a store key (kept in secure
+   * storage under that prefix). Non-secret. Absent for a store created before store keys
+   * existed, which stays unencrypted; a keyed store whose key is gone cannot be opened.
+   */
+  cryptoStoreKeyed?: true;
 }
 
 /** Non-secret OIDC provider binding persisted with a {@link MatrixSession}. */

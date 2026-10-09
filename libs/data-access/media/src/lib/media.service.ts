@@ -14,7 +14,12 @@ import {
   throwError,
 } from 'rxjs';
 import { MsgType, type MatrixClient } from 'matrix-js-sdk';
-import { decryptAttachment, encryptAttachment } from '@trinity/util/matrix';
+import {
+  decryptAttachment,
+  displaySafeMime,
+  encryptAttachment,
+  mimeEssence,
+} from '@trinity/util/matrix';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { fetchMediaBytes } from '@trinity/util/matrix';
 import type { EncryptedFileInfo, MediaPayload } from '@trinity/util/matrix';
@@ -450,7 +455,11 @@ export class MediaService {
       : `${clientId}|${id}|orig`;
   }
 
-  /** Fetch (and decrypt, when encrypted) the bytes for a source into a typed Blob. */
+  /**
+   * Fetch (and decrypt, when encrypted) the bytes for a source into a Blob. Attachments display
+   * only safe media types: the declared type is kept only when it is a known image, video or
+   * audio type, otherwise the Blob is opaque and its filename carries the extension.
+   */
   private fetchBlob(
     client: MatrixClient,
     source: MediaSource,
@@ -463,7 +472,10 @@ export class MediaService {
       const file = source.file;
       return this.fetchBytes(client, file.url, null).pipe(
         switchMap((ciphertext) => from(decryptAttachment(ciphertext, file))),
-        map((plaintext) => new Blob([plaintext], { type: source.mimeType })),
+        map(
+          (plaintext) =>
+            new Blob([plaintext], { type: displaySafeMime(source.mimeType) }),
+        ),
         switchMap((blob) =>
           source.downscaleTo
             ? from(downscaleImage(blob, source.downscaleTo))
@@ -475,7 +487,10 @@ export class MediaService {
       return throwError(() => new Error('Media has no source'));
     }
     return this.fetchBytes(client, source.mxc, source.resize).pipe(
-      map((buffer) => new Blob([buffer], { type: source.mimeType })),
+      map(
+        (buffer) =>
+          new Blob([buffer], { type: displaySafeMime(source.mimeType) }),
+      ),
     );
   }
 
@@ -667,7 +682,7 @@ async function renderThumbnail(
 function needsDownscale({ mimeType, width, height }: MediaPayload): boolean {
   const known = width && height ? Math.max(width, height) : Infinity;
   return (
-    DOWNSCALED_MIMES.has(mimeType.toLowerCase()) &&
+    DOWNSCALED_MIMES.has(mimeEssence(mimeType)) &&
     known > DECRYPTED_THUMBNAIL_PX
   );
 }

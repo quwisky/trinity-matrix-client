@@ -9,6 +9,7 @@ import {
 } from 'matrix-js-sdk';
 import DOMPurify from 'dompurify';
 import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
+import { displaySafeMime, mimeEssence } from './display-mime';
 import { isPollStart } from './poll';
 import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
 import {
@@ -245,8 +246,14 @@ export function readReceiptsFor(
   });
 }
 
-/** True when an event should render as a message row (message, sticker, or poll). */
+/**
+ * True when an event should render as a message row (message, sticker, or poll). A state
+ * event never is, whatever its type: it is room state, not a turn in the conversation.
+ */
 export function isDisplayableMessage(event: MatrixEvent): boolean {
+  if (event.isState()) {
+    return false;
+  }
   if (isPollStart(event)) {
     return true;
   }
@@ -1106,14 +1113,24 @@ export function renderNormalizedTextBody(
   return { text, html, textHtml: html ?? linkifyText(text) };
 }
 
-/** MIME types we never render inline (script-bearing), forced to download-only. */
-const UNSAFE_INLINE_MIME = /^(?:image\/svg\+xml|text\/html)$/i;
+/** A well-formed essence for an inline kind: a bare `image`, `video` or `audio` type. */
+const INLINE_ESSENCE = /^(?:image|video|audio)\/[a-z0-9][a-z0-9.+-]*$/;
+
+/** Document types (compared by essence) that are only offered as downloads, never shown inline. */
+const DOWNLOAD_ONLY_MIME: ReadonlySet<string> = new Set([
+  'image/svg+xml',
+  'text/html',
+  'application/xhtml+xml',
+  'application/xml',
+  'text/xml',
+]);
 
 /**
  * Project an `m.image`/`m.file`/`m.video`/`m.audio` content block into a
  * {@link MediaPayload}, or null when it lacks a source (`url`/`file`). The kind is
  * derived from the msgtype, then downgraded to `'file'` (download-only) for a declared
- * MIME type that mismatches it or is script-bearing so nothing scriptable is rendered inline.
+ * MIME type that mismatches it, is a download-only document type, or is not a well-formed
+ * essence, so only recognisable media is shown inline.
  */
 export function normalizeMediaPayload(
   content: Record<string, unknown>,
@@ -1129,6 +1146,7 @@ export function normalizeMediaPayload(
   const declaredMime =
     typeof info['mimetype'] === 'string' ? (info['mimetype'] as string) : null;
   const mimeType = declaredMime ?? 'application/octet-stream';
+  const essence = mimeEssence(declaredMime);
 
   let kind: MediaKind =
     msgtype === MsgType.Image
@@ -1138,14 +1156,15 @@ export function normalizeMediaPayload(
         : msgtype === MsgType.Audio
           ? 'audio'
           : 'file';
-  // A declared MIME must match its category and not be scriptable. `info` is optional,
-  // so an undeclared one trusts the msgtype; the blob stays opaque and the media
-  // element sniffs the bytes, which never executes script.
+  // A declared MIME must be a well-formed type of its category and not a download-only
+  // document type. `info` is optional, so an undeclared one trusts the msgtype; the blob
+  // stays opaque and the media element sniffs the bytes.
   const category = kind === 'file' ? null : kind;
   if (
     declaredMime !== null &&
-    (UNSAFE_INLINE_MIME.test(declaredMime) ||
-      (category && !declaredMime.toLowerCase().startsWith(`${category}/`)))
+    (DOWNLOAD_ONLY_MIME.has(essence) ||
+      (category &&
+        !(INLINE_ESSENCE.test(essence) && essence.startsWith(`${category}/`))))
   ) {
     kind = 'file';
   }
@@ -1193,7 +1212,7 @@ export function normalizeMediaPayload(
     thumbnailFile: asEncryptedFile(info['thumbnail_file']),
     thumbnailMimeType:
       typeof thumbInfo['mimetype'] === 'string'
-        ? (thumbInfo['mimetype'] as string)
+        ? displaySafeMime(thumbInfo['mimetype'])
         : undefined,
     ...(isVoice ? { isVoice: true, waveform } : {}),
   };

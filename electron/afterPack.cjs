@@ -4,9 +4,10 @@
 // unprivileged process can re-launch the SIGNED Trinity binary as Node
 // (ELECTRON_RUN_AS_NODE=1 or NODE_OPTIONS=--require evil.js, or --inspect) and run
 // arbitrary code inside the trusted main process — the one holding OS-keychain access
-// to the safeStorage secret map (Matrix tokens + cross-signing keys). Flipping these
-// fuses off closes that injection vector, and the asar fuses close the sibling route of
-// swapping the application code itself rather than the runtime flags.
+// to the safeStorage secret map (Matrix tokens and each account's crypto-store key, which
+// encrypts the store holding the cross-signing keys). Flipping these fuses off closes
+// that injection vector, and the asar fuses close the sibling route of swapping the
+// application code itself rather than the runtime flags.
 //
 // Runs BEFORE code-signing, so on macOS the ad-hoc signature is reset here and the
 // real Developer ID signing step re-signs the mutated binary.

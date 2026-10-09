@@ -7,11 +7,14 @@ import {
 import {
   Observable,
   catchError,
+  defaultIfEmpty,
   defer,
+  finalize,
   from,
   map,
   of,
   switchMap,
+  tap,
   throwError,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
@@ -19,7 +22,10 @@ import {
   AccountRuntimeService,
   type AccountEstablishmentOutcome,
 } from '@trinity/data-access/accounts';
-import { SessionStorageService } from '@trinity/platform-native';
+import {
+  SessionStorageService,
+  sameHomeserver,
+} from '@trinity/platform-native';
 import {
   UiaCancelledError,
   runPasswordUia,
@@ -33,10 +39,15 @@ import {
   type OidcGrantContext,
 } from './oidc-client.service';
 import {
+  ReauthAccountMismatchError,
   accountEstablishment,
   type AuthenticatedSessionResponse,
   type LoginMode,
 } from './account-establishment';
+import {
+  NEW_DEVICE_SIGN_IN,
+  NewDeviceSignInCancelledError,
+} from './new-device-sign-in.port';
 
 export type { LoginMode } from './account-establishment';
 export type { AccountEstablishmentOutcome } from '@trinity/data-access/accounts';
@@ -58,12 +69,18 @@ export interface AccountManagement {
  * Components talk to this service, never to matrix-js-sdk directly. Async APIs are
  * cold Observables.
  */
+/** Whether a sign-in's session is known to be a new device (see `confirmNewDevice`). */
+interface NewDeviceCheck {
+  isNew: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly matrix = inject(MatrixClientService);
   private readonly storage = inject(SessionStorageService);
   private readonly oidc = inject(OidcClientService);
   private readonly accounts = inject(AccountRuntimeService);
+  private readonly newDeviceSignIn = inject(NEW_DEVICE_SIGN_IN);
 
   /** Which login flows the homeserver supports (e.g. 'm.login.password', 'm.login.sso'). */
   getSupportedFlows(baseUrl: string): Observable<string[]> {
@@ -91,7 +108,9 @@ export class AuthService {
    * Log in with username + password. `replace` (default) makes it the sole account;
    * `add` keeps the other signed-in accounts and adds this one alongside. Passing
    * `deviceId` re-authenticates that EXISTING device (re-auth of a soft-logged-out
-   * account) so its crypto store is reused and no re-verification is needed.
+   * account) so its crypto store is reused and no re-verification is needed. Re-auth
+   * also passes `expectedUserId`, the account being reconnected: a login that returns
+   * anyone else is refused before anything is persisted.
    */
   loginWithPassword(
     baseUrl: string,
@@ -99,6 +118,7 @@ export class AuthService {
     password: string,
     mode: LoginMode = 'replace',
     deviceId?: string,
+    expectedUserId?: string,
   ): Observable<AccountEstablishmentOutcome> {
     return defer(() =>
       from(
@@ -110,7 +130,11 @@ export class AuthService {
           ...(deviceId ? { device_id: deviceId } : {}),
         }),
       ),
-    ).pipe(switchMap((res) => this.establish(baseUrl, res, mode)));
+    ).pipe(
+      switchMap((res) =>
+        this.establish(baseUrl, res, mode, expectedUserId, deviceId),
+      ),
+    );
   }
 
   /** Build the SSO redirect URL the browser/WebView should navigate to. */
@@ -121,12 +145,14 @@ export class AuthService {
   /**
    * Complete an SSO/CAS login by exchanging the returned `loginToken` for a session.
    * Called from the SSO callback route after the homeserver redirects back.
+   * `deviceId` and `expectedUserId` are set only by re-auth, as for {@link loginWithPassword}.
    */
   completeSsoLogin(
     baseUrl: string,
     loginToken: string,
     mode: LoginMode = 'replace',
     deviceId?: string,
+    expectedUserId?: string,
   ): Observable<AccountEstablishmentOutcome> {
     return defer(() =>
       from(
@@ -137,7 +163,11 @@ export class AuthService {
           ...(deviceId ? { device_id: deviceId } : {}),
         }),
       ),
-    ).pipe(switchMap((res) => this.establish(baseUrl, res, mode)));
+    ).pipe(
+      switchMap((res) =>
+        this.establish(baseUrl, res, mode, expectedUserId, deviceId),
+      ),
+    );
   }
 
   /**
@@ -152,12 +182,12 @@ export class AuthService {
   }
 
   /**
-   * Forget the cached dynamic-registration client id for an issuer so the next login
-   * re-registers — called when the provider rejects the id (`invalid_client`), which
-   * would otherwise wedge login until app storage is wiped.
+   * Forget the cached dynamic-registration client id for a homeserver's issuer so the
+   * next login re-registers — called when the provider rejects the id (`invalid_client`),
+   * which would otherwise wedge login until app storage is wiped.
    */
-  forgetOidcClientId(issuer: string): Observable<void> {
-    return this.oidc.forgetClientId(issuer);
+  forgetOidcClientId(baseUrl: string, issuer: string): Observable<void> {
+    return this.oidc.forgetClientId(baseUrl, issuer);
   }
 
   /**
@@ -190,6 +220,7 @@ export class AuthService {
             oidc: grant.oidc,
           },
           mode,
+          expectedUserId,
         ),
       ),
     );
@@ -224,11 +255,7 @@ export class AuthService {
       })
       .subscribe({ error: () => undefined });
     return throwError(
-      () =>
-        new Error(
-          `Your provider signed you in as ${grant.userId}, not ${expectedUserId}. ` +
-            'Sign in to that account instead.',
-        ),
+      () => new ReauthAccountMismatchError(grant.userId, expectedUserId),
     );
   }
 
@@ -314,16 +341,136 @@ export class AuthService {
     });
   }
 
+  /**
+   * `requestedDeviceId` is the device id a password or legacy SSO re-auth asked for.
+   * A session is handed back on refusal only when it is known to be a NEW device: a
+   * re-auth signs back in on a device the user keeps, and signing that out would end it
+   * on the server.
+   */
   private establish(
     baseUrl: string,
     response: AuthenticatedSessionResponse,
     mode: LoginMode,
+    expectedUserId?: string | null,
+    requestedDeviceId?: string,
   ): Observable<AccountEstablishmentOutcome> {
+    // Every login method converges here, so this one check covers password, legacy SSO
+    // and OIDC re-auth alike.
+    if (expectedUserId && response.user_id !== expectedUserId) {
+      if (!requestedDeviceId) {
+        this.signOutNewDevice(baseUrl, response);
+      }
+      return throwError(
+        () => new ReauthAccountMismatchError(response.user_id, expectedUserId),
+      );
+    }
     const command = accountEstablishment(baseUrl, response, mode, 'upsert');
-    return this.accounts.establishAuthenticatedAccount(
-      command.grant,
-      command.intent,
+    // Without a requested device id, a password or legacy SSO login always gets a new
+    // device from the server. OAuth names its device id itself, the stored one on
+    // re-auth, so only the stored record can tell (see `confirmNewDevice`).
+    const device: NewDeviceCheck = {
+      isNew: !requestedDeviceId && !response.oidc,
+    };
+    return this.confirmNewDevice(
+      baseUrl,
+      response,
+      requestedDeviceId,
+      device,
+    ).pipe(
+      switchMap(() =>
+        this.accounts.establishAuthenticatedAccount(
+          command.grant,
+          command.intent,
+        ),
+      ),
+      tap((outcome) => {
+        // Refused before anything was saved: nothing will ever use this session.
+        if (
+          device.isNew &&
+          (outcome.kind === 'transition-in-progress' ||
+            (outcome.kind === 'failed' &&
+              (outcome.failure === 'homeserver-mismatch' ||
+                outcome.failure === 'account-already-stored')))
+        ) {
+          this.signOutNewDevice(baseUrl, response);
+        }
+      }),
     );
+  }
+
+  /**
+   * A sign-in without the stored device id gets a new device, and persisting it deletes
+   * the stored device's crypto store (`SessionStorageService` upsert). Unless key backup
+   * holds every room key, ask first, while the stored account's client can still answer.
+   * Whenever the sign-in does not go ahead (cancel, a failed check, or a subscriber that
+   * leaves mid-dialog), sign the new device out again and leave the stored account as it was.
+   * Only a session in `device.isNew` is signed out: never one on a requested or stored
+   * device id, nor an OAuth session whose stored record could not be read.
+   */
+  private confirmNewDevice(
+    baseUrl: string,
+    response: AuthenticatedSessionResponse,
+    requestedDeviceId: string | undefined,
+    device: NewDeviceCheck,
+  ): Observable<void> {
+    const userId = response.user_id;
+    let proceeded = false;
+    return this.storage.record(userId).pipe(
+      tap((record) => {
+        device.isNew =
+          !requestedDeviceId && record?.deviceId !== response.device_id;
+      }),
+      switchMap((record) =>
+        // A stored account on another server is not replaced: saving refuses the sign-in.
+        !record ||
+        record.deviceId === response.device_id ||
+        !sameHomeserver(record.baseUrl, baseUrl)
+          ? of(true)
+          : this.matrix.roomKeysBackedUp(userId).pipe(
+              switchMap((backedUp) =>
+                backedUp
+                  ? of(true)
+                  : this.newDeviceSignIn.confirm({
+                      userId,
+                      roomKeysBackedUp: backedUp,
+                    }),
+              ),
+            ),
+      ),
+      defaultIfEmpty(false),
+      switchMap((proceed) => {
+        proceeded = proceed;
+        return proceed
+          ? of(void 0)
+          : throwError(() => new NewDeviceSignInCancelledError(userId));
+      }),
+      finalize(() => {
+        if (!proceeded && device.isNew) {
+          this.signOutNewDevice(baseUrl, response);
+        }
+      }),
+    );
+  }
+
+  /** Hand back a session this sign-in created but will not use. Detached and best-effort. */
+  private signOutNewDevice(
+    baseUrl: string,
+    response: AuthenticatedSessionResponse,
+  ): void {
+    const signOut: Observable<unknown> = response.oidc
+      ? this.oidc.revokeTokens(baseUrl, response.oidc, {
+          accessToken: response.access_token,
+          refreshToken: response.refresh_token,
+        })
+      : defer(() =>
+          from(
+            createClient({
+              baseUrl,
+              accessToken: response.access_token,
+            }).logout(true),
+          ),
+        );
+    signOut.subscribe({ error: () => undefined });
   }
 
   /** Strip a full MXID down to its localpart for the password identifier. */

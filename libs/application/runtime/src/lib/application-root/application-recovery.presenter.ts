@@ -41,7 +41,7 @@ export class ApplicationRecoveryPresenter {
         })
         .pipe(
           filter(Boolean),
-          switchMap(() => this.runtime.recover()),
+          switchMap(() => this.runtime.recover(recovery)),
         );
     }
     if (recovery === 'reset-installation') {
@@ -64,7 +64,9 @@ export class ApplicationRecoveryPresenter {
                 variant: 'danger',
               });
             }
-            return intent === 'confirmed' ? this.runtime.recover() : EMPTY;
+            return intent === 'confirmed'
+              ? this.runtime.recover(recovery)
+              : EMPTY;
           }),
         );
     }
@@ -88,11 +90,13 @@ export class ApplicationRecoveryPresenter {
                 variant: 'danger',
               });
             }
-            return intent === 'confirmed' ? this.runtime.recover() : EMPTY;
+            return intent === 'confirmed'
+              ? this.runtime.recover(recovery)
+              : EMPTY;
           }),
         );
     }
-    return this.runtime.recover();
+    return this.runtime.recover(recovery);
   }
 
   present(outcome: ApplicationRecoveryOutcome): void {

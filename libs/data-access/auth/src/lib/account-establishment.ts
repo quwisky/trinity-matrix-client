@@ -6,6 +6,22 @@ import type { MatrixSession, OidcSessionBinding } from '@trinity/util/matrix';
 
 export type LoginMode = 'replace' | 'add';
 
+/**
+ * A sign-in came back as a different account than the one being re-authenticated.
+ * Nothing is persisted for it, so the saved account keeps its device and crypto store.
+ */
+export class ReauthAccountMismatchError extends Error {
+  constructor(
+    readonly actualUserId: string,
+    readonly expectedUserId: string,
+  ) {
+    super(
+      `The server signed you in as ${actualUserId}, not ${expectedUserId}. ` +
+        'Sign in to that account instead.',
+    );
+  }
+}
+
 export interface AuthenticatedSessionResponse {
   user_id: string;
   device_id: string;

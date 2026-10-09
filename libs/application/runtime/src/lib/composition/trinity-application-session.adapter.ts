@@ -530,6 +530,8 @@ const CALLBACK_PARAMS = [
   'state',
   'error',
   'error_description',
+  // RFC 9207: lets the callback check the response comes from the provider it started with.
+  'iss',
 ] as const;
 
 function hostOutcomeFailed(outcome: HostOperationOutcome): boolean {

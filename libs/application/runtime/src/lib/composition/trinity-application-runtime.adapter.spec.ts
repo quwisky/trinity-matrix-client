@@ -621,6 +621,30 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     activeAccountId.set(null);
     await firstValueFrom(adapter.recover('reauthenticate'));
     expect(signOutAccount).toHaveBeenCalledWith('@secret:example.org');
+
+    // An unavailable keychain is an outage: offer a retry, never Account removal.
+    restoreAccounts.mockReturnValueOnce(
+      of({
+        kind: 'active-account-unavailable',
+        activeAccountId: '@secret:example.org',
+        accounts: [
+          {
+            kind: 'failed',
+            failure: 'secure-storage-unavailable',
+            accountId: '@secret:example.org',
+            role: 'active',
+          },
+        ],
+      }),
+    );
+    // Removal stays reachable as a confirmed second choice: a key that is truly gone but
+    // reads as unavailable would otherwise trap the user in retries.
+    await expect(firstValueFrom(adapter.restoreAccounts())).resolves.toEqual({
+      kind: 'blocked',
+      recovery: 'retry-startup',
+      secondaryRecovery: 'reauthenticate',
+      diagnostic: { code: 'account-secure-storage-unavailable' },
+    });
   });
 
   it('falls back to a safe root before blocking Workspace restoration', async () => {

@@ -1,11 +1,27 @@
 import { Injectable } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
-import { SecureStorage } from '@aparajita/capacitor-secure-storage';
+import {
+  KeychainAccess,
+  SecureStorage,
+} from '@aparajita/capacitor-secure-storage';
 import {
   getTrinityDesktopBridge,
   type TrinityDesktopBridge,
 } from './trinity-desktop-bridge';
+
+/**
+ * What reading one secret found. `unavailable` is not `absent`: the backend may hold the
+ * entry but cannot open it right now (a locked keyring, a denied keychain, a desktop that
+ * fell back to web storage this session). Never treat it as a lost secret.
+ */
+export type SecureStorageRead =
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'unavailable' }
+  | { readonly kind: 'present'; readonly value: string };
+
+const ABSENT: SecureStorageRead = { kind: 'absent' };
+const UNAVAILABLE: SecureStorageRead = { kind: 'unavailable' };
 
 /**
  * One secret-storage backend. `isSecure` is true only when values are held behind an
@@ -16,6 +32,7 @@ export interface SecureStorageBackend {
   readonly kind: 'electron' | 'native' | 'web';
   readonly isSecure: boolean;
   get(key: string): Promise<string | null>;
+  read(key: string): Promise<SecureStorageRead>;
   set(key: string, value: string): Promise<void>;
   remove(key: string): Promise<void>;
   /**
@@ -36,13 +53,21 @@ const WEB_PREFIX = 'secure.';
  * Capacitor Preferences (localStorage on web). `isSecure` is false to make that
  * explicit; the real web defenses are the CSP (`script-src 'self'`, no inline) plus
  * DOMPurify sanitization. Native + Electron use OS-backed backends instead.
+ *
+ * `degraded` marks the fallback on a host that has a keychain it could not reach: a secret
+ * missing here may still sit in that keychain, so it reads as unavailable, not absent.
  */
-function createWebBackend(): SecureStorageBackend {
+function createWebBackend(degraded = false): SecureStorageBackend {
+  const get = async (key: string): Promise<string | null> =>
+    (await Preferences.get({ key: WEB_PREFIX + key })).value ?? null;
   return {
     kind: 'web',
     isSecure: false,
-    async get(key) {
-      return (await Preferences.get({ key: WEB_PREFIX + key })).value ?? null;
+    get,
+    async read(key) {
+      const value = await get(key);
+      if (value !== null) return { kind: 'present', value };
+      return degraded ? UNAVAILABLE : ABSENT;
     },
     async set(key, value) {
       await Preferences.set({ key: WEB_PREFIX + key, value });
@@ -65,6 +90,15 @@ function createElectronBackend(
     kind: 'electron',
     isSecure: true,
     get: (key) => store.get(key),
+    async read(key) {
+      if (!store.read) {
+        // That shell's get also returns null for an entry it cannot decrypt, so null
+        // cannot be taken as absent here.
+        const value = await store.get(key);
+        return value === null ? UNAVAILABLE : { kind: 'present', value };
+      }
+      return parseRead(await store.read(key));
+    },
     async set(key, value) {
       if (!(await store.set(key, value))) {
         throw new Error('secure-store: the OS keychain is unavailable');
@@ -76,9 +110,11 @@ function createElectronBackend(
 
 /**
  * Native iOS/Android: the OS Keychain / Android Keystore via
- * `@aparajita/capacitor-secure-storage`. `sync: false` (the last arg on each call)
- * keeps the value on THIS device — never synced to iCloud Keychain — so a per-device
- * Matrix session can't leak across a user's devices.
+ * `@aparajita/capacitor-secure-storage`. Every value belongs to this device's Matrix
+ * session, so it stays on this device: `sync: false` keeps it out of iCloud Keychain, and
+ * the iOS `whenUnlockedThisDeviceOnly` class keeps a backup restored onto another device
+ * from bringing it along. An item written before this class was set keeps its old class
+ * until it is next written.
  */
 function createNativeBackend(): SecureStorageBackend {
   return {
@@ -88,8 +124,23 @@ function createNativeBackend(): SecureStorageBackend {
       const value = await SecureStorage.get(key, false, false);
       return typeof value === 'string' ? value : null;
     },
+    async read(key) {
+      try {
+        const value = await SecureStorage.get(key, false, false);
+        return typeof value === 'string' ? { kind: 'present', value } : ABSENT;
+      } catch {
+        // The keychain refused (device locked, keystore error): not a missing entry.
+        return UNAVAILABLE;
+      }
+    },
     async set(key, value) {
-      await SecureStorage.set(key, value, false, false);
+      await SecureStorage.set(
+        key,
+        value,
+        false,
+        false,
+        KeychainAccess.whenUnlockedThisDeviceOnly,
+      );
     },
     async remove(key) {
       await SecureStorage.remove(key, false);
@@ -115,6 +166,19 @@ export class SecureStorageService {
 
   get(key: string): Promise<string | null> {
     return this.resolve().then((b) => b.get(key));
+  }
+
+  /**
+   * Read one secret as absent, unavailable or present. Any failure, including a backend
+   * that cannot be selected yet, is unavailable: only a backend that looked and found no
+   * entry says absent.
+   */
+  async read(key: string): Promise<SecureStorageRead> {
+    try {
+      return await (await this.resolve()).read(key);
+    } catch {
+      return UNAVAILABLE;
+    }
   }
 
   set(key: string, value: string): Promise<void> {
@@ -194,13 +258,26 @@ export class SecureStorageService {
     // but on desktop/native it means the OS keychain FAILED — secrets (the access
     // token) will land in plaintext. Surface that anomaly rather than falling back
     // silently. (A user-facing prompt is a further, product-owned step.)
-    if (bridge || Capacitor.isNativePlatform()) {
+    const degraded = !!bridge || Capacitor.isNativePlatform();
+    if (degraded) {
       console.warn(
         'Trinity: secure storage (OS keychain/keystore) is unavailable on this ' +
           'device — the session token will be stored unencrypted. Sign out to ' +
           'clear it, or investigate the keyring on this machine.',
       );
     }
-    return createWebBackend();
+    return createWebBackend(degraded);
   }
+}
+
+/** Validate an untrusted desktop read reply; anything unexpected is unavailable. */
+function parseRead(reply: unknown): SecureStorageRead {
+  if (typeof reply === 'object' && reply !== null) {
+    const { kind, value } = reply as { kind?: unknown; value?: unknown };
+    if (kind === 'absent') return ABSENT;
+    if (kind === 'present' && typeof value === 'string') {
+      return { kind: 'present', value };
+    }
+  }
+  return UNAVAILABLE;
 }

@@ -17,6 +17,7 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { RoomEncryptionFlags } from '@trinity/util/matrix';
 import { NotificationSoundService } from './notification-sound.service';
 import { Observable, Subscriber, Subscription, take, timeout } from 'rxjs';
 import { normalizeNotificationEvent } from './matrix-notification-event.adapter';
@@ -370,6 +371,19 @@ export class NotificationService {
         this.reactionAllowed(userId, client, room, senderId),
       present: (event) => this.presentReaction(userId, client, event),
     });
+    // A room counts as encrypted by its state OR by the crypto store. The store's answer
+    // is async, so ask it once per room up front; a room first seen after the last sync
+    // is covered from the next sync on.
+    const encryption = new RoomEncryptionFlags();
+    const warmEncryption = (): void => {
+      const crypto = client.getCrypto();
+      for (const room of client.getRooms()) {
+        void encryption.refresh(crypto, room.roomId);
+      }
+    };
+    if (firstSyncCompleted) {
+      warmEncryption();
+    }
     return {
       userId,
       client,
@@ -377,6 +391,7 @@ export class NotificationService {
       onSync: (state): void => {
         if (state === SyncState.Prepared || state === SyncState.Syncing) {
           firstSyncCompleted = true;
+          warmEncryption();
         }
       },
       onTimeline: (event, room, _toStart, _removed, data): void => {
@@ -407,7 +422,7 @@ export class NotificationService {
             }
             return;
           }
-          this.maybeNotify(userId, client, event, room);
+          this.maybeNotify(userId, client, event, room, encryption);
         } catch {
           /* a notification failure is non-fatal */
         }
@@ -432,7 +447,14 @@ export class NotificationService {
             reactions.add(event, room);
             return;
           }
-          this.maybeNotify(userId, client, event, room, /* force */ true);
+          this.maybeNotify(
+            userId,
+            client,
+            event,
+            room,
+            encryption,
+            /* force */ true,
+          );
         } catch {
           /* a notification failure is non-fatal */
         }
@@ -479,6 +501,7 @@ export class NotificationService {
     client: MatrixClient,
     event: MatrixEvent,
     room: Room | undefined,
+    encryption: RoomEncryptionFlags,
     forceRecalculate = false,
   ): void {
     if (!room) {
@@ -487,7 +510,12 @@ export class NotificationService {
     // Respect the account's push rules (mute / mentions-only / etc.).
     // `forceRecalculate` is set on the decrypted path so the rules score the
     // cleartext (mentions) rather than a cached ciphertext result.
-    const normalized = normalizeNotificationEvent(userId, event, room);
+    const normalized = normalizeNotificationEvent(
+      userId,
+      event,
+      room,
+      encryption.isEncrypted(room),
+    );
     const key = this.key(userId, normalized.eventId);
     const decision = this.policy.decide({
       event: normalized,

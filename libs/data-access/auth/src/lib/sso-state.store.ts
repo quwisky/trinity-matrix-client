@@ -9,6 +9,7 @@ const BASE_URL_KEY = 'sso.baseUrl';
 const STARTED_KEY = 'sso.startedAt';
 const MODE_KEY = 'sso.mode';
 const DEVICE_ID_KEY = 'sso.deviceId';
+const EXPECTED_USER_ID_KEY = 'sso.expectedUserId';
 
 /** The single-use SSO stash read back on the callback (each field may be absent). */
 export interface SsoStateStash {
@@ -18,6 +19,8 @@ export interface SsoStateStash {
   mode: LoginMode;
   /** Device id to re-authenticate (re-auth of a soft-logged-out account), else null. */
   deviceId: string | null;
+  /** The account a re-auth must come back as, else null. */
+  expectedUserId: string | null;
 }
 
 /**
@@ -40,7 +43,17 @@ export class SsoStateStore {
     baseUrl: string,
     mode: LoginMode = 'replace',
     deviceId?: string,
+    expectedUserId?: string,
   ): Promise<void> {
+    // Remove residue from a prior un-consumed re-auth attempt for ordinary login. This
+    // comes BEFORE the write, so a failure part-way never leaves the new state beside an
+    // old expectation.
+    if (!deviceId) {
+      await firstValueFrom(this.storage.remove(DEVICE_ID_KEY));
+    }
+    if (!expectedUserId) {
+      await firstValueFrom(this.storage.remove(EXPECTED_USER_ID_KEY));
+    }
     await firstValueFrom(
       this.storage.setMany([
         { key: STATE_KEY, value: state },
@@ -48,12 +61,11 @@ export class SsoStateStore {
         { key: STARTED_KEY, value: String(Date.now()) },
         { key: MODE_KEY, value: mode },
         ...(deviceId ? [{ key: DEVICE_ID_KEY, value: deviceId }] : []),
+        ...(expectedUserId
+          ? [{ key: EXPECTED_USER_ID_KEY, value: expectedUserId }]
+          : []),
       ]),
     );
-    // Remove residue from a prior un-consumed re-auth attempt for ordinary login.
-    if (!deviceId) {
-      await firstValueFrom(this.storage.remove(DEVICE_ID_KEY));
-    }
   }
 
   /**
@@ -63,25 +75,34 @@ export class SsoStateStore {
    * in-flight login's stash.
    */
   async peek(): Promise<SsoStateStash> {
-    const [state, baseUrl, startedAt, mode, deviceId] = await firstValueFrom(
-      this.storage.getMany([
-        STATE_KEY,
-        BASE_URL_KEY,
-        STARTED_KEY,
-        MODE_KEY,
-        DEVICE_ID_KEY,
-      ]),
-    );
+    const [state, baseUrl, startedAt, mode, deviceId, expectedUserId] =
+      await firstValueFrom(
+        this.storage.getMany([
+          STATE_KEY,
+          BASE_URL_KEY,
+          STARTED_KEY,
+          MODE_KEY,
+          DEVICE_ID_KEY,
+          EXPECTED_USER_ID_KEY,
+        ]),
+      );
 
     const fresh = isFresh(startedAt);
     if (!fresh) {
-      return { state: null, baseUrl: null, mode: 'replace', deviceId: null };
+      return {
+        state: null,
+        baseUrl: null,
+        mode: 'replace',
+        deviceId: null,
+        expectedUserId: null,
+      };
     }
     return {
       state,
       baseUrl,
       mode: mode === 'add' ? 'add' : 'replace',
       deviceId,
+      expectedUserId,
     };
   }
 
@@ -94,6 +115,7 @@ export class SsoStateStore {
         STARTED_KEY,
         MODE_KEY,
         DEVICE_ID_KEY,
+        EXPECTED_USER_ID_KEY,
       ]),
     );
   }

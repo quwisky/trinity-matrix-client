@@ -15,8 +15,14 @@ import { ExternalBrowserService } from '@trinity/platform-native';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
-import { describe, expect, it, type Mock, vi } from 'vitest';
+import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomWidgetsComponent } from './room-widgets.component';
+
+const platform = vi.hoisted(() => ({ native: false }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isInstalledNativePlatform: () => platform.native,
+}));
 
 const TARGET = {
   accountId: '@opening:example.org',
@@ -112,6 +118,10 @@ async function build(
 }
 
 describe('RoomWidgetsComponent', () => {
+  afterEach(() => {
+    platform.native = false;
+  });
+
   it('connects live widget state and explains an empty room', async () => {
     const { container, connect } = await build();
 
@@ -366,6 +376,79 @@ describe('RoomWidgetsComponent', () => {
         }),
       }),
     );
+  });
+
+  it('offers Open in Trinity on the web next to Open in browser', async () => {
+    const { container } = await build({ widgets: [BOARD_WIDGET] });
+
+    expect(
+      container.querySelector('[data-testid="room-widget-embed-board"]'),
+    ).toHaveTextContent('Open in Trinity');
+    expect(
+      container.querySelector('[data-testid="room-widget-open-board"]'),
+    ).not.toBeNull();
+    expect(container).not.toHaveTextContent('Widgets open in your browser.');
+  });
+
+  it('offers only Open in browser on the installed mobile apps', async () => {
+    platform.native = true;
+    const { container } = await build({ widgets: [BOARD_WIDGET] });
+
+    const card = container.querySelector('[data-testid="room-widget-board"]');
+    expect(
+      card?.querySelector('[data-testid="room-widget-embed-board"]'),
+    ).toBeNull();
+    expect(card).not.toHaveTextContent('Open in Trinity');
+    expect(
+      card?.querySelector('[data-testid="room-widget-open-board"]'),
+    ).toHaveTextContent('Open in browser');
+  });
+
+  it('says widgets open in the browser on the installed mobile apps', async () => {
+    platform.native = true;
+    const { container } = await build({ widgets: [BOARD_WIDGET] });
+
+    expect(container).toHaveTextContent('Widgets open in your browser.');
+    expect(container).not.toHaveTextContent('inside Trinity');
+  });
+
+  it('keeps the browser fallback silent about in-app embedding on the installed mobile apps', async () => {
+    platform.native = true;
+    const { container } = await build({
+      widgets: [{ ...BOARD_WIDGET, rawUrl: 'http://widgets.example/board' }],
+      launchFor: vi.fn<() => WidgetLaunch>(() => ({
+        ...BOARD_LAUNCH,
+        url: 'http://widgets.example/board',
+        insecure: true,
+      })),
+    });
+
+    expect(container).not.toHaveTextContent('inside Trinity');
+  });
+
+  it('still warns about a widget with no verified creator on the installed mobile apps', async () => {
+    platform.native = true;
+    const { container } = await build({
+      widgets: [{ ...BOARD_WIDGET, creatorUserId: null }],
+    });
+
+    expect(
+      container.querySelector('[data-testid="room-widget-board"]'),
+    ).toHaveTextContent('This declaration has no verified creator.');
+  });
+
+  it('still opens the widget in the external browser on the installed mobile apps', async () => {
+    platform.native = true;
+    const { container, openExternal, openDialog } = await build({
+      widgets: [BOARD_WIDGET],
+    });
+
+    container
+      .querySelector<HTMLElement>('[data-testid="room-widget-open-board"]')
+      ?.click();
+
+    expect(openExternal).toHaveBeenCalledWith(BOARD_LAUNCH.url);
+    expect(openDialog).not.toHaveBeenCalled();
   });
 
   it('closes the active widget frame before opening another one', async () => {

@@ -120,6 +120,15 @@ describe('LocalDataWipeService', () => {
       expect(deleted).toContain('matrix-js-sdk:trinity-sync:@alice:hs');
     });
 
+    it('deletes the web wrapping keys of the crypto store keys, even without enumeration', async () => {
+      const { factory, deleted } = fakeIdb(); // no `databases` member
+      vi.stubGlobal('indexedDB', factory);
+
+      await setup().wipeIndexedDb([ALICE]);
+
+      expect(deleted).toContain('trinity-crypto-store-keys');
+    });
+
     it('deletes an orphan no account record names, when enumeration is available', async () => {
       const { factory, deleted } = fakeIdb([
         'matrix-js-sdk:trinity-sync:@ghost:hs',

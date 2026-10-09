@@ -26,7 +26,7 @@ import {
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { QrScannerComponent } from '@trinity/components/controls';
-import { QrCodeService } from '@trinity/platform-native';
+import { DateTimeFormatService, QrCodeService } from '@trinity/platform-native';
 import { SasCompareComponent } from './sas-compare.component';
 
 /**
@@ -70,6 +70,10 @@ export class DeviceVerificationPage {
   private readonly scannerRequestId = signal<number | null>(null);
   private readonly stageHeading =
     viewChild<ElementRef<HTMLHeadingElement>>('stageHeading');
+  // Declining, the default answer to a request for access, takes the first focus.
+  private readonly initialFocus = viewChild('initialFocus', {
+    read: ElementRef<HTMLElement>,
+  });
   private lastFocusedView = '';
   readonly scanning = () => {
     const active = this.active();
@@ -78,27 +82,26 @@ export class DeviceVerificationPage {
     );
   };
   readonly cameraSupported = this.qrCode.cameraSupported;
+  readonly fmt = inject(DateTimeFormatService);
   readonly qrCodeUrl = signal<string | null>(null);
   private qrRequest = 0;
 
   private readonly synchronizeQrUi = effect(() => {
-    const active = this.active();
-    const scanning = this.scanning();
-    if (active?.stage !== 'qr-shown') {
+    if (this.active()?.stage !== 'qr-shown') {
       this.clearQr();
     }
 
-    const heading = this.stageHeading();
-    const view = `${active?.requestId ?? 'idle'}:${active?.stage ?? 'idle'}:${scanning}`;
-    if (!heading || view === this.lastFocusedView) {
+    const target = this.initialFocus() ?? this.stageHeading();
+    const view = this.focusView();
+    if (!target || view === this.lastFocusedView) {
       return;
     }
     this.lastFocusedView = view;
     queueMicrotask(() => {
-      const current = this.active();
-      const currentView = `${current?.requestId ?? 'idle'}:${current?.stage ?? 'idle'}:${this.scanning()}`;
-      if (currentView === view) {
-        this.stageHeading()?.nativeElement.focus({ preventScroll: true });
+      if (this.focusView() === view) {
+        (this.initialFocus() ?? this.stageHeading())?.nativeElement.focus({
+          preventScroll: true,
+        });
       }
     });
   });
@@ -167,6 +170,13 @@ export class DeviceVerificationPage {
   }
   cancel(): void {
     this.run(this.verification.cancel());
+  }
+
+  /** What focus belongs to: the request, its stage, and which element takes it. */
+  private focusView(): string {
+    const active = this.active();
+    const taker = this.initialFocus() ? 'answer' : 'heading';
+    return `${active?.requestId ?? 'idle'}:${active?.stage ?? 'idle'}:${this.scanning()}:${taker}`;
   }
 
   /** Drop the sensitive code and any render still in flight. */

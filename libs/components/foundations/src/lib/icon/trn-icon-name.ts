@@ -59,6 +59,7 @@ export const TRN_ICON_NAMES = [
   'loader-circle',
   'locate-fixed',
   'lock',
+  'lock-open',
   'log-out',
   'mail',
   'mail-open',

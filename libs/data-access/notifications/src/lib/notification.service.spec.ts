@@ -58,6 +58,8 @@ function fakeClient(userId: string, soundEnabled?: boolean) {
         : { getContent: () => ({ enabled: soundEnabled }) },
     getPushActionsForEvent: vi.fn(() => ({ notify: true, tweaks: {} })),
     getRoom: vi.fn(() => room),
+    getRooms: vi.fn((): unknown[] => []),
+    getCrypto: vi.fn((): unknown => undefined),
     getSyncState: vi.fn((): SyncState | null => SyncState.Prepared),
     on: vi.fn(),
     off: vi.fn(),
@@ -243,7 +245,11 @@ function event(
     isDecryptionFailure: () => !!opts.failure,
   };
 }
-const room = { roomId: '!r:hs', name: 'General' };
+const room = {
+  roomId: '!r:hs',
+  name: 'General',
+  hasEncryptionStateEvent: () => false,
+};
 const live = { liveEvent: true };
 
 /** Grab the RoomEvent.Timeline handler registered via client.on. */
@@ -741,6 +747,77 @@ describe('NotificationService', () => {
       decryptedHandler(client)(event({ id: '$e2', failure: true }));
 
       expect(MockNotification.instances).toHaveLength(0);
+    });
+
+    // A message sent without encryption into an encrypted room is not what the room's
+    // members can vouch for, so its text stays out of the notification preview.
+    it('does not preview the text of a plaintext message in an encrypted room', () => {
+      const { svc, client } = setup();
+      svc.connect();
+      const encryptedRoom = { ...room, hasEncryptionStateEvent: () => true };
+
+      timelineHandler(client)(
+        event({ body: 'sent in the clear' }),
+        encryptedRoom,
+        false,
+        false,
+        live,
+      );
+
+      expect(MockNotification.instances).toHaveLength(1);
+      expect(MockNotification.instances[0].options).toMatchObject({
+        body: 'New message',
+      });
+    });
+
+    // The client encrypts for a room its crypto store has recorded as encrypted even when
+    // the room's state lacks the encryption event, so the same rule applies here.
+    it('does not preview plaintext when only the crypto store knows the room is encrypted', async () => {
+      const { svc, client } = setup();
+      const isEncryptionEnabledInRoom = vi.fn(() => Promise.resolve(true));
+      client.getCrypto.mockReturnValue({ isEncryptionEnabledInRoom });
+      client.getRooms.mockReturnValue([room]);
+      svc.connect();
+      await vi.waitFor(() =>
+        expect(isEncryptionEnabledInRoom).toHaveBeenCalledWith('!r:hs'),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      timelineHandler(client)(
+        event({ body: 'sent in the clear' }),
+        room,
+        false,
+        false,
+        live,
+      );
+
+      expect(MockNotification.instances).toHaveLength(1);
+      expect(MockNotification.instances[0].options).toMatchObject({
+        body: 'New message',
+      });
+    });
+
+    it('still previews a decrypted message in an encrypted room', () => {
+      const { svc, client } = setup();
+      svc.connect();
+      const encryptedRoom = { ...room, hasEncryptionStateEvent: () => true };
+      client.getRoom.mockReturnValue(encryptedRoom);
+
+      timelineHandler(client)(
+        event({ id: '$e5', encrypted: true }),
+        encryptedRoom,
+        false,
+        false,
+        live,
+      );
+      decryptedHandler(client)(
+        event({ id: '$e5', decrypted: true, body: 'sealed hello' }),
+      );
+
+      expect(MockNotification.instances).toHaveLength(1);
+      expect(MockNotification.instances[0].options).toMatchObject({
+        body: 'sealed hello',
+      });
     });
 
     it('notifies a decrypted event at most once', () => {

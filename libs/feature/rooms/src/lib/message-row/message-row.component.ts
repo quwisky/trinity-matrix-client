@@ -28,6 +28,7 @@ import {
 } from '../message-toolbar/message-toolbar.component';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import {
+  type MessageShield,
   type MessageView,
   type ThreadSummary,
 } from '@trinity/data-access/timeline';
@@ -645,9 +646,18 @@ export class MessageRowComponent {
     };
   });
 
-  /** Icon shape for an authenticity shield's severity: a distinct glyph per level so the
-   * warning (red) and caution (grey) are distinguishable by shape, not colour alone. */
-  shieldIcon(level: 'grey' | 'red'): TrnIconName {
-    return level === 'red' ? 'shield-alert' : 'shield-question';
+  /** Whether a shield is drawn in the red warning tone. The not-encrypted mark for a
+   * message dated before encryption was turned on is as quiet as the grey caution. */
+  shieldIsRed(level: MessageShield['level']): boolean {
+    return level === 'red' || level === 'unencrypted';
+  }
+
+  /** Icon shape for an authenticity shield's severity: a distinct glyph per tone so the
+   * warning (red) and caution (grey) are distinguishable by shape, not colour alone. The
+   * quiet not-encrypted mark has its own open-lock glyph, so it never reads as the grey
+   * caution of an unverified device. */
+  shieldIcon(level: MessageShield['level']): TrnIconName {
+    if (level === 'unencrypted-history') return 'lock-open';
+    return this.shieldIsRed(level) ? 'shield-alert' : 'shield-question';
   }
 }

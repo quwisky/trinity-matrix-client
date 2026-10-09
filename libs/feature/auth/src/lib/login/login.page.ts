@@ -34,8 +34,10 @@ import {
 import { TrnCardImports } from '@trinity/components/navigation-layout';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
+  ReauthAccountMismatchError,
   AuthService,
   AUTHENTICATION_HOMESERVER_DISCOVERY,
+  NewDeviceSignInCancelledError,
   OidcStateStore,
   RegistrationService,
   SignInRedirectService,
@@ -76,7 +78,11 @@ const SIGN_IN_FALLBACK = "We couldn't sign you in. Try again.";
  * fallback: raw SDK messages carry status lines and request URLs.
  */
 function describeSignInError(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message === ACCOUNT_NOT_STORED) {
+  if (
+    error instanceof ReauthAccountMismatchError ||
+    error instanceof NewDeviceSignInCancelledError ||
+    (error instanceof Error && error.message === ACCOUNT_NOT_STORED)
+  ) {
     return error.message;
   }
   if (
@@ -173,9 +179,15 @@ export class LoginPage {
             if (!record) {
               return throwError(() => new Error(ACCOUNT_NOT_STORED));
             }
-            this.reauthDeviceId = record.deviceId;
             this.baseUrl.set(record.baseUrl);
-            return this.discoverCapabilities(record.baseUrl);
+            // Reuse the device unless its stored keys can no longer be unlocked here:
+            // then only a new device, with a new store and key, can sign back in.
+            return this.storage.reusableDeviceId(record).pipe(
+              switchMap((deviceId) => {
+                this.reauthDeviceId = deviceId;
+                return this.discoverCapabilities(record.baseUrl);
+              }),
+            );
           }),
         ),
         this.error,
@@ -350,6 +362,7 @@ export class LoginPage {
         this.credentials().password,
         this.loginMode(),
         this.reauthDeviceId ?? undefined,
+        this.reauthUserId() ?? undefined,
       ),
       this.credentialsError,
       SIGN_IN_FALLBACK,
@@ -377,6 +390,7 @@ export class LoginPage {
         baseUrl,
         this.loginMode(),
         this.reauthDeviceId ?? undefined,
+        this.reauthUserId() ?? undefined,
       ),
       this.error,
       SIGN_IN_FALLBACK,

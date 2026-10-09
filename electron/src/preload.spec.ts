@@ -53,6 +53,7 @@ type ExposedBridge = {
     readonly secureStore: {
       readonly isAvailable: () => Promise<boolean>;
       readonly get: (key: string) => Promise<string | null>;
+      readonly read: (key: string) => Promise<unknown>;
       readonly set: (key: string, value: string) => Promise<boolean>;
       readonly delete: (key: string) => Promise<void>;
     };
@@ -172,6 +173,10 @@ describe('preload host capabilities', () => {
     await expect(bridge.capabilities.secureStore.isAvailable()).resolves.toBe(
       false,
     );
+    // Not granted is not "no such entry": a caller must never treat it as a lost secret.
+    await expect(bridge.capabilities.secureStore.read('k')).resolves.toEqual({
+      kind: 'unavailable',
+    });
     await expect(
       bridge.capabilities.location.approximate(),
     ).resolves.toBeNull();
@@ -229,6 +234,20 @@ describe('preload host capabilities', () => {
       reason: 'host-rejected',
     });
     expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('reads a secret with its absent, unavailable or present state once granted', async () => {
+    await bridge.negotiate(['secure-store']);
+    invoke.mockClear();
+    invoke.mockResolvedValueOnce({ kind: 'unavailable' });
+
+    await expect(bridge.capabilities.secureStore.read('k')).resolves.toEqual({
+      kind: 'unavailable',
+    });
+    expect(invoke).toHaveBeenCalledExactlyOnceWith(
+      'trinity:secure-store:read',
+      'k',
+    );
   });
 
   it('ignores an older negotiation that settles after its replacement', async () => {

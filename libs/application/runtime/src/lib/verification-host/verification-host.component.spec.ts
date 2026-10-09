@@ -21,6 +21,7 @@ function incoming(): VerificationView {
     incoming: true,
     emoji: null,
     sasConfirmed: false,
+    newSession: null,
     qrShowAvailable: false,
     qrScanAvailable: false,
     cancelReason: null,
