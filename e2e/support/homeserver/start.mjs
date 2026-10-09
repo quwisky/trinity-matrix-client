@@ -58,6 +58,8 @@ import {
   ensureSynapseVenv,
   generateSynapseConfig,
   nativeCaddyfile,
+  nativeDexConfig,
+  nativeDexVersion,
   nativeLogTail,
   nativePaths,
   nodeProcessApi,
@@ -323,14 +325,55 @@ async function wellKnownReady() {
   return body['m.homeserver']?.base_url === HS_TLS;
 }
 
+// Discovery rather than /healthz: it also proves the issuer Dex serves is the one the
+// homeserver was configured with, which is the mismatch that would otherwise only
+// surface as an opaque token-exchange failure mid-login.
+async function dexDiscoveryReady() {
+  const res = await fetch(`${DEX_ISSUER}/.well-known/openid-configuration`, {
+    signal: operationSignal,
+  });
+  return res.ok && (await res.json()).issuer === DEX_ISSUER;
+}
+
+// The one poll that reads the HOMESERVER's view of the provider rather than Dex's own.
+// It only advertises `m.login.sso` when it has loaded an SSO provider, so this is what
+// turns "we configured a provider" into "the running server has one".
+async function ssoLoginFlowReady() {
+  const res = await fetch(`${HOMESERVER_HTTP}/_matrix/client/v3/login`, {
+    signal: operationSignal,
+  });
+  if (!res.ok) return false;
+  const { flows = [] } = await res.json();
+  return flows.some((flow) => flow.type === 'm.login.sso');
+}
+
+/** The SSO identities in dex.yaml, which the homeserver creates on first sign-in. */
+const ssoAccounts = () => ({
+  // The SSO accounts are not registered here: the homeserver creates each the first
+  // time someone completes the Dex round-trip, and they have no Matrix password to
+  // register with. Two of them, because the reset spec permanently seeds the one it
+  // uses — see SSO_RESET_USER and dex.yaml.
+  sso: { user: SSO_USER, email: SSO_EMAIL, pass: SSO_PASS },
+  ssoReset: {
+    user: SSO_RESET_USER,
+    email: SSO_RESET_EMAIL,
+    pass: SSO_PASS,
+  },
+});
+
 /**
  * Native runtime: Synapse from a venv and Caddy as host processes, primary server only.
- * Dex, the secondary server and the `m.login.sso` poll are skipped, and the session says
- * so (`unavailable`) instead of inventing values.
+ * Dex runs too when a `dex` binary is on PATH (`brew install dexidp`), and then SSO is
+ * available. The secondary server always is not, nor SSO without Dex, and the session
+ * says so (`unavailable`) instead of inventing values.
  */
 async function startNative() {
   const paths = nativePaths(STATE_DIR, DATA);
-  log(`${kind}, native runtime (host processes, primary server only)`);
+  const dexVersion = await nativeDexVersion(nodeProcessApi, operationSignal);
+  const sso = dexVersion !== null;
+  log(
+    `${kind}, native runtime (host processes, primary server only; ${sso ? `Dex ${dexVersion}` : 'no dex on PATH, so no SSO'})`,
+  );
   await prepareStateDir();
   await ensureSynapseVenv(paths, nodeProcessApi, {
     signal: operationSignal,
@@ -339,7 +382,8 @@ async function startNative() {
   await synapse.preparePrimary({
     signal: operationSignal,
     log,
-    sso: false,
+    native: true,
+    sso,
     generate: () =>
       generateSynapseConfig(
         paths,
@@ -356,12 +400,23 @@ async function startNative() {
     ),
     'utf8',
   );
-  startNativeServices(paths, nodeProcessApi, process.env);
+  if (sso) {
+    await writeFile(
+      paths.dexConfig,
+      nativeDexConfig(await readFile(join(STATE_DIR, 'dex.yaml'), 'utf8')),
+      'utf8',
+    );
+  }
+  startNativeServices(paths, nodeProcessApi, process.env, { dex: sso });
   await waitFor(
     'homeserver client versions',
     'homeserver',
     clientVersionsReady,
   );
+  if (sso) {
+    await waitFor('dex discovery', 'dex', dexDiscoveryReady);
+    await waitFor('homeserver sso login flow', 'homeserver', ssoLoginFlowReady);
+  }
   await registerUser();
   await waitFor('caddy well-known (https)', 'caddy', wellKnownReady);
   const version = await serverVersion();
@@ -381,8 +436,9 @@ async function startNative() {
     kind,
     version,
     runtime,
-    unavailable: ['remote', 'sso'],
+    unavailable: sso ? ['remote'] : ['remote', 'sso'],
     caddyRoot: paths.caddyRoot,
+    ...(sso ? ssoAccounts() : {}),
   };
 }
 
@@ -480,27 +536,8 @@ export async function start({ signal } = {}) {
     },
   );
 
-  // Discovery rather than /healthz: it also proves the issuer Dex serves is the one the
-  // homeserver was configured with, which is the mismatch that would otherwise only
-  // surface as an opaque token-exchange failure mid-login.
-  await waitFor('dex discovery', 'dex', async () => {
-    const res = await fetch(`${DEX_ISSUER}/.well-known/openid-configuration`, {
-      signal: operationSignal,
-    });
-    return res.ok && (await res.json()).issuer === DEX_ISSUER;
-  });
-
-  // The one poll that reads the HOMESERVER's view of the provider rather than Dex's own.
-  // It only advertises `m.login.sso` when it has loaded an SSO provider, so this is what
-  // turns "we configured a provider" into "the running server has one".
-  await waitFor('homeserver sso login flow', 'homeserver', async () => {
-    const res = await fetch(`${HOMESERVER_HTTP}/_matrix/client/v3/login`, {
-      signal: operationSignal,
-    });
-    if (!res.ok) return false;
-    const { flows = [] } = await res.json();
-    return flows.some((flow) => flow.type === 'm.login.sso');
-  });
+  await waitFor('dex discovery', 'dex', dexDiscoveryReady);
+  await waitFor('homeserver sso login flow', 'homeserver', ssoLoginFlowReady);
 
   await registerUser();
 
@@ -548,16 +585,7 @@ export async function start({ signal } = {}) {
       serverName: secondaryServerName(),
       registrationSecret: REGISTRATION_SHARED_SECRET,
     },
-    // The SSO accounts are not registered here: the homeserver creates each the first
-    // time someone completes the Dex round-trip, and they have no Matrix password to
-    // register with. Two of them, because the reset spec permanently seeds the one it
-    // uses — see SSO_RESET_USER and dex.yaml.
-    sso: { user: SSO_USER, email: SSO_EMAIL, pass: SSO_PASS },
-    ssoReset: {
-      user: SSO_RESET_USER,
-      email: SSO_RESET_EMAIL,
-      pass: SSO_PASS,
-    },
+    ...ssoAccounts(),
     ...(masEnabled
       ? {
           mas: {

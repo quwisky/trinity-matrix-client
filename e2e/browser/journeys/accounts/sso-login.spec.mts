@@ -17,14 +17,18 @@ import { redeemLoginToken, ssoLoginToken } from '../../support/sso.mts';
 // the login only incidentally, so a break in it surfaced as a confusing failure in a
 // spec about something else.
 //
-// Needs Docker; self-skips otherwise like the other web specs.
+// Needs Dex (Docker, or native with dex on PATH); self-skips otherwise.
 const session = homeserverSession();
 
 /** The callback the app routes, with whatever query a caller wants to arrive with. */
 const callback = (query: string): string => `/sso-callback?${query}`;
 
 test.describe('SSO sign-in', () => {
-  test.skip(!session.available, 'needs the Synapse + Dex harness (Docker)');
+  // `sso` is set only when Dex runs: Docker, or the native runtime with `dex` on PATH.
+  test.skip(
+    !session.available || !session.sso,
+    'needs the Synapse + Dex harness (Docker, or native with dex on PATH)',
+  );
 
   test('signs in through the provider and keeps the session', async ({
     page,

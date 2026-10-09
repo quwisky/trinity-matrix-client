@@ -61,9 +61,10 @@ const OIDC_END = '# === end trinity-e2e-oidc ===';
  * restarts Synapse whenever the two have diverged.
  */
 function oidcBlock(ctx) {
-  // No compose network under the netns override, so no `dex` DNS name — but everything
-  // shares one loopback there, so the published port is reachable as localhost.
-  const internal = ctx.networkContainer ? 'localhost:5556' : 'dex:5556';
+  // No compose network under the netns override or the native runtime, so no `dex` DNS
+  // name — but everything shares one loopback there, so Dex's port is reachable as localhost.
+  const internal =
+    ctx.networkContainer || ctx.native ? 'localhost:5556' : 'dex:5556';
   const appOrigin =
     process.env.TRINITY_E2E_APP_URL ??
     process.env.BASE_URL ??
@@ -158,8 +159,8 @@ const NATIVE_URL_PREVIEW_BLACKLIST = [
  * Generate homeserver.yaml on first run, then patch in the e2e settings.
  *
  * `ctx.generate` replaces the Docker scaffold (the native runtime runs Synapse's own
- * --generate-config). `ctx.sso === false` leaves the Dex block out: there is no Dex, and
- * Synapse refuses OIDC providers without authlib, which the native venv does not install.
+ * --generate-config), and `ctx.native` marks it. `ctx.sso === false` leaves the Dex block
+ * out, for a native runtime without a `dex` binary.
  */
 export async function ensureConfig(ctx) {
   if (!(await exists(CONFIG))) {
@@ -212,11 +213,11 @@ export async function ensureConfig(ctx) {
       // Link previews for the URL-preview e2e. The empty IP blacklist lets Synapse
       // fetch the harness OG page (http://caddy:8080/og) on the private docker network
       // — safe here because this homeserver is disposable and network-isolated. The
-      // native runtime (sso: false) serves no OG page and shares the host's network,
+      // native runtime serves no OG page and shares the host's network,
       // so it lists Synapse's recommended private and reserved ranges: Synapse has no
       // default blocklist and refuses to start with previews enabled and none given.
       'url_preview_enabled: true',
-      ...(ctx.sso === false
+      ...(ctx.native
         ? [
             'url_preview_ip_range_blacklist:',
             ...NATIVE_URL_PREVIEW_BLACKLIST.map((range) => `  - '${range}'`),

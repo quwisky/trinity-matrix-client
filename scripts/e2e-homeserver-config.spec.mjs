@@ -233,8 +233,9 @@ describe('Synapse adapter config generation', () => {
     stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
     const { ensureConfig } = await adapterIn(stateDir);
     const generate = generateInto(stateDir);
-    await ensureConfig({ log: () => undefined, sso: false, generate });
-    await ensureConfig({ log: () => undefined, sso: false, generate });
+    const ctx = { log: () => undefined, native: true, sso: false, generate };
+    await ensureConfig(ctx);
+    await ensureConfig(ctx);
     const yaml = readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8');
     expect(generate).toHaveBeenCalledOnce();
     expect(yaml).toContain(
@@ -250,6 +251,24 @@ describe('Synapse adapter config generation', () => {
     expect(block?.[1]).toContain('::1/128');
     expect(yaml).not.toContain('trinity-e2e-oidc');
     expect(yaml).not.toContain('oidc_providers');
+  });
+
+  it('adds Dex on loopback for a native runtime with Dex, keeping the native blocklist', async () => {
+    stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
+    const { ensureConfig } = await adapterIn(stateDir);
+    await ensureConfig({
+      log: () => undefined,
+      native: true,
+      generate: generateInto(stateDir),
+    });
+    const yaml = readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8');
+    expect(yaml).toContain('idp_id: dex');
+    // No compose network natively: Synapse reaches Dex on the loopback it shares.
+    expect(yaml).toContain('token_endpoint: "http://localhost:5556/dex/token"');
+    expect(yaml).not.toContain('dex:5556');
+    expect(yaml).toMatch(
+      /url_preview_ip_range_blacklist:\n\s+- '127\.0\.0\.0\/8'/,
+    );
   });
 
   it('keeps the Dex block for the Docker runtime', async () => {

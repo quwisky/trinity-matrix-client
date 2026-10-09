@@ -31,7 +31,7 @@ pnpm exec playwright install chromium webkit
 
 ## Before running a suite
 
-Check its prerequisites. Docker is required by homeserver-backed suites unless `TRINITY_E2E_HOMESERVER_RUNTIME=native` runs Synapse and Caddy as host processes (see the Matrix E2E guide). Android requires a
+Check its prerequisites. Docker is required by homeserver-backed suites unless `TRINITY_E2E_HOMESERVER_RUNTIME=native` runs Synapse and Caddy, plus Dex when `dex` is on `PATH`, as host processes (see the Matrix E2E guide). Android requires a
 dedicated API 36 x86_64 emulator, its SDK and JDK 21; Electron needs its separately installed
 shell dependencies and a display; iOS needs macOS, Xcode, an iOS Simulator and the native homeserver runtime
 (`pnpm e2e:mobile:ios`; in progress, #863). The aggregate preflights selected suites.
