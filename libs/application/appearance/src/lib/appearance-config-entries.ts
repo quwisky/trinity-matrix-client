@@ -16,11 +16,13 @@ import {
 import {
   DENSITY_PREFERENCE,
   MODE_PREFERENCE,
+  ROOM_LIST_PREFERENCE,
   TEXT_SIZE_PREFERENCE,
   THEME_PREFERENCE,
+  THEME_RENAMES,
 } from './design-system-appearance-preferences';
 
-/** Register the six portable Appearance axes under one descriptor-backed config group. */
+/** Register the seven portable Appearance axes under one descriptor-backed config group. */
 export function provideAppearanceConfigEntries(): EnvironmentProviders {
   return provideConfigEntries(() => {
     const appearance = inject(AppearancePreferences);
@@ -30,6 +32,7 @@ export function provideAppearanceConfigEntries(): EnvironmentProviders {
         'appearance.theme',
         THEME_PREFERENCE,
         appearance.axes.theme,
+        THEME_RENAMES,
       ),
       appearanceEntry(
         'appearance.textSize',
@@ -40,6 +43,11 @@ export function provideAppearanceConfigEntries(): EnvironmentProviders {
         'appearance.density',
         DENSITY_PREFERENCE,
         appearance.axes.density,
+      ),
+      appearanceEntry(
+        'appearance.roomList',
+        ROOM_LIST_PREFERENCE,
+        appearance.axes.roomList,
       ),
       appearanceEntry(
         'appearance.codeSize',
@@ -59,6 +67,7 @@ function appearanceEntry<T extends string>(
   path: string,
   descriptor: PreferenceDescriptor<T>,
   axis: AppearanceAxis<T>,
+  renames: Readonly<Record<string, string>> = {},
 ): ConfigEntry {
   if (descriptor.export !== 'portable' || descriptor.editor.kind !== 'select') {
     throw new Error(
@@ -68,17 +77,24 @@ function appearanceEntry<T extends string>(
   const choices = descriptor.editor.options.map(({ value }) => value);
   const accepts = (value: string): value is T =>
     descriptor.validate(value).kind === 'accepted';
+  const choice = choiceSetting({
+    isValid: accepts,
+    options: choices,
+    noun: `a supported ${descriptor.editor.label.toLowerCase()}`,
+    set: axis.set,
+  });
   return {
     path,
     key: descriptor.persistence.key,
     description: descriptor.editor.description,
     read: axis.value,
     reset: () => axis.set(descriptor.defaultValue),
-    ...choiceSetting({
-      isValid: accepts,
-      options: choices,
-      noun: `a supported ${descriptor.editor.label.toLowerCase()}`,
-      set: axis.set,
-    }),
+    ...choice,
+    validate: (value) =>
+      choice.validate(
+        typeof value === 'string' && Object.hasOwn(renames, value)
+          ? renames[value]
+          : value,
+      ),
   };
 }

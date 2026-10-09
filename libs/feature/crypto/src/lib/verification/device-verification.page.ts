@@ -14,16 +14,19 @@ import { NgTemplateOutlet } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
 } from '@trinity/components/overlay';
 import { Observable } from 'rxjs';
 import { TrustVerificationService } from '@trinity/data-access/trust';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
-import { PageHeaderComponent } from '@trinity/components/navigation-layout';
+import {
+  PageHeaderComponent,
+  TrnCardImports,
+} from '@trinity/components/navigation-layout';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { QrScannerComponent } from '@trinity/components/controls';
-import { QrCodeService } from '@trinity/platform-native';
+import { DateTimeFormatService, QrCodeService } from '@trinity/platform-native';
 import { SasCompareComponent } from './sas-compare.component';
 
 /**
@@ -39,10 +42,11 @@ import { SasCompareComponent } from './sas-compare.component';
   templateUrl: './device-verification.page.html',
   styleUrl: './device-verification.page.scss',
   imports: [
+    TrnCardImports,
     NgTemplateOutlet,
     PageHeaderComponent,
     TrnButton,
-    TrnOverlaySurfaceDirective,
+    TrnDialogShellComponent,
     SasCompareComponent,
     QrScannerComponent,
     TrnSpinnerComponent,
@@ -66,6 +70,10 @@ export class DeviceVerificationPage {
   private readonly scannerRequestId = signal<number | null>(null);
   private readonly stageHeading =
     viewChild<ElementRef<HTMLHeadingElement>>('stageHeading');
+  // Declining, the default answer to a request for access, takes the first focus.
+  private readonly initialFocus = viewChild('initialFocus', {
+    read: ElementRef<HTMLElement>,
+  });
   private lastFocusedView = '';
   readonly scanning = () => {
     const active = this.active();
@@ -74,26 +82,26 @@ export class DeviceVerificationPage {
     );
   };
   readonly cameraSupported = this.qrCode.cameraSupported;
+  readonly fmt = inject(DateTimeFormatService);
   readonly qrCodeUrl = signal<string | null>(null);
+  private qrRequest = 0;
 
   private readonly synchronizeQrUi = effect(() => {
-    const active = this.active();
-    const scanning = this.scanning();
-    if (active?.stage !== 'qr-shown') {
-      this.qrCodeUrl.set(null);
+    if (this.active()?.stage !== 'qr-shown') {
+      this.clearQr();
     }
 
-    const heading = this.stageHeading();
-    const view = `${active?.requestId ?? 'idle'}:${active?.stage ?? 'idle'}:${scanning}`;
-    if (!heading || view === this.lastFocusedView) {
+    const target = this.initialFocus() ?? this.stageHeading();
+    const view = this.focusView();
+    if (!target || view === this.lastFocusedView) {
       return;
     }
     this.lastFocusedView = view;
     queueMicrotask(() => {
-      const current = this.active();
-      const currentView = `${current?.requestId ?? 'idle'}:${current?.stage ?? 'idle'}:${this.scanning()}`;
-      if (currentView === view) {
-        this.stageHeading()?.nativeElement.focus({ preventScroll: true });
+      if (this.focusView() === view) {
+        (this.initialFocus() ?? this.stageHeading())?.nativeElement.focus({
+          preventScroll: true,
+        });
       }
     });
   });
@@ -111,7 +119,7 @@ export class DeviceVerificationPage {
   }
   startSas(): void {
     this.scannerRequestId.set(null);
-    this.qrCodeUrl.set(null);
+    this.clearQr();
     this.run(this.verification.startSas());
   }
   showQr(): void {
@@ -119,10 +127,24 @@ export class DeviceVerificationPage {
       busy: this.busy,
       error: this.error,
       destroyRef: this.destroyRef,
-    }).subscribe((data) => this.qrCodeUrl.set(this.qrCode.createDataUrl(data)));
+    }).subscribe((data) => {
+      const request = ++this.qrRequest;
+      this.qrCode
+        .createDataUrl(data)
+        .then((url) => {
+          if (request === this.qrRequest) {
+            this.qrCodeUrl.set(url);
+          }
+        })
+        .catch(() => {
+          if (request === this.qrRequest) {
+            this.error.set('Couldn’t render the QR code.');
+          }
+        });
+    });
   }
   hideQr(): void {
-    this.qrCodeUrl.set(null);
+    this.clearQr();
     this.verification.hideQr();
   }
   startQrScan(): void {
@@ -134,7 +156,7 @@ export class DeviceVerificationPage {
   }
   scanQr(data: Uint8ClampedArray): void {
     this.scannerRequestId.set(null);
-    this.qrCodeUrl.set(null);
+    this.clearQr();
     this.run(this.verification.scanQr(data));
   }
   confirmQr(): void {
@@ -148,6 +170,19 @@ export class DeviceVerificationPage {
   }
   cancel(): void {
     this.run(this.verification.cancel());
+  }
+
+  /** What focus belongs to: the request, its stage, and which element takes it. */
+  private focusView(): string {
+    const active = this.active();
+    const taker = this.initialFocus() ? 'answer' : 'heading';
+    return `${active?.requestId ?? 'idle'}:${active?.stage ?? 'idle'}:${this.scanning()}:${taker}`;
+  }
+
+  /** Drop the sensitive code and any render still in flight. */
+  private clearQr(): void {
+    this.qrRequest++;
+    this.qrCodeUrl.set(null);
   }
 
   /** Finish: drop the verification and leave (close the modal / go to /rooms). */

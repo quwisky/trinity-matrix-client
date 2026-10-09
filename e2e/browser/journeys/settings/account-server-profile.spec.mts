@@ -91,7 +91,6 @@ test.describe('Settings', () => {
         };
       });
 
-    expect((await detailGeometry()).overflows).toBe(false);
     await page.getByTestId('hs-unstable').locator('summary').click();
     await expect(page.getByTestId('hs-unstable')).toHaveAttribute('open', '');
 
@@ -100,15 +99,11 @@ test.describe('Settings', () => {
     expect(expanded.documentOverflow).toBeLessThanOrEqual(1);
     expect(expanded.contained).toBe(true);
     expect(expanded.horizontalOverflow).toBeLessThanOrEqual(1);
-    // Native Settings is routed, with host chrome above the detail pane. Its one
-    // content scroller may be needed. Synapse's short flag list still fits the
-    // fixed-height desktop dialog; Tuwunel advertises ~40 flags, which wrap compactly
-    // (below) but cannot fit 600px, so the detail pane must be the one scroller.
-    if (session.kind === 'tuwunel') {
-      expect(expanded.overflows).toBe(true);
+    // The settings layer is the viewport, so the detail pane is its one content scroller.
+    // It may need to scroll once the flags are open (Tuwunel advertises ~40, which wrap
+    // compactly below); what matters is that no ancestor grows a second scrollbar.
+    if (expanded.overflows) {
       expect(expanded.scrolls).toBe(true);
-    } else {
-      expect(expanded.overflows).toBe(false);
     }
     const flagRows = await page
       .getByTestId('hs-unstable')
@@ -120,10 +115,12 @@ test.describe('Settings', () => {
         ).size,
       }));
     expect(flagRows.count).toBeGreaterThan(1);
+    // At least two flags to a line on average. One shared line out of ~40 flags passed a bare
+    // "fewer rows than flags" while a 16rem column held the list to a flag per line.
     expect(
       flagRows.rows,
       'flags wrap compactly instead of one flag per line',
-    ).toBeLessThan(flagRows.count);
+    ).toBeLessThanOrEqual(flagRows.count / 2);
   });
 
   test('re-checks the server on demand', async ({ page }) => {
@@ -220,9 +217,10 @@ test.describe('Settings', () => {
   test('lists the current device under Devices', async ({ page }) => {
     await openSection(page, 'devices');
     const devices = page.locator('trn-devices-section');
-    await expect(devices.getByText('Devices', { exact: true })).toBeVisible({
-      timeout: 20_000,
-    });
+    // The page heading is the section name, outside the section component.
+    await expect(
+      page.locator('.settings-layout__column h1', { hasText: 'Devices' }),
+    ).toBeVisible({ timeout: 20_000 });
     // Once the list loads, the signed-in session carries a "This device" badge.
     await expect(devices.getByText('This device')).toBeVisible({
       timeout: 30_000,

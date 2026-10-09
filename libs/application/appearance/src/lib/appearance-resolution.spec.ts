@@ -10,6 +10,7 @@ const committed = (mode: AppearanceValue['mode']): AppearanceValue => ({
   theme: 'amethyst',
   textSize: 'larger',
   density: 'compact',
+  roomList: 'compact',
   codeSize: 'smaller',
   codeLinePresentation: 'always',
 });

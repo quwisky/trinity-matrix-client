@@ -1,11 +1,7 @@
-<div>
-  <trn-settings-section-heading
-    title="Advanced"
-    description="Inspect, move or reset the preferences stored on this device."
-    [primary]="true"
-  />
-
-  <p class="block px-4 py-2 text-13 text-muted-foreground">
+<trn-settings-group
+  description="Inspect, move or reset the preferences stored on this device."
+>
+  <p class="m-0 py-3 text-13 text-muted-foreground">
     Every setting Trinity keeps on this device, in one document — to copy to
     another device, keep a copy before experimenting, or paste into a support
     thread. It carries preferences only: no accounts, no access tokens, no
@@ -23,7 +19,7 @@
     }
   </p>
 
-  <div class="px-4 py-2">
+  <div class="py-3">
     @if (editor(); as loaded) {
       <!-- Not a <label for>: the editor's own text area is built by CodeMirror and has no id
            to point at, so it carries the accessible name itself (aria-label). -->
@@ -61,7 +57,7 @@
     }
   </div>
 
-  <div class="flex flex-wrap items-center gap-2 px-4 py-2">
+  <div class="flex flex-wrap items-center gap-2 py-3">
     <button
       trnBtn
       presentation="outline"
@@ -124,7 +120,7 @@
   </div>
 
   @if (canEdit) {
-    <div class="flex flex-wrap items-center gap-2 px-4 py-2">
+    <div class="flex flex-wrap items-center gap-2 py-3">
       <button
         trnBtn
         size="sm"
@@ -137,7 +133,7 @@
     </div>
   } @else {
     <p
-      class="block px-4 py-2 text-13 text-muted-foreground"
+      class="m-0 py-3 text-13 text-muted-foreground"
       data-testid="advanced-editing-unavailable"
     >
       Editing this document isn't offered in the mobile app — a JSON editor over
@@ -148,85 +144,19 @@
     </p>
   }
 
-  @if (problems().length > 0) {
-    <div class="px-4 py-2" role="alert" data-testid="advanced-apply-problems">
-      <p class="text-13 font-medium text-danger">
-        Nothing was applied. This document can't be read:
-      </p>
-      <ul class="pt-1">
-        @for (problem of problems(); track problem) {
-          <li class="py-0.5 text-13 text-danger">{{ problem }}</li>
-        }
-      </ul>
-    </div>
-  }
-
-  @if (warnings().length > 0) {
-    <div class="px-4 py-2" data-testid="advanced-apply-warnings">
-      <div class="rounded-md bg-warning px-3 py-2 text-warning-foreground">
-        <p class="text-13 font-medium">Some of this won't apply here:</p>
-        <ul class="pt-1">
-          @for (warning of warnings(); track warning) {
-            <li class="py-0.5 text-13">{{ warning }}</li>
-          }
-        </ul>
-        <p class="pt-1 text-13">
-          Everything else is applied as normal, and the document keeps these
-          values for the device they came from.
-        </p>
-      </div>
-    </div>
-  }
-
-  @if (nothingToChange()) {
-    <p
-      class="block px-4 py-2 text-13 text-muted-foreground"
-      data-testid="advanced-apply-nothing"
-    >
-      Your settings already match this document, so there is nothing to change.
-    </p>
-  }
-
-  @if (changeLines().length > 0) {
-    <div class="px-4 py-2" data-testid="advanced-apply-summary">
-      <div class="rounded-md border border-solid border-border px-3 py-2">
-        <p class="text-13 font-medium">
-          These settings will change. Nothing has been written yet.
-        </p>
-        <ul class="pt-1" data-testid="advanced-apply-changes">
-          @for (line of changeLines(); track line) {
-            <li class="py-0.5 font-mono text-13 break-all">{{ line }}</li>
-          }
-        </ul>
-        <div class="flex flex-wrap items-center gap-2 pt-2">
-          <button
-            trnBtn
-            size="sm"
-            [disabled]="applying()"
-            (click)="confirmApply()"
-            data-testid="advanced-apply-confirm"
-          >
-            Apply {{ changeLines().length }}
-            {{ changeLines().length === 1 ? 'change' : 'changes' }}
-          </button>
-          <button
-            trnBtn
-            presentation="ghost"
-            size="sm"
-            [disabled]="applying()"
-            (click)="cancelApply()"
-            data-testid="advanced-apply-cancel"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  }
+  <trn-config-apply-review
+    [problems]="problems()"
+    [warnings]="warnings()"
+    [changeLines]="changeLines()"
+    [nothingToChange]="nothingToChange()"
+    [applying]="applying()"
+    (confirmed)="confirmApply()"
+    (cancelled)="cancelApply()"
+  />
 
   @if (!canExportFile()) {
     <p
-      class="block px-4 py-2 text-13 text-muted-foreground"
+      class="m-0 py-3 text-13 text-muted-foreground"
       data-testid="advanced-export-unavailable"
     >
       Saving a file isn't offered here — the mobile app has no reliable
@@ -234,11 +164,10 @@
       note, or a message to yourself, to get it onto another device.
     </p>
   }
+</trn-settings-group>
 
-  <h3 class="px-4 pt-4 pb-1 text-13 font-semibold">
-    What this document leaves out
-  </h3>
-  <ul class="px-4 pb-2" data-testid="advanced-exclusions">
+<trn-settings-group title="What this document leaves out">
+  <ul class="m-0 list-none p-0 pt-3" data-testid="advanced-exclusions">
     @for (note of exclusions; track note.what) {
       <li class="py-1 text-13 text-muted-foreground">
         <span class="font-medium text-foreground">{{ note.what }}</span> —
@@ -247,61 +176,12 @@
     }
   </ul>
 
-  <p class="block px-4 py-2 text-13 text-muted-foreground">
+  <p class="m-0 py-3 text-13 text-muted-foreground">
     A document written on another platform can name settings this one has no use
     for — a desktop keyboard shortcut on a phone, say. Trinity applies the rest
     and tells you which ones it left, rather than quietly dropping them from
     your document.
   </p>
+</trn-settings-group>
 
-  <div class="border-t border-solid border-border px-4 py-3">
-    <button
-      trnBtn
-      variant="danger"
-      size="sm"
-      [disabled]="resetting()"
-      (click)="reset()"
-      data-testid="advanced-reset"
-    >
-      Reset to defaults
-    </button>
-    <p class="pt-2 text-13 text-danger" data-testid="advanced-reset-warning">
-      ⚠ Puts every setting above back to its default on this device, with no
-      undo — copy or export first. Your account registry, unsent drafts, push
-      delivery ledger and per-account space ordering are left alone.
-    </p>
-    @if (resetResult(); as result) {
-      <div
-        class="mt-3 rounded-md border border-solid border-border px-3 py-2"
-        role="status"
-        data-testid="advanced-reset-partial"
-      >
-        <p class="text-13 font-medium">
-          {{ outstandingResetEntries().length }}
-          {{
-            outstandingResetEntries().length === 1
-              ? 'setting still needs'
-              : 'settings still need'
-          }}
-          attention.
-        </p>
-        <ul class="pt-1 font-mono text-13 break-all">
-          @for (entry of outstandingResetEntries(); track entry.entry) {
-            <li>{{ entry.entry }} — {{ entry.status }}</li>
-          }
-        </ul>
-        <button
-          trnBtn
-          presentation="outline"
-          size="sm"
-          class="mt-2"
-          [disabled]="resetting()"
-          (click)="retryReset()"
-          data-testid="advanced-reset-retry"
-        >
-          Retry outstanding settings
-        </button>
-      </div>
-    }
-  </div>
-</div>
+<trn-config-reset-group (discarded)="discard()" />

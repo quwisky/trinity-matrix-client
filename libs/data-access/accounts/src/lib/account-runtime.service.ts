@@ -384,12 +384,7 @@ export class AccountRuntimeService {
   ): AccountEstablishmentOutcome {
     return outcome.kind === 'ready'
       ? { kind: 'ready', accountId, placement: intent.placement }
-      : {
-          kind: 'failed',
-          accountId,
-          placement: intent.placement,
-          failure: outcome.failure,
-        };
+      : { ...outcome, accountId, placement: intent.placement };
   }
 
   private transitionOutcome(

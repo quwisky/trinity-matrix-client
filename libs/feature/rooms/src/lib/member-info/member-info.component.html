@@ -1,153 +1,163 @@
 @if (isPanel) {
-  <!-- Panel mode only. As a dialog the backdrop and Escape close it; in the slot there is
-       neither above the `members` breakpoint, so the header IS the way out. -->
   <div
-    class="panel-header flex items-center gap-2 border-b border-solid border-border"
+    trnOverlaySurface
+    variant="neutral"
+    size="lg"
+    layout="panel"
+    class="flex h-full flex-col"
   >
-    <h2 class="flex-1 text-base font-semibold">Member info</h2>
-    <button
-      trnBtn
-      variant="secondary"
-      presentation="ghost"
-      size="md"
-      shape="icon"
-      (click)="close()"
-      aria-label="Close member info"
-      data-testid="member-info-close"
-      data-right-panel-focus
-    >
-      <trn-icon name="x" size="lg" motion="rotate" />
-    </button>
+    <!-- Panel mode only. As a dialog the backdrop and Escape close it; in the slot there is
+         neither above the `members` breakpoint, so the header IS the way out. -->
+    <trn-side-panel-header
+      title="Member info"
+      closeLabel="Close member info"
+      closeTestId="member-info-close"
+      [focusClose]="true"
+      (closed)="close()"
+    />
+    <ng-container [ngTemplateOutlet]="profile" />
   </div>
+} @else {
+  <trn-dialog-shell
+    title="Member info"
+    size="sm"
+    bodyClass="p-0"
+    (closed)="close()"
+  >
+    <ng-container [ngTemplateOutlet]="profile" />
+  </trn-dialog-shell>
 }
-<div class="member-info safe-bottom" data-testid="member-info">
-  <trn-avatar
-    class="member-info__avatar"
-    [mxc]="member().roomAvatarMxc"
-    [initial]="member().roomInitial"
-    [name]="member().roomDisplayName"
-    [exactSize]="64"
-    [presence]="presenceState()"
-  />
-  <div class="member-info__id">
-    <span class="member-info__name" data-testid="member-info-name">{{
-      member().roomDisplayName
-    }}</span>
-    <span
-      #userIdHandle
-      class="member-info__handle"
-      data-testid="member-info-handle"
-      tabindex="0"
-      role="textbox"
-      aria-readonly="true"
-      [attr.aria-label]="'Matrix user ID ' + member().userId"
-      (focus)="selectUserId()"
-      >{{ member().userId }}</span
-    >
-    <span class="member-info__role" data-testid="member-info-role">{{
-      role()
-    }}</span>
-  </div>
-
-  <div class="member-info__actions">
-    @if (!isSelf()) {
-      <button
-        trnBtn
-        class="w-full"
-        (click)="message()"
-        data-testid="member-info-message"
+<ng-template #profile>
+  <div class="member-info safe-bottom" data-testid="member-info">
+    <trn-avatar
+      class="member-info__avatar"
+      [mxc]="member().roomAvatarMxc"
+      [initial]="member().roomInitial"
+      [name]="member().roomDisplayName"
+      [exactSize]="64"
+      [presence]="presenceState()"
+    />
+    <div class="member-info__id">
+      <span class="member-info__name" data-testid="member-info-name">{{
+        member().roomDisplayName
+      }}</span>
+      <span
+        #userIdHandle
+        class="member-info__handle"
+        data-testid="member-info-handle"
+        tabindex="0"
+        role="textbox"
+        aria-readonly="true"
+        [attr.aria-label]="'Matrix user ID ' + member().userId"
+        (focus)="selectUserId()"
+        >{{ member().userId }}</span
       >
-        Message
-      </button>
-    }
-    <button
-      trnBtn
-      variant="secondary"
-      presentation="ghost"
-      class="w-full"
-      (click)="copyId()"
-      data-testid="member-info-copy"
-    >
-      Copy user ID
-    </button>
+      <span class="member-info__role" data-testid="member-info-role">{{
+        role()
+      }}</span>
+    </div>
 
-    @if (!isSelf() && showIdentityActions()) {
+    <div class="member-info__actions">
+      @if (!isSelf()) {
+        <button
+          trnBtn
+          class="w-full"
+          (click)="message()"
+          data-testid="member-info-message"
+        >
+          Message
+        </button>
+      }
       <button
         trnBtn
         variant="secondary"
         presentation="ghost"
         class="w-full"
-        (click)="verify()"
-        data-testid="member-info-verify"
+        (click)="copyId()"
+        data-testid="member-info-copy"
       >
-        Verify
+        Copy user ID
       </button>
-      <button
-        trnBtn
-        variant="secondary"
-        presentation="ghost"
-        class="w-full"
-        (click)="toggleIgnore()"
-        data-testid="member-info-ignore"
-      >
-        {{ ignored() ? 'Unblock' : 'Block' }}
-      </button>
-    }
 
-    @if (!isSelf() && showModeration()) {
-      <div class="member-info__moderation">
-        @for (option of roleOptions(); track option.level) {
-          @let permission = rolePermission(option.level);
-          @if (showModerationAction(permission)) {
+      @if (!isSelf() && showIdentityActions()) {
+        <button
+          trnBtn
+          variant="secondary"
+          presentation="ghost"
+          class="w-full"
+          (click)="verify()"
+          data-testid="member-info-verify"
+        >
+          Verify
+        </button>
+        <button
+          trnBtn
+          variant="secondary"
+          presentation="ghost"
+          class="w-full"
+          (click)="toggleIgnore()"
+          data-testid="member-info-ignore"
+        >
+          {{ ignored() ? 'Unblock' : 'Block' }}
+        </button>
+      }
+
+      @if (!isSelf() && showModeration()) {
+        <div class="member-info__moderation">
+          @for (option of roleOptions(); track option.level) {
+            @let permission = rolePermission(option.level);
+            @if (showModerationAction(permission)) {
+              <button
+                trnBtn
+                variant="secondary"
+                presentation="outline"
+                class="w-full"
+                (click)="setRole(option)"
+                [trnActionAllowed]="permission.available"
+                [trnActionDisabledReason]="permission.reason"
+                [trnTooltip]="permission.reason ?? 'Change role'"
+                [attr.data-testid]="'member-info-role-' + option.level"
+              >
+                Make {{ option.label.toLowerCase() }}
+              </button>
+            }
+          }
+          @if (showModerationAction(permissions().kick)) {
             <button
               trnBtn
               variant="secondary"
               presentation="outline"
-              class="w-full"
-              (click)="setRole(option)"
-              [trnActionAllowed]="permission.available"
-              [trnActionDisabledReason]="permission.reason"
-              [trnTooltip]="permission.reason ?? 'Change role'"
-              [attr.data-testid]="'member-info-role-' + option.level"
+              class="member-info__danger w-full"
+              (click)="kick()"
+              [trnActionAllowed]="permissions().kick.available"
+              [trnActionDisabledReason]="permissions().kick.reason"
+              [trnTooltip]="
+                permissions().kick.reason ??
+                'Remove from ' + noun().toLowerCase()
+              "
+              data-testid="member-info-kick"
             >
-              Make {{ option.label.toLowerCase() }}
+              Remove from {{ noun().toLowerCase() }}
             </button>
           }
-        }
-        @if (showModerationAction(permissions().kick)) {
-          <button
-            trnBtn
-            variant="secondary"
-            presentation="outline"
-            class="member-info__danger w-full"
-            (click)="kick()"
-            [trnActionAllowed]="permissions().kick.available"
-            [trnActionDisabledReason]="permissions().kick.reason"
-            [trnTooltip]="
-              permissions().kick.reason ?? 'Remove from ' + noun().toLowerCase()
-            "
-            data-testid="member-info-kick"
-          >
-            Remove from {{ noun().toLowerCase() }}
-          </button>
-        }
-        @if (showModerationAction(permissions().ban)) {
-          <button
-            trnBtn
-            variant="danger"
-            class="w-full"
-            (click)="ban()"
-            [trnActionAllowed]="permissions().ban.available"
-            [trnActionDisabledReason]="permissions().ban.reason"
-            [trnTooltip]="
-              permissions().ban.reason ?? 'Ban from ' + noun().toLowerCase()
-            "
-            data-testid="member-info-ban"
-          >
-            Ban from {{ noun().toLowerCase() }}
-          </button>
-        }
-      </div>
-    }
+          @if (showModerationAction(permissions().ban)) {
+            <button
+              trnBtn
+              variant="danger"
+              class="w-full"
+              (click)="ban()"
+              [trnActionAllowed]="permissions().ban.available"
+              [trnActionDisabledReason]="permissions().ban.reason"
+              [trnTooltip]="
+                permissions().ban.reason ?? 'Ban from ' + noun().toLowerCase()
+              "
+              data-testid="member-info-ban"
+            >
+              Ban from {{ noun().toLowerCase() }}
+            </button>
+          }
+        </div>
+      }
+    </div>
   </div>
-</div>
+</ng-template>

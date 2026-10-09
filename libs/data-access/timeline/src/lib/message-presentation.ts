@@ -36,7 +36,12 @@ export type MessageKind =
 export type SystemLineCategory = 'membership' | 'profile' | 'room';
 
 export interface MessageShield {
-  readonly level: 'grey' | 'red';
+  /**
+   * `unencrypted`: text sent in the clear into an encrypted room (rendered like `red`).
+   * `unencrypted-history`: the same, but dated before the room turned encryption on
+   * (rendered like `grey`).
+   */
+  readonly level: 'grey' | 'red' | 'unencrypted' | 'unencrypted-history';
   readonly reason: string;
   readonly explanation: string;
 }
@@ -139,6 +144,18 @@ export function isQuotableMessage(message: MessageView): boolean {
       message.kind === 'notice') &&
     message.body.trim() !== ''
   );
+}
+
+/** The kind of media a message can be saved as, or null when there is nothing to save
+ * (no payload, or still unsent). */
+export function savableMediaKind(
+  message: MessageView,
+): 'image' | 'video' | null {
+  return !message.status &&
+    message.media &&
+    (message.kind === 'image' || message.kind === 'video')
+    ? message.kind
+    : null;
 }
 
 interface NormalizedCommon {

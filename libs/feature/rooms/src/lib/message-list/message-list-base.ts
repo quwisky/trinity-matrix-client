@@ -1,6 +1,7 @@
 import {
   DestroyRef,
   Directive,
+  afterNextRender,
   ElementRef,
   computed,
   effect,
@@ -13,16 +14,19 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
+import {
+  TrnAlertService,
+  TrnSurfaceService,
+} from '@trinity/components/overlay';
 import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { ForwardService } from '../forward/forward.service';
+import { MediaSaveService } from '../media-attachment/media-save.service';
 import { ReportService } from '../report/report.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 import {
   isEditableMessage,
-  isQuotableMessage,
   ConversationRuntime,
   type MessageView,
   type ThreadSummary,
@@ -40,6 +44,7 @@ import {
   DateTimeFormatService,
   HapticsService,
 } from '@trinity/platform-native';
+import { groupSystemRuns } from './system-runs';
 import { DayBoundaryService } from './day-boundary.service';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import { delayedBusy } from '@trinity/util/ui';
@@ -48,7 +53,10 @@ import {
   type BatchOutcome,
   type BatchProgress,
 } from '../shared/send-media-batch';
-import { dispatchSharedRowAction } from '../shared/row-actions';
+import {
+  buildRowCapsMap,
+  dispatchSharedRowAction,
+} from '../shared/row-actions';
 import {
   type MessageLongPressContext,
   type MessageRow,
@@ -82,6 +90,7 @@ const DEFAULT_ROW_CAPS: MessageRowCaps = {
   pinned: false,
   canThread: true,
   canQuote: false,
+  saveMedia: null,
   readOnly: false,
 };
 
@@ -91,19 +100,6 @@ interface RowCacheEntry {
   readonly showHeader: boolean;
   readonly daySeparator: string | null;
   readonly row: MessageRow;
-}
-
-/** Whether two caps carry the same capabilities — all seven fields are flat booleans. */
-function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
-  return (
-    a.editable === b.editable &&
-    a.deletable === b.deletable &&
-    a.canPin === b.canPin &&
-    a.pinned === b.pinned &&
-    a.canThread === b.canThread &&
-    a.canQuote === b.canQuote &&
-    a.readOnly === b.readOnly
-  );
 }
 
 const LOAD_ERROR_COPY: Readonly<
@@ -117,11 +113,9 @@ const LOAD_ERROR_COPY: Readonly<
 /**
  * Shared domain logic for the room timeline, independent of scroll strategy: the
  * inputs/outputs, the edit/reply state + action handlers, and the Discord-style row
- * grouping. {@link SimpleMessageListComponent} (plain scroll) and
- * {@link VirtualMessageListComponent} (windowed) extend this and add only their own
- * scroll container, effects and template — the feature flag selects which one the
- * room renders. Kept an abstract `@Directive()` (no selector) so Angular wires the
- * inherited inputs/outputs/queries for the subclasses.
+ * grouping. {@link MessageListComponent} extends this and adds the scroll container, windowing,
+ * anchoring and template. Kept an abstract `@Directive()` so this domain half stays
+ * testable without the scroll half (`message-list-base.spec.ts`).
  */
 @Directive()
 export abstract class MessageListBase {
@@ -149,7 +143,7 @@ export abstract class MessageListBase {
    * every backfill is judged on its own duration.
    *
    * Why the removal has to be synchronous at all: the strip is IN FLOW above the rows, and
-   * `VirtualMessageListComponent.rowsRegionTop()` folds its height into the scroll restore
+   * `MessageListComponent.rowsRegionTop()` folds its height into the scroll restore
    * that keeps the reader's place across a prepend. `TimelineService.loadOlder` prepends the
    * rows and clears `loadingOlder` in one synchronous block, so a strip held past that point
    * has the restore measure 36px that is about to disappear — and `.scroll` sets
@@ -210,6 +204,8 @@ export abstract class MessageListBase {
    * TimelineService.oldestEventId). Not the oldest rendered row: rows can be filtered out. */
   readonly oldestEventId = input<string | null>(null);
   readonly roomName = input('');
+  /** False while the Room is not held by the client: there is nothing to send to yet. */
+  readonly composerEnabled = input(true);
   /**
    * Active room id. The list instance is reused across room switches, so a change
    * here resets the per-room UI + scroll state (see {@link resetOnRoomChange}) —
@@ -231,7 +227,7 @@ export abstract class MessageListBase {
   readonly stickerPacks = input<readonly ImagePack[]>([]);
   /**
    * Event id to scroll into view, set by an external jump (e.g. in-room search).
-   * A no-op when the event isn't in the loaded timeline.
+   * Waits briefly for the event to load; a no-op once that limit passes.
    */
   readonly jumpToId = input<string | null>(null);
   /**
@@ -307,9 +303,10 @@ export abstract class MessageListBase {
   protected readonly alert = inject(TrnAlertService);
   private readonly dayBoundary = inject(DayBoundaryService);
   private readonly dateFormat = inject(DateTimeFormatService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly forwardSvc = inject(ForwardService);
   private readonly reportSvc = inject(ReportService);
+  private readonly mediaSave = inject(MediaSaveService);
   private readonly editHistorySvc = inject(EditHistoryDialogService);
   private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly messageSheet = inject(MessageActionSheetService);
@@ -356,7 +353,7 @@ export abstract class MessageListBase {
    * anything derived from "the previous *rendered* row" would emit a spurious separator at
    * the top of every window and lose the one where a window opens mid-day.
    */
-  readonly rows = computed<MessageRow[]>(() => {
+  private readonly eventRows = computed<MessageRow[]>(() => {
     const GAP_MS = 5 * 60 * 1000;
     const msgs = this.messages();
     const todayStart = this.dayBoundary.todayStart();
@@ -418,6 +415,62 @@ export abstract class MessageListBase {
     return result;
   });
 
+  // Group rows from the previous pass, keyed by group id, so an unchanged run keeps its
+  // row identity (see `groupSystemRuns`).
+  private groupCache: ReadonlyMap<string, MessageRow> = new Map();
+
+  /** Event rows with each run of adjacent system lines folded into one summary row. */
+  private readonly grouping = computed(() => {
+    const grouped = groupSystemRuns(
+      this.eventRows(),
+      this.firstUnreadId(),
+      this.groupCache,
+    );
+    this.groupCache = new Map(
+      grouped.rows.filter((row) => row.systemRun).map((row) => [row.id, row]),
+    );
+    return grouped;
+  });
+
+  /** The grouped rows the list renders. */
+  readonly rows = computed(() => this.grouping().rows);
+
+  /** Member event id → the id of the group row that holds it. */
+  readonly runOf = computed(() => this.grouping().runOf);
+
+  private readonly expandedRunIds = signal<ReadonlySet<string>>(new Set());
+  /** Group rows the reader has expanded; in memory only, cleared on a room switch. */
+  readonly expandedRuns = this.expandedRunIds.asReadonly();
+
+  toggleRun(groupId: string): void {
+    this.expandedRunIds.update((ids) => {
+      const next = new Set(ids);
+      if (!next.delete(groupId)) next.add(groupId);
+      return next;
+    });
+  }
+
+  /**
+   * The row to scroll to for an event: the event itself, or the group that holds it,
+   * expanded so the line is on screen.
+   */
+  revealEvent(eventId: string): string {
+    // Untracked: callers are jump effects that must fire on a new request only, not on
+    // every timeline change or expand/collapse.
+    return untracked(() => {
+      const groupId = this.runOf().get(eventId);
+      if (!groupId) return eventId;
+      if (!this.expandedRunIds().has(groupId)) this.toggleRun(groupId);
+      return groupId;
+    });
+  }
+
+  /** The row the "New messages" divider sits above (a run splits at the first unread). */
+  readonly unreadRowId = computed(() => {
+    const id = this.firstUnreadId();
+    return id ? (this.runOf().get(id) ?? id) : null;
+  });
+
   /** Rows whose avatar column continues to a later thread in the same sender group. */
   readonly threadContinuationIds = computed<ReadonlySet<string>>(() => {
     const rows = this.rows();
@@ -445,6 +498,11 @@ export abstract class MessageListBase {
    * removes the question.
    */
   private readonly listDestroyRef = inject(DestroyRef);
+  protected readonly injector = inject(Injector);
+
+  /** A requested jump whose row had not loaded yet; applied when it arrives, within the limit. */
+  private awaitedJumpId: string | null = null;
+  private awaitedJumpAt = 0;
 
   constructor() {
     // A host directive's outputs are not template-bound, so the subscription IS the wiring.
@@ -467,6 +525,30 @@ export abstract class MessageListBase {
     effect(() => {
       this.roomId();
       untracked(() => this.resetOnRoomChange());
+    });
+
+    // A jump requested before its row exists (a linked message in a room that is still
+    // syncing) is a no-op in `jumpTo`; remember it and apply it once the row loads. A newer
+    // request, or none, replaces it, so a superseded jump is never applied late.
+    effect(() => {
+      this.jumpToNonce();
+      const id = this.jumpToId();
+      untracked(() => {
+        if (!id) this.cancelPendingJump();
+        this.awaitedJumpId =
+          id && !this.messages().some((m) => m.id === id) ? id : null;
+        this.awaitedJumpAt = Date.now();
+      });
+    });
+    effect(() => {
+      const loaded = this.messages();
+      const id = this.awaitedJumpId;
+      if (!id || !loaded.some((m) => m.id === id)) return;
+      this.awaitedJumpId = null;
+      // Bounded like a width re-apply: a row that loads minutes later (the reader scrolled up
+      // and paged it in) must not yank them back.
+      if (Date.now() - this.awaitedJumpAt > JUMP_REAPPLY_MS) return;
+      afterNextRender(() => this.jumpTo(id), { injector: this.injector });
     });
 
     // Re-evaluate the jump-to-unread pill when the unread anchor or the message set
@@ -512,7 +594,7 @@ export abstract class MessageListBase {
 
   /** Scroll the "New messages" divider (first unread) into view. */
   jumpToUnread(): void {
-    const id = this.firstUnreadId();
+    const id = this.unreadRowId();
     if (id) {
       this.jumpTo(id);
     }
@@ -523,8 +605,11 @@ export abstract class MessageListBase {
     // A sheet is about ONE message in ONE room; leaving it standing over a different
     // room's timeline would offer actions against an event that is no longer on screen.
     this.messageSheet.close(this);
+    this.cancelPendingJump();
     this.announcement.set('');
     this.rowCache.clear();
+    this.groupCache = new Map();
+    this.expandedRunIds.set(new Set());
   }
 
   /**
@@ -534,7 +619,8 @@ export abstract class MessageListBase {
    * `animationend`.
    */
   protected flash(el: Element | null | undefined): void {
-    if (!el) {
+    // A re-aim lands on the row the reader already saw flash; flashing again is flicker.
+    if (!el || this.reaiming) {
       return;
     }
     el.classList.remove('msg--flash');
@@ -609,28 +695,76 @@ export abstract class MessageListBase {
    */
   private pendingJumpId: string | null = null;
   private pendingJumpAt = 0;
+  private reaiming = false;
+  private userScrollWatched = false;
   private lastScrollerWidth = 0;
   private widthRo?: ResizeObserver;
   private stopHeightWatcher?: () => void;
 
   /**
-   * Remember a jump so a width change can re-apply it. Called BY the subclasses' `jumpTo`,
+   * Remember a jump so a width change can re-apply it. Called BY `jumpTo`,
    * not instead of it — the base cannot know how each strategy scrolls.
    */
   protected notePendingJump(messageId: string): void {
     this.pendingJumpId = messageId;
-    this.pendingJumpAt = Date.now();
+    // A re-aim keeps the deadline of the jump the reader asked for: re-aiming must never
+    // renew its own window, or measurements (or a drag) could hold the reader on the row.
+    if (!this.reaiming) this.pendingJumpAt = Date.now();
   }
 
   /**
-   * Watch the scroller's width and re-apply a recent jump when it changes.
+   * Stop re-aiming, and drop a jump still waiting for its row: the reader moved, or the
+   * jump was superseded or withdrawn.
+   */
+  protected cancelPendingJump(): void {
+    this.pendingJumpId = null;
+    this.awaitedJumpId = null;
+  }
+
+  /**
+   * Re-aim a recent jump at the layout that now exists (a width change, or the first real
+   * row measurements). One path and one window: {@link JUMP_REAPPLY_MS} from the original
+   * jump, never extended by a re-aim.
+   */
+  protected reapplyRecentJump(): void {
+    const id = this.pendingJumpId;
+    if (id && Date.now() - this.pendingJumpAt <= JUMP_REAPPLY_MS) {
+      this.reaiming = true;
+      try {
+        this.jumpTo(id);
+      } finally {
+        this.reaiming = false;
+      }
+    } else {
+      this.pendingJumpId = null;
+    }
+  }
+
+  /** Any reader-driven scroll (wheel, touch, keys, scrollbar drag) ends re-aiming. */
+  private watchUserScroll(el: HTMLElement): void {
+    if (this.userScrollWatched) return;
+    this.userScrollWatched = true;
+    const stop = () => this.cancelPendingJump();
+    const events = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
+    for (const type of events) {
+      el.addEventListener(type, stop, { passive: true });
+    }
+    this.listDestroyRef.onDestroy(() => {
+      for (const type of events) el.removeEventListener(type, stop);
+    });
+  }
+
+  /**
+   * Watch the scroller's width and re-aim a recent jump when it changes (windowed mode also
+   * re-aims after row measurements). Also starts the reader-scroll watcher that ends re-aiming.
    *
    * Width only: a height change is the keyboard opening or the composer growing, and
-   * re-jumping there would fight the reader rather than help them. Started by the subclasses
-   * once they have a scroll element, and torn down with the component.
+   * re-jumping there would fight the reader rather than help them. Started once the
+   * component has a scroll element, and torn down with the component.
    */
   protected watchScrollerWidth(): void {
     const el = this.scrollEl()?.nativeElement;
+    if (el) this.watchUserScroll(el);
     if (!el || typeof ResizeObserver === 'undefined' || this.widthRo) {
       return;
     }
@@ -641,15 +775,7 @@ export abstract class MessageListBase {
         return;
       }
       this.lastScrollerWidth = width;
-      const id = this.pendingJumpId;
-      if (id && Date.now() - this.pendingJumpAt <= JUMP_REAPPLY_MS) {
-        // Re-aim at the same row against the layout that now exists. `jumpTo` calls
-        // `notePendingJump` again, which refreshes the deadline — deliberately, so a drag
-        // that resizes continuously keeps the reader on their row for its whole duration.
-        this.jumpTo(id);
-      } else {
-        this.pendingJumpId = null;
-      }
+      this.reapplyRecentJump();
     });
     this.widthRo.observe(el);
     this.listDestroyRef.onDestroy(() => this.widthRo?.disconnect());
@@ -659,8 +785,8 @@ export abstract class MessageListBase {
    * Keep a bottom-pinned conversation pinned when the composer, formatting bar or software
    * keyboard changes the scroller's viewport height. A reader who has scrolled up needs no
    * compensation: the scroller's top edge and scrollTop remain unchanged, so their anchor
-   * stays put. This exact pin is intentionally separate from the subclasses' 120px
-   * near-bottom state for incoming messages. The optional callback lets the virtual list
+   * stays put. This exact pin is intentionally separate from the 120px
+   * near-bottom state for incoming messages. The optional callback lets windowed mode
    * keep its window-height signal in step with the same observation.
    */
   protected watchScrollerHeight(
@@ -684,36 +810,17 @@ export abstract class MessageListBase {
    * time would defeat the OnPush `MessageRowComponent` and re-render every row.
    */
   private readonly rowCapsById = computed<Map<string, MessageRowCaps>>(() => {
-    const canPin = this.canPin();
-    const canRedactOthers = this.canRedactOthers();
-    const pinnedIds = this.pinnedIds();
-    const caps = new Map<string, MessageRowCaps>();
-    for (const message of this.messages()) {
-      // An unsent message is only a local echo: its id is the SDK's `~roomId:txnId`
-      // placeholder, which the homeserver has never seen. Threading off it would make
-      // that placeholder the thread root — every reply then relates to an event the
-      // server can't resolve — and pinning it would write it into `m.room.pinned_events`
-      // room state. Both wait for the remote echo to swap in the real event id.
-      const unsent = !!message.status;
-      const next: MessageRowCaps = {
-        editable: isEditableMessage(message),
-        // Own messages are always deletable; a moderator can also redact others'.
-        deletable: (message.isOwn || canRedactOthers) && !unsent,
-        canPin: canPin && !unsent,
-        pinned: pinnedIds.includes(message.id),
-        canThread: !unsent,
-        canQuote: isQuotableMessage(message),
-        readOnly: false,
-      };
-      // Reuse the previous object when nothing about this row's caps changed, exactly
-      // as rowCache does for the row itself. `messages()` gets a NEW array identity on
-      // every timeline event, so without this every incoming message would hand every
-      // rendered row a fresh `caps` input and re-render it.
-      const prev = this.prevRowCaps.get(message.id);
-      caps.set(message.id, prev && sameRowCaps(prev, next) ? prev : next);
-    }
-    this.prevRowCaps = caps;
-    return caps;
+    this.prevRowCaps = buildRowCapsMap(
+      this.messages(),
+      {
+        canRedactOthers: this.canRedactOthers(),
+        canPin: this.canPin(),
+        canThread: true,
+        pinnedIds: this.pinnedIds(),
+      },
+      this.prevRowCaps,
+    );
+    return this.prevRowCaps;
   });
 
   /** Last computed caps, for identity reuse (mirrors {@link rowCache}). */
@@ -767,6 +874,7 @@ export abstract class MessageListBase {
         timeline: this.timeline,
         forward: this.forwardSvc,
         report: this.reportSvc,
+        mediaSave: this.mediaSave,
         reactions: this.reactionsDialog,
         editHistory: this.editHistorySvc,
         react: (id, key) => this.react.emit({ id, key }),

@@ -43,8 +43,14 @@ const railCss = read(
 const sidebarCss = read(
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.scss',
 );
+const headerCss = read(
+  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-space-header/sidebar-space-header.component.scss',
+);
 const roomListCss = read(
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.scss',
+);
+const roomRowCss = read(
+  'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-row/sidebar-room-row.component.scss',
 );
 const userPanelCss = read(
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.scss',
@@ -83,24 +89,90 @@ describe('modern room shell layout contracts', () => {
     }
   });
 
-  it('defines both cosy and compact shell density recipes', () => {
+  it('sets the conversation in a rounded inset pane on the app ground', () => {
+    const app = 'var(--trinity-surface-app)';
+    const sidebarSurface = 'var(--trinity-surface-sidebar)';
+    for (const selector of [
+      '.rooms-shell',
+      '.rooms-workspace',
+      '.shell-side',
+    ]) {
+      expect(ruleBody(roomsCss, selector)).toContain(`background: ${app}`);
+    }
+    expect(ruleBody(railCss, '.rail')).toContain(app);
+    expect(ruleBody(sidebarCss, '.sidebar')).toContain(sidebarSurface);
+    expect(ruleBody(headerCss, '.sidebar__header')).toContain(
+      'background: var(--trinity-surface-navigation-header)',
+    );
+    expect(ruleBody(userPanelCss, '.userbar')).toContain(
+      'background: var(--trinity-surface-navigation-header)',
+    );
+    // Rail tiles must read against the rail ground, so never paint them with it.
+    expect(ruleBody(railCss, '.pill')).toContain(
+      'background: var(--trinity-state-hover-surface)',
+    );
+    expect(ruleBody(railCss, '.pill')).not.toContain(
+      'background: var(--trinity-surface-app)',
+    );
+    // Classic keeps today's sidebar tone; every other Theme inherits the app ground.
+    expect(variables).toMatch(
+      /--trinity-surface-sidebar:\s*var\(--trinity-surface-app\)/,
+    );
+    for (const selector of [
+      ":root[data-theme='classic']:not(.dark)",
+      ":root[data-theme='classic'].dark",
+    ]) {
+      expect(ruleBody(variables, selector), selector).toContain(
+        '--trinity-surface-sidebar:',
+      );
+    }
+
+    const main = ruleBody(roomsCss, '.main');
+    expect(main).toContain('background: var(--trinity-surface-pane)');
+    // The rounded corner must not be a radius on `.main`: `.main` clips with overflow:hidden,
+    // and a rounded clip around the composited timeline forces an offscreen render pass that
+    // costs ~430 MB of GPU IOSurface memory on macOS. The corner is painted by an unclipped mask.
+    expect(main).not.toMatch(/border(-[a-z-]+)?-radius/);
+    const corner = ruleBody(roomsCss, '.main::before');
+    expect(corner).toContain('pointer-events: none');
+    expect(roomsCss).toContain('--corner: var(--trinity-shape-pane-radius)');
+    expect(corner).toMatch(/radial-gradient\(/);
+    // The straight 1px edges are overlays too: .main's own inset shadows paint under the
+    // header and timeline backgrounds, so the arc would otherwise float on its own.
+    expect(corner).toMatch(/linear-gradient\(/);
+    const topEdge = ruleBody(roomsCss, '.main::after');
+    expect(topEdge).toContain('pointer-events: none');
+    expect(topEdge).toContain('block-size: 1px');
+    expect(roomsCss).toMatch(
+      /@media\s+#\{\$md\}\s*\{[^]*?\.main::before[^]*?\.main::after/,
+    );
+    expect(ruleBody(roomsCss, '.chat-body')).toContain(
+      'background: var(--trinity-surface-pane)',
+    );
+    expect(variables).toMatch(
+      /--trinity-shape-pane-radius:\s*var\(--trinity-radius-xl\)/,
+    );
+  });
+
+  it('defines cosy, compact and spacious shell density recipes', () => {
     for (const token of [
       '--trinity-density-shell-gap',
       '--trinity-density-shell-padding-inline',
       '--trinity-density-channel-padding-block',
     ]) {
-      expect(variables.match(new RegExp(`${token}\\s*:`, 'g'))?.length).toBe(2);
+      // One declaration per density block: base, compact and spacious.
+      expect(variables.match(new RegExp(`${token}\\s*:`, 'g'))?.length).toBe(3);
     }
   });
 
   it('keeps every raw shell control on the shared coarse-pointer floor', () => {
     const controls = [
       [railCss, '.pill'],
-      [sidebarCss, '.sidebar__action'],
+      [headerCss, '.sidebar__action'],
       [sidebarCss, '.sidebar__filter-clear'],
       [roomListCss, '.invite__btn'],
-      [roomListCss, '.channel'],
-      [roomListCss, '.channel__menu'],
+      [roomRowCss, '.channel'],
+      [roomRowCss, '.channel__menu'],
       [userPanelCss, '.userbar__trigger'],
       [userPanelCss, '.userbar__settings'],
     ];
@@ -117,7 +189,7 @@ describe('modern room shell layout contracts', () => {
   it('gives the desktop identity dock one shared floating geometry contract', () => {
     expect(roomsHtml).not.toMatch(/class="[^"]*shell-side[^"]*\bw-full\b/);
     expect(roomsCss).toMatch(
-      /\.shell-side\s*\{[^}]*position:\s*relative;[^}]*display:\s*grid;[^}]*width:\s*100%;[^}]*--trinity-navigation-dock-height:\s*52px;[^}]*@media\s+#\{\$md\}\s*\{[^}]*width:\s*var\(--shell-sidebar-w,\s*352px\);/s,
+      /\.shell-side\s*\{[^}]*position:\s*relative;[^}]*display:\s*grid;[^}]*width:\s*100%;[^}]*--trinity-navigation-dock-height:\s*60px;[^}]*@media\s+#\{\$md\}\s*\{[^}]*width:\s*var\(--shell-sidebar-w,\s*352px\);/s,
     );
     expect(roomsCss).toMatch(
       /--trinity-navigation-safe-area-bottom:\s*env\(safe-area-inset-bottom\);[\s\S]*?padding-bottom:\s*var\(--trinity-navigation-safe-area-bottom\);/,
@@ -135,24 +207,37 @@ describe('modern room shell layout contracts', () => {
       /:host\s*\{[\s\S]*?height:\s*var\(--trinity-navigation-dock-height\);[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1;[\s\S]*?position:\s*absolute;[\s\S]*?inset-inline:[^;]+;[\s\S]*?inset-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-safe-area-bottom\)/,
     );
     expect(userPanelCss).toMatch(
-      /\.userbar\s*\{[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?border-radius:\s*var\(--trinity-shape-container-radius\);[\s\S]*?background:\s*var\(--trinity-surface-floating\);[\s\S]*?box-shadow:\s*var\(--trinity-shadow-floating\);/,
+      /\.userbar\s*\{[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?border-radius:\s*var\(--trinity-shape-overlay-radius\);[\s\S]*?background:\s*var\(--trinity-surface-floating-card\);[\s\S]*?box-shadow:\s*var\(--trinity-shadow-floating\);/,
     );
   });
 
   it('keeps generic interaction guards weaker than specialized consumer states', () => {
     expect(roomMixins).toContain('&:hover:where(:not(:disabled))');
     expect(roomMixins).toContain('&:active:where(:not(:disabled))');
-    expect(sidebarCss).toMatch(
-      /\.joinable__action\s*\{[\s\S]*?&:hover\s*\{[\s\S]*?background:\s*var\(--trinity-active\)/,
-    );
   });
 
-  it('leaves right-panel separators with one paint owner', () => {
-    const panelHeader = ruleBody(globalCss, '.panel-header');
-    const chatPanel = ruleBody(roomsCss, '.chat-panel');
-    expect(panelHeader).toBeDefined();
-    expect(chatPanel).toBeDefined();
-    expect(panelHeader).not.toContain('box-shadow');
-    expect(chatPanel).not.toContain('box-shadow');
+  it('sizes the members list to its bordered host instead of overflowing it', () => {
+    // `.chat-members` is 240px border-box with a 1px inline-start border, so a fixed 240px
+    // list inside it overflows by that pixel.
+    const members = ruleBody(
+      read('libs/feature/rooms/src/lib/member-list/member-list.component.scss'),
+      '.members',
+    );
+    expect(members).toContain('width: 100%');
+    expect(members).not.toContain('width: 240px');
+  });
+
+  it('gives every right-hand panel one surface and one inline-start border', () => {
+    expect(globalCss).not.toContain('.panel-header');
+    for (const selector of ['.chat-members', '.chat-panel']) {
+      const body = ruleBody(roomsCss, selector);
+      expect(body, selector).toContain(
+        'background: var(--trinity-surface-panel)',
+      );
+      expect(body, selector).toContain(
+        'border-inline-start: 1px solid var(--trinity-border-subtle)',
+      );
+      expect(body, selector).not.toContain('box-shadow');
+    }
   });
 });

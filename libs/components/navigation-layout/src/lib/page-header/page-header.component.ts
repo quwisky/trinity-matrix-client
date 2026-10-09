@@ -29,8 +29,8 @@ export type {
  * Everything caller-specific is projected, so this shell imports nothing from
  * helm or the feature libs: consumers supply `hlmBtn` / `trnTooltip` / `<trn-icon>`
  * in the projected content, and projected nodes keep their origin component's
- * style encapsulation (so e.g. rooms' scoped `.title-hash` / `.title-lock` still
- * apply to a projected title).
+ * style encapsulation (so e.g. trn-room-header's scoped `.title-room` / `.title-lock`
+ * styles still apply to a projected title).
  *
  * The `<h1>` is always rendered by the shell — its body is the `title` string
  * when provided, else the `[trnHeaderTitle]` slot — so a page never ends up with

@@ -5,12 +5,11 @@ import {
   input,
   output,
 } from '@angular/core';
+import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
-import { TrnButton } from '@trinity/components/controls';
-import { TrnTooltip } from '@trinity/components/generic-content';
-import { TrnIconComponent } from '@trinity/components/foundations';
+import { TrnBadge } from '@trinity/components/generic-content';
 import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
 import {
   ConversationRuntime,
@@ -37,11 +36,10 @@ const MAX_AVATARS = 4;
   selector: 'trn-threads-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    SidePanelHeaderComponent,
     EmptyStateComponent,
-    TrnIconComponent,
     AvatarComponent,
-    TrnButton,
-    TrnTooltip,
+    TrnBadge,
     TrnOverlaySurfaceDirective,
   ],
   templateUrl: './threads-list.component.html',

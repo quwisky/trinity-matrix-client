@@ -15,10 +15,13 @@
 >
   @switch (selectedSection()) {
     @case ('general') {
-      <trn-space-settings-general
+      <trn-place-general-settings
+        [draft]="draft"
+        noun="Space"
         [accountId]="accountId()"
-        [spaceId]="spaceId()"
-        [spaceDisplayName]="spaceDisplayName()"
+        [placeId]="spaceId()"
+        [displayName]="spaceDisplayName()"
+        hint="Shown in the space rail and anywhere this space is linked."
       />
     }
     @case ('for-you') {
@@ -36,23 +39,27 @@
     }
     @case ('members') {
       <section data-testid="space-settings-panel-members">
-        <trn-members-settings
-          [showUnavailableReason]="draft.targetAvailable()"
-          [accountId]="accountId()"
-          [roomId]="spaceId()"
-          [targetName]="draft.model().name || spaceDisplayName()"
-          noun="Space"
-        />
+        <trn-settings-group>
+          <trn-members-settings
+            [showUnavailableReason]="draft.targetAvailable()"
+            [accountId]="accountId()"
+            [roomId]="spaceId()"
+            [targetName]="draft.model().name || spaceDisplayName()"
+            noun="Space"
+          />
+        </trn-settings-group>
       </section>
     }
     @case ('addresses') {
       <section data-testid="space-settings-panel-addresses">
-        <trn-room-aliases
-          [accountId]="accountId()"
-          [roomId]="spaceId()"
-          [available]="draft.targetAvailable()"
-          noun="Space"
-        />
+        <trn-settings-group>
+          <trn-room-aliases
+            [accountId]="accountId()"
+            [roomId]="spaceId()"
+            [available]="draft.targetAvailable()"
+            noun="Space"
+          />
+        </trn-settings-group>
       </section>
     }
   }

@@ -111,9 +111,8 @@ test.describe('Timeline virtualization', () => {
     };
     await expect(rows.first()).toBeVisible({ timeout: 30_000 });
 
-    // The flag selected the windowed component (not the simple one).
-    await expect(page.locator('trn-virtual-message-list')).toBeVisible();
-    expect(await page.locator('trn-simple-message-list').count()).toBe(0);
+    // The list (windowing is asserted by the bounded row count below).
+    await expect(page.locator('trn-message-list')).toBeVisible();
 
     // Opens pinned to the bottom: the newest seeded message is on screen.
     await expect(
@@ -267,16 +266,20 @@ test.describe('Timeline reopen after scrolling back', () => {
     await open(longRoom);
     await expect(newest).toBeVisible({ timeout: 30_000 });
 
-    // Page the whole room in, down to its creation.
+    // Page the whole room in, down to its creation. The creation lines collapse into one
+    // system run, so reaching it means the run's summary is there; expand it to see them.
+    const runToggle = timeline.getByTestId('system-run-toggle');
     await expect
       .poll(
         async () => {
           await timeline.evaluate((el) => (el.scrollTop = 0));
-          return timeline.getByText(/created the room/).count();
+          return runToggle.count();
         },
         { timeout: 90_000, intervals: [400] },
       )
       .toBeGreaterThan(0);
+    await runToggle.first().click();
+    await expect(timeline.getByText(/created the room/)).toBeVisible();
 
     await open(otherRoom);
     await expect(newest).toHaveCount(0);

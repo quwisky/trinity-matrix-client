@@ -1,6 +1,6 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { asapScheduler, finalize, scheduled, switchMap } from 'rxjs';
 import { AccountPickerComponent } from './account-picker.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
@@ -21,7 +21,7 @@ export interface AccountPickerOptions {
  */
 @Injectable({ providedIn: 'root' })
 export class AccountPickerService {
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
   private showing = false;
 
@@ -43,7 +43,6 @@ export class AccountPickerService {
           this.dialog.openAndWait$<void, AccountPickerComponent>(
             AccountPickerComponent,
             {
-              ariaLabel: 'Accounts in view',
               inputs: { accounts, activeUserId },
               // Land on the first changeable account rather than the locked active row or
               // CDK's first tabbable element, which is the Done button when none can change.

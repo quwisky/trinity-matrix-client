@@ -39,6 +39,7 @@ export class IdentityLifetime {
   private readonly matrix = inject(IdentityMatrixPort);
   private readonly presence = inject(IdentityPresenceService);
   private readonly changes = new Subject<IdentityPresenceHealth>();
+  // Published as fact.generation; recover() filters obsolete generations. Not a latest-wins guard (#927).
   private generation = 0;
   private current: IdentityPresenceHealth | null = null;
   private retry: (() => void) | null = null;

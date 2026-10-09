@@ -1,10 +1,10 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { render } from '@trinity/testing';
+import { render, screen } from '@trinity/testing';
 import {
   TrnAlertService,
   TrnDialogRef,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import {
@@ -262,7 +262,7 @@ async function build(options: BuildOptions = {}) {
       }),
       MockProvider(WidgetManagementService),
       MockProvider(ExternalBrowserService, { open: () => of(true) }),
-      MockProvider(TrnDialogService, {
+      MockProvider(TrnSurfaceService, {
         openAndWait$: (() => of(options.upgradeResult ?? null)) as never,
       }),
       MockProvider(TrnDialogRef, { close }),
@@ -294,6 +294,26 @@ async function build(options: BuildOptions = {}) {
 }
 
 describe('RoomSettingsComponent', () => {
+  it('titles the page with the open section and lists its groups as parts', async () => {
+    const { cmp, fixture, container } = await build();
+    cmp.selectSection('access');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const h1 = container.querySelector('h1');
+    expect(h1?.textContent?.trim()).toBe('Access');
+    expect(h1?.getAttribute('data-testid')).toBe(
+      'room-settings-section-heading',
+    );
+    expect(container.querySelectorAll('h2')).toHaveLength(2);
+    expect(
+      [...container.querySelectorAll('[data-testid^="settings-part-"]')].map(
+        (part) => part.textContent?.trim(),
+      ),
+    ).toEqual(['Joining', 'History']);
+  });
+
   it('opens General with the exact Account identity and readable Room details', async () => {
     const { cmp, container } = await build();
 
@@ -320,6 +340,16 @@ describe('RoomSettingsComponent', () => {
       'widgets',
       'advanced',
     ]);
+  });
+
+  it('names the Name field and describes it with its hint', async () => {
+    await build();
+
+    const name = screen.getByRole('textbox', { name: 'Name' });
+
+    expect(name).toHaveAccessibleDescription(
+      'Shown in room lists and at the top of the conversation.',
+    );
   });
 
   it('protects Close when For you has an unsaved preference', async () => {

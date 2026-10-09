@@ -10,23 +10,8 @@
   }
 
   .crypto-surface {
-    @include surface;
-  }
-
-  .crypto-modal__header {
-    @include modal-header;
-  }
-
-  .crypto-modal__title {
-    flex: 1;
-    margin: 0;
-    color: var(--trinity-text-bright);
-    font-size: var(--trinity-type-control-size);
-    font-weight: 700;
-  }
-
-  .crypto-modal__body {
-    @include modal-body;
+    width: min(100%, 640px);
+    margin-inline: auto;
   }
 
   .lead {

@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Subject } from 'rxjs';
-import { TrnActionSheetService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
   ConversationRuntime,
   type MessageView,
@@ -74,11 +74,16 @@ function lastSheet(open: ReturnType<typeof vi.fn>) {
 
 function build() {
   const close = vi.fn();
-  const open = vi.fn().mockReturnValue({ close, closed: new Subject() });
+  const open = vi.fn().mockReturnValue({
+    close,
+    closed: new Subject(),
+    presentation: 'sheet',
+    surface: null,
+  });
   const compose = new ConversationComposeStub();
   TestBed.configureTestingModule({
     providers: [
-      { provide: TrnActionSheetService, useValue: { open } },
+      { provide: TrnSurfaceService, useValue: { openActions: open } },
       {
         provide: ConversationRuntime,
         useValue: {
@@ -119,7 +124,94 @@ describe('MessageListBase — the mobile action sheet', () => {
     expect(labels.at(-1)).toBe('Cancel');
     expect(sheet.reactions?.length).toBe(6);
     // Named, so a screen reader does not announce a bare "dialog".
-    expect(open.mock.calls.at(-1)?.[1]).toBe('Message actions');
+    expect(open.mock.calls.at(-1)?.[1]).toEqual({
+      ariaLabel: 'Message actions',
+      anchor: undefined,
+    });
+  });
+
+  it.each([
+    ['image', 'Save image'],
+    ['video', 'Save video'],
+  ] as const)('offers "%s" save for a %s message', (kind, label) => {
+    const { fixture, cmp, open } = build();
+    const media = { id: 'm', kind, filename: 'a', mimeType: 'x/y' };
+    fixture.componentRef.setInput('messages', [{ ...msg('$1'), kind, media }]);
+    fixture.detectChanges();
+
+    cmp.onRowLongPress(cmp.rows()[0]);
+
+    const button = lastSheet(open).buttons.find(
+      (b) => b.testId === 'sheet-save-media',
+    );
+    expect(button?.text).toBe(label);
+  });
+
+  it('hands the pressed row to the list as its anchor', () => {
+    const { fixture, cmp, open } = build();
+    const anchor = fixture.nativeElement.querySelector(
+      '[data-message-scroller]',
+    ) as HTMLElement;
+
+    cmp.onRowLongPress(cmp.rows()[0], { anchor, clientY: 0 });
+
+    expect(open.mock.calls.at(-1)?.[1]).toEqual({
+      ariaLabel: 'Message actions',
+      anchor,
+    });
+  });
+
+  it('only moves the row clear of a sheet, not of a menu', () => {
+    const { fixture, cmp, open } = build();
+    const start = vi.spyOn(MessageSheetViewportSession.prototype, 'start');
+    open.mockReturnValue({
+      close: vi.fn(),
+      closed: new Subject(),
+      presentation: 'popover',
+      surface: null,
+    });
+    const anchor = fixture.nativeElement.querySelector(
+      '[data-message-scroller]',
+    ) as HTMLElement;
+
+    cmp.onRowLongPress(cmp.rows()[0], { anchor, clientY: 0 });
+
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('lists Save image after Copy link, as the desktop menu does', () => {
+    const { fixture, cmp, open } = build();
+    const media = { id: 'm', kind: 'image', filename: 'a', mimeType: 'x/y' };
+    fixture.componentRef.setInput('messages', [
+      { ...msg('$1'), kind: 'image', media },
+    ]);
+    fixture.detectChanges();
+
+    cmp.onRowLongPress(cmp.rows()[0]);
+
+    const ids = lastSheet(open).buttons.map((b) => b.testId);
+    expect(ids.indexOf('sheet-save-media')).toBe(
+      ids.indexOf('sheet-copy-link') + 1,
+    );
+  });
+
+  it('offers no save for a text message or a file', () => {
+    const { fixture, cmp, open } = build();
+
+    cmp.onRowLongPress(cmp.rows()[0]);
+    expect(lastSheet(open).buttons.map((b) => b.testId)).not.toContain(
+      'sheet-save-media',
+    );
+
+    const media = { id: 'm', kind: 'file', filename: 'a', mimeType: 'x/y' };
+    fixture.componentRef.setInput('messages', [
+      { ...msg('$1'), kind: 'file', media },
+    ]);
+    fixture.detectChanges();
+    cmp.onRowLongPress(cmp.rows()[0]);
+    expect(lastSheet(open).buttons.map((b) => b.testId)).not.toContain(
+      'sheet-save-media',
+    );
   });
 
   it('dispatches through the same handler the hover toolbar uses', () => {
@@ -201,9 +293,16 @@ describe('MessageListBase — the mobile action sheet', () => {
   it('closes the open sheet before opening another', () => {
     // Two long presses in a row, or a press while a sheet is already up: one sheet.
     const close = vi.fn();
-    const open = vi.fn().mockReturnValue({ close, closed: new Subject() });
+    const open = vi.fn().mockReturnValue({
+      close,
+      closed: new Subject(),
+      presentation: 'sheet',
+      surface: null,
+    });
     TestBed.configureTestingModule({
-      providers: [{ provide: TrnActionSheetService, useValue: { open } }],
+      providers: [
+        { provide: TrnSurfaceService, useValue: { openActions: open } },
+      ],
     });
     const fixture = TestBed.createComponent(TestListComponent);
     fixture.componentRef.setInput('roomId', '!r:hs');
@@ -240,9 +339,16 @@ describe('MessageListBase — the mobile action sheet', () => {
     // A sheet is about one message in one room; left standing over a different timeline it
     // offers actions against an event that is no longer on screen.
     const close = vi.fn();
-    const open = vi.fn().mockReturnValue({ close, closed: new Subject() });
+    const open = vi.fn().mockReturnValue({
+      close,
+      closed: new Subject(),
+      presentation: 'sheet',
+      surface: null,
+    });
     TestBed.configureTestingModule({
-      providers: [{ provide: TrnActionSheetService, useValue: { open } }],
+      providers: [
+        { provide: TrnSurfaceService, useValue: { openActions: open } },
+      ],
     });
     const fixture = TestBed.createComponent(TestListComponent);
     fixture.componentRef.setInput('roomId', '!r:hs');

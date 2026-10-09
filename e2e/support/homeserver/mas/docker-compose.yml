@@ -1,0 +1,63 @@
+# Opt-in MAS stack (TRINITY_E2E_MAS=1), layered on ../docker-compose.yml by paths.mjs.
+#
+# A third Synapse that delegates all authentication to matrix-authentication-service
+# (MSC3861), plus MAS and its PostgreSQL. Delegation turns password login and
+# registration off for the whole server, so it cannot be the primary the other specs
+# use. Caddy fronts both on TLS (https://localhost:8450 homeserver, https://localhost:8451
+# MAS) because the app's CSP allows only https: for connect-src. mas/adapter.mjs writes
+# what these services mount into ./mas-data, which stop.mjs deletes.
+services:
+  mas-db:
+    image: postgres:17.6-alpine
+    container_name: trinity-e2e-mas-db
+    restart: 'no'
+    environment:
+      POSTGRES_USER: mas
+      POSTGRES_PASSWORD: mas
+      POSTGRES_DB: mas
+    # Disposable: nothing to chown, nothing for stop.mjs to delete.
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'mas', '-d', 'mas']
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    networks:
+      - trinity-e2e
+
+  mas:
+    image: ghcr.io/element-hq/matrix-authentication-service:1.26.0
+    container_name: trinity-e2e-mas
+    restart: 'no'
+    command: ['server']
+    environment:
+      # The generated secrets and signing keys first; the committed e2e settings win.
+      MAS_CONFIG: /data/generated.yaml:/etc/mas/trinity.yaml
+    volumes:
+      - ${TRINITY_E2E_STATE_DIR:-.}/mas-data/mas:/data:ro
+      - ${TRINITY_E2E_STATE_DIR:-.}/mas/mas.yaml:/etc/mas/trinity.yaml:ro
+    depends_on:
+      mas-db:
+        condition: service_healthy
+    networks:
+      - trinity-e2e
+
+  homeserver-mas:
+    image: matrixdotorg/synapse:v1.161.0
+    container_name: trinity-e2e-homeserver-mas
+    restart: 'no'
+    environment:
+      SYNAPSE_SERVER_NAME: localhost:8450
+      SYNAPSE_REPORT_STATS: 'no'
+      UID: ${TRINITY_E2E_UID:-991}
+      GID: ${TRINITY_E2E_GID:-991}
+    volumes:
+      - ${TRINITY_E2E_STATE_DIR:-.}/mas-data/homeserver:/data
+    networks:
+      - trinity-e2e
+
+  caddy:
+    ports:
+      - '127.0.0.1:8450:8450'
+      - '127.0.0.1:8451:8451'

@@ -1,3 +1,4 @@
+import { type Subscription } from 'rxjs';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -5,20 +6,28 @@ import {
   ElementRef,
   afterNextRender,
   computed,
+  effect,
   inject,
   input,
+  model,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
+import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import {
   type LoadedMessageSearch,
   type MessageHit,
   ConversationRuntime,
 } from '@trinity/data-access/timeline';
+import { initialOf } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
-import { EmptyStateComponent } from '@trinity/components/generic-content';
+import {
+  BannerComponent,
+  EmptyStateComponent,
+} from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
@@ -54,7 +63,7 @@ interface HighlightPart {
  *
  * The query field is focused when the panel appears, by this component.
  *
- * That used to be CDK's job: search was a dialog, and `TrnDialogService` was passed
+ * That used to be CDK's job: search was a dialog, and `TrnSurfaceService` was passed
  * `autoFocus: '[data-autofocus]'`. Rendered inline in the shell's panel slot there is no CDK
  * focus pass, so without the call below opening search would leave focus wherever it was and
  * a keyboard user would have to tab into the field they just asked for. The marker attribute
@@ -67,6 +76,8 @@ interface HighlightPart {
   selector: 'trn-message-search',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    SidePanelHeaderComponent,
+    BannerComponent,
     EmptyStateComponent,
     TrnIconComponent,
     AvatarComponent,
@@ -91,7 +102,27 @@ export class MessageSearchComponent {
     // After the first render, not on construction: the input does not exist yet at
     // construction time, and `afterNextRender` is the zoneless-safe hook for reaching into
     // the DOM once.
-    afterNextRender(() => this.queryField()?.nativeElement.focus());
+    // A changed query, from this field or the host's, invalidates any server results;
+    // fall back to instant local.
+    effect(() => {
+      this.query();
+      untracked(() => {
+        this.cancelServer();
+        this.resetServer();
+      });
+    });
+    afterNextRender(() => {
+      // Skip when opened by typing in the header search field, so typing isn't interrupted.
+      const active = document.activeElement;
+      if (!(active instanceof HTMLInputElement && active.type === 'search')) {
+        this.focusField();
+      }
+    });
+  }
+
+  /** Moves focus into the query field, e.g. when the search shortcut finds the panel open. */
+  focusField(): void {
+    this.queryField()?.nativeElement.focus();
   }
 
   /** Active room the search is scoped to, bound by whoever hosts the panel. */
@@ -103,7 +134,7 @@ export class MessageSearchComponent {
   readonly dismissed = output<void>();
 
   /** Current query text. */
-  readonly query = signal('');
+  readonly query = model('');
 
   /** Whether the server (full-history) results are being shown instead of loaded. */
   readonly serverMode = signal(false);
@@ -150,8 +181,6 @@ export class MessageSearchComponent {
 
   onInput(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);
-    // A changed query invalidates any server results; fall back to instant local.
-    this.resetServer();
   }
 
   /** Run the homeserver full-text search over the whole (unencrypted) history. */
@@ -160,8 +189,9 @@ export class MessageSearchComponent {
     if (!term) {
       return;
     }
+    this.cancelServer();
     this.serverMode.set(true);
-    runWithBusy(this.search.searchServer(term), {
+    this.inFlight = runWithBusy(this.search.searchServer(term), {
       busy: this.searching,
       error: this.error,
       destroyRef: this.destroyRef,
@@ -179,7 +209,8 @@ export class MessageSearchComponent {
     if (!term || !next) {
       return;
     }
-    runWithBusy(this.search.searchServer(term, next), {
+    this.cancelServer();
+    this.inFlight = runWithBusy(this.search.searchServer(term, next), {
       busy: this.searching,
       error: this.error,
       destroyRef: this.destroyRef,
@@ -235,9 +266,14 @@ export class MessageSearchComponent {
     return parts;
   }
 
-  initialOf(name: string): string {
-    const stripped = name.replace(/^[#@!]+/, '').trim();
-    return (stripped[0] ?? '?').toUpperCase();
+  readonly initialOf = initialOf;
+
+  /** Only the latest server request may write results; `runWithBusy` also bounds it to the component. */
+  private inFlight: Subscription | null = null;
+
+  private cancelServer(): void {
+    this.inFlight?.unsubscribe();
+    this.inFlight = null;
   }
 
   private resetServer(): void {

@@ -2,10 +2,4 @@
 
 @layer components {
   @include form.common;
-
-  .space-settings__scope {
-    display: flex;
-    flex-direction: column;
-    gap: var(--trinity-space-2);
-  }
 }

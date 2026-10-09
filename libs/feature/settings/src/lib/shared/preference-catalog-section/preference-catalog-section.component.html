@@ -2,33 +2,29 @@
   @if (entry.visible()) {
     @switch (entry.editor.kind) {
       @case ('toggle') {
-        <label
-          trnSettingsToggleRow
-          [nested]="entry.editor.nested ?? false"
+        <trn-settings-row
+          [label]="entry.editor.label"
+          [description]="entry.editor.description"
+          [for]="entry.editor.testId + '-switch'"
           [attr.data-testid]="entry.editor.testId"
         >
           <trn-switch
+            [inputId]="entry.editor.testId + '-switch'"
+            [aria-describedby]="entry.editor.testId + '-switch-description'"
             [checked]="checked(entry)"
             [disabled]="busy(entry.id)"
             (checkedChange)="update(entry, $event)"
           />
-          {{ entry.editor.label }}
-        </label>
-        <p
-          class="block px-4 py-2 text-13 text-muted-foreground"
-          [class.ps-8]="entry.editor.nested"
-        >
-          {{ entry.editor.description }}
-        </p>
+        </trn-settings-row>
         @if (entry.editor.warning) {
-          <p class="block px-4 py-2 text-13 text-muted-foreground">
+          <p class="m-0 py-3 text-sm text-muted-foreground">
             ⚠ {{ entry.editor.warning }}
           </p>
         }
         @if (failure(entry.id); as message) {
           <p
             role="alert"
-            class="block px-4 py-2 text-13 text-danger"
+            class="m-0 py-3 text-sm text-danger"
             [attr.data-testid]="entry.editor.testId + '-failure'"
           >
             {{ message }}

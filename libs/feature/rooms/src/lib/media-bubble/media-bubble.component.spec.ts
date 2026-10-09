@@ -33,6 +33,34 @@ describe('MediaBubbleComponent', () => {
     expect(img?.getAttribute('alt')).toBe('pic.png');
   });
 
+  describe('lazy image loading', () => {
+    const image = (over: Partial<MediaBubbleItem> = {}) =>
+      render(MediaBubbleComponent, {
+        inputs: {
+          item: item({ kind: 'image', mimeType: 'image/png', ...over }),
+          src: 'blob:thumb',
+        },
+      }).then(({ container }) =>
+        container.querySelector<HTMLImageElement>('img.media__img')!,
+      );
+
+    it('loads lazily with intrinsic width and height when the event states its size', async () => {
+      const img = await image({ width: 640, height: 480 });
+
+      expect(img.getAttribute('loading')).toBe('lazy');
+      expect(img.getAttribute('width')).toBe('640');
+      expect(img.getAttribute('height')).toBe('480');
+    });
+
+    it('stays eager when the size is unknown, so its late reflow cannot happen mid-scroll', async () => {
+      const img = await image();
+
+      expect(img.hasAttribute('loading')).toBe(false);
+      expect(img.hasAttribute('width')).toBe(false);
+      expect(img.hasAttribute('height')).toBe(false);
+    });
+  });
+
   it('renders a download file-card for a file kind', async () => {
     const { container } = await render(MediaBubbleComponent, {
       inputs: { item: item({ kind: 'file', filename: 'report.pdf' }) },
@@ -261,4 +289,190 @@ describe('MediaBubbleComponent — the reservation gives way to the real shape',
 
     expect(box.style.aspectRatio).toBe('16 / 9');
   });
+});
+
+describe('MediaBubbleComponent — video and audio wait to be played', () => {
+  const video = (over: Partial<MediaBubbleItem> = {}) =>
+    item({
+      kind: 'video',
+      filename: 'clip.mp4',
+      mimeType: 'video/mp4',
+      ...over,
+    });
+  const audio = (over: Partial<MediaBubbleItem> = {}) =>
+    item({
+      kind: 'audio',
+      filename: 'note.ogg',
+      mimeType: 'audio/ogg',
+      ...over,
+    });
+
+  it('shows a play button named for the video and no <video> before it is played', async () => {
+    const { container, fixture } = await render(MediaBubbleComponent, {
+      inputs: { item: video({ width: 1280, height: 720 }) },
+    });
+
+    const play = container.querySelector<HTMLButtonElement>(
+      'button.media--video',
+    )!;
+    expect(play.getAttribute('aria-label')).toBe('Play video clip.mp4');
+    expect(play.style.aspectRatio).toBe('1280 / 720');
+    expect(container.querySelector('video')).toBeNull();
+    expect(
+      (fixture.nativeElement as HTMLElement).getAttribute('data-media-state'),
+    ).toBe('idle');
+  });
+
+  it('draws the poster as decoration when there is one, a neutral placeholder otherwise', async () => {
+    const { container, fixture } = await render(MediaBubbleComponent, {
+      inputs: { item: video(), poster: 'blob:poster' },
+    });
+    const img = container.querySelector<HTMLImageElement>('img.media__img');
+    expect(img?.getAttribute('src')).toBe('blob:poster');
+    // The button already carries the name; the poster is not a second description of it.
+    expect(img?.getAttribute('alt')).toBe('');
+
+    fixture.componentRef.setInput('poster', null);
+    fixture.detectChanges();
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('.media__placeholder')).toBeTruthy();
+  });
+
+  it('shows the declared duration and size on the poster', async () => {
+    const { container } = await render(MediaBubbleComponent, {
+      inputs: { item: video({ durationMs: 83_000, size: 5_242_880 }) },
+    });
+
+    expect(container.querySelector('.media__badge')?.textContent?.trim()).toBe(
+      '1:23 · 5.0 MB',
+    );
+  });
+
+  it('emits play from the poster button, which a keyboard can reach', async () => {
+    const { container, fixture } = await render(MediaBubbleComponent, {
+      inputs: { item: video() },
+    });
+    let played = 0;
+    fixture.componentInstance.playRequested.subscribe(() => played++);
+
+    const button = container.querySelector<HTMLButtonElement>(
+      'button.media--video',
+    )!;
+    expect(button.disabled).toBe(false);
+    button.click();
+
+    expect(played).toBe(1);
+  });
+
+  it('says it is loading, keeps focus on the control, and swallows presses meanwhile', async () => {
+    const { container, fixture } = await render(MediaBubbleComponent, {
+      inputs: { item: video(), loading: true },
+    });
+    let played = 0;
+    fixture.componentInstance.playRequested.subscribe(() => played++);
+
+    const button = container.querySelector<HTMLButtonElement>(
+      'button.media--video',
+    )!;
+    expect(button.getAttribute('aria-label')).toBe('Loading video clip.mp4');
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    // aria-disabled rather than disabled: a disabled button drops keyboard focus.
+    expect(button.disabled).toBe(false);
+    expect(container.querySelector('.media__badge')?.textContent).toContain(
+      'Loading',
+    );
+    expect(
+      (fixture.nativeElement as HTMLElement).getAttribute('data-media-state'),
+    ).toBe('loading');
+    button.click();
+
+    expect(played).toBe(0);
+  });
+
+  it('starts the video once its metadata is ready', async () => {
+    const playSpy = vi
+      .spyOn(HTMLMediaElement.prototype, 'play')
+      .mockResolvedValue();
+    const { container } = await render(MediaBubbleComponent, {
+      inputs: { item: video(), src: 'blob:clip' },
+    });
+
+    const el = container.querySelector('video')!;
+    expect(el.getAttribute('aria-label')).toBe('Video: clip.mp4');
+    el.dispatchEvent(new Event('loadedmetadata'));
+
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    playSpy.mockRestore();
+  });
+
+  it('survives a blocked autoplay, leaving the native controls to start it', async () => {
+    const playSpy = vi
+      .spyOn(HTMLMediaElement.prototype, 'play')
+      .mockRejectedValue(new DOMException('blocked', 'NotAllowedError'));
+    const { container } = await render(MediaBubbleComponent, {
+      inputs: { item: video(), src: 'blob:clip' },
+    });
+
+    container
+      .querySelector('video')!
+      .dispatchEvent(new Event('loadedmetadata'));
+    await Promise.resolve();
+
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    playSpy.mockRestore();
+  });
+
+  it('renders the audio player row with a play control and no <audio> before play', async () => {
+    const { container, fixture } = await render(MediaBubbleComponent, {
+      inputs: { item: audio({ durationMs: 61_000, size: 2048 }) },
+    });
+
+    const play = container.querySelector<HTMLButtonElement>(
+      'button.media--audio',
+    )!;
+    expect(play.getAttribute('aria-label')).toBe('Play audio note.ogg');
+    expect(container.querySelector('.media__name')?.textContent).toContain(
+      'note.ogg',
+    );
+    expect(container.querySelector('.media__sub')?.textContent?.trim()).toBe(
+      '1:01 · 2.0 KB',
+    );
+    expect(container.querySelector('audio')).toBeNull();
+
+    let played = 0;
+    fixture.componentInstance.playRequested.subscribe(() => played++);
+    play.click();
+    expect(played).toBe(1);
+  });
+
+  it('swaps the audio row for the native player, which starts playing, once loaded', async () => {
+    const playSpy = vi
+      .spyOn(HTMLMediaElement.prototype, 'play')
+      .mockResolvedValue();
+    const { container } = await render(MediaBubbleComponent, {
+      inputs: { item: audio(), src: 'blob:note' },
+    });
+
+    const el = container.querySelector('audio')!;
+    expect(el.getAttribute('aria-label')).toBe('Audio: note.ogg');
+    el.dispatchEvent(new Event('loadedmetadata'));
+
+    expect(container.querySelector('button.media--audio')).toBeNull();
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    playSpy.mockRestore();
+  });
+
+  it.each([video(), audio()])(
+    'falls back to the download card when loading fails ($kind)',
+    async (media) => {
+      const { container, fixture } = await render(MediaBubbleComponent, {
+        inputs: { item: media, error: true },
+      });
+
+      expect(container.querySelector('.media--error')).toBeTruthy();
+      expect(
+        (fixture.nativeElement as HTMLElement).getAttribute('data-media-state'),
+      ).toBe('error');
+    },
+  );
 });

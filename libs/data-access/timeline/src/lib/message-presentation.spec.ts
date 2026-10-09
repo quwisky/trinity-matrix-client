@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { setCodeHighlighter } from '@trinity/util/matrix';
 import {
   isEditableMessage,
   isQuotableMessage,
+  savableMediaKind,
   presentNormalizedTimelineEvent,
   type MessageView,
   type NormalizedTimelineEvent,
@@ -52,36 +52,23 @@ describe('Message Presentation', () => {
     expect(Object.isFrozen(presentation)).toBe(true);
   });
 
-  it('sanitizes formatted text and applies highlighting inside the boundary', () => {
-    setCodeHighlighter((_source, _language, document) => {
-      const fragment = document.createDocumentFragment();
-      const token = document.createElement('span');
-      token.className = 'tok-keyword';
-      token.textContent = 'const';
-      fragment.append(token);
-      return fragment;
+  it('sanitizes formatted text inside the boundary', () => {
+    const presentation = presentNormalizedTimelineEvent({
+      ...BASE,
+      type: 'text',
+      messageKind: 'notice',
+      body: 'const',
+      formattedBody:
+        '<script>alert(1)</script><pre><code class="language-typescript">const</code></pre><a href="javascript:alert(2)">bad</a>',
+      replyFallback: false,
+      addressesViewer: false,
+      roomEncrypted: false,
     });
 
-    try {
-      const presentation = presentNormalizedTimelineEvent({
-        ...BASE,
-        type: 'text',
-        messageKind: 'notice',
-        body: 'const',
-        formattedBody:
-          '<script>alert(1)</script><pre><code class="language-typescript">const</code></pre><a href="javascript:alert(2)">bad</a>',
-        replyFallback: false,
-        addressesViewer: false,
-        roomEncrypted: false,
-      });
-
-      expect(presentation?.kind).toBe('notice');
-      expect(presentation?.html).not.toContain('<script');
-      expect(presentation?.html).not.toContain('javascript:');
-      expect(presentation?.html).toContain('tok-keyword');
-    } finally {
-      setCodeHighlighter(null);
-    }
+    expect(presentation?.kind).toBe('notice');
+    expect(presentation?.html).not.toContain('<script');
+    expect(presentation?.html).not.toContain('javascript:');
+    expect(presentation?.html).toContain('language-typescript');
   });
 
   it('keeps link previews restricted to ordinary text messages', () => {
@@ -237,5 +224,28 @@ describe('Message Presentation capabilities', () => {
     expect(isQuotableMessage(view({ kind: 'image' }))).toBe(false);
     expect(isQuotableMessage(view({ decryptionFailed: true }))).toBe(false);
     expect(isQuotableMessage(view({ body: '   ' }))).toBe(false);
+  });
+
+  it('offers saving only for image and video messages with a media payload', () => {
+    const media = { id: 'm' } as MessageView['media'];
+    expect(savableMediaKind(view({ kind: 'image', media }))).toBe('image');
+    expect(savableMediaKind(view({ kind: 'video', media }))).toBe('video');
+    expect(savableMediaKind(view({ kind: 'image', media: null }))).toBeNull();
+    expect(savableMediaKind(view({ kind: 'file', media }))).toBeNull();
+    expect(savableMediaKind(view({ kind: 'text' }))).toBeNull();
+    expect(savableMediaKind(view({ kind: 'sticker', media }))).toBeNull();
+    expect(
+      savableMediaKind(view({ kind: 'redacted', media: null })),
+    ).toBeNull();
+  });
+
+  it('does not offer saving media that is still unsent or failed', () => {
+    const media = { id: 'm' } as MessageView['media'];
+    expect(
+      savableMediaKind(view({ kind: 'image', media, status: 'sending' })),
+    ).toBeNull();
+    expect(
+      savableMediaKind(view({ kind: 'video', media, status: 'failed' })),
+    ).toBeNull();
   });
 });

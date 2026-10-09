@@ -9,6 +9,7 @@ import {
 } from 'matrix-js-sdk';
 import DOMPurify from 'dompurify';
 import type { EncryptedFileInfo, MediaKind, MediaPayload } from './media.model';
+import { displaySafeMime, mimeEssence } from './display-mime';
 import { isPollStart } from './poll';
 import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
 import {
@@ -245,8 +246,14 @@ export function readReceiptsFor(
   });
 }
 
-/** True when an event should render as a message row (message, sticker, or poll). */
+/**
+ * True when an event should render as a message row (message, sticker, or poll). A state
+ * event never is, whatever its type: it is room state, not a turn in the conversation.
+ */
 export function isDisplayableMessage(event: MatrixEvent): boolean {
+  if (event.isState()) {
+    return false;
+  }
   if (isPollStart(event)) {
     return true;
   }
@@ -595,25 +602,6 @@ const RENDER_PURIFY_CONFIG = {
   // this only surfaces in `nx build`.
 };
 
-/**
- * Turns the source of a fenced code block into highlighted nodes, or null when the
- * language is unknown and it should be left as plain text.
- */
-export type CodeHighlighter = (
-  code: string,
-  lang: string,
-  doc: Document,
-) => DocumentFragment | null;
-
-let codeHighlighter: CodeHighlighter | null = null;
-
-/**
- * Total characters of code one message may have highlighted. The highlighter caps a single
- * block; this caps their sum, so a sender cannot spend the main thread by splitting a huge
- * listing across many fenced blocks in one event.
- */
-const MAX_HIGHLIGHT_CHARS_PER_MESSAGE = 20_000;
-
 /** Class on each wrapped line of a code block; the numbering gutter hangs off it. */
 const CODE_LINE_CLASS = 'code-line';
 
@@ -649,21 +637,6 @@ const MAX_NUMBERED_LINES_PER_MESSAGE = 2_000;
 
 /** `Node.TEXT_NODE`, spelled out because this module never touches a live `Node` global. */
 const NODE_TYPE_TEXT = 3;
-
-/**
- * Install (or clear) the syntax highlighter used by {@link sanitizeMatrixHtml}.
- *
- * A registration seam rather than a direct import: this module is in the app's EAGER
- * bundle, so importing a highlighter here would put every grammar in the initial
- * chunk. The implementation lives inside the lazy Conversations feature.
- *
- * Clears the memo, because anything cached before installation was scrubbed without
- * highlighting and would otherwise stay that way for the life of the process.
- */
-export function setCodeHighlighter(highlighter: CodeHighlighter | null): void {
-  codeHighlighter = highlighter;
-  sanitizedHtmlCache.clear();
-}
 
 /**
  * Sanitize sender-provided HTML (`formatted_body`) for RENDERING, against the Matrix
@@ -921,8 +894,8 @@ function fencedLanguage(code: Element): string | null {
 
 /**
  * Prepare every fenced code block for rendering: caption it with the language it declares,
- * and syntax-highlight it when a grammar is loaded. One pass, because both need the same
- * elements and the same parsed language.
+ * and wrap its lines for numbering. Syntax colouring is NOT done here: it happens at the
+ * render leaf, only for rendered rows (see CodeHighlightDirective in the rooms feature).
  *
  * **The caption is an attribute, not an element.** `language` is read back by CSS
  * (`pre[language]::after`, see rendered-markdown.scss). Generated content is not part of
@@ -936,19 +909,11 @@ function fencedLanguage(code: Element): string | null {
  * Captioning runs for EVERY block that declares a language, including ones no grammar is
  * loaded for: knowing a block is `elixir` is useful even when we cannot colour it.
  *
- * Highlighting runs AFTER DOMPurify on purpose: {@link ALLOWED_CLASS} restricts class tokens
- * to `language-*`/`mx-spoiler`, so token classes could not survive the scrub — and doing it
- * here means the memo above covers the cost. The highlighter returns DOM nodes, so nothing
- * it produces can be re-parsed as markup.
+ * Colouring is applied after DOMPurify and Angular's own `[innerHTML]` scrub, from DOM
+ * nodes, so nothing it produces can be re-parsed as markup.
  */
 function renderCodeBlocks(root: ParentNode): void {
-  // A per-block cap alone is defeated by splitting: forty blocks just under the limit are
-  // still a quarter-megabyte of synchronous tokenization. This bounds their sum within one
-  // message. It does NOT bound a whole back-pagination, where each event is sanitized
-  // separately — see the note on MAX_HIGHLIGHT_CHARS_PER_MESSAGE.
-  let budget = MAX_HIGHLIGHT_CHARS_PER_MESSAGE;
-  // The same argument applies to line wrapping, which adds DOM rather than spending CPU:
-  // a per-block cap is defeated by splitting just as a per-block tokenization cap is.
+  // A per-block cap is defeated by splitting, so line wrapping also has a per-message sum.
   let lineBudget = MAX_NUMBERED_LINES_PER_MESSAGE;
   // Iterating `pre` rather than `pre > code[class]` because not every pass below needs a
   // language: a bare fence produces a `<code>` with no class at all, so a code-first query
@@ -960,48 +925,9 @@ function renderCodeBlocks(root: ParentNode): void {
         pre.setAttribute('language', lang);
       }
       const source = code.textContent ?? '';
-      // Charged only when tokenization actually happened. The highlighter declines
-      // oversized blocks and unknown languages without doing the work, and charging for
-      // those would starve blocks that could have been highlighted.
-      const charged = highlightBlock(code, lang, source, budget);
-      budget -= charged;
-      lineBudget -= markCodeLines(code, source, charged > 0, lineBudget);
+      lineBudget -= markCodeLines(code, source, lineBudget);
     }
   }
-}
-
-/**
- * Tokenize one block in place, returning the characters to charge against the message
- * budget — 0 when nothing was highlighted.
- *
- * Extracted from the loop so declining a block does not skip the passes after it: the
- * blocks this refuses (no language, no grammar, oversized, budget exhausted) are exactly
- * the long listings most worth numbering.
- */
-function highlightBlock(
-  code: Element,
-  lang: string | null,
-  source: string,
-  budget: number,
-): number {
-  // Only ever tokenize plain text. The Matrix allowlist permits inline markup inside
-  // <code> (a link, bold, a spoiler), and replacing the children would silently delete
-  // it — worse, only for languages we happen to have a grammar for, so the same body
-  // would render differently depending on its fence tag.
-  if (!lang || !codeHighlighter || !source || code.children.length > 0) {
-    return 0;
-  }
-  // Declining, not aborting: a later block small enough to fit should still be coloured
-  // rather than being starved by one oversized listing earlier in the message.
-  if (source.length > budget) {
-    return 0;
-  }
-  const highlighted = codeHighlighter(source, lang, code.ownerDocument);
-  if (!highlighted) {
-    return 0;
-  }
-  code.replaceChildren(highlighted);
-  return source.length;
 }
 
 /**
@@ -1030,16 +956,14 @@ function highlightBlock(
 function markCodeLines(
   code: Element,
   source: string,
-  highlighted: boolean,
   lineBudget: number,
 ): number {
   if (!source) {
     return 0;
   }
   // A newline inside a child element would put two visual lines in one wrapper, and the
-  // numbering would then lie. The highlighter guarantees no token spans a newline, so a
-  // block it tokenized is safe; otherwise only a block with no element children is.
-  if (!highlighted && code.children.length > 0) {
+  // numbering would then lie, so only a block with no element children is wrapped.
+  if (code.children.length > 0) {
     return 0;
   }
   const lines = source.split('\n');
@@ -1189,14 +1113,24 @@ export function renderNormalizedTextBody(
   return { text, html, textHtml: html ?? linkifyText(text) };
 }
 
-/** MIME types we never render inline (script-bearing), forced to download-only. */
-const UNSAFE_INLINE_MIME = /^(?:image\/svg\+xml|text\/html)$/i;
+/** A well-formed essence for an inline kind: a bare `image`, `video` or `audio` type. */
+const INLINE_ESSENCE = /^(?:image|video|audio)\/[a-z0-9][a-z0-9.+-]*$/;
+
+/** Document types (compared by essence) that are only offered as downloads, never shown inline. */
+const DOWNLOAD_ONLY_MIME: ReadonlySet<string> = new Set([
+  'image/svg+xml',
+  'text/html',
+  'application/xhtml+xml',
+  'application/xml',
+  'text/xml',
+]);
 
 /**
  * Project an `m.image`/`m.file`/`m.video`/`m.audio` content block into a
  * {@link MediaPayload}, or null when it lacks a source (`url`/`file`). The kind is
  * derived from the msgtype, then downgraded to `'file'` (download-only) for a declared
- * MIME type that mismatches it or is script-bearing so nothing scriptable is rendered inline.
+ * MIME type that mismatches it, is a download-only document type, or is not a well-formed
+ * essence, so only recognisable media is shown inline.
  */
 export function normalizeMediaPayload(
   content: Record<string, unknown>,
@@ -1212,6 +1146,7 @@ export function normalizeMediaPayload(
   const declaredMime =
     typeof info['mimetype'] === 'string' ? (info['mimetype'] as string) : null;
   const mimeType = declaredMime ?? 'application/octet-stream';
+  const essence = mimeEssence(declaredMime);
 
   let kind: MediaKind =
     msgtype === MsgType.Image
@@ -1221,14 +1156,15 @@ export function normalizeMediaPayload(
         : msgtype === MsgType.Audio
           ? 'audio'
           : 'file';
-  // A declared MIME must match its category and not be scriptable. `info` is optional,
-  // so an undeclared one trusts the msgtype; the blob stays opaque and the media
-  // element sniffs the bytes, which never executes script.
+  // A declared MIME must be a well-formed type of its category and not a download-only
+  // document type. `info` is optional, so an undeclared one trusts the msgtype; the blob
+  // stays opaque and the media element sniffs the bytes.
   const category = kind === 'file' ? null : kind;
   if (
     declaredMime !== null &&
-    (UNSAFE_INLINE_MIME.test(declaredMime) ||
-      (category && !declaredMime.toLowerCase().startsWith(`${category}/`)))
+    (DOWNLOAD_ONLY_MIME.has(essence) ||
+      (category &&
+        !(INLINE_ESSENCE.test(essence) && essence.startsWith(`${category}/`))))
   ) {
     kind = 'file';
   }
@@ -1276,7 +1212,7 @@ export function normalizeMediaPayload(
     thumbnailFile: asEncryptedFile(info['thumbnail_file']),
     thumbnailMimeType:
       typeof thumbInfo['mimetype'] === 'string'
-        ? (thumbInfo['mimetype'] as string)
+        ? displaySafeMime(thumbInfo['mimetype'])
         : undefined,
     ...(isVoice ? { isVoice: true, waveform } : {}),
   };

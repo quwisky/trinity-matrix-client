@@ -377,6 +377,32 @@ describe('ConversationRuntime', () => {
     });
   });
 
+  it('retires every retained handle across Accounts but keeps the focused one', () => {
+    const { runtime, controller } = setup();
+    const a = runtime.focus({ accountId: ALICE, roomId: '!a:example.org' });
+    const bob = runtime.focus({ accountId: BOB, roomId: '!bob:example.org' });
+    const focused = runtime.focus({
+      accountId: ALICE,
+      roomId: '!c:example.org',
+    });
+
+    runtime.retireRetained();
+
+    expect(a.state()).toBe('retired');
+    expect(bob.state()).toBe('retired');
+    expect(controller('!a:example.org').released()).toBe(true);
+    expect(controller('!bob:example.org').released()).toBe(true);
+    expect(focused.state()).toBe('focused');
+    expect(runtime.focused()).toBe(focused);
+    expect(controller('!c:example.org').released()).toBe(false);
+    expect(runtime.diagnostics()).toMatchObject({
+      activeHandles: 1,
+      focusedHandles: 1,
+      retainedHandles: 0,
+      retiredHandles: 2,
+    });
+  });
+
   it('never reactivates an evicted handle when the same key is opened again', () => {
     const { runtime, controller } = setup(0);
     const retired = runtime.focus({

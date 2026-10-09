@@ -6,15 +6,15 @@ import {
   input,
 } from '@angular/core';
 import {
-  TrnButton,
   TrnSelectComponent,
   type TrnSelectOption,
 } from '@trinity/components/controls';
-import { SettingsFieldRowDirective } from '../../shared/settings-field-row.directive';
+import { TrnSettingsRowComponent } from '@trinity/components/overlay';
 import {
   AppearanceSettingsController,
   type AppearanceAxisKey,
 } from '../appearance-settings.controller';
+import { SaveFailureComponent } from '../save-failure/save-failure.component';
 
 export interface AppearancePreferenceField {
   readonly axis: AppearanceAxisKey;
@@ -28,7 +28,8 @@ export interface AppearancePreferenceField {
   selector: 'trn-appearance-preference-field',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './appearance-preference-field.component.html',
-  imports: [TrnButton, TrnSelectComponent, SettingsFieldRowDirective],
+  host: { class: 'block' },
+  imports: [SaveFailureComponent, TrnSelectComponent, TrnSettingsRowComponent],
 })
 export class AppearancePreferenceFieldComponent {
   private readonly controller = inject(AppearanceSettingsController);

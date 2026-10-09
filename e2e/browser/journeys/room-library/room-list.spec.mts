@@ -216,7 +216,7 @@ test.describe('Room list preview row', () => {
     await expect(channel.first().locator('.channel__hash')).toHaveCount(0);
   });
 
-  test('an unread room row shows a muted badge with the unread count, and it clears once opened', async ({
+  test('an unread room row is marked unread without a count, and clears once opened', async ({
     page,
     request,
   }) => {
@@ -239,14 +239,13 @@ test.describe('Room list preview row', () => {
     const channel = page.locator('.channel', { hasText: roomName });
     await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
 
-    // Plain (non-mention) messages surface the muted variant, not the red
-    // highlight badge.
-    const badge = channel.first().locator('.channel__badge--muted');
-    await expect(badge).toBeVisible({ timeout: 30_000 });
-
-    // Wait on the app's own state — the unread count settling after sync —
+    // Plain (non-mention) messages mark the row unread but carry no count badge.
+    // Wait on the app's own state — the unread marker settling after sync —
     // rather than a fixed sleep.
-    await expect(badge).toHaveText(String(UNREAD_SEED), { timeout: 30_000 });
+    await expect(channel.first()).toHaveClass(/channel--unread/, {
+      timeout: 30_000,
+    });
+    await expect(channel.first().locator('[data-slot="badge"]')).toHaveCount(0);
 
     // Opening the room should send a read receipt and clear its row badge.
     // Best-effort per the read-receipt round trip's timing — don't flake the
@@ -257,7 +256,7 @@ test.describe('Room list preview row', () => {
         (name) => {
           const rows = Array.from(document.querySelectorAll('.channel'));
           const row = rows.find((el) => el.textContent?.includes(name));
-          return !!row && !row.querySelector('.channel__badge');
+          return !!row && !row.classList.contains('channel--unread');
         },
         roomName,
         { timeout: 15_000, polling: 300 },

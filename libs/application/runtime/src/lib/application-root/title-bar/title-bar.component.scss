@@ -1,0 +1,57 @@
+@layer components {
+  :host {
+    display: none;
+  }
+
+  // `visible` adds the class; the host stays out of the layout on web, mobile and the OS bar.
+  :host(.title-bar--visible) {
+    position: relative;
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+
+    // The native buttons' strip, which grows and shrinks with page zoom in CSS pixels.
+    height: env(titlebar-area-height, var(--trinity-title-bar-height));
+
+    // The native window buttons own everything past the overlay's titlebar area; keep the
+    // right-hand actions inside it.
+    --title-bar-controls-inset: calc(
+      100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%)
+    );
+
+    padding-inline: var(--trinity-space-3) var(--title-bar-controls-inset);
+    background: var(--trinity-surface-app);
+    color: var(--trinity-text-muted);
+    -webkit-app-region: drag;
+    user-select: none;
+  }
+
+  :host(.title-bar--mac) {
+    // Room for the traffic lights.
+    padding-inline-start: var(--trinity-title-bar-traffic-light-inset);
+  }
+
+  .title-bar__title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    padding-inline: var(--trinity-space-5);
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+    font-weight: var(--trinity-type-caption-weight);
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .title-bar__actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--trinity-space-2);
+  }
+
+  .title-bar__button {
+    -webkit-app-region: no-drag;
+  }
+}

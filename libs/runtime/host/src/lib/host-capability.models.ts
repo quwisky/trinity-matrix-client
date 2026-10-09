@@ -12,6 +12,7 @@ export const HOST_OPERATIONS = [
   'secure-store',
   'lifecycle',
   'updates',
+  'title-bar',
 ] as const;
 
 export type HostOperation = (typeof HOST_OPERATIONS)[number];
@@ -103,6 +104,8 @@ export interface HostLifecycleOperation {
   readonly events: Observable<
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >;
+  /** Ask the host to drop its own caches after the app went to the background. */
+  releaseMemory?(): Observable<HostOperationOutcome>;
 }
 
 export interface HostUpdatesOperation {
@@ -131,6 +134,7 @@ export function unavailableHostManifest(
       'secure-store': support,
       lifecycle: support,
       updates: support,
+      'title-bar': support,
     },
   };
 }

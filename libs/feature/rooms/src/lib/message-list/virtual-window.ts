@@ -28,7 +28,7 @@ export interface WindowInput {
   readonly pinBottom: boolean;
   /** At or below this row count, render everything (no windowing). */
   readonly smallListThreshold: number;
-  /** Master switch — when false, always render everything (feature flag off). */
+  /** Master switch: when false, render everything (the message list's `windowed` input; member-list.component.ts also drives it). */
   readonly enabled: boolean;
 }
 

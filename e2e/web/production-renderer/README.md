@@ -29,8 +29,8 @@ before enabling this mode. It is not a shortcut for an arbitrary local build.
 
 The CI E2E job may build a development bundle during prerequisite preparation. The
 production renderer step restores the verified production payload before starting this
-suite; styling and browser steps run afterward against their intentional development
-bundle.
+suite; the styling step runs afterward against its intentional development bundle. The
+browser journeys run in their own shard jobs and never see the production payload.
 
 The suite blocks the PWA service worker because service-worker behavior has its
 own production-PWA contract. Blocking it keeps the disposable homeserver's
@@ -41,10 +41,10 @@ this suite measures the renderer.
 
 The Playwright configuration has nine projects in two groups:
 
-| Group                    | Projects                                                                                                                                                      | What runs there                                                                                                                                                      |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Application renderer     | `wide-dark-cosy`, `standard-amethyst-cosy`, `tablet-light-compact`, `compact-light-large`, `pixel-onyx-cosy`, `small-light-large`, and `webkit-compact-light` | [`application-renderer.spec.mts`](application-renderer.spec.mts) seeds a disposable room and checks its representative production surface contracts.                 |
-| Theme and Mode artifacts | `appearance-desktop` and `appearance-mobile`                                                                                                                  | [`appearance-artifact.spec.mts`](appearance-artifact.spec.mts) checks the unauthenticated sign-in surface for each catalogued Theme with fixed light and dark modes. |
+| Group                    | Projects                                                                                                                                                          | What runs there                                                                                                                                                      |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Application renderer     | `wide-dark-cosy`, `standard-amethyst-cosy`, `tablet-light-compact`, `compact-light-large`, `pixel-midnight-cosy`, `small-light-large`, and `webkit-compact-light` | [`application-renderer.spec.mts`](application-renderer.spec.mts) seeds a disposable room and checks its representative production surface contracts.                 |
+| Theme and Mode artifacts | `appearance-desktop` and `appearance-mobile`                                                                                                                      | [`appearance-artifact.spec.mts`](appearance-artifact.spec.mts) checks the unauthenticated sign-in surface for each catalogued Theme with fixed light and dark modes. |
 
 `application-renderer.spec.mts` deliberately skips the two `appearance-*`
 projects. Do not describe one assertion as running in every project. The WebKit

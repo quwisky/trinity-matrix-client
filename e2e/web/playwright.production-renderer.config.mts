@@ -50,7 +50,7 @@ export default defineConfig({
       name: 'compact-light-large',
       use: DESIGN_VIEWPORTS['desktop-compact'],
     },
-    { name: 'pixel-onyx-cosy', use: DESIGN_VIEWPORTS['phone-pixel-5'] },
+    { name: 'pixel-midnight-cosy', use: DESIGN_VIEWPORTS['phone-pixel-5'] },
     { name: 'small-light-large', use: DESIGN_VIEWPORTS['phone-small'] },
     {
       name: 'webkit-compact-light',

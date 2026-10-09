@@ -32,6 +32,7 @@ import {
   map,
   of,
   switchMap,
+  take,
   timeout,
 } from 'rxjs';
 import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
@@ -274,6 +275,48 @@ export class DocumentHostLifecycleAdapter implements HostLifecycleOperation {
   );
 }
 
+/**
+ * The shell keeps `backgroundThrottling` off so `/sync` runs while hidden, which also pins
+ * `document.visibilityState` to `visible`. Main reports the window's own visibility instead.
+ */
+@Injectable({ providedIn: 'root' })
+export class ElectronHostLifecycleAdapter implements HostLifecycleOperation {
+  private readonly capabilities = inject(HostCapabilitiesService);
+
+  private readonly support = defer(() => this.capabilities.manifest()).pipe(
+    map((manifest) => manifest.operations.lifecycle),
+  );
+
+  readonly events = this.support.pipe(
+    switchMap((support) =>
+      support.kind === 'supported'
+        ? new Observable<'visible' | 'hidden'>((subscriber) =>
+            getTrinityDesktopBridge()?.capabilities.lifecycle.subscribeVisibility(
+              (visibility) => subscriber.next(visibility),
+            ),
+          )
+        : EMPTY,
+    ),
+    distinctUntilChanged(),
+    map((visibility) =>
+      visibility === 'visible'
+        ? ({ kind: 'active' } as const)
+        : ({ kind: 'background' } as const),
+    ),
+  );
+
+  releaseMemory(): Observable<HostOperationOutcome> {
+    return this.support.pipe(
+      take(1),
+      map((support) => {
+        if (support.kind === 'unavailable') return support;
+        getTrinityDesktopBridge()?.capabilities.lifecycle.releaseMemory();
+        return completed();
+      }),
+    );
+  }
+}
+
 @Injectable({ providedIn: 'root' })
 export class ServiceWorkerHostUpdatesAdapter implements HostUpdatesOperation {
   private readonly updates = inject(SwUpdate, { optional: true });
@@ -321,7 +364,10 @@ export function hostOperationProviders(): Provider[] {
     { provide: HOST_FILE_EXPORT_OPERATION, useExisting: HostFileExportAdapter },
     {
       provide: HOST_LIFECYCLE_OPERATION,
-      useExisting: DocumentHostLifecycleAdapter,
+      useFactory: (): HostLifecycleOperation =>
+        getTrinityDesktopBridge()
+          ? inject(ElectronHostLifecycleAdapter)
+          : inject(DocumentHostLifecycleAdapter),
     },
     {
       provide: HOST_UPDATES_OPERATION,

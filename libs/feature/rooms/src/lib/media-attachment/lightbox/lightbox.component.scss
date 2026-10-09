@@ -3,7 +3,7 @@
     position: relative;
     display: flex;
     width: 100vw;
-    height: 100vh;
+    height: calc(100dvh - var(--trinity-title-row-inset, 0px));
     align-items: center;
     justify-content: center;
     padding: max(var(--trinity-space-6), env(safe-area-inset-top))
@@ -13,11 +13,16 @@
     cursor: zoom-out;
   }
 
-  .lightbox__close {
+  .lightbox__actions {
     position: absolute;
     z-index: 1;
     inset-block-start: max(var(--trinity-space-5), env(safe-area-inset-top));
     inset-inline-end: max(var(--trinity-space-5), env(safe-area-inset-right));
+    display: flex;
+    gap: var(--trinity-space-3);
+  }
+
+  .lightbox__action {
     border: 1px solid var(--trinity-border-subtle);
     box-shadow: var(--trinity-shadow-floating);
   }

@@ -19,7 +19,10 @@ import {
   WorkspaceBackService,
   WorkspaceNavigationService,
 } from '@trinity/application/workspace';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   AccountRuntimeService,
   type AccountRestoreResult,
@@ -149,10 +152,10 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     retryInactiveAccount = vi.fn(() => of({ kind: 'unavailable' as const }));
     hostManifest = new Subject<HostCapabilityManifest>();
     appearanceHydrate = vi.fn<() => Observable<AppearanceHydrationOutcome>>(
-      () => of({ kind: 'ready', hydrated: 6 }),
+      () => of({ kind: 'ready', hydrated: 7 }),
     );
     appearanceRecover = vi.fn<AppearancePreferences['recoverHydration']>(() =>
-      of({ kind: 'ready', hydrated: 6 }),
+      of({ kind: 'ready', hydrated: 7 }),
     );
     badgeSession = new Subject<HostOperationOutcome>();
     appearanceSession = new Subject<never>();
@@ -238,7 +241,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
           checkForUpdate: vi.fn().mockResolvedValue(false),
         }),
         MockProvider(TrnToastService),
-        MockProvider(TrnDialogService, {
+        MockProvider(TrnSurfaceService, {
           openState: dialogOpen,
           hasOpen: () => false,
         }),
@@ -618,6 +621,30 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     activeAccountId.set(null);
     await firstValueFrom(adapter.recover('reauthenticate'));
     expect(signOutAccount).toHaveBeenCalledWith('@secret:example.org');
+
+    // An unavailable keychain is an outage: offer a retry, never Account removal.
+    restoreAccounts.mockReturnValueOnce(
+      of({
+        kind: 'active-account-unavailable',
+        activeAccountId: '@secret:example.org',
+        accounts: [
+          {
+            kind: 'failed',
+            failure: 'secure-storage-unavailable',
+            accountId: '@secret:example.org',
+            role: 'active',
+          },
+        ],
+      }),
+    );
+    // Removal stays reachable as a confirmed second choice: a key that is truly gone but
+    // reads as unavailable would otherwise trap the user in retries.
+    await expect(firstValueFrom(adapter.restoreAccounts())).resolves.toEqual({
+      kind: 'blocked',
+      recovery: 'retry-startup',
+      secondaryRecovery: 'reauthenticate',
+      diagnostic: { code: 'account-secure-storage-unavailable' },
+    });
   });
 
   it('falls back to a safe root before blocking Workspace restoration', async () => {
@@ -661,6 +688,29 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     });
     expect(navigateByUrl).toHaveBeenNthCalledWith(4, '/', {
       replaceUrl: true,
+    });
+  });
+
+  it('reports a superseded Workspace restoration as failed even when its navigation lands', async () => {
+    initialNavigation.mockImplementationOnce(() => {
+      events.next(new NavigationError(1, '/rooms', new Error('offline')));
+    });
+    await firstValueFrom(adapter.restoreWorkspace());
+    let land!: (navigated: boolean) => void;
+    navigateByUrl.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => (land = resolve)),
+    );
+    const superseded = firstValueFrom(adapter.restoreWorkspace());
+
+    await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
+      kind: 'ready',
+    });
+    land(true);
+
+    await expect(superseded).resolves.toEqual({
+      kind: 'blocked',
+      recovery: 'retry-startup',
+      diagnostic: { code: 'workspace-navigation-failed' },
     });
   });
 

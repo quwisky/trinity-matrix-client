@@ -57,23 +57,18 @@ describe('mobile Appearance', () => {
     await waitForRooms();
 
     await $('[data-testid="open-settings"]').click();
-    await browser.waitUntil(
-      async () =>
-        new URL(await browser.getUrl()).pathname.startsWith('/settings'),
-      { timeout: 20_000, timeoutMsg: 'never reached /settings' },
+    // On a phone Settings opens as a bottom sheet over Rooms, so the URL stays put.
+    await expect($('[role="dialog"][aria-label="Settings"]')).toBeDisplayed({
+      wait: 20_000,
+    });
+    expect(new URL(await browser.getUrl()).pathname).not.toMatch(
+      /^\/settings/u,
     );
     await expect($('nav[aria-label="Settings sections"]')).toBeDisplayed({
       wait: 20_000,
     });
     await $('[data-testid="settings-nav-appearance"]').click();
-    await browser.waitUntil(
-      async () =>
-        /\/settings\/appearance$/u.test(
-          new URL(await browser.getUrl()).pathname,
-        ),
-      { timeout: 20_000, timeoutMsg: 'never reached /settings/appearance' },
-    );
-    const heading = $('#appearance-heading');
+    const heading = $('[data-testid="settings-detail"] h1');
     await expect(heading).toHaveText('Appearance');
     await expect(heading).toBeFocused();
 
@@ -110,13 +105,13 @@ describe('mobile Appearance', () => {
     expect(lightStatusBar.height).toBeGreaterThan(0);
 
     await $('[data-testid="mode-dark"]').click();
-    await choose('theme-select', 'theme-onyx');
+    await choose('theme-select', 'theme-midnight');
     await choose('density-select', 'density-compact');
     await choose('text-scale-select', 'text-scale-larger');
 
     await expect($('[data-testid="mode-dark"] input')).toBeChecked();
     await expect($('html')).toHaveElementClass('dark', { containing: true });
-    await expect($('html')).toHaveAttribute('data-theme', 'onyx');
+    await expect($('html')).toHaveAttribute('data-theme', 'midnight');
     await expect($('html')).toHaveAttribute('data-density', 'compact');
     expect(await $('html').getCSSProperty('font-size')).toMatchObject({
       value: '20px',
@@ -125,7 +120,7 @@ describe('mobile Appearance', () => {
       $('[data-testid="appearance-preview-state"]'),
     ).toHaveElementProperty(
       'textContent',
-      expect.stringContaining('dark · Onyx · Compact'),
+      expect.stringContaining('dark · Midnight · Compact'),
     );
     await browser.waitUntil(
       async () => (await readNativeStatusBar()).style === 'DARK',
@@ -134,22 +129,28 @@ describe('mobile Appearance', () => {
     const darkStatusBar = await readNativeStatusBar();
 
     const geometry = await browser.execute(() => {
-      const header = document.querySelector<HTMLElement>(
-        'header[data-trn-layout="page"]',
+      const column = document.querySelector<HTMLElement>(
+        '[data-testid="settings-detail"] .settings-layout__column',
       );
-      const heading = header?.querySelector<HTMLElement>('h1');
+      const heading = column?.querySelector<HTMLElement>('h1');
       const controls = [
         '[data-testid="mode-dark"]',
         '[data-testid="theme-select"] button',
         '[data-testid="density-select"] button',
         '[data-testid="text-scale-select"] button',
       ].map((selector) => document.querySelector<HTMLElement>(selector));
-      if (!header || !heading || controls.some((control) => !control)) {
+      if (!column || !heading || controls.some((control) => !control)) {
         throw new Error('Appearance geometry is incomplete');
       }
-      const headerStyle = getComputedStyle(header);
+      // The heading scrolls with the column, and the steps above changed controls further
+      // down, so measure it from the top of the page.
+      for (let el: HTMLElement | null = heading; el; el = el.parentElement) {
+        el.scrollTop = 0;
+      }
+      const sheet = column.closest<HTMLElement>('[role="dialog"]');
+      if (!sheet) throw new Error('Appearance is not in a sheet');
       return {
-        headerPaddingTop: Number.parseFloat(headerStyle.paddingTop),
+        sheetTop: sheet.getBoundingClientRect().top,
         headingTop: heading.getBoundingClientRect().top,
         hostAppliedVerticalInset: Math.max(
           0,
@@ -165,22 +166,13 @@ describe('mobile Appearance', () => {
     });
     expect(geometry.minimumTarget).toBeGreaterThanOrEqual(44);
     expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1);
-    if (browser.isIOS) {
-      // WKWebView spans the status bar; the header's safe-area padding alone clears it.
-      expect(geometry.headerPaddingTop).toBeGreaterThanOrEqual(
-        darkStatusBar.height - 1,
-      );
-    } else {
-      // Android may inset the WebView itself; host inset plus padding clears the bar.
-      expect(
-        geometry.hostAppliedVerticalInset + geometry.headerPaddingTop,
-      ).toBeGreaterThanOrEqual(darkStatusBar.height - 1);
-    }
-    expect(geometry.headingTop).toBeGreaterThanOrEqual(
-      geometry.headerPaddingTop - 1,
-    );
+    // The sheet carries no safe-area padding of its own: it must sit below the status bar.
+    expect(
+      geometry.hostAppliedVerticalInset + geometry.sheetTop,
+    ).toBeGreaterThanOrEqual(darkStatusBar.height - 1);
+    expect(geometry.headingTop).toBeGreaterThanOrEqual(geometry.sheetTop - 1);
 
     await $('[data-testid="theme-select"] button').click();
-    await expect($('[data-testid="theme-onyx"]')).toBeDisplayed();
+    await expect($('[data-testid="theme-midnight"]')).toBeDisplayed();
   });
 });

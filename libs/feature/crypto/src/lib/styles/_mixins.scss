@@ -24,43 +24,6 @@
   overflow-y: auto;
   padding: clamp(var(--trinity-space-5), 4vw, var(--trinity-space-7));
   background: var(--trinity-surface-frame);
-
-  @media (max-width: 479px) {
-    padding: 0;
-  }
-}
-
-@mixin surface {
-  width: min(100%, 640px);
-  margin-inline: auto;
-  padding: var(--trinity-space-6);
-  border: 1px solid var(--trinity-border-subtle);
-  border-radius: var(--trinity-shape-overlay-radius);
-  background: var(--trinity-surface-raised);
-  box-shadow: var(--trinity-shadow-raised);
-
-  @media (max-width: 479px) {
-    padding: var(--trinity-space-6);
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-  }
-}
-
-@mixin modal-header {
-  display: flex;
-  min-height: 56px;
-  align-items: center;
-  gap: var(--trinity-space-3);
-  padding: var(--trinity-space-4) var(--trinity-space-5);
-  border-bottom: 1px solid var(--trinity-border-subtle);
-  background: var(--trinity-surface-navigation-header);
-}
-
-@mixin modal-body {
-  overflow-y: auto;
-  padding: var(--trinity-space-6);
 }
 
 @mixin lead {

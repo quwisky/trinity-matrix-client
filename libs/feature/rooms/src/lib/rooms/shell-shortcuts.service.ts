@@ -2,7 +2,7 @@ import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, switchMap } from 'rxjs';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import type { RoomSummary } from '@trinity/data-access/room-library';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { stepList, stepUnread } from '../shortcuts/room-navigation';
@@ -34,7 +34,7 @@ export class ShellShortcutsService {
   private readonly workspace = inject(WorkspaceNavigationService);
   private readonly switcher = inject(QuickSwitcherService);
   private readonly shortcuts = inject(KeyboardShortcutsService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
 
   /**
@@ -55,15 +55,13 @@ export class ShellShortcutsService {
    */
   onGlobalKeydown(event: Event): void {
     const e = event as KeyboardEvent;
-    if (
-      (!e.ctrlKey && !e.metaKey && !e.altKey) ||
-      this.dialog.hasOpen() ||
-      this.panelOwnsTheScreen()
-    ) {
+    if ((!e.ctrlKey && !e.metaKey && !e.altKey) || this.dialog.hasOpen()) {
       return;
     }
     const hit = this.shortcuts.resolve(e);
-    if (!hit) {
+    // Search is the one chord that is still wanted with a panel open: it refocuses the
+    // header field, which is how a reader edits the query of the panel they are looking at.
+    if (!hit || (this.panelOwnsTheScreen() && hit.id !== 'room.search')) {
       return;
     }
     // preventDefault belongs to the branches that act, NOT to "the catalogue matched". The
@@ -74,6 +72,10 @@ export class ShellShortcutsService {
       case 'switcher.open':
         e.preventDefault();
         void this.openSwitcher();
+        break;
+      case 'room.search':
+        // Only when a room is open: otherwise the browser's find keeps working.
+        if (this.focusSearch()) e.preventDefault();
         break;
       case 'room.hop.back':
         e.preventDefault();
@@ -110,6 +112,16 @@ export class ShellShortcutsService {
         }
         break;
     }
+  }
+
+  private focusSearch: () => boolean = () => false;
+
+  /**
+   * The page owns the header field, so it hands over the "focus or open search" call. It
+   * returns whether it acted, which is false with no room open.
+   */
+  bindSearchFocus(focus: () => boolean): void {
+    this.focusSearch = focus;
   }
 
   /** Whether the shell's right-hand slot is showing something ON TOP of the timeline. */

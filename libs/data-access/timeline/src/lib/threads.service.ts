@@ -30,8 +30,14 @@ import {
   collectMessageSenders,
   initialOf,
   isDisplayableMessage,
+  RoomEncryptionFlags,
 } from '@trinity/util/matrix';
-import { resolveShieldsInto, shieldKey } from './shields';
+import {
+  resolveShieldsInto,
+  shieldKey,
+  shieldSubject,
+  unencryptedShieldFor,
+} from './shields';
 import { eventRevision } from './timeline.service';
 import { projectMessage } from './project-message';
 import type { MessageShield, MessageView } from './message-presentation';
@@ -170,6 +176,8 @@ export class ThreadsService {
 
   // --- Opened thread --------------------------------------------------------
   private thread: Thread | null = null;
+  /** Root of the open thread once a page came back with nothing new, so no further page is offered. */
+  private exhaustedThreadRootId: string | null = null;
   /** The exact Account client {@link attachThreadRoot} inherited — see {@link summariesClient}. */
   private threadClient: MatrixClient | null = null;
   private threadRoom: Room | null = null;
@@ -181,8 +189,13 @@ export class ThreadsService {
   // doesn't re-project the thread once per member.
   private threadRelevantSenders = new Set<string>();
 
-  /** Resolved authenticity shields for the opened thread's events, by event id. */
+  /**
+   * Resolved authenticity shields for the opened thread's events, by shield-subject id (a
+   * reply's latest edit, else the event itself).
+   */
   private readonly threadShields = new Map<string, MessageShield | null>();
+  /** Whether the opened thread's room counts as encrypted: its state, or else its crypto store. */
+  private threadEncryption = new RoomEncryptionFlags();
   /**
    * Per-reply projection cache keyed by event id, mirroring TimelineService.viewCache:
    * `rev` fingerprints everything Message Presentation reads that can change while the
@@ -381,6 +394,7 @@ export class ThreadsService {
     }
     this.threadClient = null;
     this.thread = null;
+    this.exhaustedThreadRootId = null;
     this.threadRoom = null;
     this.threadRoomId = null;
     this.threadReceiptSubscription?.unsubscribe();
@@ -388,6 +402,7 @@ export class ThreadsService {
     this.lastReadEventId = null;
     this.threadRelevantSenders.clear();
     this.threadShields.clear();
+    this.threadEncryption = new RoomEncryptionFlags();
     this.threadViewCache.clear();
     this._openThreadRootId.set(null);
     this._threadMessages.set([]);
@@ -422,10 +437,14 @@ export class ThreadsService {
     ) {
       return of(void 0);
     }
+    // Sampled before the request: the SDK adds the page's events (and re-enters
+    // refreshThread through the timeline events) before the promise resolves.
+    let loadedBefore = 0;
     return defer(() => {
       const client = this.threadClient;
       if (!client || this.thread !== thread) return of(void 0);
       this._loadingOlderThread.set(true);
+      loadedBefore = thread.events.length;
       return from(
         client.paginateEventTimeline(timeline, {
           backwards: true,
@@ -433,7 +452,14 @@ export class ThreadsService {
         }),
       );
     }).pipe(
-      tap(() => this.refreshThread()),
+      tap(() => {
+        // A page that brought no events at all (hidden replies the count still includes)
+        // must not leave the button offering the same empty page again.
+        if (thread.events.length === loadedBefore) {
+          this.exhaustedThreadRootId = thread.id;
+        }
+        this.refreshThread();
+      }),
       finalize(() => this._loadingOlderThread.set(false)),
       map(() => void 0),
     );
@@ -636,22 +662,31 @@ export class ThreadsService {
 
     const relevant = new Set<string>();
     const seenIds = new Set<string>();
+    const shieldIds = new Set<string>();
     for (const e of ordered) {
       collectMessageSenders(client, room, e, relevant);
       seenIds.add(e.getId() ?? '');
+      shieldIds.add(shieldSubject(e).getId() ?? '');
     }
     this.threadRelevantSenders = relevant;
     // Drop shields for events no longer in the thread so the map can't grow unbounded.
     for (const id of [...this.threadShields.keys()]) {
-      if (!seenIds.has(id)) {
+      if (!shieldIds.has(id)) {
         this.threadShields.delete(id);
       }
     }
 
+    const unencryptedShield = unencryptedShieldFor(
+      room,
+      this.threadEncryption.isEncrypted(room),
+    );
     this._threadMessages.set(
       ordered.map((e) => {
         const id = e.getId() ?? '';
-        const shield = this.threadShields.get(id) ?? null;
+        const shield =
+          unencryptedShield(e) ??
+          this.threadShields.get(shieldSubject(e).getId() ?? '') ??
+          null;
         const rev = eventRevision(client, room, e) + '\x1f' + shieldKey(shield);
         const cached = this.threadViewCache.get(id);
         if (cached && cached.rev === rev) {
@@ -683,13 +718,22 @@ export class ThreadsService {
     // Resolve encrypted-message shields off the async crypto API; a change re-refreshes.
     void this.resolveThreadShields(room, false, ordered);
 
-    // A thread's own live timeline carries a backward pagination token while
-    // older replies remain server-side; absent (or no timeline) means none left.
+    // A thread's own live timeline carries a backward pagination token while older
+    // replies remain server-side. Tuwunel also leaves one on a first /relations page that
+    // already holds every reply, so the token alone would offer a Load older that finds
+    // nothing. The server's reply count (`thread.length`) settles it. Edits are not
+    // displayable replies and are not counted; a hidden event type keeps the button,
+    // which is the safe side (a page that then finds nothing hides it, see paginateOpenThread).
     const timeline = thread?.liveTimeline ?? null;
+    // A redacted reply lowers the server count, so it must not count as loaded either.
+    const loadedReplies = ordered.filter(
+      (e) => e.getId() !== rootEventId && !e.isRedacted(),
+    ).length;
     this._canPaginateThread.set(
-      timeline
-        ? timeline.getPaginationToken(Direction.Backward) !== null
-        : false,
+      this.exhaustedThreadRootId !== rootEventId &&
+        timeline !== null &&
+        timeline.getPaginationToken(Direction.Backward) !== null &&
+        loadedReplies < (thread?.length ?? 0),
     );
 
     // The opened thread is being viewed, so mark its latest reply read (a
@@ -731,8 +775,18 @@ export class ThreadsService {
     if (!crypto || !rootEventId) {
       return;
     }
+    // The crypto store may know the room is encrypted when its state does not say so.
+    void this.threadEncryption
+      .refresh(crypto, room.roomId)
+      .then((roomEncrypted) => {
+        if (roomEncrypted && this.threadRoomId === room.roomId) {
+          this.refreshThread();
+        }
+      });
     const ordered = events ?? this.orderedThreadEvents(room, rootEventId);
-    const encrypted = ordered.filter((e) => e.isEncrypted());
+    const encrypted = ordered
+      .map(shieldSubject)
+      .filter((subject) => subject.isEncrypted());
     const changed = await resolveShieldsInto(
       crypto,
       encrypted,

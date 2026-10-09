@@ -57,6 +57,67 @@ class AvailabilityHostComponent {
 }
 
 describe('TrnButton', () => {
+  it('carries no dark: text variants, which have no Helm class to override', () => {
+    const presentations = ['solid', 'outline', 'ghost', 'link'] as const;
+    const variants = ['primary', 'secondary', 'danger'] as const;
+    for (const presentation of presentations) {
+      for (const variant of variants) {
+        expect(
+          trnButtonRecipe({
+            presentation,
+            shape: 'label',
+            size: 'md',
+            variant,
+          }),
+        ).not.toMatch(/dark:hover:text-/u);
+      }
+    }
+  });
+
+  it('lets a row shape wrap its label instead of keeping the fixed height and nowrap', () => {
+    const row = trnButtonRecipe({
+      presentation: 'ghost',
+      shape: 'row',
+      size: 'sm',
+      variant: 'primary',
+    }).split(' ');
+
+    expect(row).toEqual(
+      expect.arrayContaining([
+        'h-auto',
+        'w-full',
+        'justify-start',
+        'whitespace-normal',
+      ]),
+    );
+    expect(row).not.toContain('h-7');
+    expect(row).not.toContain('whitespace-nowrap');
+  });
+
+  it('renders a solid danger action as a filled danger button, not a tint', () => {
+    const solidDanger = trnButtonRecipe({
+      presentation: 'solid',
+      shape: 'label',
+      size: 'md',
+      variant: 'danger',
+    });
+
+    expect(solidDanger).toContain('bg-[color:var(--trinity-danger-solid)]');
+    expect(solidDanger).toContain(
+      'text-[color:var(--trinity-danger-solid-foreground)]',
+    );
+    expect(solidDanger).toContain(
+      'hover:bg-[color:var(--trinity-danger-solid-hover)]',
+    );
+    expect(solidDanger).toContain(
+      'dark:hover:bg-[color:var(--trinity-danger-solid-hover)]',
+    );
+    expect(solidDanger).not.toContain('dark:hover:bg-destructive/30');
+    expect(solidDanger).not.toContain('bg-destructive/10');
+    expect(solidDanger).not.toContain('dark:bg-destructive/20');
+    expect(solidDanger).not.toContain('text-destructive');
+  });
+
   it('keeps the Helm substrate private while preserving native button semantics', async () => {
     const { container } = await render(HostComponent);
     const button = container.querySelector('button');
@@ -115,6 +176,30 @@ describe('TrnButton', () => {
     expect(dangerGhost).toContain(
       'dark:hover:bg-[var(--trinity-danger-tint-10)]',
     );
+  });
+
+  it('gives outline buttons the control border, and danger outlines a danger border in both modes', () => {
+    const outline = (variant: TrnButtonVariant) =>
+      trnButtonRecipe({
+        presentation: 'outline',
+        shape: 'label',
+        size: 'md',
+        variant,
+      });
+
+    for (const variant of ['primary', 'secondary'] as const) {
+      expect(outline(variant)).toContain(
+        'border-[color:var(--trinity-border-control)]',
+      );
+      expect(outline(variant)).toContain(
+        'dark:border-[color:var(--trinity-border-control)]',
+      );
+      expect(outline(variant)).not.toContain('border-border');
+      expect(outline(variant)).not.toContain('dark:border-input');
+    }
+    expect(outline('danger')).toContain('border-danger');
+    expect(outline('danger')).toContain('dark:border-danger');
+    expect(outline('danger')).not.toContain('dark:border-input');
   });
 
   it('marks icon recipes without marking labels', async () => {

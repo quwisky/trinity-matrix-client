@@ -42,6 +42,8 @@ export const STATE_DIR = process.env['TRINITY_E2E_STATE_DIR']
 export const DATA = join(STATE_DIR, 'data');
 /** Generated state for the genuinely federated secondary homeserver. */
 export const REMOTE_DATA = join(STATE_DIR, 'remote-data');
+/** The opt-in MAS stack's generated state: its Synapse's config and MAS's secrets. */
+export const MAS_DATA = join(STATE_DIR, 'mas-data');
 
 /** True when this process is itself running inside a container. */
 function inContainer() {
@@ -116,14 +118,15 @@ export async function resolveNetworkContainer() {
   );
 }
 
-/** `-f` arguments for docker compose, in override order: shared, adapter, netns. */
-export function composeFiles(kind, networkContainer) {
+/** `-f` arguments for docker compose, in override order: shared, adapter, MAS, netns. */
+export function composeFiles(kind, networkContainer, { mas = false } = {}) {
   const files = [
     '-f',
     join(HERE, 'docker-compose.yml'),
     '-f',
     join(HERE, kind, 'docker-compose.yml'),
   ];
+  if (mas) files.push('-f', join(HERE, 'mas', 'docker-compose.yml'));
   if (networkContainer) {
     files.push('-f', join(HERE, 'docker-compose.netns.yml'));
   }

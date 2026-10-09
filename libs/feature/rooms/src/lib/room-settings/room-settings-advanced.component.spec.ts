@@ -1,7 +1,10 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { fireEvent, render } from '@trinity/testing';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   HomeserverInfoService,
   type HomeserverCapabilities,
@@ -126,7 +129,7 @@ async function build(
       MockProvider(HomeserverInfoService, { infos: infos.asReadonly(), load }),
       MockProvider(RoomSettingsService, { stateEvents }),
       MockProvider(RoomUpgradeService, { plan }),
-      MockProvider(TrnDialogService, {
+      MockProvider(TrnSurfaceService, {
         open,
         openAndWait$: openAndWait as never,
       }),
@@ -252,6 +255,7 @@ describe('RoomSettingsAdvancedComponent', () => {
     await vi.waitFor(() =>
       expect(show).toHaveBeenCalledWith('Could not copy the room ID.', {
         duration: 2000,
+        variant: 'danger',
       }),
     );
     expect(show).not.toHaveBeenCalledWith('Room ID copied.', expect.anything());
@@ -267,6 +271,7 @@ describe('RoomSettingsAdvancedComponent', () => {
     await vi.waitFor(() =>
       expect(show).toHaveBeenCalledWith('Could not copy the room ID.', {
         duration: 2000,
+        variant: 'danger',
       }),
     );
     expect(show).not.toHaveBeenCalledWith('Room ID copied.', expect.anything());
@@ -334,7 +339,6 @@ describe('RoomSettingsAdvancedComponent', () => {
       roomId: '!room:hs',
     });
     expect(open).toHaveBeenCalledWith(RoomStateViewerComponent, {
-      ariaLabel: 'Room state',
       inputs: { entries: STATE },
     });
   });
@@ -408,14 +412,12 @@ describe('RoomSettingsAdvancedComponent upgrade', () => {
     const [component, options] = openAndWait.mock.calls[0] as unknown as [
       unknown,
       {
-        ariaLabel: string;
         ariaDescribedBy: string;
         inputs: unknown;
         dismissGuard: (dialog: { busy: () => boolean } | null) => boolean;
       },
     ];
     expect(component).toBe(RoomUpgradeDialogComponent);
-    expect(options.ariaLabel).toBe('Upgrade room');
     expect(options.ariaDescribedBy).toBe(ROOM_UPGRADE_WARNING_ID);
     expect(options.inputs).toEqual({
       accountId: ACCOUNT,

@@ -14,7 +14,10 @@ import {
   WorkspaceBackService,
   WorkspaceNavigationService,
 } from '@trinity/application/workspace';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   NotificationLifetime,
   NativePushLifetime,
@@ -63,8 +66,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
 import { TrinityApplicationSessionAdapter } from './trinity-application-session.adapter';
+import { BackgroundMemoryRelease } from './background-memory-release.service';
 import { CapabilityHealthService } from '../capability-health.service';
-import { SystemStatusVisibilityService } from '../system-status-visibility.service';
 
 interface SessionHarness {
   readonly adapter: TrinityApplicationSessionAdapter;
@@ -75,6 +78,7 @@ interface SessionHarness {
   readonly lifecycleEvents: Subject<
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >;
+  readonly memoryRelease: Subject<never>;
   readonly navigate: ReturnType<typeof vi.fn>;
   readonly workspaceNavigate: ReturnType<typeof vi.fn>;
   readonly closeAuthentication: ReturnType<typeof vi.fn>;
@@ -97,7 +101,6 @@ interface SessionHarness {
   readonly recoverTrust: ReturnType<typeof vi.fn>;
   readonly recoverPresentation: ReturnType<typeof vi.fn>;
   readonly recoverRoomAdministration: ReturnType<typeof vi.fn>;
-  readonly statusVisibility: SystemStatusVisibilityService;
 }
 
 function setup(
@@ -121,6 +124,7 @@ function setup(
   const lifecycleEvents = new Subject<
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >();
+  const memoryRelease = new Subject<never>();
   const navigate = vi.fn().mockResolvedValue(true);
   const workspaceNavigate = vi.fn(() =>
     of({ kind: 'ready', change: 'committed' } as const),
@@ -201,8 +205,9 @@ function setup(
         background,
       }),
       MockProvider(HostLifecycleService, { events: lifecycleEvents }),
+      MockProvider(BackgroundMemoryRelease, { run: () => memoryRelease }),
       MockProvider(HostUpdatesService, { check: hostUpdateCheck }),
-      MockProvider(TrnDialogService, {
+      MockProvider(TrnSurfaceService, {
         openState: dialogOpen,
         hasOpen: hasDialog,
         closeTopmost,
@@ -234,6 +239,7 @@ function setup(
     notificationEvents,
     pushActivations,
     lifecycleEvents,
+    memoryRelease,
     navigate,
     workspaceNavigate,
     closeAuthentication,
@@ -256,7 +262,6 @@ function setup(
     recoverTrust,
     recoverPresentation,
     recoverRoomAdministration,
-    statusVisibility: TestBed.inject(SystemStatusVisibilityService),
   };
 }
 
@@ -330,6 +335,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.notificationEvents.observed).toBe(false);
     expect(test.backIntents.observed).toBe(false);
     expect(test.lifecycleEvents.observed).toBe(false);
+    expect(test.memoryRelease.observed).toBe(false);
     expect(test.hostUpdateCheck).not.toHaveBeenCalled();
 
     preparation.next({ kind: 'prepared' });
@@ -343,9 +349,11 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.notificationEvents.observed).toBe(true);
     expect(test.backIntents.observed).toBe(true);
     expect(test.lifecycleEvents.observed).toBe(true);
+    expect(test.memoryRelease.observed).toBe(true);
     expect(test.hostUpdateCheck).toHaveBeenCalledOnce();
 
     lifetime.unsubscribe();
+    expect(test.memoryRelease.observed).toBe(false);
     expect(preparation.observed).toBe(false);
     expect(test.deepLinks.observed).toBe(false);
     expect(test.notificationEvents.observed).toBe(false);
@@ -358,9 +366,11 @@ describe('TrinityApplicationSessionAdapter', () => {
     const sessionOwner = test.adapter.run(readiness).subscribe();
 
     expect(test.backIntents.observed).toBe(true);
-    test.statusVisibility.show();
+    test.dialogOpen.set(true);
+    test.closeTopmost.mockReturnValue(true);
     test.backIntents.next({ canGoBack: true });
-    expect(test.statusVisibility.open()).toBe(false);
+    expect(test.closeTopmost).toHaveBeenCalledOnce();
+    test.dialogOpen.set(false);
     expect(test.locationBack).not.toHaveBeenCalled();
 
     readiness.next();
@@ -369,32 +379,6 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     startupOwner.unsubscribe();
     sessionOwner.unsubscribe();
-  });
-
-  it('returns from a topmost confirmation to System status before returning to the blocker', () => {
-    const test = setup();
-    const owner = test.adapter.runInteractions().subscribe();
-    test.statusVisibility.show();
-    const sectionBack = vi.fn();
-    const unregister = test.statusVisibility.registerBackHandler(sectionBack);
-    test.dialogOpen.set(true);
-    test.closeTopmost.mockReturnValue(true);
-
-    test.backIntents.next({ canGoBack: false });
-    expect(test.closeTopmost).toHaveBeenCalledOnce();
-    expect(sectionBack).not.toHaveBeenCalled();
-    expect(test.statusVisibility.open()).toBe(true);
-    expect(test.background).not.toHaveBeenCalled();
-
-    test.dialogOpen.set(false);
-    test.backIntents.next({ canGoBack: false });
-    expect(sectionBack).toHaveBeenCalledOnce();
-    expect(test.statusVisibility.open()).toBe(true);
-    unregister();
-    test.backIntents.next({ canGoBack: false });
-    expect(test.statusVisibility.open()).toBe(false);
-    expect(test.background).not.toHaveBeenCalled();
-    owner.unsubscribe();
   });
 
   it('maps blocked Room Library preparation without opening live streams', () => {
@@ -746,6 +730,23 @@ describe('TrinityApplicationSessionAdapter', () => {
     lifetime.unsubscribe();
   });
 
+  it('keeps the provider iss on an OIDC callback', async () => {
+    // The callback page checks that the sign-in response comes from the provider it
+    // started with (RFC 9207), so the deep link must not drop `iss` on the way there.
+    const test = setup();
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+
+    test.deepLinks.next({
+      url: 'eu.qwky.trinity:/sso-callback?code=CODE&state=STATE&iss=https%3A%2F%2Fop.example%2F',
+    });
+
+    await vi.waitFor(() => expect(test.navigate).toHaveBeenCalledTimes(1));
+    expect(test.navigate).toHaveBeenCalledWith(['/sso-callback'], {
+      queryParams: { code: 'CODE', state: 'STATE', iss: 'https://op.example/' },
+    });
+    lifetime.unsubscribe();
+  });
+
   it('hands a valid room link to the Rooms shell and leaves SSO untouched', async () => {
     const test = setup();
     const inbound = TestBed.inject(InboundRoomLinkService);
@@ -1042,7 +1043,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     );
     expect(test.showToast).toHaveBeenCalledWith(
       'That notification destination could not be opened.',
-      { duration: 4000 },
+      { duration: 4000, variant: 'danger' },
     );
     expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
@@ -1096,7 +1097,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     );
     expect(test.showToast).toHaveBeenCalledWith(
       'A notification could not be shown.',
-      { duration: 4000 },
+      { duration: 4000, variant: 'danger' },
     );
     expect(test.workspaceNavigate).not.toHaveBeenCalled();
     expect(lifetime.closed).toBe(false);

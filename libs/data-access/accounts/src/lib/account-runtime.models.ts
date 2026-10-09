@@ -1,7 +1,13 @@
 import type { Observable } from 'rxjs';
 
 export type AccountRestoreFailure =
-  'transient-network' | 'corrupt-local-state' | 'crypto-failure';
+  | 'transient-network'
+  | 'corrupt-local-state'
+  | 'crypto-failure'
+  /** A keyed crypto store whose key is missing; only a new-device sign-in helps. */
+  | 'crypto-store-key-lost'
+  /** The OS keychain cannot be reached right now; retry once it is unlocked. */
+  | 'secure-storage-unavailable';
 
 export type AccountRuntimeOperation =
   | 'restoring-accounts'
@@ -92,11 +98,27 @@ export type InactiveAccountRestoreRetryOutcome =
 
 export type AccountEstablishmentFailure =
   | 'account-already-stored'
+  | 'homeserver-mismatch'
   | 'active-account-required'
   | 'local-state-unavailable'
   | 'reauthentication-required'
   | 'transient-network'
-  | 'crypto-failure';
+  | 'crypto-failure'
+  | 'crypto-store-key-lost'
+  | 'secure-storage-unavailable';
+
+/** A failure, plus the server the Account is saved under when a sign-in used another one. */
+export type AccountEstablishmentFailureDetail =
+  | {
+      readonly failure: Exclude<
+        AccountEstablishmentFailure,
+        'homeserver-mismatch'
+      >;
+    }
+  | {
+      readonly failure: 'homeserver-mismatch';
+      readonly storedBaseUrl: string;
+    };
 
 interface AccountEstablishmentOutcomeBase {
   readonly accountId: string;
@@ -105,10 +127,8 @@ interface AccountEstablishmentOutcomeBase {
 
 export type AccountEstablishmentOutcome =
   | (AccountEstablishmentOutcomeBase & { readonly kind: 'ready' })
-  | (AccountEstablishmentOutcomeBase & {
-      readonly kind: 'failed';
-      readonly failure: AccountEstablishmentFailure;
-    })
+  | (AccountEstablishmentOutcomeBase &
+      AccountEstablishmentFailureDetail & { readonly kind: 'failed' })
   | (AccountEstablishmentOutcomeBase & {
       readonly kind: 'transition-in-progress';
     });

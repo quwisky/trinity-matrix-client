@@ -1,102 +1,118 @@
 @if (canManage() || hasCreationDraft()) {
-  <trn-room-widget-create [target]="target()" [editable]="canManage()" />
+  <trn-settings-group>
+    <trn-room-widget-create [target]="target()" [editable]="canManage()" />
+  </trn-settings-group>
 }
 
-@if (widgets().length === 0) {
-  <p class="room-widgets__note" data-testid="room-settings-widgets-empty">
-    {{
-      available()
-        ? 'No widgets are declared in this room.'
-        : 'No last-known widgets are available.'
-    }}
-  </p>
-} @else {
-  <p class="room-widgets__note">
-    Widgets are third-party websites. Trinity shows the room’s declaration here
-    and loads it only after you choose where to open it.
-  </p>
-  @for (entry of widgets(); track entry.widget.id) {
-    <article
-      class="room-widgets__widget"
-      [attr.data-testid]="'room-widget-' + entry.widget.id"
-    >
-      <div class="room-widgets__heading">
-        <h3>{{ entry.widget.name }}</h3>
-        <code>{{ entry.widget.type }}</code>
-      </div>
-
-      <div class="room-widgets__field">
-        <span class="room-widgets__label">Raw URL template</span>
-        <code class="room-widgets__url">{{ entry.widget.rawUrl }}</code>
-      </div>
-
-      @if (entry.launch.url) {
-        <p class="room-widgets__warning">
-          This opens a third-party website at
-          <strong>{{ entry.launch.origin }}</strong
-          >. It can see your network and browser information.
-          @if (entry.launch.disclosures.length > 0) {
-            The URL also shares: {{ disclosureText(entry.launch) }}.
-          }
-        </p>
-        @if (entry.launch.insecure) {
-          <p class="room-widgets__warning text-danger">
-            This widget uses unencrypted HTTP.
-          </p>
-        }
-        <div class="room-widgets__actions">
-          @if (entry.embed.url) {
-            <button
-              trnBtn
-              type="button"
-              (click)="embedWidget(entry.widget)"
-              [attr.aria-label]="'Open ' + entry.widget.name + ' in Trinity'"
-              [attr.data-testid]="'room-widget-embed-' + entry.widget.id"
-            >
-              Open in Trinity
-            </button>
-          }
-          <a
-            trnBtn
-            variant="secondary"
-            presentation="outline"
-            [href]="entry.launch.url"
-            target="_blank"
-            rel="noopener noreferrer"
-            (click)="openWidget($event, entry.launch.url)"
-            [attr.aria-label]="'Open ' + entry.widget.name + ' in browser'"
-            [attr.data-testid]="'room-widget-open-' + entry.widget.id"
-          >
-            Open in browser
-          </a>
+<trn-settings-group title="Widgets in this room">
+  @if (widgets().length === 0) {
+    <trn-empty-state
+      layout="line"
+      data-testid="room-settings-widgets-empty"
+      [body]="
+        available()
+          ? 'No widgets are declared in this room.'
+          : 'No last-known widgets are available.'
+      "
+    />
+  } @else {
+    @if (embedAvailable) {
+      <p class="room-widgets__note">
+        Widgets are third-party websites. Trinity shows the room’s declaration
+        here and loads it only after you choose where to open it.
+      </p>
+    } @else {
+      <p class="room-widgets__note">
+        Widgets are third-party websites. Trinity shows the room’s declaration
+        here. Widgets open in your browser.
+      </p>
+    }
+    @for (entry of widgets(); track entry.widget.id) {
+      <article
+        class="room-widgets__widget"
+        [attr.data-testid]="'room-widget-' + entry.widget.id"
+      >
+        <div class="room-widgets__heading">
+          <h3>{{ entry.widget.name }}</h3>
+          <code>{{ entry.widget.type }}</code>
         </div>
-        @if (!entry.embed.url) {
+
+        <div class="room-widgets__field">
+          <span class="room-widgets__label">Raw URL template</span>
+          <code class="room-widgets__url">{{ entry.widget.rawUrl }}</code>
+        </div>
+
+        @if (entry.launch.url) {
           <p class="room-widgets__warning">
-            {{ embedFailureText(entry.embed) }}
+            This opens a third-party website at
+            <strong>{{ entry.launch.origin }}</strong
+            >. It can see your network and browser information.
+            @if (entry.launch.disclosures.length > 0) {
+              The URL also shares: {{ disclosureText(entry.launch) }}.
+            }
+          </p>
+          @if (entry.launch.insecure) {
+            <p class="room-widgets__warning text-danger">
+              This widget uses unencrypted HTTP.
+            </p>
+          }
+          <div class="room-widgets__actions">
+            @if (embedAvailable && entry.embed.url) {
+              <button
+                trnBtn
+                type="button"
+                (click)="embedWidget(entry.widget)"
+                [attr.aria-label]="'Open ' + entry.widget.name + ' in Trinity'"
+                [attr.data-testid]="'room-widget-embed-' + entry.widget.id"
+              >
+                Open in Trinity
+              </button>
+            }
+            <a
+              trnBtn
+              variant="secondary"
+              presentation="outline"
+              [href]="entry.launch.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              (click)="openWidget($event, entry.launch.url)"
+              [attr.aria-label]="'Open ' + entry.widget.name + ' in browser'"
+              [attr.data-testid]="'room-widget-open-' + entry.widget.id"
+            >
+              Open in browser
+            </a>
+          </div>
+          @let warning = widgetWarning(entry.embed);
+          @if (warning) {
+            <p class="room-widgets__warning">
+              {{ warning }}
+            </p>
+          }
+        } @else {
+          <p class="room-widgets__warning text-danger">
+            @if (entry.launch.failure === 'unsupported-protocol') {
+              Only HTTP and HTTPS widget links can be opened.
+            } @else {
+              This widget’s URL is not valid and cannot be opened.
+            }
           </p>
         }
-      } @else {
-        <p class="room-widgets__warning text-danger">
-          @if (entry.launch.failure === 'unsupported-protocol') {
-            Only HTTP and HTTPS widget links can be opened.
-          } @else {
-            This widget’s URL is not valid and cannot be opened.
-          }
-        </p>
-      }
-      @if (canRemove(entry.widget)) {
-        <button
-          trnBtn
-          type="button"
-          variant="danger"
-          [disabled]="isRemoving(entry.widget.id)"
-          (click)="removeWidget(entry.widget, entry.launch.origin)"
-          [attr.aria-label]="'Remove ' + entry.widget.name + ' from this room'"
-          [attr.data-testid]="'room-widget-remove-' + entry.widget.id"
-        >
-          {{ isRemoving(entry.widget.id) ? 'Removing…' : 'Remove widget' }}
-        </button>
-      }
-    </article>
+        @if (canRemove(entry.widget)) {
+          <button
+            trnBtn
+            type="button"
+            variant="danger"
+            [disabled]="isRemoving(entry.widget.id)"
+            (click)="removeWidget(entry.widget, entry.launch.origin)"
+            [attr.aria-label]="
+              'Remove ' + entry.widget.name + ' from this room'
+            "
+            [attr.data-testid]="'room-widget-remove-' + entry.widget.id"
+          >
+            {{ isRemoving(entry.widget.id) ? 'Removing…' : 'Remove widget' }}
+          </button>
+        }
+      </article>
+    }
   }
-}
+</trn-settings-group>

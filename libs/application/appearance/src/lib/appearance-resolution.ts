@@ -29,7 +29,7 @@ export function toNativeChromeAppearance(
   return Object.freeze({ mode: appearance.mode });
 }
 
-/** Compare all six resolved axes without serializing the value. */
+/** Compare all seven resolved axes without serializing the value. */
 export function sameResolvedAppearance(
   left: ResolvedAppearance,
   right: ResolvedAppearance,
@@ -39,6 +39,7 @@ export function sameResolvedAppearance(
     left.theme === right.theme &&
     left.textSize === right.textSize &&
     left.density === right.density &&
+    left.roomList === right.roomList &&
     left.codeSize === right.codeSize &&
     left.codeLinePresentation === right.codeLinePresentation
   );

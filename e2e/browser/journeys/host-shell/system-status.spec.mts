@@ -28,8 +28,9 @@ async function openStatus(page: Page): Promise<Locator> {
   await expect(
     page.getByRole('dialog', { name: 'System status' }),
   ).toBeVisible();
+  // The shell header names the dialog; focus lands on the open section's heading.
   await expect(
-    page.getByRole('heading', { name: 'System status', level: 1 }),
+    page.getByRole('heading', { name: 'Overview', level: 1 }),
   ).toBeFocused();
   return trigger;
 }
@@ -40,9 +41,19 @@ test.describe('System status on desktop', () => {
   }, testInfo) => {
     const initialTrigger = await openStatus(page);
     const dialog = page.getByRole('dialog', { name: 'System status' });
-    await expect(page.locator('trn-system-status')).not.toHaveClass(
-      /system-status--mobile/,
-    );
+    // Measure the settled card, not the shell's scale-in entrance.
+    await dialog
+      .getByTestId('dialog-surface')
+      .evaluate((surface) =>
+        Promise.all(
+          surface.getAnimations().map((animation) => animation.finished),
+        ),
+      );
+    await expect(
+      page
+        .getByRole('dialog', { name: 'System status' })
+        .getByTestId('dialog-surface'),
+    ).toHaveAttribute('data-trn-layout', 'dialog');
 
     const directory = dialog.getByRole('navigation', {
       name: 'System status sections',
@@ -175,7 +186,8 @@ test.describe('System status on desktop', () => {
       body: await page.screenshot({ animations: 'disabled' }),
       contentType: 'image/png',
     });
-    const surface = dialog.locator('[data-trn-layout="workspace"]');
+    // The shared dialog shell inside System status paints the surface.
+    const surface = dialog.getByTestId('dialog-surface');
     const lightBackground = await surface.evaluate(
       (element) => getComputedStyle(element).backgroundColor,
     );
@@ -192,7 +204,7 @@ test.describe('System status on desktop', () => {
     ).toBeVisible();
     const darkControlColor = await dialog.evaluate((element) => {
       const probe = document.createElement('span');
-      probe.style.color = 'var(--trinity-control-foreground)';
+      probe.style.color = 'var(--trinity-text-muted)';
       element.append(probe);
       const color = getComputedStyle(probe).color;
       probe.remove();
@@ -239,9 +251,11 @@ test.describe('System status on a touch-capable desktop', () => {
 
   test('keeps the desktop interaction model', async ({ page }) => {
     await openStatus(page);
-    await expect(page.locator('trn-system-status')).not.toHaveClass(
-      /system-status--mobile/,
-    );
+    await expect(
+      page
+        .getByRole('dialog', { name: 'System status' })
+        .getByTestId('dialog-surface'),
+    ).toHaveAttribute('data-trn-layout', 'dialog');
   });
 });
 
@@ -259,18 +273,20 @@ test.describe('System status on a mobile OS', () => {
     page,
   }, testInfo) => {
     await openStatus(page);
-    const host = page.locator('trn-system-status');
     const dialog = page.getByRole('dialog', { name: 'System status' });
-    await expect(host).toHaveClass(/system-status--mobile/);
-    await expect(dialog.locator('[data-trn-layout="sheet"]')).toHaveCSS(
-      'border-bottom-left-radius',
-      '0px',
-    );
-    const box = await dialog.boundingBox();
-    expect(box).not.toBeNull();
-    expect(
-      Math.abs((box?.y ?? 0) + (box?.height ?? 0) - profile.viewport.height),
-    ).toBeLessThanOrEqual(1);
+    const surface = dialog.getByTestId('dialog-surface');
+    await expect(surface).toHaveAttribute('data-trn-layout', 'sheet');
+    await expect(dialog.getByTestId('sheet-handle')).toBeVisible();
+    await expect(surface).toHaveCSS('border-bottom-left-radius', '0px');
+    // The sheet slides up on entry; it is seated once its bottom edge meets the viewport.
+    await expect
+      .poll(async () => {
+        const box = await surface.boundingBox();
+        return Math.abs(
+          (box?.y ?? 0) + (box?.height ?? 0) - profile.viewport.height,
+        );
+      })
+      .toBeLessThanOrEqual(1);
     const back = dialog.getByRole('button', { name: 'Back to sections' });
     const directory = dialog.getByRole('navigation', {
       name: 'System status sections',

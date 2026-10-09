@@ -25,9 +25,17 @@ export type TextSize = (typeof TEXT_SIZE_OPTIONS)[number]['id'];
 const DENSITY_OPTIONS = Object.freeze([
   Object.freeze({ id: 'cosy', label: 'Cosy' }),
   Object.freeze({ id: 'compact', label: 'Compact' }),
+  Object.freeze({ id: 'spacious', label: 'Spacious' }),
 ] as const);
 
 export type AppearanceDensity = (typeof DENSITY_OPTIONS)[number]['id'];
+
+const ROOM_LIST_OPTIONS = Object.freeze([
+  Object.freeze({ id: 'rich', label: 'Rich' }),
+  Object.freeze({ id: 'compact', label: 'Compact' }),
+] as const);
+
+export type AppearanceRoomList = (typeof ROOM_LIST_OPTIONS)[number]['id'];
 
 export const MODE_PREFERENCE = definePreference({
   id: 'design-system.appearance.mode',
@@ -54,6 +62,11 @@ export const MODE_PREFERENCE = definePreference({
   validate: closedStringValidation(isThemeMode, 'appearance-mode-invalid'),
 } satisfies PreferenceDescriptor<ThemeMode>);
 
+/** Retired theme ids and the Theme they became. */
+export const THEME_RENAMES: Readonly<Record<string, string>> = {
+  onyx: 'midnight',
+};
+
 export const THEME_PREFERENCE = definePreference({
   id: 'design-system.appearance.theme',
   owner: 'design-system',
@@ -78,7 +91,7 @@ export const THEME_PREFERENCE = definePreference({
   persistence: {
     key: 'trinity.appearance.theme',
     legacyKeys: ['trinity.palette'],
-    migration: closedStringMigration(isThemeId),
+    migration: closedStringMigration(isThemeId, 2, THEME_RENAMES),
   },
   validate: closedStringValidation(isThemeId, 'appearance-theme-invalid'),
 } satisfies PreferenceDescriptor<ThemeId>);
@@ -122,7 +135,7 @@ export const DENSITY_PREFERENCE = definePreference({
   editor: {
     kind: 'select',
     label: 'Conversation density',
-    description: 'Choose comfortable or compact application spacing.',
+    description: 'Choose comfortable, compact or spacious application spacing.',
     testId: 'density-select',
     options: DENSITY_OPTIONS.map(({ id, label }) => ({ value: id, label })),
   },
@@ -137,8 +150,42 @@ export const DENSITY_PREFERENCE = definePreference({
   ),
 } satisfies PreferenceDescriptor<AppearanceDensity>);
 
+export const ROOM_LIST_PREFERENCE = definePreference({
+  id: 'design-system.appearance.room-list',
+  owner: 'design-system',
+  section: 'appearance',
+  order: 50,
+  scope: 'installation',
+  defaultValue: 'rich',
+  sensitivity: 'public',
+  storage: 'device-preferences',
+  export: 'portable',
+  editor: {
+    kind: 'select',
+    label: 'Room list',
+    description:
+      "Rich rows show each room's last message; compact rows fit more rooms.",
+    testId: 'room-list-select',
+    options: ROOM_LIST_OPTIONS.map(({ id, label }) => ({ value: id, label })),
+  },
+  persistence: {
+    key: 'trinity.appearance.room-list',
+    migration: closedStringMigration(isAppearanceRoomList),
+  },
+  validate: closedStringValidation(
+    isAppearanceRoomList,
+    'appearance-room-list-invalid',
+  ),
+} satisfies PreferenceDescriptor<AppearanceRoomList>);
+
 export const DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS: readonly PreferenceDescriptor<PreferenceValue>[] =
-  [MODE_PREFERENCE, THEME_PREFERENCE, TEXT_SIZE_PREFERENCE, DENSITY_PREFERENCE];
+  [
+    MODE_PREFERENCE,
+    THEME_PREFERENCE,
+    TEXT_SIZE_PREFERENCE,
+    DENSITY_PREFERENCE,
+    ROOM_LIST_PREFERENCE,
+  ];
 
 export function provideDesignSystemAppearancePreferences(): EnvironmentProviders {
   return providePreferenceDescriptors(
@@ -162,6 +209,10 @@ function isAppearanceDensity(value: unknown): value is AppearanceDensity {
   return DENSITY_OPTIONS.some(({ id }) => id === value);
 }
 
+function isAppearanceRoomList(value: unknown): value is AppearanceRoomList {
+  return ROOM_LIST_OPTIONS.some(({ id }) => id === value);
+}
+
 function closedStringValidation<T extends string>(
   accepts: (value: unknown) => value is T,
   diagnosticCode: string,
@@ -174,15 +225,21 @@ function closedStringValidation<T extends string>(
 
 function closedStringMigration<T extends string>(
   accepts: (value: unknown) => value is T,
+  currentVersion = 1,
+  /** Retired values and the value that replaces each, applied before validation. */
+  renames: Readonly<Record<string, string>> = {},
 ) {
   return {
-    currentVersion: 1,
+    currentVersion,
     migrate: (stored: StoredPreference): PreferenceValidation<T> => {
-      if (
-        (stored.version === 0 || stored.version === 1) &&
-        accepts(stored.value)
-      ) {
-        return { kind: 'accepted', value: stored.value };
+      const value =
+        typeof stored.value === 'string'
+          ? Object.hasOwn(renames, stored.value)
+            ? renames[stored.value]
+            : stored.value
+          : stored.value;
+      if (stored.version <= currentVersion && accepts(value)) {
+        return { kind: 'accepted', value };
       }
       return {
         kind: 'rejected',

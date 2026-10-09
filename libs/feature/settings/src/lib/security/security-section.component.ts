@@ -11,11 +11,15 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { TrustService } from '@trinity/data-access/trust';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { HostFileExportService } from '@trinity/runtime/host';
 import { filter, finalize, from, map, switchMap, tap } from 'rxjs';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
+import {
+  TrnAlertService,
+  TrnSettingsGroupComponent,
+  TrnToastService,
+} from '@trinity/components/overlay';
 
 /**
  * Security settings sub-page: surfaces this account's end-to-end-encryption posture —
@@ -28,10 +32,11 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   selector: 'trn-security-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './security-section.component.html',
-  imports: [TrnButton, SettingsSectionHeadingComponent],
+  imports: [TrnSettingsGroupComponent, TrnButton],
 })
 export class SecuritySectionComponent {
   private readonly crypto = inject(TrustService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly applicationSurfaces = inject(
     WorkspaceApplicationSurfaceService,
   );
@@ -54,6 +59,8 @@ export class SecuritySectionComponent {
   readonly keyBackupActive = this.crypto.keyBackupActive;
   /** Whether this session is cross-signing verified. */
   readonly sessionVerified = this.crypto.thisDeviceVerified;
+  /** False when this device's keys sit in a store created before stores were encrypted. */
+  readonly cryptoStoreEncrypted = this.matrix.cryptoStoreEncrypted;
 
   /** True while an export/import is in flight (disables the buttons). */
   readonly busy = signal(false);

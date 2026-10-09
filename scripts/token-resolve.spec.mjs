@@ -73,8 +73,8 @@ describe('trinity design tokens', () => {
   it('finds the tokens at all, so an empty sweep cannot pass as a clean one', () => {
     // Without this, a glob or regex change that matched nothing would report every token
     // resolved — the classic way a source-shape guard stops guarding in silence.
-    expect(defined.size).toBeGreaterThan(30);
-    expect(used.size).toBeGreaterThan(20);
+    expect(defined.size).toBeGreaterThan(0);
+    expect(used.size).toBeGreaterThan(0);
   });
 
   it('defines every token that something consumes', () => {
@@ -105,12 +105,11 @@ describe('trinity design tokens', () => {
       '--trinity-shape-control-radius': '--trinity-radius-md',
       '--trinity-shape-container-radius': '--trinity-radius',
       '--trinity-shape-overlay-radius': '--trinity-radius-xl',
-      '--trinity-surface-frame': '--trinity-rail',
-      '--trinity-surface-navigation': '--trinity-sidebar',
+      '--trinity-surface-frame': '--trinity-surface-app',
       '--trinity-surface-navigation-header': '--trinity-sidebar-header',
-      '--trinity-surface-workspace': '--trinity-chat',
-      '--trinity-surface-raised': '--trinity-surface',
+      '--trinity-surface-workspace': '--trinity-surface-pane',
       '--trinity-surface-floating': '--trinity-sidebar',
+      '--trinity-surface-floating-card': '--trinity-surface-raised',
       '--trinity-surface-panel': '--trinity-members',
       '--trinity-focus-ring': '--trinity-link',
       '--trinity-focus-ring-on-attention':

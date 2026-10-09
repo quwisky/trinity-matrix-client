@@ -1,10 +1,9 @@
 import { inject, signal } from '@angular/core';
-import { type ComponentFixture } from '@angular/core/testing';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import {
   TrnAlertService,
-  TrnActionSheetService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
@@ -47,6 +46,7 @@ import {
   RoomMembersService,
 } from '@trinity/data-access/room-administration';
 import { MockProvider } from 'ng-mocks';
+import { DraftStoreService } from '@trinity/platform-native';
 import {
   MessageGestureSettingsService,
   type SwipeAction,
@@ -121,7 +121,7 @@ async function build(
   const openThread = vi.fn();
   const closeThread = vi.fn();
   const paginateOpenThread = vi.fn().mockReturnValue(of(void 0));
-  const sendToThread = vi.fn().mockReturnValue(of(void 0));
+  const sendToThread = vi.fn();
   const editInThread = vi.fn().mockReturnValue(of(void 0));
   const replyInThread = vi.fn().mockReturnValue(of(void 0));
   const toggleReactionInThread = vi.fn().mockReturnValue(of(void 0));
@@ -152,9 +152,12 @@ async function build(
   const sheetClose = vi.fn();
   // `closed` too: the real `TrnDialogRef` has it, and the service subscribes to release
   // the dead ref. A stub missing part of the API turns a correct change into a red suite.
-  const sheetOpen = vi
-    .fn()
-    .mockReturnValue({ close: sheetClose, closed: new Subject() });
+  const sheetOpen = vi.fn().mockReturnValue({
+    close: sheetClose,
+    closed: new Subject(),
+    presentation: 'sheet',
+    surface: null,
+  });
   const membersFor = vi.fn((roomId: string | null) =>
     roomId === '!r:hs'
       ? roster.asReadonly()
@@ -198,8 +201,7 @@ async function build(
                   }),
                   send: vi.fn((body: string, mentions: readonly unknown[]) => {
                     sentRoots(rootEventId);
-                    sendToThread(body, mentions);
-                    return applied('send');
+                    return sendToThread(body, mentions) ?? applied('send');
                   }),
                   edit: vi.fn(
                     (
@@ -247,10 +249,12 @@ async function build(
       },
       MockProvider(TimelineActionsService),
       MockProvider(RoomMembersService, { membersFor }),
-      MockProvider(TrnDialogService, { open: sourceOpen }),
+      MockProvider(TrnSurfaceService, {
+        open: sourceOpen,
+        openActions: sheetOpen,
+      }),
       MockProvider(TrnAlertService, { confirm$ }),
       MockProvider(TrnToastService, { show: toastShow }),
-      { provide: TrnActionSheetService, useValue: { open: sheetOpen } },
       // Seeded to a real direction. Left unprovided, the root service returns its `off`
       // default and every assertion below reads the value the guards would have produced
       // anyway — which is how three of these tests passed with both guards deleted.
@@ -388,6 +392,18 @@ describe('ThreadViewComponent', () => {
     expect(replyInThread).not.toHaveBeenCalled();
   });
 
+  it('toasts when the thread rejects a submit', async () => {
+    const { fixture, sendToThread, toastShow } = await build();
+    sendToThread.mockReturnValueOnce(of({ kind: 'rejected' }));
+
+    fixture.componentInstance.onSubmit({ text: 'hello thread', mentions: [] });
+
+    expect(toastShow).toHaveBeenCalledWith('Could not send the message.', {
+      duration: 4000,
+      variant: 'danger',
+    });
+  });
+
   it('routes a submit to an edit while editing, then leaves edit mode', async () => {
     const { fixture, editInThread, sendToThread } = await build([
       msg('$r1', '@me:hs', 'typo'),
@@ -414,6 +430,27 @@ describe('ThreadViewComponent', () => {
     expect(replyInThread).toHaveBeenCalledWith('$r1', 'replying', []);
     expect(sendToThread).not.toHaveBeenCalled();
     expect(cmp.replyingToId()).toBeNull();
+  });
+
+  it('keeps a thread\u2019s draft when the thread changes mid-edit', async () => {
+    const { fixture } = await build([msg('$r1', '@me:hs', 'mine')]);
+    const cmp = fixture.componentInstance;
+    const store = TestBed.inject(DraftStoreService);
+    composerOf(fixture).text.set('draft A');
+    fixture.detectChanges();
+
+    cmp.startEdit(row('$r1', '@me:hs', 'mine'));
+    fixture.detectChanges();
+    expect(composerOf(fixture).text()).toBe('mine');
+
+    fixture.componentRef.setInput('rootEventId', '$other');
+    fixture.detectChanges();
+    expect(store.get('$root')).toBe('draft A');
+
+    fixture.componentRef.setInput('rootEventId', '$root');
+    fixture.detectChanges();
+    expect(composerOf(fixture).text()).toBe('draft A');
+    expect(store.get('$root')).toBe('draft A');
   });
 
   it('quotes a thread message into the thread’s own composer', async () => {
@@ -487,7 +524,7 @@ describe('ThreadViewComponent', () => {
 
     expect(sourceOpen).toHaveBeenCalledWith(
       MessageSourceComponent,
-      expect.objectContaining({ ariaLabel: 'Message source' }),
+      expect.objectContaining({ inputs: { source: expect.any(String) } }),
     );
   });
 
@@ -727,6 +764,70 @@ describe('ThreadViewComponent members', () => {
     expect(cmp.uploadProgress()).toBeNull();
   });
 
+  describe('switching threads under a command', () => {
+    const png = () => new File(['x'], 'pic.png', { type: 'image/png' });
+
+    it('drops an edit in progress, so the next submit is a plain send', async () => {
+      const { fixture, editInThread, sendToThread } = await build();
+      const cmp = fixture.componentInstance;
+      cmp.startEdit(row('$r1', '@me:hs', 'typo'));
+      expect(cmp.editingId()).toBe('$r1');
+
+      fixture.componentRef.setInput('rootEventId', '$next');
+      fixture.detectChanges();
+      cmp.onSubmit({ text: 'fresh', mentions: [] });
+
+      expect(cmp.editingId()).toBeNull();
+      expect(editInThread).not.toHaveBeenCalled();
+      expect(sendToThread).toHaveBeenCalledWith('fresh', []);
+    });
+
+    it('drops a reply in progress', async () => {
+      const { fixture, replyInThread } = await build();
+      const cmp = fixture.componentInstance;
+      cmp.startReply(row('$r1', '@b:hs', 'hi'));
+
+      fixture.componentRef.setInput('rootEventId', '$next');
+      fixture.detectChanges();
+      cmp.onSubmit({ text: 'fresh', mentions: [] });
+
+      expect(cmp.replyingToId()).toBeNull();
+      expect(replyInThread).not.toHaveBeenCalled();
+    });
+
+    it('clears upload progress and ignores the old batch afterwards', async () => {
+      const { fixture, sendMediaToThread } = await build();
+      const cmp = fixture.componentInstance;
+      const stream = new Subject<MediaTransferEvent>();
+      sendMediaToThread.mockReturnValue(stream.asObservable());
+      cmp.onSendMedia({
+        items: [{ id: 'a', file: png(), media: staged('a') }],
+        caption: '',
+        onOutcomes: () => undefined,
+      });
+      expect(cmp.uploadProgress()).not.toBeNull();
+
+      fixture.componentRef.setInput('rootEventId', '$next');
+      fixture.detectChanges();
+      expect(cmp.uploadProgress()).toBeNull();
+
+      stream.next({ kind: 'progress', phase: 'uploading', fraction: 0.9 });
+      expect(cmp.uploadProgress()).toBeNull();
+    });
+
+    it('retries against the thread that is open now', async () => {
+      const { fixture, retryInThread, releasedRoots } = await build();
+
+      fixture.componentRef.setInput('rootEventId', '$next');
+      fixture.detectChanges();
+      fixture.componentInstance.onRetry('$echo');
+
+      expect(releasedRoots).toHaveBeenCalledWith('$root');
+      expect(retryInThread).toHaveBeenCalledTimes(1);
+      expect(retryInThread).toHaveBeenCalledWith('$echo');
+    });
+  });
+
   it('says what happened when a thread batch fails, and why', async () => {
     const { fixture, sendMediaToThread, toastShow } = await build();
     sendMediaToThread.mockReturnValue(throwError(() => new Error('nope')));
@@ -853,6 +954,30 @@ describe('ThreadViewComponent members', () => {
       expect(direction(fixture)).toBe('off');
       platform.mobile = true;
     });
+  });
+
+  it('keeps the caps object of rows whose capabilities did not change', async () => {
+    // Every thread event hands the panel a new messages array. A row that is re-handed a
+    // fresh caps object re-renders even though nothing about it changed.
+    const { fixture, threadMessages } = await build([
+      msg('$1', '@ada:hs', 'first'),
+      msg('$2', '@ada:hs', 'second'),
+    ]);
+    const cmp = fixture.componentInstance;
+    const [first, second] = cmp.rows();
+    const firstBefore = cmp.rowCaps(first);
+    const secondBefore = cmp.rowCaps(second);
+
+    threadMessages.set([
+      msg('$1', '@ada:hs', 'first'),
+      { ...msg('$2', '@ada:hs', 'second'), isOwn: true },
+    ]);
+    fixture.detectChanges();
+    const [firstAfter, secondAfter] = cmp.rows();
+
+    expect(cmp.rowCaps(firstAfter)).toBe(firstBefore);
+    expect(cmp.rowCaps(secondAfter)).not.toBe(secondBefore);
+    expect(cmp.rowCaps(secondAfter).deletable).toBe(true);
   });
 
   it('closes its own action sheet when the panel is destroyed', async () => {

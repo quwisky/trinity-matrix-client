@@ -7,6 +7,7 @@ interface CascadeProbe {
   readonly disabledToken: Locator;
   readonly disabled: Locator;
   readonly routed: Locator;
+  readonly routedPage: Locator;
   readonly nativeTextarea: Locator;
   readonly trinityTextarea: Locator;
 }
@@ -18,7 +19,7 @@ async function installProbe(page: Page): Promise<CascadeProbe> {
   await page.evaluate(() => {
     const panel = document.createElement('div');
     panel.id = 'cascade-panel';
-    panel.className = 'panel-header bg-primary text-destructive';
+    panel.className = 'trn-action-feedback bg-primary text-destructive';
 
     const primary = document.createElement('div');
     primary.id = 'cascade-primary';
@@ -37,10 +38,13 @@ async function installProbe(page: Page): Promise<CascadeProbe> {
     disabledToken.id = 'cascade-disabled-token';
     disabledToken.style.opacity = 'var(--trinity-disabled-opacity)';
 
-    const outlet = document.createElement('router-outlet');
+    const routedPage = document.createElement('section');
+    routedPage.id = 'cascade-routed-page';
+    routedPage.className = 'trn-routed-page';
+
     const routed = document.createElement('section');
     routed.id = 'cascade-routed';
-    routed.className = 'hidden';
+    routed.className = 'trn-routed-page hidden';
 
     const nativeTextarea = document.createElement('textarea');
     nativeTextarea.id = 'cascade-native-textarea';
@@ -57,7 +61,7 @@ async function installProbe(page: Page): Promise<CascadeProbe> {
       danger,
       disabledToken,
       disabled,
-      outlet,
+      routedPage,
       routed,
       nativeTextarea,
       trinityTextarea,
@@ -71,6 +75,7 @@ async function installProbe(page: Page): Promise<CascadeProbe> {
     disabledToken: page.locator('#cascade-disabled-token'),
     disabled: page.locator('#cascade-disabled'),
     routed: page.locator('#cascade-routed'),
+    routedPage: page.locator('#cascade-routed-page'),
     nativeTextarea: page.locator('#cascade-native-textarea'),
     trinityTextarea: page.locator('#cascade-trinity-textarea'),
   };
@@ -87,7 +92,7 @@ test('compiled cascade preserves defaults, utilities, and invariants', async ({
 }) => {
   const probe = await installProbe(page);
 
-  // `panel-header` is an authored component default. The generated utility owns the
+  // `trn-action-feedback` is an authored component default. The generated utility owns the
   // contextual background because `utilities` follows `components`.
   expect(await computed(probe.panel, 'backgroundColor')).toBe(
     await computed(probe.primary, 'backgroundColor'),
@@ -108,7 +113,9 @@ test('compiled cascade preserves defaults, utilities, and invariants', async ({
     ),
   );
 
-  // Component defaults no longer reverse a caller's shell utility.
+  // Component defaults no longer reverse a caller's shell utility: the routed-page rule
+  // applies, and a caller's `hidden` still wins over it.
+  await expect(probe.routedPage).toHaveCSS('display', 'flex');
   await expect(probe.routed).toHaveCSS('display', 'none');
 
   await probe.nativeTextarea.focus();

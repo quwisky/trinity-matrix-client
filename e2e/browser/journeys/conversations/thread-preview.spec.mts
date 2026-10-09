@@ -283,7 +283,8 @@ async function assertPreview(
   await expect(previewText).toHaveCSS('overflow', 'hidden');
   await expect(previewText).toHaveCSS('text-overflow', 'ellipsis');
   if (session.kind === 'synapse') {
-    await expect(summary.locator('.msg__thread-badge')).toContainText('2');
+    // The unread badge is the shared badge (`trnBadge`, #1005), not a `.msg__thread-badge`.
+    await expect(summary.getByText('2 unread', { exact: true })).toBeVisible();
   }
   // Tuwunel: no badge expectation. It sends `unread_thread_notifications` only in the
   // first sync, and matrix-js-sdk zeroes every thread count on any later sync of the
@@ -482,6 +483,11 @@ test.describe('Thread preview', () => {
       .first();
     await expect(latestOrdinary).toHaveClass(/msg--cont/u);
     await expect(latestOrdinary.locator('.msg__avatar')).toHaveCount(0);
+
+    // Both replies arrived with the thread, so there is nothing older to page in.
+    await expect(
+      thread.getByRole('button', { name: 'Load older replies' }),
+    ).toHaveCount(0);
 
     // Use the real thread reply action so the SDK emits an explicit m.in_reply_to
     // relation with is_falling_back=false and the rich-reply fallback content.

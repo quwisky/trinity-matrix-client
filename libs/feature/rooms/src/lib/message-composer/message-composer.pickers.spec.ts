@@ -21,7 +21,10 @@ import { type BatchItem } from '../shared/send-media-batch';
 import { MockProvider } from 'ng-mocks';
 import { VoiceRecorderService } from '@trinity/platform-native';
 import { GifService, GifSettingsService } from '@trinity/data-access/gif';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import { LocationShareService } from '../location-share/location-share.service';
 import { MediaService, type ImagePack } from '@trinity/data-access/media';
@@ -66,7 +69,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     const { fixture, container } = await renderComposer({}, [
       MockProvider(CreatePollService, {
         open$: vi.fn(() => {
-          TestBed.inject(TrnDialogService).open(CreatePollDialogComponent, {
+          TestBed.inject(TrnSurfaceService).open(CreatePollDialogComponent, {
             ariaLabel: 'Create poll',
             autoFocus: '[data-testid=poll-question]',
           });
@@ -177,6 +180,31 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     expect(cmp.pickerOpen()).toBe(false);
   });
 
+  it('does not render the emoji picker until it is opened, then shows a placeholder before it', async () => {
+    // The picker pulls in the ~1 MB emoji-mart chunk, so it sits behind `@defer`: closed means
+    // nothing rendered (and nothing loaded), and the first open holds the overlay's footprint
+    // with a placeholder until the chunk arrives.
+    const { fixture, container } = await renderComposer();
+    const trigger = container.querySelector<HTMLElement>('.composer__emoji')!;
+    const emojiPicker = () => document.querySelector('emoji-mart');
+    const placeholder = () =>
+      document.querySelector('[data-testid="emoji-picker-placeholder"]');
+
+    expect(document.querySelector('trn-emoji-picker')).toBeNull();
+    expect(placeholder()).toBeNull();
+
+    trigger.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    TestBed.tick();
+
+    expect(placeholder()).not.toBeNull();
+    expect(emojiPicker()).toBeNull();
+
+    await fixture.whenStable();
+
+    expect(emojiPicker()).not.toBeNull();
+    expect(placeholder()).toBeNull();
+  });
+
   it('closes the picker with the button that opened it', async () => {
     // The two halves meet here, and neither one alone is wrong. The trigger lives INSIDE the
     // row the picker is anchored to, so a press on it reaches CDK's outside-press dispatcher
@@ -194,6 +222,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
 
     clickTrigger();
     expect(cmp.pickerOpen()).toBe(true);
+    await fixture.whenStable();
     expect(document.querySelector('trn-emoji-picker')).not.toBeNull();
 
     clickTrigger();

@@ -8,7 +8,7 @@ export type TrnButtonVariant = Extract<
 >;
 export type TrnButtonSize = Extract<TrnSize, 'xs' | 'sm' | 'md' | 'lg'>;
 export type TrnButtonPresentation = 'solid' | 'outline' | 'ghost' | 'link';
-export type TrnButtonShape = 'label' | 'icon';
+export type TrnButtonShape = 'label' | 'icon' | 'row';
 
 interface TrnButtonRecipeOptions {
   presentation: TrnButtonPresentation;
@@ -37,31 +37,50 @@ const iconSize = {
   lg: 'icon-lg',
 } as const;
 
+/**
+ * Helm's `destructive` variant is a 10% tint, which reads weaker than the outlined Cancel
+ * beside it. Trinity's solid danger is a filled confirm. The `dark:` classes override
+ * Helm's own `dark:bg-destructive/20` and `dark:hover:bg-destructive/30`.
+ */
+const solidDangerTone =
+  'bg-[color:var(--trinity-danger-solid)] dark:bg-[color:var(--trinity-danger-solid)] text-[color:var(--trinity-danger-solid-foreground)] hover:bg-[color:var(--trinity-danger-solid-hover)] dark:hover:bg-[color:var(--trinity-danger-solid-hover)]';
+
+/** Outline buttons share the text-field border; Helm's `--border` is too faint (1.39:1). */
+const controlBorder =
+  'border-[color:var(--trinity-border-control)] dark:border-[color:var(--trinity-border-control)]';
+
+// `dark:hover:bg-*` stays: it out-merges Helm's own `dark:hover:bg-input/50` (outline) and
+// `dark:hover:bg-muted/50` (ghost). Without it, Helm's dark hover fill wins in dark mode.
 const nonSolidTone = {
   primary: {
-    outline: '',
+    outline: controlBorder,
     ghost: '',
     link: '',
   },
   secondary: {
-    outline:
-      'text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground dark:hover:text-secondary-foreground',
+    outline: `${controlBorder} text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground`,
     ghost:
-      'text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground dark:hover:text-secondary-foreground',
+      'text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground',
     link: 'text-secondary-foreground',
   },
   danger: {
     outline:
-      'border-danger text-danger hover:bg-[var(--trinity-danger-tint-10)] dark:hover:bg-[var(--trinity-danger-tint-10)] hover:text-danger',
+      'border-danger dark:border-danger text-danger hover:bg-[var(--trinity-danger-tint-10)] dark:hover:bg-[var(--trinity-danger-tint-10)] hover:text-danger',
     ghost:
       'text-danger hover:bg-[var(--trinity-danger-tint-10)] dark:hover:bg-[var(--trinity-danger-tint-10)] hover:text-danger',
     link: 'text-danger hover:text-danger',
   },
 } as const;
 
-/** One keyboard-focus ring for every button, matching `trnInput` and the global baseline. */
+/**
+ * One keyboard-focus ring for every button, matching `trnInput` and the global baseline.
+ * `dark:focus-visible:ring-*` out-merges Helm destructive's `dark:focus-visible:ring-destructive/40`.
+ */
 const focusRing =
   'focus-visible:border-[color:var(--trinity-focus-ring)] focus-visible:ring-[color:var(--trinity-focus-ring)] dark:focus-visible:ring-[color:var(--trinity-focus-ring)]';
+
+/** A full-width list row: the label starts at the inline start and wraps instead of clipping. */
+const rowShape = 'h-auto w-full justify-start text-start whitespace-normal';
 
 /**
  * A private adapter from Trinity concepts to the current Helm class substrate.
@@ -78,8 +97,15 @@ export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
       : options.presentation;
   const tone =
     options.presentation === 'solid'
-      ? ''
+      ? options.variant === 'danger'
+        ? solidDangerTone
+        : ''
       : nonSolidTone[options.variant][options.presentation];
 
-  return hlm(buttonVariants({ variant, size }), tone, focusRing);
+  return hlm(
+    buttonVariants({ variant, size }),
+    options.shape === 'row' ? rowShape : '',
+    tone,
+    focusRing,
+  );
 }

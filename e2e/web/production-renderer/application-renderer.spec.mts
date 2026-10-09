@@ -26,7 +26,7 @@ const ROOM_MESSAGES = [
 ] as const;
 
 type Mode = 'light' | 'dark';
-type Theme = 'trinity' | 'amethyst' | 'onyx';
+type Theme = 'trinity' | 'amethyst' | 'midnight';
 type Density = 'cosy' | 'compact';
 type TextSize = 'default' | 'larger';
 interface Appearance {
@@ -61,9 +61,9 @@ const MATRIX: Record<string, Appearance> = {
     density: 'compact',
     textSize: 'larger',
   },
-  'pixel-onyx-cosy': {
+  'pixel-midnight-cosy': {
     mode: 'dark',
-    theme: 'onyx',
+    theme: 'midnight',
     density: 'cosy',
     textSize: 'default',
   },
@@ -219,9 +219,7 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
   await page.getByTestId('rail-rooms').click();
   const room = page.locator('.channel', { hasText: roomName }).first();
   await room.waitFor({ state: 'visible', timeout: 30_000 });
-  await expect(room.locator('.channel__badge')).toBeVisible({
-    timeout: 20_000,
-  });
+  await expect(room).toHaveClass(/channel--unread/, { timeout: 20_000 });
   await room.click();
   await expect(page.getByTestId('composer-input')).toBeVisible({
     timeout: 20_000,
@@ -489,17 +487,30 @@ test.describe('@production-renderer application surface', () => {
     if (testInfo.project.name === 'standard-amethyst-cosy') {
       const theme = page.getByTestId('theme-select').getByRole('combobox');
       await theme.click();
-      const onyx = page.getByTestId('theme-onyx');
-      await expect(onyx).toBeVisible();
-      await onyx.click();
-      await expect(page.locator('html')).toHaveAttribute('data-theme', 'onyx');
-      await expect(onyx).toHaveCount(0);
-      await expect(theme).toHaveText('Onyx');
+      const midnight = page.getByTestId('theme-midnight');
+      await expect(midnight).toBeVisible();
+      await midnight.click();
+      await expect(page.locator('html')).toHaveAttribute(
+        'data-theme',
+        'midnight',
+      );
+      await expect(midnight).toHaveCount(0);
+      await expect(theme).toHaveText('Midnight');
     }
     const settingsNavigation = page.getByRole('navigation', {
       name: 'Settings sections',
     });
-    if ((page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) < 768) {
+    // Settings is two-pane from 48rem of the current text size, not 768px, so
+    // larger text turns a mid-width window into the single-pane layout.
+    const settingsIsWide = await page.evaluate(
+      () =>
+        window.innerWidth >=
+        48 *
+          (Number.parseFloat(
+            getComputedStyle(document.documentElement).fontSize,
+          ) || 16),
+    );
+    if (!settingsIsWide) {
       await expect(settingsNavigation).toBeHidden();
     } else {
       await expect(settingsNavigation).toBeVisible();

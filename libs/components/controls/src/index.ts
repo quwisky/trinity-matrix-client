@@ -31,6 +31,7 @@ export { TrnLabel } from './lib/label/trn-label';
 export { TrnPasswordInputComponent } from './lib/password-input/trn-password-input.component';
 export { QrScannerComponent } from './lib/qr-scanner/qr-scanner/qr-scanner.component';
 export {
+  TrnRadioComponent,
   TrnRadioGroupComponent,
   type TrnRadioGroupLayout,
   type TrnRadioOption,

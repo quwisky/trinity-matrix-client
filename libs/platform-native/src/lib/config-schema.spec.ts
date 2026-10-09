@@ -50,6 +50,7 @@ describe('config key ledger', () => {
       'trinity.appearance.theme',
       'trinity.appearance.text-size',
       'trinity.appearance.density',
+      'trinity.appearance.room-list',
     ]);
     expect(exportedKeysFor('data-access/timeline')).toEqual([
       'trinity.appearance.code-size',

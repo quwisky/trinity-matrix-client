@@ -1,5 +1,5 @@
 import { signal, type WritableSignal } from '@angular/core';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -52,10 +52,10 @@ function providers(overrides: Partial<Stub> = {}) {
       register: registerSpy,
       unregister: unregisterSpy,
     }),
-    MockProvider(TrnDialogService, {
+    MockProvider(TrnSurfaceService, {
       openAndWait$: vi.fn(() =>
         of(dialogResult()),
-      ) as TrnDialogService['openAndWait$'],
+      ) as TrnSurfaceService['openAndWait$'],
     }),
   ];
 }

@@ -24,6 +24,19 @@ const available: ManagedImagePack = {
   status: 'available',
 };
 
+/** The heading levels in document order, as a section sits under its page's h1. */
+function skippedHeadingLevel(root: HTMLElement): string | null {
+  let previous = 1;
+  for (const heading of root.querySelectorAll('h1, h2, h3, h4, h5, h6')) {
+    const level = Number(heading.tagName.slice(1));
+    if (level > previous + 1) {
+      return `${heading.tagName} "${heading.textContent?.trim()}" follows h${previous}`;
+    }
+    previous = level;
+  }
+  return null;
+}
+
 describe('ImagePacksSectionComponent', () => {
   const installed = signal<readonly ManagedImagePack[]>([]);
   const discover = vi.fn(() =>
@@ -61,6 +74,24 @@ describe('ImagePacksSectionComponent', () => {
         },
       ],
     });
+  });
+
+  it('skips no heading level under the page heading', async () => {
+    installed.set([available]);
+    const fixture = TestBed.createComponent(ImagePacksSectionComponent);
+    fixture.detectChanges();
+    const input = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid=image-pack-source]',
+    ) as HTMLInputElement;
+    input.value = '#packs:hs';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await fixture.componentInstance.find();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelectorAll('h2').length).toBeGreaterThan(1);
+    expect(root.querySelector('h3')).not.toBeNull();
+    expect(skippedHeadingLevel(root)).toBeNull();
   });
 
   it('renders broken installed references with a remove action', async () => {

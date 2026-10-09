@@ -119,24 +119,23 @@ test.describe('Pinned messages panel', () => {
     await expect(panel).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('pinned-item')).toHaveCount(2);
 
-    // The panel's top bar: the same 56px the room header is, with its title inset from
-    // the panel's edge. Measured, because the classes cannot say it — this bar carried
-    // `safe-top safe-left safe-right p-3`, and those helpers are UNLAYERED rules in
-    // global.scss while `p-3` is a LAYERED utility, so each replaced the padding on its
-    // side instead of adding to it. The bar rendered 45px tall with its title flush
-    // against the border. jsdom applies no cascade and no layers, so only a browser sees
-    // it, and the height alone would not: it was the missing INSET that showed.
-    const chatBar = await page
-      .locator('trn-page-header header')
-      .first()
+    // The panel's top bar: the shared side-panel header, 48px tall with its title inset
+    // 12px from the panel's edge. Measured, because the classes cannot say it: its padding
+    // composes the safe-area insets in one declaration, and jsdom applies no cascade and no
+    // layers, so only a browser sees a title that lost its inset to a cascade fight.
+    const panelBar = await panel.locator('trn-side-panel-header').boundingBox();
+    const panelTitle = await panel
+      .locator('trn-side-panel-header h2')
       .boundingBox();
-    const panelBar = await panel.locator('.panel-header').boundingBox();
-    const panelTitle = await panel.locator('.panel-header h2').boundingBox();
-    expect(chatBar).not.toBeNull();
     expect(panelBar).not.toBeNull();
     expect(panelTitle).not.toBeNull();
 
-    expect(panelBar!.height).toBe(chatBar!.height);
+    expect(panelBar!.height).toBe(48);
+    // The room header beside it is the same 48px, so the two bars share one baseline.
+    const roomBar = await page
+      .locator('header[data-trn-layout="toolbar"]')
+      .boundingBox();
+    expect(roomBar!.height).toBe(panelBar!.height);
     expect(panelTitle!.x - panelBar!.x).toBeCloseTo(12, 0);
     // And the title is centred in the bar rather than riding its top edge.
     const above = panelTitle!.y - panelBar!.y;

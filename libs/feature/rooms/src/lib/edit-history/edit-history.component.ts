@@ -12,14 +12,13 @@ import { DateTimeFormatService } from '@trinity/platform-native';
 import {
   TrnDialogRef,
   TrnAlertService,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnIconComponent } from '@trinity/components/foundations';
 import {
+  EmptyStateComponent,
   TrnSpinnerComponent,
-  TrnTooltip,
 } from '@trinity/components/generic-content';
 import { EditHistoryService } from '@trinity/data-access/timeline';
 import {
@@ -27,14 +26,12 @@ import {
   type MessageRevisionView,
 } from '@trinity/util/matrix';
 import { filter, switchMap, timer } from 'rxjs';
-import { runWithBusy, textScaledViewportSignal } from '@trinity/util/ui';
-import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
+import { runWithBusy } from '@trinity/util/ui';
+import { MatrixHtmlDirective } from '../message-presentation/matrix-html.directive';
 import {
   type MatrixLinkClick,
   type MatrixLinkClickTarget,
 } from '../matrix-link/matrix-link.directive';
-import { MatrixLinkDirective } from '../matrix-link/matrix-link.directive';
-import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images.directive';
 
 /** A revision plus the label that orients the reader, and what changed to reach it. */
 interface RevisionEntry extends MessageRevisionView {
@@ -61,14 +58,11 @@ const REFRESH_DELAY_MS = 600;
   templateUrl: './edit-history.component.html',
   styleUrl: './edit-history.component.scss',
   imports: [
+    EmptyStateComponent,
+    MatrixHtmlDirective,
     TrnButton,
-    TrnIconComponent,
     TrnSpinnerComponent,
-    TrnTooltip,
-    TrnOverlaySurfaceDirective,
-    SpoilerRevealDirective,
-    MatrixLinkDirective,
-    InlineMxcImagesDirective,
+    TrnDialogShellComponent,
   ],
 })
 export class EditHistoryComponent {
@@ -84,8 +78,6 @@ export class EditHistoryComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
-  /** Settings uses the 48rem text-scaled breakpoint for its compact presentation. */
-  readonly wide = textScaledViewportSignal(48, this.destroyRef);
   /** Versions removed in this dialog, so a stale refetch cannot put one back. */
   private readonly removed = new Set<string>();
   /** The message already fetched, so a re-run of the effect can't refetch it. */
@@ -223,7 +215,9 @@ export class EditHistoryComponent {
         // and one row failing is no reason to lose the history.
         error: () => {
           this.removing.set(null);
-          this.toast.show('Could not delete that version.');
+          this.toast.show('Could not delete that version.', {
+            variant: 'danger',
+          });
         },
       });
   }

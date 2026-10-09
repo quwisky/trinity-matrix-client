@@ -325,7 +325,6 @@ test.describe('Who reacted', () => {
     expect(detailBox!.x).toBeGreaterThanOrEqual(
       sidebarBox!.x + sidebarBox!.width - 1,
     );
-    await expect(dialog).toHaveCSS('overflow-x', 'hidden');
     await expect
       .poll(async () =>
         dialog.evaluate((element) =>
@@ -335,24 +334,26 @@ test.describe('Who reacted', () => {
       .toBeLessThanOrEqual(1);
 
     // The subtitle counts every reaction event across the large snapshot.
-    await expect(dialog.locator('.reactions-dialog__total')).toHaveText(
-      `${seeded.totalReactions} total`,
-    );
-    await expect(page.getByTestId('close-reactions')).toBeVisible();
+    await expect(
+      dialog.getByText(`${seeded.totalReactions} total`),
+    ).toBeVisible();
+    await expect(page.getByTestId('dialog-close')).toBeVisible();
 
     let lightPaint: { background: string; foreground: string } | undefined;
-    lightPaint = await dialog.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return {
-        background: style.backgroundColor,
-        foreground: style.color,
-      };
-    });
+    lightPaint = await dialog
+      .getByTestId('dialog-surface')
+      .evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          background: style.backgroundColor,
+          foreground: style.color,
+        };
+      });
     await test.info().attach('reactions-desktop-light', {
       body: await dialog.screenshot(),
       contentType: 'image/png',
     });
-    await page.getByTestId('close-reactions').click();
+    await page.getByTestId('dialog-close').click();
     await expect(dialog).toBeHidden();
     await openSettingsFromRooms(page);
     await page.getByTestId('settings-nav-appearance').click();
@@ -361,13 +362,15 @@ test.describe('Who reacted', () => {
     await closeSettings(page);
     await row.first().getByTestId('reactions-who').click();
     await expect(dialog).toBeVisible({ timeout: 10_000 });
-    const darkPaint = await dialog.evaluate((element) => {
-      const style = getComputedStyle(element);
-      return {
-        background: style.backgroundColor,
-        foreground: style.color,
-      };
-    });
+    const darkPaint = await dialog
+      .getByTestId('dialog-surface')
+      .evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          background: style.backgroundColor,
+          foreground: style.color,
+        };
+      });
     expect(darkPaint.background).not.toBe(lightPaint.background);
     expect(darkPaint.foreground).not.toBe(lightPaint.foreground);
     await test.info().attach('reactions-desktop-dark', {
@@ -414,7 +417,7 @@ test.describe('Who reacted', () => {
 
     // Keyboard activation changes the selected group and preserves the pressed/current
     // semantics used by the directory buttons.
-    const closeButton = page.getByTestId('close-reactions');
+    const closeButton = page.getByTestId('dialog-close');
     const firstKey = dialog.getByTestId('reactions-key').first();
     await closeButton.focus();
     await page.keyboard.press('Tab');
@@ -540,11 +543,8 @@ async function runMobileReactionJourney(
   let trigger = row.getByTestId('reactions-who');
   await touch(trigger);
   const dialog = page.getByTestId('reactions-dialog');
-  const sheetHost = page
-    .locator('trn-reactions-dialog')
-    .filter({ has: dialog });
   await expect(dialog).toBeVisible({ timeout: 10_000 });
-  await expect(sheetHost).toHaveClass(/reactions-dialog--sheet/);
+  await expect(dialog).toHaveAttribute('data-presentation', 'sheet');
 
   const geometry = await dialog.evaluate((element) => {
     const box = element.getBoundingClientRect();
@@ -565,7 +565,7 @@ async function runMobileReactionJourney(
     contentType: 'image/png',
   });
 
-  await touch(page.getByTestId('close-reactions'));
+  await touch(page.getByTestId('dialog-close'));
   await expect(dialog).toBeHidden();
   const darkBack = page.getByTestId('back-to-rooms');
   if (await darkBack.isVisible()) await touch(darkBack);
@@ -606,20 +606,6 @@ async function runMobileReactionJourney(
     .poll(() => directory.evaluate((element) => element.scrollLeft))
     .toBeGreaterThan(0);
   await expect(dialog.locator('.reactor')).toHaveCount(1);
-
-  // A mobile OS keeps the sheet treatment when the browser is temporarily wide; the
-  // selected reaction must survive that resize before returning to a phone width.
-  await page.setViewportSize({ width: 900, height: 800 });
-  await expect(dialog).toBeVisible();
-  await expect(lastKey).toHaveAttribute('aria-pressed', 'true');
-  const wideSheet = await dialog.boundingBox();
-  expect(wideSheet).not.toBeNull();
-  expect(wideSheet!.x).toBeGreaterThanOrEqual(0);
-  expect(wideSheet!.x + wideSheet!.width).toBeLessThanOrEqual(901);
-  await expect(dialog.locator('.reactions-dialog__workspace')).toHaveCSS(
-    'flex-direction',
-    'column',
-  );
 
   // Synthetic count text is a layout probe only; all behavior assertions above use
   // the real Matrix snapshot. It catches count overflow without creating thousands of

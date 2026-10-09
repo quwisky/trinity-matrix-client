@@ -34,11 +34,14 @@ import {
 import { TrnCardImports } from '@trinity/components/navigation-layout';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
+  ReauthAccountMismatchError,
   AuthService,
   AUTHENTICATION_HOMESERVER_DISCOVERY,
+  NewDeviceSignInCancelledError,
+  OidcStateStore,
   RegistrationService,
+  SignInRedirectService,
   type LoginMode,
-  type OidcAuthorizationRequest,
   type AuthMetadata,
   type RegistrationAvailability,
 } from '@trinity/data-access/auth';
@@ -54,16 +57,14 @@ import {
   describeMatrixRequestFailure,
 } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
-import { SsoStateStore } from '../sso-state.store';
 import {
   CLEAR_DATA_MISTYPED_MESSAGE,
   CLEAR_DATA_RESIDUE_WARNING,
   confirmClearDataIntent,
+  installationResetFailureMessage,
 } from './clear-all-data';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
-import { OidcStateStore } from '../oidc-state.store';
 import { accountEstablishmentError } from '../account-establishment-outcome';
-import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 
 const ACCOUNT_NOT_STORED = 'That account is no longer stored.';
 const DISCOVERY_FALLBACK =
@@ -77,7 +78,11 @@ const SIGN_IN_FALLBACK = "We couldn't sign you in. Try again.";
  * fallback: raw SDK messages carry status lines and request URLs.
  */
 function describeSignInError(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message === ACCOUNT_NOT_STORED) {
+  if (
+    error instanceof ReauthAccountMismatchError ||
+    error instanceof NewDeviceSignInCancelledError ||
+    (error instanceof Error && error.message === ACCOUNT_NOT_STORED)
+  ) {
     return error.message;
   }
   if (
@@ -113,10 +118,7 @@ export class LoginPage {
   private readonly registration = inject(RegistrationService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
-  private readonly authenticationHandoff = inject(
-    HostAuthenticationHandoffService,
-  );
-  private readonly ssoState = inject(SsoStateStore);
+  private readonly signInRedirect = inject(SignInRedirectService);
   private readonly oidcState = inject(OidcStateStore);
   private readonly storage = inject(SessionStorageService);
   private readonly alert = inject(TrnAlertService);
@@ -177,9 +179,15 @@ export class LoginPage {
             if (!record) {
               return throwError(() => new Error(ACCOUNT_NOT_STORED));
             }
-            this.reauthDeviceId = record.deviceId;
             this.baseUrl.set(record.baseUrl);
-            return this.discoverCapabilities(record.baseUrl);
+            // Reuse the device unless its stored keys can no longer be unlocked here:
+            // then only a new device, with a new store and key, can sign back in.
+            return this.storage.reusableDeviceId(record).pipe(
+              switchMap((deviceId) => {
+                this.reauthDeviceId = deviceId;
+                return this.discoverCapabilities(record.baseUrl);
+              }),
+            );
           }),
         ),
         this.error,
@@ -354,6 +362,7 @@ export class LoginPage {
         this.credentials().password,
         this.loginMode(),
         this.reauthDeviceId ?? undefined,
+        this.reauthUserId() ?? undefined,
       ),
       this.credentialsError,
       SIGN_IN_FALLBACK,
@@ -373,117 +382,46 @@ export class LoginPage {
   }
 
   /** Step 2b: SSO — hand off to the homeserver's SSO page. */
-  async startSso(): Promise<void> {
+  startSso(): void {
     const baseUrl = this.baseUrl();
     if (!baseUrl) return;
-    // Single-use state bound to this round-trip; verified on the callback to prevent
-    // login CSRF / token injection (esp. on the native deep-link, which any app can
-    // invoke). Stashed in Preferences (not sessionStorage) so a native cold-start
-    // relaunch — whose WebView has empty sessionStorage — can still validate. Await
-    // the write so the stash is durable before the SSO redirect can return.
-    const state = this.generateState();
-    await this.ssoState.save(
-      state,
-      baseUrl,
-      this.loginMode(),
-      this.reauthDeviceId ?? undefined,
-    );
-
-    const callback = this.authenticationHandoff.callback({
-      webUrl: `${window.location.origin}/sso-callback`,
-      appUrl: 'eu.qwky.trinity://sso-callback',
-    });
-    const redirect = `${callback.url}?sso_state=${encodeURIComponent(state)}`;
-    const ssoUrl = this.auth.getSsoUrl(baseUrl, redirect);
-    this.dispatchRedirect(ssoUrl);
+    this.withBusy(
+      this.signInRedirect.startSso(
+        baseUrl,
+        this.loginMode(),
+        this.reauthDeviceId ?? undefined,
+        this.reauthUserId() ?? undefined,
+      ),
+      this.error,
+      SIGN_IN_FALLBACK,
+    ).subscribe();
   }
 
   /**
    * Step 2c: OIDC ("next-gen auth") — hand off to the provider's authorization page.
-   * Builds the PKCE authorization request (registering this client with the provider
-   * if needed), durably stashes the sign-in state, then redirects. Pass `prompt`
-   * (`'create'`) to send the user to the provider's registration flow instead of login.
+   * Pass `prompt` (`'create'`) to send the user to the provider's registration flow
+   * instead of login.
    */
   startOidc(prompt?: string): void {
     const baseUrl = this.baseUrl();
-    const config = this.oidcMetadata();
-    if (!baseUrl || !config?.issuer) {
+    const metadata = this.oidcMetadata();
+    if (!baseUrl || !metadata?.issuer) {
       return;
     }
-    // The redirect_uri must byte-match a value registered with the provider — a clean
-    // callback with no extra query params (the CSRF `state` rides OAuth's own param).
-    // Private-use scheme redirects take the RFC 8252 §7.1 form: no authority, so a
-    // SINGLE slash after the scheme. `//sso-callback` parses the callback as the
-    // authority with an empty path, which providers that enforce the rule reject at
-    // dynamic registration ("must not have an authority") before login can start.
-    const callback = this.authenticationHandoff.callback({
-      webUrl: `${window.location.origin}/sso-callback`,
-      appUrl: 'eu.qwky.trinity:/sso-callback',
-    });
-    const redirectUri = callback.url;
-
     this.withBusy(
-      this.auth.buildOidcAuthorizationRequest({
+      this.signInRedirect.startOidc({
         baseUrl,
-        metadata: config,
-        redirectUri,
-        applicationType: callback.applicationType,
+        metadata,
+        mode: this.loginMode(),
         ...(prompt ? { prompt } : {}),
         // Re-auth reuses the stored device so the account comes back without needing a
-        // fresh verification — the same reason it is threaded into the password and SSO
-        // paths above.
+        // fresh verification, and the callback must see this same account return.
         ...(this.reauthDeviceId ? { deviceId: this.reauthDeviceId } : {}),
+        expectedUserId: this.reauthUserId(),
       }),
       this.error,
       SIGN_IN_FALLBACK,
-    ).subscribe((request) => {
-      void this.stashAndRedirect(request, baseUrl, config.issuer, redirectUri);
-    });
-  }
-
-  /**
-   * Persist the PKCE sign-in state (awaited, so it survives a native cold-start before
-   * the provider can redirect back), then redirect to the authorization URL.
-   */
-  private async stashAndRedirect(
-    request: OidcAuthorizationRequest,
-    baseUrl: string,
-    issuer: string,
-    redirectUri: string,
-  ): Promise<void> {
-    // Persisted on every platform. Web used to be skipped because the SDK kept its own
-    // sessionStorage copy of the sign-in state; matrix-js-sdk 42 keeps nothing, so this
-    // stash is the only copy and omitting it on web would simply break web login.
-    await this.oidcState.save({
-      state: request.state,
-      baseUrl,
-      mode: this.loginMode(),
-      redirectUri,
-      issuer,
-      clientId: request.clientId,
-      deviceId: request.deviceId,
-      codeVerifier: request.codeVerifier,
-      // Re-auth reuses this account's device id, so the callback must also check the
-      // grant came back as this account — a provider with a live browser session can
-      // authorize silently as a different one.
-      expectedUserId: this.reauthUserId(),
-    });
-    this.dispatchRedirect(request.url);
-  }
-
-  /** Execute the selected host's cold, finite authentication handoff command. */
-  private dispatchRedirect(url: string): void {
-    this.authenticationHandoff
-      .open({ url })
-      .pipe(take(1), takeUntilDestroyed(this.destroyRef))
-      .subscribe();
-  }
-
-  /** A random, single-use state/nonce token (hex). */
-  private generateState(): string {
-    const bytes = new Uint8Array(16);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    ).subscribe();
   }
 
   /**
@@ -521,13 +459,6 @@ export class LoginPage {
       .resetInstallation()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((outcome) => {
-        if (outcome.kind === 'transition-in-progress') {
-          this.erasing.set(false);
-          this.error.set(
-            'Another account change is still in progress. Try again.',
-          );
-          return;
-        }
         if (outcome.kind === 'partial-cleanup') {
           console.warn(
             CLEAR_DATA_RESIDUE_WARNING,
@@ -536,27 +467,16 @@ export class LoginPage {
               recovery: issue.recovery,
             })),
           );
-          this.erasing.set(false);
-          const restartRequired = outcome.issues.some(
-            ({ recovery }) => recovery === 'restart-application',
-          );
-          this.error.set(
-            restartRequired
-              ? 'Some cleanup could not be completed. Restart Trinity before trying again.'
-              : 'Some cleanup could not be completed. Try again to retry only the remaining safe work.',
-          );
+        }
+        const failure = installationResetFailureMessage(outcome);
+        if (failure === null) {
+          // `erasing` stays true: the app is about to be replaced, and releasing the button
+          // now would let a second press race the navigation.
+          this.restart.restart();
           return;
         }
-        if (outcome.kind === 'uncertain-cleanup') {
-          this.erasing.set(false);
-          this.error.set(
-            'Cleanup is still running. Closing this page does not cancel it; try again to check the same attempt.',
-          );
-          return;
-        }
-        // `erasing` stays true: the app is about to be replaced, and releasing the button now
-        // would let a second press race the navigation.
-        this.restart.restart();
+        this.erasing.set(false);
+        this.error.set(failure);
       });
   }
 

@@ -1,11 +1,11 @@
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { TrnDialogRef, TrnDialogService } from '@trinity/components/overlay';
+import { TrnDialogRef, TrnSurfaceService } from '@trinity/components/overlay';
 import {
   GlobalSearchService,
   type SwitcherResult,
 } from '@trinity/application/search';
-import { render } from '@trinity/testing';
+import { render, screen, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
@@ -41,6 +41,22 @@ const LOCAL: SwitcherResult[] = [
 ];
 
 describe('QuickSwitcherComponent', () => {
+  it('names its shell with a hidden title and has no header or footer', async () => {
+    const { container } = await renderSwitcher();
+
+    const surface = within(screen.getByTestId('dialog-surface'));
+    expect(
+      surface.getByRole('heading', { level: 2, name: 'Jump to a room' })
+        .classList,
+    ).toContain('sr-only');
+    expect(container.querySelector('header')).toBeNull();
+    expect(screen.queryByTestId('dialog-close')).toBeNull();
+    expect(screen.queryByTestId('dialog-footer')).toBeNull();
+    expect(
+      screen.getByTestId('switcher-input').closest('.dialog-shell__body'),
+    ).not.toBeNull();
+  });
+
   let dismiss: Mock;
   let localResults: Mock;
   let searchPeople: Mock;
@@ -111,7 +127,7 @@ describe('QuickSwitcherComponent', () => {
 
   it('lands focus in the search field when opened through the service', async () => {
     // The full production path in one test — real QuickSwitcherService, real
-    // TrnDialogService, real CDK dialog — because that is where the bug lived: the
+    // TrnSurfaceService, real CDK dialog — because that is where the bug lived: the
     // component's own focus() ran first and CDK's focus pass then overrode it with the
     // header's Close button. Only the search backend is stubbed.
     TestBed.configureTestingModule({
@@ -133,7 +149,7 @@ describe('QuickSwitcherComponent', () => {
     expect(search).not.toBeNull();
     expect(document.activeElement).toBe(search);
 
-    TestBed.inject(TrnDialogService).closeAll();
+    TestBed.inject(TrnSurfaceService).closeAll();
     expect(await picked).toBeNull();
   });
 

@@ -1,121 +1,112 @@
 <div data-testid="security-settings">
-  <trn-settings-section-heading
-    title="Security"
-    description="Check encryption, session verification and independent room-key backups."
-    [primary]="true"
-  />
-
   <!-- Encryption / secure backup -->
-  <section
-    class="flex flex-col gap-2 px-4 py-3"
+  <trn-settings-group
+    description="Check encryption, session verification and independent room-key backups."
     data-testid="security-encryption"
   >
-    <span class="text-sm font-medium">End-to-end encryption</span>
-    @switch (status()) {
-      @case ('ready') {
-        <p class="text-13 text-muted-foreground">
-          Your messages are secured with end-to-end encryption on this device.
-        </p>
-      }
-      @case ('needs-setup') {
-        <p class="text-13 text-muted-foreground">
-          Set up secure backup so you never lose access to your encrypted
-          messages.
-        </p>
-        <button
-          trnBtn
-          size="sm"
-          class="self-start"
-          (click)="setUp()"
-          data-testid="security-setup"
-        >
-          Set up recovery
-        </button>
-      }
-      @case ('needs-recovery') {
-        <p class="text-13 text-muted-foreground">
-          This device isn’t verified yet. Restore access with your recovery key,
-          or verify with another signed-in session below.
-        </p>
-        <button
-          trnBtn
-          size="sm"
-          class="self-start"
-          (click)="unlock()"
-          data-testid="security-unlock"
-        >
-          Enter recovery key
-        </button>
-        <!-- Subordinate, and deliberately the same destination: the unlock screen owns
+    <div class="flex flex-col items-start gap-2 py-3">
+      @switch (status()) {
+        @case ('ready') {
+          <p class="m-0 text-sm text-muted-foreground">
+            Your messages are secured with end-to-end encryption on this device.
+          </p>
+        }
+        @case ('needs-setup') {
+          <p class="m-0 text-sm text-muted-foreground">
+            Set up secure backup so you never lose access to your encrypted
+            messages.
+          </p>
+          <button
+            trnBtn
+            size="sm"
+            (click)="setUp()"
+            data-testid="security-setup"
+          >
+            Set up recovery
+          </button>
+        }
+        @case ('needs-recovery') {
+          <p class="m-0 text-sm text-muted-foreground">
+            This device isn’t verified yet. Restore access with your recovery
+            key, or verify with another signed-in session below.
+          </p>
+          <button
+            trnBtn
+            size="sm"
+            (click)="unlock()"
+            data-testid="security-unlock"
+          >
+            Enter recovery key
+          </button>
+          <!-- Subordinate, and deliberately the same destination: the unlock screen owns
              the reset, so this is a second door to one implementation of an irreversible
              flow, not a second copy of it. Someone who has lost their key would not
              otherwise guess it lives behind "Enter recovery key". -->
-        <button
-          trnBtn
-          variant="secondary"
-          presentation="ghost"
-          size="sm"
-          class="self-start"
-          (click)="resetRecovery()"
-          data-testid="security-reset-recovery"
-        >
-          I've lost my recovery key
-        </button>
+          <button
+            trnBtn
+            variant="secondary"
+            presentation="ghost"
+            size="sm"
+            (click)="resetRecovery()"
+            data-testid="security-reset-recovery"
+          >
+            I've lost my recovery key
+          </button>
+        }
+        @default {
+          <p
+            class="m-0 text-sm text-muted-foreground"
+            data-testid="security-encryption-unavailable"
+          >
+            @if (health().availability === 'stale') {
+              Current encryption status is unavailable. The last known status
+              may be outdated.
+            } @else {
+              Current encryption status is unavailable.
+            }
+          </p>
+        }
       }
-      @default {
-        <p
-          class="text-13 text-muted-foreground"
-          data-testid="security-encryption-unavailable"
-        >
-          @if (health().availability === 'stale') {
-            Current encryption status is unavailable. The last known status may
-            be outdated.
-          } @else {
-            Current encryption status is unavailable.
-          }
-        </p>
-      }
-    }
-  </section>
+    </div>
+  </trn-settings-group>
 
   <!-- This session's verification -->
-  <section class="flex flex-col gap-2 px-4 py-3" data-testid="security-session">
-    <span class="text-sm font-medium">This session</span>
-    @if (sessionVerified()) {
-      <p
-        class="text-13 text-muted-foreground"
-        data-testid="security-session-verified"
-      >
-        This session is verified.
-      </p>
-    } @else if (sessionVerified() === false) {
-      <p class="text-13 text-muted-foreground">
-        This session isn’t verified yet.
-      </p>
-      <button
-        trnBtn
-        size="sm"
-        presentation="outline"
-        class="self-start"
-        (click)="verifySession()"
-        data-testid="security-verify"
-      >
-        Verify with another device
-      </button>
-    } @else {
-      <p
-        class="text-13 text-muted-foreground"
-        data-testid="security-session-unavailable"
-      >
-        Current session verification is unavailable.
-      </p>
-    }
-  </section>
+  <trn-settings-group title="This session" data-testid="security-session">
+    <div class="flex flex-col items-start gap-2 py-3">
+      @if (sessionVerified()) {
+        <p
+          class="m-0 text-sm text-muted-foreground"
+          data-testid="security-session-verified"
+        >
+          This session is verified.
+        </p>
+      } @else if (sessionVerified() === false) {
+        <p class="m-0 text-sm text-muted-foreground">
+          This session isn’t verified yet.
+        </p>
+        <button
+          trnBtn
+          size="sm"
+          presentation="outline"
+          (click)="verifySession()"
+          data-testid="security-verify"
+        >
+          Verify with another device
+        </button>
+      } @else {
+        <p
+          class="m-0 text-sm text-muted-foreground"
+          data-testid="security-session-unavailable"
+        >
+          Current session verification is unavailable.
+        </p>
+      }
+    </div>
+  </trn-settings-group>
 
   <!-- Key backup -->
-  <section class="flex flex-col gap-1 px-4 py-3" data-testid="security-backup">
-    <span class="text-sm font-medium">Key backup</span>
-    <p class="text-13 text-muted-foreground">
+  <trn-settings-group title="Key backup" data-testid="security-backup">
+    <p class="m-0 py-3 text-sm text-muted-foreground">
       @if (keyBackupActive()) {
         Your message keys are backed up to the server.
       } @else if (keyBackupActive() === false) {
@@ -124,24 +115,40 @@
         Current key-backup status is unavailable.
       }
     </p>
-  </section>
+  </trn-settings-group>
+
+  <!-- A store created before stores were encrypted stays as it is; a new sign-in
+     creates an encrypted one. -->
+  @if (cryptoStoreEncrypted() === false) {
+    <trn-settings-group
+      title="Keys on this device"
+      data-testid="security-stored-keys"
+    >
+      <p class="m-0 py-3 text-sm text-muted-foreground">
+        @if (keyBackupActive() === false) {
+          Key backup is off, so first save your room keys with Encrypted key
+          export below: signing out deletes the keys on this device. Then sign
+          out and back in on this device to encrypt your stored keys.
+        } @else {
+          Sign out and back in on this device to encrypt your stored keys.
+          Signing out deletes the keys on this device, so first check that key
+          backup is on and that you have your recovery key.
+        }
+      </p>
+    </trn-settings-group>
+  }
 
   <!-- Encrypted key export / import file -->
-  <section
-    class="flex flex-col gap-2 px-4 py-3"
+  <trn-settings-group
+    title="Encrypted key export"
+    description="Save your message keys to a passphrase-protected file, or import keys from one. Useful as a backup independent of the server."
     data-testid="security-key-export"
   >
-    <span class="text-sm font-medium">Encrypted key export</span>
-    <p class="text-13 text-muted-foreground">
-      Save your message keys to a passphrase-protected file, or import keys from
-      one. Useful as a backup independent of the server.
-    </p>
-    <div class="flex flex-wrap gap-2">
+    <div class="flex flex-wrap gap-2 py-3">
       <button
         trnBtn
         size="sm"
         presentation="outline"
-        class="self-start"
         [disabled]="busy()"
         (click)="exportKeys()"
         data-testid="security-export-keys"
@@ -152,7 +159,6 @@
         trnBtn
         size="sm"
         presentation="outline"
-        class="self-start"
         [disabled]="busy()"
         (click)="pickKeyFile()"
         data-testid="security-import-keys"
@@ -167,5 +173,5 @@
       hidden
       (change)="onKeyFile($event)"
     />
-  </section>
+  </trn-settings-group>
 </div>

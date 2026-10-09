@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webFrame } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 
 /**
@@ -37,6 +37,28 @@ const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
 // as with SHOW_NOTIFICATION_CHANNEL / NOTIFICATION_CLICK_CHANNEL above).
 const SET_BADGE_COUNT_CHANNEL = 'trinity:host:v1:badge:set';
 const HOST_NEGOTIATE_CHANNEL = 'trinity:host:v1:negotiate';
+// Mirrors window.ts by string value: main reports the window leaving or returning to the screen.
+const VISIBILITY_CHANNEL = 'trinity:host:v1:lifecycle:visibility';
+// Mirror title-bar-ipc.ts by string value; main re-validates every payload.
+const SET_OVERLAY_CHANNEL = 'trinity:host:v1:title-bar:set-overlay';
+const POPUP_MENU_CHANNEL = 'trinity:host:v1:title-bar:popup-menu';
+const GET_SYSTEM_TITLE_BAR_CHANNEL =
+  'trinity:host:v1:title-bar:get-system-title-bar';
+const SET_SYSTEM_TITLE_BAR_CHANNEL =
+  'trinity:host:v1:title-bar:set-system-title-bar';
+const RELAUNCH_CHANNEL = 'trinity:host:v1:title-bar:relaunch';
+// Mirrors window.ts by string value; main only closes the window, as a user close does.
+const CLOSE_WINDOW_CHANNEL = 'trinity:window:close';
+// window.ts appends the running title-bar mode to argv; anything else means "no row".
+const TITLE_BAR_ARGUMENT = '--trinity-title-bar=';
+const titleBarArgument = process.argv
+  .find((arg) => arg.startsWith(TITLE_BAR_ARGUMENT))
+  ?.slice(TITLE_BAR_ARGUMENT.length);
+const titleBarMode =
+  titleBarArgument === 'row' || titleBarArgument === 'system'
+    ? titleBarArgument
+    : null;
+const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 
 /** Payload accepted by `showNotification`; mirrors core's `DesktopNotification`. */
 interface ShowNotificationPayload {
@@ -62,7 +84,8 @@ type NegotiatedOperation =
   | 'badge'
   | 'secure-store'
   | 'lifecycle'
-  | 'updates';
+  | 'updates'
+  | 'title-bar';
 
 const unavailableGrant = () =>
   ({ kind: 'unavailable', reason: 'host-rejected' }) as const;
@@ -146,6 +169,16 @@ async function negotiate(operations: readonly string[]): Promise<unknown> {
     throw error;
   }
 }
+
+// A page's `window.close()` would destroy the renderer, skipping close-to-tray and
+// stopping `/sync`. Route it to main, which closes the window like a user close.
+contextBridge.executeInMainWorld({
+  func: (requestClose: () => void) => {
+    // The main world's globalThis is its window; Node typings carry no DOM lib.
+    (globalThis as { close?: () => void }).close = () => requestClose();
+  },
+  args: [() => ipcRenderer.send(CLOSE_WINDOW_CHANNEL)],
+});
 
 contextBridge.exposeInMainWorld('trinityDesktop', {
   protocolVersion: 1,
@@ -241,6 +274,14 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
               string | null
             >)
           : Promise.resolve(null),
+      // Not granted reads as unavailable, never as absent: absent means a lost secret.
+      read: (key: string): Promise<unknown> =>
+        grantedOperations.has('secure-store')
+          ? (ipcRenderer.invoke(
+              'trinity:secure-store:read',
+              key,
+            ) as Promise<unknown>)
+          : Promise.resolve({ kind: 'unavailable' }),
       set: (key: string, value: string): Promise<boolean> =>
         grantedOperations.has('secure-store')
           ? (ipcRenderer.invoke(
@@ -276,8 +317,89 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
             } | null>)
           : Promise.resolve(null),
     },
+    lifecycle: {
+      subscribeVisibility(
+        callback: (visibility: 'visible' | 'hidden') => void,
+      ): () => void {
+        if (!grantedOperations.has('lifecycle')) return () => undefined;
+        const listener = (_event: IpcRendererEvent, visibility: unknown) => {
+          if (!grantedOperations.has('lifecycle')) return;
+          if (visibility === 'visible' || visibility === 'hidden') {
+            callback(visibility);
+          }
+        };
+        ipcRenderer.on(VISIBILITY_CHANNEL, listener);
+        return () => ipcRenderer.removeListener(VISIBILITY_CHANNEL, listener);
+      },
+      // Electron advises this only after an event that lowers memory use, such as hiding.
+      releaseMemory: (): void => {
+        if (grantedOperations.has('lifecycle')) webFrame.clearCache();
+      },
+    },
+    titleBar: {
+      // Not a privilege: the mode this window was created with, known before negotiation.
+      mode: titleBarMode,
+      setOverlayColors: (colors: {
+        color: string;
+        symbolColor: string;
+      }): void => {
+        if (!grantedOperations.has('title-bar')) return;
+        if (!colors || typeof colors !== 'object') return;
+        const { color, symbolColor } = colors as Partial<typeof colors>;
+        if (!isHexColour(color) || !isHexColour(symbolColor)) return;
+        ipcRenderer.send(SET_OVERLAY_CHANNEL, {
+          color,
+          symbolColor,
+        });
+      },
+      popupMenu: (at: { x: number; y: number }): void => {
+        if (!grantedOperations.has('title-bar')) return;
+        if (!at || typeof at !== 'object') return;
+        const { x, y } = at as Partial<typeof at>;
+        if (!isMenuCoordinate(x) || !isMenuCoordinate(y)) return;
+        ipcRenderer.send(POPUP_MENU_CHANNEL, { x, y });
+      },
+      getSystemTitleBar: (): Promise<{ saved: boolean; active: boolean }> =>
+        grantedOperations.has('title-bar')
+          ? (ipcRenderer.invoke(GET_SYSTEM_TITLE_BAR_CHANNEL) as Promise<{
+              saved: boolean;
+              active: boolean;
+            }>)
+          : Promise.resolve({ saved: false, active: false }),
+      setSystemTitleBar: (value: boolean): Promise<unknown> => {
+        if (!grantedOperations.has('title-bar')) {
+          return Promise.resolve(unavailableGrant());
+        }
+        if (typeof value !== 'boolean') {
+          return Promise.resolve({
+            kind: 'rejected',
+            diagnostic: { code: 'invalid-system-title-bar' },
+          });
+        }
+        return ipcRenderer.invoke(
+          SET_SYSTEM_TITLE_BAR_CHANNEL,
+          value,
+        ) as Promise<unknown>;
+      },
+      relaunch: (): void => {
+        if (!grantedOperations.has('title-bar')) return;
+        ipcRenderer.send(RELAUNCH_CHANNEL);
+      },
+    },
   },
 });
+
+function isHexColour(value: unknown): value is string {
+  return typeof value === 'string' && HEX_COLOUR.test(value);
+}
+
+function isMenuCoordinate(value: unknown): value is number {
+  return (
+    Number.isInteger(value) &&
+    (value as number) >= 0 &&
+    (value as number) <= 10_000
+  );
+}
 
 function isNotificationDestination(
   value: unknown,

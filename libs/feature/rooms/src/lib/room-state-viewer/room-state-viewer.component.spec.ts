@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { fireEvent, render } from '@trinity/testing';
+import { fireEvent, render, screen, within } from '@trinity/testing';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import type { RoomStateEntry } from '@trinity/data-access/room-administration';
 import { MockProvider } from 'ng-mocks';
@@ -47,6 +47,22 @@ async function build(entries: readonly RoomStateEntry[] = ENTRIES) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('RoomStateViewerComponent', () => {
+  it('shows its title in the shared dialog shell', async () => {
+    await build();
+
+    expect(
+      within(screen.getByTestId('dialog-surface')).getByRole('heading', {
+        level: 2,
+        name: 'Room state',
+      }),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('dialog-footer')).getByRole('button', {
+        name: 'Close',
+      }),
+    ).toBeTruthy();
+  });
+
   it('groups state by event type, sorted, with counts, all collapsed', async () => {
     const { container, texts } = await build();
 
@@ -146,8 +162,12 @@ describe('RoomStateViewerComponent', () => {
   }, 30_000);
 
   it('closes the dialog', async () => {
-    const { getByRole, click } = await build();
-    click(getByRole('button', { name: 'Close' }));
+    const { click } = await build();
+    click(
+      within(screen.getByTestId('dialog-footer')).getByRole('button', {
+        name: 'Close',
+      }),
+    );
     expect(TestBed.inject(TrnDialogRef).close).toHaveBeenCalled();
   });
 });

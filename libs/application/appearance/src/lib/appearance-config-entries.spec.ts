@@ -53,7 +53,7 @@ async function setup() {
 }
 
 describe('Appearance config entries', () => {
-  it('derives six portable paths, keys, choices, and defaults from descriptors', async () => {
+  it('derives seven portable paths, keys, choices, and defaults from descriptors', async () => {
     const { config } = await setup();
     const descriptorKeys = APPEARANCE_PREFERENCE_DESCRIPTORS.map(
       ({ persistence }) => persistence.key,
@@ -64,6 +64,7 @@ describe('Appearance config entries', () => {
       'appearance.codeSize',
       'appearance.density',
       'appearance.mode',
+      'appearance.roomList',
       'appearance.textSize',
       'appearance.theme',
     ]);
@@ -86,6 +87,7 @@ describe('Appearance config entries', () => {
         codeSize: 'default',
         density: 'cosy',
         mode: 'system',
+        roomList: 'rich',
         textSize: 'default',
         theme: 'trinity',
       },
@@ -103,6 +105,7 @@ describe('Appearance config entries', () => {
           theme: 'amethyst',
           textSize: 'large',
           density: 'compact',
+          roomList: 'compact',
           codeSize: 'larger',
           codeLinePresentation: 'always',
         },
@@ -118,6 +121,7 @@ describe('Appearance config entries', () => {
       theme: 'amethyst',
       textSize: 'large',
       density: 'compact',
+      roomList: 'compact',
       codeSize: 'larger',
       codeLinePresentation: 'always',
     });
@@ -169,9 +173,24 @@ describe('Appearance config entries', () => {
       theme: 'amethyst',
       textSize: 'large',
       density: 'compact',
+      roomList: 'rich',
       codeSize: 'larger',
       codeLinePresentation: 'always',
     });
+  });
+
+  it('imports a retired Onyx theme as Midnight', async () => {
+    const { config } = await setup();
+
+    const plan = config.validate({
+      version: CONFIG_EXPORT_VERSION,
+      settings: { appearance: { theme: 'onyx' } },
+    });
+
+    expect(plan.ok).toBe(true);
+    expect(plan.ok && plan.changes).toEqual([
+      expect.objectContaining({ path: 'appearance.theme', to: 'midnight' }),
+    ]);
   });
 
   it('uses descriptor validation for imported values', async () => {
@@ -184,7 +203,7 @@ describe('Appearance config entries', () => {
 
     expect(plan.ok).toBe(false);
     expect(plan.ok === false && plan.problems).toEqual([
-      "appearance.theme: 'removed-theme' is not a supported theme (expected trinity, amethyst or onyx)",
+      "appearance.theme: 'removed-theme' is not a supported theme (expected trinity, classic, midnight or amethyst)",
     ]);
   });
 });

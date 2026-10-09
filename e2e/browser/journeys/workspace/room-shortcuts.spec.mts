@@ -111,17 +111,19 @@ test.describe('Keyboard room switching', () => {
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
 
-    // The active room is the one carrying `.channel.active` in the sidebar.
-    const active = page.locator('trn-channel-sidebar .channel.active');
+    // The active room is the one carrying `.channel.channel--selected` in the sidebar.
+    const active = page.locator(
+      'trn-channel-sidebar .channel.channel--selected',
+    );
     const open = async (name: string): Promise<void> => {
       await page.locator('.channel', { hasText: name }).first().click();
       await expect(active).toHaveText(new RegExp(name), { timeout: 15_000 });
     };
 
     // The seeded message must have landed as an unread before we test the jump to it.
-    // Wait on the row flipping to `.unread` (same propagation wait as unread-badges).
+    // Wait on the row flipping to `.channel--unread` (same propagation wait as unread-badges).
     await expect(
-      page.locator('.channel.unread', { hasText: unreadName }),
+      page.locator('.channel.channel--unread', { hasText: unreadName }),
     ).toBeVisible({ timeout: 30_000 });
 
     // Visit A → B → C — the visited stack is [C, B, A]. (The unread room is never

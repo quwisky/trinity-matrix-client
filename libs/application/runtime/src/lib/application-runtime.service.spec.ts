@@ -389,6 +389,38 @@ describe('ApplicationRuntimeService', () => {
     lifetime.unsubscribe();
   });
 
+  it('runs a declared secondary recovery, and refuses an undeclared one', async () => {
+    vi.mocked(adapter.restoreAccounts)
+      .mockReturnValueOnce(
+        of({
+          kind: 'blocked',
+          recovery: 'retry-startup',
+          secondaryRecovery: 'reauthenticate',
+          diagnostic: { code: 'account-secure-storage-unavailable' },
+        }),
+      )
+      .mockImplementation(() => of(ready()));
+    const lifetime = runtime.run().subscribe();
+    await vi.waitFor(() => expect(runtime.state().phase).toBe('blocked'));
+    expect(runtime.state()).toMatchObject({
+      failure: {
+        recovery: 'retry-startup',
+        secondaryRecovery: 'reauthenticate',
+      },
+    });
+
+    await expect(
+      firstValueFrom(runtime.recover('reset-installation')),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'recovery-failed' });
+    expect(adapter.recover).not.toHaveBeenCalled();
+
+    await expect(
+      firstValueFrom(runtime.recover('reauthenticate')),
+    ).resolves.toEqual({ kind: 'accepted' });
+    expect(adapter.recover).toHaveBeenCalledExactlyOnceWith('reauthenticate');
+    lifetime.unsubscribe();
+  });
+
   it('blocks a required failure with typed recovery and retries in order', async () => {
     vi.mocked(adapter.restoreAccounts)
       .mockReturnValueOnce(

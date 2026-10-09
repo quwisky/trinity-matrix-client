@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '../../../fixtures.mts';
 import {
+  databaseNames,
   login,
   preferenceKeys,
   seedPreference,
@@ -10,6 +11,7 @@ import {
   measureContrast,
   resolveTokenSrgb,
 } from '../../support/contrast.mts';
+import { DESIGN_VIEWPORTS } from '../../support/design-viewports.mts';
 
 // End-to-end for "Clear all data" (issue #96): the escape hatch on the login page for an
 // install whose local state is wedged, when devtools are not an option — which is to say
@@ -38,17 +40,6 @@ function storageKeys(page: Page): Promise<string[]> {
   return preferenceKeys(page).then((keys) =>
     keys.map((key) => `CapacitorStorage.${key}`),
   );
-}
-
-/** Every IndexedDB database name, or [] where the browser cannot enumerate. */
-function databaseNames(page: Page): Promise<string[]> {
-  return page.evaluate(async () => {
-    if (typeof indexedDB.databases !== 'function') {
-      return [];
-    }
-    const dbs = await indexedDB.databases();
-    return dbs.map((d) => d.name).filter((n): n is string => !!n);
-  });
 }
 
 /**
@@ -106,6 +97,15 @@ test.describe('Clear all data', () => {
     expect(before.dbs.some((n) => n.endsWith('::matrix-sdk-crypto'))).toBe(
       true,
     );
+    // The crypto store's key, wrapped, and the IndexedDB database of its wrapping key.
+    expect(
+      before.keys.some((k) =>
+        k.startsWith(
+          'CapacitorStorage.secure.matrix.cryptoStoreKey:trinity-crypto:@',
+        ),
+      ),
+    ).toBe(true);
+    expect(before.dbs).toContain('trinity-crypto-store-keys');
 
     // Deliberately from ?add: the clients are LIVE, holding open the very databases the
     // wipe has to delete. That is the state the bounded-delete path exists for, and the
@@ -171,6 +171,49 @@ test.describe('Clear all data', () => {
     // not.toContain on a single key.
     await waitForEmptyStorage(page);
     await page.waitForLoadState('networkidle');
+  });
+});
+
+/**
+ * On a phone the erase prompt opens as a bottom sheet, and typing into it must not push its
+ * confirm button out of reach. Playwright has no on-screen keyboard, so the keyboard is
+ * modelled the way Android's resizing WebView applies one: the viewport loses its lower part.
+ * The field is filled after that, because the browser scrolls a focused field into view when
+ * the keyboard opens and Playwright's `fill` does the same. Outside the Synapse describe
+ * because the login page needs no homeserver.
+ */
+test.describe('Clear all data — phone prompt', () => {
+  test.use(DESIGN_VIEWPORTS['phone-pixel-5']);
+
+  test('keeps the confirm button on screen while typing', async ({ page }) => {
+    await page.goto('/login', { waitUntil: 'networkidle' });
+    await page.getByTestId('clear-all-data').click();
+
+    const prompt = page.getByTestId('alert-surface');
+    await expect(prompt.getByTestId('sheet-handle')).toBeAttached({
+      timeout: 20_000,
+    });
+    const field = prompt.locator('input');
+    await expect(field).toBeFocused();
+
+    const viewport = page.viewportSize()!;
+    await page.setViewportSize({
+      width: viewport.width,
+      height: Math.round(viewport.height * 0.55),
+    });
+    await field.fill('RESET');
+
+    // The whole footer band, padding included, not just the button inside it.
+    await expect(prompt.getByTestId('dialog-footer')).toBeInViewport({
+      ratio: 1,
+    });
+    await expect(prompt.getByTestId('alert-confirm')).toBeInViewport({
+      ratio: 1,
+    });
+    await expect(field).toBeInViewport();
+
+    await prompt.getByTestId('alert-cancel').click();
+    await expect(prompt).toHaveCount(0);
   });
 });
 

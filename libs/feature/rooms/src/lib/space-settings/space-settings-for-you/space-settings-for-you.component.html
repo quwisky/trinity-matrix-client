@@ -31,34 +31,47 @@
         data-testid="space-settings-for-you-form"
         (submit)="draft.save()"
       >
-        <section class="space-settings__card space-settings__fields">
-          <div class="space-settings__field">
-            <h3 id="space-settings-room-order-heading">Room order</h3>
-            <p>
-              Choose how this space’s rooms are arranged for this account. This
-              never changes the order shared by the space.
-            </p>
-          </div>
+        <trn-settings-group
+          title="Room order"
+          description="Choose how this space’s rooms are arranged for this account. This never changes the order shared by the space."
+        >
           <trn-radio-group
-            [options]="draft.options()"
             [value]="draft.model().mode"
             [disabled]="draft.form.mode().disabled()"
-            aria-labelledby="space-settings-room-order-heading"
+            aria-labelledby="part-room-order"
             (valueChange)="draft.setMode($event)"
-          />
-        </section>
+          >
+            @for (option of draft.options(); track option.value) {
+              <trn-settings-row
+                [label]="option.label"
+                [description]="option.description"
+                [for]="'space-settings-order-' + option.value + '-input'"
+              >
+                <trn-radio
+                  [value]="option.value"
+                  [inputId]="'space-settings-order-' + option.value + '-input'"
+                  [aria-describedby]="
+                    'space-settings-order-' +
+                    option.value +
+                    '-input-description'
+                  "
+                  [attr.data-testid]="option.testId"
+                />
+              </trn-settings-row>
+            }
+          </trn-radio-group>
+        </trn-settings-group>
 
-        <section class="space-settings__card space-settings__scope">
-          <h3>For this account on this device</h3>
-          <p>
+        <trn-settings-group title="For this account on this device">
+          <p class="space-settings__note">
             This preference is kept separately for each account and space on
             this device. It does not follow the account to another device.
           </p>
-          <p>
+          <p class="space-settings__note">
             Use my default removes this space’s override, so later changes to
             the account default continue to apply here.
           </p>
-        </section>
+        </trn-settings-group>
 
         @if (draft.feedback(); as feedback) {
           <p

@@ -33,7 +33,7 @@ import {
 } from '@trinity/data-access/room-library';
 import {
   TrnAlertService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
@@ -189,7 +189,7 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(JumpToDateService),
-        MockProvider(TrnDialogService, { openAndWait$: dialogOpen }),
+        MockProvider(TrnSurfaceService, { openAndWait$: dialogOpen }),
         MockProvider(TrnToastService, { show: toastShow }),
         MockProvider(RoomNotificationsService, {
           setModeForAccounts: setNotifyMode,
@@ -508,7 +508,6 @@ describe('RoomsPage action error feedback', () => {
 
     expect(dialogOpen).toHaveBeenCalledWith(SpaceSettingsComponent, {
       ariaLabel: 'Space settings',
-      placement: 'center',
       autoFocus: '[data-autofocus]',
       dismissGuard: expect.any(Function),
       inputs: {
@@ -518,6 +517,19 @@ describe('RoomsPage action error feedback', () => {
         initialSection: undefined,
       },
     });
+  });
+
+  it('opens Space settings without choosing a placement of its own', async () => {
+    const shell = build();
+    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
+    await settleWorkspace();
+    railSpacesSignal.set([railSpace('!s:hs')]);
+    shell.spaces.onOpenSpaceSettings();
+
+    expect(dialogOpen).toHaveBeenCalledWith(
+      SpaceSettingsComponent,
+      expect.not.objectContaining({ placement: expect.anything() }),
+    );
   });
 
   it('offers no history visibility to the space dialog', async () => {
@@ -623,7 +635,6 @@ describe('RoomsPage action error feedback', () => {
     // The label names the space, so the id alone is not enough to pass through.
     expect(dialogOpen).toHaveBeenCalledWith(RoomSettingsComponent, {
       ariaLabel: 'Room settings',
-      placement: 'center',
       autoFocus: '[data-autofocus]',
       dismissGuard: expect.any(Function),
       inputs: {

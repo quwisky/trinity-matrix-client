@@ -12,7 +12,10 @@ import {
   WorkspaceBackService,
 } from '@trinity/application/workspace';
 import { parseTrinityRoomLink } from '@trinity/util/matrix';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   NotificationLifetime,
   type NotificationLifetimeEvent,
@@ -70,7 +73,7 @@ import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapte
 import { RoomOrderHealthService } from './room-order-health.service';
 import { HostSessionHealthService } from './host-session-health.service';
 import { NotificationSessionService } from './notification-session.service';
-import { SystemStatusVisibilityService } from '../system-status-visibility.service';
+import { BackgroundMemoryRelease } from './background-memory-release.service';
 
 /** Owns every live host and Workspace subscription for one Application Runtime session. */
 @Injectable({ providedIn: 'root' })
@@ -81,12 +84,13 @@ export class TrinityApplicationSessionAdapter {
   private readonly badge = inject(BadgeCoordinator);
   private readonly swUpdate = inject(SwUpdate);
   private readonly toast = inject(TrnToastService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly workspaceBack = inject(WorkspaceBackService);
   private readonly nativeNavigation = inject(NativeNavigationService);
   private readonly hostDeepLinks = inject(HostDeepLinksService);
   private readonly hostBack = inject(HostBackService);
   private readonly hostLifecycle = inject(HostLifecycleService);
+  private readonly memoryRelease = inject(BackgroundMemoryRelease);
   private readonly hostHealth = inject(HostSessionHealthService);
   private readonly navigationFocus = inject(NavigationFocusService);
   private readonly routedSurfaces = inject(WorkspaceRoutedSurfaceAdapter);
@@ -103,7 +107,6 @@ export class TrinityApplicationSessionAdapter {
   private readonly notificationLifetime = inject(NotificationLifetime);
   private readonly roomAdministration = inject(RoomAdministrationLifetime);
   private readonly notificationSession = inject(NotificationSessionService);
-  private readonly statusVisibility = inject(SystemStatusVisibilityService);
   private readonly inboundRoomLink = inject(InboundRoomLinkService);
   private readonly interactions = defer(() =>
     merge(
@@ -249,6 +252,7 @@ export class TrinityApplicationSessionAdapter {
           if (this.hostHealth.badgeWrite(outcome))
             this.toast.show('The app badge could not be updated.', {
               duration: 4000,
+              variant: 'danger',
             });
         }),
         ignoreElements(),
@@ -264,6 +268,7 @@ export class TrinityApplicationSessionAdapter {
       this.runDeepLinks().pipe(ignoreElements()),
       this.runInteractions(),
       this.runUpdates().pipe(ignoreElements()),
+      this.memoryRelease.run(),
     );
   }
 
@@ -382,10 +387,6 @@ export class TrinityApplicationSessionAdapter {
                 this.dialog.closeTopmost();
                 return of(void 0);
               }
-              if (this.statusVisibility.open()) {
-                this.statusVisibility.back();
-                return of(void 0);
-              }
               if (this.workspaceBack.hasActive()) {
                 return this.workspaceBack.back().pipe(
                   take(1),
@@ -459,6 +460,7 @@ export class TrinityApplicationSessionAdapter {
     this.hostHealth.incident('host', operation, code);
     this.toast.show('A host navigation action could not be completed.', {
       duration: 4000,
+      variant: 'danger',
     });
   }
 
@@ -528,6 +530,8 @@ const CALLBACK_PARAMS = [
   'state',
   'error',
   'error_description',
+  // RFC 9207: lets the callback check the response comes from the provider it started with.
+  'iss',
 ] as const;
 
 function hostOutcomeFailed(outcome: HostOperationOutcome): boolean {

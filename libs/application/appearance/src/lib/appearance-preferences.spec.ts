@@ -16,6 +16,8 @@ import {
 } from './appearance-preferences';
 import {
   DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS,
+  DENSITY_PREFERENCE,
+  ROOM_LIST_PREFERENCE,
   MODE_PREFERENCE,
   THEME_PREFERENCE,
 } from './design-system-appearance-preferences';
@@ -83,7 +85,47 @@ describe('Design System Appearance preference descriptors', () => {
           testId: 'density-select',
         }),
       }),
+      expect.objectContaining({
+        id: 'design-system.appearance.room-list',
+        owner: 'design-system',
+        section: 'appearance',
+        order: 50,
+        scope: 'installation',
+        defaultValue: 'rich',
+        sensitivity: 'public',
+        storage: 'device-preferences',
+        export: 'portable',
+        editor: expect.objectContaining({
+          kind: 'select',
+          testId: 'room-list-select',
+        }),
+      }),
     ]);
+  });
+
+  it('offers rich and compact room lists, rich by default', () => {
+    expect(ROOM_LIST_PREFERENCE.defaultValue).toBe('rich');
+    expect(ROOM_LIST_PREFERENCE.editor).toEqual(
+      expect.objectContaining({
+        label: 'Room list',
+        options: [
+          { value: 'rich', label: 'Rich' },
+          { value: 'compact', label: 'Compact' },
+        ],
+      }),
+    );
+  });
+
+  it('offers cosy, compact and spacious densities', () => {
+    expect(DENSITY_PREFERENCE.editor).toEqual(
+      expect.objectContaining({
+        options: [
+          { value: 'cosy', label: 'Cosy' },
+          { value: 'compact', label: 'Compact' },
+          { value: 'spacious', label: 'Spacious' },
+        ],
+      }),
+    );
   });
 
   it('derives Mode and Theme validation and editor options from Theme Foundation', () => {
@@ -130,7 +172,7 @@ describe('Design System Appearance preference descriptors', () => {
       {
         key: 'trinity.appearance.theme',
         legacyKeys: ['trinity.palette'],
-        version: 1,
+        version: 2,
       },
       {
         key: 'trinity.appearance.text-size',
@@ -142,12 +184,17 @@ describe('Design System Appearance preference descriptors', () => {
         legacyKeys: ['trinity.density'],
         version: 1,
       },
+      {
+        key: 'trinity.appearance.room-list',
+        legacyKeys: undefined,
+        version: 1,
+      },
     ]);
   });
 });
 
 describe('AppearancePreferences', () => {
-  it('composes six independently persisted axes and one recoverable warning', async () => {
+  it('composes seven independently persisted axes and one recoverable warning', async () => {
     const read = vi.fn<PreferenceStorageAdapter['read']>((request) => {
       if (request.key === THEME_PREFERENCE.persistence.key) {
         return of({
@@ -179,6 +226,7 @@ describe('AppearancePreferences', () => {
       'theme',
       'textSize',
       'density',
+      'roomList',
       'codeSize',
       'codeLinePresentation',
     ]);
@@ -187,7 +235,7 @@ describe('AppearancePreferences', () => {
 
     expect(outcome).toEqual({
       kind: 'partial',
-      hydrated: 5,
+      hydrated: 6,
       failures: [
         {
           preferenceId: THEME_PREFERENCE.id,
@@ -215,6 +263,7 @@ describe('AppearancePreferences', () => {
       theme: THEME_CATALOG.defaults.theme,
       textSize: 'default',
       density: 'cosy',
+      roomList: 'rich',
       codeSize: 'larger',
       codeLinePresentation: 'auto',
     });
@@ -224,7 +273,51 @@ describe('AppearancePreferences', () => {
     );
   });
 
-  it('contributes all six descriptors once and returns no warning when ready', async () => {
+  it.each([
+    ['trinity.appearance.theme', JSON.stringify({ version: 1, value: 'onyx' })],
+    ['trinity.palette', 'onyx'],
+  ])(
+    'migrates a stored Onyx theme from %s to Midnight',
+    async (key, payload) => {
+      const read = vi.fn<PreferenceStorageAdapter['read']>((request) =>
+        of(
+          request.key === key
+            ? { kind: 'found', payload }
+            : { kind: 'missing' },
+        ),
+      );
+      const write = vi.fn<PreferenceStorageAdapter['write']>(() =>
+        of({ kind: 'completed' }),
+      );
+      TestBed.configureTestingModule({
+        providers: [
+          provideAppearancePreferences(),
+          {
+            provide: PREFERENCE_STORAGE_ADAPTER,
+            useValue: { read, write } satisfies PreferenceStorageAdapter,
+          },
+        ],
+      });
+      const appearance = TestBed.inject(AppearancePreferences);
+
+      await expect(firstValueFrom(appearance.hydrate())).resolves.toEqual({
+        kind: 'ready',
+        hydrated: 7,
+      });
+      expect(appearance.axes.theme.state()).toEqual({
+        kind: 'ready',
+        value: 'midnight',
+      });
+      expect(write).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: THEME_PREFERENCE.persistence.key,
+          payload: JSON.stringify({ version: 2, value: 'midnight' }),
+        }),
+      );
+    },
+  );
+
+  it('contributes all seven descriptors once and returns no warning when ready', async () => {
     const adapter: PreferenceStorageAdapter = {
       read: () => of({ kind: 'missing' }),
       write: () => of({ kind: 'completed' }),
@@ -239,12 +332,12 @@ describe('AppearancePreferences', () => {
 
     await expect(firstValueFrom(appearance.hydrate())).resolves.toEqual({
       kind: 'ready',
-      hydrated: 6,
+      hydrated: 7,
     });
     expect([
       ...DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS,
       ...CONVERSATION_APPEARANCE_PREFERENCE_DESCRIPTORS,
-    ]).toHaveLength(6);
+    ]).toHaveLength(7);
   });
 
   it('exposes descriptor editors and commits an axis only after persistence succeeds', async () => {
@@ -325,7 +418,7 @@ describe('AppearancePreferences', () => {
 
     await expect(
       firstValueFrom(appearance.recoverHydration(outcome.failures)),
-    ).resolves.toEqual({ kind: 'ready', hydrated: 6 });
+    ).resolves.toEqual({ kind: 'ready', hydrated: 7 });
     expect(appearance.axes.theme.value()).toBe(THEME_PREFERENCE.defaultValue);
     expect(appearance.axes.mode.value()).toBe('light');
   });

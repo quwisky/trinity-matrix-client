@@ -35,7 +35,18 @@ const skeletonSeen = (page: Page) =>
     () => (window as unknown as { __skeletonSeen: boolean }).__skeletonSeen,
   );
 
-/** Strip these Rooms' timelines from /sync so the client must backfill via /messages. */
+/**
+ * Strip these Rooms' messages from /sync so the client must backfill via /messages.
+ *
+ * Only a sync that carries timeline events is rewritten, and it is rewritten the way a limited
+ * sync looks. Synapse differs from Tuwunel in two ways that matter here:
+ * - It puts a small room's state events (create, membership, name, ...) in the timeline of its
+ *   first sync and leaves `state` empty. Emptying the timeline then left the client a room with
+ *   no name or membership, which never reached the room list. Those events move into `state`.
+ * - It lists the room in every sync that has a typing, receipt or account-data change, with an
+ *   empty timeline. Marking those `limited` makes the client drop what it has backfilled, and
+ *   the delayed /messages then starts over, so the messages never settle.
+ */
 async function forceBackfill(
   page: Page,
   roomIds: readonly string[],
@@ -44,11 +55,18 @@ async function forceBackfill(
     const response = await route.fetch();
     const body = await response.json();
     for (const roomId of roomIds) {
-      const timeline = body?.rooms?.join?.[roomId]?.timeline;
-      if (timeline) {
-        timeline.events = [];
-        timeline.limited = true;
-      }
+      const joined = body?.rooms?.join?.[roomId];
+      const events: { state_key?: string }[] = joined?.timeline?.events ?? [];
+      if (events.length === 0) continue;
+      joined.state = {
+        ...joined.state,
+        events: [
+          ...(joined.state?.events ?? []),
+          ...events.filter((event) => event.state_key !== undefined),
+        ],
+      };
+      joined.timeline.events = [];
+      joined.timeline.limited = true;
     }
     await route.fulfill({ response, json: body });
   });
@@ -76,25 +94,96 @@ async function routeMessages(
   });
 }
 
-/** Flags any rendered message text containing one of `bodies` (a leak from another Room). */
+/**
+ * Flags a message body rendered while another Room is open (a leak from that Room).
+ * `owners` maps each body to its Room id. A body seen in its own Room is fine: under CPU
+ * load a click can take longer than the Room's delayed /messages, so A's content legitimately
+ * renders while A is still open.
+ */
 async function watchLeaks(
   page: Page,
-  bodies: readonly string[],
+  owners: Readonly<Record<string, string>>,
 ): Promise<void> {
+  const segments = Object.fromEntries(
+    Object.entries(owners).map(([body, roomId]) => [
+      body,
+      Buffer.from(roomId).toString('base64url'),
+    ]),
+  );
   await page.addInitScript((forbidden) => {
     const w = window as unknown as { __leaked: boolean };
     w.__leaked = false;
     new MutationObserver(() => {
+      const open = location.pathname.split('/')[2] ?? '';
       for (const el of document.querySelectorAll('.msg__text')) {
-        if (forbidden.some((b) => el.textContent?.includes(b)))
-          w.__leaked = true;
+        for (const [body, segment] of Object.entries(forbidden)) {
+          if (el.textContent?.includes(body) && open !== segment)
+            w.__leaked = true;
+        }
       }
     }).observe(document, {
       childList: true,
       subtree: true,
       characterData: true,
     });
-  }, bodies);
+  }, segments);
+}
+
+/** Records whether the "isn't available" error was EVER shown. */
+async function watchUnavailable(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __unavailableSeen: boolean };
+    w.__unavailableSeen = false;
+    new MutationObserver(() => {
+      if (document.body?.textContent?.includes("This room isn't available")) {
+        w.__unavailableSeen = true;
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+}
+const unavailableSeen = (page: Page) =>
+  page.evaluate(
+    () =>
+      (window as unknown as { __unavailableSeen: boolean }).__unavailableSeen,
+  );
+
+/**
+ * Wait until the SDK has persisted a sync for this user to its IndexedDB store, so the next
+ * load restores it from cache (a returning user) rather than starting cold.
+ */
+async function waitForPersistedSync(page: Page, user: string): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async (localpart) => {
+          const dbs = await indexedDB.databases();
+          const name = dbs
+            .map((d) => d.name ?? '')
+            .find((n) => n.includes(`trinity-sync:@${localpart}:`));
+          if (!name) return false;
+          const db = await new Promise<IDBDatabase>((resolve, reject) => {
+            const req = indexedDB.open(name);
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+          });
+          try {
+            if (!db.objectStoreNames.contains('sync')) return false;
+            const saved = await new Promise<unknown>((resolve, reject) => {
+              const req = db
+                .transaction('sync', 'readonly')
+                .objectStore('sync')
+                .get(['-']); // keyPath ["clobber"]: an array key
+              req.onsuccess = () => resolve(req.result);
+              req.onerror = () => reject(req.error);
+            });
+            return !!(saved as { nextBatch?: string } | undefined)?.nextBatch;
+          } finally {
+            db.close();
+          }
+        }, user),
+      { timeout: 30_000 },
+    )
+    .toBe(true);
 }
 
 interface Fixture {
@@ -104,9 +193,12 @@ interface Fixture {
   runId: string;
 }
 
-async function newUser(request: APIRequestContext): Promise<Fixture> {
+async function newUser(
+  request: APIRequestContext,
+  suffix = '',
+): Promise<Fixture> {
   const hs = session.hs as string;
-  const runId = `${testResourceId('run')}tl`;
+  const runId = `${testResourceId('run')}tl${suffix}`;
   const user = `tl-${runId}`;
   const pass = `${user}-pass`;
   await registerUser(request, user, pass);
@@ -126,6 +218,7 @@ async function seedRoom(
   f: Fixture,
   name: string,
   bodies: readonly string[],
+  eventIds: string[] = [],
 ): Promise<string> {
   const { room_id } = await request
     .post(`${f.hs}/_matrix/client/v3/createRoom`, {
@@ -134,10 +227,12 @@ async function seedRoom(
     })
     .then((r) => r.json());
   for (const body of bodies) {
-    await request.put(
+    const sent = await request.put(
       `${f.hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/${f.runId}-${txn++}`,
       { headers: f.headers, data: { msgtype: 'm.text', body } },
     );
+    expect(sent.ok()).toBe(true);
+    eventIds.push((await sent.json()).event_id as string);
   }
   return room_id as string;
 }
@@ -178,8 +273,8 @@ test.describe('Timeline loading states', () => {
     await openNamedRoom(page, name);
     await expect(page.getByTestId('composer-input')).toBeVisible();
     // A created Room is never truly empty (the server seeds state events), so settled
-    // means its creation row renders instead of a skeleton.
-    await expect(page.getByText('created the room')).toBeVisible({
+    // means its setup summary (a collapsed system run) renders instead of a skeleton.
+    await expect(page.getByTestId('system-run-toggle')).toBeVisible({
       timeout: 15_000,
     });
     expect(await skeletonSeen(page)).toBe(false);
@@ -264,6 +359,109 @@ test.describe('Timeline loading states', () => {
     await expect(page.getByTestId('timeline-skeleton')).toBeHidden();
   });
 
+  test('opens a linked room joined since the sync cache: skeleton, then messages', async ({
+    page,
+    request,
+  }) => {
+    const f = await newUser(request);
+    const bodies = messages(`pend ${f.runId}`, 1);
+    await watchSkeleton(page);
+    await login(page, f.me);
+    const account = new URL(page.url()).searchParams.get('account') as string;
+    // A returning user: the reload restores this cached sync (the SDK reports it PREPARED)
+    // before any live /sync, and the cache predates the room.
+    await waitForPersistedSync(page, f.me.user as string);
+    await watchUnavailable(page);
+    // Created after the cache, so the client has never synced it and cannot hydrate it.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/_matrix/client/**/sync*', async (route) => {
+      await gate;
+      await route.continue();
+    });
+    const roomId = await seedRoom(request, f, `Pending ${f.runId}`, bodies);
+    const segment = Buffer.from(roomId).toString('base64url');
+    await page.goto(
+      `/rooms/${segment}?account=${encodeURIComponent(account)}&view=rooms`,
+    );
+
+    await expect(page.getByTestId('timeline-skeleton')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('composer-input')).toHaveCount(0);
+    expect(page.url()).toContain(`/rooms/${segment}`);
+    await expect(page.getByText('Select a room')).toHaveCount(0);
+
+    release();
+    await expect(
+      page.locator('.msg__text', { hasText: bodies[0] }),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('timeline-skeleton')).toBeHidden();
+    await expect(page.getByTestId('composer-input')).toBeVisible();
+    expect(page.url()).toContain(`/rooms/${segment}`); // The cached sync is not a live one: the room was loading throughout, never unavailable.
+    expect(await unavailableSeen(page)).toBe(false);
+  });
+
+  test('a linked message in a room that has not synced yet is scrolled into view once it loads', async ({
+    page,
+    request,
+  }) => {
+    const f = await newUser(request);
+    const bodies = messages(`anchor ${f.runId}`, 60);
+    const eventIds: string[] = [];
+    await watchSkeleton(page);
+    await login(page, f.me);
+    const account = new URL(page.url()).searchParams.get('account') as string;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route('**/_matrix/client/**/sync*', async (route) => {
+      await gate;
+      await route.continue();
+    });
+    const roomId = await seedRoom(
+      request,
+      f,
+      `Anchor ${f.runId}`,
+      bodies,
+      eventIds,
+    );
+    const anchorId = eventIds[1];
+    const segment = Buffer.from(roomId).toString('base64url');
+    await page.goto(
+      `/rooms/${segment}?account=${encodeURIComponent(account)}&view=rooms&event=${encodeURIComponent(anchorId)}`,
+    );
+    await expect(page.getByTestId('timeline-skeleton')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('composer-input')).toHaveCount(0);
+
+    release();
+    await expect(page.locator(`[data-mid="${anchorId}"]`)).toBeInViewport({
+      timeout: 30_000,
+    });
+  });
+
+  test('a linked room the user is not in shows the unavailable error at once', async ({
+    page,
+    request,
+  }) => {
+    const me = await newUser(request);
+    const other = await newUser(request, 'other');
+    const roomId = await seedRoom(request, other, `Foreign ${other.runId}`, []);
+    await login(page, me.me);
+    const account = new URL(page.url()).searchParams.get('account') as string;
+    const segment = Buffer.from(roomId).toString('base64url');
+    await page.goto(
+      `/rooms/${segment}?account=${encodeURIComponent(account)}&view=rooms`,
+    );
+
+    await expect(
+      page.getByText("This room isn't available on this account yet."),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+    expect(page.url()).toContain(`/rooms/${segment}`);
+  });
+
   test('rapid switching ends on the right room', async ({ page, request }) => {
     const f = await newUser(request);
     const names = ['A', 'B', 'C'].map((l) => `Switch${l} ${f.runId}`);
@@ -278,7 +476,7 @@ test.describe('Timeline loading states', () => {
       [ids[1]]: { delayMs: 800 },
       [ids[2]]: { delayMs: 2500 },
     });
-    await watchLeaks(page, [bodies[0], bodies[1]]);
+    await watchLeaks(page, { [bodies[0]]: ids[0], [bodies[1]]: ids[1] });
     await login(page, f.me);
     await page.getByTestId('rail-rooms').click();
     for (const n of names) {
@@ -293,7 +491,7 @@ test.describe('Timeline loading states', () => {
     await expect(
       page.locator('.msg__text', { hasText: bodies[2] }),
     ).toBeVisible({ timeout: 30_000 });
-    // A's and B's responses (800 ms) landed while C (2500 ms) was focused; none may render.
+    // A's and B's responses (800 ms) land while C (2500 ms) is focused; neither may render in C.
     await page.waitForTimeout(1500);
     expect(
       await page.evaluate(

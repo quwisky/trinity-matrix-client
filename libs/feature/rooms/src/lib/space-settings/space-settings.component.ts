@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import type { SpaceContentsTarget } from '@trinity/data-access/room-library';
+import { TrnSettingsGroupComponent } from '@trinity/components/overlay';
 import { MembersSettingsComponent } from '../members-settings/members-settings.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
 import {
@@ -21,7 +22,7 @@ import { SpaceSettingsContentsComponent } from './space-settings-contents.compon
 import { SpaceSettingsDraftService } from './space-settings-draft.service';
 import { SpaceSettingsForYouDraftService } from './space-settings-for-you/space-settings-for-you-draft.service';
 import { SpaceSettingsForYouComponent } from './space-settings-for-you/space-settings-for-you.component';
-import { SpaceSettingsGeneralComponent } from './space-settings-general.component';
+import { PlaceGeneralSettingsComponent } from '../shared/place-general-settings/place-general-settings.component';
 
 type SpaceSettingsSection =
   'general' | 'for-you' | 'access' | 'contents' | 'members' | 'addresses';
@@ -83,10 +84,11 @@ const SECTIONS: readonly (SettingsHubSection & {
     MembersSettingsComponent,
     RoomAliasesComponent,
     SettingsHubComponent,
+    TrnSettingsGroupComponent,
     SpaceSettingsAccessComponent,
     SpaceSettingsContentsComponent,
     SpaceSettingsForYouComponent,
-    SpaceSettingsGeneralComponent,
+    PlaceGeneralSettingsComponent,
   ],
   templateUrl: './space-settings.component.html',
   styleUrl: './space-settings.component.scss',

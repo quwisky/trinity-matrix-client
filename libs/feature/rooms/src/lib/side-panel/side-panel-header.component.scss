@@ -1,0 +1,15 @@
+@layer components {
+  :host {
+    display: flex;
+    align-items: center;
+    gap: var(--trinity-space-3);
+    flex: none;
+    block-size: calc(3rem + env(safe-area-inset-top));
+    padding-block-start: env(safe-area-inset-top);
+    padding-inline: calc(var(--trinity-space-4) + env(safe-area-inset-left))
+      calc(var(--trinity-space-4) + env(safe-area-inset-right));
+    border-block-end: 1px solid var(--trinity-border-subtle);
+    background: var(--trinity-surface-panel);
+    color: var(--trinity-text-bright);
+  }
+}

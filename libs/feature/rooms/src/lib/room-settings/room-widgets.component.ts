@@ -17,7 +17,8 @@ import { filter, switchMap, tap } from 'rxjs';
 import {
   TrnAlertService,
   TrnDialogRef,
-  TrnDialogService,
+  TrnSurfaceService,
+  TrnSettingsGroupComponent,
   TrnToastService,
 } from '@trinity/components/overlay';
 import {
@@ -32,9 +33,13 @@ import {
   type WidgetLaunch,
 } from '@trinity/data-access/widgets';
 import { TrnButton } from '@trinity/components/controls';
-import { ExternalBrowserService } from '@trinity/platform-native';
+import {
+  ExternalBrowserService,
+  isInstalledNativePlatform,
+} from '@trinity/platform-native';
 import { RoomWidgetFrameComponent } from './room-widget-frame/room-widget-frame.component';
 import { RoomWidgetCreateComponent } from './room-widget-create/room-widget-create.component';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 
 interface WidgetEntry {
   readonly widget: RoomWidget;
@@ -46,7 +51,12 @@ interface WidgetEntry {
 @Component({
   selector: 'trn-room-widgets',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, RoomWidgetCreateComponent],
+  imports: [
+    EmptyStateComponent,
+    TrnButton,
+    TrnSettingsGroupComponent,
+    RoomWidgetCreateComponent,
+  ],
   templateUrl: './room-widgets.component.html',
   styleUrl: './room-widgets.component.scss',
 })
@@ -56,7 +66,7 @@ export class RoomWidgetsComponent implements OnInit {
   private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly toast = inject(TrnToastService);
   private readonly alert = inject(TrnAlertService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
   private connectedTarget: RoomWidgetTarget | null = null;
   private activeWidgetFrame: TrnDialogRef<void> | null = null;
@@ -66,6 +76,8 @@ export class RoomWidgetsComponent implements OnInit {
 
   readonly target = input.required<RoomWidgetTarget>();
   readonly available = input(true);
+  /** The installed mobile apps open widgets in the browser instead of a frame. */
+  readonly embedAvailable = !isInstalledNativePlatform();
   private readonly confirmingRemoval = signal<ReadonlySet<string>>(new Set());
   readonly removing = signal<ReadonlySet<string>>(new Set());
 
@@ -154,9 +166,7 @@ export class RoomWidgetsComponent implements OnInit {
     const frameRef = this.dialog.open<void, RoomWidgetFrameComponent>(
       RoomWidgetFrameComponent,
       {
-        placement: 'fullscreen',
-        ariaLabel: `${widget.name} widget`,
-        autoFocus: '[data-autofocus]',
+        kind: 'fullscreen',
         inputs: {
           roomId: this.target().roomId,
           widget,
@@ -240,6 +250,16 @@ export class RoomWidgetsComponent implements OnInit {
           });
         },
       });
+  }
+
+  /** The card's note. On the installed apps nothing opens inside Trinity, so only the creator warning applies. */
+  widgetWarning(embed: WidgetEmbed): string | null {
+    if (this.embedAvailable) {
+      return embed.url ? null : this.embedFailureText(embed);
+    }
+    return embed.failure === 'missing-creator'
+      ? this.embedFailureText(embed)
+      : null;
   }
 
   embedFailureText(embed: WidgetEmbed): string {

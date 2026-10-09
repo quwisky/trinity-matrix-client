@@ -8,6 +8,9 @@ import { AVATAR_RESOLVER } from './avatar-resolver';
 // needs a real image load, which jsdom can't do), so these cover the component's
 // own contract: the resolved `src`, and the initials fallback that renders while
 // there's no image. The rendered image path is verified in the browser (e2e).
+// Name prefix kept out of a literal var(...) so the token guard sweep does not read it as a token.
+const AVATAR_TOKEN = '--trinity-avatar-';
+
 describe('AvatarComponent', () => {
   const fallback = (host: HTMLElement) =>
     host.querySelector('[data-slot="avatar-fallback"]');
@@ -142,41 +145,6 @@ describe('AvatarComponent', () => {
     expect(dot(container)?.style.width).toBe('8px'); // round(20 * 0.3) = 6 → floored
   });
 
-  // Deliberately a second, independent implementation of the WCAG maths rather
-  // than an import of the component's helper — otherwise a regression in that
-  // helper would be mirrored here and the assertion would pass regardless.
-  const luminance = (hex: string) => {
-    const linear = (offset: number) => {
-      const c = parseInt(hex.slice(offset, offset + 2), 16) / 255;
-      return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-    };
-    return 0.2126 * linear(1) + 0.7152 * linear(3) + 0.0722 * linear(5);
-  };
-  const contrast = (background: string, ink: string) => {
-    const [a, b] = [luminance(background), luminance(ink)];
-    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-  };
-
-  // Asserts the *property* (AA is met), not the six literal picks — pinning the
-  // current choices would just re-freeze whatever the implementation happens to do.
-  it('picks an initial colour that clears WCAG AA on every hashed background', async () => {
-    const { fixture } = await render(AvatarComponent, {
-      inputs: { name: 'user-0' },
-    });
-    const avatar = fixture.componentInstance;
-
-    const inkByBackground = new Map<string, string>();
-    for (let i = 0; i < 60; i++) {
-      fixture.componentRef.setInput('name', `user-${i}`);
-      inkByBackground.set(avatar.color(), avatar.initialColor());
-    }
-
-    expect(inkByBackground.size).toBe(6); // the whole hash palette is exercised
-    inkByBackground.forEach((ink, background) => {
-      expect(contrast(background, ink)).toBeGreaterThanOrEqual(4.5);
-    });
-  });
-
   it('resolves through the owning account’s client when one is given', async () => {
     const resolver = vi.fn(() => of('blob:resolved'));
     await render(AvatarComponent, {
@@ -213,7 +181,7 @@ describe('AvatarComponent', () => {
     expect(el.getAttribute('title')).toBe('Work (@work:hs)');
   });
 
-  it('colours the badge from the account name (not the row) and keeps its letter legible', async () => {
+  it('colours the badge from the account (not the row) with a paired avatar token', async () => {
     const { fixture } = await render(AvatarComponent, {
       inputs: {
         name: 'Room A',
@@ -222,12 +190,74 @@ describe('AvatarComponent', () => {
     });
     const avatar = fixture.componentInstance;
     const badgeColor = avatar.badgeColor();
-    expect(contrast(badgeColor, avatar.badgeInk())).toBeGreaterThanOrEqual(4.5);
+    const slot = /^var\(--trinity-avatar-([1-6])\)$/u.exec(badgeColor)?.[1];
+    expect(slot).toBeDefined();
+    expect(avatar.badgeInk()).toBe(`var(${AVATAR_TOKEN}${slot}-ink)`);
 
-    // Changing the row name must not move the account badge's colour — it's hashed
-    // from the account, not the row.
     fixture.componentRef.setInput('name', 'A completely different room');
     expect(avatar.badgeColor()).toBe(badgeColor);
+  });
+
+  it('spreads names over all six themed avatar slots, each with its own ink', async () => {
+    const { fixture } = await render(AvatarComponent, {
+      inputs: { name: 'user-0' },
+    });
+    const avatar = fixture.componentInstance;
+
+    const inkBySlot = new Map<string, string>();
+    for (let i = 0; i < 60; i++) {
+      fixture.componentRef.setInput('name', `user-${i}`);
+      inkBySlot.set(avatar.color(), avatar.initialColor());
+    }
+
+    expect([...inkBySlot.keys()].sort()).toEqual(
+      [1, 2, 3, 4, 5, 6].map((n) => `var(${AVATAR_TOKEN}${n})`),
+    );
+    inkBySlot.forEach((ink, color) => {
+      expect(ink).toBe(color.replace(/\)$/u, '-ink)'));
+    });
+  });
+
+  it('keeps each name on the slot the old six-colour palette gave it', async () => {
+    // The old hashColor picked PALETTE[Math.abs(hash) % 6]; the slot is that index + 1,
+    // so nobody's avatar changes position in the palette.
+    const oldIndex = (key: string) => {
+      let hash = 0;
+      for (let i = 0; i < key.length; i++) {
+        hash = (hash * 31 + key.charCodeAt(i)) | 0;
+      }
+      return Math.abs(hash) % 6;
+    };
+    const { fixture } = await render(AvatarComponent, {
+      inputs: { name: 'Alice' },
+    });
+    for (const name of ['Alice', 'Bob', '@carol:hs', 'Ωmega', '']) {
+      fixture.componentRef.setInput('name', name);
+      fixture.componentRef.setInput('initial', 'x');
+      const key = name || 'x';
+      expect(fixture.componentInstance.color()).toBe(
+        `var(${AVATAR_TOKEN}${oldIndex(key) + 1})`,
+      );
+    }
+  });
+
+  it('renders no hex colour on the fallback or the badge', async () => {
+    const { container } = await render(AvatarComponent, {
+      inputs: {
+        initial: 'R',
+        name: 'Room',
+        accountBadge: { id: '@work:hs', initial: 'W', name: 'Work' },
+      },
+    });
+    const styled = [
+      container.querySelector<HTMLElement>('[data-slot="avatar-fallback"]')!,
+      container.querySelector<HTMLElement>('[data-testid="account-badge"]')!,
+    ];
+    for (const el of styled) {
+      expect(el.getAttribute('style') ?? '').not.toMatch(/#[0-9a-f]{3,8}\b/iu);
+      expect(el.style.background).toMatch(/var\(--trinity-avatar-[1-6]\)/u);
+      expect(el.style.color).toMatch(/var\(--trinity-avatar-[1-6]-ink\)/u);
+    }
   });
 
   const badgeImg = (host: HTMLElement) =>
@@ -261,6 +291,25 @@ describe('AvatarComponent', () => {
     expect(img.getAttribute('src')).toBe('blob:account-avatar');
     // With an image the initial letter is not also rendered.
     expect(badge(container)?.textContent?.trim()).toBe('');
+  });
+
+  it('loads the badge image lazily', async () => {
+    const { container } = await render(AvatarComponent, {
+      inputs: {
+        initial: 'R',
+        accountBadge: {
+          id: '@work:hs',
+          initial: 'W',
+          name: 'Work',
+          avatarMxc: 'mxc://hs/work',
+        },
+      },
+      providers: [
+        { provide: AVATAR_RESOLVER, useValue: () => of('blob:account-avatar') },
+      ],
+    });
+
+    expect(badgeImg(container)!.getAttribute('loading')).toBe('lazy');
   });
 
   it('falls back to the account initial when the badge avatar cannot be resolved', async () => {

@@ -12,7 +12,6 @@ import {
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnLabel } from '@trinity/components/controls';
-import { TrnToastService } from '@trinity/components/overlay';
 import { TrnTextarea } from '@trinity/components/controls';
 import {
   AppConfigService,
@@ -33,8 +32,13 @@ import {
   readPickedConfigFile$,
 } from './import-config';
 import { AdvancedSettingsResetService } from './advanced-settings-reset.service';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
+import { ConfigApplyReviewComponent } from './config-apply-review.component';
+import { ConfigResetGroupComponent } from './config-reset-group.component';
 import { defer, filter, throwError } from 'rxjs';
+import {
+  TrnSettingsGroupComponent,
+  TrnToastService,
+} from '@trinity/components/overlay';
 
 /** Two digits, so the dated filename sorts lexically. */
 function pad(value: number): string {
@@ -100,11 +104,13 @@ function exportFileName(now: Date): string {
   host: { class: 'block' },
   providers: [AdvancedSettingsResetService],
   imports: [
+    TrnSettingsGroupComponent,
     ConfigEditorOutletDirective,
+    ConfigApplyReviewComponent,
+    ConfigResetGroupComponent,
     TrnButton,
     TrnLabel,
     TrnTextarea,
-    SettingsSectionHeadingComponent,
   ],
 })
 export class AdvancedSettingsComponent {
@@ -112,7 +118,6 @@ export class AdvancedSettingsComponent {
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly files = inject(HostFileExportService);
-  private readonly resetWorkflow = inject(AdvancedSettingsResetService);
 
   /**
    * The rich editor, where this platform offers one and the app wired it up. Optional in the
@@ -163,12 +168,7 @@ export class AdvancedSettingsComponent {
   /** The editor component, once its chunk has arrived; null until then, and on native. */
   readonly editor = signal<Type<ConfigEditorHost> | null>(null);
 
-  /** True while a reset is in flight, so the button can't be pressed twice. */
-  readonly resetting = this.resetWorkflow.resetting;
-  readonly resetResult = this.resetWorkflow.result;
-  readonly outstandingResetEntries = this.resetWorkflow.outstandingEntries;
-
-  /** True while an apply is in flight, for the same reason. */
+  /** True while an apply is in flight; the review disables Apply and Cancel meanwhile. */
   readonly applying = signal(false);
 
   /**
@@ -380,16 +380,6 @@ export class AdvancedSettingsComponent {
         }
         this.loadAndReview(text);
       });
-  }
-
-  /** Put every exported setting back to its default, behind the type-to-confirm gate. */
-  reset(): void {
-    this.resetWorkflow.start(() => this.discard());
-  }
-
-  /** Continue the exact observed attempt; completed entries are never written again. */
-  retryReset(): void {
-    this.resetWorkflow.retry(() => this.discard());
   }
 
   /**

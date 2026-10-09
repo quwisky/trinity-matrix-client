@@ -20,7 +20,7 @@ const TOOLBAR_STORY = 'components-message-toolbar--all-actions';
 const globals = (
   theme: ThemeId,
   mode: ResolvedThemeMode,
-  density: 'cosy' | 'compact' = 'cosy',
+  density: 'cosy' | 'compact' | 'spacious' = 'cosy',
 ): string => storybookThemeGlobals({ theme, mode }, density);
 
 async function openStory(
@@ -28,7 +28,7 @@ async function openStory(
   id: string,
   theme: ThemeId = DEFAULT_STORYBOOK_THEME_PREVIEW.theme.id,
   mode: ResolvedThemeMode = DEFAULT_STORYBOOK_THEME_PREVIEW.mode.id,
-  density: 'cosy' | 'compact' = 'cosy',
+  density: 'cosy' | 'compact' | 'spacious' = 'cosy',
 ): Promise<void> {
   await page.goto(
     `/iframe.html?id=${id}&viewMode=story&globals=${globals(theme, mode, density)}`,
@@ -204,6 +204,33 @@ test.describe('semantic design foundations', () => {
     expect(compact!.width).toBeLessThan(cosy!.width);
     expect(compact!.height).toBeLessThan(cosy!.height);
     await expect(compactAction).toHaveAccessibleName('Add reaction');
+  });
+
+  test('spacious density loosens message toolbar spacing without shrinking its actions', async ({
+    page,
+  }) => {
+    const { theme, mode } = DEFAULT_STORYBOOK_THEME_PREVIEW;
+    const measure = async (density: 'cosy' | 'spacious') => {
+      await openStory(page, TOOLBAR_STORY, theme.id, mode.id, density);
+      const action = page.getByRole('button', { name: 'Add reaction' });
+      await expect(action).toHaveAccessibleName('Add reaction');
+      const toolbar = page.getByRole('toolbar', { name: 'Message actions' });
+      return {
+        action: await action.boundingBox(),
+        gap: await toolbar.evaluate((node) =>
+          getComputedStyle(node)
+            .getPropertyValue('--trinity-density-item-gap')
+            .trim(),
+        ),
+      };
+    };
+    const cosy = await measure('cosy');
+    const spacious = await measure('spacious');
+
+    // The action glyph box is clamped (24-25px) by design; the density shows in the item gap.
+    expect(spacious.action!.width).toBeGreaterThanOrEqual(cosy.action!.width);
+    expect(spacious.action!.height).toBeGreaterThanOrEqual(cosy.action!.height);
+    expect([cosy.gap, spacious.gap]).toEqual(['4px', '6px']);
   });
 
   test('disabled controls retain native semantics and the shared disabled treatment', async ({

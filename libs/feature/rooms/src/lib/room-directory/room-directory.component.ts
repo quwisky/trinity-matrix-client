@@ -15,12 +15,16 @@ import { FormField, FormRoot, form } from '@angular/forms/signals';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import {
+  TrnDialogActions,
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { PublicRoomsService } from '@trinity/data-access/discovery';
-import { AvatarComponent } from '@trinity/components/generic-content';
+import {
+  AvatarComponent,
+  EmptyStateComponent,
+} from '@trinity/components/generic-content';
 import {
   describeMatrixRequestFailure,
   initialOf,
@@ -40,7 +44,7 @@ export interface DirectoryJoin {
  * Loads the first page on open, filters on a search term, toggles between Rooms and
  * Spaces, and paginates with "Load more". Joining closes the dialog resolving the joined
  * id + whether it's a space so the host can open it appropriately; closing otherwise
- * resolves null. Presented via {@link TrnDialogService}.
+ * resolves null. Presented via {@link TrnSurfaceService}.
  */
 @Component({
   selector: 'trn-room-directory',
@@ -52,7 +56,9 @@ export interface DirectoryJoin {
     TrnButton,
     TrnInput,
     AvatarComponent,
-    TrnOverlaySurfaceDirective,
+    EmptyStateComponent,
+    TrnDialogActions,
+    TrnDialogShellComponent,
   ],
 })
 export class RoomDirectoryComponent implements OnInit {

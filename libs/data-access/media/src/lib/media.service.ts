@@ -14,7 +14,12 @@ import {
   throwError,
 } from 'rxjs';
 import { MsgType, type MatrixClient } from 'matrix-js-sdk';
-import { decryptAttachment, encryptAttachment } from '@trinity/util/matrix';
+import {
+  decryptAttachment,
+  displaySafeMime,
+  encryptAttachment,
+  mimeEssence,
+} from '@trinity/util/matrix';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { fetchMediaBytes } from '@trinity/util/matrix';
 import type { EncryptedFileInfo, MediaPayload } from '@trinity/util/matrix';
@@ -85,6 +90,21 @@ const THUMBNAIL_PX = 480;
 /** Encoding for client-rendered thumbnails. */
 const THUMBNAIL_MIME = 'image/jpeg';
 const THUMBNAIL_QUALITY = 0.8;
+/** PNG sources re-encode as WebP instead, which keeps their transparency. */
+const THUMBNAIL_ALPHA_MIME = 'image/webp';
+
+/**
+ * Long edge (px) of the thumbnail rendered from a decrypted original that arrived
+ * without one: 2x the 320 px the timeline displays, for HiDPI screens.
+ */
+const DECRYPTED_THUMBNAIL_PX = 640;
+
+/**
+ * The only types a thumbnail is rendered from. Anything else (GIF, WebP, AVIF, HEIF,
+ * SVG, BMP, ICO, TIFF, ...) may be animated, vector, or carry an alpha channel that a
+ * JPEG re-encode would flatten to black, so it is shown as sent.
+ */
+const DOWNSCALED_MIMES = new Set(['image/jpeg', 'image/jpg', 'image/png']);
 
 /** How long to wait for an audio/video element to report its metadata. */
 const METADATA_TIMEOUT_MS = 5000;
@@ -98,9 +118,21 @@ const POSTER_TIMEOUT_MS = 3000;
 /** Cap on cached object URLs; pinned (on-screen) entries are never evicted. */
 const CACHE_LIMIT = 64;
 
+/**
+ * Cap on the blob bytes behind the cached URLs, enforced alongside {@link CACHE_LIMIT}.
+ * The count alone says nothing about memory: 64 thumbnails are a few MB, but 64 full-size
+ * photos (2-10 MB each) or videos are hundreds. 96 MB holds a dozen full-size photos or a
+ * few hundred thumbnails, enough to scroll back through a conversation without refetching,
+ * and still leaves a phone WebView room for the rest of the app. Pinned entries (on screen,
+ * so the budget can be exceeded by what the user is actually looking at) are exempt.
+ */
+const CACHE_BYTE_LIMIT = 96 * 1024 * 1024;
+
 interface CacheEntry {
   url: string;
   blob: Blob;
+  /** `blob.size` recorded at creation, so the running total never re-reads blobs. */
+  bytes: number;
 }
 
 interface MediaSource {
@@ -109,6 +141,8 @@ interface MediaSource {
   mimeType: string;
   /** Server-thumbnail dimensions, or null to download the resource as-is. */
   resize: { w: number; h: number } | null;
+  /** Decrypted image to shrink to this long edge (px) before it is cached, or undefined. */
+  downscaleTo?: number;
 }
 
 /**
@@ -131,6 +165,8 @@ export class MediaService {
 
   /** Insertion-ordered cache of resolved object URLs (oldest first for LRU). */
   private readonly cache = new Map<string, CacheEntry>();
+  /** Sum of {@link CacheEntry.bytes} over {@link cache}. */
+  private cachedBytes = 0;
   /** In-flight resolutions, keyed like {@link cache}, so concurrent subscribers
    * to the same bytes share one fetch+decrypt instead of racing. */
   private readonly inFlight = new Map<string, Observable<string>>();
@@ -158,6 +194,9 @@ export class MediaService {
     const key = this.cacheKey(client, source);
     const hit = this.cache.get(key);
     if (hit) {
+      // Re-insert so the Map's insertion order is recency order (LRU, not FIFO).
+      this.cache.delete(key);
+      this.cache.set(key, hit);
       return of(hit.url);
     }
     // Share one fetch+decrypt across concurrent resolves of the same bytes — two
@@ -328,6 +367,20 @@ export class MediaService {
     }
   }
 
+  /**
+   * Revoke every cached URL that is not on screen, so a hidden app holds only what it
+   * shows. Unlike {@link releaseAll}, in-flight work and pins survive: the next use of a
+   * released source simply fetches it again.
+   */
+  releaseUnpinned(): void {
+    for (const [key, entry] of this.cache) {
+      if (this.pinned.has(entry.url)) continue;
+      this.cache.delete(key);
+      this.cachedBytes -= entry.bytes;
+      URL.revokeObjectURL(entry.url);
+    }
+  }
+
   /** Revoke every cached object URL and clear the cache (room close / logout). */
   releaseAll(): void {
     // Cancel in-flight resolutions first: with shareReplay(refCount:false) their
@@ -338,6 +391,7 @@ export class MediaService {
       URL.revokeObjectURL(url);
     }
     this.cache.clear();
+    this.cachedBytes = 0;
     this.inFlight.clear();
     this.pinned.clear();
     // Re-probe authed-media support on the next request: after a logout→login the
@@ -359,12 +413,16 @@ export class MediaService {
         };
       }
       // No bundled thumbnail: ask the server to scale the original (plaintext
-      // only — encrypted originals have no server-side thumbnail).
+      // only — encrypted originals have no server-side thumbnail, so those images
+      // are shrunk client-side after decryption instead).
       return {
         mxc: media.mxc,
         file: media.file,
         mimeType: media.mimeType,
         resize: media.file ? null : { w: THUMBNAIL_PX, h: THUMBNAIL_PX },
+        ...(media.file && needsDownscale(media)
+          ? { downscaleTo: DECRYPTED_THUMBNAIL_PX }
+          : {}),
       };
     }
     return {
@@ -379,7 +437,8 @@ export class MediaService {
    * Key on the bytes actually fetched, not the requested variant: a server-scaled
    * thumbnail genuinely differs from the original, but an encrypted attachment with
    * no bundled thumbnail resolves the *same* ciphertext for both `thumbnail` and
-   * `full` — so they must share one cache entry (and one decrypt), not two.
+   * `full` — so they must share one cache entry (and one decrypt), not two. The
+   * exception is a downscaled thumbnail, which is a different blob from the original.
    */
   private cacheKey(client: MatrixClient, source: MediaSource): string {
     const id = source.mxc ?? source.file?.url ?? '';
@@ -388,12 +447,19 @@ export class MediaService {
       clientId = ++this.nextClientId;
       this.clientIds.set(client, clientId);
     }
+    if (source.downscaleTo) {
+      return `${clientId}|${id}|thumb${source.downscaleTo}`;
+    }
     return source.resize
       ? `${clientId}|${id}|${source.resize.w}x${source.resize.h}`
       : `${clientId}|${id}|orig`;
   }
 
-  /** Fetch (and decrypt, when encrypted) the bytes for a source into a typed Blob. */
+  /**
+   * Fetch (and decrypt, when encrypted) the bytes for a source into a Blob. Attachments display
+   * only safe media types: the declared type is kept only when it is a known image, video or
+   * audio type, otherwise the Blob is opaque and its filename carries the extension.
+   */
   private fetchBlob(
     client: MatrixClient,
     source: MediaSource,
@@ -406,14 +472,25 @@ export class MediaService {
       const file = source.file;
       return this.fetchBytes(client, file.url, null).pipe(
         switchMap((ciphertext) => from(decryptAttachment(ciphertext, file))),
-        map((plaintext) => new Blob([plaintext], { type: source.mimeType })),
+        map(
+          (plaintext) =>
+            new Blob([plaintext], { type: displaySafeMime(source.mimeType) }),
+        ),
+        switchMap((blob) =>
+          source.downscaleTo
+            ? from(downscaleImage(blob, source.downscaleTo))
+            : of(blob),
+        ),
       );
     }
     if (!source.mxc) {
       return throwError(() => new Error('Media has no source'));
     }
     return this.fetchBytes(client, source.mxc, source.resize).pipe(
-      map((buffer) => new Blob([buffer], { type: source.mimeType })),
+      map(
+        (buffer) =>
+          new Blob([buffer], { type: displaySafeMime(source.mimeType) }),
+      ),
     );
   }
 
@@ -454,31 +531,40 @@ export class MediaService {
     // replacing so its object URL can't leak. Pinned (on-screen) URLs are left for
     // their owner to release.
     const prev = this.cache.get(key);
-    if (prev && !this.pinned.has(prev.url)) {
-      URL.revokeObjectURL(prev.url);
+    if (prev) {
+      this.cachedBytes -= prev.bytes;
+      if (!this.pinned.has(prev.url)) {
+        URL.revokeObjectURL(prev.url);
+      }
     }
     const url = URL.createObjectURL(blob);
-    this.cache.set(key, { url, blob });
-    this.evict();
+    this.cache.set(key, { url, blob, bytes: blob.size });
+    this.cachedBytes += blob.size;
+    this.evict(key);
     return url;
   }
 
-  /** Evict the oldest unpinned entries until the cache is within its limit. */
-  private evict(): void {
-    while (this.cache.size > CACHE_LIMIT) {
-      let removed = false;
-      for (const [key, entry] of this.cache) {
-        if (!this.pinned.has(entry.url)) {
-          this.cache.delete(key);
-          URL.revokeObjectURL(entry.url);
-          removed = true;
-          break;
-        }
+  /**
+   * Evict least recently used unpinned entries until the count and byte caps both hold.
+   * `keep` is the entry just stored: its URL has not reached a component to be pinned yet,
+   * so a single blob over the byte cap must survive until the next store, not be revoked
+   * before it is ever shown.
+   */
+  private evict(keep: string): void {
+    for (const [key, entry] of this.cache) {
+      if (
+        this.cache.size <= CACHE_LIMIT &&
+        this.cachedBytes <= CACHE_BYTE_LIMIT
+      ) {
+        return;
       }
-      if (!removed) {
-        break; // everything left is pinned (on screen)
+      if (key !== keep && !this.pinned.has(entry.url)) {
+        this.cache.delete(key);
+        this.cachedBytes -= entry.bytes;
+        URL.revokeObjectURL(entry.url);
       }
     }
+    // Falling out of the loop means everything left is pinned (on screen).
   }
 }
 
@@ -590,6 +676,104 @@ async function renderThumbnail(
   ctx.drawImage(bitmap, 0, 0, w, h);
   const blob = await canvasToBlob(canvas, THUMBNAIL_MIME, THUMBNAIL_QUALITY);
   return blob ? { blob, w, h } : null;
+}
+
+/** Whether an attachment is a JPEG/PNG the event does not already say fits the thumbnail. */
+function needsDownscale({ mimeType, width, height }: MediaPayload): boolean {
+  const known = width && height ? Math.max(width, height) : Infinity;
+  return (
+    DOWNSCALED_MIMES.has(mimeEssence(mimeType)) &&
+    known > DECRYPTED_THUMBNAIL_PX
+  );
+}
+
+/** Whether PNG bytes carry an `acTL` (animation control) chunk before the first `IDAT`. */
+function isAnimatedPng(bytes: ArrayBuffer): boolean {
+  const view = new DataView(bytes);
+  for (let at = 8; at + 8 <= view.byteLength;) {
+    const type = String.fromCharCode(
+      ...new Uint8Array(bytes, at + 4, 4), // chunk header: 4-byte length, 4-byte type
+    );
+    if (type === 'acTL') return true;
+    if (type === 'IDAT') return false;
+    at += 12 + view.getUint32(at); // header + data + CRC
+  }
+  return false;
+}
+
+/**
+ * Shrink a decrypted image to at most `maxEdge` px on its long edge. Best-effort:
+ * an image already that small, or any decode/resize/encode failure, yields the
+ * original so a thumbnail never fails because it could not be shrunk.
+ */
+async function downscaleImage(blob: Blob, maxEdge: number): Promise<Blob> {
+  if (typeof createImageBitmap !== 'function') {
+    return blob;
+  }
+  let decoded: ImageBitmap | undefined;
+  let resized: ImageBitmap | undefined;
+  const isPng = blob.type.toLowerCase() === 'image/png';
+  try {
+    if (isPng && isAnimatedPng(await blob.arrayBuffer())) {
+      return blob; // an animated PNG would freeze on its first frame
+    }
+    // `from-image` applies EXIF orientation, as in analyzeImage.
+    decoded = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+    const { w, h } = fitWithin(decoded.width, decoded.height, maxEdge);
+    if (w >= decoded.width && h >= decoded.height) {
+      return blob;
+    }
+    resized = await createImageBitmap(decoded, {
+      resizeWidth: w,
+      resizeHeight: h,
+      resizeQuality: 'high',
+    });
+    // The full-size bitmap is the big one: free it before the encode, not after.
+    decoded.close();
+    decoded = undefined;
+    const encoded = await encodeBitmap(
+      resized,
+      w,
+      h,
+      isPng ? THUMBNAIL_ALPHA_MIME : THUMBNAIL_MIME,
+    );
+    return encoded && encoded.size < blob.size ? encoded : blob;
+  } catch {
+    return blob;
+  } finally {
+    decoded?.close();
+    resized?.close();
+  }
+}
+
+/** Draw a bitmap on an off-screen (else regular) canvas and encode it; null if it cannot. */
+async function encodeBitmap(
+  bitmap: ImageBitmap,
+  w: number,
+  h: number,
+  type: string,
+): Promise<Blob | null> {
+  if (typeof OffscreenCanvas === 'function') {
+    const canvas = new OffscreenCanvas(w, h);
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return null;
+    }
+    context.drawImage(bitmap, 0, 0, w, h);
+    return canvas.convertToBlob({ type, quality: THUMBNAIL_QUALITY });
+  }
+  if (typeof document === 'undefined') {
+    return null;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const context = canvas.getContext('2d');
+  if (!context) {
+    return null;
+  }
+  context.drawImage(bitmap, 0, 0, w, h);
+  return canvasToBlob(canvas, type, THUMBNAIL_QUALITY);
 }
 
 /** Scale (w, h) to fit within a max edge, preserving aspect; never upscales. */

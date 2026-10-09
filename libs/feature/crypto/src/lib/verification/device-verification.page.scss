@@ -10,23 +10,8 @@
   }
 
   .crypto-surface {
-    @include surface;
-  }
-
-  .crypto-modal__header {
-    @include modal-header;
-  }
-
-  .crypto-modal__title {
-    flex: 1;
-    margin: 0;
-    color: var(--trinity-text-bright);
-    font-size: var(--trinity-type-control-size);
-    font-weight: 700;
-  }
-
-  .crypto-modal__body {
-    @include modal-body;
+    width: min(100%, 640px);
+    margin-inline: auto;
   }
 
   .crypto-flow > .text-muted-foreground,
@@ -47,7 +32,7 @@
     width: 64px;
     height: 64px;
     margin: 8px auto 12px;
-    border-radius: 50%;
+    border-radius: var(--trinity-radius-pill);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -68,6 +53,35 @@
 
   .privacy-warning {
     @include warning;
+  }
+
+  .session-details {
+    display: grid;
+    gap: var(--trinity-space-3);
+    margin: var(--trinity-space-5) 0 0;
+    padding: var(--trinity-space-4) var(--trinity-space-5);
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-container-radius);
+    background: var(--trinity-state-hover-surface);
+
+    div {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: var(--trinity-space-1) var(--trinity-space-4);
+    }
+
+    dt {
+      color: var(--trinity-text-muted);
+    }
+
+    dd {
+      margin: 0;
+      color: var(--trinity-text-bright);
+
+      // A session names itself, so a long name must wrap rather than widen the dialog.
+      overflow-wrap: anywhere;
+    }
   }
 
   .qr-code {

@@ -9,13 +9,11 @@ import {
   type RoomSummary,
 } from '@trinity/data-access/room-library';
 import {
-  TrnActionSheetService,
   TrnAlertService,
-  TrnDialogService,
+  TrnSurfaceService,
 } from '@trinity/components/overlay';
 import { matrixRequestErrorHandling } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
-import { isMobileOs } from '@trinity/platform-native';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import {
   RoomDirectoryComponent,
@@ -52,8 +50,7 @@ export class RoomActionsService {
   private readonly selected = inject(SelectedRoomLibraryService);
   private readonly userPicker = inject(UserPickerService);
   private readonly alert = inject(TrnAlertService);
-  private readonly dialog = inject(TrnDialogService);
-  private readonly actionSheet = inject(TrnActionSheetService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
 
   /** Sidebar room ⋮ menu "Leave room": confirm, then leave the room entirely — on the
@@ -139,22 +136,25 @@ export class RoomActionsService {
   }
 
   /** Home "+": choose between creating a room, exploring the directory, and a DM. */
-  onNewChat(): void {
-    this.actionSheet.open({
-      header: 'New message',
-      buttons: [
-        { text: 'Create a room', handler: () => void this.onCreateRoom() },
-        {
-          text: 'Explore public rooms',
-          handler: () => this.onExploreRooms(),
-        },
-        {
-          text: 'Start a direct message',
-          handler: () => this.onStartDm(),
-        },
-        { text: 'Cancel', role: 'cancel' },
-      ],
-    });
+  onNewChat(anchor?: HTMLElement): void {
+    this.dialog.openActions(
+      {
+        header: 'New message',
+        buttons: [
+          { text: 'Create a room', handler: () => void this.onCreateRoom() },
+          {
+            text: 'Explore public rooms',
+            handler: () => this.onExploreRooms(),
+          },
+          {
+            text: 'Start a direct message',
+            handler: () => this.onStartDm(),
+          },
+          { text: 'Cancel', role: 'cancel' },
+        ],
+      },
+      { anchor },
+    );
   }
 
   /** Browse the public directory; open a room — or select a space — joined from it. */
@@ -163,7 +163,6 @@ export class RoomActionsService {
     if (!accountId) return;
     this.dialog
       .openAndWait$<DirectoryJoin | null>(RoomDirectoryComponent, {
-        ariaLabel: 'Explore rooms and spaces',
         autoFocus: '[data-autofocus]',
         inputs: { accountId },
       })
@@ -344,7 +343,6 @@ export class RoomActionsService {
         RoomSettingsComponent,
         {
           ariaLabel: 'Room settings',
-          placement: isMobileOs() ? 'fullscreen' : 'center',
           autoFocus: '[data-autofocus]',
           dismissGuard: (component) =>
             component?.requestExternalDismiss() ?? true,

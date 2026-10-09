@@ -6,8 +6,9 @@ import {
   signal,
 } from '@angular/core';
 import {
+  TrnDialogActions,
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
 } from '@trinity/components/overlay';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
 import { TrnButton } from '@trinity/components/controls';
@@ -33,7 +34,8 @@ import { isoDateOf, localDayStartFromIso } from '@trinity/util/matrix';
     FormRoot,
     TrnButton,
     TrnInput,
-    TrnOverlaySurfaceDirective,
+    TrnDialogActions,
+    TrnDialogShellComponent,
   ],
   templateUrl: './jump-to-date.component.html',
   styleUrl: './jump-to-date.component.scss',

@@ -36,7 +36,7 @@ import {
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import {
   TrnAlertService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
@@ -168,7 +168,7 @@ describe('RoomsPage panels, pins and media', () => {
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(JumpToDateService),
-        MockProvider(TrnDialogService, { openAndWait$: dialogOpen }),
+        MockProvider(TrnSurfaceService, { openAndWait$: dialogOpen }),
         MockProvider(TrnToastService, { show: toastShow }),
         MockProvider(RoomNotificationsService, {
           setModeForAccounts: setNotifyMode,
@@ -210,7 +210,6 @@ describe('RoomsPage panels, pins and media', () => {
     expect(canManageAliases).not.toHaveBeenCalled();
     expect(dialogOpen).toHaveBeenCalledWith(RoomSettingsComponent, {
       ariaLabel: 'Room settings',
-      placement: 'center',
       autoFocus: '[data-autofocus]',
       dismissGuard: expect.any(Function),
       inputs: {
@@ -221,6 +220,39 @@ describe('RoomsPage panels, pins and media', () => {
         direct: false,
       },
     });
+  });
+
+  it('opens Room settings without choosing a placement of its own', async () => {
+    const shell = build();
+    roomsSignal.set([
+      {
+        id: '!r:hs',
+        accountId: '@me:hs',
+        accountIds: ['@me:hs'],
+        name: 'General',
+        initial: 'G',
+        avatarMxc: null,
+        topic: 'The topic',
+        memberCount: 2,
+        encrypted: false,
+        unreadCount: 0,
+        highlightCount: 0,
+        hasUnread: false,
+        markedUnread: false,
+        lastMessage: '',
+        activityTs: 0,
+        favourite: false,
+        lowPriority: false,
+      },
+    ]);
+    setRouteRoom('!r:hs'); // the open room comes from /rooms/:roomId now
+    await settleWorkspace();
+    shell.rooms.onOpenRoomSettings();
+
+    expect(dialogOpen).toHaveBeenCalledWith(
+      RoomSettingsComponent,
+      expect.not.objectContaining({ placement: expect.anything() }),
+    );
   });
 
   it('opens the room directory and selects a room joined from it', async () => {
@@ -237,7 +269,6 @@ describe('RoomsPage panels, pins and media', () => {
     shell.rooms.onExploreRooms();
 
     expect(dialogOpen).toHaveBeenCalledWith(RoomDirectoryComponent, {
-      ariaLabel: 'Explore rooms and spaces',
       autoFocus: '[data-autofocus]',
       inputs: { accountId: '@me:hs' },
     });

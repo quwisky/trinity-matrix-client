@@ -1,4 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { latestGuard, type LatestToken } from '@trinity/util/ui';
 import {
   AuthType,
   InteractiveAuth,
@@ -76,7 +77,9 @@ export class RegistrationService {
   private readonly errorState = signal<string | null>(null);
   readonly error = this.errorState.asReadonly();
 
-  private generation = 0;
+  private readonly attempt = latestGuard();
+  // Re-minted by cancel(), so the token that later steps read is always the live one.
+  private token = this.attempt.next();
   private activeAuth?: InteractiveAuth<RegisterResponse>;
   private emailInput?: ReplaySubject<string>;
   private createdResponse?: RegisterResponse;
@@ -115,7 +118,7 @@ export class RegistrationService {
     mode: LoginMode = 'replace',
   ): Observable<void> {
     const localpart = registrationLocalpart(username);
-    const generation = this.beginGeneration(baseUrl, mode, {
+    const token = this.beginGeneration(baseUrl, mode, {
       localpart,
       serverName: expectedServerName,
     });
@@ -129,7 +132,7 @@ export class RegistrationService {
     };
 
     const initial = defer(() =>
-      from(this.withBusy(generation, client.registerRequest(request))),
+      from(this.withBusy(token, client.registerRequest(request))),
     ).pipe(
       map((response): InitialRegistrationResult => ({
         kind: 'registered',
@@ -146,18 +149,13 @@ export class RegistrationService {
     );
 
     return initial.pipe(
-      tap(() => this.ensureActive(generation)),
+      tap(() => this.ensureActive(token)),
       switchMap((result) =>
         result.kind === 'registered'
-          ? this.establishCreated(generation, result.response)
-          : this.prepareInteractiveAuth(
-              generation,
-              client,
-              request,
-              result.data,
-            ),
+          ? this.establishCreated(token, result.response)
+          : this.prepareInteractiveAuth(token, client, request, result.data),
       ),
-      catchError((error: unknown) => this.handleFailure(generation, error)),
+      catchError((error: unknown) => this.handleFailure(token, error)),
     );
   }
 
@@ -186,12 +184,12 @@ export class RegistrationService {
   resendEmail(): Observable<void> {
     const auth = this.activeAuth;
     if (!auth || this.stageState().kind !== 'email-verification') return EMPTY;
-    const generation = this.generation;
+    const token = this.token;
     return defer(() =>
-      from(this.withBusy(generation, auth.requestEmailToken())),
+      from(this.withBusy(token, auth.requestEmailToken())),
     ).pipe(
       tap(() => {
-        this.ensureActive(generation);
+        this.ensureActive(token);
         this.stageState.set({ kind: 'email-verification', sent: true });
       }),
       map(() => void 0),
@@ -209,8 +207,8 @@ export class RegistrationService {
     ) {
       return EMPTY;
     }
-    const generation = this.generation;
-    return defer(() => from(this.withBusy(generation, auth.poll()))).pipe(
+    const token = this.token;
+    return defer(() => from(this.withBusy(token, auth.poll()))).pipe(
       map(() => void 0),
       catchError((error: unknown) => this.handleActionFailure(error)),
     );
@@ -220,16 +218,16 @@ export class RegistrationService {
   retryEstablishment(): Observable<void> {
     const response = this.createdResponse;
     if (!response || this.stageState().kind !== 'session-error') return EMPTY;
-    const generation = this.generation;
+    const token = this.token;
     this.errorState.set(null);
-    return this.establishCreated(generation, response).pipe(
-      catchError((error: unknown) => this.handleFailure(generation, error)),
+    return this.establishCreated(token, response).pipe(
+      catchError((error: unknown) => this.handleFailure(token, error)),
     );
   }
 
   /** Invalidate callbacks from the current route and discard unpersisted UIA state. */
   cancel(): void {
-    this.generation += 1;
+    this.token = this.attempt.next();
     this.emailInput?.complete();
     this.emailInput = undefined;
     this.activeAuth = undefined;
@@ -242,7 +240,7 @@ export class RegistrationService {
   }
 
   private prepareInteractiveAuth(
-    generation: number,
+    token: LatestToken,
     client: MatrixClient,
     request: RegisterRequest,
     data: RegistrationUiaData,
@@ -269,7 +267,7 @@ export class RegistrationService {
     return email.pipe(
       switchMap((emailAddress) =>
         this.runInteractiveAuth(
-          generation,
+          token,
           client,
           request,
           selectedData,
@@ -280,7 +278,7 @@ export class RegistrationService {
   }
 
   private runInteractiveAuth(
-    generation: number,
+    token: LatestToken,
     client: MatrixClient,
     request: RegisterRequest,
     authData: IAuthData,
@@ -292,22 +290,22 @@ export class RegistrationService {
       inputs: emailAddress ? { emailAddress } : {},
       supportedStages: [...NATIVE_REGISTRATION_STAGES],
       doRequest: async (auth) => {
-        this.ensureActive(generation);
+        this.ensureActive(token);
         const response = await client.registerRequest({
           ...request,
           ...(auth === null ? {} : { auth }),
         });
-        this.ensureActive(generation);
+        this.ensureActive(token);
         return response;
       },
       requestEmailToken: (email, secret, attempt) =>
         client.requestRegisterEmailToken(email, secret, attempt),
       stateUpdated: (authType, status) => {
-        if (generation !== this.generation) return;
+        if (!this.attempt.isCurrent(token)) return;
         this.renderStage(client, interactiveAuth, authType, status);
       },
       busyChanged: (busy) => {
-        if (generation === this.generation) this.busyState.set(busy);
+        if (this.attempt.isCurrent(token)) this.busyState.set(busy);
       },
     });
     this.activeAuth = interactiveAuth;
@@ -317,15 +315,15 @@ export class RegistrationService {
       // flow choice, but also skips its initial request hook. Request the email token
       // explicitly before starting so an email-first flow has a sid to poll with.
       if (emailAddress) {
-        await this.withBusy(generation, interactiveAuth.requestEmailToken());
+        await this.withBusy(token, interactiveAuth.requestEmailToken());
       }
-      this.ensureActive(generation);
+      this.ensureActive(token);
       return interactiveAuth.attemptAuth();
     };
 
     return defer(() => from(attempt())).pipe(
-      tap(() => this.ensureActive(generation)),
-      switchMap((response) => this.establishCreated(generation, response)),
+      tap(() => this.ensureActive(token)),
+      switchMap((response) => this.establishCreated(token, response)),
     );
   }
 
@@ -393,16 +391,16 @@ export class RegistrationService {
   }
 
   private establishCreated(
-    generation: number,
+    token: LatestToken,
     response: RegisterResponse,
   ): Observable<void> {
-    this.ensureActive(generation);
+    this.ensureActive(token);
     this.createdResponse = response;
     const identity = this.activeIdentity;
     if (!identity) throw new StaleRegistrationError();
     const session = authenticatedRegistrationResponse(response, identity);
     return defer(() => {
-      this.ensureActive(generation);
+      this.ensureActive(token);
       this.busyState.set(true);
       const command = accountEstablishment(
         this.activeBaseUrl,
@@ -416,13 +414,13 @@ export class RegistrationService {
       );
     }).pipe(
       switchMap((outcome) => {
-        this.ensureActive(generation);
+        this.ensureActive(token);
         if (outcome.kind === 'ready') return of(void 0);
         this.handleEstablishmentOutcome(outcome);
         return EMPTY;
       }),
       finalize(() => {
-        if (generation === this.generation) this.busyState.set(false);
+        if (this.attempt.isCurrent(token)) this.busyState.set(false);
       }),
     );
   }
@@ -431,18 +429,18 @@ export class RegistrationService {
     baseUrl: string,
     mode: LoginMode,
     identity: ExpectedRegistrationIdentity,
-  ): number {
+  ): LatestToken {
     this.cancel();
     this.activeBaseUrl = baseUrl;
     this.activeMode = mode;
     this.activeIdentity = identity;
     this.stageState.set({ kind: 'credentials' });
-    return this.generation;
+    return this.token;
   }
 
-  private handleFailure(generation: number, error: unknown): Observable<never> {
+  private handleFailure(token: LatestToken, error: unknown): Observable<never> {
     if (
-      generation !== this.generation ||
+      !this.attempt.isCurrent(token) ||
       error instanceof StaleRegistrationError
     ) {
       return EMPTY;
@@ -499,22 +497,22 @@ export class RegistrationService {
   }
 
   private async withBusy<T>(
-    generation: number,
+    token: LatestToken,
     promise: Promise<T>,
   ): Promise<T> {
-    this.ensureActive(generation);
+    this.ensureActive(token);
     this.busyState.set(true);
     try {
       const result = await promise;
-      this.ensureActive(generation);
+      this.ensureActive(token);
       return result;
     } finally {
-      if (generation === this.generation) this.busyState.set(false);
+      if (this.attempt.isCurrent(token)) this.busyState.set(false);
     }
   }
 
-  private ensureActive(generation: number): void {
-    if (generation !== this.generation) throw new StaleRegistrationError();
+  private ensureActive(token: LatestToken): void {
+    if (!this.attempt.isCurrent(token)) throw new StaleRegistrationError();
   }
 }
 

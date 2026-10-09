@@ -285,6 +285,161 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
       fixture.detectChanges();
       expect(cmp.text()).toBe('my draft');
     });
+
+    // Characterization of the draft effects' relative order: the room switch, edit prefill,
+    // persistence and external mirror all fire in one change-detection pass when inputs move
+    // together, so these pin what a reordering would change.
+    it('opens an edit in a new room without saving it over either room draft', async () => {
+      const { fixture } = await renderComposer({ roomId: '!a:hs' });
+      const cmp = fixture.componentInstance;
+      const store = TestBed.inject(DraftStoreService);
+      cmp.text.set('draft A');
+      fixture.detectChanges();
+
+      // Switch room and start an edit in the same pass.
+      fixture.componentRef.setInput('roomId', '!b:hs');
+      fixture.componentRef.setInput('editing', true);
+      fixture.componentRef.setInput('editTargetId', '$m');
+      fixture.componentRef.setInput('draft', 'edit body');
+      fixture.detectChanges();
+
+      expect(cmp.text()).toBe('edit body');
+      expect(store.get('!a:hs')).toBe('draft A');
+      expect(store.get('!b:hs')).toBe('');
+
+      // Ending the edit restores room B's (empty) compose draft, not A's.
+      fixture.componentRef.setInput('editing', false);
+      fixture.componentRef.setInput('editTargetId', null);
+      fixture.detectChanges();
+      expect(cmp.text()).toBe('');
+      expect(store.get('!b:hs')).toBe('');
+    });
+
+    it('keeps an edit body in place across a room switch and returns to the draft after it', async () => {
+      const { fixture } = await renderComposer({ roomId: '!a:hs' });
+      const cmp = fixture.componentInstance;
+      const store = TestBed.inject(DraftStoreService);
+      store.set('!b:hs', 'draft B');
+      cmp.text.set('draft A');
+      fixture.detectChanges();
+      fixture.componentRef.setInput('editing', true);
+      fixture.componentRef.setInput('editTargetId', '$m');
+      fixture.componentRef.setInput('draft', 'edit body');
+      fixture.detectChanges();
+
+      // Switching rooms mid-edit leaves the edit text alone and saves nothing for A.
+      fixture.componentRef.setInput('roomId', '!b:hs');
+      fixture.detectChanges();
+      expect(cmp.text()).toBe('edit body');
+      expect(store.get('!a:hs')).toBe('draft A');
+      expect(store.get('!b:hs')).toBe('draft B');
+
+      fixture.componentRef.setInput('editing', false);
+      fixture.componentRef.setInput('editTargetId', null);
+      fixture.detectChanges();
+      expect(cmp.text()).toBe('draft B');
+    });
+
+    // The room effect runs before the prefill effect and sees `editing()` already false, so it
+    // must use `wasEditing` to know `text` is still the edit body and keep the old room's draft.
+    it('keeps the old room\u2019s draft when the edit ends in the same pass as a switch', async () => {
+      const { fixture } = await renderComposer({ roomId: '!a:hs' });
+      const cmp = fixture.componentInstance;
+      const store = TestBed.inject(DraftStoreService);
+      cmp.text.set('draft A');
+      fixture.detectChanges();
+      fixture.componentRef.setInput('editing', true);
+      fixture.componentRef.setInput('editTargetId', '$m');
+      fixture.componentRef.setInput('draft', 'edit body');
+      fixture.detectChanges();
+
+      fixture.componentRef.setInput('roomId', '!b:hs');
+      fixture.componentRef.setInput('editing', false);
+      fixture.componentRef.setInput('editTargetId', null);
+      fixture.detectChanges();
+
+      expect(cmp.text()).toBe('');
+      expect(store.get('!a:hs')).toBe('draft A');
+    });
+
+    it('persists the draft across a switch away and back, writing only the settled room', async () => {
+      const { fixture } = await renderComposer({ roomId: '!a:hs' });
+      const cmp = fixture.componentInstance;
+      const store = TestBed.inject(DraftStoreService);
+      cmp.text.set('draft A');
+      fixture.detectChanges();
+
+      fixture.componentRef.setInput('roomId', '!b:hs');
+      fixture.detectChanges();
+      expect(store.get('!a:hs')).toBe('draft A');
+      expect(store.get('!b:hs')).toBe('');
+
+      cmp.text.set('draft B');
+      fixture.detectChanges();
+      fixture.componentRef.setInput('roomId', '!a:hs');
+      fixture.detectChanges();
+      expect(cmp.text()).toBe('draft A');
+      expect(store.get('!b:hs')).toBe('draft B');
+      expect(store.get('!a:hs')).toBe('draft A');
+    });
+
+    it('takes the incoming managed draft on a room switch without writing the local store', async () => {
+      const { fixture } = await renderComposer({
+        roomId: '!a:hs',
+        composeDraft: 'managed A',
+      });
+      const cmp = fixture.componentInstance;
+      const store = TestBed.inject(DraftStoreService);
+      const changes: string[] = [];
+      cmp.composeDraftChange.subscribe((draft) => changes.push(draft));
+
+      fixture.componentRef.setInput('roomId', '!b:hs');
+      fixture.componentRef.setInput('composeDraft', 'managed B');
+      fixture.detectChanges();
+
+      expect(cmp.text()).toBe('managed B');
+      expect(store.get('!a:hs')).toBe('');
+      expect(store.get('!b:hs')).toBe('');
+      expect(changes.at(-1)).toBe('managed B');
+    });
+
+    it('lets typing win over an unchanged managed draft and an external update win over typing', async () => {
+      const { fixture } = await renderComposer({
+        roomId: '!a:hs',
+        composeDraft: 'one',
+      });
+      const cmp = fixture.componentInstance;
+      const changes: string[] = [];
+      cmp.composeDraftChange.subscribe((draft) => changes.push(draft));
+
+      cmp.text.set('one two');
+      fixture.detectChanges();
+      expect(changes.at(-1)).toBe('one two');
+      expect(cmp.text()).toBe('one two'); // the input did not move, so nothing mirrors back
+
+      fixture.componentRef.setInput('composeDraft', 'external');
+      fixture.detectChanges();
+      expect(cmp.text()).toBe('external');
+      expect(changes.at(-1)).toBe('external');
+    });
+
+    it('emits the typed text and then the external draft when both change in one pass', async () => {
+      const { fixture } = await renderComposer({
+        roomId: '!a:hs',
+        composeDraft: 'one',
+      });
+      const cmp = fixture.componentInstance;
+      const changes: string[] = [];
+      cmp.composeDraftChange.subscribe((draft) => changes.push(draft));
+
+      cmp.text.set('typed');
+      fixture.componentRef.setInput('composeDraft', 'external');
+      fixture.detectChanges();
+
+      // Persistence runs before the mirror, so the typed text is reported first.
+      expect(changes).toEqual(['typed', 'external']);
+      expect(cmp.text()).toBe('external');
+    });
   });
 
   describe('typing notifications', () => {

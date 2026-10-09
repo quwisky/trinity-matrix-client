@@ -235,8 +235,7 @@ describe('cascade layer contract', () => {
       'apps/trinity/src/global.scss',
       'components',
     );
-    expect(components).toContain('router-outlet + *');
-    expect(components).toContain('.panel-header');
+    expect(components).toContain('.trn-routed-page');
 
     const utilities = layerBodies('apps/trinity/src/global.scss', 'utilities');
     expect(utilities).toContain('.safe-top');
@@ -255,6 +254,10 @@ describe('cascade layer contract', () => {
       ":is(button, a)[data-trn-icon-button]:not( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] )",
       ":is(button, a)[data-trn-icon-button]:not( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] ) > &:active",
       ":is(button, a)[data-trn-icon-button]:is( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] )",
+      '.trn-title-row :is(.cdk-global-overlay-wrapper, .cdk-overlay-backdrop)',
+      '.cdk-overlay-dark-backdrop',
+      '@media (prefers-reduced-motion: no-preference)',
+      '@media (prefers-reduced-motion: no-preference) > .cdk-overlay-dark-backdrop',
       '@media (forced-colors: active)',
       '@media (forced-colors: active) > :focus-visible',
       '@media (prefers-reduced-motion: reduce)',
@@ -340,7 +343,7 @@ describe('cascade layer contract', () => {
     }
   });
 
-  it('allows only the audited reduced-motion important bridge', () => {
+  it('allows only the audited reduced-motion and title-row overlay important bridges', () => {
     expect(
       [
         ':host { color: red !important }',
@@ -386,6 +389,13 @@ describe('cascade layer contract', () => {
     }
 
     expect(declarations).toEqual([
+      // CDK injects unlayered overlay geometry at runtime; only an important layered
+      // declaration can move the global overlay layers below the desktop title row.
+      'apps/trinity/src/global.scss:inset-block:var(--trinity-title-row-inset) 0 !important',
+      'apps/trinity/src/global.scss:height:auto !important',
+      // CDK's runtime `@layer cdk-overlay` scrim out-ranks every declared layer.
+      'apps/trinity/src/global.scss:background:var(--trinity-overlay-scrim) !important',
+      'apps/trinity/src/global.scss:transition:opacity var(--trinity-duration-overlay) ease-out !important',
       'apps/trinity/src/global.scss:animation-duration:0.01ms !important',
       'apps/trinity/src/global.scss:animation-iteration-count:1 !important',
       'apps/trinity/src/global.scss:transition-property:none !important',

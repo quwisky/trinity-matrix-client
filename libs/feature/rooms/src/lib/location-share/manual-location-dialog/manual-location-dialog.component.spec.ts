@@ -1,4 +1,4 @@
-import { render } from '@trinity/testing';
+import { render, screen, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
@@ -30,6 +30,22 @@ async function setup(
 }
 
 describe('ManualLocationDialogComponent', () => {
+  it('shows its title in the shared dialog shell', async () => {
+    await setup();
+
+    expect(
+      within(screen.getByTestId('dialog-surface')).getByRole('heading', {
+        level: 2,
+        name: 'Share location',
+      }),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('dialog-footer')).getByTestId(
+        'manual-location-share',
+      ),
+    ).toBeTruthy();
+  });
+
   it('parses coordinates from the typed value', async () => {
     const { cmp } = await setup();
     expect(cmp.coords()).toBeNull();

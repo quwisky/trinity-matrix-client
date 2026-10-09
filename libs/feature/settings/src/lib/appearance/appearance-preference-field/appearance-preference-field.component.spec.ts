@@ -32,10 +32,12 @@ describe('AppearancePreferenceFieldComponent', () => {
       of({ kind: 'missing' as const }),
     );
 
-    expect(container.querySelector('strong')?.textContent).toContain('Theme');
+    expect(
+      container.querySelector(`#${THEME_FIELD.headingId}`)?.textContent,
+    ).toContain('Theme');
     expect(
       container.querySelector('[data-testid=theme-select]')?.textContent,
-    ).toContain('Trinity');
+    ).toContain('Graphite');
     expect(
       container
         .querySelector('[data-testid=theme-select]')

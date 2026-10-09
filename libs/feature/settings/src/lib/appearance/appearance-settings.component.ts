@@ -31,11 +31,13 @@ import {
 } from './appearance-preference-field/appearance-preference-field.component';
 import { AppearanceSettingsController } from './appearance-settings.controller';
 import { MessageGesturesBlockComponent } from './message-gestures-block.component';
+import { SystemTitleBarBlockComponent } from './system-title-bar-block.component';
 import { AppearancePreviewComponent } from './appearance-preview.component';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
-import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.directive';
-import { SettingsFieldRowDirective } from '../shared/settings-field-row.directive';
-import { SettingsGroupComponent } from '../shared/settings-group/settings-group.component';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+} from '@trinity/components/overlay';
+import { SaveFailureComponent } from './save-failure/save-failure.component';
 
 /**
  * Appearance settings sub-page: Mode, Theme, text and code size,
@@ -51,6 +53,7 @@ import { SettingsGroupComponent } from '../shared/settings-group/settings-group.
   templateUrl: './appearance-settings.component.html',
   providers: [AppearanceSettingsController],
   imports: [
+    SaveFailureComponent,
     TrnButton,
     TrnRadioGroupComponent,
     TrnSelectComponent,
@@ -58,11 +61,10 @@ import { SettingsGroupComponent } from '../shared/settings-group/settings-group.
     CodeAppearanceBlockComponent,
     AppearancePreferenceFieldComponent,
     MessageGesturesBlockComponent,
+    SystemTitleBarBlockComponent,
     AppearancePreviewComponent,
-    SettingsSectionHeadingComponent,
-    SettingsToggleRowDirective,
-    SettingsFieldRowDirective,
-    SettingsGroupComponent,
+    TrnSettingsGroupComponent,
+    TrnSettingsRowComponent,
   ],
 })
 export class AppearanceSettingsComponent {
@@ -87,6 +89,12 @@ export class AppearanceSettingsComponent {
     headingId: 'appearance-density-heading',
     testId: 'density-select',
     optionTestIdPrefix: 'density',
+  } as const satisfies AppearancePreferenceField;
+  readonly roomListField = {
+    axis: 'roomList',
+    headingId: 'appearance-room-list-heading',
+    testId: 'room-list-select',
+    optionTestIdPrefix: 'room-list',
   } as const satisfies AppearancePreferenceField;
   readonly textSizeField = {
     axis: 'textSize',

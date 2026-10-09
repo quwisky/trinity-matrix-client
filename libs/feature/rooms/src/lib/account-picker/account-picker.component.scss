@@ -1,39 +1,10 @@
 @use '../styles/mixins' as *;
 
 @layer components {
-  .picker {
-    box-sizing: border-box;
-    max-height: min(
-      32rem,
-      calc(
-        100dvh - var(--trinity-space-6) - var(
-            --trinity-navigation-safe-area-bottom
-          )
-      )
-    );
-    gap: 4px;
-    padding: 16px;
-  }
-
-  .picker__title {
-    font-size: var(--trinity-type-title-size);
-    line-height: var(--trinity-type-title-line-height);
-    font-weight: var(--trinity-type-title-weight);
-  }
-
-  .picker__hint {
-    margin-bottom: 8px;
-    font-size: var(--trinity-type-body-size);
-    line-height: var(--trinity-type-body-line-height);
-    color: var(--trinity-text-muted);
-  }
-
   .picker__list {
     display: flex;
-    min-height: 0;
     flex-direction: column;
     gap: 2px;
-    overflow-y: auto;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -67,43 +38,5 @@
     align-items: center;
     justify-content: center;
     color: var(--trinity-link);
-  }
-
-  .account-pick__id {
-    display: flex;
-    min-width: 0;
-    flex: 1;
-    flex-direction: column;
-  }
-
-  .account-pick__name {
-    @include ellipsis;
-
-    font-size: var(--trinity-type-control-size);
-    line-height: var(--trinity-type-control-line-height);
-    font-weight: var(--trinity-type-control-weight);
-    color: var(--trinity-text-bright);
-  }
-
-  .account-pick__handle {
-    @include ellipsis;
-
-    font-size: var(--trinity-type-metadata-size);
-    line-height: var(--trinity-type-metadata-line-height);
-    color: var(--trinity-text-muted);
-  }
-
-  .account-pick__active {
-    font-size: var(--trinity-type-caption-size);
-    line-height: var(--trinity-type-caption-line-height);
-    font-weight: var(--trinity-type-control-weight);
-    color: var(--trinity-text-muted);
-  }
-
-  .picker__actions {
-    display: flex;
-    flex: 0 0 auto;
-    justify-content: flex-end;
-    padding-top: 8px;
   }
 }

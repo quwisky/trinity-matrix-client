@@ -1,13 +1,26 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { exposed, invoke, on, send, removeListener } = vi.hoisted(() => ({
+const {
+  exposed,
+  mainWorldScripts,
+  invoke,
+  on,
+  send,
+  removeListener,
+  clearCache,
+} = vi.hoisted(() => ({
   exposed: { value: undefined as unknown },
+  mainWorldScripts: [] as {
+    func: (...args: unknown[]) => unknown;
+    args?: unknown[];
+  }[],
   invoke: vi.fn<(channel: string, request?: unknown) => Promise<unknown>>(() =>
     Promise.resolve({ kind: 'completed' }),
   ),
   on: vi.fn(),
   send: vi.fn(),
   removeListener: vi.fn(),
+  clearCache: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
@@ -15,8 +28,12 @@ vi.mock('electron', () => ({
     exposeInMainWorld: (_name: string, value: unknown) => {
       exposed.value = value;
     },
+    executeInMainWorld: (script: (typeof mainWorldScripts)[number]) => {
+      mainWorldScripts.push(script);
+    },
   },
   ipcRenderer: { invoke, on, send, removeListener },
+  webFrame: { clearCache },
 }));
 
 type ExposedBridge = {
@@ -36,6 +53,7 @@ type ExposedBridge = {
     readonly secureStore: {
       readonly isAvailable: () => Promise<boolean>;
       readonly get: (key: string) => Promise<string | null>;
+      readonly read: (key: string) => Promise<unknown>;
       readonly set: (key: string, value: string) => Promise<boolean>;
       readonly delete: (key: string) => Promise<void>;
     };
@@ -48,6 +66,19 @@ type ExposedBridge = {
         lat: number;
         lng: number;
       } | null>;
+    };
+    readonly lifecycle: {
+      readonly subscribeVisibility: (
+        callback: (visibility: 'visible' | 'hidden') => void,
+      ) => () => void;
+      readonly releaseMemory: () => void;
+    };
+    readonly titleBar: {
+      readonly setOverlayColors: (colors: unknown) => void;
+      readonly popupMenu: (at: unknown) => void;
+      readonly getSystemTitleBar: () => Promise<unknown>;
+      readonly setSystemTitleBar: (value: unknown) => Promise<unknown>;
+      readonly relaunch: () => void;
     };
   };
   readonly onDeepLink?: unknown;
@@ -85,6 +116,7 @@ describe('preload host capabilities', () => {
     on.mockClear();
     send.mockClear();
     removeListener.mockClear();
+    clearCache.mockClear();
   });
 
   it('exposes protocol v1 without leaking ipcRenderer', () => {
@@ -96,10 +128,12 @@ describe('preload host capabilities', () => {
     expect(Object.keys(bridge.capabilities).sort()).toEqual([
       'badge',
       'deepLinks',
+      'lifecycle',
       'location',
       'networkCors',
       'notificationPresentation',
       'secureStore',
+      'titleBar',
     ]);
     expect(bridge.onDeepLink).toBeUndefined();
     expect(bridge.showNotification).toBeUndefined();
@@ -139,9 +173,28 @@ describe('preload host capabilities', () => {
     await expect(bridge.capabilities.secureStore.isAvailable()).resolves.toBe(
       false,
     );
+    // Not granted is not "no such entry": a caller must never treat it as a lost secret.
+    await expect(bridge.capabilities.secureStore.read('k')).resolves.toEqual({
+      kind: 'unavailable',
+    });
     await expect(
       bridge.capabilities.location.approximate(),
     ).resolves.toBeNull();
+    bridge.capabilities.titleBar.setOverlayColors({
+      color: '#121214',
+      symbolColor: '#dbdee1',
+    });
+    bridge.capabilities.titleBar.popupMenu({ x: 8, y: 32 });
+    bridge.capabilities.titleBar.relaunch();
+    bridge.capabilities.lifecycle.subscribeVisibility(vi.fn());
+    bridge.capabilities.lifecycle.releaseMemory();
+    expect(clearCache).not.toHaveBeenCalled();
+    await expect(
+      bridge.capabilities.titleBar.getSystemTitleBar(),
+    ).resolves.toEqual({ saved: false, active: false });
+    await expect(
+      bridge.capabilities.titleBar.setSystemTitleBar(true),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'host-rejected' });
     expect(on).not.toHaveBeenCalledWith(
       'notification-click',
       expect.anything(),
@@ -181,6 +234,20 @@ describe('preload host capabilities', () => {
       reason: 'host-rejected',
     });
     expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('reads a secret with its absent, unavailable or present state once granted', async () => {
+    await bridge.negotiate(['secure-store']);
+    invoke.mockClear();
+    invoke.mockResolvedValueOnce({ kind: 'unavailable' });
+
+    await expect(bridge.capabilities.secureStore.read('k')).resolves.toEqual({
+      kind: 'unavailable',
+    });
+    expect(invoke).toHaveBeenCalledExactlyOnceWith(
+      'trinity:secure-store:read',
+      'k',
+    );
   });
 
   it('ignores an older negotiation that settles after its replacement', async () => {
@@ -236,6 +303,50 @@ describe('preload host capabilities', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('forwards title-bar requests once the operation is granted', async () => {
+    await bridge.negotiate(['title-bar']);
+    invoke.mockClear();
+    const titleBar = bridge.capabilities.titleBar;
+
+    titleBar.setOverlayColors({ color: '#121214', symbolColor: '#dbdee1' });
+    titleBar.popupMenu({ x: 8, y: 32 });
+    titleBar.relaunch();
+    await titleBar.getSystemTitleBar();
+    await titleBar.setSystemTitleBar(true);
+
+    expect(send.mock.calls).toEqual([
+      [
+        'trinity:host:v1:title-bar:set-overlay',
+        { color: '#121214', symbolColor: '#dbdee1' },
+      ],
+      ['trinity:host:v1:title-bar:popup-menu', { x: 8, y: 32 }],
+      ['trinity:host:v1:title-bar:relaunch'],
+    ]);
+    expect(invoke.mock.calls).toEqual([
+      ['trinity:host:v1:title-bar:get-system-title-bar'],
+      ['trinity:host:v1:title-bar:set-system-title-bar', true],
+    ]);
+  });
+
+  it('drops malformed title-bar input before IPC', async () => {
+    await bridge.negotiate(['title-bar']);
+    invoke.mockClear();
+    const titleBar = bridge.capabilities.titleBar;
+
+    titleBar.setOverlayColors({ color: 'red', symbolColor: '#dbdee1' });
+    titleBar.setOverlayColors({ color: '#121214' });
+    titleBar.popupMenu({ x: 8.5, y: 32 });
+    titleBar.popupMenu({ x: -1, y: 32 });
+    titleBar.popupMenu(null);
+    await expect(titleBar.setSystemTitleBar('true')).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'invalid-system-title-bar' },
+    });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it('round-trips only complete typed notification destinations', async () => {
     await bridge.negotiate(['notification-presentation']);
     invoke.mockClear();
@@ -277,6 +388,38 @@ describe('preload host capabilities', () => {
 
     unsubscribe();
     expect(removeListener).toHaveBeenCalledWith('notification-click', listener);
+  });
+
+  it('forwards window visibility only while lifecycle is granted', async () => {
+    await bridge.negotiate(['lifecycle']);
+    const seen = vi.fn();
+    const unsubscribe = bridge.capabilities.lifecycle.subscribeVisibility(seen);
+    const listener = on.mock.calls.find(
+      ([channel]) => channel === 'trinity:host:v1:lifecycle:visibility',
+    )?.[1] as (event: unknown, visibility: unknown) => void;
+
+    listener({}, 'hidden');
+    listener({}, 'gone');
+    listener({}, 'visible');
+    expect(seen.mock.calls).toEqual([['hidden'], ['visible']]);
+
+    await bridge.negotiate(['badge']);
+    listener({}, 'hidden');
+    expect(seen).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    expect(removeListener).toHaveBeenCalledWith(
+      'trinity:host:v1:lifecycle:visibility',
+      listener,
+    );
+  });
+
+  it('clears the Blink caches on request once lifecycle is granted', async () => {
+    await bridge.negotiate(['lifecycle']);
+
+    bridge.capabilities.lifecycle.releaseMemory();
+
+    expect(clearCache).toHaveBeenCalledOnce();
   });
 
   it('rejects malformed notification destinations before IPC', async () => {
@@ -321,3 +464,51 @@ function deferred<T>(): {
   });
   return { promise, resolve };
 }
+
+describe('preload title-bar running mode', () => {
+  const originalArgv = process.argv;
+
+  async function modeFor(argv: string[]): Promise<unknown> {
+    process.argv = [...originalArgv.slice(0, 1), ...argv];
+    vi.resetModules();
+    await import('./preload');
+    process.argv = originalArgv;
+    return (exposed.value as { capabilities: { titleBar: { mode: unknown } } })
+      .capabilities.titleBar.mode;
+  }
+
+  it.each([
+    [['--trinity-title-bar=row'], 'row'],
+    [['--other', '--trinity-title-bar=system'], 'system'],
+  ])('reads %j synchronously, before any negotiation', async (argv, mode) => {
+    expect(await modeFor(argv)).toBe(mode);
+    expect(invoke).not.toHaveBeenCalledWith(
+      'trinity:host:v1:title-bar:get-system-title-bar',
+    );
+  });
+
+  it.each([[[]], [['--trinity-title-bar=']], [['--trinity-title-bar=frame']]])(
+    'reports no mode for %j, so the renderer never draws a row over an OS bar',
+    async (argv) => {
+      expect(await modeFor(argv)).toBeNull();
+    },
+  );
+});
+
+describe('preload window.close()', () => {
+  it('asks main to close the window instead of destroying the page', async () => {
+    mainWorldScripts.length = 0;
+    vi.resetModules();
+    await import('./preload');
+    const page = globalThis as { close?: () => unknown };
+    vi.stubGlobal('close', () => 'destroyed');
+    try {
+      for (const { func, args = [] } of mainWorldScripts) func(...args);
+      send.mockClear();
+      page.close?.();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(send).toHaveBeenCalledExactlyOnceWith('trinity:window:close');
+  });
+});

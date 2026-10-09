@@ -48,6 +48,7 @@ describe('AppearanceSettingsComponent', () => {
       theme: 'trinity',
       textSize: 'default',
       density: 'cosy',
+      roomList: 'rich',
       codeSize: 'default',
       codeLinePresentation: 'auto',
     });
@@ -122,11 +123,45 @@ describe('AppearanceSettingsComponent', () => {
       container.querySelector('[data-testid=appearance-layout]'),
     ).not.toBeNull();
     expect(
-      container.querySelectorAll('[trnSettingsFieldRow]').length,
+      container.querySelectorAll('trn-settings-row').length,
     ).toBeGreaterThanOrEqual(5);
     expect(
       container.querySelector('trn-radio-group')?.getAttribute('data-layout'),
     ).toBe('segmented');
+  });
+
+  it('builds every Appearance control on the shared settings row', async () => {
+    const { container } = await renderPage();
+
+    // The ad-hoc `text-sm font-semibold` labels are gone: the row owns label typography.
+    expect(
+      container.querySelectorAll('.text-sm.font-semibold, strong.block'),
+    ).toHaveLength(0);
+    for (const testId of [
+      'theme-select',
+      'density-select',
+      'room-list-select',
+      'text-scale-select',
+      'code-scale-select',
+      'code-lines-select',
+      'time-format-select',
+      'date-format-select',
+      'space-order-select',
+      'message-swipe-select',
+      'timeline-show-membership',
+    ]) {
+      const control = container.querySelector(`[data-testid=${testId}]`);
+      expect(control, testId).not.toBeNull();
+      expect(
+        control!.closest('trn-settings-row') ??
+          (control!.matches('trn-settings-row') ? control : null),
+        testId,
+      ).not.toBeNull();
+    }
+    // Rows carry no inline padding or margin of their own: the content column owns it.
+    expect(
+      container.querySelectorAll('trn-settings-row[class*="px-"]'),
+    ).toHaveLength(0);
   });
 
   it('renders a labelled live preview of the active appearance recipe', async () => {
@@ -138,21 +173,22 @@ describe('AppearanceSettingsComponent', () => {
 
     expect(preview).not.toBeNull();
     expect(preview?.getAttribute('aria-hidden')).toBe('true');
-    expect(state?.textContent).toContain('dark · Trinity · Cosy');
+    expect(state?.textContent).toContain('dark · Graphite · Cosy');
 
     resolved.set({
       mode: 'light',
-      theme: 'onyx',
+      theme: 'midnight',
       textSize: 'default',
       density: 'compact',
+      roomList: 'rich',
       codeSize: 'default',
       codeLinePresentation: 'auto',
     });
-    fixture.componentInstance.appearance.update('theme', 'onyx');
+    fixture.componentInstance.appearance.update('theme', 'midnight');
     fixture.componentInstance.appearance.update('density', 'compact');
     fixture.detectChanges();
 
-    expect(state?.textContent).toContain('light · Onyx · Compact');
+    expect(state?.textContent).toContain('light · Midnight · Compact');
   });
 
   it('applies the chosen Mode on change', async () => {
@@ -419,6 +455,29 @@ describe('AppearanceSettingsComponent', () => {
     expect(select?.querySelector('button')).not.toBeNull();
   });
 
+  it('offers Spacious in the density select', async () => {
+    const { fixture } = await renderPage();
+
+    expect(
+      selectFor(fixture, 'density-select')
+        ?.options()
+        .map(({ value, label }) => [value, label]),
+    ).toContainEqual(['spacious', 'Spacious']);
+  });
+
+  it('offers Rich and Compact in the room list select', async () => {
+    const { fixture } = await renderPage();
+
+    expect(
+      selectFor(fixture, 'room-list-select')
+        ?.options()
+        .map(({ value, label }) => [value, label]),
+    ).toEqual([
+      ['rich', 'Rich'],
+      ['compact', 'Compact'],
+    ]);
+  });
+
   // #168, and the quietest of the three: the Theme dropdown lost only a capital letter,
   // reading `amethyst` under an option labelled 'Amethyst'. `toContain` is case-sensitive,
   // which is the whole reason the negative half of this assertion can still fail.
@@ -462,7 +521,7 @@ describe('AppearanceSettingsComponent', () => {
     const trigger = container.querySelector(
       '[data-testid="theme-select"] hlm-select-trigger',
     );
-    expect(trigger?.textContent).toContain('Trinity');
+    expect(trigger?.textContent).toContain('Graphite');
     expect(
       container.querySelector('[data-testid=theme-select-failure]'),
     ).not.toBeNull();

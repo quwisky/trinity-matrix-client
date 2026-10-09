@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { defer, finalize, of, type Observable } from 'rxjs';
 import { JumpToDateComponent } from './jump-to-date.component';
 
@@ -13,7 +13,7 @@ import { JumpToDateComponent } from './jump-to-date.component';
  */
 @Injectable({ providedIn: 'root' })
 export class JumpToDateService {
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private open = false;
 
   /** Ask for a date; resolves its local midnight in epoch ms, or null. */
@@ -25,7 +25,6 @@ export class JumpToDateService {
       this.open = true;
       return this.dialog
         .openAndWait$<number, JumpToDateComponent>(JumpToDateComponent, {
-          ariaLabel: 'Jump to date',
           autoFocus: '[data-autofocus]',
         })
         .pipe(finalize(() => (this.open = false)));

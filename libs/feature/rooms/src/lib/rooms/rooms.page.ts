@@ -1,9 +1,4 @@
-// Installs syntax highlighting for fenced code blocks, by side effect on module eval.
-// Imported HERE rather than from util-matrix's barrel on purpose: message-view.ts (which
-// consumes the highlighter) is in the eager bundle, so a barrel export would put every
-// grammar in the initial chunk. This route is lazily loaded, so the grammars land in the
-// rooms chunk — and it evaluates before any message view is projected.
-import '../message-presentation/code-highlight';
+import { IdentityPresenceService } from '@trinity/data-access/identity';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -14,24 +9,20 @@ import {
   afterNextRender,
   effect,
   untracked,
+  signal,
   inject,
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
 import {
   InboundRoomLinkService,
+  roomTitle,
+  TitleBarState,
   WORKSPACE_SYSTEM_STATUS,
 } from '@trinity/application/workspace';
-import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
-import {
-  TrnDropdownMenu,
-  TrnDropdownMenuItem,
-  TrnDropdownMenuSeparator,
-  TrnDropdownMenuTrigger,
-} from '@trinity/components/overlay';
+import { TrnButton } from '@trinity/components/controls';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
-import { TrnTooltip } from '@trinity/components/generic-content';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ImagePackService } from '@trinity/data-access/media';
 import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
@@ -43,8 +34,10 @@ import {
   FeatureFlagsService,
   ShellLayoutService,
 } from '@trinity/platform-native';
-import { AvatarComponent } from '@trinity/components/generic-content';
-import { PageHeaderComponent } from '@trinity/components/navigation-layout';
+import {
+  RoomHeaderComponent,
+  type RoomHeaderAction,
+} from '../room-header/room-header.component';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
@@ -57,12 +50,12 @@ import { MessageSearchComponent } from '../message-search/message-search.compone
 import { MemberInfoComponent } from '../member-info/member-info.component';
 import { PaneHandleComponent } from './pane-handle.component';
 import { DrawerSwipeDirective } from './drawer-swipe.directive';
-import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
-import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
+import { MessageListComponent } from '../message-list/message-list.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
 import { type SwipeDirection } from '../message-row/message-row.component';
+import { showRoomIntro } from './room-intro';
 import { RoomShellStore } from './room-shell-store';
 import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 import { ShellStatusService } from './shell-status.service';
@@ -77,7 +70,6 @@ import { ReadStateService } from './read-state.service';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
-import { TrnIconComponent } from '@trinity/components/foundations';
 
 /**
  * Discord-style authenticated shell: server rail + channel sidebar (in a
@@ -120,16 +112,8 @@ const PANEL_DRAWER_PX = 480;
   styleUrls: ['rooms.page.scss'],
   imports: [
     EmptyStateComponent,
-    PageHeaderComponent,
     TrnButton,
-    TrnActionAvailability,
-    TrnDropdownMenu,
-    TrnDropdownMenuItem,
-    TrnDropdownMenuSeparator,
-    TrnDropdownMenuTrigger,
-    TrnTooltip,
-    TrnIconComponent,
-    AvatarComponent,
+    RoomHeaderComponent,
     ServerRailComponent,
     ChannelSidebarComponent,
     SidebarUserPanelComponent,
@@ -144,8 +128,7 @@ const PANEL_DRAWER_PX = 480;
     MemberInfoComponent,
     PaneHandleComponent,
     DrawerSwipeDirective,
-    SimpleMessageListComponent,
-    VirtualMessageListComponent,
+    MessageListComponent,
     EncryptionBannerComponent,
     ConnectivityBannerComponent,
     TombstoneBannerComponent,
@@ -238,13 +221,20 @@ export class RoomsPage {
   private readonly selectedLibrary = inject(SelectedRoomLibraryService);
   private readonly conversations = inject(ConversationRuntime);
   readonly timeline = this.conversations.timeline;
+  /**
+   * A joined room, or a linked room still loading or unavailable (#968). A room the client
+   * holds but the user has not joined (kicked, banned, left, invited) settles ready or
+   * empty and falls back to the "Select a room" hero.
+   */
+  protected readonly showTimeline = computed(() => {
+    if (this.vm.activeRoom()) return true;
+    const kind = this.timeline.loadState().kind;
+    return (
+      !!this.store.activeRoomId() && (kind === 'loading' || kind === 'error')
+    );
+  });
   readonly threads = this.conversations.threads;
   readonly pinned = this.conversations.pins;
-  /** Doubles as tooltip, accessible name and phone menu label, so the count has no badge. */
-  protected readonly pinnedLabel = computed(() => {
-    const count = this.pinned.messages().length;
-    return count > 0 ? `Pinned messages (${count})` : 'Pinned messages';
-  });
   private readonly imagePackService = inject(ImagePackService);
   readonly flags = inject(FeatureFlagsService);
   private readonly matrix = inject(MatrixClientService);
@@ -262,20 +252,30 @@ export class RoomsPage {
   readonly inviteActions = inject(InviteActionsService);
   readonly spaceActions = inject(SpaceActionsService);
   readonly roomActions = inject(RoomActionsService);
+
+  /** The empty-room Invite prompt; see showRoomIntro for when it shows. */
+  protected readonly roomIntro = computed(() =>
+    showRoomIntro({
+      hasRoom: !!this.vm.activeRoom(),
+      direct: this.vm.activeRoomIsDirect(),
+      canInvite: this.vm.roomInvitePermission().available,
+      loadState: this.timeline.loadState(),
+      joinedMembers: this.vm.membersView().current?.length ?? null,
+      messages: this.timeline.messages(),
+    }),
+  );
   readonly readState = inject(ReadStateService);
   readonly messageActions = inject(MessageActionsService);
   readonly shortcutActions = inject(ShellShortcutsService);
   readonly session = inject(SessionActionsService);
   readonly systemStatus = inject(WORKSPACE_SYSTEM_STATUS);
-  private readonly roomActionsOverflow = viewChild<ElementRef<HTMLElement>>(
-    'roomActionsOverflow',
-  );
-
-  protected openSystemStatus(): void {
-    this.systemStatus.show(() =>
-      this.roomActionsOverflow()?.nativeElement.focus(),
-    );
-  }
+  protected readonly titleBar = inject(TitleBarState);
+  private readonly presence = inject(IdentityPresenceService);
+  /** The active account's own presence for the user-panel avatar; null while unknown. */
+  protected readonly ownPresence = computed(() => {
+    const userId = this.vm.activeAccountId();
+    return userId ? this.presence.presenceFor(userId)() : null;
+  });
 
   /** Phones use a dialog because the narrow navigation has no room for the desktop submenu. */
   protected onOpenAccountPicker(): void {
@@ -308,11 +308,68 @@ export class RoomsPage {
   private readonly listView = viewChild<ElementRef<HTMLElement>>('listView');
   private readonly mainView = viewChild<ElementRef<HTMLElement>>('mainView');
 
+  private readonly header = viewChild(RoomHeaderComponent);
+  private readonly messageSearch = viewChild(MessageSearchComponent);
+
+  /** The identity the header names while accounts are mixed. */
+  protected readonly actingAs = computed(() =>
+    this.mixedOn()
+      ? {
+          userId: this.vm.userId(),
+          name: this.vm.userName(),
+          initial: this.vm.userInitial(),
+          avatarMxc: this.vm.userAvatarMxc(),
+        }
+      : null,
+  );
+
+  /** Shared by the header field and the search panel's own field. */
+  protected readonly searchQuery = signal('');
+
+  protected readonly surfaceKind = computed(
+    () => this.roomSurfaces.renderedSurface()?.kind ?? null,
+  );
+
+  protected onHeaderAction(action: RoomHeaderAction): void {
+    switch (action.type) {
+      case 'back':
+        return this.backToList();
+      case 'threads':
+        return this.messageActions.openThreadsList();
+      case 'pinned':
+        return this.messageActions.openPinnedPanel();
+      case 'members':
+        return this.toggleMembers();
+      case 'search':
+        return this.messageActions.openMessageSearch();
+      case 'invite':
+        return this.roomActions.onInviteToRoom();
+      case 'settings':
+        return this.roomActions.onOpenRoomSettings();
+      case 'jump-to-date':
+        return this.messageActions.jumpToDate();
+      case 'system-status':
+        return this.systemStatus.show();
+    }
+  }
+
   constructor() {
     // The service cannot read the page's viewChild refs, so hand it the focus call.
     // In the constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle
     // hooks, so binding there left the callback unset for all 170 unit tests.
     this.nav.bindFocus(() => this.focusActiveView());
+    this.shortcutActions.bindSearchFocus(() => {
+      if (!this.vm.activeRoom()) return false;
+      // Below the members breakpoint the field is hidden: panels are drawers over it.
+      if (!this.roomSurfaces.membersAreDrawer()) {
+        this.header()?.focusSearch();
+      } else if (this.surfaceKind() === 'search') {
+        this.messageSearch()?.focusField();
+      } else {
+        this.messageActions.openMessageSearch();
+      }
+      return true;
+    });
     // ShellStatusService presents runWithBusy failures directly. In the zoneless app,
     // a component effect that only reads the error signal is not a reliable render
     // trigger when the failed action changes no template-read state.
@@ -332,8 +389,35 @@ export class RoomsPage {
         this.messageActions.onMatrixLink({ target }, 'deep-link'),
       );
     });
+    // Name the desktop title row and the browser tab after the open room; only a space
+    // contributes a prefix (Home, Recent and the Rooms view are not spaces).
+    effect((onCleanup) => {
+      const room = this.vm.activeRoom();
+      const spaceId = this.store.activeSpaceId();
+      // The space's own name; unknown (not yet in the library) shows no prefix rather
+      // than the view model's "Direct messages" fallback.
+      const space =
+        !this.store.recentView() && !this.store.roomsView() && spaceId
+          ? (this.selectedLibrary
+              .view()
+              .spaces.find((candidate) => candidate.id === spaceId)?.name ??
+            null)
+          : null;
+      this.titleBar.setContext({
+        title: roomTitle(
+          space,
+          room
+            ? { name: room.name, isDirect: this.vm.activeRoomIsDirect() }
+            : null,
+        ),
+        quickSwitcher: () => this.shortcutActions.openSwitcher(),
+      });
+      onCleanup(() => this.titleBar.setContext(null));
+    });
     effect((onCleanup) => {
       const roomId = this.store.activeRoomId();
+      // A query typed for one room must not follow the reader into the next.
+      untracked(() => this.searchQuery.set(''));
       if (!roomId) return;
       this.imagePackService.connect(roomId);
       onCleanup(() => this.imagePackService.disconnect(roomId));
@@ -423,6 +507,8 @@ export class RoomsPage {
    * Drawer members remain an overlay and dismiss like the temporary surfaces.
    */
   onEscapeKey(): void {
+    // An open native popover (the topic) takes this Escape for itself.
+    if (document.querySelector('[popover]:popover-open')) return;
     this.roomSurfaces.transition({ kind: 'escape' });
   }
 }

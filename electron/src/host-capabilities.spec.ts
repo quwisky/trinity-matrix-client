@@ -40,6 +40,7 @@ describe('host capability negotiation', () => {
     if (result.kind !== 'accepted') return;
     expect(Object.keys(result.operations)).toEqual(HOST_OPERATIONS);
     expect(result.operations.badge).toEqual({ kind: 'supported' });
+    expect(result.operations['title-bar']).toEqual({ kind: 'supported' });
     expect(result.operations.updates).toEqual({
       kind: 'unavailable',
       reason: 'not-implemented',

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
+import { TrnDropdownMenuTrigger } from '@trinity/components/overlay';
 import { ComposerFormatMenuComponent } from './composer-format-menu.component';
 
 const platform = vi.hoisted(() => ({ mobile: false }));
@@ -9,6 +11,16 @@ vi.mock('@trinity/platform-native', async (importOriginal) => ({
 }));
 
 describe('ComposerFormatMenuComponent', () => {
+  it('aligns the desktop format menu to the end of its trigger', async () => {
+    platform.mobile = false;
+    const { fixture } = await render(ComposerFormatMenuComponent);
+    const trigger = fixture.debugElement
+      .query(By.directive(TrnDropdownMenuTrigger))
+      .injector.get(TrnDropdownMenuTrigger);
+    expect(trigger.align()).toBe('end');
+    expect(trigger.side()).toBe('top');
+  });
+
   it('offers all Markdown actions and Preview from the desktop menu', async () => {
     platform.mobile = false;
     const { container } = await render(ComposerFormatMenuComponent);
@@ -99,8 +111,11 @@ describe('ComposerFormatMenuComponent', () => {
       emitted.push(action),
     );
     trigger.click();
-    const sheet = document.querySelector('[data-testid=action-sheet-surface]');
-    expect(sheet).not.toBeNull();
+    await vi.waitFor(() =>
+      expect(
+        document.querySelector('[data-testid=action-sheet-surface]'),
+      ).not.toBeNull(),
+    );
     document
       .querySelector<HTMLButtonElement>('[data-testid=format-cancel]')
       ?.click();

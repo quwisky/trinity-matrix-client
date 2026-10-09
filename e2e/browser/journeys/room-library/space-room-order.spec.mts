@@ -174,7 +174,7 @@ async function sendMessage(
 
 /** Open the space's sort menu — a submenu of the header overflow — and pick one of its rows. */
 async function chooseSort(page: Page, option: string): Promise<void> {
-  await page.getByTestId('space-actions-overflow').click();
+  await page.getByTestId('space-header').click();
   await page.getByTestId('space-sort').click();
   const item = page.getByTestId(option);
   await item.waitFor({ state: 'visible', timeout: 15_000 });
@@ -220,7 +220,7 @@ async function openSpace(page: Page, spaceName: string): Promise<void> {
   await pill.click();
   // The sort entry lives in the header overflow now, so the overflow trigger is what says
   // the space's sidebar is up.
-  await expect(page.getByTestId('space-actions-overflow')).toBeVisible({
+  await expect(page.getByTestId('space-header')).toBeVisible({
     timeout: 15_000,
   });
 }
@@ -268,7 +268,7 @@ test.describe('Room order inside a space', () => {
         hierarchyWrites.push(request.url());
       }
     });
-    await page.getByTestId('space-actions-overflow').click();
+    await page.getByTestId('space-header').click();
     await page.getByTestId('open-space-settings').click();
     await openSettingsTab(page, 'space-settings', 'for-you');
     const settings = page.getByTestId('space-settings');
@@ -329,7 +329,7 @@ test.describe('Room order inside a space', () => {
 
     // 5. Use my default deletes the override. It therefore sees the later Appearance change
     //    instead of retaining a snapshot of the default that existed when settings opened.
-    await page.getByTestId('space-actions-overflow').click();
+    await page.getByTestId('space-header').click();
     await page.getByTestId('open-space-settings').click();
     await openSettingsTab(page, 'space-settings', 'for-you');
     await page.getByTestId('space-settings-order-default').click();
@@ -376,9 +376,12 @@ test.describe('Room order inside a space', () => {
     await openSpace(page, spaceName);
   }
 
-  /** Three buttons, and a title with room to actually read — see #38. */
+  /**
+   * A space header keeps two buttons (search, create a room) because the rest moved into the
+   * space-name menu, and the title keeps room to actually read — see #38.
+   */
   async function expectHeaderFits(page: Page): Promise<void> {
-    await expect(page.locator('.sidebar__actions button')).toHaveCount(3);
+    await expect(page.locator('.sidebar__actions button')).toHaveCount(2);
 
     const title = await page.locator('.sidebar__title').boundingBox();
     if (!title) {

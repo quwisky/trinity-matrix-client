@@ -288,15 +288,7 @@ test.describe('Recent activity', () => {
     const recentItem = page
       .locator('trn-server-rail .item')
       .filter({ has: page.getByTestId('rail-recent') });
-    const badge = recentItem.locator('.badge');
-    await expect(badge).toBeVisible({ timeout: 30_000 });
-
-    // Assert the exact seeded count, with a positive-integer fallback for server-side
-    // notification-count timing quirks (mirrors unread-badges.spec.mts).
-    const text = (await badge.textContent())?.trim() ?? '';
-    if (text !== String(seed)) {
-      expect(text).toMatch(/^\d+\+?$/);
-      expect(parseInt(text, 10)).toBeGreaterThan(0);
-    }
+    // Plain unread (no mention) is a dot on the item, not a count badge.
+    await expect(recentItem).toHaveClass(/item--unread/, { timeout: 30_000 });
   });
 });

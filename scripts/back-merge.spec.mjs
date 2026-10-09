@@ -8,8 +8,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import * as backMerge from './back-merge.mjs';
 import {
-  autoMergeArgs,
   compareVersions,
   higherVersion,
   mergeNextManifest,
@@ -17,7 +17,6 @@ import {
   resolutionFor,
   mergeTag,
   resolveConflicts,
-  withoutReleaseAs,
   leaseFor,
 } from './back-merge.mjs';
 
@@ -306,27 +305,19 @@ describe('back-merge', () => {
     );
   });
 
-  it('enables auto-merge with a merge commit', () => {
-    expect(autoMergeArgs(17)).toEqual([
-      'pr',
-      'merge',
-      '17',
-      '--auto',
-      '--merge',
-    ]);
+  it('leaves landing to land-back-merge.mjs: it never merges the PR itself', () => {
+    expect(backMerge.autoMergeArgs).toBeUndefined();
   });
 
-  it('strips the one-time release-as without reformatting the config', () => {
-    const config = readFileSync(
-      resolve(import.meta.dirname, '../release-please-config.json'),
+  it('only pushes its own back-merge branch and leaves the release config as merged', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, 'back-merge.mjs'),
       'utf8',
     );
-    const pinned = config.replace(
-      '".": {}',
-      '".": {\n      "release-as": "0.2.0"\n    }',
-    );
-    expect(pinned).not.toBe(config);
-    expect(withoutReleaseAs(pinned)).toBe(config);
-    expect(withoutReleaseAs(config)).toBeNull();
+    expect(backMerge.withoutReleaseAs).toBeUndefined();
+    expect(source).not.toContain('release-as');
+    expect(source.match(/git\('push'[^\n]*/g)).toEqual([
+      "git('push', lease, 'origin', `${head}:${head}`);",
+    ]);
   });
 });

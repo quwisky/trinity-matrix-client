@@ -16,6 +16,7 @@ import {
 } from '../../support/multi-account-journey.mts';
 import {
   configureRoomSettingsSuite,
+  expectRowLabelsAlignedWithTitle,
   openRoom,
   session,
 } from '../../support/room-settings-journey.mts';
@@ -77,7 +78,8 @@ async function seedSharedRoom(
 }
 
 async function openForYou(page: Page): Promise<void> {
-  await page.getByTestId('open-room-settings').click();
+  await page.getByTestId('room-actions-overflow').click();
+  await page.getByTestId('overflow-open-room-settings').click();
   await expect(page.getByTestId('room-settings')).toBeVisible({
     timeout: 10_000,
   });
@@ -185,7 +187,8 @@ test.describe('Room settings · For you', () => {
       await route.continue();
     });
 
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await expect(page.getByTestId('room-settings')).toBeVisible({
       timeout: 10_000,
     });
@@ -258,6 +261,9 @@ test.describe('Room settings · For you', () => {
     await expect(
       page.getByTestId('room-settings-favourite').getByRole('checkbox'),
     ).not.toBeChecked();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('For you');
+    expect(page.viewportSize()!.width).toBeGreaterThanOrEqual(1280);
+    await expectRowLabelsAlignedWithTitle(page, 'room-settings');
 
     // Native radio keyboard behavior reaches the component output; staged checkboxes use
     // Space. This covers the section without bypassing user events through evaluate().
@@ -327,7 +333,7 @@ test.describe('Room settings · For you', () => {
       theme: document.documentElement.getAttribute('data-theme'),
       fontSize: document.documentElement.style.fontSize,
     }));
-    for (const theme of [null, 'amethyst', 'onyx'] as const) {
+    for (const theme of [null, 'classic', 'midnight', 'amethyst'] as const) {
       for (const dark of [false, true]) {
         await page.evaluate(
           ({ selectedTheme, selectedDark }) => {

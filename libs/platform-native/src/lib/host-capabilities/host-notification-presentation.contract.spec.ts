@@ -75,6 +75,7 @@ function manifest(
       'secure-store': { kind: 'unavailable', reason: 'not-supported' },
       lifecycle: { kind: 'unavailable', reason: 'not-supported' },
       updates: { kind: 'unavailable', reason: 'not-supported' },
+      'title-bar': { kind: 'unavailable', reason: 'not-supported' },
     },
   };
 }

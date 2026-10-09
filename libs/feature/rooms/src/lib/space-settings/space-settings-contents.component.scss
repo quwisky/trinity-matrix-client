@@ -9,10 +9,6 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
-    padding: 18px;
-    border: 1px solid var(--trinity-border-subtle);
-    border-radius: var(--trinity-shape-container-radius);
-    background: var(--trinity-surface-panel);
   }
 
   .space-contents__heading,
@@ -30,12 +26,12 @@
     gap: 16px;
   }
 
-  h3,
+  h2,
   p {
     margin: 0;
   }
 
-  h3 {
+  h2 {
     color: var(--trinity-text-bright);
     font-size: var(--trinity-type-body-size);
     font-weight: 650;
@@ -86,7 +82,7 @@
   .space-contents__kind {
     flex: none;
     padding: 2px 7px;
-    border-radius: 999px;
+    border-radius: var(--trinity-radius-pill);
     background: var(--trinity-surface-control);
     color: var(--trinity-text-muted);
     font-size: var(--trinity-type-caption-size);
@@ -137,13 +133,6 @@
     color: var(--trinity-danger);
   }
 
-  .space-contents__state--danger {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-
   .space-contents__recovery {
     border: 1px solid var(--trinity-border-subtle);
   }
@@ -155,15 +144,14 @@
 
     .space-contents__heading,
     .space-contents__actions,
-    .space-contents__recovery,
-    .space-contents__state--danger {
+    .space-contents__recovery {
       align-items: stretch;
       flex-direction: column;
     }
 
     .space-contents__actions button,
     .space-contents__recovery button,
-    .space-contents__state--danger button {
+    .space-contents__retry {
       min-height: 44px;
       width: 100%;
     }

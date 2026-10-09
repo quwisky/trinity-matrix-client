@@ -12,17 +12,25 @@ import {
 } from '@trinity/application/workspace';
 import {
   TrnDialogRef,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { firstValueFrom, of, Subject, type Subscription } from 'rxjs';
+import {
+  firstValueFrom,
+  of,
+  Subject,
+  throwError,
+  type Observable,
+  type Subscription,
+} from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 
-const platform = vi.hoisted(() => ({ native: false }));
+const platform = vi.hoisted(() => ({ native: false, mobile: false }));
 vi.mock('@trinity/platform-native', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@trinity/platform-native')>()),
   isInstalledNativePlatform: () => platform.native,
+  isMobileOs: () => platform.mobile,
 }));
 
 @Component({ template: '' })
@@ -38,9 +46,12 @@ describe('Workspace application-surface composition adapter', () => {
   const dialogOpen = vi.fn();
   const close = vi.fn();
   let lifetime: Subscription;
+  let settingsLoad: () => Observable<Type<unknown>>;
 
   beforeEach(() => {
     platform.native = false;
+    platform.mobile = false;
+    settingsLoad = () => of(StubSettingsComponent as Type<unknown>);
     vi.clearAllMocks();
     vi.stubGlobal(
       'matchMedia',
@@ -54,7 +65,7 @@ describe('Workspace application-surface composition adapter', () => {
         WorkspaceApplicationSurfacePresenterAdapter,
         { provide: Router, useValue: { navigate, events } },
         {
-          provide: TrnDialogService,
+          provide: TrnSurfaceService,
           useValue: { open: dialogOpen, isTopmost: vi.fn(() => true) },
         },
         { provide: TrnToastService, useValue: { show: vi.fn() } },
@@ -67,7 +78,7 @@ describe('Workspace application-surface composition adapter', () => {
         },
         {
           provide: SETTINGS_DIALOG_COMPONENT,
-          useValue: () => of(StubSettingsComponent as Type<unknown>),
+          useValue: () => settingsLoad(),
         },
       ],
     });
@@ -85,6 +96,20 @@ describe('Workspace application-surface composition adapter', () => {
   function presenter() {
     return TestBed.inject(WorkspaceApplicationSurfacePresenterAdapter);
   }
+
+  it('leaves System status to the application root', async () => {
+    await expect(
+      firstValueFrom(
+        presenter().present({
+          surface: { kind: 'system-status', section: 'overview' },
+        }),
+      ),
+    ).resolves.toEqual({
+      kind: 'unavailable',
+      surface: { kind: 'system-status', section: 'overview' },
+    });
+    expect(dialogOpen).not.toHaveBeenCalled();
+  });
 
   it('keeps routed presentation cold and maps semantic return destinations at the adapter', async () => {
     const request = {
@@ -114,6 +139,21 @@ describe('Workspace application-surface composition adapter', () => {
     });
   });
 
+  it('passes the requested Settings part through as the dialog initial part', async () => {
+    await firstValueFrom(
+      presenter().present({
+        surface: { kind: 'settings', section: 'appearance', part: 'timeline' },
+      }),
+    );
+
+    expect(dialogOpen).toHaveBeenCalledWith(
+      StubSettingsComponent,
+      expect.objectContaining({
+        inputs: { initialSection: 'appearance', initialPart: 'timeline' },
+      }),
+    );
+  });
+
   it('registers a modal Settings identity with Workspace Back', async () => {
     const request = {
       surface: { kind: 'settings', section: 'stickers' },
@@ -139,8 +179,8 @@ describe('Workspace application-surface composition adapter', () => {
     expect(close).toHaveBeenCalled();
   });
 
-  it('keeps Settings routed in installed Capacitor hosts', async () => {
-    platform.native = true;
+  it('leaves the sheet-or-dialog choice to the surface service', async () => {
+    platform.mobile = true;
 
     await firstValueFrom(
       presenter().present({
@@ -148,8 +188,11 @@ describe('Workspace application-surface composition adapter', () => {
       }),
     );
 
-    expect(navigate).toHaveBeenCalledWith(['/settings/security'], {});
-    expect(dialogOpen).not.toHaveBeenCalled();
+    const options = dialogOpen.mock.calls[0]?.[1];
+    expect(options).not.toHaveProperty('placement');
+    expect(options).not.toHaveProperty('kind');
+    expect(options.inputs).toEqual({ initialSection: 'security' });
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('opens a nested trust flow over modal Settings and makes it the active surface', async () => {
@@ -187,7 +230,6 @@ describe('Workspace application-surface composition adapter', () => {
     expect(dialogOpen).toHaveBeenNthCalledWith(2, StubVerifyComponent, {
       inputs: { asModal: true },
       disableClose: true,
-      ariaLabel: 'Encryption',
     });
     await expect(
       firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
@@ -224,11 +266,93 @@ describe('Workspace application-surface composition adapter', () => {
     expect(dialogOpen).toHaveBeenCalledWith(StubVerifyComponent, {
       inputs: { asModal: true },
       disableClose: true,
-      ariaLabel: 'Encryption',
     });
     await expect(
       firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
     ).resolves.toMatchObject({ kind: 'blocked' });
     expect(close).not.toHaveBeenCalled();
+  });
+
+  it('drops a dialog whose lazy load finishes after a navigation started', async () => {
+    const load = new Subject<Type<unknown>>();
+    settingsLoad = () => load;
+    const outcome = firstValueFrom(
+      presenter().present({ surface: { kind: 'settings', section: null } }),
+    );
+
+    events.next(new NavigationStart(1, '/elsewhere'));
+    load.next(StubSettingsComponent);
+    load.complete();
+
+    await expect(outcome).resolves.toEqual({
+      kind: 'unavailable',
+      surface: { kind: 'settings', section: null },
+    });
+    expect(dialogOpen).not.toHaveBeenCalled();
+    await expect(
+      firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
+    ).resolves.toMatchObject({ kind: 'unhandled' });
+  });
+
+  it('does not report a lazy-load failure that arrives after a navigation started', async () => {
+    const toast = TestBed.inject(TrnToastService);
+    const restoreFocus = vi.fn();
+    const request = {
+      surface: { kind: 'settings', section: null },
+      context: { restoreFocus },
+    } as const satisfies WorkspaceApplicationSurfaceRequest;
+    settingsLoad = () => throwError(() => new Error('chunk failed'));
+    await firstValueFrom(presenter().present(request));
+    await Promise.resolve();
+    expect(toast.show).toHaveBeenCalledOnce();
+    expect(restoreFocus).toHaveBeenCalledOnce();
+
+    const load = new Subject<Type<unknown>>();
+    settingsLoad = () => load;
+    const outcome = firstValueFrom(presenter().present(request));
+    events.next(new NavigationStart(1, '/elsewhere'));
+    load.error(new Error('chunk failed'));
+
+    await expect(outcome).resolves.toEqual({
+      kind: 'unavailable',
+      surface: request.surface,
+    });
+    await Promise.resolve();
+    expect(toast.show).toHaveBeenCalledOnce();
+    expect(restoreFocus).toHaveBeenCalledOnce();
+  });
+
+  it('does not restore the owner when a dialog closes after a navigation started', async () => {
+    const restoreFocus = vi.fn();
+    const request = {
+      surface: { kind: 'settings', section: null },
+      context: { restoreFocus },
+    } as const satisfies WorkspaceApplicationSurfaceRequest;
+    const closeDialog = () => {
+      const closed = new Subject<void>();
+      dialogOpen.mockReturnValueOnce(
+        new TrnDialogRef({
+          closed,
+          close: () => {
+            closed.next();
+            closed.complete();
+          },
+        }),
+      );
+      return () => closed.next();
+    };
+
+    const closeFirst = closeDialog();
+    await firstValueFrom(presenter().present(request));
+    closeFirst();
+    await Promise.resolve();
+    expect(restoreFocus).toHaveBeenCalledOnce();
+
+    const closeSecond = closeDialog();
+    await firstValueFrom(presenter().present(request));
+    events.next(new NavigationStart(2, '/elsewhere'));
+    closeSecond();
+    await Promise.resolve();
+    expect(restoreFocus).toHaveBeenCalledOnce();
   });
 });

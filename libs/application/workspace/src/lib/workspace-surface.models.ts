@@ -3,10 +3,17 @@ export type WorkspaceApplicationSurface =
   | {
       readonly kind: 'settings';
       readonly section: string | null;
+      /** A part of the section to open at; presentation only, not part of the identity. */
+      readonly part?: string | null;
     }
   | {
       readonly kind: 'trust';
       readonly flow: 'setup' | 'unlock' | 'verify';
+    }
+  | {
+      /** System status, open at a section; the app root presents it, never the router. */
+      readonly kind: 'system-status';
+      readonly section: string;
     };
 
 /** Compare semantic application identities without leaking presentation details. */
@@ -15,11 +22,17 @@ export function sameWorkspaceApplicationSurface(
   right: WorkspaceApplicationSurface,
 ): boolean {
   if (left.kind !== right.kind) return false;
-  return left.kind === 'settings' && right.kind === 'settings'
-    ? left.section === right.section
-    : left.kind === 'trust' && right.kind === 'trust'
-      ? left.flow === right.flow
-      : false;
+  if (left.kind === 'trust' && right.kind === 'trust') {
+    return left.flow === right.flow;
+  }
+  if (left.kind === 'settings' && right.kind === 'settings') {
+    return left.section === right.section;
+  }
+  return (
+    left.kind === 'system-status' &&
+    right.kind === 'system-status' &&
+    left.section === right.section
+  );
 }
 
 /** Presentation-neutral context carried with an application-surface intent. */

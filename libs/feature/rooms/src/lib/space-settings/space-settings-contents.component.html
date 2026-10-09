@@ -5,7 +5,7 @@
 >
   <div class="space-contents__heading">
     <div>
-      <h3 id="space-contents-title">Rooms &amp; spaces</h3>
+      <h2 id="space-contents-title">Rooms &amp; spaces</h2>
       <p>
         Everything linked directly inside this space. Shared order and Suggested
         changes save immediately for everyone.
@@ -170,14 +170,24 @@
         {{ state.unavailableReason }}
       </p>
     } @else if (state.hierarchyError) {
-      <div
-        class="space-contents__state space-contents__state--danger"
-        role="alert"
-      >
-        <p>Space contents could not be loaded: {{ state.hierarchyError }}</p>
-        <button trnBtn type="button" variant="secondary" (click)="refresh()">
-          Try again
-        </button>
+      <div class="space-contents__state">
+        <trn-empty-state
+          layout="line"
+          variant="danger"
+          role="alert"
+          [body]="'Space contents could not be loaded: ' + state.hierarchyError"
+        >
+          <button
+            trnEmptyStateActions
+            trnBtn
+            class="space-contents__retry"
+            type="button"
+            variant="secondary"
+            (click)="refresh()"
+          >
+            Try again
+          </button>
+        </trn-empty-state>
       </div>
     } @else {
       <trn-space-settings-contents-list

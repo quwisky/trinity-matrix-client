@@ -10,6 +10,8 @@ import {
   output,
   viewChild,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, type Observable } from 'rxjs';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
@@ -17,6 +19,7 @@ import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   TrnDialogRef,
   TrnAlertService,
+  TrnDialogShellComponent,
   TrnOverlaySurfaceDirective,
   TrnToastService,
 } from '@trinity/components/overlay';
@@ -41,7 +44,6 @@ import {
   TrustVerificationService,
 } from '@trinity/data-access/trust';
 import { AvatarComponent } from '@trinity/components/generic-content';
-import { TrnIconComponent } from '@trinity/components/foundations';
 
 /**
  * A room-scoped info panel for a member (avatar, name, id, live presence, role), shown
@@ -54,24 +56,19 @@ import { TrnIconComponent } from '@trinity/components/foundations';
   selector: 'trn-member-info',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    NgTemplateOutlet,
+    SidePanelHeaderComponent,
+    TrnDialogShellComponent,
+    TrnOverlaySurfaceDirective,
     AvatarComponent,
     TrnButton,
     TrnActionAvailability,
     TrnTooltip,
-    TrnIconComponent,
-  ],
-  hostDirectives: [
-    {
-      directive: TrnOverlaySurfaceDirective,
-      inputs: ['size: surfaceSize', 'layout: surfaceLayout'],
-      outputs: [],
-    },
   ],
   templateUrl: './member-info.component.html',
   styleUrl: './member-info.component.scss',
   host: {
-    // The public `panel` recipe also serves viewport-pinned overlays. In the document slot,
-    // the shell row owns the height, so its surface composes the same recipe with `h-full`.
+    // In the document slot the shell row owns the height, so the panel surface inside fills it.
     class: 'flex h-full flex-col',
     // Drives the panel presentation in the stylesheet — see the note on {@link isPanel}.
     '[class.member-info--panel]': 'isPanel',

@@ -45,28 +45,6 @@ export async function openSection(page: Page, path: string): Promise<void> {
   await expect(page.getByTestId('settings-detail')).not.toBeEmpty();
 }
 
-/** Difference between the title text edge and the navigation's content edge. */
-export async function settingsTitleAlignment(page: Page): Promise<number> {
-  return page.locator('[data-settings-autofocus]').evaluate((title) => {
-    const nav = document.querySelector<HTMLElement>(
-      'nav[aria-label="Settings sections"]',
-    );
-    const text = title.firstChild;
-    if (!nav || !text) throw new Error('settings title geometry missing');
-
-    const range = document.createRange();
-    range.selectNodeContents(text);
-    const textRect = range.getBoundingClientRect();
-    const navRect = nav.getBoundingClientRect();
-    const navStyle = getComputedStyle(nav);
-    const paddingStart = Number.parseFloat(navStyle.paddingInlineStart);
-
-    return navStyle.direction === 'rtl'
-      ? navRect.right - paddingStart - textRect.right
-      : textRect.left - (navRect.left + paddingStart);
-  });
-}
-
 /** Register the shared authenticated settings setup in each focused spec. */
 export function configureSettingsSuite(): void {
   test.skip(
@@ -81,5 +59,13 @@ export function configureSettingsSuite(): void {
     await expect(page.getByTestId('settings-nav-profile')).toBeVisible({
       timeout: 20_000,
     });
+    // Settings opens as a surface that scales in; hand every spec the settled frame, not a
+    // mid-entrance one whose boxes are still scaled.
+    await page
+      .getByTestId('dialog-surface')
+      .first()
+      .evaluate((surface) =>
+        Promise.all(surface.getAnimations().map((a) => a.finished)),
+      );
   });
 }

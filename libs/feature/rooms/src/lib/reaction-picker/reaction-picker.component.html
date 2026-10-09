@@ -6,4 +6,6 @@
   at the other. The dialog is what distinguishes this picker from the composer's, and the
   dialog is addressable by its accessible name.
 -->
-<trn-emoji-picker class="reaction-picker" (picked)="onSelect($event)" />
+<trn-dialog-shell title="Pick a reaction" bodyClass="p-0">
+  <trn-emoji-picker class="reaction-picker" (picked)="onSelect($event)" />
+</trn-dialog-shell>

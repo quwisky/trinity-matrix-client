@@ -1,0 +1,67 @@
+@layer components {
+  :host {
+    display: contents;
+  }
+
+  // "Seen by" read-receipt avatars, at the message's trailing edge.
+
+  // IN FLOW, which is where they started. Taking them out of flow was tried in this branch and
+  // withdrawn, and the reason is worth keeping so it is not tried again the same way.
+
+  // The goal was real: in flow the cluster is a block that adds ~19px wherever it lands, so a
+  // reader part-way through a sender's run splits the run and the group rhythm the rest of this
+  // phase builds disappears. Absolutely positioning it at `bottom: 0` removes that height — and
+  // then paints the avatars ON TOP of the row's own last line, because `.msg` has 2px of bottom
+  // padding and the cluster is ~16px tall. Any message whose final line reaches the trailing
+  // edge is partly hidden behind them. Hidden text is worse than a gap. A float does not help
+  // either: declared after the body, as it must be for reading order, it lands below the text
+  // and costs exactly the height it was meant to save.
+
+  // What actually solves it is a permanent right gutter — a fixed column reserved on EVERY row,
+  // which is what the mature clients do precisely because of this. That is a timeline-wide
+  // layout change rather than a receipt tweak, so it is not smuggled in here.
+
+  // The alternative the redesign issue offered was to fold every reader onto the group's LAST
+  // row. That was rejected on correctness, not layout: a Matrix receipt means "read up to THIS
+  // event", so moving it would claim someone had read messages they had not — the app would be
+  // stating something false about who saw what. Receipts stay on the event they belong to.
+  .msg__receipts {
+    grid-column: 1 / -1;
+    justify-self: end;
+    display: flex;
+    gap: 2px;
+    margin-top: 3px;
+    padding: 0;
+    border: none;
+    border-radius: var(--trinity-radius-pill);
+    background: none;
+    opacity: 0.85;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--trinity-state-hover-surface);
+    }
+  }
+
+  // Keep in sync with message-row.component.scss (the row's own `.msg__target`).
+  .msg__target:focus-visible {
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: var(--trinity-focus-ring-offset);
+  }
+
+  .msg__seen-by {
+    grid-column: 1 / -1;
+    margin-top: 2px;
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-metadata-size);
+    line-height: var(--trinity-type-metadata-line-height);
+    text-align: end;
+  }
+
+  @media (pointer: coarse) {
+    .msg__target {
+      min-width: var(--trinity-interaction-target-min-size);
+      min-height: var(--trinity-interaction-target-min-size);
+    }
+  }
+}

@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import {
   MAX_NAMED_REACTORS,
   collectMessageSenders,
   firstUrl,
+  isDisplayableMessage,
   linkifyText,
+  normalizeMediaPayload,
   parseGeoUri,
   parseLocationInput,
   reactionDetailsFor,
@@ -12,7 +14,6 @@ import {
   readReceiptsFor,
   sanitizeMatrixHtml,
   sanitizeOutgoingHtml,
-  setCodeHighlighter,
 } from './message-view';
 
 describe('parseGeoUri', () => {
@@ -430,129 +431,14 @@ describe('sanitizeMatrixHtml — code language label', () => {
   });
 });
 
-describe('sanitizeMatrixHtml — code highlighting', () => {
-  afterEach(() => {
-    // The highlighter and the memo are module-scoped and live for the whole process;
-    // setCodeHighlighter(null) clears both, so a spec that installs one must call it.
-    setCodeHighlighter(null);
-  });
-
-  /** A highlighter that wraps the whole source in one token span. */
-  function fakeHighlighter(code: string, lang: string, doc: Document) {
-    const frag = doc.createDocumentFragment();
-    const span = doc.createElement('span');
-    span.className = `tok-keyword lang-${lang}`;
-    span.textContent = code;
-    frag.appendChild(span);
-    return frag;
-  }
-
-  const BLOCK = '<pre><code class="language-python">x = 1</code></pre>';
-
-  it('leaves the code itself untouched when no highlighter is installed', () => {
-    const clean = sanitizeMatrixHtml(BLOCK);
-
-    expect(clean).not.toContain('tok-');
-    expect(parse(clean).querySelector('code')?.textContent).toBe('x = 1');
-  });
-
-  it('keeps token classes the sender allowlist would have stripped', () => {
-    // The whole reason highlighting runs AFTER DOMPurify: ALLOWED_CLASS permits only
-    // `language-*` and `mx-spoiler`, so `tok-*` could not survive the scrub itself.
-    setCodeHighlighter(fakeHighlighter);
-
-    const clean = sanitizeMatrixHtml(BLOCK);
-
-    expect(clean).toContain('tok-keyword');
-    expect(clean).toContain('lang-python');
-    expect(parse(clean).querySelector('code')?.textContent).toBe('x = 1');
-  });
-
-  it('ignores a block with no language and one with no content', () => {
-    setCodeHighlighter(fakeHighlighter);
-
-    expect(sanitizeMatrixHtml('<pre><code>x = 1</code></pre>')).not.toContain(
-      'tok-',
-    );
-    expect(
-      sanitizeMatrixHtml('<pre><code class="language-py"></code></pre>'),
-    ).not.toContain('tok-');
-  });
-
-  it('leaves the block alone when the highlighter declines the language', () => {
-    setCodeHighlighter(() => null);
-
-    expect(sanitizeMatrixHtml(BLOCK)).not.toContain('tok-');
-  });
-
-  it('leaves a block containing markup alone', () => {
-    // The Matrix allowlist permits inline markup inside <code> — a link, bold, a spoiler.
-    // Replacing the children would delete it, and only for languages we have a grammar
-    // for, so the same body would render differently depending on its fence tag.
-    setCodeHighlighter(fakeHighlighter);
-
+describe('sanitizeMatrixHtml — code blocks', () => {
+  it('leaves code as plain text; colouring is applied later at the render leaf', () => {
     const clean = sanitizeMatrixHtml(
-      '<pre><code class="language-python"><b>x</b> = 1</code></pre>',
+      '<pre><code class="language-python">x = 1</code></pre>',
     );
 
-    expect(clean).toContain('<b>x</b>');
     expect(clean).not.toContain('tok-');
-  });
-
-  describe('the per-message tokenization budget', () => {
-    /** Records what the highlighter was actually asked to tokenize. */
-    function recorder() {
-      const seen: number[] = [];
-      setCodeHighlighter((code, _lang, doc) => {
-        seen.push(code.length);
-        return doc.createDocumentFragment();
-      });
-      return seen;
-    }
-
-    const block = (chars: number) =>
-      `<pre><code class="language-python">${'x'.repeat(chars)}</code></pre>`;
-
-    it('stops tokenizing once a message has spent its budget', () => {
-      const seen = recorder();
-
-      // 20_000 of budget: the first two fit, the third does not.
-      sanitizeMatrixHtml(block(9_000) + block(9_000) + block(9_000));
-
-      expect(seen).toEqual([9_000, 9_000]);
-    });
-
-    it('still highlights a small block after one too large to fit', () => {
-      // `continue`, not `break`: one oversized listing must not un-colour everything
-      // below it.
-      const seen = recorder();
-
-      sanitizeMatrixHtml(block(19_000) + block(5_000) + block(500));
-
-      expect(seen).toEqual([19_000, 500]);
-    });
-
-    it('does not charge for a block the highlighter declines', () => {
-      // A declined block costs nothing to tokenize, so charging for it would starve
-      // blocks that could have been highlighted.
-      const seen: number[] = [];
-      setCodeHighlighter((code, _lang, doc) => {
-        seen.push(code.length);
-        return code.length > 15_000 ? null : doc.createDocumentFragment();
-      });
-
-      sanitizeMatrixHtml(block(16_000) + block(9_000) + block(9_000));
-
-      expect(seen).toEqual([16_000, 9_000, 9_000]);
-    });
-  });
-
-  it('re-sanitizes after the highlighter changes, rather than serving a stale memo', () => {
-    expect(sanitizeMatrixHtml(BLOCK)).not.toContain('tok-');
-
-    setCodeHighlighter(fakeHighlighter);
-
-    expect(sanitizeMatrixHtml(BLOCK)).toContain('tok-keyword');
+    expect(parse(clean).querySelector('code')?.textContent).toBe('x = 1');
   });
 });
 
@@ -979,4 +865,138 @@ describe('sanitizeMatrixHtml mention pills', () => {
     expect(sanitizeMatrixHtml(source, true)).toContain('mention--self');
     expect(sanitizeMatrixHtml(source, false)).not.toContain('mention--self');
   });
+});
+
+describe('normalizeMediaPayload — display types', () => {
+  const media = (
+    msgtype: string,
+    info: Record<string, unknown>,
+    extra: Record<string, unknown> = {},
+  ) =>
+    normalizeMediaPayload(
+      { msgtype, body: 'attachment', url: 'mxc://hs/a', info, ...extra },
+      msgtype,
+    );
+
+  it.each([
+    'image/svg+xml',
+    'image/svg+xml; charset=utf-8',
+    'image/svg+xml;',
+    'image/svg+xml ',
+    ' Image/SVG+XML ;charset=utf-8',
+    'text/html; charset=utf-8',
+    'application/xhtml+xml; charset=utf-8',
+    'text/xml',
+  ])('lists an m.image declaring %j as a download-only file', (mimetype) => {
+    expect(media('m.image', { mimetype })?.kind).toBe('file');
+  });
+
+  it.each([
+    ['a trailing comma', 'image/svg+xml,'],
+    ['a NUL suffix', 'image/png\u0000'],
+    ['a NUL suffix after a parameter', 'image/svg+xml\u0000; charset=utf-8'],
+    ['a zero-width-space suffix', 'image/png\u200b'],
+    ['a zero-width-space prefix', '\u200bimage/png'],
+    ['a quoted type', '"image/png"'],
+    ['an embedded newline', 'image/png\nimage/svg+xml'],
+    ['a comma-separated list', 'image/png,text/html'],
+    ['a quoted parameter on a document type', 'image/svg+xml; name="a;b"'],
+    ['a missing subtype', 'image/'],
+  ])('lists an m.image declaring %s as a download-only file', (_, mimetype) => {
+    expect(media('m.image', { mimetype })?.kind).toBe('file');
+  });
+
+  it.each([
+    ['m.video', 'video/mp4\u0000'],
+    ['m.video', 'video/mp4,'],
+    ['m.audio', 'audio/ogg\u200b; codecs=opus'],
+    ['m.audio', 'audio/ogg,'],
+  ])(
+    'lists an %s declaring %j as a download-only file',
+    (msgtype, mimetype) => {
+      expect(media(msgtype, { mimetype })?.kind).toBe('file');
+    },
+  );
+
+  it('keeps an m.image with a quoted parameter containing a semicolon inline', () => {
+    expect(media('m.image', { mimetype: 'image/png; name="a;b"' })?.kind).toBe(
+      'image',
+    );
+  });
+
+  it.each(['image/png', 'image/jpeg; q=0.9', ' IMAGE/WEBP ', 'image/gif;'])(
+    'keeps an m.image declaring %j inline',
+    (mimetype) => {
+      expect(media('m.image', { mimetype })?.kind).toBe('image');
+    },
+  );
+
+  it('keeps a voice message declaring audio/ogg; codecs=opus as inline audio', () => {
+    const voice = media(
+      'm.audio',
+      { mimetype: 'audio/ogg; codecs=opus', duration: 1200 },
+      { 'org.matrix.msc3245.voice': {} },
+    );
+
+    expect(voice?.kind).toBe('audio');
+    expect(voice?.isVoice).toBe(true);
+  });
+
+  it('does not carry a thumbnail type outside the display allowlist', () => {
+    const payload = media('m.image', {
+      mimetype: 'image/png',
+      thumbnail_url: 'mxc://hs/thumb',
+      thumbnail_info: { mimetype: 'image/svg+xml; charset=utf-8' },
+    });
+
+    expect(payload?.thumbnailMimeType).toBe('application/octet-stream');
+  });
+
+  it('keeps an allowlisted thumbnail type and leaves an undeclared one unset', () => {
+    const declared = media('m.image', {
+      thumbnail_url: 'mxc://hs/thumb',
+      thumbnail_info: { mimetype: 'image/jpeg' },
+    });
+    const undeclared = media('m.image', { thumbnail_url: 'mxc://hs/thumb' });
+
+    expect(declared?.thumbnailMimeType).toBe('image/jpeg');
+    expect(undeclared?.thumbnailMimeType).toBeUndefined();
+  });
+});
+
+describe('isDisplayableMessage', () => {
+  /** Only the reads isDisplayableMessage makes. */
+  const event = (o: {
+    type: string;
+    state?: boolean;
+    replace?: boolean;
+  }): MatrixEvent =>
+    ({
+      getType: () => o.type,
+      isState: () => o.state ?? false,
+      isRelation: (relType?: string) =>
+        o.replace === true &&
+        (relType === undefined || relType === 'm.replace'),
+    }) as unknown as MatrixEvent;
+
+  it('accepts a message, a sticker and a poll start', () => {
+    expect(isDisplayableMessage(event({ type: 'm.room.message' }))).toBe(true);
+    expect(isDisplayableMessage(event({ type: 'm.sticker' }))).toBe(true);
+    expect(isDisplayableMessage(event({ type: 'm.poll.start' }))).toBe(true);
+  });
+
+  it('rejects an edit', () => {
+    expect(
+      isDisplayableMessage(event({ type: 'm.room.message', replace: true })),
+    ).toBe(false);
+  });
+
+  // A state event is never a message row, whatever its type says: a state key makes it
+  // room state, and nothing about its sender or timing makes it a conversation turn.
+  it.each(['m.room.message', 'm.sticker', 'm.poll.start'])(
+    'rejects a state event of type %s',
+    (type) => {
+      expect(isDisplayableMessage(event({ type, state: true }))).toBe(false);
+    },
+  );
 });

@@ -6,9 +6,10 @@ import { desktopBridgeFixture } from '@trinity/testing';
 
 // In-memory @capacitor/preferences + the native keychain plugin (hoisted so the
 // vi.mock factories can see them).
-const { prefs, nativeStore } = vi.hoisted(() => ({
+const { prefs, nativeStore, nativeSet } = vi.hoisted(() => ({
   prefs: new Map<string, string>(),
   nativeStore: new Map<string, string>(),
+  nativeSet: { calls: [] as unknown[][] },
 }));
 vi.mock('@capacitor/preferences', () => ({
   Preferences: {
@@ -24,9 +25,11 @@ vi.mock('@capacitor/preferences', () => ({
   },
 }));
 vi.mock('@aparajita/capacitor-secure-storage', () => ({
+  KeychainAccess: { whenUnlocked: 0, whenUnlockedThisDeviceOnly: 1 },
   SecureStorage: {
     get: async (key: string) => nativeStore.get(key) ?? null,
-    set: async (key: string, value: string) => {
+    set: async (key: string, value: string, ...options: unknown[]) => {
+      nativeSet.calls.push([key, value, ...options]);
       nativeStore.set(key, value);
     },
     remove: async (key: string) => {
@@ -43,6 +46,7 @@ describe('SecureStorageService', () => {
   beforeEach(() => {
     prefs.clear();
     nativeStore.clear();
+    nativeSet.calls = [];
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -79,6 +83,126 @@ describe('SecureStorageService', () => {
 
     await s.remove('accessToken');
     expect(await s.get('accessToken')).toBeNull();
+  });
+
+  it('keeps native secrets on this device: never synced, never restored to another one', async () => {
+    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+    vi.spyOn(Capacitor, 'isPluginAvailable').mockReturnValue(true);
+
+    await service().set('matrix.cryptoStoreKey:@me:hs', 'key');
+
+    // convertDate=false, sync=false (no iCloud Keychain), and an iOS accessibility class
+    // that a backup restored onto another device does not bring along.
+    expect(nativeSet.calls).toEqual([
+      ['matrix.cryptoStoreKey:@me:hs', 'key', false, false, 1],
+    ]);
+  });
+
+  describe('read', () => {
+    /** Install a desktop bridge whose keychain is available and whose read returns `reply`. */
+    function desktopReading(reply: unknown, available = true): void {
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+        desktopBridgeFixture({
+          capabilities: {
+            secureStore: {
+              isAvailable: vi.fn().mockResolvedValue(available),
+              get: vi.fn().mockResolvedValue(null),
+              read: vi.fn().mockResolvedValue(reply),
+              set: vi.fn().mockResolvedValue(true),
+              delete: vi.fn().mockResolvedValue(undefined),
+            } as never,
+          },
+        });
+    }
+    afterEach(() => {
+      delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+    });
+
+    it.each([
+      [
+        { kind: 'present', value: 'v' },
+        { kind: 'present', value: 'v' },
+      ],
+      [{ kind: 'absent' }, { kind: 'absent' }],
+      [{ kind: 'unavailable' }, { kind: 'unavailable' }],
+      // An untrusted reply that is not one of the three is never taken as absent.
+      [{ kind: 'present' }, { kind: 'unavailable' }],
+      [null, { kind: 'unavailable' }],
+    ])(
+      'passes the desktop keychain read %j through as %j',
+      async (reply, read) => {
+        desktopReading(reply);
+
+        expect(await service().read('k')).toEqual(read);
+      },
+    );
+
+    it('reads through get on a desktop shell without read, never claiming absent', async () => {
+      const get = vi
+        .fn()
+        .mockResolvedValueOnce('v')
+        .mockResolvedValueOnce(null);
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+        desktopBridgeFixture({
+          capabilities: {
+            secureStore: {
+              isAvailable: vi.fn().mockResolvedValue(true),
+              get,
+              set: vi.fn().mockResolvedValue(true),
+              delete: vi.fn().mockResolvedValue(undefined),
+            },
+          },
+        });
+      const s = service();
+
+      expect(await s.read('k')).toEqual({ kind: 'present', value: 'v' });
+      // Its get also returns null for an entry it cannot decrypt.
+      expect(await s.read('k')).toEqual({ kind: 'unavailable' });
+    });
+
+    it('reads natively: an entry, no entry, or a keychain error as unavailable', async () => {
+      vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+      vi.spyOn(Capacitor, 'isPluginAvailable').mockReturnValue(true);
+      const s = service();
+      nativeStore.set('k', 'v');
+
+      expect(await s.read('k')).toEqual({ kind: 'present', value: 'v' });
+      expect(await s.read('missing')).toEqual({ kind: 'absent' });
+      const { SecureStorage } =
+        await import('@aparajita/capacitor-secure-storage');
+      vi.spyOn(SecureStorage, 'get').mockRejectedValueOnce(
+        new Error('errSecInteractionNotAllowed'),
+      );
+      expect(await s.read('k')).toEqual({ kind: 'unavailable' });
+    });
+
+    it('reads the plain web store: no entry is absent', async () => {
+      const s = service();
+      await s.set('k', 'v');
+
+      expect(await s.read('k')).toEqual({ kind: 'present', value: 'v' });
+      expect(await s.read('missing')).toEqual({ kind: 'absent' });
+    });
+
+    it('says unavailable, not absent, when a desktop keychain fell back to the web store', async () => {
+      // The keychain may hold the entry; it just cannot be reached this session.
+      desktopReading({ kind: 'present', value: 'v' }, false);
+
+      expect(await service().read('missing')).toEqual({ kind: 'unavailable' });
+    });
+
+    it('says unavailable when no backend can be selected yet', async () => {
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+        desktopBridgeFixture({
+          capabilities: {
+            secureStore: {
+              isAvailable: vi.fn().mockRejectedValue(new Error('no ipc yet')),
+            } as never,
+          },
+        });
+
+      expect(await service().read('k')).toEqual({ kind: 'unavailable' });
+    });
   });
 
   it('retries backend selection after a rejected one, instead of latching it', async () => {

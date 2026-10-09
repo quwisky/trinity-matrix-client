@@ -35,26 +35,15 @@ import scala from '@shikijs/langs/scala';
 import shellsession from '@shikijs/langs/shellsession';
 import swift from '@shikijs/langs/swift';
 import toml from '@shikijs/langs/toml';
-import { setCodeHighlighter } from '@trinity/util/matrix';
 
 /**
- * Synchronous syntax highlighting for fenced code blocks in rendered Matrix HTML.
+ * Syntax highlighting for fenced code blocks, applied at the render leaf by
+ * CodeHighlightDirective.
  *
- * Kept inside the lazily loaded Conversations feature rather than exported from a shared
- * barrel. That is load-bearing: a barrel export would put every grammar in the initial
- * bundle. The rooms route imports this module relatively, so it registers before its first
- * Message Presentation pass while remaining in the rooms chunk.
- *
- * **Cost, stated plainly:** the grammars are static imports and they are downloaded and
- * parsed with the rooms chunk whether or not any message contains code. Measured from an
- * esbuild metafile of a production build: `@shikijs/langs` contributes 2,741,259 bytes of
- * minified output plus ~135 KB of engine (`vscode-textmate`, `oniguruma`, `@shikijs/core`)
- * — **78.6 % of the 3.49 MB rooms chunk**, and the single largest thing the app ships. Only grammar *compilation* is deferred to first use. Making the
- * download conditional means a dynamic `import()` on the first fenced block, which turns
- * highlighting async — and because the timeline's view and row caches key on event
- * revision and object identity, a late install would leave already-projected messages
- * unhighlighted until something else invalidated them. Doing it properly needs a
- * generation counter threaded into those caches, which is why it is not done here.
+ * Never imported statically: the directive loads this module with a dynamic `import()` the
+ * first time a rendered message holds a fenced block with a language. `@shikijs/langs` is
+ * ~2.7 MB of minified output (78 % of the rooms chunk), so a room without code never
+ * downloads it, and once loaded, only rendered rows are tokenized.
  */
 
 /**
@@ -166,12 +155,11 @@ const THEME: ThemeRegistrationRaw = {
 const FONT_ITALIC = 1;
 
 /**
- * Ceiling on what we will tokenize. Highlighting runs synchronously inside the timeline
- * projection, and a sender can put a 60 KiB fenced block in every event — an uncapped
- * grammar pass over a page of backscroll is a trivial main-thread freeze. Past the cap the
- * block still renders, just as plain monospace.
+ * Ceiling on what we will tokenize. Highlighting runs synchronously on the main thread, and
+ * a sender can put a 60 KiB fenced block in every event. Past the cap the block still
+ * renders, just as plain monospace.
  */
-const MAX_CODE_CHARS = 6_000;
+export const MAX_CODE_CHARS = 4_096;
 
 let highlighter: HighlighterCore | null = null;
 // Latched on the first construction failure. Without it a throwing constructor would be
@@ -179,10 +167,7 @@ let highlighter: HighlighterCore | null = null;
 let unavailable = false;
 
 /**
- * Built on first use rather than at module load: the grammars are compiled lazily per rule
- * by vscode-textmate, so a room whose messages contain no code block never compiles one.
- * (The grammar JSON is still downloaded and parsed with this chunk — see the note at the
- * top of the file.)
+ * Built on first use: the grammars are compiled lazily per rule by vscode-textmate.
  */
 function instance(): HighlighterCore {
   highlighter ??= createHighlighterCoreSync({
@@ -242,27 +227,25 @@ function classFor(
 }
 
 /**
- * Tokenize `code` into `<span class="tok-*">` runs, or null when the language is unknown,
- * the block is oversized, or the grammar fails.
+ * Tokenize `code` into one fragment per line of `<span class="tok-*">` runs, or null when
+ * the language is unknown, the block is oversized, or the grammar fails. No token spans a
+ * newline, so a caller may place each fragment inside its own line wrapper.
  *
  * Built with createElement/createTextNode, never innerHTML — no string of ours can become
  * markup, so this cannot reintroduce anything DOMPurify has just removed.
  */
-function highlight(
+export function highlightLines(
   code: string,
   lang: string,
   doc: Document,
-): DocumentFragment | null {
+): DocumentFragment[] | null {
   if (unavailable || code.length > MAX_CODE_CHARS) {
     return null;
   }
   let lines;
   try {
-    // Construction and language lookup are INSIDE the guard, not just tokenization: if
-    // `createHighlighterCoreSync` throws (an engine the browser rejects, a grammar that
-    // fails to load) the throw would otherwise escape through sanitizeMatrixHtml into
-    // Message Presentation, where the safe normalizer turns the whole message into an
-    // "unsupported" placeholder — losing its text rather than just its colours.
+    // Construction and language lookup are INSIDE the guard, not just tokenization: a
+    // highlighter that cannot be built must degrade to plain code, not throw at render.
     const shiki = instance();
     if (!shiki.getLoadedLanguages().includes(lang)) {
       return null;
@@ -274,11 +257,8 @@ function highlight(
     unavailable = highlighter === null;
     return null;
   }
-  const fragment = doc.createDocumentFragment();
-  lines.forEach((line, index) => {
-    if (index > 0) {
-      fragment.appendChild(doc.createTextNode('\n'));
-    }
+  return lines.map((line) => {
+    const fragment = doc.createDocumentFragment();
     for (const token of line) {
       const className = classFor(token.color, token.fontStyle);
       if (!className) {
@@ -290,10 +270,6 @@ function highlight(
       span.textContent = token.content;
       fragment.appendChild(span);
     }
+    return fragment;
   });
-  return fragment;
 }
-
-// Registered by importing this module — there is no exported entry point on purpose, so
-// there is exactly one way in and no second call that would needlessly clear the memo.
-setCodeHighlighter(highlight);

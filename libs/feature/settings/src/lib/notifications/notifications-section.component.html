@@ -1,47 +1,49 @@
-<div>
-  <trn-settings-section-heading
-    title="Notifications"
-    description="Choose what notifies you. These rules apply to every device signed in to your account."
-    [primary]="true"
-  />
-
+<trn-settings-group
+  description="Choose what notifies you. These rules apply to every device signed in to your account."
+>
   @for (rule of toggles; track rule.id) {
-    <label trnSettingsToggleRow [attr.data-testid]="'notif-' + rule.id">
+    <trn-settings-row
+      [label]="rule.label"
+      [for]="'notif-' + rule.id + '-switch'"
+      [attr.data-testid]="'notif-' + rule.id"
+    >
       <trn-switch
+        [inputId]="'notif-' + rule.id + '-switch'"
         [checked]="checked(rule)"
         (checkedChange)="toggle(rule, $event)"
       />
-      {{ rule.label }}
-    </label>
+    </trn-settings-row>
   }
 
-  <label trnSettingsToggleRow data-testid="notif-reactions">
+  <trn-settings-row
+    label="When someone reacts to my message"
+    description="While Trinity is running, groups reactions to your messages into one notification per message."
+    for="notif-reactions-switch"
+    data-testid="notif-reactions"
+  >
     <trn-switch
+      inputId="notif-reactions-switch"
+      aria-describedby="notif-reactions-switch-description"
       [checked]="reactionChecked()"
       (checkedChange)="toggleReactions($event)"
     />
-    When someone reacts to my message
-  </label>
-  <p class="px-4 pb-2 text-13 text-muted-foreground">
-    While Trinity is running, groups reactions to your messages into one
-    notification per message.
-  </p>
+  </trn-settings-row>
 
-  <label trnSettingsToggleRow data-testid="notif-sound">
+  <trn-settings-row
+    label="Play a sound"
+    description="Covers every notification Trinity shows you here, and is stored with your account. It does not change the sound your phone makes for a pushed notification, and it is Trinity's own setting — other Matrix apps keep theirs."
+    for="notif-sound-switch"
+    data-testid="notif-sound"
+  >
     <trn-switch
+      inputId="notif-sound-switch"
+      aria-describedby="notif-sound-switch-description"
       [checked]="soundChecked()"
       (checkedChange)="toggleSound($event)"
     />
-    Play a sound
-  </label>
-  <p class="px-4 pb-2 text-13 text-muted-foreground">
-    Covers every notification Trinity shows you here, and is stored with your
-    account. It does not change the sound your phone makes for a pushed
-    notification, and it is Trinity's own setting — other Matrix apps keep
-    theirs.
-  </p>
+  </trn-settings-row>
+</trn-settings-group>
 
-  <trn-keyword-rules />
+<trn-keyword-rules />
 
-  <trn-push-gateway-block />
-</div>
+<trn-push-gateway-block />

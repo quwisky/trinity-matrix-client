@@ -2,8 +2,13 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SessionStorageService } from './session-storage.service';
+import {
+  AccountHomeserverMismatchError,
+  SessionStorageService,
+  type AccountRecord,
+} from './session-storage.service';
 import { SecureStorageService } from './secure-storage.service';
+import { CryptoStoreKeyService } from './crypto-store-key.service';
 import { MatrixSession } from '@trinity/util/matrix';
 
 // In-memory @capacitor/preferences (hoisted so the vi.mock factory can see it).
@@ -40,10 +45,12 @@ const BOB: MatrixSession = {
 const ALICE_STORED: MatrixSession = {
   ...ALICE,
   cryptoPrefix: 'trinity-crypto:@alice:hs:DEV1',
+  cryptoStoreKeyed: true,
 };
 const BOB_STORED: MatrixSession = {
   ...BOB,
   cryptoPrefix: 'trinity-crypto:@bob:other:DEV2',
+  cryptoStoreKeyed: true,
 };
 
 // An OIDC-native ("next-gen auth") session: a refresh token + expiry + provider binding.
@@ -77,10 +84,28 @@ const CAROL: MatrixSession = {
  */
 function setup() {
   const store = new Map<string, string>();
+  const storeKeys = new Map<string, Uint8Array>();
   TestBed.configureTestingModule({
-    providers: [SessionStorageService, MockProvider(SecureStorageService)],
+    providers: [
+      SessionStorageService,
+      MockProvider(SecureStorageService),
+      MockProvider(CryptoStoreKeyService),
+    ],
   });
   const secure = TestBed.inject(SecureStorageService);
+  const keys = TestBed.inject(CryptoStoreKeyService);
+  vi.mocked(keys.create).mockImplementation(async (userId) => {
+    const key = crypto.getRandomValues(new Uint8Array(32));
+    storeKeys.set(userId, key);
+    return key;
+  });
+  vi.mocked(keys.read).mockImplementation(async (prefix) => {
+    const key = storeKeys.get(prefix);
+    return key ? { kind: 'present', key } : { kind: 'missing' };
+  });
+  vi.mocked(keys.remove).mockImplementation(async (userId) => {
+    storeKeys.delete(userId);
+  });
   vi.mocked(secure.get).mockImplementation(
     async (key) => store.get(key) ?? null,
   );
@@ -90,7 +115,16 @@ function setup() {
   vi.mocked(secure.remove).mockImplementation(async (key) => {
     store.delete(key);
   });
-  return { svc: TestBed.inject(SessionStorageService), secure: { store } };
+  return {
+    svc: TestBed.inject(SessionStorageService),
+    secure: { store },
+    keys: {
+      store: storeKeys,
+      create: vi.mocked(keys.create),
+      read: vi.mocked(keys.read),
+      remove: vi.mocked(keys.remove),
+    },
+  };
 }
 
 describe('SessionStorageService', () => {
@@ -115,6 +149,7 @@ describe('SessionStorageService', () => {
           userId: '@alice:hs',
           deviceId: 'DEV1',
           cryptoPrefix: 'trinity-crypto:@alice:hs:DEV1',
+          cryptoStoreKeyed: true,
         },
       ],
     });
@@ -204,6 +239,177 @@ describe('SessionStorageService', () => {
       'alice-token-xyz',
     );
     expect(deleteDatabase).not.toHaveBeenCalled();
+  });
+
+  describe('a sign-in for an account saved under another server', () => {
+    // A sign-in that returns the user id of an account already saved under a different
+    // server leaves that account unchanged: its record, token, device and crypto store.
+    const FROM_OTHER_SERVER: MatrixSession = {
+      ...ALICE,
+      baseUrl: 'https://other-server.example',
+      accessToken: 'other-token',
+    };
+
+    it.each([
+      ['the same device id', 'DEV1'],
+      ['a different device id', 'OTHER1'],
+    ])(
+      'refuses a different base URL with %s and leaves the account untouched',
+      async (_label, deviceId) => {
+        const deleteDatabase = vi.fn();
+        vi.stubGlobal('indexedDB', { deleteDatabase });
+        const { svc, secure } = setup();
+        await firstValueFrom(svc.save(ALICE));
+        await firstValueFrom(svc.save(BOB));
+        const registryBefore = prefs.get('matrix.accounts');
+
+        for (const attempt of [
+          svc.save({ ...FROM_OTHER_SERVER, deviceId }),
+          svc.persistForEstablishment(
+            { ...FROM_OTHER_SERVER, deviceId },
+            'upsert',
+          ),
+        ]) {
+          await expect(firstValueFrom(attempt)).rejects.toThrow(
+            AccountHomeserverMismatchError,
+          );
+        }
+
+        expect(prefs.get('matrix.accounts')).toBe(registryBefore);
+        expect(await firstValueFrom(svc.load('@alice:hs'))).toEqual(
+          ALICE_STORED,
+        );
+        expect(secure.store.get('matrix.accessToken:@alice:hs')).toBe(
+          'alice-token-xyz',
+        );
+        expect(deleteDatabase).not.toHaveBeenCalled();
+      },
+    );
+
+    it('names the stored account and the server it is signed in through', async () => {
+      const { svc } = setup();
+      await firstValueFrom(svc.save(ALICE));
+
+      const error = await firstValueFrom(svc.save(FROM_OTHER_SERVER)).catch(
+        (e: unknown) => e,
+      );
+
+      expect(error).toBeInstanceOf(AccountHomeserverMismatchError);
+      expect(error).toMatchObject({
+        userId: '@alice:hs',
+        storedBaseUrl: 'https://hs',
+      });
+    });
+
+    it.each([
+      ['a trailing slash', 'https://hs/'],
+      ['a different scheme and host case', 'HTTPS://HS'],
+      ['an explicit default port', 'https://hs:443'],
+    ])('still accepts the same server with %s', async (_label, baseUrl) => {
+      const { svc } = setup();
+      await firstValueFrom(svc.save(ALICE));
+
+      await firstValueFrom(
+        svc.save({ ...ALICE, baseUrl, accessToken: 'rotated' }),
+      );
+
+      // The saved base URL is kept as it was written, not replaced by the new spelling.
+      expect(await firstValueFrom(svc.load('@alice:hs'))).toMatchObject({
+        accessToken: 'rotated',
+        baseUrl: 'https://hs',
+        cryptoPrefix: 'trinity-crypto:@alice:hs:DEV1',
+      });
+      expect(await firstValueFrom(svc.list())).toHaveLength(1);
+    });
+
+    it('keeps the saved base URL when the same server signs in on a new device', async () => {
+      const { svc } = setup();
+      await firstValueFrom(svc.save(ALICE));
+
+      await firstValueFrom(
+        svc.save({ ...ALICE, baseUrl: 'https://hs/', deviceId: 'DEV2' }),
+      );
+
+      expect(await firstValueFrom(svc.load('@alice:hs'))).toMatchObject({
+        baseUrl: 'https://hs',
+        deviceId: 'DEV2',
+      });
+    });
+
+    it('treats the long and short spellings of an IPv6 host as one server', async () => {
+      const { svc } = setup();
+      await firstValueFrom(
+        svc.save({ ...ALICE, baseUrl: 'https://[::1]:8448' }),
+      );
+
+      await firstValueFrom(
+        svc.save({
+          ...ALICE,
+          baseUrl: 'https://[0:0:0:0:0:0:0:1]:8448',
+          accessToken: 'rotated',
+        }),
+      );
+
+      expect(await firstValueFrom(svc.load('@alice:hs'))).toMatchObject({
+        accessToken: 'rotated',
+        baseUrl: 'https://[::1]:8448',
+      });
+    });
+
+    it('treats a saved host that only appears as user info as a different server', async () => {
+      const { svc } = setup();
+      await firstValueFrom(
+        svc.save({ ...ALICE, baseUrl: 'https://hs.example' }),
+      );
+
+      await expect(
+        firstValueFrom(
+          svc.save({
+            ...ALICE,
+            baseUrl: 'https://hs.example@other-host.example',
+          }),
+        ),
+      ).rejects.toThrow(AccountHomeserverMismatchError);
+    });
+
+    it.each([
+      ['another scheme', 'http://hs'],
+      ['another port', 'https://hs:8448'],
+      ['another path', 'https://hs/other'],
+      ['another host', 'https://hs.other-server.example'],
+    ])('treats %s as a different server', async (_label, baseUrl) => {
+      const { svc } = setup();
+      await firstValueFrom(svc.save(ALICE));
+
+      await expect(
+        firstValueFrom(svc.save({ ...ALICE, baseUrl })),
+      ).rejects.toThrow(AccountHomeserverMismatchError);
+    });
+
+    it('lets a stored path-based server keep re-authenticating through a trailing slash', async () => {
+      const { svc } = setup();
+      await firstValueFrom(
+        svc.save({ ...ALICE, baseUrl: 'https://hs/matrix' }),
+      );
+
+      await firstValueFrom(
+        svc.save({ ...ALICE, baseUrl: 'https://hs/matrix/' }),
+      );
+
+      expect(await firstValueFrom(svc.list())).toHaveLength(1);
+    });
+
+    it('does not block a fresh sign-in after the account was removed', async () => {
+      const { svc } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.remove('@alice:hs'));
+
+      await firstValueFrom(svc.save(FROM_OTHER_SERVER));
+
+      expect(await firstValueFrom(svc.load('@alice:hs'))).toMatchObject({
+        baseUrl: 'https://other-server.example',
+      });
+    });
   });
 
   it('returns null when nothing is stored', async () => {
@@ -558,6 +764,7 @@ describe('SessionStorageService', () => {
         userId: '@alice:hs',
         deviceId: 'DEV1',
         cryptoPrefix: 'trinity-crypto:@alice:hs:DEV1', // reused: same device
+        cryptoStoreKeyed: true,
       },
     ]);
     expect(await firstValueFrom(svc.load('@alice:hs'))).toMatchObject({
@@ -833,6 +1040,236 @@ describe('SessionStorageService', () => {
       expect(deleteDatabase).toHaveBeenCalledWith(
         'matrix-js-sdk::matrix-sdk-crypto-meta',
       );
+    });
+  });
+
+  describe('crypto store keys', () => {
+    const ALICE_PREFIX = 'trinity-crypto:@alice:hs:DEV1';
+
+    /** The registry's account ids at this moment, as a key removal would see them. */
+    function registeredIds(): string[] {
+      const registry = JSON.parse(prefs.get('matrix.accounts') ?? '{}') as {
+        accounts?: { userId: string }[];
+      };
+      return (registry.accounts ?? []).map((a) => a.userId);
+    }
+
+    it('creates a key named by the new store, and records that the store is keyed', async () => {
+      const { svc, keys } = setup();
+
+      const stored = await firstValueFrom(svc.save(ALICE));
+
+      expect(keys.store.get(ALICE_PREFIX)).toHaveLength(32);
+      expect(stored.cryptoStoreKeyed).toBe(true);
+      const [record] = await firstValueFrom(svc.list());
+      expect(record.cryptoStoreKeyed).toBe(true);
+    });
+
+    it('reuses the key on a same-device re-login instead of making a new one', async () => {
+      const { svc, keys } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      const first = keys.store.get(ALICE_PREFIX);
+
+      await firstValueFrom(svc.save({ ...ALICE, accessToken: 'rotated' }));
+
+      expect(keys.create).toHaveBeenCalledOnce();
+      expect(keys.store.get(ALICE_PREFIX)).toBe(first);
+    });
+
+    it('gives a new device its own key and deletes the old store key after the registry moves on', async () => {
+      const { svc, keys } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      keys.remove.mockImplementation(async (id) => {
+        // The registry already points at the new store when the old key goes.
+        const [record] = await firstValueFrom(svc.list());
+        expect(record.cryptoPrefix).toBe('trinity-crypto:@alice:hs:DEV1b');
+        keys.store.delete(id);
+      });
+
+      await firstValueFrom(svc.save({ ...ALICE, deviceId: 'DEV1b' }));
+
+      expect(keys.store.has('trinity-crypto:@alice:hs:DEV1b')).toBe(true);
+      expect(keys.store.has(ALICE_PREFIX)).toBe(false);
+    });
+
+    it('gives each account its own key', async () => {
+      const { svc, keys } = setup();
+
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.save(BOB));
+
+      expect(keys.store.get(ALICE_PREFIX)).not.toEqual(
+        keys.store.get('trinity-crypto:@bob:other:DEV2'),
+      );
+    });
+
+    it('registers nothing when the key cannot be stored', async () => {
+      const { svc, keys } = setup();
+      keys.create.mockRejectedValueOnce(new Error('keychain unavailable'));
+
+      await expect(firstValueFrom(svc.save(ALICE))).rejects.toThrow();
+
+      // Registering the account without its key would let a restart open the new
+      // store unencrypted.
+      expect(await firstValueFrom(svc.list())).toEqual([]);
+    });
+
+    it('keeps the stored device and its tokens when the new device key cannot be stored', async () => {
+      const { svc, secure, keys } = setup();
+      await firstValueFrom(
+        svc.save({ ...ALICE, refreshToken: 'alice-refresh' }),
+      );
+      const [before] = await firstValueFrom(svc.list());
+      keys.create.mockRejectedValueOnce(new Error('keychain unavailable'));
+
+      await expect(
+        firstValueFrom(
+          svc.save({ ...ALICE, deviceId: 'DEV1b', accessToken: 'new-token' }),
+        ),
+      ).rejects.toThrow('keychain unavailable');
+
+      expect(await firstValueFrom(svc.list())).toEqual([before]);
+      expect(secure.store.get('matrix.accessToken:@alice:hs')).toBe(
+        ALICE.accessToken,
+      );
+      expect(secure.store.get('matrix.refreshToken:@alice:hs')).toBe(
+        'alice-refresh',
+      );
+      expect(keys.store.has(ALICE_PREFIX)).toBe(true);
+    });
+
+    it('leaves an existing store without a key: a migrated account keeps its store as it is', async () => {
+      const { svc, secure, keys } = setup();
+      await migrateLegacyAlice(svc, secure);
+
+      await firstValueFrom(svc.save({ ...ALICE, accessToken: 'rotated' }));
+
+      expect(keys.create).not.toHaveBeenCalled();
+      const [record] = await firstValueFrom(svc.list());
+      expect(record.cryptoStoreKeyed).toBeUndefined();
+    });
+
+    it('keeps the key when a soft logout drops the token, so re-auth reopens the store', async () => {
+      const { svc, keys } = setup();
+      await firstValueFrom(svc.save(ALICE));
+
+      await firstValueFrom(svc.invalidateToken('@alice:hs'));
+
+      expect(keys.store.has(ALICE_PREFIX)).toBe(true);
+    });
+
+    it('deletes the key on remove only after the registry forgets the account', async () => {
+      const { svc, keys } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.save(BOB));
+      const seenAtRemoval: string[][] = [];
+      keys.remove.mockImplementation(async (id) => {
+        seenAtRemoval.push(registeredIds());
+        keys.store.delete(id);
+      });
+
+      await firstValueFrom(svc.remove('@alice:hs'));
+
+      expect(keys.store.has(ALICE_PREFIX)).toBe(false);
+      expect(keys.store.has('trinity-crypto:@bob:other:DEV2')).toBe(true);
+      expect(seenAtRemoval).toEqual([['@bob:other']]);
+    });
+
+    it('still removes the account when deleting its key fails', async () => {
+      const { svc, keys } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      keys.remove.mockRejectedValue(new Error('keychain unavailable'));
+
+      await firstValueFrom(svc.remove('@alice:hs'));
+
+      expect(registeredIds()).toEqual([]);
+    });
+
+    it('deletes every account key on clear and clearAll, after the registry is gone', async () => {
+      const { svc, keys } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.save(BOB));
+      const seenAtRemoval: string[][] = [];
+      keys.remove.mockImplementation(async (id) => {
+        seenAtRemoval.push(registeredIds());
+        keys.store.delete(id);
+      });
+      await firstValueFrom(svc.clear());
+      expect(keys.store.size).toBe(0);
+      expect(seenAtRemoval).toEqual([[], []]);
+
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.clearAll());
+      expect(keys.store.size).toBe(0);
+    });
+
+    it('the orphan sweep deletes the key of an orphaned store and keeps a live one', async () => {
+      const { svc, keys } = setup();
+      await firstValueFrom(svc.save({ ...ALICE, deviceId: 'DEV1b' }));
+      // A key left behind with its old-device store, e.g. by a crash mid re-login.
+      keys.store.set(ALICE_PREFIX, new Uint8Array(32));
+      keys.store.set('trinity-crypto:@ghost:hs:GDEV', new Uint8Array(32));
+      vi.stubGlobal('indexedDB', {
+        databases: vi
+          .fn()
+          .mockResolvedValue([
+            { name: `${ALICE_PREFIX}::matrix-sdk-crypto` },
+            { name: `${ALICE_PREFIX}::matrix-sdk-crypto-meta` },
+            { name: 'trinity-crypto:@ghost:hs:GDEV::matrix-sdk-crypto' },
+            { name: 'trinity-crypto:@alice:hs:DEV1b::matrix-sdk-crypto' },
+          ]),
+        deleteDatabase: vi.fn(),
+      });
+
+      await firstValueFrom(svc.sweepOrphanedCryptoStores());
+
+      expect(keys.store.has(ALICE_PREFIX)).toBe(false);
+      expect(keys.store.has('trinity-crypto:@ghost:hs:GDEV')).toBe(false);
+      expect(keys.store.has('trinity-crypto:@alice:hs:DEV1b')).toBe(true);
+    });
+
+    describe('reusableDeviceId', () => {
+      it('keeps the device of a store without a key', async () => {
+        const { svc, secure } = setup();
+        await migrateLegacyAlice(svc, secure);
+        const record = await firstValueFrom(svc.record('@alice:hs'));
+
+        expect(
+          await firstValueFrom(svc.reusableDeviceId(record as AccountRecord)),
+        ).toBe('DEV1');
+      });
+
+      it('keeps the device while its store key still reads back', async () => {
+        const { svc } = setup();
+        await firstValueFrom(svc.save(ALICE));
+        const record = await firstValueFrom(svc.record('@alice:hs'));
+
+        expect(
+          await firstValueFrom(svc.reusableDeviceId(record as AccountRecord)),
+        ).toBe('DEV1');
+      });
+
+      it('gives up the device when the store key is missing, so sign-in makes a new one', async () => {
+        const { svc, keys } = setup();
+        await firstValueFrom(svc.save(ALICE));
+        keys.read.mockResolvedValue({ kind: 'missing' });
+        const record = await firstValueFrom(svc.record('@alice:hs'));
+
+        expect(
+          await firstValueFrom(svc.reusableDeviceId(record as AccountRecord)),
+        ).toBeNull();
+      });
+
+      it('keeps the device while the keychain is unavailable, so its store is never replaced', async () => {
+        const { svc, keys } = setup();
+        await firstValueFrom(svc.save(ALICE));
+        keys.read.mockResolvedValue({ kind: 'unavailable' });
+        const record = await firstValueFrom(svc.record('@alice:hs'));
+
+        expect(
+          await firstValueFrom(svc.reusableDeviceId(record as AccountRecord)),
+        ).toBe('DEV1');
+      });
     });
   });
 

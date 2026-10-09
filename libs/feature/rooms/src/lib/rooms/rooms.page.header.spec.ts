@@ -1,6 +1,8 @@
 import { RoomModerationService } from '@trinity/data-access/room-administration';
-import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { signal, type WritableSignal } from '@angular/core';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { type PresenceState } from '@trinity/util/matrix';
 import { Router } from '@angular/router';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import {
@@ -28,6 +30,7 @@ import {
 import {
   ConversationRuntime,
   TimelineActionsService,
+  type TimelineLoadState,
 } from '@trinity/data-access/timeline';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
@@ -36,17 +39,17 @@ import {
   MessageGestureSettingsService,
   ShellLayoutService,
 } from '@trinity/platform-native';
-import { MockComponent, MockProvider } from 'ng-mocks';
+import { MockComponent, MockProvider, ngMocks } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
-import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
-import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
+import { MessageListComponent } from '../message-list/message-list.component';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
+import { ThreadViewComponent } from '../thread/thread-view.component';
 import { AccountRoutingService } from './account-routing.service';
 import { InviteActionsService } from './invite-actions.service';
 import { MemberActionsService } from './member-actions.service';
@@ -63,7 +66,9 @@ import {
   ROUTE_PROVIDER,
   SYSTEM_STATUS_PROVIDER,
   setRouteRoom,
+  stubLiveLayout,
 } from './rooms-page.spec-harness';
+import { BELOW_MEMBERS_QUERY } from '@trinity/util/ui';
 import { SessionActionsService } from './session-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { ShellStatusService } from './shell-status.service';
@@ -101,7 +106,24 @@ const ROOM: RoomSummary = {
 
 beforeEach(() => setRouteRoom(null));
 
-function renderHeader(pinCount: number) {
+let lastRender: {
+  fixture: ComponentFixture<RoomsPage>;
+  activeAccountId: WritableSignal<string | null>;
+};
+let lastFixture: ComponentFixture<RoomsPage>;
+const windowingFlag = signal(false);
+
+function renderHeader(
+  pinCount: number,
+  opts: {
+    room?: RoomSummary | null;
+    routeRoom?: string;
+    loadState?: TimelineLoadState;
+    presenceByUser?: Record<string, WritableSignal<PresenceState | null>>;
+  } = {},
+) {
+  windowingFlag.set(false);
+  const presenceByUser = opts.presenceByUser ?? {};
   const pinMessages = signal<readonly unknown[]>(
     Array.from({ length: pinCount }, (_, id) => ({ id })),
   );
@@ -109,7 +131,9 @@ function renderHeader(pinCount: number) {
     accountBadges: signal(new Map()),
     accounts: signal([]),
     activeAccountId: signal<string | null>('@me:hs'),
-    activeRoom: signal<RoomSummary | null>(ROOM),
+    activeRoom: signal<RoomSummary | null>(
+      opts.room === undefined ? ROOM : opts.room,
+    ),
     activeRoomIsDirect: signal(false),
     anyRoomUnread: signal(false),
     canConfigureSpace: signal(false),
@@ -126,7 +150,12 @@ function renderHeader(pinCount: number) {
       stale: null,
     }),
     railSpaces: signal([]),
-    railUnread: signal({ recent: 0, home: 0, rooms: 0, perSpace: {} }),
+    railUnread: signal({
+      recent: { unread: 0, mentions: 0 },
+      home: { unread: 0, mentions: 0 },
+      rooms: { unread: 0, mentions: 0 },
+      perSpace: {},
+    }),
     reauthAccounts: signal([]),
     sidebarTitle: signal('Home'),
     spaceSortMode: signal('recent'),
@@ -189,13 +218,14 @@ function renderHeader(pinCount: number) {
       }),
       MockProvider(InvitesService),
       MockProvider(TimelineActionsService),
-      MockProvider(FeatureFlagsService, { virtualTimeline: signal(false) }),
+      MockProvider(FeatureFlagsService, { virtualTimeline: windowingFlag }),
       MockProvider(MatrixClientService, {
         activeUserId: signal<string | null>('@me:hs'),
       }),
       MockProvider(TrustService),
       MockProvider(IdentityPresenceService, {
-        presenceFor: () => signal('offline'),
+        presenceFor: (userId: string) =>
+          presenceByUser[userId] ?? signal('offline'),
       }),
       MockProvider(SpaceChildrenService),
       MockProvider(RoomMembersService),
@@ -227,11 +257,11 @@ function renderHeader(pinCount: number) {
         ChannelSidebarComponent,
         SidebarUserPanelComponent,
         PaneHandleComponent,
-        SimpleMessageListComponent,
-        VirtualMessageListComponent,
+        MessageListComponent,
         EncryptionBannerComponent,
         ConnectivityBannerComponent,
         TombstoneBannerComponent,
+        ThreadViewComponent,
       ],
     },
     add: {
@@ -239,12 +269,23 @@ function renderHeader(pinCount: number) {
         {
           provide: ConversationRuntime,
           useFactory: () => ({
-            timeline: new ConversationTimelineStub(),
+            timeline: Object.assign(new ConversationTimelineStub(), {
+              loadState: signal(opts.loadState ?? { kind: 'ready' as const }),
+            }),
+            search: {
+              searchLoaded: () => ({
+                hits: [],
+                encrypted: false,
+                serverAvailable: false,
+                scanned: 0,
+              }),
+            },
             threads: { summaries: signal({}), list: signal([]) },
             pins: {
               messages: pinMessages.asReadonly(),
               eventIds: signal<readonly string[]>([]),
               canMutate: signal(false),
+              retryFailed: () => undefined,
             },
           }),
         },
@@ -258,7 +299,7 @@ function renderHeader(pinCount: number) {
             activeSpaceId: signal<string | null>(null),
             recentView: signal(true),
             roomsView: signal(false),
-            activeRoomId: signal<string | null>('!r:hs'),
+            activeRoomId: signal<string | null>(opts.routeRoom ?? '!r:hs'),
             pane: signal<'list' | 'conversation'>('conversation'),
             placement: signal<'list' | 'conversation' | 'split'>('split'),
             eventTarget: signal(null),
@@ -283,9 +324,20 @@ function renderHeader(pinCount: number) {
         { provide: ReadStateService, useValue: {} },
         {
           provide: MessageActionsService,
-          useValue: { uploadProgress: signal(null) },
+          useFactory: (surfaces: RoomSurfaceLifecycle) => ({
+            uploadProgress: signal(null),
+            openThreadsList: () =>
+              surfaces.transition({ kind: 'open-threads' }),
+            openPinnedPanel: () => surfaces.transition({ kind: 'open-pinned' }),
+            openMessageSearch: () =>
+              surfaces.transition({ kind: 'open-search' }),
+          }),
+          deps: [RoomSurfaceLifecycle],
         },
-        { provide: ShellShortcutsService, useValue: {} },
+        {
+          provide: ShellShortcutsService,
+          useValue: { bindSearchFocus: vi.fn(), onGlobalKeydown: vi.fn() },
+        },
         { provide: SessionActionsService, useValue: {} },
       ],
       imports: [
@@ -293,52 +345,235 @@ function renderHeader(pinCount: number) {
         MockComponent(ChannelSidebarComponent),
         MockComponent(SidebarUserPanelComponent),
         MockComponent(PaneHandleComponent),
-        MockComponent(SimpleMessageListComponent),
-        MockComponent(VirtualMessageListComponent),
+        MockComponent(MessageListComponent),
         MockComponent(EncryptionBannerComponent),
         MockComponent(ConnectivityBannerComponent),
         MockComponent(TombstoneBannerComponent),
+        MockComponent(ThreadViewComponent),
       ],
     },
   });
-  setRouteRoom('!r:hs');
+  setRouteRoom(opts.routeRoom ?? '!r:hs');
   const fixture = TestBed.createComponent(RoomsPage);
+  lastFixture = fixture;
   fixture.detectChanges();
+  lastRender = { fixture, activeAccountId: vm.activeAccountId };
   return fixture.nativeElement as HTMLElement;
 }
 
-const badge = '.header-pin__badge';
+describe('RoomsPage user panel presence', () => {
+  const panelPresence = () =>
+    (
+      lastRender.fixture.debugElement.query(By.css('trn-sidebar-user-panel'))
+        .componentInstance as SidebarUserPanelComponent
+    ).presence();
 
-describe('RoomsPage header pinned-messages state', () => {
-  it('renders no count badge anywhere, with pins or without', () => {
-    expect(renderHeader(3).querySelector(badge)).toBeNull();
+  it('binds the active account’s presence and follows an account switch', () => {
+    const me = signal<PresenceState | null>('online');
+    const alt = signal<PresenceState | null>('unavailable');
+    renderHeader(0, { presenceByUser: { '@me:hs': me, '@alt:hs': alt } });
+    expect(panelPresence()).toBe('online');
+
+    me.set('offline');
+    lastRender.fixture.detectChanges();
+    expect(panelPresence()).toBe('offline');
+
+    lastRender.activeAccountId.set('@alt:hs');
+    lastRender.fixture.detectChanges();
+    expect(panelPresence()).toBe('unavailable');
   });
+});
 
-  it('leaves the overflow button plain, with no badge or state', () => {
-    const overflow = renderHeader(3).querySelector(
-      '[data-testid="room-actions-overflow"]',
+describe('RoomsPage header actions and search field', () => {
+  const byId = (root: ParentNode, id: string) =>
+    root.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+
+  function surfaces() {
+    return lastRender.fixture.debugElement.injector.get(RoomSurfaceLifecycle);
+  }
+
+  async function typeInHeader(root: HTMLElement, value: string) {
+    const field = byId(root, 'header-search') as HTMLInputElement;
+    field.value = value;
+    field.dispatchEvent(new Event('input'));
+    lastRender.fixture.detectChanges();
+    await lastRender.fixture.whenStable();
+    lastRender.fixture.detectChanges();
+    return field;
+  }
+
+  it('opens the search panel with the typed query', async () => {
+    const root = renderHeader(0);
+    await typeInHeader(root, 'hello');
+    const panelField = root.querySelector<HTMLInputElement>(
+      'trn-message-search input',
     );
-    expect(overflow?.textContent?.trim()).toBe('');
-    expect(
-      overflow?.querySelector('trn-icon')?.getAttribute('data-variant'),
-    ).toBeNull();
+    expect(panelField?.value).toBe('hello');
   });
 
-  it('marks the pin icon active only when the room has pinned messages', () => {
-    const icon = (host: HTMLElement) =>
-      host.querySelector('[data-testid="open-pinned"] trn-icon');
-    expect(icon(renderHeader(0))?.getAttribute('data-variant')).toBeNull();
-    TestBed.resetTestingModule();
-    expect(icon(renderHeader(2))?.getAttribute('data-variant')).toBe('accent');
+  it('focuses the field when the search shortcut asks for it', () => {
+    const root = renderHeader(0);
+    document.body.append(root);
+    const bindSearchFocus = lastRender.fixture.debugElement.injector.get(
+      ShellShortcutsService,
+    ).bindSearchFocus as ReturnType<typeof vi.fn>;
+    bindSearchFocus.mock.calls.at(-1)?.[0]();
+    expect(document.activeElement).toBe(byId(root, 'header-search'));
+    root.remove();
   });
 
-  it('puts the count in the pin button accessible name', () => {
-    const pin = renderHeader(2).querySelector('[data-testid="open-pinned"]');
-    expect(pin?.getAttribute('aria-label')).toBe('Pinned messages (2)');
+  function runSearchShortcut(): void {
+    const bindSearchFocus = lastRender.fixture.debugElement.injector.get(
+      ShellShortcutsService,
+    ).bindSearchFocus as ReturnType<typeof vi.fn>;
+    bindSearchFocus.mock.calls.at(-1)?.[0]();
+  }
+
+  async function settle(): Promise<void> {
+    lastRender.fixture.detectChanges();
+    await lastRender.fixture.whenStable();
+    lastRender.fixture.detectChanges();
+  }
+
+  it('opens the panel and focuses its field from the shortcut below the members breakpoint', async () => {
+    const restore = stubLiveLayout({ [BELOW_MEMBERS_QUERY]: true });
+    try {
+      const root = renderHeader(0);
+      document.body.append(root);
+      runSearchShortcut();
+      await settle();
+      const panelField = root.querySelector<HTMLInputElement>(
+        'trn-message-search input',
+      );
+      expect(panelField).not.toBeNull();
+      expect(document.activeElement).toBe(panelField);
+
+      // Again with the panel already open: focus returns to the panel field.
+      panelField!.blur();
+      runSearchShortcut();
+      await settle();
+      expect(document.activeElement).toBe(panelField);
+      root.remove();
+    } finally {
+      restore();
+    }
   });
 
-  it('keeps the plain accessible name when nothing is pinned', () => {
-    const pin = renderHeader(0).querySelector('[data-testid="open-pinned"]');
-    expect(pin?.getAttribute('aria-label')).toBe('Pinned messages');
+  it('lets Escape in an empty field reach the page and close the panel', async () => {
+    const root = renderHeader(0);
+    document.body.append(root);
+    surfaces().transition({ kind: 'open-threads' });
+    await settle();
+    const field = byId(root, 'header-search') as HTMLInputElement;
+    field.focus();
+    field.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    lastRender.fixture.detectChanges();
+    expect(surfaces().renderedSurface()).toBeNull();
+    root.remove();
   });
+});
+
+describe('RoomsPage Escape with the topic popover open', () => {
+  // Characterization: pins that the page's Escape guard is present (jsdom has no Popover API,
+  // so the popover is faked open). The real ordering against the browser's own popover
+  // handling is pinned by shell-layout.spec.mts:836-845.
+  it('closes only the popover, leaving the open panel alone', async () => {
+    const root = renderHeader(0, {
+      room: { ...ROOM, topic: 'Release planning' },
+    });
+    document.body.append(root);
+    const query = document.querySelector.bind(document);
+    const spy = vi
+      .spyOn(document, 'querySelector')
+      .mockImplementation((selector: string) =>
+        selector === '[popover]:popover-open'
+          ? (root.querySelector('#room-topic-popover') as Element)
+          : query(selector),
+      );
+    try {
+      const surfaces =
+        lastRender.fixture.debugElement.injector.get(RoomSurfaceLifecycle);
+      surfaces.transition({ kind: 'open-threads' });
+      lastRender.fixture.detectChanges();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(surfaces.renderedSurface()?.kind).toBe('threads');
+      spy.mockRestore();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(surfaces.renderedSurface()).toBeNull();
+    } finally {
+      spy.mockRestore();
+      root.remove();
+    }
+  });
+});
+
+describe('RoomsPage header for a linked room the client does not hold yet', () => {
+  const pending = (loadState: TimelineLoadState) =>
+    renderHeader(0, { room: null, routeRoom: '!pending:hs', loadState });
+  it('titles the header "Loading room…" while the room is pending', () => {
+    const host = pending({
+      kind: 'loading',
+      reason: 'room-pending',
+      partial: false,
+    });
+    expect(host.querySelector('h1')?.textContent).toContain('Loading room…');
+  });
+
+  it('drops the loading title once the room is known to be unavailable', () => {
+    const host = pending({ kind: 'error', reason: 'room-unavailable' });
+    expect(host.querySelector('h1')?.textContent).not.toContain(
+      'Loading room…',
+    );
+  });
+
+  it('still renders the timeline, fed the load state, but not the composer', () => {
+    const state: TimelineLoadState = {
+      kind: 'error',
+      reason: 'room-unavailable',
+    };
+    const host = pending(state);
+    const list = ngMocks.find(lastFixture.debugElement, MessageListComponent);
+    expect(list.componentInstance.loadState()).toEqual(state);
+    expect(list.componentInstance.composerEnabled()).toBe(false);
+    expect(list.componentInstance.roomId()).toBe('!pending:hs');
+    expect(host.querySelector('[data-testid="chat-empty"]')).toBeNull();
+  });
+});
+
+describe('RoomsPage timeline', () => {
+  it('renders one list, binds the windowing flag to it, and keeps it when the flag flips', () => {
+    renderHeader(0);
+    const lists = () =>
+      ngMocks.findAll(lastFixture.debugElement, MessageListComponent);
+    expect(lists()).toHaveLength(1);
+    const list = lists()[0].componentInstance;
+    expect(list.windowed()).toBe(false);
+
+    windowingFlag.set(true);
+    lastFixture.detectChanges();
+    expect(lists()).toHaveLength(1);
+    expect(lists()[0].componentInstance).toBe(list);
+    expect(list.windowed()).toBe(true);
+  });
+});
+
+describe('RoomsPage body for a room the client holds but the user has not joined', () => {
+  for (const loadState of [
+    { kind: 'ready' },
+    { kind: 'empty' },
+  ] as const satisfies readonly TimelineLoadState[]) {
+    it(`shows the "Select a room" hero once its timeline is ${loadState.kind}`, () => {
+      const host = renderHeader(0, {
+        room: null,
+        routeRoom: '!left:hs',
+        loadState,
+      });
+      expect(host.querySelector('[data-testid="chat-empty"]')).not.toBeNull();
+      expect(
+        ngMocks.findAll(lastFixture.debugElement, MessageListComponent),
+      ).toHaveLength(0);
+    });
+  }
 });

@@ -9,6 +9,7 @@ export type TrnDropdownMenuItemVariant = Extract<
 export function trnDropdownMenuItemRecipe(
   variant: TrnDropdownMenuItemVariant,
 ): string {
+  // The dark: tints out-merge Helm's `dark:data-[variant=destructive]:hover|focus:bg-destructive/20`.
   return hlm(
     variant === 'danger' &&
       'text-danger hover:bg-[var(--trinity-danger-tint-10)] hover:text-danger focus:bg-[var(--trinity-danger-tint-10)] focus:text-danger dark:hover:bg-[var(--trinity-danger-tint-20)] dark:focus:bg-[var(--trinity-danger-tint-20)] *:[trn-icon]:text-danger',

@@ -127,10 +127,10 @@ function harness(options: HarnessOptions = {}) {
     createDirectMessage: vi.fn(() => of('!dm:example.org')),
     selectionAvailability: (accountId: string, roomId: string) => {
       const client = clients.get(accountId);
-      if (!client) return 'unavailable' as const;
+      if (!client || !roomId.startsWith('!')) return 'unavailable' as const;
       return client.getRoom(roomId)
         ? ('available' as const)
-        : ('unavailable' as const);
+        : ('unconfirmed' as const);
     },
   };
   const spaces = { openSpace: vi.fn(() => of(void 0)) };
@@ -327,7 +327,7 @@ describe('WorkspaceNavigationService', () => {
     });
   });
 
-  it('repairs a notification for a missing room and does not publish its event anchor', async () => {
+  it('keeps a notification for a room the live Account has not synced yet', async () => {
     const h = harness({
       routeAccountId: BOB,
       routeRoomId: '!missing:example.org',
@@ -335,8 +335,76 @@ describe('WorkspaceNavigationService', () => {
     });
 
     await vi.waitFor(() => expect(h.service.view().accountId).toBe(BOB));
+    expect(h.service.view()).toMatchObject({
+      roomId: '!missing:example.org',
+      pane: 'conversation',
+    });
+    // The anchor must survive for a room the client has yet to hold: the list jumps to it
+    // once the room loads.
+    expect(h.service.eventTarget()).toMatchObject({ eventId: '$notification' });
+  });
+
+  it('repairs a room alias segment to the list', async () => {
+    const h = harness({
+      routeAccountId: ALICE,
+      routeRoomId: '#alias:example.org',
+    });
+
+    await vi.waitFor(() =>
+      expect(h.navigate).toHaveBeenCalledWith(['/rooms'], {
+        queryParams: { account: ALICE },
+        replaceUrl: true,
+      }),
+    );
     expect(h.service.view()).toMatchObject({ roomId: null, pane: 'list' });
-    expect(h.service.eventTarget()).toBeNull();
+  });
+
+  it('repairs a room on an Account whose client is not live to the list', async () => {
+    const h = harness({
+      routeAccountId: ALICE,
+      rooms: { [ALICE]: [ROOM] },
+    });
+    h.navigate.mockClear();
+
+    await firstValueFrom(
+      h.service.navigate({
+        kind: 'restoration',
+        accountId: ALICE,
+        scope: { kind: 'recent' },
+        roomId: ROOM,
+        pane: 'conversation',
+        canonical: false,
+      }),
+    );
+    h.activeAccountId.set(BOB);
+    h.navigate.mockClear();
+    await firstValueFrom(
+      h.service.navigate({
+        kind: 'restoration',
+        accountId: BOB,
+        scope: { kind: 'recent' },
+        roomId: ROOM,
+        pane: 'conversation',
+        canonical: false,
+      }),
+    );
+    expect(h.service.view()).toMatchObject({ roomId: null, pane: 'list' });
+    expect(h.navigate).toHaveBeenLastCalledWith(['/rooms'], {
+      queryParams: { account: BOB },
+      replaceUrl: true,
+    });
+  });
+
+  it('seeds a cold start naming an unconfirmed room on the active Account', async () => {
+    const h = harness({
+      routeAccountId: ALICE,
+      routeRoomId: '!pending:example.org',
+    });
+
+    expect(h.service.view()).toMatchObject({
+      accountId: ALICE,
+      roomId: '!pending:example.org',
+    });
   });
 
   it('restores an inactive Account deep link before atomically focusing its Conversation', async () => {
@@ -919,7 +987,7 @@ describe('WorkspaceNavigationService', () => {
       expect(h.conversations.focus).not.toHaveBeenCalled();
     });
 
-    it('repairs an unavailable notification through normal Workspace policy', async () => {
+    it('keeps an unsynced notification room through normal Workspace policy', async () => {
       const h = harness({ routeAccountId: ALICE });
       h.navigate.mockClear();
 
@@ -935,14 +1003,13 @@ describe('WorkspaceNavigationService', () => {
       ).resolves.toMatchObject({ kind: 'ready', change: 'committed' });
       expect(h.service.view()).toMatchObject({
         accountId: BOB,
-        roomId: null,
-        pane: 'list',
+        roomId: '!missing:example.org',
+        pane: 'conversation',
       });
-      expect(h.service.eventTarget()).toBeNull();
-      expect(h.navigate).toHaveBeenLastCalledWith(['/rooms'], {
-        queryParams: { account: BOB },
-        replaceUrl: true,
-      });
+      expect(h.conversations.focus).toHaveBeenLastCalledWith(
+        expect.objectContaining({ roomId: '!missing:example.org' }),
+      );
+      expect(h.service.eventTarget()).toMatchObject({ eventId: '$event' });
     });
   });
 
@@ -966,7 +1033,7 @@ describe('WorkspaceNavigationService', () => {
     expect(h.navigate).toHaveBeenCalledOnce();
   });
 
-  it('repairs a missing room to the list and replaces malformed history', async () => {
+  it('keeps an unsynced room and replaces malformed history', async () => {
     const h = harness({ routeAccountId: ALICE });
     h.navigate.mockClear();
 
@@ -988,14 +1055,17 @@ describe('WorkspaceNavigationService', () => {
     expect(h.service.view()).toEqual({
       accountId: ALICE,
       scope: { kind: 'home' },
-      roomId: null,
-      pane: 'list',
+      roomId: '!missing:example.org',
+      pane: 'conversation',
     });
-    expect(h.navigate).toHaveBeenLastCalledWith(['/rooms'], {
-      queryParams: { account: ALICE, view: 'home' },
-      replaceUrl: true,
-    });
-    expect(h.conversations.focus).not.toHaveBeenCalledWith(
+    expect(h.navigate).toHaveBeenLastCalledWith(
+      ['/rooms', encodeRoomSegment('!missing:example.org')],
+      {
+        queryParams: { account: ALICE, view: 'home' },
+        replaceUrl: true,
+      },
+    );
+    expect(h.conversations.focus).toHaveBeenLastCalledWith(
       expect.objectContaining({ roomId: '!missing:example.org' }),
     );
   });

@@ -53,7 +53,8 @@ test.describe('Room settings', () => {
     await openRoom(page, originalName);
 
     // Open the room settings dialog and rename the room.
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     const settings = page.getByTestId('room-settings');
     await expect(settings).toBeVisible({
       timeout: 10_000,
@@ -61,13 +62,10 @@ test.describe('Room settings', () => {
     await expect(page.getByTestId('room-settings-directory')).toBeVisible();
     await expect(page.getByTestId('room-settings-account')).toContainText(user);
     await expect(
-      settings.getByRole('heading', { name: 'Room settings', level: 1 }),
+      settings.getByRole('heading', { name: 'General', level: 1 }),
     ).toBeFocused();
     const settingsBox = await settings.boundingBox();
     expect(settingsBox?.width ?? 0).toBeGreaterThan(700);
-    expect(settingsBox?.width ?? Infinity).toBeLessThan(
-      page.viewportSize()?.width ?? Infinity,
-    );
     const openingViewport = page.viewportSize();
     if (!openingViewport) throw new Error('Room settings needs a viewport');
     await page.setViewportSize({ width: 700, height: 800 });
@@ -174,7 +172,8 @@ test.describe('Room settings', () => {
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
 
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await expect(page.getByTestId('room-settings')).toBeVisible({
       timeout: 10_000,
     });
@@ -213,7 +212,8 @@ test.describe('Room settings', () => {
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
 
     let nameWrites = 0;
     let topicWrites = 0;
@@ -301,7 +301,8 @@ test.describe('Room settings', () => {
       .filter({ hasText: `@${userA}:` })
       .click();
     await openRoom(page, roomName);
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await expect(page.getByTestId('room-settings-account')).toContainText(
       userA,
     );

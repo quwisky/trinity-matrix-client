@@ -5,6 +5,10 @@ import {
   TrnButton,
   TrnSelectComponent,
 } from '@trinity/components/controls';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+} from '@trinity/components/overlay';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { SpaceSettingsDraftService } from './space-settings-draft.service';
 
@@ -18,6 +22,8 @@ import { SpaceSettingsDraftService } from './space-settings-draft.service';
     TrnActionAvailability,
     TrnButton,
     TrnSelectComponent,
+    TrnSettingsGroupComponent,
+    TrnSettingsRowComponent,
     TrnTooltip,
   ],
   templateUrl: './space-settings-access.component.html',

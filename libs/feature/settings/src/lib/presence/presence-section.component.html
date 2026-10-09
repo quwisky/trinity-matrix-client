@@ -1,62 +1,57 @@
-<div>
-  <trn-settings-section-heading
-    title="Presence"
-    description="Choose the availability and status message other people see."
-    [primary]="true"
-  />
+<trn-settings-group
+  description="Choose the availability and status message other people see."
+>
+  <trn-settings-row label="Availability" labelId="presence-state-heading">
+    <trn-radio-group
+      aria-labelledby="presence-state-heading"
+      [options]="presenceOptions"
+      [value]="stateDraft()"
+      (valueChange)="onStateChange($event)"
+    />
+  </trn-settings-row>
 
-  <trn-radio-group
-    class="px-4 py-2"
-    [options]="presenceOptions"
-    [value]="stateDraft()"
-    (valueChange)="onStateChange($event)"
-  />
-
-  <div
-    class="flex items-end gap-3 border-b border-solid border-border px-4 py-2"
-  >
-    <div class="min-w-0 flex-1">
-      <label trnLabel for="presence-status">Status message</label>
+  <trn-settings-row label="Status message" for="presence-status">
+    <div class="flex items-center gap-2">
       <input
         id="presence-status"
         trnInput
         type="text"
         autocomplete="off"
         [attr.maxlength]="maxLength"
-        class="mt-1"
+        class="w-56 max-sm:min-w-0 max-sm:flex-1"
         placeholder="What are you up to?"
         [value]="statusDraft()"
         (input)="onStatusInput($event)"
         data-testid="presence-status"
       />
+      <button
+        trnBtn
+        size="sm"
+        class="shrink-0"
+        [disabled]="!dirty() || saving()"
+        (click)="save()"
+        data-testid="presence-save"
+      >
+        Save
+      </button>
     </div>
-    <button
-      trnBtn
-      size="sm"
-      class="ml-auto shrink-0"
-      [disabled]="!dirty() || saving()"
-      (click)="save()"
-      data-testid="presence-save"
-    >
-      Save
-    </button>
-  </div>
+  </trn-settings-row>
 
   @if (error(); as message) {
-    <p class="block px-4 py-2 text-13 text-danger" role="alert">
+    <p class="m-0 py-3 text-13 text-danger" role="alert">
       {{ message }}
     </p>
   } @else if (justSaved()) {
     <p
-      class="block px-4 py-2 text-13 text-muted-foreground"
+      class="m-0 py-3 text-13 text-muted-foreground"
       data-testid="presence-saved"
     >
       Your presence has been updated.
     </p>
   } @else {
-    <p class="block px-4 py-2 text-13 text-muted-foreground">
+    <p class="m-0 py-3 text-13 text-muted-foreground">
       Others see this state and message. Some homeservers disable or rate-limit
       presence, so it may not always take effect.
     </p>
   }
-</div>
+</trn-settings-group>

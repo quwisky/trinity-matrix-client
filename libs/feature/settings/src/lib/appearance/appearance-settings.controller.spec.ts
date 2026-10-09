@@ -111,7 +111,7 @@ describe('AppearanceSettingsController', () => {
       Object.values(controller.axes).filter(
         (axis) => axis.state().kind !== 'recoverable-failure',
       ),
-    ).toHaveLength(5);
+    ).toHaveLength(6);
 
     controller.recoverHydration();
     expect(controller.hydrationWarning()).toBeNull();

@@ -73,7 +73,8 @@ function createEncryptedRoom(
 }
 
 /** Room Library's authoritative answer for one Account-and-Room selection. */
-export type RoomLibrarySelectionAvailability = 'available' | 'unavailable';
+export type RoomLibrarySelectionAvailability =
+  'available' | 'unconfirmed' | 'unavailable';
 
 /** Exact Account-owned organisation preferences projected from a synced Room. */
 export interface RoomOrganisationSnapshot {
@@ -376,17 +377,17 @@ export class RoomLibraryService {
   }
 
   /**
-   * Whether an exact Room or Space is present in an Account's synced SDK graph.
-   *
-   * Workspace consumes this typed answer instead of reading a Matrix client. A missing
-   * Account client is authoritative unavailability, just like a missing Room on a live one.
+   * Whether Workspace may select this Room. `unconfirmed`: the Account's client is live and
+   * the id is well-formed, but the client does not hold the Room (yet) — the Conversation
+   * decides (pending before sync, unavailable after). `unavailable`: never navigate here.
    */
   selectionAvailability(
     accountId: string,
     roomId: string,
   ): RoomLibrarySelectionAvailability {
     const client = this.matrix.clientFor(accountId);
-    return client?.getRoom(roomId) ? 'available' : 'unavailable';
+    if (!client || !roomId.startsWith('!')) return 'unavailable';
+    return client.getRoom(roomId) ? 'available' : 'unconfirmed';
   }
 
   /**

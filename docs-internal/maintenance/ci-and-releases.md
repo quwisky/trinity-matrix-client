@@ -10,16 +10,17 @@ public developer guide.
 
 ## Know what ran
 
-| Workflow                                                             | Starts when                                                                | What it provides                                                                                                                                                               |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [`ci.yml`](../../.github/workflows/ci.yml)                           | A pull request, selected pushes, or its weekly schedule                    | Branch checks and browser, desktop, and Android evidence                                                                                                                       |
-| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml)           | A `main` push, a published stable release, or a manual dispatch            | Validated user and developer sites deployed to GitHub Pages                                                                                                                    |
-| [`release.yml`](../../.github/workflows/release.yml)                 | A push to `main` or `release/**`, or a manual dispatch with a tag input    | release-please release PRs and tags, then tag verification, desktop packages, a draft GitHub release, its publication, and the back-merge PR (auto-merging) after a stable tag |
-| [`homebrew.yml`](../../.github/workflows/homebrew.yml)               | A release is published, or a manual dispatch with a tag input              | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                                                                                             |
-| [`e2e-ios-nightly.yml`](../../.github/workflows/e2e-ios-nightly.yml) | Daily at 04:13 UTC or a manual dispatch (`specs` input narrows the run)    | The installed iOS app on the Simulator against native Synapse, with scrubbed diagnostics                                                                                       |
-| [`renovate.yml`](../../.github/workflows/renovate.yml)               | Daily at 00:00 UTC or a manual dispatch                                    | Dependency update maintenance through a GitHub App token                                                                                                                       |
-| [`release-stable.yml`](../../.github/workflows/release-stable.yml)   | A manual dispatch with `from` and `dry_run` inputs                         | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                                                  |
-| [`backport.yml`](../../.github/workflows/backport.yml)               | A merged `main` pull request is closed or labeled `backport release/X.Y.x` | Opens a PR that cherry-picks the fix onto each labeled release branch, through a GitHub App token                                                                              |
+| Workflow                                                             | Starts when                                                                | What it provides                                                                                                                                                |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`ci.yml`](../../.github/workflows/ci.yml)                           | A pull request, selected pushes, or its weekly schedule                    | Branch checks and browser, desktop, and Android evidence                                                                                                        |
+| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml)           | A `main` push, a published stable release, or a manual dispatch            | Validated user and developer sites deployed to GitHub Pages                                                                                                     |
+| [`release.yml`](../../.github/workflows/release.yml)                 | A push to `main` or `release/**`, or a manual dispatch with a tag input    | release-please release PRs and tags, then tag verification, desktop packages, a draft GitHub release, its publication, and the back-merge PR after a stable tag |
+| [`homebrew.yml`](../../.github/workflows/homebrew.yml)               | A release is published, or a manual dispatch with a tag input              | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                                                                              |
+| [`e2e-ios-nightly.yml`](../../.github/workflows/e2e-ios-nightly.yml) | Daily at 04:13 UTC or a manual dispatch (`specs` input narrows the run)    | The installed iOS app on the Simulator against native Synapse, with scrubbed diagnostics                                                                        |
+| [`renovate.yml`](../../.github/workflows/renovate.yml)               | Daily at 00:00 UTC or a manual dispatch                                    | Dependency update maintenance through a GitHub App token                                                                                                        |
+| [`release-stable.yml`](../../.github/workflows/release-stable.yml)   | A manual dispatch with `from` and `dry_run` inputs                         | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                                   |
+| [`backport.yml`](../../.github/workflows/backport.yml)               | A merged `main` pull request is closed or labeled `backport release/X.Y.x` | Opens a PR that cherry-picks the fix onto each labeled release branch, through a GitHub App token                                                               |
+| [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml) | `CI` completes on a `back-merge/**` branch of this repository              | Pushes the back-merge commit to `main` as a fast-forward, through a GitHub App token                                                                            |
 
 The branch workflow accepts pushes to `main`, `release/**`, and
 `renovate/patch-**`; pull requests are its usual review path. A newer run for
@@ -35,9 +36,33 @@ unavailable diffs, branch creation, ambiguous merge bases, and every other path
 select the full code graph. Configuration, scripts, lockfiles, root documents,
 private documentation, and documentation-site code therefore retain full validation.
 
+The `classify` job also runs a `mas` step that decides whether `mas-e2e` runs. For a pull request it
+reads the diff against the base and answers `true` when a path under `libs/data-access/auth/`,
+`libs/data-access/matrix-client/`, `libs/data-access/accounts/`, `libs/feature/auth/`,
+`patches/matrix-js-sdk*` or `e2e/support/homeserver/mas/` changed, when the session or secure storage
+service in `libs/platform-native`, the session model in `libs/util/matrix` or the factory reset's
+`application-capability.providers.ts` changed, when a MAS journey or its support file changed, when a shared
+harness file the MAS stack uses changed (`e2e/support/homeserver/` `Caddyfile`, `start.mjs`, `stop.mjs`,
+`constants.mjs`, `kind.mts` or `paths.mjs`), or when a `matrix-js-sdk` or
+`@matrix-org/matrix-sdk-crypto-wasm` line changed in `package.json`, `pnpm-lock.yaml` or
+`pnpm-workspace.yaml` (a version bump rewrites that dependency's entries; any other dependency leaves the
+answer `false`). An empty base commit fails the step instead of answering `false`. Pushes answer `false`:
+the Synapse nightly runs the same journeys against `main`. Renovate `renovate/patch-**` pushes that
+automerge therefore skip `mas-e2e`, and the nightly covers them. It is a step, not an
+`on.pull_request.paths` filter, so a pull request that skips the journeys still reports every required check.
+
 The classifier emits its reason and expected jobs. Wiring an aggregate required-result
 status into branch rules belongs to the later protection slice
 of [#462](https://github.com/quwisky/trinity-matrix-client/issues/462).
+
+Result jobs keep the required check names stable while the work behind them runs in
+several jobs. `e2e-result` reports `E2E (Playwright + homeserver)` for `e2e`, the three
+`browser-e2e` shards, `storybook` and `mas-e2e`; `mobile-e2e-result` reports `Mobile E2E (Android)`
+for both `mobile-e2e` jobs. A result job passes only when every job it covers succeeded,
+so a failed or skipped shard blocks a merge exactly as the single job did. The one exception
+is `mas-e2e`, which is skipped by design when a pull request leaves sign-in code alone:
+`e2e-result` accepts that job skipped, while a failed or cancelled `mas-e2e` and every other
+skipped job still fail it. Branch rules need no change when a result job gains or loses a job it covers.
 
 ### Configure GitHub Pages
 
@@ -64,7 +89,20 @@ The desktop shell is a second pnpm project, so omitting its lockfile makes its
 dependency changes miss cache saves. There is deliberately no Nx cache sharing
 between hosted runners: Nx's local result index is machine-specific, and this
 repository has no remote Nx cache. Treat a repeated build in another CI job as
-an independent build, not a cache regression.
+an independent build, not a cache regression. Pull requests instead save
+time by testing only affected projects (see the `test` job below); there is still no cache.
+
+Playwright's `--with-deps` installs its host libraries with apt, which once timed out on a slow
+Ubuntu mirror. The [Playwright action](../../.github/actions/setup-playwright/action.yml) therefore
+points apt at `~/.cache/apt-archives` (a drop-in setting `Dir::Cache::Archives`) and caches the
+`.deb` files under `apt-<OS>-<ImageOS>-<ImageVersion>-<browsers>-<lockfile hash>`, with a prefix
+fallback. A hit skips the package downloads; `apt-get update` still fetches the index, and a missing
+or corrupt `.deb` is downloaded again, so a stale cache cannot fail the job. A new runner image
+version starts a new cache. Each `playwright install` attempt (in the action and in
+`scripts/ci-prerequisites.mjs`) is bounded to six minutes and retried once, with a
+`::warning::` naming the first failure. The Chromium-only browser shards skip `--with-deps`
+through `with-deps: 'false'` and `TRINITY_PLAYWRIGHT_WITH_DEPS`, because the hosted Ubuntu image
+already ships Chrome's libraries; every job that installs WebKit keeps the system packages.
 
 ## The CI jobs
 
@@ -73,18 +111,33 @@ log. Do not infer repository-wide merge rules from the workflow YAML: branch
 protection and rulesets live in GitHub settings and may impose additional
 requirements.
 
-| Job                     | Checks                                                                                                                                                                                                            | First recovery step                                                                                                                                                                                                                                                                                                                                             |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `quality`               | `pnpm lint`, `pnpm stylelint`, and `pnpm format:check`                                                                                                                                                            | Fix the reported rule or formatting issue. Stylelint is separate from lint.                                                                                                                                                                                                                                                                                     |
-| `test`                  | Workspace-wide typecheck, then `pnpm test`                                                                                                                                                                        | Fix the type or unit failure; a passing Vitest run does not replace the typecheck.                                                                                                                                                                                                                                                                              |
-| `renderer`              | One verified production web renderer build, recorded as a SHA/configuration/file manifest artifact                                                                                                                | Inspect the renderer workflow's build, manifest, or upload step. Downstream hosts must consume this artifact.                                                                                                                                                                                                                                                   |
-| `desktop`               | Electron install, compile, typecheck, unit tests, and launched-shell E2E using the verified renderer                                                                                                              | Use the [desktop guide](../../apps/docs-developers/src/content/docs/platforms/electron.md) to reproduce the matching shell or packaging step.                                                                                                                                                                                                                   |
-| `e2e`                   | Component Storybook, production renderer, styling, disposable-homeserver (Tuwunel) browser journeys, then QR verification                                                                                         | Read the Playwright report and reproduce the smallest owned journey. The homeserver-backed flows use a fixed disposable stack, so run them sequentially.                                                                                                                                                                                                        |
-| `mobile-e2e`            | WebdriverIO and Appium suite against the installed Capacitor app on an API 36 emulator, with identifiers scrubbed before upload                                                                                   | Reproduce with `pnpm e2e:mobile`; check the uploaded `mobile.android` artifact for the WebView and chromedriver versions line.                                                                                                                                                                                                                                  |
-| `ios-native-build`      | Unsigned iOS Simulator host compile on `macos-26`, using the verified renderer and checking only Cordova extras                                                                                                   | Inspect the retained Xcode log and result bundle; this is a compile gate, not installed-device evidence.                                                                                                                                                                                                                                                        |
-| `scheduled-e2e`         | Chromium, Firefox, and WebKit scheduled suite                                                                                                                                                                     | This weekly Sunday 03:23 UTC job is separate from pull-request jobs; diagnose its browser-specific artifact and environment.                                                                                                                                                                                                                                    |
-| `E2E (Synapse nightly)` | Separate `e2e-synapse-nightly.yml` workflow: browser, Electron full and protocol suites with `TRINITY_E2E_HOMESERVER=synapse`, daily at 02:47 UTC and on demand                                                   | Reproduce locally with the same variable, for example `TRINITY_E2E_HOMESERVER=synapse pnpm e2e:browser`. A failure that Tuwunel does not show is a server difference: branch the expectation on `homeserverSession().kind`.                                                                                                                                     |
-| `E2E (iOS nightly)`     | Separate `e2e-ios-nightly.yml` workflow on `macos-26`: the mobile suite through XCUITest on the pinned iPhone 17 / iOS 26.5 Simulator, native Synapse and Caddy, caches for WebDriverAgent, pip, Appium and Caddy | Reproduce with `TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native pnpm e2e:mobile:ios` on macOS; dispatch with `gh workflow run e2e-ios-nightly.yml -f specs=./specs/<file>.e2e.mts`; read `mobile.ios/host-output` and `wdio/appium.log` in the artifact. A pin missing from a new runner image fails with the available simulators listed. |
+| Job                     | Checks                                                                                                                                                                                                                                                                                                   | First recovery step                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `quality`               | `pnpm lint`, `pnpm stylelint`, `pnpm format:check`, then the workspace-wide typecheck                                                                                                                                                                                                                    | Fix the reported rule, formatting or type error. Stylelint is separate from lint, and a passing Vitest run does not replace the typecheck.                                                                                                                                                                                                                      |
+| `test`                  | Unit tests. A pull request tests the projects `nx affected` selects against its base commit; a change to any root-level file or under `.github/` tests every project, as does every push                                                                                                                 | Fix the unit failure. To see the selection locally, run `pnpm nx show projects --affected --base=<base sha> --withTarget test`.                                                                                                                                                                                                                                 |
+| `renderer`              | One verified production web renderer build, recorded as a SHA/configuration/file manifest artifact                                                                                                                                                                                                       | Inspect the renderer workflow's build, manifest, or upload step. Downstream hosts must consume this artifact.                                                                                                                                                                                                                                                   |
+| `desktop`               | Electron install, compile, typecheck, unit tests, and launched-shell E2E using the verified renderer                                                                                                                                                                                                     | Use the [desktop guide](../../apps/docs-developers/src/content/docs/platforms/electron.md) to reproduce the matching shell or packaging step.                                                                                                                                                                                                                   |
+| `e2e`                   | Production renderer, styling, then QR verification against the disposable homeserver, using the verified renderer                                                                                                                                                                                        | Read the Playwright report and reproduce the smallest owned journey. Homeserver-backed suites on one machine share a fixed stack, so run them sequentially.                                                                                                                                                                                                     |
+| `browser-e2e`           | Disposable-homeserver (Tuwunel) browser journeys as three Playwright shards. Each job sets `TRINITY_E2E_SHARD=<n>/3`, starts its own homeserver and development build, and does not wait for the renderer                                                                                                | Open the failing shard's artifact (surface `browser`, shard `<n>`) and reproduce the failing spec; `TRINITY_E2E_SHARD=<n>/3 pnpm exec nx run trinity-e2e-browser:e2e` replays the whole shard.                                                                                                                                                                  |
+| `storybook`             | Component Storybook palette, mode and contrast checks with three workers; no renderer or homeserver                                                                                                                                                                                                      | Reproduce with `pnpm exec nx run trinity-e2e-components:storybook`.                                                                                                                                                                                                                                                                                             |
+| `mas-e2e`               | MAS-backed OAuth journeys (`accounts/mas-session.spec.mts`) with `TRINITY_E2E_MAS=1`, only when `classify` found sign-in, `matrix-js-sdk` or MAS changes in the pull request; otherwise skipped. The E2E registry pins the browser command line, so `TRINITY_E2E_SPEC` selects the file                  | Open the failing job's artifact (surface `browser-mas`). Reproduce with `TRINITY_E2E_MAS=1 pnpm nx run trinity-e2e-browser:e2e -- accounts/mas-session.spec.mts`; the refresh journey alone takes about three minutes.                                                                                                                                          |
+| `e2e-result`            | Reports the required `E2E (Playwright + homeserver)` check; passes only when `e2e`, every `browser-e2e` shard and `storybook` succeeded and `mas-e2e` succeeded or was skipped                                                                                                                           | Its log lists each job's result; open the one that did not succeed.                                                                                                                                                                                                                                                                                             |
+| `mobile-e2e`            | WebdriverIO and Appium suite against the installed Capacitor app on an API 36 emulator, as two jobs that each select half the specs through `TRINITY_MOBILE_SPECS`. The app build and the homeserver image pull run as background steps while the emulator boots; identifiers are scrubbed before upload | Reproduce with `pnpm e2e:mobile`, or one shard with `TRINITY_MOBILE_SPECS=<its list in ci.yml> pnpm e2e:mobile`; check the uploaded `mobile.android` artifact for the WebView and chromedriver versions line. A failed background build fails the emulator step at its first line; read the `Build the Android app while the emulator boots` step.              |
+| `mobile-e2e-result`     | Reports the required `Mobile E2E (Android)` check; passes only when both `mobile-e2e` jobs succeeded                                                                                                                                                                                                     | Its log lists each job's result; open the one that did not succeed.                                                                                                                                                                                                                                                                                             |
+| `ios-native-build`      | Unsigned iOS Simulator host compile on `macos-26`, using the verified renderer and checking only Cordova extras                                                                                                                                                                                          | Inspect the retained Xcode log and result bundle; this is a compile gate, not installed-device evidence.                                                                                                                                                                                                                                                        |
+| `scheduled-e2e`         | Chromium, Firefox, and WebKit scheduled suite                                                                                                                                                                                                                                                            | This weekly Sunday 03:23 UTC job is separate from pull-request jobs; diagnose its browser-specific artifact and environment.                                                                                                                                                                                                                                    |
+| `E2E (Synapse nightly)` | Separate `e2e-synapse-nightly.yml` workflow: browser (three shards, like `browser-e2e`), Electron full and protocol suites with `TRINITY_E2E_HOMESERVER=synapse`, daily at 02:47 UTC and on demand; a separate `Browser E2E (MAS)` job runs `accounts/mas-session.spec.mts` with `TRINITY_E2E_MAS=1`     | Reproduce locally with the same variable, for example `TRINITY_E2E_HOMESERVER=synapse pnpm e2e:browser`. A failure that Tuwunel does not show is a server difference: branch the expectation on `homeserverSession().kind`. Reproduce a MAS failure with `TRINITY_E2E_MAS=1 pnpm nx run trinity-e2e-browser:e2e -- accounts/mas-session.spec.mts`.              |
+| `E2E (iOS nightly)`     | Separate `e2e-ios-nightly.yml` workflow on `macos-26`: the mobile suite through XCUITest on the pinned iPhone 17 / iOS 26.5 Simulator, native Synapse and Caddy, caches for WebDriverAgent, pip, Appium and Caddy                                                                                        | Reproduce with `TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native pnpm e2e:mobile:ios` on macOS; dispatch with `gh workflow run e2e-ios-nightly.yml -f specs=./specs/<file>.e2e.mts`; read `mobile.ios/host-output` and `wdio/appium.log` in the artifact. A pin missing from a new runner image fails with the available simulators listed. |
+
+A red scheduled run notifies nobody, so `scheduled-e2e` and every job of the Synapse nightly feed a
+`notify` job that calls the reusable [`_nightly-alert.yml`](../../.github/workflows/_nightly-alert.yml).
+On `main`, a failed (or cancelled) job opens one `Nightly E2E failing: <workflow name>` issue labelled
+`ci-nightly`, or reuses the open one, and comments with the run URL, the failed job ids and the date. The
+next all-green run comments and closes it. Pull requests and other branches never touch it, and the job
+holds only `issues: write`. Because a cancelled job counts as failed, the weekly `ci.yml` run has its own
+concurrency group: a push to `main` cancels the in-flight push run but never the scheduled one. Give any
+new scheduled E2E workflow the same `notify` job and list it in `scripts/nightly-alert-workflow.spec.mjs`,
+which fails until it does.
 
 Started Playwright suites upload hidden `dist/.playwright/` output through the
 [diagnostics action](../../.github/actions/upload-playwright-diagnostics/action.yml).
@@ -123,10 +176,10 @@ Desktop, Android, iOS, and the production renderer journey download that artifac
 validate its coordinates, manifest digest, file contents, and expected checkout before
 installing the payload into the canonical `www/` directory. The native wrappers allow
 only their generated Cordova files alongside the manifest payload. A failed validation
-does not replace `www/`. The `e2e` job still builds its development bundle while
-preparing Docker/browser prerequisites; the production renderer step restores the
-verified artifact afterward, while styling and browser journeys intentionally use the
-development server.
+does not replace `www/`. The `e2e` and `browser-e2e` jobs build the development bundle while
+preparing Docker/browser prerequisites. In `e2e`, the production renderer step restores the
+verified artifact afterward, while styling uses the development server. The browser
+journeys use only the development server, so `browser-e2e` does not wait for the renderer.
 
 For local host parity checks against an already recorded artifact, use:
 
@@ -185,9 +238,9 @@ through [`release.yml`](../../.github/workflows/release.yml):
 On every push to either kind of branch, release-please updates that branch's release PR
 from the Conventional Commits since the last release. Release PRs on both lines are titled
 `release: cut the vX.Y.Z release` (`pull-request-title-pattern` in both configs), and
-the squash merge keeps that title as the commit; commitlint allows the `release` type. Merging the release PR bumps
+release PRs merge as a squash, which keeps that title as the commit; commitlint allows the `release` type. Merging the release PR bumps
 `package.json`, `electron/package.json` and the manifest, and release-please then
-tags the merge commit and creates a **draft** GitHub release. The same workflow run
+tags the squash commit and creates a **draft** GitHub release. The same workflow run
 verifies the tag and attaches the desktop packages to that draft. The `publish`
 job then publishes it once every package is attached; see
 [Automatic publishing](#automatic-publishing).
@@ -205,23 +258,25 @@ to cut the same version twice.
    `Release stable` workflow (Actions tab, manual dispatch) with `from` set to that tag
    (empty means the newest published prerelease) and `dry_run` enabled. It runs the checks
    and prints the branch, version and commit it would use, and pushes nothing.
-2. Run it again with `dry_run` disabled. It pushes `release/X.Y.x` as the prerelease's
-   commit plus one commit, `chore(release): release vX.Y.Z from this branch`, that sets
-   `"release-as": "X.Y.Z"` for the root package in `release-please-config.json`. That push
-   runs `release.yml` on the branch, whose release-please run opens the stable release PR
-   with version `X.Y.Z`, so stable ships exactly the tested code. Without the pin, the
-   stable config's `always-bump-patch` would propose a patch of the last stable release;
-   every later push to the branch before the release (a fix merged first, say) keeps the
-   PR at `X.Y.Z` because the pin stays in the config.
+2. Run it again with `dry_run` disabled. It pushes `release/X.Y.x` as exactly the
+   prerelease's commit, with no commit of its own. That push runs `release.yml` on the
+   branch. While the branch has no stable `vX.Y.*` tag in its history,
+   [`scripts/release-version.mjs`](../../scripts/release-version.mjs) takes the newest
+   `vX.Y.Z-next.N` tag reachable from it and the `Release PR and tag` job runs the
+   release-please CLI (pinned to `17.11.2`) with `--release-as X.Y.Z`, which opens the
+   stable release PR with version `X.Y.Z`, so stable ships exactly the tested code. The
+   action then only tags and releases. Every later push before the release (a fix merged
+   first, say) keeps the PR at `X.Y.Z` the same way. Once `vX.Y.Z` is tagged, the job runs the action alone and the stable config's
+   `always-bump-patch` proposes patch releases.
 3. Review the stable release PR (version and `CHANGELOG.md` entry) and merge it. That is
    the last manual step: the tag, draft release and packages follow, and the `publish`
    job publishes the release once every package is attached (see
    [Automatic publishing](#automatic-publishing)).
-4. Once `vX.Y.Z` is tagged, the `Open the back-merge PR` job pushes
-   `chore(release): drop the one-time release-as after vX.Y.Z` to `release/X.Y.x`, so later
-   fixes release as patches, then opens the back-merge PR and enables auto-merge on it. It
-   merges itself when `main`'s checks pass; step in only for conflicts or when auto-merge
-   is off (see [Back-merge conflicts](#back-merge-conflicts)).
+4. Once `vX.Y.Z` is tagged, the `Open the back-merge PR` job opens the back-merge PR. The
+   release branch then holds only the prerelease commit, the squashed
+   `release: cut the vX.Y.Z release` commit and later fixes. Its merge commit lands on `main`
+   by a direct push once CI passes on it; step in only for conflicts (see
+   [Back-merge conflicts](#back-merge-conflicts)).
 
 The same run creates the label `backport release/X.Y.x` for the new line.
 
@@ -250,18 +305,20 @@ comments use the issues API). Its
 `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret live in the
 `release-app` environment, whose deployment branch policy allows `main` and `release/**`;
 the jobs that mint the token (`back-merge` and `publish` in `release.yml`, `cut` in
-`release-stable.yml`, and `backport.yml`) declare `environment: release-app`. Give
+`release-stable.yml`, `backport.yml` and `land-back-merge.yml`) declare `environment: release-app`. Give
 `release-app` no required reviewers: they would stall every cut, publish, back-merge and
 backport. Reviewers belong on `release`, where they gate packaging only. The release App, not
-Renovate, is the only bypass actor for `release/**` in the ruleset. Renovate keeps its
+Renovate, is the only bypass actor for `release/**` in the ruleset, and it is a bypass actor
+on `main`'s ruleset so it can push back-merge commits. Renovate keeps its
 own App and credentials.
 
 Pushing the branch is the workflow's last step; a failure before it creates nothing, so
-rerun it. Once the branch exists, rerunning is refused, and the branch already carries the
-`release-as` commit. If no stable release PR appears on it, read the `Release PR and tag`
-job of the `release.yml` run for that push and re-run it. If that run is gone, merge any
-pull request into `release/X.Y.x` (an empty commit is enough) to trigger a new one. Never
-force-push.
+rerun it. Once the branch exists, rerunning is refused. If no stable release PR appears on
+it, read the `Release PR and tag` job of the `release.yml` run for that push (its
+`Find the first stable version` step prints the version it found) and re-run it. If that
+run is gone, merge any pull request into `release/X.Y.x` (an empty commit is enough) to
+trigger a new one; the version comes from the tags, so any push opens the PR at `X.Y.Z`.
+Never force-push.
 
 ### Release a fix
 
@@ -270,7 +327,7 @@ force-push.
    [`backport.yml`](../../.github/workflows/backport.yml) opens a pull request into
    `release/X.Y.x` that cherry-picks it. Review and merge that backport PR.
 2. release-please opens a release PR on `release/X.Y.x` for `X.Y.Z+1`. Merge it. The
-   release publishes itself and the back-merge PR follows and merges itself, as for a
+   release publishes itself and the back-merge PR follows and lands itself, as for a
    stable version. A fix release on an older line is published with `--latest=false`, never marked "latest", when a
    higher stable version is published.
 
@@ -324,13 +381,35 @@ the draft and the `publish` job publishes it.
 After a stable tag is created on a `release/**` branch, the `Open the back-merge PR` job in
 `release.yml` runs [`scripts/back-merge.mjs`](../../scripts/back-merge.mjs). It merges the
 tag into a new `back-merge/vX.Y.Z` branch from `main` and opens a pull request titled
-`chore: back-merge vX.Y.Z into main`; the body lists the files it resolved. The merge
-also removes the release branch's one-time `release-as` from `release-please-config.json`,
-so `main` never carries it. The script then runs `gh pr merge --auto --merge`, so the PR
-merges itself with a merge commit once `main`'s required checks pass; never squash it.
-If "Allow auto-merge" is off, the PR stays open and the job log carries a warning: merge it
-by hand with a merge commit. Rerunning updates an existing PR and does nothing when `main`
+`chore: back-merge vX.Y.Z into main`; the body lists the files it resolved. It pushes only
+that branch, never the release branch. Rerunning updates an existing PR, rebuilding the merge from
+current `main` (a lease-guarded push of the bot's own branch), and does nothing when `main`
 already contains the tag. The job does not affect the release itself.
+
+`main` allows only squash merges, so never merge the PR with the button: a squash would
+drop the tag from `main`'s history. Instead the PR lands by a direct push after CI passes.
+Whenever `CI` completes on a `back-merge/**` branch of this repository, whatever its
+conclusion, [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml) runs
+[`scripts/land-back-merge.mjs`](../../scripts/land-back-merge.mjs) with the release App
+token, which pushes the branch's head to `main` as a fast-forward, never forced. GitHub then
+marks the PR merged. The script refuses, and pushes nothing, unless:
+
+- the branch is still at the commit that CI run tested;
+- the head has exactly two parents: the current `main` first and the `vX.Y.Z` tag named by
+  the branch second. Commits on top of the merge, a merge of anything but the tag, or an
+  octopus merge are refused. If `main` has moved, re-run the `Open the back-merge PR` job;
+  it rebuilds the merge on current `main`, and the new CI run lands it;
+- every required status check of `main`'s ruleset, read live from the branch rules API, has
+  passed (success, skipped or neutral) on that exact commit, judged by its latest GitHub
+  Actions run. A failed job that `main` does not require (Desktop, iOS) does not block it;
+- exactly one open, non-draft pull request from this repository goes from the branch into
+  `main`, its head is that commit, and its review decision is not "changes requested".
+
+These checks run just before the push, not atomically with it. The fast-forward-only push
+is what keeps a `main` that moved in between safe: git rejects it and `main` stays as it is.
+Because the App bypasses `main`'s ruleset, its pull-request rules do not stop the push; the
+script's PR check does. To stop a back-merge from landing, close its PR, mark it draft or
+request changes on it.
 
 It resolves conflicts in only these files, hunk by hunk with `git merge-file`: a
 conflicting hunk takes the side below, and every non-conflicting edit from either side is
@@ -345,27 +424,32 @@ the PR body flags it for review.
 
 The merged `package.json` and `electron/package.json` always keep `main`'s `version`, even when
 they merge without a conflict. Any other conflicted path fails the job and lists the paths, as
-does a file deleted on one line and changed on the other. A conflict in
-`release-please-config.json` (for example `main` edited near `packages["."]` while the release
-branch carried the one-time `release-as` pin) takes the same manual path. Resolve it by hand:
+does a file deleted on one line and changed on the other. Resolve it by hand:
 
 ```bash
 git fetch origin
 git switch -c back-merge/vX.Y.Z origin/main
 git merge --no-ff vX.Y.Z
-# resolve the conflicts and remove any "release-as" from release-please-config.json, then
+# resolve the conflicts, then
 git add -A && git commit --no-edit
 git push -u origin back-merge/vX.Y.Z
-gh pr create --base main --head back-merge/vX.Y.Z \
+gh pr create --draft --base main --head back-merge/vX.Y.Z \
   --title "chore: back-merge vX.Y.Z into main" \
   --body "Merges release/X.Y.x at vX.Y.Z back into main; conflicts resolved by hand."
+# once CI is green
+gh pr ready <number>
 ```
 
-Push through a pull request and merge it with a merge commit; never force-push.
+The PR opens as a draft, as every pull request does, and `land-back-merge.mjs` refuses drafts.
+Mark it ready once CI is green; `land-back-merge.yml` then lands it, as above. If that run
+refused or is gone, re-run the `Land back-merge` workflow once CI is green, or, as a bypass
+actor on `main`'s ruleset, land it yourself from an up-to-date clone with Node 24 or newer:
 
-The job first drops the one-time `release-as` from the release branch with a plain push. If a
-fix landed on the branch at that moment and the push was rejected, rerun the `Open the
-back-merge PR` job; it rebases onto the branch, sees whether the pin is still there, and goes on.
+```bash
+node scripts/land-back-merge.mjs --branch back-merge/vX.Y.Z   # or --pr N
+```
+
+Never merge it with the button and never force-push.
 
 ### Migrating from develop
 
@@ -387,7 +471,8 @@ run release-please.
    node scripts/back-merge.mjs --tag v0.1.1 --branch release/0.1.x
    ```
 
-   Review the PR it opens and merge it with a merge commit.
+   Review the PR it opens; it lands on `main` once CI passes (see
+   [Back-merge conflicts](#back-merge-conflicts)).
 
 4. Create the release App (see [Release a stable version](#release-a-stable-version)):
    install it only on this repository with Contents, Pull requests and Issues read & write, and add
@@ -418,9 +503,19 @@ run release-please.
 9. Verify with a `dry_run` of `Release stable`, then the first real cut, and the first fix
    on `release/0.1.x`, each followed by its back-merge PR.
 10. Settings for automatic publishing, back-merges and backports:
-    - Enable "Allow auto-merge" and keep merge commits allowed (back-merge PRs merge with a
-      merge commit).
-    - Require the CI status checks on `main`, so auto-merge waits for green.
+    - Make `main` squash-only with a back-merge route, in this order, so a back-merge
+      always has one way to land:
+      1. Add the release App as a bypass actor on the `Protect main` ruleset, so
+         `land-back-merge.yml` can push back-merge commits. The script never forces, so the
+         bypass is used only for fast-forwards.
+      2. Add a ruleset on `refs/heads/back-merge/**` with the creation, update, deletion and
+         non-fast-forward rules, and the release App and the maintainer as its bypass
+         actors, so no other writer can stage a back-merge.
+      3. Set the `Protect main` ruleset's allowed merge methods to squash only.
+      4. Turn off "Allow merge commits" in the repository settings. Release-please PRs and
+         every other PR then merge as a squash.
+    - Require the CI status checks on `main`; `land-back-merge.mjs` reads them live and
+      waits for all of them.
     - Create the label `backport release/0.1.x`
       (`gh label create "backport release/0.1.x" --force`); `Release stable` creates the
       label for later lines (if that step fails it only warns; create the label by hand).
@@ -567,16 +662,17 @@ commit predates `homebrew.yml` never triggers it; dispatch it from `main` instea
 
 ## Recover a release run
 
-| Situation                                                                                  | Recovery                                                                                                                                                                                                                                                                                             |
-| ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tag is not reachable from `main` or a `release/*` branch, or does not match both manifests | Fix the cause through a normal pull request; release-please then proposes a new version. Do not retarget or reuse an existing tag.                                                                                                                                                                   |
-| A platform package fails but other packages succeed                                        | Inspect the failed matrix log and the `publish` job's warning, which names the missing assets. After a transient runner, credential, or service fix, dispatch `release.yml` with the same tag; `--clobber` replaces the draft's assets and `publish` completes it. A source fix needs a new release. |
-| Every package fails                                                                        | For a transient failure, dispatch the same tag again. For a source or manifest failure, fix it through a normal pull request and release the next version.                                                                                                                                           |
-| Container run cancelled (a newer publish queued behind it)                                 | A third run queued in the `container` group cancels the pending one, so that release has no image. Dispatch the Container workflow with its tag once the queue is clear.                                                                                                                             |
-| Container workflow: no `Trinity-Web-<version>.zip` asset                                   | `package-web` failed and the draft was published anyway. Set the release back to draft (`gh release edit <tag> --draft=true`) and dispatch `release.yml` with the tag; the `publish` job republishes it once complete, which runs `container.yml`.                                                   |
-| A draft-release upload fails                                                               | Dispatch `release.yml` with the same tag after diagnosing the failure.                                                                                                                                                                                                                               |
-| release-please fails or opens no release PR                                                | Read the `Release PR and tag` job log. Only `feat`, `fix`, `perf`, `revert` and breaking commits produce a release; `chore`, `ci`, `docs`, `test`, `build`, `refactor` and `style` alone do not.                                                                                                     |
-| The release is already published                                                           | The workflow refuses to replace its assets. Release the next version instead.                                                                                                                                                                                                                        |
+| Situation                                                                                                   | Recovery                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tag is not reachable from `main` or a `release/*` branch, or does not match both manifests                  | Fix the cause through a normal pull request; release-please then proposes a new version. Do not retarget or reuse an existing tag.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| A platform package fails but other packages succeed                                                         | Inspect the failed matrix log and the `publish` job's warning, which names the missing assets. After a transient runner, credential, or service fix, dispatch `release.yml` with the same tag; `--clobber` replaces the draft's assets and `publish` completes it. A source fix needs a new release.                                                                                                                                                                                                                                                                                                                                                                        |
+| Every package fails                                                                                         | For a transient failure, dispatch the same tag again. For a source or manifest failure, fix it through a normal pull request and release the next version.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Container run cancelled (a newer publish queued behind it)                                                  | A third run queued in the `container` group cancels the pending one, so that release has no image. Dispatch the Container workflow with its tag once the queue is clear.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Container workflow: no `Trinity-Web-<version>.zip` asset                                                    | `package-web` failed and the draft was published anyway. Set the release back to draft (`gh release edit <tag> --draft=true`) and dispatch `release.yml` with the tag; the `publish` job republishes it once complete, which runs `container.yml`.                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| A draft-release upload fails                                                                                | Dispatch `release.yml` with the same tag after diagnosing the failure.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| release-please fails or opens no release PR                                                                 | Read the `Release PR and tag` job log. Only `feat`, `fix`, `perf`, `revert` and breaking commits produce a release; `chore`, `ci`, `docs`, `test`, `build`, `refactor` and `style` alone do not. A new release branch's first release PR is the exception: re-run the job, or push to the branch, as in [Release a stable version](#release-a-stable-version).                                                                                                                                                                                                                                                                                                              |
+| A **draft** (never published) release fails Verify on a tooling-only defect (a test or script, not the app) | Fix the defect through a pull request on `main` and backport it to `release/X.Y.x`. Then move the tag to the branch's new head (`git push --force origin <sha>:refs/tags/vX.Y.Z`); GitHub detaches the draft, so reattach it (`gh api -X PATCH repos/<owner>/<repo>/releases/<id> -f tag_name=vX.Y.Z`), dispatch `release.yml` with the tag, and close the patch release PR the backport opened. Main no longer contains the moved tag, so back-merge it again (merge `origin/main` and the tag on `back-merge/vX.Y.Z`, open the PR, and let it land) before the next stable cut, or that cut's changelog repeats the release. Never do this once the release is published. |
+| The release is already published                                                                            | The workflow refuses to replace its assets. Release the next version instead.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 Release runs share one concurrency group and never cancel each other: an
 incomplete draft is worse than a slower package run, and two runs must not upload

@@ -180,6 +180,26 @@ describe('RoomLinkService', () => {
     expect(authedRequest).not.toHaveBeenCalled();
   });
 
+  it('previews with the named account rather than the active one', async () => {
+    const room = localRoom({ membership: 'invite' });
+    const { service, clientFor } = setup({ rooms: [room] });
+
+    const preview = await firstValueFrom(
+      service.preview({ kind: 'room', roomIdOrAlias: room.roomId }, '@me:hs'),
+    );
+    expect(clientFor).toHaveBeenCalledWith('@me:hs');
+    expect(preview).toMatchObject({ accountId: '@me:hs', action: 'accept' });
+
+    await expect(
+      firstValueFrom(
+        service.preview(
+          { kind: 'room', roomIdOrAlias: room.roomId },
+          '@gone:hs',
+        ),
+      ),
+    ).rejects.toThrow('Account unavailable.');
+  });
+
   it('finds a local invite by alias and maps it to Accept', async () => {
     const room = localRoom({
       membership: 'invite',

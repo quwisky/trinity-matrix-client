@@ -28,14 +28,36 @@
     </button>
   }
 </div>
-<p
-  role="status"
-  aria-live="polite"
-  aria-atomic="true"
-  class="mt-2 text-sm text-muted-foreground"
->
+<p role="status" aria-live="polite" aria-atomic="true" class="sr-only">
   {{ count() }} {{ count() === 1 ? 'section' : 'sections' }} found
-  @if (count() === 0) {
-    <span class="block">No sections found.</span>
-  }
 </p>
+@if (count() === 0) {
+  <trn-empty-state layout="line" class="mt-2" body="No sections found." />
+}
+@if (partResults().length) {
+  <ul class="m-0 mt-2 list-none p-0" aria-label="Matching settings">
+    @for (
+      result of partResults();
+      track result.section.path + result.part?.id
+    ) {
+      <li>
+        <button
+          trnBtn
+          type="button"
+          presentation="ghost"
+          size="sm"
+          shape="row"
+          [attr.data-testid]="
+            'settings-search-part-' +
+            result.section.path +
+            '-' +
+            result.part?.id
+          "
+          (click)="resultSelected.emit(result)"
+        >
+          {{ result.section.label }} › {{ result.part?.label }}
+        </button>
+      </li>
+    }
+  </ul>
+}

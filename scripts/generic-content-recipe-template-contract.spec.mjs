@@ -51,7 +51,7 @@ export class InvalidIconSizeHost {}
 export class InvalidIconVariantHost {}
 @Component({ imports: [AvatarComponent], template: \`<trn-avatar size="3xl" />\` })
 export class InvalidAvatarSizeHost {}
-@Component({ imports: [TrnBadge], template: \`<span trnBadge variant="danger">No</span>\` })
+@Component({ imports: [TrnBadge], template: \`<span trnBadge variant="info">No</span>\` })
 export class InvalidBadgeVariantHost {}
 @Component({ imports: [TrnBadge], template: \`<span trnBadge size="lg">No</span>\` })
 export class InvalidBadgeSizeHost {}
@@ -141,7 +141,7 @@ describe('generic content recipe strict-template contract', () => {
     for (const unsupported of [
       '3xl',
       'primary',
-      'danger',
+      'info',
       'lg',
       'accent',
       'md',

@@ -8,14 +8,15 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
+  TrnDialogActions,
   TrnDialogRef,
+  TrnDialogShellComponent,
   TrnLockedSelectionDirective,
-  TrnOverlaySurfaceDirective,
 } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
-import { AvatarComponent } from '@trinity/components/generic-content';
+import { AccountPickLabelComponent } from '../shared/account-pick-label/account-pick-label.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 
 /**
@@ -38,11 +39,12 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
   templateUrl: './account-picker.component.html',
   styleUrl: './account-picker.component.scss',
   imports: [
-    AvatarComponent,
+    AccountPickLabelComponent,
     TrnButton,
     TrnIconComponent,
     TrnLockedSelectionDirective,
-    TrnOverlaySurfaceDirective,
+    TrnDialogActions,
+    TrnDialogShellComponent,
   ],
 })
 export class AccountPickerComponent {
@@ -91,11 +93,6 @@ export class AccountPickerComponent {
             console.error('Could not update the accounts shown', err),
         });
     }
-  }
-
-  initialOf(account: AccountSummary): string {
-    const stripped = account.displayName.replace(/^[#@!]+/, '').trim();
-    return (stripped[0] ?? account.userId[1] ?? '?').toUpperCase();
   }
 
   close(): void {

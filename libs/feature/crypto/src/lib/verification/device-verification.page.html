@@ -1,21 +1,7 @@
 @if (asModal()) {
-  <div
-    trnOverlaySurface
-    variant="neutral"
-    size="md"
-    layout="dialog"
-    class="crypto-modal flex flex-col"
-  >
-    <div class="crypto-modal__header">
-      <h2 class="crypto-modal__title">Verify device</h2>
-      <button trnBtn presentation="ghost" size="sm" (click)="cancelAndLeave()">
-        Close
-      </button>
-    </div>
-    <div class="crypto-modal__body">
-      <ng-container [ngTemplateOutlet]="body" />
-    </div>
-  </div>
+  <trn-dialog-shell title="Verify device" (closed)="cancelAndLeave()">
+    <ng-container [ngTemplateOutlet]="body" />
+  </trn-dialog-shell>
 } @else {
   <trn-page-header title="Verify device">
     <button
@@ -30,8 +16,10 @@
   </trn-page-header>
 
   <main class="crypto-route">
-    <section class="crypto-surface">
-      <ng-container [ngTemplateOutlet]="body" />
+    <section class="crypto-surface" trnCard variant="muted" size="md">
+      <div trnCardContent>
+        <ng-container [ngTemplateOutlet]="body" />
+      </div>
     </section>
   </main>
 }
@@ -45,7 +33,87 @@
     @if (active(); as v) {
       @switch (v.stage) {
         @case ('requested') {
-          @if (v.incoming) {
+          @if (v.incoming && v.newSession; as session) {
+            <!--
+              Another of YOUR sessions is asking this trusted one for access, so the
+              request reads as a new sign-in: name the session and make declining the
+              default.
+            -->
+            <h2
+              #stageHeading
+              id="new-session-title"
+              class="heading"
+              tabindex="-1"
+            >
+              A new session wants access to your encrypted messages
+            </h2>
+            <dl
+              id="new-session-details"
+              class="session-details"
+              data-testid="verify-new-session"
+            >
+              <div>
+                <dt>Name</dt>
+                <dd>
+                  @if (session.displayName) {
+                    <bdi>{{ session.displayName }}</bdi>
+                  } @else {
+                    unknown
+                  }
+                </dd>
+              </div>
+              <div>
+                <dt>Device ID</dt>
+                <dd>
+                  @if (session.deviceId) {
+                    <code>{{ session.deviceId }}</code>
+                  } @else {
+                    unknown
+                  }
+                </dd>
+              </div>
+              <div>
+                <dt>Last seen from</dt>
+                <dd>{{ session.lastSeenIp ?? 'unknown' }}</dd>
+              </div>
+              <div>
+                <dt>Last seen</dt>
+                <dd>
+                  @if (session.lastSeenTs !== null) {
+                    {{ fmt.dateTime(session.lastSeenTs) }}
+                  } @else {
+                    unknown
+                  }
+                </dd>
+              </div>
+            </dl>
+            <p id="new-session-warning" class="privacy-warning" role="note">
+              Only accept if you just signed in on that device yourself. Anyone
+              you let in can read your encrypted messages.
+            </p>
+            <button
+              #initialFocus
+              trnBtn
+              class="mt-4 w-full"
+              data-testid="verify-decline"
+              aria-describedby="new-session-title new-session-details new-session-warning"
+              [disabled]="busy()"
+              (click)="cancelAndLeave()"
+            >
+              Not me
+            </button>
+            <button
+              trnBtn
+              presentation="outline"
+              class="mt-2 w-full"
+              data-testid="verify-accept"
+              aria-describedby="new-session-title new-session-details new-session-warning"
+              [disabled]="busy()"
+              (click)="accept()"
+            >
+              It was me
+            </button>
+          } @else if (v.incoming) {
             @if (v.isSelfVerification) {
               <h2 #stageHeading class="heading" tabindex="-1">
                 Verify this device?
@@ -265,6 +333,10 @@
               }}</strong>
               . Only confirm if you are comparing these with them directly.
             </p>
+          } @else if (v.newSession) {
+            <p class="text-muted-foreground">
+              Compare with the screen of the device you just signed in on.
+            </p>
           }
           <trn-sas-compare
             [emoji]="v.emoji ?? []"
@@ -280,7 +352,19 @@
             <div class="result result--ok" aria-hidden="true">✓</div>
             <h2 #stageHeading class="heading" tabindex="-1">Device verified</h2>
             <p class="text-muted-foreground">
-              This session is now trusted. Your encrypted history will sync.
+              @if (v.newSession; as session) {
+                @if (session.displayName) {
+                  <bdi>{{ session.displayName }}</bdi> (<code>{{
+                    session.deviceId ?? 'unknown'
+                  }}</code
+                  >)
+                } @else {
+                  {{ session.deviceId ?? 'That session' }}
+                }
+                can now read your encrypted messages.
+              } @else {
+                This session is now trusted. Your encrypted history will sync.
+              }
             </p>
             <button trnBtn class="mt-4 w-full" (click)="finish()">Done</button>
           </div>

@@ -2,6 +2,7 @@ import { Component, signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
+  TrnRadioComponent,
   TrnRadioGroupComponent,
   type TrnRadioGroupLayout,
   type TrnRadioOption,
@@ -53,6 +54,64 @@ class HostComponent {
 class CanonicalHostComponent {
   readonly options = OPTIONS;
 }
+
+@Component({
+  imports: [TrnRadioGroupComponent, TrnRadioComponent],
+  template: `
+    <trn-radio-group
+      aria-labelledby="notify-heading"
+      [value]="value()"
+      [disabled]="disabled()"
+      (valueChange)="value.set($event)"
+    >
+      <label for="notify-all">All</label>
+      <trn-radio value="all" inputId="notify-all" data-testid="notify-all" />
+      <label for="notify-mute">Mute</label>
+      <trn-radio value="mute" inputId="notify-mute" data-testid="notify-mute" />
+    </trn-radio-group>
+  `,
+})
+class ProjectedHostComponent {
+  readonly value = signal('all');
+  readonly disabled = signal(false);
+}
+
+describe('TrnRadioComponent', () => {
+  it('shares one native name across projected radios, so the arrow keys move between them', async () => {
+    const { container } = await render(ProjectedHostComponent);
+    const radios = [
+      ...container.querySelectorAll<HTMLInputElement>('input[type=radio]'),
+    ];
+
+    expect(radios.length).toBe(2);
+    expect(radios[0].name).not.toBe('');
+    expect(radios[0].name).toBe(radios[1].name);
+    expect(
+      container.querySelector('[role=radiogroup]')?.contains(radios[1]),
+    ).toBe(true);
+  });
+
+  it('is operated by its label, reports its state and follows the group disabled state', async () => {
+    const { container, fixture } = await render(ProjectedHostComponent);
+    const host = fixture.componentInstance;
+    const mute = container.querySelector('[data-testid=notify-mute]');
+
+    expect(mute?.getAttribute('data-state')).toBe('idle');
+    container.querySelector<HTMLElement>('label[for=notify-mute]')!.click();
+    fixture.detectChanges();
+    expect(host.value()).toBe('mute');
+    expect(mute?.getAttribute('data-state')).toBe('selected');
+    expect(
+      container.querySelector<HTMLInputElement>('#notify-mute')?.checked,
+    ).toBe(true);
+
+    host.disabled.set(true);
+    fixture.detectChanges();
+    expect(
+      container.querySelector<HTMLInputElement>('#notify-all')?.disabled,
+    ).toBe(true);
+  });
+});
 
 describe('TrnRadioGroupComponent', () => {
   it('limits the structural layout', () => {

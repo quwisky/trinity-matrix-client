@@ -1,4 +1,5 @@
 <div class="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+  <trn-title-bar />
   @if (booting()) {
     <div
       class="flex flex-1 flex-col items-center justify-center gap-4"
@@ -36,6 +37,19 @@
         >
           {{ recoveryAction().label }}
         </button>
+        @if (blockedState.failure.secondaryRecovery; as secondary) {
+          <button
+            trnBtn
+            variant="secondary"
+            presentation="outline"
+            type="button"
+            data-testid="app-startup-secondary-recovery"
+            [attr.data-recovery]="secondary"
+            (click)="recover(secondary)"
+          >
+            {{ secondaryLabel(secondary) }}
+          </button>
+        }
         <button
           trnBtn
           presentation="outline"
@@ -94,7 +108,7 @@
         System status
       </button>
     }
-    <router-outlet></router-outlet>
+    <router-outlet #outlet (activate)="markRoutedPage(outlet)" />
     <trn-verification-host />
   }
 </div>
@@ -105,7 +119,4 @@
 >
   {{ status.recoveryAnnouncement() }}
 </p>
-@if (status.open()) {
-  <trn-system-status />
-}
 <trn-toaster />

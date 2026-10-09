@@ -1,3 +1,4 @@
+import { TrnCardImports } from '@trinity/components/navigation-layout';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -22,7 +23,6 @@ import { ActivatedRoute } from '@angular/router';
 import { TrnInput } from '@trinity/components/controls';
 import { TrnCheckboxComponent } from '@trinity/components/controls';
 import { TrnLabel } from '@trinity/components/controls';
-import { TrnAlertService } from '@trinity/components/overlay';
 import {
   ImagePackManagementError,
   ImagePackManagementService,
@@ -42,7 +42,12 @@ import {
   switchMap,
   tap,
 } from 'rxjs';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
+import {
+  TrnAlertService,
+  TrnSettingsGroupComponent,
+} from '@trinity/components/overlay';
+import { shownError } from '@trinity/util/ui';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 
 interface SourceFormModel {
   source: string;
@@ -52,13 +57,15 @@ interface SourceFormModel {
   selector: 'trn-image-packs-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    EmptyStateComponent,
+    TrnCardImports,
+    TrnSettingsGroupComponent,
     FormField,
     FormRoot,
     TrnButton,
     TrnCheckboxComponent,
     TrnInput,
     TrnLabel,
-    SettingsSectionHeadingComponent,
   ],
   templateUrl: './image-packs-section.component.html',
   styleUrl: './image-packs-section.component.scss',
@@ -79,6 +86,7 @@ export class ImagePacksSectionComponent {
 
   /** Initial room/account source supplied by the modal presenter. */
   readonly initialSource = input<string>();
+  readonly shownError = shownError;
   readonly installed = this.management.installed;
   readonly discovery = signal<ImagePackDiscovery | null>(null);
   readonly finding = signal(false);

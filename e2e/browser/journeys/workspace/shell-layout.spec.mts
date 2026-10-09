@@ -102,6 +102,7 @@ async function sendMessages(
   actor: ApiAccount,
   roomId: string,
   prefix: string,
+  mention?: string,
 ): Promise<void> {
   for (let index = 0; index < 42; index++) {
     const response = await request.put(
@@ -111,6 +112,10 @@ async function sendMessages(
         data: {
           msgtype: 'm.text',
           body: `${prefix} message ${index} with enough text to occupy the timeline`,
+          // The last message mentions the reader, so the row carries its danger badge.
+          ...(mention && index === 41
+            ? { 'm.mentions': { user_ids: [mention] } }
+            : {}),
         },
       },
     );
@@ -198,7 +203,7 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
     const railStyle = getComputedStyle(rail);
     const roomStyle = getComputedStyle(roomScroller);
     const result = {
-      compact: document.documentElement.dataset['density'] === 'compact',
+      density: document.documentElement.dataset['density'] ?? 'cosy',
       hostPosition: getComputedStyle(host).position,
       railScrollPaddingEnd: Number.parseFloat(railStyle.scrollPaddingBlockEnd),
       roomScrollPaddingEnd: Number.parseFloat(roomStyle.scrollPaddingBlockEnd),
@@ -228,8 +233,13 @@ async function expectFloatingDockContract(page: Page): Promise<void> {
     return result;
   });
 
-  expect(geometry.railScrollPaddingEnd).toBe(geometry.compact ? 64 : 68);
-  expect(geometry.roomScrollPaddingEnd).toBe(geometry.compact ? 64 : 68);
+  // Dock clearance is the 60px --trinity-navigation-dock-height plus the density's
+  // --trinity-space-5 gap (cosy 16, compact 12, spacious 20).
+  const dockClearance =
+    { cosy: 60 + 16, compact: 60 + 12, spacious: 60 + 20 }[geometry.density] ??
+    Number.NaN;
+  expect(geometry.railScrollPaddingEnd).toBe(dockClearance);
+  expect(geometry.roomScrollPaddingEnd).toBe(dockClearance);
   expect(geometry.settingsIconOffsetX).toBeLessThanOrEqual(1);
   expect(geometry.settingsIconOffsetY).toBeLessThanOrEqual(1);
   expect(geometry).toMatchObject({
@@ -325,16 +335,17 @@ async function expectAccountMenuAboveDock(page: Page): Promise<void> {
     await expectInside(unreadBadge, accountRow);
   }
 
-  // The anchored overlay may meet the dock inside the 4px spacing token (including its
-  // shadow), but it must remain above the dock controls after its entrance motion settles.
+  // The floating panel is a padded surface around its controls, so the anchored overlay may
+  // sit over that padding and shadow. It must stay above the controls themselves (the
+  // identity trigger, and the "+N" chip when present) after its entrance motion settles.
   await expect
     .poll(async () => {
-      const [menuBox, dockBox] = await Promise.all([
+      const [menuBox, triggerBox] = await Promise.all([
         menu.boundingBox(),
-        page.locator('.userbar').boundingBox(),
+        trigger.boundingBox(),
       ]);
       return Boolean(
-        menuBox && dockBox && menuBox.y + menuBox.height <= dockBox.y + 4,
+        menuBox && triggerBox && menuBox.y + menuBox.height <= triggerBox.y,
       );
     })
     .toBe(true);
@@ -458,6 +469,8 @@ async function expectScrollContract(
     'position',
     viewport.width >= 1100 ? 'static' : 'fixed',
   );
+  // The roster is a fixed 240px column (border included) however long a member name is.
+  await expect(page.locator('.chat-members')).toHaveCSS('width', '240px');
   await expectFloatingDockContract(page);
 }
 
@@ -508,7 +521,7 @@ async function fillNavigationScrollers(page: Page): Promise<void> {
 test.describe('Modern room shell layout', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('keeps overflowing panes and long identities safe in both densities', async ({
+  test('keeps overflowing panes and long identities safe in every density', async ({
     page,
     request,
   }) => {
@@ -579,13 +592,23 @@ test.describe('Modern room shell layout', () => {
     const roomNames = {
       cosy: `Cosy Room Name ${runId} That Is Deliberately Much Wider Than The Sidebar`,
       compact: `Compact Room Name ${runId} That Is Deliberately Much Wider Than The Sidebar`,
+      spacious: `Spacious Room Name ${runId} That Is Deliberately Much Wider Than The Sidebar`,
+    } as const;
+    const shellSpacing = {
+      cosy: { gap: '8px', padding: '8px' },
+      compact: { gap: '4px', padding: '6px' },
+      spacious: { gap: '10px', padding: '14px' },
     } as const;
     for (const [densityIndex, density] of (
-      ['cosy', 'compact'] as const
+      ['cosy', 'compact', 'spacious'] as const
     ).entries()) {
       const owner = members[densityIndex];
       const roomId = await createRoom(request, hs, owner, {
         name: roomNames[density],
+        topic: `Topic ${runId} ${'a very long topic '.repeat(20)}`.slice(
+          0,
+          300,
+        ),
         preset: 'private_chat',
         invite: [
           reader.userId,
@@ -598,7 +621,14 @@ test.describe('Modern room shell layout', () => {
       for (const member of members) {
         if (member !== owner) await joinRoom(request, hs, member, roomId);
       }
-      await sendMessages(request, hs, owner, roomId, `${density}-${runId}`);
+      await sendMessages(
+        request,
+        hs,
+        owner,
+        roomId,
+        `${density}-${runId}`,
+        reader.userId,
+      );
     }
 
     await login(page, {
@@ -608,23 +638,22 @@ test.describe('Modern room shell layout', () => {
       pass: readerPass,
     } as HomeserverSession);
 
-    for (const density of ['cosy', 'compact'] as const) {
+    for (const density of ['cosy', 'compact', 'spacious'] as const) {
       await seedPreference(page, DENSITY_KEY, density);
       await page.reload({ waitUntil: 'domcontentloaded' });
       await expect(page.locator('[data-shell-root]')).toBeVisible({
         timeout: 30_000,
       });
-      if (density === 'compact') {
+      if (density !== 'cosy') {
         await expect(page.locator('html')).toHaveAttribute(
           'data-density',
-          'compact',
+          density,
         );
       } else {
         await expect(page.locator('html')).not.toHaveAttribute('data-density');
       }
 
-      const shellGap = density === 'compact' ? '4px' : '8px';
-      const shellPadding = density === 'compact' ? '6px' : '8px';
+      const { gap: shellGap, padding: shellPadding } = shellSpacing[density];
       await expect(page.locator('.rail')).toHaveCSS('gap', shellGap);
       await expect(page.locator('.sidebar__header')).toHaveCSS(
         'padding-left',
@@ -639,8 +668,9 @@ test.describe('Modern room shell layout', () => {
       await row.first().scrollIntoViewIfNeeded();
 
       await expectEllipsis(row.locator('.channel__name'));
-      await expect(row.locator('.channel__badge')).toBeVisible();
-      await expectInside(row.locator('.channel__badge'), row);
+      await expect(row.locator('.channel--unread')).toBeVisible();
+      await expect(row.locator('[data-slot="badge"]')).toBeVisible();
+      await expectInside(row.locator('[data-slot="badge"]'), row);
       await expectInside(row.locator('.channel__menu'), row);
       await expectEllipsis(page.locator('.userbar__name'));
       await expectInside(
@@ -667,6 +697,31 @@ test.describe('Modern room shell layout', () => {
         await activate(page.getByTestId('toggle-members'));
       }
       await expect(page.locator('.members')).toBeVisible({ timeout: 20_000 });
+
+      // A long room name and a 300-character topic truncate inside the 48px header: the
+      // header never overflows horizontally and its actions stay reachable.
+      const headerViewport = page.viewportSize()!;
+      await page.setViewportSize({ width: 1100, height: 800 });
+      const header = page.locator('header[data-trn-layout="toolbar"]');
+      await expect(page.getByTestId('room-topic')).toBeVisible();
+      await expect(header).toHaveCSS('height', '48px');
+      expect(
+        await header.evaluate((el) => el.scrollWidth <= el.clientWidth),
+      ).toBe(true);
+      await expect(page.getByTestId('header-search')).toBeVisible();
+      await expect(page.getByTestId('room-actions-overflow')).toBeVisible();
+      await page.setViewportSize(headerViewport);
+      // Crossing the drawer breakpoint closes the roster from an effect that can land after
+      // the resize resolves, so a single aria-pressed read can see it still open. Retry the
+      // read-and-reopen until the roster is actually on screen.
+      const toggleMembers = page.getByTestId('toggle-members');
+      await expect(async () => {
+        if ((await toggleMembers.getAttribute('aria-pressed')) !== 'true') {
+          await activate(toggleMembers);
+        }
+        await expect(page.locator('.members')).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 20_000 });
+
       await expect(page.locator('.member').first()).toHaveCSS('height', '44px');
       await expect(page.locator('.member').first()).toHaveCSS(
         'padding-left',
@@ -699,5 +754,101 @@ test.describe('Modern room shell layout', () => {
         });
       }
     }
+  });
+
+  test('keeps the topic popover closed until asked and marks the pressed header button', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}hp`;
+    const user = `header-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Header popover ${runId}`;
+    const reader = await account(request, hs, user, pass);
+    await createRoom(request, hs, reader, {
+      name: roomName,
+      topic: `Release planning ${runId}`,
+      preset: 'private_chat',
+    });
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await login(page, {
+      available: true,
+      hs,
+      user,
+      pass,
+    } as HomeserverSession);
+    await page.getByTestId('rail-rooms').click();
+    const channel = page.locator('.channel', { hasText: roomName });
+    await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
+    await channel.first().click();
+    await expect(page.getByTestId('composer-input')).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Beside static panels the header carries the inline search field, not the icon.
+    await expect(page.getByTestId('header-search')).toBeVisible();
+    await expect(page.getByTestId('search-messages')).toBeHidden();
+
+    // The pressed panel button shows the selected surface and the bright text colour.
+    const pinned = page.getByTestId('open-pinned');
+    await pinned.click();
+    await expect(pinned).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('pinned-close')).toBeVisible();
+
+    // The room-list and conversation headers share one 48px band: their bottom edges line
+    // up at 1280x800. The side panel sits in the row under the conversation header (its
+    // buttons drive it), so its 48px header starts where that band ends.
+    const conversationHeader = await page
+      .locator('header[data-trn-layout="toolbar"]')
+      .boundingBox();
+    const sidebarHeader = await page.locator('.sidebar__header').boundingBox();
+    const panelHeader = await page
+      .locator('trn-side-panel-header')
+      .boundingBox();
+    const bottom = (box: { y: number; height: number } | null) =>
+      Math.round(box!.y + box!.height);
+    expect(conversationHeader!.height).toBe(48);
+    expect(sidebarHeader!.height).toBe(48);
+    expect(bottom(sidebarHeader)).toBe(bottom(conversationHeader));
+    expect(Math.round(panelHeader!.height)).toBe(48);
+    expect(Math.round(panelHeader!.y)).toBe(bottom(conversationHeader));
+    // Off the button, and polled: the ghost recipe transitions its background.
+    await page.mouse.move(0, 0);
+    await expect
+      .poll(() =>
+        pinned.evaluate((button) => {
+          const probe = document.createElement('div');
+          probe.style.background = 'var(--trinity-state-selected-surface)';
+          probe.style.color = 'var(--trinity-text-bright)';
+          document.body.append(probe);
+          const want = getComputedStyle(probe);
+          const got = getComputedStyle(button);
+          const same =
+            got.backgroundColor === want.backgroundColor &&
+            got.color === want.color;
+          probe.remove();
+          return same;
+        }),
+      )
+      .toBe(true);
+
+    // The closed topic popover is not rendered; the topic opens it and Escape closes
+    // only the popover, leaving the open panel in place.
+    const popover = page.locator('#room-topic-popover');
+    await expect(popover).toBeHidden();
+    await page.getByTestId('room-topic').click();
+    await expect(popover).toBeVisible();
+    await expect(popover).toContainText(`Release planning ${runId}`);
+    await page.keyboard.press('Escape');
+    await expect(popover).toBeHidden();
+    await expect(page.getByTestId('pinned-close')).toBeVisible();
+
+    // Below the members breakpoint panels are drawers over the header, so the icon
+    // replaces the inline field.
+    await page.setViewportSize({ width: 900, height: 800 });
+    await expect(page.getByTestId('header-search')).toBeHidden();
+    await expect(page.getByTestId('search-messages')).toBeVisible();
   });
 });

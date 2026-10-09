@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { EditorView } from '@codemirror/view';
@@ -113,5 +115,18 @@ describe('ConfigEditorComponent', () => {
     fixture.destroy();
 
     expect(destroy).toHaveBeenCalled();
+  });
+});
+
+describe('config editor theme', () => {
+  it('uses the monospace font token rather than its own font stack', () => {
+    const source = readFileSync(
+      join(import.meta.dirname, 'config-editor-theme.ts'),
+      'utf8',
+    );
+    expect(source).not.toMatch(/monospace/u);
+    expect(
+      source.match(/fontFamily: 'var\(--trinity-font-mono\)'/gu),
+    ).toHaveLength(2);
   });
 });

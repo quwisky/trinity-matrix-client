@@ -5,10 +5,16 @@ import {
   type RoomWidget,
   type WidgetEmbed,
 } from '@trinity/data-access/widgets';
-import { render } from '@trinity/testing';
+import { fireEvent, render, screen, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RoomWidgetFrameComponent } from './room-widget-frame.component';
+
+const platform = vi.hoisted(() => ({ native: false }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isInstalledNativePlatform: () => platform.native,
+}));
 
 const WIDGET: RoomWidget = {
   id: 'board',
@@ -28,6 +34,10 @@ const EMBED: WidgetEmbed = {
 };
 
 describe('RoomWidgetFrameComponent', () => {
+  afterEach(() => {
+    platform.native = false;
+  });
+
   it('starts only after the protected frame exists and pins its restrictions', async () => {
     const stop = vi.fn();
     const start = vi.fn(
@@ -56,6 +66,37 @@ describe('RoomWidgetFrameComponent', () => {
     expect(iframe?.getAttribute('allow')).toContain("microphone 'none'");
     expect(iframe?.getAttribute('allow')).toContain("geolocation 'none'");
     expect(iframe?.getAttribute('title')).toBe('Planning board widget');
+  });
+
+  it('fills the shared dialog shell body with the frame and closes from its X', async () => {
+    const close = vi.fn();
+    const { container } = await render(RoomWidgetFrameComponent, {
+      inputs: { roomId: '!r:hs', widget: WIDGET, embed: EMBED },
+      providers: [
+        MockProvider(WidgetBridgeService, {
+          start: () => ({ state: signal('ready'), stop: vi.fn() }),
+        }),
+        MockProvider(TrnDialogRef, { close, presentation: 'fullscreen' }),
+      ],
+    });
+
+    const surface = screen.getByTestId('dialog-surface');
+    expect(
+      within(surface).getByRole('heading', {
+        level: 2,
+        name: 'Planning board',
+      }),
+    ).toBeTruthy();
+    expect(container.querySelector('trn-dialog-shell')).toHaveAttribute(
+      'data-presentation',
+      'fullscreen',
+    );
+    const body = container.querySelector('.dialog-shell__body');
+    expect(body).toHaveClass('p-0');
+    expect(body?.querySelector('iframe')).not.toBeNull();
+
+    fireEvent.click(screen.getByTestId('dialog-close'));
+    expect(close).toHaveBeenCalled();
   });
 
   it('stops the bridge on destroy', async () => {
@@ -96,5 +137,25 @@ describe('RoomWidgetFrameComponent', () => {
     ).toHaveTextContent(
       'Trinity could not start this widget. No third-party page was loaded.',
     );
+  });
+
+  it('never loads a page on the installed mobile apps, even with a valid embed', async () => {
+    platform.native = true;
+    const start = vi.fn();
+    const { container } = await render(RoomWidgetFrameComponent, {
+      inputs: { roomId: '!r:hs', widget: WIDGET, embed: EMBED },
+      providers: [
+        MockProvider(WidgetBridgeService, { start }),
+        MockProvider(TrnDialogRef, { close: vi.fn() }),
+      ],
+    });
+
+    expect(start).not.toHaveBeenCalled();
+    expect(
+      container.querySelector<HTMLIFrameElement>('iframe')?.hasAttribute('src'),
+    ).toBe(false);
+    expect(
+      container.querySelector('[data-testid="widget-frame-status"]'),
+    ).toHaveTextContent('No third-party page was loaded.');
   });
 });

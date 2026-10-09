@@ -1,193 +1,195 @@
-<section class="room-settings__card" data-testid="room-settings-panel-advanced">
-  <dl class="room-advanced__list">
-    <div class="room-advanced__row">
-      <dt>Room ID</dt>
-      <dd>
-        <span
-          class="room-advanced__value"
-          data-testid="room-advanced-room-id"
-          >{{ info().roomId }}</span
-        >
-        <button
-          trnBtn
-          type="button"
-          variant="secondary"
-          presentation="ghost"
-          size="sm"
-          aria-label="Copy room ID"
-          (click)="copy(info().roomId, 'Room ID')"
-        >
-          Copy
-        </button>
-      </dd>
-    </div>
-    <div class="room-advanced__row">
-      <dt>Room version</dt>
-      <dd>
-        @if (info().version; as version) {
+<section data-testid="room-settings-panel-advanced">
+  <trn-settings-group>
+    <dl class="room-advanced__list">
+      <div class="room-advanced__row">
+        <dt>Room ID</dt>
+        <dd>
           <span
             class="room-advanced__value"
-            data-testid="room-advanced-version"
-            >{{ version }}</span
+            data-testid="room-advanced-room-id"
+            >{{ info().roomId }}</span
           >
-          @if (versionNote(); as note) {
-            <span
-              class="room-advanced__note"
-              data-testid="room-advanced-version-note"
-              >{{ note }}</span
-            >
-          }
           <button
             trnBtn
             type="button"
             variant="secondary"
             presentation="ghost"
             size="sm"
-            aria-label="Copy room version"
-            (click)="copy(version, 'Room version')"
+            aria-label="Copy room ID"
+            (click)="copy(info().roomId, 'Room ID')"
           >
             Copy
           </button>
-        } @else {
-          <span class="room-advanced__value">Unknown</span>
-        }
-      </dd>
-    </div>
-    <div class="room-advanced__row">
-      <dt>Created by</dt>
-      <dd>
-        @for (creator of creators(); track creator) {
-          <span class="room-advanced__value">{{ creator }}</span>
-        } @empty {
-          <span class="room-advanced__value">Unknown</span>
-        }
-      </dd>
-    </div>
-    <div class="room-advanced__row">
-      <dt>Created</dt>
-      <dd>
-        @if (info().createdAt; as createdAt) {
+        </dd>
+      </div>
+      <div class="room-advanced__row">
+        <dt>Room version</dt>
+        <dd>
+          @if (info().version; as version) {
+            <span
+              class="room-advanced__value"
+              data-testid="room-advanced-version"
+              >{{ version }}</span
+            >
+            @if (versionNote(); as note) {
+              <span
+                class="room-advanced__note"
+                data-testid="room-advanced-version-note"
+                >{{ note }}</span
+              >
+            }
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              presentation="ghost"
+              size="sm"
+              aria-label="Copy room version"
+              (click)="copy(version, 'Room version')"
+            >
+              Copy
+            </button>
+          } @else {
+            <span class="room-advanced__value">Unknown</span>
+          }
+        </dd>
+      </div>
+      <div class="room-advanced__row">
+        <dt>Created by</dt>
+        <dd>
+          @for (creator of creators(); track creator) {
+            <span class="room-advanced__value">{{ creator }}</span>
+          } @empty {
+            <span class="room-advanced__value">Unknown</span>
+          }
+        </dd>
+      </div>
+      <div class="room-advanced__row">
+        <dt>Created</dt>
+        <dd>
+          @if (info().createdAt; as createdAt) {
+            <span class="room-advanced__value">{{
+              fmt.dateTime(createdAt)
+            }}</span>
+          } @else {
+            <span class="room-advanced__value">Unknown</span>
+          }
+        </dd>
+      </div>
+      <div class="room-advanced__row">
+        <dt>Encryption</dt>
+        <dd>
           <span class="room-advanced__value">{{
-            fmt.dateTime(createdAt)
+            info().encrypted ? (info().encryption ?? 'Unknown') : 'Off'
           }}</span>
-        } @else {
-          <span class="room-advanced__value">Unknown</span>
-        }
-      </dd>
-    </div>
-    <div class="room-advanced__row">
-      <dt>Encryption</dt>
-      <dd>
-        <span class="room-advanced__value">{{
-          info().encrypted ? (info().encryption ?? 'Unknown') : 'Off'
-        }}</span>
-      </dd>
-    </div>
-    <div class="room-advanced__row">
-      <dt>Federation</dt>
-      <dd>
-        <span class="room-advanced__value">{{ federation() }}</span>
-      </dd>
-    </div>
-    @if (info().predecessor; as predecessor) {
-      <div class="room-advanced__row">
-        <dt>Replaces</dt>
-        <dd>
-          <span class="room-advanced__value">{{ predecessor.roomId }}</span>
-          <button
-            trnBtn
-            type="button"
-            variant="secondary"
-            presentation="ghost"
-            size="sm"
-            aria-label="Copy ID of room this replaces"
-            (click)="copy(predecessor.roomId, 'Room ID')"
-          >
-            Copy
-          </button>
-          <button
-            trnBtn
-            type="button"
-            variant="secondary"
-            presentation="outline"
-            size="sm"
-            aria-label="Open room this replaces"
-            (click)="openRoom.emit(predecessor.roomId)"
-          >
-            Open room
-          </button>
         </dd>
       </div>
-    }
-    @if (info().successor; as successor) {
       <div class="room-advanced__row">
-        <dt>Replaced by</dt>
+        <dt>Federation</dt>
         <dd>
-          <span class="room-advanced__value">{{ successor }}</span>
-          <button
-            trnBtn
-            type="button"
-            variant="secondary"
-            presentation="ghost"
-            size="sm"
-            aria-label="Copy ID of room that replaced this"
-            (click)="copy(successor, 'Room ID')"
-          >
-            Copy
-          </button>
-          <button
-            trnBtn
-            type="button"
-            variant="secondary"
-            presentation="outline"
-            size="sm"
-            aria-label="Open room that replaced this"
-            (click)="openRoom.emit(successor)"
-          >
-            Open room
-          </button>
+          <span class="room-advanced__value">{{ federation() }}</span>
         </dd>
       </div>
-    }
-    @if (upgrade().available) {
-      <div class="room-advanced__row">
-        <dt>Upgrade</dt>
-        <dd>
-          <button
-            trnBtn
-            type="button"
-            variant="secondary"
-            presentation="outline"
-            size="sm"
-            [trnActionAllowed]="upgradeBlockedReason() === null"
-            [trnActionDisabledReason]="upgradeBlockedReason()"
-            (click)="openUpgrade()"
-            data-testid="room-advanced-upgrade"
-          >
-            Upgrade room
-          </button>
-          @if (upgradeBlockedReason(); as reason) {
-            <span
-              class="room-advanced__note"
-              data-testid="room-advanced-upgrade-reason"
-              >{{ reason }}</span
+      @if (info().predecessor; as predecessor) {
+        <div class="room-advanced__row">
+          <dt>Replaces</dt>
+          <dd>
+            <span class="room-advanced__value">{{ predecessor.roomId }}</span>
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              presentation="ghost"
+              size="sm"
+              aria-label="Copy ID of room this replaces"
+              (click)="copy(predecessor.roomId, 'Room ID')"
             >
-          }
-        </dd>
-      </div>
-    }
-  </dl>
-  <div>
-    <button
-      trnBtn
-      type="button"
-      variant="secondary"
-      presentation="outline"
-      size="sm"
-      (click)="viewState()"
-      data-testid="room-advanced-view-state"
-    >
-      View room state
-    </button>
-  </div>
+              Copy
+            </button>
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              presentation="outline"
+              size="sm"
+              aria-label="Open room this replaces"
+              (click)="openRoom.emit(predecessor.roomId)"
+            >
+              Open room
+            </button>
+          </dd>
+        </div>
+      }
+      @if (info().successor; as successor) {
+        <div class="room-advanced__row">
+          <dt>Replaced by</dt>
+          <dd>
+            <span class="room-advanced__value">{{ successor }}</span>
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              presentation="ghost"
+              size="sm"
+              aria-label="Copy ID of room that replaced this"
+              (click)="copy(successor, 'Room ID')"
+            >
+              Copy
+            </button>
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              presentation="outline"
+              size="sm"
+              aria-label="Open room that replaced this"
+              (click)="openRoom.emit(successor)"
+            >
+              Open room
+            </button>
+          </dd>
+        </div>
+      }
+      @if (upgrade().available) {
+        <div class="room-advanced__row">
+          <dt>Upgrade</dt>
+          <dd>
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              presentation="outline"
+              size="sm"
+              [trnActionAllowed]="upgradeBlockedReason() === null"
+              [trnActionDisabledReason]="upgradeBlockedReason()"
+              (click)="openUpgrade()"
+              data-testid="room-advanced-upgrade"
+            >
+              Upgrade room
+            </button>
+            @if (upgradeBlockedReason(); as reason) {
+              <span
+                class="room-advanced__note"
+                data-testid="room-advanced-upgrade-reason"
+                >{{ reason }}</span
+              >
+            }
+          </dd>
+        </div>
+      }
+    </dl>
+    <div class="room-advanced__footer">
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        presentation="outline"
+        size="sm"
+        (click)="viewState()"
+        data-testid="room-advanced-view-state"
+      >
+        View room state
+      </button>
+    </div>
+  </trn-settings-group>
 </section>

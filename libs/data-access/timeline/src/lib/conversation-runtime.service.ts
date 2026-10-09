@@ -366,6 +366,15 @@ export class ConversationRuntime {
     this.evictRetained(handle.key.accountId);
   }
 
+  /** Retire every warm, non-focused handle; reopening one later attaches it cold. */
+  retireRetained(): void {
+    for (const account of [...this.entries.values()]) {
+      for (const entry of [...account.values()]) {
+        if (entry.state() === 'retained') this.retire(entry);
+      }
+    }
+  }
+
   retireAll(): void {
     const failures: unknown[] = [];
     for (const account of [...this.entries.values()]) {
@@ -504,6 +513,7 @@ export class ConversationRuntime {
         () => state() === 'focused' && controller.pins.canMutate(),
       ),
       isPinned: (eventId: string) => controller.pins.isPinned(eventId),
+      retryFailed: () => controller.pins.retryFailed(),
       pin: (eventId: string) =>
         defer(() =>
           state() === 'focused'
@@ -712,6 +722,7 @@ export class ConversationRuntime {
       messages: computed(() => focused()?.pins.messages() ?? []),
       canMutate: computed(() => focused()?.pins.canMutate() ?? false),
       isPinned: (eventId) => focused()?.pins.isPinned(eventId) ?? false,
+      retryFailed: () => focused()?.pins.retryFailed(),
       pin: (eventId) =>
         defer(() => focused()?.pins.pin(eventId) ?? of(unavailable('pin'))),
       unpin: (eventId) =>

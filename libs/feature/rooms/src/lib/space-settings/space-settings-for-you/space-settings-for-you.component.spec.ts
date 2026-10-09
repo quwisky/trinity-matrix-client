@@ -71,7 +71,9 @@ describe('SpaceSettingsForYouComponent', () => {
       defaultMode: 'alphabetical',
       overrideMode: 'space',
     });
-    const labels = container.querySelectorAll('[role="radiogroup"] label');
+    const labels = container.querySelectorAll(
+      '[role="radiogroup"] > trn-settings-row',
+    );
 
     expect([...labels].map((label) => label.textContent)).toEqual([
       expect.stringContaining('Use my default'),
@@ -98,7 +100,9 @@ describe('SpaceSettingsForYouComponent', () => {
     const { container, fixture, draft } = await build({ setForAccountSpace });
 
     container
-      .querySelector<HTMLElement>('[data-testid="space-settings-order-space"]')
+      .querySelector<HTMLElement>(
+        '[data-testid="space-settings-order-space"] input',
+      )
       ?.click();
     await fixture.whenStable();
     container
@@ -135,7 +139,7 @@ describe('SpaceSettingsForYouComponent', () => {
 
     container
       .querySelector<HTMLElement>(
-        '[data-testid="space-settings-order-default"]',
+        '[data-testid="space-settings-order-default"] input',
       )
       ?.click();
     await fixture.whenStable();
@@ -186,7 +190,7 @@ describe('SpaceSettingsForYouComponent', () => {
     const { container, fixture, draft, setForAccountSpace } = await build();
     container
       .querySelector<HTMLElement>(
-        '[data-testid="space-settings-order-alphabetical"]',
+        '[data-testid="space-settings-order-alphabetical"] input',
       )
       ?.click();
     await fixture.whenStable();

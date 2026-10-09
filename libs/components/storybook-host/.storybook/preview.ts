@@ -39,7 +39,7 @@ if (!defaultPreviewMode) {
 function applyAppearance(
   themeId: ThemeId,
   modeId: ResolvedThemeMode,
-  density: 'cosy' | 'compact',
+  density: 'cosy' | 'compact' | 'spacious',
 ): void {
   const theme = THEME_CATALOG.themes.find(({ id }) => id === themeId);
   const mode = previewModes.find(({ id }) => id === modeId);
@@ -66,7 +66,7 @@ const withTheme: Decorator = (story, context) => {
   const { theme, mode, density } = context.globals as {
     theme: ThemeId;
     mode: ResolvedThemeMode;
-    density: 'cosy' | 'compact';
+    density: 'cosy' | 'compact' | 'spacious';
   };
   applyAppearance(theme, mode, density);
   // `global-styles.scss` paints these tokens on the preview body. This decorator only changes
@@ -109,6 +109,7 @@ const preview: Preview = {
         items: [
           { value: 'cosy', title: 'Cosy' },
           { value: 'compact', title: 'Compact' },
+          { value: 'spacious', title: 'Spacious' },
         ],
         dynamicTitle: true,
       },

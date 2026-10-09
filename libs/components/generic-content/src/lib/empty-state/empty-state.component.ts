@@ -139,8 +139,8 @@ export class EmptyStateComponent {
    */
   protected readonly bodyClass = computed(() =>
     this.variant() === 'danger'
-      ? 'text-13 text-balance text-danger empty:hidden'
-      : 'text-13 text-balance text-muted-foreground empty:hidden',
+      ? 'text-13 text-balance wrap-anywhere text-danger empty:hidden'
+      : 'text-13 text-balance wrap-anywhere text-muted-foreground empty:hidden',
   );
 
   /**

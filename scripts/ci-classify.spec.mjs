@@ -102,7 +102,11 @@ describe('CI change classifier', () => {
       'renderer',
       'desktop',
       'e2e',
+      'browser-e2e',
+      'storybook',
+      'e2e-result',
       'mobile-e2e',
+      'mobile-e2e-result',
       'ios-native-build',
     ]);
     expect(DOCS_JOB_IDS).toEqual(['docs-gate']);

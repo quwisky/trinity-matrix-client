@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { type Observable } from 'rxjs';
 import { UserPickerComponent } from './user-picker.component';
 
@@ -11,7 +11,7 @@ export interface UserPickerOptions {
 }
 
 /**
- * Presents the {@link UserPickerComponent} as a {@link TrnDialogService} dialog and
+ * Presents the {@link UserPickerComponent} as a {@link TrnSurfaceService} dialog and
  * resolves the chosen Matrix ID (or `null` when cancelled). Wraps the dialog so the
  * rooms page stays thin and the presentation can be retargeted later — mirroring
  * the thread panel. The page performs the actual create/invite with the
@@ -19,14 +19,14 @@ export interface UserPickerOptions {
  */
 @Injectable({ providedIn: 'root' })
 export class UserPickerService {
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
 
   /** Open the picker; resolves the selected MXID, or null if cancelled/dismissed. */
   pick$(options: UserPickerOptions): Observable<string | null> {
     return this.dialog.openAndWait$<string, UserPickerComponent>(
       UserPickerComponent,
       {
-        ariaLabel: options.title,
+        autoFocus: '[data-autofocus]',
         inputs: {
           title: options.title,
           confirmLabel: options.confirmLabel,

@@ -9,7 +9,6 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
-import { TrnAlertService } from '@trinity/components/overlay';
 import { TrnBadge } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
@@ -20,7 +19,11 @@ import {
 } from '@trinity/data-access/trust';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { filter, firstValueFrom } from 'rxjs';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
+import {
+  TrnAlertService,
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+} from '@trinity/components/overlay';
 
 /**
  * Device-management section of the Settings page: lists the user's sessions with
@@ -33,11 +36,12 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './devices-section.component.html',
   imports: [
+    TrnSettingsRowComponent,
+    TrnSettingsGroupComponent,
     TrnIconComponent,
     TrnBadge,
     TrnButton,
     TrnTooltip,
-    SettingsSectionHeadingComponent,
   ],
 })
 export class DevicesSectionComponent {

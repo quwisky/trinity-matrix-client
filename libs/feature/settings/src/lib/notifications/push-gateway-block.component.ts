@@ -10,7 +10,6 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import { TrnLabel } from '@trinity/components/controls';
-import { TrnDialogService } from '@trinity/components/overlay';
 import {
   PushGatewayService,
   PushService,
@@ -20,7 +19,6 @@ import {
   PushGatewayTrustDialogComponent,
   type PushGatewayTrustData,
 } from './push-gateway-trust-dialog.component';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 import {
   concatWith,
   defer,
@@ -31,6 +29,11 @@ import {
   tap,
   type Observable,
 } from 'rxjs';
+import {
+  TrnSurfaceService,
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+} from '@trinity/components/overlay';
 
 /**
  * The push-gateway block inside the Notifications section (device-local; see
@@ -47,12 +50,18 @@ import {
   selector: 'trn-push-gateway-block',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './push-gateway-block.component.html',
-  imports: [TrnButton, TrnInput, TrnLabel, SettingsSectionHeadingComponent],
+  imports: [
+    TrnSettingsRowComponent,
+    TrnSettingsGroupComponent,
+    TrnButton,
+    TrnInput,
+    TrnLabel,
+  ],
 })
 export class PushGatewayBlockComponent {
   private readonly gateway = inject(PushGatewayService);
   private readonly push = inject(PushService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
 
   // PushService.registration drives the status line via appliedAccounts/errorMessage.
@@ -188,7 +197,7 @@ export class PushGatewayBlockComponent {
     return this.dialog
       .openAndWait$<boolean>(PushGatewayTrustDialogComponent, {
         inputs: { data },
-        ariaLabel: 'Trust this push gateway?',
+        ariaDescribedBy: 'push-gateway-trust-body',
       })
       .pipe(map((confirmed) => confirmed ?? false));
   }

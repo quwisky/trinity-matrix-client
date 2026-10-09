@@ -9,28 +9,28 @@ import {
   computed,
   effect,
   inject,
+  linkedSignal,
   signal,
-  viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import {
   ActivatedRoute,
   NavigationEnd,
   Router,
-  RouterLink,
-  RouterLinkActive,
   RouterOutlet,
 } from '@angular/router';
 import { filter, map } from 'rxjs';
-import { TrnButton } from '@trinity/components/controls';
-import { TrnTooltip } from '@trinity/components/generic-content';
-import { PageHeaderComponent } from '@trinity/components/navigation-layout';
+import {
+  TrnSettingsLayoutComponent,
+  type TrnSettingsLayoutSection,
+} from '@trinity/components/overlay';
 import { BUILD_INFO } from '@trinity/platform-native';
-import { MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
-import { TrnIconComponent } from '@trinity/components/foundations';
+import { markRoutedPage, textScaledViewportSignal } from '@trinity/util/ui';
 import {
   SETTINGS_SECTIONS,
   matchingSettingsSections,
+  sectionsOfResults,
+  type SettingsSearchResult,
 } from '../settings-sections';
 import { SettingsDirectorySearchComponent } from '../shared/settings-directory-search/settings-directory-search.component';
 
@@ -52,15 +52,11 @@ import { SettingsDirectorySearchComponent } from '../shared/settings-directory-s
   // descendant overflow in the document and paint a second scrollbar beside the detail pane.
   host: {
     class: 'settings-page',
+    '(keydown.escape)': 'onEscape($event)',
   },
   imports: [
     SettingsDirectorySearchComponent,
-    PageHeaderComponent,
-    TrnIconComponent,
-    TrnButton,
-    TrnTooltip,
-    RouterLink,
-    RouterLinkActive,
+    TrnSettingsLayoutComponent,
     RouterOutlet,
   ],
 })
@@ -72,25 +68,58 @@ export class SettingsPage {
   private readonly build = inject(BUILD_INFO);
   private readonly document = inject(DOCUMENT);
   private readonly injector = inject(Injector);
-  private readonly nav = viewChild<ElementRef<HTMLElement>>('nav');
-  private readonly detail = viewChild<ElementRef<HTMLElement>>('detail');
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private lastFocusedSection: string | null = null;
 
   readonly query = signal('');
-  readonly menu = computed(() => matchingSettingsSections(this.query()));
+  readonly results = computed(() => matchingSettingsSections(this.query()));
+  readonly menu = computed(() => sectionsOfResults(this.results()));
+  protected readonly layoutSections = computed<
+    readonly TrnSettingsLayoutSection[]
+  >(() =>
+    this.menu().map(({ path, label, icon, group }) => ({
+      id: path,
+      label,
+      icon,
+      group,
+    })),
+  );
   /** A narrow directory click adds `/settings` behind the section in history. */
   private readonly narrowSectionPushed = signal(false);
 
+  /** Classes each section page so global.scss lays it out as a routed page. */
+  protected readonly markRoutedPage = markRoutedPage;
   /** "Trinity v0.0.1 · a1b2c3d" for the settings footer. */
   readonly buildLabel = `Trinity v${this.build.version} · ${this.build.commit}`;
 
   /** The active section path (e.g. 'profile'), or null on the bare `/settings` index. */
-  private readonly activePath = toSignal(
+  protected readonly activePath = toSignal(
     this.router.events.pipe(
       filter((event) => event instanceof NavigationEnd),
       map(() => this.currentSection()),
     ),
     { initialValue: this.currentSection() },
+  );
+
+  /** The URL fragment names the part of the open section to scroll to. */
+  protected readonly fragment = toSignal(this.route.fragment, {
+    initialValue: null,
+  });
+
+  /**
+   * The part to scroll to: the fragment, then whatever the user picked or scrolled to.
+   * The address bar mirrors it without telling the router, so a part result for the part
+   * the router still holds is set here directly instead of through a navigation.
+   */
+  protected readonly partTarget = linkedSignal<string | null>(() =>
+    this.fragment(),
+  );
+
+  /** The open section's name, the page's h1. */
+  protected readonly activeLabel = computed(
+    () =>
+      SETTINGS_SECTIONS.find((item) => item.path === this.activePath())
+        ?.label ?? null,
   );
 
   /** Whether a section detail is open — drives the mobile list ↔ detail swap. */
@@ -100,13 +129,10 @@ export class SettingsPage {
    * Wide layout: both panes show, the index auto-selects the first section, and
    * section links replace rather than push (lateral switches must not stack history,
    * so one Back leaves settings instead of retracing visited sections). Template-read.
-   *
-   * This used to hand-roll `mediaQuerySignal`: the same single MediaQueryList, the same
-   * seed-then-listen, the same teardown on `destroyRef` — beside its own copy of the
-   * breakpoint string. Both are shared now, so the `md` boundary is defined once and the
-   * live-resize behaviour cannot drift between the two screens that branch on it.
+   * The same text-scaled 48rem signal as the settings dialog, so both presentations
+   * switch layout at the same width.
    */
-  protected readonly wide = mediaQuerySignal(MD_QUERY, this.destroyRef);
+  protected readonly wide = textScaledViewportSignal(48, this.destroyRef);
 
   constructor() {
     // Browser Back, Android hardware Back and iOS history gestures bypass goBack(). When
@@ -137,8 +163,9 @@ export class SettingsPage {
   onSectionActivated(): void {
     afterNextRender(
       () => {
-        const heading =
-          this.detail()?.nativeElement.querySelector<HTMLElement>('h2');
+        const heading = this.host.nativeElement.querySelector<HTMLElement>(
+          '[data-testid="settings-detail"] h1',
+        );
         if (!heading) {
           return;
         }
@@ -159,12 +186,12 @@ export class SettingsPage {
       return;
     }
     this.clearRouteFocusTargets();
-    const directory = this.nav()?.nativeElement;
+    const directory = this.host.nativeElement;
     const focusTarget =
-      directory?.querySelector<HTMLElement>(
+      directory.querySelector<HTMLElement>(
         `[data-testid="settings-nav-${path}"]`,
       ) ??
-      directory?.querySelector<HTMLElement>('[data-testid="settings-search"]');
+      directory.querySelector<HTMLElement>('[data-testid="settings-search"]');
     if (focusTarget) {
       focusTarget.dataset['routeFocus'] = '';
     }
@@ -183,6 +210,67 @@ export class SettingsPage {
     if (!this.wide()) {
       this.narrowSectionPushed.set(true);
     }
+  }
+
+  /** Open a section from the directory; wide switches replace history. */
+  protected selectSection(path: string, part?: string): void {
+    this.onSectionNavigate();
+    void this.router.navigate([path], {
+      relativeTo: this.route,
+      replaceUrl: this.wide(),
+      fragment: part,
+    });
+  }
+
+  /** Open the section of a search hit; the fragment names the part to scroll to. */
+  protected openResult({ section, part }: SettingsSearchResult): void {
+    if (part && section.path === this.activePath()) {
+      this.partTarget.set(part.id);
+    }
+    this.selectSection(section.path, part?.id);
+  }
+
+  protected onPartSelected(part: string | null): void {
+    this.partTarget.set(part);
+    this.setFragment(part);
+  }
+
+  /**
+   * Mirror the current part (or clear an unknown one) in the URL without a history entry.
+   * This rewrites the address bar directly: a router navigation would run the shell's
+   * route-focus pass and pull focus off the heading the user just reached.
+   */
+  protected setFragment(part: string | null): void {
+    this.location.replaceState(
+      this.location.path() + (part ? `#${part}` : ''),
+      '',
+      this.location.getState(),
+    );
+  }
+
+  /**
+   * Escape closes the page like its close button. The layout takes the compact "back"
+   * step first, and an expanded select or popover trigger closes itself first.
+   */
+  protected onEscape(event: Event): void {
+    if (
+      event.defaultPrevented ||
+      (event.target as Element | null)?.closest?.('[aria-expanded="true"]')
+    ) {
+      return;
+    }
+    event.preventDefault();
+    this.close();
+  }
+
+  /** Leave settings altogether, whichever pane is open. */
+  protected close(): void {
+    if (this.narrowSectionPushed()) {
+      this.narrowSectionPushed.set(false);
+      this.location.historyGo(-2);
+      return;
+    }
+    this.location.back();
   }
 
   /**

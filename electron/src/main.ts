@@ -19,6 +19,7 @@ import { registerCorsIpc } from './cors-ipc';
 import { registerGeolocationIpc } from './geolocation-ipc';
 import { registerDockBadge } from './dock-badge';
 import { registerHostCapabilityHandshake } from './host-capabilities';
+import { registerTitleBarIpc } from './title-bar-ipc';
 import { startUpdateChecks } from './update-check';
 import {
   deepLinkFromArgv,
@@ -105,6 +106,7 @@ if (!app.requestSingleInstanceLock()) {
     installPermissionPolicy(session.defaultSession);
     buildMenu();
     registerHostCapabilityHandshake();
+    registerTitleBarIpc();
     registerDockBadge();
     createWindow();
     createTray();

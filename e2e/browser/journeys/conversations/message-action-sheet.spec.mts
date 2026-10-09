@@ -31,8 +31,18 @@ async function longPress(page: Page, selector: string): Promise<void> {
   await longPressTarget(page, page.locator(selector).first());
 }
 
+/**
+ * Long-press until the action sheet opens. Right after a room opens, the sync can re-add
+ * events already in the timeline and re-render the row mid-hold, which drops that press —
+ * a person would simply press again, so the test does too.
+ */
 async function longPressTarget(page: Page, target: Locator): Promise<void> {
-  await touchLongPress(page, target);
+  const sheet = page.getByRole('dialog', { name: 'Message actions' });
+  await expect(async () => {
+    if (await sheet.isVisible()) return;
+    await touchLongPress(page, target);
+    await expect(sheet).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
 }
 
 /** Open a seeded room and hand back the newest row's stable selector. */
@@ -178,7 +188,7 @@ test.describe('Message actions on a phone', () => {
 
     // Every row is REACHABLE — which for a list this long means reachable by scrolling
     // INSIDE the sheet, not all visible at once. Two things to hold: the sheet itself sits
-    // within the viewport (it is bounded by 80svh and the safe-area insets, so it cannot run off the screen), and
+    // within the viewport (it is bounded by 90svh and the top safe-area inset, so it cannot run off the screen), and
     // the last row can be scrolled to. Asserting that every row fits unscrolled was the
     // earlier version of this check, and it started failing the moment a row was added —
     // which is the behaviour the scroller exists to provide, not a regression.
@@ -222,7 +232,7 @@ test.describe('Message actions on a phone', () => {
     // one part of the sheet that is not a plain button row, so it gets its own check.
     const rowSel = await openRoomWithMessage(page, request, 'b');
     await longPress(page, rowSel);
-    await expect(page.locator('trn-action-sheet')).toBeVisible({
+    await expect(page.locator('trn-action-list')).toBeVisible({
       timeout: 10_000,
     });
 
@@ -231,7 +241,7 @@ test.describe('Message actions on a phone', () => {
     // Reordering the sheet would silently start clicking "More reactions…" instead.
     await page.locator('[data-testid="sheet-react-👍"]').click();
 
-    await expect(page.locator('trn-action-sheet')).toHaveCount(0);
+    await expect(page.locator('trn-action-list')).toHaveCount(0);
     await expect(page.locator(`${rowSel} trn-message-reactions`)).toContainText(
       '👍',
       { timeout: 15_000 },
@@ -246,7 +256,7 @@ test.describe('Message actions on a phone', () => {
     // move away. Nothing must fire on the way.
     const rowSel = await openRoomWithMessage(page, request, 'c');
     await longPress(page, rowSel);
-    const sheet = page.locator('trn-action-sheet');
+    const sheet = page.locator('trn-action-list');
     await expect(sheet).toBeVisible({ timeout: 10_000 });
 
     await page
@@ -266,7 +276,7 @@ test.describe('Message actions on a phone', () => {
     const timeline = page.locator('[data-message-scroller]').first();
     const rows = timeline.locator('trn-message-row');
 
-    await expect(page.locator('trn-virtual-message-list')).toBeVisible();
+    await expect(page.locator('trn-message-list')).toBeVisible();
     await expect
       .poll(
         async () => {

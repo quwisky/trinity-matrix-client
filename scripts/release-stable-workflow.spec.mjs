@@ -55,7 +55,6 @@ describe('Release stable workflow', () => {
     for (const name of [
       'Mint the App token',
       'Check out the prerelease',
-      'Pin the stable version',
       'Create the release branch',
     ]) {
       expect(job.steps[index(name)].if).toBe('${{ !inputs.dry_run }}');
@@ -66,7 +65,7 @@ describe('Release stable workflow', () => {
     expect(job.environment).toBe('release-app');
   });
 
-  it('creates the branch in one push whose commit pins the stable version', () => {
+  it('creates the branch as exactly the prerelease commit in one push', () => {
     const token = job.steps[index('Mint the App token')];
     expect(token.uses).toBe(
       'actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1',
@@ -83,16 +82,14 @@ describe('Release stable workflow', () => {
       ref: '${{ steps.from.outputs.sha }}',
       token: '${{ steps.app-token.outputs.token }}',
     });
-    const pin = job.steps[index('Pin the stable version')].run;
-    expect(pin).toContain('.packages["."]["release-as"] = $version');
-    expect(pin).toContain('release-please-config.json');
-    expect(pin).toContain('trinity-release[bot]');
-    expect(pin).toContain('chore(release): release v$VERSION from this branch');
     const push = job.steps[index('Create the release branch')].run;
-    expect(push).toContain('git push origin "HEAD:refs/heads/$BRANCH"');
-    expect(index('Pin the stable version')).toBeLessThan(
+    expect(push).toBe('git push origin "HEAD:refs/heads/$BRANCH"');
+    // The branch is exactly the prerelease commit: release.yml passes the version itself.
+    expect(index('Check out the prerelease') + 1).toBe(
       index('Create the release branch'),
     );
+    expect(source).not.toContain('release-as');
+    expect(source).not.toMatch(/git (commit|config)|jq --indent/);
     // release.yml opens the stable release PR from the push; no CLI call may race it.
     expect(source).not.toContain('release-please@');
     expect(source).not.toMatch(/git push[^\n]*(--force\b| -f\b)|\+HEAD:/);

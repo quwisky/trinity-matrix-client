@@ -10,7 +10,11 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnSettingsGroupComponent,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   HomeserverInfoService,
   roomVersionStatus,
@@ -43,7 +47,7 @@ const NOT_ALLOWED: ActionAvailability = { available: false, reason: null };
 @Component({
   selector: 'trn-room-settings-advanced',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnActionAvailability, TrnButton],
+  imports: [TrnActionAvailability, TrnButton, TrnSettingsGroupComponent],
   templateUrl: './room-settings-advanced.component.html',
   styleUrl: './room-settings-advanced.component.scss',
 })
@@ -51,7 +55,7 @@ export class RoomSettingsAdvancedComponent implements OnInit {
   private readonly settings = inject(RoomSettingsService);
   private readonly upgrades = inject(RoomUpgradeService);
   private readonly homeservers = inject(HomeserverInfoService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly capabilities = computed(
@@ -105,7 +109,6 @@ export class RoomSettingsAdvancedComponent implements OnInit {
 
   viewState(): void {
     this.dialog.open(RoomStateViewerComponent, {
-      ariaLabel: 'Room state',
       inputs: {
         entries: this.settings.stateEvents({
           accountId: this.accountId(),
@@ -124,7 +127,6 @@ export class RoomSettingsAdvancedComponent implements OnInit {
       .openAndWait$<RoomUpgradeResult, RoomUpgradeDialogComponent>(
         RoomUpgradeDialogComponent,
         {
-          ariaLabel: 'Upgrade room',
           ariaDescribedBy: ROOM_UPGRADE_WARNING_ID,
           // Closing mid-run would hide a workflow that keeps going.
           dismissGuard: (dialog) => !dialog?.busy(),

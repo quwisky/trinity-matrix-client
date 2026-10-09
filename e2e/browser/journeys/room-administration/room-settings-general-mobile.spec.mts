@@ -3,6 +3,7 @@ import { login, type HomeserverSession } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
   configureRoomSettingsSuite,
+  expectSettingsSheet,
   openRoom,
   session,
 } from '../../support/room-settings-journey.mts';
@@ -47,12 +48,7 @@ test.describe('Room settings on a phone', () => {
 
     const settings = page.getByTestId('room-settings');
     await expect(settings).toBeVisible({ timeout: 10_000 });
-    const box = await settings.boundingBox();
-    const viewport = page.viewportSize();
-    expect(box?.width ?? 0).toBeGreaterThanOrEqual((viewport?.width ?? 0) - 1);
-    expect(box?.height ?? 0).toBeGreaterThanOrEqual(
-      (viewport?.height ?? 0) - 1,
-    );
+    await expectSettingsSheet(page, 'room-settings');
     const directory = page.getByTestId('room-settings-directory');
     const general = page.getByTestId('room-settings-tab-general');
     await expect(directory).toBeVisible();

@@ -23,7 +23,7 @@ type AppearanceAttempt =
 const IDLE_ATTEMPT: AppearanceAttempt = Object.freeze({ kind: 'idle' });
 
 /**
- * Screen-scoped command and recovery model for the six Appearance axes.
+ * Screen-scoped command and recovery model for the seven Appearance axes.
  *
  * Application Runtime owns hydration and projection. This routed model only owns user
  * commands and recovery initiated from the Appearance screen.
@@ -40,6 +40,7 @@ export class AppearanceSettingsController {
     theme: IDLE_ATTEMPT,
     textSize: IDLE_ATTEMPT,
     density: IDLE_ATTEMPT,
+    roomList: IDLE_ATTEMPT,
     codeSize: IDLE_ATTEMPT,
     codeLinePresentation: IDLE_ATTEMPT,
   });
@@ -60,6 +61,7 @@ export class AppearanceSettingsController {
     theme: this.statusFor('theme'),
     textSize: this.statusFor('textSize'),
     density: this.statusFor('density'),
+    roomList: this.statusFor('roomList'),
     codeSize: this.statusFor('codeSize'),
     codeLinePresentation: this.statusFor('codeLinePresentation'),
   });

@@ -220,6 +220,7 @@ export type ConfigOwner =
   | 'data-access/gif'
   | 'data-access/notifications'
   | 'data-access/room-library'
+  | 'runtime/projection'
   | 'feature/settings';
 
 /**
@@ -274,6 +275,11 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
   {
     disposition: 'exported',
     key: 'trinity.appearance.density',
+    owner: 'application/appearance',
+  },
+  {
+    disposition: 'exported',
+    key: 'trinity.appearance.room-list',
     owner: 'application/appearance',
   },
 
@@ -472,6 +478,16 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     reason:
       'Per-account like its sibling, and keyed by space room id on top — an override names ' +
       'spaces the importing account may not have joined.',
+  },
+
+  // — runtime/projection —
+  {
+    disposition: 'excluded',
+    key: 'trinity.debug.projections',
+    owner: 'runtime/projection',
+    reason:
+      'Development-only opt-in flag for the projection trace; never read in production builds ' +
+      'and not a user preference.',
   },
 
   // — feature/settings —

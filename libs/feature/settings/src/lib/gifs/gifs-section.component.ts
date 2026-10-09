@@ -8,7 +8,6 @@ import {
 import { TitleCasePipe } from '@angular/common';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
-import { TrnLabel } from '@trinity/components/controls';
 import {
   TrnRadioGroupComponent,
   type TrnRadioOption,
@@ -19,7 +18,10 @@ import {
   isGifProviderId,
   type GifProviderId,
 } from '@trinity/data-access/gif';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+} from '@trinity/components/overlay';
 
 /**
  * GIF-picker settings: choose a provider (KLIPY / GIPHY) and paste its API key.
@@ -32,12 +34,12 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   templateUrl: './gifs-section.component.html',
   host: { class: 'block' },
   imports: [
+    TrnSettingsRowComponent,
+    TrnSettingsGroupComponent,
     TitleCasePipe,
     TrnButton,
     TrnInput,
-    TrnLabel,
     TrnRadioGroupComponent,
-    SettingsSectionHeadingComponent,
   ],
 })
 export class GifsSectionComponent {

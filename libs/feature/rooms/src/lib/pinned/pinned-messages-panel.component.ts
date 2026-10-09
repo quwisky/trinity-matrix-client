@@ -5,6 +5,7 @@ import {
   inject,
   output,
 } from '@angular/core';
+import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { TrnButton } from '@trinity/components/controls';
@@ -34,6 +35,7 @@ import { TrnIconComponent } from '@trinity/components/foundations';
   selector: 'trn-pinned-messages-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    SidePanelHeaderComponent,
     EmptyStateComponent,
     TrnIconComponent,
     TrnButton,
@@ -60,6 +62,11 @@ export class PinnedMessagesPanelComponent {
   readonly selected = output<string>();
   /** The user closed the panel without picking a pinned message. */
   readonly dismissed = output<void>();
+
+  constructor() {
+    // Reopening the panel retries pins whose fetch failed.
+    this.pins.retryFailed();
+  }
 
   /** Row tap: announce the chosen event id for a timeline jump. */
   jumpTo(eventId: string): void {

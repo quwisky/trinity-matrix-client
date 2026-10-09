@@ -53,7 +53,14 @@ export type { TrnDropdownMenuItemVariant } from './trn-dropdown-menu-recipe';
     { directive: HlmDropdownMenu, inputs: ['sideOffset'], outputs: [] },
   ],
 })
-export class TrnDropdownMenu {}
+export class TrnDropdownMenu {
+  constructor() {
+    // Replaces Helm's translucent ring with a solid overlay border.
+    classes(
+      () => 'border border-solid border-[var(--trinity-border-overlay)] ring-0',
+    );
+  }
+}
 
 /** Trinity-owned dropdown trigger and its open/close lifecycle. */
 @Directive({

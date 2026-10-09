@@ -10,12 +10,14 @@ import {
   type RoomSortMode,
   type SpaceChildRoom,
 } from '@trinity/data-access/room-library';
-import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
+import {
+  TrnAlertService,
+  TrnSurfaceService,
+} from '@trinity/components/overlay';
 import { filter, map, Observable, of, switchMap, throwError } from 'rxjs';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
 import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
 import { runWithBusy } from '@trinity/util/ui';
-import { isMobileOs } from '@trinity/platform-native';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -47,7 +49,7 @@ export class SpaceActionsService {
   private readonly spaceContents = inject(SpaceContentsService);
   private readonly spaceOrder = inject(SpaceRoomOrderService);
   private readonly alert = inject(TrnAlertService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
 
   /** Rail "+": prompt for a name, create the space, then select it on success. */
@@ -327,7 +329,6 @@ export class SpaceActionsService {
     this.dialog
       .openAndWait$(SpaceSettingsComponent, {
         ariaLabel: 'Space settings',
-        placement: isMobileOs() ? 'fullscreen' : 'center',
         autoFocus: '[data-autofocus]',
         dismissGuard: (component) =>
           component?.requestExternalDismiss() ?? true,
@@ -351,7 +352,6 @@ export class SpaceActionsService {
     }
     this.dialog
       .openAndWait$(AddToSpaceComponent, {
-        ariaLabel: 'Add rooms to this space',
         inputs: { accountId, spaceId, spaceName: this.vm.activeSpaceName() },
       })
       .pipe(takeUntilDestroyed(this.destroyRef))

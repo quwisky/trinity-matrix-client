@@ -1,84 +1,30 @@
-<trn-page-header title="Settings">
-  <button
-    trnHeaderLeading
-    trnBtn
-    presentation="ghost"
-    shape="icon"
-    size="md"
-    trnTooltip="Back"
-    aria-label="Back"
-    (click)="goBack()"
-  >
-    <trn-icon name="arrow-left" motion="nudge-left" />
-  </button>
-</trn-page-header>
-
-<!-- Parent-height, not viewport-height: Electron's title-bar inset and the app shell already
-     took their space before this page was laid out. The frame therefore cannot enlarge the
-     document or become a second scroll owner in short windows. -->
-<div class="settings-stage">
-  <div class="settings-workspace" data-testid="settings-workspace">
-    <nav
-      #nav
-      class="settings-nav no-scrollbar"
-      aria-label="Settings sections"
-      [class.settings-pane--hidden]="sectionActive() && !wide()"
-    >
-      <trn-settings-directory-search
-        [(query)]="query"
-        [count]="menu().length"
-      />
-      @for (item of menu(); track item.path; let index = $index) {
-        @if (index === 0 || menu()[index - 1].group !== item.group) {
-          <p class="settings-nav__group">{{ item.group }}</p>
-        }
-        <!-- `is-active` carries no styles of its own; it is the hook the icon's
-           active visual recipe keys on. On mobile the directory disappears when a detail
-           opens; on desktop it remains the stable location cue. -->
-        <a
-          trnBtn
-          #activeLink="routerLinkActive"
-          [variant]="activeLink.isActive ? 'secondary' : 'primary'"
-          [presentation]="activeLink.isActive ? 'solid' : 'ghost'"
-          size="md"
-          class="settings-nav__item w-full justify-start"
-          [routerLink]="item.path"
-          [replaceUrl]="wide()"
-          routerLinkActive="is-active"
-          ariaCurrentWhenActive="page"
-          [attr.data-testid]="'settings-nav-' + item.path"
-          (click)="onSectionNavigate()"
-        >
-          <trn-icon
-            [name]="item.icon"
-            size="md"
-            [variant]="activeLink.isActive ? 'accent' : 'muted'"
-          />
-          <span class="settings-nav__label">{{ item.label }}</span>
-          <!-- A mobile drill-in affordance; the sidebar shows the active highlight instead.
-             NOT rendered rather than hidden with `md:hidden`: Tailwind's utilities live in
-             `@layer utilities` and a component's own `:host { display: … }` is unlayered,
-             and an unlayered author declaration beats a layered one whatever the
-             specificity — so the class applies and does nothing. `wide()` is the same
-             768px boundary the `md:` variant compiles to (both read MD_QUERY). -->
-          @if (!wide()) {
-            <trn-icon name="chevron-right" size="md" variant="muted" />
-          }
-        </a>
-      }
-      <p class="settings-nav__build" data-testid="settings-build">
-        {{ buildLabel }}
-      </p>
-    </nav>
-    <section
-      #detail
-      class="settings-detail"
-      [class.settings-pane--hidden]="!sectionActive() && !wide()"
-      data-testid="settings-detail"
-    >
-      <div class="settings-detail__content">
-        <router-outlet (activate)="onSectionActivated()" />
-      </div>
-    </section>
-  </div>
-</div>
+<trn-settings-layout
+  title="Settings"
+  [sections]="layoutSections()"
+  [selectedSection]="activePath()"
+  [heading]="activeLabel()"
+  [initialPart]="partTarget()"
+  [compact]="!wide()"
+  [directoryVisible]="wide() || !sectionActive()"
+  testId="settings-dialog"
+  navItemTestIdPrefix="settings-nav-"
+  detailTestId="settings-detail"
+  closeTestId="close-settings"
+  (partSelected)="onPartSelected($event)"
+  (sectionSelected)="selectSection($event)"
+  (backRequested)="goBack()"
+  (closeRequested)="close()"
+>
+  <trn-settings-directory-search
+    settings-directory-header
+    [(query)]="query"
+    [count]="menu().length"
+    [results]="results()"
+    (resultSelected)="openResult($event)"
+  />
+  <router-outlet
+    #outlet
+    (activate)="markRoutedPage(outlet); onSectionActivated()"
+  />
+  <p settings-nav-footer data-testid="settings-build">{{ buildLabel }}</p>
+</trn-settings-layout>

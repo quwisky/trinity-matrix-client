@@ -1,5 +1,5 @@
 import { computed, signal } from '@angular/core';
-import { render } from '@trinity/testing';
+import { render, screen, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnDialogRef } from '@trinity/components/overlay';
@@ -15,6 +15,22 @@ const ACCOUNTS: AccountSummary[] = [
 ];
 
 describe('AccountPickerComponent', () => {
+  it('shows its title in the shared dialog shell', async () => {
+    await renderPicker();
+
+    expect(
+      within(screen.getByTestId('dialog-surface')).getByRole('heading', {
+        level: 2,
+        name: 'Accounts in view',
+      }),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('dialog-footer')).getByTestId(
+        'account-picker-done',
+      ),
+    ).toBeTruthy();
+  });
+
   let selected: ReturnType<typeof signal<ReadonlySet<string>>>;
   let toggle: Mock;
   let close: Mock;
@@ -75,11 +91,12 @@ describe('AccountPickerComponent', () => {
     ).toBeNull();
   });
 
-  it('uses the public dialog surface recipe', async () => {
+  it('opens the shell at its small size', async () => {
     const { container } = await renderPicker();
-    const surface = container.querySelector('[data-testid="account-picker"]');
+    const surface = container.querySelector(
+      '[data-testid="account-picker"] [data-testid="dialog-surface"]',
+    );
 
-    expect(surface?.getAttribute('data-trn-variant')).toBe('neutral');
     expect(surface?.getAttribute('data-trn-size')).toBe('sm');
     expect(surface?.getAttribute('data-trn-layout')).toBe('dialog');
   });
@@ -87,8 +104,8 @@ describe('AccountPickerComponent', () => {
   it('renders the account identity, initial, and locked state together', async () => {
     const { container } = await renderPicker();
 
-    expect(container.querySelector('.picker__title')?.textContent).toContain(
-      'Accounts in view',
+    expect(container.textContent).toContain(
+      'Choose which accounts appear in the room list',
     );
     expect(
       row(container, '@alice:hs').querySelector('trn-avatar')?.textContent,
@@ -146,7 +163,7 @@ describe('AccountPickerComponent', () => {
     expect(close).toHaveBeenCalled();
   });
 
-  // TrnDialogService focuses `[data-autofocus]`; skip the disabled active account and land on
+  // TrnSurfaceService focuses `[data-autofocus]`; skip the disabled active account and land on
   // the first account the user can change.
   it('marks the first enabled account for autofocus', async () => {
     const { container } = await renderPicker();

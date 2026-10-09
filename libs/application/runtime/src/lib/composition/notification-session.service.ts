@@ -118,7 +118,7 @@ export class NotificationSessionService {
       incident.operation === 'presentation-command'
         ? 'A notification could not be shown.'
         : 'That notification destination could not be opened.',
-      { duration: 4000 },
+      { duration: 4000, variant: 'danger' },
     );
   }
 }

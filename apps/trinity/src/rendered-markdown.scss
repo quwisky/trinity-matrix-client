@@ -79,7 +79,7 @@
       padding: 1px 5px;
       border-radius: var(--trinity-radius-sm);
       background: var(--trinity-rail);
-      font-family: ui-monospace, monospace;
+      font-family: var(--trinity-font-mono);
       font-size: calc(85% * var(--trinity-code-scale, 1));
     }
 
@@ -136,7 +136,7 @@
         right: 10px;
         bottom: 6px;
         color: var(--trinity-text-muted);
-        font-family: ui-monospace, monospace;
+        font-family: var(--trinity-font-mono);
         font-size: 11px;
         line-height: 1;
         opacity: 0;

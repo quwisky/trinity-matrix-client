@@ -38,4 +38,24 @@ describe('TrnBadge', () => {
       new Set(sizes.map((size) => trnBadgeRecipe('neutral', size))).size,
     ).toBe(sizes.length);
   });
+
+  it('carries no dark: variants; badge tokens already follow the mode', () => {
+    for (const variant of [
+      'neutral',
+      'success',
+      'warning',
+      'danger',
+    ] as const) {
+      expect(trnBadgeRecipe(variant, 'sm')).not.toMatch(/\bdark:/u);
+    }
+  });
+
+  it('offers a danger badge for mentions', () => {
+    expect(trnBadgeRecipe('danger', 'sm')).toContain(
+      'bg-[var(--trinity-status-danger-surface)]',
+    );
+    expect(trnBadgeRecipe('danger', 'sm')).toContain(
+      'text-[var(--trinity-status-danger-surface-foreground)]',
+    );
+  });
 });

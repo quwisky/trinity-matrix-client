@@ -1,22 +1,11 @@
 <div
-  class="safe-bottom flex h-full flex-col overflow-hidden border-l border-solid border-border bg-card text-card-foreground shadow-overlay"
+  class="safe-bottom flex h-full flex-col overflow-hidden text-card-foreground shadow-overlay"
 >
-  <div
-    class="panel-header flex items-center gap-2 border-b border-solid border-border"
-  >
-    <h2 class="flex-1 text-base font-semibold">Search messages</h2>
-    <button
-      trnBtn
-      variant="secondary"
-      presentation="ghost"
-      size="md"
-      shape="icon"
-      aria-label="Close search"
-      (click)="dismiss()"
-    >
-      <trn-icon name="x" size="lg" motion="rotate" />
-    </button>
-  </div>
+  <trn-side-panel-header
+    title="Search messages"
+    closeLabel="Close search"
+    (closed)="dismiss()"
+  />
 
   <div class="border-b border-solid border-border p-3">
     <input
@@ -35,29 +24,29 @@
 
   <div class="flex-1 overflow-y-auto max-members:touch-pan-y">
     @if (encrypted()) {
-      <div class="ms-banner" data-testid="e2ee-note">
-        <trn-icon name="lock" />
-        <span>
-          Encrypted room — searching the {{ scanned() }} loaded
-          {{ scanned() === 1 ? 'message' : 'messages' }} only.
+      <trn-banner variant="neutral" data-testid="e2ee-note">
+        <trn-icon trnBannerIcon name="lock" />
+        Encrypted room — searching the {{ scanned() }} loaded
+        {{ scanned() === 1 ? 'message' : 'messages' }} only.
+        <span trnBannerActions>
+          <button
+            trnBtn
+            variant="secondary"
+            presentation="outline"
+            size="sm"
+            [disabled]="loadingHistory()"
+            (click)="loadOlderHistory()"
+            data-testid="load-older"
+          >
+            @if (loadingHistory()) {
+              <trn-spinner />
+            }
+            Load older messages
+          </button>
         </span>
-        <button
-          trnBtn
-          variant="secondary"
-          presentation="outline"
-          size="sm"
-          [disabled]="loadingHistory()"
-          (click)="loadOlderHistory()"
-          data-testid="load-older"
-        >
-          @if (loadingHistory()) {
-            <trn-spinner />
-          }
-          Load older messages
-        </button>
-      </div>
+      </trn-banner>
     } @else if (query().trim()) {
-      <div class="ms-banner">
+      <trn-banner variant="neutral">
         @if (serverMode()) {
           <span data-testid="server-summary">
             Showing {{ serverCount() }} server
@@ -65,24 +54,26 @@
             history.
           </span>
         } @else {
-          <button
-            trnBtn
-            variant="secondary"
-            presentation="outline"
-            size="sm"
-            [disabled]="searching()"
-            (click)="searchServer()"
-            data-testid="search-server"
-          >
-            @if (searching()) {
-              <trn-spinner />
-            } @else {
-              <trn-icon name="server" />
-            }
-            Search all messages
-          </button>
+          <span trnBannerActions>
+            <button
+              trnBtn
+              variant="secondary"
+              presentation="outline"
+              size="sm"
+              [disabled]="searching()"
+              (click)="searchServer()"
+              data-testid="search-server"
+            >
+              @if (searching()) {
+                <trn-spinner />
+              } @else {
+                <trn-icon name="server" />
+              }
+              Search all messages
+            </button>
+          </span>
         }
-      </div>
+      </trn-banner>
     }
 
     <div>

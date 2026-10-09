@@ -1,47 +1,35 @@
-<section
-  trnOverlaySurface
-  variant="neutral"
-  size="md"
-  [layout]="sheet() ? 'sheet' : 'dialog'"
-  class="room-preview flex flex-col"
+<trn-dialog-shell
+  title="Room information"
+  (closed)="close()"
   data-testid="room-link-preview"
   [attr.aria-busy]="loading() || acting()"
 >
-  <header class="room-preview__header">
-    <h2 class="room-preview__title">Room information</h2>
-    <button
-      #closeButton
-      trnBtn
-      type="button"
-      variant="secondary"
-      presentation="ghost"
-      size="sm"
-      shape="icon"
-      aria-label="Close room information"
-      data-testid="room-link-close"
-      (click)="close()"
-    >
-      <trn-icon name="x" motion="rotate" />
-    </button>
-  </header>
-
   <div class="room-preview__content">
     @if (loading()) {
-      <div class="room-preview__status" role="status" aria-live="polite">
-        <trn-spinner aria-label="Loading room information" />
-        <span>Loading room information…</span>
-      </div>
-    } @else if (loadFailure(); as failure) {
-      <div
+      <trn-empty-state
         class="room-preview__status"
+        role="status"
+        aria-live="polite"
+      >
+        <trn-spinner
+          class="mx-auto mb-2 block"
+          aria-label="Loading room information"
+        />
+        Loading room information…
+      </trn-empty-state>
+    } @else if (loadFailure(); as failure) {
+      <trn-empty-state
+        class="room-preview__status"
+        variant="danger"
+        icon="cloud-off"
         role="alert"
         data-testid="room-link-load-error"
+        [title]="failure.title"
+        [body]="failure.message"
       >
-        <trn-icon name="cloud-off" size="2xl" />
-        <h3>{{ failure.title }}</h3>
-        <p>{{ failure.message }}</p>
         @if (failure.retryable) {
           <button
+            trnEmptyStateActions
             trnBtn
             type="button"
             variant="secondary"
@@ -51,11 +39,12 @@
             Try again
           </button>
         }
-      </div>
+      </trn-empty-state>
     } @else if (preview(); as room) {
       <div class="room-preview__identity">
         <trn-avatar
           [mxc]="room.avatarMxc"
+          [accountId]="room.accountId"
           [name]="room.name"
           [initial]="room.initial"
           [exactSize]="64"
@@ -126,13 +115,13 @@
     }
   </div>
 
-  @if (preview(); as room) {
-    <footer class="room-preview__actions">
+  @if (preview()) {
+    <div trnDialogActions>
       <button
         trnBtn
         type="button"
         variant="secondary"
-        presentation="ghost"
+        presentation="link"
         (click)="close()"
       >
         Close
@@ -164,6 +153,6 @@
           }
         </button>
       }
-    </footer>
+    </div>
   }
-</section>
+</trn-dialog-shell>

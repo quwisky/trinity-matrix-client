@@ -1,4 +1,9 @@
 import { TestBed } from '@angular/core/testing';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
+import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
@@ -46,6 +51,7 @@ function lightboxImage(): HTMLImageElement | null {
 describe('MediaAttachmentComponent', () => {
   let mediaService: MediaServiceStub;
   let fileSave: { save: Mock };
+  let toast: { show: Mock };
 
   afterEach(() => {
     // The overlay outlives the fixture; leaving it attached leaks into the next test.
@@ -66,6 +72,7 @@ describe('MediaAttachmentComponent', () => {
     };
     // HostFileExportService owns the host contract; stub it so the component test
     // doesn't touch the object-URL API / native plugins.
+    toast = { show: vi.fn() };
     fileSave = {
       save: vi.fn().mockReturnValue(of({ kind: 'completed' as const })),
     };
@@ -84,6 +91,7 @@ describe('MediaAttachmentComponent', () => {
       providers: [
         MockProvider(MediaPipeline, mediaService),
         MockProvider(HostFileExportService, fileSave),
+        MockProvider(TrnToastService, toast),
       ],
     });
   }
@@ -108,30 +116,176 @@ describe('MediaAttachmentComponent', () => {
     expect(fixture.componentInstance.src()).toBeNull();
   });
 
-  it.each([
-    ['video', 'clip.mp4', 'video/mp4'],
-    ['audio', 'note.ogg', 'audio/ogg'],
-  ])(
-    'plays a %s from its full source, never the bundled thumbnail',
-    async (kind, filename, mimeType) => {
-      mediaService.resolveMedia.mockReturnValue(of('blob:full'));
-      const media = {
+  describe('video and audio load only when played', () => {
+    const clip = (
+      kind: 'video' | 'audio',
+      over: Partial<PresentedMediaReference> = {},
+    ) =>
+      ({
         ...imageMedia(),
         kind,
-        filename,
-        mimeType,
-      } as PresentedMediaReference;
+        filename: kind === 'video' ? 'clip.mp4' : 'note.ogg',
+        mimeType: kind === 'video' ? 'video/mp4' : 'audio/ogg',
+        ...over,
+      }) as PresentedMediaReference;
+
+    const byVariant = (variant: string) =>
+      of(variant === 'full' ? 'blob:full' : 'blob:poster');
+
+    beforeEach(() => {
+      mediaService.resolveMedia.mockImplementation(
+        (_m: PresentedMediaReference, variant: string) => byVariant(variant),
+      );
+    });
+
+    it.each(['video', 'audio'] as const)(
+      'does not touch the media service for a %s until it is played',
+      async (kind) => {
+        const { fixture } = await renderMedia(clip(kind));
+
+        // Fetching, decrypting and pinning the whole file for every row on screen (and the
+        // overscan) is the memory cost this change removes.
+        expect(mediaService.resolveMedia).not.toHaveBeenCalled();
+        expect(mediaService.pin).not.toHaveBeenCalledWith('blob:full');
+        expect(fixture.componentInstance.src()).toBeNull();
+        expect(fixture.componentInstance.loading()).toBe(false);
+      },
+    );
+
+    it('resolves only the bundled thumbnail for a video, as its poster', async () => {
+      const media = clip('video', { hasThumbnail: true });
       const { fixture } = await renderMedia(media);
 
-      // A <video>/<audio> src must be the media itself: the thumbnail is a still image.
-      expect(mediaService.resolveMedia).toHaveBeenCalledWith(media, 'full');
-      expect(mediaService.resolveMedia).not.toHaveBeenCalledWith(
+      expect(mediaService.resolveMedia).toHaveBeenCalledTimes(1);
+      expect(mediaService.resolveMedia).toHaveBeenCalledWith(
         media,
         'thumbnail',
       );
+      expect(fixture.componentInstance.poster()).toBe('blob:poster');
+      expect(fixture.componentInstance.src()).toBeNull();
+      expect(mediaService.pin).toHaveBeenCalledWith('blob:poster');
+    });
+
+    it('shows a neutral placeholder rather than fetching the video when it has no thumbnail', async () => {
+      const { fixture } = await renderMedia(clip('video'));
+
+      // Without a bundled thumbnail the thumbnail variant would fetch the whole original.
+      expect(mediaService.resolveMedia).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.poster()).toBeNull();
+    });
+
+    it.each(['video', 'audio'] as const)(
+      'resolves the full %s on play, pins it, and never binds the thumbnail as its source',
+      async (kind) => {
+        const media = clip(kind, { hasThumbnail: kind === 'video' });
+        const { fixture } = await renderMedia(media);
+
+        fixture.componentInstance.play();
+
+        expect(mediaService.resolveMedia).toHaveBeenCalledWith(media, 'full');
+        expect(fixture.componentInstance.src()).toBe('blob:full');
+        expect(mediaService.pin).toHaveBeenCalledWith('blob:full');
+        expect(fixture.componentInstance.loading()).toBe(false);
+      },
+    );
+
+    it('releases the poster pin once the full video replaces it', async () => {
+      const { fixture } = await renderMedia(
+        clip('video', { hasThumbnail: true }),
+      );
+
+      fixture.componentInstance.play();
+
+      expect(mediaService.unpin).toHaveBeenCalledWith('blob:poster');
+    });
+
+    it('reports loading while the full file resolves, and a second press does not refetch', async () => {
+      const full = new Subject<string>();
+      mediaService.resolveMedia.mockReturnValue(full.asObservable());
+      const { fixture } = await renderMedia(clip('video'));
+
+      fixture.componentInstance.play();
+      fixture.componentInstance.play();
+
+      expect(fixture.componentInstance.loading()).toBe(true);
+      expect(mediaService.resolveMedia).toHaveBeenCalledTimes(1);
+
+      full.next('blob:full');
+      full.complete();
+      expect(fixture.componentInstance.loading()).toBe(false);
       expect(fixture.componentInstance.src()).toBe('blob:full');
-    },
-  );
+    });
+
+    it('surfaces the error state when the full file cannot be resolved', async () => {
+      mediaService.resolveMedia.mockReturnValue(
+        throwError(() => new Error('boom')),
+      );
+      const { fixture } = await renderMedia(clip('audio'));
+
+      fixture.componentInstance.play();
+
+      expect(fixture.componentInstance.hasError()).toBe(true);
+      expect(fixture.componentInstance.src()).toBeNull();
+    });
+
+    it('unpins the played file when destroyed', async () => {
+      const { fixture } = await renderMedia(clip('video'));
+      fixture.componentInstance.play();
+      mediaService.unpin.mockClear();
+
+      fixture.destroy();
+
+      expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
+    });
+
+    it('forgets a played file when the row is recycled for another message', async () => {
+      const { fixture } = await renderMedia(clip('video'));
+      fixture.componentInstance.play();
+      mediaService.resolveMedia.mockClear();
+
+      fixture.componentRef.setInput('media', clip('video', { id: 'other' }));
+      TestBed.tick();
+
+      expect(fixture.componentInstance.src()).toBeNull();
+      expect(mediaService.resolveMedia).not.toHaveBeenCalled();
+      expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
+    });
+
+    it('ignores play for an image', async () => {
+      const { fixture } = await renderMedia(imageMedia());
+      mediaService.resolveMedia.mockClear();
+
+      fixture.componentInstance.play();
+
+      expect(mediaService.resolveMedia).not.toHaveBeenCalled();
+    });
+
+    it('plays the video after a press on its poster control', async () => {
+      const playSpy = vi
+        .spyOn(HTMLMediaElement.prototype, 'play')
+        .mockResolvedValue();
+      const { fixture } = await renderMedia(
+        clip('video', { hasThumbnail: true }),
+      );
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('video')).toBeNull();
+
+      host
+        .querySelector<HTMLButtonElement>('button[aria-label^="Play video"]')!
+        .click();
+      TestBed.tick();
+      const video = host.querySelector('video')!;
+      video.dispatchEvent(new Event('loadedmetadata'));
+
+      expect(mediaService.resolveMedia).toHaveBeenCalledWith(
+        expect.anything(),
+        'full',
+      );
+      expect(video.getAttribute('src')).toBe('blob:full');
+      expect(playSpy).toHaveBeenCalledTimes(1);
+      playSpy.mockRestore();
+    });
+  });
 
   it('does not resolve a thumbnail for a file attachment (download-only card)', async () => {
     const media: PresentedMediaReference = {
@@ -174,6 +328,23 @@ describe('MediaAttachmentComponent', () => {
 
     expect(lightboxImage()).toBeNull();
     expect(mediaService.unpin).toHaveBeenCalledWith('blob:full');
+  });
+
+  it('opens the lightbox fullscreen below md, where a sheet pane would clip it', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({ matches: query === BELOW_MD_QUERY })),
+    );
+    const { fixture } = await renderMedia(imageMedia());
+    const open = vi.spyOn(TestBed.inject(TrnSurfaceService), 'open');
+
+    fixture.componentInstance.openLightbox();
+
+    expect(open).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ kind: 'fullscreen' }),
+    );
+    vi.unstubAllGlobals();
   });
 
   it('opens one lightbox however many times the image is tapped', async () => {
@@ -282,13 +453,16 @@ describe('MediaAttachmentComponent', () => {
     expect(fixture.componentInstance.hasError()).toBe(false);
   });
 
-  it('download() surfaces an error when saving fails', async () => {
+  it('download() toasts instead of breaking the bubble when saving fails', async () => {
     fileSave.save.mockReturnValue(throwError(() => new Error('save failed')));
     const { fixture } = await renderMedia(imageMedia());
 
     fixture.componentInstance.download();
 
-    expect(fixture.componentInstance.hasError()).toBe(true);
+    expect(toast.show).toHaveBeenCalledWith("Couldn't save image", {
+      variant: 'danger',
+    });
+    expect(fixture.componentInstance.hasError()).toBe(false);
   });
 
   it('download() surfaces an explicit unavailable host outcome', async () => {
@@ -299,7 +473,24 @@ describe('MediaAttachmentComponent', () => {
 
     fixture.componentInstance.download();
 
-    expect(fixture.componentInstance.hasError()).toBe(true);
+    expect(toast.show).toHaveBeenCalledWith("Couldn't save image", {
+      variant: 'danger',
+    });
+  });
+
+  it('opens the lightbox with a download button wired to the same save', async () => {
+    const { fixture } = await renderMedia(imageMedia());
+
+    fixture.componentInstance.openLightbox();
+    TestBed.tick();
+    document
+      .querySelector<HTMLButtonElement>(
+        '.cdk-overlay-container [data-testid="lightbox-download"]',
+      )!
+      .click();
+
+    expect(mediaService.downloadMedia).toHaveBeenCalledWith(imageMedia());
+    expect(fileSave.save).toHaveBeenCalledTimes(1);
   });
 
   it('ignores a second download() while a save is in flight', async () => {

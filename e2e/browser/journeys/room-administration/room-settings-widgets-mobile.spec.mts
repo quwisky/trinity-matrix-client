@@ -178,7 +178,7 @@ test.describe('Room settings widgets on a phone', () => {
     expect((frameBox?.y ?? 0) + (frameBox?.height ?? 0)).toBeLessThanOrEqual(
       visualViewport.top + visualViewport.height + 1,
     );
-    await page.getByTestId('room-widget-frame-close').click();
+    await page.getByTestId('dialog-close').click();
     await expect(frame).toHaveCount(0);
 
     const cancel = page.getByTestId('room-settings-cancel');
@@ -193,7 +193,7 @@ test.describe('Room settings widgets on a phone', () => {
       theme: document.documentElement.getAttribute('data-theme'),
       fontSize: document.documentElement.style.fontSize,
     }));
-    for (const theme of [null, 'amethyst', 'onyx'] as const) {
+    for (const theme of [null, 'classic', 'midnight', 'amethyst'] as const) {
       for (const dark of [false, true]) {
         await page.evaluate(
           ({ selectedTheme, selectedDark }) => {

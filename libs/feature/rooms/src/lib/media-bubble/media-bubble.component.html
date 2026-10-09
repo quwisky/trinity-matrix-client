@@ -22,6 +22,9 @@
       <img
         decoding="async"
         class="media__img"
+        [attr.loading]="hasIntrinsicSize() ? 'lazy' : null"
+        [attr.width]="item().width"
+        [attr.height]="item().height"
         [src]="src()"
         [alt]="filename()"
         (error)="imgFailed.set(true)"
@@ -48,15 +51,33 @@
         onNaturalSize(
           $any($event.target).videoWidth,
           $any($event.target).videoHeight
-        )
+        );
+        startPlayback($any($event.target))
       "
     ></video>
   } @else {
-    <span
-      class="media media--video media__skeleton"
+    <button
+      type="button"
+      class="media media--video media--poster"
       [style.aspect-ratio]="aspectRatio()"
-      aria-hidden="true"
-    ></span>
+      [attr.aria-label]="
+        (loading() ? 'Loading video ' : 'Play video ') + filename()
+      "
+      [attr.aria-busy]="loading() ? 'true' : null"
+      (click)="requestPlay()"
+    >
+      @if (poster()) {
+        <img class="media__img" decoding="async" alt="" [src]="poster()" />
+      } @else {
+        <span class="media__placeholder" aria-hidden="true"></span>
+      }
+      <span class="media__play" aria-hidden="true">
+        <trn-icon [name]="loading() ? 'loader-circle' : 'play'" size="xl" />
+      </span>
+      <span class="media__badge" role="status">{{
+        loading() ? 'Loading…' : playMeta()
+      }}</span>
+    </button>
   }
 } @else if (kind() === 'audio') {
   @if (src()) {
@@ -65,9 +86,28 @@
       controls
       [src]="src()"
       [attr.aria-label]="'Audio: ' + filename()"
+      (loadedmetadata)="startPlayback($any($event.target))"
     ></audio>
   } @else {
-    <span class="media__loading">Loading audio…</span>
+    <button
+      type="button"
+      class="media media--file media--audio"
+      [attr.aria-label]="
+        (loading() ? 'Loading audio ' : 'Play audio ') + filename()
+      "
+      [attr.aria-busy]="loading() ? 'true' : null"
+      (click)="requestPlay()"
+    >
+      <span class="media__icon" aria-hidden="true">
+        <trn-icon [name]="loading() ? 'loader-circle' : 'play'" />
+      </span>
+      <span class="media__meta">
+        <span class="media__name">{{ filename() }}</span>
+        <span class="media__sub" role="status">{{
+          loading() ? 'Loading…' : playMeta() || item().mimeType
+        }}</span>
+      </span>
+    </button>
   }
 } @else {
   <button

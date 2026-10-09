@@ -1,43 +1,39 @@
 <!-- `[formRoot]` sets novalidate and preventDefaults the submit; a bare <form> whose only
      binding is a control triggers a native submit and a full page reload. -->
-<form
-  trnOverlaySurface
-  variant="neutral"
-  size="sm"
-  layout="dialog"
-  class="jump p-4"
-  [formRoot]="dateForm"
-  (submit)="jump()"
->
-  <h2 class="jump__title">Jump to date</h2>
-  <label class="jump__label" for="jump-date">Date</label>
-  <input
-    id="jump-date"
-    trnInput
-    class="w-full"
-    type="date"
-    [max]="today"
-    [formField]="dateForm.date"
-    data-autofocus
-    data-testid="jump-to-date-input"
-  />
-  <div class="jump__actions">
-    <button
-      trnBtn
-      type="button"
-      variant="secondary"
-      presentation="ghost"
-      (click)="cancel()"
-    >
-      Cancel
-    </button>
-    <button
-      trnBtn
-      type="submit"
-      [disabled]="!canJump()"
-      data-testid="jump-to-date-confirm"
-    >
-      Jump
-    </button>
-  </div>
+<form [formRoot]="dateForm" (submit)="jump()">
+  <trn-dialog-shell title="Jump to date" size="sm" (closed)="cancel()">
+    <div class="jump">
+      <label class="jump__label" for="jump-date">Date</label>
+      <input
+        id="jump-date"
+        trnInput
+        class="w-full"
+        type="date"
+        [max]="today"
+        [formField]="dateForm.date"
+        data-autofocus
+        data-testid="jump-to-date-input"
+      />
+    </div>
+
+    <div trnDialogActions>
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        presentation="link"
+        (click)="cancel()"
+      >
+        Cancel
+      </button>
+      <button
+        trnBtn
+        type="submit"
+        [disabled]="!canJump()"
+        data-testid="jump-to-date-confirm"
+      >
+        Jump
+      </button>
+    </div>
+  </trn-dialog-shell>
 </form>

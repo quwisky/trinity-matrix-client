@@ -14,15 +14,18 @@ import {
   inject,
   input,
   signal,
-  viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { AvatarComponent } from '@trinity/components/generic-content';
+import {
+  AvatarComponent,
+  EmptyStateComponent,
+} from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import {
+  TrnDialogActions,
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
 } from '@trinity/components/overlay';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { InvitesService } from '@trinity/data-access/room-library';
@@ -48,29 +51,29 @@ export interface RoomLinkPreviewResult {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AvatarComponent,
+    EmptyStateComponent,
     TrnButton,
     TrnIconComponent,
     TrnSpinnerComponent,
-    TrnOverlaySurfaceDirective,
+    TrnDialogActions,
+    TrnDialogShellComponent,
   ],
   templateUrl: './room-link-preview.component.html',
   styleUrl: './room-link-preview.component.scss',
-  host: {
-    '[class.room-link-preview--sheet]': 'sheet()',
-  },
 })
 export class RoomLinkPreviewComponent implements OnInit {
   readonly target =
     input.required<Extract<MatrixLinkTarget, { kind: 'room' }>>();
-  readonly sheet = input(false);
-  readonly closeButton =
-    viewChild.required<ElementRef<HTMLButtonElement>>('closeButton');
+
+  /** The account to preview as; omitted for a pasted link, which uses the active account. */
+  readonly accountId = input<string>();
 
   private readonly dialogRef =
     inject<TrnDialogRef<RoomLinkPreviewResult | null>>(TrnDialogRef);
   private readonly roomLinks = inject(RoomLinkService);
   private readonly invites = inject(InvitesService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   readonly loading = signal(true);
   readonly preview = signal<RoomLinkPreview | null>(null);
@@ -132,9 +135,11 @@ export class RoomLinkPreviewComponent implements OnInit {
   }
 
   retry(): void {
-    // Retry temporarily removes its own control. Move focus to the stable Close
+    // Retry temporarily removes its own control. Move focus to the shell's stable Close
     // button first so keyboard and screen-reader users never fall back to <body>.
-    this.closeButton().nativeElement.focus();
+    this.host.nativeElement
+      .querySelector<HTMLElement>('[data-testid="dialog-close"]')
+      ?.focus();
     this.load();
   }
 
@@ -178,7 +183,7 @@ export class RoomLinkPreviewComponent implements OnInit {
     this.actionError.set(null);
     this.success.set(null);
     this.roomLinks
-      .preview(this.target())
+      .preview(this.target(), this.accountId())
       .pipe(
         takeUntilDestroyed(this.destroyRef),
         finalize(() => this.loading.set(false)),

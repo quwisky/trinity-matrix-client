@@ -31,10 +31,12 @@ import {
   DENSITY_PREFERENCE,
   DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS,
   MODE_PREFERENCE,
+  ROOM_LIST_PREFERENCE,
   TEXT_SIZE_PREFERENCE,
   THEME_PREFERENCE,
   provideDesignSystemAppearancePreferences,
   type AppearanceDensity,
+  type AppearanceRoomList,
   type TextSize,
 } from './design-system-appearance-preferences';
 
@@ -49,6 +51,7 @@ export interface AppearanceValue {
   readonly theme: ThemeId;
   readonly textSize: TextSize;
   readonly density: AppearanceDensity;
+  readonly roomList: AppearanceRoomList;
   readonly codeSize: CodeSize;
   readonly codeLinePresentation: CodeLinePresentation;
 }
@@ -66,7 +69,7 @@ export interface AppearanceStartupWarning {
 }
 
 export type AppearanceHydrationOutcome =
-  | { readonly kind: 'ready'; readonly hydrated: 6 }
+  | { readonly kind: 'ready'; readonly hydrated: 7 }
   | {
       readonly kind: 'partial';
       readonly hydrated: number;
@@ -75,7 +78,7 @@ export type AppearanceHydrationOutcome =
     };
 
 /**
- * Application-level read model over six capability-owned preference cells.
+ * Application-level read model over seven capability-owned preference cells.
  *
  * Persistence remains in PreferenceStoreService and in each descriptor. This projection only
  * groups their committed values, preserves per-axis failure state, and reduces any partial
@@ -91,6 +94,7 @@ export class AppearancePreferences {
     theme: this.axis(THEME_PREFERENCE),
     textSize: this.axis(TEXT_SIZE_PREFERENCE),
     density: this.axis(DENSITY_PREFERENCE),
+    roomList: this.axis(ROOM_LIST_PREFERENCE),
     codeSize: this.axis(CODE_SIZE_PREFERENCE),
     codeLinePresentation: this.axis(CODE_LINE_PRESENTATION_PREFERENCE),
   });
@@ -100,6 +104,7 @@ export class AppearancePreferences {
     theme: this.axes.theme.value(),
     textSize: this.axes.textSize.value(),
     density: this.axes.density.value(),
+    roomList: this.axes.roomList.value(),
     codeSize: this.axes.codeSize.value(),
     codeLinePresentation: this.axes.codeLinePresentation.value(),
   }));
@@ -116,7 +121,7 @@ export class AppearancePreferences {
       .pipe(
         map((outcome): AppearanceHydrationOutcome =>
           outcome.kind === 'ready'
-            ? { kind: 'ready', hydrated: 6 }
+            ? { kind: 'ready', hydrated: 7 }
             : {
                 ...outcome,
                 warning: {
@@ -138,7 +143,7 @@ export class AppearancePreferences {
       .pipe(
         map((outcome): AppearanceHydrationOutcome =>
           outcome.kind === 'ready'
-            ? { kind: 'ready', hydrated: 6 }
+            ? { kind: 'ready', hydrated: 7 }
             : {
                 ...outcome,
                 warning: {
@@ -178,7 +183,7 @@ export class AppearancePreferences {
   }
 }
 
-/** Contributes all six descriptors without moving their capability ownership. */
+/** Contributes all seven descriptors without moving their capability ownership. */
 export function provideAppearancePreferences(): EnvironmentProviders {
   return makeEnvironmentProviders([
     provideDesignSystemAppearancePreferences(),

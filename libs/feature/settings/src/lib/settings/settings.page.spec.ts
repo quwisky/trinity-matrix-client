@@ -3,8 +3,18 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter, type Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest';
 import { BUILD_INFO } from '@trinity/platform-native';
+import { TrnSettingsGroupComponent } from '@trinity/components/overlay';
+import { matchingSettingsSections } from '../settings-sections';
 import { SettingsPage } from './settings.page';
 
 // A trivial routed stand-in for each section sub-page, so the shell can be tested
@@ -14,6 +24,17 @@ import { SettingsPage } from './settings.page';
   template: '<h2>Section heading</h2>',
 })
 class StubSectionComponent {}
+
+// Appearance carries two parts, so the layout registers them and can scroll to one.
+@Component({
+  selector: 'trn-stub-parts-section',
+  imports: [TrnSettingsGroupComponent],
+  template: `
+    <trn-settings-group title="Messages" />
+    <trn-settings-group title="Code blocks" />
+  `,
+})
+class StubPartsSectionComponent {}
 
 const SECTIONS = [
   'profile',
@@ -39,35 +60,32 @@ const ROUTES: Routes = [
     component: SettingsPage,
     children: SECTIONS.map((path) => ({
       path,
-      component: StubSectionComponent,
+      component:
+        path === 'appearance'
+          ? StubPartsSectionComponent
+          : StubSectionComponent,
     })),
   },
 ];
 
 /**
- * Stub `matchMedia` so the shell reads a deterministic wide/narrow layout, and
- * capture the change handler so a test can simulate a resize via `fireChange`.
+ * Give the shell a deterministic wide/narrow viewport (it reads the text-scaled 48rem
+ * breakpoint from `innerWidth`), and let a test simulate a resize via `fireChange`.
  */
-function stubMatchMedia(wide: boolean): {
+function stubViewport(wide: boolean): {
   fireChange: (matches: boolean) => void;
   removeListener: Mock;
 } {
-  let handler: ((event: MediaQueryListEvent) => void) | undefined;
-  const removeListener = vi.fn();
-  const mql = {
-    matches: wide,
-    addEventListener: (_: string, fn: (event: MediaQueryListEvent) => void) => {
-      handler = fn;
-    },
-    removeEventListener: removeListener,
+  const setWidth = (matches: boolean): void => {
+    window.innerWidth = matches ? 1024 : 500;
   };
-  window.matchMedia = vi.fn().mockReturnValue(mql as unknown as MediaQueryList);
+  setWidth(wide);
   return {
     fireChange: (matches: boolean) => {
-      mql.matches = matches;
-      handler?.({ matches } as MediaQueryListEvent);
+      setWidth(matches);
+      window.dispatchEvent(new Event('resize'));
     },
-    removeListener,
+    removeListener: vi.spyOn(window, 'removeEventListener'),
   };
 }
 
@@ -107,13 +125,130 @@ async function settle(router: Router, url: string): Promise<string> {
 }
 
 describe('SettingsPage (shell)', () => {
-  const original = window.matchMedia;
+  const originalWidth = window.innerWidth;
+  beforeEach(() => {
+    Element.prototype.scrollTo = vi.fn(); // jsdom has none
+  });
   afterEach(() => {
-    window.matchMedia = original;
+    vi.unstubAllGlobals();
+    window.innerWidth = originalWidth;
+    document.documentElement.style.fontSize = '';
+    vi.restoreAllMocks();
+  });
+
+  it('opens a part result as the section with the part as its fragment', async () => {
+    stubViewport(true);
+    const { harness, shell, router } = await harnessAt('/settings/profile');
+    const [result] = matchingSettingsSections('code');
+
+    shell['openResult'](result);
+    await settle(router, '/settings/appearance#code-blocks');
+    harness.detectChanges();
+
+    expect(router.url).toBe('/settings/appearance#code-blocks');
+  });
+
+  it('scrolls to a repeated part result after scrolling back to the top', async () => {
+    stubViewport(true);
+    const scrollTo = vi.fn();
+    Element.prototype.scrollTo = scrollTo;
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe(): void {}
+        disconnect(): void {}
+      },
+    );
+    const { harness, shell, router } = await harnessAt('/settings/appearance');
+    const [result] = matchingSettingsSections('code');
+
+    shell['openResult'](result);
+    await settle(router, '/settings/appearance#code-blocks');
+    harness.detectChanges();
+    await harness.fixture.whenStable();
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+
+    // Scrolling back to the top clears the address bar's fragment, not the router's.
+    const detail = (harness.fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="settings-detail"]',
+    )!;
+    detail.dispatchEvent(new Event('scrollend'));
+    detail.dispatchEvent(new Event('scroll'));
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    harness.detectChanges();
+    expect(TestBed.inject(Location).path()).toBe('/settings/appearance');
+    shell['openResult'](result);
+    await flush();
+    harness.detectChanges();
+
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+  });
+
+  describe('Escape', () => {
+    const escape = (target: Element): KeyboardEvent => {
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      target.dispatchEvent(event);
+      return event;
+    };
+
+    it('closes the wide page like its close button', async () => {
+      stubViewport(true);
+      const { harness } = await harnessAt('/settings/profile');
+      const back = vi.spyOn(TestBed.inject(Location), 'back');
+      escape(harness.fixture.nativeElement.querySelector('h1'));
+      expect(back).toHaveBeenCalledOnce();
+    });
+
+    it('leaves the key to an expanded select or popover trigger', async () => {
+      stubViewport(true);
+      const { harness } = await harnessAt('/settings/profile');
+      const back = vi.spyOn(TestBed.inject(Location), 'back');
+      const trigger = document.createElement('button');
+      trigger.setAttribute('aria-expanded', 'true');
+      harness.fixture.nativeElement
+        .querySelector('.settings-layout__column')
+        .append(trigger);
+      escape(trigger);
+      expect(back).not.toHaveBeenCalled();
+    });
+
+    it('steps back to the list on a compact section before it closes', async () => {
+      stubViewport(false);
+      const { harness, router } = await harnessAt('/settings/profile');
+      const back = vi.spyOn(TestBed.inject(Location), 'back');
+      escape(harness.fixture.nativeElement.querySelector('h1'));
+      await settle(router, '/settings');
+      expect(router.url).toBe('/settings');
+      expect(back).not.toHaveBeenCalled();
+    });
+  });
+
+  it('uses the text-scaled breakpoint the dialog uses', async () => {
+    stubViewport(true); // 1024px wide: two-pane at 16px text
+    document.documentElement.style.fontSize = '32px'; // 48rem is now 1536px
+    const { harness } = await harnessAt('/settings/profile');
+    const layout = (harness.fixture.nativeElement as HTMLElement).querySelector(
+      '.settings-layout',
+    );
+    expect(layout?.getAttribute('data-compact')).toBe('true');
+  });
+
+  it('titles the page with the open section', async () => {
+    stubViewport(true);
+    const { harness } = await harnessAt('/settings/profile');
+    harness.detectChanges();
+    const heading = (
+      harness.fixture.nativeElement as HTMLElement
+    ).querySelector('h1');
+    expect(heading?.textContent?.trim()).toBe('Profile');
   });
 
   it('renders a submenu link for every section', async () => {
-    stubMatchMedia(false); // narrow: the index stays on the list
+    stubViewport(false); // narrow: the index stays on the list
     const { harness } = await harnessAt('/settings');
     const el = harness.fixture.nativeElement as HTMLElement;
 
@@ -128,7 +263,7 @@ describe('SettingsPage (shell)', () => {
   });
 
   it('filters directory labels and groups without changing the selected route', async () => {
-    stubMatchMedia(false);
+    stubViewport(false);
     const { harness, router } = await harnessAt('/settings/profile');
     const root = harness.fixture.nativeElement as HTMLElement;
     const search = root.querySelector<HTMLInputElement>('input[type="search"]');
@@ -158,14 +293,15 @@ describe('SettingsPage (shell)', () => {
       ),
     ).toEqual(['Appearance', 'Notifications', 'Privacy']);
     expect(
-      Array.from(root.querySelectorAll('.settings-nav__group'), (item) =>
-        item.textContent?.trim(),
+      Array.from(
+        root.querySelectorAll('.settings-layout__group-label'),
+        (item) => item.textContent?.trim(),
       ),
     ).toEqual(['Preferences']);
   });
 
   it('retains search through a drill-in and browser Back, then resets on a new presentation', async () => {
-    const media = stubMatchMedia(false);
+    const media = stubViewport(false);
     const { harness, shell, router } = await harnessAt('/settings');
     const root = harness.fixture.nativeElement as HTMLElement;
     const search = root.querySelector<HTMLInputElement>(
@@ -175,7 +311,7 @@ describe('SettingsPage (shell)', () => {
     search.dispatchEvent(new Event('input', { bubbles: true }));
     harness.detectChanges();
     root
-      .querySelector<HTMLAnchorElement>(
+      .querySelector<HTMLButtonElement>(
         '[data-testid="settings-nav-appearance"]',
       )!
       .click();
@@ -208,7 +344,7 @@ describe('SettingsPage (shell)', () => {
   });
 
   it('returns focus to search when the open section no longer matches on mobile Back', async () => {
-    stubMatchMedia(false);
+    stubViewport(false);
     const { harness, shell } = await harnessAt('/settings/profile');
     const root = harness.fixture.nativeElement as HTMLElement;
     const search = root.querySelector<HTMLInputElement>(
@@ -223,7 +359,7 @@ describe('SettingsPage (shell)', () => {
   });
 
   it('shows the running build version and commit in a footer', async () => {
-    stubMatchMedia(false);
+    stubViewport(false);
     const { harness } = await harnessAt('/settings');
     const footer = (harness.fixture.nativeElement as HTMLElement).querySelector(
       '[data-testid="settings-build"]',
@@ -233,7 +369,7 @@ describe('SettingsPage (shell)', () => {
   });
 
   it('keeps the category list at the index on the narrow layout', async () => {
-    stubMatchMedia(false);
+    stubViewport(false);
     const { shell, router } = await harnessAt('/settings');
     await flush(); // a stray narrow redirect (regression) would land here and fail
 
@@ -242,14 +378,14 @@ describe('SettingsPage (shell)', () => {
   });
 
   it('auto-selects the first section on the wide layout', async () => {
-    stubMatchMedia(true); // wide: the empty index redirects into the first section
+    stubViewport(true); // wide: the empty index redirects into the first section
     const { router } = await harnessAt('/settings');
 
     expect(await settle(router, '/settings/profile')).toBe('/settings/profile');
   });
 
   it('auto-selects the first section when the layout grows to wide', async () => {
-    const media = stubMatchMedia(false); // start narrow: index on the list
+    const media = stubViewport(false); // start narrow: index on the list
     const { harness, router } = await harnessAt('/settings');
     expect(router.url).toBe('/settings');
 
@@ -260,7 +396,7 @@ describe('SettingsPage (shell)', () => {
   });
 
   it('does not force a route change when the layout shrinks to narrow', async () => {
-    const media = stubMatchMedia(true); // wide: lands on the first section
+    const media = stubViewport(true); // wide: lands on the first section
     const { harness, router } = await harnessAt('/settings');
     expect(await settle(router, '/settings/profile')).toBe('/settings/profile');
 
@@ -272,8 +408,8 @@ describe('SettingsPage (shell)', () => {
     expect(router.url).toBe('/settings/profile');
   });
 
-  it('removes its matchMedia listener when destroyed', async () => {
-    const media = stubMatchMedia(false);
+  it('removes its resize listener when destroyed', async () => {
+    const media = stubViewport(false);
     const { harness } = await harnessAt('/settings');
 
     harness.fixture.destroy();
@@ -282,16 +418,12 @@ describe('SettingsPage (shell)', () => {
   });
 
   it('marks the current section link active and exposes aria-current', async () => {
-    stubMatchMedia(true);
+    stubViewport(true);
     const { harness } = await harnessAt('/settings/appearance');
     const el = harness.fixture.nativeElement as HTMLElement;
 
     const active = el.querySelector('[data-testid="settings-nav-appearance"]');
     const other = el.querySelector('[data-testid="settings-nav-profile"]');
-    // `is-active` is the marker `routerLinkActive` applies; it carries no styles of its
-    // own and exists so the icon's `group-[.is-active]` variant has something to key on —
-    // a child cannot see its parent's active state any other way. The visible cues sit in
-    // the same `routerLinkActive` string as md-prefixed utilities.
     expect(active?.classList.contains('is-active')).toBe(true);
     expect(active?.getAttribute('aria-current')).toBe('page');
     expect(other?.classList.contains('is-active')).toBe(false);
@@ -299,7 +431,7 @@ describe('SettingsPage (shell)', () => {
   });
 
   it('does not redirect a directly-opened section on the wide layout', async () => {
-    stubMatchMedia(true); // wide, but a section is deep-linked from the start
+    stubViewport(true); // wide, but a section is deep-linked from the start
     TestBed.configureTestingModule({
       providers: [
         provideRouter(ROUTES),
@@ -319,7 +451,7 @@ describe('SettingsPage (shell)', () => {
   });
 
   it('marks a section active when its detail is open', async () => {
-    stubMatchMedia(false);
+    stubViewport(false);
     const { harness, shell } = await harnessAt('/settings/appearance');
 
     expect(shell.sectionActive()).toBe(true);
@@ -327,13 +459,13 @@ describe('SettingsPage (shell)', () => {
     // breakpoint utility competing with the unlayered settings stylesheet.
     const el = harness.fixture.nativeElement as HTMLElement;
     const nav = el.querySelector('nav')!;
-    const detail = el.querySelector('section')!;
+    const detail = el.querySelector('[data-testid="settings-detail"]')!;
     expect(nav.classList.contains('settings-pane--hidden')).toBe(true);
     expect(detail.classList.contains('settings-pane--hidden')).toBe(false);
   });
 
   it('moves focus to a directly opened section heading', async () => {
-    stubMatchMedia(false);
+    stubViewport(false);
     const { harness } = await harnessAt('/settings/appearance');
 
     harness.detectChanges();
@@ -341,13 +473,13 @@ describe('SettingsPage (shell)', () => {
 
     const heading = (
       harness.fixture.nativeElement as HTMLElement
-    ).querySelector('[data-testid=settings-detail] h2');
+    ).querySelector('[data-testid=settings-detail] h1');
     expect(document.activeElement).toBe(heading);
     expect(heading?.getAttribute('tabindex')).toBe('-1');
   });
 
   it('skips the mobile directory entry when a drilled-in section grows wide', async () => {
-    const media = stubMatchMedia(false);
+    const media = stubViewport(false);
     const { harness, shell } = await harnessAt('/settings');
     const historyGo = vi
       .spyOn(TestBed.inject(Location), 'historyGo')
@@ -363,7 +495,7 @@ describe('SettingsPage (shell)', () => {
   });
 
   it('forgets a mobile push after history returns to the directory', async () => {
-    const media = stubMatchMedia(false);
+    const media = stubViewport(false);
     const { harness, shell, router } = await harnessAt('/settings');
     const location = TestBed.inject(Location);
     const historyGo = vi
@@ -391,8 +523,8 @@ describe('SettingsPage (shell)', () => {
     expect(historyGo).not.toHaveBeenCalled();
   });
 
-  it('leaves settings via history when the header back button is clicked at the index', async () => {
-    stubMatchMedia(false);
+  it('leaves settings via history when the close button is clicked at the index', async () => {
+    stubViewport(false);
     const { harness } = await harnessAt('/settings');
     const back = vi
       .spyOn(TestBed.inject(Location), 'back')
@@ -401,20 +533,20 @@ describe('SettingsPage (shell)', () => {
     // Click the real button to exercise the (click)/aria-label template wiring.
     const el = harness.fixture.nativeElement as HTMLElement;
     el.querySelector<HTMLButtonElement>(
-      'header button[aria-label=Back]',
+      '[data-testid="close-settings"]',
     )?.click();
 
     expect(back).toHaveBeenCalled();
   });
 
   it('goes up to the category list from a section on the narrow layout', async () => {
-    stubMatchMedia(false);
+    stubViewport(false);
     const { harness, router } = await harnessAt('/settings/appearance');
     const back = vi.spyOn(TestBed.inject(Location), 'back');
 
     const el = harness.fixture.nativeElement as HTMLElement;
     el.querySelector<HTMLButtonElement>(
-      'header button[aria-label=Back]',
+      'button[aria-label="Back to sections"]',
     )?.click();
 
     // Deterministic "up": routes to the list (history may not hold it), not back().
@@ -423,7 +555,7 @@ describe('SettingsPage (shell)', () => {
   });
 
   it('leaves settings via history from a section on the wide layout', async () => {
-    stubMatchMedia(true);
+    stubViewport(true);
     const { harness } = await harnessAt('/settings/appearance');
     const back = vi
       .spyOn(TestBed.inject(Location), 'back')
@@ -431,7 +563,7 @@ describe('SettingsPage (shell)', () => {
 
     const el = harness.fixture.nativeElement as HTMLElement;
     el.querySelector<HTMLButtonElement>(
-      'header button[aria-label=Back]',
+      '[data-testid="close-settings"]',
     )?.click();
 
     // Desktop: section links replace history, so Back exits through history rather

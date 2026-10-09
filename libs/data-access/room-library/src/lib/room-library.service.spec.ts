@@ -574,6 +574,18 @@ describe('RoomLibraryService', () => {
       expect(setRoomAccountData).not.toHaveBeenCalled();
     });
 
+    it('clears nothing, without throwing, for a room the client does not hold', async () => {
+      // A linked room can be the open one before sync delivers it: opening it clears the
+      // flag, and there is no Room to read, let alone write to.
+      const { svc, setRoomAccountData } = setupWritable([]);
+
+      await expect(
+        firstValueFrom(svc.clearMarkedUnread('!pending:hs')),
+      ).resolves.toBeUndefined();
+
+      expect(setRoomAccountData).not.toHaveBeenCalled();
+    });
+
     it('surfaces clear failures to the subscriber', async () => {
       const { svc, setRoomAccountData } = setupWritable([
         fakeRoom({
@@ -1569,9 +1581,12 @@ describe('RoomLibraryService per-account actions', () => {
 
     expect(svc.selectionAvailability('@owner:hs', '!r:hs')).toBe('available');
     expect(svc.selectionAvailability('@owner:hs', '!missing:hs')).toBe(
-      'unavailable',
+      'unconfirmed',
     );
     expect(svc.selectionAvailability('@gone:hs', '!r:hs')).toBe('unavailable');
+    expect(svc.selectionAvailability('@owner:hs', '#room:hs')).toBe(
+      'unavailable',
+    );
   });
 });
 

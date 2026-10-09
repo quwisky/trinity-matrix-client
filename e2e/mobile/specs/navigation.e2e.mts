@@ -20,19 +20,18 @@ const PANEL_BACK_ANDROID_ONLY =
 const IME_BACK_ANDROID_ONLY =
   'Android consumes Back at the IME before the app; iOS has no system Back for an open panel';
 
+const backToSections =
+  '[data-testid="settings-detail"] .settings-layout__topbar button[aria-label="Back to sections"]';
+const closeSettings = '[data-testid="close-settings"]';
+
 /**
- * Back out of a routed Settings page. Android and the browser history take the system
- * Back; iOS has no edge-swipe Back there (the gesture policy disables WebKit's while the
- * routed Settings surface is active), so a user goes back with the in-app Back button.
+ * Take one step back in the Settings dialog. Android takes the system Back; iOS has no
+ * system Back while a dialog is open (MainViewController disables the edge swipe), so a
+ * user taps the dialog's own `control` instead.
  */
-async function backFromSettings(): Promise<void> {
-  if (browser.isIOS) {
-    const back = $('//trn-settings//button[@aria-label="Back"]');
-    await expect(back).toBeDisplayed({ wait: 20_000 });
-    await back.click();
-  } else {
-    await goBack();
-  }
+async function backFromSettings(control: string): Promise<void> {
+  if (browser.isIOS) await tap(control);
+  else await goBack();
 }
 
 const viewportHeight = (): Promise<number> =>
@@ -41,27 +40,19 @@ const viewportHeight = (): Promise<number> =>
 const pathname = async (): Promise<string> =>
   new URL(await browser.getUrl()).pathname;
 
-async function waitForPath(
-  matches: (path: string) => boolean,
-  label: string,
-): Promise<void> {
-  await browser.waitUntil(async () => matches(await pathname()), {
-    timeout: 20_000,
-    timeoutMsg: `never reached ${label}`,
-  });
-}
+const settingsDialog = '[role="dialog"][aria-label="Settings"]';
 
 async function openSettingsFromRooms(): Promise<void> {
   await waitForRooms();
+  const routeBefore = await pathname();
   await tap('[data-testid="open-settings"]');
-  await waitForPath(
-    (path) => path === '/settings' || path.startsWith('/settings/'),
-    '/settings',
-  );
-  await expect($('//h1[normalize-space()="Settings"]')).toBeDisplayed({
-    wait: 20_000,
-  });
+  // On a phone Settings is a bottom-sheet dialog over Rooms, not a route.
+  await expect($(settingsDialog)).toBeDisplayed({ wait: 20_000 });
+  await expect($('//h2[normalize-space()="Settings"]')).toBeDisplayed();
+  await expect($('[data-testid="close-settings"]')).toBeDisplayed();
   await expect($('nav[aria-label="Settings sections"]')).toBeDisplayed();
+  expect(await pathname()).toBe(routeBefore);
+  expect(await pathname()).not.toMatch(/^\/settings/u);
 }
 
 async function seedComposerRoom(): Promise<{
@@ -95,7 +86,8 @@ describe('mobile navigation', () => {
     await login(user, pass);
     await openSettingsFromRooms();
 
-    await backFromSettings();
+    await backFromSettings(closeSettings);
+    await expect($(settingsDialog)).not.toBeDisplayed({ wait: 10_000 });
     await waitForRooms();
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
   });
@@ -129,15 +121,20 @@ describe('mobile navigation', () => {
     await expect(appearance).toBeDisplayed({ wait: 20_000 });
     expect(await appearance.getSize('height')).toBeGreaterThanOrEqual(44);
     await tap('[data-testid="settings-nav-appearance"]');
-    await waitForPath(
-      (path) => path.endsWith('/settings/appearance'),
-      '/settings/appearance',
-    );
-    await expect($('#appearance-heading')).toBeFocused({ wait: 10_000 });
+    await expect(
+      $('[data-testid="settings-detail"] .settings-layout__topbar h1'),
+    ).toBeFocused({ wait: 10_000 });
+    await expect(
+      $(
+        '[data-testid="settings-detail"] .settings-layout__topbar button[aria-label="Back to sections"]',
+      ),
+    ).toBeDisplayed();
+    expect(await pathname()).not.toMatch(/^\/settings/u);
 
-    await backFromSettings();
-    await waitForPath((path) => path.endsWith('/settings'), '/settings');
+    await backFromSettings(backToSections);
     await expect(appearance).toBeFocused({ wait: 10_000 });
+    await expect($(settingsDialog)).toBeDisplayed();
+    expect(await pathname()).not.toMatch(/^\/settings/u);
     const horizontalOverflow = await browser.execute(
       () =>
         document.documentElement.scrollWidth -
@@ -145,9 +142,40 @@ describe('mobile navigation', () => {
     );
     expect(horizontalOverflow).toBeLessThanOrEqual(1);
 
-    await backFromSettings();
+    await backFromSettings(closeSettings);
+    await expect($(settingsDialog)).not.toBeDisplayed({ wait: 10_000 });
     await waitForRooms();
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
+  });
+
+  it('steps System status back to its sections, then closes it, on hardware Back', async function () {
+    onlyOn('android', PANEL_BACK_ANDROID_ONLY).call(this);
+    const { user, pass, roomName } = await seedComposerRoom();
+    await login(user, pass);
+    await tap('[data-testid="rail-rooms"]');
+    const room = $(
+      `//button[contains(@class,"channel")][contains(.,"${roomName}")]`,
+    );
+    await expect(room).toBeDisplayed({ wait: 30_000 });
+    await room.click();
+    await expect($('[data-testid="composer-input"]')).toBeDisplayed({
+      wait: 20_000,
+    });
+
+    await tap('[data-testid="room-actions-overflow"]');
+    await tap('[data-testid="overflow-open-system-status"]');
+    const status = $('[role="dialog"][aria-label="System status"]');
+    await expect(status).toBeDisplayed({ wait: 10_000 });
+    await expect($('[data-testid="sheet-handle"]')).toBeDisplayed();
+    const sections = $('nav[aria-label="System status sections"]');
+    await expect(sections).not.toBeDisplayed();
+
+    await goBack();
+    await expect(sections).toBeDisplayed({ wait: 5_000 });
+    await expect(status).toBeDisplayed();
+    await goBack();
+    await expect(status).not.toBeDisplayed({ wait: 10_000 });
+    await expect($('[data-testid="composer-input"]')).toBeDisplayed();
   });
 
   it('dismisses the native keyboard before opening a bounded sheet and handles hardware Back', async function () {
@@ -266,26 +294,24 @@ describe('mobile navigation', () => {
     });
   });
 
-  it('moves focus into a routed Settings section on entry and back into Rooms with Back', async () => {
+  it('moves focus into a Settings sheet section on entry and back into Rooms with Back', async () => {
     const user = uniqueId('android-focus');
     const pass = `${user}-pass`;
     await registerUser(user, pass);
     await login(user, pass);
     await openSettingsFromRooms();
-    await waitForPath((path) => path.startsWith('/settings'), '/settings');
 
     await tap('[data-testid="settings-nav-profile"]');
-    await waitForPath(
-      (path) => path === '/settings/profile',
-      '/settings/profile',
-    );
     await expect(
       $('//*[self::h1 or self::h2][normalize-space()="Profile"]'),
     ).toBeFocused({ wait: 10_000 });
 
-    await clickButton('Back');
-    await waitForPath((path) => path === '/settings', '/settings');
-    await clickButton('Back');
+    await clickButton('Back to sections');
+    await expect($('[data-testid="settings-nav-profile"]')).toBeFocused({
+      wait: 10_000,
+    });
+    await clickButton('Close settings');
+    await expect($(settingsDialog)).not.toBeDisplayed({ wait: 10_000 });
     await waitForRooms();
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
     // The phone layout hides the pane holding the shell's <h1>; focus must still
@@ -322,36 +348,31 @@ describe('mobile navigation', () => {
     }
   });
 
-  it('routes Verify device and returns focus to the Security heading on Close', async () => {
+  it('stacks Verify device over the Settings sheet and returns focus to its opener on Close', async () => {
     const user = uniqueId('android-verify');
     const pass = `${user}-pass`;
     await registerUser(user, pass);
     await login(user, pass);
     await openSettingsFromRooms();
     await tap('[data-testid="settings-nav-security"]');
-    await waitForPath(
-      (path) => path === '/settings/security',
-      '/settings/security',
-    );
-    await tap('[data-testid="security-verify"]');
-    await waitForPath(
-      (path) => path === '/encryption/verify',
-      '/encryption/verify',
-    );
-    await expect($('[data-testid="verify-page"]')).toBeDisplayed({
-      wait: 20_000,
-    });
-    await expect(
-      $('//*[self::h1 or self::h2][normalize-space()="Verify device"]'),
-    ).toBeFocused({ wait: 10_000 });
-
-    await clickButton('Close');
-    await waitForPath(
-      (path) => path === '/settings/security',
-      '/settings/security',
-    );
     await expect(
       $('//*[self::h1 or self::h2][normalize-space()="Security"]'),
-    ).toBeFocused({ wait: 10_000 });
+    ).toBeDisplayed({ wait: 20_000 });
+    await tap('[data-testid="security-verify"]');
+    const verify = $(
+      '//*[@role="dialog"][.//h2[normalize-space()="Verify device"]]',
+    );
+    await expect(verify).toBeDisplayed({ wait: 20_000 });
+    // A dialog over the Settings sheet, not a route.
+    await expect($(settingsDialog)).toExist();
+    expect(await pathname()).not.toMatch(/^\/(settings|encryption)/u);
+
+    await clickButton('Close');
+    await expect(verify).not.toBeDisplayed({ wait: 10_000 });
+    await expect($(settingsDialog)).toBeDisplayed();
+    // The stacked dialog restores focus to the control that opened it.
+    await expect($('[data-testid="security-verify"]')).toBeFocused({
+      wait: 10_000,
+    });
   });
 });

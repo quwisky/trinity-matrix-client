@@ -10,9 +10,11 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { TrnIconComponent } from '@trinity/components/foundations';
+import { BannerComponent } from '@trinity/components/generic-content';
 import {
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
 } from '@trinity/components/overlay';
 import {
   WidgetBridgeService,
@@ -20,12 +22,12 @@ import {
   type WidgetBridgeSession,
   type WidgetEmbed,
 } from '@trinity/data-access/widgets';
-import { TrnButton } from '@trinity/components/controls';
+import { isInstalledNativePlatform } from '@trinity/platform-native';
 
 @Component({
   selector: 'trn-room-widget-frame',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnOverlaySurfaceDirective],
+  imports: [BannerComponent, TrnDialogShellComponent, TrnIconComponent],
   templateUrl: './room-widget-frame.component.html',
   styleUrl: './room-widget-frame.component.scss',
 })
@@ -65,7 +67,8 @@ export class RoomWidgetFrameComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit(): void {
     const iframe = this.frame().nativeElement;
     const embed = this.embed();
-    if (!embed.url) {
+    // The installed mobile apps open widgets in the browser, so no page loads here.
+    if (!embed.url || isInstalledNativePlatform()) {
       this.startupFailed.set(true);
       return;
     }

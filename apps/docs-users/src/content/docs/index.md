@@ -3,7 +3,7 @@ title: Install Trinity
 description: Install Trinity on macOS, Windows or Linux, or self-host the web app.
 audience: user
 contentChannel: release
-productVersion: '0.1.1' # x-release-please-version
+productVersion: '0.2.0' # x-release-please-version
 canonicalTopic: user-home
 pageType: how-to
 platforms: [web, desktop]
@@ -11,7 +11,7 @@ platforms: [web, desktop]
 
 <!-- x-release-please-start-version -->
 
-Trinity is an end-to-end encrypted [Matrix](https://matrix.org) client. Release 0.1.1 is
+Trinity is an end-to-end encrypted [Matrix](https://matrix.org) client. Release 0.2.0 is
 available for macOS, Windows and Linux, and as a self-hostable web app (PWA). Android and
 iOS apps are still in development.
 
@@ -43,14 +43,14 @@ the sandbox they rely on.
 On Debian and Ubuntu:
 
 ```bash
-sudo apt install ./trinity-desktop_0.1.1_amd64.deb
+sudo apt install ./trinity-desktop_0.2.0_amd64.deb
 ```
 
 With the AppImage:
 
 ```bash
-chmod +x Trinity-0.1.1.AppImage
-./Trinity-0.1.1.AppImage
+chmod +x Trinity-0.2.0.AppImage
+./Trinity-0.2.0.AppImage
 ```
 
 ## Web {#web}
@@ -62,7 +62,7 @@ docker run -d -p 8080:8080 ghcr.io/quwisky/trinity-web:latest
 ```
 
 Then open `http://localhost:8080`. You can also serve the static files from
-`Trinity-Web-0.1.1.zip` with any web server. For HTTPS, headers and updates, see
+`Trinity-Web-0.2.0.zip` with any web server. For HTTPS, headers and updates, see
 [Self-host a release](/trinity-matrix-client/developers/platforms/web-and-pwa/#self-host-release)
 in the developer guide.
 
@@ -71,3 +71,16 @@ in the developer guide.
 Report problems on [GitHub Issues](https://github.com/quwisky/trinity-matrix-client/issues).
 
 <!-- x-release-please-end -->
+
+## Server requirements {#server-requirements}
+
+From Trinity 0.3, signing in through your server's own sign-in page (OAuth 2.0,
+also called next-generation authentication) needs Synapse 1.138 or newer when the
+server uses Matrix Authentication Service (MAS). Tuwunel 1.6 or newer and
+Continuwuity 26.6 or newer provide OAuth 2.0 sign-in themselves; older releases do
+not. On an older Synapse with MAS, Trinity cannot offer that sign-in page, and an
+account that is already signed in stops connecting the next time its access token
+expires. Trinity keeps the account and its encryption keys on the device. Before you
+update, turn on key backup, or ask your server's admin to upgrade Synapse first. If an
+account has already stopped connecting, export your room keys, then remove the account
+and sign in again.

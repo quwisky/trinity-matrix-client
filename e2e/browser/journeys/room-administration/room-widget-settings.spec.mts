@@ -64,7 +64,8 @@ test.describe('Room settings', () => {
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
     await openRoom(page, roomName);
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'widgets');
 
     const card = page.getByTestId('room-widget-planning-board');
@@ -89,7 +90,7 @@ test.describe('Room settings', () => {
     await expect(page.getByTestId('widget-frame-status')).toContainText(
       'Negotiating',
     );
-    await expect(page.getByTestId('room-widget-frame-close')).toBeFocused();
+    await expect(page.getByTestId('dialog-close')).toBeFocused();
     expect(widgetFixture.requestCount()).toBe(1);
 
     const firstFrame = page.frameLocator('iframe.widget-frame__iframe');
@@ -127,7 +128,7 @@ test.describe('Room settings', () => {
 
     // A same-origin sibling cannot forge the response. Close during the real request,
     // then also prove that the target WindowProxy is rejected after an origin change.
-    await page.getByTestId('room-widget-frame-close').click();
+    await page.getByTestId('dialog-close').click();
     await expect(page.locator('iframe.widget-frame__iframe')).toHaveCount(0);
     await expect(embed).toBeFocused();
     await embed.click();
@@ -169,7 +170,7 @@ test.describe('Room settings', () => {
     await expect(page.getByTestId('widget-frame-status')).toContainText(
       'Negotiating',
     );
-    await page.getByTestId('room-widget-frame-close').click();
+    await page.getByTestId('dialog-close').click();
     await expect(embed).toBeFocused();
 
     // A clean third open completes with only the legitimate target response.
@@ -229,7 +230,7 @@ test.describe('Room settings', () => {
     });
     await cspViolation;
     expect(blockedHttpRequests).toBe(0);
-    await page.getByTestId('room-widget-frame-close').click();
+    await page.getByTestId('dialog-close').click();
     await expect(embed).toBeFocused();
   });
 
@@ -296,7 +297,8 @@ test.describe('Room settings', () => {
       .filter({ hasText: `@${user}:` })
       .click();
     await openRoom(page, roomName);
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'widgets');
     await expect(page.getByTestId('room-settings-account')).toContainText(user);
 
@@ -483,7 +485,8 @@ test.describe('Room settings', () => {
       pass: memberPass,
     } as HomeserverSession);
     await openRoom(page, roomName);
-    await page.getByTestId('open-room-settings').click();
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'widgets');
 
     await expect(page.getByTestId('room-widget-shared-board')).toBeVisible();

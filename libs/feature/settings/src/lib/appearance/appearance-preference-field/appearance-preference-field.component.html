@@ -1,16 +1,11 @@
-<div trnSettingsFieldRow>
-  <span class="min-w-0">
-    <strong
-      [id]="field().headingId"
-      class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
-      >{{ model().editor.label }}</strong
-    >
-    <small class="block text-13 text-[var(--trinity-text-muted)]">{{
-      model().editor.description
-    }}</small>
-  </span>
+<trn-settings-row
+  [label]="model().editor.label"
+  [labelId]="field().headingId"
+  [description]="model().editor.description"
+>
   <div class="min-w-0">
     <trn-select
+      class="w-48 max-sm:w-full"
       [attr.data-testid]="field().testId"
       [aria-labelledby]="field().headingId"
       [placeholder]="'Select ' + model().editor.label.toLowerCase()"
@@ -20,23 +15,12 @@
       (valueChange)="update($event)"
     />
     @if (status().failed()) {
-      <div
-        role="alert"
-        class="mt-2 flex flex-wrap items-center justify-end gap-2 text-13 text-danger"
+      <trn-save-failure
+        class="mt-2 justify-end"
         [attr.data-testid]="field().testId + '-failure'"
-      >
-        <span>This choice could not be saved.</span>
-        <button
-          trnBtn
-          type="button"
-          presentation="outline"
-          size="sm"
-          [attr.data-testid]="field().testId + '-retry'"
-          (click)="retry()"
-        >
-          Try again
-        </button>
-      </div>
+        [retryTestId]="field().testId + '-retry'"
+        (retry)="retry()"
+      />
     }
   </div>
-</div>
+</trn-settings-row>

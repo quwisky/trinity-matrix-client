@@ -35,7 +35,7 @@ describe('Trinity overlay surface recipe', () => {
     expect(accent).toContain('var(--trinity-state-attention-surface)');
     expect(neutral).toContain('--trn-overlay-inline-size:20rem');
     expect(sheet).toContain(
-      'max-h-[min(80svh,calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)))]',
+      'max-h-[min(90svh,calc(100dvh-env(safe-area-inset-top,0px)-var(--trinity-title-row-inset,0px)))]',
     );
     expect(sheet).toContain('w-screen');
     expect(sheet).toContain('max-w-[100vw]');
@@ -44,10 +44,20 @@ describe('Trinity overlay surface recipe', () => {
     expect(sheet).toContain('border-b-0');
     expect(panel).toContain('--trn-overlay-inline-size:40rem');
     expect(panel).toContain('w-screen');
-    expect(panel).toContain('h-dvh');
+    expect(panel).toContain(
+      'h-[calc(100dvh-var(--trinity-title-row-inset,0px))]',
+    );
     expect(workspace).toContain('--trn-overlay-inline-size:72rem');
     expect(workspace).toContain('100vw-2*var(--trinity-space-4)');
-    expect(workspace).toContain('100dvh-2*var(--trinity-space-4)');
+    expect(workspace).toContain(
+      '100dvh-var(--trinity-title-row-inset,0px)-2*var(--trinity-space-4)',
+    );
+    // Centred and anchored surfaces stop below the desktop title row as well.
+    for (const layout of ['dialog', 'popover'] as const) {
+      expect(trnOverlaySurfaceRecipe('neutral', 'md', layout)).toContain(
+        '100dvh-var(--trinity-title-row-inset,0px)',
+      );
+    }
     expect(workspace).toContain('flex');
     expect(workspace).not.toMatch(/\bblock\b/u);
     expect(trnOverlaySurfaceRecipe('neutral', '2xl', 'fullscreen')).toContain(

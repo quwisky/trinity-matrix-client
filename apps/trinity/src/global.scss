@@ -121,7 +121,11 @@
   }
 
   :is(button, a)[trnBtn][data-trn-icon-button] {
-    border-radius: var(--trinity-shape-control-radius);
+    // A caller whose control holds an identity shape (the rail's space pill) sets the hook.
+    border-radius: var(
+      --trn-icon-button-radius,
+      var(--trinity-shape-control-radius)
+    );
   }
 
   @media (hover: hover) {
@@ -164,17 +168,55 @@
 
 @layer components {
   /*
- * App-shell layout. <trn-root> is a fixed-height flex column (h-dvh); Angular renders
- * the routed page as the sibling immediately after <router-outlet>, so make that page
+ * App-shell layout. <trn-root> is a fixed-height flex column (h-dvh); the shell adds
+ * `.trn-routed-page` to each activated routed host (markRoutedPage), so make that page
  * fill the remaining space and be its own flex column (its <header> is shrink-0, its
  * <main>/body is flex-1 overflow-auto). This replaces Ionic's `.ion-page`, which
  * `ion-router-outlet` used to apply to every routed host.
  */
-  router-outlet + * {
+  .trn-routed-page {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
+  }
+
+  /*
+ * Desktop title row. While it shows, TitleBarComponent sets `.trn-title-row` on <body>,
+ * and every viewport-fixed layer starts below the row: in Electron the row's drag region
+ * and the native window buttons (macOS traffic lights included) keep receiving clicks in
+ * that band even when something is painted over it. The row follows the native strip's
+ * zoomed height, so the inset does too. Viewport-sized panes subtract the same inset.
+ * CDK overlays are moved in the `overrides` layer below.
+ */
+  .trn-title-row {
+    --trinity-title-row-inset: env(
+      titlebar-area-height,
+      var(--trinity-title-bar-height)
+    );
+  }
+
+  /* Dialog and sheet entrances. The overlay shell opts in with these classes; the reduced-motion
+   * blanket in `overrides` shortens them to nothing. */
+  @keyframes trn-dialog-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+  }
+
+  @keyframes trn-sheet-in {
+    from {
+      transform: translateY(100%);
+    }
+  }
+
+  .trn-overlay-enter-dialog {
+    animation: trn-dialog-in var(--trinity-duration-overlay) ease-out;
+  }
+
+  .trn-overlay-enter-sheet {
+    animation: trn-sheet-in var(--trinity-duration-base) ease-out;
   }
 }
 
@@ -205,39 +247,34 @@
   }
 }
 
-@layer components {
-  /*
- * A right-hand panel's top bar (threads, a thread, pinned, search, member info).
- *
- * It exists because the obvious spelling is broken: `class="safe-top safe-left safe-right
- * p-3"` asks two utilities to own the same padding longhand. Before the cascade contract,
- * the unlayered `.safe-*` helpers replaced Tailwind's layered spacing; after classification,
- * source order inside `utilities` can reverse the loss and discard the inset instead. The
- * source guard rejects the ambiguous pairing in either direction. All five panel headers had
- * rendered with `padding: 0 0 12px`: a 45px bar with its title flush against the border,
- * beside a 56px room header with a 12px inset title.
- *
- * Here the two are composed in one declaration, so there is nothing to lose a cascade
- * fight with — and the bar is built the way the room header beside it is built, which is
- * what "aligned" has to mean: a FIXED 3.5rem (the room header's `h-14`) with the content
- * centred in it, rather than vertical padding around a 32px button. Padding around it came
- * to 57px against the room header's 56 — a one-pixel step where the two bottom borders
- * meet. The horizontal 0.75rem matches the room header's own 12px inset.
- *
- * The height grows by the top inset rather than being eaten by it, so on a notched device
- * the bar sits below the cutout at full height instead of being clipped into it.
- */
-  .panel-header {
-    height: calc(3.5rem + env(safe-area-inset-top));
-    padding-top: env(safe-area-inset-top);
-    padding-right: calc(0.75rem + env(safe-area-inset-right));
-    padding-left: calc(0.75rem + env(safe-area-inset-left));
-    background: var(--trinity-surface-panel);
-    color: var(--trinity-text-bright);
-  }
-}
-
 @layer overrides {
+  /* Global CDK overlays (dialogs, the lightbox, the widget frame) start below the desktop
+   * title row, so their top controls are not under its drag region or the native window
+   * buttons. Only the global wrapper and the backdrop move: the container stays at the
+   * viewport origin, because CDK positions anchored menus and tooltips in viewport
+   * coordinates inside it and corrects only a negative container offset.
+   * `!important` is deliberate: when the first overlay opens, CDK injects its own unlayered
+   * `top: 0; height: 100%`, and unlayered rules beat every layer unless a layered
+   * declaration is important. Scoped to `.trn-title-row`, so web and mobile are untouched. */
+  .trn-title-row :is(.cdk-global-overlay-wrapper, .cdk-overlay-backdrop) {
+    inset-block: var(--trinity-title-row-inset) 0 !important;
+    height: auto !important;
+  }
+
+  /* The scrim colour. CDK writes its own `.cdk-overlay-dark-backdrop` colour and fade inside an
+   * unlayered-after-everything `@layer cdk-overlay`, which out-ranks every declared layer, so
+   * only an important layered declaration can replace it. The fade is skipped under reduced
+   * motion so the blanket rule below stays the only owner of that preference. */
+  .cdk-overlay-dark-backdrop {
+    background: var(--trinity-overlay-scrim) !important;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .cdk-overlay-dark-backdrop {
+      transition: opacity var(--trinity-duration-overlay) ease-out !important;
+    }
+  }
+
   @media (forced-colors: active) {
     :focus-visible {
       outline: var(--trinity-focus-ring-width) solid Highlight;

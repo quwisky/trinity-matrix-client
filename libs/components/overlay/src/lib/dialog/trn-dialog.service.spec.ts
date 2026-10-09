@@ -1,9 +1,12 @@
+import { FlexibleConnectedPositionStrategy } from '@angular/cdk/overlay';
 import { ApplicationRef, Component, inject, input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom, NEVER } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { screen } from '@trinity/testing';
 import { TrnAlertService } from '../alert/trn-alert.service';
+import { TrnDialogShellComponent } from '../dialog-shell/trn-dialog-shell.component';
 import { TrnDialogRef } from './trn-dialog-ref';
 import { TrnDialogService } from './trn-dialog.service';
 
@@ -39,6 +42,40 @@ const clickClose = () =>
   `,
 })
 class FocusDialogComponent {}
+
+@Component({
+  imports: [TrnDialogShellComponent],
+  template: `<trn-dialog-shell title="Edit topic"
+    ><p>Body</p></trn-dialog-shell
+  >`,
+})
+class ShellDialogComponent {}
+
+describe('TrnDialogService — dialog shell', () => {
+  afterEach(() => TestBed.inject(TrnDialogService).closeAll());
+
+  it('exposes one dialog role, named by the shell title', () => {
+    const svc = TestBed.inject(TrnDialogService);
+    const ref = svc.open(ShellDialogComponent);
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    const dialog = screen.getByRole('dialog', { name: 'Edit topic' });
+    expect(dialog.getAttribute('aria-labelledby')).toBe(ref.titleId);
+  });
+
+  it('routes the X through the dismiss guard, which may refuse', () => {
+    const guard = vi.fn(() => false);
+    const svc = TestBed.inject(TrnDialogService);
+    svc.open(ShellDialogComponent, { dismissGuard: guard });
+    TestBed.inject(ApplicationRef).tick();
+
+    screen.getByTestId('dialog-close').click();
+
+    expect(guard).toHaveBeenCalledOnce();
+    expect(svc.hasOpen()).toBe(true);
+  });
+});
 
 describe('TrnDialogService', () => {
   it('opens a component, sets its inputs, and closes with a value', async () => {
@@ -137,16 +174,20 @@ describe('TrnDialogService', () => {
     expect(await closed).toBe('Side');
   });
 
-  it('gives a full-screen dialog the complete viewport pane', () => {
+  it('gives a full-screen dialog the viewport pane below the desktop title row', () => {
     const svc = TestBed.inject(TrnDialogService);
     const ref = svc.open(TestDialogComponent, { placement: 'fullscreen' });
     TestBed.inject(ApplicationRef).tick();
 
     const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
     expect(pane?.style.width).toBe('100vw');
-    expect(pane?.style.height).toBe('100dvh');
+    expect(pane?.style.height).toBe(
+      'calc(100dvh - var(--trinity-title-row-inset, 0px))',
+    );
     expect(pane?.style.maxWidth).toBe('100vw');
-    expect(pane?.style.maxHeight).toBe('100dvh');
+    expect(pane?.style.maxHeight).toBe(
+      'calc(100dvh - var(--trinity-title-row-inset, 0px))',
+    );
 
     ref.close();
   });
@@ -156,10 +197,14 @@ describe('TrnDialogService', () => {
     const ref = svc.open(TestDialogComponent, { placement: 'bottom' });
     TestBed.inject(ApplicationRef).tick();
 
+    expect(ref.presentation).toBe('sheet');
     const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
-    expect(pane?.style.width).toBe('min(100vw, 36rem)');
+    expect(pane?.style.width).toBe('100vw');
     expect(pane?.style.maxWidth).toBe('100vw');
-    expect(pane?.style.maxHeight).toBe('calc(100dvh - 12px)');
+    expect(pane?.style.maxHeight).toBe(
+      // The same cap as the sheet surface recipe, so the pane never clips the surface.
+      'min(90svh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--trinity-title-row-inset, 0px)))',
+    );
     expect(document.querySelector('.cdk-global-overlay-wrapper')).toBeTruthy();
 
     ref.close();
@@ -277,6 +322,16 @@ describe('TrnDialogService', () => {
     expect(svc.hasOpen()).toBe(false);
   });
 
+  it('leaves browser Back to the route guard instead of closing on popstate', () => {
+    const svc = TestBed.inject(TrnDialogService);
+    svc.open(TestDialogComponent);
+    TestBed.inject(ApplicationRef).tick();
+
+    window.dispatchEvent(new PopStateEvent('popstate'));
+
+    expect(svc.hasOpen()).toBe(true);
+  });
+
   it('leaves a disableClose dialog alone, which CDK would not', async () => {
     // The flag exists so a flow-critical dialog cannot be dismissed out from under
     // itself — encryption-unlock and device-verification both set it. CDK enforces it
@@ -367,6 +422,36 @@ describe('TrnDialogService', () => {
   });
 });
 
+describe('TrnDialogService — presentation', () => {
+  afterEach(() => TestBed.inject(TrnDialogService).closeAll());
+
+  it('opens a bottom placement as a full-width sheet', () => {
+    const svc = TestBed.inject(TrnDialogService);
+
+    const ref = svc.open(TestDialogComponent, { placement: 'bottom' });
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(ref.presentation).toBe('sheet');
+    const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
+    expect(pane?.style.width).toBe('100vw');
+    expect(pane?.style.maxHeight).toBe(
+      // The same cap as the sheet surface recipe, so the pane never clips the surface.
+      'min(90svh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--trinity-title-row-inset, 0px)))',
+    );
+    // CDK's global strategy pins a `bottom()` pane by aligning its wrapper to the end.
+    const wrapper = document.querySelector<HTMLElement>(
+      '.cdk-global-overlay-wrapper',
+    );
+    expect(wrapper?.style.alignItems).toBe('flex-end');
+  });
+
+  it('keeps a centre placement a dialog; the surface service picks the sheet', () => {
+    const svc = TestBed.inject(TrnDialogService);
+
+    expect(svc.open(TestDialogComponent).presentation).toBe('dialog');
+  });
+});
+
 describe('TrnDialogService — anchored presentation', () => {
   /** A real, laid-out element to hang the popover off. */
   function anchorElement(): HTMLElement {
@@ -386,14 +471,34 @@ describe('TrnDialogService — anchored presentation', () => {
   it('positions against the anchor instead of centring', () => {
     const svc = TestBed.inject(TrnDialogService);
 
-    svc.open(TestDialogComponent, { anchor: anchorElement() });
+    const ref = svc.open(TestDialogComponent, { anchor: anchorElement() });
     TestBed.inject(ApplicationRef).tick();
 
+    expect(ref.presentation).toBe('popover');
     // CDK wraps a flexible connected overlay in this box and nothing else does, so its
     // presence is what distinguishes an anchored panel from the global centred strategy.
     expect(
       document.querySelector('.cdk-overlay-connected-position-bounding-box'),
     ).not.toBeNull();
+  });
+
+  it('keeps the popover clear of the viewport edges and bounded by its height', () => {
+    // CDK only pushes a popover back on screen against a viewport margin, and a pane with no
+    // max height can outgrow a short window; the sibling anchored overlay uses the same 8px.
+    const margin = vi.spyOn(
+      FlexibleConnectedPositionStrategy.prototype,
+      'withViewportMargin',
+    );
+    const svc = TestBed.inject(TrnDialogService);
+
+    svc.open(TestDialogComponent, { anchor: anchorElement() });
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(margin).toHaveBeenCalledWith(8);
+    const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
+    expect(pane?.style.maxHeight).toBe(
+      'calc(100dvh - var(--trinity-title-row-inset, 0px) - 1rem)',
+    );
   });
 
   it('drops the scrim for an anchored panel', () => {

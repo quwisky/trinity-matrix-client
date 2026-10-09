@@ -1,9 +1,9 @@
 import { computed, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { TrnButton } from '@trinity/components/controls';
 import { type AccountBadge } from '@trinity/components/generic-content';
 import { provideTrnIcons } from '@trinity/components/foundations';
-import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -28,20 +28,6 @@ import {
 } from '@trinity/data-access/notifications';
 import { type PresenceState } from '@trinity/util/matrix';
 import { ChannelSidebarComponent } from './channel-sidebar.component';
-
-/**
- * The room-list child, resolved from a rendered sidebar.
- *
- * `presenceOf`, `badgeLabel` and `notifyMode` moved to SidebarRoomListComponent when the
- * room-list body was extracted. They are unit-tested here rather than through the parent
- * because the parent no longer has them — asserting on the owner is the point of the split.
- */
-function roomList(
-  fixture: ComponentFixture<ChannelSidebarComponent>,
-): SidebarRoomListComponent {
-  return fixture.debugElement.query(By.directive(SidebarRoomListComponent))
-    .componentInstance as SidebarRoomListComponent;
-}
 
 // Stub presence: @bob is online, everyone else offline.
 const presenceStub = {
@@ -119,6 +105,8 @@ async function renderSidebar(
       hasAnyUnread?: boolean;
       filterQuery?: string;
       spaceActive?: boolean;
+      spaceName?: string;
+      showSwitcher?: boolean;
       activeRoomId?: string | null;
       activeUserId?: string | null;
       sortMode?: RoomSortMode;
@@ -200,19 +188,11 @@ describe('ChannelSidebarComponent', () => {
         ],
       },
     });
-    const sidebar = roomList(fixture);
     // Presence tracks the DM's other participant; a non-DM room gets null (no dot).
-    expect(sidebar.presenceOf(room({ directUserId: '@bob:hs' }))).toBe(
-      'online',
-    );
-    expect(sidebar.presenceOf(room({ directUserId: '@carol:hs' }))).toBe(
-      'offline',
-    );
-    expect(sidebar.presenceOf(room())).toBeNull();
-    // The DM row actually renders a presence dot; the plain room does not.
-    expect(
-      fixture.nativeElement.querySelectorAll('.presence-dot'),
-    ).toHaveLength(1);
+    // The DM row renders its counterpart's presence dot; the plain room does not.
+    const dots = fixture.nativeElement.querySelectorAll('.presence-dot');
+    expect(dots).toHaveLength(1);
+    expect(dots[0].getAttribute('data-presence')).toBe('online');
   });
 
   it('lists rooms and emits selectRoom when one is clicked', async () => {
@@ -257,7 +237,7 @@ describe('ChannelSidebarComponent', () => {
     expect(container.querySelector('.channel__preview')).toBeNull();
   });
 
-  it('shows a mention count, a muted unread count, and caps at 99+', async () => {
+  it('shows a mention count only on the mention room', async () => {
     const { container } = await renderSidebar({
       inputs: {
         rooms: [
@@ -280,43 +260,11 @@ describe('ChannelSidebarComponent', () => {
       },
     });
 
-    // The mention room shows the red mention badge with the highlight count.
-    const mention = container.querySelector(
-      '.channel__badge:not(.channel__badge--muted)',
-    )!;
-    expect(mention.textContent!.trim()).toBe('2');
-    // The plain-unread room shows a muted count badge, capped Discord-style.
-    const muted = container.querySelector('.channel__badge--muted')!;
-    expect(muted.textContent!.trim()).toBe('99+');
-    // No bare dots anymore — every unread room carries a count.
-    expect(container.querySelectorAll('.channel__dot').length).toBe(0);
-    expect(container.querySelectorAll('.channel.unread').length).toBe(2);
-  });
-
-  it('caps badgeLabel exactly at the 99/100 boundary', async () => {
-    const { fixture } = await renderSidebar();
-
-    expect(roomList(fixture).badgeLabel(99)).toBe('99');
-    expect(roomList(fixture).badgeLabel(100)).toBe('99+');
-  });
-
-  it('shows the exact uncapped unread count on a muted badge', async () => {
-    const { container } = await renderSidebar({
-      inputs: {
-        rooms: [
-          room({
-            id: '!u:hs',
-            name: 'unread',
-            hasUnread: true,
-            unreadCount: 7,
-            highlightCount: 0,
-          }),
-        ],
-      },
-    });
-
-    const muted = container.querySelector('.channel__badge--muted')!;
-    expect(muted.textContent!.trim()).toBe('7');
+    // Only the mention room carries a count; plain unread is bold text plus the marker.
+    const badges = container.querySelectorAll('[trnBadge]');
+    expect(badges).toHaveLength(1);
+    expect(badges[0].textContent!.trim()).toBe('2');
+    expect(container.querySelectorAll('.channel--unread').length).toBe(2);
   });
 
   it('shows only the new-chat affordance on Home (no space actions)', async () => {
@@ -326,15 +274,62 @@ describe('ChannelSidebarComponent', () => {
     // Space-only actions are hidden on Home; the new-room/DM "+" is present.
     expect(container.querySelector('[aria-label="Create a room"]')).toBeNull();
     // Invite and Leave live in the space overflow, which Home does not render at all.
-    expect(
-      container.querySelector('[data-testid="space-actions-overflow"]'),
-    ).toBeNull();
+    expect(container.querySelector('[data-testid="space-header"]')).toBeNull();
     expect(
       container.querySelector('[aria-label="New room or direct message"]'),
     ).not.toBeNull();
   });
 
-  it('keeps the space header to three buttons, whatever the unread state', async () => {
+  it('shows the space name as a menu button with a chevron', async () => {
+    const { container } = await renderSidebar({
+      inputs: { spaceActive: true, spaceName: 'Garden' },
+    });
+
+    const header = container.querySelector<HTMLElement>(
+      '[data-testid="space-header"]',
+    )!;
+    expect(header.tagName).toBe('BUTTON');
+    expect(header.textContent).toContain('Garden');
+    expect(header.getAttribute('aria-label')).toBe('Garden actions');
+    expect(
+      header.querySelector('trn-icon[name="chevron-down"]'),
+    ).not.toBeNull();
+  });
+
+  it('moves the three joinable actions to the secondary outline button', async () => {
+    const { fixture, container } = await renderSidebar({
+      inputs: { spaceActive: true },
+      joinableRooms: [child({ roomId: '!x:hs', name: 'open-channel' })],
+      childSpaces: [
+        child({
+          roomId: '!j:hs',
+          name: 'Joined Sub',
+          isSpace: true,
+          joined: true,
+        }),
+        child({
+          roomId: '!n:hs',
+          name: 'New Sub',
+          isSpace: true,
+          joined: false,
+        }),
+      ],
+    });
+
+    const actions = fixture.debugElement.queryAll(By.css('.joinable__action'));
+    expect(actions).toHaveLength(3);
+    for (const action of actions) {
+      const btn = action.injector.get(TrnButton);
+      expect(btn.variant()).toBe('secondary');
+      expect(btn.presentation()).toBe('outline');
+      expect(btn.size()).toBe('sm');
+    }
+    expect(
+      container.querySelector('[data-testid="join-child-!x:hs"]'),
+    ).not.toBeNull();
+  });
+
+  it('keeps the space header actions to two buttons, whatever the unread state', async () => {
     // The whole point of the overflow: six buttons left the 280px sidebar's title about six
     // characters, and on touch (44px targets) they were wider than the sidebar itself. Both
     // unread states are rendered, because mark-all-read is the one conditional button and a
@@ -348,13 +343,13 @@ describe('ChannelSidebarComponent', () => {
     });
     expect(
       unread.container.querySelectorAll('.sidebar__actions button'),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
 
     TestBed.resetTestingModule();
     const read = await renderSidebar({ inputs: { spaceActive: true } });
     expect(
       read.container.querySelectorAll('.sidebar__actions button'),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
   });
 
   it('offers mark-all-read in the overflow, and emits it', async () => {
@@ -369,7 +364,7 @@ describe('ChannelSidebarComponent', () => {
     fixture.componentInstance.markAllRead.subscribe(() => (marked = true));
 
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
 
@@ -394,23 +389,26 @@ describe('ChannelSidebarComponent', () => {
     });
 
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
 
     expect(document.querySelector('[data-testid="mark-all-read"]')).toBeNull();
   });
 
-  it('emits newChat from the Home "+" affordance', async () => {
+  it('emits newChat with the Home "+" button it was opened from', async () => {
     const { fixture, container } = await renderSidebar();
+    const opened: HTMLElement[] = [];
+    fixture.componentInstance.newChat.subscribe((anchor) =>
+      opened.push(anchor),
+    );
+    const plus = container.querySelector<HTMLElement>(
+      '[aria-label="New room or direct message"]',
+    )!;
 
-    let opened = false;
-    fixture.componentInstance.newChat.subscribe(() => (opened = true));
-    container
-      .querySelector<HTMLElement>('[aria-label="New room or direct message"]')!
-      .click();
+    plus.click();
 
-    expect(opened).toBe(true);
+    expect(opened).toEqual([plus]);
   });
 
   it('shows the space actions and emits createRoom / inviteToSpace / leaveSpace', async () => {
@@ -434,13 +432,13 @@ describe('ChannelSidebarComponent', () => {
       .querySelector<HTMLElement>('[aria-label="Create a room"]')!
       .click();
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
     document.querySelector<HTMLElement>('[data-testid="space-leave"]')!.click();
     fixture.detectChanges();
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
     document
@@ -467,7 +465,7 @@ describe('ChannelSidebarComponent', () => {
     let opened = false;
     fixture.componentInstance.openSpaceMembers.subscribe(() => (opened = true));
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
     document
@@ -490,7 +488,7 @@ describe('ChannelSidebarComponent', () => {
     );
 
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
     document
@@ -498,7 +496,7 @@ describe('ChannelSidebarComponent', () => {
       .click();
     fixture.detectChanges();
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
     document
@@ -528,7 +526,7 @@ describe('ChannelSidebarComponent', () => {
     );
 
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
 
@@ -562,7 +560,7 @@ describe('ChannelSidebarComponent', () => {
       () => (opened = true),
     );
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
     document
@@ -581,7 +579,7 @@ describe('ChannelSidebarComponent', () => {
     });
 
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
 
@@ -671,6 +669,14 @@ describe('ChannelSidebarComponent', () => {
       .click();
 
     expect(opened).toBe(true);
+  });
+
+  it('drops the header search button when the desktop title row owns the switcher', async () => {
+    const { container } = await renderSidebar({
+      inputs: { showSwitcher: false },
+    });
+
+    expect(container.querySelector('[data-testid="open-switcher"]')).toBeNull();
   });
 
   it('lists not-yet-joined channels and emits joinRoom with the child', async () => {
@@ -1084,8 +1090,8 @@ describe('ChannelSidebarComponent', () => {
     const dot = container.querySelector('[data-testid="room-unread-dot"]');
     expect(dot?.getAttribute('role')).toBe('img');
     expect(dot?.getAttribute('aria-label')).toBe('Marked unread');
-    // …and it is a dot, not the full-size red mention pill the base class renders.
-    expect(dot?.classList.contains('channel__badge--dot')).toBe(true);
+    // …and it is a dot, not the mention badge.
+    expect(dot?.classList.contains('channel__dot')).toBe(true);
   });
 
   it('lets a mention badge win over the flag', async () => {
@@ -1106,9 +1112,9 @@ describe('ChannelSidebarComponent', () => {
     expect(
       container.querySelector('[data-testid="room-unread-dot"]'),
     ).toBeNull();
-    expect(
-      container.querySelector('.channel__badge')?.getAttribute('aria-label'),
-    ).toContain('unread mentions');
+    expect(container.querySelector('.channel .sr-only')?.textContent).toContain(
+      'mentions',
+    );
   });
 
   it('emits every account that owns the row when flagging it', async () => {
@@ -1139,7 +1145,7 @@ describe('ChannelSidebarComponent', () => {
     expect(emitted).toEqual(['@me:hs', '@alt:hs']);
   });
 
-  it('still shows the count when a flagged room also has unread messages', async () => {
+  it('still shows the dot when a flagged room also has unread messages', async () => {
     const { container } = await renderSidebar({
       inputs: {
         rooms: [
@@ -1156,8 +1162,8 @@ describe('ChannelSidebarComponent', () => {
 
     expect(
       container.querySelector('[data-testid="room-unread-dot"]'),
-    ).toBeNull();
-    expect(container.textContent).toContain('3');
+    ).not.toBeNull();
+    expect(container.querySelector('.channel--unread')).not.toBeNull();
   });
 
   it('emits markAllRead from the header when any room is unread', async () => {
@@ -1202,19 +1208,20 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('reads the level from every account represented by the row', async () => {
-    const { fixture, container } = await renderSidebar({
-      inputs: { rooms: [room({ id: '!a:hs' })] },
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({
+            id: '!a:hs',
+            accountId: '@alt:hs',
+            accountIds: ['@alt:hs'],
+          }),
+        ],
+      },
       notifyMode: 'mentions',
     });
 
-    const foreign = room({
-      id: '!a:hs',
-      accountId: '@alt:hs',
-      accountIds: ['@alt:hs'],
-    });
-    expect(roomList(fixture).notifyMode(foreign)).toBe('mentions');
     expect(modeForSpy).toHaveBeenCalledWith('!a:hs', ['@alt:hs']);
-    fixture.detectChanges();
     expect(
       container
         .querySelector('[data-testid="room-muted"]')
@@ -1514,7 +1521,7 @@ describe('ChannelSidebarComponent space sort menu', () => {
     });
     // The sort menu is a SUBMENU now: open the header overflow first, then its row.
     rendered.container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     rendered.fixture.detectChanges();
     const trigger = document.querySelector<HTMLElement>(
@@ -1544,7 +1551,7 @@ describe('ChannelSidebarComponent space sort menu', () => {
     expect(container.querySelector('[data-testid="space-sort"]')).toBeNull();
 
     container
-      .querySelector<HTMLElement>('[data-testid="space-actions-overflow"]')!
+      .querySelector<HTMLElement>('[data-testid="space-header"]')!
       .click();
     fixture.detectChanges();
 
@@ -1847,7 +1854,12 @@ describe('ChannelSidebarComponent room filter', () => {
           room({ id: '!a:hs', name: 'design' }),
           room({ id: '!b:hs', name: 'design docs' }),
         ],
+        spaceActive: true,
       },
+      joinableRooms: [
+        child({ roomId: '!j1:hs', name: 'design crit' }),
+        child({ roomId: '!j2:hs', name: 'ops' }),
+      ],
     });
     const status = () =>
       container
@@ -1857,8 +1869,9 @@ describe('ChannelSidebarComponent room filter', () => {
     // Silent when nothing is typed — the unfiltered list is not news.
     expect(status()).toBe('');
 
+    // Two joined rooms plus the one joinable child the child list renders.
     type(fixture, 'design');
-    expect(status()).toBe('2 results');
+    expect(status()).toBe('3 results');
   });
 
   it('keeps Mark all as read while the filter hides the unread room', async () => {

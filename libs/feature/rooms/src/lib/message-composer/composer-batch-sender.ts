@@ -82,6 +82,7 @@ export class ComposerBatchSender {
    * that stale callback useful for reconciling its own files and caption without letting it
    * release the newer batch.
    */
+  // "Release only if mine" latch: stale batches still reconcile, so this is not a latest-wins guard (#927).
   private nextBatchGeneration = 0;
   private activeBatchGeneration: number | null = null;
 

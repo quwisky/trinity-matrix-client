@@ -59,6 +59,9 @@ describe('KeyboardShortcutsService', () => {
     expect(svc.resolve(keydown({ key: 'k', metaKey: true }))).toEqual({
       id: 'switcher.open',
     });
+    expect(svc.resolve(keydown({ key: 'f', ctrlKey: true }))).toEqual({
+      id: 'room.search',
+    });
     expect(svc.resolve(keydown({ key: "'", ctrlKey: true }))).toEqual({
       id: 'room.hop.back',
     });

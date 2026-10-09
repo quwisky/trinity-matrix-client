@@ -1,0 +1,47 @@
+@if (supported && loaded()) {
+  <trn-settings-group
+    title="Window"
+    description="Choose how the desktop app draws its window frame."
+    data-testid="appearance-window"
+  >
+    <trn-settings-row
+      label="Use system title bar"
+      for="system-title-bar-switch"
+      description="Show your operating system's window frame and menu bar instead of Trinity's title row."
+    >
+      <trn-switch
+        data-testid="system-title-bar-toggle"
+        inputId="system-title-bar-switch"
+        aria-describedby="system-title-bar-switch-description"
+        for="system-title-bar-switch"
+        [checked]="saved()"
+        (checkedChange)="onChange($event)"
+      />
+    </trn-settings-row>
+    @if (failed()) {
+      <trn-save-failure
+        class="pt-3"
+        data-testid="system-title-bar-error"
+        [retryable]="false"
+      />
+    }
+    @if (needsRestart()) {
+      <div
+        class="flex flex-wrap items-center justify-between gap-2 pt-3 text-13"
+        data-testid="system-title-bar-restart-prompt"
+      >
+        <span>Restart to apply</span>
+        <button
+          trnBtn
+          type="button"
+          presentation="outline"
+          size="sm"
+          data-testid="system-title-bar-restart"
+          (click)="restart()"
+        >
+          Restart
+        </button>
+      </div>
+    }
+  </trn-settings-group>
+}

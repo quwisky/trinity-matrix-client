@@ -2,14 +2,14 @@ import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { type WorkspaceRoomNavigationOrigin } from '@trinity/application/workspace';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
-import { TrnDialogService } from '@trinity/components/overlay';
-import { isMobileOs } from '@trinity/platform-native';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
   type ConversationMessageOutcome,
   ConversationRuntime,
   TimelineActionsService,
 } from '@trinity/data-access/timeline';
 import { type Mention } from '@trinity/util/matrix';
+import { latestGuard } from '@trinity/util/ui';
 import type { ImagePackImage } from '@trinity/data-access/media';
 import { Observable, filter, switchMap, throwError } from 'rxjs';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
@@ -54,7 +54,7 @@ export class MessageActionsService {
   private readonly compose = this.conversations.compose;
   private readonly messageCommands = this.conversations.messages;
   private readonly timelineActions = inject(TimelineActionsService);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
 
   /**
@@ -66,8 +66,7 @@ export class MessageActionsService {
   readonly uploadProgress = signal<BatchProgress | null>(null);
 
   /** Identity allocator and current owner for the progress signal shared by rooms. */
-  private nextUploadGeneration = 0;
-  private activeUploadGeneration: number | null = null;
+  private readonly uploads = latestGuard();
 
   /**
    * Route a `matrix.to` permalink clicked in a message, in-app. A user shows a profile
@@ -112,15 +111,12 @@ export class MessageActionsService {
     >,
     origin: WorkspaceRoomNavigationOrigin,
   ): void {
-    const mobile = isMobileOs();
     this.dialog
       .openAndWait$<RoomLinkPreviewResult | null, RoomLinkPreviewComponent>(
         RoomLinkPreviewComponent,
         {
-          ariaLabel: 'Room information',
           autoFocus: 'first-heading',
-          placement: mobile ? 'bottom' : 'center',
-          inputs: { target, sheet: mobile },
+          inputs: { target },
         },
       )
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -155,7 +151,7 @@ export class MessageActionsService {
    * Open the thread rooted at `rootEventId` (raised by a message's indicator).
    *
    * Writes the shell's one right-hand slot rather than opening a dialog. The three
-   * services that used to wrap `TrnDialogService` for these surfaces are gone: with the
+   * services that used to wrap `TrnSurfaceService` for these surfaces are gone: with the
    * presentation decided by the slot, their whole remaining job was indirection, and each
    * carried a re-entrancy guard that only existed because two dialogs could stack. One
    * slot makes "only one at a time" structural — there is one value.
@@ -320,14 +316,13 @@ export class MessageActionsService {
     caption: string;
     onOutcomes: (outcomes: readonly BatchOutcome[]) => void;
   }): void {
-    const uploadGeneration = ++this.nextUploadGeneration;
-    this.activeUploadGeneration = uploadGeneration;
+    const token = this.uploads.next();
     const reportProgress = (progress: BatchProgress | null): void => {
-      if (uploadGeneration !== this.activeUploadGeneration) {
+      if (!this.uploads.isCurrent(token)) {
         return;
       }
       if (progress === null) {
-        this.activeUploadGeneration = null;
+        this.uploads.invalidate();
       }
       this.uploadProgress.set(progress);
     };

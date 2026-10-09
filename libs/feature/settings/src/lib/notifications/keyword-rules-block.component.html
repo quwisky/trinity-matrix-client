@@ -1,76 +1,61 @@
-<div data-testid="keyword-rules">
-  <trn-settings-section-heading title="Keywords" />
-  <p class="px-4 py-1 text-13 text-muted-foreground">
-    Be notified whenever one of these whole words is said, in any room — “call”
-    will not match “oncall”. A muted room stays muted: keywords do not override
-    it.
-  </p>
-
+<trn-settings-group
+  title="Keywords"
+  description="Be notified whenever one of these whole words is said, in any room — “call” will not match “oncall”. A muted room stays muted: keywords do not override it."
+  data-testid="keyword-rules"
+>
   @if (isLoading()) {
-    <p
-      class="px-4 py-2 text-13 text-muted-foreground"
+    <trn-empty-state
+      layout="line"
+      body="Loading your keywords…"
       data-testid="keyword-loading"
-    >
-      Loading your keywords…
-    </p>
+    />
   } @else if (isEmpty()) {
-    <p
-      class="px-4 py-2 text-13 text-muted-foreground"
+    <trn-empty-state
+      layout="line"
+      body="You have no keywords yet."
       data-testid="keyword-empty"
-    >
-      You have no keywords yet.
-    </p>
+    />
   } @else {
-    <ul class="flex flex-col">
-      @for (keyword of keywords(); track keyword.ruleId) {
-        <li
-          class="flex items-center justify-between gap-3 px-4 py-2"
-          data-testid="keyword-row"
-        >
-          <span class="flex min-w-0 items-center gap-2">
-            <span class="truncate text-sm font-medium">{{
-              keyword.pattern
-            }}</span>
-            @if (!keyword.enabled) {
-              <span
-                class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
-                data-testid="keyword-off"
-                >Off</span
-              >
-            }
-          </span>
-          <span class="flex shrink-0 items-center gap-3">
-            <label
-              class="flex cursor-pointer items-center gap-2 text-13 text-muted-foreground"
+    @for (keyword of keywords(); track keyword.ruleId) {
+      <trn-settings-row [label]="keyword.pattern" data-testid="keyword-row">
+        <span class="flex shrink-0 items-center gap-3">
+          @if (!keyword.enabled) {
+            <span
+              class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+              data-testid="keyword-off"
+              >Off</span
             >
-              <trn-switch
-                [checked]="soundOf(keyword)"
-                [disabled]="isBusy(keyword.ruleId)"
-                (checkedChange)="toggleSound(keyword, $event)"
-                [aria-label]="'Play a sound for ' + keyword.pattern"
-                data-testid="keyword-sound"
-              />
-              Sound
-            </label>
-            <button
-              trnBtn
-              type="button"
-              presentation="outline"
-              size="sm"
+          }
+          <label
+            class="flex cursor-pointer items-center gap-2 text-13 text-muted-foreground"
+          >
+            <trn-switch
+              [checked]="soundOf(keyword)"
               [disabled]="isBusy(keyword.ruleId)"
-              (click)="remove(keyword)"
-              [attr.aria-label]="'Remove keyword ' + keyword.pattern"
-              data-testid="keyword-remove"
-            >
-              Remove
-            </button>
-          </span>
-        </li>
-      }
-    </ul>
+              (checkedChange)="toggleSound(keyword, $event)"
+              [aria-label]="'Play a sound for ' + keyword.pattern"
+              data-testid="keyword-sound"
+            />
+            Sound
+          </label>
+          <button
+            trnBtn
+            type="button"
+            presentation="outline"
+            size="sm"
+            [disabled]="isBusy(keyword.ruleId)"
+            (click)="remove(keyword)"
+            [attr.aria-label]="'Remove keyword ' + keyword.pattern"
+            data-testid="keyword-remove"
+          >
+            Remove
+          </button>
+        </span>
+      </trn-settings-row>
+    }
   }
 
-  <div class="flex items-center gap-2 px-4 py-2">
+  <div class="flex items-center gap-2 py-3">
     <input
       trnInput
       class="min-w-0 flex-1"
@@ -93,4 +78,4 @@
       {{ adding() ? 'Adding…' : 'Add' }}
     </button>
   </div>
-</div>
+</trn-settings-group>

@@ -1,16 +1,26 @@
 // Domain-neutral overlays. The vendor implementation stays private and this API stays explicit.
 export { provideTrnOverlayDefaults } from './lib/provide-overlay-defaults';
+export { type TrnDialogAutoFocus } from './lib/dialog/trn-dialog.service';
 export {
-  TrnDialogService,
-  type DialogOptions,
-  type TrnDialogAutoFocus,
-  type TrnDialogPlacement,
-} from './lib/dialog/trn-dialog.service';
-export { TrnDialogRef } from './lib/dialog/trn-dialog-ref';
+  TrnDialogRef,
+  type TrnDialogPresentation,
+} from './lib/dialog/trn-dialog-ref';
+export {
+  TrnDialogActions,
+  TrnDialogShellComponent,
+} from './lib/dialog-shell/trn-dialog-shell.component';
+export {
+  TrnSurfaceService,
+  type TrnActionsOptions,
+  type TrnSurfaceKind,
+  type TrnSurfaceOptions,
+} from './lib/surface-service/trn-surface.service';
 export {
   TrnAlertService,
+  type ChooseOptions,
   type ConfirmOptions,
   type PromptOptions,
+  type TrnAlertChoice,
   type TrnAlertVariant,
 } from './lib/alert/trn-alert.service';
 export {
@@ -19,16 +29,11 @@ export {
   type AlertDialogResult,
 } from './lib/alert/trn-alert-dialog.component';
 export {
-  TrnActionSheetService,
-  type TrnActionSheetOptions,
-} from './lib/action-sheet/trn-action-sheet.service';
-export {
-  TrnActionSheetComponent,
   type ActionSheetButton,
   type ActionSheetData,
   type ActionSheetReaction,
   type TrnActionSheetButtonVariant,
-} from './lib/action-sheet/trn-action-sheet.component';
+} from './lib/action-sheet/trn-action-list.component';
 export { TrnActionSheetRef } from './lib/action-sheet/trn-action-sheet-ref';
 export {
   TrnToastService,
@@ -72,3 +77,10 @@ export type {
   TrnOverlayAlign,
   TrnOverlaySide,
 } from './lib/position/trn-overlay-position';
+export { TrnSettingsGroupComponent } from './lib/settings-layout/trn-settings-group.component';
+export { TrnSettingsRowComponent } from './lib/settings-layout/trn-settings-row.component';
+export {
+  TrnSettingsParts,
+  slugify,
+  type SettingsPart,
+} from './lib/settings-layout/trn-settings-parts';

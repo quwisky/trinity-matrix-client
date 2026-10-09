@@ -1,33 +1,20 @@
-<div
-  class="system-status__backdrop"
-  aria-hidden="true"
-  (click)="status.close()"
-></div>
 <trn-settings-layout
-  role="dialog"
-  aria-modal="true"
-  aria-label="System status"
   title="System status"
+  [heading]="heading()"
+  closeLabel="Close System status"
   [sections]="sections()"
   [selectedSection]="selectedSection()"
   [compact]="!wide()"
-  [surfaceLayout]="mobile ? 'sheet' : null"
   [directoryVisible]="wide() || !selectedSection()"
   testId="system-status"
   closeTestId="system-status-close"
   (sectionSelected)="selectSection($event)"
   (backRequested)="back()"
-  (closeRequested)="status.close()"
+  (closeRequested)="close()"
 >
   <div class="system-status__content">
     @if (selectedSection() === 'support') {
-      <section
-        class="system-status__support"
-        aria-labelledby="system-status-support-heading"
-      >
-        <h2 id="system-status-support-heading" class="system-status__title">
-          Support details
-        </h2>
+      <section class="system-status__support" aria-label="Support details">
         <p>
           Contains only a scoped reference, capability, operation, startup
           stage, attempt, version, platform, condition, and safe reason code. It
@@ -51,10 +38,9 @@
       </section>
     } @else if (selectedSection()) {
       @if (selectedSection() === 'overview') {
-        <header class="system-status__intro">
-          <h2 class="system-status__title">Overview</h2>
-          <p>Current capability health and recovery.</p>
-        </header>
+        <p class="system-status__intro">
+          Current capability health and recovery.
+        </p>
       }
       @if (
         selectedSection() === 'overview' && status.startupBlockers().length > 0
@@ -82,6 +68,18 @@
               <button trnBtn type="button" (click)="recoverStartup()">
                 {{ recovery }}
               </button>
+              @if (status.startupSecondaryRecovery(); as secondary) {
+                <button
+                  trnBtn
+                  variant="secondary"
+                  presentation="outline"
+                  type="button"
+                  data-testid="system-status-secondary-recovery"
+                  (click)="recoverStartup(true)"
+                >
+                  {{ secondary }}
+                </button>
+              }
             </div>
           }
         </section>
@@ -89,14 +87,13 @@
       @if (
         status.startupBlockers().length === 0 && status.groups().length === 0
       ) {
-        <section
-          class="system-status__empty"
+        <trn-empty-state
+          titleAs="h2"
           role="status"
           data-testid="system-status-all-working"
-        >
-          <h2>All systems are working</h2>
-          <p>There are no active capability problems.</p>
-        </section>
+          title="All systems are working"
+          body="There are no active capability problems."
+        />
       } @else {
         @if (selectedSection() === 'overview') {
           <p class="system-status__count" aria-live="polite">
@@ -107,14 +104,17 @@
         @for (group of displayedGroups(); track group.capability) {
           <section
             class="system-status__group"
-            [attr.aria-labelledby]="'status-' + $index"
+            [attr.aria-labelledby]="
+              selectedSection() === 'overview' ? 'status-' + $index : null
+            "
+            [attr.aria-label]="
+              selectedSection() === 'overview' ? null : group.capability
+            "
           >
-            <h2
-              [id]="'status-' + $index"
-              [class.system-status__title]="selectedSection() !== 'overview'"
-            >
-              {{ group.capability }}
-            </h2>
+            <!-- A capability's own section is already headed by its name. -->
+            @if (selectedSection() === 'overview') {
+              <h2 [id]="'status-' + $index">{{ group.capability }}</h2>
+            }
             <div class="system-status__entries">
               @for (entry of group.entries; track entry.problem.reference) {
                 <article

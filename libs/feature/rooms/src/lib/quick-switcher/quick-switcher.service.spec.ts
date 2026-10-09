@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { type SwitcherSelection } from '@trinity/application/search';
-import { TrnDialogService } from '@trinity/components/overlay';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of, Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,14 +8,14 @@ import { QuickSwitcherComponent } from './quick-switcher.component';
 import { QuickSwitcherService } from './quick-switcher.service';
 
 describe('QuickSwitcherService', () => {
-  let dialog: TrnDialogService;
+  let dialog: TrnSurfaceService;
   let svc: QuickSwitcherService;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [QuickSwitcherService, MockProvider(TrnDialogService)],
+      providers: [QuickSwitcherService, MockProvider(TrnSurfaceService)],
     });
-    dialog = TestBed.inject(TrnDialogService);
+    dialog = TestBed.inject(TrnSurfaceService);
     svc = TestBed.inject(QuickSwitcherService);
   });
 
@@ -30,7 +30,6 @@ describe('QuickSwitcherService', () => {
     const result = await firstValueFrom(svc.pick$());
 
     expect(dialog.openAndWait$).toHaveBeenCalledWith(QuickSwitcherComponent, {
-      ariaLabel: 'Jump to a room',
       // Names the search field so CDK doesn't focus the Close button instead.
       autoFocus: '[data-autofocus]',
       inputs: { activeAccountOnly: false },

@@ -30,6 +30,9 @@ const rowCss = stylesheet(
 const rowHtml = template(
   'libs/feature/rooms/src/lib/message-row/message-row.component.html',
 );
+const receiptsCss = stylesheet(
+  'libs/feature/rooms/src/lib/message-receipts/message-receipts.component.scss',
+);
 const replyPreviewCss = stylesheet(
   'libs/feature/rooms/src/lib/message-reply-preview/message-reply-preview.component.scss',
 );
@@ -38,6 +41,12 @@ const threadSummaryCss = stylesheet(
 );
 const composerCss = stylesheet(
   'libs/feature/rooms/src/lib/message-composer/message-composer.component.scss',
+);
+const bannerCss = stylesheet(
+  'libs/feature/rooms/src/lib/message-composer/composer-banner/composer-banner.component.scss',
+);
+const voiceBarCss = stylesheet(
+  'libs/feature/rooms/src/lib/message-composer/composer-voice-bar/composer-voice-bar.component.scss',
 );
 const composerHtml = template(
   'libs/feature/rooms/src/lib/message-composer/message-composer.component.html',
@@ -117,14 +126,15 @@ describe('modern timeline layout contracts', () => {
       /\.msg__shield\s*\{[^}]*grid-row:\s*1;[^}]*grid-column:\s*2;[^}]*margin-inline-start:\s*var\(--trinity-space-3\);/s,
     );
     expect(rowCss).not.toMatch(/\.msg__body\s*\{[^}]*column-gap:/s);
-    expect(rowCss).toMatch(
+    expect(receiptsCss).toMatch(
       /\.msg__receipts\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*justify-self:\s*end;/s,
     );
-    expect(rowCss).not.toMatch(
-      /\.msg__(?:shield|receipts)\s*\{[^}]*position:\s*absolute;/s,
+    expect(rowCss).not.toMatch(/\.msg__shield\s*\{[^}]*position:\s*absolute;/s);
+    expect(receiptsCss).not.toMatch(
+      /\.msg__receipts\s*\{[^}]*position:\s*absolute;/s,
     );
     expect(rowHtml).toMatch(
-      /class="msg__content"[\s\S]*class="msg__shield msg__target"[\s\S]*class="msg__receipts msg__target"/,
+      /class="msg__content"[\s\S]*class="msg__shield msg__target"[\s\S]*<trn-message-receipts/,
     );
   });
 
@@ -139,17 +149,17 @@ describe('modern timeline layout contracts', () => {
       /class="composer__input"[\s\S]*?\[class\.composer__input--hidden\]="previewing\(\)"/,
     );
     expect(composerCss).toMatch(
-      /\.composer:has\(\.composer__recording\) \.composer__field\s*\{[^}]*display:\s*none;/s,
+      /\.composer--recording \.composer__field\s*\{[^}]*display:\s*none;/s,
     );
-    expect(composerCss).toMatch(
+    expect(bannerCss).toMatch(
       /\.composer__banner\s*\{[\s\S]*?min-height:\s*calc\([\s\S]*?var\(--trinity-density-control-size\)[\s\S]*?var\(--trinity-space-2\)[\s\S]*?\);[\s\S]*?\.composer__cancel/s,
     );
-    expect(composerCss).toMatch(
+    expect(voiceBarCss).toMatch(
       /\.composer__recording\s*\{[\s\S]*?min-height:\s*var\(--composer-resting-field-height\);[\s\S]*?\.composer__recording-cancel/s,
     );
   });
 
-  it('defines both density recipes and keeps specialized toolbar danger stronger', () => {
+  it('defines cosy, compact and spacious density recipes and keeps specialized toolbar danger stronger', () => {
     for (const token of [
       '--trinity-density-message-column-gap',
       '--trinity-density-composer-padding-inline',
@@ -157,7 +167,8 @@ describe('modern timeline layout contracts', () => {
       '--trinity-density-composer-field-inset',
       '--trinity-density-composer-action-size',
     ]) {
-      expect(variables.match(new RegExp(`${token}\\s*:`, 'g'))?.length).toBe(2);
+      // One declaration per density block: base, compact and spacious.
+      expect(variables.match(new RegExp(`${token}\\s*:`, 'g'))?.length).toBe(3);
     }
     expect(toolbarCss).toContain('&:hover:where(:not(:disabled))');
     expect(toolbarCss).toMatch(

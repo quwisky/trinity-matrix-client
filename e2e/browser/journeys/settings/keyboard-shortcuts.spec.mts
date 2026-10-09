@@ -49,7 +49,9 @@ test.describe('Keyboard shortcuts settings', () => {
 
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
 
-    const active = page.locator('trn-channel-sidebar .channel.active');
+    const active = page.locator(
+      'trn-channel-sidebar .channel.channel--selected',
+    );
     const open = async (name: string): Promise<void> => {
       await page.locator('.channel', { hasText: name }).first().click();
       await expect(active).toHaveText(new RegExp(name), { timeout: 15_000 });
@@ -59,6 +61,9 @@ test.describe('Keyboard shortcuts settings', () => {
     await openSettingsSection(page, 'shortcuts');
     const hopRow = page.getByTestId('shortcut-room.hop.back');
     await expect(hopRow).toContainText('Hop to the previous room');
+    await expect(page.getByTestId('shortcut-room.search')).toContainText(
+      'Search messages in this room',
+    );
     await page.getByTestId('shortcut-edit-room.hop.back').click();
     await expect(page.getByTestId('capture-hint')).toBeVisible();
     await page.keyboard.press('Alt+J');

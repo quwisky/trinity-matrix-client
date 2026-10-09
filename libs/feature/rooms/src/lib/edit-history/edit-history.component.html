@@ -1,30 +1,9 @@
-<div
-  trnOverlaySurface
-  variant="neutral"
+<trn-dialog-shell
+  title="Edit history"
   size="xl"
-  [layout]="wide() ? 'workspace' : 'fullscreen'"
-  class="edit-history flex min-h-0 flex-col"
-  [attr.data-compact]="!wide()"
-  [style.width]="wide() ? null : '100vw'"
-  [style.height]="wide() ? null : '100dvh'"
+  (closed)="close()"
   data-testid="edit-history"
 >
-  <header class="edit-history__header">
-    <h1 data-autofocus tabindex="-1">Edit history</h1>
-    <button
-      trnBtn
-      presentation="ghost"
-      shape="icon"
-      size="md"
-      aria-label="Close edit history"
-      trnTooltip="Close edit history"
-      data-testid="edit-history-close"
-      (click)="close()"
-    >
-      <trn-icon name="x" motion="rotate" />
-    </button>
-  </header>
-
   @if (!busy() && !error() && entries().length > 1) {
     <div class="edit-history__toolbar">
       <!-- Variant and presentation carry the pressed state visually; aria-pressed alone
@@ -46,14 +25,17 @@
 
   <div class="edit-history__content">
     @if (busy()) {
-      <div class="center" role="status" aria-live="polite">
-        <trn-spinner />
-        <p class="text-muted-foreground">Loading earlier versions…</p>
-      </div>
+      <trn-empty-state role="status" aria-live="polite">
+        <trn-spinner class="mx-auto mb-2 block" />
+        Loading earlier versions…
+      </trn-empty-state>
     } @else if (error(); as message) {
-      <p class="text-danger" role="alert" data-testid="edit-history-error">
-        {{ message }}
-      </p>
+      <trn-empty-state
+        variant="danger"
+        role="alert"
+        data-testid="edit-history-error"
+        [body]="message"
+      />
     } @else {
       @if (truncated()) {
         <p class="truncated" data-testid="edit-history-truncated">
@@ -96,16 +78,13 @@
                 {{ entry.body }}
               </p>
             } @else if (entry.html) {
-              <!-- trnSpoilerReveal / trnMatrixLink delegate from this container, so they
+              <!-- trnMatrixHtml delegates spoilers and links from this container, so it
                    must stay on whichever element holds the body. -->
               <div
                 class="revision__text"
                 [class.msg__text--html]="entry.rich"
-                trnSpoilerReveal
-                trnMatrixLink
-                [trnInlineMxcImages]="entry.html"
+                [trnMatrixHtml]="entry.html"
                 (matrixLink)="onMatrixLink($event)"
-                [innerHTML]="entry.html"
               ></div>
             } @else {
               <p class="revision__text">{{ entry.body }}</p>
@@ -115,4 +94,4 @@
       </ol>
     }
   </div>
-</div>
+</trn-dialog-shell>

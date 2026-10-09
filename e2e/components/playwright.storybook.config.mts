@@ -19,6 +19,11 @@ const lifecycle = e2eLifecycleConfig({
  */
 export default defineConfig({
   ...lifecycle,
+  // The lifecycle default of one worker protects suites that share a homeserver. This
+  // suite only reads a static Storybook build, each test in its own browser context, and
+  // runs alone on its CI runner (4 vCPU): three workers leave a core for the static
+  // server and the reporters.
+  workers: 3,
   tsconfig: './tsconfig.json',
   projects: [
     {

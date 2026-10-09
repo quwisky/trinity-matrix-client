@@ -1,8 +1,10 @@
-import { signal } from '@angular/core';
+import { type DebugElement, signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { TestBed } from '@angular/core/testing';
+import { TrnTooltip } from '@trinity/components/generic-content';
 import { fireEvent, render, waitFor } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
 import {
   MediaPipeline,
@@ -32,6 +34,7 @@ const caps = (over: Partial<MessageRowCaps> = {}): MessageRowCaps => ({
   pinned: false,
   canThread: true,
   canQuote: false,
+  saveMedia: null,
   readOnly: false,
   ...over,
 });
@@ -95,13 +98,18 @@ function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
 }
 
 describe('MessageRowComponent', () => {
-  function renderRow(inputs: {
-    row: MessageRow;
-    threadSummary?: ThreadSummary | null;
-    caps?: MessageRowCaps;
-  }) {
+  function renderRow(
+    inputs: {
+      row: MessageRow;
+      threadSummary?: ThreadSummary | null;
+      caps?: MessageRowCaps;
+      runExpanded?: boolean;
+    },
+    on: { toggleRun?: () => void } = {},
+  ) {
     return render(MessageRowComponent, {
       inputs,
+      on,
       // The media branch renders <trn-media-attachment>, and a previewUrl renders
       // <trn-link-preview>, which inject these.
       providers: [
@@ -153,18 +161,97 @@ describe('MessageRowComponent', () => {
       expect(fixture.componentInstance.row()).toBe(only);
     });
 
-    it('applies the date preference to the header timestamp', async () => {
-      const { container, fixture } = await renderRow({
-        row: row({ timestamp: AFTERNOON }),
+    it('shows only the time in the header, with the full date as tooltip and datetime', async () => {
+      const ts = Date.UTC(2026, 9, 5, 18, 56);
+      const { container } = await renderRow({ row: row({ timestamp: ts }) });
+      const fmt = TestBed.inject(DateTimeFormatService);
+      const time = container.querySelector(
+        '.msg__head time.msg__time',
+      ) as HTMLElement;
+
+      expect(time.textContent?.trim()).toBe(fmt.time(ts));
+      expect(time.getAttribute('datetime')).toBe(new Date(ts).toISOString());
+
+      fireEvent.pointerEnter(time, { pointerType: 'mouse' });
+      await waitFor(() => {
+        const found = document.body.querySelector('.cdk-overlay-container');
+        expect(found?.textContent).toContain(fmt.dateTime(ts));
       });
-      const format = TestBed.inject(DateTimeFormatService);
+    });
 
-      format.setDateFormat('iso');
-      fixture.detectChanges();
+    // Each tooltip registers window keydown and scroll listeners and a focus monitor, and a
+    // timeline builds rows continuously while it scrolls, so the time's tooltip is created when
+    // a mouse or pen first reaches the row rather than when the row is built.
+    describe('time tooltip mounting', () => {
+      const ts = Date.UTC(2026, 9, 5, 18, 56);
+      // Only the time's: the hover toolbar that mounts with the row has its own.
+      const tooltips = (fixture: { debugElement: DebugElement }) =>
+        fixture.debugElement
+          .queryAll(By.directive(TrnTooltip))
+          .filter((el) => el.nativeElement.tagName === 'TIME');
 
-      expect(container.querySelector('.msg__time')?.textContent).toContain(
-        '2026-07-24',
-      );
+      it('is not created while the row is only scrolled past', async () => {
+        const { fixture } = await renderRow({ row: row({ timestamp: ts }) });
+
+        expect(tooltips(fixture)).toHaveLength(0);
+      });
+
+      it('is created when a mouse reaches the row, and still opens', async () => {
+        const { container, fixture } = await renderRow({
+          row: row({ timestamp: ts }),
+        });
+        fireEvent.pointerEnter(container.querySelector('.msg') as HTMLElement, {
+          pointerType: 'mouse',
+        });
+        fixture.detectChanges();
+
+        expect(tooltips(fixture)).toHaveLength(1);
+      });
+
+      it('receives the entry when the mouse lands straight on the time', async () => {
+        const { container, fixture } = await renderRow({
+          row: row({ timestamp: ts }),
+        });
+        const time = container.querySelector('time') as HTMLElement;
+        const enter = vi.spyOn(HTMLElement.prototype, 'dispatchEvent');
+        // Parents enter first, so the row arms before the time's own handler runs.
+        fireEvent.pointerEnter(container.querySelector('.msg') as HTMLElement, {
+          pointerType: 'mouse',
+        });
+        fireEvent.pointerEnter(time, { pointerType: 'mouse' });
+        fixture.detectChanges();
+        await fixture.whenStable();
+
+        const replayed = enter.mock.calls.filter(
+          ([e]) =>
+            e.type === 'pointerenter' &&
+            (e.target as HTMLElement | null)?.tagName === 'TIME' &&
+            e.target !== time,
+        );
+        enter.mockRestore();
+        expect(replayed.length).toBeGreaterThan(0);
+      });
+
+      it('is not created for a touch pointer', async () => {
+        const { container, fixture } = await renderRow({
+          row: row({ timestamp: ts }),
+        });
+        fireEvent.pointerEnter(container.querySelector('.msg') as HTMLElement, {
+          pointerType: 'touch',
+        });
+        fixture.detectChanges();
+
+        expect(tooltips(fixture)).toHaveLength(0);
+      });
+    });
+
+    it('keeps today’s header output for an unusable timestamp', async () => {
+      const { container } = await renderRow({ row: row({ timestamp: 0 }) });
+      const fmt = TestBed.inject(DateTimeFormatService);
+
+      expect(
+        container.querySelector('.msg__head .msg__time')?.textContent?.trim(),
+      ).toBe(fmt.dateTime(0));
     });
 
     // The hover gutter on a grouped continuation is the site the issue calls out by name.
@@ -222,6 +309,75 @@ describe('MessageRowComponent', () => {
     expect(shield?.getAttribute('title')).toBeNull();
     // Hover/focus is the only way in, so the icon has to be focusable.
     expect(shield?.getAttribute('tabindex')).toBe('0');
+  });
+
+  // A plaintext message in an encrypted room looks like any other row unless it carries
+  // its own marker, so it needs a label a screen reader announces and a tooltip.
+  it('renders the not-encrypted shield with the red warning styling, a label and a tooltip', async () => {
+    const { container } = await renderRow({
+      row: row({
+        shield: {
+          level: 'unencrypted',
+          reason: 'Not encrypted',
+          explanation: 'This message was sent without end-to-end encryption.',
+        },
+      }),
+    });
+    const shield = container.querySelector(
+      '[data-testid=msg-shield-unencrypted]',
+    ) as HTMLElement;
+
+    expect(shield).not.toBeNull();
+    expect(shield.getAttribute('aria-label')).toBe('Not encrypted');
+    expect(shield.classList.contains('msg__shield--red')).toBe(true);
+    expect(shield.getAttribute('tabindex')).toBe('0');
+
+    fireEvent.pointerEnter(shield, { pointerType: 'mouse' });
+    const tip = await waitFor(() => {
+      const found = document.body.querySelector('[data-testid=msg-shield-tip]');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    expect(tip.textContent).toContain('Not encrypted');
+    expect(tip.textContent).toContain(
+      'This message was sent without end-to-end encryption.',
+    );
+    expect(shield.getAttribute('aria-describedby')).not.toBeNull();
+  });
+
+  // A plaintext message dated before the room turned encryption on is still marked, in the
+  // quieter grey tone, and says why it is quieter.
+  it('renders the dated-before-encryption shield in the grey tone, with a label and a tooltip', async () => {
+    const { container } = await renderRow({
+      row: row({
+        shield: {
+          level: 'unencrypted-history',
+          reason: 'Not encrypted',
+          explanation:
+            'This message is dated before the room turned on end-to-end encryption.',
+        },
+      }),
+    });
+    const shield = container.querySelector(
+      '[data-testid=msg-shield-unencrypted-history]',
+    ) as HTMLElement;
+
+    expect(shield).not.toBeNull();
+    expect(shield.getAttribute('aria-label')).toBe('Not encrypted');
+    expect(shield.classList.contains('msg__shield--red')).toBe(false);
+    expect(shield.getAttribute('tabindex')).toBe('0');
+
+    fireEvent.pointerEnter(shield, { pointerType: 'mouse' });
+    const tip = await waitFor(() => {
+      const found = document.body.querySelector('[data-testid=msg-shield-tip]');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    expect(tip.textContent).toContain('Not encrypted');
+    expect(tip.textContent).toContain(
+      'This message is dated before the room turned on end-to-end encryption.',
+    );
+    expect(shield.getAttribute('aria-describedby')).not.toBeNull();
   });
 
   // The icon alone cannot say what is wrong; the tooltip is where the meaning lives, so
@@ -339,6 +495,12 @@ describe('MessageRowComponent', () => {
     // are distinguishable without colour. The template binds both shields to this.
     expect(cmp.shieldIcon('red')).toBe('shield-alert');
     expect(cmp.shieldIcon('grey')).toBe('shield-question');
+    expect(cmp.shieldIcon('unencrypted')).toBe('shield-alert');
+    // The quieter not-encrypted mark has its own glyph, never the grey caution's.
+    expect(cmp.shieldIcon('unencrypted-history')).toBe('lock-open');
+    expect(cmp.shieldIcon('unencrypted-history')).not.toBe(
+      cmp.shieldIcon('grey'),
+    );
   });
 
   // The shield qualifies the whole message but shares the body grid with its content. This
@@ -381,11 +543,14 @@ describe('MessageRowComponent', () => {
     const body = container.querySelector('.msg__body');
     const children = [...(body?.children ?? [])];
 
-    expect(children.map((child) => child.className)).toEqual([
-      'msg__content',
-      expect.stringContaining('msg__shield'),
-      expect.stringContaining('msg__receipts'),
-    ]);
+    // The receipts are a `display: contents` component, so the host stands in the grid order.
+    expect(children.map((child) => child.className || child.localName)).toEqual(
+      [
+        'msg__content',
+        expect.stringContaining('msg__shield'),
+        'trn-message-receipts',
+      ],
+    );
   });
 
   // The marker is the only way into the edit history, and it has to work identically in
@@ -538,6 +703,48 @@ describe('MessageRowComponent', () => {
     expect(container.querySelector('trn-message-toolbar')).toBeNull();
   });
 
+  describe('system runs', () => {
+    const e1 = row({ id: '$e1', kind: 'event', summary: 'line e1' });
+    const e2 = row({ id: '$e2', kind: 'event', summary: 'line e2' });
+    const summaryText = 'Alice \u00b7 2 membership changes';
+    const groupRow = row({
+      id: 'group:$e2',
+      kind: 'event',
+      summary: summaryText,
+      systemRun: { events: [e1, e2], summary: summaryText },
+    });
+
+    it('renders a system run as a collapsed summary toggle', async () => {
+      const { getByTestId, queryByTestId } = await renderRow({ row: groupRow });
+      const toggle = getByTestId('system-run-toggle');
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      expect(toggle.textContent).toContain(summaryText);
+      expect(queryByTestId('system-run-lines')).toBeNull();
+    });
+
+    it('lists each line when expanded and asks the list to toggle on click', async () => {
+      const toggleRun = vi.fn();
+      const { getByTestId, getAllByTestId } = await renderRow(
+        { row: groupRow, runExpanded: true },
+        { toggleRun },
+      );
+      expect(
+        getByTestId('system-run-toggle').getAttribute('aria-expanded'),
+      ).toBe('true');
+      expect(
+        getAllByTestId('system-run-line').map((li) => li.textContent?.trim()),
+      ).toEqual(['line e1', 'line e2']);
+      fireEvent.click(getByTestId('system-run-toggle'));
+      expect(toggleRun).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a plain system line as plain text', async () => {
+      const { getByTestId, queryByTestId } = await renderRow({ row: e1 });
+      expect(queryByTestId('system-run-toggle')).toBeNull();
+      expect(getByTestId('timeline-event').textContent).toContain('line e1');
+    });
+  });
+
   it('expands the "seen by" reader list when the receipt cluster is clicked', async () => {
     const { container, fixture } = await renderRow({
       row: row({
@@ -688,20 +895,23 @@ describe('MessageRowComponent', () => {
       expect(toolbar(container)).toBeNull();
     });
 
-    it('mounts the toolbar when focus enters the row', async () => {
+    it('mounts the toolbar when keyboard focus enters the row', async () => {
       const { container } = await renderRow({ row: row(), caps: caps() });
 
+      // A Tab keydown makes the next focus :focus-visible, as a real Tab would.
+      fireEvent.keyDown(document.body, { key: 'Tab' });
       msg(container).focus();
       await settle();
 
       expect(toolbar(container)).not.toBeNull();
     });
 
-    it('keeps the toolbar while focus is inside the row after the pointer leaves', async () => {
+    it('keeps the toolbar while keyboard focus is inside the row after the pointer leaves', async () => {
       const { container } = await renderRow({ row: row(), caps: caps() });
 
       fireEvent.pointerEnter(msg(container));
       await settle();
+      fireEvent.keyDown(document.body, { key: 'Tab' });
       container
         .querySelector<HTMLButtonElement>('button[aria-label="Reply"]')
         ?.focus();
@@ -709,6 +919,26 @@ describe('MessageRowComponent', () => {
       await settle();
 
       expect(toolbar(container)).not.toBeNull();
+    });
+
+    it('drops the toolbar of a row focused by a click once the pointer leaves (#986 K6)', async () => {
+      // A click focuses the row, but mouse focus is not :focus-visible, so it must not pin
+      // the bar there while another row is hovered.
+      const { container, fixture } = await renderRow({
+        row: row(),
+        caps: caps(),
+      });
+
+      fireEvent.pointerEnter(msg(container));
+      // A real click: pointerdown, then mousedown, which focuses the row.
+      fireEvent.pointerDown(msg(container));
+      fireEvent.mouseDown(msg(container));
+      msg(container).focus();
+      await settle();
+      fireEvent.pointerLeave(msg(container));
+      await settle();
+
+      expect(fixture.componentInstance.toolbarActive()).toBe(false);
     });
 
     it('unmounts the toolbar when focus leaves the row', async () => {
@@ -863,13 +1093,11 @@ describe('MessageRowComponent', () => {
       threadSummary: summary({ unreadCount: 5, highlight: true }),
     });
 
-    const badge = container.querySelector('.msg__thread-badge');
+    const badge = container.querySelector('.msg__thread [trnBadge]');
     expect(badge).toBeTruthy();
     expect(badge?.textContent).toContain('5');
-    expect(badge?.classList.contains('msg__thread-badge--highlight')).toBe(
-      true,
-    );
-    // The count rides on the (aria-hidden badge's) button label for SR users.
+    expect(badge).toHaveAttribute('data-variant', 'danger');
+    // The badge is aria-hidden; the count rides on the button label for SR users.
     expect(
       container.querySelector('.msg__thread')?.getAttribute('aria-label'),
     ).toContain('5 unread');
@@ -881,7 +1109,7 @@ describe('MessageRowComponent', () => {
       threadSummary: summary({ unreadCount: 0 }),
     });
 
-    expect(container.querySelector('.msg__thread-badge')).toBeNull();
+    expect(container.querySelector('.msg__thread [trnBadge]')).toBeNull();
   });
 
   it('omits the thread indicator when there is no summary', async () => {

@@ -44,6 +44,7 @@
       />
       <trn-channel-sidebar
         class="shell-side__rooms"
+        [showSwitcher]="!titleBar.active()"
         [spaceName]="vm.sidebarTitle()"
         [spaceActive]="
           !store.recentView() &&
@@ -66,7 +67,7 @@
         [defaultSortMode]="vm.defaultSpaceSortMode()"
         (selectRoom)="routing.onSelectRoomSelection($event)"
         (openSwitcher)="shortcutActions.openSwitcher()"
-        (newChat)="roomActions.onNewChat()"
+        (newChat)="roomActions.onNewChat($event)"
         (createRoom)="spaceActions.onCreateChannel()"
         (inviteToSpace)="roomActions.onInviteToSpace()"
         (addToSpace)="spaceActions.onAddToSpace()"
@@ -79,6 +80,7 @@
         (removeRoom)="spaceActions.onRemoveFromSpace($event)"
         (leaveRoom)="roomActions.onLeaveRoom($event)"
         (openChildSpace)="routing.onSelectSpaceRow($event)"
+        (previewInvite)="inviteActions.onPreviewInvite($event)"
         (acceptInvite)="inviteActions.onAcceptInvite($event)"
         (declineInvite)="inviteActions.onDeclineInvite($event)"
         (setNotifyMode)="readState.onSetNotifyMode($event)"
@@ -92,6 +94,7 @@
       <trn-sidebar-user-panel
         class="shell-side__dock"
         [user]="vm.userProfile()"
+        [presence]="ownPresence()"
         [accounts]="vm.accounts()"
         [activeUserId]="vm.activeAccountId()"
         [reauthAccounts]="vm.reauthAccounts()"
@@ -123,243 +126,20 @@
     />
 
     <main #mainView tabindex="-1" class="main">
-      <trn-page-header variant="neutral" layout="toolbar">
-        <button
-          trnHeaderLeading
-          trnBtn
-          presentation="ghost"
-          size="md"
-          shape="icon"
-          class="md:hidden"
-          (click)="backToList()"
-          trnTooltip="Back to rooms"
-          aria-label="Back to rooms"
-          data-testid="back-to-rooms"
-        >
-          <trn-icon size="lg" name="arrow-left" motion="nudge-left" />
-        </button>
-
-        <!-- Projected into the shell's single <h1>: inline spans + icon only, no
-           nested heading. rooms' scoped .title-hash/.title-lock still apply. -->
-        <ng-container trnHeaderTitle>
-          @if (vm.activeRoom(); as room) {
-            <span class="truncate">
-              <span class="title-hash">#</span>{{ room.name }}
-            </span>
-            @if (room.encrypted) {
-              <trn-icon class="title-lock" name="lock" label="Encrypted room" />
-            }
-            <!-- Which identity you are acting as. Opening another account's room switches
-                 the active account silently, and below md the sidebar (the only other
-                 indicator) is off-screen entirely — so without this you can send a message
-                 with nothing on screen saying who from. -->
-            @if (mixedOn()) {
-              <span
-                class="title-account"
-                data-testid="active-account-chip"
-                [attr.aria-label]="'Acting as ' + vm.userName()"
-                [title]="vm.userId()"
-              >
-                <trn-avatar
-                  [mxc]="vm.userAvatarMxc()"
-                  [accountId]="vm.userId()"
-                  [initial]="vm.userInitial()"
-                  [name]="vm.userName()"
-                  [exactSize]="18"
-                />
-                <span class="title-account__name">{{ vm.userName() }}</span>
-              </span>
-            }
-          } @else {
-            Trinity
-          }
-        </ng-container>
-
-        <ng-container trnHeaderActions>
-          @if (vm.activeRoom()) {
-            <button
-              trnBtn
-              presentation="ghost"
-              size="md"
-              shape="icon"
-              (click)="messageActions.openMessageSearch()"
-              trnTooltip="Search messages in this room"
-              aria-label="Search messages in this room"
-              data-testid="search-messages"
-            >
-              <trn-icon size="lg" name="search" motion="pop" />
-            </button>
-            <button
-              trnBtn
-              presentation="ghost"
-              size="md"
-              shape="icon"
-              class="max-md:hidden"
-              (click)="roomActions.onInviteToRoom()"
-              [trnActionAllowed]="vm.roomInvitePermission().available"
-              [trnActionDisabledReason]="vm.roomInvitePermission().reason"
-              [trnTooltip]="vm.roomInvitePermission().reason ?? 'Invite people'"
-              aria-label="Invite people"
-              data-testid="invite-people"
-            >
-              <trn-icon size="lg" name="user-plus" motion="nudge-up-right" />
-            </button>
-            <button
-              trnBtn
-              presentation="ghost"
-              size="md"
-              shape="icon"
-              class="max-md:hidden"
-              (click)="roomActions.onOpenRoomSettings()"
-              trnTooltip="Room settings"
-              aria-label="Room settings"
-              data-testid="open-room-settings"
-            >
-              <trn-icon size="lg" name="settings" motion="rotate" />
-            </button>
-            <button
-              trnBtn
-              presentation="ghost"
-              size="md"
-              shape="icon"
-              (click)="messageActions.openThreadsList()"
-              trnTooltip="Threads"
-              aria-label="Threads"
-              data-testid="open-threads"
-            >
-              <trn-icon size="lg" name="messages-square" motion="pop" />
-            </button>
-            <button
-              trnBtn
-              presentation="ghost"
-              size="md"
-              shape="icon"
-              class="max-md:hidden"
-              (click)="messageActions.openPinnedPanel()"
-              [trnTooltip]="pinnedLabel()"
-              [attr.aria-label]="pinnedLabel()"
-              data-testid="open-pinned"
-            >
-              <trn-icon
-                size="lg"
-                name="pin"
-                motion="nudge-up"
-                [variant]="pinned.messages().length > 0 ? 'accent' : null"
-              />
-            </button>
-            <button
-              trnBtn
-              presentation="ghost"
-              size="md"
-              shape="icon"
-              class="max-md:hidden"
-              (click)="toggleMembers()"
-              [attr.aria-pressed]="roomSurfaces.membersVisible()"
-              trnTooltip="Members"
-              aria-label="Members"
-              data-testid="toggle-members"
-            >
-              <trn-icon size="lg" name="users" motion="pop" />
-            </button>
-
-            <!-- Present at EVERY breakpoint. Below md it also absorbs the demoted header
-               actions (each marked md:hidden inside), which are shown as their own buttons
-               above at md+. Actions that are rare rather than demoted — Jump to date — live
-               here at all widths rather than spending a permanent slot in a header that
-               already carries six. -->
-            <button
-              trnBtn
-              presentation="ghost"
-              size="md"
-              shape="icon"
-              [trnDropdownMenuTrigger]="roomActionsMenu"
-              align="end"
-              aria-label="More actions"
-              data-testid="room-actions-overflow"
-              #roomActionsOverflow
-            >
-              <trn-icon size="lg" name="ellipsis-vertical" motion="pop" />
-            </button>
-            <ng-template #roomActionsMenu>
-              <div trnDropdownMenu>
-                <button
-                  class="md:hidden"
-                  trnDropdownMenuItem
-                  (triggered)="roomActions.onInviteToRoom()"
-                  [trnActionAllowed]="vm.roomInvitePermission().available"
-                  [trnActionDisabledReason]="vm.roomInvitePermission().reason"
-                  [trnTooltip]="
-                    vm.roomInvitePermission().reason ?? 'Invite people'
-                  "
-                  data-testid="overflow-invite-people"
-                >
-                  <trn-icon name="user-plus" />
-                  Invite people
-                </button>
-                <button
-                  class="md:hidden"
-                  trnDropdownMenuItem
-                  (triggered)="roomActions.onOpenRoomSettings()"
-                  data-testid="overflow-open-room-settings"
-                >
-                  <trn-icon name="settings" />
-                  Room settings
-                </button>
-                <button
-                  class="md:hidden"
-                  trnDropdownMenuItem
-                  (triggered)="messageActions.openPinnedPanel()"
-                  data-testid="overflow-open-pinned"
-                >
-                  <trn-icon
-                    name="pin"
-                    [variant]="pinned.messages().length > 0 ? 'accent' : null"
-                  />
-                  {{ pinnedLabel() }}
-                </button>
-                <button
-                  trnDropdownMenuItem
-                  (triggered)="messageActions.jumpToDate()"
-                  data-testid="overflow-jump-to-date"
-                >
-                  <trn-icon name="calendar-search" />
-                  Jump to date
-                </button>
-                <button
-                  class="md:hidden"
-                  trnDropdownMenuItem
-                  (triggered)="toggleMembers()"
-                  data-testid="overflow-toggle-members"
-                >
-                  <trn-icon name="users" />
-                  Members
-                </button>
-                <div
-                  trnDropdownMenuSeparator
-                  class="md:hidden"
-                  role="separator"
-                ></div>
-                <button
-                  class="md:hidden"
-                  trnDropdownMenuItem
-                  (triggered)="openSystemStatus()"
-                  data-testid="overflow-open-system-status"
-                >
-                  <trn-icon name="shield-alert" />
-                  System status
-                  @if (systemStatus.hasProblems()) {
-                    <span
-                      class="ml-auto text-danger"
-                      aria-label="Needs attention"
-                      >●</span
-                    >
-                  }
-                </button>
-              </div>
-            </ng-template>
-          }
-        </ng-container>
-      </trn-page-header>
+      <trn-room-header
+        [room]="vm.activeRoom()"
+        [loading]="
+          !!store.activeRoomId() && timeline.loadState().kind === 'loading'
+        "
+        [compact]="mobileMasterDetail()"
+        [actingAs]="actingAs()"
+        [surfaceKind]="surfaceKind()"
+        [pinnedCount]="pinned.messages().length"
+        [invitePermission]="vm.roomInvitePermission()"
+        [systemStatusProblems]="systemStatus.hasProblems()"
+        [(searchQuery)]="searchQuery"
+        (action)="onHeaderAction($event)"
+      />
 
       <!-- A room-level notice belongs in this COLUMN, above the row — not inside it. As a child
            of `.chat-body`, which is a flex row of [timeline, panel], it was a third item
@@ -382,96 +162,77 @@
         (opened)="onDrawerSwipedOpen()"
         (closed)="onDrawerSwipedClosed()"
       >
-        @if (vm.activeRoom(); as room) {
-          <!-- The experimental flag swaps in the windowed timeline. Both take the
-             same inputs/outputs (MessageListBase); flipping the flag re-creates the
-             chosen component fresh.
+        @if (showTimeline()) {
+          <!-- The list renders for a linked room the client does not hold yet too: its loadState
+             shows the skeleton, or the unavailable error with Retry. Everything needing a real
+             room stays behind activeRoom(): the composer (composerEnabled) and the panels.
 
-             The two binding lists are identical and must stay that way — an input added
-             to one and forgotten on the other gives a timeline that behaves differently
-             depending on a flag most people never touch, and nothing fails.
-             `scripts/message-list-bindings.spec.mjs` is what fails instead.
-
-             Not de-duplicated with `*ngComponentOutlet`: it can pass inputs but cannot
-             bind outputs, and half of these thirty are outputs. The real fix is for
-             windowing to be a MODE of one list rather than a second component, which is a
-             larger change than this phase. -->
-          @if (flags.virtualTimeline()) {
-            <trn-virtual-message-list
-              [messages]="timeline.messages()"
-              [threadSummaries]="threads.summaries()"
-              [canPin]="pinned.canMutate()"
-              [canRedactOthers]="timeline.canRedactOthers()"
-              [pinnedIds]="pinned.eventIds()"
-              [loadingOlder]="timeline.loadingOlder()"
-              [loadState]="timeline.loadState()"
-              (retryLoad)="timeline.retryLoad()"
-              [swipeDirection]="messageSwipeDirection()"
-              [canLoadOlder]="timeline.canLoadOlder()"
-              [oldestEventId]="timeline.oldestEventId()"
-              [roomId]="store.activeRoomId()"
-              [accountId]="store.activeAccountId()"
-              [members]="vm.members()"
-              [typingNames]="timeline.typingNames()"
-              [firstUnreadId]="timeline.firstUnreadId()"
-              [roomName]="room.name"
-              [uploadProgress]="messageActions.uploadProgress()"
-              [stickerPacks]="imagePacks()"
-              [jumpToId]="roomSurfaces.jumpTarget()"
-              [jumpToNonce]="roomSurfaces.jumpRevision()"
-              (loadOlder)="messageActions.loadOlder()"
-              (openThread)="messageActions.onOpenThread($event)"
-              (togglePin)="messageActions.onTogglePin($event)"
-              (send)="messageActions.onSend($event)"
-              (sendMedia)="messageActions.onSendMedia($event)"
-              (sendSticker)="messageActions.onSendSticker($event)"
-              (retry)="messageActions.onRetry($event)"
-              (deleteMessage)="messageActions.onDelete($event)"
-              (react)="messageActions.onReact($event)"
-              (matrixLink)="messageActions.onMatrixLink($event)"
-              (pollVote)="messageActions.onPollVote($event)"
-              (pollEnd)="messageActions.onPollEnd($event)"
-            />
-          } @else {
-            <trn-simple-message-list
-              [messages]="timeline.messages()"
-              [threadSummaries]="threads.summaries()"
-              [canPin]="pinned.canMutate()"
-              [canRedactOthers]="timeline.canRedactOthers()"
-              [pinnedIds]="pinned.eventIds()"
-              [loadingOlder]="timeline.loadingOlder()"
-              [loadState]="timeline.loadState()"
-              (retryLoad)="timeline.retryLoad()"
-              [swipeDirection]="messageSwipeDirection()"
-              [canLoadOlder]="timeline.canLoadOlder()"
-              [oldestEventId]="timeline.oldestEventId()"
-              [roomId]="store.activeRoomId()"
-              [accountId]="store.activeAccountId()"
-              [members]="vm.members()"
-              [typingNames]="timeline.typingNames()"
-              [firstUnreadId]="timeline.firstUnreadId()"
-              [roomName]="room.name"
-              [uploadProgress]="messageActions.uploadProgress()"
-              [stickerPacks]="imagePacks()"
-              [jumpToId]="roomSurfaces.jumpTarget()"
-              [jumpToNonce]="roomSurfaces.jumpRevision()"
-              (loadOlder)="messageActions.loadOlder()"
-              (openThread)="messageActions.onOpenThread($event)"
-              (togglePin)="messageActions.onTogglePin($event)"
-              (send)="messageActions.onSend($event)"
-              (sendMedia)="messageActions.onSendMedia($event)"
-              (sendSticker)="messageActions.onSendSticker($event)"
-              (retry)="messageActions.onRetry($event)"
-              (deleteMessage)="messageActions.onDelete($event)"
-              (react)="messageActions.onReact($event)"
-              (matrixLink)="messageActions.onMatrixLink($event)"
-              (pollVote)="messageActions.onPollVote($event)"
-              (pollEnd)="messageActions.onPollEnd($event)"
-            />
-          }
-          @if (roomSurfaces.renderedSurface(); as panel) {
-            @if (panel.kind !== 'members') {
-              <!-- Between the timeline and the slot. Hidden below the `members` breakpoint,
+             The experimental flag only switches windowing. Flipping it re-windows this same
+             list in place, so the reader keeps their position. -->
+          <trn-message-list
+            [windowed]="flags.virtualTimeline()"
+            [introShown]="roomIntro()"
+            [messages]="timeline.messages()"
+            [threadSummaries]="threads.summaries()"
+            [canPin]="pinned.canMutate()"
+            [canRedactOthers]="timeline.canRedactOthers()"
+            [pinnedIds]="pinned.eventIds()"
+            [loadingOlder]="timeline.loadingOlder()"
+            [loadState]="timeline.loadState()"
+            (retryLoad)="timeline.retryLoad()"
+            [swipeDirection]="messageSwipeDirection()"
+            [canLoadOlder]="timeline.canLoadOlder()"
+            [oldestEventId]="timeline.oldestEventId()"
+            [roomId]="store.activeRoomId()"
+            [accountId]="store.activeAccountId()"
+            [members]="vm.members()"
+            [typingNames]="timeline.typingNames()"
+            [firstUnreadId]="timeline.firstUnreadId()"
+            [roomName]="vm.activeRoom()?.name ?? ''"
+            [composerEnabled]="!!vm.activeRoom()"
+            [uploadProgress]="messageActions.uploadProgress()"
+            [stickerPacks]="imagePacks()"
+            [jumpToId]="roomSurfaces.jumpTarget()"
+            [jumpToNonce]="roomSurfaces.jumpRevision()"
+            (loadOlder)="messageActions.loadOlder()"
+            (openThread)="messageActions.onOpenThread($event)"
+            (togglePin)="messageActions.onTogglePin($event)"
+            (send)="messageActions.onSend($event)"
+            (sendMedia)="messageActions.onSendMedia($event)"
+            (sendSticker)="messageActions.onSendSticker($event)"
+            (retry)="messageActions.onRetry($event)"
+            (deleteMessage)="messageActions.onDelete($event)"
+            (react)="messageActions.onReact($event)"
+            (matrixLink)="messageActions.onMatrixLink($event)"
+            (pollVote)="messageActions.onPollVote($event)"
+            (pollEnd)="messageActions.onPollEnd($event)"
+          >
+            @if (roomIntro()) {
+              <trn-empty-state
+                role="status"
+                icon="user-plus"
+                title="It’s just you here"
+                body="Invite people to start the conversation."
+                trnMessageListIntro
+                data-testid="room-intro"
+              >
+                <button
+                  trnEmptyStateActions
+                  trnBtn
+                  type="button"
+                  size="sm"
+                  data-testid="room-intro-invite"
+                  (click)="roomActions.onInviteToRoom()"
+                >
+                  Invite people
+                </button>
+              </trn-empty-state>
+            }
+          </trn-message-list>
+          @if (vm.activeRoom(); as room) {
+            @if (roomSurfaces.renderedSurface(); as panel) {
+              @if (panel.kind !== 'members') {
+                <!-- Between the timeline and the slot. Hidden below the `members` breakpoint,
                    where the slot is an overlay drawer rather than a column sharing the row —
                    there is nothing to trade width with. `invert` because this handle grows
                    the pane to its RIGHT: dragging left makes the panel wider.
@@ -481,18 +242,18 @@
                    handle's own minimum). Rendered there it was a divider that highlighted,
                    moved its `aria-valuenow` and rewrote the stored width while the pane
                    beside it stayed put. -->
-              <trn-pane-handle
-                class="hidden members:block"
-                cssVariable="--shell-right-panel-w"
-                label="Panel width"
-                [invert]="true"
-                [value]="layout.rightPanelWidth()"
-                [min]="layout.rightPanelBounds.min"
-                [max]="layout.rightPanelBounds.max"
-                (committed)="layout.setRightPanelWidth($event)"
-              />
-            }
-            <!-- Below the `members` breakpoint the slot is an overlay drawer; a backdrop
+                <trn-pane-handle
+                  class="hidden members:block"
+                  cssVariable="--shell-right-panel-w"
+                  label="Panel width"
+                  [invert]="true"
+                  [value]="layout.rightPanelWidth()"
+                  [min]="layout.rightPanelBounds.min"
+                  [max]="layout.rightPanelBounds.max"
+                  (committed)="layout.setRightPanelWidth($event)"
+                />
+              }
+              <!-- Below the `members` breakpoint the slot is an overlay drawer; a backdrop
                (shown only at that width) dismisses it. At or above it the slot is a static
                column and the backdrop is display:none. One backdrop for every surface,
                because there is one slot.
@@ -502,81 +263,82 @@
                somewhere. `complementary` rather than `dialog` — nothing here traps focus or
                marks the rest of the page inert, and claiming modality a screen reader then
                cannot rely on is worse than not claiming it. -->
-            <div
-              class="fixed inset-0 z-[var(--trinity-z-scrim)] hidden bg-overlay-scrim max-members:block"
-              (click)="clearRightPanel()"
-              aria-hidden="true"
-              data-testid="members-backdrop"
-            ></div>
-            @switch (panel.kind) {
-              @case ('members') {
-                <trn-member-list
-                  class="chat-members"
-                  data-right-panel-surface
-                  [members]="vm.members()"
-                  [availability]="vm.membersView().availability"
-                  [direct]="vm.activeRoomIsDirect()"
-                  (selectMember)="memberActions.onSelectMember($event)"
-                />
-              }
-              @case ('threads') {
-                <trn-threads-list
-                  class="chat-panel"
-                  data-right-panel-surface
-                  role="complementary"
-                  aria-label="Threads"
-                  [roomId]="room.id"
-                  (selected)="messageActions.onThreadPicked($event)"
-                  (dismissed)="closeRightPanel()"
-                />
-              }
-              @case ('thread') {
-                <trn-thread-view
-                  class="chat-panel"
-                  data-right-panel-surface
-                  role="complementary"
-                  aria-label="Thread"
-                  [accountId]="store.activeAccountId()"
-                  [roomId]="room.id"
-                  [rootEventId]="panel.rootEventId"
-                  (dismissed)="closeRightPanel()"
-                />
-              }
-              @case ('pinned') {
-                <trn-pinned-messages-panel
-                  class="chat-panel"
-                  data-right-panel-surface
-                  role="complementary"
-                  aria-label="Pinned messages"
-                  (selected)="messageActions.onPanelJump($event)"
-                  (dismissed)="closeRightPanel()"
-                />
-              }
-              @case ('search') {
-                <trn-message-search
-                  class="chat-panel"
-                  data-right-panel-surface
-                  role="complementary"
-                  aria-label="Search messages"
-                  [roomId]="room.id"
-                  (selected)="messageActions.onPanelJump($event)"
-                  (dismissed)="closeRightPanel()"
-                />
-              }
-              @case ('member') {
-                <trn-member-info
-                  class="chat-panel"
-                  data-right-panel-surface
-                  role="complementary"
-                  aria-label="Member info"
-                  surfaceSize="lg"
-                  surfaceLayout="panel"
-                  [member]="panel.member"
-                  [roomId]="room.id"
-                  [direct]="panel.direct"
-                  (messageUser)="memberActions.onMemberMessage($event)"
-                  (dismissed)="memberActions.onMemberPanelDismissed()"
-                />
+              <div
+                class="fixed inset-0 top-[var(--trinity-title-row-inset,0px)] z-[var(--trinity-z-scrim)] hidden bg-overlay-scrim max-members:block"
+                (click)="clearRightPanel()"
+                aria-hidden="true"
+                data-testid="members-backdrop"
+              ></div>
+              @switch (panel.kind) {
+                @case ('members') {
+                  <trn-member-list
+                    class="chat-members"
+                    data-right-panel-surface
+                    [members]="vm.members()"
+                    [availability]="vm.membersView().availability"
+                    [direct]="vm.activeRoomIsDirect()"
+                    (selectMember)="memberActions.onSelectMember($event)"
+                    (dismissed)="closeRightPanel()"
+                  />
+                }
+                @case ('threads') {
+                  <trn-threads-list
+                    class="chat-panel"
+                    data-right-panel-surface
+                    role="complementary"
+                    aria-label="Threads"
+                    [roomId]="room.id"
+                    (selected)="messageActions.onThreadPicked($event)"
+                    (dismissed)="closeRightPanel()"
+                  />
+                }
+                @case ('thread') {
+                  <trn-thread-view
+                    class="chat-panel"
+                    data-right-panel-surface
+                    role="complementary"
+                    aria-label="Thread"
+                    [accountId]="store.activeAccountId()"
+                    [roomId]="room.id"
+                    [rootEventId]="panel.rootEventId"
+                    (dismissed)="closeRightPanel()"
+                  />
+                }
+                @case ('pinned') {
+                  <trn-pinned-messages-panel
+                    class="chat-panel"
+                    data-right-panel-surface
+                    role="complementary"
+                    aria-label="Pinned messages"
+                    (selected)="messageActions.onPanelJump($event)"
+                    (dismissed)="closeRightPanel()"
+                  />
+                }
+                @case ('search') {
+                  <trn-message-search
+                    class="chat-panel"
+                    data-right-panel-surface
+                    role="complementary"
+                    aria-label="Search messages"
+                    [roomId]="room.id"
+                    [(query)]="searchQuery"
+                    (selected)="messageActions.onPanelJump($event)"
+                    (dismissed)="closeRightPanel()"
+                  />
+                }
+                @case ('member') {
+                  <trn-member-info
+                    class="chat-panel"
+                    data-right-panel-surface
+                    role="complementary"
+                    aria-label="Member info"
+                    [member]="panel.member"
+                    [roomId]="room.id"
+                    [direct]="panel.direct"
+                    (messageUser)="memberActions.onMemberMessage($event)"
+                    (dismissed)="memberActions.onMemberPanelDismissed()"
+                  />
+                }
               }
             }
           }

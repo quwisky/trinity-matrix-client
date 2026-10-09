@@ -11,12 +11,14 @@ import {
 import { TrnButton, TrnIconButton } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { TrnInput } from '@trinity/components/controls';
-import { TrnLabel } from '@trinity/components/controls';
 import { runWithBusy } from '@trinity/util/ui';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { IdentityService } from '@trinity/data-access/identity';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
+import {
+  TrnSettingsGroupComponent,
+  TrnSettingsRowComponent,
+} from '@trinity/components/overlay';
 
 /** Profile settings sub-page: avatar (with a corner change badge) + display name. */
 @Component({
@@ -24,14 +26,14 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './profile-settings.component.html',
   imports: [
+    TrnSettingsRowComponent,
+    TrnSettingsGroupComponent,
     AvatarComponent,
     TrnIconComponent,
     TrnIconButton,
     TrnButton,
     TrnTooltip,
     TrnInput,
-    TrnLabel,
-    SettingsSectionHeadingComponent,
   ],
 })
 export class ProfileSettingsComponent {

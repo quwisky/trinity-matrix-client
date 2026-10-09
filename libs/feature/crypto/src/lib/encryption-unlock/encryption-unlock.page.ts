@@ -18,7 +18,10 @@ import { Observable, finalize, firstValueFrom, take } from 'rxjs';
 import { TrustService } from '@trinity/data-access/trust';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
-import { PageHeaderComponent } from '@trinity/components/navigation-layout';
+import {
+  PageHeaderComponent,
+  TrnCardImports,
+} from '@trinity/components/navigation-layout';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import { TrnFieldImports } from '@trinity/components/controls';
@@ -26,7 +29,7 @@ import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
   TrnAlertService,
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnDialogShellComponent,
 } from '@trinity/components/overlay';
 import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
 import {
@@ -52,14 +55,15 @@ import {
   templateUrl: 'encryption-unlock.page.html',
   styleUrls: ['encryption-unlock.page.scss'],
   imports: [
+    TrnCardImports,
     FormField,
     NgTemplateOutlet,
     PageHeaderComponent,
     RecoveryKeySaveComponent,
     TrnButton,
+    TrnDialogShellComponent,
     TrnFieldImports,
     TrnInput,
-    TrnOverlaySurfaceDirective,
     TrnSpinnerComponent,
   ],
 })

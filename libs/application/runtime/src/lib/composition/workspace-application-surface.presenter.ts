@@ -1,6 +1,5 @@
 import { Injectable, inject, signal, type Type } from '@angular/core';
 import { NavigationStart, Router } from '@angular/router';
-import { isInstalledNativePlatform } from '@trinity/platform-native';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
   SETTINGS_DIALOG_COMPONENT,
@@ -18,13 +17,15 @@ import {
 } from '@trinity/application/workspace';
 import {
   TrnDialogRef,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import {
   Observable,
+  Subject,
   catchError,
+  defaultIfEmpty,
   defer,
   filter,
   finalize,
@@ -34,6 +35,7 @@ import {
   shareReplay,
   switchMap,
   take,
+  takeUntil,
 } from 'rxjs';
 
 interface ActiveApplicationDialog {
@@ -43,17 +45,22 @@ interface ActiveApplicationDialog {
 }
 
 function routeFor(surface: WorkspaceApplicationSurface): string {
-  if (surface.kind === 'settings') {
-    return surface.section ? `/settings/${surface.section}` : '/settings';
+  switch (surface.kind) {
+    case 'settings':
+      return surface.section ? `/settings/${surface.section}` : '/settings';
+    case 'trust':
+      return `/encryption/${surface.flow}`;
+    case 'system-status':
+      // Not routed: the application root presents it over whatever route is showing.
+      return '/';
   }
-  return `/encryption/${surface.flow}`;
 }
 
 /** Host adapter combining Router, placement policy, lazy features, and UI dialogs. */
 @Injectable({ providedIn: 'root' })
 export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApplicationSurfacePresenter {
   private readonly router = inject(Router);
-  private readonly dialog = inject(TrnDialogService);
+  private readonly dialog = inject(TrnSurfaceService);
   private readonly toast = inject(TrnToastService);
   private readonly back = inject(WorkspaceBackService);
   private readonly encryptionLoaders = inject(ENCRYPTION_DIALOG_COMPONENTS, {
@@ -67,7 +74,8 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
     readonly surface: WorkspaceApplicationSurface;
     readonly command: Observable<WorkspaceApplicationSurfaceOutcome>;
   } | null = null;
-  private navigationGeneration = 0;
+  /** Emits on every navigation start and on teardown; releases work begun before it. */
+  private readonly navigationStarts = new Subject<void>();
 
   /** Application Runtime owns navigation observation and Back registration. */
   run(): Observable<void> {
@@ -76,7 +84,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
         .pipe(filter((event) => event instanceof NavigationStart))
         .subscribe({
           next: () => {
-            this.navigationGeneration++;
+            this.navigationStarts.next();
             subscriber.next();
           },
           error: (error: unknown) => subscriber.error(error),
@@ -95,7 +103,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
         },
       });
       return () => {
-        this.navigationGeneration++;
+        this.navigationStarts.next();
         navigation.unsubscribe();
         unregister();
         for (const active of this.active()) active.ref.close();
@@ -115,18 +123,23 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
     request: WorkspaceApplicationSurfaceRequest,
   ): Observable<WorkspaceApplicationSurfaceOutcome> {
     const { surface, context } = request;
-    if (!this.ownerIsActive(request) || !this.canPresentOverActive(request)) {
+    if (
+      surface.kind === 'system-status' ||
+      !this.ownerIsActive(request) ||
+      !this.canPresentOverActive(request)
+    ) {
       return of({ kind: 'unavailable', surface });
     }
     if (surface.kind === 'settings') {
-      // The shared artifact runs unchanged in every host. Installed Capacitor apps keep
-      // native history; Web/PWA and Electron use the application dialog presenter.
-      if (isInstalledNativePlatform() || !this.settingsLoader) {
+      // Every host opens Settings as a modal surface; the surface service picks a sheet or a
+      // centred dialog. Direct `/settings` links still render the routed page.
+      if (!this.settingsLoader) {
         return this.navigate(request);
       }
       return this.presentDialog(request, this.settingsLoader, true, {
         inputs: {
           ...(surface.section ? { initialSection: surface.section } : {}),
+          ...(surface.part ? { initialPart: surface.part } : {}),
           ...(context?.sourceRoomId
             ? { initialSource: context.sourceRoomId }
             : {}),
@@ -144,7 +157,6 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
           ...(context?.offerReset ? { offerReset: true } : {}),
         },
         disableClose: true,
-        ariaLabel: 'Encryption',
       });
     }
     if (context?.placement === 'nested') {
@@ -158,7 +170,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
     request: WorkspaceApplicationSurfaceRequest,
     load: ApplicationDialogLoader,
     dismissible: boolean,
-    options: Parameters<TrnDialogService['open']>[1],
+    options: Parameters<TrnSurfaceService['open']>[1],
   ): Observable<WorkspaceApplicationSurfaceOutcome> {
     if (this.pending) {
       return sameWorkspaceApplicationSurface(
@@ -168,19 +180,18 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
         ? this.pending.command
         : of({ kind: 'unavailable', surface: request.surface });
     }
-    const navigationGeneration = this.navigationGeneration;
+    const unavailable = {
+      kind: 'unavailable',
+      surface: request.surface,
+    } as const;
     const task = defer(load).pipe(
       switchMap((component) =>
         defer(() => {
           if (
-            navigationGeneration !== this.navigationGeneration ||
             !this.ownerIsActive(request) ||
             !this.canPresentOverActive(request)
           ) {
-            return of({
-              kind: 'unavailable',
-              surface: request.surface,
-            } as const);
+            return of(unavailable);
           }
           const ref = this.dialog.open(component, {
             ...options,
@@ -196,23 +207,24 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
                 this.active.update((active) =>
                   active.filter((dialog) => dialog.ref !== ref),
                 );
-                this.restoreOwner(request, navigationGeneration);
               }),
             )
             .subscribe();
+          ref.closed
+            .pipe(take(1), takeUntil(this.navigationStarts))
+            .subscribe(() => this.restoreOwner(request));
           return of({ kind: 'presented', surface: request.surface } as const);
         }),
       ),
       catchError(() => {
-        if (
-          navigationGeneration === this.navigationGeneration &&
-          this.ownerIsActive(request)
-        ) {
+        if (this.ownerIsActive(request)) {
           this.showOpenFailure(request.surface);
-          this.restoreOwner(request, navigationGeneration);
+          this.restoreOwner(request);
         }
-        return of({ kind: 'unavailable', surface: request.surface } as const);
+        return of(unavailable);
       }),
+      takeUntil(this.navigationStarts),
+      defaultIfEmpty(unavailable),
       finalize(() => {
         if (this.pending?.command === task) this.pending = null;
       }),
@@ -237,6 +249,9 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
     return from(
       this.router.navigate([routeFor(request.surface)], {
         ...(Object.keys(queryParams).length > 0 ? { queryParams } : {}),
+        ...(request.surface.kind === 'settings' && request.surface.part
+          ? { fragment: request.surface.part }
+          : {}),
       }),
     ).pipe(
       map((accepted) => ({
@@ -292,14 +307,8 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
     }
   }
 
-  private restoreOwner(
-    request: WorkspaceApplicationSurfaceRequest,
-    navigationGeneration: number,
-  ): void {
-    if (
-      request.context?.restoreFocus &&
-      navigationGeneration === this.navigationGeneration
-    ) {
+  private restoreOwner(request: WorkspaceApplicationSurfaceRequest): void {
+    if (request.context?.restoreFocus) {
       queueMicrotask(request.context.restoreFocus);
     }
   }

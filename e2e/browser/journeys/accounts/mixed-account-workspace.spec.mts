@@ -1,4 +1,10 @@
-import { devices, expect, test, testResourceId } from '../../../fixtures.mts';
+import {
+  devices,
+  expect,
+  test,
+  testResourceId,
+  type Page,
+} from '../../../fixtures.mts';
 import { login } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
@@ -8,6 +14,21 @@ import {
   mixInAccount,
   session,
 } from '../../support/multi-account-journey.mts';
+
+/**
+ * Resolves once every open menu has finished its entrance. A submenu is placed against its
+ * trigger as it stands when the submenu opens, and the placement is not redone, so one opened
+ * mid-entrance stays offset. Near the bottom of the viewport that offset has the placement
+ * pushed flush against the edge, where the menu ends up a fraction of a pixel past it.
+ */
+const settleMenus = (page: Page) =>
+  page
+    .locator('.cdk-overlay-container')
+    .evaluate((container) =>
+      Promise.all(
+        container.getAnimations({ subtree: true }).map((a) => a.finished),
+      ),
+    );
 
 test.describe('Multiple accounts', () => {
   configureMultiAccountSuite();
@@ -65,7 +86,9 @@ test.describe('Multiple accounts', () => {
       timeout: 20_000,
     });
     await expect(
-      page.locator('trn-channel-sidebar .channel.active', { hasText: roomA }),
+      page.locator('trn-channel-sidebar .channel.channel--selected', {
+        hasText: roomA,
+      }),
     ).toBeVisible({ timeout: 15_000 });
   });
 
@@ -119,6 +142,18 @@ test.describe('Multiple accounts', () => {
       railPill(spaceA).locator('[data-testid="account-badge"]'),
     ).toBeVisible();
 
+    // The account badge sits at the pill's bottom-right (it overhangs by its 2px ring).
+    const pillBox = (await railPill(spaceA).boundingBox())!;
+    const badgeBox = (await railPill(spaceA)
+      .locator('[data-testid="account-badge"]')
+      .boundingBox())!;
+    expect(
+      Math.abs(badgeBox.x + badgeBox.width - (pillBox.x + pillBox.width)),
+    ).toBeLessThanOrEqual(3);
+    expect(
+      Math.abs(badgeBox.y + badgeBox.height - (pillBox.y + pillBox.height)),
+    ).toBeLessThanOrEqual(3);
+
     // Opening A's space switches the active account to A.
     await railPill(spaceA).click();
     await expect(page.locator('.userbar__handle')).toContainText(`@${userA}:`, {
@@ -165,11 +200,8 @@ test.describe('Multiple accounts', () => {
 
     await mixInAccount(page, userA);
     await expect(roomARow).toBeVisible({ timeout: 20_000 });
-    // While mixing, the footer states the mix size and stacks the accounts' avatars.
-    await expect(page.getByTestId('account-stack')).toBeVisible();
-    await expect(page.getByTestId('account-stack-count')).toContainText(
-      '2 accounts',
-    );
+    // The panel's chip counts the other signed-in accounts.
+    await expect(page.getByTestId('account-stack-count')).toHaveText('+1');
 
     // The selection is persisted, so a cold reload comes back mixed rather than resetting.
     await page.reload();
@@ -214,6 +246,7 @@ test.describe('Multiple accounts', () => {
         { dark },
       );
       await desktopTrigger.press('ArrowDown');
+      await settleMenus(page);
       await selectorTrigger.focus();
       await selectorTrigger.press('ArrowRight');
       await expect(desktopSelector).toBeVisible();
@@ -276,6 +309,7 @@ test.describe('Multiple accounts', () => {
       document.documentElement.style.fontSize = fontSize;
     }, originalTheme);
     await desktopTrigger.press('ArrowDown');
+    await settleMenus(page);
     await selectorTrigger.focus();
     await selectorTrigger.press('ArrowRight');
 
@@ -315,7 +349,8 @@ test.describe('Multiple accounts', () => {
     await expect(desktopTrigger).toBeFocused();
     await expect(roomARow).toHaveCount(0);
     await expect(roomBRow).toBeVisible();
-    await expect(page.getByTestId('account-stack')).toHaveCount(0);
+    // The chip counts signed-in accounts, so unticking one from the view leaves it alone.
+    await expect(page.getByTestId('account-stack-count')).toHaveText('+1');
   });
   // The quick switcher shares the picker's scope, so it must find another account's rooms
   // and switch to that account on the jump — the same contract as clicking a sidebar row.
@@ -375,12 +410,15 @@ test.describe('Multiple accounts', () => {
       // A dialog, not a submenu: the account menu is gone by now.
       const picker = page.getByTestId('account-picker');
       await expect(picker).toBeVisible({ timeout: 15_000 });
-      await expect(picker).toHaveCSS('display', 'flex');
+      await expect(picker.getByTestId('dialog-surface')).toHaveCSS(
+        'display',
+        'flex',
+      );
       await expect(
         picker.getByText('Accounts in view', { exact: true }),
       ).toBeVisible();
       await expect(picker.locator('[data-autofocus]')).toBeFocused();
-      await expect(picker.locator('.picker__list')).toHaveCSS(
+      await expect(picker.locator('.dialog-shell__body')).toHaveCSS(
         'overflow-y',
         'auto',
       );
@@ -397,18 +435,18 @@ test.describe('Multiple accounts', () => {
       await expect(activeRow.locator('trn-avatar')).toBeVisible();
       await expect(activeRow).toContainText(`@${userB}:`);
       await expect(activeRow).toContainText('Always included');
-      const mobileAvatar = await activeRow.locator('trn-avatar').boundingBox();
-      const mobileCheck = await activeRow
-        .locator('.account-pick__indicator')
-        .boundingBox();
-      expect(mobileAvatar && mobileCheck).toBeTruthy();
-      expect(
-        Math.abs(
-          mobileAvatar!.y +
-            mobileAvatar!.height / 2 -
-            (mobileCheck!.y + mobileCheck!.height / 2),
-        ),
-      ).toBeLessThan(12);
+      // Both rects in one frame: the sheet slides in, and two separate boundingBox() reads
+      // could land on different frames of that slide and measure the motion, not the row.
+      const centreOffset = await activeRow.evaluate((row) => {
+        const middle = (selector: string) => {
+          const rect = row.querySelector(selector)!.getBoundingClientRect();
+          return rect.top + rect.height / 2;
+        };
+        return Math.abs(
+          middle('trn-avatar') - middle('.account-pick__indicator'),
+        );
+      });
+      expect(centreOffset).toBeLessThan(12);
 
       for (const dark of [false, true]) {
         await page.evaluate(
@@ -427,7 +465,7 @@ test.describe('Multiple accounts', () => {
         body: await picker.screenshot(),
         contentType: 'image/png',
       });
-      const mobileList = picker.locator('.picker__list');
+      const mobileList = picker.locator('.dialog-shell__body');
       await expect
         .poll(() =>
           mobileList.evaluate(
@@ -521,7 +559,9 @@ test.describe('Multiple accounts', () => {
       timeout: 20_000,
     });
     await expect(
-      page.locator('trn-channel-sidebar .channel.active', { hasText: roomA }),
+      page.locator('trn-channel-sidebar .channel.channel--selected', {
+        hasText: roomA,
+      }),
     ).toBeVisible({ timeout: 15_000 });
   });
 

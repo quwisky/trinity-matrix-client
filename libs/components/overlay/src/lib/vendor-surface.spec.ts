@@ -56,7 +56,7 @@ describe('@trinity/components/overlay vendor surface', () => {
 
   it('does not hand out Dialog or DIALOG_DATA', () => {
     // Named explicitly as well as covered by the check above, because these two are the
-    // specific escape hatches: `Dialog` bypasses TrnDialogService entirely, and
+    // specific escape hatches: `Dialog` bypasses TrnSurfaceService entirely, and
     // `DIALOG_DATA` would undo the move to `input.required()` that let
     // `DialogOptions.data` be deleted.
     const exported = Object.keys(overlay);

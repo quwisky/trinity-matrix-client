@@ -37,6 +37,7 @@ import {
   type ApplicationRecoveryOutcome,
   type ApplicationRuntimeState,
   type ApplicationStartOutcome,
+  type ApplicationStartupRecovery,
   type ApplicationStartupStage,
   type ApplicationStartupStageOutcome,
   type ApplicationStartupProducerSettlement,
@@ -135,14 +136,27 @@ export class ApplicationRuntimeService {
     });
   }
 
-  recover(): Observable<ApplicationRecoveryOutcome> {
+  /**
+   * Run the blocked failure's recovery, or `choice` when it is that recovery or the declared
+   * secondary one. Any other choice is refused: a caller cannot invent a recovery.
+   */
+  recover(
+    choice?: ApplicationStartupRecovery,
+  ): Observable<ApplicationRecoveryOutcome> {
     return defer(() => {
       const state = this.runtimeState();
       if (state.phase !== 'blocked') {
         return of({ kind: 'unavailable', reason: 'not-blocked' } as const);
       }
+      const recovery = choice ?? state.failure.recovery;
+      if (
+        recovery !== state.failure.recovery &&
+        recovery !== state.failure.secondaryRecovery
+      ) {
+        return of({ kind: 'unavailable', reason: 'recovery-failed' } as const);
+      }
       const owner = this.activeStop;
-      return defer(() => this.adapter.recover(state.failure.recovery)).pipe(
+      return defer(() => this.adapter.recover(recovery)).pipe(
         timeout(APPLICATION_RECOVERY_OBSERVATION_BUDGET_MS),
         catchError(() =>
           of({ kind: 'unavailable', reason: 'recovery-failed' } as const),
@@ -397,6 +411,9 @@ export class ApplicationRuntimeService {
       const failure = {
         stage,
         recovery: outcome.recovery,
+        ...(outcome.secondaryRecovery
+          ? { secondaryRecovery: outcome.secondaryRecovery }
+          : {}),
         diagnostic: outcome.diagnostic,
       } as const;
       const blocked = {

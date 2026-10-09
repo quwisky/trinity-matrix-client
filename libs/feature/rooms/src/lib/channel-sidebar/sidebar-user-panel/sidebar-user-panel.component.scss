@@ -22,8 +22,6 @@
   }
 
   .userbar {
-    --userbar-avatar-ring: var(--trinity-surface-navigation-header);
-
     box-sizing: border-box;
     height: var(--trinity-navigation-dock-height);
     flex: 0 0 var(--trinity-navigation-dock-height);
@@ -39,12 +37,10 @@
     color: var(--trinity-text-muted);
 
     @media #{$md} {
-      --userbar-avatar-ring: var(--trinity-surface-floating);
-
       height: 100%;
       border: 1px solid var(--trinity-border-subtle);
-      border-radius: var(--trinity-shape-container-radius);
-      background: var(--trinity-surface-floating);
+      border-radius: var(--trinity-shape-overlay-radius);
+      background: var(--trinity-surface-floating-card);
       box-shadow: var(--trinity-shadow-floating);
     }
   }
@@ -59,6 +55,8 @@
     align-items: center;
     gap: 8px;
     padding: 4px;
+    justify-content: flex-start;
+    height: auto;
     text-align: left;
 
     &:hover {
@@ -92,14 +90,19 @@
   }
 
   .userbar__name,
-  .account-row__name,
-  .account-pick__name {
+  .account-row__name {
     @include ellipsis;
 
     font-size: var(--trinity-type-control-size);
     line-height: var(--trinity-type-control-line-height);
     font-weight: var(--trinity-type-control-weight);
     color: var(--trinity-text-bright);
+  }
+
+  .userbar__accounts {
+    flex: 0 0 auto;
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
   }
 
   .userbar__settings {
@@ -157,8 +160,7 @@
   }
 
   .userbar__handle,
-  .account-row__handle,
-  .account-pick__handle {
+  .account-row__handle {
     @include ellipsis;
 
     font-size: var(--trinity-type-metadata-size);
@@ -167,20 +169,7 @@
   }
 
   .account-row__badge {
-    display: inline-flex;
     flex: 0 0 auto;
-    min-height: 16px;
-    min-width: 16px;
-    align-items: center;
-    justify-content: center;
-    padding: 0 5px;
-    border-radius: var(--trinity-radius-pill);
-    background: var(--trinity-text-muted);
-    color: var(--trinity-sidebar);
-    font-size: var(--trinity-type-caption-size);
-    line-height: var(--trinity-type-caption-line-height);
-    font-weight: 700;
-    text-align: center;
   }
 
   .account-row__check {
@@ -214,68 +203,6 @@
     color: var(--trinity-text-muted);
   }
 
-  // Included accounts as an overlapping stack, replacing the single avatar while mixing.
-  // The 24px tiles keep the cluster inside the .userbar's fixed 52px budget (capped at three
-  // in the template), and the ring reads each tile as a separate face rather than one blob.
-  .userbar__stack {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-  }
-
-  .userbar__stack-item {
-    position: relative;
-    border-radius: 50%;
-    box-shadow: 0 0 0 2px var(--userbar-avatar-ring);
-
-    &:not(:first-child) {
-      margin-left: -10px;
-    }
-
-    // Descending z-index so the ACTIVE account (rendered first) sits on top of the stack —
-    // by default later siblings paint over earlier ones, which would bury the very account
-    // whose name is displayed next to it.
-    &:nth-child(1) {
-      // Local stacking: these three order this component's own children against each
-      // other, not against anything in the app. The z-index scale governs app-level
-      // layers, and pretending it governs this would make both harder to read.
-      z-index: 3;
-    }
-
-    &:nth-child(2) {
-      z-index: 2;
-    }
-
-    &:nth-child(3) {
-      z-index: 1;
-    }
-  }
-
-  // The handle ellipsises, the "+N" must not: an ordinary mxid would otherwise clip away the
-  // only textual sign that the view is mixed.
-  .userbar__meta {
-    display: flex;
-    min-width: 0;
-    align-items: baseline;
-    gap: 4px;
-  }
-
-  .userbar__mixed {
-    flex: 0 0 auto;
-    font-size: var(--trinity-type-caption-size);
-    line-height: var(--trinity-type-caption-line-height);
-    font-weight: var(--trinity-type-control-weight);
-    color: var(--trinity-text-muted);
-  }
-
-  .account-pick__id {
-    display: flex;
-    text-align: start;
-    min-width: 0;
-    flex: 1;
-    flex-direction: column;
-  }
-
   .account-pick__indicator {
     order: 3;
     display: inline-flex;
@@ -283,14 +210,6 @@
     min-width: 20px;
     align-items: center;
     justify-content: center;
-  }
-
-  .account-pick__active {
-    flex: 0 0 auto;
-    font-size: var(--trinity-type-caption-size);
-    line-height: var(--trinity-type-caption-line-height);
-    font-weight: var(--trinity-type-control-weight);
-    color: var(--trinity-text-muted);
   }
 
   .account-pick-menu {

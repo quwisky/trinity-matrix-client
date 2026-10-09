@@ -7,7 +7,10 @@ import {
   input,
   viewChild,
 } from '@angular/core';
-import { TrnDialogRef } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnSettingsGroupComponent,
+} from '@trinity/components/overlay';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import type { RoomWidgetTarget } from '@trinity/data-access/widgets';
 import { MembersSettingsComponent } from '../members-settings/members-settings.component';
@@ -16,13 +19,13 @@ import {
   SettingsHubComponent,
   type SettingsHubSection,
 } from '../shared/settings-hub/settings-hub.component';
+import { PlaceGeneralSettingsComponent } from '../shared/place-general-settings/place-general-settings.component';
 import { SettingsHubController } from '../shared/settings-hub/settings-hub.controller';
 import { RoomSettingsAccessComponent } from './room-settings-access.component';
 import { RoomSettingsAdvancedComponent } from './room-settings-advanced.component';
 import { RoomSettingsDraftService } from './room-settings-draft.service';
 import { RoomSettingsForYouComponent } from './room-settings-for-you/room-settings-for-you.component';
 import { RoomSettingsForYouDraftService } from './room-settings-for-you/room-settings-for-you-draft.service';
-import { RoomSettingsGeneralComponent } from './room-settings-general.component';
 import type { ParentSpace, RoomSettingsResult } from './room-settings.models';
 import { RoomWidgetsComponent } from './room-widgets.component';
 
@@ -96,13 +99,14 @@ const SECTIONS: readonly (SettingsHubSection & {
   providers: [RoomSettingsDraftService, RoomSettingsForYouDraftService],
   imports: [
     MembersSettingsComponent,
+    PlaceGeneralSettingsComponent,
     RoomAliasesComponent,
     RoomSettingsAccessComponent,
     RoomSettingsAdvancedComponent,
-    RoomSettingsGeneralComponent,
     RoomSettingsForYouComponent,
     RoomWidgetsComponent,
     SettingsHubComponent,
+    TrnSettingsGroupComponent,
   ],
   templateUrl: './room-settings.component.html',
   styleUrl: './room-settings.component.scss',
@@ -123,6 +127,15 @@ export class RoomSettingsComponent implements OnInit {
 
   readonly draft = inject(RoomSettingsDraftService);
   readonly forYouDraft = inject(RoomSettingsForYouDraftService);
+  readonly encryptionStatus = computed(() => {
+    const encrypted = this.draft.snapshot()?.encrypted;
+    if (encrypted === null || encrypted === undefined) {
+      return 'Encryption status is unavailable.';
+    }
+    return encrypted
+      ? 'Messages in this room are end-to-end encrypted.'
+      : 'Messages in this room are not end-to-end encrypted.';
+  });
   readonly hub = new SettingsHubController({
     sections: SECTIONS,
     noun: 'Room',

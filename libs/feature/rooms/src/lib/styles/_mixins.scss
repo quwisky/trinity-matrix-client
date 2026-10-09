@@ -66,32 +66,11 @@ $below-md: '(max-width: 767.98px)';
   text-align: center;
 }
 
-/// Shared content layout for compact dialogs. Surface chrome and width come from the
-/// public `trnOverlaySurface` recipe.
-@mixin dialog-surface {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 20px 18px 16px;
-}
-
 /// Anchored picker content layout shared by GIF, sticker and other composer trays.
 @mixin picker-surface {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-@mixin picker-status {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--trinity-space-4);
-  padding: var(--trinity-space-5);
-  color: var(--trinity-text-muted);
-  font-size: var(--trinity-type-body-size);
-  line-height: var(--trinity-type-body-line-height);
-  text-align: center;
 }
 
 /// Full-height vertical column surface.

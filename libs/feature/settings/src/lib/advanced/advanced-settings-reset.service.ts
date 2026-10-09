@@ -42,7 +42,10 @@ export class AdvancedSettingsResetService {
         switchMap((intent) => {
           if (intent === 'cancelled') return EMPTY;
           if (intent === 'mistyped') {
-            this.toast.show(RESET_CONFIG_MISTYPED_MESSAGE, { duration: 4000 });
+            this.toast.show(RESET_CONFIG_MISTYPED_MESSAGE, {
+              duration: 4000,
+              variant: 'danger',
+            });
             return EMPTY;
           }
           this.resetting.set(true);

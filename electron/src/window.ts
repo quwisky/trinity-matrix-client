@@ -3,8 +3,19 @@ import * as path from 'node:path';
 import { isAppUrl, START_URL } from './scheme';
 import { processDeepLinkQueue } from './deep-link';
 import { windowIconOptions } from './icons';
+import {
+  GRAPHITE_DARK_SURFACE_APP,
+  readWindowPrefs,
+  titleBarArgument,
+  titleBarOptions,
+} from './window-prefs';
+
+// preload.ts mirrors this by string value.
+const CLOSE_WINDOW_CHANNEL = 'trinity:window:close';
 
 let mainWindow: BrowserWindow | null = null;
+// The mode the current window was created with; the saved pref applies only after a relaunch.
+let systemTitleBarActive = false;
 
 // Set only on the explicit Quit path (tray "Quit", app menu / Cmd+Q, or any
 // app.quit()). Until then, closing the window hides it to the tray instead of
@@ -17,6 +28,11 @@ let isQuitting = false;
  * mutable state directly. Returns `null` while no window exists. */
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow;
+}
+
+/** Whether the running window uses the OS title bar (no Trinity row, no overlay). */
+export function isSystemTitleBarActive(): boolean {
+  return systemTitleBarActive;
 }
 
 /**
@@ -102,20 +118,30 @@ export function installPermissionPolicy(session: Electron.Session): void {
   );
 }
 
+// preload.ts mirrors this by string value.
+const VISIBILITY_CHANNEL = 'trinity:host:v1:lifecycle:visibility';
+
 export function createWindow(): void {
+  const prefs = readWindowPrefs();
+  systemTitleBarActive = prefs.systemTitleBar;
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 940,
     minHeight: 600,
     show: false,
-    backgroundColor: '#1e1f22',
+    backgroundColor: GRAPHITE_DARK_SURFACE_APP,
     // Windows/Linux taskbar and window icon (packaged builds also embed it; dev runs
     // would otherwise show Electron's default). macOS uses the bundle's .icns.
     ...windowIconOptions(process.platform),
+    // Trinity draws its own 32px title row unless the user opted into the OS bar.
+    ...titleBarOptions(process.platform, prefs),
     autoHideMenuBar: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      // The running title-bar mode, read synchronously by preload so the first render
+      // already knows whether to draw the title row.
+      additionalArguments: [titleBarArgument(prefs)],
       // Hardened defaults — see .agents/skills/electron/ipc-security.md.
       contextIsolation: true,
       nodeIntegration: false,
@@ -134,6 +160,12 @@ export function createWindow(): void {
     },
   });
 
+  // The title row's ☰ pops the application menu up instead (title-bar-ipc.ts);
+  // hiding keeps the menu's accelerators, unlike removeMenu().
+  if (!prefs.systemTitleBar && process.platform !== 'darwin') {
+    mainWindow.setMenuBarVisibility(false);
+  }
+
   hardenContents(mainWindow.webContents);
 
   // Flush any deep links buffered before the renderer was ready to receive them
@@ -141,6 +173,19 @@ export function createWindow(): void {
   mainWindow.webContents.on('did-finish-load', () => processDeepLinkQueue());
 
   mainWindow.once('ready-to-show', () => mainWindow?.show());
+
+  // backgroundThrottling keeps document.visibilityState 'visible', so tell the renderer
+  // itself when the window leaves or returns to the screen; it frees memory while hidden.
+  const win = mainWindow;
+  const sendVisibility = (visibility: 'visible' | 'hidden') => () => {
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.send(VISIBILITY_CHANNEL, visibility);
+    }
+  };
+  win.on('hide', sendVisibility('hidden'));
+  win.on('minimize', sendVisibility('hidden'));
+  win.on('show', sendVisibility('visible'));
+  win.on('restore', sendVisibility('visible'));
 
   // Close-to-tray: a user-initiated window close hides the window instead of
   // destroying it, keeping the process, renderer, and `/sync` alive so
@@ -152,6 +197,13 @@ export function createWindow(): void {
       mainWindow?.hide();
     }
   });
+
+  // A page's `window.close()` destroys the WebContents, and with it the window, without
+  // ever emitting the cancellable `close` above. Preload sends it here instead, so it
+  // takes the same path as a user close.
+  mainWindow.webContents.ipc.on(CLOSE_WINDOW_CHANNEL, () =>
+    mainWindow?.close(),
+  );
 
   mainWindow.on('closed', () => {
     mainWindow = null;

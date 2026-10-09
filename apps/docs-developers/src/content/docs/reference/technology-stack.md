@@ -15,7 +15,7 @@ These versions are checked against the root and Electron manifests. The site foo
 | Tool       | Version    |
 | ---------- | ---------- |
 | Node.js    | `^24.15.0` |
-| pnpm       | `12.8.1`   |
+| pnpm       | `12.9.1`   |
 | Nx         | `23.2.1`   |
 | TypeScript | `6.0.3`    |
 
@@ -24,10 +24,10 @@ These versions are checked against the root and Electron manifests. The site foo
 | Package         | Version   |
 | --------------- | --------- |
 | Angular         | `22.2.0`  |
-| `matrix-js-sdk` | `^42.1.0` |
+| `matrix-js-sdk` | `^43.0.0` |
 | RxJS            | `~7.8.2`  |
 | Capacitor Core  | `8.5.2`   |
-| Electron        | `44.4.5`  |
+| Electron        | `44.5.1`  |
 
 Angular framework packages and the builder can intentionally use different patch releases. Treat installed peer requirements and repository checks as the compatibility contract.
 

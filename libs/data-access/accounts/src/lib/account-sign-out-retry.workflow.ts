@@ -24,6 +24,31 @@ export interface SignOutRetryContext {
   session: MatrixSession | null;
 }
 
+/**
+ * End the account's remote session once. matrix-js-sdk 43's `logout()` revokes an
+ * OAuth-native session's tokens at its provider (and sends no `POST /logout`), and logs a
+ * password or SSO session out at the homeserver. Without a live client, a stored OAuth
+ * session is logged out through a detached client so its tokens are still revoked.
+ */
+export function remoteLogout(
+  context: SignOutRetryContext,
+  matrix: MatrixClientService,
+): Observable<unknown> {
+  return defer(() => {
+    const client =
+      context.client ??
+      (context.session?.oidc ? matrix.detachedClient(context.session) : null);
+    return client ? from(client.logout(true)) : of(void 0);
+  });
+}
+
+/** Where a failed {@link remoteLogout} is reported: the provider owns OAuth tokens. */
+export function remoteLogoutScope(
+  context: SignOutRetryContext,
+): AccountCleanupScope {
+  return context.providerExpected ? 'provider-session' : 'matrix-session';
+}
+
 /** Retains only the context required to retry settled, safe Account-removal residue. */
 @Injectable({ providedIn: 'root' })
 export class AccountSignOutRetryWorkflow {
@@ -95,22 +120,18 @@ export class AccountSignOutRetryWorkflow {
         ),
       );
     }
-    if (retryable.has('provider-session') && context.session?.oidc) {
+    const logoutScope = remoteLogoutScope(context);
+    // Without a client or a stored OAuth session there is nothing to log out with, and
+    // resolving the residue anyway would claim a revocation that never happened.
+    if (
+      retryable.has(logoutScope) &&
+      (context.client || context.session?.oidc)
+    ) {
       operations.push(
         this.retryStep(
           attempt,
-          this.lifecycle.revokeProviderSession(context.session),
-          'provider-session',
-          ACCOUNT_CLEANUP_STEP_BUDGET_MS.providerLogout,
-        ),
-      );
-    }
-    if (retryable.has('matrix-session') && context.client) {
-      operations.push(
-        this.retryStep(
-          attempt,
-          defer(() => from(context.client!.logout(true))),
-          'matrix-session',
+          remoteLogout(context, this.matrix),
+          logoutScope,
           ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixLogout,
         ),
       );

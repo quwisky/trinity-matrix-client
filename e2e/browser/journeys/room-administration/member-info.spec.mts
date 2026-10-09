@@ -143,6 +143,19 @@ test.describe('Member info panel', () => {
       .boundingBox();
     expect(headerBox?.height).toBe(34);
 
+    // The button recipe sets its own height (32px on a coarse pointer), and the windowing
+    // needs 44px at every breakpoint — so measure again on a phone-sized viewport.
+    const desktopViewport = page.viewportSize()!;
+    await page.setViewportSize({ width: 390, height: 844 });
+    // Becoming a drawer closes the remembered roster, in an effect after the resize — so
+    // wait for that rather than reading visibility before it has run.
+    await expect(page.locator('.chat-members')).toBeHidden();
+    await openMembers(page);
+    await memberRow.first().waitFor({ state: 'visible' });
+    expect((await memberRow.first().boundingBox())?.height).toBe(44);
+    await page.setViewportSize(desktopViewport);
+    await expect(page.locator('.chat-members')).toBeVisible();
+
     await memberRow.first().click();
 
     // The info panel opens with their name, id, role, and a Message action.

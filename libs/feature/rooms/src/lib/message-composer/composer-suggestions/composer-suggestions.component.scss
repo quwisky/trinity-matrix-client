@@ -51,6 +51,22 @@
     white-space: nowrap;
   }
 
+  .composer__mention-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .composer__mention-id {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-metadata-size);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   // The command's description, beside its name. Muted and pushed to the end, so the list reads
   // as a column of commands with an explanation rather than two columns of equal weight.
   .composer__slash-description {

@@ -9,7 +9,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { MockComponent, MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MessageSearchComponent } from './message-search.component';
 import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
@@ -46,14 +46,17 @@ describe('MessageSearchComponent', () => {
   let searchServerMessages: Mock;
   let loadMoreHistory: Mock;
 
-  async function build(state: LoadedMessageSearch): Promise<{
+  async function build(
+    state: LoadedMessageSearch,
+    extraInputs: { query?: string } = {},
+  ): Promise<{
     fixture: ComponentFixture<MessageSearchComponent>;
     container: HTMLElement;
     c: MessageSearchComponent;
   }> {
     searchLoadedMessages.mockReturnValue(state);
     const { fixture, container } = await render(MessageSearchComponent, {
-      inputs: { roomId: '!r:hs' },
+      inputs: { roomId: '!r:hs', ...extraInputs },
       on: {
         selected: (eventId: string) => selected.push(eventId),
         dismissed: () => {
@@ -105,6 +108,63 @@ describe('MessageSearchComponent', () => {
     expect(document.activeElement).toBe(query);
   });
 
+  it('does not grab focus while the header search field is being typed in', async () => {
+    const header = document.createElement('input');
+    header.type = 'search';
+    document.body.append(header);
+    header.focus();
+    try {
+      const { container } = await build(loaded(), { query: 'abc' });
+
+      const field =
+        container.querySelector<HTMLInputElement>('[data-autofocus]');
+      expect(field?.value).toBe('abc');
+      expect(document.activeElement).toBe(header);
+    } finally {
+      header.remove();
+    }
+  });
+
+  it('focuses its own field when reopened with a query from elsewhere', async () => {
+    const { container } = await build(loaded(), { query: 'abc' });
+
+    const field = container.querySelector<HTMLInputElement>('[data-autofocus]');
+    expect(field?.value).toBe('abc');
+    expect(document.activeElement).toBe(field);
+  });
+
+  it('drops server results when the bound query changes from outside', async () => {
+    const { fixture, c } = await build(loaded());
+    fixture.componentRef.setInput('query', 'hello');
+    fixture.detectChanges();
+    c.searchServer();
+    expect(c.serverMode()).toBe(true);
+
+    fixture.componentRef.setInput('query', 'hello w');
+    fixture.detectChanges();
+    expect(c.serverMode()).toBe(false);
+  });
+
+  it('shows a bound query in its field', async () => {
+    const { fixture, container } = await build(loaded());
+    fixture.componentRef.setInput('query', 'abc');
+    fixture.detectChanges();
+
+    const field = container.querySelector<HTMLInputElement>('[data-autofocus]');
+    expect(field?.value).toBe('abc');
+  });
+
+  it('writes typing back to the bound query model', async () => {
+    const { fixture, c } = await build(loaded());
+    const changes: string[] = [];
+    c.query.subscribe((value) => changes.push(value));
+    setQuery('typed', c);
+    fixture.detectChanges();
+
+    expect(c.query()).toBe('typed');
+    expect(changes).toEqual(['typed']);
+  });
+
   it('renders the loaded-timeline matches as result rows', async () => {
     const { container } = await build(
       loaded({ hits: [hit({ eventId: '$1' }), hit({ eventId: '$2' })] }),
@@ -134,8 +194,11 @@ describe('MessageSearchComponent', () => {
     setQuery('hello', c);
     fixture.detectChanges();
 
+    // The button belongs in the banner's action slot, not its text.
     expect(
-      container.querySelector('[data-testid="search-server"]'),
+      container
+        .querySelector('[data-testid="search-server"]')
+        ?.closest('.banner__actions'),
     ).toBeTruthy();
     expect(container.querySelector('[data-testid="e2ee-note"]')).toBeNull();
   });
@@ -200,6 +263,7 @@ describe('MessageSearchComponent', () => {
     );
     const { fixture, container, c } = await build(loaded({ encrypted: false }));
     setQuery('hello', c);
+    fixture.detectChanges(); // the query's own reset runs before the search is requested
 
     c.searchServer();
     fixture.detectChanges();
@@ -248,14 +312,82 @@ describe('MessageSearchComponent', () => {
         nextBatch: null,
       }),
     );
-    const { c } = await build(loaded({ hits: [hit({ eventId: '$loaded' })] }));
+    const { fixture, c } = await build(
+      loaded({ hits: [hit({ eventId: '$loaded' })] }),
+    );
     setQuery('hello', c);
+    fixture.detectChanges();
     c.searchServer();
     expect(c.serverMode()).toBe(true);
 
     setQuery('hell', c);
+    fixture.detectChanges();
 
     expect(c.serverMode()).toBe(false);
     expect(c.results().map((h) => h.eventId)).toEqual(['$loaded']);
+  });
+
+  describe('in-flight server searches', () => {
+    const page = (id: string, nextBatch: string | null = null) =>
+      ({
+        hits: [hit({ eventId: id })],
+        count: 1,
+        nextBatch,
+      }) as ServerMessageSearch;
+
+    it('never renders an older term that resolves after a newer search', async () => {
+      const foo = new Subject<ServerMessageSearch>();
+      const foob = new Subject<ServerMessageSearch>();
+      searchServerMessages.mockReturnValueOnce(foo).mockReturnValueOnce(foob);
+      const { fixture, c } = await build(loaded({ encrypted: false }));
+      setQuery('foo', c);
+      fixture.detectChanges();
+      c.searchServer();
+      setQuery('foob', c);
+      fixture.detectChanges();
+      c.searchServer();
+
+      foob.next(page('$foob'));
+      foo.next(page('$foo'));
+
+      expect(c.results().map((h) => h.eventId)).toEqual(['$foob']);
+    });
+
+    it('drops a result that lands after the query reset', async () => {
+      const foo = new Subject<ServerMessageSearch>();
+      searchServerMessages.mockReturnValueOnce(foo);
+      const { fixture, c } = await build(loaded({ encrypted: false }));
+      setQuery('foo', c);
+      fixture.detectChanges();
+      c.searchServer();
+      setQuery('fo', c);
+      fixture.detectChanges();
+
+      foo.next(page('$foo', 'b2'));
+
+      expect(c.serverMode()).toBe(false);
+      expect(c.serverNextBatch()).toBeNull();
+      expect(c.searching()).toBe(false);
+    });
+
+    it('drops a load-more page for a term that has since changed', async () => {
+      searchServerMessages.mockReturnValueOnce(of(page('$s1', 'b2')));
+      const more = new Subject<ServerMessageSearch>();
+      searchServerMessages.mockReturnValueOnce(more);
+      const { fixture, c } = await build(loaded({ encrypted: false }));
+      setQuery('foo', c);
+      fixture.detectChanges();
+      c.searchServer();
+      c.loadMoreServer();
+      setQuery('foob', c);
+      fixture.detectChanges();
+      searchServerMessages.mockReturnValueOnce(of(page('$new', null)));
+      c.searchServer();
+
+      more.next(page('$old-more', 'b9'));
+
+      expect(c.results().map((h) => h.eventId)).toEqual(['$new']);
+      expect(c.serverNextBatch()).toBeNull();
+    });
   });
 });
