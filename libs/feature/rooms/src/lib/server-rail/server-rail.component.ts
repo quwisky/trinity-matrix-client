@@ -126,7 +126,7 @@ export class ServerRailComponent {
   }
 
   overflowLabel(count: number): string {
-    return `${count} more unread chats in Recent activity`;
+    return `${count} more unread ${count === 1 ? 'chat' : 'chats'} in Recent activity`;
   }
 
   /** Whether the item shows the plain unread dot (unread without mentions). */

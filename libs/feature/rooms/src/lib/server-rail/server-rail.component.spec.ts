@@ -623,6 +623,85 @@ describe('unread chats', () => {
     expect(recent).toBe(true);
   });
 
+  it('names a single remaining chat in the singular', async () => {
+    await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: { entries: [unreadChat()], overflow: 1 },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    expect(
+      screen.getByRole('button', {
+        name: '1 more unread chat in Recent activity',
+      }),
+    ).toBeTruthy();
+  });
+
+  it('caps the +N text at +99 while the label keeps the real count', async () => {
+    const { fixture } = await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: { entries: [unreadChat()], overflow: 150 },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    expect(fixture.componentInstance.overflowText(150)).toBe('+99');
+    const more = screen.getByRole('button', {
+      name: '150 more unread chats in Recent activity',
+    });
+    expect(more.textContent?.trim()).toBe('+99');
+  });
+
+  it('draws +N as a 48px pill with its own text style', async () => {
+    const { container } = await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: { entries: [unreadChat()], overflow: 2 },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    const more = screen.getByTestId('rail-unread-overflow');
+    expect(more.classList.contains('size-12')).toBe(true);
+    // The label recipe's own height must be merged away, not just outranked.
+    expect(more.classList.contains('h-8')).toBe(false);
+    expect(more.querySelector('.overflow-text')?.textContent?.trim()).toBe(
+      '+2',
+    );
+    const css = readFileSync(
+      join(import.meta.dirname, 'server-rail.component.scss'),
+      'utf8',
+    );
+    expect(css).toMatch(/\.overflow-text\s*\{[^}]*font-size:[^}]*font-weight:/);
+    expect(container.querySelector('.pill.overflow')).toBe(more);
+  });
+
+  it('keeps room above the first scrolling row inside the scroller', () => {
+    const css = readFileSync(
+      join(import.meta.dirname, 'server-rail.component.scss'),
+      'utf8',
+    );
+    // Every rule whose selector list names the class, so grouped selectors count too.
+    const body = (selector: string) =>
+      [
+        ...css.matchAll(
+          new RegExp(
+            `\\n  [^\\n{}]*${selector}\\s*\\{([\\s\\S]*?)\\n  \\}`,
+            'g',
+          ),
+        ),
+      ]
+        .map((m) => m[1])
+        .join('\n');
+    expect(body('\\.rail-scroll')).toMatch(
+      /padding-block:\s*var\(--trinity-density-shell-gap\)/,
+    );
+    expect(body('\\.rail-scroll')).toContain(
+      'scroll-padding-block-start: var(--trinity-density-shell-gap)',
+    );
+    expect(body('\\.rail-fixed')).not.toContain('padding-block-end');
+  });
+
   it('renders no section without unread chats', async () => {
     const { container } = await render(ServerRailComponent, {
       imports: [MockComponent(AvatarComponent)],

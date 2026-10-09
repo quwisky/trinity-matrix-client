@@ -143,14 +143,16 @@
               trnBtn
               presentation="ghost"
               variant="secondary"
-              class="pill overflow"
+              class="pill overflow size-12"
               (click)="showRecent.emit()"
               [attr.aria-label]="overflowLabel(chats.overflow)"
               [trnTooltip]="overflowLabel(chats.overflow)"
               position="right"
               data-testid="rail-unread-overflow"
             >
-              {{ overflowText(chats.overflow) }}
+              <span class="overflow-text">{{
+                overflowText(chats.overflow)
+              }}</span>
             </button>
           </div>
         }
