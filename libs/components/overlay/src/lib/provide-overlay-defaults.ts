@@ -1,8 +1,11 @@
 import { OVERLAY_DEFAULT_CONFIG } from '@angular/cdk/overlay';
 import {
   type EnvironmentProviders,
+  inject,
   makeEnvironmentProviders,
+  provideEnvironmentInitializer,
 } from '@angular/core';
+import { TrnDialogOpenerService } from './dialog/trn-dialog-opener.service';
 
 /**
  * CDK overlay defaults for Trinity.
@@ -17,6 +20,9 @@ import {
  * generated kit ships an equivalent `provideSpartanHlm()` in `@trinity/helm/utils`; that one
  * stays untouched so a `@spartan-ng/cli` re-sync has nothing to reconcile, and is simply not
  * the one the app calls.
+ *
+ * It also starts {@link TrnDialogOpenerService} with the app, so the press that opens the
+ * first dialog is already seen.
  */
 export function provideTrnOverlayDefaults(): EnvironmentProviders {
   return makeEnvironmentProviders([
@@ -24,5 +30,6 @@ export function provideTrnOverlayDefaults(): EnvironmentProviders {
       provide: OVERLAY_DEFAULT_CONFIG,
       useValue: { usePopover: false },
     },
+    provideEnvironmentInitializer(() => inject(TrnDialogOpenerService)),
   ]);
 }
