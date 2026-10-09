@@ -50,4 +50,18 @@ describe("resolveWorkspaceNavigation — 'rail-unread'", () => {
       pane: 'conversation',
     });
   });
+
+  it('opens over the compact list page, so Back returns to the list', () => {
+    const resolved = resolveWorkspaceNavigation(
+      {
+        kind: 'room',
+        accountId: '@a:hs',
+        roomId: '!chat:hs',
+        origin: 'rail-unread',
+      },
+      view({ pane: 'list' }),
+      { listBelow: false, compact: true },
+    );
+    expect(resolved?.options.overList).toBe(true);
+  });
 });
