@@ -36,7 +36,9 @@
     flex: 1;
     min-width: 0;
     align-items: center;
-    gap: var(--trinity-space-2);
+
+    // Same avatar-to-text gap the row had before the open button wrapped them.
+    gap: var(--trinity-space-3);
     padding: 0;
     color: inherit;
     text-align: start;
