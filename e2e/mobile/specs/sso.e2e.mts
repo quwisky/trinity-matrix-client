@@ -116,10 +116,16 @@ async function answerDexInSafariView(
   await $(
     '-ios predicate string:type == "XCUIElementTypeTextField" AND (label CONTAINS[c] "email" OR placeholderValue CONTAINS[c] "email")',
   ).addValue(email);
-  // Return submits Dex's form: the keyboard's accessory bar can cover the Login button.
   await $(
     '-ios predicate string:type == "XCUIElementTypeSecureTextField" AND label CONTAINS[c] "password"',
-  ).addValue(`${pass}\n`);
+  ).addValue(pass);
+  // The keyboard's own Go key submits Dex's form; its accessory bar can cover the Login
+  // button. A typed "\n" submits on iOS 27 but not on iOS 26.5, where the form stayed put.
+  const go = $(
+    '-ios predicate string:type == "XCUIElementTypeButton" AND (name ==[c] "go" OR name ==[c] "return")',
+  );
+  if (await go.isExisting()) await go.click();
+  else await login.click();
   await describeScreen('submitted', started);
   // The app closes the Safari view once the callback arrives; until then its WebView sits
   // behind it, and reading the app page can stall. Dex's button leaving is not enough (its
