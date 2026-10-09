@@ -173,8 +173,15 @@ describe('Nightly Synapse workflow', () => {
     expect(commands(jobs.mas)).toContain(
       '--timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e -- accounts/mas-session.spec.mts',
     );
-    // The full browser job stays MAS-free: it already runs close to its command budget.
+    // The Synapse browser shards stay MAS-free: the MAS stack is opt-in and has its own job.
     expect(jobs.browser.env?.TRINITY_E2E_MAS).toBeUndefined();
+  });
+
+  it('runs the browser journeys as three shards', () => {
+    const { jobs } = workflow();
+    const step = jobs.browser.steps.find((entry) => entry.id === 'browser');
+    expect(jobs.browser.strategy.matrix.shard).toEqual([1, 2, 3]);
+    expect(step.env.TRINITY_E2E_SHARD).toBe('${{ matrix.shard }}/3');
   });
 });
 
