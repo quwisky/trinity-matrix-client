@@ -1,7 +1,17 @@
 /** Release packaging must not ship a half-signed macOS app. */
 import { spawnSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { parse } from 'yaml';
 
 const root = resolve(import.meta.dirname, '..');
@@ -20,6 +30,8 @@ const SECRETS = [
 /** Every signing credential name, including Windows names that are not wired up yet. */
 const SIGNING_SECRETS = [...SECRETS, 'WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD'];
 const signJob = () => workflow.jobs['sign-mac'];
+const copyStep = () =>
+  signJob().steps.find((step) => step.name === 'Copy the built shell');
 const macLeg = () =>
   workflow.jobs.package.strategy.matrix.include.find(
     (leg) => leg.platform === 'mac',
@@ -156,7 +168,74 @@ describe('macOS signing isolation', () => {
     const download = job.steps.find((s) =>
       s.uses?.startsWith('actions/download-artifact@'),
     );
-    expect(download.with).toEqual({ name: leg.artifact, path: 'electron' });
+    // Outside the checkout, so the artifact cannot land on electron-builder's config,
+    // its afterPack hook or node_modules.
+    expect(download.with).toEqual({
+      name: leg.artifact,
+      path: '${{ runner.temp }}/desktop-shell',
+    });
+    const steps = job.steps;
+    const copy = steps.indexOf(copyStep());
+    expect(copy).toBeGreaterThan(steps.indexOf(download));
+    expect(copy).toBeLessThan(
+      steps.findIndex((s) => s.name === 'electron-builder --mac'),
+    );
+    expect(copyStep().env.SHELL_DIR).toBe(download.with.path);
+  });
+
+  describe('copying the built shell into the checkout', () => {
+    let work;
+    beforeEach(() => {
+      work = mkdtempSync(join(tmpdir(), 'desktop-shell-'));
+      mkdirSync(join(work, 'artifact'));
+      mkdirSync(join(work, 'checkout', 'electron'), { recursive: true });
+    });
+    afterEach(() => rmSync(work, { recursive: true, force: true }));
+
+    const artifact = (path, text = 'x') => {
+      mkdirSync(dirname(join(work, 'artifact', path)), { recursive: true });
+      writeFileSync(join(work, 'artifact', path), text);
+    };
+    const copyShell = () =>
+      spawnSync('bash', ['-e', '-c', copyStep().run], {
+        cwd: join(work, 'checkout'),
+        env: { PATH: process.env.PATH, SHELL_DIR: join(work, 'artifact') },
+      }).status;
+    const copied = (path) => existsSync(join(work, 'checkout/electron', path));
+
+    it('copies dist and www', () => {
+      artifact('dist/main.js');
+      artifact('www/index.html');
+      expect(copyShell()).toBe(0);
+      expect(copied('dist/main.js')).toBe(true);
+      expect(copied('www/index.html')).toBe(true);
+    });
+
+    it.each(['electron-builder.yml', 'afterPack.cjs', 'node_modules/x.js'])(
+      'refuses an artifact that also carries %s',
+      (extra) => {
+        artifact('dist/main.js');
+        artifact('www/index.html');
+        artifact(extra);
+        expect(copyShell()).not.toBe(0);
+        expect(copied('dist')).toBe(false);
+        expect(copied(extra)).toBe(false);
+      },
+    );
+
+    it('refuses an artifact without both directories', () => {
+      artifact('dist/main.js');
+      expect(copyShell()).not.toBe(0);
+      expect(copied('dist')).toBe(false);
+    });
+
+    it('refuses an artifact holding a symbolic link', () => {
+      artifact('dist/main.js');
+      artifact('www/index.html');
+      symlinkSync('../../afterPack.cjs', join(work, 'artifact/www/hook.cjs'));
+      expect(copyShell()).not.toBe(0);
+      expect(copied('www')).toBe(false);
+    });
   });
 
   it('packages and uploads the macOS installers under the name the draft collects', () => {

@@ -334,10 +334,27 @@ jobs:
           node-version-file: .nvmrc
       # electron-builder from the shell's lockfile; no package's install script runs.
       - run: pnpm -C electron install --frozen-lockfile --ignore-scripts
+      # Outside the checkout, so the artifact can never land on electron-builder.yml,
+      # afterPack.cjs or node_modules, which the signing step loads.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: desktop-shell-mac
-          path: electron
+          path: ${{ runner.temp }}/desktop-shell
+      - name: Copy the built shell
+        env:
+          SHELL_DIR: ${{ runner.temp }}/desktop-shell
+        run: |
+          # Exactly the two build directories and no symbolic link, or nothing is copied.
+          entries=$(find "$SHELL_DIR" -mindepth 1 -maxdepth 1 -exec basename {} \; | sort | paste -s -d ' ' -)
+          if [ "$entries" != 'dist www' ] || [ ! -d "$SHELL_DIR/dist" ] || [ ! -d "$SHELL_DIR/www" ]; then
+            echo "::error::The desktop shell artifact must hold exactly dist and www; it holds: $entries"
+            exit 1
+          fi
+          if [ -n "$(find "$SHELL_DIR" -type l)" ]; then
+            echo '::error::The desktop shell artifact holds a symbolic link.'
+            exit 1
+          fi
+          cp -R "$SHELL_DIR/dist" "$SHELL_DIR/www" electron/
 
       # Half a signing setup yields an app that is signed but not notarized, or the
       # reverse; Gatekeeper and the Homebrew tap reject both. All five or none.
