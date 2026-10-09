@@ -480,6 +480,13 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
       'spaces the importing account may not have joined.',
   },
 
+  // — data-access/room-library, exported —
+  {
+    disposition: 'exported',
+    key: 'trinity.rail.unread-chats',
+    owner: 'data-access/room-library',
+  },
+
   // — runtime/projection —
   {
     disposition: 'excluded',

@@ -18,6 +18,7 @@ import {
   type StoredPreference,
 } from '@trinity/runtime/preferences';
 import { Observable, defer, of } from 'rxjs';
+import { RAIL_UNREAD_CHATS_PREFERENCE } from './rail-unread-chats.preference';
 
 /** Persisted set of account ids the user has opted into mixing. */
 const SCOPE_KEY = 'trinity.accounts.mixed';
@@ -46,9 +47,12 @@ const ACCOUNT_SCOPE_PREFERENCE = definePreference({
   validate: validateAccountIds,
 } satisfies PreferenceDescriptor<AccountScopePreference>);
 
-/** Contributes Room Library's selection policy to the application preference catalog. */
+/** Contributes Room Library's selection and space-rail policy to the application preference catalog. */
 export function provideRoomLibraryPreferences(): EnvironmentProviders {
-  return providePreferenceDescriptors(() => [ACCOUNT_SCOPE_PREFERENCE]);
+  return providePreferenceDescriptors(() => [
+    ACCOUNT_SCOPE_PREFERENCE,
+    RAIL_UNREAD_CHATS_PREFERENCE,
+  ]);
 }
 
 /** Whether two id sets hold the same members (order-independent). */
