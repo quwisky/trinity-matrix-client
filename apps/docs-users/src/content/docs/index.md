@@ -3,7 +3,7 @@ title: Install Trinity
 description: Install Trinity on macOS, Windows or Linux, or self-host the web app.
 audience: user
 contentChannel: release
-productVersion: '0.2.0' # x-release-please-version
+productVersion: '0.3.0' # x-release-please-version
 canonicalTopic: user-home
 pageType: how-to
 platforms: [web, desktop]
@@ -11,7 +11,7 @@ platforms: [web, desktop]
 
 <!-- x-release-please-start-version -->
 
-Trinity is an end-to-end encrypted [Matrix](https://matrix.org) client. Release 0.2.0 is
+Trinity is an end-to-end encrypted [Matrix](https://matrix.org) client. Release 0.3.0 is
 available for macOS, Windows and Linux, and as a self-hostable web app (PWA). Android and
 iOS apps are still in development.
 
@@ -43,14 +43,14 @@ the sandbox they rely on.
 On Debian and Ubuntu:
 
 ```bash
-sudo apt install ./trinity-desktop_0.2.0_amd64.deb
+sudo apt install ./trinity-desktop_0.3.0_amd64.deb
 ```
 
 With the AppImage:
 
 ```bash
-chmod +x Trinity-0.2.0.AppImage
-./Trinity-0.2.0.AppImage
+chmod +x Trinity-0.3.0.AppImage
+./Trinity-0.3.0.AppImage
 ```
 
 ## Web {#web}
@@ -62,7 +62,7 @@ docker run -d -p 8080:8080 ghcr.io/quwisky/trinity-web:latest
 ```
 
 Then open `http://localhost:8080`. You can also serve the static files from
-`Trinity-Web-0.2.0.zip` with any web server. For HTTPS, headers and updates, see
+`Trinity-Web-0.3.0.zip` with any web server. For HTTPS, headers and updates, see
 [Self-host a release](/trinity-matrix-client/developers/platforms/web-and-pwa/#self-host-release)
 in the developer guide.
 
