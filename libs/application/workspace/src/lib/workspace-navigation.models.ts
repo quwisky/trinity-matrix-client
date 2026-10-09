@@ -14,7 +14,8 @@ export type WorkspaceRoomNavigationOrigin =
   | 'direct-invitation'
   | 'room-invitation'
   | 'global-search'
-  | 'deep-link';
+  | 'deep-link'
+  | /** A chat with new messages picked from the space rail, possibly on another Account. */ 'rail-unread';
 
 /** Product intent for opening one exact Room. */
 export interface WorkspaceRoomNavigationIntent {
