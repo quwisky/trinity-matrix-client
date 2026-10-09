@@ -3,7 +3,10 @@ import { TestBed } from '@angular/core/testing';
 import { AppearancePreferences } from '@trinity/application/appearance';
 import { GifSettingsService } from '@trinity/data-access/gif';
 import { PushGatewayService } from '@trinity/data-access/notifications';
-import { AccountScopeService } from '@trinity/data-access/room-library';
+import {
+  AccountScopeService,
+  RailUnreadChatsPreference,
+} from '@trinity/data-access/room-library';
 import {
   DateTimeFormatService,
   FeatureFlagsService,
@@ -55,6 +58,13 @@ describe('TrinityPreferenceStartupSources', () => {
           provide: AccountScopeService,
           useValue: { init: () => of({ kind: 'ready' as const }) },
         },
+        {
+          provide: RailUnreadChatsPreference,
+          useValue: {
+            init: () =>
+              of({ kind: 'partial' as const, hydrated: 0, failures: [] }),
+          },
+        },
         { provide: PushGatewayService, useValue: push },
       ],
     });
@@ -78,6 +88,20 @@ describe('TrinityPreferenceStartupSources', () => {
       kind: 'defaulted',
       code: 'feature-flags-stored-value-invalid',
     });
+  });
+
+  it('reports a partial space-rail hydration as defaulted with a recovery', async () => {
+    const sources = TestBed.inject(TrinityPreferenceStartupSources).sources();
+
+    const evidence = await firstValueFrom(sources['rail-unread']());
+
+    expect(evidence).toMatchObject({
+      kind: 'defaulted',
+      code: 'rail-unread-preference-hydration-partial',
+    });
+    expect(evidence.kind === 'defaulted' && typeof evidence.recover).toBe(
+      'function',
+    );
   });
 
   it('retires push-gateway hydration when the host disables push', async () => {

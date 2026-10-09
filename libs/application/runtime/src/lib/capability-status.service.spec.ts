@@ -76,6 +76,7 @@ describe('CapabilityStatusService', () => {
         'preferences:hydrate-gifs',
         'preferences:hydrate-privacy',
         'preferences:hydrate-push-gateway',
+        'preferences:hydrate-rail-unread',
         'preferences:hydrate-shell-layout',
         'preferences:hydrate-shortcuts',
         'preferences:hydrate-system-lines',
