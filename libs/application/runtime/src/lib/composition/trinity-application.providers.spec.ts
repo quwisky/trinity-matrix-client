@@ -1,5 +1,6 @@
 import { APPEARANCE_PREFERENCE_DESCRIPTORS } from '@trinity/application/appearance';
 import { PRIVACY_PREFERENCE_DESCRIPTORS } from '@trinity/data-access/timeline';
+import { RAIL_UNREAD_CHATS_PREFERENCE } from '@trinity/data-access/room-library';
 import { exportedKeysFor } from '@trinity/platform-native';
 import { describe, expect, it } from 'vitest';
 
@@ -29,5 +30,16 @@ describe('Trinity application provider composition', () => {
       .sort();
 
     expect(descriptorKeys).toEqual(exportedPrivacyKeys);
+  });
+
+  it('pins portable Room Library descriptors to the Advanced config ledger', () => {
+    const descriptorKeys = [RAIL_UNREAD_CHATS_PREFERENCE]
+      .filter((descriptor) => descriptor.export === 'portable')
+      .map((descriptor) => descriptor.persistence.key)
+      .sort();
+
+    expect(descriptorKeys).toEqual(
+      [...exportedKeysFor('data-access/room-library')].sort(),
+    );
   });
 });

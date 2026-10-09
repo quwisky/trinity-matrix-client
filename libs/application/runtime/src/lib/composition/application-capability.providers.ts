@@ -43,6 +43,7 @@ import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
   ROOM_LIST_STYLE,
   type RoomLibraryGovernancePolicy,
+  provideRoomLibraryConfigEntries,
   provideRoomLibraryPreferences,
 } from '@trinity/data-access/room-library';
 import {
@@ -216,6 +217,7 @@ export function applicationCapabilityProviders(
     },
     providePlatformConfigEntries(),
     provideGifConfigEntries(),
+    provideRoomLibraryConfigEntries(),
     providePushConfigEntries(),
     { provide: PUSH_CONFIG, useValue: options.pushConfig },
     { provide: BUILD_INFO, useValue: options.buildInfo },

@@ -6,6 +6,7 @@ export * from './lib/space-child-order';
 export * from './lib/room-projection';
 export * from './lib/account-scope.service';
 export * from './lib/rail-unread-chats.preference';
+export * from './lib/room-library-config-entries';
 export * from './lib/space-room-order.service';
 export * from './lib/unread-aggregator.service';
 export * from './lib/invites.service';
