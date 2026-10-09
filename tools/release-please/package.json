@@ -1,0 +1,8 @@
+{
+  "name": "trinity-release-please",
+  "private": true,
+  "description": "The release-please CLI that release.yml runs, locked by this folder's own lockfile.",
+  "devDependencies": {
+    "release-please": "17.11.2"
+  }
+}

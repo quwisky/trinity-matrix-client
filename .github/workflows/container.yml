@@ -22,17 +22,21 @@ permissions:
   contents: read
 
 jobs:
-  image:
-    name: Publish the web image
+  # Verifies, smoke-tests and stages the image with a read-only token. This job installs and
+  # runs the workspace's dependencies, so the registry token stays in publish below.
+  build:
+    name: Build and smoke-test the web image
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: read
-      packages: write
     env:
-      IMAGE: ghcr.io/quwisky/trinity-web
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      names: ${{ steps.stage.outputs.names }}
+      revision: ${{ steps.stage.outputs.revision }}
     steps:
       - id: release
         name: Resolve the release
@@ -86,17 +90,10 @@ jobs:
       # Builds the amd64 image locally and proves the HTTP, routing and offline PWA contract.
       - run: pnpm nx run trinity-web-container:smoke
 
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-
-      - name: Push linux/amd64 and linux/arm64
+      - id: stage
+        name: Stage the image context and its tags
         env:
           TAG: ${{ steps.release.outputs.tag }}
-          VERSION: ${{ steps.release.outputs.version }}
         run: |
           # Every published release, so an old stable never falls out of the comparison.
           PUBLISHED_TAGS=$(gh api --paginate "repos/$GH_REPO/releases" --jq '.[] | select(.draft | not) | .tag_name')
@@ -108,9 +105,54 @@ jobs:
             echo "::error::No image tags computed for $TAG."
             exit 1
           fi
+          node scripts/web-container.mjs stage dist/web-image-context
+          # A tarball keeps the file modes the stage step set; the Dockerfile copies them as is.
+          tar -cf dist/web-image-context.tar -C dist web-image-context
+          {
+            echo "names=${names[*]}"
+            echo "revision=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-image-context
+          path: dist/web-image-context.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  # The only job with the registry token. It installs nothing and runs no repository code:
+  # Buildx pushes the context build verified and staged.
+  publish:
+    name: Publish the web image
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      packages: write
+    env:
+      IMAGE: ghcr.io/quwisky/trinity-web
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-image-context
+          path: dist
+      - run: tar -xf dist/web-image-context.tar -C dist
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Push linux/amd64 and linux/arm64
+        env:
+          NAMES: ${{ needs.build.outputs.names }}
+          VERSION: ${{ needs.build.outputs.version }}
+          REVISION: ${{ needs.build.outputs.revision }}
+        run: |
+          read -ra names <<< "$NAMES"
           tags=()
           for name in "${names[@]}"; do tags+=(--tag "$IMAGE:$name"); done
-          node scripts/web-container.mjs stage dist/web-image-context
           # The Dockerfile only copies files onto a multi-arch base, so no emulation is needed.
           # GHCR links a multi-arch package to this repository from the index annotations,
           # not the per-platform labels.
@@ -118,7 +160,7 @@ jobs:
             --platform linux/amd64,linux/arm64 \
             "${tags[@]}" \
             --label org.opencontainers.image.version="$VERSION" \
-            --label org.opencontainers.image.revision="$(git rev-parse HEAD)" \
+            --label org.opencontainers.image.revision="$REVISION" \
             --label org.opencontainers.image.source="https://github.com/$GITHUB_REPOSITORY" \
             --label org.opencontainers.image.created="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --annotation "index:org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \

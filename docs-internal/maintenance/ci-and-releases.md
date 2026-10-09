@@ -77,7 +77,8 @@ the same site without uploading or deploying a Pages artifact.
 CI validation jobs and release verification/package jobs use the shared
 [setup action](../../.github/actions/setup/action.yml). Renovate uses its own App-token
 and container-action setup; the draft-release job consumes artifacts without installing
-the workspace.
+the workspace, and the macOS signing job installs only `electron/`'s lockfile, with
+`--ignore-scripts`.
 It installs pinned pnpm before Node because Node's pnpm cache lookup invokes pnpm.
 The pnpm version comes from `packageManager`; Node follows `.nvmrc`; and installation
 uses a frozen lockfile. A dependency or lockfile mismatch therefore fails at setup,
@@ -211,9 +212,10 @@ Electron package licenses remain MIT, with matching OCI metadata and preserved t
 notices. Releases publish it: `release.yml`'s `package-web` job attaches `Trinity-Web-<version>.zip`
 (the verified renderer, `LICENSE` and its web-bundle manifest) to the draft, and
 [`container.yml`](../../.github/workflows/container.yml) runs when the release is published. It
-verifies that zip against the tag commit, runs `trinity-web-container:smoke`, then pushes
-`linux/amd64` and `linux/arm64` to `ghcr.io/quwisky/trinity-web` with `X.Y.Z`, `X.Y` and `latest`
-(stable) or `X.Y.Z-next.N` and `next` (prerelease). Moving tags only follow the newest release on
+verifies that zip against the tag commit, runs `trinity-web-container:smoke` and stages the
+image context with a read-only token. Its `publish` job, the only one with the registry token,
+installs nothing and pushes that context as `linux/amd64` and `linux/arm64` to
+`ghcr.io/quwisky/trinity-web` with `X.Y.Z`, `X.Y` and `latest` (stable) or `X.Y.Z-next.N` and `next` (prerelease). Moving tags only follow the newest release on
 their line. To republish, run the Container workflow with the tag; recovery for a cancelled run or a
 missing zip is under [Recover a release run](#recover-a-release-run).
 
@@ -238,7 +240,11 @@ from the Conventional Commits since the last release. Release PRs on both lines 
 `release: cut the vX.Y.Z release` (`pull-request-title-pattern` in both configs), and
 release PRs merge as a squash, which keeps that title as the commit; commitlint allows the `release` type. Merging the release PR bumps
 `package.json`, `electron/package.json` and the manifest, and release-please then
-tags the squash commit and creates a **draft** GitHub release. The same workflow run
+tags the squash commit and creates a **draft** GitHub release. release-please works with
+the release App's token, so the App opens and updates the release PRs, which run
+pull-request CI like any other PR, and creates the tags and draft releases; the workflow
+token in that job is read-only. No workflow listens for tag pushes or draft creation, and
+no workflow script creates or moves a tag. The same workflow run
 verifies the tag and attaches the desktop packages to that draft. The `publish`
 job then publishes it once every package is attached; see
 [Automatic publishing](#automatic-publishing).
@@ -261,7 +267,8 @@ to cut the same version twice.
    branch. While the branch has no stable `vX.Y.*` tag in its history,
    [`scripts/release-version.mjs`](../../scripts/release-version.mjs) takes the newest
    `vX.Y.Z-next.N` tag reachable from it and the `Release PR and tag` job runs the
-   release-please CLI (pinned to `17.11.2`) with `--release-as X.Y.Z`, which opens the
+   release-please CLI (locked by `tools/release-please/pnpm-lock.yaml` and installed with
+   `--ignore-scripts`) with `--release-as X.Y.Z`, which opens the
    stable release PR with version `X.Y.Z`, so stable ships exactly the tested code. The
    action then only tags and releases. Every later push before the release (a fix merged
    first, say) keeps the PR at `X.Y.Z` the same way. Once `vX.Y.Z` is tagged, the job runs the action alone and the stable config's
@@ -299,13 +306,16 @@ It pushes with the release App's installation token, not `GITHUB_TOKEN`: pushes 
 `GITHUB_TOKEN` trigger no workflows, so `release.yml` would never run on the new branch.
 The release App is a GitHub App (for example "Trinity Release") installed only on this
 repository with Contents, Pull requests and Issues: read & write (labels and pull request
-comments use the issues API). Its
+comments use the issues API). Each job mints its token with `permission-*` inputs for only the
+scopes it writes with: Contents for `publish` and `land-back-merge.yml`, Contents and Pull
+requests for `release-please`, `back-merge` and `backport.yml` (release-please's labels and
+comment go on the release PR itself), and Contents and Issues for `cut`. Its
 `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret live in the
 `release-app` environment, whose deployment branch policy allows `main` and `release/**`;
-the jobs that mint the token (`back-merge` and `publish` in `release.yml`, `cut` in
+the jobs that mint the token (`release-please`, `back-merge` and `publish` in `release.yml`, `cut` in
 `release-stable.yml`, `backport.yml` and `land-back-merge.yml`) declare `environment: release-app`. Give
-`release-app` no required reviewers: they would stall every cut, publish, back-merge and
-backport. Reviewers belong on `release`, where they gate packaging only. The release App, not
+`release-app` no required reviewers: they would stall every release PR, cut, publish, back-merge and
+backport. Reviewers belong on `release`, where they gate macOS signing only. The release App, not
 Renovate, is the only bypass actor for `release/**` in the ruleset, and it is a bypass actor
 on `main`'s ruleset so it can push back-merge commits. Renovate keeps its
 own App and credentials.
@@ -483,8 +493,8 @@ run release-please.
    Make the release App, not Renovate, the only bypass actor for `release/**`.
 6. Change the deployment rules of the environments: `github-pages`, `homebrew` and `apt`
    (if present) to `main`, plus `release/**` where a job runs from a release tag. The
-   `release` environment, which gates packaging in `release.yml`, must allow `main` and
-   `release/**`; it may have required reviewers, which gate packaging only.
+   `release` environment, which gates macOS signing in `release.yml`, must allow `main` and
+   `release/**`; it may have required reviewers, which gate that job only.
 7. Update each local clone:
 
    ```bash
@@ -557,12 +567,15 @@ change before merging the release PR, following [testing](../../apps/docs-develo
 ## Package and review the draft
 
 After verification, the package matrix builds the desktop shell with publishing
-disabled. It uploads these artifacts for 30 days:
+disabled and without any signing secret, and packages the Linux and Windows installers. The
+`desktop-shell` job builds the same compiled shell and renderer on Linux, and the `sign-mac`
+job packages, signs and notarizes it for macOS without waiting for the matrix. The jobs
+upload these artifacts for 30 days:
 
 | Host    | Current artifacts                                                             | Distribution boundary                                                                                                                                                    |
 | ------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Linux   | AppImage and `.deb`                                                           | The workflow packages them; it does not publish them to a download service.                                                                                              |
-| macOS   | `.dmg` and `.zip`, using the current `macos-26` runner's default architecture | Signing and notarization depend on configured credentials. Verify the archive architecture before merging the release PR; `publish` only checks that assets are present. |
+| macOS   | `.dmg` and `.zip` from `sign-mac`, using the `macos-26` runner's default arch | Signing and notarization depend on configured credentials. Verify the archive architecture before merging the release PR; `publish` only checks that assets are present. |
 | Windows | NSIS `.exe`                                                                   | The workflow packages the installer; distribution remains a maintainer action.                                                                                           |
 | Web     | `Trinity-Web-<version>.zip` from the `package-web` job                        | Publishing the release runs `container.yml`, which pushes the image built from this zip to GHCR.                                                                         |
 
@@ -580,19 +593,31 @@ stores, or check signing status for you.
 
 ### Signing and notarization
 
-The package jobs use the GitHub `release` environment, which holds the signing secrets.
-Its presence in YAML does not prove that required reviewers or environment protections
-are configured; maintainers must check the repository settings before relying on them.
-Reviewers on `release` gate packaging only: the release App jobs run in `release-app`.
+Only the `sign-mac` job reads the signing secrets, and only it uses the GitHub `release`
+environment. It installs `electron/`'s own lockfile with `--ignore-scripts` and runs
+electron-builder, with its `afterPack` hook, on the shell the `desktop-shell` job built. It
+downloads that artifact outside the checkout and copies only `dist` and `www` into `electron/`,
+failing if the artifact holds anything else or a symbolic link. No workspace install, Nx or
+renderer build runs next to the certificate. electron-builder signs and notarizes only while it
+packs, never a `--prepackaged` app, which is why the packing moved into this job.
+`scripts/release-workflow.spec.mjs` keeps every signing secret name out of all other jobs.
+Store the signing secrets in the `release` environment rather than as repository secrets, so
+no other job can read them.
+
+The environment's presence in YAML does not prove that required reviewers or environment
+protections are configured; maintainers must check the repository settings before relying
+on them. Reviewers on `release` gate macOS signing only: the release App jobs run in
+`release-app`.
 
 The workflow recognizes these secret names only:
 
 - macOS signing: `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`
-- Windows signing: `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`
 - macOS Apple ID notarization: `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`,
   `APPLE_TEAM_ID`
 
-Without the applicable credentials, packaging can produce unsigned artifacts.
+Without them, `sign-mac` produces unsigned macOS artifacts. Windows signing is not wired
+up: the Windows leg builds without credentials, and adding them needs a signing job like
+`sign-mac`.
 
 An unsigned Windows installer may be published. Windows SmartScreen shows
 "Windows protected your PC" until the user chooses **More info → Run anyway**,
@@ -639,9 +664,9 @@ commit predates `homebrew.yml` never triggers it; dispatch it from `main` instea
 
 1. Join the Apple Developer Program, create a **Developer ID Application**
    certificate, export it as `.p12`, and create an app-specific password. Set the
-   secrets `MAC_CSC_LINK` (base64 of the `.p12`), `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`,
-   `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`. `release.yml` fails the macOS
-   build when only some of them are set.
+   `release` environment secrets `MAC_CSC_LINK` (base64 of the `.p12`),
+   `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`.
+   `release.yml` fails the macOS signing job when only some of them are set.
 2. Create the public repository `quwisky/homebrew-trinity` **with an initial commit**
    (a README is enough); checkout and push fail on an empty repository.
 3. Create the environment `homebrew` in this repository. Under deployment branches
@@ -689,9 +714,10 @@ re-run is reproducible by hash alone.
 
 Renovate runs daily at 00:00 UTC and can be manually dispatched with a dry-run
 and log-level choice. It reads [`.github/renovate.json`](../../.github/renovate.json)
-and authenticates with the `RENOVATE_APP_CLIENT_ID` repository variable and
-`RENOVATE_APP_PRIVATE_KEY` secret. Those names identify setup inputs only; never
-copy their values into a ticket or log.
+and authenticates with the `RENOVATE_APP_CLIENT_ID` repository variable and the
+`RENOVATE_APP_PRIVATE_KEY` secret of the `renovate` environment, which deploys from `main`
+only; `scripts/renovate-config.spec.mjs` keeps every other job from reading the key. Those
+names identify setup inputs only; never copy their values into a ticket or log.
 
 The workflow uses a GitHub App token instead of the default workflow token so
 the update pull requests can start CI. Its health check requires a completed
@@ -705,14 +731,15 @@ The committed [Renovate policy](../../.github/renovate.json) applies a
 three-day minimum release age before its exceptions. Use this table when
 reviewing an update branch or diagnosing why it did not merge.
 
-| Update                        | Current behavior                                                                                                                                                                     | Maintainer action                                                                                                                |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| Ordinary non-patch dependency | Waits for Dependency Dashboard approval and opens a pull request.                                                                                                                    | Approve the dashboard entry, then review CI.                                                                                     |
-| Patch dependency              | After the three-day age, Renovate uses branch automerge and rebases behind `main`; it waits for CI on `renovate/patch-*`. A failed or 24-hour-pending branch becomes a pull request. | Keep the narrow `ci.yml` push trigger for `renovate/patch-**`; without it, patch automerge silently falls back to pull requests. |
-| Security advisory             | Bypasses the age and dashboard gate, keeps a pull request, and can automerge after CI.                                                                                               | Review the advisory and its labeled pull request; it intentionally does not use the patch-branch path.                           |
-| GitHub Actions digest         | Stays behind dashboard approval and does not patch-automerge.                                                                                                                        | Review the changed pinned action digest before approval.                                                                         |
-| Native platform dependency    | Stays behind dashboard approval.                                                                                                                                                     | Use the evidence described in the developer native platform guides before approval.                                              |
-| TypeScript                    | Moves root and `electron/` manifests together in the `typescript` group, pinned below `6.1.0` for Angular 22's compiler window.                                                      | Widen that bound deliberately with an Angular upgrade; do not split the Electron version.                                        |
+| Update                        | Current behavior                                                                                                                                                                                                                                                                                                                                           | Maintainer action                                                                                                                |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Ordinary non-patch dependency | Waits for Dependency Dashboard approval and opens a pull request.                                                                                                                                                                                                                                                                                          | Approve the dashboard entry, then review CI.                                                                                     |
+| Patch dependency              | After the three-day age, Renovate uses branch automerge and rebases behind `main`; it waits for CI on `renovate/patch-*`. A failed or 24-hour-pending branch becomes a pull request. `Protect main` requires a pull request, so unless Renovate is a bypass actor the direct merge is refused; recent patches arrived as `renovate/patch-*` pull requests. | Keep the narrow `ci.yml` push trigger for `renovate/patch-**`; without it, patch automerge silently falls back to pull requests. |
+| Security update               | Bypasses the dashboard gate, waits one day instead of three, keeps a pull request, and can automerge after CI unless it is a shipped runtime package below.                                                                                                                                                                                                | Review the security details Renovate links and its labeled pull request; it intentionally does not use the patch-branch path.    |
+| Shipped runtime package       | `dompurify`, `matrix-js-sdk`, `@matrix-org/matrix-sdk-crypto-wasm`, `matrix-widget-api` and `electron` patches open a pull request on `renovate/runtime-*` without the dashboard gate but never automerge. Security updates for them open on `renovate/*` and do not automerge either.                                                                     | Review the upstream changes and merge the pull request by hand.                                                                  |
+| GitHub Actions digest         | Stays behind dashboard approval and does not patch-automerge.                                                                                                                                                                                                                                                                                              | Review the changed pinned action digest before approval.                                                                         |
+| Native platform dependency    | Stays behind dashboard approval.                                                                                                                                                                                                                                                                                                                           | Use the evidence described in the developer native platform guides before approval.                                              |
+| TypeScript                    | Moves root and `electron/` manifests together in the `typescript` group, pinned below `6.1.0` for Angular 22's compiler window.                                                                                                                                                                                                                            | Widen that bound deliberately with an Angular upgrade; do not split the Electron version.                                        |
 
 ## Source of truth
 

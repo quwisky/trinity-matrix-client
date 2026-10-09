@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -89,5 +89,32 @@ describe('repository review-media policy', () => {
     );
 
     expect(forbidden).toEqual([]);
+  });
+});
+
+describe('signing material', () => {
+  const ignored = (path) =>
+    spawnSync('git', ['check-ignore', '--no-index', '-q', path], {
+      cwd: workspaceRoot,
+    }).status === 0;
+
+  it.each([
+    'electron/developer-id.p12',
+    'electron/developer-id.pfx',
+    'AuthKey_ABC123.p8',
+    'android/app/release.keystore',
+    'android/app/release.jks',
+    'ios/App/Trinity.mobileprovision',
+    'electron/signing-key.pem',
+    'e2e/support/server.pem',
+    'electron/developer-id.key',
+    'android/key.properties',
+  ])('keeps %s out of git', (path) => {
+    expect(ignored(path)).toBe(true);
+  });
+
+  it('still tracks the end-to-end test certificate', () => {
+    expect(ignored('e2e/electron/fixtures/localhost-key.pem')).toBe(false);
+    expect(ignored('e2e/electron/fixtures/localhost-cert.pem')).toBe(false);
   });
 });
