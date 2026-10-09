@@ -42,7 +42,7 @@
         (createSpace)="spaceActions.onCreateSpace()"
         (showRecent)="nav.onShowRecent()"
         (showRooms)="nav.onShowRooms()"
-        (openUnreadChat)="routing.onSelectRoomSelection($event, 'rail-unread')"
+        (openUnreadChat)="openRailUnreadChat($event)"
       />
       <trn-channel-sidebar
         class="shell-side__rooms"
