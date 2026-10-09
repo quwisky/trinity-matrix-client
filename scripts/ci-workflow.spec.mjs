@@ -693,6 +693,16 @@ describe('iOS nightly E2E workflow', () => {
     ).toBe('${{ inputs.specs }}');
   });
 
+  it('installs Dex before the suite, so the native homeserver offers SSO', () => {
+    const dex = steps.find((step) => step.name === 'Install Dex');
+    expect(dex.run).toContain('brew install dexidp');
+    expect(dex.run).toContain('dex version');
+    expect(dex.env.HOMEBREW_NO_AUTO_UPDATE).toBe('1');
+    expect(steps.indexOf(dex)).toBeLessThan(
+      steps.findIndex((step) => step.id === 'mobile'),
+    );
+  });
+
   it('caches WebDriverAgent per Xcode and driver pin, apart from pip, Appium and Caddy', () => {
     const caches = steps.filter((step) =>
       step.uses?.startsWith('actions/cache@'),

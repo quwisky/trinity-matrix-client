@@ -81,13 +81,14 @@ Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed
   `.github/workflows/ci.yml`); `TRINITY_MOBILE_SPECS=./specs/smoke.e2e.mts pnpm e2e:mobile`
   narrows a local run the same way.
 - iOS: `TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native pnpm e2e:mobile:ios`
-  on macOS with Xcode, `python3` and `caddy` on `PATH`. It boots (or reuses) the pinned
-  `iPhone 17` on `iOS 26.5` (override with `TRINITY_IOS_DEVICE`, `TRINITY_IOS_RUNTIME` or
-  `TRINITY_IOS_UDID`), builds and installs the simulator app, trusts the run's Caddy root in the
-  Simulator keychain and installs the pinned XCUITest driver. The first session builds
+  on macOS with Xcode, `python3` and `caddy` on `PATH`, plus `dex` (`brew install dexidp`) for the
+  SSO spec, which skips without it. It boots (or reuses) the pinned `iPhone 17` on `iOS 26.5`
+  (override with `TRINITY_IOS_DEVICE`, `TRINITY_IOS_RUNTIME` or `TRINITY_IOS_UDID`), builds and
+  installs the simulator app, trusts the run's Caddy root in the Simulator keychain and installs
+  the pinned XCUITest driver. The first session builds
   WebDriverAgent (about 7 minutes) into `dist/ios-wda`. Artifacts land under `mobile.ios/`.
 - Platform-only tests call `onlyOn('android' | 'ios', reason)`, which skips with the reason in
-  the run log; SSO, Back for open panels, attachments, location, notifications and share are
+  the run log; Back for open panels, attachments, location, notifications and share are
   Android-only.
 - CI runs iOS in the `E2E (iOS nightly)` workflow, never on pull requests.
 
