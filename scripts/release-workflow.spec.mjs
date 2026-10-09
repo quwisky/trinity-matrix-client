@@ -323,6 +323,8 @@ describe('release branches', () => {
       expect(mint.with).toEqual({
         'client-id': '\${{ vars.RELEASE_APP_CLIENT_ID }}',
         'private-key': '\${{ secrets.RELEASE_APP_PRIVATE_KEY }}',
+        'permission-contents': 'write',
+        'permission-pull-requests': 'write',
       });
       expect(mint.uses).toMatch(
         /^actions\/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1$/,
@@ -375,6 +377,35 @@ describe('release branches', () => {
       expect(minting.length, name).toBeGreaterThan(0);
       for (const [id, job] of minting) {
         expect(job.environment, `${name} ${id}`).toBe('release-app');
+      }
+    }
+  });
+
+  it('scopes each release App token to the permissions its job writes with', () => {
+    // Pushes need contents, pull request edits and comments need pull-requests, and the
+    // backport label the cut creates needs issues. Reads of this public repository need none.
+    const scopes = {
+      'release.yml back-merge': ['contents', 'pull-requests'],
+      'release.yml publish': ['contents'],
+      'release-stable.yml cut': ['contents', 'issues'],
+      'backport.yml backport': ['contents', 'pull-requests'],
+      'land-back-merge.yml land': ['contents'],
+    };
+    for (const name of Object.keys(scopes).map((key) => key.split(' ')[0])) {
+      const { jobs } = parse(
+        readFileSync(resolve(root, '.github/workflows', name), 'utf8'),
+      );
+      for (const [id, job] of Object.entries(jobs)) {
+        const mint = job.steps?.find((s) =>
+          s.uses?.startsWith('actions/create-github-app-token@'),
+        );
+        if (!mint) continue;
+        const requested = Object.entries(mint.with)
+          .filter(([key]) => key.startsWith('permission-'))
+          .map(([key, value]) => `${key.slice('permission-'.length)}:${value}`);
+        expect(requested, `${name} ${id}`).toEqual(
+          scopes[`${name} ${id}`].map((scope) => `${scope}:write`),
+        );
       }
     }
   });

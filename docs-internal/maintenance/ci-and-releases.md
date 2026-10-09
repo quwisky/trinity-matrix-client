@@ -283,7 +283,9 @@ It pushes with the release App's installation token, not `GITHUB_TOKEN`: pushes 
 `GITHUB_TOKEN` trigger no workflows, so `release.yml` would never run on the new branch.
 The release App is a GitHub App (for example "Trinity Release") installed only on this
 repository with Contents, Pull requests and Issues: read & write (labels and pull request
-comments use the issues API). Its
+comments use the issues API). Each job mints its token with `permission-*` inputs for only the
+scopes it writes with: Contents for `publish` and `land-back-merge.yml`, Contents and Pull
+requests for `back-merge` and `backport.yml`, and Contents and Issues for `cut`. Its
 `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret live in the
 `release-app` environment, whose deployment branch policy allows `main` and `release/**`;
 the jobs that mint the token (`back-merge` and `publish` in `release.yml`, `cut` in

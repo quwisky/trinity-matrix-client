@@ -73,6 +73,8 @@ describe('Release stable workflow', () => {
     expect(token.with).toEqual({
       'client-id': '${{ vars.RELEASE_APP_CLIENT_ID }}',
       'private-key': '${{ secrets.RELEASE_APP_PRIVATE_KEY }}',
+      'permission-contents': 'write',
+      'permission-issues': 'write',
     });
     const checkout = job.steps[index('Check out the prerelease')];
     expect(checkout.uses).toBe(
