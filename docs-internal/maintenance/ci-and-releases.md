@@ -222,7 +222,11 @@ from the Conventional Commits since the last release. Release PRs on both lines 
 `release: cut the vX.Y.Z release` (`pull-request-title-pattern` in both configs), and
 release PRs merge as a squash, which keeps that title as the commit; commitlint allows the `release` type. Merging the release PR bumps
 `package.json`, `electron/package.json` and the manifest, and release-please then
-tags the squash commit and creates a **draft** GitHub release. The same workflow run
+tags the squash commit and creates a **draft** GitHub release. release-please works with
+the release App's token, so the App opens and updates the release PRs, which run
+pull-request CI like any other PR, and creates the tags and draft releases; the workflow
+token in that job is read-only. No workflow listens for tag pushes or draft creation, and
+no workflow script creates or moves a tag. The same workflow run
 verifies the tag and attaches the desktop packages to that draft. The `publish`
 job then publishes it once every package is attached; see
 [Automatic publishing](#automatic-publishing).
@@ -286,12 +290,13 @@ The release App is a GitHub App (for example "Trinity Release") installed only o
 repository with Contents, Pull requests and Issues: read & write (labels and pull request
 comments use the issues API). Each job mints its token with `permission-*` inputs for only the
 scopes it writes with: Contents for `publish` and `land-back-merge.yml`, Contents and Pull
-requests for `back-merge` and `backport.yml`, and Contents and Issues for `cut`. Its
+requests for `release-please`, `back-merge` and `backport.yml` (release-please's labels and
+comment go on the release PR itself), and Contents and Issues for `cut`. Its
 `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret live in the
 `release-app` environment, whose deployment branch policy allows `main` and `release/**`;
-the jobs that mint the token (`back-merge` and `publish` in `release.yml`, `cut` in
+the jobs that mint the token (`release-please`, `back-merge` and `publish` in `release.yml`, `cut` in
 `release-stable.yml`, `backport.yml` and `land-back-merge.yml`) declare `environment: release-app`. Give
-`release-app` no required reviewers: they would stall every cut, publish, back-merge and
+`release-app` no required reviewers: they would stall every release PR, cut, publish, back-merge and
 backport. Reviewers belong on `release`, where they gate macOS signing only. The release App, not
 Renovate, is the only bypass actor for `release/**` in the ruleset, and it is a bypass actor
 on `main`'s ruleset so it can push back-merge commits. Renovate keeps its

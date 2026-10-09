@@ -398,7 +398,7 @@ describe('release branches', () => {
       const cli = step('first-release-pr');
       expect(cli.if).toBe("\${{ steps.version.outputs.version != '' }}");
       expect(cli.env).toEqual({
-        TOKEN: '\${{ github.token }}',
+        TOKEN: '\${{ steps.app-token.outputs.token }}',
         VERSION: '\${{ steps.version.outputs.version }}',
       });
       expect(
@@ -525,6 +525,7 @@ describe('release branches', () => {
     // Pushes need contents, pull request edits and comments need pull-requests, and the
     // backport label the cut creates needs issues. Reads of this public repository need none.
     const scopes = {
+      'release.yml release-please': ['contents', 'pull-requests'],
       'release.yml back-merge': ['contents', 'pull-requests'],
       'release.yml publish': ['contents'],
       'release-stable.yml cut': ['contents', 'issues'],
@@ -555,6 +556,52 @@ describe('release branches', () => {
       expect(
         readFileSync(resolve(root, '.github/workflows', name), 'utf8'),
       ).not.toContain('RENOVATE_APP');
+    }
+  });
+});
+
+describe('release-please token', () => {
+  const job = () => workflow.jobs['release-please'];
+
+  it('opens release PRs and creates tags with the release App, not the workflow token', () => {
+    const mint = job().steps[0];
+    expect(mint.id).toBe('app-token');
+    expect(mint.uses).toMatch(
+      /^actions\/create-github-app-token@[0-9a-f]{40}$/,
+    );
+    expect(mint.with['client-id']).toBe('${{ vars.RELEASE_APP_CLIENT_ID }}');
+    expect(job().environment).toBe('release-app');
+    const action = job().steps.find((s) => s.id === 'release');
+    expect(action.with.token).toBe('${{ steps.app-token.outputs.token }}');
+    expect(job().steps.find((s) => s.id === 'first-release-pr').env.TOKEN).toBe(
+      '${{ steps.app-token.outputs.token }}',
+    );
+    expect(JSON.stringify(job())).not.toContain('github.token');
+  });
+
+  it('gives the workflow token no write access in that job', () => {
+    expect(job().permissions).toBeUndefined();
+    expect(workflow.permissions).toEqual({ contents: 'read' });
+  });
+
+  it('creates and moves no tag from any workflow script', () => {
+    // Tags come only from release-please's createRelease, with the release App token.
+    const dir = resolve(root, '.github/workflows');
+    for (const name of readdirSync(dir)) {
+      const { jobs } = parse(readFileSync(resolve(dir, name), 'utf8'));
+      for (const [id, job] of Object.entries(jobs)) {
+        for (const script of (job.steps ?? []).flatMap((s) => s.run ?? [])) {
+          // One logical command per line: join backslash continuations.
+          const run = script.replace(/\\\n/g, ' ');
+          expect(run, `${name} ${id}`).not.toMatch(/\bgit\s+tag\b/);
+          expect(run, `${name} ${id}`).not.toMatch(
+            /\bgit\s+push\b[^\n]*(?:--tags|--follow-tags|refs\/tags)/,
+          );
+          // gh release create makes a missing tag unless --verify-tag forbids it.
+          for (const create of run.match(/gh release create[^\n]*/g) ?? [])
+            expect(create, `${name} ${id}`).toContain('--verify-tag');
+        }
+      }
     }
   });
 });

@@ -6,8 +6,9 @@ name: Release
 # DRAFT GitHub release, and the jobs below package the desktop installers into that draft
 # in the same run. A stable tag also opens the back-merge PR from release/X.Y.x into main.
 #
-# Tags created with GITHUB_TOKEN never trigger other workflows, which is why packaging
-# lives here instead of behind a tag trigger.
+# Packaging lives here, in the run that creates the tag, rather than behind a tag trigger.
+# The release App creates the tags and draft releases; no workflow listens for tag pushes,
+# and scripts/release-workflow.spec.mjs keeps workflow scripts from creating or moving tags.
 #
 # workflow_dispatch re-packages an existing tag: artifacts are immutable per run, and
 # recovering a failed release must not require deleting and re-pushing a tag.
@@ -36,13 +37,24 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: write
-      pull-requests: write
+    # The release App opens the release PRs and creates the tags and draft releases, so the
+    # workflow token keeps the top-level read-only permissions. The App's private key lives
+    # only in this environment, which has no required reviewers.
+    environment: release-app
     outputs:
       created: ${{ steps.release.outputs.release_created }}
       tag: ${{ steps.release.outputs.tag_name }}
     steps:
+      # Contents for the release branch commits, tags and releases; pull-requests for the
+      # release PR, its labels and its comment, which release-please sets on the PR itself.
+      - name: Mint the release App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
       # A release branch's first stable release takes the version of the prerelease it was
       # cut from. The action ignores release-as in manifest mode, so the CLI opens that PR
       # with --release-as and the action below only tags and releases. Once the line has a
@@ -84,7 +96,7 @@ jobs:
         name: Open the first stable release PR
         if: ${{ steps.version.outputs.version != '' }}
         env:
-          TOKEN: ${{ github.token }}
+          TOKEN: ${{ steps.app-token.outputs.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: >-
           pnpm -C tools/release-please exec release-please release-pr
@@ -97,6 +109,7 @@ jobs:
       - id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
+          token: ${{ steps.app-token.outputs.token }}
           target-branch: ${{ github.ref_name }}
           skip-github-pull-request: ${{ steps.version.outputs.version != '' }}
           config-file: ${{ startsWith(github.ref_name, 'release/') && 'release-please-config.json' || 'release-please-config.next.json' }}
