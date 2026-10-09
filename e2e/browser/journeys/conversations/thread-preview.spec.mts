@@ -283,7 +283,8 @@ async function assertPreview(
   await expect(previewText).toHaveCSS('overflow', 'hidden');
   await expect(previewText).toHaveCSS('text-overflow', 'ellipsis');
   if (session.kind === 'synapse') {
-    await expect(summary.locator('.msg__thread-badge')).toContainText('2');
+    // The unread badge is the shared badge (`trnBadge`, #1005), not a `.msg__thread-badge`.
+    await expect(summary.getByText('2 unread', { exact: true })).toBeVisible();
   }
   // Tuwunel: no badge expectation. It sends `unread_thread_notifications` only in the
   // first sync, and matrix-js-sdk zeroes every thread count on any later sync of the

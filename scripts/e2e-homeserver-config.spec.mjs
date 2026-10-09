@@ -159,6 +159,13 @@ describe('Nightly Synapse workflow', () => {
       ).toBe(true);
     }
   });
+
+  it('runs the browser journeys as three shards', () => {
+    const { jobs } = workflow();
+    const step = jobs.browser.steps.find((entry) => entry.id === 'browser');
+    expect(jobs.browser.strategy.matrix.shard).toEqual([1, 2, 3]);
+    expect(step.env.TRINITY_E2E_SHARD).toBe('${{ matrix.shard }}/3');
+  });
 });
 
 describe('E2E homeserver runtime selection', () => {
