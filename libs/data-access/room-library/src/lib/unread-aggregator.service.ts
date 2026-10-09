@@ -10,7 +10,8 @@ import {
   coalesce,
   MatrixClientService,
 } from '@trinity/data-access/matrix-client';
-import { isMarkedUnread } from './room-projection';
+import { roomAvatarMxc } from '@trinity/util/matrix';
+import { directMapOf, initialOf, isMarkedUnread } from './room-projection';
 
 /** A no-arg listener reused across every unread-affecting client / room event. */
 type UnreadListener = () => void;
@@ -19,6 +20,21 @@ type UnreadListener = () => void;
 interface AccountListener {
   readonly client: MatrixClient;
   readonly handler: UnreadListener;
+}
+
+/** One joined chat with something new in it, on one exact account. */
+export interface UnreadRoom {
+  readonly accountId: string;
+  readonly roomId: string;
+  readonly name: string;
+  readonly initial: string;
+  readonly avatarMxc: string | null;
+  readonly direct: boolean;
+  /** Total notification count; 0 when the room is only marked unread. */
+  readonly unreadCount: number;
+  readonly markedUnread: boolean;
+  /** `room.getLastActiveTimestamp()`. */
+  readonly activityTs: number;
 }
 
 /**
@@ -31,6 +47,8 @@ interface AccountListener {
  * accounts are added or removed. Recomputes are coalesced onto a microtask so a sync
  * burst across several accounts rebuilds the totals once; the rebuild writes a signal,
  * which schedules change detection so the badge updates promptly.
+ *
+ * The same pass also publishes the per-room list ({@link unreadRooms}) for the space rail.
  */
 @Injectable({ providedIn: 'root' })
 export class UnreadAggregatorService {
@@ -50,6 +68,16 @@ export class UnreadAggregatorService {
     }
     return sum;
   });
+
+  private readonly _unreadRooms = signal<readonly UnreadRoom[]>([], {
+    equal: sameUnreadRooms,
+  });
+  /**
+   * Every unread chat on every signed-in account, under the app badge's rule: joined, not a
+   * space, and a notification count or the marked-unread flag. Muted rooms drop out because
+   * their push rules keep the count at zero. The same room on two accounts is two entries.
+   */
+  readonly unreadRooms = this._unreadRooms.asReadonly();
 
   private readonly listeners = new Map<string, AccountListener>();
 
@@ -109,36 +137,62 @@ export class UnreadAggregatorService {
 
   private flush(): void {
     const counts = new Map<string, number>();
+    const rooms: UnreadRoom[] = [];
     for (const userId of this.listeners.keys()) {
-      counts.set(userId, this.unreadFor(userId));
+      const unread = this.unreadRoomsFor(userId);
+      // A flagged room with no count counts as one, exactly as before.
+      counts.set(
+        userId,
+        unread.reduce((sum, room) => sum + (room.unreadCount || 1), 0),
+      );
+      rooms.push(...unread);
     }
     this._unreadByAccount.set(counts);
+    this._unreadRooms.set(rooms);
   }
 
   /**
-   * Sum an account's joined, non-space rooms' unread notification counts.
+   * An account's joined, non-space rooms that want attention.
    *
    * A room the user flagged to come back to counts as one, even though the server's count
    * for it is zero — that flag is the only thing saying the room wants attention, and a
    * badge that ignored it would leave "come back to this" visible nowhere but the one
    * sidebar list that happens to show the room.
    */
-  private unreadFor(userId: string): number {
+  private unreadRoomsFor(userId: string): UnreadRoom[] {
     const client = this.matrix.clientFor(userId);
     if (!client) {
-      return 0;
+      return [];
     }
-    return client
-      .getRooms()
-      .filter(
-        (room) => !room.isSpaceRoom() && room.getMyMembership() === 'join',
-      )
-      .reduce((sum, room) => {
-        const notifications = room.getUnreadNotificationCount(
-          NotificationCountType.Total,
-        );
-        return sum + (notifications || (isMarkedUnread(room) ? 1 : 0));
-      }, 0);
+    let direct: ReturnType<typeof directMapOf> | null = null;
+    const unread: UnreadRoom[] = [];
+    for (const room of client.getRooms()) {
+      if (room.isSpaceRoom() || room.getMyMembership() !== 'join') {
+        continue;
+      }
+      const unreadCount =
+        room.getUnreadNotificationCount(NotificationCountType.Total) ?? 0;
+      const markedUnread = isMarkedUnread(room);
+      if (unreadCount <= 0 && !markedUnread) {
+        continue;
+      }
+      // Read m.direct only when some room is unread: most syncs touch no unread room at all.
+      direct ??= directMapOf(client);
+      const isDirect = direct.ids.has(room.roomId);
+      const name = room.name || room.roomId;
+      unread.push({
+        accountId: userId,
+        roomId: room.roomId,
+        name,
+        initial: initialOf(name),
+        avatarMxc: roomAvatarMxc(room, isDirect),
+        direct: isDirect,
+        unreadCount,
+        markedUnread,
+        activityTs: room.getLastActiveTimestamp(),
+      });
+    }
+    return unread;
   }
 
   private attach(client: MatrixClient, handler: UnreadListener): void {
@@ -160,4 +214,26 @@ export class UnreadAggregatorService {
     client.off(RoomEvent.AccountData, handler);
     client.off(MatrixEventEvent.Decrypted, handler);
   }
+}
+
+function sameUnreadRooms(
+  a: readonly UnreadRoom[],
+  b: readonly UnreadRoom[],
+): boolean {
+  return (
+    a.length === b.length && a.every((room, i) => sameUnreadRoom(room, b[i]))
+  );
+}
+
+function sameUnreadRoom(a: UnreadRoom, b: UnreadRoom): boolean {
+  return (
+    a.accountId === b.accountId &&
+    a.roomId === b.roomId &&
+    a.name === b.name &&
+    a.avatarMxc === b.avatarMxc &&
+    a.direct === b.direct &&
+    a.unreadCount === b.unreadCount &&
+    a.markedUnread === b.markedUnread &&
+    a.activityTs === b.activityTs
+  );
 }
