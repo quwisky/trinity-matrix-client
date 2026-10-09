@@ -17,6 +17,10 @@
   </button>
 }
 
+<!-- The empty-room prompt belongs to the timeline column: above the whole chat row it
+     pushed an open side panel (pinned, threads, search) down by its own height. -->
+<ng-content select="[data-room-intro]" />
+
 <div class="list">
   <div class="scroll" #scroll data-message-scroller (scroll)="onScroll()">
     @if (showLoadingOlder()) {
