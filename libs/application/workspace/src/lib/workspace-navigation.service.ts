@@ -75,6 +75,18 @@ export class WorkspaceNavigationService {
 
   readonly view = this.workspaceView.asReadonly();
   readonly eventTarget = this.eventTargetState.asReadonly();
+  /**
+   * The Conversation in view was pushed straight over its list, so Back is a plain history
+   * step: the browser and WebKit's edge swipe may take it without Workspace (#1113).
+   */
+  readonly conversationOverList = computed(
+    () => this.view().pane === 'conversation' && this.location.listBelow(),
+  );
+
+  /** Workspace is moving browser history itself; a popstate now is its own projection. */
+  get projectingLocation(): boolean {
+    return this.workflow.projectingLocation;
+  }
   readonly activeAccountId = computed(() => this.view().accountId);
   readonly activeSpaceId = computed(() => {
     const scope = this.view().scope;
@@ -179,7 +191,10 @@ export class WorkspaceNavigationService {
       if (intent.kind === 'person') return this.navigatePerson(intent);
       if (intent.kind === 'invitation') return this.navigateInvitation(intent);
       if (intent.kind === 'history') return this.navigateHistory(intent);
-      const resolved = resolveWorkspaceNavigation(intent, this.view());
+      const resolved = resolveWorkspaceNavigation(intent, this.view(), {
+        listBelow: this.location.listBelow(),
+        compact: this.compact(),
+      });
       if (!resolved) {
         return of({
           kind: 'unavailable',

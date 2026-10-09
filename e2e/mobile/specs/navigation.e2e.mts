@@ -196,6 +196,43 @@ describe('mobile navigation', () => {
     await waitForRooms();
   });
 
+  it('turns the iOS history swipe on over a room opened from the list, and pops it on Back', async function () {
+    onlyOn(
+      'ios',
+      "WebKit's edge swipe; Android's system Back over a room is covered below",
+    ).call(this);
+    const { user, pass, roomName } = await seedComposerRoom();
+    await login(user, pass);
+    await tap('[data-testid="rail-rooms"]');
+    const room = $(
+      `//button[contains(@class,"channel")][contains(.,"${roomName}")]`,
+    );
+    await expect(room).toBeDisplayed({ wait: 30_000 });
+    await recordHistoryGestures();
+
+    await tap(
+      `//button[contains(@class,"channel")][contains(.,"${roomName}")]`,
+    );
+    await expect($('[data-testid="composer-input"]')).toBeDisplayed({
+      wait: 20_000,
+    });
+    // The room sits on the list as one history entry, so the swipe stays on (#1113).
+    await browser.waitUntil(
+      async () => (await historyGestures()).at(-1) === true,
+      {
+        timeout: 10_000,
+        timeoutMsg:
+          'a room opened from the list never turned the history swipe on',
+      },
+    );
+    const entries = await browser.execute(() => history.length);
+
+    await tap('[data-testid="back-to-rooms"]');
+    await expect(room).toBeDisplayed({ wait: 20_000 });
+    // The in-app Back popped the room's entry; it did not push a list on top of it.
+    expect(await browser.execute(() => history.length)).toBe(entries);
+  });
+
   it('steps System status back to its sections, then closes it, on hardware Back', async function () {
     onlyOn('android', PANEL_BACK_ANDROID_ONLY).call(this);
     const { user, pass, roomName } = await seedComposerRoom();

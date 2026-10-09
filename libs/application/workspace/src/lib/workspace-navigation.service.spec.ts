@@ -148,7 +148,14 @@ function harness(options: HarnessOptions = {}) {
             activeAccountId(),
           ),
         } as const);
+  const listBelow = signal(false);
+  const projections: {
+    readonly history: 'push' | 'replace' | 'back';
+    readonly overList?: boolean;
+  }[] = [];
+  const popHistory = vi.fn();
   const location = {
+    listBelow: listBelow.asReadonly(),
     get projecting() {
       return locationWrites > 0;
     },
@@ -160,11 +167,20 @@ function harness(options: HarnessOptions = {}) {
     project: (
       destination: Parameters<typeof workspaceUrlOf>[0],
       projectionOptions: {
-        readonly history: 'push' | 'replace';
+        readonly history: 'push' | 'replace' | 'back';
+        readonly overList?: boolean;
         readonly eventId?: string | null;
       },
     ) =>
       defer(() => {
+        projections.push({
+          history: projectionOptions.history,
+          overList: projectionOptions.overList,
+        });
+        if (projectionOptions.history === 'back') {
+          popHistory();
+          return of(true);
+        }
         locationWrites += 1;
         const projection = workspaceUrlOf(
           destination,
@@ -218,6 +234,9 @@ function harness(options: HarnessOptions = {}) {
   TestBed.tick();
   return {
     service,
+    listBelow,
+    projections,
+    popHistory,
     activeAccountId,
     paramMap,
     queryParamMap,
@@ -733,6 +752,8 @@ describe('WorkspaceNavigationService', () => {
       const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM });
       h.navigate.mockClear();
 
+      // No list below this Conversation (a reload): the list replaces it, so it is not one
+      // history step behind the list (#1113).
       await firstValueFrom(
         h.service.navigate({ kind: 'list', origin: 'compact-close' }),
       );
@@ -744,7 +765,7 @@ describe('WorkspaceNavigationService', () => {
         ['/rooms', encodeRoomSegment(ROOM)],
         {
           queryParams: { account: ALICE, pane: 'list' },
-          replaceUrl: false,
+          replaceUrl: true,
         },
       );
 
@@ -775,6 +796,80 @@ describe('WorkspaceNavigationService', () => {
         queryParams: { account: ALICE },
         replaceUrl: true,
       });
+    });
+
+    it('pushes a Room opened from its list over that list, and only then', async () => {
+      const h = harness({ routeAccountId: ALICE, compact: true });
+
+      await firstValueFrom(
+        h.service.navigate({
+          kind: 'room',
+          accountId: ALICE,
+          roomId: ROOM,
+          origin: 'room-list',
+        }),
+      );
+      expect(h.projections.at(-1)).toEqual({ history: 'push', overList: true });
+
+      // From a Conversation, the entry below is not the list.
+      await firstValueFrom(
+        h.service.navigate({
+          kind: 'room',
+          accountId: ALICE,
+          roomId: '!other:example.org',
+          origin: 'room-list',
+        }),
+      );
+      expect(h.projections.at(-1)).toEqual({
+        history: 'push',
+        overList: false,
+      });
+    });
+
+    it('opens a Room in split view without marking it over the list', async () => {
+      const h = harness({ routeAccountId: ALICE });
+
+      await firstValueFrom(
+        h.service.navigate({
+          kind: 'room',
+          accountId: ALICE,
+          roomId: ROOM,
+          origin: 'room-list',
+        }),
+      );
+
+      expect(h.projections.at(-1)).toEqual({
+        history: 'push',
+        overList: false,
+      });
+    });
+
+    it.each(['compact-close', 'workspace-back'] as const)(
+      'pops a Conversation pushed over its list on %s',
+      async (origin) => {
+        const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM });
+        h.listBelow.set(true);
+        h.navigate.mockClear();
+
+        await firstValueFrom(h.service.navigate({ kind: 'list', origin }));
+
+        expect(h.projections.at(-1)?.history).toBe('back');
+        expect(h.popHistory).toHaveBeenCalledOnce();
+        expect(h.navigate).not.toHaveBeenCalled();
+        expect(h.service.view()).toMatchObject({ roomId: ROOM, pane: 'list' });
+      },
+    );
+
+    it('reports a Conversation over its list only while one is in view', async () => {
+      const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM });
+      expect(h.service.conversationOverList()).toBe(false);
+      h.listBelow.set(true);
+      expect(h.service.conversationOverList()).toBe(true);
+
+      await firstValueFrom(
+        h.service.navigate({ kind: 'list', origin: 'compact-close' }),
+      );
+      expect(h.service.conversationOverList()).toBe(false);
     });
 
     it('preserves Room-hop MRU policy while recording shortcut navigation', async () => {
