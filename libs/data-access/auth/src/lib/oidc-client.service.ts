@@ -205,14 +205,16 @@ export class OidcClientService {
     }).getAuthMetadata();
     const auth = new OAuth2(metadata, {
       clientId: context.clientId,
-      redirectUri: context.redirectUri,
       codeVerifier: context.codeVerifier,
       deviceId: context.deviceId,
     });
     // Stamped BEFORE the POST: `expires_in` is relative to when the provider issued the
     // token, so measuring from after a slow round-trip would over-state the lifetime.
     const requestedAt = Date.now();
-    const token = await auth.completeAuthorizationCodeGrant(code);
+    const token = await auth.completeAuthorizationCodeGrant(
+      code,
+      context.redirectUri,
+    );
     return { token, metadata, requestedAt };
   }
 
@@ -222,10 +224,7 @@ export class OidcClientService {
     context: OidcGrantContext,
     token: BearerTokenResponse,
   ): Promise<void> {
-    const auth = new OAuth2(metadata, {
-      clientId: context.clientId,
-      redirectUri: context.redirectUri,
-    });
+    const auth = new OAuth2(metadata, { clientId: context.clientId });
     return this.revokeBoth(auth, {
       accessToken: token.access_token,
       refreshToken: token.refresh_token,
@@ -272,10 +271,7 @@ export class OidcClientService {
     // The RFC 7009 POST used to be hand-rolled here because the SDK exposed no revocation
     // helper. It does now, and `revocation_endpoint` is required on ValidatedAuthMetadata,
     // so the old "no endpoint, give up quietly" guard is gone with it.
-    const auth = new OAuth2(metadata, {
-      clientId: binding.clientId,
-      redirectUri: binding.redirectUri,
-    });
+    const auth = new OAuth2(metadata, { clientId: binding.clientId });
     await this.revokeBoth(auth, tokens);
   }
 
@@ -340,7 +336,6 @@ export class OidcClientService {
   ): Promise<OidcAuthorizationRequest> {
     const auth = new OAuth2(params.metadata, {
       clientId,
-      redirectUri: params.redirectUri,
       // Omitted for a normal login, where OAuth2 mints one (`?? secureRandomString(10)`).
       ...(params.deviceId ? { deviceId: params.deviceId } : {}),
     });
@@ -356,6 +351,7 @@ export class OidcClientService {
     // readers to parse a fragment first — a separate change.
     const url = await auth.generateAuthorizationCodeGrantUrl(
       state,
+      params.redirectUri,
       'query',
       params.prompt,
     );

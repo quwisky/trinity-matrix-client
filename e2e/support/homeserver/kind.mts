@@ -50,3 +50,20 @@ export function resolveHomeserverRuntime(
   }
   return value as HomeserverRuntime;
 }
+
+/**
+ * Whether `TRINITY_E2E_MAS=1` asked for the opt-in MAS stack (mas/docker-compose.yml).
+ * Exact values only, like the selectors above. MAS runs in Docker, so native refuses it.
+ */
+export function resolveMasEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const value = env['TRINITY_E2E_MAS'] ?? '';
+  if (value !== '' && value !== '0' && value !== '1') {
+    throw new Error(`Unknown TRINITY_E2E_MAS "${value}"; expected 1 or 0`);
+  }
+  if (value === '1' && resolveHomeserverRuntime(env) === 'native') {
+    throw new Error('TRINITY_E2E_MAS=1 needs the Docker runtime');
+  }
+  return value === '1';
+}

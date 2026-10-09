@@ -33,6 +33,11 @@ import {
   DEX_ISSUER,
   HOMESERVER_HTTP,
   HS_TLS,
+  MAS_HS_TLS,
+  MAS_ISSUER,
+  MAS_PASS,
+  MAS_SERVER_NAME,
+  MAS_USER,
   REGISTRATION_SHARED_SECRET,
   SECONDARY_HTTP,
   SERVER_NAME,
@@ -44,7 +49,11 @@ import {
   TEST_PASS,
   TEST_USER,
 } from './constants.mjs';
-import { resolveHomeserverKind, resolveHomeserverRuntime } from './kind.mts';
+import {
+  resolveHomeserverKind,
+  resolveHomeserverRuntime,
+  resolveMasEnabled,
+} from './kind.mts';
 import {
   ensureSynapseVenv,
   generateSynapseConfig,
@@ -55,6 +64,7 @@ import {
   startNativeServices,
 } from './native.mts';
 import { acquireHomeserverLease, releaseHomeserverLease } from './lease.mts';
+import { masMountedConfig, prepareMas } from './mas/adapter.mjs';
 import { synapse } from './synapse/adapter.mjs';
 import { tuwunel } from './tuwunel/adapter.mjs';
 
@@ -98,6 +108,7 @@ let networkContainer = '';
 let operationSignal;
 let kind;
 let runtime;
+let masEnabled = false;
 
 function secondaryServerName() {
   return networkContainer ? 'localhost:9448' : 'caddy:9448';
@@ -106,7 +117,11 @@ function secondaryServerName() {
 async function compose(args, opts = {}) {
   return exec(
     'docker',
-    ['compose', ...composeFiles(kind, networkContainer), ...args],
+    [
+      'compose',
+      ...composeFiles(kind, networkContainer, { mas: masEnabled }),
+      ...args,
+    ],
     {
       cwd: HERE,
       signal: operationSignal,
@@ -247,6 +262,33 @@ async function registerUser() {
   throw new Error(`registering the test user failed: ${res.status} ${text}`);
 }
 
+/** Seed the MAS account through MAS's own CLI; MAS provisions it on its homeserver. */
+async function registerMasUser() {
+  log(`registering MAS user @${MAS_USER}:${MAS_SERVER_NAME}…`);
+  try {
+    await compose([
+      'exec',
+      '-T',
+      'mas',
+      'mas-cli',
+      'manage',
+      'register-user',
+      '--yes',
+      '--ignore-password-complexity',
+      '--password',
+      MAS_PASS,
+      MAS_USER,
+    ]);
+    log('MAS user registered');
+  } catch (error) {
+    const text = `${error.stdout ?? ''}${error.stderr ?? ''}`;
+    if (/already exists|taken|in use/i.test(text)) {
+      return log('MAS user already exists — reusing');
+    }
+    throw error;
+  }
+}
+
 /**
  * The running server's software version, after checking it is the selected kind — a
  * stack of the other kind left running would otherwise pass every readiness poll.
@@ -348,9 +390,15 @@ export async function start({ signal } = {}) {
   operationSignal = signal;
   kind = resolveHomeserverKind();
   runtime = resolveHomeserverRuntime();
+  masEnabled = resolveMasEnabled();
   if (runtime === 'native') return startNative();
   const adapter = ADAPTERS[kind];
   networkContainer = await resolveNetworkContainer();
+  if (masEnabled && networkContainer) {
+    throw new Error(
+      'TRINITY_E2E_MAS=1 needs published ports; the shared-namespace topology is not supported',
+    );
+  }
   log(
     `${kind}, ${
       networkContainer
@@ -358,14 +406,21 @@ export async function start({ signal } = {}) {
         : 'publishing ports on the docker host'
     }`,
   );
-  await prepareStateDir(adapter.configFiles);
+  await prepareStateDir([
+    ...adapter.configFiles,
+    ...(masEnabled ? ['mas/mas.yaml'] : []),
+  ]);
   await adapter.prepare({
     networkContainer,
     signal: operationSignal,
     log,
     secondaryServerName: secondaryServerName(),
   });
-  const mounted = mountedConfig(adapter);
+  if (masEnabled) await prepareMas({ signal: operationSignal, log });
+  const mounted = {
+    ...mountedConfig(adapter),
+    ...(masEnabled ? masMountedConfig : {}),
+  };
   const fingerprints = await configFingerprints(mounted);
   const wasRunning = await runningServices(Object.keys(mounted));
   log('docker compose up…');
@@ -451,6 +506,30 @@ export async function start({ signal } = {}) {
 
   await waitFor('caddy well-known (https)', 'caddy', wellKnownReady);
 
+  if (masEnabled) {
+    await waitFor('mas discovery (https)', 'mas', async () => {
+      const res = await fetch(`${MAS_ISSUER}.well-known/openid-configuration`, {
+        signal: operationSignal,
+      });
+      return res.ok && (await res.json()).issuer === MAS_ISSUER;
+    });
+    // Synapse's view of the provider, through Caddy: delegation is on and routed.
+    await waitFor(
+      'mas homeserver auth metadata (https)',
+      'homeserver-mas',
+      async () => {
+        const res = await fetch(
+          `${MAS_HS_TLS}/_matrix/client/v1/auth_metadata`,
+          {
+            signal: operationSignal,
+          },
+        );
+        return res.ok && (await res.json()).issuer === MAS_ISSUER;
+      },
+    );
+    await registerMasUser();
+  }
+
   const version = await serverVersion();
   log(
     `up. ${kind} ${version} homeserver=${HS_TLS} secondary=${secondaryServerName()} user=@${TEST_USER}:${SERVER_NAME}`,
@@ -479,6 +558,17 @@ export async function start({ signal } = {}) {
       email: SSO_RESET_EMAIL,
       pass: SSO_PASS,
     },
+    ...(masEnabled
+      ? {
+          mas: {
+            hs: MAS_HS_TLS,
+            serverName: MAS_SERVER_NAME,
+            issuer: MAS_ISSUER,
+            user: MAS_USER,
+            pass: MAS_PASS,
+          },
+        }
+      : {}),
   };
 }
 

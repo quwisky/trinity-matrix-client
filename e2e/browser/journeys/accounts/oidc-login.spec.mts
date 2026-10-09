@@ -225,6 +225,11 @@ test.describe('OIDC-native login', () => {
     expect(body.get('grant_type')).toBe('authorization_code');
     expect(body.get('code')).toBe('E2E_CODE');
     expect(body.get('client_id')).toBe('e2e-client-id');
+    // matrix-js-sdk 43 takes redirect_uri as an argument of the exchange; it must repeat
+    // the authorize request's value byte for byte.
+    expect(body.get('redirect_uri')).toBe(
+      authPlatform.callbackUrl(page, '/sso-callback', 'oidc'),
+    );
     // The verifier the exchange presents must be the one the authorize challenge was
     // derived from (RFC 7636 S256) — the whole point of the durable stash.
     const verifier = body.get('code_verifier') ?? '';

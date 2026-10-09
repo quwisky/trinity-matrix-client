@@ -275,10 +275,12 @@ describe('OidcClientService', () => {
       expect(request.deviceId).not.toBe('OLDDEV');
     });
 
-    it('forwards `prompt` to the provider (account registration)', async () => {
-      // Also pins the positional-argument order of the three-arg
-      // generateAuthorizationCodeGrantUrl(state, responseMode, prompt): a prompt
-      // landing in the responseMode slot would silently un-fix the test above.
+    it('puts redirect_uri, response_mode and prompt each in its own parameter', async () => {
+      // matrix-js-sdk 43 moved redirect_uri out of the OAuth2 context into the 2nd
+      // positional argument of generateAuthorizationCodeGrantUrl(state, redirectUri,
+      // responseMode, prompt). `(state, 'query')` still typechecks and would send
+      // redirect_uri=query with the default `fragment` response mode, where no callback
+      // reader in this app looks.
       stubFetch({ registration: () => jsonResponse({ client_id: CLIENT_ID }) });
 
       const request = await firstValueFrom(
@@ -286,8 +288,9 @@ describe('OidcClientService', () => {
       );
 
       const params = new URL(request.url).searchParams;
-      expect(params.get('prompt')).toBe('create');
+      expect(params.get('redirect_uri')).toBe(REDIRECT_URI);
       expect(params.get('response_mode')).toBe('query');
+      expect(params.get('prompt')).toBe('create');
     });
 
     it('caches the registered client id per issuer (no re-registration)', async () => {
