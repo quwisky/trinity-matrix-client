@@ -6,12 +6,14 @@ import {
   e2eEndpoint,
   e2eReportConfig,
   e2eShard,
+  e2eSpec,
 } from '../support/playwright-config.mts';
 
 // Base URL of the invocation-owned development artifact server. The config is a
 // fail-closed joiner and never starts or tears down application infrastructure.
 const baseURL = e2eEndpoint('application');
 const browserSuite = BROWSER_CANONICAL_SUITE;
+const specMatch = e2eSpec();
 
 /**
  * See https://playwright.dev/docs/test-configuration.
@@ -38,6 +40,8 @@ export default defineConfig({
   // homeserver, so the cap applies per shard.
   workers: 2,
   shard: e2eShard(),
+  // TRINITY_E2E_SPEC narrows the run to one journey file; unset keeps Playwright's default match.
+  ...(specMatch && { testMatch: specMatch }),
   // Per-test budget. Playwright's 30s default is too tight for these login-heavy Matrix
   // flows: a cold UI login (Rust-crypto init + first /sync ≈ 15-40s under load) plus a
   // state-event sync echo can exceed it mid-wait, which surfaced as flakes across the

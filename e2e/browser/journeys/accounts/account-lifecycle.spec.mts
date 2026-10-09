@@ -1,7 +1,9 @@
 import { expect, test, testResourceId } from '../../../fixtures.mts';
 import {
+  databaseNames,
   fillLabeledInput,
   login,
+  preferenceKeys,
   waitForRooms,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
@@ -197,6 +199,26 @@ test.describe('Multiple accounts', () => {
     await page.getByTestId('logout').click();
     await page.getByTestId('alert-confirm').click();
 
+    // B never set up key backup, so the removal first offers the key export. Export keys
+    // opens Security settings, where the export lives, and B stays signed in.
+    const keyStep = page.getByRole('dialog', {
+      name: 'Room keys are not backed up',
+    });
+    await expect(keyStep).toContainText(
+      'You’ll lose access to encrypted messages on this device.',
+    );
+    await keyStep.getByTestId('alert-alternative').click();
+    await expect(page.getByTestId('security-export-keys')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('security-export-keys')).toBeHidden();
+    await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
+
+    // Remove anyway completes the removal.
+    await page.getByTestId('user-menu-trigger').click();
+    await page.getByTestId('logout').click();
+    await page.getByTestId('alert-confirm').click();
+    await keyStep.getByRole('button', { name: 'Remove anyway' }).click();
+
     // Account A survives and becomes active; the shell stays put (no redirect).
     await expect(page.locator('.userbar__handle')).toContainText(handleA);
     await expect(page).toHaveURL(/\/rooms/);
@@ -204,6 +226,18 @@ test.describe('Multiple accounts', () => {
     // The switcher now lists only account A.
     await page.getByTestId('user-menu-trigger').click();
     await expect(page.getByTestId('account-row')).toHaveCount(1);
+
+    // B's crypto store key went with its store; A's stays.
+    const storeKeys = async () =>
+      (await preferenceKeys(page)).filter((key) =>
+        key.startsWith('secure.matrix.cryptoStoreKey:'),
+      );
+    await expect
+      .poll(async () =>
+        (await storeKeys()).some((key) => key.includes(`:@${userB}:`)),
+      )
+      .toBe(false);
+    expect((await storeKeys()).some((key) => key.includes(handleA))).toBe(true);
   });
 
   test('re-adds a signed-out account without a crypto-store mismatch', async ({
@@ -233,6 +267,7 @@ test.describe('Multiple accounts', () => {
     await page.getByTestId('user-menu-trigger').click();
     await page.getByTestId('logout').click();
     await page.getByTestId('alert-confirm').click();
+    await page.getByRole('button', { name: 'Remove anyway' }).click();
     await expect(page.locator('.userbar__handle')).toContainText(handleA);
 
     // Re-add B (the exact reported flow). It logs in fresh on a new device; the add must
@@ -260,6 +295,7 @@ test.describe('Multiple accounts', () => {
     await page.getByTestId('user-menu-trigger').click();
     await page.getByTestId('logout').click();
     await page.getByTestId('alert-confirm').click();
+    await page.getByRole('button', { name: 'Remove anyway' }).click();
     await page.waitForURL('**/login', { timeout: 30_000 });
 
     // Sign back in on a new device. Before the fix this reopened the previous device's
@@ -267,6 +303,65 @@ test.describe('Multiple accounts', () => {
     // waits for **/rooms, so reaching it proves the encryption store started clean.
     await login(page, session);
     await expect(page.locator('.userbar__handle')).toContainText(handleA);
+  });
+
+  test('asks before signing in again replaces a stored account’s keys, and Cancel keeps them', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}k`;
+    const userB = `multi-b-${runId}`;
+    const passB = `multi-b-pass-${runId}`;
+    await registerUser(request, userB, passB);
+
+    await login(page, session);
+    await addAccountViaUi(page, hs, userB, passB);
+    await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
+    const storesOfB = async (): Promise<string[]> =>
+      (await databaseNames(page))
+        .filter((name) => name.includes(`@${userB}:`))
+        .sort();
+    await expect
+      .poll(async () => (await storesOfB()).length)
+      .toBeGreaterThanOrEqual(2);
+    const storesBefore = await storesOfB();
+
+    // Sign in to B again through Add account. A password sign-in sends no device id, so
+    // the homeserver issues a new device, and saving it would delete B's current keys.
+    await page.getByTestId('user-menu-trigger').click();
+    await page.getByTestId('add-account').click();
+    await fillLabeledInput(page, 'Homeserver', hs);
+    await page.getByText('Continue', { exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Sign in' })
+      .waitFor({ timeout: 30_000 });
+    await fillLabeledInput(page, 'Username', userB);
+    await fillLabeledInput(page, 'Password', passB);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+
+    // B is live and has no key backup, so the warning comes first and offers the export.
+    const warning = page.getByRole('dialog', {
+      name: 'Room keys are not backed up',
+    });
+    await expect(warning).toContainText(
+      `Signing in again starts a new session for @${userB}:`,
+    );
+    await expect(warning.getByTestId('alert-alternative')).toHaveText(
+      'Export keys',
+    );
+    await warning.getByTestId('alert-cancel').click();
+
+    // Cancel leaves B, its device and its stores exactly as they were.
+    await expect(
+      page.getByText(`Sign-in cancelled. @${userB}:`, { exact: false }),
+    ).toBeVisible();
+    expect(await storesOfB()).toEqual(storesBefore);
+    await page.getByTestId('cancel-add').click();
+    await expect(page).toHaveURL(/\/rooms/);
+    await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
+    await page.getByTestId('user-menu-trigger').click();
+    await expect(page.getByTestId('account-row')).toHaveCount(2);
   });
 
   test('cancels adding an account and returns to the app', async ({ page }) => {

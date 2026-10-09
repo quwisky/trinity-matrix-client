@@ -68,6 +68,18 @@
               <button trnBtn type="button" (click)="recoverStartup()">
                 {{ recovery }}
               </button>
+              @if (status.startupSecondaryRecovery(); as secondary) {
+                <button
+                  trnBtn
+                  variant="secondary"
+                  presentation="outline"
+                  type="button"
+                  data-testid="system-status-secondary-recovery"
+                  (click)="recoverStartup(true)"
+                >
+                  {{ secondary }}
+                </button>
+              }
             </div>
           }
         </section>

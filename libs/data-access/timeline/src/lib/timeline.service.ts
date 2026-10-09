@@ -39,6 +39,7 @@ import {
   reactionDetailsFor,
   reactionsFor,
   readReceiptsFor,
+  RoomEncryptionFlags,
   TYPING_REFRESH_MS,
   TYPING_TIMEOUT_MS,
   liveRoomState,
@@ -47,7 +48,12 @@ import {
   ConversationTimelineReadiness,
   READY_LOAD_STATE,
 } from './conversation-timeline-readiness';
-import { resolveShieldsInto, shieldKey } from './shields';
+import {
+  resolveShieldsInto,
+  shieldKey,
+  shieldSubject,
+  unencryptedShieldFor,
+} from './shields';
 import { projectMessage } from './project-message';
 import { isPresentableSystemEvent } from './normalize-timeline-event';
 import { scrollbackLive } from './live-scrollback';
@@ -413,8 +419,14 @@ export class TimelineService {
    * actually looking at it. */
   private readonly onFocus = (): void => this.markRead();
 
-  /** Resolved authenticity shields per event id (async; patched back via {@link refresh}). */
+  /**
+   * Resolved authenticity shields per shield-subject id (a row's latest edit, else the
+   * event itself; async, patched back via {@link refresh}).
+   */
   private readonly shields = new Map<string, MessageShield | null>();
+
+  /** Whether the open room counts as encrypted: its state, or else its crypto store. */
+  private encryption = new RoomEncryptionFlags();
 
   // Cross-signing / device trust changed: a message's shield may flip (e.g. a device
   // the sender just verified). Force a full re-resolve of the open room's shields
@@ -544,6 +556,7 @@ export class TimelineService {
     this.relevantSenders.clear();
     this.viewCache.clear();
     this.shields.clear();
+    this.encryption = new RoomEncryptionFlags();
     this._messages.set([]);
     this._typingNames.set([]);
     this._canRedactOthers.set(false);
@@ -872,10 +885,15 @@ export class TimelineService {
     }
     const liveTimeline = room.getLiveTimeline();
     const loadedEvents = liveTimeline.getEvents();
+    const unencryptedShield = unencryptedShieldFor(
+      room,
+      this.encryption.isEncrypted(room),
+    );
     const events = this.visible
       ? loadedEvents
       : loadedEvents.slice(-RETAINED_EVENT_LIMIT);
     const seen = new Set<string>();
+    const shieldIds = new Set<string>();
     const relevant = new Set<string>();
     // Divider anchor: the first surviving message after the read marker that someone else
     // sent. The "after the marker" test runs on the RAW event order — markRead acks the
@@ -959,7 +977,11 @@ export class TimelineService {
         // Reuse the existing view (preserving its object identity for OnPush)
         // unless something this event renders from has actually changed. The shield
         // (resolved asynchronously) is folded into the rev so a trust change re-projects.
-        const shield = this.shields.get(id) ?? null;
+        // A shield belongs to the event that supplies the row's text: its latest edit.
+        const subjectId = shieldSubject(e).getId() ?? '';
+        shieldIds.add(subjectId);
+        const shield =
+          unencryptedShield(e) ?? this.shields.get(subjectId) ?? null;
         const rev = eventRevision(client, room, e) + '\x1f' + shieldKey(shield);
         const cached = this.viewCache.get(id);
         if (cached && cached.rev === rev) {
@@ -994,7 +1016,7 @@ export class TimelineService {
       }
     }
     for (const id of [...this.shields.keys()]) {
-      if (!seen.has(id)) {
+      if (!shieldIds.has(id)) {
         this.shields.delete(id);
       }
     }
@@ -1055,9 +1077,16 @@ export class TimelineService {
     if (!crypto) {
       return;
     }
-    const encrypted = events.filter(
-      (e) => isDisplayableMessage(e) && !isThreadReply(e) && e.isEncrypted(),
-    );
+    // The crypto store may know the room is encrypted when its state does not say so.
+    void this.encryption.refresh(crypto, room.roomId).then((encrypted) => {
+      if (encrypted && this.roomId === room.roomId) {
+        this.refresh();
+      }
+    });
+    const encrypted = events
+      .filter((e) => isDisplayableMessage(e) && !isThreadReply(e))
+      .map(shieldSubject)
+      .filter((subject) => subject.isEncrypted());
     const changed = await resolveShieldsInto(crypto, encrypted, this.shields, {
       force,
       isStale: () => this.roomId !== room.roomId,

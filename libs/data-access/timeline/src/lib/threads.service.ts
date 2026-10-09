@@ -30,8 +30,14 @@ import {
   collectMessageSenders,
   initialOf,
   isDisplayableMessage,
+  RoomEncryptionFlags,
 } from '@trinity/util/matrix';
-import { resolveShieldsInto, shieldKey } from './shields';
+import {
+  resolveShieldsInto,
+  shieldKey,
+  shieldSubject,
+  unencryptedShieldFor,
+} from './shields';
 import { eventRevision } from './timeline.service';
 import { projectMessage } from './project-message';
 import type { MessageShield, MessageView } from './message-presentation';
@@ -183,8 +189,13 @@ export class ThreadsService {
   // doesn't re-project the thread once per member.
   private threadRelevantSenders = new Set<string>();
 
-  /** Resolved authenticity shields for the opened thread's events, by event id. */
+  /**
+   * Resolved authenticity shields for the opened thread's events, by shield-subject id (a
+   * reply's latest edit, else the event itself).
+   */
   private readonly threadShields = new Map<string, MessageShield | null>();
+  /** Whether the opened thread's room counts as encrypted: its state, or else its crypto store. */
+  private threadEncryption = new RoomEncryptionFlags();
   /**
    * Per-reply projection cache keyed by event id, mirroring TimelineService.viewCache:
    * `rev` fingerprints everything Message Presentation reads that can change while the
@@ -391,6 +402,7 @@ export class ThreadsService {
     this.lastReadEventId = null;
     this.threadRelevantSenders.clear();
     this.threadShields.clear();
+    this.threadEncryption = new RoomEncryptionFlags();
     this.threadViewCache.clear();
     this._openThreadRootId.set(null);
     this._threadMessages.set([]);
@@ -650,22 +662,31 @@ export class ThreadsService {
 
     const relevant = new Set<string>();
     const seenIds = new Set<string>();
+    const shieldIds = new Set<string>();
     for (const e of ordered) {
       collectMessageSenders(client, room, e, relevant);
       seenIds.add(e.getId() ?? '');
+      shieldIds.add(shieldSubject(e).getId() ?? '');
     }
     this.threadRelevantSenders = relevant;
     // Drop shields for events no longer in the thread so the map can't grow unbounded.
     for (const id of [...this.threadShields.keys()]) {
-      if (!seenIds.has(id)) {
+      if (!shieldIds.has(id)) {
         this.threadShields.delete(id);
       }
     }
 
+    const unencryptedShield = unencryptedShieldFor(
+      room,
+      this.threadEncryption.isEncrypted(room),
+    );
     this._threadMessages.set(
       ordered.map((e) => {
         const id = e.getId() ?? '';
-        const shield = this.threadShields.get(id) ?? null;
+        const shield =
+          unencryptedShield(e) ??
+          this.threadShields.get(shieldSubject(e).getId() ?? '') ??
+          null;
         const rev = eventRevision(client, room, e) + '\x1f' + shieldKey(shield);
         const cached = this.threadViewCache.get(id);
         if (cached && cached.rev === rev) {
@@ -754,8 +775,18 @@ export class ThreadsService {
     if (!crypto || !rootEventId) {
       return;
     }
+    // The crypto store may know the room is encrypted when its state does not say so.
+    void this.threadEncryption
+      .refresh(crypto, room.roomId)
+      .then((roomEncrypted) => {
+        if (roomEncrypted && this.threadRoomId === room.roomId) {
+          this.refreshThread();
+        }
+      });
     const ordered = events ?? this.orderedThreadEvents(room, rootEventId);
-    const encrypted = ordered.filter((e) => e.isEncrypted());
+    const encrypted = ordered
+      .map(shieldSubject)
+      .filter((subject) => subject.isEncrypted());
     const changed = await resolveShieldsInto(
       crypto,
       encrypted,

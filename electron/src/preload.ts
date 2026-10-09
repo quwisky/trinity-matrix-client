@@ -274,6 +274,14 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
               string | null
             >)
           : Promise.resolve(null),
+      // Not granted reads as unavailable, never as absent: absent means a lost secret.
+      read: (key: string): Promise<unknown> =>
+        grantedOperations.has('secure-store')
+          ? (ipcRenderer.invoke(
+              'trinity:secure-store:read',
+              key,
+            ) as Promise<unknown>)
+          : Promise.resolve({ kind: 'unavailable' }),
       set: (key: string, value: string): Promise<boolean> =>
         grantedOperations.has('secure-store')
           ? (ipcRenderer.invoke(

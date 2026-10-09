@@ -117,6 +117,22 @@ export function switchableMatrixProvider(active: {
   };
 }
 
+/**
+ * The edit a fake event reports as its replacement: settled, and in the clear unless told
+ * otherwise. Pass it as `replacement` to give a test an edit of the opposite kind.
+ */
+export function fakeEdit(id: string, encrypted = false, ts = 0) {
+  return {
+    getId: () => `${id}~edit`,
+    getTs: () => ts,
+    isEncrypted: () => encrypted,
+    isDecryptionFailure: () => false,
+    isRedacted: () => false,
+    isState: () => false,
+    status: null,
+  };
+}
+
 export function fakeEvent(o: {
   id: string;
   sender: string;
@@ -131,6 +147,8 @@ export function fakeEvent(o: {
   encrypted?: boolean;
   status?: string;
   edited?: boolean;
+  /** The event `replacingEvent()` returns; `edited` alone gives a {@link fakeEdit}. */
+  replacement?: ReturnType<typeof fakeEdit>;
   editRelation?: boolean;
   replyTo?: string;
   url?: string;
@@ -187,7 +205,8 @@ export function fakeEvent(o: {
     isRelation: (relType?: string) =>
       o.editRelation === true &&
       (relType === undefined || relType === 'm.replace'),
-    replacingEvent: () => (o.edited ? {} : null),
+    replacingEvent: () =>
+      o.replacement ?? (o.edited ? fakeEdit(o.id, o.encrypted) : null),
     status: o.status ?? null,
   };
 }

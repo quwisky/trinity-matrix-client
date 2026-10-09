@@ -31,6 +31,6 @@ Use `Closes #123` when the pull request resolves an issue and `Refs #123` for re
 
 ## Hand off honestly {#review-handoff}
 
-Call out failed, retried, skipped, and unavailable checks. Mention changes to migrations, security boundaries, infrastructure, configuration, or public APIs so reviewers can focus appropriately. Do not merge the pull request as part of preparation.
+Open the pull request as a draft and mark it ready only when it can be merged as it stands: every check is green, the review is finished, and nothing is pending. Return it to draft while new work is in progress. Call out failed, retried, skipped, and unavailable checks. Mention changes to migrations, security boundaries, infrastructure, configuration, or public APIs so reviewers can focus appropriately. Do not merge the pull request as part of preparation.
 
 Read [validate a change](../validate-a-change/) and [branches and commits](../branches-and-commits/) before publishing the branch.

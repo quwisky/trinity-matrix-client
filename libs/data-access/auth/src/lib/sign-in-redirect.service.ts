@@ -38,6 +38,7 @@ export class SignInRedirectService {
     baseUrl: string,
     mode: LoginMode,
     deviceId?: string,
+    expectedUserId?: string,
   ): Observable<void> {
     return defer(() => {
       // Single-use state bound to this round-trip; verified on the callback to prevent
@@ -46,14 +47,16 @@ export class SignInRedirectService {
       // relaunch — whose WebView has empty sessionStorage — can still validate. The write
       // is awaited so the stash is durable before the SSO redirect can return.
       const state = generateState();
-      return this.ssoState.save(state, baseUrl, mode, deviceId).then(() => {
-        const callback = this.handoff.callback({
-          webUrl: `${window.location.origin}/sso-callback`,
-          appUrl: 'eu.qwky.trinity://sso-callback',
+      return this.ssoState
+        .save(state, baseUrl, mode, deviceId, expectedUserId)
+        .then(() => {
+          const callback = this.handoff.callback({
+            webUrl: `${window.location.origin}/sso-callback`,
+            appUrl: 'eu.qwky.trinity://sso-callback',
+          });
+          const redirect = `${callback.url}?sso_state=${encodeURIComponent(state)}`;
+          return this.auth.getSsoUrl(baseUrl, redirect);
         });
-        const redirect = `${callback.url}?sso_state=${encodeURIComponent(state)}`;
-        return this.auth.getSsoUrl(baseUrl, redirect);
-      });
     }).pipe(switchMap((url) => this.redirect(url)));
   }
 

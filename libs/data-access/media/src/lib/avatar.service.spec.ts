@@ -121,6 +121,15 @@ describe('AvatarService', () => {
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer tok');
   });
 
+  it('binds avatar bytes as an opaque blob rather than an untyped one', async () => {
+    const { svc } = setup();
+
+    await firstValueFrom(svc.resolve('mxc://hs/abc'));
+
+    const bound = createObjectURL.mock.calls[0][0] as Blob;
+    expect(bound.type).toBe('application/octet-stream');
+  });
+
   it('caches per mxc+size so re-resolving does not refetch', async () => {
     const { svc } = setup();
 

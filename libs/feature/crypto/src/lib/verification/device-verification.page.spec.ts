@@ -4,11 +4,12 @@ import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { QrScannerComponent } from '@trinity/components/controls';
-import { QrCodeService } from '@trinity/platform-native';
+import { DateTimeFormatService, QrCodeService } from '@trinity/platform-native';
 import { fireEvent, render, screen, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import {
   TrustVerificationService,
+  type NewSessionDetails,
   type VerificationView,
 } from '@trinity/data-access/trust';
 import { of, Subject } from 'rxjs';
@@ -25,6 +26,7 @@ function view(partial: Partial<VerificationView>): VerificationView {
     incoming: false,
     emoji: null,
     sasConfirmed: false,
+    newSession: null,
     qrShowAvailable: false,
     qrScanAvailable: false,
     cancelReason: null,
@@ -84,6 +86,10 @@ function button(host: HTMLElement, text: string): HTMLElement {
   return [...host.querySelectorAll('button')].find((b) =>
     b.textContent?.includes(text),
   ) as HTMLElement;
+}
+
+function normalized(host: HTMLElement): string {
+  return (host.textContent ?? '').replace(/\s+/g, ' ');
 }
 
 describe('DeviceVerificationPage', () => {
@@ -458,5 +464,264 @@ describe('DeviceVerificationPage', () => {
     fireEvent.click(button(container, 'Done'));
 
     expect(close).not.toHaveBeenCalled();
+  });
+
+  describe('a request from a new session', () => {
+    const newSession: NewSessionDetails = {
+      deviceId: 'PHONE',
+      displayName: 'Pixel 9',
+      lastSeenIp: '203.0.113.7',
+      lastSeenTs: 1_700_000_000_000,
+    };
+    const requested = (details: NewSessionDetails | null = newSession) =>
+      signal(
+        view({
+          stage: 'requested',
+          incoming: true,
+          otherDeviceId: 'PHONE',
+          newSession: details,
+        }),
+      );
+
+    it('presents the request as a new sign-in with the session details', async () => {
+      const { container } = await renderPage(requested());
+
+      expect(
+        within(container).getByRole('heading', {
+          name: 'A new session wants access to your encrypted messages',
+        }),
+      ).toBeTruthy();
+      const details = container.querySelector(
+        '[data-testid="verify-new-session"]',
+      );
+      expect(details?.textContent).toContain('Pixel 9');
+      expect(details?.textContent).toContain('PHONE');
+      expect(details?.textContent).toContain('203.0.113.7');
+      expect(details?.textContent).toContain(
+        TestBed.inject(DateTimeFormatService).dateTime(1_700_000_000_000),
+      );
+      expect(container.textContent).toContain(
+        'Only accept if you just signed in on that device yourself. Anyone you let in can read your encrypted messages.',
+      );
+      expect(container.textContent).not.toContain('Verify this device?');
+      expect(container.textContent).not.toContain('Another of your sessions');
+    });
+
+    it('shows unknown for details the device list did not provide', async () => {
+      const { container } = await renderPage(
+        requested({
+          deviceId: 'PHONE',
+          displayName: null,
+          lastSeenIp: null,
+          lastSeenTs: null,
+        }),
+      );
+
+      const details = container.querySelector<HTMLElement>(
+        '[data-testid="verify-new-session"]',
+      );
+      expect(details?.textContent).toContain('PHONE');
+      expect(details?.textContent?.match(/unknown/gi)).toHaveLength(3);
+    });
+
+    it('makes "Not me" the initial focus', async () => {
+      await renderPage(requested());
+      await Promise.resolve();
+
+      expect(document.activeElement?.textContent).toContain('Not me');
+    });
+
+    it('moves focus to the heading when the request returns to the generic wording', async () => {
+      const active = requested();
+      const { fixture } = await renderPage(active);
+      await Promise.resolve();
+      expect(document.activeElement?.textContent).toContain('Not me');
+
+      active.set(
+        view({
+          stage: 'requested',
+          incoming: true,
+          otherDeviceId: 'PHONE',
+          newSession: null,
+        }),
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      await Promise.resolve();
+
+      expect(document.activeElement?.textContent?.trim()).toBe(
+        'Verify this device?',
+      );
+    });
+
+    it('cancels the request and closes when "Not me" is chosen', async () => {
+      const { svc, container, close } = await renderPage(requested(), {
+        asModal: true,
+      });
+
+      fireEvent.click(button(container, 'Not me'));
+
+      expect(svc.cancel).toHaveBeenCalledOnce();
+      expect(svc.accept).not.toHaveBeenCalled();
+      expect(svc.dismiss).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalled();
+    });
+
+    it('accepts the request when "It was me" is chosen', async () => {
+      const { svc, container } = await renderPage(requested());
+
+      fireEvent.click(button(container, 'It was me'));
+
+      expect(svc.accept).toHaveBeenCalledOnce();
+      expect(svc.cancel).not.toHaveBeenCalled();
+    });
+
+    it('offers the decline before the accept', async () => {
+      const { container } = await renderPage(requested());
+
+      const labels = [...container.querySelectorAll('button')].map((b) =>
+        b.textContent?.trim(),
+      );
+
+      expect(labels.indexOf('Not me')).toBeGreaterThanOrEqual(0);
+      expect(labels.indexOf('Not me')).toBeLessThan(
+        labels.indexOf('It was me'),
+      );
+    });
+
+    it('asks which device the emoji should be compared with', async () => {
+      const { container } = await renderPage(
+        signal(
+          view({
+            stage: 'sas-shown',
+            newSession,
+            emoji: [{ glyph: '🐶', name: 'Dog' }],
+          }),
+        ),
+      );
+
+      expect(container.textContent).toContain(
+        'Compare with the screen of the device you just signed in on.',
+      );
+    });
+
+    it('says the session can now read encrypted messages once verified', async () => {
+      const { container } = await renderPage(
+        signal(view({ stage: 'done', newSession })),
+      );
+
+      expect(normalized(container)).toContain(
+        'Pixel 9 (PHONE) can now read your encrypted messages.',
+      );
+      expect(container.textContent).not.toContain(
+        'This session is now trusted',
+      );
+    });
+
+    // A session names itself, so the name is only ever text: never markup, and isolated so
+    // a bidi override inside it cannot reorder what follows.
+    it('shows a session name as inert, isolated text', async () => {
+      const name = '<img src=x onerror=alert(1)>\u202Egpj.exe';
+      const hostile = { ...newSession, displayName: name };
+      const { container, fixture } = await renderPage(
+        signal(view({ stage: 'done', newSession: hostile })),
+      );
+
+      expect(container.querySelector('img')).toBeNull();
+      const done = container.querySelector('bdi');
+      expect(done?.textContent).toBe(name);
+      expect(done?.nextSibling?.textContent).toMatch(/^\s*\(/);
+      expect(normalized(container)).toContain(
+        `${name} (PHONE) can now read your encrypted messages.`,
+      );
+
+      const active = fixture.debugElement.injector.get(TrustVerificationService)
+        .active as unknown as WritableSignal<VerificationView | null>;
+      active.set(
+        view({
+          stage: 'requested',
+          incoming: true,
+          newSession: hostile,
+        }),
+      );
+      fixture.detectChanges();
+
+      expect(container.querySelector('img')).toBeNull();
+      const row = container.querySelector(
+        '[data-testid="verify-new-session"] bdi',
+      );
+      expect(row?.textContent).toBe(name);
+    });
+
+    it('describes both answers with the title, the details and the note', async () => {
+      const { container } = await renderPage(requested());
+
+      for (const label of ['Not me', 'It was me']) {
+        const ids = button(container, label)
+          .getAttribute('aria-describedby')
+          ?.split(' ');
+        expect(ids).toHaveLength(3);
+        expect(
+          ids?.map((id) => container.querySelector(`#${id}`)?.tagName),
+        ).toEqual(['H2', 'DL', 'P']);
+      }
+    });
+
+    it('names the session by its id when it has no name', async () => {
+      const { container } = await renderPage(
+        signal(
+          view({
+            stage: 'done',
+            newSession: { ...newSession, displayName: null },
+          }),
+        ),
+      );
+
+      expect(normalized(container)).toContain(
+        'PHONE can now read your encrypted messages.',
+      );
+    });
+
+    it('keeps the new device’s own done copy', async () => {
+      const { container } = await renderPage(signal(view({ stage: 'done' })));
+
+      expect(container.textContent).toContain(
+        'This session is now trusted. Your encrypted history will sync.',
+      );
+    });
+
+    it('keeps the existing wording when this device is the unverified one', async () => {
+      const { container } = await renderPage(requested(null));
+
+      expect(
+        within(container).getByRole('heading', { name: 'Verify this device?' }),
+      ).toBeTruthy();
+      expect(container.textContent).toContain(
+        'Another of your sessions wants to verify this one',
+      );
+      expect(button(container, 'Accept')).toBeTruthy();
+      expect(button(container, 'Decline')).toBeTruthy();
+      expect(container.textContent).not.toContain('A new session wants');
+    });
+
+    it('keeps a cross-user request as it was', async () => {
+      const { container } = await renderPage(
+        signal(
+          view({
+            stage: 'requested',
+            incoming: true,
+            isSelfVerification: false,
+            otherUserId: '@bob:hs',
+          }),
+        ),
+      );
+
+      expect(
+        within(container).getByRole('heading', {
+          name: 'Verify another user?',
+        }),
+      ).toBeTruthy();
+      expect(container.textContent).not.toContain('A new session wants');
+    });
   });
 });

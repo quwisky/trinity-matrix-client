@@ -37,7 +37,7 @@ async function exists(p) {
  *
  * Empty on Windows, where process.getuid is undefined and bind-mount ownership is moot.
  */
-const containerUser =
+export const containerUser =
   typeof process.getuid === 'function'
     ? ['-e', `UID=${process.getuid()}`, '-e', `GID=${process.getgid()}`]
     : [];

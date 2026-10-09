@@ -12,6 +12,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
 import { TrustService } from '@trinity/data-access/trust';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { HostFileExportService } from '@trinity/runtime/host';
 import { filter, finalize, from, map, switchMap, tap } from 'rxjs';
 import {
@@ -35,6 +36,7 @@ import {
 })
 export class SecuritySectionComponent {
   private readonly crypto = inject(TrustService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly applicationSurfaces = inject(
     WorkspaceApplicationSurfaceService,
   );
@@ -57,6 +59,8 @@ export class SecuritySectionComponent {
   readonly keyBackupActive = this.crypto.keyBackupActive;
   /** Whether this session is cross-signing verified. */
   readonly sessionVerified = this.crypto.thisDeviceVerified;
+  /** False when this device's keys sit in a store created before stores were encrypted. */
+  readonly cryptoStoreEncrypted = this.matrix.cryptoStoreEncrypted;
 
   /** True while an export/import is in flight (disables the buttons). */
   readonly busy = signal(false);

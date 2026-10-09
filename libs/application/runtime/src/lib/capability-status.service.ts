@@ -156,6 +156,13 @@ export class CapabilityStatusService {
       ? startupRecoveryLabel(state.failure.recovery)
       : null;
   });
+  /** The confirmed second way out of a blocked startup, when the failure offers one. */
+  readonly startupSecondaryRecovery = computed(() => {
+    const state = this.runtime.state();
+    return state.phase === 'blocked' && state.failure.secondaryRecovery
+      ? secondaryRecoveryLabel(state.failure.secondaryRecovery)
+      : null;
+  });
   readonly actionableCount = computed(
     () =>
       new Set(this.health.problems().map(({ reference }) => reference)).size +
@@ -275,6 +282,15 @@ function startupBlockerConsequence(
     case 'reset-installation':
       return 'Required local Account data is unavailable. Resetting erases Trinity data on this installation.';
   }
+}
+
+/** A secondary recovery names what it does: removal, not a fresh sign-in. */
+export function secondaryRecoveryLabel(
+  recovery: ApplicationStartupRecovery,
+): string {
+  return recovery === 'reauthenticate'
+    ? 'Remove account'
+    : startupRecoveryLabel(recovery);
 }
 
 function startupRecoveryLabel(recovery: ApplicationStartupRecovery): string {

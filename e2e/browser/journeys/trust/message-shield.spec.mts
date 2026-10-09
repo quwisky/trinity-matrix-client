@@ -1,4 +1,10 @@
-import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
+import {
+  testResourceId,
+  test,
+  expect,
+  type APIRequestContext,
+  type Page,
+} from '../../../fixtures.mts';
 import {
   login,
   homeserverSession,
@@ -8,8 +14,9 @@ import {
 import { passwordLogin, registerUser } from '../../../support/account.mts';
 
 // Covers per-message authenticity shields (message-row `data-testid="msg-shield-*"`):
-// that a plaintext room raises none — shields are resolved only for encrypted events —
-// and that a genuinely shielded message explains itself.
+// that a plaintext room raises none, that a genuinely shielded message explains itself,
+// and that a message sent without encryption into an encrypted room is marked as such.
+// The homeserver accepts those raw events, so they are sent through the client-server API.
 //
 // A shield can only be provoked for real: it takes an encrypted room, a cross-signing
 // identity to judge against, and a second device that identity has never signed. That
@@ -65,6 +72,87 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
     .locator('textarea.composer__input')
     .first()
     .waitFor({ state: 'visible', timeout: 30_000 });
+}
+
+/** The message row showing `text`. */
+const rowOf = (page: Page, text: string) =>
+  page
+    .locator('.msg', { has: page.locator('.msg__text', { hasText: text }) })
+    .first();
+
+/**
+ * Two accounts sharing a named room that starts unencrypted: the owner sends through the
+ * client-server API, the reader is who the test logs into the client as.
+ */
+async function setUpSharedRoom(
+  request: APIRequestContext,
+  hs: string,
+  tag: string,
+) {
+  const runId = `${testResourceId('run')}${tag}`;
+  const owner = `shield-${tag}-owner-${runId}`;
+  const reader = `shield-${tag}-reader-${runId}`;
+  const roomName = `Shared ${runId}`;
+  await registerUser(request, owner, `${owner}-pass`);
+  await registerUser(request, reader, `${reader}-pass`);
+  const ownerToken = (await passwordLogin(request, hs, owner, `${owner}-pass`))
+    .accessToken;
+  const readerLogin = await passwordLogin(
+    request,
+    hs,
+    reader,
+    `${reader}-pass`,
+  );
+  const ownerAuth = { Authorization: `Bearer ${ownerToken}` };
+  const readerAuth = { Authorization: `Bearer ${readerLogin.accessToken}` };
+
+  const { room_id } = await request
+    .post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: ownerAuth,
+      data: {
+        name: roomName,
+        preset: 'private_chat',
+        invite: [readerLogin.userId],
+      },
+    })
+    .then((r) => r.json());
+  const roomUrl = `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}`;
+  await request.post(`${roomUrl}/join`, { headers: readerAuth });
+
+  return {
+    runId,
+    roomName,
+    roomUrl,
+    ownerAuth,
+    readerAuth,
+    ownerSession: {
+      available: true,
+      hs,
+      user: owner,
+      pass: `${owner}-pass`,
+    } as HomeserverSession,
+    readerSession: {
+      available: true,
+      hs,
+      user: reader,
+      pass: `${reader}-pass`,
+    } as HomeserverSession,
+    /** A plain-text message from the owner, sent through the API. */
+    async sendText(txn: string, body: string): Promise<void> {
+      const sent = await request.put(
+        `${roomUrl}/send/m.room.message/${runId}-${txn}`,
+        { headers: ownerAuth, data: { msgtype: 'm.text', body } },
+      );
+      expect(sent.ok()).toBe(true);
+    },
+    async enableEncryption(): Promise<void> {
+      const enabled = await request.put(`${roomUrl}/state/m.room.encryption/`, {
+        headers: ownerAuth,
+        data: { algorithm: 'm.megolm.v1.aes-sha2' },
+      });
+      expect(enabled.ok()).toBe(true);
+    },
+  };
 }
 
 test.describe('Message authenticity shields', () => {
@@ -320,5 +408,154 @@ test.describe('Message authenticity shields', () => {
       expect(geometry!.rowContainsReceipt).toBe(true);
     }
     await page.evaluate(() => document.documentElement.removeAttribute('dir'));
+  });
+
+  test('a message sent without encryption into an encrypted room is marked', async ({
+    page,
+    secondaryApp,
+    request,
+  }) => {
+    // A second Trinity login for the account that sends the encrypted comparison message.
+    test.slow();
+    const hs = session.hs as string;
+    const room = await setUpSharedRoom(request, hs, 'ne');
+    const earlier = `sent before encryption ${room.runId}`;
+    const clear = `sent without encryption ${room.runId}`;
+    const sealed = `sent with encryption by another account ${room.runId}`;
+
+    // Both are marked. The one sent after encryption was switched on gets the red mark; the
+    // one dated before it gets the quieter grey mark, with its own wording.
+    await room.sendText('earlier', earlier);
+    await room.enableEncryption();
+    await room.sendText('clear', clear);
+
+    await login(page, room.readerSession);
+    await openRoom(page, room.roomName);
+    const red = '[data-testid="msg-shield-unencrypted"]';
+    const grey = '[data-testid="msg-shield-unencrypted-history"]';
+    await expect(rowOf(page, clear)).toBeVisible({ timeout: 30_000 });
+    const redShield = rowOf(page, clear).locator(red);
+    await expect(redShield).toBeVisible({ timeout: 30_000 });
+    await expect(redShield).toHaveAttribute('aria-label', 'Not encrypted');
+    await expect(redShield).toHaveClass(/msg__shield--red/);
+    await redShield.focus();
+    await expect(page.getByTestId('msg-shield-tip')).toContainText(
+      'This message was sent without end-to-end encryption.',
+    );
+    await expect(rowOf(page, clear).locator(grey)).toHaveCount(0);
+    // Close the red mark's tooltip, so the next one is the only one open.
+    await redShield.blur();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('msg-shield-tip')).toHaveCount(0);
+
+    await expect(rowOf(page, earlier)).toBeVisible();
+    const greyShield = rowOf(page, earlier).locator(grey);
+    await expect(greyShield).toBeVisible();
+    await expect(greyShield).toHaveAttribute('aria-label', 'Not encrypted');
+    await expect(greyShield).not.toHaveClass(/msg__shield--red/);
+    // Its open-lock glyph differs from both the red mark and the unverified-device caution.
+    const glyph = async (shield: typeof greyShield) =>
+      shield.locator('svg').evaluate((svg) => svg.innerHTML);
+    expect(await glyph(greyShield)).not.toBe(await glyph(redShield));
+    await expect(rowOf(page, earlier).locator(red)).toHaveCount(0);
+    await greyShield.focus();
+    await expect(page.getByTestId('msg-shield-tip')).toContainText(
+      'This message is dated before the room turned on end-to-end encryption.',
+    );
+
+    // A message another account encrypts is not marked.
+    const other = await secondaryApp.launch();
+    await login(other, room.ownerSession);
+    await openRoom(other, room.roomName);
+    await other.locator('textarea.composer__input').first().click();
+    await other.keyboard.type(sealed);
+    await other.keyboard.press('Enter');
+    await expect(other.locator('.msg__text', { hasText: sealed })).toBeVisible({
+      timeout: 30_000,
+    });
+    await secondaryApp.activatePrimary();
+    await expect(rowOf(page, sealed)).toBeVisible({ timeout: 60_000 });
+    await expect(
+      rowOf(page, sealed).locator('[data-testid^="msg-shield-unencrypted"]'),
+    ).toHaveCount(0);
+    await expect(page.locator(red)).toHaveCount(1);
+    await expect(page.locator(grey)).toHaveCount(1);
+  });
+
+  // An event with a state key is room state, whatever its type. A state-keyed
+  // `m.room.message` must not show up as a message row, marked or not.
+  test('a state event of a message type is not shown as a message', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await setUpSharedRoom(request, hs, 'sk');
+    const keyed = `state keyed message ${room.runId}`;
+    const after = `sent after the state event ${room.runId}`;
+
+    await room.enableEncryption();
+    const put = await request.put(`${room.roomUrl}/state/m.room.message/x`, {
+      headers: room.ownerAuth,
+      data: { msgtype: 'm.text', body: keyed },
+    });
+    expect(put.ok()).toBe(true);
+    await room.sendText('after', after);
+
+    await login(page, room.readerSession);
+    await openRoom(page, room.roomName);
+    // A row that would have rendered sits before this one, so once it is shown the state
+    // event has been through the timeline.
+    await expect(rowOf(page, after)).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('.msg', { hasText: keyed })).toHaveCount(0);
+  });
+
+  // The SDK shows an edit's text without checking that the edit was encrypted, so the edit
+  // is judged, not the message it replaces.
+  test('an unencrypted edit of an encrypted message is marked', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const room = await setUpSharedRoom(request, hs, 'ed');
+    const sealed = `sent with encryption ${room.runId}`;
+    const edited = `edited without encryption ${room.runId}`;
+
+    await room.enableEncryption();
+    await login(page, room.readerSession);
+    await openRoom(page, room.roomName);
+    await page.locator('textarea.composer__input').first().click();
+    await page.keyboard.type(sealed);
+    await page.keyboard.press('Enter');
+
+    // Wait for the server's echo, so the row is the sent message rather than a local one.
+    const row = rowOf(page, sealed);
+    await expect(row).toHaveAttribute('data-mid', /^\$/, { timeout: 30_000 });
+    await expect(
+      row.locator('[data-testid="msg-shield-unencrypted"]'),
+    ).toHaveCount(0);
+    const eventId = (await row.getAttribute('data-mid')) as string;
+
+    // The same account edits it through the API, in the clear.
+    const edit = await request.put(
+      `${room.roomUrl}/send/m.room.message/${room.runId}-edit`,
+      {
+        headers: room.readerAuth,
+        data: {
+          msgtype: 'm.text',
+          body: `* ${edited}`,
+          'm.new_content': { msgtype: 'm.text', body: edited },
+          'm.relates_to': { rel_type: 'm.replace', event_id: eventId },
+        },
+      },
+    );
+    expect(edit.ok()).toBe(true);
+
+    const editedRow = page.locator(`.msg[data-mid="${eventId}"]`);
+    await expect(editedRow.locator('.msg__text')).toContainText(edited, {
+      timeout: 30_000,
+    });
+    await expect(
+      editedRow.locator('[data-testid="msg-shield-unencrypted"]'),
+    ).toBeVisible({ timeout: 30_000 });
   });
 });

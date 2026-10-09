@@ -4,6 +4,7 @@ import {
   secureStorageUsable,
   secureStoreDelete,
   secureStoreGet,
+  secureStoreRead,
   secureStoreSet,
 } from './secure-store';
 import { getMainWindow } from './window';
@@ -39,6 +40,18 @@ export function registerSecureStoreIpc(): void {
       return null;
     }
     return secureStoreGet(safeStorage, secureStoreFile(), rawKey);
+  });
+
+  ipcMain.handle('trinity:secure-store:read', (event, rawKey: unknown) => {
+    const win = getMainWindow();
+    if (
+      !win ||
+      event.sender !== win.webContents ||
+      typeof rawKey !== 'string'
+    ) {
+      return { kind: 'unavailable' };
+    }
+    return secureStoreRead(safeStorage, secureStoreFile(), rawKey);
   });
 
   ipcMain.handle(

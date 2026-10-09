@@ -22,6 +22,7 @@ function message(over: {
   return {
     getId: () => over.id,
     getType: () => EventType.RoomMessage,
+    isState: () => false,
     getSender: () => '@alice:hs',
     getTs: () => over.ts ?? 0,
     getContent: () => ({ body: over.body }),

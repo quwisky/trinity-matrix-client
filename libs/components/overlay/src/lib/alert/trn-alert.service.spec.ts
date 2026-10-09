@@ -87,6 +87,25 @@ describe('TrnAlertService', () => {
     expect(await result).toBe(false);
   });
 
+  it.each([
+    ['Export keys', 'alternative'],
+    ['Remove anyway', 'confirm'],
+    ['Cancel', 'cancel'],
+  ] as const)('choose resolves %s as %s', async (button, choice) => {
+    const svc = TestBed.inject(TrnAlertService);
+    const result = firstValueFrom(
+      svc.choose$({
+        header: 'Export room keys first?',
+        alternativeText: 'Export keys',
+        confirmText: 'Remove anyway',
+        variant: 'danger',
+      }),
+    );
+    render();
+    clickButton(button);
+    expect(await result).toBe(choice);
+  });
+
   it('can keep a route-guard confirmation open across navigation cancellation', async () => {
     const dialog = TestBed.inject(Dialog);
     const open = vi.spyOn(dialog, 'open');

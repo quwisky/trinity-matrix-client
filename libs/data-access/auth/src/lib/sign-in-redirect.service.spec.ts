@@ -89,15 +89,18 @@ describe('SignInRedirectService', () => {
     it('stashes the state, then redirects to a URL that carries that state', async () => {
       const { service, events, saveSso, getSsoUrl } = setup();
 
-      service.startSso('https://hs.example', 'add', 'OLDDEV').subscribe();
+      service
+        .startSso('https://hs.example', 'add', 'OLDDEV', '@bob:hs')
+        .subscribe();
       await vi.waitFor(() => expect(events).toHaveLength(2));
 
-      const [state, baseUrl, mode, deviceId] = saveSso.mock
-        .calls[0] as unknown as [string, string, string, string];
-      expect([baseUrl, mode, deviceId]).toEqual([
+      const [state, baseUrl, mode, deviceId, expectedUserId] = saveSso.mock
+        .calls[0] as unknown as [string, string, string, string, string];
+      expect([baseUrl, mode, deviceId, expectedUserId]).toEqual([
         'https://hs.example',
         'add',
         'OLDDEV',
+        '@bob:hs',
       ]);
       expect(state).toMatch(/^[0-9a-f]{32}$/);
       const redirect = getSsoUrl.mock.calls[0][1];

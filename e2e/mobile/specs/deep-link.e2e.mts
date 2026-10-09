@@ -29,19 +29,36 @@ const pathname = async (): Promise<string> =>
 const roomSegment = (roomId: string): string =>
   Buffer.from(roomId).toString('base64url');
 
-/** Fire a VIEW intent at the installed app, then return to its WebView. */
+/**
+ * Hand the link to the OS for the installed app, then return to its WebView: a VIEW intent
+ * on Android; on iOS, `openURL` through XCUITest, which the app's scene delegate receives.
+ */
 async function openLink(link: string): Promise<void> {
   await native();
-  const started = await shell('am', [
-    'start',
-    '-a',
-    'android.intent.action.VIEW',
-    '-d',
-    link,
-    APP_PACKAGE,
-  ]);
-  if (/error/i.test(started)) throw new Error(`am start failed: ${started}`);
+  if (browser.isIOS) {
+    await browser.execute('mobile: deepLink', {
+      url: link,
+      bundleId: APP_PACKAGE,
+    });
+  } else {
+    const started = await shell('am', [
+      'start',
+      '-a',
+      'android.intent.action.VIEW',
+      '-d',
+      link,
+      APP_PACKAGE,
+    ]);
+    if (/error/i.test(started)) throw new Error(`am start failed: ${started}`);
+  }
   await webview();
+}
+
+/** Kill the app so the next link cold-starts it. */
+async function stopApp(): Promise<void> {
+  await native();
+  if (browser.isIOS) await browser.terminateApp(APP_PACKAGE);
+  else await shell('am', ['force-stop', APP_PACKAGE]);
 }
 
 /** Confirm the room preview a followed matrix.to link raises, as in-app taps do. */
@@ -59,7 +76,7 @@ async function openPreviewedRoom(roomId: string): Promise<void> {
 const roomButton = (name: string) =>
   $(`//button[contains(@class,"channel")][contains(.,"${name}")]`);
 
-describe('Android room deep links', () => {
+describe('room deep links', () => {
   let roomA: { id: string; name: string };
   let roomB: { id: string; name: string };
   let token: string;
@@ -100,12 +117,11 @@ describe('Android room deep links', () => {
     if (!accountId) throw new Error('no active account before the restart');
     await waitForDurableActiveAccount(accountId);
 
-    await native();
-    await shell('am', ['force-stop', APP_PACKAGE]);
+    await stopApp();
     await openLink(
       `eu.qwky.trinity://matrix.to/#/${encodeURIComponent(roomB.id)}`,
     );
-    await waitForRooms(60_000);
+    await waitForRooms(browser.isIOS ? 90_000 : 60_000);
     await openPreviewedRoom(roomB.id);
   });
 
@@ -122,8 +138,7 @@ describe('Android room deep links', () => {
       await sendMessage(token, roomB.id, `filler ${i}`);
     }
 
-    await native();
-    await shell('am', ['force-stop', APP_PACKAGE]);
+    await stopApp();
     await openLink(
       `eu.qwky.trinity://matrix.to/#/${encodeURIComponent(roomB.id)}/${encodeURIComponent(eventId)}`,
     );

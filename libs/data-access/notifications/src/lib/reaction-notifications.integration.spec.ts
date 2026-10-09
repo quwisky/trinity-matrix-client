@@ -75,6 +75,8 @@ describe('reaction notifications integration', () => {
       getUserId: () => userId,
       getSyncState: vi.fn(() => SyncState.Prepared),
       getRoom: () => room,
+      getRooms: () => [],
+      getCrypto: () => undefined,
       getPushActionsForEvent: vi.fn(() => ({ notify: true, tweaks: {} })),
       getAccountData: () => undefined,
       pushRules: {

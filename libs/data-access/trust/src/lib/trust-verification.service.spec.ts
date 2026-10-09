@@ -2,7 +2,7 @@ import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
-import { Subject, firstValueFrom, of } from 'rxjs';
+import { Observable, Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CryptoEvent,
@@ -11,6 +11,8 @@ import {
   VerifierEvent,
 } from 'matrix-js-sdk/lib/crypto-api';
 import { TrustVerificationService } from './trust-verification.service';
+import { TrustDevicesService, type DeviceInfo } from './trust-devices.service';
+import { TrustHealthService } from './trust-health.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 // Minimal event emitter shaped like matrix-js-sdk's TypedEventEmitter.
@@ -120,7 +122,15 @@ function fakeRequest(
 
 const activeUserId = signal<string | null>(null);
 
-function setup(opts: { inProgress?: ReturnType<typeof fakeRequest> } = {}) {
+function setup(
+  opts: {
+    inProgress?: ReturnType<typeof fakeRequest>;
+    /** Whether THIS device is verified; `null` is the unknown/unavailable health state. */
+    thisDeviceVerified?: boolean | null;
+    /** What the device list answers with. */
+    devices?: Observable<DeviceInfo[]>;
+  } = {},
+) {
   const crypto = {
     userHasCrossSigningKeys: vi.fn().mockResolvedValue(true),
     requestOwnUserVerification: vi.fn(),
@@ -138,9 +148,15 @@ function setup(opts: { inProgress?: ReturnType<typeof fakeRequest> } = {}) {
   // The MatrixClient itself is a matrix-js-sdk object we must never build for real,
   // so we keep the hand-rolled emitter fake above and expose it through a ng-mocks
   // mock of MatrixClientService (its `isInitialized`/`instance` getters overridden).
+  const thisDeviceVerified = signal<boolean | null>(
+    opts.thisDeviceVerified ?? null,
+  );
+  const list = vi.fn(() => opts.devices ?? of<DeviceInfo[]>([]));
   TestBed.configureTestingModule({
     providers: [
       TrustVerificationService,
+      MockProvider(TrustHealthService, { thisDeviceVerified }),
+      MockProvider(TrustDevicesService, { list }),
       MockProvider(MatrixClientService, {
         isInitialized: true,
         instance: client as unknown as MatrixClient,
@@ -155,6 +171,8 @@ function setup(opts: { inProgress?: ReturnType<typeof fakeRequest> } = {}) {
     crypto,
     client,
     matrix,
+    thisDeviceVerified,
+    list,
   };
 }
 
@@ -850,5 +868,287 @@ describe('TrustVerificationService', () => {
       }),
     );
     expect(svc.active()?.otherUserId).toBe('@new:hs');
+  });
+
+  describe('a request from another of the user’s own sessions', () => {
+    const newPhone: DeviceInfo = {
+      id: 'PHONE',
+      displayName: 'Pixel 9',
+      lastSeenTs: 1_700_000_000_000,
+      lastSeenIp: '203.0.113.7',
+      isCurrent: false,
+      isVerified: false,
+    };
+
+    function receive(
+      options: Parameters<typeof setup>[0],
+      request = fakeRequest({ otherDeviceId: 'PHONE' }),
+    ) {
+      const result = setup(options);
+      result.svc.runProjection().subscribe();
+      result.client.emit(CryptoEvent.VerificationRequestReceived, request);
+      return { ...result, request };
+    }
+
+    it('describes the requester as a new session when this device is verified', () => {
+      const { svc } = receive({
+        thisDeviceVerified: true,
+        devices: of([newPhone]),
+      });
+
+      expect(svc.active()?.newSession).toEqual({
+        deviceId: 'PHONE',
+        displayName: 'Pixel 9',
+        lastSeenIp: '203.0.113.7',
+        lastSeenTs: 1_700_000_000_000,
+      });
+    });
+
+    it('presents the request at once and fills the details in when /devices answers', () => {
+      const devices = new Subject<DeviceInfo[]>();
+      const { svc } = receive({ thisDeviceVerified: true, devices });
+
+      expect(svc.active()?.newSession).toEqual({
+        deviceId: 'PHONE',
+        displayName: null,
+        lastSeenIp: null,
+        lastSeenTs: null,
+      });
+
+      devices.next([newPhone]);
+
+      expect(svc.active()?.newSession?.displayName).toBe('Pixel 9');
+    });
+
+    it('keeps the device id and leaves the rest unknown when /devices fails', () => {
+      const { svc } = receive({
+        thisDeviceVerified: true,
+        devices: throwError(() => new Error('devices unavailable')),
+      });
+
+      expect(svc.active()?.newSession).toEqual({
+        deviceId: 'PHONE',
+        displayName: null,
+        lastSeenIp: null,
+        lastSeenTs: null,
+      });
+    });
+
+    it('removes control and format characters from what the session calls itself', () => {
+      const { svc } = receive({
+        thisDeviceVerified: true,
+        devices: of([
+          { ...newPhone, displayName: ' Pixel\u202E 9\u200B\u0007 ' },
+        ]),
+      });
+
+      expect(svc.active()?.newSession?.displayName).toBe('Pixel 9');
+    });
+
+    it('treats a name made only of invisible characters as no name', () => {
+      const { svc } = receive({
+        thisDeviceVerified: true,
+        devices: of([{ ...newPhone, displayName: '\u202E\u200B  ' }]),
+      });
+
+      expect(svc.active()?.newSession?.displayName).toBeNull();
+    });
+
+    it('removes control and format characters from the device id it shows', () => {
+      const { svc } = receive(
+        { thisDeviceVerified: true, devices: of([newPhone]) },
+        fakeRequest({ otherDeviceId: 'PH\u202EON\u200BE' }),
+      );
+
+      expect(svc.active()?.newSession?.deviceId).toBe('PHONE');
+    });
+
+    it('does not repeat the device id as its name when the session is unnamed', () => {
+      const { svc } = receive({
+        thisDeviceVerified: true,
+        devices: of([{ ...newPhone, displayName: 'PHONE' }]),
+      });
+
+      expect(svc.active()?.newSession?.displayName).toBeNull();
+    });
+
+    it('does not repeat a device id with hidden characters as its name', () => {
+      const id = 'PH\u202EONE';
+      const { svc } = receive(
+        {
+          thisDeviceVerified: true,
+          devices: of([{ ...newPhone, id, displayName: id }]),
+        },
+        fakeRequest({ otherDeviceId: id }),
+      );
+
+      expect(svc.active()?.newSession?.deviceId).toBe('PHONE');
+      expect(svc.active()?.newSession?.displayName).toBeNull();
+      expect(svc.active()?.otherDeviceId).toBe('PHONE');
+    });
+
+    it('treats an unknown trust state as the verified side', () => {
+      const { svc } = receive({ thisDeviceVerified: null });
+
+      expect(svc.active()?.newSession?.deviceId).toBe('PHONE');
+    });
+
+    it('leaves the request unchanged when this device is the unverified one', () => {
+      const { svc } = receive({
+        thisDeviceVerified: false,
+        devices: of([newPhone]),
+      });
+
+      expect(svc.active()?.newSession).toBeNull();
+    });
+
+    it('only fills in details when the device list shows the requester as verified', () => {
+      const { svc } = receive({
+        thisDeviceVerified: true,
+        devices: of([{ ...newPhone, isVerified: true }]),
+      });
+
+      expect(svc.active()?.newSession).toEqual({
+        deviceId: 'PHONE',
+        displayName: 'Pixel 9',
+        lastSeenIp: '203.0.113.7',
+        lastSeenTs: 1_700_000_000_000,
+      });
+    });
+
+    it('leaves a request this device started unchanged', () => {
+      const { svc } = receive(
+        { thisDeviceVerified: true },
+        fakeRequest({ initiatedByMe: true }),
+      );
+
+      expect(svc.active()?.newSession).toBeNull();
+    });
+
+    it('leaves a cross-user request unchanged', () => {
+      const { svc } = receive(
+        { thisDeviceVerified: true },
+        fakeRequest({ isSelfVerification: false, otherUserId: '@bob:hs' }),
+      );
+
+      expect(svc.active()?.newSession).toBeNull();
+    });
+
+    it('keeps describing the requester once it has been verified', () => {
+      const { svc, request } = receive({
+        thisDeviceVerified: true,
+        devices: of([newPhone]),
+      });
+
+      request.setPhase(VerificationPhase.Done);
+
+      expect(svc.active()).toMatchObject({
+        stage: 'done',
+        newSession: { deviceId: 'PHONE', displayName: 'Pixel 9' },
+      });
+    });
+
+    it('does not let an earlier request’s /devices answer reach the next request', () => {
+      const first = new Subject<DeviceInfo[]>();
+      const second = new Subject<DeviceInfo[]>();
+      const { svc, client, list } = setup({ thisDeviceVerified: true });
+      list.mockReturnValueOnce(first).mockReturnValueOnce(second);
+      svc.runProjection().subscribe();
+      const firstRequest = fakeRequest({ otherDeviceId: 'PHONE' });
+      client.emit(CryptoEvent.VerificationRequestReceived, firstRequest);
+      firstRequest.setPhase(VerificationPhase.Cancelled);
+      client.emit(
+        CryptoEvent.VerificationRequestReceived,
+        fakeRequest({ otherDeviceId: 'TABLET' }),
+      );
+      expect(list).toHaveBeenCalledTimes(2);
+
+      first.next([newPhone]);
+
+      expect(svc.active()?.newSession).toEqual({
+        deviceId: 'TABLET',
+        displayName: null,
+        lastSeenIp: null,
+        lastSeenTs: null,
+      });
+
+      second.next([{ ...newPhone, id: 'TABLET', displayName: 'Tab' }]);
+
+      expect(svc.active()?.newSession?.displayName).toBe('Tab');
+    });
+
+    it('drops a /devices answer that arrives after an account switch', () => {
+      const devices = new Subject<DeviceInfo[]>();
+      const { svc, client, matrix } = setup({
+        thisDeviceVerified: true,
+        devices,
+      });
+      activeUserId.set('@a:hs');
+      try {
+        svc.runProjection().subscribe();
+        TestBed.inject(ApplicationRef).tick();
+        client.emit(
+          CryptoEvent.VerificationRequestReceived,
+          fakeRequest({ otherDeviceId: 'PHONE' }),
+        );
+        expect(svc.active()?.newSession?.deviceId).toBe('PHONE');
+
+        ngMocks.stubMember(matrix, 'instance', {
+          ...emitter(),
+          getCrypto: () => ({
+            getVerificationRequestsToDeviceInProgress: vi.fn(() => []),
+          }),
+          getUserId: () => '@b:hs',
+        } as unknown as MatrixClient);
+        activeUserId.set('@b:hs');
+        TestBed.inject(ApplicationRef).tick();
+        expect(svc.active()).toBeNull();
+
+        devices.next([newPhone]);
+
+        expect(svc.active()).toBeNull();
+      } finally {
+        activeUserId.set(null);
+      }
+    });
+
+    describe('when this device’s trust state is not known yet', () => {
+      function receiveUnknown() {
+        const result = receive({ thisDeviceVerified: null });
+        expect(result.svc.active()?.newSession).not.toBeNull();
+        return result;
+      }
+      const flush = () => TestBed.inject(ApplicationRef).tick();
+
+      it('decides the side again, once, when it resolves to unverified', () => {
+        const { svc, thisDeviceVerified } = receiveUnknown();
+
+        thisDeviceVerified.set(false);
+        flush();
+
+        expect(svc.active()?.newSession).toBeNull();
+      });
+
+      it('keeps the decision when it resolves to verified, and does not decide again', () => {
+        const { svc, thisDeviceVerified } = receiveUnknown();
+
+        thisDeviceVerified.set(true);
+        flush();
+        thisDeviceVerified.set(false);
+        flush();
+
+        expect(svc.active()?.newSession?.deviceId).toBe('PHONE');
+      });
+
+      it('does not decide again once the request has moved on from requested', () => {
+        const { svc, thisDeviceVerified, request } = receiveUnknown();
+        request.setPhase(VerificationPhase.Ready);
+
+        thisDeviceVerified.set(false);
+        flush();
+
+        expect(svc.active()?.newSession?.deviceId).toBe('PHONE');
+      });
+    });
   });
 });

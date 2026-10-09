@@ -31,3 +31,12 @@ export const SSO_USER = 'sso-e2e';
 // is fixed at container start, so this is the finest isolation available: see dex.yaml.
 export const SSO_RESET_EMAIL = 'sso-reset-e2e@trinity.test';
 export const SSO_RESET_USER = 'sso-reset-e2e';
+
+// The opt-in MAS stack (TRINITY_E2E_MAS=1, see mas/). Must match mas/mas.yaml and the
+// Caddyfile. The account is seeded through MAS's CLI; Synapse never sees a password.
+export const MAS_HS_TLS = 'https://localhost:8450';
+export const MAS_SERVER_NAME = 'localhost:8450';
+export const MAS_ISSUER = 'https://localhost:8451/';
+export const MAS_SHARED_SECRET = 'trinity-e2e-mas-shared-secret';
+export const MAS_USER = 'mas-e2e';
+export const MAS_PASS = 'mas-e2e-pass-123';

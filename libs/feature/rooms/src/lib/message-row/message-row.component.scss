@@ -147,10 +147,12 @@
     }
   }
 
-  // Authenticity shield: grey = caution (default), red = warning. It qualifies the whole
-  // message rather than any run of text, so it owns the body's trailing grid cell, top-aligned
-  // with the first line in both header and grouped layouts. It stays in flow so long content
-  // wraps before the icon and virtual row measurement includes every painted control.
+  // Authenticity shield: grey = caution (default), red = warning; "not encrypted" is red, or
+  // grey when the message is dated before the room turned encryption on. It qualifies the
+  // whole message rather than any run of text, so it owns the body's trailing grid cell,
+  // top-aligned with the first line in both header and grouped layouts. It stays in flow so
+  // long content wraps before the icon and virtual row measurement includes every painted
+  // control.
   .msg__shield {
     grid-row: 1;
     grid-column: 2;

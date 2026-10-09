@@ -150,11 +150,15 @@ export class SystemStatusComponent {
     this.status.retry(entry);
   }
 
-  protected recoverStartup(): void {
+  protected recoverStartup(secondary = false): void {
     const state = this.runtime.state();
     if (state.phase !== 'blocked') return;
+    const recovery = secondary
+      ? state.failure.secondaryRecovery
+      : state.failure.recovery;
+    if (!recovery) return;
     this.startupRecovery
-      .confirmAndRecover(state.failure.recovery)
+      .confirmAndRecover(recovery)
       .pipe(take(1))
       .subscribe((outcome) => this.startupRecovery.present(outcome));
   }

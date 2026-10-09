@@ -21,6 +21,8 @@ export interface AlertDialogData {
   message?: string;
   confirmText: string;
   cancelText: string;
+  /** A confirm's second way forward; the alert then closes with 'alternative'. */
+  alternativeText?: string;
   variant: TrnAlertVariant;
   placeholder?: string;
   inputLabel?: string;
@@ -87,6 +89,16 @@ export type AlertDialogResult = boolean | string | null;
         >
           {{ data.cancelText }}
         </button>
+        @if (data.alternativeText) {
+          <button
+            trnBtn
+            variant="secondary"
+            (click)="onAlternative()"
+            data-testid="alert-alternative"
+          >
+            {{ data.alternativeText }}
+          </button>
+        }
         <button
           trnBtn
           [variant]="data.variant === 'danger' ? 'danger' : 'primary'"
@@ -126,6 +138,10 @@ export class TrnAlertDialogComponent {
 
   protected onCancel(): void {
     this.ref.close(this.data.kind === 'prompt' ? null : false);
+  }
+
+  protected onAlternative(): void {
+    this.ref.close('alternative');
   }
 
   protected onConfirm(): void {

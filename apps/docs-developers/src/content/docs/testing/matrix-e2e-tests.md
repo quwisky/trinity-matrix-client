@@ -40,6 +40,18 @@ When the two servers legitimately differ, branch the expectation on `homeserverS
 
 Tuwunel 1.9.3 can wake a waiting `/sync` that has a new state event in its timeline but still has the previous state in MSC4222 `state_after`. The SDK follows `state_after`, so the app keeps the old state. A spec that changes room state while the app is syncing must not let a waiting sync see the write. See `putRoomState` in `e2e/support/image-pack-management-journey.mts`.
 
+## Run the MAS journeys {#mas-journeys}
+
+`e2e/browser/journeys/accounts/mas-session.spec.mts` signs in, refreshes and signs out against a real [Matrix Authentication Service](https://element-hq.github.io/matrix-authentication-service/) (MAS). It needs the opt-in MAS stack, which `TRINITY_E2E_MAS=1` adds to the disposable stack. Without it the tests skip.
+
+```bash
+TRINITY_E2E_MAS=1 pnpm nx run trinity-e2e-browser:e2e -- accounts/mas-session.spec.mts
+```
+
+The stack (`e2e/support/homeserver/mas/`) runs MAS 1.26.0, its PostgreSQL and a third Synapse that delegates authentication to MAS, behind Caddy on `https://localhost:8450` (homeserver) and `https://localhost:8451` (MAS). Delegation turns password login off for the whole server, so it cannot replace the primary homeserver. MAS issues 60-second access tokens, the minimum its configuration schema allows, so the refresh test waits through two real expiries and takes about three minutes; the whole file takes about six minutes on two workers. MAS always rotates refresh tokens, so a provider that does not is covered only by the unit tests in `matrix-client.service.spec.ts`. The stack needs Docker with published ports: the native runtime and `TRINITY_E2E_NETWORK_CONTAINER` refuse it.
+
+CI runs the journeys in two places. The `E2E (Synapse nightly)` workflow runs them every night in its `Browser E2E (MAS)` job. A pull request runs them in its `E2E browser journeys (MAS)` job when it changes sign-in code (`libs/data-access/auth`, `libs/data-access/matrix-client`, `libs/data-access/accounts`, `libs/feature/auth`, the session and secure storage services, the session model or the factory reset's capability wiring), the `matrix-js-sdk` version or its patch, or the MAS stack and journeys; every other pull request skips that job.
+
 ## Focus a journey {#focus-journey}
 
 ```bash

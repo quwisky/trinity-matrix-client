@@ -1,9 +1,10 @@
-import { type MatrixEvent } from 'matrix-js-sdk';
+import { EventType, type MatrixEvent, type Room } from 'matrix-js-sdk';
 import {
   EventShieldColour,
   EventShieldReason,
   type EventEncryptionInfo,
 } from 'matrix-js-sdk/lib/crypto-api';
+import { liveRoomState } from '@trinity/util/matrix';
 import { type MessageShield } from './message-presentation';
 
 /**
@@ -11,6 +12,24 @@ import { type MessageShield } from './message-presentation';
  * {@link ThreadsService} so both the main timeline and the thread panel resolve and
  * render shields identically. Keeps the crypto-api mapping in one place.
  */
+
+/** Shown on a message that was sent without end-to-end encryption into an encrypted room. */
+export const UNENCRYPTED_SHIELD: MessageShield = Object.freeze({
+  level: 'unencrypted',
+  reason: 'Not encrypted',
+  explanation: 'This message was sent without end-to-end encryption.',
+});
+
+/**
+ * The quieter form of {@link UNENCRYPTED_SHIELD} for a message dated before the room
+ * turned encryption on: it is just as unencrypted, but its date explains why.
+ */
+export const UNENCRYPTED_HISTORY_SHIELD: MessageShield = Object.freeze({
+  level: 'unencrypted-history',
+  reason: 'Not encrypted',
+  explanation:
+    'This message is dated before the room turned on end-to-end encryption.',
+});
 
 /** Stable fingerprint of a shield for cache revs + change detection ('' = none). */
 export function shieldKey(shield: MessageShield | null): string {
@@ -84,6 +103,56 @@ export function shieldExplanationText(
     default:
       return 'Trinity couldn’t work out which device sent it.';
   }
+}
+
+/**
+ * The event a row's shield must judge: its latest edit when it has one, else itself. An
+ * edit supplies the text the row shows, and the SDK applies it without checking that it
+ * was encrypted, so the edit's own encryption is what vouches for that text.
+ */
+export function shieldSubject(event: MatrixEvent): MatrixEvent {
+  return event.replacingEvent() ?? event;
+}
+
+/**
+ * A lookup that marks each message whose text arrived in the clear in an encrypted room,
+ * and returns null for everything else (encrypted messages keep their crypto-derived
+ * shield). Local echoes, state events and redactions are never marked. Needs no crypto
+ * call, so it is synchronous; build it once per projection pass.
+ *
+ * Every such message is marked, whatever its date. The date only picks the tone: a message
+ * dated at or after the room's current `m.room.encryption` event gets
+ * {@link UNENCRYPTED_SHIELD}, an earlier one the quieter {@link UNENCRYPTED_HISTORY_SHIELD}.
+ * A room with no such event (only the crypto store says it is encrypted) has nothing to
+ * compare against, so every message gets the first.
+ */
+export function unencryptedShieldFor(
+  room: Room,
+  roomEncrypted: boolean,
+): (event: MatrixEvent) => MessageShield | null {
+  if (!roomEncrypted) {
+    return () => null;
+  }
+  const encryptedAt =
+    liveRoomState(room)
+      ?.getStateEvents(EventType.RoomEncryption, '')
+      ?.getTs() ?? null;
+  const settled = (e: MatrixEvent): boolean =>
+    !e.status && !e.isState() && !e.isRedacted();
+  return (event) => {
+    const subject = shieldSubject(event);
+    if (!settled(event) || !settled(subject) || subject.isEncrypted()) {
+      return null;
+    }
+    const ts = subject.getTs();
+    // Only a real, earlier date earns the quieter mark; a missing or zero date stays red.
+    return encryptedAt !== null &&
+      Number.isFinite(ts) &&
+      ts > 0 &&
+      ts < encryptedAt
+      ? UNENCRYPTED_HISTORY_SHIELD
+      : UNENCRYPTED_SHIELD;
+  };
 }
 
 /** The slice of the crypto API the shield resolver needs. */

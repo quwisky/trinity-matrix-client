@@ -60,3 +60,24 @@ https://caddy:9448, https://localhost:9448 {
 		body `<!doctype html><html><head><meta property="og:title" content="Trinity E2E Preview"><meta property="og:description" content="A link preview served by the test harness."></head><body>ok</body></html>`
 	}
 }
+
+# Opt-in MAS stack (TRINITY_E2E_MAS=1). mas/docker-compose.yml publishes these two ports and
+# runs their upstreams; without it nothing reaches these sites. `route` keeps the order as
+# written: the well-known answer first, MAS's compatibility endpoints next (as in a real
+# MAS deployment), the delegating Synapse last.
+https://localhost:8450 {
+	tls internal
+	@compat path_regexp ^/_matrix/client/[^/]+/(login|logout|refresh)$
+	route {
+		header /.well-known/matrix/* Content-Type application/json
+		header /.well-known/matrix/* Access-Control-Allow-Origin *
+		respond /.well-known/matrix/client `{"m.homeserver":{"base_url":"https://localhost:8450"}}` 200
+		reverse_proxy @compat mas:8080
+		reverse_proxy homeserver-mas:8008
+	}
+}
+
+https://localhost:8451 {
+	tls internal
+	reverse_proxy mas:8080
+}
