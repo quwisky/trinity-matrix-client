@@ -121,3 +121,14 @@ storybook-static
 # Local agent plans, specs and SDD workspaces: never committed
 /docs/superpowers/
 /.superpowers/
+
+# Signing material: certificates, keys and provisioning profiles stay out of git. The
+# end-to-end suite's throwaway localhost certificate is the one tracked exception.
+*.p12
+*.pfx
+*.p8
+*.keystore
+*.jks
+*.mobileprovision
+*.pem
+!/e2e/**/*.pem
