@@ -3,7 +3,7 @@ import { ApplicationRef, Component, inject, input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { firstValueFrom, NEVER } from 'rxjs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { screen } from '@trinity/testing';
 import { TrnAlertService } from '../alert/trn-alert.service';
 import { TrnDialogShellComponent } from '../dialog-shell/trn-dialog-shell.component';
@@ -419,6 +419,107 @@ describe('TrnDialogService', () => {
 
     svc.closeAll();
     expect(svc.hasOpen()).toBe(false);
+  });
+});
+
+// jsdom's click() moves no focus, which is exactly a WebKit tap: the pressed button never
+// holds focus, and what does is whatever had it before, here a section heading.
+describe('TrnDialogService — focus return', () => {
+  let svc: TrnDialogService;
+  let heading: HTMLHeadingElement;
+  let opener: HTMLButtonElement;
+  let field: HTMLInputElement;
+  const tick = () => TestBed.inject(ApplicationRef).tick();
+
+  /** Press the opener as a tap would, opening the dialog from its click handler. */
+  function tapOpener(options: { restoreFocus?: boolean } = {}) {
+    let ref: TrnDialogRef<string> | undefined;
+    opener.addEventListener(
+      'click',
+      () =>
+        (ref = svc.open<string, TestDialogComponent>(
+          TestDialogComponent,
+          options,
+        )),
+      { once: true },
+    );
+    opener.click();
+    tick();
+    if (!ref) throw new Error('the press opened no dialog');
+    return ref;
+  }
+
+  beforeEach(() => {
+    svc = TestBed.inject(TrnDialogService);
+    heading = document.createElement('h1');
+    heading.tabIndex = -1;
+    heading.textContent = 'Security';
+    opener = document.createElement('button');
+    opener.textContent = 'Verify';
+    field = document.createElement('input');
+    document.body.append(heading, opener, field);
+    heading.focus();
+  });
+
+  afterEach(() => {
+    svc.closeAll();
+    heading.remove();
+    opener.remove();
+    field.remove();
+  });
+
+  it('returns focus to the pressed control that never took focus', () => {
+    const ref = tapOpener();
+    expect(document.activeElement).not.toBe(opener);
+
+    ref.close();
+    tick();
+
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('returns focus to the control as before when the press focused it', () => {
+    opener.focus();
+    const ref = tapOpener();
+
+    ref.close();
+    tick();
+
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('leaves the restore to what held focus when focus moved after the press', () => {
+    opener.click();
+    field.focus();
+    const ref = svc.open<string, TestDialogComponent>(TestDialogComponent);
+    tick();
+
+    ref.close();
+    tick();
+
+    expect(document.activeElement).toBe(field);
+  });
+
+  it('falls back to what held focus when the pressed control is gone', () => {
+    opener.click();
+    opener.remove();
+    const ref = svc.open<string, TestDialogComponent>(TestDialogComponent);
+    tick();
+
+    ref.close();
+    tick();
+
+    expect(document.activeElement).toBe(heading);
+  });
+
+  it('restores nothing when the opener owns restoration', () => {
+    const ref = tapOpener({ restoreFocus: false });
+
+    ref.close();
+    tick();
+
+    expect(document.activeElement).not.toBe(opener);
+    expect(document.activeElement).not.toBe(heading);
   });
 });
 

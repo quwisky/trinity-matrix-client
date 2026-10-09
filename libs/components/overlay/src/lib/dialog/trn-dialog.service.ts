@@ -15,6 +15,7 @@ import {
   type ClosableRef,
   type TrnDialogPresentation,
 } from './trn-dialog-ref';
+import { TrnDialogOpenerService } from './trn-dialog-opener.service';
 
 /** Structural position for a component dialog. Appearance belongs to its surface. */
 export type TrnDialogPlacement =
@@ -235,6 +236,7 @@ export function dialogPresentation(
 export class TrnDialogService {
   private readonly dialog = inject(Dialog);
   private readonly overlay = inject(Overlay);
+  private readonly opener = inject(TrnDialogOpenerService);
   private readonly refs = new WeakMap<
     TrnDialogRef<unknown>,
     DialogRef<unknown, unknown>
@@ -291,7 +293,9 @@ export class TrnDialogService {
       // a spread, so an `autoFocus: undefined` key would clobber the default instead of
       // falling back to it.
       autoFocus: opts.autoFocus ?? 'first-tabbable',
-      restoreFocus: opts.restoreFocus ?? true,
+      // The pressed control, not only what held focus: a WebKit tap never focuses it.
+      restoreFocus:
+        opts.restoreFocus === false ? false : this.opener.restoreTarget(),
       ...pane,
       // Give the component and opener the same vendor-neutral handle. Besides closing, this
       // lets a semantic surface prove that its own dialog is topmost without exposing CDK.

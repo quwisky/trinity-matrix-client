@@ -87,6 +87,36 @@ describe('TrnAlertService', () => {
     expect(await result).toBe(false);
   });
 
+  it('returns focus to the control a tap pressed, which never took focus', async () => {
+    // jsdom's click() moves no focus, which is exactly a WebKit tap.
+    const svc = TestBed.inject(TrnAlertService);
+    const opener = document.createElement('button');
+    opener.textContent = 'Leave room';
+    document.body.append(opener);
+    try {
+      let result: Promise<boolean> | undefined;
+      opener.addEventListener(
+        'click',
+        () =>
+          (result = firstValueFrom(
+            svc.confirm$({ header: 'Leave?', confirmText: 'Leave' }),
+          )),
+        { once: true },
+      );
+      opener.click();
+      render();
+      expect(document.activeElement).not.toBe(opener);
+
+      clickButton('Cancel');
+      expect(await result).toBe(false);
+      render();
+
+      expect(document.activeElement).toBe(opener);
+    } finally {
+      opener.remove();
+    }
+  });
+
   it.each([
     ['Export keys', 'alternative'],
     ['Remove anyway', 'confirm'],

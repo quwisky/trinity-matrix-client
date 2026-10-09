@@ -4,6 +4,7 @@ import { Overlay } from '@angular/cdk/overlay';
 import type { TrnVariant } from '@trinity/components/foundations';
 import { defer, map, take, type Observable } from 'rxjs';
 import { TrnDialogRef } from '../dialog/trn-dialog-ref';
+import { TrnDialogOpenerService } from '../dialog/trn-dialog-opener.service';
 import { dialogPresentation, prefersSheet } from '../dialog/trn-dialog.service';
 import {
   TrnAlertDialogComponent,
@@ -65,6 +66,7 @@ export interface PromptOptions extends ConfirmOptions {
 export class TrnAlertService {
   private readonly dialog = inject(Dialog);
   private readonly overlay = inject(Overlay);
+  private readonly opener = inject(TrnDialogOpenerService);
 
   /** Emits true when confirmed, false on cancel / backdrop / escape. */
   confirm$(opts: ConfirmOptions): Observable<boolean> {
@@ -153,6 +155,8 @@ export class TrnAlertService {
       // No `ariaLabel`: `pane.ariaLabelledBy` names the dialog by the shell's visible title.
       backdropClass: ['cdk-overlay-dark-backdrop'],
       closeOnNavigation: opts.closeOnNavigation ?? true,
+      // The pressed control, not only what held focus: a WebKit tap never focuses it.
+      restoreFocus: this.opener.restoreTarget(),
       ...pane,
       // The dialog shell reads the presentation from the ref it injects.
       providers: (cdkRef) => [
