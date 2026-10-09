@@ -229,9 +229,7 @@ jobs:
       - run: pnpm electron:typecheck
       - run: pnpm electron:test
 
-  # Builds every desktop leg without a signing secret. Linux and Windows are packaged here;
-  # the mac leg builds the shell only and hands it to sign-mac, so the signing certificate
-  # never shares a runner with the workspace install, the Nx build or their dependencies.
+  # Packages Linux and Windows without a signing secret. macOS is packaged by sign-mac.
   package:
     name: Package (${{ matrix.platform }})
     needs: verify
@@ -243,29 +241,19 @@ jobs:
     # would hold the release all day.
     timeout-minutes: 45
     strategy:
-      # One platform's toolchain breaking should not deny you the other two.
+      # One platform's toolchain breaking should not deny you the other.
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             platform: linux
             flag: '--linux'
-            artifact: trinity-linux
             assets: |
               electron/release/*.AppImage
               electron/release/*.deb
-          # The compiled shell and its renderer only: sign-mac packages, signs and notarizes
-          # them. The name stays outside draft-release's trinity-* pattern.
-          - os: macos-26
-            platform: mac
-            artifact: desktop-shell-mac
-            assets: |
-              electron/dist
-              electron/www
           - os: windows-latest
             platform: win
             flag: '--win'
-            artifact: trinity-win
             assets: |
               electron/release/*.exe
     steps:
@@ -279,20 +267,16 @@ jobs:
       # local `trinity-dev` signature.
       - run: pnpm electron:build:release
 
-      # Unsigned: Windows signing is not wired up (electron-builder.yml), and macOS is
-      # packaged by sign-mac.
+      # Unsigned: Windows signing is not wired up (electron-builder.yml).
       - name: electron-builder ${{ matrix.flag }}
-        if: matrix.platform != 'mac'
         working-directory: electron
         run: pnpm exec electron-builder ${{ matrix.flag }} --publish never
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ matrix.artifact }}
+          name: trinity-${{ matrix.platform }}
           path: ${{ matrix.assets }}
           if-no-files-found: error
-          # The mac shell is uploaded whole, so sign-mac packages exactly what was built.
-          include-hidden-files: true
           # This is the whole recovery window if the draft step fails: long enough to
           # re-run the release job alone rather than the entire matrix.
           retention-days: 30
@@ -300,17 +284,46 @@ jobs:
           # "409 Conflict: an artifact with this name already exists".
           overwrite: true
 
+  # Builds the compiled shell and its renderer for sign-mac, without a signing secret, so
+  # the certificate never shares a runner with the workspace install, the Nx build or their
+  # dependencies. The output is the same on every host, so Linux builds it and macOS signing
+  # does not wait for the Windows leg.
+  desktop-shell:
+    name: Build the desktop shell (mac)
+    needs: verify
+    if: ${{ !cancelled() && needs.verify.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.verify.outputs.tag }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: pnpm electron:build:release
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          # Outside draft-release's trinity-* pattern: build input, not a release asset.
+          name: desktop-shell
+          path: |
+            electron/dist
+            electron/www
+          if-no-files-found: error
+          # Uploaded whole, so sign-mac packages exactly what was built.
+          include-hidden-files: true
+          retention-days: 30
+          overwrite: true
+
   # The only job that can read the macOS signing secrets. It installs the desktop shell's
   # own lockfile with --ignore-scripts and runs nothing from the workspace except
   # electron-builder and its afterPack hook (electron-builder.yml): no workspace install,
   # no Nx, no renderer build. electron-builder signs and notarizes only while it packs, never
-  # a --prepackaged app, so it packs the shell from the mac package leg here.
+  # a --prepackaged app, so it packs the shell from desktop-shell here.
   sign-mac:
     name: Sign and package (mac)
-    needs: [verify, package]
-    # Not the default success(): a failed Linux or Windows leg must not hold the macOS
-    # installers. Without the mac leg's artifact the download below fails instead.
-    if: ${{ !cancelled() && needs.verify.result == 'success' }}
+    needs: [verify, desktop-shell]
+    # Explicit, not the default success(): a dispatch skips release-please upstream.
+    if: ${{ !cancelled() && needs.desktop-shell.result == 'success' }}
     # Apple Silicon, and electron-builder defaults to the host architecture — this
     # produces arm64 artifacts only, by choice. macos-26 brings Xcode 26's actool,
     # which compiles the Icon Composer app icon.
@@ -338,7 +351,7 @@ jobs:
       # afterPack.cjs or node_modules, which the signing step loads.
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: desktop-shell-mac
+          name: desktop-shell
           path: ${{ runner.temp }}/desktop-shell
       - name: Copy the built shell
         env:

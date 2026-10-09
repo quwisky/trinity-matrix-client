@@ -541,9 +541,10 @@ change before merging the release PR, following [testing](../../apps/docs-develo
 ## Package and review the draft
 
 After verification, the package matrix builds the desktop shell with publishing
-disabled and without any signing secret. Its Linux and Windows legs package the installers;
-its macOS leg uploads only the compiled shell and renderer, which the `sign-mac` job packages,
-signs and notarizes. The jobs upload these artifacts for 30 days:
+disabled and without any signing secret, and packages the Linux and Windows installers. The
+`desktop-shell` job builds the same compiled shell and renderer on Linux, and the `sign-mac`
+job packages, signs and notarizes it for macOS without waiting for the matrix. The jobs
+upload these artifacts for 30 days:
 
 | Host    | Current artifacts                                                             | Distribution boundary                                                                                                                                                    |
 | ------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -568,12 +569,14 @@ stores, or check signing status for you.
 
 Only the `sign-mac` job reads the signing secrets, and only it uses the GitHub `release`
 environment. It installs `electron/`'s own lockfile with `--ignore-scripts` and runs
-electron-builder, with its `afterPack` hook, on the shell the macOS package leg built: no
-workspace install, Nx or renderer build runs next to the certificate. electron-builder
-signs and notarizes only while it packs, never a `--prepackaged` app, which is why the
-packing moved into this job. `scripts/release-workflow.spec.mjs` keeps every signing secret
-name out of all other jobs. Store the signing secrets in the `release` environment rather
-than as repository secrets, so no other job can read them.
+electron-builder, with its `afterPack` hook, on the shell the `desktop-shell` job built. It
+downloads that artifact outside the checkout and copies only `dist` and `www` into `electron/`,
+failing if the artifact holds anything else or a symbolic link. No workspace install, Nx or
+renderer build runs next to the certificate. electron-builder signs and notarizes only while it
+packs, never a `--prepackaged` app, which is why the packing moved into this job.
+`scripts/release-workflow.spec.mjs` keeps every signing secret name out of all other jobs.
+Store the signing secrets in the `release` environment rather than as repository secrets, so
+no other job can read them.
 
 The environment's presence in YAML does not prove that required reviewers or environment
 protections are configured; maintainers must check the repository settings before relying

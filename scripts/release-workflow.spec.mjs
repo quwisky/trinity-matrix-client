@@ -32,10 +32,7 @@ const SIGNING_SECRETS = [...SECRETS, 'WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD'];
 const signJob = () => workflow.jobs['sign-mac'];
 const copyStep = () =>
   signJob().steps.find((step) => step.name === 'Copy the built shell');
-const macLeg = () =>
-  workflow.jobs.package.strategy.matrix.include.find(
-    (leg) => leg.platform === 'mac',
-  );
+const shellJob = () => workflow.jobs['desktop-shell'];
 
 function signingStep() {
   const steps = signJob().steps;
@@ -147,23 +144,32 @@ describe('macOS signing isolation', () => {
     }
   });
 
-  it('signs the shell the mac package leg built, not one it builds itself', () => {
-    const leg = macLeg();
-    expect(leg.artifact).not.toMatch(/^trinity-/);
-    expect(leg.assets.trim().split('\n')).toEqual([
+  it('signs the shell one Linux job built, without waiting for the package matrix', () => {
+    const shell = shellJob();
+    expect(shell['runs-on']).toBe('ubuntu-latest');
+    expect(shell.needs).toBe('verify');
+    expect(shell.steps.flatMap((s) => s.run ?? [])).toContain(
+      'pnpm electron:build:release',
+    );
+    expect(JSON.stringify(shell)).not.toContain('secrets.');
+    const upload = shell.steps.find((s) =>
+      s.uses?.startsWith('actions/upload-artifact@'),
+    );
+    // Outside draft-release's trinity-* pattern: this is build input, not a release asset.
+    expect(upload.with.name).not.toMatch(/^trinity-/);
+    expect(upload.with.path.trim().split('\n')).toEqual([
       'electron/dist',
       'electron/www',
     ]);
-    const builder = workflow.jobs.package.steps.find((s) =>
-      s.name?.startsWith('electron-builder'),
+    const platforms = workflow.jobs.package.strategy.matrix.include.map(
+      (leg) => leg.platform,
     );
-    expect(builder.if).toBe("matrix.platform != 'mac'");
-    expect(JSON.stringify(workflow.jobs.package)).not.toContain('secrets.');
+    expect(platforms).not.toContain('mac');
 
     const job = signJob();
-    expect(job.needs).toEqual(['verify', 'package']);
+    expect(job.needs).toEqual(['verify', 'desktop-shell']);
     expect(job.if).toBe(
-      "${{ !cancelled() && needs.verify.result == 'success' }}",
+      "${{ !cancelled() && needs.desktop-shell.result == 'success' }}",
     );
     const download = job.steps.find((s) =>
       s.uses?.startsWith('actions/download-artifact@'),
@@ -171,7 +177,7 @@ describe('macOS signing isolation', () => {
     // Outside the checkout, so the artifact cannot land on electron-builder's config,
     // its afterPack hook or node_modules.
     expect(download.with).toEqual({
-      name: leg.artifact,
+      name: upload.with.name,
       path: '${{ runner.temp }}/desktop-shell',
     });
     const steps = job.steps;
