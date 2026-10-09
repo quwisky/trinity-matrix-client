@@ -24,7 +24,10 @@ const base = baseArgument.replace(/\/$/, '');
 if (!existsSync(root) || !statSync(root).isDirectory()) {
   throw new Error(`Static root is not a directory: ${root}`);
 }
-if (!/^\/(?:[A-Za-z0-9._~-]+\/?)*$/.test(base) || base.includes('..')) {
+if (
+  !/^\/(?:[A-Za-z0-9._~-]+\/)*[A-Za-z0-9._~-]*$/.test(base) ||
+  base.includes('..')
+) {
   throw new Error(`Static base is invalid: ${baseArgument}`);
 }
 if (port < 1 || port > 65_535) {
