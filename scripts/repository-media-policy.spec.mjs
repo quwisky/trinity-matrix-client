@@ -106,6 +106,9 @@ describe('signing material', () => {
     'android/app/release.jks',
     'ios/App/Trinity.mobileprovision',
     'electron/signing-key.pem',
+    'e2e/support/server.pem',
+    'electron/developer-id.key',
+    'android/key.properties',
   ])('keeps %s out of git', (path) => {
     expect(ignored(path)).toBe(true);
   });

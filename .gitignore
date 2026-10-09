@@ -130,5 +130,7 @@ storybook-static
 *.keystore
 *.jks
 *.mobileprovision
+*.key
 *.pem
-!/e2e/**/*.pem
+!/e2e/electron/fixtures/localhost-*.pem
+/android/key.properties
