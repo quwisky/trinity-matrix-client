@@ -273,8 +273,11 @@ describe('committed icons', () => {
     const stale = OUTPUTS.filter((output) => {
       const fresh = readFileSync(join(out, output.path));
       const current = committed(output.path);
+      // A copy is byte-for-byte its committed source, which is checked by pixels in turn.
+      // Comparing it with the fresh render instead tied it to this platform's zlib output:
+      // the same pixels encode to different bytes on macOS arm64 and Linux x64.
       return output.copyOf
-        ? !fresh.equals(current)
+        ? !current.equals(committed(output.copyOf))
         : !samePixels(fresh, current);
     }).map((output) => output.path);
     expect(stale, 'run `pnpm icons:generate` and commit the results').toEqual(
