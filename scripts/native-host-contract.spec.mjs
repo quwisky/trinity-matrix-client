@@ -115,7 +115,10 @@ function validInput() {
     androidManifest: 'android:scheme="eu.qwky.trinity"',
     iosInfo:
       '<key>UIViewControllerBasedStatusBarAppearance</key><true/>' +
-      '<key>CFBundleURLSchemes</key><string>eu.qwky.trinity</string>',
+      '<key>CFBundleURLSchemes</key><string>eu.qwky.trinity</string>' +
+      '<key>UIApplicationSceneManifest</key><dict>' +
+      '<key>UISceneDelegateClassName</key>' +
+      '<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string></dict>',
   };
 }
 
@@ -244,6 +247,13 @@ describe('native host contract', () => {
       '<key>UIViewControllerBasedStatusBarAppearance</key><true/>',
       '<!-- <key>UIViewControllerBasedStatusBarAppearance</key><true/> -->',
       'iOS host must delegate status-bar appearance to its view controller',
+    ],
+    [
+      'iOS scene lifecycle',
+      'iosInfo',
+      '<key>UIApplicationSceneManifest</key>',
+      '<!-- <key>UIApplicationSceneManifest</key> -->',
+      'iOS host must adopt the UIScene lifecycle',
     ],
   ])(
     'rejects commented-out %s wiring',
