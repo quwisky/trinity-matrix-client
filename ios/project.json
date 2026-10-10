@@ -69,6 +69,15 @@
         "cwd": "{workspaceRoot}"
       }
     },
+    "test-push": {
+      "//": "XCTest for the TrinityPush package: the shared text-rule fixture (native/push-render), the resolver and the bounded reads. Runs on the macOS host; needs Xcode.",
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "swift test --package-path App/TrinityPush",
+        "cwd": "{projectRoot}"
+      }
+    },
     "verify-native": {
       "cache": false,
       "dependsOn": ["sync"],
