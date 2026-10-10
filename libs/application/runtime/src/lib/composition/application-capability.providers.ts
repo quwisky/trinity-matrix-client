@@ -32,7 +32,6 @@ import {
   PushService,
   type NotificationVisibilityPort,
   type PushConfig,
-  providePushConfigEntries,
 } from '@trinity/data-access/notifications';
 import {
   RoomActionPermissionsService,
@@ -218,7 +217,6 @@ export function applicationCapabilityProviders(
     providePlatformConfigEntries(),
     provideGifConfigEntries(),
     provideRoomLibraryConfigEntries(),
-    providePushConfigEntries(),
     { provide: PUSH_CONFIG, useValue: options.pushConfig },
     { provide: BUILD_INFO, useValue: options.buildInfo },
   ];

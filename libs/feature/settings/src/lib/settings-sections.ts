@@ -115,10 +115,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     icon: 'bell',
     group: 'Preferences',
     component: NotificationsSectionComponent,
-    parts: [
-      { id: 'keywords', label: 'Keywords' },
-      { id: 'push-gateway-this-device', label: 'Push gateway (this device)' },
-    ],
+    parts: [{ id: 'keywords', label: 'Keywords' }],
   },
   {
     path: 'privacy',

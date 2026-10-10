@@ -36,7 +36,7 @@ import {
   NotificationLifetime,
   NativePushLifetime,
   NotificationService,
-  PushGatewayService,
+  RetiredPushGatewayCleanup,
   PushService,
 } from '@trinity/data-access/notifications';
 import { RoomAdministrationLifetime } from '@trinity/data-access/room-administration';
@@ -296,7 +296,9 @@ describe('TrinityApplicationRuntimeAdapter', () => {
           resetToDefaults: resetPreferences,
           retryResetToDefaults: retryResetPreferences,
         }),
-        MockProvider(PushGatewayService, promiseInit()),
+        MockProvider(RetiredPushGatewayCleanup, {
+          run: vi.fn(() => of(void 0)),
+        }),
         MockProvider(SpaceRoomOrderService, {
           hydrateKnownAccounts: hydrateOrder,
           knownAccountIds: () => ['@active:example.org'],
@@ -333,6 +335,14 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     await firstValueFrom(hydration);
 
     expect(appearanceHydrate).toHaveBeenCalledOnce();
+  });
+
+  it('deletes the retired push gateway keys while hydrating preferences', async () => {
+    await firstValueFrom(adapter.hydratePreferences());
+
+    expect(
+      TestBed.inject(RetiredPushGatewayCleanup).run,
+    ).toHaveBeenCalledOnce();
   });
 
   it('keeps declared preference defaults when one initializer rejects', async () => {

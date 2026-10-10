@@ -4,7 +4,6 @@ import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_ID, PUSH_CONFIG, type PushConfig } from './push-config';
-import { PushGatewayService } from './push-gateway.service';
 import { PushService } from './push.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
@@ -13,7 +12,6 @@ const h = vi.hoisted(() => {
   const listeners: Record<string, (arg: unknown) => void> = {};
   const handles: { remove: ReturnType<typeof vi.fn> }[] = [];
   const state = { platform: 'ios', permission: 'granted' as string };
-  const prefs = new Map<string, string>();
   const push = {
     requestPermissions: vi.fn(async () => ({ receive: state.permission })),
     register: vi.fn(async () => undefined),
@@ -26,7 +24,7 @@ const h = vi.hoisted(() => {
     }),
     removeAllListeners: vi.fn(async () => undefined),
   };
-  return { listeners, handles, state, push, prefs };
+  return { listeners, handles, state, push };
 });
 
 vi.mock('@capacitor/core', () => ({
@@ -41,23 +39,6 @@ vi.mock('@capacitor/core', () => ({
   },
 }));
 vi.mock('@capacitor/push-notifications', () => ({ PushNotifications: h.push }));
-// PushService now resolves its config through the real PushGatewayService, which
-// persists to Preferences. Back it with an in-memory store so these tests stay
-// hermetic and can drive an override without touching device storage.
-vi.mock('@capacitor/preferences', () => ({
-  Preferences: {
-    get: vi.fn(async ({ key }: { key: string }) => ({
-      value: h.prefs.get(key) ?? null,
-    })),
-    set: vi.fn(async ({ key, value }: { key: string; value: string }) => {
-      h.prefs.set(key, value);
-    }),
-    remove: vi.fn(async ({ key }: { key: string }) => {
-      h.prefs.delete(key);
-    }),
-  },
-}));
-
 const CONFIG: PushConfig = {
   gatewayUrl: 'https://push.example/_matrix/push/v1/notify',
   appId: 'dev.trinityproject.trinity',
@@ -110,10 +91,6 @@ function setup(
   TestBed.configureTestingModule({
     providers: [
       PushService,
-      // The real gateway service, so PushService's config resolution
-      // (override ?? PUSH_CONFIG) is exercised end to end. Provided explicitly — not
-      // relying on the root singleton — so its signals start clean each test.
-      PushGatewayService,
       MockProvider(MatrixClientService, {
         isInitialized: true,
         accountIds: accountIds.asReadonly(),
@@ -154,7 +131,6 @@ describe('PushService', () => {
     h.state.permission = 'granted';
     for (const k of Object.keys(h.listeners)) delete h.listeners[k];
     h.handles.length = 0;
-    h.prefs.clear();
     vi.clearAllMocks();
   });
 
@@ -183,6 +159,9 @@ describe('PushService', () => {
           url: CONFIG.gatewayUrl,
           format: 'event_id_only',
           trinity_user_id: '@me:hs',
+          // Asks the gateway for a push the device renders itself (data-only on
+          // Android, mutable-content on iOS).
+          trinity_render: 'device',
         },
       }),
     );
@@ -201,6 +180,25 @@ describe('PushService', () => {
         expect.objectContaining({
           pushkey: 'TOKEN123',
           data: expect.objectContaining({ trinity_user_id: userId }),
+        }),
+      );
+    }
+  });
+
+  it('asks for device rendering on every account pusher', async () => {
+    const { svc, clients } = setup({ accounts: ['@me:hs', '@alt:hs'] });
+
+    await firstValueFrom(svc.register());
+    h.listeners['registration']({ value: 'TOKEN123' });
+    await flush();
+
+    for (const client of clients.values()) {
+      expect(client.setPusher).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            format: 'event_id_only',
+            trinity_render: 'device',
+          }),
         }),
       );
     }
@@ -245,146 +243,6 @@ describe('PushService', () => {
     await firstValueFrom(svc.register());
 
     expect(h.push.requestPermissions).not.toHaveBeenCalled();
-  });
-
-  describe('user-set gateway', () => {
-    /** Store an override the way PushGatewayService.save() would, then load it. */
-    async function withOverride(
-      svc: PushService,
-      value: { gatewayUrl: string; appId?: string; appliedAppId?: string },
-    ): Promise<void> {
-      h.prefs.set('trinity.push.gateway', JSON.stringify(value));
-      await TestBed.inject(PushGatewayService).init();
-    }
-
-    it('registers push against the override when no build config exists', async () => {
-      // The headline case: environment.push is null (a stock build), the user sets a
-      // gateway, and push comes alive pointing at it.
-      const { svc, client } = setup({ config: null });
-      await withOverride(svc, {
-        gatewayUrl: 'https://mine.example/_matrix/push/v1/notify',
-      });
-
-      await firstValueFrom(svc.register());
-      h.listeners['registration']({ value: 'TOKEN123' });
-      await flush();
-
-      expect(client.setPusher).toHaveBeenCalledWith(
-        expect.objectContaining({
-          app_id: `${DEFAULT_APP_ID}.ios`,
-          data: expect.objectContaining({
-            url: 'https://mine.example/_matrix/push/v1/notify',
-          }),
-        }),
-      );
-    });
-
-    it('prefers the override URL over the build-time default', async () => {
-      const { svc, client } = setup({ config: CONFIG });
-      await withOverride(svc, {
-        gatewayUrl: 'https://override.example/_matrix/push/v1/notify',
-      });
-
-      await firstValueFrom(svc.register());
-      h.listeners['registration']({ value: 'TOKEN123' });
-      await flush();
-
-      expect(client.setPusher).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            url: 'https://override.example/_matrix/push/v1/notify',
-          }),
-        }),
-      );
-    });
-
-    it('removes the stale pusher before setting the new one when the app id changes', async () => {
-      // A previous round registered under `old.app.id`; the user has now changed it.
-      // The pusher tuple is (user_id, app_id, pushkey), so the old row must be deleted
-      // explicitly or it keeps delivering to the previous gateway.
-      const { svc, client } = setup({ config: null });
-      await withOverride(svc, {
-        gatewayUrl: 'https://mine.example/_matrix/push/v1/notify',
-        appId: 'new.app.id',
-        appliedAppId: 'old.app.id',
-      });
-
-      await firstValueFrom(svc.register());
-      h.listeners['registration']({ value: 'TOKEN123' });
-      await flush();
-
-      expect(client.removePusher).toHaveBeenCalledWith(
-        'TOKEN123',
-        'old.app.id.ios',
-      );
-      expect(client.setPusher).toHaveBeenCalledWith(
-        expect.objectContaining({ app_id: 'new.app.id.ios' }),
-      );
-      // Order matters: the delete must precede the set, else a crash between them
-      // leaves the old gateway live.
-      const removeOrder = client.removePusher.mock.invocationCallOrder[0];
-      const setOrder = client.setPusher.mock.invocationCallOrder[0];
-      expect(removeOrder).toBeLessThan(setOrder);
-    });
-
-    it('does not remove anything when the app id is unchanged', async () => {
-      const { svc, client } = setup({ config: null });
-      await withOverride(svc, {
-        gatewayUrl: 'https://mine.example/_matrix/push/v1/notify',
-        appId: 'same.app.id',
-        appliedAppId: 'same.app.id',
-      });
-
-      await firstValueFrom(svc.register());
-      h.listeners['registration']({ value: 'TOKEN123' });
-      await flush();
-
-      expect(client.removePusher).not.toHaveBeenCalled();
-      expect(client.setPusher).toHaveBeenCalledWith(
-        expect.objectContaining({ app_id: 'same.app.id.ios' }),
-      );
-    });
-
-    it('records the applied app id after a successful round', async () => {
-      const { svc } = setup({ config: null });
-      await withOverride(svc, {
-        gatewayUrl: 'https://mine.example/_matrix/push/v1/notify',
-        appId: 'new.app.id',
-      });
-
-      await firstValueFrom(svc.register());
-      h.listeners['registration']({ value: 'TOKEN123' });
-      await flush();
-
-      expect(TestBed.inject(PushGatewayService).appliedAppId()).toBe(
-        'new.app.id',
-      );
-    });
-
-    it('does not advance the applied id when an account fails to register', async () => {
-      // Partial failure must leave the ledger on the old id so the next round retries
-      // the swap rather than orphaning a pusher.
-      const { svc, clients } = setup({
-        config: null,
-        accounts: ['@me:hs', '@alt:hs'],
-      });
-      await withOverride(svc, {
-        gatewayUrl: 'https://mine.example/_matrix/push/v1/notify',
-        appId: 'new.app.id',
-        appliedAppId: 'old.app.id',
-      });
-      clients
-        .get('@alt:hs')!
-        .setPusher.mockRejectedValueOnce(new Error('server down'));
-
-      await firstValueFrom(svc.register());
-      h.listeners['registration']({ value: 'TOKEN123' });
-      await flush();
-
-      expect(TestBed.inject(PushGatewayService).appliedAppId()).toBe(
-        'old.app.id',
-      );
-    });
   });
 
   describe('registration state', () => {

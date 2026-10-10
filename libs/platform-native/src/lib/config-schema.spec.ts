@@ -59,9 +59,7 @@ describe('config key ledger', () => {
       'trinity.appearance.code-line-presentation',
     ]);
     expect(exportedKeysFor('data-access/gif')).toEqual(['trinity.gif.config']);
-    expect(exportedKeysFor('data-access/notifications')).toEqual([
-      'trinity.push.gateway',
-    ]);
+    expect(exportedKeysFor('data-access/notifications')).toEqual([]);
     // The KEYS, not a count. A bare length is a merge hazard: two branches that each add
     // one key each bump it by one, the merge is clean because they touched the same line
     // identically, and the suite then fails with an opaque off-by-one that points at
@@ -96,7 +94,7 @@ describe('config key ledger', () => {
     ).toBe(true);
   });
 
-  it('versions the retired composer preferences as format 3', () => {
-    expect(CONFIG_EXPORT_VERSION).toBe(3);
+  it('versions the retired push gateway override as format 4', () => {
+    expect(CONFIG_EXPORT_VERSION).toBe(4);
   });
 });

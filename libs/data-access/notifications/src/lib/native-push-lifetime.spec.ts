@@ -9,7 +9,6 @@ import type {
   NativePushLifetimeEvent,
 } from './notification-health.models';
 import { NativePushLifetime } from './native-push-lifetime';
-import { PushGatewayService } from './push-gateway.service';
 import {
   PushService,
   type NativePushActivation,
@@ -18,7 +17,6 @@ import {
 
 describe('NativePushLifetime', () => {
   const accountIds = signal<readonly string[]>(['@a:example.org']);
-  const configured = signal(true);
   const runtimeStatus = signal<PushRuntimeStatus>({
     status: 'idle',
     code: 'push-registration-idle',
@@ -40,7 +38,6 @@ describe('NativePushLifetime', () => {
   beforeEach(() => {
     vi.useRealTimers();
     accountIds.set(['@a:example.org']);
-    configured.set(true);
     runtimeStatus.set({
       status: 'idle',
       code: 'push-registration-idle',
@@ -53,9 +50,6 @@ describe('NativePushLifetime', () => {
         NativePushLifetime,
         MockProvider(MatrixClientService, {
           accountIds: accountIds.asReadonly(),
-        }),
-        MockProvider(PushGatewayService, {
-          configured: configured.asReadonly(),
         }),
         MockProvider(PushService, {
           run,
