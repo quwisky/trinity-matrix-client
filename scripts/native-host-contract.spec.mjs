@@ -81,7 +81,10 @@ function validInput() {
         'ios:verify': 'nx run trinity-ios:verify',
       },
     },
-    capacitor: "webDir: 'www'",
+    capacitor: [
+      "webDir: 'www',",
+      "loggingBehavior: process.env['TRINITY_CAPACITOR_LOGS'] === '1' ? 'debug' : 'none',",
+    ].join('\n'),
     capabilityAdapter: [
       'capacitorSupportedOperations(',
       "platform === 'android' ? (['back'] as const) : []",
@@ -125,6 +128,25 @@ function validInput() {
 describe('native host contract', () => {
   it('validates the checked-in Android and iOS hosts', () => {
     expect(validateCurrentNativeHosts).not.toThrow();
+  });
+
+  it('rejects Capacitor logging that is on by default', () => {
+    // The bridge logs plugin arguments (Android) and results (iOS), tokens included.
+    for (const capacitor of [
+      "webDir: 'www'",
+      "webDir: 'www',\nloggingBehavior: 'debug',",
+      "webDir: 'www',\nloggingBehavior: 'production',",
+    ]) {
+      const input = validInput();
+      input.capacitor = capacitor;
+      const errors = [];
+
+      validateNativeHostContract(input, errors);
+
+      expect(errors).toContain(
+        'Capacitor logging must default to none: the bridge logs plugin arguments and results',
+      );
+    }
   });
 
   it('rejects a native lifecycle hidden outside Nx', () => {

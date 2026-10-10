@@ -248,6 +248,16 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
   if (!/webDir:\s*['"]www['"]/u.test(input.capacitor)) {
     errors.push('Capacitor hosts must consume the shared flat www artifact');
   }
+  // Capacitor's bridge logs every plugin call's arguments (Android) and the start of every
+  // result (iOS) to the device log, access tokens and sessions included.
+  if (
+    !/loggingBehavior:[^,]*['"]none['"]/u.test(input.capacitor) ||
+    /loggingBehavior:[^,]*['"]production['"]/u.test(input.capacitor)
+  ) {
+    errors.push(
+      'Capacitor logging must default to none: the bridge logs plugin arguments and results',
+    );
+  }
   if (!capabilityCode.includes('capacitorSupportedOperations(')) {
     errors.push('Capacitor capability support must be explicit at composition');
   }
