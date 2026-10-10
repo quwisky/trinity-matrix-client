@@ -207,8 +207,10 @@ store current through the `PushHandoff` plugin (`setAccount`, `setRooms`, `remov
 (rewritten when the SDK refreshes it) and the notification-sound choice, plus room display
 names and DM flags written in one batch per sync or rename. It never holds refresh tokens,
 crypto keys or message history. An account's entry is removed as the first step of its
-sign-out, and the store is emptied by clear-all-data and before a replace sign-in. A handoff
-failure never blocks sign-in or sign-out. On iOS the accounts live in the shared keychain
+sign-out, together with that account's delivered pushes, and the store is emptied, with
+every delivered push, by clear-all-data and before a replace sign-in. A handoff failure
+never blocks sign-in or sign-out; the replace sign-in waits for it for at most the
+notification cleanup budget. On iOS the accounts live in the shared keychain
 access group `$(AppIdentifierPrefix)dev.trinityproject.trinity.shared` with
 `kSecAttrAccessibleAfterFirstUnlock`, and the rooms in the app-group file
 `push-handoff/rooms.json`. On Android each value is AES-GCM encrypted with a non-exportable
@@ -241,7 +243,8 @@ them. A visible app, and iOS, web and desktop, present as before.
 
 **Opening a room** clears that account's delivered notifications for it:
 `NotificationSessionService` calls `PushHandoff.clearRoom` once each time a room becomes the
-focused Conversation. Android cancels the notification tagged with the room ID for that
+focused Conversation, and again for the focused room when the app returns to the foreground
+(pushes for it were shown natively while the app was hidden). Android cancels the notification tagged with the room ID for that
 account; iOS removes notifications whose `threadIdentifier` is the room and whose
 `trinity_user_id` is that account, or absent.
 
@@ -256,9 +259,11 @@ account; iOS removes notifications whose `threadIdentifier` is the room and whos
 - Run `pnpm nx run trinity-ios:test-push` and `pnpm nx run trinity-android:verify-native` (the
   Android unit tests; CI runs them) for the text rules and the bounded reads.
 - `e2e/mobile/specs/push-render-ios.e2e.mts` and `push-render-android.e2e.mts` drive the
-  renderers through debug-only probes. They do not show a real FCM token, the extension
-  launching, locked-phone rendering, closed-app delivery through `push.trinityproject.dev`
-  or tap-to-open; check those on a device ([#1152](https://github.com/quwisky/trinity-matrix-client/issues/1152)).
+  renderers through debug-only probes; the Android spec also taps the notification it posted
+  with the app terminated and checks that the room opens. They do not show a real FCM token,
+  the extension launching, locked-phone rendering or closed-app delivery through
+  `push.trinityproject.dev`, and nothing covers tap-to-open on iOS; check those on a device
+  ([#1152](https://github.com/quwisky/trinity-matrix-client/issues/1152)).
 
 The source of truth is
 [`push.service.ts`](../../libs/data-access/notifications/src/lib/push.service.ts),

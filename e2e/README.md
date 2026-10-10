@@ -96,10 +96,12 @@ Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed
   path through a debug-only `PushHandoff.renderProbe` call inside the app, because the Simulator
   neither launches notification service extensions for `xcrun simctl push` nor completes APNs
   registration on ad-hoc builds. `push-render-android.e2e.mts` (Android only) drives
-  `DevicePushHandler` through the debug-only, DUMP-protected `PushRenderProbeReceiver` and reads
-  the notification shade; on CI the native code does not trust the run's Caddy CA, so the body
-  there is the fallback "New message". Neither shows a real FCM token, the extension launching,
-  locked-phone rendering, closed-app delivery through `push.trinityproject.dev` or tap-to-open.
+  `DevicePushHandler` through the debug-only, DUMP-protected `PushRenderProbeReceiver` with the
+  app terminated, reads the notification shade, then taps the notification and checks that its
+  room opens; on CI the native code does not trust the run's Caddy CA, so the body there is the
+  fallback "New message". Neither shows a real FCM token, the extension launching, locked-phone
+  rendering or closed-app delivery through `push.trinityproject.dev`, and the iOS spec does not
+  cover tap-to-open.
 - CI runs iOS in the `E2E (iOS nightly)` workflow, never on pull requests.
 
 ## MSC2545 image-pack management
