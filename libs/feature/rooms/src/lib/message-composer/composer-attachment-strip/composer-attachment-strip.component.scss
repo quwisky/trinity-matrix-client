@@ -87,6 +87,40 @@
     border-radius: var(--trinity-radius-sm);
   }
 
+  // A pending video: its poster under a play glyph, with its length in the corner.
+  .composer__pending-poster {
+    position: relative;
+    display: flex;
+    flex-shrink: 0;
+  }
+
+  .composer__pending-play {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    width: fit-content;
+    height: fit-content;
+    margin: auto;
+    padding: var(--trinity-space-1);
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-surface-raised);
+    color: var(--trinity-text);
+  }
+
+  // Opaque surface rather than a tint, so the length stays readable over any poster.
+  .composer__pending-duration {
+    position: absolute;
+    inset-block-end: 0;
+    inset-inline-end: 0;
+    padding: 0 var(--trinity-space-1);
+    border-radius: var(--trinity-radius-sm);
+    background: var(--trinity-surface-raised);
+    color: var(--trinity-text);
+    font-size: var(--trinity-type-metadata-size);
+    font-variant-numeric: tabular-nums;
+    line-height: var(--trinity-type-metadata-line-height);
+  }
+
   .composer__pending-icon {
     display: flex;
     flex-shrink: 0;

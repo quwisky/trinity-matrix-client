@@ -8,8 +8,15 @@ import {
 import { TrnIconButton } from '@trinity/components/controls';
 import { TrnProgressComponent } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import { formatMediaDuration } from '../../shared/format-media-duration';
 import { type BatchProgress } from '../../shared/send-media-batch';
 import { type StagedAttachment } from '../staged-attachment';
+
+interface StagedRow {
+  readonly attachment: StagedAttachment;
+  readonly video: boolean;
+  readonly duration: string | null;
+}
 
 /**
  * The strip above the composer input: an upload progress bar while an attachment is in flight,
@@ -50,6 +57,15 @@ export class ComposerAttachmentStripComponent {
 
   /** The retry on one failed attachment was pressed; carries its id. */
   readonly retryStaged = output<string>();
+
+  /** Each staged item with what its row needs to show it: is it a video, and how long. */
+  protected readonly rows = computed<readonly StagedRow[]>(() =>
+    this.staged().map((attachment) => ({
+      attachment,
+      video: attachment.media.mimeType.startsWith('video/'),
+      duration: formatMediaDuration(attachment.media.hints?.durationMs),
+    })),
+  );
 
   /** False until the first real fraction lands, so the bar starts indeterminate. */
   protected readonly determinate = computed(
