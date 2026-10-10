@@ -22,6 +22,12 @@ Add browser, Capacitor, and Electron behavior behind the same contract. A host m
 
 Application Runtime owns negotiation and any cross-capability recovery. A feature consumes the operation without choosing the adapter.
 
+## Package a native plugin {#native-plugins}
+
+A Capacitor plugin that Trinity writes for both hosts is a pnpm workspace package under `libs/native/`, listed in `pnpm-workspace.yaml` and required by the root `package.json` with `workspace:*`. The Capacitor CLI finds plugins only among installed dependencies, so this is the one exception to wiring libraries through `@trinity/*` aliases alone: its TypeScript is still imported through its alias, it keeps an Nx `project.json` with tags like any library, and it declares no dependencies of its own. Synchronization adds its Android module and Swift package to the hosts and registers the plugin class, so a host never registers it by hand. `@trinity/capacitor-push` in `libs/native/capacitor-push` is the example; its `package.json` `capacitor` field names its `android` and `ios` directories.
+
+A small plugin that belongs to one host, such as `AppSettingsPlugin`, stays in that host project and is registered there.
+
 ## Validate both shape and runtime {#validate-integration}
 
 Contract tests prove every operation is represented and malformed host data is rejected. Static host guards prove source and packaging boundaries. Then launch every host whose behavior changed; a TypeScript test cannot prove native permissions, operating-system Back, secure storage, file export, or desktop lifecycle.
