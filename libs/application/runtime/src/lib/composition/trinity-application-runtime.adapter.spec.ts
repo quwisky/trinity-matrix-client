@@ -37,6 +37,7 @@ import {
   NativePushLifetime,
   NotificationService,
   RetiredPushGatewayCleanup,
+  PushHandoffService,
   PushService,
 } from '@trinity/data-access/notifications';
 import { RoomAdministrationLifetime } from '@trinity/data-access/room-administration';
@@ -231,6 +232,10 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(NativePushLifetime, {
           run: () => EMPTY,
           recover: () => of({ kind: 'success' as const }),
+        }),
+        MockProvider(PushHandoffService, {
+          run: () => EMPTY,
+          clearRoom: () => of(void 0),
         }),
         MockProvider(BadgeCoordinator, { run: () => badgeSession }),
         MockProvider(NotificationService, { run: () => notificationSession }),

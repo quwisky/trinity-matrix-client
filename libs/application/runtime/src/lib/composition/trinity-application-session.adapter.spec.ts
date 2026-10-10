@@ -23,11 +23,13 @@ import {
   NotificationLifetime,
   NativePushLifetime,
   NotificationService,
+  PushHandoffService,
   type NativePushLifetimeEvent,
   type NotificationLifetimeEvent,
   type NotificationRuleHealth,
   type NotificationRuntimeEvent,
 } from '@trinity/data-access/notifications';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import {
   IdentityLifetime,
   type IdentityLifetimeEvent,
@@ -174,6 +176,13 @@ function setup(
       MockProvider(NativePushLifetime, {
         run: () => pushSession ?? pushActivations,
         recover: () => of({ kind: 'success' as const }),
+      }),
+      MockProvider(PushHandoffService, {
+        run: () => EMPTY,
+        clearRoom: () => of(void 0),
+      }),
+      MockProvider(ConversationRuntime, {
+        focused: signal(null).asReadonly() as never,
       }),
       MockProvider(NavigationFocusService, { run: () => EMPTY }),
       MockProvider(WorkspaceRoutedSurfaceAdapter, {

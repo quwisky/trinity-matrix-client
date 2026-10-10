@@ -29,6 +29,7 @@ import { AvatarService, MediaService } from '@trinity/data-access/media';
 import {
   NOTIFICATION_VISIBILITY,
   PUSH_CONFIG,
+  PushHandoffService,
   PushService,
   type NotificationVisibilityPort,
   type PushConfig,
@@ -178,9 +179,11 @@ export function applicationCapabilityProviders(
         const avatars = inject(AvatarService);
         const media = inject(MediaService);
         const push = inject(PushService);
+        const handoff = inject(PushHandoffService);
         const drafts = inject(DraftStoreService);
         const oidc = inject(OidcClientService);
         return {
+          forgetPushHandoff: (accountId) => handoff.forget(accountId),
           registerNotifications: () => push.register(),
           unregisterNotifications: (accountId) => push.unregister(accountId),
           revokeProviderSession: (session) =>

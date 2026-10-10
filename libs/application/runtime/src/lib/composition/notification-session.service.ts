@@ -1,14 +1,16 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, Injector, effect, inject, untracked } from '@angular/core';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
   NativePushLifetime,
   NotificationService,
+  PushHandoffService,
   type NativePushActivation,
   type NativePushLifetimeEvent,
   type NotificationDestination,
   type NotificationIncident,
   type NotificationRuntimeEvent,
 } from '@trinity/data-access/notifications';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import {
   WorkspaceNavigationService,
   type WorkspaceNavigationIntent,
@@ -16,6 +18,7 @@ import {
 import {
   EMPTY,
   Observable,
+  Subscription,
   catchError,
   concatMap,
   defer,
@@ -29,9 +32,12 @@ import { CapabilityHealthService } from '../capability-health.service';
 export class NotificationSessionService {
   private readonly notifications = inject(NotificationService);
   private readonly push = inject(NativePushLifetime);
+  private readonly handoff = inject(PushHandoffService);
+  private readonly conversations = inject(ConversationRuntime);
   private readonly navigation = inject(WorkspaceNavigationService);
   private readonly health = inject(CapabilityHealthService);
   private readonly toast = inject(TrnToastService);
+  private readonly injector = inject(Injector);
   private readonly navigationContext = Symbol();
 
   run(): Observable<never> {
@@ -40,7 +46,42 @@ export class NotificationSessionService {
         .run()
         .pipe(concatMap((event) => this.handleNotification(event))),
       this.push.run().pipe(concatMap((event) => this.handlePush(event))),
+      // Keeps the closed-app push renderers' store current; inert off native mobile.
+      this.handoff.run(),
+      this.clearOpenedRooms(),
     );
+  }
+
+  /**
+   * Each time a room becomes the focused Conversation (Workspace focuses only a room it has
+   * found ready), clear that account's delivered notifications for it. Best effort: the
+   * handoff swallows native failures, so Workspace never sees one.
+   */
+  private clearOpenedRooms(): Observable<never> {
+    return new Observable<never>(() => {
+      let opened: string | null = null;
+      const clearing = new Subscription();
+      const focus = effect(
+        () => {
+          const key = this.conversations.focused()?.key ?? null;
+          untracked(() => {
+            const id = key ? `${key.accountId}\u0000${key.roomId}` : null;
+            if (id === opened) return;
+            opened = id;
+            if (key) {
+              clearing.add(
+                this.handoff.clearRoom(key.accountId, key.roomId).subscribe(),
+              );
+            }
+          });
+        },
+        { injector: this.injector },
+      );
+      return () => {
+        focus.destroy();
+        clearing.unsubscribe();
+      };
+    });
   }
 
   private handlePush(event: NativePushLifetimeEvent): Observable<never> {

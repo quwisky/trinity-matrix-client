@@ -13,6 +13,7 @@ export * from './lib/notification-sound.service';
 export * from './lib/reaction-notification-settings.service';
 export * from './lib/push-config';
 export * from './lib/push.service';
+export * from './lib/push-handoff.service';
 export * from './lib/retired-push-gateway';
 export * from './lib/room-notifications.service';
 export * from './lib/push-rules.service';

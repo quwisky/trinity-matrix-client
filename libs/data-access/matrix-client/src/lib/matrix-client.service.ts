@@ -20,6 +20,7 @@ import {
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
   Observable,
+  Subject,
   catchError,
   defer,
   finalize,
@@ -168,6 +169,12 @@ interface AccountClient {
   readonly backupKeysRemaining: () => number | null;
 }
 
+/** An access token the SDK refreshed for one account, published after storage accepted it. */
+export interface AccessTokenRotation {
+  readonly userId: string;
+  readonly accessToken: string;
+}
+
 /**
  * Owns the live matrix-js-sdk clients and their lifecycle. Holds a registry of
  * accounts (`Map<userId, AccountClient>`), all of which sync, with one marked
@@ -228,6 +235,14 @@ export class MatrixClientService {
    * restores them. Distinct from a full sign-out, which wipes and forgets the account.
    */
   readonly softLoggedOut = this._softLoggedOut.asReadonly();
+
+  private readonly _accessTokenRotations = new Subject<AccessTokenRotation>();
+  /**
+   * Access tokens the SDK refreshed (OAuth sessions only), each published once storage has
+   * accepted the new pair. Never replays; the push handoff rewrites its copy from it.
+   */
+  readonly accessTokenRotations: Observable<AccessTokenRotation> =
+    this._accessTokenRotations.asObservable();
 
   /**
    * In-flight background store wipes started by {@link reset}/{@link remove},
@@ -797,6 +812,11 @@ export class MatrixClientService {
                   tokens.refreshToken,
                   tokens.expiry?.getTime(),
                 ),
+              ).then(() =>
+                this._accessTokenRotations.next({
+                  userId: session.userId,
+                  accessToken: tokens.accessToken,
+                }),
               ),
           }
         : {}),

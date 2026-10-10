@@ -109,16 +109,7 @@ export class AccountSignOutRetryWorkflow {
     );
     const operations: Observable<unknown>[] = [];
     if (retryable.has('notifications')) {
-      operations.push(
-        this.retryStep(
-          attempt,
-          context.remainingAccountIds.length === 0
-            ? this.lifecycle.unregisterNotifications()
-            : this.lifecycle.unregisterNotifications(context.accountId),
-          'notifications',
-          ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
-        ),
-      );
+      operations.push(...this.retryNotifications(attempt, context));
     }
     const logoutScope = remoteLogoutScope(context);
     // Without a client or a stored OAuth session there is nothing to log out with, and
@@ -158,6 +149,36 @@ export class AccountSignOutRetryWorkflow {
           concatMap((operation) => operation),
           reduce(() => undefined, undefined),
         );
+  }
+
+  /**
+   * The push handoff removal and the pusher teardown share the `notifications` scope but
+   * run as separate steps, so a refused removal never skips the teardown. The residue is
+   * resolved only once both have succeeded.
+   */
+  private retryNotifications(
+    attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
+    context: SignOutRetryContext,
+  ): Observable<unknown>[] {
+    let succeeded = 0;
+    const step = (source: Observable<unknown>): Observable<unknown> =>
+      attempt.step(source, {
+        budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
+        scope: 'notifications',
+        recovery: 'retry-sign-out',
+        onSettled: () => {
+          succeeded += 1;
+          if (succeeded === 2) attempt.resolveIssue('notifications');
+        },
+      });
+    return [
+      step(this.lifecycle.forgetPushHandoff(context.accountId)),
+      step(
+        context.remainingAccountIds.length === 0
+          ? this.lifecycle.unregisterNotifications()
+          : this.lifecycle.unregisterNotifications(context.accountId),
+      ),
+    ];
   }
 
   private retryAccountRegistry(

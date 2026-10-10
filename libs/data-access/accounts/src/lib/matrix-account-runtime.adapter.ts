@@ -147,7 +147,12 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
         intent.liveAccounts === 'replace'
           ? defer(() => {
               this.lifecycle.releaseSharedCaches();
-              return this.lifecycle.unregisterNotifications();
+              // Best effort: a refused handoff write must neither fail the sign-in nor
+              // skip the pusher teardown.
+              return this.lifecycle.forgetPushHandoff().pipe(
+                catchError(() => of(void 0)),
+                switchMap(() => this.lifecycle.unregisterNotifications()),
+              );
             })
           : of(void 0);
 
