@@ -7,7 +7,7 @@ import {
   type APIRequestContext,
   type Page,
 } from '../../../fixtures.mts';
-import { login, waitForRooms } from '../../../support/app.mts';
+import { login } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
   closeSettings,
@@ -516,9 +516,15 @@ test.describe('Space rail unread chats', () => {
     };
     expect(exported.settings?.spaceRail).toEqual({ unreadChats: 'off' });
 
-    // The choice is saved on this device: it survives a reload.
+    // The choice is saved on this device: it survives a reload. The chat opened from "+N"
+    // is still open, so the app comes back on that room's route rather than bare /rooms.
     await page.reload();
-    await waitForRooms(page);
+    await page.waitForURL(
+      (url) =>
+        url.pathname.startsWith('/rooms/') &&
+        (url.searchParams.get('account')?.length ?? 0) > 0,
+      { timeout: 30_000 },
+    );
     await expect(page.getByTestId('rail-rooms')).toBeVisible({
       timeout: 30_000,
     });
