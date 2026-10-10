@@ -22,6 +22,14 @@ function scrubLine(text: string, keepTyped: boolean): string {
     .replace(/%21[^%\s/"&]+%3A[a-z0-9.\-]+(%3A\d+)?/gi, '%21<room>')
     .replace(/\$[A-Za-z0-9_\-]{20,}/g, '$<event>')
     .replace(/syt_[A-Za-z0-9_]+/g, '<token>')
+    // Tokens by key, whatever the homeserver's format (Tuwunel's are not syt_-prefixed).
+    .replace(
+      /(\\?"(?:access_?token|refresh_?token)\\?"\s*:\s*\\?")[^"\\]*/gi,
+      '$1<token>',
+    )
+    // ...and in query strings and form bodies (legacy media URLs carry access_token=).
+    .replace(/(\b(?:access_?token|refresh_?token)=)[^&\s"'#]+/gi, '$1<token>')
+    .replace(/(\bbearer\s+)[A-Za-z0-9._~+/=-]+/gi, '$1<token>')
     .replace(/(\\?"password\\?"\s*:\s*\\?")[^"\\]*/g, '$1<redacted>');
   if (keepTyped) return ids;
   return (

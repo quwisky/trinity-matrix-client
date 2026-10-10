@@ -32,7 +32,7 @@ pnpm exec playwright install chromium webkit
 ## Before running a suite
 
 Check its prerequisites. Docker is required by homeserver-backed suites unless `TRINITY_E2E_HOMESERVER_RUNTIME=native` runs Synapse and Caddy, plus Dex when `dex` is on `PATH`, as host processes (see the Matrix E2E guide). Android requires a
-dedicated API 36 x86_64 emulator, its SDK and JDK 21; Electron needs its separately installed
+dedicated API 36 emulator, its SDK and JDK 21; Electron needs its separately installed
 shell dependencies and a display; iOS needs macOS, Xcode, the pinned iOS Simulator and the native homeserver runtime
 (`pnpm e2e:mobile:ios`). The aggregate preflights selected suites.
 
@@ -70,6 +70,16 @@ ADB reverse mappings. Set `TRINITY_ANDROID_SERIAL` only for a disposable dedicat
 Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed app (native plugin, OS UI, hardware or system event, deep link). Everything else stays in `e2e/browser`.
 
 - Prerequisites: Android SDK, the `Trinity_API_36` AVD, JDK 21 and Docker (homeserver).
+  Create the AVD from an API 36 Google APIs image for your host's architecture; CI uses
+  x86_64, and Apple-silicon Macs can only run arm64-v8a. The emulator needs a working
+  hypervisor, so it does not boot inside a VM without nested virtualization.
+
+  ```bash
+  # Apple silicon (use x86_64 on Intel and Linux hosts)
+  sdkmanager "emulator" "system-images;android-36;google_apis;arm64-v8a"
+  avdmanager create avd -n Trinity_API_36 -k "system-images;android-36;google_apis;arm64-v8a" -d pixel_7
+  ```
+
 - `pnpm e2e:mobile` installs the pinned UiAutomator2 driver into the repo-local `.appium`
   (`node scripts/setup-appium.mjs` does that step alone), then runs every spec.
 - `pnpm e2e:mobile -- --spec e2e/mobile/specs/<file>.e2e.mts` runs one spec.
