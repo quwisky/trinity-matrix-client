@@ -960,6 +960,29 @@ describe('unread chats beyond the cap, on a phone', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it('names the sheet by its live title as the count changes', async () => {
+    platform.mobile = true;
+    const { fixture, trigger } = await renderOverflow();
+    trigger.click();
+    await fixture.whenStable();
+    const sheet = screen.getByRole('dialog', { name: '3 more unread chats' });
+    expect(sheet.hasAttribute('aria-label')).toBe(false);
+    const title = document.getElementById(
+      sheet.getAttribute('aria-labelledby') ?? '',
+    );
+    expect(title?.textContent?.trim()).toBe('3 more unread chats');
+
+    fixture.componentRef.setInput(
+      'unreadChats',
+      railChats([unreadChat()], overflowChats().slice(0, 2)),
+    );
+    await fixture.whenStable();
+
+    expect(screen.getByRole('dialog', { name: '2 more unread chats' })).toBe(
+      sheet,
+    );
+  });
+
   it('closes once no chats are left behind +N', async () => {
     platform.mobile = true;
     const { fixture, trigger } = await renderOverflow();

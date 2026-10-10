@@ -158,8 +158,8 @@ export class ServerRailComponent {
       RailOverflowChoice,
       RailUnreadOverflowSheetComponent
     >(RailUnreadOverflowSheetComponent, {
+      // No `ariaLabel`: the shell's live title names the dialog, so the name follows the count.
       inputs: { chats: this.overflowEntries },
-      ariaLabel: this.overflowLabel(this.overflowEntries().length),
     });
     this.overflowSheet = ref;
     this.overflowSheetOpen.set(true);
