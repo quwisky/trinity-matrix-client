@@ -219,14 +219,18 @@ export async function ensureConfig(ctx) {
       // Link previews for the URL-preview e2e. The empty IP blacklist lets Synapse
       // fetch the harness OG page (http://caddy:8080/og) on the private docker network
       // — safe here because this homeserver is disposable and network-isolated. The
-      // native runtime serves no OG page and shares the host's network,
-      // so it lists Synapse's recommended private and reserved ranges: Synapse has no
-      // default blocklist and refuses to start with previews enabled and none given.
+      // native runtime shares the host's network, so it lists Synapse's recommended
+      // private and reserved ranges: Synapse has no default blocklist and refuses to start
+      // with previews enabled and none given. Its Caddy serves the OG page on loopback
+      // (http://127.0.0.1:8080/og), so 127.0.0.1 alone is let back through; the LAN
+      // ranges and ::1 stay blocked.
       'url_preview_enabled: true',
       ...(ctx.native
         ? [
             'url_preview_ip_range_blacklist:',
             ...NATIVE_URL_PREVIEW_BLACKLIST.map((range) => `  - '${range}'`),
+            'url_preview_ip_range_whitelist:',
+            "  - '127.0.0.1'",
           ]
         : ['url_preview_ip_range_blacklist: []']),
       // Permissive CORS isn't a Synapse config knob; matrix endpoints already send

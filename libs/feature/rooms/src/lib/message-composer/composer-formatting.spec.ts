@@ -133,6 +133,39 @@ describe('ComposerFormatting', () => {
     expect(s.text()).toBe('changed under it');
   });
 
+  it('keeps a selection made before the next render after a menu action', () => {
+    const s = setup('say hello there');
+    document.body.append(s.el);
+    s.el.setSelectionRange(4, 9);
+    s.formatting.captureSelection();
+
+    s.formatting.onMenuFormat('bold');
+    expect(document.activeElement).toBe(s.el);
+    // Select-all lands before change detection has run the deferred restore.
+    s.el.setSelectionRange(0, s.el.value.length);
+    TestBed.tick();
+
+    expect([s.el.selectionStart, s.el.selectionEnd]).toEqual([0, 19]);
+    s.el.remove();
+  });
+
+  it('takes focus back after a menu action when the menu teardown moved it', () => {
+    const s = setup('say hello there');
+    const trigger = document.createElement('button');
+    document.body.append(s.el, trigger);
+    s.el.setSelectionRange(4, 9);
+    s.formatting.captureSelection();
+
+    s.formatting.onMenuFormat('bold');
+    trigger.focus();
+    TestBed.tick();
+
+    expect(document.activeElement).toBe(s.el);
+    expect([s.el.selectionStart, s.el.selectionEnd]).toEqual([6, 11]);
+    s.el.remove();
+    trigger.remove();
+  });
+
   it('drops the saved selection and the preview when the context changes', () => {
     const s = setup('say hello there');
     s.el.setSelectionRange(4, 9);
