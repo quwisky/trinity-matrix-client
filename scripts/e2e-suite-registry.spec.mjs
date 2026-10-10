@@ -621,7 +621,7 @@ describe('E2E suite registry runner', () => {
         environment: {},
       }),
     ).toEqual([
-      'no validated API 36 x86_64 emulator or startable Trinity_API_36 AVD is available',
+      'no validated API 36 emulator or startable Trinity_API_36 AVD is available',
     ]);
     expect(
       await checkPrerequisites(androidSuite, {
@@ -644,9 +644,18 @@ describe('E2E suite registry runner', () => {
         }),
         environment: { TRINITY_ANDROID_SERIAL: 'device-123' },
       }),
-    ).toEqual([
-      'Android device device-123 is not an online API 36 x86_64 emulator',
-    ]);
+    ).toEqual(['Android device device-123 is not an online API 36 emulator']);
+    // Apple-silicon hosts can only boot arm64-v8a images; the ABI is not part of the profile.
+    expect(
+      await checkPrerequisites(androidSuite, {
+        execute: executeWith('device-123\tdevice\n', '', '', {
+          'ro.kernel.qemu': '1',
+          'ro.build.version.sdk': '36',
+          'ro.product.cpu.abi': 'arm64-v8a',
+        }),
+        environment: { TRINITY_ANDROID_SERIAL: 'device-123' },
+      }),
+    ).toEqual([]);
   });
 
   it('resolves Android tools from the declared SDK root', async () => {

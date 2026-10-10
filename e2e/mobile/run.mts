@@ -221,7 +221,7 @@ async function selectOrStartDevice(): Promise<void> {
   });
   if (!avds.split(/\r?\n/).includes(DEFAULT_AVD)) {
     throw new Error(
-      `No ${DEFAULT_AVD} AVD exists; create the API 36 x86_64 test emulator or set TRINITY_ANDROID_SERIAL`,
+      `No ${DEFAULT_AVD} AVD exists; create the API 36 test emulator (see e2e/README.md) or set TRINITY_ANDROID_SERIAL`,
     );
   }
 
@@ -306,7 +306,6 @@ async function validateAndWaitForBoot(): Promise<void> {
   const properties = {
     qemu: await adbRun('shell', 'getprop', 'ro.kernel.qemu'),
     apiLevel: await adbRun('shell', 'getprop', 'ro.build.version.sdk'),
-    abi: await adbRun('shell', 'getprop', 'ro.product.cpu.abi'),
   };
   const problems = validateEmulator(properties);
   if (problems.length > 0) {
