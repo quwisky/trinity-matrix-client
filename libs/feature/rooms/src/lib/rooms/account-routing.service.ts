@@ -355,7 +355,15 @@ export class AccountRoutingService {
     const changesAccount =
       selection.accountId !== this.workspace.activeAccountId();
     this.navigate(
-      { kind: 'room', ...selection, origin },
+      {
+        kind: 'room',
+        ...selection,
+        origin,
+        // A rail chat keeps the current list only when that list shows it.
+        ...(origin === 'rail-unread'
+          ? { listedIn: this.vm.listsShowing(selection) }
+          : {}),
+      },
       changesAccount
         ? 'Unable to open that account right now.'
         : 'Unable to open that destination right now.',
