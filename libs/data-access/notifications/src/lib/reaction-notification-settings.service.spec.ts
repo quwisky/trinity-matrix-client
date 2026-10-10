@@ -151,19 +151,17 @@ describe('ReactionNotificationSettingsService', () => {
     await vi.waitFor(() => expect(active.enabled()).toBe(false));
   });
 
-  it('reads the retired event while only it exists, and copies it to the new name', () => {
+  it('reads the retired event while only it exists, without copying it', () => {
+    // The copy belongs to NotificationService, which runs it for every account.
     const { service, client } = setup({
       byType: { [LEGACY_REACTION_NOTIFICATION_EVENT]: { enabled: true } },
     });
     service.connect();
     expect(service.isOn()).toBe(true);
-    expect(client.setAccountData).toHaveBeenCalledWith(
-      REACTION_NOTIFICATION_EVENT,
-      { enabled: true },
-    );
+    expect(client.setAccountData).not.toHaveBeenCalled();
   });
 
-  it('prefers the new event over the retired one and copies nothing', () => {
+  it('prefers the new event over the retired one', () => {
     const { service, client } = setup({
       byType: {
         [REACTION_NOTIFICATION_EVENT]: { enabled: false },

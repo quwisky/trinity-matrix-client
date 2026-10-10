@@ -18,7 +18,12 @@ import {
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomEncryptionFlags } from '@trinity/util/matrix';
-import { NotificationSoundService } from './notification-sound.service';
+import {
+  LEGACY_NOTIFICATION_SOUND_EVENT,
+  NOTIFICATION_SOUND_EVENT,
+  NotificationSoundService,
+} from './notification-sound.service';
+import { copyLegacyAccountData } from './legacy-account-data';
 import { Observable, Subscriber, Subscription, take, timeout } from 'rxjs';
 import { normalizeNotificationEvent } from './matrix-notification-event.adapter';
 import type { NotificationRuntimeEvent } from './notification-intent';
@@ -31,7 +36,11 @@ import type {
 } from '@trinity/runtime/projection';
 import { NotificationPresentationHealthTracker } from './notification-presentation-health';
 import { ReactionNotificationBatch } from './reaction-notification-batch';
-import { ReactionNotificationSettingsService } from './reaction-notification-settings.service';
+import {
+  LEGACY_REACTION_NOTIFICATION_EVENT,
+  REACTION_NOTIFICATION_EVENT,
+  ReactionNotificationSettingsService,
+} from './reaction-notification-settings.service';
 import { RoomNotificationsService } from './room-notifications.service';
 import type {
   NotificationIntent,
@@ -51,6 +60,7 @@ interface AccountNotifier {
   ) => void;
   readonly onDecrypted: (event: MatrixEvent) => void;
   readonly onSync: (state: SyncState) => void;
+  readonly onAccountData: () => void;
   readonly reactions: ReactionNotificationBatch;
 }
 
@@ -388,6 +398,25 @@ export class NotificationService {
       userId,
       client,
       reactions,
+      onAccountData: (): void => {
+        // The one owner of the retired-name account-data copy: it runs for every signed-in
+        // account the moment its data arrives, with no settings page open. Inside the SDK's
+        // emit loop, so a throw must never escape.
+        try {
+          copyLegacyAccountData(
+            client as never,
+            NOTIFICATION_SOUND_EVENT,
+            LEGACY_NOTIFICATION_SOUND_EVENT,
+          );
+          copyLegacyAccountData(
+            client as never,
+            REACTION_NOTIFICATION_EVENT,
+            LEGACY_REACTION_NOTIFICATION_EVENT,
+          );
+        } catch {
+          /* the old value stays readable; the next account-data event retries */
+        }
+      },
       onSync: (state): void => {
         if (state === SyncState.Prepared || state === SyncState.Syncing) {
           firstSyncCompleted = true;
@@ -464,13 +493,18 @@ export class NotificationService {
 
   private attach(notifier: AccountNotifier): void {
     notifier.client.on(ClientEvent.Sync, notifier.onSync);
+    notifier.client.on(ClientEvent.AccountData, notifier.onAccountData);
     notifier.client.on(RoomEvent.Timeline, notifier.onTimeline);
     notifier.client.on(MatrixEventEvent.Decrypted, notifier.onDecrypted);
+    // Account data may already be in the store (a restored session); copy it now rather
+    // than waiting for the next event.
+    notifier.onAccountData();
   }
 
   private detach(notifier: AccountNotifier): void {
     notifier.reactions.dispose();
     notifier.client.off(ClientEvent.Sync, notifier.onSync);
+    notifier.client.off(ClientEvent.AccountData, notifier.onAccountData);
     notifier.client.off(RoomEvent.Timeline, notifier.onTimeline);
     notifier.client.off(MatrixEventEvent.Decrypted, notifier.onDecrypted);
   }

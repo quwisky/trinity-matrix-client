@@ -131,19 +131,18 @@ describe('NotificationSoundService', () => {
     ).rejects.toThrow();
   });
 
-  it('reads the retired event while only it exists, and copies it to the new name', () => {
+  it('reads the retired event while only it exists, without copying it', () => {
+    // The copy belongs to NotificationService, which runs it for every account.
     const { svc, setAccountData } = setup({
       byType: { [LEGACY_NOTIFICATION_SOUND_EVENT]: { enabled: false } },
     });
     svc.connect();
     expect(svc.isOn()).toBe(false);
     expect(svc.enabled()).toBe(false);
-    expect(setAccountData).toHaveBeenCalledWith(NOTIFICATION_SOUND_EVENT, {
-      enabled: false,
-    });
+    expect(setAccountData).not.toHaveBeenCalled();
   });
 
-  it('prefers the new event over the retired one and copies nothing', () => {
+  it('prefers the new event over the retired one', () => {
     const { svc, setAccountData } = setup({
       byType: {
         [NOTIFICATION_SOUND_EVENT]: { enabled: true },
