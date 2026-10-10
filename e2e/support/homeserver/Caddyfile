@@ -52,7 +52,8 @@ https://caddy:9448, https://localhost:9448 {
 # Plain-HTTP Open-Graph page for the link-preview e2e. The homeserver (on this docker
 # network, with url previews enabled + an empty IP blacklist) fetches
 # http://caddy:8080/og server-side and returns the OG metadata; the browser never
-# touches it. Not exposed to the host — only reachable inside the trinity-e2e network.
+# touches it. Under Docker it is not exposed to the host, only reachable inside the
+# trinity-e2e network; the native runtime serves it on loopback (127.0.0.1:8080).
 :8080 {
 	@og path /og
 	header @og Content-Type "text/html; charset=utf-8"
