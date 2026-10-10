@@ -135,7 +135,12 @@ export class MediaPickerService {
     return defer(() => from(this.ensureCameraAccess())).pipe(
       switchMap(() => from(open())),
       switchMap((result) =>
-        from(toCapturedMedia(kind, result, options.maxBytes ?? null)),
+        from(
+          // Awaited only now: a cancel rejects `open()` above and never reaches this.
+          Promise.resolve(options.maxBytes ?? null).then((maxBytes) =>
+            toCapturedMedia(kind, result, maxBytes),
+          ),
+        ),
       ),
       catchError((err: unknown): Observable<CapturedMedia | null> => {
         const code = errorCode(err);

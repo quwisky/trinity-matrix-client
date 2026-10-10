@@ -7,7 +7,15 @@ import {
   type Signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { finalize, of, switchMap, take, timeout, type Observable } from 'rxjs';
+import {
+  catchError,
+  finalize,
+  firstValueFrom,
+  of,
+  take,
+  timeout,
+  type Observable,
+} from 'rxjs';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
   AppSettingsService,
@@ -229,13 +237,20 @@ export class ComposerAttachmentsService {
     this.captureNotice.set(null);
     const roomAtStart = this.host.roomId();
     const saveToGallery = this.privacy.saveCapturesToGallery();
-    this.uploadLimit()
+    // The camera opens at once; the limit is looked up alongside it and the picker awaits it only
+    // once a capture comes back, so a slow media-config request never delays the viewfinder.
+    // `defaultValue`: a lookup that completes without a value must not reject a promise that a
+    // cancelled capture never awaits.
+    const maxBytes = firstValueFrom(
+      this.uploadLimit().pipe(catchError(() => of(null))),
+      { defaultValue: null },
+    );
+    const options = { saveToGallery, maxBytes };
+    (kind === 'photo'
+      ? this.picker.capturePhoto(options)
+      : this.picker.captureVideo(options)
+    )
       .pipe(
-        switchMap((maxBytes) =>
-          kind === 'photo'
-            ? this.picker.capturePhoto({ saveToGallery, maxBytes })
-            : this.picker.captureVideo({ saveToGallery, maxBytes }),
-        ),
         finalize(() => (this.capturing = false)),
         takeUntilDestroyed(this.destroyRef),
       )
@@ -551,7 +566,7 @@ export class ComposerAttachmentsService {
 
   /**
    * The composer account's upload limit, once. Bounded: the media-config request has no
-   * timeout of its own, and a hung one must never keep the camera from opening — after
+   * timeout of its own, and a hung one must never hold up a capture — after
    * {@link UPLOAD_LIMIT_WAIT_MS} the limit is treated as unknown and the server stays the judge.
    */
   private uploadLimit(): Observable<number | null> {
@@ -591,7 +606,7 @@ export class ComposerAttachmentsService {
   }
 }
 
-/** How long a capture waits for the homeserver's upload limit before going without it. */
+/** How long a capture's size check waits for the homeserver's upload limit before going without it. */
 const UPLOAD_LIMIT_WAIT_MS = 3000;
 
 /** A byte limit as whole megabytes for copy ("100 MB"); never "0 MB". */

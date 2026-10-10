@@ -41,8 +41,12 @@ export interface CapturedMedia {
 export interface CaptureOptions {
   /** Also keep the capture in the device's photo library (Settings › Privacy). */
   readonly saveToGallery: boolean;
-  /** The homeserver's upload limit in bytes; null or absent when unknown. */
-  readonly maxBytes?: number | null;
+  /**
+   * The homeserver's upload limit in bytes; null or absent when unknown. It may still be
+   * resolving when the camera opens: it is awaited only after a capture returns, so a slow
+   * lookup never delays the camera and a cancelled capture never waits for it.
+   */
+  readonly maxBytes?: number | null | PromiseLike<number | null>;
 }
 
 /** Camera access, or photo-library access while saving is on, was refused. */

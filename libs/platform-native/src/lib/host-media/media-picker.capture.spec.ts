@@ -375,4 +375,117 @@ describe('MediaPickerService capture', () => {
 
     expect(error).toBeInstanceOf(CaptureTooLargeError);
   });
+
+  describe('with an upload limit that is still resolving', () => {
+    function deferredLimit(): {
+      promise: Promise<number | null>;
+      resolve: (limit: number | null) => void;
+    } {
+      let resolve!: (limit: number | null) => void;
+      const promise = new Promise<number | null>((r) => (resolve = r));
+      return { promise, resolve };
+    }
+
+    it('opens the camera before the limit is known and checks the size once it is', async () => {
+      const fetchMock = serveBlob(3, 'video/mp4');
+      recordVideo.mockResolvedValue({
+        type: 1,
+        webPath: 'blob:v',
+        saved: false,
+        metadata: { format: 'mp4', size: 200 },
+      });
+      const limit = deferredLimit();
+      const svc = makeService();
+
+      const outcome = firstValueFrom(
+        svc.captureVideo({ saveToGallery: false, maxBytes: limit.promise }),
+      ).catch((e: unknown) => e);
+      await vi.waitFor(() => expect(recordVideo).toHaveBeenCalledTimes(1));
+      await Promise.resolve();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      limit.resolve(100);
+      const error = await outcome;
+
+      expect(error).toBeInstanceOf(CaptureTooLargeError);
+      expect((error as CaptureTooLargeError).size).toBe(200);
+      expect((error as CaptureTooLargeError).limit).toBe(100);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('stages a capture that fits a late limit', async () => {
+      serveBlob(3, 'image/jpeg');
+      takePhoto.mockResolvedValue({
+        type: 0,
+        webPath: 'blob:p',
+        saved: false,
+        metadata: { format: 'jpeg', size: 3 },
+      });
+      const limit = deferredLimit();
+      const svc = makeService();
+
+      const outcome = firstValueFrom(
+        svc.capturePhoto({ saveToGallery: false, maxBytes: limit.promise }),
+      );
+      await vi.waitFor(() => expect(takePhoto).toHaveBeenCalledTimes(1));
+      limit.resolve(100);
+
+      expect((await outcome)?.file.name).toBe('photo.jpeg');
+    });
+
+    it('stages a capture when the late limit turns out to be unknown', async () => {
+      serveBlob(3, 'image/jpeg');
+      takePhoto.mockResolvedValue({
+        type: 0,
+        webPath: 'blob:p',
+        saved: false,
+        metadata: { format: 'jpeg', size: 3 },
+      });
+      const svc = makeService();
+
+      const captured = await firstValueFrom(
+        svc.capturePhoto({
+          saveToGallery: false,
+          maxBytes: Promise.resolve(null),
+        }),
+      );
+
+      expect(captured?.file.name).toBe('photo.jpeg');
+    });
+
+    it('lets a cancelled capture finish without waiting for the limit', async () => {
+      takePhoto.mockRejectedValue({ code: 'OS-PLUG-CAMR-0006' });
+      recordVideo.mockRejectedValue({ code: 'OS-PLUG-CAMR-0017' });
+      const never = new Promise<number | null>(() => undefined);
+      const svc = makeService();
+
+      expect(
+        await firstValueFrom(
+          svc.capturePhoto({ saveToGallery: false, maxBytes: never }),
+        ),
+      ).toBeNull();
+      expect(
+        await firstValueFrom(
+          svc.captureVideo({ saveToGallery: false, maxBytes: never }),
+        ),
+      ).toBeNull();
+    });
+  });
+
+  it('still honours a plain number limit', async () => {
+    serveBlob(3, 'image/jpeg');
+    takePhoto.mockResolvedValue({
+      type: 0,
+      webPath: 'blob:p',
+      saved: false,
+      metadata: { format: 'jpeg', size: 3 },
+    });
+    const svc = makeService();
+
+    const captured = await firstValueFrom(
+      svc.capturePhoto({ saveToGallery: false, maxBytes: 100 }),
+    );
+
+    expect(captured?.file.name).toBe('photo.jpeg');
+  });
 });

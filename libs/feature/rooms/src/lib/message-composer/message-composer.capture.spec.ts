@@ -7,13 +7,22 @@ import {
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, Subject, of } from 'rxjs';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { EMPTY, NEVER, Subject, of, throwError } from 'rxjs';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from 'vitest';
 import { TrnToastService } from '@trinity/components/overlay';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
   MediaPickerService,
   PrivacySettingsService,
+  type CaptureOptions,
   type CapturedMedia,
 } from '@trinity/platform-native';
 
@@ -32,6 +41,12 @@ function nativePicker(overrides: Partial<MediaPickerService> = {}) {
     captureVideo: vi.fn(() => of(null)),
     ...overrides,
   });
+}
+
+/** What the composer handed the camera as its upload limit, once that has settled. */
+function maxBytesOf(capture: Mock): Promise<number | null> {
+  const [options] = capture.mock.calls[0] as unknown as [CaptureOptions];
+  return Promise.resolve(options.maxBytes ?? null);
 }
 
 describe('MessageComposerComponent — capture', () => {
@@ -77,8 +92,9 @@ describe('MessageComposerComponent — capture', () => {
 
     expect(capturePhoto).toHaveBeenCalledWith({
       saveToGallery: true,
-      maxBytes: null,
+      maxBytes: expect.any(Promise),
     });
+    expect(await maxBytesOf(capturePhoto)).toBeNull();
     expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['photo.jpeg']);
     expect(cmp['attachments'].staged()[0]?.media.hints).toEqual({
       width: 4032,
@@ -96,8 +112,9 @@ describe('MessageComposerComponent — capture', () => {
 
     expect(captureVideo).toHaveBeenCalledWith({
       saveToGallery: false,
-      maxBytes: null,
+      maxBytes: expect.any(Promise),
     });
+    expect(await maxBytesOf(captureVideo)).toBeNull();
   });
 
   it("passes the account's homeserver upload limit to the camera", async () => {
@@ -114,11 +131,12 @@ describe('MessageComposerComponent — capture', () => {
     expect(uploadLimit).toHaveBeenCalledWith('@me:example.org');
     expect(capturePhoto).toHaveBeenCalledWith({
       saveToGallery: false,
-      maxBytes: 5_000_000,
+      maxBytes: expect.any(Promise),
     });
+    expect(await maxBytesOf(capturePhoto)).toBe(5_000_000);
   });
 
-  it('still opens the camera, without a limit, when the upload limit never arrives', async () => {
+  it('opens the camera at once, without waiting for an upload limit that never arrives', async () => {
     const capturePhoto = vi.fn(() => of(null));
     const { fixture } = await renderComposer({}, [
       nativePicker({ capturePhoto }),
@@ -129,13 +147,65 @@ describe('MessageComposerComponent — capture', () => {
     vi.useFakeTimers();
 
     fixture.componentInstance.onTakePhoto();
-    expect(capturePhoto).not.toHaveBeenCalled();
+
+    expect(capturePhoto).toHaveBeenCalledTimes(1);
+  });
+
+  it('settles the limit as unknown once the wait, counted from the tap, runs out', async () => {
+    const capturePhoto = vi.fn(() => of(null));
+    const { fixture } = await renderComposer({}, [
+      nativePicker({ capturePhoto }),
+    ]);
+    vi.spyOn(TestBed.inject(MediaPipeline), 'uploadLimit').mockReturnValue(
+      NEVER,
+    );
+    vi.useFakeTimers();
+
+    fixture.componentInstance.onTakePhoto();
+    const limit = maxBytesOf(capturePhoto);
     vi.advanceTimersByTime(3000);
 
-    expect(capturePhoto).toHaveBeenCalledWith({
-      saveToGallery: false,
-      maxBytes: null,
-    });
+    expect(await limit).toBeNull();
+  });
+
+  it('treats a failed limit lookup as unknown and still stages the capture', async () => {
+    const capturePhoto = vi.fn(() => of(photo()));
+    const { fixture } = await renderComposer({}, [
+      nativePicker({ capturePhoto }),
+    ]);
+    vi.spyOn(TestBed.inject(MediaPipeline), 'uploadLimit').mockReturnValue(
+      throwError(() => new Error('media config unavailable')),
+    );
+
+    fixture.componentInstance.onTakePhoto();
+
+    expect(await maxBytesOf(capturePhoto)).toBeNull();
+    expect(stagedFiles(fixture.componentInstance)).toHaveLength(1);
+  });
+
+  it('leaves no unhandled rejection when the limit lookup completes empty and the camera is cancelled', async () => {
+    // The limit is only awaited once a capture comes back, so a cancel never consumes it: a
+    // rejection in the promise itself (an empty lookup) would go unhandled.
+    const capturePhoto = vi.fn(() => of(null));
+    const { fixture } = await renderComposer({}, [
+      nativePicker({ capturePhoto }),
+    ]);
+    vi.spyOn(TestBed.inject(MediaPipeline), 'uploadLimit').mockReturnValue(
+      EMPTY,
+    );
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on('unhandledRejection', onRejection);
+
+    try {
+      fixture.componentInstance.onTakePhoto();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    } finally {
+      process.off('unhandledRejection', onRejection);
+    }
+
+    expect(rejections).toEqual([]);
+    expect(await maxBytesOf(capturePhoto)).toBeNull();
   });
 
   it('stages nothing and says nothing when the camera is cancelled', async () => {
