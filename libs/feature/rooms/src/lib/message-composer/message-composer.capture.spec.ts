@@ -7,7 +7,7 @@ import {
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, Subject, of, throwError } from 'rxjs';
+import { EMPTY, NEVER, Subject, of, throwError } from 'rxjs';
 import {
   afterEach,
   beforeEach,
@@ -183,18 +183,29 @@ describe('MessageComposerComponent — capture', () => {
     expect(stagedFiles(fixture.componentInstance)).toHaveLength(1);
   });
 
-  it('starts the limit lookup at the tap, not when the camera returns', async () => {
-    const shot = new Subject<CapturedMedia | null>();
-    const { fixture } = await renderComposer({ accountId: '@me:example.org' }, [
-      nativePicker({ capturePhoto: vi.fn(() => shot) }),
+  it('leaves no unhandled rejection when the limit lookup completes empty and the camera is cancelled', async () => {
+    // The limit is only awaited once a capture comes back, so a cancel never consumes it: a
+    // rejection in the promise itself (an empty lookup) would go unhandled.
+    const capturePhoto = vi.fn(() => of(null));
+    const { fixture } = await renderComposer({}, [
+      nativePicker({ capturePhoto }),
     ]);
-    const uploadLimit = vi
-      .spyOn(TestBed.inject(MediaPipeline), 'uploadLimit')
-      .mockReturnValue(of(1));
+    vi.spyOn(TestBed.inject(MediaPipeline), 'uploadLimit').mockReturnValue(
+      EMPTY,
+    );
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on('unhandledRejection', onRejection);
 
-    fixture.componentInstance.onTakePhoto();
+    try {
+      fixture.componentInstance.onTakePhoto();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    } finally {
+      process.off('unhandledRejection', onRejection);
+    }
 
-    expect(uploadLimit).toHaveBeenCalledTimes(1);
+    expect(rejections).toEqual([]);
+    expect(await maxBytesOf(capturePhoto)).toBeNull();
   });
 
   it('stages nothing and says nothing when the camera is cancelled', async () => {

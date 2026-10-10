@@ -239,8 +239,11 @@ export class ComposerAttachmentsService {
     const saveToGallery = this.privacy.saveCapturesToGallery();
     // The camera opens at once; the limit is looked up alongside it and the picker awaits it only
     // once a capture comes back, so a slow media-config request never delays the viewfinder.
+    // `defaultValue`: a lookup that completes without a value must not reject a promise that a
+    // cancelled capture never awaits.
     const maxBytes = firstValueFrom(
       this.uploadLimit().pipe(catchError(() => of(null))),
+      { defaultValue: null },
     );
     const options = { saveToGallery, maxBytes };
     (kind === 'photo'
