@@ -2,6 +2,7 @@ import {
   createMarkdownProcessor,
   parseFrontmatter,
 } from '@astrojs/markdown-remark';
+import { JSDOM } from 'jsdom';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -55,12 +56,12 @@ const render = async (path, versions) => {
 };
 
 const renderedRows = (html) =>
-  [...html.matchAll(/<tr>\s*<td>(.*?)<\/td>\s*<td>(.*?)<\/td>\s*<\/tr>/gs)].map(
-    ([, label, version]) => ({
-      label: label.replace(/<[^>]+>/g, ''),
-      version: version.replace(/<[^>]+>/g, ''),
-    }),
-  );
+  [...JSDOM.fragment(html).querySelectorAll('tbody tr')].map((row) => {
+    const [label, version] = [...row.querySelectorAll('td')].map(
+      (cell) => cell.textContent ?? '',
+    );
+    return { label, version };
+  });
 
 const expectedRows = (versions) =>
   sourceRows.map(({ label, version }) => ({
