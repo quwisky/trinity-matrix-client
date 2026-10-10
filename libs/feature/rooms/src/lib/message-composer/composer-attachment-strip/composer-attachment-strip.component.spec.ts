@@ -350,5 +350,50 @@ describe('ComposerAttachmentStripComponent', () => {
     ).toBeNull();
   });
 
+  it('keeps an h:mm:ss length inside the preview, in the smaller type', async () => {
+    const { container } = await render(ComposerAttachmentStripComponent, {
+      inputs: { staged: [video('blob:poster', 3_725_000)] },
+    });
+
+    const badge = container.querySelector(
+      '[data-testid=composer-pending-duration]',
+    );
+    expect(badge?.textContent?.trim()).toBe('1:02:05');
+    expect(badge?.classList).toContain('composer__pending-duration--long');
+    expect(badge?.parentElement?.getAttribute('data-testid')).toBe(
+      'composer-pending-video',
+    );
+  });
+
+  it('uses the regular badge size for an m:ss length', async () => {
+    const { container } = await render(ComposerAttachmentStripComponent, {
+      inputs: { staged: [video('blob:poster', 72_000)] },
+    });
+
+    expect(
+      container.querySelector('[data-testid=composer-pending-duration]')
+        ?.classList,
+    ).not.toContain('composer__pending-duration--long');
+  });
+
+  it('shows the length of a video with no poster, in the same sized box', async () => {
+    const { container } = await render(ComposerAttachmentStripComponent, {
+      inputs: { staged: [video(null, 12_500)] },
+    });
+
+    const preview = container.querySelector(
+      '[data-testid=composer-pending-video]',
+    );
+    expect(preview?.classList).toContain('composer__pending-poster');
+    expect(preview?.classList).toContain('composer__pending-poster--timed');
+    expect(preview?.querySelector('img')).toBeNull();
+    expect(preview?.querySelector('trn-icon[name=video]')).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-testid=composer-pending-duration]')
+        ?.textContent?.trim(),
+    ).toBe('0:13');
+  });
+
   afterEach(() => TestBed.resetTestingModule());
 });

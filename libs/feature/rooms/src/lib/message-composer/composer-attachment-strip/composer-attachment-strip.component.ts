@@ -16,6 +16,8 @@ interface StagedRow {
   readonly attachment: StagedAttachment;
   readonly video: boolean;
   readonly duration: string | null;
+  /** `h:mm:ss`: wider than `m:ss`, so its badge sets the smaller type. */
+  readonly longDuration: boolean;
 }
 
 /**
@@ -60,11 +62,15 @@ export class ComposerAttachmentStripComponent {
 
   /** Each staged item with what its row needs to show it: is it a video, and how long. */
   protected readonly rows = computed<readonly StagedRow[]>(() =>
-    this.staged().map((attachment) => ({
-      attachment,
-      video: attachment.media.mimeType.startsWith('video/'),
-      duration: formatMediaDuration(attachment.media.hints?.durationMs),
-    })),
+    this.staged().map((attachment) => {
+      const duration = formatMediaDuration(attachment.media.hints?.durationMs);
+      return {
+        attachment,
+        video: attachment.media.mimeType.startsWith('video/'),
+        duration,
+        longDuration: (duration?.length ?? 0) > 5,
+      };
+    }),
   );
 
   /** False until the first real fraction lands, so the bar starts indeterminate. */

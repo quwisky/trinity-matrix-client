@@ -22,6 +22,7 @@
         @if (row.video) {
           <span
             class="composer__pending-poster"
+            [class.composer__pending-poster--timed]="row.duration !== null"
             data-testid="composer-pending-video"
           >
             @if (attachment.previewUrl; as src) {
@@ -42,6 +43,7 @@
             @if (row.duration; as duration) {
               <span
                 class="composer__pending-duration"
+                [class.composer__pending-duration--long]="row.longDuration"
                 data-testid="composer-pending-duration"
                 >{{ duration }}</span
               >
