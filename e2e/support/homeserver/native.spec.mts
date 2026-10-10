@@ -344,7 +344,7 @@ describe('native homeserver runtime', () => {
     expect(existsSync(paths.pidFile)).toBe(false);
   });
 
-  it('serves only the 8448 site, without the admin API or a trust-store install', () => {
+  it('serves the 8448 and link-preview sites, without the admin API or a trust-store install', () => {
     const shared = readFileSync(join(import.meta.dirname, 'Caddyfile'), 'utf8');
     const caddyfile = nativeCaddyfile(shared, '/data/caddy-access.log');
     expect(caddyfile).toContain('https://localhost:8448 {');
@@ -364,10 +364,14 @@ describe('native homeserver runtime', () => {
     expect(caddyfile).toContain('request>headers delete');
     expect(caddyfile).not.toContain('https://localhost {');
     expect(caddyfile).not.toContain('9448');
-    expect(caddyfile).not.toContain(':8080');
+    expect(caddyfile).toContain(':8080 {');
+    expect(caddyfile).toContain('respond @og 200');
     expect(() => nativeCaddyfile(':8080 {\n}\n', '/x')).toThrow(
       /no https:\/\/localhost:8448 site/,
     );
+    expect(() =>
+      nativeCaddyfile('https://localhost:8448 {\n}\n', '/x'),
+    ).toThrow(/no :8080 link-preview site/);
   });
 });
 

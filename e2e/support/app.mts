@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { readSession } from './session.mts';
-import type { HomeserverKind } from './homeserver/kind.mts';
+import type { HomeserverKind, HomeserverRuntime } from './homeserver/kind.mts';
 import type { Navigate } from './platform-contracts.mts';
 export const webNavigate: Navigate = async (page, path) => {
   await page.goto(path, { waitUntil: 'networkidle' });
@@ -85,6 +85,8 @@ export interface HomeserverSession {
    */
   kind?: HomeserverKind;
   version?: string;
+  /** Docker Compose, or host processes (`native`), where harness-served pages live on loopback. */
+  runtime?: HomeserverRuntime;
   secondary?: {
     hs: string;
     serverName: string;

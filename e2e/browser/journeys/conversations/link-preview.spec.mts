@@ -9,18 +9,23 @@ import { registerUser } from '../../../support/account.mts';
 // Covers link previews (message-row `data-testid="link-preview"`): a URL in an
 // unencrypted message shows an Open-Graph card fetched via the homeserver
 // (UrlPreviewService.preview → getUrlPreview). The harness Caddy serves a fixed OG page
-// at http://caddy:8080/og that Synapse (url previews enabled) can fetch server-side, so
-// the card is deterministic and offline. In E2EE rooms previews are suppressed (unit-
-// tested) to avoid disclosing the URL. Needs a Synapse homeserver (Docker); self-skips.
+// on :8080 that Synapse (url previews enabled) can fetch server-side, so the card is
+// deterministic and offline. In E2EE rooms previews are suppressed (unit-tested) to avoid
+// disclosing the URL. Needs a Synapse homeserver; self-skips.
 const session = homeserverSession();
 
-// Reachable by Synapse on the docker network; the browser never fetches it.
-// Fetched by Synapse server-side. On the compose network that is the `caddy` hostname;
-// when the stack shares the job container's network namespace (containerised CI) there is
-// no compose DNS and everything is on one loopback instead.
-const OG_URL = process.env['TRINITY_E2E_NETWORK_CONTAINER']
-  ? 'http://localhost:8080/og'
-  : 'http://caddy:8080/og';
+// Fetched by Synapse server-side; the browser never fetches it. On the compose network
+// that is the `caddy` hostname; when the stack shares the job container's network
+// namespace (containerised CI) there is no compose DNS and everything is on one loopback
+// instead. The native runtime runs on the host's loopback, where Synapse may reach
+// 127.0.0.1 only: `localhost` also resolves to the blocked ::1, and one blocked address
+// blocks the whole name.
+const OG_URL =
+  session.runtime === 'native'
+    ? 'http://127.0.0.1:8080/og'
+    : process.env['TRINITY_E2E_NETWORK_CONTAINER']
+      ? 'http://localhost:8080/og'
+      : 'http://caddy:8080/og';
 
 test.describe('Link previews', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
