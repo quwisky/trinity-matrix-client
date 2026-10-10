@@ -75,3 +75,21 @@ export type MediaTransferEvent =
       readonly failure: 'local-echo-missing' | 'send-in-flight';
       readonly retryable: true;
     };
+
+/** A rendered thumbnail and its pixel size — what `thumbnail_info.w/h` records. */
+export interface MediaThumbnail {
+  readonly blob: Blob;
+  readonly w: number;
+  readonly h: number;
+}
+
+/**
+ * What the host that produced a file already measured (the camera plugin). Upload uses these
+ * first and analyses the file in the WebView only for what they leave out.
+ */
+export interface MediaHints {
+  readonly width?: number;
+  readonly height?: number;
+  readonly durationMs?: number;
+  readonly thumbnail?: MediaThumbnail;
+}
