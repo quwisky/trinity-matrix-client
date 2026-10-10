@@ -85,6 +85,7 @@ import {
   lucideUser,
   lucideUserPlus,
   lucideUsers,
+  lucideVideo,
   lucideVote,
   lucideX,
 } from '@ng-icons/lucide';
@@ -185,6 +186,7 @@ export const TRN_ICONS: Record<TrnIconName, string> = {
   user: lucideUser,
   'user-plus': lucideUserPlus,
   users: lucideUsers,
+  video: lucideVideo,
   vote: lucideVote,
   x: lucideX,
 };

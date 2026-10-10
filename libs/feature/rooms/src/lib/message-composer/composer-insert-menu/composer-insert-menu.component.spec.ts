@@ -498,6 +498,89 @@ describe('ComposerInsertMenuComponent', () => {
     ).toBe('Add to message');
   });
 
+  it.each(['native', 'web'] as const)(
+    'offers Take photo and Record video right after Attach when capture is %s',
+    async (captureMode) => {
+      const { fixture, container } = await render(ComposerInsertMenuComponent, {
+        inputs: { hasMenu: true, captureMode, richActions: true },
+      });
+
+      container
+        .querySelector<HTMLElement>('[data-testid=composer-insert]')
+        ?.click();
+      await fixture.whenStable();
+
+      expect(trayItems().map((el) => el.getAttribute('data-testid'))).toEqual([
+        'insert-attach',
+        'insert-take-photo',
+        'insert-record-video',
+        'insert-poll',
+        'insert-location',
+      ]);
+      expect(trayItems()[1]?.textContent?.trim()).toBe('Take photo');
+      expect(trayItems()[2]?.textContent?.trim()).toBe('Record video');
+    },
+  );
+
+  it('offers no capture where the host cannot capture', async () => {
+    const { fixture, container } = await render(ComposerInsertMenuComponent, {
+      inputs: { hasMenu: true, captureMode: 'none', richActions: true },
+    });
+
+    container
+      .querySelector<HTMLElement>('[data-testid=composer-insert]')
+      ?.click();
+    await fixture.whenStable();
+
+    expect(
+      trayItems().map((el) => el.getAttribute('data-testid')),
+    ).not.toContain('insert-take-photo');
+  });
+
+  it('keeps capture usable during an upload or a blocked send, because it only stages', async () => {
+    const { fixture, container } = await render(ComposerInsertMenuComponent, {
+      inputs: {
+        hasMenu: true,
+        captureMode: 'native',
+        uploading: true,
+        sendBlocked: true,
+      },
+    });
+
+    container
+      .querySelector<HTMLElement>('[data-testid=composer-insert]')
+      ?.click();
+    await fixture.whenStable();
+
+    const disabled = Object.fromEntries(
+      trayItems().map((el) => [el.getAttribute('data-testid'), el.disabled]),
+    );
+    expect(disabled['insert-take-photo']).toBe(false);
+    expect(disabled['insert-record-video']).toBe(false);
+  });
+
+  it('emits takePhoto and recordVideo from their items', async () => {
+    const { fixture, container } = await render(ComposerInsertMenuComponent, {
+      inputs: { hasMenu: true, captureMode: 'native' },
+    });
+    const fired: string[] = [];
+    fixture.componentInstance.takePhoto.subscribe(() => fired.push('photo'));
+    fixture.componentInstance.recordVideo.subscribe(() => fired.push('video'));
+
+    for (const testid of ['insert-take-photo', 'insert-record-video']) {
+      container
+        .querySelector<HTMLElement>('[data-testid=composer-insert]')
+        ?.click();
+      await fixture.whenStable();
+      trayItems()
+        .find((el) => el.getAttribute('data-testid') === testid)
+        ?.click();
+      await fixture.whenStable();
+    }
+
+    expect(fired).toEqual(['photo', 'video']);
+  });
+
   afterEach(() => {
     platform.mobile = false;
     TestBed.resetTestingModule();

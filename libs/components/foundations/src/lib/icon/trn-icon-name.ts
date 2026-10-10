@@ -97,6 +97,7 @@ export const TRN_ICON_NAMES = [
   'user',
   'user-plus',
   'users',
+  'video',
   'vote',
   'x',
 ] as const;
