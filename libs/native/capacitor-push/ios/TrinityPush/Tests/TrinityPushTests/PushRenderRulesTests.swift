@@ -5,10 +5,10 @@ import XCTest
 /// Runs native/push-render/push-render-cases.json, the fixture the Android JUnit suite runs too.
 final class PushRenderRulesTests: XCTestCase {
     func testEverySharedFixtureCaseRendersAsExpected() throws {
-        // Tests/TrinityPushTests/<file> → repository root is six levels up.
-        var root = URL(fileURLWithPath: #filePath)
-        for _ in 0..<6 { root.deleteLastPathComponent() }
-        let fixture = root.appendingPathComponent("native/push-render/push-render-cases.json")
+        let fixture = try XCTUnwrap(
+            Self.sharedFixture(),
+            "native/push-render/push-render-cases.json not found above \(#filePath)"
+        )
         let document = try XCTUnwrap(
             JSONSerialization.jsonObject(with: Data(contentsOf: fixture)) as? [String: Any]
         )
@@ -36,5 +36,17 @@ final class PushRenderRulesTests: XCTestCase {
                 name
             )
         }
+    }
+
+    /// The repository's shared fixture, found by walking up from this file, so moving the
+    /// package cannot point the suite at a path that does not exist.
+    private static func sharedFixture(from file: String = #filePath) -> URL? {
+        var directory = URL(fileURLWithPath: file).deletingLastPathComponent()
+        while directory.path != "/" {
+            let candidate = directory.appendingPathComponent("native/push-render/push-render-cases.json")
+            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+            directory.deleteLastPathComponent()
+        }
+        return nil
     }
 }

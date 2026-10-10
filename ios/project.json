@@ -70,12 +70,12 @@
       }
     },
     "test-push": {
-      "//": "XCTest for the TrinityPush package: the shared text-rule fixture (native/push-render), the resolver and the bounded reads. Needs Xcode, so it runs before the native builds (verify-native locally, build-prebuilt in CI) rather than from the static verify.",
+      "//": "XCTest for the TrinityPush package of @trinity/capacitor-push (libs/native/capacitor-push/ios/TrinityPush): the shared text-rule fixture (native/push-render), the resolver and the bounded reads. Needs Xcode, so it runs before the native builds (verify-native locally, build-prebuilt in CI) rather than from the static verify.",
       "cache": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "swift test --package-path App/TrinityPush",
-        "cwd": "{projectRoot}"
+        "command": "swift test --package-path libs/native/capacitor-push/ios/TrinityPush",
+        "cwd": "{workspaceRoot}"
       }
     },
     "verify-native": {

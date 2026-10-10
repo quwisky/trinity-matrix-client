@@ -222,7 +222,7 @@
 			mainGroup = 504EC2FB1FED79650016851F;
 			packageReferences = (
 				D4C12C0A2AAA248700AAC8A2 /* XCLocalSwiftPackageReference "CapApp-SPM" */,
-				C0FFEE00000000000000A003 /* XCLocalSwiftPackageReference "TrinityPush" */,
+				C0FFEE00000000000000A003 /* XCLocalSwiftPackageReference "../../libs/native/capacitor-push/ios/TrinityPush" */,
 				C0FFEE00000000000000B015 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			productRefGroup = 504EC3051FED79650016851F /* Products */;
@@ -572,9 +572,9 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "CapApp-SPM";
 		};
-		C0FFEE00000000000000A003 /* XCLocalSwiftPackageReference "TrinityPush" */ = {
+		C0FFEE00000000000000A003 /* XCLocalSwiftPackageReference "../../libs/native/capacitor-push/ios/TrinityPush" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = TrinityPush;
+			relativePath = "../../libs/native/capacitor-push/ios/TrinityPush";
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -597,12 +597,12 @@
 		};
 		C0FFEE00000000000000A004 /* TrinityPush */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = C0FFEE00000000000000A003 /* XCLocalSwiftPackageReference "TrinityPush" */;
+			package = C0FFEE00000000000000A003 /* XCLocalSwiftPackageReference "../../libs/native/capacitor-push/ios/TrinityPush" */;
 			productName = TrinityPush;
 		};
 		C0FFEE00000000000000B013 /* TrinityPush */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = C0FFEE00000000000000A003 /* XCLocalSwiftPackageReference "TrinityPush" */;
+			package = C0FFEE00000000000000A003 /* XCLocalSwiftPackageReference "../../libs/native/capacitor-push/ios/TrinityPush" */;
 			productName = TrinityPush;
 		};
 		C0FFEE00000000000000B016 /* FirebaseMessaging */ = {

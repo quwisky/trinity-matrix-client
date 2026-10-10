@@ -41,7 +41,7 @@ The WebdriverIO and Appium suite drives the simulator build through the XCUITest
 
 ## Push extension and configuration {#push-extension}
 
-The Xcode project has two targets: `App` and the `NotificationService` app extension (`dev.trinityproject.trinity.NotificationService`), which renders push notifications while Trinity is closed. Both link the local `TrinityPush` Swift package in `ios/App/TrinityPush`; run its tests with `pnpm nx run trinity-ios:test-push`. The targets share the app group `group.dev.trinityproject.trinity` and a keychain access group, declared in `App/App.entitlements` and `NotificationService/NotificationService.entitlements` together with the push capability.
+The Xcode project has two targets: `App` and the `NotificationService` app extension (`dev.trinityproject.trinity.NotificationService`), which renders push notifications while Trinity is closed. Both link the local `TrinityPush` Swift package in `libs/native/capacitor-push/ios/TrinityPush`; run its tests with `pnpm nx run trinity-ios:test-push`. The targets share the app group `group.dev.trinityproject.trinity` and a keychain access group, declared in `App/App.entitlements` and `NotificationService/NotificationService.entitlements` together with the push capability.
 
 Debug and Release builds both sign with those entitlements, so a free personal team cannot sign the app: running on a device needs a paid team with both App IDs (`dev.trinityproject.trinity` and `dev.trinityproject.trinity.NotificationService`) registered for Push Notifications, App Groups and Keychain Sharing. The installed-app suite signs its simulator build with `App/App.e2e.entitlements` (push environment included) instead.
 
