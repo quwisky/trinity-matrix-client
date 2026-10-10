@@ -7,9 +7,11 @@ import {
   map,
   of,
   shareReplay,
+  switchMap,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { fetchMediaBytes } from '@trinity/util/matrix';
+import { withoutImageMetadata } from './image-metadata/strip-file-metadata';
 
 /** Default avatar edge (px) requested from the server thumbnailer. */
 const AVATAR_PX = 96;
@@ -111,19 +113,26 @@ export class AvatarService {
     });
   }
 
-  /** Upload avatar bytes through the owning Account's media repository. */
+  /**
+   * Upload avatar bytes through the owning Account's media repository. A profile photo is
+   * readable well beyond one room, so it leaves without its location, camera and capture
+   * time, like any other photo.
+   */
   upload(file: File, accountId: string): Observable<string> {
     return defer(() => {
       const client = this.matrix.clientFor(accountId);
       if (!client) {
         throw new Error('The owning account is no longer available.');
       }
-      return from(
-        client.uploadContent(file, {
-          name: file.name,
-          type: file.type || 'application/octet-stream',
-        }),
-      ).pipe(map((response) => response.content_uri));
+      return from(withoutImageMetadata(file)).pipe(
+        switchMap((upload) =>
+          client.uploadContent(upload, {
+            name: file.name,
+            type: file.type || 'application/octet-stream',
+          }),
+        ),
+        map((response) => response.content_uri),
+      );
     });
   }
 
