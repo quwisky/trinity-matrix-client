@@ -3,7 +3,7 @@
 # homeserver.yaml into ./data and ./remote-data before `up` (see synapse/adapter.mjs).
 services:
   homeserver:
-    image: matrixdotorg/synapse:v1.161.0
+    image: ghcr.io/element-hq/synapse:v1.161.0
     container_name: trinity-e2e-homeserver
     restart: 'no'
     environment:
@@ -30,7 +30,7 @@ services:
   # A second homeserver for federation-sensitive journeys. It listens on a distinct
   # internal port too, so the netns CI override can run both servers on one loopback.
   homeserver-remote:
-    image: matrixdotorg/synapse:v1.161.0
+    image: ghcr.io/element-hq/synapse:v1.161.0
     container_name: trinity-e2e-homeserver-remote
     restart: 'no'
     environment:
