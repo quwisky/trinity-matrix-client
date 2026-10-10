@@ -89,4 +89,31 @@ class HttpMatrixApiTest {
 
         assertNull(HttpMatrixApi().memberDisplayName(account(), "!r:hs", "@a:hs", Deadline.start()))
     }
+
+    @Test
+    fun neverFollowsARedirectWithTheToken() {
+        val targetPaths = mutableListOf<String>()
+        val target = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        target.createContext("/") { exchange ->
+            targetPaths += exchange.requestURI.rawPath
+            val bytes = """{"type":"m.room.message"}""".toByteArray()
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        target.start()
+        try {
+            server.createContext("/") { exchange ->
+                paths += exchange.requestURI.rawPath
+                exchange.responseHeaders.add("Location", "http://127.0.0.1:${target.address.port}/stolen")
+                exchange.sendResponseHeaders(302, -1)
+                exchange.close()
+            }
+
+            assertNull(HttpMatrixApi().event(account(), "!r:hs", "\$e", Deadline.start()))
+            assertEquals(1, paths.size)
+            assertTrue(targetPaths.isEmpty())
+        } finally {
+            target.stop(0)
+        }
+    }
 }

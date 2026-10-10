@@ -550,7 +550,7 @@
         "sender": "@alice:hs",
         "content": {
           "msgtype": "m.text",
-          "body": "  padded  "
+          "body": "\u0085\u00a0 padded \u00a0\u0085"
         }
       },
       "storedRoom": {
@@ -566,13 +566,35 @@
       }
     },
     {
+      "name": "body of only next line and no-break spaces",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "\u0085\u00a0\u00a0\u0085"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "New message"
+      }
+    },
+    {
       "name": "body padded with ideographic and line separators is trimmed",
       "event": {
         "type": "m.room.message",
         "sender": "@alice:hs",
         "content": {
           "msgtype": "m.text",
-          "body": "　 words 　"
+          "body": "\u3000\u2028words\u2029\u3000"
         }
       },
       "storedRoom": {

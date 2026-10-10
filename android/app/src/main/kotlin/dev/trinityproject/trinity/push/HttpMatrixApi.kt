@@ -23,12 +23,12 @@ class HttpMatrixApi : MatrixApi {
     override fun memberDisplayName(account: HandoffAccount, roomId: String, userId: String, deadline: Deadline): String? =
         get(account, "${room(roomId)}/state/m.room.member/${encodePathSegment(userId)}", deadline)
             ?.let { PushRenderRules.stringOrNull(it, "displayname") }
-            ?.takeIf { it.isNotBlank() }
+            ?.takeIf(PushRenderRules::hasText)
 
     override fun roomName(account: HandoffAccount, roomId: String, deadline: Deadline): String? =
         get(account, "${room(roomId)}/state/m.room.name", deadline)
             ?.let { PushRenderRules.stringOrNull(it, "name") }
-            ?.takeIf { it.isNotBlank() }
+            ?.takeIf(PushRenderRules::hasText)
 
     private fun room(roomId: String) = "/_matrix/client/v3/rooms/${encodePathSegment(roomId)}"
 
@@ -43,6 +43,8 @@ class HttpMatrixApi : MatrixApi {
             return null
         }
         return try {
+            // The token is a header: never let a redirect carry it to another host.
+            connection.instanceFollowRedirects = false
             connection.connectTimeout = remaining.toInt()
             connection.readTimeout = remaining.toInt()
             connection.setRequestProperty("Authorization", "Bearer ${account.accessToken}")

@@ -140,13 +140,20 @@ class PushResolverTest {
 
     @Test
     fun usesTheTaggedAccountsCredentialsAndSound() {
-        val store = FakeStore(mapOf("@alice:hs" to alice, "@bob:hs" to bob))
+        val store = FakeStore(
+            mapOf("@alice:hs" to alice, "@bob:hs" to bob),
+            mapOf(
+                ("@alice:hs" to "!r:hs") to HandoffRoom("Alice's name", false),
+                ("@bob:hs" to "!r:hs") to HandoffRoom("Bob's name", false),
+            ),
+        )
         val api = FakeApi(event = message(), memberName = "Carol")
 
         val outcome = post(PushResolver(store, api).resolve(push(user = "@bob:hs")))
 
         assertTrue(api.accounts.isNotEmpty())
         assertTrue(api.accounts.all { it == bob })
+        assertEquals("Bob's name", outcome.notification.title)
         assertEquals(false, outcome.sound)
         assertEquals("@bob:hs", outcome.accountId)
     }

@@ -76,14 +76,14 @@ object PushRenderRules {
         return trimmed.substring(0, end) + ELLIPSIS
     }
 
-    private fun hasText(value: String): Boolean = !value.all(::isUnicodeWhiteSpace)
+    internal fun hasText(value: String): Boolean = !value.all(::isUnicodeWhiteSpace)
 
     /**
      * The Unicode `White_Space` property, which Swift's `Unicode.Scalar.Properties.isWhitespace`
      * reads too. Java's `Character.isWhitespace` differs: it includes U+001C-U+001F and leaves
      * out U+0085 and the no-break spaces.
      */
-    private fun isUnicodeWhiteSpace(char: Char): Boolean = when (char.code) {
+    internal fun isUnicodeWhiteSpace(char: Char): Boolean = when (char.code) {
         in 0x0009..0x000D, 0x0020, 0x0085, 0x00A0, 0x1680,
         in 0x2000..0x200A, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000 -> true
         else -> false
