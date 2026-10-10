@@ -1,5 +1,3 @@
-import { setTimeout as wait } from 'node:timers/promises';
-import type { APIResponse } from '@playwright/test';
 import {
   expect,
   test,
@@ -21,6 +19,7 @@ import {
   session,
   type ApiUser,
 } from '../../support/multi-account-journey.mts';
+import { sendWithRetry } from '../../support/cs-api.mts';
 import { openSection } from '../../support/settings-journey.mts';
 
 // End-to-end for the space rail's unread chats (issue #893): chats with new messages from
@@ -57,31 +56,6 @@ const railEntryNames = (page: Page): Promise<(string | null)[]> =>
 
 const overflowEntry = (page: Page) =>
   page.locator('trn-server-rail').getByTestId('rail-unread-overflow');
-
-/**
- * Synapse rate-limits joins per user (burst of 10, then one every ten seconds), and creating
- * or joining a room counts as one. Seeding more than ten rooms for one account therefore
- * meets a 429, so honour its `retry_after_ms` (bounded) and send again.
- */
-async function sendWithRetry(
-  label: string,
-  send: () => Promise<APIResponse>,
-): Promise<APIResponse> {
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const response = await send();
-    if (response.status() !== 429) {
-      expect(response.ok(), `${label}: ${response.status()}`).toBe(true);
-      return response;
-    }
-    const body = (await response.json().catch(() => ({}))) as {
-      retry_after_ms?: number;
-    };
-    await wait(
-      Math.min(Math.max(Number(body.retry_after_ms) || 1_000, 1), 15_000),
-    );
-  }
-  throw new Error(`${label}: still rate-limited after 6 attempts`);
-}
 
 /** Create a room as `reader`, bring `sender` in, and have `sender` post `messages` messages. */
 async function seedUnreadRoom(
