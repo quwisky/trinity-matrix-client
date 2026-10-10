@@ -41,6 +41,7 @@ export function webviewSwitchError(
 /**
  * iOS launch race after a reinstall: FrontBoard has not registered the app yet (NotFound),
  * or still refuses to open it (RequestDenied), seen on iOS 27 right after a kill and relaunch.
+ * iOS 26.5 can also report the NotFound lookup wrapped in InvalidRequest.
  */
 export function isAppNotYetKnown(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);

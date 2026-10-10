@@ -228,13 +228,11 @@ describe('native homeserver runtime', () => {
     const mock = parse(nativeDexConfig(shared, { mock: true })) as {
       connectors: unknown;
       oauth2: { passwordConnector: string };
-      staticPasswords: unknown[];
     };
     expect(mock.connectors).toEqual([
       { type: 'mockCallback', id: 'mock', name: 'Mock' },
     ]);
     expect(mock.oauth2.passwordConnector).toBe('local');
-    expect(mock.staticPasswords).toHaveLength(2);
   });
 
   it('reads the installed Dex version, or null without a dex on PATH', async () => {

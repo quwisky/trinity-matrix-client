@@ -33,7 +33,7 @@ The static verifier checks shared host contracts on any supported development ma
 ## Run the installed-app suite {#ios-e2e}
 
 ```bash
-TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native pnpm e2e:mobile:ios
+TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native TRINITY_E2E_SSO_PROVIDER=mock pnpm e2e:mobile:ios
 ```
 
 The WebdriverIO and Appium suite drives the simulator build through the XCUITest driver. It needs macOS, Xcode, the pinned iOS Simulator runtime, `python3` and `caddy` on `PATH`; Synapse runs from a venv instead of Docker, without a second homeserver; with `dex` on `PATH` and `TRINITY_E2E_SSO_PROVIDER=mock`, the SSO spec signs in through Dex's form-free mock connector, and skips otherwise. Read [desktop and native tests](../../testing/desktop-and-native-tests/) for what simulator evidence does and does not prove.
