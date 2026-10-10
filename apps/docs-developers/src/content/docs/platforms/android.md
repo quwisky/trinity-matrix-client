@@ -32,6 +32,14 @@ The static verifier checks host contracts. Native verification runs Android unit
 
 The release target creates an AAB but remains unsigned unless external signing is configured. Keep credentials and publishing procedure out of public documentation.
 
+## Push rendering {#push-rendering}
+
+`TrinityMessagingService` replaces the push plugin's messaging service and renders push notifications while Trinity is closed or in the background. Its Kotlin text rules and resolver have JVM unit tests, driven by the fixture shared with iOS, that `pnpm nx run trinity-android:verify-native` runs.
+
+Push on a device needs a git-ignored `android/app/google-services.json`. The build runs without it, but Android registers for push only when Firebase is initialized, so push stays unsupported and the app keeps presenting its own notifications. Once registered, the running app stops presenting message notifications while its page is hidden and leaves them to the service; reaction notifications and a visible app are unchanged.
+
+Debug builds contain a shell-only probe receiver that the installed-app suite uses to drive the renderer without FCM. On CI that suite shows the fallback "New message" body, because the native code does not trust the end-to-end proxy's certificate authority. A real FCM token, closed-app delivery through the gateway and tap-to-open need a physical device.
+
 ## Test native behavior natively {#native-behavior}
 
 Use an installed-host journey for permissions, system Back, app lifecycle, native secure storage, push, badges, keyboards, touch gestures, and WebView TLS. A mobile browser profile remains useful for layout but cannot prove these paths.
