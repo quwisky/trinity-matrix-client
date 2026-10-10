@@ -8,7 +8,7 @@ import {
 } from './message-composer.spec-harness';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { EMPTY, NEVER, Subject, of, throwError } from 'rxjs';
+import { EMPTY, NEVER, Subject, of, shareReplay, throwError } from 'rxjs';
 import {
   afterEach,
   beforeEach,
@@ -172,6 +172,64 @@ describe('MessageComposerComponent — upload limit fallback', () => {
     });
   });
 
+  describe('prewarming the lookup', () => {
+    // Spied on the prototype: the composer asks as soon as it connects, before a test could
+    // reach the root instance through TestBed.
+    const lookups = () => vi.spyOn(MediaPipeline.prototype, 'uploadLimit');
+
+    afterEach(() =>
+      vi.mocked(MediaPipeline.prototype.uploadLimit).mockRestore?.(),
+    );
+
+    it("asks for the account's limit once on connect, so a later pick does not wait", async () => {
+      // A server answer that only a subscriber already listening hears, then replays — the
+      // shape of MediaService's shared, cached lookup.
+      const answer = new Subject<number | null>();
+      const cached = answer.pipe(shareReplay(1));
+      const uploadLimit = lookups().mockReturnValue(cached);
+      const { fixture } = await renderComposer({
+        accountId: '@me:example.org',
+      });
+
+      expect(uploadLimit).toHaveBeenCalledTimes(1);
+      expect(uploadLimit).toHaveBeenCalledWith('@me:example.org');
+
+      answer.next(null);
+      const file = sized('clip.mp4', 'video/mp4', MB);
+      pickFiles(fixture.componentInstance, [file]);
+
+      expect(stagedFiles(fixture.componentInstance)).toEqual([file]);
+    });
+
+    it('asks again when the active account changes', async () => {
+      const uploadLimit = lookups().mockReturnValue(of(null));
+      const { fixture } = await renderComposer({
+        accountId: '@me:example.org',
+      });
+
+      fixture.componentRef.setInput('accountId', '@other:example.org');
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(uploadLimit.mock.calls).toEqual([
+        ['@me:example.org'],
+        ['@other:example.org'],
+      ]);
+    });
+
+    it('swallows a failed prewarm', async () => {
+      lookups().mockReturnValue(
+        throwError(() => new Error('media config unavailable')),
+      );
+      const { fixture } = await renderComposer({
+        accountId: '@me:example.org',
+      });
+
+      expect(stagedFiles(fixture.componentInstance)).toEqual([]);
+      expect(toast()).not.toHaveBeenCalled();
+    });
+  });
+
   describe('picked files', () => {
     it('refuses a picked file over the cap when the homeserver states no limit', async () => {
       const { fixture } = await renderComposer();
@@ -269,6 +327,43 @@ describe('MessageComposerComponent — upload limit fallback', () => {
       ]);
 
       expect(stagedFiles(fixture.componentInstance)).toEqual([file]);
+      expect(toast()).toHaveBeenCalledWith(
+        `That file is too large to send. ${DEVICE_512}`,
+        { duration: 6000, variant: 'danger' },
+      );
+    });
+
+    it('stages a pick exactly at the cap and refuses one byte over it', async () => {
+      const { fixture } = await renderComposer();
+      stubLimit(of(null));
+      const atCap = sized('at-cap.mp4', 'video/mp4', 512 * MB);
+
+      pickFiles(fixture.componentInstance, [
+        atCap,
+        sized('over-cap.mp4', 'video/mp4', 512 * MB + 1),
+      ]);
+
+      expect(stagedFiles(fixture.componentInstance)).toEqual([atCap]);
+      expect(toast()).toHaveBeenCalledTimes(1);
+      expect(toast()).toHaveBeenCalledWith(
+        `That file is too large to send. ${DEVICE_512}`,
+        { duration: 6000, variant: 'danger' },
+      );
+    });
+
+    it('stages nothing when edit mode began while the limit was being looked up', async () => {
+      const limit = new Subject<number | null>();
+      const { fixture } = await renderComposer();
+      stubLimit(limit);
+
+      fixture.componentInstance.stageFiles([
+        sized('clip.mp4', 'video/mp4', MB),
+      ]);
+      fixture.componentRef.setInput('editing', true);
+      fixture.detectChanges();
+      limit.next(null);
+
+      expect(stagedFiles(fixture.componentInstance)).toEqual([]);
     });
 
     it('caps a pick once the limit lookup times out', async () => {

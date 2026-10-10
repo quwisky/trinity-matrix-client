@@ -1,19 +1,23 @@
 import {
   DestroyRef,
   Injectable,
+  Injector,
   computed,
   inject,
   signal,
   type Signal,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
+  EMPTY,
   catchError,
   defaultIfEmpty,
+  distinctUntilChanged,
   finalize,
   firstValueFrom,
   map,
   of,
+  switchMap,
   take,
   timeout,
   type Observable,
@@ -107,6 +111,7 @@ export class ComposerAttachmentsService {
   private readonly gifSettings = inject(GifSettingsService);
   private readonly mediaPipeline = inject(MediaPipeline);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
   private readonly privacy = inject(PrivacySettingsService);
   private readonly appSettings = inject(AppSettingsService);
   /** True from a native capture's start until it settles (re-entry guard). */
@@ -207,6 +212,28 @@ export class ComposerAttachmentsService {
   /** Bind the workflows to their composer. Called once, from its constructor. */
   connect(host: ComposerAttachmentsHost): void {
     this.host = host;
+    this.prewarmUploadLimit();
+  }
+
+  /**
+   * Ask for the active account's upload limit as soon as it is known, so the lookup a pick or
+   * capture makes is normally already answered from the media service's per-client cache. Only
+   * warms that cache: the size checks still make their own bounded lookup, and a failure here
+   * is left for them to handle.
+   */
+  private prewarmUploadLimit(): void {
+    toObservable(this.host.accountId, { injector: this.injector })
+      .pipe(
+        distinctUntilChanged(),
+        switchMap((accountId) =>
+          this.mediaPipeline.uploadLimit(accountId).pipe(
+            take(1),
+            catchError(() => EMPTY),
+          ),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe();
   }
 
   /** Attach button: native gallery picker on device, else the hidden file input. */
@@ -556,7 +583,8 @@ export class ComposerAttachmentsService {
     this.uploadLimit()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((limit) => {
-        if (this.host.roomId() !== roomAtStart) return;
+        // Re-checked once the limit is in: the room may have changed, or an edit begun.
+        if (this.host.roomId() !== roomAtStart || this.host.editing()) return;
         const fitting = files.filter((file) => file.size <= limit.bytes);
         const refused = files.length - fitting.length;
         if (refused > 0) {
