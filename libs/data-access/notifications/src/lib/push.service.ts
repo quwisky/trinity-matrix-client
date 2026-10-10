@@ -58,6 +58,11 @@ export type PushRegistrationState =
 export type PushRuntimeStatus =
   | { readonly status: 'idle'; readonly code: 'push-registration-idle' }
   | { readonly status: 'available'; readonly code: 'push-registration-ready' }
+  /** The host cannot request a token (an Android build without Firebase): not an error. */
+  | {
+      readonly status: 'unsupported';
+      readonly code: 'push-registration-unsupported';
+    }
   | {
       readonly status: 'disabled' | 'degraded';
       readonly code:
@@ -227,17 +232,30 @@ export class PushService {
       // Fires the `registration` listener with the FCM/APNs token — or `registrationError`.
       // A rejection here means the OS flow never started, so release the one-time guard:
       // holding it would make every later register() early-exit for the process lifetime.
-      await firstValueFrom(this.nativePush.register()).catch((e: unknown) => {
+      const outcome = await firstValueFrom(this.nativePush.register()).catch(
+        (e: unknown) => {
+          this.registered = false;
+          this._registration.set({
+            status: 'error',
+            message: deviceErrorMessage(e),
+          });
+          this._runtimeStatus.set({
+            status: 'degraded',
+            code: 'push-device-registration-failed',
+          });
+          return null;
+        },
+      );
+      if (outcome === 'unavailable') {
+        // Nothing was asked of the OS, so no token callback will settle this flow. Like a
+        // platform without push: quiet, neither a failure nor a refused permission.
         this.registered = false;
-        this._registration.set({
-          status: 'error',
-          message: deviceErrorMessage(e),
-        });
+        this._registration.set({ status: 'idle' });
         this._runtimeStatus.set({
-          status: 'degraded',
-          code: 'push-device-registration-failed',
+          status: 'unsupported',
+          code: 'push-registration-unsupported',
         });
-      });
+      }
     });
   }
 

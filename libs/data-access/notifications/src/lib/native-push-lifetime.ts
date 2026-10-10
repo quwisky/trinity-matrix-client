@@ -169,11 +169,11 @@ export class NativePushLifetime {
             ? 'available'
             : state.status === 'disabled'
               ? 'disabled'
-              : 'degraded',
+              : state.status === 'unsupported'
+                ? 'not-applicable'
+                : 'degraded',
           state.code,
-          state.status === 'available' || state.status === 'disabled'
-            ? 'acknowledged'
-            : 'failed',
+          state.status === 'degraded' ? 'failed' : 'acknowledged',
         );
       };
 

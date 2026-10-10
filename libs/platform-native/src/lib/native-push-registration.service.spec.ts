@@ -1,7 +1,19 @@
 import { TestBed } from '@angular/core/testing';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, of, throwError, type Observable } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NativePushRegistrationService } from './native-push-registration.service';
+import { PushHandoffBridge } from './push-handoff.bridge';
+
+const registrationAvailable = vi.fn((): Observable<boolean> => of(true));
+
+function service(): NativePushRegistrationService {
+  TestBed.configureTestingModule({
+    providers: [
+      { provide: PushHandoffBridge, useValue: { registrationAvailable } },
+    ],
+  });
+  return TestBed.inject(NativePushRegistrationService);
+}
 
 const h = vi.hoisted(() => {
   const listeners: Record<string, (value: never) => void> = {};
@@ -34,8 +46,10 @@ const h = vi.hoisted(() => {
 });
 
 vi.mock('@capacitor/core', () => ({
+  registerPlugin: vi.fn(() => ({})),
   Capacitor: {
     getPlatform: () => h.platform,
+    isNativePlatform: () => h.platform !== 'web',
     isPluginAvailable: () => h.available,
   },
 }));
@@ -50,6 +64,7 @@ describe('NativePushRegistrationService', () => {
     for (const key of Object.keys(h.listeners)) delete h.listeners[key];
     h.handles.length = 0;
     vi.clearAllMocks();
+    registrationAvailable.mockReturnValue(of(true));
   });
 
   it('requests permission lazily and prepares a channel only on Android', async () => {
@@ -111,5 +126,60 @@ describe('NativePushRegistrationService', () => {
     expect(
       h.handles.every(({ remove }) => remove.mock.calls.length === 1),
     ).toBe(true);
+  });
+
+  describe('register', () => {
+    it('asks Android for a token once the host says it can register', async () => {
+      h.platform = 'android';
+
+      await expect(firstValueFrom(service().register())).resolves.toBe(
+        'requested',
+      );
+
+      expect(registrationAvailable).toHaveBeenCalledOnce();
+      expect(h.push.register).toHaveBeenCalledOnce();
+    });
+
+    it('never asks Android for a token when the host cannot register', async () => {
+      // Without Firebase the plugin's Android register() crashes the app.
+      h.platform = 'android';
+      registrationAvailable.mockReturnValue(of(false));
+
+      await expect(firstValueFrom(service().register())).resolves.toBe(
+        'unavailable',
+      );
+
+      expect(h.push.register).not.toHaveBeenCalled();
+    });
+
+    it('treats an Android host that cannot answer as unable to register', async () => {
+      h.platform = 'android';
+      registrationAvailable.mockReturnValue(
+        throwError(() => new Error('plugin missing')),
+      );
+
+      await expect(firstValueFrom(service().register())).resolves.toBe(
+        'unavailable',
+      );
+
+      expect(h.push.register).not.toHaveBeenCalled();
+    });
+
+    it('registers on iOS without asking the host first', async () => {
+      await expect(firstValueFrom(service().register())).resolves.toBe(
+        'requested',
+      );
+
+      expect(registrationAvailable).not.toHaveBeenCalled();
+      expect(h.push.register).toHaveBeenCalledOnce();
+    });
+
+    it('still reports a failed iOS registration as an error', async () => {
+      h.push.register.mockRejectedValueOnce(new Error('no aps entitlement'));
+
+      await expect(firstValueFrom(service().register())).rejects.toThrow(
+        'no aps entitlement',
+      );
+    });
   });
 });

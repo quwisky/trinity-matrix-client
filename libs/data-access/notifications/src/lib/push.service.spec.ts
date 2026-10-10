@@ -11,7 +11,15 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 const h = vi.hoisted(() => {
   const listeners: Record<string, (arg: unknown) => void> = {};
   const handles: { remove: ReturnType<typeof vi.fn> }[] = [];
-  const state = { platform: 'ios', permission: 'granted' as string };
+  const state = {
+    platform: 'ios',
+    permission: 'granted' as string,
+    // Android only: whether the host has Firebase (the PushHandoff plugin answers).
+    canRegister: true,
+  };
+  const handoff = {
+    registrationAvailable: vi.fn(async () => ({ value: state.canRegister })),
+  };
   const push = {
     requestPermissions: vi.fn(async () => ({ receive: state.permission })),
     register: vi.fn(async () => undefined),
@@ -24,11 +32,11 @@ const h = vi.hoisted(() => {
     }),
     removeAllListeners: vi.fn(async () => undefined),
   };
-  return { listeners, handles, state, push };
+  return { listeners, handles, state, push, handoff };
 });
 
 vi.mock('@capacitor/core', () => ({
-  registerPlugin: vi.fn(() => ({})),
+  registerPlugin: vi.fn(() => h.handoff),
   Capacitor: {
     getPlatform: () => h.state.platform,
     // Electron reports isNativePlatform() === true but has no push plugin — the
@@ -129,6 +137,7 @@ describe('PushService', () => {
     TestBed.resetTestingModule();
     h.state.platform = 'ios';
     h.state.permission = 'granted';
+    h.state.canRegister = true;
     for (const k of Object.keys(h.listeners)) delete h.listeners[k];
     h.handles.length = 0;
     vi.clearAllMocks();
@@ -214,6 +223,23 @@ describe('PushService', () => {
       expect.objectContaining({ id: 'messages' }),
     );
     expect(h.push.register).toHaveBeenCalled();
+  });
+
+  it('stays quietly unavailable on an Android build that cannot register', async () => {
+    // Without Firebase the plugin's Android register() would crash the app.
+    h.state.platform = 'android';
+    h.state.canRegister = false;
+    const { svc, client } = setup();
+
+    await firstValueFrom(svc.register());
+
+    expect(h.push.register).not.toHaveBeenCalled();
+    expect(client.setPusher).not.toHaveBeenCalled();
+    expect(svc.runtimeStatus()).toEqual({
+      status: 'unsupported',
+      code: 'push-registration-unsupported',
+    });
+    expect(svc.registration()).toEqual({ status: 'idle' });
   });
 
   it('no-ops on web (plugin unavailable)', async () => {

@@ -111,6 +111,36 @@ describe('NativePushLifetime', () => {
     vi.useRealTimers();
   });
 
+  it('settles as expected dormancy when the host turns out unable to register', () => {
+    vi.useFakeTimers();
+    const events: NativePushLifetimeEvent[] = [];
+    const lifetime = TestBed.inject(NativePushLifetime)
+      .run()
+      .subscribe((event) => events.push(event));
+
+    runtimeStatus.set({
+      status: 'unsupported',
+      code: 'push-registration-unsupported',
+    });
+    TestBed.tick();
+    vi.advanceTimersByTime(30_000);
+
+    const facts = events.flatMap((event) =>
+      event.kind === 'health' ? [event.fact] : [],
+    );
+    expect(facts.at(-1)).toMatchObject({
+      condition: 'not-applicable',
+      code: 'push-registration-unsupported',
+      preparation: 'acknowledged',
+    });
+    expect(facts.some(({ code }) => code === 'push-registration-timeout')).toBe(
+      false,
+    );
+    expect(events).toContainEqual({ kind: 'prepared' });
+    lifetime.unsubscribe();
+    vi.useRealTimers();
+  });
+
   it('restarts a timed-out native registration during exact recovery', async () => {
     vi.useFakeTimers();
     const service = TestBed.inject(NativePushLifetime);
