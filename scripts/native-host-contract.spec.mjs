@@ -65,6 +65,20 @@ function project(platform) {
   };
 }
 
+function pushLibraryManifest(
+  service = [
+    '<service',
+    '    android:name="dev.trinityproject.trinity.push.TrinityMessagingService"',
+    '    android:exported="false">',
+    '  <intent-filter>',
+    '    <action android:name="com.google.firebase.MESSAGING_EVENT" />',
+    '  </intent-filter>',
+    '</service>',
+  ].join('\n'),
+) {
+  return `<manifest><application>${service}</application></manifest>`;
+}
+
 function validInput() {
   return {
     projects: { android: project('android'), ios: project('ios') },
@@ -104,6 +118,7 @@ function validInput() {
       ':capacitor-push-notifications',
       ':capacitor-status-bar',
       ':capawesome-capacitor-badge',
+      ':trinity-capacitor-push',
     ].join('\n'),
     iosPlugins: [
       'AparajitaCapacitorSecureStorage',
@@ -114,20 +129,62 @@ function validInput() {
       'CapacitorPushNotifications',
       'CapacitorStatusBar',
       'CapawesomeCapacitorBadge',
+      'TrinityCapacitorPush',
     ].join('\n'),
-    androidManifest: 'android:scheme="dev.trinityproject.trinity"',
+    androidManifest: [
+      'android:scheme="dev.trinityproject.trinity"',
+      '<service android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"',
+      '  tools:node="remove" />',
+    ].join('\n'),
     iosInfo:
       '<key>UIViewControllerBasedStatusBarAppearance</key><true/>' +
       '<key>CFBundleURLSchemes</key><string>dev.trinityproject.trinity</string>' +
       '<key>UIApplicationSceneManifest</key><dict>' +
       '<key>UISceneDelegateClassName</key>' +
       '<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string></dict>',
+    androidHostActivity: [
+      'registerPlugin(AppSettingsPlugin.class);',
+      'super.onCreate(savedInstanceState);',
+    ].join('\n'),
+    iosHostController: 'bridge?.registerPluginInstance(AppSettingsPlugin())',
+    androidPushPlugin: [
+      '@CapacitorPlugin(name = "PushHandoff")',
+      'public class PushHandoffPlugin extends Plugin {',
+    ].join('\n'),
+    iosPushPlugin: [
+      '/** Writes the push handoff store. */',
+      '@objc(PushHandoffPlugin)',
+      'public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {',
+      '    public let jsName = "PushHandoff"',
+    ].join('\n'),
+    androidPushLibraryManifest: pushLibraryManifest(),
+    androidPushAppearance: [
+      '<drawable name="trinity_push_small_icon">@drawable/ic_stat_trinity</drawable>',
+      '<color name="trinity_push_color">@color/ic_launcher_background</color>',
+    ].join('\n'),
   };
 }
 
 describe('native host contract', () => {
   it('validates the checked-in Android and iOS hosts', () => {
     expect(validateCurrentNativeHosts).not.toThrow();
+  });
+
+  it('accepts the push library service with reordered attributes', () => {
+    const input = validInput();
+    input.androidPushLibraryManifest = pushLibraryManifest(
+      [
+        '<service android:exported="false"',
+        '    android:name=".TrinityMessagingService">',
+        '  <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT"/></intent-filter>',
+        '</service>',
+      ].join('\n'),
+    );
+    const errors = [];
+
+    validateNativeHostContract(input, errors);
+
+    expect(errors).toEqual([]);
   });
 
   it('rejects Capacitor logging that is on by default', () => {
@@ -299,6 +356,20 @@ describe('native host contract', () => {
       'iOS host must delegate status-bar appearance to its view controller',
     ],
     [
+      'capacitor-push Android module',
+      'androidPlugins',
+      ':trinity-capacitor-push',
+      '// :trinity-capacitor-push',
+      'Android host is missing plugin wiring: :trinity-capacitor-push',
+    ],
+    [
+      'capacitor-push Swift package',
+      'iosPlugins',
+      'TrinityCapacitorPush',
+      '// TrinityCapacitorPush',
+      'iOS host is missing plugin wiring: TrinityCapacitorPush',
+    ],
+    [
       'iOS scene lifecycle',
       'iosInfo',
       '<key>UIApplicationSceneManifest</key>',
@@ -317,4 +388,113 @@ describe('native host contract', () => {
       expect(errors).toContain(expected);
     },
   );
+
+  it.each([
+    [
+      'an Android hand registration of the push plugin',
+      (input) => {
+        input.androidHostActivity +=
+          '\nregisterPlugin(PushHandoffPlugin.class);';
+      },
+      'Android host must not register PushHandoffPlugin by hand',
+    ],
+    [
+      'an iOS hand registration of the push plugin',
+      (input) => {
+        input.iosHostController +=
+          '\nbridge?.registerPluginInstance(PushHandoffPlugin())';
+      },
+      'iOS host must not register PushHandoffPlugin by hand',
+    ],
+    [
+      'an iOS instance plugin, which automatic registration skips',
+      (input) => {
+        input.iosPushPlugin = input.iosPushPlugin.replace(
+          'CAPPlugin, CAPBridgedPlugin',
+          'CAPInstancePlugin, CAPBridgedPlugin',
+        );
+      },
+      'iOS PushHandoff plugin must be discoverable by cap sync',
+    ],
+    [
+      'an iOS file whose first @objc name is another class',
+      (input) => {
+        input.iosPushPlugin = `@objc(PushRenderHelper)\n${input.iosPushPlugin}`;
+      },
+      'iOS PushHandoff plugin must be discoverable by cap sync',
+    ],
+    [
+      'a renamed iOS plugin',
+      (input) => {
+        input.iosPushPlugin = input.iosPushPlugin.replace(
+          'jsName = "PushHandoff"',
+          'jsName = "Handoff"',
+        );
+      },
+      'iOS PushHandoff plugin must be discoverable by cap sync',
+    ],
+    [
+      'a renamed Android plugin',
+      (input) => {
+        input.androidPushPlugin = input.androidPushPlugin.replace(
+          '"PushHandoff"',
+          '"Handoff"',
+        );
+      },
+      'Android PushHandoff plugin must be discoverable by cap sync',
+    ],
+    [
+      'a missing removal of the push plugin service',
+      (input) => {
+        input.androidManifest = 'android:scheme="dev.trinityproject.trinity"';
+      },
+      'Android host must remove the push plugin MessagingService from the app manifest',
+    ],
+    [
+      'a commented-out removal of the push plugin service',
+      (input) => {
+        input.androidManifest = `<!-- ${input.androidManifest} -->`;
+      },
+      'Android host must remove the push plugin MessagingService from the app manifest',
+    ],
+    [
+      'a push library without the messaging service',
+      (input) => {
+        input.androidPushLibraryManifest = pushLibraryManifest('');
+      },
+      'Capacitor push library must declare TrinityMessagingService for FCM messages',
+    ],
+    [
+      'a push library service without the FCM action',
+      (input) => {
+        input.androidPushLibraryManifest = pushLibraryManifest(
+          '<service android:name="dev.trinityproject.trinity.push.TrinityMessagingService" />',
+        );
+      },
+      'Capacitor push library must declare TrinityMessagingService for FCM messages',
+    ],
+    [
+      'a commented-out push library service',
+      (input) => {
+        input.androidPushLibraryManifest = `<!-- ${input.androidPushLibraryManifest} -->`;
+      },
+      'Capacitor push library must declare TrinityMessagingService for FCM messages',
+    ],
+    [
+      'unbranded Android push notifications',
+      (input) => {
+        input.androidPushAppearance =
+          '<!-- <drawable name="trinity_push_small_icon">@drawable/ic_stat_trinity</drawable> -->';
+      },
+      'Android host must brand device-rendered push notifications',
+    ],
+  ])('rejects %s', (_label, mutate, expected) => {
+    const input = validInput();
+    mutate(input);
+    const errors = [];
+
+    validateNativeHostContract(input, errors);
+
+    expect(errors).toContain(expected);
+  });
 });

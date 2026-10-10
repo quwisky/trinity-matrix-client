@@ -40,6 +40,8 @@ export default defineConfig([
     '**/.astro',
     'android',
     'ios',
+    // Gradle output of the local Capacitor plugin modules (test reports carry HTML/JS).
+    'libs/native/*/android/build',
     // `e2e` used to be listed here. It is not any more: the Playwright suite is the only
     // gate for whole user journeys, and the failure mode it is most exposed to — a
     // dropped `await` on a locator assertion, which passes vacuously forever — is exactly
@@ -242,6 +244,7 @@ export default defineConfig([
       // not named here and not sanctioned, which is what caught `libs/util/ui` on the day it
       // was created.
       'libs/components/**/*.ts',
+      'libs/native/**/*.ts',
       'libs/platform-native/**/*.ts',
       // Projection Runtime is a shared orchestration kernel. It may project SDK-backed
       // state supplied by data-access adapters, but it must remain SDK-independent.

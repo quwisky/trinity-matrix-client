@@ -6,7 +6,7 @@ import {
   MatrixClientService,
   type AccessTokenRotation,
 } from '@trinity/data-access/matrix-client';
-import { PushHandoffBridge } from '@trinity/platform-native';
+import { PushHandoffBridge } from '@trinity/capacitor-push';
 import { MockProvider } from 'ng-mocks';
 import {
   Subject,

@@ -8,7 +8,7 @@ pageType: tutorial
 platforms: [web, desktop, android, ios]
 ---
 
-The root workspace uses pnpm. Electron deliberately keeps a separate dependency tree and is installed only for desktop work.
+The root workspace uses pnpm. Its one member package is the local Capacitor push plugin in `libs/native/capacitor-push`, which `pnpm install` links so native synchronization can find it. Electron deliberately keeps a separate dependency tree and is installed only for desktop work.
 
 ## Create the checkout {#create-checkout}
 

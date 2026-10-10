@@ -12,17 +12,18 @@ platforms: [web, desktop, android, ios]
 
 ## Public alias families {#alias-families}
 
-| Prefix                      | Layer                                     |
-| --------------------------- | ----------------------------------------- |
-| `@trinity/application/*`    | Cross-capability application ownership    |
-| `@trinity/data-access/*`    | Capability state and Matrix adapters      |
-| `@trinity/feature/*`        | Lazy product features                     |
-| `@trinity/components/*`     | Public Trinity UI                         |
-| `@trinity/runtime/*`        | Projection, preference, and host kernels  |
-| `@trinity/util/*`           | Shared utilities and Matrix modeling      |
-| `@trinity/platform-native`  | Browser, Capacitor, and Electron adapters |
-| `@trinity/theme-foundation` | Theme tokens and global foundations       |
-| `@trinity/testing`          | Shared Angular test helpers               |
+| Prefix                      | Layer                                                |
+| --------------------------- | ---------------------------------------------------- |
+| `@trinity/application/*`    | Cross-capability application ownership               |
+| `@trinity/data-access/*`    | Capability state and Matrix adapters                 |
+| `@trinity/feature/*`        | Lazy product features                                |
+| `@trinity/components/*`     | Public Trinity UI                                    |
+| `@trinity/runtime/*`        | Projection, preference, and host kernels             |
+| `@trinity/util/*`           | Shared utilities and Matrix modeling                 |
+| `@trinity/platform-native`  | Browser, Capacitor, and Electron adapters            |
+| `@trinity/capacitor-push`   | Local Capacitor push plugin (pnpm workspace package) |
+| `@trinity/theme-foundation` | Theme tokens and global foundations                  |
+| `@trinity/testing`          | Shared Angular test helpers                          |
 
 `@trinity/helm/*` aliases belong to the generated UI implementation tier and are not feature APIs.
 

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The notification icon and accent of device-rendered pushes. Defaults only: the host
+         app overrides both in its own res/values/push_notification_appearance.xml, because
+         this module cannot reference the app's resources. -->
+    <drawable name="trinity_push_small_icon">@android:drawable/stat_notify_chat</drawable>
+    <color name="trinity_push_color">@android:color/transparent</color>
+</resources>

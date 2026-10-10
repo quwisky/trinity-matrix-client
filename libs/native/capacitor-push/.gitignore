@@ -1,0 +1,10 @@
+# Gradle output of the :trinity-capacitor-push module
+/android/build/
+
+# SwiftPM output of the TrinityCapacitorPush package
+/.build/
+/.swiftpm/
+
+# swift test output of the TrinityPush package
+/ios/TrinityPush/.build/
+/ios/TrinityPush/.swiftpm/

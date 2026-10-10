@@ -1,0 +1,37 @@
+// The PushHandoff Capacitor plugin and the device push renderer (TrinityMessagingService).
+// Built only inside the Trinity Android host: `cap sync android` includes this directory as
+// :trinity-capacitor-push next to :capacitor-android and :capacitor-push-notifications, and
+// the versions come from android/variables.gradle.
+apply plugin: 'com.android.library'
+
+android {
+    namespace = "dev.trinityproject.trinity.push"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        minSdk = rootProject.ext.minSdkVersion
+    }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
+}
+
+dependencies {
+    implementation project(':capacitor-android')
+    // TrinityMessagingService extends the push plugin's FirebaseMessagingService subclass;
+    // the plugin declares Firebase as `implementation`, so this module names it itself.
+    implementation project(':capacitor-push-notifications')
+    implementation "com.google.firebase:firebase-messaging:${rootProject.ext.firebaseMessagingVersion}"
+    implementation "androidx.core:core:${rootProject.ext.androidxCoreVersion}"
+    testImplementation "junit:junit:${rootProject.ext.junitVersion}"
+    // org.json is an Android framework API; JVM unit tests need a real implementation.
+    testImplementation "org.json:json:${rootProject.ext.orgJsonVersion}"
+}
+
+// PushRenderRulesTest runs the text-rule fixture it shares with the iOS XCTest suite. The
+// path comes from the root project, so it does not depend on where this module sits.
+tasks.withType(Test).configureEach {
+    def cases = rootProject.file('../native/push-render/push-render-cases.json')
+    inputs.file(cases)
+    systemProperty 'trinity.pushRenderCases', cases.absolutePath
+}
