@@ -79,6 +79,15 @@ jobs:
           fi
           echo "$dir" >> "$GITHUB_PATH"
           "$dir/caddy" version | tee -a "$GITHUB_STEP_SUMMARY"
+      # The native runtime starts Dex when `dex` is on PATH, which gives the suite SSO. There
+      # is no macOS release download, but Homebrew bottles one (dexidp). No auto-update: the
+      # runner image's formula, not whatever landed overnight; the summary records it.
+      - name: Install Dex
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: |
+          brew install dexidp
+          dex version | tee -a "$GITHUB_STEP_SUMMARY"
       # No renderer job in this workflow: build the production renderer here and record it.
       - run: pnpm nx build trinity --configuration=production --skipNxCache
       - run: node scripts/web-bundle-manifest.mjs write www
