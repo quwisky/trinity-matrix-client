@@ -36,7 +36,7 @@ export const CONFIG_SCHEMA_DIALECT =
  * version in it tracks {@link CONFIG_EXPORT_VERSION}, so a document and the schema that
  * describes it can never be paired up wrongly.
  */
-export const CONFIG_SCHEMA_ID = `https://qwky.eu/trinity/config-v${CONFIG_EXPORT_VERSION}.schema.json`;
+export const CONFIG_SCHEMA_ID = `https://trinityproject.dev/trinity/config-v${CONFIG_EXPORT_VERSION}.schema.json`;
 
 /** The document's `title`. */
 const CONFIG_SCHEMA_TITLE = 'Trinity configuration export';

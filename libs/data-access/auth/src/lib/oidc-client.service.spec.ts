@@ -213,7 +213,7 @@ describe('OidcClientService', () => {
       // camelCase wrapper (applicationType / redirectUris).
       expect(jsonBody(fetchMock.mock.calls[0][1])).toMatchObject({
         client_name: 'Trinity',
-        client_uri: 'https://trinity.qwky.eu',
+        client_uri: 'https://trinity.trinityproject.dev',
         application_type: 'web',
         redirect_uris: [REDIRECT_URI],
       });

@@ -23,7 +23,7 @@ import type { OidcSessionBinding } from '@trinity/util/matrix';
 /** How this client identifies itself to an OIDC provider during dynamic registration. */
 const CLIENT_NAME = 'Trinity';
 /** Stable https identifier for the app (dynamic-registration `client_uri`). */
-const CLIENT_URI = 'https://trinity.qwky.eu';
+const CLIENT_URI = 'https://trinity.trinityproject.dev';
 /**
  * Preferences key prefix for the dynamic-registration client id, cached per homeserver
  * and issuer ({@link clientIdKey}).

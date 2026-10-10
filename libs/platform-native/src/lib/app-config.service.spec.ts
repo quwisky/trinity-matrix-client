@@ -455,6 +455,17 @@ describe('AppConfigService', () => {
       expect(plan.ok === false && plan.problems[0]).toContain('not valid JSON');
     });
 
+    it('imports a config exported under the retired qwky.eu schema id', () => {
+      const config = setup();
+      const exported = config.export();
+      const withOldId = {
+        ...exported,
+        $id: 'https://qwky.eu/trinity/config-v3.schema.json',
+      };
+
+      expect(config.validate(withOldId)).toEqual(config.validate(exported));
+    });
+
     it('refuses a malformed shortcut binding rather than letting it reach resolve', () => {
       const config = setup();
       const shortcuts = TestBed.inject(KeyboardShortcutsService);
