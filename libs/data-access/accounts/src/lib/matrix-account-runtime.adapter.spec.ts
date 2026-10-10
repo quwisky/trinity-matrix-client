@@ -1440,6 +1440,36 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(storage.persistForEstablishment).toHaveBeenCalledOnce();
   });
 
+  it('still signs in and tears pushers down when emptying the push handoff never settles', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, matrix, storage, lifecycle } = setup();
+      vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(NEVER);
+      vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+      vi.mocked(matrix.restorePersisted).mockReturnValue(
+        of({ kind: 'ready' as const }),
+      );
+      vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+      const outcomes: unknown[] = [];
+
+      adapter
+        .establishAccount(
+          AuthenticatedAccountGrant.issue(session),
+          activeIntent,
+        )
+        .subscribe((outcome) => outcomes.push(outcome));
+      await vi.advanceTimersByTimeAsync(
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
+      );
+
+      expect(outcomes).toEqual([{ kind: 'ready' }]);
+      expect(lifecycle.unregisterNotifications).toHaveBeenCalledWith();
+      expect(storage.persistForEstablishment).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   describe('replacing a stored device', () => {
     const OLD_SESSION = {
       ...session,

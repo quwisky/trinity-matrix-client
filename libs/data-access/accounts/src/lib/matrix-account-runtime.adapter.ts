@@ -18,8 +18,10 @@ import {
   switchMap,
   tap,
   throwError,
+  timeout,
 } from 'rxjs';
 import type { MatrixSession } from '@trinity/util/matrix';
+import { ACCOUNT_CLEANUP_STEP_BUDGET_MS } from './account-cleanup-policy';
 import { AccountLifecycleAdapter } from './account-lifecycle.adapter';
 import { ACCOUNT_LIFECYCLE_PORT } from './account-lifecycle.port';
 import type {
@@ -147,9 +149,10 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
         intent.liveAccounts === 'replace'
           ? defer(() => {
               this.lifecycle.releaseSharedCaches();
-              // Best effort: a refused handoff write must neither fail the sign-in nor
-              // skip the pusher teardown.
+              // Best effort: a refused or stalled handoff write must neither fail nor block
+              // the sign-in, nor skip the pusher teardown.
               return this.lifecycle.forgetPushHandoff().pipe(
+                timeout(ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister),
                 catchError(() => of(void 0)),
                 switchMap(() => this.lifecycle.unregisterNotifications()),
               );
