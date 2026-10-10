@@ -10,6 +10,7 @@ import {
   waitForRooms,
 } from '../../support/app.mts';
 import { registerUser } from '../../support/account.mts';
+import { sendWithRetry } from './cs-api.mts';
 import type { MatrixTestResources } from '../../support/test-resources.mts';
 
 // End-to-end for concurrent multi-account (Milestones 9 + 6/10): add a second account
@@ -231,7 +232,7 @@ export function registerRoomCleanup(
   }
 }
 
-/** Have the sender post one live message via the CS API. */
+/** Have the sender post one live message via the CS API; a failed send throws here. */
 export async function postMessage(
   request: APIRequestContext,
   hs: string,
@@ -240,9 +241,11 @@ export async function postMessage(
   txnId: string,
   body: string,
 ): Promise<void> {
-  await request.put(
-    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txnId}`,
-    { headers: sender.headers, data: { msgtype: 'm.text', body } },
+  await sendWithRetry(`send ${txnId}`, () =>
+    request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txnId}`,
+      { headers: sender.headers, data: { msgtype: 'm.text', body } },
+    ),
   );
 }
 
