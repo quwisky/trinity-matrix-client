@@ -1799,4 +1799,43 @@ describe('MediaService', () => {
       expect(revokeObjectURL).toHaveBeenCalled(); // URL revoked on the error path too
     });
   });
+
+  describe('uploadLimit', () => {
+    it('reads m.upload.size once per client and shares it', async () => {
+      const getMediaConfig = vi
+        .fn()
+        .mockResolvedValue({ 'm.upload.size': 52_428_800 });
+      const { svc, client } = setup({ getMediaConfig });
+      const c = client as unknown as MatrixClient;
+
+      expect(await firstValueFrom(svc.uploadLimit(c))).toBe(52_428_800);
+      expect(await firstValueFrom(svc.uploadLimit(c))).toBe(52_428_800);
+      expect(getMediaConfig).toHaveBeenCalledTimes(1);
+      expect(getMediaConfig).toHaveBeenCalledWith(true); // authenticated media
+    });
+
+    it('is null when the server states no limit', async () => {
+      const { svc, client } = setup({
+        getMediaConfig: vi.fn().mockResolvedValue({}),
+      });
+
+      expect(
+        await firstValueFrom(
+          svc.uploadLimit(client as unknown as MatrixClient),
+        ),
+      ).toBeNull();
+    });
+
+    it('is null when the server cannot be asked, and asks again next time', async () => {
+      const getMediaConfig = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockResolvedValueOnce({ 'm.upload.size': 1000 });
+      const { svc, client } = setup({ getMediaConfig });
+      const c = client as unknown as MatrixClient;
+
+      expect(await firstValueFrom(svc.uploadLimit(c))).toBeNull();
+      expect(await firstValueFrom(svc.uploadLimit(c))).toBe(1000);
+    });
+  });
 });

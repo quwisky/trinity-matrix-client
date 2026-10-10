@@ -177,6 +177,11 @@ export class MediaService {
   private readonly release$ = new Subject<void>();
   /** Cached authenticated-media probe per exact client/account. */
   private authedMedia = new WeakMap<MatrixClient, Observable<boolean>>();
+  /** Upload limit per exact client; a failed lookup is dropped so the next caller retries. */
+  private readonly uploadLimits = new WeakMap<
+    MatrixClient,
+    Observable<number | null>
+  >();
   /** Stable cache namespace per live client so identical MXCs cannot cross Accounts. */
   private readonly clientIds = new WeakMap<MatrixClient, number>();
   private nextClientId = 0;
@@ -253,6 +258,35 @@ export class MediaService {
         this.doUpload(client, file, encrypt, progress, abortController, hints),
       ),
     );
+  }
+
+  /**
+   * The homeserver's upload limit in bytes (`m.upload.size`), or null when the server does
+   * not state one or cannot be asked. A null never blocks a send; the server stays the judge.
+   */
+  uploadLimit(
+    client: MatrixClient = this.matrix.instance,
+  ): Observable<number | null> {
+    const cached = this.uploadLimits.get(client);
+    if (cached) {
+      return cached;
+    }
+    const limit = this.supportsAuthedMedia(client).pipe(
+      switchMap((authed) => from(client.getMediaConfig(authed))),
+      map((config) => {
+        const size = config['m.upload.size'];
+        return typeof size === 'number' && Number.isFinite(size) && size > 0
+          ? size
+          : null;
+      }),
+      catchError(() => {
+        this.uploadLimits.delete(client);
+        return of(null);
+      }),
+      shareReplay(1),
+    );
+    this.uploadLimits.set(client, limit);
+    return limit;
   }
 
   private async doUpload(

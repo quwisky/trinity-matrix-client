@@ -89,6 +89,14 @@ export class MediaPipeline {
     this.staged.delete(reference);
   }
 
+  /** The upload limit of the account's homeserver, or null when unknown. */
+  uploadLimit(accountId: string | null): Observable<number | null> {
+    return defer(() => {
+      const client = accountId ? this.matrix.clientFor(accountId) : null;
+      return client ? this.bytes.uploadLimit(client) : of(null);
+    });
+  }
+
   transfer(request: MediaTransferRequest): Observable<MediaTransferEvent> {
     return defer(() => {
       const entry = this.staged.get(request.media);

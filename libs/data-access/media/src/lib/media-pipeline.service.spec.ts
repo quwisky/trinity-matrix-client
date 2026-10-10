@@ -67,6 +67,7 @@ function setup() {
     pin: vi.fn(),
     unpin: vi.fn(),
     releaseAll: vi.fn(),
+    uploadLimit: vi.fn(() => of(1024)),
   };
   const matrix = {
     clientFor: vi.fn((_accountId: string): typeof client | null => client),
@@ -595,5 +596,26 @@ describe('MediaPipeline', () => {
 
     expect(staged.media.previewUrl).toBeNull();
     expect(staged.media.hints).toBeUndefined();
+  });
+
+  it('reads the upload limit through the exact account client', async () => {
+    const { pipeline, bytes, client, matrix } = setup();
+
+    expect(await firstValueFrom(pipeline.uploadLimit(KEY.accountId))).toBe(
+      1024,
+    );
+    expect(matrix.clientFor).toHaveBeenCalledWith(KEY.accountId);
+    expect(bytes.uploadLimit).toHaveBeenCalledWith(client);
+  });
+
+  it('has no limit for a missing or unknown account', async () => {
+    const { pipeline, bytes, matrix } = setup();
+    matrix.clientFor.mockReturnValue(null);
+
+    expect(await firstValueFrom(pipeline.uploadLimit(null))).toBeNull();
+    expect(
+      await firstValueFrom(pipeline.uploadLimit('@ghost:example.org')),
+    ).toBeNull();
+    expect(bytes.uploadLimit).not.toHaveBeenCalled();
   });
 });
