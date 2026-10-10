@@ -193,10 +193,10 @@ export const checkPrerequisites = async (
         );
         return result.status === 0 ? result.stdout?.trim() : undefined;
       };
+      // Any ABI: CI boots x86_64 and Apple-silicon hosts can only boot arm64-v8a.
       return (
         property('ro.kernel.qemu') === '1' &&
-        property('ro.build.version.sdk') === '36' &&
-        /^(?:x86_64|amd64)$/.test(property('ro.product.cpu.abi') ?? '')
+        property('ro.build.version.sdk') === '36'
       );
     };
     const hasRequestedDevice = requestedSerial
@@ -234,8 +234,8 @@ export const checkPrerequisites = async (
     ) {
       failures.push(
         requestedSerial
-          ? `Android device ${requestedSerial} is not an online API 36 x86_64 emulator`
-          : 'no validated API 36 x86_64 emulator or startable Trinity_API_36 AVD is available',
+          ? `Android device ${requestedSerial} is not an online API 36 emulator`
+          : 'no validated API 36 emulator or startable Trinity_API_36 AVD is available',
       );
     }
   }

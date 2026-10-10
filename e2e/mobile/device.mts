@@ -1,10 +1,13 @@
 export const REQUIRED_API_LEVEL = '36';
-export const REQUIRED_ABI = 'x86_64';
 export const DEFAULT_AVD = 'Trinity_API_36';
 
+/**
+ * What makes a target the dedicated test emulator. The ABI is deliberately absent:
+ * CI boots x86_64, Apple-silicon hosts can only boot arm64-v8a, and the app ships no
+ * native code of its own.
+ */
 export interface DeviceProperties {
   apiLevel: string;
-  abi: string;
   qemu: string;
 }
 
@@ -48,11 +51,6 @@ export function validateEmulator(properties: DeviceProperties): string[] {
   if (properties.apiLevel !== REQUIRED_API_LEVEL) {
     problems.push(
       `API ${properties.apiLevel || '<unknown>'} is not ${REQUIRED_API_LEVEL}`,
-    );
-  }
-  if (properties.abi !== REQUIRED_ABI) {
-    problems.push(
-      `ABI ${properties.abi || '<unknown>'} is not ${REQUIRED_ABI}`,
     );
   }
   return problems;
