@@ -134,6 +134,27 @@ describe('PreferenceCatalogSectionComponent', () => {
     ).toContain('could not be saved');
   });
 
+  it('shows the stored value in the native switch after a synchronous failed save', async () => {
+    writeOutcome = {
+      kind: 'unavailable',
+      diagnostic: { code: 'device-preferences-write-failed' },
+    };
+    const { fixture, container } = await renderSection();
+    const input = container.querySelector<HTMLInputElement>(
+      '[data-testid=privacy-send-read-receipts] input[role="switch"]',
+    )!;
+    expect(input.checked).toBe(true);
+
+    input.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(input.checked).toBe(true);
+    expect(input.getAttribute('aria-checked')).toBe('true');
+  });
+
   it('shows the new value while the save is pending and keeps it once saved', async () => {
     const pending = new Subject<PreferenceStorageWriteOutcome>();
     write.mockImplementationOnce(() => pending);
@@ -275,5 +296,38 @@ describe('PreferenceCatalogSectionComponent select editor', () => {
         '[data-testid=sample-choice-failure][role=alert]',
       ),
     ).not.toBeNull();
+  });
+
+  it('shows the stored option again after a synchronous failed save', async () => {
+    const { fixture, container, write } = await renderSelect({
+      kind: 'unavailable',
+      diagnostic: { code: 'x' },
+    });
+
+    selectOf(fixture).value.set('b');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(selectOf(fixture).value()).toBe('a');
+    expect(
+      container.querySelector('[data-testid=sample-choice-select]')
+        ?.textContent,
+    ).toContain('Option A');
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves a failed choice again when the user picks it again', async () => {
+    const { fixture, write } = await renderSelect({
+      kind: 'unavailable',
+      diagnostic: { code: 'x' },
+    });
+
+    selectOf(fixture).value.set('b');
+    fixture.detectChanges();
+    selectOf(fixture).value.set('b');
+    fixture.detectChanges();
+
+    expect(write).toHaveBeenCalledTimes(2);
   });
 });

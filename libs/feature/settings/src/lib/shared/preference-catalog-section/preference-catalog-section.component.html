@@ -39,6 +39,7 @@
           [attr.data-testid]="entry.editor.testId"
         >
           <trn-select
+            #control
             class="w-48 max-sm:w-full"
             [attr.data-testid]="entry.editor.testId + '-select'"
             [aria-labelledby]="entry.editor.testId + '-heading'"
@@ -46,7 +47,7 @@
             [options]="selectOptions().get(entry.id) ?? []"
             [value]="selected(entry)"
             [disabled]="busy(entry.id)"
-            (valueChange)="choose(entry, $event)"
+            (valueChange)="choose(entry, $event, control)"
           />
         </trn-settings-row>
         @if (failure(entry.id); as message) {
