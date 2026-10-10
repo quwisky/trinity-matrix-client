@@ -11,7 +11,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     /// Firebase runs only in builds that ship a GoogleService-Info.plist (git-ignored; see
     /// docs-internal/maintenance/push-notifications.md). Without it the APNs token is
-    /// reported as before, which the Trinity gateway cannot deliver to.
+    /// reported as before, which the Trinity gateway cannot deliver to. Info.plist turns off
+    /// Firebase's app-delegate proxy, so the APNs token is handed over below, by hand.
     private var firebaseConfigured = false
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
@@ -35,6 +36,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
             } else if let token {
                 NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: token)
+            } else {
+                // Neither a token nor an error: fail, so the registration never hangs.
+                let error = NSError(
+                    domain: "dev.trinityproject.trinity.push",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Firebase returned no registration token"]
+                )
+                NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
             }
         }
     }

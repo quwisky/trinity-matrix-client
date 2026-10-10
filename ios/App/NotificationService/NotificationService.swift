@@ -5,9 +5,10 @@ import UserNotifications
 /// Rewrites Trinity's device-render pushes (`mutable-content: 1`) with the room name, the
 /// sender and the message text, read through the push handoff store the app keeps. It edits a
 /// copy of the delivered content, so the gateway's badge and `trinity_user_id` (which
-/// `PushHandoff.clearRoom` matches on) stay. Logs nothing.
+/// `PushHandoff.clearRoom` matches on) stay. Each request has its own delivery, since iOS may
+/// hand one instance overlapping requests. Logs nothing.
 final class NotificationService: UNNotificationServiceExtension {
-    private let delivery = Delivery()
+    private let deliveries = PushDeliveries<UNMutableNotificationContent>()
 
     override func didReceive(
         _ request: UNNotificationRequest,
@@ -28,9 +29,8 @@ final class NotificationService: UNNotificationServiceExtension {
         }
         Self.apply(fallback, threadIdentifier: payload.roomId, to: content)
         content.sound = store.account(payload.accountId)?.sound == false ? nil : .default
-        delivery.begin(content, handler: contentHandler)
-        let delivery = self.delivery
-        Task {
+        let delivery = deliveries.begin(content, handler: contentHandler)
+        delivery.track(Task {
             if case let .rendered(rendered, sound) = await resolver.resolve(payload) {
                 delivery.update { content in
                     Self.apply(rendered, threadIdentifier: payload.roomId, to: content)
@@ -38,12 +38,13 @@ final class NotificationService: UNNotificationServiceExtension {
                 }
             }
             delivery.finish()
-        }
+        })
     }
 
-    /// Delivers whatever is ready: the rendered text, or the room-name fallback.
+    /// Delivers whatever each pending request has ready: its rendered text, or its room-name
+    /// fallback.
     override func serviceExtensionTimeWillExpire() {
-        delivery.finish()
+        deliveries.finishAll()
     }
 
     private static func apply(
@@ -58,32 +59,3 @@ final class NotificationService: UNNotificationServiceExtension {
     }
 }
 
-/// Hands the content to the system exactly once: when rendering finishes or time runs out.
-private final class Delivery: @unchecked Sendable {
-    private let lock = NSLock()
-    private var content: UNMutableNotificationContent?
-    private var handler: ((UNNotificationContent) -> Void)?
-
-    func begin(_ content: UNMutableNotificationContent, handler: @escaping (UNNotificationContent) -> Void) {
-        lock.lock()
-        defer { lock.unlock() }
-        self.content = content
-        self.handler = handler
-    }
-
-    func update(_ change: (UNMutableNotificationContent) -> Void) {
-        lock.lock()
-        defer { lock.unlock() }
-        if let content { change(content) }
-    }
-
-    func finish() {
-        lock.lock()
-        let content = self.content
-        let handler = self.handler
-        self.content = nil
-        self.handler = nil
-        lock.unlock()
-        if let content, let handler { handler(content) }
-    }
-}
