@@ -68,6 +68,18 @@
         </provider>
     </application>
 
+    <!-- Take photo / Record video (#919): Android 11+ package visibility hides the camera app
+         from the capture intents unless they are declared. The camera plugin's own manifest
+         declares IMAGE_CAPTURE only; both are listed here so the host owns the pair. -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.VIDEO_CAPTURE" />
+        </intent>
+    </queries>
+
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -77,7 +89,7 @@
          a prompt unless it's here. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- @capacitor/camera: capture photos and pick from the gallery. -->
+    <!-- @capacitor/camera: take photos, record videos and pick from the gallery. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
