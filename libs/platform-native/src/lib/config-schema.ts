@@ -510,7 +510,7 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     reason:
       'Not a stored key at all: a map key standing for the sound switch inside the ' +
       'notifications page optimistic-state map. The preference itself lives in Matrix ' +
-      'account data (`eu.qwky.trinity.notification_sound`), which is out of scope.',
+      'account data (`dev.trinityproject.trinity.notification_sound`), which is out of scope.',
   },
 ];
 

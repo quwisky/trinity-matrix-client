@@ -5,8 +5,15 @@ import {
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
 import { Observable, defer, from, map, throwError } from 'rxjs';
+import {
+  copyLegacyAccountData,
+  migratedAccountDataContent,
+} from './legacy-account-data';
 
 export const REACTION_NOTIFICATION_EVENT =
+  'dev.trinityproject.trinity.reaction_notifications';
+/** Retired name; read while only it exists, then copied to {@link REACTION_NOTIFICATION_EVENT}. */
+export const LEGACY_REACTION_NOTIFICATION_EVENT =
   'eu.qwky.trinity.reaction_notifications';
 
 const DEFAULT_ON = false;
@@ -22,6 +29,7 @@ export class ReactionNotificationSettingsService {
   private readonly onAccountData = (): void => {
     const client = this.boundClient;
     if (client) {
+      this.migrate(client);
       this._enabled.set(this.readClient(client));
     }
   };
@@ -29,7 +37,10 @@ export class ReactionNotificationSettingsService {
   private readonly projection = projectFromClient({
     id: 'notifications.reaction-settings',
     matrix: this.matrix,
-    rebuild: (client) => this._enabled.set(this.readClient(client)),
+    rebuild: (client) => {
+      this.migrate(client);
+      this._enabled.set(this.readClient(client));
+    },
     bind: (client) => {
       this.boundClient = client;
       client.on(ClientEvent.AccountData, this.onAccountData);
@@ -84,10 +95,20 @@ export class ReactionNotificationSettingsService {
     });
   }
 
+  private migrate(client: MatrixClient): void {
+    copyLegacyAccountData(
+      client as never,
+      REACTION_NOTIFICATION_EVENT,
+      LEGACY_REACTION_NOTIFICATION_EVENT,
+    );
+  }
+
   private readClient(client: MatrixClient): boolean {
-    const content = client
-      .getAccountData?.(REACTION_NOTIFICATION_EVENT as never)
-      ?.getContent?.() as { enabled?: unknown } | undefined;
+    const content = migratedAccountDataContent(
+      client as never,
+      REACTION_NOTIFICATION_EVENT,
+      LEGACY_REACTION_NOTIFICATION_EVENT,
+    ) as { enabled?: unknown } | undefined;
     return typeof content?.enabled === 'boolean' ? content.enabled : DEFAULT_ON;
   }
 }

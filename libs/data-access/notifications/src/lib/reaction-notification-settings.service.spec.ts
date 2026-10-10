@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
+  LEGACY_REACTION_NOTIFICATION_EVENT,
   REACTION_NOTIFICATION_EVENT,
   ReactionNotificationSettingsService,
 } from './reaction-notification-settings.service';
@@ -13,17 +14,24 @@ function setup(
     stored?: unknown;
     initialized?: boolean;
     perAccount?: Record<string, unknown>;
+    /** Answer `getAccountData` per event type instead of with `stored` for every type. */
+    byType?: Record<string, unknown>;
   } = {},
 ) {
   TestBed.resetTestingModule();
   const writes: Array<{ type: string; content: unknown; resolve: () => void }> =
     [];
   const client = {
-    getAccountData: vi.fn(() =>
-      options.stored === undefined
+    getAccountData: vi.fn((type: string) => {
+      if (options.byType) {
+        return type in options.byType
+          ? { getContent: () => options.byType?.[type] }
+          : undefined;
+      }
+      return options.stored === undefined
         ? undefined
-        : { getContent: () => options.stored },
-    ),
+        : { getContent: () => options.stored };
+    }),
     setAccountData: vi.fn((type: string, content: unknown) => {
       let resolve!: () => void;
       const promise = new Promise<void>((done) => (resolve = done));
@@ -141,5 +149,41 @@ describe('ReactionNotificationSettingsService', () => {
     active.connect();
     first.writes[0].resolve();
     await vi.waitFor(() => expect(active.enabled()).toBe(false));
+  });
+
+  it('reads the retired event while only it exists, and copies it to the new name', () => {
+    const { service, client } = setup({
+      byType: { [LEGACY_REACTION_NOTIFICATION_EVENT]: { enabled: true } },
+    });
+    service.connect();
+    expect(service.isOn()).toBe(true);
+    expect(client.setAccountData).toHaveBeenCalledWith(
+      REACTION_NOTIFICATION_EVENT,
+      { enabled: true },
+    );
+  });
+
+  it('prefers the new event over the retired one and copies nothing', () => {
+    const { service, client } = setup({
+      byType: {
+        [REACTION_NOTIFICATION_EVENT]: { enabled: false },
+        [LEGACY_REACTION_NOTIFICATION_EVENT]: { enabled: true },
+      },
+    });
+    service.connect();
+    expect(service.isOn()).toBe(false);
+    expect(client.setAccountData).not.toHaveBeenCalled();
+  });
+
+  it('writes only the new event', async () => {
+    const { service, client, writes } = setup({ stored: { enabled: false } });
+    const done = firstValueFrom(service.setOn(true));
+    writes[0].resolve();
+    await done;
+    expect(client.setAccountData).toHaveBeenCalledTimes(1);
+    expect(client.setAccountData).toHaveBeenCalledWith(
+      REACTION_NOTIFICATION_EVENT,
+      { enabled: true },
+    );
   });
 });

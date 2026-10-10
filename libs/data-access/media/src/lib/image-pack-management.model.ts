@@ -4,6 +4,7 @@ import {
   IMAGE_PACK_EVENT_TYPE,
   IMAGE_PACK_ROOMS_EVENT_TYPE,
   TRINITY_IMAGE_PACK_ENABLED_USAGE,
+  LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE,
   isSafeImagePackStateKey,
   isValidMxcUri,
   type ImagePackUsage,
@@ -210,6 +211,7 @@ export function mutateSelectionEnabledUsage(
   const current = room[source.stateKey];
   if (!isRecord(current)) return { ...base, rooms };
   const reference = { ...current };
+  delete reference[LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE];
   const normalized = canonicalUsage(enabled).filter((usage) =>
     source.usage.includes(usage),
   );
@@ -341,7 +343,9 @@ function accountPackSources(
 function configuredUsage(
   reference: Record<string, unknown>,
 ): readonly ImagePackUsage[] | null {
-  const value = reference[TRINITY_IMAGE_PACK_ENABLED_USAGE];
+  const value =
+    reference[TRINITY_IMAGE_PACK_ENABLED_USAGE] ??
+    reference[LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE];
   return Array.isArray(value) && value.every(isImagePackUsage)
     ? canonicalUsage(value)
     : null;

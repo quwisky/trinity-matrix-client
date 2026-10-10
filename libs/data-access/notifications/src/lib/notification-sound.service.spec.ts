@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
+  LEGACY_NOTIFICATION_SOUND_EVENT,
   NOTIFICATION_SOUND_EVENT,
   NotificationSoundService,
 } from './notification-sound.service';
@@ -15,17 +16,24 @@ function setup(
     instance?: unknown;
     /** Per-account stored values, keyed by user id, for the multi-account cases. */
     perAccount?: Record<string, unknown>;
+    /** Answer `getAccountData` per event type instead of with `stored` for the new type. */
+    byType?: Record<string, unknown>;
   } = {},
 ) {
   // Several tests build more than one service, and TestBed refuses to be reconfigured once
   // instantiated.
   TestBed.resetTestingModule();
   const setAccountData = vi.fn().mockResolvedValue({});
-  const getAccountData = vi.fn((type: string) =>
-    type === NOTIFICATION_SOUND_EVENT && opts.stored !== undefined
+  const getAccountData = vi.fn((type: string) => {
+    if (opts.byType) {
+      return type in opts.byType
+        ? { getContent: () => opts.byType?.[type] }
+        : undefined;
+    }
+    return type === NOTIFICATION_SOUND_EVENT && opts.stored !== undefined
       ? { getContent: () => opts.stored }
-      : undefined,
-  );
+      : undefined;
+  });
   TestBed.configureTestingModule({
     providers: [
       NotificationSoundService,
@@ -33,7 +41,12 @@ function setup(
         isInitialized: opts.initialized ?? true,
         instance: ('instance' in opts
           ? opts.instance
-          : { getAccountData, setAccountData }) as never,
+          : {
+              getAccountData,
+              setAccountData,
+              on: vi.fn(),
+              off: vi.fn(),
+            }) as never,
         clientFor: ((userId: string) => {
           const stored = opts.perAccount?.[userId];
           return stored === undefined
@@ -116,5 +129,40 @@ describe('NotificationSoundService', () => {
     await expect(
       firstValueFrom(setup({ initialized: false }).svc.setOn(false)),
     ).rejects.toThrow();
+  });
+
+  it('reads the retired event while only it exists, and copies it to the new name', () => {
+    const { svc, setAccountData } = setup({
+      byType: { [LEGACY_NOTIFICATION_SOUND_EVENT]: { enabled: false } },
+    });
+    svc.connect();
+    expect(svc.isOn()).toBe(false);
+    expect(svc.enabled()).toBe(false);
+    expect(setAccountData).toHaveBeenCalledWith(NOTIFICATION_SOUND_EVENT, {
+      enabled: false,
+    });
+  });
+
+  it('prefers the new event over the retired one and copies nothing', () => {
+    const { svc, setAccountData } = setup({
+      byType: {
+        [NOTIFICATION_SOUND_EVENT]: { enabled: true },
+        [LEGACY_NOTIFICATION_SOUND_EVENT]: { enabled: false },
+      },
+    });
+    svc.connect();
+    expect(svc.isOn()).toBe(true);
+    expect(setAccountData).not.toHaveBeenCalled();
+  });
+
+  it('writes only the new event', async () => {
+    const { svc, setAccountData } = setup({
+      byType: { [LEGACY_NOTIFICATION_SOUND_EVENT]: { enabled: true } },
+    });
+    await firstValueFrom(svc.setOn(false));
+    expect(setAccountData).toHaveBeenCalledTimes(1);
+    expect(setAccountData).toHaveBeenCalledWith(NOTIFICATION_SOUND_EVENT, {
+      enabled: false,
+    });
   });
 });

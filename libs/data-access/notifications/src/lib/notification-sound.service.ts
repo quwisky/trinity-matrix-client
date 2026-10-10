@@ -1,8 +1,12 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { ClientEvent } from 'matrix-js-sdk';
+import { ClientEvent, type MatrixClient } from 'matrix-js-sdk';
 import { projectFromClient } from '@trinity/data-access/matrix-client';
 import { Observable, defer, from, map, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  copyLegacyAccountData,
+  migratedAccountDataContent,
+} from './legacy-account-data';
 
 /**
  * Account-data type holding the global "play a sound" preference.
@@ -10,7 +14,11 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
  * Cast at the call sites because the SDK types account-data keys as a closed union of the
  * events it knows about; a client-namespaced type is by definition not in it.
  */
-export const NOTIFICATION_SOUND_EVENT = 'eu.qwky.trinity.notification_sound';
+export const NOTIFICATION_SOUND_EVENT =
+  'dev.trinityproject.trinity.notification_sound';
+/** Retired name; read while only it exists, then copied to {@link NOTIFICATION_SOUND_EVENT}. */
+export const LEGACY_NOTIFICATION_SOUND_EVENT =
+  'eu.qwky.trinity.notification_sound';
 
 /** Sound is on unless the account says otherwise — the Matrix default is audible. */
 const DEFAULT_ON = true;
@@ -59,14 +67,32 @@ export class NotificationSoundService {
    */
   readonly enabled = this._enabled.asReadonly();
 
-  private readonly onAccountData = (): void => this._enabled.set(this.isOn());
+  private boundClient: MatrixClient | null = null;
+
+  private readonly onAccountData = (): void => {
+    if (this.boundClient) {
+      this.migrate(this.boundClient);
+    }
+    this._enabled.set(this.isOn());
+  };
 
   private readonly projection = projectFromClient({
     id: 'notifications.sound',
     matrix: this.matrix,
-    rebuild: () => this._enabled.set(this.isOn()),
-    bind: (client) => client.on(ClientEvent.AccountData, this.onAccountData),
-    unbind: (client) => client.off(ClientEvent.AccountData, this.onAccountData),
+    rebuild: (client) => {
+      this.migrate(client);
+      this._enabled.set(this.isOn());
+    },
+    bind: (client) => {
+      this.boundClient = client;
+      client.on(ClientEvent.AccountData, this.onAccountData);
+    },
+    unbind: (client) => {
+      client.off(ClientEvent.AccountData, this.onAccountData);
+      if (this.boundClient === client) {
+        this.boundClient = null;
+      }
+    },
   });
 
   /** Track the account's preference; pair with {@link disconnect}. */
@@ -100,10 +126,20 @@ export class NotificationSoundService {
     const client = userId
       ? this.matrix.clientFor(userId)
       : this.matrix.instance;
-    const content = client
-      ?.getAccountData?.(NOTIFICATION_SOUND_EVENT as never)
-      ?.getContent?.() as { enabled?: unknown } | undefined;
+    const content = migratedAccountDataContent(
+      client as never,
+      NOTIFICATION_SOUND_EVENT,
+      LEGACY_NOTIFICATION_SOUND_EVENT,
+    ) as { enabled?: unknown } | undefined;
     return typeof content?.enabled === 'boolean' ? content.enabled : DEFAULT_ON;
+  }
+
+  private migrate(client: MatrixClient): void {
+    copyLegacyAccountData(
+      client as never,
+      NOTIFICATION_SOUND_EVENT,
+      LEGACY_NOTIFICATION_SOUND_EVENT,
+    );
   }
 
   /**

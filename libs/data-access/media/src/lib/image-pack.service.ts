@@ -24,7 +24,11 @@ export const IMAGE_PACK_EVENT_TYPE = 'm.room.image_pack';
 export const LEGACY_IMAGE_PACK_EVENT_TYPE = 'im.ponies.room_emotes';
 export const IMAGE_PACK_ROOMS_EVENT_TYPE = 'm.image_pack.rooms';
 export const LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE = 'im.ponies.emote_rooms';
-export const TRINITY_IMAGE_PACK_ENABLED_USAGE = 'eu.qwky.trinity.enabled_usage';
+export const TRINITY_IMAGE_PACK_ENABLED_USAGE =
+  'dev.trinityproject.trinity.enabled_usage';
+/** Retired key; read while a reference has only it, dropped when the reference is rewritten. */
+export const LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE =
+  'eu.qwky.trinity.enabled_usage';
 
 const MAX_PACKS = 100;
 const MAX_IMAGES_PER_PACK = 500;
@@ -407,7 +411,9 @@ function scopeByUsage(
 
 function enabledUsage(value: unknown): readonly ImagePackUsage[] | null {
   if (!isRecord(value)) return null;
-  const configured = value[TRINITY_IMAGE_PACK_ENABLED_USAGE];
+  const configured =
+    value[TRINITY_IMAGE_PACK_ENABLED_USAGE] ??
+    value[LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE];
   if (
     configured === undefined ||
     !Array.isArray(configured) ||

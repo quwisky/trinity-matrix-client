@@ -8,8 +8,10 @@ import {
   IMAGE_PACK_EVENT_TYPE,
   IMAGE_PACK_ROOMS_EVENT_TYPE,
   LEGACY_IMAGE_PACK_EVENT_TYPE,
+  LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE,
   TRINITY_IMAGE_PACK_ENABLED_USAGE,
 } from './image-pack.service';
+import { mutateSelectionEnabledUsage } from './image-pack-management.model';
 import {
   ImagePackManagementError,
   ImagePackManagementService,
@@ -555,5 +557,28 @@ describe('ImagePackManagementService', () => {
       firstValueFrom(service.install({ roomId: '!pack:hs', stateKey: 'lost' })),
     ).rejects.toMatchObject({ code: 'write-conflict' });
     expect(client.setAccountData).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('mutateSelectionEnabledUsage', () => {
+  it('drops the retired enabled-usage key when it rewrites a reference', () => {
+    const content = {
+      rooms: {
+        '!pack:hs': {
+          fun: { [LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE]: ['sticker'] },
+        },
+      },
+    };
+    const source = {
+      roomId: '!pack:hs',
+      stateKey: 'fun',
+      usage: ['emoticon', 'sticker'],
+    } as never;
+    const next = mutateSelectionEnabledUsage(content, source, ['emoticon']);
+    const reference = (
+      next['rooms'] as Record<string, Record<string, Record<string, unknown>>>
+    )['!pack:hs']['fun'];
+    expect(reference[TRINITY_IMAGE_PACK_ENABLED_USAGE]).toEqual(['emoticon']);
+    expect(LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE in reference).toBe(false);
   });
 });
