@@ -16,9 +16,17 @@ function roomScope(
   current: WorkspaceView,
 ) {
   if (intent.origin === 'direct-invitation') return { kind: 'home' } as const;
-  if (intent.origin === 'room-invitation' || intent.origin === 'rail-unread') {
+  if (intent.origin === 'room-invitation') {
     return current.accountId === intent.accountId &&
       current.scope.kind !== 'space'
+      ? current.scope
+      : RECENT_WORKSPACE_SCOPE;
+  }
+  if (intent.origin === 'rail-unread') {
+    // Keep the list on screen only while it shows the chat, so the row is there to select.
+    return current.accountId === intent.accountId &&
+      current.scope.kind !== 'space' &&
+      intent.listedIn?.includes(current.scope.kind)
       ? current.scope
       : RECENT_WORKSPACE_SCOPE;
   }

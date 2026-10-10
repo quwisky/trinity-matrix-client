@@ -365,6 +365,58 @@ test.describe('Space rail unread chats', () => {
       .toBe(true);
   });
 
+  test('a rail chat opens in a list that shows it: Home hands a group chat to Recent, Rooms keeps it', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}ru5`;
+    const seeded = await seedUnreadRooms(request, hs, runId, 2);
+    const [viaHome, viaRooms] = seeded.rooms;
+    const selectedRow = (room: string) =>
+      page.locator('trn-channel-sidebar .channel.channel--selected', {
+        hasText: room,
+      });
+
+    await login(page, {
+      available: true,
+      hs,
+      user: seeded.user,
+      pass: seeded.pass,
+    });
+    await expect(railEntries(page)).toHaveCount(2, { timeout: 30_000 });
+
+    // Home lists direct messages only, so it cannot show a group chat: Recent can.
+    await page
+      .locator('trn-server-rail')
+      .getByRole('button', { name: /^Direct messages/ })
+      .click();
+    await expect(page.getByTestId('rail-recent')).not.toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    await railEntry(page, viaHome).getByRole('button').click();
+    await expect(page.getByTestId('rail-recent')).toHaveAttribute(
+      'aria-current',
+      'true',
+      { timeout: 15_000 },
+    );
+    await expect(selectedRow(viaHome)).toBeVisible({ timeout: 15_000 });
+
+    // Rooms lists a room that belongs to no space, so it keeps the list.
+    await page.getByTestId('rail-rooms').click();
+    await expect(page.getByTestId('rail-rooms')).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    await railEntry(page, viaRooms).getByRole('button').click();
+    await expect(selectedRow(viaRooms)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('rail-rooms')).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+  });
+
   test('Up to 5, All and Off choose how many unread chats the rail lists, and Off is saved and exported', async ({
     page,
     request,

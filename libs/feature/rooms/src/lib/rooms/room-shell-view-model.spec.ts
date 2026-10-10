@@ -249,6 +249,51 @@ describe('RoomShellViewModel selected hierarchy', () => {
   });
 });
 
+describe('RoomShellViewModel.listsShowing', () => {
+  const dm = { ...room('!dm:hs', '@me:hs'), directUserId: '@ben:hs' };
+  const group = room('!group:hs', '@me:hs');
+  const child = room('!child:hs', '@me:hs');
+  const lists = (selection: { accountId: string; roomId: string }) =>
+    build({
+      selectedView: {
+        accountIds: new Set(['@me:hs']),
+        mode: 'active',
+        rooms: [dm, group, child],
+        spaces: [],
+        spaceChildRoomIdsByAccount: new Map([
+          ['@me:hs', new Set(['!child:hs'])],
+        ]),
+        invitations: [],
+      },
+    }).vm.listsShowing(selection);
+
+  it('lists a direct message in Recent and Home', () => {
+    expect(lists({ accountId: '@me:hs', roomId: '!dm:hs' })).toEqual([
+      'recent',
+      'home',
+    ]);
+  });
+
+  it('lists a room outside spaces in Recent and Rooms', () => {
+    expect(lists({ accountId: '@me:hs', roomId: '!group:hs' })).toEqual([
+      'recent',
+      'rooms',
+    ]);
+  });
+
+  it('lists a space child only in Recent, since Rooms leaves it under its space', () => {
+    expect(lists({ accountId: '@me:hs', roomId: '!child:hs' })).toEqual([
+      'recent',
+    ]);
+  });
+
+  it('claims only Recent for a room the selected library does not hold', () => {
+    expect(lists({ accountId: '@me:hs', roomId: '!gone:hs' })).toEqual([
+      'recent',
+    ]);
+  });
+});
+
 describe('RoomShellViewModel account profile', () => {
   it('shows the mxid until the profile hydrates, then the name', () => {
     // The consumer half of the defect this branch already hit once at the service: the own
