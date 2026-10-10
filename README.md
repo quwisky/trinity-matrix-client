@@ -115,7 +115,10 @@ same feature definitions.
 
 ## Run from source
 
-Use Node `^24.15.0` and the pnpm version pinned in `package.json`:
+Use the Node.js range in `package.json`'s `engines.node` and the pnpm version pinned in
+its `packageManager` field; the
+[prerequisites](https://quwisky.github.io/trinity-matrix-client/developers/start/prerequisites/)
+page shows both. Then install and start the development server:
 
 ```bash
 corepack enable
