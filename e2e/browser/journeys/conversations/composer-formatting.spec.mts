@@ -145,6 +145,9 @@ test.describe('Composer formatting', () => {
     await page.keyboard.press('Control+b');
     await expect(back).toHaveValue('say hello there');
 
+    // An unclaimed Ctrl+B goes back to the platform. On macOS that is the text system's
+    // "move backward", which collapses the selection, so select the word again.
+    await selectWord(page, 'hello');
     await page.keyboard.press('Control+Shift+B');
     await expect(back).toHaveValue('say **hello** there');
   });
