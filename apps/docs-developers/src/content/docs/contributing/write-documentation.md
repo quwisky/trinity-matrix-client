@@ -27,7 +27,7 @@ Do not copy a version from a manifest into a developer page. Write a version ref
 | Electron | `version:electron/electron` |
 ```
 
-A bare package name reads the root `package.json` dependencies or devDependencies, `electron/` reads `electron/package.json`, and `engines.node` and `packageManager` read those root fields.
+A bare package name reads the root `package.json` dependencies or devDependencies, `electron/` reads `electron/package.json`, and `engines.node` and `packageManager` read those root fields. A reference that names no declared version, like any other Markdown plugin error, fails the site build instead of publishing an empty page.
 
 ## Validate both source and output {#validate-docs}
 
