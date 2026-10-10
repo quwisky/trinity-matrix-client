@@ -3,8 +3,11 @@ import { join } from 'node:path';
 import { render, screen } from '@trinity/testing';
 import { type SpaceSummary } from '@trinity/data-access/room-library';
 import { AvatarComponent } from '@trinity/components/generic-content';
-import { MockComponent } from 'ng-mocks';
+import { By } from '@angular/platform-browser';
+import { MockComponent, ngMocks } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
+import { type ExactRoomSelection } from '../shared/exact-selection';
+import { type RailUnreadChat } from './rail-unread-chats';
 import { ServerRailComponent, type RailUnread } from './server-rail.component';
 
 function space(over: Partial<SpaceSummary> = {}): SpaceSummary {
@@ -55,7 +58,7 @@ describe('ServerRailComponent', () => {
     expect(container.querySelector('.pill.home')).toBeTruthy();
     expect(container.querySelector('.pill.rooms')).toBeTruthy();
     const spacePills = container.querySelectorAll(
-      '.pill:not(.recent):not(.home):not(.add):not(.rooms)',
+      '.pill:not(.recent):not(.home):not(.add):not(.rooms):not(.unread-chat)',
     );
     expect(spacePills.length).toBe(2);
   });
@@ -98,7 +101,7 @@ describe('ServerRailComponent', () => {
     fixture.componentInstance.selectSpace.subscribe((v) => (selected = v));
     container
       .querySelector<HTMLElement>(
-        '.pill:not(.recent):not(.home):not(.add):not(.rooms)',
+        '.pill:not(.recent):not(.home):not(.add):not(.rooms):not(.unread-chat)',
       )!
       .click();
 
@@ -268,7 +271,7 @@ describe('ServerRailComponent', () => {
     ]);
   });
 
-  it('puts the mention badge bottom-right of a single-account space', async () => {
+  it('puts the mention badge top-right of a single-account space', async () => {
     const { container } = await render(ServerRailComponent, {
       inputs: {
         spaces: [space({ id: '!s:hs' })],
@@ -277,11 +280,10 @@ describe('ServerRailComponent', () => {
     });
     const badge = container.querySelector('[trnBadge]')!;
     expect(badge.getAttribute('data-variant')).toBe('danger');
-    expect(badge.classList.contains('badge--bottom')).toBe(true);
-    expect(badge.classList.contains('badge--top')).toBe(false);
+    expect(badge.classList.contains('rail-count')).toBe(true);
   });
 
-  it('moves the mention badge top-right beside an account badge', async () => {
+  it('keeps the mention badge top-right beside an account badge', async () => {
     const { container } = await render(ServerRailComponent, {
       inputs: {
         spaces: [space({ id: '!s:hs', accountId: '@me:hs' })],
@@ -292,8 +294,7 @@ describe('ServerRailComponent', () => {
       },
     });
     const badge = container.querySelector('[trnBadge]')!;
-    expect(badge.classList.contains('badge--top')).toBe(true);
-    expect(badge.classList.contains('badge--bottom')).toBe(false);
+    expect(badge.classList.contains('rail-count')).toBe(true);
     expect(
       container.querySelector('[data-testid="account-badge"]'),
     ).toBeTruthy();
@@ -471,5 +472,240 @@ describe('ServerRailComponent', () => {
     fixture.componentRef.setInput('roomsActive', true);
     await fixture.whenStable();
     expect(avatar()?.getAttribute('data-shape')).toBe('place');
+  });
+});
+
+const unreadChat = (over: Partial<RailUnreadChat> = {}): RailUnreadChat => ({
+  key: '@me:hs\u0000!c:hs',
+  selection: { accountId: '@me:hs', roomId: '!c:hs' },
+  name: 'Team',
+  initial: 'T',
+  avatarMxc: null,
+  direct: false,
+  countLabel: '3',
+  accountBadge: null,
+  label: 'Team · 3 unread',
+  ...over,
+});
+
+describe('unread chats', () => {
+  it('sits between Rooms and the separator', async () => {
+    const { container } = await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: { entries: [unreadChat()], overflow: 0 },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    const fixed = container.querySelector('nav.rail > .rail-fixed')!;
+    const scroll = container.querySelector('nav.rail > .rail-scroll')!;
+    expect(fixed.lastElementChild?.querySelector('.pill.rooms')).toBeTruthy();
+    expect(
+      scroll.firstElementChild?.matches('[data-testid=rail-unread-chats]'),
+    ).toBe(true);
+    expect(scroll.children[1].matches('.separator')).toBe(true);
+  });
+
+  it('keeps Recent, Home and Rooms pinned outside the scrolling part', async () => {
+    const { container, getByTestId } = await render(ServerRailComponent, {
+      inputs: { spaces: [space()] },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    const fixed = container.querySelector('.rail-fixed')!;
+    expect(fixed.querySelector('.rail-scroll')).toBeNull();
+    expect(
+      fixed.querySelectorAll('.pill.recent, .pill.home, .pill.rooms'),
+    ).toHaveLength(3);
+    expect(fixed.querySelector('.pill.add')).toBeNull();
+    const scroll = getByTestId('rail-scroll');
+    expect(scroll.querySelector('.pill.add')).toBeTruthy();
+    expect(
+      scroll.querySelector('.pill.recent, .pill.home, .pill.rooms'),
+    ).toBeNull();
+  });
+
+  it('names each chat and opens it on its own account', async () => {
+    const { fixture } = await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: {
+          entries: [
+            unreadChat({
+              selection: { accountId: '@ben:hs', roomId: '!c:hs' },
+              label: 'Team · 3 unread · Ben',
+            }),
+          ],
+          overflow: 0,
+        },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    const opened: ExactRoomSelection[] = [];
+    fixture.componentInstance.openUnreadChat.subscribe((s) => opened.push(s));
+    screen.getByRole('button', { name: 'Team · 3 unread · Ben' }).click();
+    expect(opened).toEqual([{ accountId: '@ben:hs', roomId: '!c:hs' }]);
+  });
+
+  it('shows the count, or a dot for a chat only marked unread', async () => {
+    const { container } = await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: {
+          entries: [
+            unreadChat({ countLabel: '99+' }),
+            unreadChat({
+              key: 'k2',
+              countLabel: null,
+              label: 'Team · marked unread',
+            }),
+          ],
+          overflow: 0,
+        },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    expect(
+      container
+        .querySelector('[data-testid=rail-unread-count]')
+        ?.textContent?.trim(),
+    ).toBe('99+');
+    expect(
+      container.querySelectorAll('[data-testid=rail-unread-dot]'),
+    ).toHaveLength(1);
+  });
+
+  it('hands the account badge and avatar shape to the avatar', async () => {
+    const { fixture } = await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: {
+          entries: [
+            unreadChat({
+              direct: true,
+              accountBadge: {
+                id: '@ben:hs',
+                name: 'Ben',
+                initial: 'B',
+                avatarMxc: null,
+              },
+            }),
+          ],
+          overflow: 0,
+        },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    const avatar = ngMocks.find(
+      fixture.debugElement.query(By.css('[data-testid=rail-unread-chats]')),
+      AvatarComponent,
+    ).componentInstance;
+    expect(avatar.accountBadge()).toMatchObject({ id: '@ben:hs' });
+    expect(avatar.shape()).toBe('person');
+  });
+
+  it('offers +N for the rest, which opens Recent', async () => {
+    const { fixture } = await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: { entries: [unreadChat()], overflow: 4 },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    let recent = false;
+    fixture.componentInstance.showRecent.subscribe(() => (recent = true));
+    const more = screen.getByRole('button', {
+      name: '4 more unread chats in Recent activity',
+    });
+    expect(more.textContent?.trim()).toBe('+4');
+    more.click();
+    expect(recent).toBe(true);
+  });
+
+  it('names a single remaining chat in the singular', async () => {
+    await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: { entries: [unreadChat()], overflow: 1 },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    expect(
+      screen.getByRole('button', {
+        name: '1 more unread chat in Recent activity',
+      }),
+    ).toBeTruthy();
+  });
+
+  it('caps the +N text at +99 while the label keeps the real count', async () => {
+    const { fixture } = await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: { entries: [unreadChat()], overflow: 150 },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    expect(fixture.componentInstance.overflowText(150)).toBe('+99');
+    const more = screen.getByRole('button', {
+      name: '150 more unread chats in Recent activity',
+    });
+    expect(more.textContent?.trim()).toBe('+99');
+  });
+
+  it('draws +N as a 48px pill with its own text style', async () => {
+    const { container } = await render(ServerRailComponent, {
+      inputs: {
+        activeAccountId: '@me:hs',
+        unreadChats: { entries: [unreadChat()], overflow: 2 },
+      },
+      imports: [MockComponent(AvatarComponent)],
+    });
+    const more = screen.getByTestId('rail-unread-overflow');
+    expect(more.classList.contains('size-12')).toBe(true);
+    // The label recipe's own height must be merged away, not just outranked.
+    expect(more.classList.contains('h-8')).toBe(false);
+    expect(more.querySelector('.overflow-text')?.textContent?.trim()).toBe(
+      '+2',
+    );
+    const css = readFileSync(
+      join(import.meta.dirname, 'server-rail.component.scss'),
+      'utf8',
+    );
+    expect(css).toMatch(/\.overflow-text\s*\{[^}]*font-size:[^}]*font-weight:/);
+    expect(container.querySelector('.pill.overflow')).toBe(more);
+  });
+
+  it('keeps room above the first scrolling row inside the scroller', () => {
+    const css = readFileSync(
+      join(import.meta.dirname, 'server-rail.component.scss'),
+      'utf8',
+    );
+    // Every rule whose selector list names the class, so grouped selectors count too.
+    const body = (selector: string) =>
+      [
+        ...css.matchAll(
+          new RegExp(
+            `\\n  [^\\n{}]*${selector}\\s*\\{([\\s\\S]*?)\\n  \\}`,
+            'g',
+          ),
+        ),
+      ]
+        .map((m) => m[1])
+        .join('\n');
+    expect(body('\\.rail-scroll')).toMatch(
+      /padding-block:\s*var\(--trinity-density-shell-gap\)/,
+    );
+    expect(body('\\.rail-scroll')).toContain(
+      'scroll-padding-block-start: var(--trinity-density-shell-gap)',
+    );
+    expect(body('\\.rail-fixed')).not.toContain('padding-block-end');
+  });
+
+  it('renders no section without unread chats', async () => {
+    const { container } = await render(ServerRailComponent, {
+      imports: [MockComponent(AvatarComponent)],
+    });
+    expect(
+      container.querySelector('[data-testid=rail-unread-chats]'),
+    ).toBeNull();
   });
 });

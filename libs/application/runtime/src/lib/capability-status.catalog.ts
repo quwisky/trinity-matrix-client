@@ -50,6 +50,7 @@ export const CAPABILITY_STATUS_CATALOG = {
   'preferences:hydrate-gestures': preferenceCopy('message gestures'),
   'preferences:hydrate-privacy': preferenceCopy('privacy settings'),
   'preferences:hydrate-account-scope': preferenceCopy('Account scope'),
+  'preferences:hydrate-rail-unread': preferenceCopy('space rail settings'),
   'preferences:hydrate-push-gateway': preferenceCopy('push gateway settings'),
   'preferences:hydrate-shortcuts': preferenceCopy('keyboard shortcuts'),
   'preferences:hydrate-system-lines': preferenceCopy('system-message settings'),
@@ -182,6 +183,9 @@ const CAPABILITY_DIAGNOSTIC_REASONS = {
   ]),
   'preferences:hydrate-account-scope': preferenceReasons('account-scope', [
     'account-scope-preference-hydration-partial',
+  ]),
+  'preferences:hydrate-rail-unread': preferenceReasons('rail-unread', [
+    'rail-unread-preference-hydration-partial',
   ]),
   'preferences:hydrate-push-gateway': preferenceReasons(
     'push-gateway',

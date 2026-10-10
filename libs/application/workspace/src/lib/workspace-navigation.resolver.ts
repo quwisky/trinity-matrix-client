@@ -16,7 +16,7 @@ function roomScope(
   current: WorkspaceView,
 ) {
   if (intent.origin === 'direct-invitation') return { kind: 'home' } as const;
-  if (intent.origin === 'room-invitation') {
+  if (intent.origin === 'room-invitation' || intent.origin === 'rail-unread') {
     return current.accountId === intent.accountId &&
       current.scope.kind !== 'space'
       ? current.scope

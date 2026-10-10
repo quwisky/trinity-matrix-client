@@ -39,6 +39,7 @@ import {
   type RoomHeaderAction,
 } from '../room-header/room-header.component';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
+import { type ExactRoomSelection } from '../shared/exact-selection';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 import { AccountPickerService } from '../account-picker/account-picker.service';
@@ -446,10 +447,32 @@ export class RoomsPage {
   }
 
   /**
+   * Open a chat picked from the rail's unread entries. At md+ the open chat leaves that
+   * list, destroying the button that held focus, so once Workspace has opened it focus
+   * moves to the conversation. The compact layout's pane switch already focuses the chat
+   * page (focusActiveView).
+   */
+  protected openRailUnreadChat(selection: ExactRoomSelection): void {
+    this.routing.onSelectRoomSelection(selection, 'rail-unread', () => {
+      if (this.mobileMasterDetail()) return;
+      afterNextRender(
+        () => {
+          // Only reclaim focus the removed entry lost; never steal it from a newer target.
+          const active = document.activeElement;
+          if (active && active !== document.body && active.isConnected) return;
+          this.mainView()?.nativeElement.focus();
+        },
+        { injector: this.injector },
+      );
+    });
+  }
+
+  /**
    * On the mobile master-detail layout, move focus to the page that just became
    * visible (the chat for the Conversation pane, else the room list) once it renders — the
    * other page is display:none'd, so otherwise focus falls to `<body>`. At md+ both
-   * pages are always visible, so focus is left where it is.
+   * pages are always visible, so focus is left where it is (except after opening a rail
+   * unread entry, which removes its own button: see openRailUnreadChat).
    */
   private focusActiveView(): void {
     if (!this.mobileMasterDetail()) {

@@ -103,6 +103,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
       { id: 'code-blocks', label: 'Code blocks' },
       { id: 'date-and-time', label: 'Date and time' },
       { id: 'room-lists', label: 'Room lists' },
+      { id: 'space-rail', label: 'Space rail' },
       { id: 'timeline', label: 'Timeline' },
       { id: 'message-gestures', label: 'Message gestures' },
       { id: 'window', label: 'Window' },

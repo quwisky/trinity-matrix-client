@@ -47,6 +47,7 @@ import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 import { MessageListComponent } from '../message-list/message-list.component';
+import { NO_RAIL_UNREAD_CHATS } from '../server-rail/rail-unread-chats';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
 import { ThreadViewComponent } from '../thread/thread-view.component';
@@ -150,6 +151,7 @@ function renderHeader(
       stale: null,
     }),
     railSpaces: signal([]),
+    railUnreadChats: signal(NO_RAIL_UNREAD_CHATS),
     railUnread: signal({
       recent: { unread: 0, mentions: 0 },
       home: { unread: 0, mentions: 0 },

@@ -2,7 +2,10 @@ import { Injectable, inject } from '@angular/core';
 import { AppearancePreferences } from '@trinity/application/appearance';
 import { GifSettingsService } from '@trinity/data-access/gif';
 import { PushGatewayService } from '@trinity/data-access/notifications';
-import { AccountScopeService } from '@trinity/data-access/room-library';
+import {
+  AccountScopeService,
+  RailUnreadChatsPreference,
+} from '@trinity/data-access/room-library';
 import {
   DateTimeFormatService,
   FeatureFlagsService,
@@ -34,6 +37,7 @@ export class TrinityPreferenceStartupSources {
   private readonly shortcuts = inject(KeyboardShortcutsService);
   private readonly gifs = inject(GifSettingsService);
   private readonly accountScope = inject(AccountScopeService);
+  private readonly railUnread = inject(RailUnreadChatsPreference);
   private readonly pushGateway = inject(PushGatewayService);
 
   sources(): PreferenceStartupSources {
@@ -128,6 +132,28 @@ export class TrinityPreferenceStartupSources {
                           : {
                               kind: 'defaulted',
                               code: 'account-scope-preference-hydration-partial',
+                            },
+                      ),
+                    ),
+                },
+          ),
+        ),
+      'rail-unread': () =>
+        this.railUnread.init().pipe(
+          map((outcome): PreferencePreparationEvidence =>
+            outcome.kind === 'ready'
+              ? { kind: 'ready' }
+              : {
+                  kind: 'defaulted',
+                  code: 'rail-unread-preference-hydration-partial',
+                  recover: () =>
+                    this.railUnread.recoverHydration(outcome.failures).pipe(
+                      map((recovered): PreferencePreparationEvidence =>
+                        recovered.kind === 'ready'
+                          ? { kind: 'ready' }
+                          : {
+                              kind: 'defaulted',
+                              code: 'rail-unread-preference-hydration-partial',
                             },
                       ),
                     ),

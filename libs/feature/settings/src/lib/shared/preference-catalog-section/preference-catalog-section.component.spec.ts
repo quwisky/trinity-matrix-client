@@ -1,9 +1,15 @@
 import { TestBed } from '@angular/core/testing';
 import type { ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { TrnSwitchComponent } from '@trinity/components/controls';
 import {
+  TrnSelectComponent,
+  TrnSwitchComponent,
+} from '@trinity/components/controls';
+import {
+  definePreference,
   PREFERENCE_STORAGE_ADAPTER,
+  providePreferenceDescriptors,
+  type PreferenceDescriptor,
   type PreferenceStorageWriteOutcome,
 } from '@trinity/runtime/preferences';
 import { provideConversationPrivacyPreferences } from '@trinity/data-access/timeline';
@@ -161,5 +167,113 @@ describe('PreferenceCatalogSectionComponent', () => {
     pending.complete();
     fixture.detectChanges();
     expect(control.componentInstance.checked()).toBe(true);
+  });
+});
+
+const SAMPLE_SELECT = definePreference({
+  id: 'test.sample-select',
+  owner: 'workspace',
+  section: 'sample',
+  order: 1,
+  scope: 'installation',
+  defaultValue: 'a',
+  sensitivity: 'public',
+  storage: 'device-preferences',
+  export: 'excluded',
+  editor: {
+    kind: 'select',
+    label: 'Sample choice',
+    description: 'Pick one.',
+    testId: 'sample-choice',
+    options: [
+      { value: 'a', label: 'Option A' },
+      { value: 'b', label: 'Option B' },
+    ],
+  },
+  persistence: {
+    key: 'trinity.test.sample-select',
+    migration: {
+      currentVersion: 1,
+      migrate: (stored) =>
+        stored.value === 'a' || stored.value === 'b'
+          ? { kind: 'accepted', value: stored.value }
+          : { kind: 'rejected', diagnostic: { code: 'x' } },
+    },
+  },
+  validate: (value) =>
+    value === 'a' || value === 'b'
+      ? { kind: 'accepted', value }
+      : { kind: 'rejected', diagnostic: { code: 'x' } },
+} satisfies PreferenceDescriptor<'a' | 'b'>);
+
+describe('PreferenceCatalogSectionComponent select editor', () => {
+  async function renderSelect(
+    outcome: PreferenceStorageWriteOutcome = { kind: 'completed' },
+  ) {
+    const write = vi.fn(() => of(outcome));
+    TestBed.resetTestingModule();
+    const rendered = await render(PreferenceCatalogSectionComponent, {
+      inputs: { section: 'sample' },
+      providers: [
+        providePreferenceDescriptors(() => [SAMPLE_SELECT]),
+        {
+          provide: PREFERENCE_STORAGE_ADAPTER,
+          useValue: { read: () => of({ kind: 'missing' }), write },
+        },
+      ],
+    });
+    return { ...rendered, write };
+  }
+
+  function selectOf(fixture: ComponentFixture<unknown>) {
+    return fixture.debugElement.query(By.directive(TrnSelectComponent))
+      .componentInstance as TrnSelectComponent<string>;
+  }
+
+  it('names the select by its row label and shows the current value', async () => {
+    const { container } = await renderSelect();
+    const combobox = container.querySelector(
+      '[data-testid=sample-choice] [role=combobox]',
+    )!;
+
+    expect(
+      container.querySelector('#sample-choice-heading')?.textContent,
+    ).toContain('Sample choice');
+    expect(combobox.getAttribute('aria-labelledby')).toBe(
+      'sample-choice-heading',
+    );
+    expect(
+      container.querySelector('[data-testid=sample-choice-select]')
+        ?.textContent,
+    ).toContain('Option A');
+  });
+
+  it('saves the chosen option', async () => {
+    const { fixture, write } = await renderSelect();
+
+    selectOf(fixture).value.set('b');
+    fixture.detectChanges();
+
+    expect(write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: JSON.stringify({ version: 1, value: 'b' }),
+      }),
+    );
+  });
+
+  it('reports a failed save under the select', async () => {
+    const { fixture, container } = await renderSelect({
+      kind: 'unavailable',
+      diagnostic: { code: 'x' },
+    });
+
+    selectOf(fixture).value.set('b');
+    fixture.detectChanges();
+
+    expect(
+      container.querySelector(
+        '[data-testid=sample-choice-failure][role=alert]',
+      ),
+    ).not.toBeNull();
   });
 });

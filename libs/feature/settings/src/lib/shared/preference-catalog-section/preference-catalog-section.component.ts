@@ -8,13 +8,18 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnSwitchComponent } from '@trinity/components/controls';
+import {
+  TrnSelectComponent,
+  TrnSwitchComponent,
+  type TrnSelectOption,
+} from '@trinity/components/controls';
 import {
   INSTALLATION_PREFERENCE_CONTEXT,
   PreferenceStoreService,
   type PreferenceCatalogEntry,
   type PreferenceCommandOutcome,
   type PreferenceContext,
+  type PreferenceValue,
 } from '@trinity/runtime/preferences';
 import { finalize, take } from 'rxjs';
 import { TrnSettingsRowComponent } from '@trinity/components/overlay';
@@ -24,14 +29,14 @@ import { TrnSettingsRowComponent } from '@trinity/components/overlay';
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'block' },
   templateUrl: './preference-catalog-section.component.html',
-  imports: [TrnSettingsRowComponent, TrnSwitchComponent],
+  imports: [TrnSelectComponent, TrnSettingsRowComponent, TrnSwitchComponent],
 })
 export class PreferenceCatalogSectionComponent {
   private readonly store = inject(PreferenceStoreService);
   private readonly destroyRef = inject(DestroyRef);
-  // Values shown while their save is in flight, so a controlled switch does not snap back;
+  // Values shown while their save is in flight, so a controlled control does not snap back;
   // dropped when the save settles, leaving the store's value (the old one after a failure).
-  private readonly pendingById = signal<ReadonlyMap<string, boolean>>(
+  private readonly pendingById = signal<ReadonlyMap<string, PreferenceValue>>(
     new Map(),
   );
   private readonly failureById = signal<ReadonlyMap<string, string>>(new Map());
@@ -42,8 +47,30 @@ export class PreferenceCatalogSectionComponent {
     this.store.entries(this.section(), this.context()),
   );
 
+  /** Options per select entry, built once per catalog read so the select keeps one array. */
+  readonly selectOptions = computed(() => {
+    const byId = new Map<string, readonly TrnSelectOption<string>[]>();
+    for (const entry of this.entries()) {
+      if (entry.editor.kind !== 'select') continue;
+      const testId = entry.editor.testId;
+      byId.set(
+        entry.id,
+        entry.editor.options.map((option) => ({
+          ...option,
+          testId: `${testId}-${option.value}`,
+        })),
+      );
+    }
+    return byId;
+  });
+
   checked(entry: PreferenceCatalogEntry): boolean {
-    return this.pendingById().get(entry.id) ?? entry.state().value === true;
+    return (this.pendingById().get(entry.id) ?? entry.state().value) === true;
+  }
+
+  selected(entry: PreferenceCatalogEntry): string | null {
+    const value = this.pendingById().get(entry.id) ?? entry.state().value;
+    return typeof value === 'string' ? value : null;
   }
 
   busy(id: string): boolean {
@@ -54,7 +81,14 @@ export class PreferenceCatalogSectionComponent {
     return this.failureById().get(id);
   }
 
-  update(entry: PreferenceCatalogEntry, value: boolean): void {
+  choose(
+    entry: PreferenceCatalogEntry,
+    value: string | null | undefined,
+  ): void {
+    if (value !== null && value !== undefined) this.update(entry, value);
+  }
+
+  update(entry: PreferenceCatalogEntry, value: PreferenceValue): void {
     if (this.busy(entry.id)) return;
     this.setPending(entry.id, value);
     this.clearFailure(entry.id);
@@ -86,7 +120,7 @@ export class PreferenceCatalogSectionComponent {
     this.setFailure(id, message);
   }
 
-  private setPending(id: string, value: boolean | null): void {
+  private setPending(id: string, value: PreferenceValue | null): void {
     this.pendingById.update((current) => {
       const next = new Map(current);
       if (value === null) next.delete(id);

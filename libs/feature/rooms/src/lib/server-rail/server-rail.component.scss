@@ -3,7 +3,6 @@
 @layer components {
   .rail {
     @include column(var(--trinity-surface-app));
-    @include scrollable;
 
     // Ring the account badge against the rail surface, not the page background — the default
     // resolves to --background, which is near-black in dark themes and reads as a punched
@@ -12,8 +11,36 @@
 
     width: 72px;
     align-items: center;
-    padding: 12px 0;
+    padding: 12px 0 0;
+    overflow: hidden;
+  }
+
+  // Recent, Home and Rooms stay in view; only `.rail-scroll` moves.
+  .rail-fixed,
+  .rail-scroll {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: var(--trinity-density-shell-gap);
+  }
+
+  .rail-fixed {
+    flex: none;
+    width: 100%;
+  }
+
+  .rail-scroll {
+    @include scrollable;
+
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+
+    // Room above the first row inside the clip box, so its top badge and focus ring are not
+    // cut at scrollTop 0. This also spaces the scroller from the pinned group above it.
+    // The rail's last row is `.add`, so close the column with the rail's old bottom edge.
+    padding-block: var(--trinity-density-shell-gap) var(--trinity-space-4);
+    scroll-padding-block-start: var(--trinity-density-shell-gap);
 
     @media #{$md} {
       // The identity dock spans this rail and the room list at desktop widths. Give the last
@@ -74,22 +101,15 @@
     height: var(--trinity-rail-indicator-selected);
   }
 
-  // Mention badge: bottom-right of the icon, or top-right when an account badge holds the
-  // bottom. The rail-coloured ring lifts it off the icon; clicks fall through to the pill.
-  .badge--top,
-  .badge--bottom {
+  // Unread count (or dot): always top-right of the icon, so it sits in the same place on
+  // every pill; an account badge holds the bottom. The rail-coloured ring lifts it off the
+  // icon; clicks fall through to the pill.
+  .rail-count {
     position: absolute;
+    top: -2px;
     right: 8px;
     box-shadow: 0 0 0 2px var(--trinity-surface-app);
     pointer-events: none;
-  }
-
-  .badge--top {
-    top: -2px;
-  }
-
-  .badge--bottom {
-    bottom: -2px;
   }
 
   .pill {
@@ -153,6 +173,37 @@
   .item.active .pill.rooms {
     background: var(--trinity-accent);
     color: var(--trinity-accent-foreground);
+  }
+
+  // Unread chats sit between Rooms and the separator, spaced like the rest of the rail.
+  .unread-chats {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--trinity-density-shell-gap);
+    width: 100%;
+  }
+
+  // A DM's avatar is round, so its pill's hover surface is round too.
+  .pill--person {
+    border-radius: var(--trinity-shape-person-radius);
+
+    --trn-icon-button-radius: var(--trinity-shape-person-radius);
+  }
+
+  // Only marked unread: a dot where the count would be.
+  .unread-dot {
+    width: var(--trinity-rail-indicator-unread);
+    height: var(--trinity-rail-indicator-unread);
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-text);
+  }
+
+  // The "+N" text sets its own size and weight: the button's recipe classes outrank this
+  // component's styles, but not a rule on the text inside it.
+  .overflow-text {
+    font-size: var(--trinity-text-sm);
+    font-weight: 600;
   }
 
   trn-avatar {

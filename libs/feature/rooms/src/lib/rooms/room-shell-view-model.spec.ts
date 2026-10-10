@@ -17,10 +17,14 @@ import {
   SelectedRoomLibraryService,
   SpaceChildrenService,
   SpaceRoomOrderService,
+  RailUnreadChatsPreference,
   UnreadAggregatorService,
+  type RailUnreadChatMode,
   type RoomSummary,
   type SelectedRoomLibraryView,
+  type UnreadRoom,
 } from '@trinity/data-access/room-library';
+import { type AccountBadge } from '@trinity/components/generic-content';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
@@ -79,6 +83,10 @@ function build(
   // Workspace owns the semantic destination. This focused view-model test supplies only
   // its read model and mutates the backing signal as if a transition had committed.
   const activeRoomId = signal<string | null>(null);
+  const unreadRooms = signal<readonly UnreadRoom[]>([]);
+  const railMode = signal<RailUnreadChatMode>('up-to-5');
+  const mixed = signal(false);
+  const placement = signal<'list' | 'conversation' | 'split'>('split');
   const recentView = signal(true);
   const roomsView = signal(false);
   const selectedView = signal<SelectedRoomLibraryView>(
@@ -117,8 +125,24 @@ function build(
         }),
       }),
       MockProvider(SpaceRoomOrderService),
-      MockProvider(AccountBadgesService),
+      MockProvider(AccountBadgesService, {
+        mixed: mixed.asReadonly(),
+        everyAccount: signal<ReadonlyMap<string, AccountBadge>>(
+          new Map([
+            [
+              '@me:hs',
+              { id: '@me:hs', name: 'Me', initial: 'M', avatarMxc: null },
+            ],
+            [
+              '@ben:hs',
+              { id: '@ben:hs', name: 'Ben', initial: 'B', avatarMxc: null },
+            ],
+          ]),
+        ).asReadonly(),
+      }),
+      MockProvider(RailUnreadChatsPreference, { mode: railMode.asReadonly() }),
       MockProvider(UnreadAggregatorService, {
+        unreadRooms: unreadRooms.asReadonly(),
         unreadByAccount: signal<ReadonlyMap<string, number>>(
           new Map(),
         ).asReadonly(),
@@ -136,9 +160,7 @@ function build(
           recentView: recentView.asReadonly(),
           roomsView: roomsView.asReadonly(),
           pane: signal<'list' | 'conversation'>('list').asReadonly(),
-          placement: signal<'list' | 'conversation' | 'split'>(
-            'split',
-          ).asReadonly(),
+          placement: placement.asReadonly(),
         },
       },
       MockProvider(AccountIdentitiesService, {
@@ -152,6 +174,10 @@ function build(
   return {
     vm: TestBed.inject(RoomShellViewModel),
     openRoom: (roomId: string) => activeRoomId.set(roomId),
+    unreadRooms,
+    railMode,
+    mixed,
+    placement,
     profiles,
     activeUserId,
     accountIds,
@@ -300,5 +326,79 @@ describe('RoomShellViewModel members', () => {
     openRoom('!b:hs');
 
     expect(vm.members().map((m) => m.userId)).toEqual(['@b:hs']);
+  });
+});
+
+describe('RoomShellViewModel rail unread chats', () => {
+  const unread = (
+    roomId: string,
+    accountId = '@me:hs',
+    activityTs = 0,
+  ): UnreadRoom => ({
+    accountId,
+    roomId,
+    name: roomId,
+    initial: 'R',
+    avatarMxc: null,
+    direct: false,
+    unreadCount: 1,
+    markedUnread: false,
+    activityTs,
+  });
+
+  it('lists every account’s unread chats, newest first, without the open one', () => {
+    const { vm, unreadRooms, openRoom } = build();
+    unreadRooms.set([
+      unread('!a:hs', '@me:hs', 1),
+      unread('!b:hs', '@ben:hs', 3),
+      unread('!open:hs', '@me:hs', 9),
+    ]);
+    openRoom('!open:hs');
+
+    expect(vm.railUnreadChats().entries.map((e) => e.selection.roomId)).toEqual(
+      ['!b:hs', '!a:hs'],
+    );
+  });
+
+  it('keeps a remembered chat listed while the compact list is showing', () => {
+    const { vm, unreadRooms, openRoom, placement } = build();
+    unreadRooms.set([unread('!open:hs')]);
+    openRoom('!open:hs');
+    placement.set('list');
+
+    expect(vm.railUnreadChats().entries).toHaveLength(1);
+  });
+
+  it('follows the space rail setting', () => {
+    const { vm, unreadRooms, railMode } = build();
+    unreadRooms.set([unread('!a:hs')]);
+    railMode.set('off');
+
+    expect(vm.railUnreadChats().entries).toEqual([]);
+  });
+
+  it('badges every entry in a mixed view', () => {
+    const { vm, unreadRooms, mixed } = build();
+    unreadRooms.set([
+      unread('!a:hs', '@me:hs', 1),
+      unread('!b:hs', '@ben:hs', 2),
+    ]);
+    mixed.set(true);
+
+    expect(vm.railUnreadChats().entries.map((e) => e.accountBadge?.id)).toEqual(
+      ['@ben:hs', '@me:hs'],
+    );
+  });
+
+  it('badges only another account’s entry with one account selected', () => {
+    const { vm, unreadRooms } = build();
+    unreadRooms.set([
+      unread('!a:hs', '@me:hs', 1),
+      unread('!b:hs', '@ben:hs', 2),
+    ]);
+
+    expect(vm.railUnreadChats().entries.map((e) => e.accountBadge?.id)).toEqual(
+      ['@ben:hs', undefined],
+    );
   });
 });

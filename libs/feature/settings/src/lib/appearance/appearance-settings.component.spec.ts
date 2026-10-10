@@ -25,6 +25,7 @@ import {
   SpaceRoomOrderService,
   TRINITY_ROOM_SORTS,
   type RoomSortMode,
+  provideRoomLibraryPreferences,
 } from '@trinity/data-access/room-library';
 import { AppearanceSettingsComponent } from './appearance-settings.component';
 import { NEVER, firstValueFrom, of } from 'rxjs';
@@ -68,6 +69,7 @@ describe('AppearanceSettingsComponent', () => {
     const rendered = await render(AppearanceSettingsComponent, {
       providers: [
         provideAppearancePreferences(),
+        provideRoomLibraryPreferences(),
         {
           provide: PREFERENCE_STORAGE_ADAPTER,
           useValue: {
@@ -111,6 +113,22 @@ describe('AppearanceSettingsComponent', () => {
     );
     expect(systemInput?.checked).toBe(true);
     expect(container.textContent).toContain('dark'); // resolved-theme note
+  });
+
+  it('offers the space rail’s unread chats choice under Space rail', async () => {
+    const { container } = await renderPage();
+
+    const group = [...container.querySelectorAll('trn-settings-group')].find(
+      (candidate) => candidate.textContent?.includes('Space rail'),
+    );
+    expect(
+      group?.querySelector('[data-testid=space-rail-unread-chats]')
+        ?.textContent,
+    ).toContain('Unread chats in the space rail');
+    expect(
+      group?.querySelector('[data-testid=space-rail-unread-chats-select]')
+        ?.textContent,
+    ).toContain('Up to 5');
   });
 
   it('groups the content into the prototype-aligned settings rhythm', async () => {

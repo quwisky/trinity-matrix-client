@@ -7,6 +7,7 @@ import {
 import {
   RoomLibraryService,
   SelectedRoomLibraryService,
+  RailUnreadChatsPreference,
   SpaceRoomOrderService,
   UnreadAggregatorService,
   comparatorFor,
@@ -22,6 +23,10 @@ import {
   AccountIdentitiesService,
   type IdentityProfile,
 } from '@trinity/data-access/identity';
+import {
+  buildRailUnreadChats,
+  type RailUnreadChats,
+} from '../server-rail/rail-unread-chats';
 import { type RailUnread } from '../server-rail/server-rail.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 
@@ -46,6 +51,7 @@ export class RoomShellViewModel {
   private readonly spaceOrder = inject(SpaceRoomOrderService);
   private readonly accountBadgesSvc = inject(AccountBadgesService);
   private readonly unreadAgg = inject(UnreadAggregatorService);
+  private readonly railUnreadPreference = inject(RailUnreadChatsPreference);
   private readonly matrix = inject(MatrixClientService);
   private readonly identities = inject(AccountIdentitiesService);
 
@@ -272,6 +278,26 @@ export class RoomShellViewModel {
       },
       perSpace,
     };
+  });
+
+  /**
+   * Unread chats for the rail, across every signed-in account. A chat counts as open only
+   * while it is on screen: on a phone's list page the remembered chat is hidden, so it may
+   * be listed again.
+   */
+  readonly railUnreadChats = computed<RailUnreadChats>(() => {
+    const accountId = this.store.activeAccountId();
+    const roomId = this.store.activeRoomId();
+    const onScreen =
+      !!accountId && !!roomId && this.store.placement() !== 'list';
+    return buildRailUnreadChats({
+      rooms: this.unreadAgg.unreadRooms(),
+      mode: this.railUnreadPreference.mode(),
+      open: onScreen ? { accountId, roomId } : null,
+      activeAccountId: accountId,
+      mixed: this.accountBadgesSvc.mixed(),
+      badges: this.accountBadgesSvc.everyAccount(),
+    });
   });
 
   readonly activeRoom = computed(() => {

@@ -350,4 +350,27 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     expect(loadEvent).not.toHaveBeenCalled();
     expect(showError).not.toHaveBeenCalled();
   });
+
+  it('hands a rail entry its ready callback only once Workspace has opened the room', () => {
+    const routing = build();
+    const onReady = vi.fn();
+    const chat = { accountId: '@me:hs', roomId: '!c:hs' };
+
+    routing.onSelectRoomSelection(chat, 'rail-unread', onReady);
+
+    expect(navigate).toHaveBeenCalledExactlyOnceWith({
+      kind: 'room',
+      ...chat,
+      origin: 'rail-unread',
+    });
+    expect(onReady).toHaveBeenCalledOnce();
+
+    navigate.mockReturnValueOnce(
+      of({ kind: 'unavailable', reason: 'navigation-rejected' }),
+    );
+    routing.onSelectRoomSelection(chat, 'rail-unread', onReady);
+
+    expect(onReady).toHaveBeenCalledOnce();
+    expect(showError).toHaveBeenCalledOnce();
+  });
 });

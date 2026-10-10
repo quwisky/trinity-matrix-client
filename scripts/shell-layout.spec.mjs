@@ -201,7 +201,7 @@ describe('modern room shell layout contracts', () => {
       /\.sidebar__scroll\s*\{[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)[\s\S]*?scroll-padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)/,
     );
     expect(railCss).toMatch(
-      /\.rail\s*\{[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)[\s\S]*?scroll-padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)/,
+      /\.rail-scroll\s*\{[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)[\s\S]*?scroll-padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)/,
     );
     expect(userPanelCss).toMatch(
       /:host\s*\{[\s\S]*?height:\s*var\(--trinity-navigation-dock-height\);[\s\S]*?@media\s+#\{\$md\}\s*\{[\s\S]*?grid-column:\s*1\s*\/\s*-1;[\s\S]*?position:\s*absolute;[\s\S]*?inset-inline:[^;]+;[\s\S]*?inset-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-safe-area-bottom\)/,

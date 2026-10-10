@@ -31,6 +31,34 @@
           </p>
         }
       }
+      @case ('select') {
+        <trn-settings-row
+          [label]="entry.editor.label"
+          [labelId]="entry.editor.testId + '-heading'"
+          [description]="entry.editor.description"
+          [attr.data-testid]="entry.editor.testId"
+        >
+          <trn-select
+            class="w-48 max-sm:w-full"
+            [attr.data-testid]="entry.editor.testId + '-select'"
+            [aria-labelledby]="entry.editor.testId + '-heading'"
+            [placeholder]="'Select ' + entry.editor.label.toLowerCase()"
+            [options]="selectOptions().get(entry.id) ?? []"
+            [value]="selected(entry)"
+            [disabled]="busy(entry.id)"
+            (valueChange)="choose(entry, $event)"
+          />
+        </trn-settings-row>
+        @if (failure(entry.id); as message) {
+          <p
+            role="alert"
+            class="m-0 py-3 text-sm text-danger"
+            [attr.data-testid]="entry.editor.testId + '-failure'"
+          >
+            {{ message }}
+          </p>
+        }
+      }
     }
   }
 }
