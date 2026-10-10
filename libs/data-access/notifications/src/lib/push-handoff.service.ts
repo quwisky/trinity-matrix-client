@@ -48,11 +48,12 @@ export class PushHandoffService {
   private readonly injector = inject(Injector);
   private readonly bindings = new Map<string, HandoffBinding>();
   /**
-   * Accounts whose sign-out began, with the client that was live then: nothing writes that
-   * client again. A new client for the same user is a new sign-in and is written afresh,
-   * even when no session saw the account leave in between.
+   * Accounts whose sign-out began, with every client that was live for them then (the bound
+   * one and, mid-swap, the one not yet bound): nothing writes those clients again. A new
+   * client for the same user is a new sign-in and is written afresh, even when no session
+   * saw the account leave in between.
    */
-  private readonly retired = new Map<string, MatrixClient>();
+  private readonly retired = new Map<string, Set<MatrixClient>>();
   private tail: Promise<void> = Promise.resolve();
 
   /** Own the handoff for one Application Runtime session. Never emits. */
@@ -89,9 +90,12 @@ export class PushHandoffService {
         ? [userId]
         : [...this.bindings.keys(), ...this.matrix.accountIds()];
       for (const id of ids) {
-        const client =
-          this.bindings.get(id)?.client ?? this.matrix.clientFor(id);
-        if (client) this.retired.set(id, client);
+        const clients = new Set<MatrixClient>();
+        const bound = this.bindings.get(id)?.client;
+        const current = this.matrix.clientFor(id);
+        if (bound) clients.add(bound);
+        if (current) clients.add(current);
+        if (clients.size > 0) this.retired.set(id, clients);
         this.bindings.get(id)?.written.clear();
       }
       return from(
@@ -135,7 +139,7 @@ export class PushHandoffService {
   }
 
   private bind(userId: string, client: MatrixClient): void {
-    if (this.retired.get(userId) !== client) this.retired.delete(userId);
+    if (!this.isRetired(userId, client)) this.retired.delete(userId);
     const onSync = (state: SyncState): void => {
       if (state === SyncState.Prepared || state === SyncState.Syncing) {
         this.writeRooms(userId);
@@ -177,7 +181,7 @@ export class PushHandoffService {
   /** `accessToken` is passed on rotation: the SDK adopts the new token after this runs. */
   private writeAccount(userId: string, accessToken?: string): void {
     const binding = this.bindings.get(userId);
-    if (!binding || this.retired.get(userId) === binding.client) return;
+    if (!binding || this.isRetired(userId, binding.client)) return;
     const token = accessToken ?? binding.client.getAccessToken();
     if (!token) return;
     const account = {
@@ -193,7 +197,7 @@ export class PushHandoffService {
 
   private writeRooms(userId: string): void {
     const binding = this.bindings.get(userId);
-    if (!binding || this.retired.get(userId) === binding.client) return;
+    if (!binding || this.isRetired(userId, binding.client)) return;
     const direct = directRoomIds(binding.client);
     const changed: PushHandoffRoom[] = [];
     for (const room of binding.client.getRooms()) {
@@ -215,6 +219,10 @@ export class PushHandoffService {
         for (const room of changed) binding.written.delete(room.roomId);
       },
     );
+  }
+
+  private isRetired(userId: string, client: MatrixClient): boolean {
+    return this.retired.get(userId)?.has(client) ?? false;
   }
 
   private schedule(operation: () => Observable<void>): Promise<void> {

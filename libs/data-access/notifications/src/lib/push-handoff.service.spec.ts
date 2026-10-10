@@ -285,6 +285,49 @@ describe('PushHandoffService', () => {
     );
   });
 
+  it('writes nothing for an account whose client was swapped while it was being forgotten', async () => {
+    const h = setup();
+    await start(h);
+    const old = me(h);
+    h.bridge.setAccount.mockClear();
+    h.bridge.setRooms.mockClear();
+
+    // A re-authentication swapped the client, and sign-out began before the handoff
+    // observed the swap.
+    const swapped = fakeClient('@me:hs', [
+      { roomId: '!a:hs', name: 'Team', membership: 'join' },
+    ]);
+    swapped.state.token = 'swapped-session';
+    h.clients.set('@me:hs', swapped);
+    h.accountIds.set(['@me:hs']);
+    await firstValueFrom(h.service.forget('@me:hs'));
+    TestBed.tick();
+    await flush();
+    old.emit(ClientEvent.Sync, SyncState.Syncing);
+    swapped.emit(ClientEvent.Sync, SyncState.Syncing);
+    swapped.emit(RoomEvent.Name);
+    h.rotations.next({ userId: '@me:hs', accessToken: 'late' });
+    await flush();
+
+    expect(h.bridge.removeAccount).toHaveBeenCalledWith('@me:hs');
+    expect(h.bridge.setAccount).not.toHaveBeenCalled();
+    expect(h.bridge.setRooms).not.toHaveBeenCalled();
+
+    // A genuinely new sign-in afterwards is written again.
+    const signedIn = fakeClient('@me:hs', [
+      { roomId: '!a:hs', name: 'Team', membership: 'join' },
+    ]);
+    signedIn.state.token = 'new-session';
+    h.clients.set('@me:hs', signedIn);
+    h.accountIds.set(['@me:hs']);
+    TestBed.tick();
+    await flush();
+    expect(h.bridge.setAccount).toHaveBeenCalledOnce();
+    expect(h.bridge.setAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ accessToken: 'new-session' }),
+    );
+  });
+
   it('writes an account signed in again after the session ended during its sign-out', async () => {
     const h = setup();
     const lifetime = await start(h);
