@@ -63,6 +63,8 @@
       }
     },
     "verify": {
+      "//": "Android's verify runs its JVM unit tests; iOS's runs the TrinityPush XCTests the same way, so CI needs no step of its own for them.",
+      "dependsOn": ["test-push"],
       "executor": "nx:run-commands",
       "options": {
         "command": "node scripts/native-host-contract.mjs ios",
