@@ -103,12 +103,11 @@ message text.
    using the gateway's own instructions; [Sygnal's application configuration](https://github.com/matrix-org/sygnal/blob/main/docs/applications.md)
    describes its FCM and APNs integrations. Platform credentials belong on the
    gateway, not in Trinity's `PushConfig`.
-2. Select the endpoint in **Settings → Notifications → Push gateway**, or set
-   `environment.push` in the appropriate build environment:
+2. Set `environment.push` in the build environment:
    [`environment.ts`](../../apps/trinity/src/environments/environment.ts) or
    [`environment.prod.ts`](../../apps/trinity/src/environments/environment.prod.ts).
-   Both checked-in defaults are `null`. A saved device override takes precedence
-   over the build default; with neither configured, registration is disabled.
+   Both checked-in defaults point at the Trinity push gateway. There is no device
+   override; a fork that sets `push` to `null` builds without native push.
 
    ```ts
    push: { gatewayUrl: 'https://push.example/_matrix/push/v1/notify' },
@@ -221,5 +220,4 @@ explicit cleanup remains the recovery path.
 
 The source of truth is
 [`push.service.ts`](../../libs/data-access/notifications/src/lib/push.service.ts),
-[`push-gateway.service.ts`](../../libs/data-access/notifications/src/lib/push-gateway.service.ts),
 and [`native-push-registration.service.ts`](../../libs/platform-native/src/lib/native-push-registration.service.ts).
