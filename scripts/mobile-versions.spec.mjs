@@ -80,14 +80,14 @@ describe('iOS launch race classifier', () => {
     expect(
       isAppNotYetKnown(
         new Error(
-          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=4 "The request to open "eu.qwky.trinity" failed." UserInfo={BSErrorCodeDescription=InvalidRequest, NSUnderlyingError=0x1 {Error Domain=FBSOpenApplicationErrorDomain Code=4 "Application info provider (FBSApplicationLibrary) returned nil for "eu.qwky.trinity"" UserInfo={BSErrorCodeDescription=NotFound}}}',
+          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=4 "The request to open "dev.trinityproject.trinity" failed." UserInfo={BSErrorCodeDescription=InvalidRequest, NSUnderlyingError=0x1 {Error Domain=FBSOpenApplicationErrorDomain Code=4 "Application info provider (FBSApplicationLibrary) returned nil for "dev.trinityproject.trinity"" UserInfo={BSErrorCodeDescription=NotFound}}}',
         ),
       ),
     ).toBe(true);
     expect(
       isAppNotYetKnown(
         new Error(
-          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=4 "The request to open "eu.qwky.trinity" failed." UserInfo={BSErrorCodeDescription=InvalidRequest}',
+          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=4 "The request to open "dev.trinityproject.trinity" failed." UserInfo={BSErrorCodeDescription=InvalidRequest}',
         ),
       ),
     ).toBe(false);
