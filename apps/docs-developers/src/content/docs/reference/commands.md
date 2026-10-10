@@ -37,14 +37,16 @@ Inspect targets before forwarding runner-specific arguments.
 
 ## Hosts and journeys {#host-journeys}
 
-| Command                | Purpose                                                       |
-| ---------------------- | ------------------------------------------------------------- |
-| `pnpm electron:start`  | Build and launch Electron                                     |
-| `pnpm electron:verify` | Check the Electron host contract                              |
-| `pnpm android:run`     | Build, sync, and launch Android                               |
-| `pnpm ios:run`         | Build, sync, and launch iOS                                   |
-| `pnpm e2e:browser`     | Run canonical browser journeys with the disposable homeserver |
-| `pnpm e2e:components`  | Run component browser suites                                  |
-| `pnpm e2e:all`         | Run every available registered E2E suite                      |
+| Command                                     | Purpose                                                             |
+| ------------------------------------------- | ------------------------------------------------------------------- |
+| `pnpm electron:start`                       | Build and launch Electron                                           |
+| `pnpm electron:verify`                      | Check the Electron host contract                                    |
+| `pnpm android:run`                          | Build, sync, and launch Android                                     |
+| `pnpm ios:run`                              | Build, sync, and launch iOS                                         |
+| `pnpm nx run trinity-android:verify-native` | Sync Android and run its JVM unit tests, the push plugin's included |
+| `pnpm nx run trinity-ios:test-push`         | Run the push plugin's `TrinityPush` XCTests (macOS)                 |
+| `pnpm e2e:browser`                          | Run canonical browser journeys with the disposable homeserver       |
+| `pnpm e2e:components`                       | Run component browser suites                                        |
+| `pnpm e2e:all`                              | Run every available registered E2E suite                            |
 
 Homeserver-backed commands share fixed ports and run sequentially. See the relevant [testing strategy](../../testing/testing-strategy/) or platform guide before interpreting a result.

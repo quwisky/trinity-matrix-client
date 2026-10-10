@@ -62,6 +62,7 @@ const androidPluginMarkers = [
   ':capacitor-push-notifications',
   ':capacitor-status-bar',
   ':capawesome-capacitor-badge',
+  ':trinity-capacitor-push',
 ];
 
 const iosPluginMarkers = [
@@ -73,6 +74,7 @@ const iosPluginMarkers = [
   'CapacitorPushNotifications',
   'CapacitorStatusBar',
   'CapawesomeCapacitorBadge',
+  'TrinityCapacitorPush',
 ];
 
 function read(path) {
@@ -299,6 +301,83 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
       errors.push(`iOS host is missing plugin wiring: ${marker}`);
     }
   }
+  // @trinity/capacitor-push is registered by `cap sync` (capacitor.plugins.json on Android,
+  // packageClassList on iOS). A hand registration on top registers it twice. Discovery is a
+  // regex in the Capacitor CLI: Android needs @CapacitorPlugin at the start of a line, iOS
+  // takes the first @objc(Name) in the file and skips CAPInstancePlugin subclasses. A plugin
+  // that is not registered leaves PushHandoffBridge inert without an error.
+  if (
+    withoutComments(input.androidHostActivity).includes('PushHandoffPlugin')
+  ) {
+    errors.push('Android host must not register PushHandoffPlugin by hand');
+  }
+  if (withoutComments(input.iosHostController).includes('PushHandoffPlugin')) {
+    errors.push('iOS host must not register PushHandoffPlugin by hand');
+  }
+  if (
+    !/^@CapacitorPlugin\(name = "PushHandoff"\)\s+public class PushHandoffPlugin extends Plugin\b/mu.test(
+      withoutComments(input.androidPushPlugin, true),
+    )
+  ) {
+    errors.push('Android PushHandoff plugin must be discoverable by cap sync');
+  }
+  const iosPushPlugin = withoutComments(input.iosPushPlugin, true);
+  if (
+    input.iosPushPlugin.match(/@objc\(([A-Za-z0-9_-]+)\)/u)?.[1] !==
+      'PushHandoffPlugin' ||
+    !/@objc\(PushHandoffPlugin\)\s+public class PushHandoffPlugin:\s*CAPPlugin,\s*CAPBridgedPlugin\b/u.test(
+      iosPushPlugin,
+    ) ||
+    !iosPushPlugin.includes('public let jsName = "PushHandoff"')
+  ) {
+    errors.push('iOS PushHandoff plugin must be discoverable by cap sync');
+  }
+  // The library cannot reference the app's resources; the host overrides its aliases with
+  // the icon and accent its FCM meta-data names.
+  const pushAppearance = withoutXmlComments(input.androidPushAppearance);
+  if (
+    !pushAppearance.includes(
+      '<drawable name="trinity_push_small_icon">@drawable/ic_stat_trinity</drawable>',
+    ) ||
+    !pushAppearance.includes(
+      '<color name="trinity_push_color">@color/ic_launcher_background</color>',
+    )
+  ) {
+    errors.push('Android host must brand device-rendered push notifications');
+  }
+  // Without the library's own MESSAGING_EVENT service only Firebase's fallback service remains
+  // and closed-app pushes silently stop rendering.
+  const pushLibraryManifest = withoutXmlComments(
+    input.androidPushLibraryManifest,
+  );
+  const declaresMessagingService = (
+    pushLibraryManifest.match(/<service\b[^>]*>(?:.|\n)*?<\/service>/gu) ?? []
+  ).some(
+    (service) =>
+      /android:name="(?:dev\.trinityproject\.trinity\.push)?\.TrinityMessagingService"/u.test(
+        service,
+      ) &&
+      /<action\s+android:name="com\.google\.firebase\.MESSAGING_EVENT"/u.test(
+        service,
+      ),
+  );
+  if (!declaresMessagingService) {
+    errors.push(
+      'Capacitor push library must declare TrinityMessagingService for FCM messages',
+    );
+  }
+  // The push plugin's own MESSAGING_EVENT service must stay removed here: a merge-rule marker
+  // only applies from the higher-priority manifest. Otherwise FCM can deliver to it and
+  // closed-app pushes silently stop rendering.
+  if (
+    !/<service\s[^>]*android:name="com\.capacitorjs\.plugins\.pushnotifications\.MessagingService"[^>]*tools:node="remove"/u.test(
+      androidManifest,
+    )
+  ) {
+    errors.push(
+      'Android host must remove the push plugin MessagingService from the app manifest',
+    );
+  }
   if (
     !androidManifest.includes('android:scheme="dev.trinityproject.trinity"')
   ) {
@@ -351,6 +430,22 @@ export function validateCurrentNativeHosts(selectedHosts) {
       iosPlugins: read('ios/App/CapApp-SPM/Package.swift'),
       androidManifest: read('android/app/src/main/AndroidManifest.xml'),
       iosInfo: read('ios/App/App/Info.plist'),
+      androidHostActivity: read(
+        'android/app/src/main/java/dev/trinityproject/trinity/MainActivity.java',
+      ),
+      iosHostController: read('ios/App/App/MainViewController.swift'),
+      androidPushPlugin: read(
+        'libs/native/capacitor-push/android/src/main/java/dev/trinityproject/trinity/PushHandoffPlugin.java',
+      ),
+      iosPushPlugin: read(
+        'libs/native/capacitor-push/ios/Sources/PushHandoffPlugin/PushHandoffPlugin.swift',
+      ),
+      androidPushLibraryManifest: read(
+        'libs/native/capacitor-push/android/src/main/AndroidManifest.xml',
+      ),
+      androidPushAppearance: read(
+        'android/app/src/main/res/values/push_notification_appearance.xml',
+      ),
     },
     errors,
     selectedHosts,

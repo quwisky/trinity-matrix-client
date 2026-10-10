@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of, throwError, type Observable } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NativePushRegistrationService } from './native-push-registration.service';
-import { PushHandoffBridge } from './push-handoff.bridge';
+import { PushHandoffBridge } from '@trinity/capacitor-push';
 
 const registrationAvailable = vi.fn((): Observable<boolean> => of(true));
 

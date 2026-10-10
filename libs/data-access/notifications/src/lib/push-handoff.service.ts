@@ -11,7 +11,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   PushHandoffBridge,
   type PushHandoffRoom,
-} from '@trinity/platform-native';
+} from '@trinity/capacitor-push';
 import { Observable, catchError, defer, from, lastValueFrom, of } from 'rxjs';
 import {
   LEGACY_NOTIFICATION_SOUND_EVENT,

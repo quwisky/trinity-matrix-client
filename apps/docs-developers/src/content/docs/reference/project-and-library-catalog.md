@@ -29,7 +29,7 @@ The documentation source validator reads every `project.json`, compares it with 
 | Data access         | `data-access-accounts`, `data-access-matrix-client`, `data-access-room-library`, `data-access-timeline`, `data-access-trust` | Capability state and commands     |
 | Features            | `feature-auth`, `feature-crypto`, `feature-rooms`, `feature-settings`                                                        | Product workflows and pages       |
 | Components          | `components-controls`, `components-foundations`, `components-navigation-layout`, `components-overlay`                        | Public reusable UI                |
-| Runtime and utility | `runtime-host`, `runtime-preferences`, `runtime-projection`, `util-matrix`, `util-ui`                                        | Shared kernels and adapters       |
+| Runtime and utility | `runtime-host`, `runtime-preferences`, `runtime-projection`, `util-matrix`, `util-ui`, `native-capacitor-push`               | Shared kernels and adapters       |
 | E2E                 | `trinity-e2e-browser`, `trinity-e2e-components`, `trinity-e2e-protocol`, host suites                                         | User, protocol, and host journeys |
 | Documentation       | `docs-users`, `docs-developers`, `docs-site`                                                                                 | Public sites and their validation |
 

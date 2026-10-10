@@ -57,19 +57,13 @@
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/ic_launcher_background" />
 
-        <!-- Device-rendered push: TrinityMessagingService replaces the push plugin's
-             MessagingService, keeping its foreground behaviour and token callbacks, and
-             renders closed-app pushes from the push handoff store. -->
+        <!-- Device-rendered push: @trinity/capacitor-push declares TrinityMessagingService,
+             which extends this plugin service and replaces it. The removal stays here: a
+             merge-rule marker only applies from the higher-priority manifest, and cap sync
+             lists the push plugin ahead of the local package. -->
         <service
             android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"
             tools:node="remove" />
-        <service
-            android:name=".push.TrinityMessagingService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"

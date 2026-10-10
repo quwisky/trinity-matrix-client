@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Device-rendered push: TrinityMessagingService extends the push plugin's
+             MessagingService, keeping its foreground behaviour and token callbacks, and
+             renders closed-app pushes from the push handoff store. The host app's manifest
+             removes the plugin's own service: a removal marker only applies from the
+             higher-priority manifest, and this library merges after the plugin. -->
+        <service
+            android:name="dev.trinityproject.trinity.push.TrinityMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

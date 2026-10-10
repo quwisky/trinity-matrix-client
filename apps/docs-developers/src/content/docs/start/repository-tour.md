@@ -22,6 +22,7 @@ Trinity is an Nx integrated monorepo. A directory is useful orientation, but the
 | `libs/spartan/`                 | Generated or vendor-facing UI implementation layer                      |
 | `libs/runtime/`                 | Reusable state, preference, and host kernels                            |
 | `libs/platform-native/`         | Browser, Capacitor, and Electron host adapters                          |
+| `libs/native/`                  | Local Capacitor plugins, linked as pnpm workspace packages              |
 | `electron/`, `android/`, `ios/` | Platform hosts and packaging projects                                   |
 | `e2e/`                          | Browser, protocol, desktop, and native journeys                         |
 | `scripts/`, `tools/`            | Repository automation and documentation tooling                         |

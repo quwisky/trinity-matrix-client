@@ -1,0 +1,8 @@
+{
+  "name": "native-capacitor-push",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/native/capacitor-push/src",
+  "projectType": "library",
+  "tags": ["type:platform", "scope:shared", "role:adapter", "capability:host"],
+  "targets": { "test": {}, "typecheck": {} }
+}

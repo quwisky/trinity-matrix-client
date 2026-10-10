@@ -201,6 +201,17 @@ metadata private from the gateway operator.
 The device turns `event_id_only` pushes into readable notifications; #1152 tracks the
 out-of-repo setup and the device checks.
 
+**Where the code lives.** The native half is one local Capacitor plugin, the pnpm workspace
+package `@trinity/capacitor-push` in [`libs/native/capacitor-push`](../../libs/native/capacitor-push/package.json):
+the `PushHandoffBridge` TypeScript API, the Android module `:trinity-capacitor-push`
+(`PushHandoffPlugin`, `TrinityMessagingService`, the renderer, its JVM tests and the debug probe
+receiver) and the Swift package `TrinityCapacitorPush` (`PushHandoffPlugin`, depending on
+`TrinityPush` in `ios/TrinityPush`, which the `NotificationService` extension links too). `cap sync`
+registers it in both hosts; neither registers it by hand, and the native host contract fails when
+the wiring drifts. The hosts keep the Firebase and APNs setup, the entitlements, the extension
+target, the manifest `tools:node="remove"` of the push plugin's `MessagingService` and the
+app-owned `push_notification_appearance.xml` notification icon and accent.
+
 **Push handoff store.** `PushHandoffService` (data-access/notifications) keeps a native
 store current through the `PushHandoff` plugin (`setAccount`, `setRooms`, `removeAccount`,
 `clear`, `clearRoom`). Per signed-in account it holds the homeserver URL, the access token
@@ -269,5 +280,7 @@ The source of truth is
 [`push.service.ts`](../../libs/data-access/notifications/src/lib/push.service.ts),
 [`push-handoff.service.ts`](../../libs/data-access/notifications/src/lib/push-handoff.service.ts),
 [`native-push-registration.service.ts`](../../libs/platform-native/src/lib/native-push-registration.service.ts),
-[`NotificationService.swift`](../../ios/App/NotificationService/NotificationService.swift) and
-[`TrinityMessagingService.kt`](../../android/app/src/main/kotlin/dev/trinityproject/trinity/push/TrinityMessagingService.kt).
+[`push-handoff.bridge.ts`](../../libs/native/capacitor-push/src/lib/push-handoff.bridge.ts),
+[`NotificationService.swift`](../../ios/App/NotificationService/NotificationService.swift),
+[`PushHandoffPlugin.swift`](../../libs/native/capacitor-push/ios/Sources/PushHandoffPlugin/PushHandoffPlugin.swift) and
+[`TrinityMessagingService.kt`](../../libs/native/capacitor-push/android/src/main/kotlin/dev/trinityproject/trinity/push/TrinityMessagingService.kt).
