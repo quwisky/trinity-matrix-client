@@ -43,6 +43,9 @@ function nativePicker(overrides: Partial<MediaPickerService> = {}) {
   });
 }
 
+/** The ceiling an unknown homeserver limit falls back to off the phone apps (jsdom). */
+const FALLBACK_BYTES = 512 * 1_048_576;
+
 /** What the composer handed the camera as its upload limit, once that has settled. */
 function maxBytesOf(capture: Mock): Promise<number | null> {
   const [options] = capture.mock.calls[0] as unknown as [CaptureOptions];
@@ -94,7 +97,7 @@ describe('MessageComposerComponent — capture', () => {
       saveToGallery: true,
       maxBytes: expect.any(Promise),
     });
-    expect(await maxBytesOf(capturePhoto)).toBeNull();
+    expect(await maxBytesOf(capturePhoto)).toBe(FALLBACK_BYTES);
     expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['photo.jpeg']);
     expect(cmp['attachments'].staged()[0]?.media.hints).toEqual({
       width: 4032,
@@ -114,7 +117,7 @@ describe('MessageComposerComponent — capture', () => {
       saveToGallery: false,
       maxBytes: expect.any(Promise),
     });
-    expect(await maxBytesOf(captureVideo)).toBeNull();
+    expect(await maxBytesOf(captureVideo)).toBe(FALLBACK_BYTES);
   });
 
   it("passes the account's homeserver upload limit to the camera", async () => {
@@ -151,7 +154,7 @@ describe('MessageComposerComponent — capture', () => {
     expect(capturePhoto).toHaveBeenCalledTimes(1);
   });
 
-  it('settles the limit as unknown once the wait, counted from the tap, runs out', async () => {
+  it('falls back to the device ceiling once the wait, counted from the tap, runs out', async () => {
     const capturePhoto = vi.fn(() => of(null));
     const { fixture } = await renderComposer({}, [
       nativePicker({ capturePhoto }),
@@ -165,10 +168,10 @@ describe('MessageComposerComponent — capture', () => {
     const limit = maxBytesOf(capturePhoto);
     vi.advanceTimersByTime(3000);
 
-    expect(await limit).toBeNull();
+    expect(await limit).toBe(FALLBACK_BYTES);
   });
 
-  it('treats a failed limit lookup as unknown and still stages the capture', async () => {
+  it('falls back to the device ceiling on a failed limit lookup and still stages the capture', async () => {
     const capturePhoto = vi.fn(() => of(photo()));
     const { fixture } = await renderComposer({}, [
       nativePicker({ capturePhoto }),
@@ -179,7 +182,7 @@ describe('MessageComposerComponent — capture', () => {
 
     fixture.componentInstance.onTakePhoto();
 
-    expect(await maxBytesOf(capturePhoto)).toBeNull();
+    expect(await maxBytesOf(capturePhoto)).toBe(FALLBACK_BYTES);
     expect(stagedFiles(fixture.componentInstance)).toHaveLength(1);
   });
 
@@ -205,7 +208,7 @@ describe('MessageComposerComponent — capture', () => {
     }
 
     expect(rejections).toEqual([]);
-    expect(await maxBytesOf(capturePhoto)).toBeNull();
+    expect(await maxBytesOf(capturePhoto)).toBe(FALLBACK_BYTES);
   });
 
   it('stages nothing and says nothing when the camera is cancelled', async () => {
