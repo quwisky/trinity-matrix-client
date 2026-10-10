@@ -9,6 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import {
   SYNAPSE_VERSION,
   ensureSynapseVenv,
@@ -216,6 +217,22 @@ describe('native homeserver runtime', () => {
     expect(() => nativeDexConfig('issuer: x\n')).toThrow(
       /no `http: 0.0.0.0:5556`/,
     );
+  });
+
+  it("appends Dex's form-free mock connector only when asked, keeping the password form", () => {
+    const shared = readFileSync(join(import.meta.dirname, 'dex.yaml'), 'utf8');
+    expect(nativeDexConfig(shared)).not.toContain('connectors:');
+    expect(nativeDexConfig(shared, { mock: false })).not.toContain(
+      'connectors:',
+    );
+    const mock = parse(nativeDexConfig(shared, { mock: true })) as {
+      connectors: unknown;
+      oauth2: { passwordConnector: string };
+    };
+    expect(mock.connectors).toEqual([
+      { type: 'mockCallback', id: 'mock', name: 'Mock' },
+    ]);
+    expect(mock.oauth2.passwordConnector).toBe('local');
   });
 
   it('reads the installed Dex version, or null without a dex on PATH', async () => {

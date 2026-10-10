@@ -25,6 +25,10 @@ permissions:
 env:
   TRINITY_E2E_HOMESERVER: synapse
   TRINITY_E2E_HOMESERVER_RUNTIME: native
+  # The SSO spec signs in through Dex's form-free mock connector: the Simulator drops
+  # keystrokes typed into the Safari view. The suite runner starts the homeserver, so the
+  # setting has to be in its environment rather than in run-ios.mts.
+  TRINITY_E2E_SSO_PROVIDER: mock
   CADDY_VERSION: 2.11.4
 
 jobs:

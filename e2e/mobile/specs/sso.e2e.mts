@@ -70,92 +70,27 @@ async function answerDexInCustomTab(
   await browser.pressKeyCode(66);
 }
 
-/**
- * Complete Dex's login form in the SFSafariViewController that Capacitor's Browser opens on
- * iOS. Its page is part of the app's accessibility tree, so XCUITest fills it natively.
- */
-/**
- * What XCUITest sees right now: visible buttons and texts, and any alert. Logged at each
- * step of the Safari-view sign-in, so a CI failure shows where the hand-back stalled.
- */
-async function describeScreen(step: string, started: number): Promise<string> {
-  const source = await browser.getPageSource().catch(() => '');
-  const visible = (kind: string) =>
-    [
-      ...source.matchAll(
-        new RegExp(
-          `<XCUIElementType${kind} [^>]*?label="([^"]+)"[^>]*?visible="true"`,
-          'g',
-        ),
-      ),
-    ].map((match) => match[1]);
-  const alert = await browser.getAlertText().catch(() => null);
-  console.log(
-    `[sso] ${step} +${Date.now() - started}ms buttons=${JSON.stringify(visible('Button').slice(0, 14))} texts=${JSON.stringify(visible('StaticText').slice(0, 8))} alert=${JSON.stringify(alert)}`,
-  );
-  return source;
-}
-
-async function answerDexInSafariView(
-  email: string,
-  pass: string,
-): Promise<void> {
-  const started = Date.now();
-  // Dex's own button first: it proves the Safari view is up, so the fields below are its
-  // and never the app's own sign-in form behind it.
-  const login = $(
-    '-ios predicate string:type == "XCUIElementTypeButton" AND label == "Login"',
-  );
-  await login.waitForExist({
-    timeout: 90_000,
-    timeoutMsg: 'the identity provider login never appeared in the Safari view',
-  });
-  await describeScreen('dex form', started);
-  // By label, not position: on iOS 26 the Safari view's own address bar is a text field too.
-  // addValue, not setValue: the fields start empty, and clearing one took ~50 s on iOS 26.5.
-  const emailField = $(
-    '-ios predicate string:type == "XCUIElementTypeTextField" AND (label CONTAINS[c] "email" OR placeholderValue CONTAINS[c] "email")',
-  );
-  // On iOS 26.5, typing into this element (addValue/setValue) leaves Dex's email field empty,
-  // so the form never submitted. Typing into the focused element with `mobile: keys` lands.
-  await emailField.click();
-  await browser.execute('mobile: keys', { keys: [...email] });
-  await $(
-    '-ios predicate string:type == "XCUIElementTypeSecureTextField" AND label CONTAINS[c] "password"',
-  ).addValue(pass);
-  // The keyboard's own Go key submits Dex's form; its accessory bar can cover the Login
-  // button. A typed "\n" submits on iOS 27 but not on iOS 26.5, where the form stayed put.
-  const go = $(
-    '-ios predicate string:type == "XCUIElementTypeButton" AND (name ==[c] "go" OR name ==[c] "return")',
-  );
-  if (await go.isExisting()) await go.click();
-  else await login.click();
-  await describeScreen('submitted', started);
-  // The app closes the Safari view once the callback arrives; until then its WebView sits
-  // behind it, and reading the app page can stall. Dex's button leaving is not enough (its
-  // page navigates on submit): wait for the Safari view's own chrome to go too.
-  await browser.waitUntil(
-    async () =>
-      !/label="(Login|Page Menu)"/.test(
-        await describeScreen('waiting', started),
-      ),
-    {
-      timeout: 90_000,
-      interval: 3_000,
-      timeoutMsg:
-        'the Safari view never handed back after signing in to the identity provider',
-    },
-  );
-}
-
 describe('mobile SSO sign-in', () => {
   before(function skipWithoutSso(this: Mocha.Context) {
-    if (readSession().homeserver?.sso) return;
-    // Dex is part of the Docker stack, and of the native one when `dex` is on PATH.
-    console.log(
-      `[mobile] skipped: ${this.test?.parent?.fullTitle() ?? 'mobile SSO sign-in'} — the homeserver came up without Dex, so there is no SSO account`,
-    );
-    this.skip();
+    const sso = readSession().homeserver?.sso;
+    const title = this.test?.parent?.fullTitle() ?? 'mobile SSO sign-in';
+    if (!sso) {
+      // Dex is part of the Docker stack, and of the native one when `dex` is on PATH.
+      console.log(
+        `[mobile] skipped: ${title} — the homeserver came up without Dex, so there is no SSO account`,
+      );
+      this.skip();
+    }
+    // XCUITest drops keystrokes typed into the Safari view on the iOS 26.5 Simulator, and
+    // the keyboard's accessory bar covers Dex's Login button, so iOS signs in only through
+    // Dex's form-free mock connector. A homeserver shared with suites that fill Dex's form
+    // (pnpm e2e:all) keeps the form, so the spec has nothing it can drive.
+    if (browser.isIOS && !sso?.mock) {
+      console.log(
+        `[mobile] skipped on ios: ${title} — the homeserver uses Dex's password form; start it with TRINITY_E2E_SSO_PROVIDER=mock`,
+      );
+      this.skip();
+    }
   });
 
   beforeEach(async () => {
@@ -189,11 +124,9 @@ describe('mobile SSO sign-in', () => {
     } else {
       await tap('//button[normalize-space()="Continue"]');
       await tap('//button[normalize-space()="Continue with SSO"]');
+      await native();
+      await answerDexInCustomTab(sso.email, sso.pass);
     }
-
-    await native();
-    if (browser.isIOS) await answerDexInSafariView(sso.email, sso.pass);
-    else await answerDexInCustomTab(sso.email, sso.pass);
 
     // The homeserver redirects to eu.qwky.trinity://sso-callback, which the OS hands to the
     // app (its scene delegate on iOS); the Rooms shell appearing proves the login token was

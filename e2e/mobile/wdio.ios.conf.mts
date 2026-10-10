@@ -13,6 +13,9 @@ const iosCapabilities = {
   // The first session builds WebDriverAgent (~7 min on the hosted runner); CI caches this.
   'appium:derivedDataPath': join(workspaceRoot, 'dist/ios-wda/DerivedData'),
   'appium:wdaLaunchTimeout': 600_000,
+  // The runner boots the Simulator without its window; Appium's first session restarts it
+  // with the window shown, which took over the default 120 s on a cold hosted runner.
+  'appium:simulatorStartupTimeout': 300_000,
   'appium:wdaConnectionTimeout': 600_000,
   'appium:showXcodeLog': true,
   // Web Inspector lists the Capacitor app by process name (process-App), not bundle id.
