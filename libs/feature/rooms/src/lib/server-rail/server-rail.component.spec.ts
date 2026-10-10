@@ -271,7 +271,7 @@ describe('ServerRailComponent', () => {
     ]);
   });
 
-  it('puts the mention badge bottom-right of a single-account space', async () => {
+  it('puts the mention badge top-right of a single-account space', async () => {
     const { container } = await render(ServerRailComponent, {
       inputs: {
         spaces: [space({ id: '!s:hs' })],
@@ -280,11 +280,10 @@ describe('ServerRailComponent', () => {
     });
     const badge = container.querySelector('[trnBadge]')!;
     expect(badge.getAttribute('data-variant')).toBe('danger');
-    expect(badge.classList.contains('badge--bottom')).toBe(true);
-    expect(badge.classList.contains('badge--top')).toBe(false);
+    expect(badge.classList.contains('rail-count')).toBe(true);
   });
 
-  it('moves the mention badge top-right beside an account badge', async () => {
+  it('keeps the mention badge top-right beside an account badge', async () => {
     const { container } = await render(ServerRailComponent, {
       inputs: {
         spaces: [space({ id: '!s:hs', accountId: '@me:hs' })],
@@ -295,8 +294,7 @@ describe('ServerRailComponent', () => {
       },
     });
     const badge = container.querySelector('[trnBadge]')!;
-    expect(badge.classList.contains('badge--top')).toBe(true);
-    expect(badge.classList.contains('badge--bottom')).toBe(false);
+    expect(badge.classList.contains('rail-count')).toBe(true);
     expect(
       container.querySelector('[data-testid="account-badge"]'),
     ).toBeTruthy();

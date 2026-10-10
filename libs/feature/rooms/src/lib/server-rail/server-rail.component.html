@@ -23,7 +23,7 @@
       </button>
       <ng-container
         [ngTemplateOutlet]="mention"
-        [ngTemplateOutletContext]="{ $implicit: unread().recent, top: false }"
+        [ngTemplateOutletContext]="{ $implicit: unread().recent }"
       />
     </div>
 
@@ -48,7 +48,7 @@
       </button>
       <ng-container
         [ngTemplateOutlet]="mention"
-        [ngTemplateOutletContext]="{ $implicit: unread().home, top: false }"
+        [ngTemplateOutletContext]="{ $implicit: unread().home }"
       />
     </div>
 
@@ -75,7 +75,7 @@
       </button>
       <ng-container
         [ngTemplateOutlet]="mention"
-        [ngTemplateOutletContext]="{ $implicit: unread().rooms, top: false }"
+        [ngTemplateOutletContext]="{ $implicit: unread().rooms }"
       />
     </div>
   </div>
@@ -119,17 +119,14 @@
                 trnBadge
                 variant="danger"
                 size="xs"
-                [class.badge--top]="!!chat.accountBadge"
-                [class.badge--bottom]="!chat.accountBadge"
+                class="rail-count"
                 aria-hidden="true"
                 data-testid="rail-unread-count"
                 >{{ count }}</span
               >
             } @else {
               <span
-                class="unread-dot"
-                [class.badge--top]="!!chat.accountBadge"
-                [class.badge--bottom]="!chat.accountBadge"
+                class="unread-dot rail-count"
                 aria-hidden="true"
                 data-testid="rail-unread-dot"
               ></span>
@@ -206,10 +203,7 @@
         </button>
         <ng-container
           [ngTemplateOutlet]="mention"
-          [ngTemplateOutletContext]="{
-            $implicit: counts,
-            top: !!badgeFor(space.accountId),
-          }"
+          [ngTemplateOutletContext]="{ $implicit: counts }"
         />
       </div>
     }
@@ -230,15 +224,14 @@
   </div>
 </nav>
 
-<!-- Mention count: bottom-right of the icon, or top-right when an account badge holds the bottom. -->
-<ng-template #mention let-counts let-top="top">
+<!-- Mention count: always top-right of the icon; an account badge holds the bottom. -->
+<ng-template #mention let-counts>
   @if (mentionLabel(counts); as label) {
     <span
       trnBadge
       variant="danger"
       size="xs"
-      [class.badge--top]="top"
-      [class.badge--bottom]="!top"
+      class="rail-count"
       aria-hidden="true"
       >{{ label }}</span
     >

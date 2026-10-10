@@ -101,22 +101,15 @@
     height: var(--trinity-rail-indicator-selected);
   }
 
-  // Mention badge: bottom-right of the icon, or top-right when an account badge holds the
-  // bottom. The rail-coloured ring lifts it off the icon; clicks fall through to the pill.
-  .badge--top,
-  .badge--bottom {
+  // Unread count (or dot): always top-right of the icon, so it sits in the same place on
+  // every pill; an account badge holds the bottom. The rail-coloured ring lifts it off the
+  // icon; clicks fall through to the pill.
+  .rail-count {
     position: absolute;
+    top: -2px;
     right: 8px;
     box-shadow: 0 0 0 2px var(--trinity-surface-app);
     pointer-events: none;
-  }
-
-  .badge--top {
-    top: -2px;
-  }
-
-  .badge--bottom {
-    bottom: -2px;
   }
 
   .pill {
