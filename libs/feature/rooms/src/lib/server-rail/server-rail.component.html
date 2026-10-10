@@ -136,21 +136,41 @@
         @if (chats.overflow > 0) {
           <div class="item">
             <span class="indicator"></span>
-            <button
-              trnBtn
-              presentation="ghost"
-              variant="secondary"
-              class="pill overflow size-12"
-              (click)="showRecent.emit()"
-              [attr.aria-label]="overflowLabel(chats.overflow)"
-              [trnTooltip]="overflowLabel(chats.overflow)"
-              position="right"
-              data-testid="rail-unread-overflow"
-            >
-              <span class="overflow-text">{{
-                overflowText(chats.overflow)
-              }}</span>
-            </button>
+            @if (overflowInSheet()) {
+              <button
+                trnBtn
+                presentation="ghost"
+                variant="secondary"
+                class="pill overflow size-12"
+                aria-haspopup="dialog"
+                [attr.aria-expanded]="overflowSheetOpen()"
+                (click)="openOverflowSheet()"
+                [attr.aria-label]="overflowLabel(chats.overflow)"
+                data-testid="rail-unread-overflow"
+              >
+                <span class="overflow-text">{{
+                  overflowText(chats.overflow)
+                }}</span>
+              </button>
+            } @else {
+              <button
+                trnBtn
+                presentation="ghost"
+                variant="secondary"
+                class="pill overflow size-12"
+                [trnDropdownMenuTrigger]="overflowMenu"
+                side="right"
+                align="end"
+                [attr.aria-label]="overflowLabel(chats.overflow)"
+                [trnTooltip]="overflowLabel(chats.overflow)"
+                position="right"
+                data-testid="rail-unread-overflow"
+              >
+                <span class="overflow-text">{{
+                  overflowText(chats.overflow)
+                }}</span>
+              </button>
+            }
           </div>
         }
       </div>
@@ -236,4 +256,39 @@
       >{{ label }}</span
     >
   }
+</ng-template>
+
+<!-- "+N" beside the rail: the chats it holds, every account's, newest first. The CDK menu
+     gives the arrow keys, Enter/Space, and Escape back to "+N". -->
+<ng-template #overflowMenu>
+  @let more = overflowEntries();
+  <div
+    trnDropdownMenu
+    class="max-h-[min(32rem,calc(100dvh-var(--trinity-title-row-inset,0px)-1rem))] w-80 overflow-y-auto"
+    [attr.aria-label]="overflowLabel(more.length)"
+    data-testid="rail-overflow-list"
+  >
+    <div trnDropdownMenuLabel>{{ overflowLabel(more.length) }}</div>
+    @for (chat of more; track chat.key) {
+      <button
+        trnDropdownMenuItem
+        type="button"
+        [attr.aria-label]="chat.label"
+        data-testid="rail-overflow-chat"
+        (triggered)="openUnreadChat.emit(chat.selection)"
+      >
+        <trn-rail-unread-overflow-row [chat]="chat" />
+      </button>
+    }
+    <div trnDropdownMenuSeparator></div>
+    <button
+      trnDropdownMenuItem
+      type="button"
+      class="text-[var(--trinity-link)]"
+      data-testid="rail-overflow-show-recent"
+      (triggered)="showRecent.emit()"
+    >
+      Show all in Recent activity
+    </button>
+  </div>
 </ng-template>

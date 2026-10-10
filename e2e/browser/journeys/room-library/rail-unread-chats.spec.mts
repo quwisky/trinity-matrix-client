@@ -5,7 +5,7 @@ import {
   type APIRequestContext,
   type Page,
 } from '../../../fixtures.mts';
-import { login, waitForRooms } from '../../../support/app.mts';
+import { login } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
   closeSettings,
@@ -387,14 +387,14 @@ test.describe('Space rail unread chats', () => {
     await expect(railEntries(page)).toHaveCount(5, { timeout: 30_000 });
     await expect(overflowEntry(page)).toHaveText('+2');
     await expect(overflowEntry(page)).toHaveAccessibleName(
-      '2 more unread chats in Recent activity',
+      '2 more unread chats',
     );
     for (const entry of await railEntryNames(page)) {
       expect(entry).toMatch(/^Unread \d\d .* · 1 unread$/);
     }
 
-    // "+2" is a way to the rest: it shows Recent activity. Recent is the default view, so
-    // step away to Rooms first to see the change.
+    // "+2" lists the other two beside the rail, newest first. Recent is the default view, so
+    // step away to Rooms first to see "Show all in Recent activity" change it.
     await page.getByTestId('rail-rooms').click();
     await expect(page.getByTestId('rail-rooms')).toHaveAttribute(
       'aria-current',
@@ -405,14 +405,68 @@ test.describe('Space rail unread chats', () => {
       'true',
     );
     await overflowEntry(page).click();
+    const overflowMenu = page.getByRole('menu', {
+      name: '2 more unread chats',
+    });
+    await expect(overflowMenu).toBeVisible();
+    await expect(overflowEntry(page)).toHaveAttribute('aria-expanded', 'true');
+    const overflowRows = overflowMenu.getByTestId('rail-overflow-chat');
+    await expect(overflowRows).toHaveCount(2);
+    await expect(overflowRows.nth(0)).toHaveAccessibleName(
+      `${seeded.rooms[1]} · 1 unread`,
+    );
+    await expect(overflowRows.nth(1)).toHaveAccessibleName(
+      `${seeded.rooms[0]} · 1 unread`,
+    );
+
+    // Escape closes it and gives focus back to "+2"; Enter opens it again from there.
+    await page.keyboard.press('Escape');
+    await expect(overflowMenu).toHaveCount(0);
+    await expect(overflowEntry(page)).toBeFocused();
+    await expect(overflowEntry(page)).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press('Enter');
+    await expect(overflowRows.first()).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(overflowRows.nth(1)).toBeFocused();
+
+    // "Show all in Recent activity" is still the way to the rest of Recent.
+    await overflowMenu
+      .getByRole('menuitem', { name: 'Show all in Recent activity' })
+      .click();
+    await expect(overflowMenu).toHaveCount(0);
     await expect(page.getByTestId('rail-recent')).toHaveAttribute(
       'aria-current',
       'true',
     );
 
-    // All: every chat, and nothing left over for "+N".
+    // A row opens its chat on its account, and the open chat leaves the list: "+2" becomes
+    // "+1", holding only the older chat.
+    await overflowEntry(page).click();
+    await expect(overflowMenu).toBeVisible();
+    await overflowRows.filter({ hasText: seeded.rooms[1] }).click();
+    await expect(overflowMenu).toHaveCount(0);
+    await expect(page.locator('.userbar__handle')).toContainText(
+      `@${seeded.user}:`,
+    );
+    await expect(
+      page.locator('trn-channel-sidebar .channel.channel--selected', {
+        hasText: seeded.rooms[1],
+      }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(overflowEntry(page)).toHaveText('+1');
+    await overflowEntry(page).click();
+    const oneMoreMenu = page.getByRole('menu', { name: '1 more unread chat' });
+    await expect(oneMoreMenu).toBeVisible();
+    await expect(oneMoreMenu.getByTestId('rail-overflow-chat')).toHaveCount(1);
+    await expect(
+      oneMoreMenu.getByTestId('rail-overflow-chat').first(),
+    ).toHaveAccessibleName(`${seeded.rooms[0]} · 1 unread`);
+    await page.keyboard.press('Escape');
+    await expect(oneMoreMenu).toHaveCount(0);
+
+    // All: every chat but the open one, and nothing left over for "+N".
     await chooseRailUnreadChats(page, 'all');
-    await expect(railEntries(page)).toHaveCount(7);
+    await expect(railEntries(page)).toHaveCount(6);
     await expect(overflowEntry(page)).toHaveCount(0);
 
     // Off: the section goes altogether.
@@ -436,9 +490,15 @@ test.describe('Space rail unread chats', () => {
     };
     expect(exported.settings?.spaceRail).toEqual({ unreadChats: 'off' });
 
-    // The choice is saved on this device: it survives a reload.
+    // The choice is saved on this device: it survives a reload. The chat opened from "+N"
+    // is still open, so the app comes back on that room's route rather than bare /rooms.
     await page.reload();
-    await waitForRooms(page);
+    await page.waitForURL(
+      (url) =>
+        url.pathname.startsWith('/rooms/') &&
+        (url.searchParams.get('account')?.length ?? 0) > 0,
+      { timeout: 30_000 },
+    );
     await expect(page.getByTestId('rail-rooms')).toBeVisible({
       timeout: 30_000,
     });

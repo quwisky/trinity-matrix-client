@@ -273,13 +273,19 @@ describe('migrated application design-system consumers', () => {
       );
     }
 
-    // The account picker is the one room-navigation dialog; it builds on the shared shell.
+    // The account picker and the rail's "+N" sheet are the room-navigation dialogs; both
+    // build on the shared shell.
     const roomNavigationShells = tagsFrom(
       roomNavigationTemplates,
       /<trn-dialog-shell\b[^>]*>/gu,
     );
-    expect(roomNavigationShells).toHaveLength(1);
-    expect(roomNavigationShells[0]?.[1]).toMatch(/\bsize="sm"/u);
+    expect(roomNavigationShells.map(([file]) => file).sort()).toEqual([
+      'libs/feature/rooms/src/lib/account-picker/account-picker.component.html',
+      'libs/feature/rooms/src/lib/server-rail/rail-unread-overflow-sheet/rail-unread-overflow-sheet.component.html',
+    ]);
+    for (const [file, tag] of roomNavigationShells) {
+      expect(tag, file).toMatch(/\bsize="sm"/u);
+    }
     expect(
       tagsFrom(roomNavigationTemplates, /<[^>]*\btrnOverlaySurface\b[^>]*>/gu),
     ).toHaveLength(0);

@@ -384,6 +384,7 @@ const UNREAD_CHAT: RailUnreadChat = {
   countLabel: '3',
   accountBadge: null,
   label: 'Team · 3 unread',
+  activityTs: 0,
 };
 
 describe('RoomsPage rail unread chat focus', () => {
@@ -398,7 +399,11 @@ describe('RoomsPage rail unread chat focus', () => {
       realRail: true,
       routing: { onSelectRoomSelection },
     });
-    vm.railUnreadChats.set({ entries: [UNREAD_CHAT], overflow: 0 });
+    vm.railUnreadChats.set({
+      entries: [UNREAD_CHAT],
+      overflow: 0,
+      overflowEntries: [],
+    });
     fixture.detectChanges();
     const host = fixture.nativeElement as HTMLElement;
     const entry = host.querySelector<HTMLElement>(
@@ -441,7 +446,11 @@ describe('RoomsPage rail unread chat focus', () => {
         },
       },
     });
-    vm.railUnreadChats.set({ entries: [UNREAD_CHAT], overflow: 0 });
+    vm.railUnreadChats.set({
+      entries: [UNREAD_CHAT],
+      overflow: 0,
+      overflowEntries: [],
+    });
     fixture.detectChanges();
     const host = fixture.nativeElement as HTMLElement;
     host

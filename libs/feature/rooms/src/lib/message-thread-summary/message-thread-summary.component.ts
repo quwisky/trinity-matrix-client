@@ -10,8 +10,8 @@ import { map, shareReplay, timer } from 'rxjs';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnBadge } from '@trinity/components/generic-content';
 import { type ThreadSummary } from '@trinity/data-access/timeline';
+import { relativeTimeLabel } from '../shared/relative-time';
 
-const relativeTime = new Intl.RelativeTimeFormat('en', { style: 'short' });
 // All mounted previews share a minute tick; the last unmount releases the timer.
 const clock = timer(60_000, 60_000).pipe(
   map(() => Date.now()),
@@ -34,13 +34,7 @@ export class MessageThreadSummaryComponent {
 
   readonly relativeReplyTime = computed(() => {
     const timestamp = this.summary().latestReplyTs;
-    if (!timestamp) return null;
-    const minutes = Math.floor(Math.max(0, this.now() - timestamp) / 60_000);
-    if (minutes === 0) return 'just now';
-    if (minutes < 60) return relativeTime.format(-minutes, 'minute');
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return relativeTime.format(-hours, 'hour');
-    return relativeTime.format(-Math.floor(hours / 24), 'day');
+    return timestamp ? relativeTimeLabel(timestamp, this.now()) : null;
   });
 
   readonly label = computed(() => {

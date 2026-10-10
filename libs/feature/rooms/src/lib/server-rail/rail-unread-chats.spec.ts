@@ -39,6 +39,7 @@ describe('buildRailUnreadChats', () => {
     expect(build({ mode: 'off', rooms: [chat('!a:hs')] })).toEqual({
       entries: [],
       overflow: 0,
+      overflowEntries: [],
     });
   });
 
@@ -99,9 +100,86 @@ describe('buildRailUnreadChats', () => {
     expect(build({ rooms: rooms.slice(0, 5) }).overflow).toBe(0);
   });
 
+  it('lists the chats beyond the cap newest first, for the "+N" list', () => {
+    const rooms = Array.from({ length: 8 }, (_, i) =>
+      chat(`!${i}:hs`, { activityTs: i }),
+    );
+    const r = build({ rooms });
+    expect(r.overflowEntries.map((e) => e.key)).toEqual(
+      [2, 1, 0].map((i) => `@me:hs\u0000!${i}:hs`),
+    );
+    expect(r.overflow).toBe(r.overflowEntries.length);
+    expect(build({ rooms: rooms.slice(0, 5) }).overflowEntries).toEqual([]);
+  });
+
+  it('builds the overflow entries like the rail entries, across accounts', () => {
+    const rooms = [
+      ...Array.from({ length: 5 }, (_, i) =>
+        chat(`!${i}:hs`, { activityTs: 10 + i }),
+      ),
+      chat('!dm:hs', {
+        accountId: '@ben:hs',
+        name: 'Alex',
+        direct: true,
+        unreadCount: 4,
+        activityTs: 5,
+      }),
+      chat('!m:hs', {
+        name: 'Planning',
+        unreadCount: 0,
+        markedUnread: true,
+        activityTs: 3,
+      }),
+    ];
+    expect(build({ rooms }).overflowEntries).toEqual([
+      {
+        key: '@ben:hs\u0000!dm:hs',
+        selection: { accountId: '@ben:hs', roomId: '!dm:hs' },
+        name: 'Alex',
+        initial: 'C',
+        avatarMxc: null,
+        direct: true,
+        countLabel: '4',
+        accountBadge: ben,
+        label: 'Alex · 4 unread · Ben',
+        activityTs: 5,
+      },
+      {
+        key: '@me:hs\u0000!m:hs',
+        selection: { accountId: '@me:hs', roomId: '!m:hs' },
+        name: 'Planning',
+        initial: 'C',
+        avatarMxc: null,
+        direct: false,
+        countLabel: null,
+        accountBadge: null,
+        label: 'Planning · marked unread',
+        activityTs: 3,
+      },
+    ]);
+  });
+
+  it('never puts the open chat in the overflow list', () => {
+    const rooms = Array.from({ length: 7 }, (_, i) =>
+      chat(`!${i}:hs`, { activityTs: i }),
+    );
+    const r = build({ rooms, open: { accountId: '@me:hs', roomId: '!0:hs' } });
+    expect(r.overflowEntries.map((e) => e.key)).toEqual(['@me:hs\u0000!1:hs']);
+  });
+
+  it("carries each chat's last activity", () => {
+    expect(
+      build({ rooms: [chat('!a:hs', { activityTs: 42 })] }).entries[0]
+        .activityTs,
+    ).toBe(42);
+  });
+
   it('lists every chat with All', () => {
     const rooms = Array.from({ length: 7 }, (_, i) => chat(`!${i}:hs`));
-    expect(build({ mode: 'all', rooms })).toMatchObject({ overflow: 0 });
+    expect(build({ mode: 'all', rooms })).toMatchObject({
+      overflow: 0,
+      overflowEntries: [],
+    });
     expect(build({ mode: 'all', rooms }).entries).toHaveLength(7);
   });
 
