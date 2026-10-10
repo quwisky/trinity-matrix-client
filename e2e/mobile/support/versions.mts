@@ -46,6 +46,8 @@ export function isAppNotYetKnown(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return (
     message.includes('is unknown to FrontBoard') ||
+    // iOS 26.5 can wrap the same race as InvalidRequest over a NotFound application lookup.
+    message.includes('(FBSApplicationLibrary) returned nil') ||
     (message.includes('FBSOpenApplicationServiceErrorDomain') &&
       message.includes('RequestDenied'))
   );

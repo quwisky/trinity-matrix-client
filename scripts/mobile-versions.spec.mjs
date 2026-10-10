@@ -76,6 +76,21 @@ describe('iOS launch race classifier', () => {
         ),
       ),
     ).toBe(true);
+    // The iOS 26.5 nightly on 2026-10-10 reported the same just-installed race this way.
+    expect(
+      isAppNotYetKnown(
+        new Error(
+          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=4 "The request to open "eu.qwky.trinity" failed." UserInfo={BSErrorCodeDescription=InvalidRequest, NSUnderlyingError=0x1 {Error Domain=FBSOpenApplicationErrorDomain Code=4 "Application info provider (FBSApplicationLibrary) returned nil for "eu.qwky.trinity"" UserInfo={BSErrorCodeDescription=NotFound}}}',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isAppNotYetKnown(
+        new Error(
+          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=4 "The request to open "eu.qwky.trinity" failed." UserInfo={BSErrorCodeDescription=InvalidRequest}',
+        ),
+      ),
+    ).toBe(false);
     expect(isAppNotYetKnown(new Error('RequestDenied by the proxy'))).toBe(
       false,
     );
