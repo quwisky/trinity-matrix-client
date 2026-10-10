@@ -43,6 +43,36 @@ async function openInsertSheet(): Promise<void> {
   await expect($(SHEET)).toBeDisplayed({ wait: 10_000 });
 }
 
+type CaptureOutcome = 'photo' | 'no-camera' | 'none';
+
+/**
+ * Poll the WebView for what a capture left behind: a staged photo, or the "no camera" toast
+ * (a sonner `[data-sonner-toast]` whose text sits in nested spans). 'none' when neither
+ * shows within `timeout`.
+ */
+async function captureOutcome(timeout: number): Promise<CaptureOutcome> {
+  const read = (): Promise<CaptureOutcome> =>
+    browser.execute((): CaptureOutcome => {
+      if (document.querySelector('[data-testid="composer-pending"] img')) {
+        return 'photo';
+      }
+      const toasts = [...document.querySelectorAll('[data-sonner-toast]')];
+      return toasts.some((toast) =>
+        toast.textContent?.includes('This device has no camera'),
+      )
+        ? 'no-camera'
+        : 'none';
+    });
+  let outcome: CaptureOutcome = 'none';
+  await browser
+    .waitUntil(async () => (outcome = await read()) !== 'none', {
+      timeout,
+      interval: 200,
+    })
+    .catch(() => undefined);
+  return outcome;
+}
+
 describe('mobile camera capture', () => {
   beforeEach(resetApp);
 
@@ -73,32 +103,34 @@ describe('mobile camera capture', () => {
     await openInsertSheet();
     await press(`${SHEET} [data-testid="insert-take-photo"]`);
 
-    // Where the Simulator offers a camera, press its shutter and accept the shot.
-    await native();
-    const shutter = $('~PhotoCapture');
-    const hasCamera = await shutter.waitForDisplayed({ timeout: 15_000 }).then(
-      () => true,
-      () => false,
-    );
-    if (hasCamera) {
-      await shutter.click();
-      const usePhoto = $('~Use Photo');
-      await usePhoto.waitForDisplayed({ timeout: 15_000 });
-      await usePhoto.click();
+    // The Simulator has no camera, so the composer answers within a moment with a toast that
+    // lives only 4 s: look for the fast outcomes before leaving the WebView for the camera UI.
+    let outcome = await captureOutcome(8_000);
+    if (outcome === 'none') {
+      // Where the Simulator offers a camera, press its shutter and accept the shot.
+      await native();
+      const shutter = $('~PhotoCapture');
+      const hasCamera = await shutter
+        .waitForDisplayed({ timeout: 15_000 })
+        .then(
+          () => true,
+          () => false,
+        );
+      if (hasCamera) {
+        await shutter.click();
+        const usePhoto = $('~Use Photo');
+        await usePhoto.waitForDisplayed({ timeout: 15_000 });
+        await usePhoto.click();
+      }
+      await webview();
+      outcome = await captureOutcome(30_000);
     }
-    await webview();
-
-    const pending = $('[data-testid="composer-pending"]');
-    const noCamera = $('//*[contains(text(),"This device has no camera")]');
-    await browser.waitUntil(
-      async () => (await pending.isExisting()) || (await noCamera.isExisting()),
-      {
-        timeout: 30_000,
-        timeoutMsg:
-          'Take photo neither staged a photo nor reported a missing camera',
-      },
-    );
-    if (!(await pending.isExisting())) {
+    if (outcome === 'none') {
+      throw new Error(
+        'Take photo neither staged a photo nor reported a missing camera',
+      );
+    }
+    if (outcome === 'no-camera') {
       console.log('[mobile] skipped: this Simulator reports no camera');
       this.skip();
     }
