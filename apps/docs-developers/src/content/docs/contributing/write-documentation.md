@@ -20,6 +20,15 @@ Do not publish maintainer procedures, credentials, agent instructions, temporary
 
 Use a stable slug, one unique `canonicalTopic`, the correct audience and channel metadata, and explicit heading IDs. Link to one canonical explanation instead of copying it into several pages. Keep commands separate from claims about what their successful result proves.
 
+Do not copy a version from a manifest into a developer page. Write a version reference in inline code instead; the site build replaces it with the declared version, so a dependency update needs no docs edit:
+
+```md
+| Nx | `version:nx` |
+| Electron | `version:electron/electron` |
+```
+
+A bare package name reads the root `package.json` dependencies or devDependencies, `electron/` reads `electron/package.json`, and `engines.node` and `packageManager` read those root fields.
+
 ## Validate both source and output {#validate-docs}
 
 ```bash
