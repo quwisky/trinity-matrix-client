@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Local plugins must register before super.onCreate() builds the bridge.
         registerPlugin(AppSettingsPlugin.class);
+        registerPlugin(PushHandoffPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

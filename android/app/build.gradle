@@ -42,6 +42,9 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // TrinityMessagingService extends the push plugin's FirebaseMessagingService subclass;
+    // the plugin declares Firebase as `implementation`, so the app names it itself.
+    implementation "com.google.firebase:firebase-messaging:$firebaseMessagingVersion"
     testImplementation "junit:junit:$junitVersion"
     // org.json is an Android framework API; JVM unit tests need a real implementation.
     testImplementation "org.json:json:$orgJsonVersion"
