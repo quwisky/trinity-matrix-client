@@ -93,7 +93,10 @@ function setup() {
   };
 }
 
-afterEach(() => TestBed.resetTestingModule());
+afterEach(() => {
+  vi.restoreAllMocks();
+  TestBed.resetTestingModule();
+});
 
 describe('MediaPipeline', () => {
   it('keeps a transfer cold, encrypts for the exact Room, streams progress, and accepts its local echo', async () => {
