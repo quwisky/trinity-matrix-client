@@ -38,7 +38,7 @@ const KEY = 'trinity.push.gateway';
 const NOTIFY = 'https://push.example.org/_matrix/push/v1/notify';
 const ENV: PushConfig = {
   gatewayUrl: 'https://built-in.example/_matrix/push/v1/notify',
-  appId: 'eu.qwky.trinity',
+  appId: 'dev.trinityproject.trinity',
 };
 
 /**
@@ -206,14 +206,14 @@ describe('PushGatewayService', () => {
       // left the first pusher forwarding room/event metadata to the old gateway forever.
       const svc = setup(ENV);
       await svc.init();
-      await svc.markApplied('eu.qwky.trinity');
+      await svc.markApplied('dev.trinityproject.trinity');
 
-      expect(svc.appliedAppId()).toBe('eu.qwky.trinity');
+      expect(svc.appliedAppId()).toBe('dev.trinityproject.trinity');
       expect(svc.override()).toBeNull(); // and it did not invent an override
 
       const reloaded = setup(ENV);
       await reloaded.init();
-      expect(reloaded.appliedAppId()).toBe('eu.qwky.trinity');
+      expect(reloaded.appliedAppId()).toBe('dev.trinityproject.trinity');
     });
 
     it('survives clear(), which does not delete the pushers it names', async () => {

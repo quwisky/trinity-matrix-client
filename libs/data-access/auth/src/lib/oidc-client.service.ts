@@ -23,7 +23,7 @@ import type { OidcSessionBinding } from '@trinity/util/matrix';
 /** How this client identifies itself to an OIDC provider during dynamic registration. */
 const CLIENT_NAME = 'Trinity';
 /** Stable https identifier for the app (dynamic-registration `client_uri`). */
-const CLIENT_URI = 'https://trinity.qwky.eu';
+const CLIENT_URI = 'https://trinity.trinityproject.dev';
 /**
  * Preferences key prefix for the dynamic-registration client id, cached per homeserver
  * and issuer ({@link clientIdKey}).
@@ -32,9 +32,11 @@ const CLIENT_URI = 'https://trinity.qwky.eu';
  * rejects the authorization with a redirect mismatch, which is NOT the `invalid_client`
  * that {@link OidcClientService.forgetClientId} recovers from). Bump on any change to
  * the registered metadata to force a clean re-registration. v3 added the homeserver to
- * the key; ids cached under v2 (issuer only) are ignored and re-registered.
+ * the key; ids cached under v2 (issuer only) are ignored and re-registered. v4: the
+ * dev.trinityproject identity move changed redirect_uri and client_uri, so ids cached
+ * under v3 (registered for the old eu.qwky redirect) are ignored and re-registered.
  */
-const CLIENT_ID_KEY_PREFIX = 'oidc.clientId.v3:';
+const CLIENT_ID_KEY_PREFIX = 'oidc.clientId.v4:';
 /** Shown when the callback or the homeserver names a provider other than the one signed in with. */
 const PROVIDER_MISMATCH =
   "Sign-in could not be completed with this server's sign-in provider. Try again.";

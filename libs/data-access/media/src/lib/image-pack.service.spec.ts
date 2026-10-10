@@ -8,6 +8,7 @@ import {
   ImagePackService,
   LEGACY_IMAGE_PACK_EVENT_TYPE,
   LEGACY_IMAGE_PACK_ROOMS_EVENT_TYPE,
+  LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE,
   TRINITY_IMAGE_PACK_ENABLED_USAGE,
   isValidMxcUri,
   readImagePacks,
@@ -153,6 +154,63 @@ describe('ImagePackService', () => {
         rooms: {
           '!current:hs': {
             mixed: { [TRINITY_IMAGE_PACK_ENABLED_USAGE]: ['emoticon'] },
+          },
+        },
+      }),
+    );
+    roomEvents.set('!current:hs', [
+      event(IMAGE_PACK_EVENT_TYPE, 'mixed', pack('Mixed'), '!current:hs'),
+    ]);
+    rebuildRoom('!current:hs');
+
+    const packs = readImagePacks(client as never, '!current:hs');
+
+    expect(packs).toHaveLength(1);
+    expect(packs[0].scope).toEqual({
+      emoticon: 'account',
+      sticker: 'room',
+    });
+    expect(packs[0].images[0].usage).toEqual(['emoticon', 'sticker']);
+  });
+
+  it('reads the retired enabled-usage key while only it exists', () => {
+    const { client, account, roomEvents, rebuildRoom } = setup();
+    account.set(
+      IMAGE_PACK_ROOMS_EVENT_TYPE,
+      event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
+        rooms: {
+          '!current:hs': {
+            mixed: { [LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE]: ['emoticon'] },
+          },
+        },
+      }),
+    );
+    roomEvents.set('!current:hs', [
+      event(IMAGE_PACK_EVENT_TYPE, 'mixed', pack('Mixed'), '!current:hs'),
+    ]);
+    rebuildRoom('!current:hs');
+
+    const packs = readImagePacks(client as never, '!current:hs');
+
+    expect(packs).toHaveLength(1);
+    expect(packs[0].scope).toEqual({
+      emoticon: 'account',
+      sticker: 'room',
+    });
+    expect(packs[0].images[0].usage).toEqual(['emoticon', 'sticker']);
+  });
+
+  it('prefers the new enabled-usage key over the retired one', () => {
+    const { client, account, roomEvents, rebuildRoom } = setup();
+    account.set(
+      IMAGE_PACK_ROOMS_EVENT_TYPE,
+      event(IMAGE_PACK_ROOMS_EVENT_TYPE, '', {
+        rooms: {
+          '!current:hs': {
+            mixed: {
+              [TRINITY_IMAGE_PACK_ENABLED_USAGE]: ['emoticon'],
+              [LEGACY_TRINITY_IMAGE_PACK_ENABLED_USAGE]: ['sticker'],
+            },
           },
         },
       }),

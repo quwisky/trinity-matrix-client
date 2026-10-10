@@ -15,14 +15,14 @@ import {
 } from './deep-link';
 
 describe('deepLinkFromArgv', () => {
-  it('finds the eu.qwky.trinity URL among process args', () => {
+  it('finds the dev.trinityproject.trinity URL among process args', () => {
     expect(
       deepLinkFromArgv([
         'electron',
         '.',
-        'eu.qwky.trinity://sso-callback?loginToken=abc',
+        'dev.trinityproject.trinity://sso-callback?loginToken=abc',
       ]),
-    ).toBe('eu.qwky.trinity://sso-callback?loginToken=abc');
+    ).toBe('dev.trinityproject.trinity://sso-callback?loginToken=abc');
   });
 
   // The OIDC callback uses the RFC 8252 §7.1 single-slash form (no authority);
@@ -32,9 +32,9 @@ describe('deepLinkFromArgv', () => {
       deepLinkFromArgv([
         'electron',
         '.',
-        'eu.qwky.trinity:/sso-callback?code=abc',
+        'dev.trinityproject.trinity:/sso-callback?code=abc',
       ]),
-    ).toBe('eu.qwky.trinity:/sso-callback?code=abc');
+    ).toBe('dev.trinityproject.trinity:/sso-callback?code=abc');
   });
 
   it('returns undefined when no deep link is present', () => {
@@ -54,19 +54,20 @@ describe('deliverDeepLink', () => {
     });
   });
 
-  it('forwards a valid eu.qwky.trinity deep link to the renderer', () => {
-    const url = 'eu.qwky.trinity://sso-callback?loginToken=abc&sso_state=xyz';
+  it('forwards a valid dev.trinityproject.trinity deep link to the renderer', () => {
+    const url =
+      'dev.trinityproject.trinity://sso-callback?loginToken=abc&sso_state=xyz';
     deliverDeepLink(url);
     expect(send).toHaveBeenCalledWith(DEEP_LINK_CHANNEL, url);
   });
 
   it('forwards the RFC 8252 single-slash OIDC callback to the renderer', () => {
-    const url = 'eu.qwky.trinity:/sso-callback?code=abc&state=xyz';
+    const url = 'dev.trinityproject.trinity:/sso-callback?code=abc&state=xyz';
     deliverDeepLink(url);
     expect(send).toHaveBeenCalledWith(DEEP_LINK_CHANNEL, url);
   });
 
-  it('ignores anything that is not the eu.qwky.trinity scheme', () => {
+  it('ignores anything that is not the dev.trinityproject.trinity scheme', () => {
     deliverDeepLink('https://evil.example/sso-callback');
     deliverDeepLink('javascript:alert(1)');
     deliverDeepLink('file:///etc/passwd');

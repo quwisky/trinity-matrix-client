@@ -47,7 +47,7 @@ const HOMESERVER = 'https://hs.example';
 const REDIRECT_URI = 'https://app/sso-callback';
 const CLIENT_ID = 'client-123';
 /** Where the dynamic-registration client id is cached (prefix + homeserver + issuer). */
-const CLIENT_ID_KEY = 'oidc.clientId.v3:https://hs.example https://op.example';
+const CLIENT_ID_KEY = 'oidc.clientId.v4:https://hs.example https://op.example';
 
 const PARAMS: OidcAuthorizationParams = {
   baseUrl: HOMESERVER,
@@ -213,7 +213,7 @@ describe('OidcClientService', () => {
       // camelCase wrapper (applicationType / redirectUris).
       expect(jsonBody(fetchMock.mock.calls[0][1])).toMatchObject({
         client_name: 'Trinity',
-        client_uri: 'https://trinity.qwky.eu',
+        client_uri: 'https://trinity.trinityproject.dev',
         application_type: 'web',
         redirect_uris: [REDIRECT_URI],
       });
@@ -356,6 +356,24 @@ describe('OidcClientService', () => {
 
       expect(request.clientId).toBe(CLIENT_ID);
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores a client id registered under v3 for the retired eu.qwky redirect', async () => {
+      prefs.set(
+        'oidc.clientId.v3:https://hs.example https://op.example',
+        'client-from-v3',
+      );
+      const fetchMock = stubFetch({
+        registration: () => jsonResponse({ client_id: CLIENT_ID }),
+      });
+
+      const request = await firstValueFrom(
+        svc.buildAuthorizationRequest(PARAMS),
+      );
+
+      expect(request.clientId).toBe(CLIENT_ID);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(prefs.get(CLIENT_ID_KEY)).toBe(CLIENT_ID);
     });
   });
 

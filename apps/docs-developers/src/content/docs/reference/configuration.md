@@ -18,7 +18,7 @@ A push gateway URL and public application identifier are configuration; FCM/APNs
 
 ## Capacitor host {#capacitor-host}
 
-Root `capacitor.config.ts` owns application ID `eu.qwky.trinity`, application name `Trinity`, and `webDir: 'www'`. Keyboard resize is explicitly native so the WebView viewport follows the on-screen keyboard.
+Root `capacitor.config.ts` owns application ID `dev.trinityproject.trinity`, application name `Trinity`, and `webDir: 'www'`. Keyboard resize is explicitly native so the WebView viewport follows the on-screen keyboard.
 
 Electron owns a separate package and build configuration. Each native project receives the shared renderer through its Nx synchronization target.
 

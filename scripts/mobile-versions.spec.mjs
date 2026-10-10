@@ -44,7 +44,7 @@ describe('mobile E2E version reporting', () => {
       'No Chromedriver found that can automate Chrome 133',
     );
     const error = webviewSwitchError(
-      'WEBVIEW_eu.qwky.trinity',
+      'WEBVIEW_dev.trinityproject.trinity',
       {
         webview: 'com.google.android.webview, 133.0.6943.137',
         chromedriver: `none found in ${dir}`,
@@ -52,7 +52,7 @@ describe('mobile E2E version reporting', () => {
       cause,
     );
     expect(error.message).toBe(
-      'Could not switch to WEBVIEW_eu.qwky.trinity (Android System WebView ' +
+      'Could not switch to WEBVIEW_dev.trinityproject.trinity (Android System WebView ' +
         `com.google.android.webview, 133.0.6943.137; chromedriver none found in ${dir}): ` +
         'No Chromedriver found that can automate Chrome 133',
     );
@@ -65,14 +65,14 @@ describe('iOS launch race classifier', () => {
     expect(
       isAppNotYetKnown(
         new Error(
-          'FBSOpenApplicationErrorDomain Code=4 "Application "eu.qwky.trinity" is unknown to FrontBoard." (NotFound)',
+          'FBSOpenApplicationErrorDomain Code=4 "Application "dev.trinityproject.trinity" is unknown to FrontBoard." (NotFound)',
         ),
       ),
     ).toBe(true);
     expect(
       isAppNotYetKnown(
         new Error(
-          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=1 "The request to open "eu.qwky.trinity" failed." UserInfo={BSErrorCodeDescription=RequestDenied}',
+          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=1 "The request to open "dev.trinityproject.trinity" failed." UserInfo={BSErrorCodeDescription=RequestDenied}',
         ),
       ),
     ).toBe(true);
@@ -80,14 +80,14 @@ describe('iOS launch race classifier', () => {
     expect(
       isAppNotYetKnown(
         new Error(
-          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=4 "The request to open "eu.qwky.trinity" failed." UserInfo={BSErrorCodeDescription=InvalidRequest, NSUnderlyingError=0x1 {Error Domain=FBSOpenApplicationErrorDomain Code=4 "Application info provider (FBSApplicationLibrary) returned nil for "eu.qwky.trinity"" UserInfo={BSErrorCodeDescription=NotFound}}}',
+          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=4 "The request to open "dev.trinityproject.trinity" failed." UserInfo={BSErrorCodeDescription=InvalidRequest, NSUnderlyingError=0x1 {Error Domain=FBSOpenApplicationErrorDomain Code=4 "Application info provider (FBSApplicationLibrary) returned nil for "dev.trinityproject.trinity"" UserInfo={BSErrorCodeDescription=NotFound}}}',
         ),
       ),
     ).toBe(true);
     expect(
       isAppNotYetKnown(
         new Error(
-          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=4 "The request to open "eu.qwky.trinity" failed." UserInfo={BSErrorCodeDescription=InvalidRequest}',
+          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=4 "The request to open "dev.trinityproject.trinity" failed." UserInfo={BSErrorCodeDescription=InvalidRequest}',
         ),
       ),
     ).toBe(false);

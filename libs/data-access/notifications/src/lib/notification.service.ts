@@ -18,7 +18,12 @@ import {
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomEncryptionFlags } from '@trinity/util/matrix';
-import { NotificationSoundService } from './notification-sound.service';
+import {
+  LEGACY_NOTIFICATION_SOUND_EVENT,
+  NOTIFICATION_SOUND_EVENT,
+  NotificationSoundService,
+} from './notification-sound.service';
+import { copyLegacyAccountData } from './legacy-account-data';
 import { Observable, Subscriber, Subscription, take, timeout } from 'rxjs';
 import { normalizeNotificationEvent } from './matrix-notification-event.adapter';
 import type { NotificationRuntimeEvent } from './notification-intent';
@@ -31,7 +36,11 @@ import type {
 } from '@trinity/runtime/projection';
 import { NotificationPresentationHealthTracker } from './notification-presentation-health';
 import { ReactionNotificationBatch } from './reaction-notification-batch';
-import { ReactionNotificationSettingsService } from './reaction-notification-settings.service';
+import {
+  LEGACY_REACTION_NOTIFICATION_EVENT,
+  REACTION_NOTIFICATION_EVENT,
+  ReactionNotificationSettingsService,
+} from './reaction-notification-settings.service';
 import { RoomNotificationsService } from './room-notifications.service';
 import type {
   NotificationIntent,
@@ -52,6 +61,33 @@ interface AccountNotifier {
   readonly onDecrypted: (event: MatrixEvent) => void;
   readonly onSync: (state: SyncState) => void;
   readonly reactions: ReactionNotificationBatch;
+}
+
+/** One account's account-data listener that copies retired names to current ones. */
+interface LegacyAccountDataCopy {
+  readonly client: MatrixClient;
+  readonly onAccountData: () => void;
+}
+
+/**
+ * Copy each retired account-data event to its current name when only the old one exists.
+ * Runs inside the SDK's emit loop, so a throw must never escape.
+ */
+function copyRetiredAccountData(client: MatrixClient): void {
+  try {
+    copyLegacyAccountData(
+      client as never,
+      NOTIFICATION_SOUND_EVENT,
+      LEGACY_NOTIFICATION_SOUND_EVENT,
+    );
+    copyLegacyAccountData(
+      client as never,
+      REACTION_NOTIFICATION_EVENT,
+      LEGACY_REACTION_NOTIFICATION_EVENT,
+    );
+  } catch {
+    /* the old value stays readable; the next account-data event retries */
+  }
 }
 
 /**
@@ -113,6 +149,13 @@ export class NotificationService {
 
   /** Per-account listeners, keyed by user id, so switches/sign-outs re-bind cleanly. */
   private readonly notifiers = new Map<string, AccountNotifier>();
+
+  /**
+   * Per-account retired-name account-data copies, keyed by user id. Bound for every
+   * signed-in account with a client, whatever the notification permission or host
+   * support, so this service is the one owner of the copy.
+   */
+  private readonly legacyCopies = new Map<string, LegacyAccountDataCopy>();
 
   private connection: Subscription | null = null;
   private presentationConnection = new Subscription();
@@ -192,6 +235,7 @@ export class NotificationService {
       this.detach(notifier);
     }
     this.notifiers.clear();
+    this.reconcileLegacyCopies([]);
     this.pendingDecryption.clear();
     this.notified.clear();
   }
@@ -201,6 +245,8 @@ export class NotificationService {
     if (!this.enabled) {
       return;
     }
+    // Before the presentation gate: the copy must not wait on notification permission.
+    this.reconcileLegacyCopies(ids);
     if (ids.length === 0) {
       // Stay dormant under the Application Runtime session. This avoids asking for Web
       // permission on the signed-out screen while still allowing a later login to attach
@@ -249,6 +295,27 @@ export class NotificationService {
       const notifier = this.buildNotifier(userId, client);
       this.attach(notifier);
       this.notifiers.set(userId, notifier);
+    }
+  }
+
+  /** Bind the retired-name copy to each live account's current client; unbind the rest. */
+  private reconcileLegacyCopies(ids: readonly string[]): void {
+    const live = new Set(ids);
+    for (const [userId, copy] of this.legacyCopies) {
+      if (live.has(userId) && this.matrix.clientFor(userId) === copy.client) {
+        continue;
+      }
+      copy.client.off(ClientEvent.AccountData, copy.onAccountData);
+      this.legacyCopies.delete(userId);
+    }
+    for (const userId of ids) {
+      const client = this.matrix.clientFor(userId);
+      if (!client || this.legacyCopies.has(userId)) continue;
+      const onAccountData = (): void => copyRetiredAccountData(client);
+      client.on(ClientEvent.AccountData, onAccountData);
+      this.legacyCopies.set(userId, { client, onAccountData });
+      // Account data may already be in the store (a restored session).
+      onAccountData();
     }
   }
 

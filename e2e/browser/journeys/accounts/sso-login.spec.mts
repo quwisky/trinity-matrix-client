@@ -82,7 +82,7 @@ test.describe('SSO sign-in', () => {
     request,
   }) => {
     // Anyone can navigate to the callback route — and on native, any app can fire the
-    // shared `eu.qwky.trinity://` deep link. A token arriving without a sign-in this app
+    // shared `dev.trinityproject.trinity://` deep link. A token arriving without a sign-in this app
     // started must not become a session.
     const hs = session.hs as string;
     const stolen = await ssoLoginToken(authPlatform, session);

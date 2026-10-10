@@ -68,7 +68,8 @@ parameter, or shell store.
 ### Reaction notifications while connected
 
 `ReactionNotificationSettingsService` stores the opt-in as
-`eu.qwky.trinity.reaction_notifications` account data (`{ enabled: boolean }`, default `false`).
+`dev.trinityproject.trinity.reaction_notifications` account data (`{ enabled: boolean }`, default `false`).
+Accounts that still hold the retired `eu.qwky.trinity.reaction_notifications` event are read from it, and `NotificationService` copies it to the new name once for every signed-in account.
 It does not alter server push rules or pusher registration. Each account's notification lifetime
 owns a `ReactionNotificationBatch` for live `m.reaction` annotation events. The original message
 must belong to that account; own reactions, ignored senders, redactions, history and backfill are
@@ -115,12 +116,12 @@ message text.
 
    [`PushConfig`](../../libs/data-access/notifications/src/lib/push-config.ts)
    accepts `gatewayUrl` and an optional base `appId`. Omitting `appId` uses
-   `eu.qwky.trinity`. `PushService` appends the platform suffix, so configure the
-   gateway entries as `eu.qwky.trinity.android` and `eu.qwky.trinity.ios`, or the
+   `dev.trinityproject.trinity`. `PushService` appends the platform suffix, so configure the
+   gateway entries as `dev.trinityproject.trinity.android` and `dev.trinityproject.trinity.ios`, or the
    equivalent suffixed names for a custom base ID. The gateway's app key is
    distinct from the native bundle/package ID, which has no platform suffix.
 
-3. For Android, register package `eu.qwky.trinity` in the matching Firebase
+3. For Android, register package `dev.trinityproject.trinity` in the matching Firebase
    project and place its downloaded configuration at
    `android/app/google-services.json`, following [Firebase's Android setup](https://firebase.google.com/docs/android/setup).
    [`build.gradle`](../../android/app/build.gradle) applies Google Services only

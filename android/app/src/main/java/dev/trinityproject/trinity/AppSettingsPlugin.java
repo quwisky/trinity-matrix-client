@@ -1,4 +1,4 @@
-package eu.qwky.trinity;
+package dev.trinityproject.trinity;
 
 import android.content.ActivityNotFoundException;
 import android.content.Intent;

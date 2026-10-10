@@ -105,7 +105,7 @@ describe('room deep links', () => {
 
   it('opens the linked room while the app is running', async () => {
     await openLink(
-      `eu.qwky.trinity://matrix.to/#/${encodeURIComponent(roomB.id)}`,
+      `dev.trinityproject.trinity://matrix.to/#/${encodeURIComponent(roomB.id)}`,
     );
     await openPreviewedRoom(roomB.id);
   });
@@ -119,7 +119,7 @@ describe('room deep links', () => {
 
     await stopApp();
     await openLink(
-      `eu.qwky.trinity://matrix.to/#/${encodeURIComponent(roomB.id)}`,
+      `dev.trinityproject.trinity://matrix.to/#/${encodeURIComponent(roomB.id)}`,
     );
     await waitForRooms(browser.isIOS ? 90_000 : 60_000);
     await openPreviewedRoom(roomB.id);
@@ -140,7 +140,7 @@ describe('room deep links', () => {
 
     await stopApp();
     await openLink(
-      `eu.qwky.trinity://matrix.to/#/${encodeURIComponent(roomB.id)}/${encodeURIComponent(eventId)}`,
+      `dev.trinityproject.trinity://matrix.to/#/${encodeURIComponent(roomB.id)}/${encodeURIComponent(eventId)}`,
     );
     await browser.waitUntil(
       async () => (await pathname()) === `/rooms/${roomSegment(roomB.id)}`,
@@ -161,7 +161,7 @@ describe('room deep links', () => {
     await createRoomAlias(token, alias, roomB.id);
 
     await openLink(
-      `eu.qwky.trinity://matrix.to/#/${encodeURIComponent(alias)}`,
+      `dev.trinityproject.trinity://matrix.to/#/${encodeURIComponent(alias)}`,
     );
     await openPreviewedRoom(roomB.id);
   });

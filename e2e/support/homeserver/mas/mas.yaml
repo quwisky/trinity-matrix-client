@@ -22,7 +22,7 @@ policy:
   data:
     client_registration:
       # The web app registers http://127.0.0.1:<port>/sso-callback under the client_uri
-      # https://trinity.qwky.eu: an insecure redirect on another host.
+      # https://trinity.trinityproject.dev: an insecure redirect on another host.
       allow_insecure_uris: true
       allow_host_mismatch: true
 rate_limiting:

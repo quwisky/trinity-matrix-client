@@ -60,7 +60,7 @@ vi.mock('@capacitor/preferences', () => ({
 
 const CONFIG: PushConfig = {
   gatewayUrl: 'https://push.example/_matrix/push/v1/notify',
-  appId: 'eu.qwky.trinity',
+  appId: 'dev.trinityproject.trinity',
 };
 
 /**
@@ -171,7 +171,7 @@ describe('PushService', () => {
 
     expect(client.setPusher).toHaveBeenCalledWith(
       expect.objectContaining({
-        app_id: 'eu.qwky.trinity.ios',
+        app_id: 'dev.trinityproject.trinity.ios',
         pushkey: 'TOKEN123',
         kind: 'http',
         // Must be true: all accounts share one device token, so `false` would make
@@ -689,7 +689,7 @@ describe('PushService', () => {
     for (const [, client] of clients) {
       expect(client.removePusher).toHaveBeenCalledWith(
         'TOKEN123',
-        'eu.qwky.trinity.ios',
+        'dev.trinityproject.trinity.ios',
       );
     }
     expect(h.push.removeAllListeners).not.toHaveBeenCalled();
@@ -713,7 +713,7 @@ describe('PushService', () => {
 
     expect(clients.get('@alt:hs')!.removePusher).toHaveBeenCalledWith(
       'TOKEN123',
-      'eu.qwky.trinity.ios',
+      'dev.trinityproject.trinity.ios',
     );
     expect(clients.get('@me:hs')!.removePusher).not.toHaveBeenCalled();
     // A single-account teardown must NOT detach the shared listeners.

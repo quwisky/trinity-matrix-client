@@ -321,14 +321,14 @@ describe('SignInRedirectService on the desktop host', () => {
     };
   }
 
-  it('SSO uses the eu.qwky.trinity:// callback and opens externally', async () => {
+  it('SSO uses the dev.trinityproject.trinity:// callback and opens externally', async () => {
     const { service, open, getSsoUrl } = desktop();
 
     service.startSso('https://hs.example', 'replace').subscribe();
     await vi.waitFor(() => expect(open).toHaveBeenCalled());
 
     expect(getSsoUrl.mock.calls[0][1]).toContain(
-      'eu.qwky.trinity://sso-callback?sso_state=',
+      'dev.trinityproject.trinity://sso-callback?sso_state=',
     );
     expect(open).toHaveBeenCalledWith(
       expect.stringContaining('https://hs.example/sso'),
@@ -352,7 +352,7 @@ describe('SignInRedirectService on the desktop host', () => {
 
     expect(build.mock.calls[0][0]).toMatchObject({
       applicationType: 'native',
-      redirectUri: 'eu.qwky.trinity:/sso-callback',
+      redirectUri: 'dev.trinityproject.trinity:/sso-callback',
     });
     expect(open).toHaveBeenCalledWith(OIDC_REQUEST.url, '_blank');
     open.mockRestore();

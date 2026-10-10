@@ -274,12 +274,14 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
       errors.push(`iOS host is missing plugin wiring: ${marker}`);
     }
   }
-  if (!androidManifest.includes('android:scheme="eu.qwky.trinity"')) {
+  if (
+    !androidManifest.includes('android:scheme="dev.trinityproject.trinity"')
+  ) {
     errors.push('Android host is missing the authentication deep-link scheme');
   }
   if (
     !iosInfo.includes('<key>CFBundleURLSchemes</key>') ||
-    !iosInfo.includes('<string>eu.qwky.trinity</string>')
+    !iosInfo.includes('<string>dev.trinityproject.trinity</string>')
   ) {
     errors.push('iOS host is missing the authentication deep-link scheme');
   }

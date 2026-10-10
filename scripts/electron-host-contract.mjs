@@ -343,7 +343,7 @@ export function validateElectronHostContract(input, errors) {
   }
   if (
     !builder.includes('protocols:') ||
-    !/^\s*-\s+eu\.qwky\.trinity$/mu.test(builder)
+    !/^\s*-\s+dev\.trinityproject\.trinity$/mu.test(builder)
   ) {
     errors.push('Electron package must register the authentication protocol');
   }

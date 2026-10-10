@@ -72,7 +72,7 @@ describe('CapacitorHostOperationAdapter event streams', () => {
       remove: vi.fn(() => Promise.resolve()),
     });
     app.getLaunchUrl.mockResolvedValue({
-      url: 'eu.qwky.trinity://matrix.to/#/!a:b.c',
+      url: 'dev.trinityproject.trinity://matrix.to/#/!a:b.c',
     });
     const adapter = new CapacitorHostOperationAdapter();
     const urls: string[] = [];
@@ -83,11 +83,11 @@ describe('CapacitorHostOperationAdapter event streams', () => {
     adapter.received.subscribe(({ url }) => urls.push(url));
     await new Promise((resolve) => setTimeout(resolve));
 
-    expect(urls).toEqual(['eu.qwky.trinity://matrix.to/#/!a:b.c']);
+    expect(urls).toEqual(['dev.trinityproject.trinity://matrix.to/#/!a:b.c']);
   });
 
   describe('cold-start link and later taps', () => {
-    const link = 'eu.qwky.trinity://matrix.to/#/!a:b.c';
+    const link = 'dev.trinityproject.trinity://matrix.to/#/!a:b.c';
     let open!: (event: { url: string }) => void;
     const urls: string[] = [];
 
@@ -129,7 +129,7 @@ describe('CapacitorHostOperationAdapter event streams', () => {
     });
 
     it('delivers a different URL after the launch link', async () => {
-      const other = 'eu.qwky.trinity://matrix.to/#/!d:e.f';
+      const other = 'dev.trinityproject.trinity://matrix.to/#/!d:e.f';
       await attach(true, link);
       open({ url: other });
 

@@ -35,7 +35,7 @@ async function storedSound(
   token: string,
 ): Promise<{ enabled?: boolean } | undefined> {
   const res = await request.get(
-    `${hs}/_matrix/client/v3/user/${encodeURIComponent(userId)}/account_data/eu.qwky.trinity.notification_sound`,
+    `${hs}/_matrix/client/v3/user/${encodeURIComponent(userId)}/account_data/dev.trinityproject.trinity.notification_sound`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   return res.ok() ? ((await res.json()) as { enabled?: boolean }) : undefined;

@@ -112,10 +112,10 @@ function validInput() {
       'CapacitorStatusBar',
       'CapawesomeCapacitorBadge',
     ].join('\n'),
-    androidManifest: 'android:scheme="eu.qwky.trinity"',
+    androidManifest: 'android:scheme="dev.trinityproject.trinity"',
     iosInfo:
       '<key>UIViewControllerBasedStatusBarAppearance</key><true/>' +
-      '<key>CFBundleURLSchemes</key><string>eu.qwky.trinity</string>' +
+      '<key>CFBundleURLSchemes</key><string>dev.trinityproject.trinity</string>' +
       '<key>UIApplicationSceneManifest</key><dict>' +
       '<key>UISceneDelegateClassName</key>' +
       '<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string></dict>',
@@ -230,8 +230,8 @@ describe('native host contract', () => {
     [
       'Android deep link',
       'androidManifest',
-      'android:scheme="eu.qwky.trinity"',
-      '<!-- android:scheme="eu.qwky.trinity" -->',
+      'android:scheme="dev.trinityproject.trinity"',
+      '<!-- android:scheme="dev.trinityproject.trinity" -->',
       'Android host is missing the authentication deep-link scheme',
     ],
     [

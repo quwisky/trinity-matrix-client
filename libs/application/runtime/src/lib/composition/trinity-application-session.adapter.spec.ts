@@ -727,13 +727,13 @@ describe('TrinityApplicationSessionAdapter', () => {
     const lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.deepLinks.next({
-      url: 'eu.qwky.trinity://sso-callback?loginToken=TOK&sso_state=NONCE',
+      url: 'dev.trinityproject.trinity://sso-callback?loginToken=TOK&sso_state=NONCE',
     });
     test.deepLinks.next({
-      url: 'eu.qwky.trinity:/sso-callback?code=CODE&state=STATE',
+      url: 'dev.trinityproject.trinity:/sso-callback?code=CODE&state=STATE',
     });
     test.deepLinks.next({
-      url: 'eu.qwky.trinity://elsewhere?loginToken=IGNORED',
+      url: 'dev.trinityproject.trinity://elsewhere?loginToken=IGNORED',
     });
 
     await vi.waitFor(() => expect(test.navigate).toHaveBeenCalledTimes(2));
@@ -754,7 +754,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.deepLinks.next({
-      url: 'eu.qwky.trinity:/sso-callback?code=CODE&state=STATE&iss=https%3A%2F%2Fop.example%2F',
+      url: 'dev.trinityproject.trinity:/sso-callback?code=CODE&state=STATE&iss=https%3A%2F%2Fop.example%2F',
     });
 
     await vi.waitFor(() => expect(test.navigate).toHaveBeenCalledTimes(1));
@@ -770,7 +770,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.deepLinks.next({
-      url: 'eu.qwky.trinity://matrix.to/#/%21room%3Aexample.org?via=example.org',
+      url: 'dev.trinityproject.trinity://matrix.to/#/%21room%3Aexample.org?via=example.org',
     });
 
     expect(inbound.pending()).toEqual({
@@ -789,10 +789,10 @@ describe('TrinityApplicationSessionAdapter', () => {
     const lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.deepLinks.next({
-      url: 'eu.qwky.trinity://matrix.to/#/!a:example.org',
+      url: 'dev.trinityproject.trinity://matrix.to/#/!a:example.org',
     });
     test.deepLinks.next({
-      url: 'eu.qwky.trinity://matrix.to/#/!b:example.org',
+      url: 'dev.trinityproject.trinity://matrix.to/#/!b:example.org',
     });
 
     expect(inbound.pending()?.roomIdOrAlias).toBe('!b:example.org');
@@ -800,10 +800,12 @@ describe('TrinityApplicationSessionAdapter', () => {
   });
 
   it.each([
-    'eu.qwky.trinity://evil.example/#/!room:example.org',
-    'eu.qwky.trinity://matrix.to/#/@user:example.org',
-    'eu.qwky.trinity://matrix.to/#/not-a-room',
-    `eu.qwky.trinity://matrix.to/#/!${'a'.repeat(5000)}:example.org`,
+    'dev.trinityproject.trinity://evil.example/#/!room:example.org',
+    'eu.qwky.trinity://matrix.to/#/!room:example.org',
+    'eu.qwky.trinity://sso-callback?loginToken=OLD',
+    'dev.trinityproject.trinity://matrix.to/#/@user:example.org',
+    'dev.trinityproject.trinity://matrix.to/#/not-a-room',
+    `dev.trinityproject.trinity://matrix.to/#/!${'a'.repeat(5000)}:example.org`,
     'not a url',
   ])('ignores hostile or unsupported link %s', (url) => {
     const test = setup();
@@ -814,6 +816,7 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     expect(inbound.pending()).toBeNull();
     expect(test.navigate).not.toHaveBeenCalled();
+    expect(test.closeAuthentication).not.toHaveBeenCalled();
     lifetime.unsubscribe();
   });
 
@@ -829,7 +832,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.deepLinks.next({
-      url: 'eu.qwky.trinity://sso-callback?loginToken=TOKEN',
+      url: 'dev.trinityproject.trinity://sso-callback?loginToken=TOKEN',
     });
 
     await vi.waitFor(() => expect(test.navigate).toHaveBeenCalledOnce());

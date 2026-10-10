@@ -29,10 +29,10 @@ describe('app settings bridge', () => {
 
   it('registers the Android plugin before the bridge starts and opens application details', () => {
     const plugin = read(
-      'android/app/src/main/java/eu/qwky/trinity/AppSettingsPlugin.java',
+      'android/app/src/main/java/dev/trinityproject/trinity/AppSettingsPlugin.java',
     );
     const activity = read(
-      'android/app/src/main/java/eu/qwky/trinity/MainActivity.java',
+      'android/app/src/main/java/dev/trinityproject/trinity/MainActivity.java',
     );
 
     expect(plugin).toContain('@CapacitorPlugin(name = "AppSettings")');

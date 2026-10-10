@@ -117,7 +117,7 @@ test.describe('Push gateway', () => {
       return (await res.json()).pushers ?? [];
     };
 
-    const APP = 'eu.qwky.trinity.android';
+    const APP = 'dev.trinityproject.trinity.android';
 
     // Both accounts register the same (app_id, pushkey) with append:true — the
     // multi-account case. B's registration must NOT delete A's pusher.

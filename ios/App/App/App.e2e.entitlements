@@ -3,10 +3,10 @@
 <plist version="1.0">
 <dict>
 	<key>application-identifier</key>
-	<string>$(AppIdentifierPrefix)eu.qwky.trinity</string>
+	<string>$(AppIdentifierPrefix)dev.trinityproject.trinity</string>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)eu.qwky.trinity</string>
+		<string>$(AppIdentifierPrefix)dev.trinityproject.trinity</string>
 	</array>
 </dict>
 </plist>

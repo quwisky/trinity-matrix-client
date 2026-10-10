@@ -45,7 +45,7 @@ import {
 } from './support/versions.mts';
 
 const exec = promisify(execFile);
-const packageName = 'eu.qwky.trinity';
+const packageName = 'dev.trinityproject.trinity';
 const ownedEmulatorLaunchArgs = [
   '-no-window',
   '-no-audio',

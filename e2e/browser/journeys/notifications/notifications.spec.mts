@@ -269,7 +269,7 @@ async function storedReactionPreference(
   token: string,
 ): Promise<{ enabled: boolean } | undefined> {
   const response = await request.get(
-    `${hs}/_matrix/client/v3/user/${encodeURIComponent(userId)}/account_data/eu.qwky.trinity.reaction_notifications`,
+    `${hs}/_matrix/client/v3/user/${encodeURIComponent(userId)}/account_data/dev.trinityproject.trinity.reaction_notifications`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (response.status() === 404) return undefined;
