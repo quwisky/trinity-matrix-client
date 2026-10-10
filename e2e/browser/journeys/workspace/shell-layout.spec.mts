@@ -647,7 +647,12 @@ test.describe('Modern room shell layout', () => {
       pass: readerPass,
     } as HomeserverSession);
 
+    // Every density starts from the same desktop viewport. Without this, the later densities
+    // inherit the 900px drawer viewport that the previous pass's scroll contract ends on, and
+    // the header check below crosses the members breakpoint on its way back.
+    const desktopViewport = page.viewportSize()!;
     for (const density of ['cosy', 'compact', 'spacious'] as const) {
+      await page.setViewportSize(desktopViewport);
       await seedPreference(page, DENSITY_KEY, density);
       await page.reload({ waitUntil: 'domcontentloaded' });
       await expect(page.locator('[data-shell-root]')).toBeVisible({
@@ -711,7 +716,6 @@ test.describe('Modern room shell layout', () => {
 
       // A long room name and a 300-character topic truncate inside the 48px header: the
       // header never overflows horizontally and its actions stay reachable.
-      const headerViewport = page.viewportSize()!;
       await page.setViewportSize({ width: 1100, height: 800 });
       const header = page.locator('header[data-trn-layout="toolbar"]');
       await expect(page.getByTestId('room-topic')).toBeVisible();
@@ -721,17 +725,14 @@ test.describe('Modern room shell layout', () => {
       ).toBe(true);
       await expect(page.getByTestId('header-search')).toBeVisible();
       await expect(page.getByTestId('room-actions-overflow')).toBeVisible();
-      await page.setViewportSize(headerViewport);
-      // Crossing the drawer breakpoint closes the roster from an effect that can land after
-      // the resize resolves, so a single aria-pressed read can see it still open. Retry the
-      // read-and-reopen until the roster is actually on screen.
-      const toggleMembers = page.getByTestId('toggle-members');
-      await expect(async () => {
-        if ((await toggleMembers.getAttribute('aria-pressed')) !== 'true') {
-          await activate(toggleMembers);
-        }
-        await expect(page.locator('.members')).toBeVisible({ timeout: 2_000 });
-      }).toPass({ timeout: 20_000 });
+      // 1100px and the desktop viewport are both at or above the members breakpoint, so the
+      // roster stays a static column throughout and remains open.
+      await page.setViewportSize(desktopViewport);
+      await expect(page.getByTestId('toggle-members')).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      await expect(page.locator('.members')).toBeVisible();
 
       await expect(page.locator('.member').first()).toHaveCSS('height', '44px');
       await expect(page.locator('.member').first()).toHaveCSS(
