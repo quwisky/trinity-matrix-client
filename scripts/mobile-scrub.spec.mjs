@@ -31,6 +31,16 @@ describe('mobile E2E artifact scrub', () => {
     ).toBe(
       '{\\"access_token\\":\\"<token>\\",\\"refresh_token\\":\\"<token>\\",\\"refreshToken\\":\\"<token>\\"}',
     );
+    expect(
+      scrub(
+        'GET /_matrix/media/v3/download/x/y?access_token=abc123&allow_redirect=true',
+      ),
+    ).toBe(
+      'GET /_matrix/media/v3/download/x/y?access_token=<token>&allow_redirect=true',
+    );
+    expect(
+      scrub('[SafariConsole] {"text":"{\\"accessToken\\":\\"abc\\"}"}'),
+    ).toBe('[SafariConsole] {"text":"{\\"accessToken\\":\\"<token>\\"}"}');
     expect(scrub('Authorization: Bearer QWxhZGRpbjpvcGVu.c2VzYW1l')).toBe(
       'Authorization: Bearer <token>',
     );

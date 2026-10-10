@@ -46,6 +46,13 @@ const requiredTags = [
   'capability:composition',
 ];
 
+// The accepted `loggingBehavior` values, whitespace-normalized: always off, or off unless
+// a local build sets TRINITY_CAPACITOR_LOGS=1 at sync time.
+const CAPACITOR_LOGGING_OFF = [
+  "'none'",
+  "process.env['TRINITY_CAPACITOR_LOGS'] === '1' ? 'debug' : 'none'",
+];
+
 const androidPluginMarkers = [
   ':aparajita-capacitor-secure-storage',
   ':capacitor-app',
@@ -249,10 +256,18 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
     errors.push('Capacitor hosts must consume the shared flat www artifact');
   }
   // Capacitor's bridge logs every plugin call's arguments (Android) and the start of every
-  // result (iOS) to the device log, access tokens and sessions included.
+  // result (iOS) to the device log, access tokens and sessions included. Exactly one
+  // setting, outside comments, with no platform override, and off unless a local build
+  // opts in.
+  const loggingBehaviors = [
+    ...input.capacitor
+      .replace(/\/\*[\s\S]*?\*\//gu, '')
+      .replace(/^\s*\/\/.*$/gmu, '')
+      .matchAll(/loggingBehavior:\s*([^,}]+)/gu),
+  ].map(([, value]) => value.replace(/\s+/gu, ' ').replaceAll('"', "'").trim());
   if (
-    !/loggingBehavior:[^,]*['"]none['"]/u.test(input.capacitor) ||
-    /loggingBehavior:[^,]*['"]production['"]/u.test(input.capacitor)
+    loggingBehaviors.length !== 1 ||
+    !CAPACITOR_LOGGING_OFF.includes(loggingBehaviors[0])
   ) {
     errors.push(
       'Capacitor logging must default to none: the bridge logs plugin arguments and results',
