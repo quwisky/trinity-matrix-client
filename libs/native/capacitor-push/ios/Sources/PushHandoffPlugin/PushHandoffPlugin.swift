@@ -12,12 +12,15 @@ import UserNotifications
  * is nothing to remove, so sign-out and clear-all-data never wait on it; writes reject.
  * Removing an account also removes its delivered pushes, and clearing removes every delivered
  * push, so no message text outlives a sign-out; that removal never rejects.
+ *
+ * `cap sync` registers this class from the @trinity/capacitor-push package, so it is a public
+ * CAPPlugin: Capacitor's automatic registration skips CAPInstancePlugin subclasses.
  */
 @objc(PushHandoffPlugin)
-class PushHandoffPlugin: CAPInstancePlugin, CAPBridgedPlugin {
-    let identifier = "PushHandoffPlugin"
-    let jsName = "PushHandoff"
-    let pluginMethods: [CAPPluginMethod] = {
+public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "PushHandoffPlugin"
+    public let jsName = "PushHandoff"
+    public let pluginMethods: [CAPPluginMethod] = {
         var methods: [CAPPluginMethod] = [
             CAPPluginMethod(name: "setAccount", returnType: CAPPluginReturnPromise),
             CAPPluginMethod(name: "setRooms", returnType: CAPPluginReturnPromise),
