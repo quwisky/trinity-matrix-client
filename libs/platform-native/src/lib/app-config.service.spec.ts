@@ -92,6 +92,11 @@ const TEST_PRIVACY_PREFERENCES: PrivacyPreferenceSet = {
     'trinity.privacy.link-previews-encrypted',
     false,
   ),
+  saveCapturesToGallery: testPrivacyPreference(
+    'conversations.test.save-captures-to-gallery',
+    'trinity.privacy.save-captures-to-gallery',
+    false,
+  ),
 };
 
 /** The app's wiring: the platform entries registered, as `main.ts` does it. */

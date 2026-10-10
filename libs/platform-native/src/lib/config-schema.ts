@@ -367,6 +367,11 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     key: 'trinity.privacy.link-previews-encrypted',
     owner: 'platform-native',
   },
+  {
+    disposition: 'exported',
+    key: 'trinity.privacy.save-captures-to-gallery',
+    owner: 'platform-native',
+  },
 
   // — system-line-settings.service.ts —
   {

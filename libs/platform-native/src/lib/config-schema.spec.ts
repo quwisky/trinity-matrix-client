@@ -74,6 +74,7 @@ describe('config key ledger', () => {
       'trinity.message-swipe',
       'trinity.privacy.link-previews',
       'trinity.privacy.link-previews-encrypted',
+      'trinity.privacy.save-captures-to-gallery',
       'trinity.privacy.send-read-receipts',
       'trinity.shell.right-panel-width',
       'trinity.shell.sidebar-width',

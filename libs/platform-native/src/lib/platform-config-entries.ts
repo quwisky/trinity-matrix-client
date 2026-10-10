@@ -128,6 +128,15 @@ function privacyEntries(
       reset: () => privacy.resetLinkPreviewsInEncrypted(),
       ...flagSetting((on) => privacy.setLinkPreviewsInEncrypted(on)),
     },
+    {
+      path: 'privacy.saveCapturesToGallery',
+      key: 'trinity.privacy.save-captures-to-gallery',
+      description:
+        'Whether photos and videos you take in Trinity are also saved to the gallery on this device.',
+      read: () => privacy.saveCapturesToGallery(),
+      reset: () => privacy.resetSaveCapturesToGallery(),
+      ...flagSetting((on) => privacy.setSaveCapturesToGallery(on)),
+    },
   ];
 }
 

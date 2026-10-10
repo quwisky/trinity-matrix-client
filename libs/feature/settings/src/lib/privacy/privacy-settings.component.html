@@ -3,6 +3,10 @@
 >
   <trn-preference-catalog-section section="privacy" />
 
+  @if (captureSupported) {
+    <trn-preference-catalog-section section="privacy-capture" />
+  }
+
   @if (privacy.linkPreviews() && previewsSupported() === false) {
     <p
       class="m-0 py-3 text-13 text-muted-foreground"
