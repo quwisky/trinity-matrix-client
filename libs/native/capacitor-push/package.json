@@ -1,0 +1,8 @@
+{
+  "name": "@trinity/capacitor-push",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Trinity's local Capacitor plugin: the PushHandoff bridge and the native push renderers.",
+  "license": "MIT"
+}

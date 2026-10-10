@@ -52,9 +52,13 @@ const importing = (pattern, candidates = productionSources) =>
   );
 
 describe('final architecture boundaries', () => {
-  it('contains Capacitor and native-plugin packages in platform-native', () => {
+  it('contains Capacitor and native-plugin packages in platform-native and the local plugins', () => {
+    // `libs/native/*` are Trinity's own Capacitor plugins (workspace packages the Capacitor CLI
+    // discovers); their TypeScript bridges import `@capacitor/core` by design.
     const outsidePlatform = productionSources.filter(
-      (file) => !file.startsWith('libs/platform-native/'),
+      (file) =>
+        !file.startsWith('libs/platform-native/') &&
+        !file.startsWith('libs/native/'),
     );
     expect(
       importing(

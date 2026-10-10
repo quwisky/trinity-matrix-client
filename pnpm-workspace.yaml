@@ -3,16 +3,23 @@
 # Trinity is an Nx *integrated* monorepo: the deployable app plus every reusable lib
 # are one project, driven by a single root `package.json` and wired together through
 # `@trinity/*` TypeScript path aliases (`tsconfig.base.json`) — not pnpm workspace
-# linking. So there are no pnpm sub-packages to install/symlink here:
+# linking. Native Capacitor plugins are the one exception:
 #
+#   - `libs/native/capacitor-push` (name `@trinity/capacitor-push`) is a member because
+#     the Capacitor CLI discovers plugins only as installed dependencies. The root
+#     `package.json` depends on it with `workspace:*`, `pnpm install` links it into
+#     `node_modules`, and `cap sync` wires its Android module and Swift package into the
+#     hosts. Its TypeScript is still imported through its `@trinity/*` alias, and it
+#     declares no dependencies, so it adds nothing to the install tree.
 #   - `libs/spartan/*` carry a `package.json` (name `@trinity/helm/*`) only for the
 #     `@spartan-ng/cli` generator; they are consumed via the path aliases above.
 #   - `electron/` (name `trinity-desktop`) is a standalone app with its own dependency
 #     tree, installed separately via `pnpm electron:install` — intentionally not a member.
 #
-# Keeping `packages` empty declares the workspace root explicitly (so pnpm never walks
-# up to a parent dir) while leaving the single-project install exactly as it is.
-packages: []
+# Listing the members explicitly also declares the workspace root (so pnpm never walks up
+# to a parent dir); every other library stays out of `packages`.
+packages:
+  - libs/native/capacitor-push
 minimumReleaseAge: 1440
 
 # Which dependencies may run install/build scripts. pnpm 11 removed

@@ -242,6 +242,7 @@ export default defineConfig([
       // not named here and not sanctioned, which is what caught `libs/util/ui` on the day it
       // was created.
       'libs/components/**/*.ts',
+      'libs/native/**/*.ts',
       'libs/platform-native/**/*.ts',
       // Projection Runtime is a shared orchestration kernel. It may project SDK-backed
       // state supplied by data-access adapters, but it must remain SDK-independent.

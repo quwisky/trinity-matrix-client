@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **67 Nx projects** and **268 dependencies**. No project cycles detected.
+This snapshot contains **68 Nx projects** and **270 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -35,7 +35,7 @@ Capability-to-capability dependencies are valid only inside the same named capab
 | `role:application`   |        7 | `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`             |
 | `role:capability`    |       14 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
 | `role:kernel`        |        5 | `role:kernel`                                                                                          |
-| `role:adapter`       |        3 | `role:adapter`, `role:kernel`                                                                          |
+| `role:adapter`       |        4 | `role:adapter`, `role:kernel`                                                                          |
 | `role:design-system` |       19 | `role:design-system`, `role:kernel`, `role:adapter`                                                    |
 
 ## Frozen dependency exceptions
@@ -63,6 +63,7 @@ Every classified library has exactly one explicit primary entrypoint. Additional
 | `application-runtime`             | `@trinity/application/runtime`             | `./libs/application/runtime/src/index.ts`             |
 | `application-search`              | `@trinity/application/search`              | `./libs/application/search/src/index.ts`              |
 | `application-workspace`           | `@trinity/application/workspace`           | `./libs/application/workspace/src/index.ts`           |
+| `native-capacitor-push`           | `@trinity/capacitor-push`                  | `./libs/native/capacitor-push/src/index.ts`           |
 | `components-controls`             | `@trinity/components/controls`             | `./libs/components/controls/src/index.ts`             |
 | `components-foundations`          | `@trinity/components/foundations`          | `./libs/components/foundations/src/index.ts`          |
 | `components-generic-content`      | `@trinity/components/generic-content`      | `./libs/components/generic-content/src/index.ts`      |
@@ -139,7 +140,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `data-access-identity`            | `libs/data-access/identity`            | role:capability; capability:identity            |                   4 |
 | `data-access-matrix-client`       | `libs/data-access/matrix-client`       | role:adapter; capability:matrix-runtime         |                   4 |
 | `data-access-media`               | `libs/data-access/media`               | role:adapter; capability:media                  |                   2 |
-| `data-access-notifications`       | `libs/data-access/notifications`       | role:capability; capability:notifications       |                   6 |
+| `data-access-notifications`       | `libs/data-access/notifications`       | role:capability; capability:notifications       |                   7 |
 | `data-access-room-administration` | `libs/data-access/room-administration` | role:capability; capability:room-administration |                   3 |
 | `data-access-room-library`        | `libs/data-access/room-library`        | role:capability; capability:room-library        |                   6 |
 | `data-access-timeline`            | `libs/data-access/timeline`            | role:capability; capability:conversations       |                   6 |
@@ -155,7 +156,8 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `feature-rooms`                   | `libs/feature/rooms`                   | role:application; capability:workspace          |                  25 |
 | `feature-settings`                | `libs/feature/settings`                | role:application; capability:settings           |                  23 |
 | `label`                           | `libs/spartan/label`                   | role:design-system; capability:design-system    |                   1 |
-| `platform-native`                 | `libs/platform-native`                 | role:adapter; capability:host                   |                   5 |
+| `native-capacitor-push`           | `libs/native/capacitor-push`           | role:adapter; capability:host                   |                   0 |
+| `platform-native`                 | `libs/platform-native`                 | role:adapter; capability:host                   |                   6 |
 | `progress`                        | `libs/spartan/progress`                | role:design-system; capability:design-system    |                   1 |
 | `projection-runtime`              | `libs/runtime/projection`              | role:kernel; capability:shared                  |                   0 |
 | `runtime-host`                    | `libs/runtime/host`                    | role:kernel; capability:host                    |                   0 |

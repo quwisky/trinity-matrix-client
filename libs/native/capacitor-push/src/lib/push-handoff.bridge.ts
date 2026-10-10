@@ -1,55 +1,27 @@
 import { Injectable } from '@angular/core';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Observable, defer, from, map, of } from 'rxjs';
+import {
+  PUSH_HANDOFF_PLUGIN_NAME,
+  type PushHandoffAccount,
+  type PushHandoffPlugin,
+  type PushHandoffRoom,
+} from './definitions';
 
-const PLUGIN_NAME = 'PushHandoff';
-
-/** What the native push renderer needs to fetch one account's events. */
-export interface PushHandoffAccount {
-  readonly userId: string;
-  readonly homeserverUrl: string;
-  readonly accessToken: string;
-  /** The account's "play a sound" notification preference. */
-  readonly sound: boolean;
-}
-
-/** A joined room's display name as the SDK computes it, and whether it is a DM. */
-export interface PushHandoffRoom {
-  readonly roomId: string;
-  readonly name: string;
-  readonly direct: boolean;
-}
-
-interface PushHandoffPlugin {
-  setAccount(options: PushHandoffAccount): Promise<void>;
-  /** Upserts the given rooms for the account; rooms not listed keep their entries. */
-  setRooms(options: {
-    userId: string;
-    rooms: PushHandoffRoom[];
-  }): Promise<void>;
-  removeAccount(options: { userId: string }): Promise<void>;
-  clear(): Promise<void>;
-  /** Removes the account's delivered notifications for one room. */
-  clearRoom(options: { userId: string; roomId: string }): Promise<void>;
-  /**
-   * Whether the host can request a push token: Android only when Firebase is
-   * configured (`register()` would crash the app otherwise); iOS always.
-   */
-  registrationAvailable(): Promise<{ value: boolean }>;
-}
-
-const pushHandoff = registerPlugin<PushHandoffPlugin>(PLUGIN_NAME);
+const pushHandoff = registerPlugin<PushHandoffPlugin>(PUSH_HANDOFF_PLUGIN_NAME);
 
 /**
  * The push handoff store the closed-app renderers read (Android `TrinityMessagingService`,
- * iOS `NotificationService` extension), written through the local `PushHandoff` plugin in
- * the iOS and Android hosts. Inert everywhere else, including the Electron shell.
+ * iOS `NotificationService` extension), written through this package's `PushHandoff` plugin,
+ * which `cap sync` registers in the iOS and Android hosts. Inert everywhere else, including
+ * the Electron shell.
  */
 @Injectable({ providedIn: 'root' })
 export class PushHandoffBridge {
   /** Whether this host has a native push handoff store. */
   readonly available =
-    Capacitor.isNativePlatform() && Capacitor.isPluginAvailable(PLUGIN_NAME);
+    Capacitor.isNativePlatform() &&
+    Capacitor.isPluginAvailable(PUSH_HANDOFF_PLUGIN_NAME);
 
   /** Cold. Writes or replaces one account's credentials and sound choice. */
   setAccount(account: PushHandoffAccount): Observable<void> {

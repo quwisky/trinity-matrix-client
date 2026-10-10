@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Observable, catchError, defer, from, map, of, switchMap } from 'rxjs';
-import { PushHandoffBridge } from './push-handoff.bridge';
+import { PushHandoffBridge } from '@trinity/capacitor-push';
 
 export type NativePushRegistrationEvent =
   | { readonly kind: 'ready' }

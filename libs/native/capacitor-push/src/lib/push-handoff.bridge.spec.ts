@@ -12,12 +12,18 @@ const plugin = vi.hoisted(() => ({
   clearRoom: vi.fn(),
   registrationAvailable: vi.fn(),
 }));
+// Recorded outside the mock: the registration happens once at import, and the runner clears
+// mock call history before each test.
+const registeredNames = vi.hoisted(() => [] as string[]);
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
     isNativePlatform: vi.fn(() => false),
     isPluginAvailable: vi.fn(() => false),
   },
-  registerPlugin: vi.fn(() => plugin),
+  registerPlugin: vi.fn((name: string) => {
+    registeredNames.push(name);
+    return plugin;
+  }),
 }));
 
 const isNative = Capacitor.isNativePlatform as unknown as Mock;
@@ -37,6 +43,12 @@ describe('PushHandoffBridge', () => {
       method.mockReset().mockResolvedValue(undefined);
     }
     plugin.registrationAvailable.mockResolvedValue({ value: true });
+  });
+
+  it('registers the native plugin under the name both hosts export', () => {
+    // iOS jsName and Android @CapacitorPlugin(name) are both "PushHandoff"; a rename on
+    // either side leaves the bridge permanently inert without an error.
+    expect(registeredNames).toEqual(['PushHandoff']);
   });
 
   it('is inert off a native host and calls nothing', async () => {
