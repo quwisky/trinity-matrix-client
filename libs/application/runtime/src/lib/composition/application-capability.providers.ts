@@ -168,6 +168,7 @@ export function applicationCapabilityProviders(
         return {
           snapshot: () => ({
             foreground: document.hasFocus(),
+            hidden: document.visibilityState === 'hidden',
             conversation: conversations.focused()?.key ?? null,
           }),
         };

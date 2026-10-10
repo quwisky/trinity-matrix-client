@@ -271,6 +271,85 @@ describe('PushService', () => {
     expect(h.push.requestPermissions).not.toHaveBeenCalled();
   });
 
+  describe('background delivery', () => {
+    async function registerWithToken(svc: PushService): Promise<void> {
+      await firstValueFrom(svc.register());
+      h.listeners['registration']?.({ value: 'TOKEN123' });
+      await flush();
+    }
+
+    it('hands the background to native push once Android pushers carry the token', async () => {
+      h.state.platform = 'android';
+      const { svc } = setup();
+      expect(svc.backgroundDelivery()).toBe('app');
+
+      await registerWithToken(svc);
+
+      expect(svc.runtimeStatus().status).toBe('available');
+      expect(svc.backgroundDelivery()).toBe('push');
+    });
+
+    it('keeps the background with the app on iOS even when registered', async () => {
+      const { svc } = setup();
+
+      await registerWithToken(svc);
+
+      expect(svc.runtimeStatus().status).toBe('available');
+      expect(svc.backgroundDelivery()).toBe('app');
+    });
+
+    it('keeps the background with the app on Android when permission is denied', async () => {
+      h.state.platform = 'android';
+      h.state.permission = 'denied';
+      const { svc } = setup();
+
+      // A denied permission never reaches the OS registration, so no token arrives.
+      await firstValueFrom(svc.register());
+
+      expect(svc.runtimeStatus().status).toBe('disabled');
+      expect(svc.backgroundDelivery()).toBe('app');
+    });
+
+    it('keeps the background with the app on Android when the homeserver refuses the pusher', async () => {
+      h.state.platform = 'android';
+      const { svc, client } = setup();
+      client.setPusher.mockRejectedValueOnce(new Error('server down'));
+
+      await registerWithToken(svc);
+
+      expect(svc.runtimeStatus().status).toBe('degraded');
+      expect(svc.backgroundDelivery()).toBe('app');
+    });
+
+    it('keeps the background with the app on Android without a gateway', async () => {
+      h.state.platform = 'android';
+      const { svc } = setup({ config: null });
+
+      await registerWithToken(svc);
+
+      expect(svc.backgroundDelivery()).toBe('app');
+    });
+
+    it('returns the background to the app when push is torn down', async () => {
+      h.state.platform = 'android';
+      const { svc } = setup();
+      await registerWithToken(svc);
+
+      await firstValueFrom(svc.unregister());
+
+      expect(svc.backgroundDelivery()).toBe('app');
+    });
+
+    it('leaves web with the app', async () => {
+      h.state.platform = 'web';
+      const { svc } = setup();
+
+      await firstValueFrom(svc.register());
+
+      expect(svc.backgroundDelivery()).toBe('app');
+    });
+  });
+
   describe('registration state', () => {
     it('starts idle', () => {
       const { svc } = setup();

@@ -15,8 +15,9 @@ const base = (): NotificationPolicyInput => ({
   },
   viewerId: '@alice:example.org',
   rules: { notify: true, silent: false },
-  visibility: { foreground: false, conversation: null },
+  visibility: { foreground: false, hidden: false, conversation: null },
   duplicate: false,
+  backgroundDelivery: 'app',
 });
 
 describe('NotificationPolicy', () => {
@@ -46,6 +47,13 @@ describe('NotificationPolicy', () => {
   });
 
   it.each([
+    [
+      'push-owns-background',
+      {
+        backgroundDelivery: 'push',
+        visibility: { foreground: false, hidden: true, conversation: null },
+      },
+    ],
     ['rules', { rules: { notify: false, silent: false } }],
     ['duplicate', { duplicate: true }],
     [
@@ -53,6 +61,7 @@ describe('NotificationPolicy', () => {
       {
         visibility: {
           foreground: true,
+          hidden: false,
           conversation: {
             accountId: '@alice:example.org',
             roomId: '!room:example.org',
@@ -65,6 +74,45 @@ describe('NotificationPolicy', () => {
       kind: 'suppress',
       reason,
     });
+  });
+
+  it('presents while visible even when native push owns the background', () => {
+    for (const foreground of [true, false]) {
+      const decision = policy.decide({
+        ...base(),
+        backgroundDelivery: 'push',
+        visibility: { foreground, hidden: false, conversation: null },
+      });
+
+      expect(decision.kind).toBe('present');
+    }
+  });
+
+  it('presents while hidden when push does not own the background', () => {
+    const decision = policy.decide({
+      ...base(),
+      backgroundDelivery: 'app',
+      visibility: { foreground: false, hidden: true, conversation: null },
+    });
+
+    expect(decision.kind).toBe('present');
+  });
+
+  it('still presents reactions while hidden and push owns the background', () => {
+    const input = base();
+    const decision = policy.decide({
+      ...input,
+      event: {
+        ...input.event,
+        kind: 'reaction',
+        senderCount: 1,
+        reactionKeys: ['👍'],
+      },
+      backgroundDelivery: 'push',
+      visibility: { foreground: false, hidden: true, conversation: null },
+    });
+
+    expect(decision.kind).toBe('present');
   });
 
   it('keeps unsupported events safe with the existing generic preview', () => {

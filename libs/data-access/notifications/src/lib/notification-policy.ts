@@ -25,6 +25,14 @@ export class NotificationPolicy {
     ) {
       return { kind: 'suppress', reason: 'visible-conversation' };
     }
+    // Push delivers messages only; reactions have no push source and always present.
+    if (
+      visibility.hidden &&
+      input.backgroundDelivery === 'push' &&
+      event.kind !== 'reaction'
+    ) {
+      return { kind: 'suppress', reason: 'push-owns-background' };
+    }
     if (!rules.notify) {
       return { kind: 'suppress', reason: 'rules' };
     }

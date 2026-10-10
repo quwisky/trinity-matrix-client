@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   EMPTY,
   Observable,
@@ -142,6 +142,20 @@ export class PushService {
     code: 'push-registration-idle',
   });
   readonly runtimeStatus = this._runtimeStatus.asReadonly();
+  /**
+   * Who shows a notification while the app is in the background. On Android, once every
+   * account's pusher carries this device's token, `push`: TrinityMessagingService renders
+   * background and closed-app pushes itself, so the running app must not show a second
+   * notification for the same message. Everywhere else (iOS, web, desktop, and Android
+   * before registration succeeds or after it fails or is torn down) `app`, so nobody
+   * loses notifications.
+   */
+  readonly backgroundDelivery = computed<'app' | 'push'>(() =>
+    this.nativePush.platform === 'android' &&
+    this._runtimeStatus().status === 'available'
+      ? 'push'
+      : 'app',
+  );
 
   runtimePrerequisite():
     'ready' | 'unsupported' | 'not-configured' | 'no-account' {
