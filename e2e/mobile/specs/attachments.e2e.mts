@@ -7,6 +7,7 @@ import {
   uniqueId,
 } from '../support/matrix.mts';
 import { native, resetApp, shell, webview } from '../support/session.mts';
+import { onlyOn } from '../support/platform.mts';
 
 // A 1x1 PNG. Android 13+ lists only what MediaStore has indexed, so the file is pushed to a
 // public collection directory and then scanned.
@@ -55,7 +56,13 @@ async function seedPicture(name: string): Promise<void> {
   });
 }
 
-describe('Android attachments', () => {
+describe('mobile attachments', () => {
+  before(
+    onlyOn(
+      'android',
+      'drives the Android media picker (android.intent.action.MEDIA, content:// URIs) through UiAutomator; the iOS photo picker is not adapted yet',
+    ),
+  );
   beforeEach(resetApp);
 
   it('attaches a photo from the system photo picker and sends it', async () => {

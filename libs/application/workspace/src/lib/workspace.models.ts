@@ -23,7 +23,16 @@ export type WorkspaceNavigationSource =
 
 export interface WorkspaceOpenOptions {
   readonly source: WorkspaceNavigationSource;
-  readonly history: 'push' | 'replace';
+  /**
+   * `back` pops the current history entry instead of writing one: Back from a compact
+   * Conversation whose entry sits directly on the list it was opened from.
+   */
+  readonly history: 'push' | 'replace' | 'back';
+  /**
+   * A Conversation pushed straight over the list. The list entry below is rewritten to the
+   * list view Back returns to, and the new entry is marked so Back can pop it.
+   */
+  readonly overList?: boolean;
   /** Present when a semantic command also owns the canonical event-anchor projection. */
   readonly eventId?: string | null;
   /** Re-attach projections when the semantic state survived outside the Workspace route. */

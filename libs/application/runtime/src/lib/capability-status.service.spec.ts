@@ -75,7 +75,7 @@ describe('CapabilityStatusService', () => {
         'preferences:hydrate-gestures',
         'preferences:hydrate-gifs',
         'preferences:hydrate-privacy',
-        'preferences:hydrate-push-gateway',
+        'preferences:hydrate-rail-unread',
         'preferences:hydrate-shell-layout',
         'preferences:hydrate-shortcuts',
         'preferences:hydrate-system-lines',
@@ -114,6 +114,28 @@ describe('CapabilityStatusService', () => {
     });
   });
 
+  it('recognises a restore stopped by an unavailable keychain', () => {
+    expect(
+      capabilityStatusCopy({
+        capability: 'accounts',
+        operation: 'restore',
+        condition: 'degraded',
+        code: 'account-restore-secure-storage-unavailable',
+      }).safeDiagnosticReason,
+    ).toBe('account-restore-secure-storage-unavailable');
+  });
+
+  it('recognises a restore that lost its crypto store key', () => {
+    expect(
+      capabilityStatusCopy({
+        capability: 'accounts',
+        operation: 'restore',
+        condition: 'degraded',
+        code: 'account-restore-crypto-store-key-lost',
+      }).safeDiagnosticReason,
+    ).toBe('account-restore-crypto-store-key-lost');
+  });
+
   it('lists independent startup blockers in dependency order', () => {
     runtimeState.set({
       phase: 'blocked',
@@ -148,6 +170,23 @@ describe('CapabilityStatusService', () => {
     ]);
     expect(status.startupRecovery()).toBe('Retry startup');
     expect(status.actionableCount()).toBe(3);
+  });
+
+  it('offers account removal beside retry when the keychain blocks startup', () => {
+    runtimeState.set({
+      phase: 'blocked',
+      attempt: 1,
+      failure: {
+        stage: 'account-restoration',
+        recovery: 'retry-startup',
+        secondaryRecovery: 'reauthenticate',
+        diagnostic: { code: 'account-secure-storage-unavailable' },
+      },
+      settlements: [],
+    });
+
+    expect(status.startupRecovery()).toBe('Retry startup');
+    expect(status.startupSecondaryRecovery()).toBe('Remove account');
   });
 
   it('counts distinct actionable scopes and groups view-only Account identities', () => {

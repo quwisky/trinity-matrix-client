@@ -104,6 +104,8 @@ export interface HostLifecycleOperation {
   readonly events: Observable<
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >;
+  /** Ask the host to drop its own caches after the app went to the background. */
+  releaseMemory?(): Observable<HostOperationOutcome>;
 }
 
 export interface HostUpdatesOperation {

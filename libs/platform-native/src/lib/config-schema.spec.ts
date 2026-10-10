@@ -38,10 +38,12 @@ describe('config key ledger', () => {
     );
   });
 
-  it('has data-access/room-library contributing nothing at all', () => {
-    // Both of its keys are per-account and user-id-suffixed, so the lib registers no
-    // entries. If that changes, the entries and this expectation move together.
-    expect(exportedKeysFor('data-access/room-library')).toEqual([]);
+  it('has data-access/room-library export only the space rail choice', () => {
+    // Its other keys are per-account and user-id-suffixed, so the lib registers no entries
+    // for them. If that changes, the entries and this expectation move together.
+    expect(exportedKeysFor('data-access/room-library')).toEqual([
+      'trinity.rail.unread-chats',
+    ]);
   });
 
   it('names each owning lib for the keys it exports', () => {
@@ -57,9 +59,7 @@ describe('config key ledger', () => {
       'trinity.appearance.code-line-presentation',
     ]);
     expect(exportedKeysFor('data-access/gif')).toEqual(['trinity.gif.config']);
-    expect(exportedKeysFor('data-access/notifications')).toEqual([
-      'trinity.push.gateway',
-    ]);
+    expect(exportedKeysFor('data-access/notifications')).toEqual([]);
     // The KEYS, not a count. A bare length is a merge hazard: two branches that each add
     // one key each bump it by one, the merge is clean because they touched the same line
     // identically, and the suite then fails with an opaque off-by-one that points at
@@ -72,6 +72,7 @@ describe('config key ledger', () => {
       'trinity.message-swipe',
       'trinity.privacy.link-previews',
       'trinity.privacy.link-previews-encrypted',
+      'trinity.privacy.save-captures-to-gallery',
       'trinity.privacy.send-read-receipts',
       'trinity.shell.right-panel-width',
       'trinity.shell.sidebar-width',
@@ -93,7 +94,7 @@ describe('config key ledger', () => {
     ).toBe(true);
   });
 
-  it('versions the retired composer preferences as format 3', () => {
-    expect(CONFIG_EXPORT_VERSION).toBe(3);
+  it('versions the retired push gateway override as format 4', () => {
+    expect(CONFIG_EXPORT_VERSION).toBe(4);
   });
 });

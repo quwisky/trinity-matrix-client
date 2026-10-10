@@ -14,6 +14,7 @@ import {
   Router,
   convertToParamMap,
   type ParamMap,
+  type UrlTree,
 } from '@angular/router';
 import { TrustService } from '@trinity/data-access/trust';
 import {
@@ -45,7 +46,6 @@ import {
   type WorkspaceApplicationSurfaceRequest,
 } from '@trinity/application/workspace';
 
-import { TrnActionSheetService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { BehaviorSubject, Subject, of, switchMap } from 'rxjs';
 import { vi } from 'vitest';
@@ -361,6 +361,19 @@ export const SHARED_MOCKS: Provider[] = [
       },
       events: routerEvents,
       parseUrl: (url: string) => urlSerializer.parse(url),
+      // The Workspace location adapter serializes the list entry it rewrites under a
+      // Conversation opened from it (#1113); build trees the way `navigate` reads them.
+      createUrlTree: (
+        commands: unknown[],
+        extras?: { queryParams?: Record<string, string> },
+      ) => {
+        const tree = urlSerializer.parse(
+          (commands as string[]).filter(Boolean).join('/') || '/',
+        );
+        tree.queryParams = extras?.queryParams ?? {};
+        return tree;
+      },
+      serializeUrl: (tree: UrlTree) => urlSerializer.serialize(tree),
       // `vi.fn` wrapping the behaviour, not a bare function: several specs assert on the
       // navigation itself (`expect(router.navigate).toHaveBeenCalledWith(...)`), and a plain
       // function fails those with "is not a spy" rather than with anything informative.
@@ -389,7 +402,6 @@ export const SHARED_MOCKS: Provider[] = [
     }),
   },
   ROUTE_PROVIDER,
-  MockProvider(TrnActionSheetService),
 ];
 
 /**

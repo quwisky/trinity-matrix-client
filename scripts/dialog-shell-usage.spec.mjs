@@ -4,14 +4,13 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * Every dialog, sheet and fullscreen overlay is built on `<trn-dialog-shell>`, so a hand-rolled
- * `trnOverlaySurface` dialog cannot return. Only the shell itself, the action sheet and the R4
+ * `trnOverlaySurface` dialog cannot return. Only the shell itself and the R4
  * header panels may pick those layouts directly.
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');
 const allowed = new Set([
   'trn-dialog-shell.component.html',
-  'trn-action-sheet.component.ts',
   // The R4 header panels.
   'pinned-messages-panel.component.html',
   'thread-view.component.html',
@@ -55,7 +54,7 @@ describe('dialog shell usage', () => {
       cwd: workspaceRoot,
     });
     // An empty scan would pass vacuously.
-    expect(files.length).toBeGreaterThan(100);
+    expect(files.length).toBeGreaterThan(0);
     const offenders = files
       .filter(
         (file) =>

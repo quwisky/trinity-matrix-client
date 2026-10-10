@@ -3,10 +3,12 @@ export declare const HERE: string;
 export declare const STATE_DIR: string;
 export declare const DATA: string;
 export declare const REMOTE_DATA: string;
+export declare const MAS_DATA: string;
 export declare function resolveNetworkContainer(): Promise<string>;
 export declare function composeFiles(
   kind: string,
   networkContainer: string,
+  options?: { mas?: boolean },
 ): string[];
 export declare function prepareStateDir(
   configFiles?: readonly string[],

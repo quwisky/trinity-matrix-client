@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, from, of, switchMap, throwError } from 'rxjs';
+import { displaySafeMime } from '@trinity/util/matrix';
 import { GifSettingsService } from './gif-settings.service';
 import { buildGifRequestUrl, parseGifResults } from './gif-providers';
 import type { GifResult } from './gif.model';
@@ -44,8 +45,8 @@ export class GifService {
   /**
    * Fetch a preview GIF's bytes and bind them as a `blob:` object URL. The app's
    * CSP forbids a remote `<img src>` (tracking-pixel guard), so previews — like
-   * avatars and media — are fetched over `connect-src` and shown as blobs. The
-   * caller owns the returned URL and must revoke it.
+   * avatars and media — are fetched over `connect-src` and shown as blobs, typed only with a
+   * display-safe media type. The caller owns the returned URL and must revoke it.
    */
   fetchPreview(url: string): Observable<string> {
     return from(fetch(url)).pipe(
@@ -54,7 +55,13 @@ export class GifService {
           ? from(res.blob())
           : throwError(() => new Error(`GIF preview failed (${res.status})`)),
       ),
-      switchMap((blob) => of(URL.createObjectURL(blob))),
+      switchMap((blob) =>
+        of(
+          URL.createObjectURL(
+            new Blob([blob], { type: displaySafeMime(blob.type) }),
+          ),
+        ),
+      ),
     );
   }
 

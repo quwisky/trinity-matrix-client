@@ -1,3 +1,4 @@
+import { TrnCardImports } from '@trinity/components/navigation-layout';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -20,7 +21,7 @@ import { TrnButton } from '@trinity/components/controls';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './poll.component.html',
   styleUrl: './poll.component.scss',
-  imports: [TrnButton],
+  imports: [TrnButton, TrnCardImports],
 })
 export class PollComponent {
   readonly poll = input.required<PollView>();

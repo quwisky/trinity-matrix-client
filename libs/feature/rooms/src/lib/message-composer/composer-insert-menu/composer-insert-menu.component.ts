@@ -15,7 +15,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnIconButton } from '@trinity/components/controls';
 import {
-  TrnActionSheetService,
+  TrnSurfaceService,
   TrnDropdownMenu,
   TrnDropdownMenuItem,
   TrnDropdownMenuTrigger,
@@ -28,7 +28,7 @@ import {
   TrnIconComponent,
   type TrnIconName,
 } from '@trinity/components/foundations';
-import { isMobileOs } from '@trinity/platform-native';
+import { isMobileOs, type CaptureMode } from '@trinity/platform-native';
 
 interface ComposerInsertAction {
   readonly text: string;
@@ -69,7 +69,7 @@ interface OwnedSheet {
   styleUrl: './composer-insert-menu.component.scss',
 })
 export class ComposerInsertMenuComponent {
-  private readonly actionSheet = inject(TrnActionSheetService);
+  private readonly actionSheet = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly mobileTrigger =
     viewChild<ElementRef<HTMLButtonElement>>('mobileTrigger');
@@ -110,6 +110,8 @@ export class ComposerInsertMenuComponent {
   readonly stickerEnabled = input(false);
   /** The Conversation cannot take a send yet; entries that send to the Room are disabled. */
   readonly sendBlocked = input(false);
+  /** How this host takes photos and videos; `'none'` withholds both actions. */
+  readonly captureMode = input<CaptureMode>('none');
 
   readonly attachFile = output<void>();
   readonly pickGif = output<void>();
@@ -117,6 +119,8 @@ export class ComposerInsertMenuComponent {
   readonly shareLocation = output<void>();
   readonly recordVoice = output<void>();
   readonly pickSticker = output<void>();
+  readonly takePhoto = output<void>();
+  readonly recordVideo = output<void>();
 
   /** One action model feeds both the anchored desktop menu and mobile action sheet. */
   protected readonly insertActions = computed<readonly ComposerInsertAction[]>(
@@ -131,6 +135,28 @@ export class ComposerInsertMenuComponent {
           run: () => this.attachFile.emit(),
         },
       ];
+      // Capture only stages, like attaching, so an upload in flight or a blocked send does
+      // not gate it.
+      if (this.captureMode() !== 'none') {
+        actions.push(
+          {
+            text: 'Take photo',
+            icon: 'camera',
+            testId: 'insert-take-photo',
+            disabled: false,
+            transfersFocus: false,
+            run: () => this.takePhoto.emit(),
+          },
+          {
+            text: 'Record video',
+            icon: 'video',
+            testId: 'insert-record-video',
+            disabled: false,
+            transfersFocus: false,
+            run: () => this.recordVideo.emit(),
+          },
+        );
+      }
       if (this.gifEnabled()) {
         actions.push({
           text: 'GIF',
@@ -201,6 +227,7 @@ export class ComposerInsertMenuComponent {
       this.recording();
       this.locationSharing();
       this.stickerEnabled();
+      this.captureMode();
       // A capability/context update can remove the focused row. Give focus back to the
       // replacement trigger instead of letting CDK drop it on the document body. The
       // destroy path remains non-restoring because its composer is leaving too.
@@ -230,13 +257,15 @@ export class ComposerInsertMenuComponent {
         action.run();
       },
     }));
-    const ref = this.actionSheet.open(
+    const ref = this.actionSheet.openActions(
       { header: 'Add to message', buttons },
-      'Add to message',
-      // Selection can open a poll, GIF or sticker surface. CDK restoring the `+`
-      // afterward would steal focus from it, so this invocation owns restoration and
-      // applies it only to dismissals and actions that do not launch a focus owner.
-      { restoreFocus: false },
+      {
+        ariaLabel: 'Add to message',
+        // Selection can open a poll, GIF or sticker surface. CDK restoring the `+`
+        // afterward would steal focus from it, so this invocation owns restoration and
+        // applies it only to dismissals and actions that do not launch a focus owner.
+        restoreFocus: false,
+      },
     );
     const owned: OwnedSheet = {
       ref,
@@ -251,7 +280,7 @@ export class ComposerInsertMenuComponent {
         this.ownedSheet = null;
         this.mobileSheetOpen.set(false);
       }
-      // `TrnActionSheetComponent` closes before it runs the handler. Defer this check
+      // `TrnActionListComponent` closes before it runs the handler. Defer this check
       // one microtask so the chosen action can publish its focus-transfer contract.
       queueMicrotask(() => {
         if (owned.restoreOnDismiss) {

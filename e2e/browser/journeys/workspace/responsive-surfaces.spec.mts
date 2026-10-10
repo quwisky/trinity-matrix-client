@@ -228,6 +228,16 @@ test.describe('Responsive auth, crypto, and overlay surfaces', () => {
     );
     await expectNoHorizontalDocumentScroll(page);
 
+    // The card keeps a gutter on a phone: its ring and rounded corners never touch the edge.
+    await page.setViewportSize({ width: 390, height: 844 });
+    const phoneSurface = await page.locator('.crypto-surface').boundingBox();
+    expect(
+      phoneSurface,
+      'phone encryption surface has a layout box',
+    ).not.toBeNull();
+    expect(phoneSurface!.x).toBeGreaterThanOrEqual(8);
+    expect(phoneSurface!.x + phoneSurface!.width).toBeLessThanOrEqual(390 - 8);
+
     await page.setViewportSize({ width: 1280, height: 720 });
     await expectInsideViewport(
       page,

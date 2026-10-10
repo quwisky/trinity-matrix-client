@@ -20,7 +20,7 @@ import {
   UserDirectoryDiscoveryService,
   type DiscoveredUser,
 } from '@trinity/data-access/discovery';
-import { isValidUserId } from '@trinity/util/matrix';
+import { initialOf, isValidUserId } from '@trinity/util/matrix';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import {
@@ -39,13 +39,13 @@ const MIN_SEARCH_LENGTH = 2;
  * Dialog user picker for the invite and DM flows. Combines a free-text Matrix-ID
  * field (the always-available minimum — the Confirm action accepts a typed
  * `@user:server`) with live homeserver user-directory results below it. Presented
- * by {@link UserPickerService} as a {@link TrnDialogService} dialog; on a pick it
+ * by {@link UserPickerService} as a {@link TrnSurfaceService} dialog; on a pick it
  * closes with the chosen MXID, and on cancel with `null` — it never creates or
  * invites itself, so the page stays the orchestrator (matching the
  * `TrnAlertService` prompts in `RoomsPage`).
  *
  * Config (heading / confirm label / placeholder) arrives as signal inputs (set by
- * TrnDialogService). matrix-js-sdk is reached only through
+ * TrnSurfaceService). matrix-js-sdk is reached only through
  * {@link UserDirectoryDiscoveryService.search}. The card self-sizes so it works in a bare CDK
  * dialog (no `ion-modal` host).
  */
@@ -141,8 +141,5 @@ export class UserPickerComponent {
   }
 
   /** First visible character (sans sigil), uppercased, for the avatar fallback. */
-  initialOf(name: string): string {
-    const stripped = name.replace(/^[#@!]+/, '').trim();
-    return (stripped[0] ?? '?').toUpperCase();
-  }
+  readonly initialOf = initialOf;
 }

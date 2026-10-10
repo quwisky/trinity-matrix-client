@@ -26,4 +26,4 @@ For active-client projections, the shared `projectFromClient` adapter coordinate
 
 Commands call the SDK and then allow sync or the relevant SDK event to reconcile current state. Preserve a typed error or outcome for the initiating action, but do not claim that an accepted network request has already become authoritative local state unless the SDK contract guarantees it.
 
-Authentication, persistence, and cryptographic storage require stronger lifecycle rules than ordinary Matrix reads. Continue with [encryption and trust](../encryption-and-trust/). For signal and command behavior, read [state and reactivity](../state-and-reactivity/).
+Authentication, persistence, and cryptographic storage require stronger lifecycle rules than ordinary Matrix reads. When a homeserver offers both OAuth 2.0 sign-in and legacy SSO, Trinity prefers OAuth 2.0, because only that flow lets the client check that the sign-in response comes from the provider it started with. Continue with [encryption and trust](../encryption-and-trust/). For signal and command behavior, read [state and reactivity](../state-and-reactivity/).

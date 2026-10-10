@@ -37,7 +37,7 @@ async function exists(p) {
  *
  * Empty on Windows, where process.getuid is undefined and bind-mount ownership is moot.
  */
-const containerUser =
+export const containerUser =
   typeof process.getuid === 'function'
     ? ['-e', `UID=${process.getuid()}`, '-e', `GID=${process.getgid()}`]
     : [];
@@ -61,9 +61,10 @@ const OIDC_END = '# === end trinity-e2e-oidc ===';
  * restarts Synapse whenever the two have diverged.
  */
 function oidcBlock(ctx) {
-  // No compose network under the netns override, so no `dex` DNS name — but everything
-  // shares one loopback there, so the published port is reachable as localhost.
-  const internal = ctx.networkContainer ? 'localhost:5556' : 'dex:5556';
+  // No compose network under the netns override or the native runtime, so no `dex` DNS
+  // name — but everything shares one loopback there, so Dex's port is reachable as localhost.
+  const internal =
+    ctx.networkContainer || ctx.native ? 'localhost:5556' : 'dex:5556';
   const appOrigin =
     process.env.TRINITY_E2E_APP_URL ??
     process.env.BASE_URL ??
@@ -73,7 +74,7 @@ function oidcBlock(ctx) {
   // restarting Synapse between environment adapters.
   const clientWhitelist = [
     `${appOrigin.replace(/\/$/, '')}/`,
-    'eu.qwky.trinity://sso-callback',
+    'dev.trinityproject.trinity://sso-callback',
   ];
   return [
     OIDC_START,
@@ -94,7 +95,8 @@ function oidcBlock(ctx) {
     '    client_secret: "trinity-e2e-secret"',
     '    scopes: ["openid", "profile", "email"]',
     // Browser-facing: the user's own navigation, so it must be the published port.
-    `    authorization_endpoint: "${DEX_ISSUER}/auth"`,
+    // Dex routes /auth/{connector} straight to that connector, so the mock skips the form.
+    `    authorization_endpoint: "${DEX_ISSUER}/auth${ctx.ssoMock ? '/mock' : ''}"`,
     // Server-facing: Synapse calls these itself, from inside the network.
     `    token_endpoint: "http://${internal}/dex/token"`,
     `    jwks_uri: "http://${internal}/dex/keys"`,
@@ -103,8 +105,12 @@ function oidcBlock(ctx) {
     '      config:',
     '        subject_claim: "sub"',
     // Dex puts the static user's `username` in `name`; mapping it straight through
-    // gives a deterministic localpart and skips Synapse's pick-a-username page.
-    '        localpart_template: "{{ user.name }}"',
+    // gives a deterministic localpart and skips Synapse's pick-a-username page. The
+    // mock's `name` is "Kilgore Trout" and it sends no preferred_username (Dex 2.46), so
+    // its localpart comes from its email, kilgore@kilgore.trout.
+    ctx.ssoMock
+      ? '        localpart_template: "{{ user.email | localpart_from_email }}"'
+      : '        localpart_template: "{{ user.name }}"',
     '        display_name_template: "{{ user.name }}"',
     OIDC_END,
   ].join('\n');
@@ -124,7 +130,7 @@ async function generateWithDocker(ctx) {
       '-e',
       'SYNAPSE_REPORT_STATS=no',
       ...containerUser,
-      'matrixdotorg/synapse:v1.119.0',
+      'ghcr.io/element-hq/synapse:v1.119.0',
       'generate',
     ],
     { signal: ctx.signal },
@@ -158,8 +164,9 @@ const NATIVE_URL_PREVIEW_BLACKLIST = [
  * Generate homeserver.yaml on first run, then patch in the e2e settings.
  *
  * `ctx.generate` replaces the Docker scaffold (the native runtime runs Synapse's own
- * --generate-config). `ctx.sso === false` leaves the Dex block out: there is no Dex, and
- * Synapse refuses OIDC providers without authlib, which the native venv does not install.
+ * --generate-config), and `ctx.native` marks it. `ctx.sso === false` leaves the Dex block
+ * out, for a native runtime without a `dex` binary; `ctx.ssoMock` points it at Dex's
+ * form-free mock connector (TRINITY_E2E_SSO_PROVIDER=mock).
  */
 export async function ensureConfig(ctx) {
   if (!(await exists(CONFIG))) {
@@ -212,14 +219,18 @@ export async function ensureConfig(ctx) {
       // Link previews for the URL-preview e2e. The empty IP blacklist lets Synapse
       // fetch the harness OG page (http://caddy:8080/og) on the private docker network
       // — safe here because this homeserver is disposable and network-isolated. The
-      // native runtime (sso: false) serves no OG page and shares the host's network,
-      // so it lists Synapse's recommended private and reserved ranges: Synapse has no
-      // default blocklist and refuses to start with previews enabled and none given.
+      // native runtime shares the host's network, so it lists Synapse's recommended
+      // private and reserved ranges: Synapse has no default blocklist and refuses to start
+      // with previews enabled and none given. Its Caddy serves the OG page on loopback
+      // (http://127.0.0.1:8080/og), so 127.0.0.1 alone is let back through; the LAN
+      // ranges and ::1 stay blocked.
       'url_preview_enabled: true',
-      ...(ctx.sso === false
+      ...(ctx.native
         ? [
             'url_preview_ip_range_blacklist:',
             ...NATIVE_URL_PREVIEW_BLACKLIST.map((range) => `  - '${range}'`),
+            'url_preview_ip_range_whitelist:',
+            "  - '127.0.0.1'",
           ]
         : ['url_preview_ip_range_blacklist: []']),
       // Permissive CORS isn't a Synapse config knob; matrix endpoints already send
@@ -305,7 +316,7 @@ async function ensureSecondaryConfig(ctx) {
         '-e',
         'SYNAPSE_REPORT_STATS=no',
         ...containerUser,
-        'matrixdotorg/synapse:v1.157.2',
+        'ghcr.io/element-hq/synapse:v1.157.2',
         'generate',
       ],
       { signal: ctx.signal },

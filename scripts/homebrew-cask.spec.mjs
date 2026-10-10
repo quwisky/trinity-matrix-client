@@ -30,8 +30,8 @@ describe('Homebrew cask', () => {
 
   zap trash: [
     "~/Library/Application Support/Trinity",
-    "~/Library/Preferences/eu.qwky.trinity.plist",
-    "~/Library/Saved Application State/eu.qwky.trinity.savedState",
+    "~/Library/Preferences/dev.trinityproject.trinity.plist",
+    "~/Library/Saved Application State/dev.trinityproject.trinity.savedState",
   ]
 end
 `);

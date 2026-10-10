@@ -50,6 +50,8 @@ export interface ApplicationRuntimeDiagnostic {
 export interface ApplicationStartupFailure {
   readonly stage: ApplicationStartupStage;
   readonly recovery: ApplicationStartupRecovery;
+  /** A further, confirmed way out offered beside {@link recovery}, never run on its own. */
+  readonly secondaryRecovery?: ApplicationStartupRecovery;
   readonly diagnostic: ApplicationRuntimeDiagnostic;
 }
 
@@ -70,6 +72,7 @@ export type ApplicationStartupStageOutcome =
   | {
       readonly kind: 'blocked';
       readonly recovery: ApplicationStartupRecovery;
+      readonly secondaryRecovery?: ApplicationStartupRecovery;
       readonly diagnostic: ApplicationRuntimeDiagnostic;
       readonly settlements?: readonly ApplicationStartupProducerSettlement[];
     };

@@ -7,6 +7,7 @@ import {
   CLEAR_DATA_MISTYPED_MESSAGE,
   clearDataMessage,
   confirmClearDataIntent,
+  installationResetFailureMessage,
   signedInWarning,
 } from './clear-all-data';
 
@@ -122,6 +123,53 @@ describe('confirmClearDataIntent', () => {
         confirmText: 'Erase everything',
         message: expect.stringContaining('@a:hs'),
       }),
+    );
+  });
+});
+
+describe('installationResetFailureMessage', () => {
+  const issue = (recovery: 'retry' | 'restart-application') =>
+    ({ scope: 'indexed-db', recovery }) as never;
+
+  it('is null when the reset finished, so the caller restarts', () => {
+    expect(installationResetFailureMessage({ kind: 'ready' })).toBeNull();
+  });
+
+  it('asks to try again when another account change holds the runtime', () => {
+    expect(
+      installationResetFailureMessage({
+        kind: 'transition-in-progress',
+        operation: 'sign-out' as never,
+      }),
+    ).toBe('Another account change is still in progress. Try again.');
+  });
+
+  it('says cleanup is still running when the outcome is uncertain', () => {
+    expect(
+      installationResetFailureMessage({
+        kind: 'uncertain-cleanup',
+        issues: [],
+        pending: [],
+      }),
+    ).toMatch(/still running.*try again to check the same attempt/i);
+  });
+
+  it('asks for a restart only when some residue needs one', () => {
+    expect(
+      installationResetFailureMessage({
+        kind: 'partial-cleanup',
+        issues: [issue('retry'), issue('restart-application')],
+      }),
+    ).toBe(
+      'Some cleanup could not be completed. Restart Trinity before trying again.',
+    );
+    expect(
+      installationResetFailureMessage({
+        kind: 'partial-cleanup',
+        issues: [issue('retry')],
+      }),
+    ).toBe(
+      'Some cleanup could not be completed. Try again to retry only the remaining safe work.',
     );
   });
 });

@@ -3,6 +3,7 @@ import {
   ENCRYPTED_LINK_PREVIEWS_PREFERENCE,
   LINK_PREVIEWS_PREFERENCE,
   PRIVACY_PREFERENCE_DESCRIPTORS,
+  SAVE_CAPTURES_TO_GALLERY_PREFERENCE,
   SEND_READ_RECEIPTS_PREFERENCE,
 } from './privacy-preferences';
 
@@ -52,6 +53,22 @@ describe('privacy preference descriptors', () => {
           },
         }),
       }),
+      expect.objectContaining({
+        id: 'conversations.privacy.save-captures-to-gallery',
+        owner: 'conversations',
+        section: 'privacy-capture',
+        order: 10,
+        scope: 'installation',
+        defaultValue: false,
+        sensitivity: 'private',
+        storage: 'device-preferences',
+        export: 'portable',
+        editor: expect.objectContaining({
+          kind: 'toggle',
+          label: "Save photos and videos I take to this device's gallery",
+          testId: 'privacy-save-captures-to-gallery',
+        }),
+      }),
     ]);
   });
 
@@ -64,6 +81,7 @@ describe('privacy preference descriptors', () => {
       'trinity.privacy.send-read-receipts',
       'trinity.privacy.link-previews',
       'trinity.privacy.link-previews-encrypted',
+      'trinity.privacy.save-captures-to-gallery',
     ]);
   });
 
@@ -71,6 +89,7 @@ describe('privacy preference descriptors', () => {
     ['send read receipts', SEND_READ_RECEIPTS_PREFERENCE],
     ['link previews', LINK_PREVIEWS_PREFERENCE],
     ['encrypted link previews', ENCRYPTED_LINK_PREVIEWS_PREFERENCE],
+    ['save captures to gallery', SAVE_CAPTURES_TO_GALLERY_PREFERENCE],
   ] as const)('migrates real %s legacy and current values', (_, descriptor) => {
     const migration = descriptor.persistence.migration;
 

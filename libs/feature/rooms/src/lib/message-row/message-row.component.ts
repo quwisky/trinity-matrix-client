@@ -13,8 +13,14 @@ import {
   viewChild,
 } from '@angular/core';
 import { DateTimeFormatService, isMobileOs } from '@trinity/platform-native';
-import { hasUsableTimestamp } from '@trinity/util/matrix';
 import { AvatarComponent } from '@trinity/components/generic-content';
+import { MatrixHtmlDirective } from '../message-presentation/matrix-html.directive';
+import {
+  MessageSwipeDirective,
+  SWIPE_DEAD_ZONE_PX,
+  SWIPE_SLOP_PX,
+  type SwipeDirection,
+} from './message-swipe.directive';
 import {
   MessageToolbarComponent,
   type MessageAction,
@@ -22,18 +28,13 @@ import {
 } from '../message-toolbar/message-toolbar.component';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import {
+  type MessageShield,
   type MessageView,
-  type ReceiptView,
   type ThreadSummary,
 } from '@trinity/data-access/timeline';
 import { MessageReactionsComponent } from '../message-reactions/message-reactions.component';
 import { MediaAttachmentComponent } from '../media-attachment/media-attachment.component';
-import { CodeHighlightDirective } from '../message-presentation/code-highlight.directive';
-import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
-import {
-  type MatrixLinkClick,
-  MatrixLinkDirective,
-} from '../matrix-link/matrix-link.directive';
+import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { PollComponent } from '../poll/poll.component';
 import { LinkPreviewComponent } from '../link-preview/link-preview.component';
 import { LocationComponent } from '../location-share/location.component';
@@ -42,8 +43,9 @@ import {
   TrnIconComponent,
   type TrnIconName,
 } from '@trinity/components/foundations';
-import { InlineMxcImagesDirective } from '../inline-mxc-images/inline-mxc-images.directive';
 import { MessageReplyPreviewComponent } from '../message-reply-preview/message-reply-preview.component';
+import { MessageReceiptsComponent } from '../message-receipts/message-receipts.component';
+import { MessageTimeComponent } from '../message-time/message-time.component';
 import { MessageThreadSummaryComponent } from '../message-thread-summary/message-thread-summary.component';
 
 /** A collapsed run of adjacent system lines (see `groupSystemRuns`). */
@@ -111,40 +113,17 @@ export type MessageRowAction =
 
 /** How long a press has to be held before it counts as one, in milliseconds. */
 const LONG_PRESS_MS = 500;
-/** How far the pointer may drift before the press is a scroll instead. */
-const LONG_PRESS_SLOP_PX = 10;
+/** How far the pointer may drift before the press is a scroll instead. Must equal the swipe's slop. */
+const LONG_PRESS_SLOP_PX = SWIPE_SLOP_PX;
 
-/**
- * How far in from either viewport edge a message swipe refuses to START.
- *
- * Both competitors are viewport-anchored, and neither can be argued with once it has the
- * gesture: the shell's drawer opens in a 24px band immediately inside a 32px native-history
- * strip, and native recognisers are outside CSS entirely. So the only lever is to refuse to
- * arm through that combined region, measured at `pointerdown` because that is the only moment
- * the decision can be made without having already competed.
- *
- * Wider than the drawer's zone and wider than the platform regions, whose widths Apple and
- * Google do not publish — chosen with margin rather than derived. `message-row.swipe.spec.ts`
- * pins that it is never narrower than the drawer's; a device is what confirms it clears the
- * platform's.
- */
-export const SWIPE_DEAD_ZONE_PX = 56;
-
-/** How far a row must travel, as a fraction of its own width, before the action commits. */
-const SWIPE_COMMIT_FRACTION = 0.25;
-
-/** How far the pointer may drift vertically before the drag is a scroll instead. */
-const SWIPE_VERTICAL_SLOP_PX = 12;
-
-/** Which way a row is dragged to act on it, as resolved by whoever renders the row. */
-export type SwipeDirection = 'off' | 'left' | 'right';
+export { SWIPE_DEAD_ZONE_PX, type SwipeDirection };
 
 /** The semantic action a row resolved from its affordance when a swipe committed. */
 export type MessageSwipeAction = 'edit' | 'reply';
 
 /**
  * One presentational message row, shared by the main timeline ({@link
- * SimpleMessageListComponent} / {@link VirtualMessageListComponent}) and the thread
+ * MessageListComponent}) and the thread
  * view so all render identically — sender
  * header/continuation, reply preview, media/markdown/text body, reactions, the
  * hover toolbar, and (main timeline only) a thread indicator.
@@ -158,22 +137,22 @@ export type MessageSwipeAction = 'edit' | 'reply';
   selector: 'trn-message-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    MatrixHtmlDirective,
     AvatarComponent,
     TrnIconComponent,
     MediaAttachmentComponent,
     MessageReactionsComponent,
     MessageToolbarComponent,
-    CodeHighlightDirective,
-    SpoilerRevealDirective,
-    MatrixLinkDirective,
     PollComponent,
     LinkPreviewComponent,
     LocationComponent,
     VoiceMessageComponent,
     TrnTooltip,
-    InlineMxcImagesDirective,
     MessageReplyPreviewComponent,
     MessageThreadSummaryComponent,
+    MessageReceiptsComponent,
+    MessageTimeComponent,
+    MessageSwipeDirective,
   ],
   templateUrl: './message-row.component.html',
   styleUrl: './message-row.component.scss',
@@ -190,7 +169,7 @@ export class MessageRowComponent {
   private readonly injector = inject(Injector);
 
   private readonly toolbar = viewChild(MessageToolbarComponent);
-  private readonly stamp = viewChild<ElementRef<HTMLElement>>('stamp');
+  private readonly swipeGesture = viewChild(MessageSwipeDirective);
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
   private longPressOrigin: {
     x: number;
@@ -204,7 +183,7 @@ export class MessageRowComponent {
 
   /** Whether the pointer or focus is on this row, which is what mounts its toolbar. */
   readonly toolbarActive = signal(false);
-  /** Whether the time's tooltip exists yet; see {@link armTimeTip}. */
+  /** Whether the time's tooltip exists yet; see {@link MessageTimeComponent}. */
   readonly timeTipArmed = signal(false);
 
   /**
@@ -222,21 +201,8 @@ export class MessageRowComponent {
   constructor() {
     this.destroyRef.onDestroy(() => {
       this.cancelLongPress();
-      // A row destroyed mid-drag — a redaction, an edit, the local-echo id swap, or simply
-      // scrolling out of the virtual window — leaves `swipeStart` set, and `releaseSwipe`
-      // early-returns on a null start, so this is what makes a destroyed row unable to
-      // commit. NOT a capture release: the browser drops the capture when the element leaves
-      // the document, and this method never calls `releasePointerCapture`.
-      this.cancelSwipe();
       this.hideToolbar();
     });
-  }
-
-  /** ISO form of a timestamp for `<time datetime>`, or null when it isn't usable. */
-  protected isoTime(timestamp: number): string | null {
-    return hasUsableTimestamp(timestamp)
-      ? new Date(timestamp).toISOString()
-      : null;
   }
 
   /**
@@ -311,7 +277,7 @@ export class MessageRowComponent {
     //  - the media/link bail exists because the OS offers its own menu on those elements. A
     //    horizontal drag is not a menu, and media rows are exactly the ones whose swipe
     //    means Reply, so sharing that bail would kill the gesture across most of a timeline.
-    if (this.armSwipe(event)) {
+    if (this.swipeGesture()?.arm(event)) {
       // The shell's drawer arms on this same `pointerdown`, bubbling, on `.chat-body` — and
       // while it is open it arms ANYWHERE, with no edge zone. Stopping propagation is what
       // keeps a thread reply's swipe from also closing the drawer. Only when the gesture
@@ -364,7 +330,7 @@ export class MessageRowComponent {
       if (this.mobileActions) {
         // The press won; the drag is no longer a candidate. Without this the sheet opens and
         // a continued drag still commits underneath its backdrop.
-        this.cancelSwipe();
+        this.swipeGesture()?.cancel();
         this.longPress.emit({ anchor: context.anchor, clientY: context.y });
         return;
       }
@@ -385,7 +351,7 @@ export class MessageRowComponent {
    * movement is what keeps the menu from firing at the end of a flick.
    */
   onPointerMove(event: PointerEvent): void {
-    this.trackSwipe(event);
+    this.swipeGesture()?.track(event);
     const origin = this.longPressOrigin;
     if (!origin || this.longPressTimer === null) {
       return;
@@ -399,13 +365,13 @@ export class MessageRowComponent {
 
   /** A finger lifting ends both gestures — the press without firing, the drag by deciding. */
   onPointerUp(event: PointerEvent): void {
-    this.releaseSwipe(event);
+    this.swipeGesture()?.release(event);
     this.cancelLongPress();
   }
 
   /** The browser took the gesture away (a scroll won, or the pointer was cancelled). */
   onPointerCancel(): void {
-    this.cancelSwipe();
+    this.swipeGesture()?.cancel();
     this.cancelLongPress();
   }
 
@@ -416,191 +382,6 @@ export class MessageRowComponent {
       this.longPressTimer = null;
     }
     this.longPressOrigin = null;
-  }
-
-  /**
-   * Whether a sideways drag is armed on this row, and how far it has travelled.
-   *
-   * `null` when nothing is armed — which is what the `off` setting produces, rather than a
-   * drag that moves and springs back. Off means no listeners do anything and the row never
-   * moves.
-   */
-  private swipeStart: { x: number; y: number; id: number } | null = null;
-
-  /** True once a drag has passed the slop and is definitely this gesture, not a scroll. */
-  private swiping = false;
-
-  /**
-   * Arm a sideways drag, if every condition holds.
-   *
-   * Called from `onPointerDown` after the long press has had its look at the event. Returns
-   * whether it armed, because the caller uses that to decide about propagation.
-   */
-  private armSwipe(event: PointerEvent): boolean {
-    if (this.swipeDirection() === 'off') {
-      return false;
-    }
-    // Both outcomes are unavailable on a read-only row — there is no composer to reply or
-    // edit into. Unreachable today (all three consumers hard-code `readOnly: false`), and
-    // stated anyway: `toolbar()` gates on it, and this gesture deliberately does not use
-    // `toolbar()`, so the exemption has to be re-made here rather than inherited.
-    if (this.caps().readOnly) {
-      return false;
-    }
-    // Measured at the START, in viewport coordinates, because that is where the competitors
-    // live. A drag that begins in the middle and travels INTO an edge is fine: these are
-    // edge-start recognisers, so nothing takes it away mid-gesture.
-    const width = typeof window === 'undefined' ? 0 : window.innerWidth;
-    if (
-      event.clientX <= SWIPE_DEAD_ZONE_PX ||
-      width - event.clientX <= SWIPE_DEAD_ZONE_PX
-    ) {
-      return false;
-    }
-    this.swipeStart = {
-      x: event.clientX,
-      y: event.clientY,
-      id: event.pointerId,
-    };
-    this.swiping = false;
-    // Without capture, a drag that drifts off a one-line continuation row never sees its
-    // `pointerup` and leaves the row translated with nothing to put it back.
-    //
-    // `currentTarget`, not `target`: the latter is the deepest hit element — a link, an
-    // avatar, a reaction pill — and capture dies with it. `trn-avatar` swaps its `<span>`
-    // initial for an `<img>` the moment the image loads, so a finger that went down on an
-    // initial would lose its capture mid-drag, never see `pointerup`, and park the row
-    // translated. `currentTarget` is `.msg`, which is what the release path assumes anyway.
-    // jsdom has no pointer capture at all, hence the optional call.
-    (event.currentTarget as Element | null)?.setPointerCapture?.(
-      event.pointerId,
-    );
-    return true;
-  }
-
-  /** Track an armed drag, or abandon it if it turns out to be a scroll. */
-  private trackSwipe(event: PointerEvent): void {
-    const start = this.swipeStart;
-    if (!start || event.pointerId !== start.id) {
-      return;
-    }
-    if (Math.abs(event.clientY - start.y) > SWIPE_VERTICAL_SLOP_PX) {
-      this.cancelSwipe();
-      return;
-    }
-    const delta = event.clientX - start.x;
-    // Travel is only counted in the direction the setting asked for; the other way clamps to
-    // zero, so a wrong-way drag reads as no drag rather than as a negative one.
-    const travelled =
-      this.swipeDirection() === 'left'
-        ? Math.max(0, -delta)
-        : Math.max(0, delta);
-    if (travelled > LONG_PRESS_SLOP_PX) {
-      // Not cancelling the press here, deliberately. `onPointerMove` runs the press's own
-      // slop check immediately below, on the MANHATTAN sum against the same constant — and
-      // that sum can never be smaller than this directional travel, so a cancel here could
-      // never fire when the press's own did not. A test naming it was green with it deleted,
-      // which is what a redundant guard looks like from the outside.
-      //
-      // The press → pause → drag case is handled the other way round, by the timer
-      // disarming the swipe when it fires. That one IS load-bearing.
-      this.swiping = true;
-    }
-    this.paintSwipe(travelled);
-  }
-
-  /** Release an armed drag: commit past the threshold, otherwise put the row back. */
-  private releaseSwipe(event: PointerEvent): void {
-    const start = this.swipeStart;
-    if (!start || event.pointerId !== start.id) {
-      return;
-    }
-    const delta = event.clientX - start.x;
-    const travelled =
-      this.swipeDirection() === 'left'
-        ? Math.max(0, -delta)
-        : Math.max(0, delta);
-    // `.msg`, not the host: `:host { display: contents }` means the component has no box of
-    // its own and would measure 0, which reads as "never far enough" and never commits.
-    const root = this.host.nativeElement as HTMLElement;
-    const width =
-      root.querySelector<HTMLElement>('.msg')?.getBoundingClientRect().width ??
-      0;
-    const committed =
-      this.swiping && width > 0 && travelled >= width * SWIPE_COMMIT_FRACTION;
-    const action = committed ? this.swipeAction() : null;
-    this.cancelSwipe();
-    if (action) {
-      this.swipe.emit(action);
-    }
-  }
-
-  /** Disarm, put the row back, and forget the pointer. */
-  cancelSwipe(): void {
-    this.swipeStart = null;
-    this.swiping = false;
-    this.paintSwipe(0);
-  }
-
-  /**
-   * The distance a drag has to cover to commit, from the box that actually moves.
-   *
-   * ONE definition, read by both the arming paint and the release. They were two
-   * byte-identical expressions, which made "the icon said it would act, and then it acted"
-   * true by coincidence rather than by construction — the pair could be edited apart with
-   * nothing to notice.
-   *
-   * Takes the already-resolved `.msg` rather than finding it again: `paintSwipe` has it in
-   * hand and this runs once per `pointermove`. `getBoundingClientRect()` is stable during a
-   * drag — a pure `translate` does not change the border box, and the scroller's
-   * `overflow-x: clip` stops a translated row summoning a scrollbar that would reflow it.
-   */
-  private commitDistance(msg: HTMLElement): number {
-    return msg.getBoundingClientRect().width * SWIPE_COMMIT_FRACTION;
-  }
-
-  /**
-   * Move the row under the finger.
-   *
-   * One custom property written straight to the element per `pointermove`, which is what the
-   * drawer and the pane handle do and for the same reason: a signal write per move on an
-   * OnPush row would run change detection over the whole timeline for a value only CSS reads.
-   */
-  private paintSwipe(distance: number): void {
-    const root = this.host.nativeElement as HTMLElement;
-    const msg = root.querySelector<HTMLElement>('.msg');
-    if (!msg) {
-      return;
-    }
-    if (distance <= 0) {
-      msg.style.removeProperty('--swipe-drag');
-      msg.style.removeProperty('--swipe-progress');
-      msg.classList.remove('msg--swiping', 'msg--swipe-armed');
-      return;
-    }
-    const signed = this.swipeDirection() === 'left' ? -distance : distance;
-    msg.style.setProperty('--swipe-drag', `${Math.round(signed)}px`);
-
-    // How far along the gesture is, 0 → 1, as its own custom property. The affordance grows
-    // with the drag rather than snapping on at the first pixel, which is what makes the
-    // issue's "early enough in the drag to abandon it" true rather than merely claimed — a
-    // reader can see the action arriving and let go before it does.
-    //
-    // A property CSS interpolates directly, not a transition: a transition would be chasing
-    // the finger, and the whole point is that the reveal tracks it exactly.
-    const commitAt = this.commitDistance(msg);
-    // Clamped, and the clamp is load-bearing: without it a long drag drives the icon's scale
-    // past 1 and on up with the finger, unbounded. CSS would hide the overshoot in the
-    // opacity (it clamps to 1 on its own) and show it in the size.
-    const progress = commitAt > 0 ? Math.min(1, distance / commitAt) : 0;
-    msg.style.setProperty('--swipe-progress', `${progress.toFixed(3)}`);
-
-    // Drives both the icon's visibility and the 1:1 follow; the eased spring-back returns
-    // when this comes off. A class rather than a signal for the reason `paintSwipe` exists.
-    msg.classList.add('msg--swiping');
-    // Past the threshold: releasing now WILL act. Worth saying, because the alternative is a
-    // reader discovering where the line was by crossing it.
-    msg.classList.toggle('msg--swipe-armed', progress >= 1);
   }
 
   /**
@@ -644,7 +425,7 @@ export class MessageRowComponent {
    * scrollport; a new one places itself after its first render.
    */
   onPointerEnter(event?: PointerEvent): void {
-    this.armTimeTip(event, false);
+    this.armTimeTip(event);
     this.pointerInside = true;
     this.toolbarActive.set(true);
     this.toolbar()?.placeToolbar();
@@ -654,31 +435,10 @@ export class MessageRowComponent {
    * Create the time's tooltip when a mouse or pen first reaches the row. A tooltip registers
    * window listeners and a focus monitor, which is a lot to pay for every row a scroll builds.
    * Touch never opens one, and the `<time>` is not focusable, so nothing else needs it earlier.
-   *
-   * When the pointer is already on the time, the element is replaced as it arrives, so the
-   * tooltip never sees that entry and is given it again.
    */
-  armTimeTip(event: PointerEvent | undefined, onTime: boolean): void {
-    const pointerType = event?.pointerType;
-    if (pointerType !== 'mouse' && pointerType !== 'pen') {
-      return;
-    }
-    // The row's own enter fires first and arms the tip, so a time entered in the same move
-    // still has to be handed its entry: its old element is about to be replaced.
-    if (this.timeTipArmed() && !onTime) {
-      return;
-    }
-    this.timeTipArmed.set(true);
-    if (onTime) {
-      afterNextRender(
-        {
-          read: () =>
-            this.stamp()?.nativeElement.dispatchEvent(
-              new PointerEvent('pointerenter', { pointerType }),
-            ),
-        },
-        { injector: this.injector },
-      );
+  private armTimeTip(event: PointerEvent | undefined): void {
+    if (event?.pointerType === 'mouse' || event?.pointerType === 'pen') {
+      this.timeTipArmed.set(true);
     }
   }
 
@@ -886,17 +646,18 @@ export class MessageRowComponent {
     };
   });
 
-  /** Icon shape for an authenticity shield's severity: a distinct glyph per level so the
-   * warning (red) and caution (grey) are distinguishable by shape, not colour alone. */
-  shieldIcon(level: 'grey' | 'red'): TrnIconName {
-    return level === 'red' ? 'shield-alert' : 'shield-question';
+  /** Whether a shield is drawn in the red warning tone. The not-encrypted mark for a
+   * message dated before encryption was turned on is as quiet as the grey caution. */
+  shieldIsRed(level: MessageShield['level']): boolean {
+    return level === 'red' || level === 'unencrypted';
   }
 
-  /** Whether the "seen by" reader list is expanded (toggled from the receipt cluster). */
-  readonly seenByOpen = signal(false);
-
-  /** Accessible label for the "seen by" receipt avatars (the avatars are decorative). */
-  seenByLabel(receipts: readonly ReceiptView[]): string {
-    return `Seen by ${receipts.map((r) => r.name).join(', ')}`;
+  /** Icon shape for an authenticity shield's severity: a distinct glyph per tone so the
+   * warning (red) and caution (grey) are distinguishable by shape, not colour alone. The
+   * quiet not-encrypted mark has its own open-lock glyph, so it never reads as the grey
+   * caution of an unverified device. */
+  shieldIcon(level: MessageShield['level']): TrnIconName {
+    if (level === 'unencrypted-history') return 'lock-open';
+    return this.shieldIsRed(level) ? 'shield-alert' : 'shield-question';
   }
 }

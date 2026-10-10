@@ -7,6 +7,9 @@ const LOG_DIR = join(ROOT, 'dist', '.ci');
 
 export { runCommand };
 
+// A stalled mirror can hang apt for tens of minutes: bound each install attempt and retry once.
+const INSTALL_ATTEMPT_MS = 6 * 60 * 1000;
+
 export async function runPrerequisites({
   root = ROOT,
   logDir = LOG_DIR,
@@ -18,6 +21,12 @@ export async function runPrerequisites({
   // The images of the homeserver this job will actually start (TRINITY_E2E_HOMESERVER).
   const homeserver = 'e2e/support/homeserver';
   const kind = resolveHomeserverKind(env);
+  // Space-separated; jobs that drive one browser skip the other's host libraries.
+  const browsers = (env.TRINITY_PLAYWRIGHT_BROWSERS ?? 'chromium webkit')
+    .split(/\s+/)
+    .filter(Boolean);
+  // Explicit opt-out only; the ubuntu image ships the libraries Chromium needs, WebKit's are not.
+  const withDeps = env.TRINITY_PLAYWRIGHT_WITH_DEPS !== 'false';
   const commands = [
     {
       label: 'playwright-install',
@@ -26,9 +35,8 @@ export async function runPrerequisites({
         'exec',
         'playwright',
         'install',
-        '--with-deps',
-        'chromium',
-        'webkit',
+        ...(withDeps ? ['--with-deps'] : []),
+        ...browsers,
       ],
       mandatory: true,
     },
@@ -53,9 +61,22 @@ export async function runPrerequisites({
       mandatory: true,
     },
   ];
+  const start = (spec, limit = timeoutMs) =>
+    run({ ...spec, cwd: root, logDir, timeoutMs: limit, abortSignal });
+  const installWithRetry = async (spec) => {
+    const first = await start(spec, INSTALL_ATTEMPT_MS);
+    const rc = resultExitCode(first);
+    if (rc === 0 || first.aborted) return first;
+    console.warn(
+      `::warning::playwright install attempt 1 failed (rc=${rc}); retrying`,
+    );
+    return start(spec, INSTALL_ATTEMPT_MS);
+  };
   const results = await Promise.all(
     commands.map((spec) =>
-      run({ ...spec, cwd: root, logDir, timeoutMs, abortSignal }),
+      spec.label === 'playwright-install'
+        ? installWithRetry(spec)
+        : start(spec),
     ),
   );
   const [playwright, docker, build] = results;

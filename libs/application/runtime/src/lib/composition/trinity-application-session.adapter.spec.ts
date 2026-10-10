@@ -1,5 +1,5 @@
 import { Location } from '@angular/common';
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import {
@@ -12,18 +12,24 @@ import { BadgeCoordinator } from '@trinity/application/badge';
 import {
   InboundRoomLinkService,
   WorkspaceBackService,
+  type WorkspaceSurface,
   WorkspaceNavigationService,
 } from '@trinity/application/workspace';
-import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnSurfaceService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   NotificationLifetime,
   NativePushLifetime,
   NotificationService,
+  PushHandoffService,
   type NativePushLifetimeEvent,
   type NotificationLifetimeEvent,
   type NotificationRuleHealth,
   type NotificationRuntimeEvent,
 } from '@trinity/data-access/notifications';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import {
   IdentityLifetime,
   type IdentityLifetimeEvent,
@@ -63,8 +69,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
 import { TrinityApplicationSessionAdapter } from './trinity-application-session.adapter';
+import { BackgroundMemoryRelease } from './background-memory-release.service';
 import { CapabilityHealthService } from '../capability-health.service';
-import { SystemStatusVisibilityService } from '../system-status-visibility.service';
 
 interface SessionHarness {
   readonly adapter: TrinityApplicationSessionAdapter;
@@ -75,6 +81,7 @@ interface SessionHarness {
   readonly lifecycleEvents: Subject<
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >;
+  readonly memoryRelease: Subject<never>;
   readonly navigate: ReturnType<typeof vi.fn>;
   readonly workspaceNavigate: ReturnType<typeof vi.fn>;
   readonly closeAuthentication: ReturnType<typeof vi.fn>;
@@ -84,6 +91,9 @@ interface SessionHarness {
   readonly hasDialog: ReturnType<typeof vi.fn>;
   readonly closeTopmost: ReturnType<typeof vi.fn>;
   readonly workspaceActive: ReturnType<typeof signal<boolean>>;
+  readonly workspaceSurface: ReturnType<typeof signal<WorkspaceSurface | null>>;
+  readonly conversationOverList: ReturnType<typeof signal<boolean>>;
+  readonly routedSurface: ReturnType<typeof signal<WorkspaceSurface | null>>;
   readonly workspaceOwnsOverlay: ReturnType<typeof vi.fn>;
   readonly workspaceBack: ReturnType<typeof vi.fn>;
   readonly setHistoryGesturesEnabled: ReturnType<typeof vi.fn>;
@@ -97,7 +107,6 @@ interface SessionHarness {
   readonly recoverTrust: ReturnType<typeof vi.fn>;
   readonly recoverPresentation: ReturnType<typeof vi.fn>;
   readonly recoverRoomAdministration: ReturnType<typeof vi.fn>;
-  readonly statusVisibility: SystemStatusVisibilityService;
 }
 
 function setup(
@@ -121,6 +130,7 @@ function setup(
   const lifecycleEvents = new Subject<
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >();
+  const memoryRelease = new Subject<never>();
   const navigate = vi.fn().mockResolvedValue(true);
   const workspaceNavigate = vi.fn(() =>
     of({ kind: 'ready', change: 'committed' } as const),
@@ -132,6 +142,9 @@ function setup(
   const hasDialog = vi.fn(() => dialogOpen());
   const closeTopmost = vi.fn(() => false);
   const workspaceActive = signal(false);
+  const workspaceSurface = signal<WorkspaceSurface | null>(null);
+  const conversationOverList = signal(false);
+  const routedSurface = signal<WorkspaceSurface | null>(null);
   const workspaceOwnsOverlay = vi.fn(() => false);
   const workspaceBack = vi.fn(() => of({ kind: 'unhandled' as const }));
   const setHistoryGesturesEnabled = vi.fn();
@@ -164,10 +177,18 @@ function setup(
         run: () => pushSession ?? pushActivations,
         recover: () => of({ kind: 'success' as const }),
       }),
+      MockProvider(PushHandoffService, {
+        run: () => EMPTY,
+        clearRoom: () => of(void 0),
+      }),
+      MockProvider(ConversationRuntime, {
+        focused: signal(null).asReadonly() as never,
+      }),
       MockProvider(NavigationFocusService, { run: () => EMPTY }),
       MockProvider(WorkspaceRoutedSurfaceAdapter, {
         roomProjectionDemand: roomProjectionDemand.asReadonly(),
         activeRoomId: activeRoomId.asReadonly(),
+        owns: (surface: WorkspaceSurface) => surface === routedSurface(),
         run: () => EMPTY,
       }),
       MockProvider(WorkspaceApplicationSurfacePresenterAdapter, {
@@ -201,18 +222,25 @@ function setup(
         background,
       }),
       MockProvider(HostLifecycleService, { events: lifecycleEvents }),
+      MockProvider(BackgroundMemoryRelease, { run: () => memoryRelease }),
       MockProvider(HostUpdatesService, { check: hostUpdateCheck }),
-      MockProvider(TrnDialogService, {
+      MockProvider(TrnSurfaceService, {
         openState: dialogOpen,
         hasOpen: hasDialog,
         closeTopmost,
       }),
       MockProvider(WorkspaceBackService, {
-        hasActive: workspaceActive,
+        hasActive: computed(
+          () => workspaceActive() || workspaceSurface() !== null,
+        ),
+        activeSurface: workspaceSurface,
         activeOwnsTopmostOverlay: workspaceOwnsOverlay,
         back: workspaceBack,
       }),
-      MockProvider(WorkspaceNavigationService, { navigate: workspaceNavigate }),
+      MockProvider(WorkspaceNavigationService, {
+        navigate: workspaceNavigate,
+        conversationOverList: conversationOverList.asReadonly(),
+      }),
       MockProvider(NativeNavigationService, { setHistoryGesturesEnabled }),
       {
         provide: SwUpdate,
@@ -234,6 +262,7 @@ function setup(
     notificationEvents,
     pushActivations,
     lifecycleEvents,
+    memoryRelease,
     navigate,
     workspaceNavigate,
     closeAuthentication,
@@ -243,6 +272,9 @@ function setup(
     hasDialog,
     closeTopmost,
     workspaceActive,
+    workspaceSurface,
+    conversationOverList,
+    routedSurface,
     workspaceOwnsOverlay,
     workspaceBack,
     setHistoryGesturesEnabled,
@@ -256,7 +288,6 @@ function setup(
     recoverTrust,
     recoverPresentation,
     recoverRoomAdministration,
-    statusVisibility: TestBed.inject(SystemStatusVisibilityService),
   };
 }
 
@@ -330,6 +361,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.notificationEvents.observed).toBe(false);
     expect(test.backIntents.observed).toBe(false);
     expect(test.lifecycleEvents.observed).toBe(false);
+    expect(test.memoryRelease.observed).toBe(false);
     expect(test.hostUpdateCheck).not.toHaveBeenCalled();
 
     preparation.next({ kind: 'prepared' });
@@ -343,9 +375,11 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.notificationEvents.observed).toBe(true);
     expect(test.backIntents.observed).toBe(true);
     expect(test.lifecycleEvents.observed).toBe(true);
+    expect(test.memoryRelease.observed).toBe(true);
     expect(test.hostUpdateCheck).toHaveBeenCalledOnce();
 
     lifetime.unsubscribe();
+    expect(test.memoryRelease.observed).toBe(false);
     expect(preparation.observed).toBe(false);
     expect(test.deepLinks.observed).toBe(false);
     expect(test.notificationEvents.observed).toBe(false);
@@ -358,9 +392,11 @@ describe('TrinityApplicationSessionAdapter', () => {
     const sessionOwner = test.adapter.run(readiness).subscribe();
 
     expect(test.backIntents.observed).toBe(true);
-    test.statusVisibility.show();
+    test.dialogOpen.set(true);
+    test.closeTopmost.mockReturnValue(true);
     test.backIntents.next({ canGoBack: true });
-    expect(test.statusVisibility.open()).toBe(false);
+    expect(test.closeTopmost).toHaveBeenCalledOnce();
+    test.dialogOpen.set(false);
     expect(test.locationBack).not.toHaveBeenCalled();
 
     readiness.next();
@@ -369,32 +405,6 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     startupOwner.unsubscribe();
     sessionOwner.unsubscribe();
-  });
-
-  it('returns from a topmost confirmation to System status before returning to the blocker', () => {
-    const test = setup();
-    const owner = test.adapter.runInteractions().subscribe();
-    test.statusVisibility.show();
-    const sectionBack = vi.fn();
-    const unregister = test.statusVisibility.registerBackHandler(sectionBack);
-    test.dialogOpen.set(true);
-    test.closeTopmost.mockReturnValue(true);
-
-    test.backIntents.next({ canGoBack: false });
-    expect(test.closeTopmost).toHaveBeenCalledOnce();
-    expect(sectionBack).not.toHaveBeenCalled();
-    expect(test.statusVisibility.open()).toBe(true);
-    expect(test.background).not.toHaveBeenCalled();
-
-    test.dialogOpen.set(false);
-    test.backIntents.next({ canGoBack: false });
-    expect(sectionBack).toHaveBeenCalledOnce();
-    expect(test.statusVisibility.open()).toBe(true);
-    unregister();
-    test.backIntents.next({ canGoBack: false });
-    expect(test.statusVisibility.open()).toBe(false);
-    expect(test.background).not.toHaveBeenCalled();
-    owner.unsubscribe();
   });
 
   it('maps blocked Room Library preparation without opening live streams', () => {
@@ -726,13 +736,13 @@ describe('TrinityApplicationSessionAdapter', () => {
     const lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.deepLinks.next({
-      url: 'eu.qwky.trinity://sso-callback?loginToken=TOK&sso_state=NONCE',
+      url: 'dev.trinityproject.trinity://sso-callback?loginToken=TOK&sso_state=NONCE',
     });
     test.deepLinks.next({
-      url: 'eu.qwky.trinity:/sso-callback?code=CODE&state=STATE',
+      url: 'dev.trinityproject.trinity:/sso-callback?code=CODE&state=STATE',
     });
     test.deepLinks.next({
-      url: 'eu.qwky.trinity://elsewhere?loginToken=IGNORED',
+      url: 'dev.trinityproject.trinity://elsewhere?loginToken=IGNORED',
     });
 
     await vi.waitFor(() => expect(test.navigate).toHaveBeenCalledTimes(2));
@@ -746,13 +756,30 @@ describe('TrinityApplicationSessionAdapter', () => {
     lifetime.unsubscribe();
   });
 
+  it('keeps the provider iss on an OIDC callback', async () => {
+    // The callback page checks that the sign-in response comes from the provider it
+    // started with (RFC 9207), so the deep link must not drop `iss` on the way there.
+    const test = setup();
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+
+    test.deepLinks.next({
+      url: 'dev.trinityproject.trinity:/sso-callback?code=CODE&state=STATE&iss=https%3A%2F%2Fop.example%2F',
+    });
+
+    await vi.waitFor(() => expect(test.navigate).toHaveBeenCalledTimes(1));
+    expect(test.navigate).toHaveBeenCalledWith(['/sso-callback'], {
+      queryParams: { code: 'CODE', state: 'STATE', iss: 'https://op.example/' },
+    });
+    lifetime.unsubscribe();
+  });
+
   it('hands a valid room link to the Rooms shell and leaves SSO untouched', async () => {
     const test = setup();
     const inbound = TestBed.inject(InboundRoomLinkService);
     const lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.deepLinks.next({
-      url: 'eu.qwky.trinity://matrix.to/#/%21room%3Aexample.org?via=example.org',
+      url: 'dev.trinityproject.trinity://matrix.to/#/%21room%3Aexample.org?via=example.org',
     });
 
     expect(inbound.pending()).toEqual({
@@ -771,10 +798,10 @@ describe('TrinityApplicationSessionAdapter', () => {
     const lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.deepLinks.next({
-      url: 'eu.qwky.trinity://matrix.to/#/!a:example.org',
+      url: 'dev.trinityproject.trinity://matrix.to/#/!a:example.org',
     });
     test.deepLinks.next({
-      url: 'eu.qwky.trinity://matrix.to/#/!b:example.org',
+      url: 'dev.trinityproject.trinity://matrix.to/#/!b:example.org',
     });
 
     expect(inbound.pending()?.roomIdOrAlias).toBe('!b:example.org');
@@ -782,10 +809,12 @@ describe('TrinityApplicationSessionAdapter', () => {
   });
 
   it.each([
-    'eu.qwky.trinity://evil.example/#/!room:example.org',
-    'eu.qwky.trinity://matrix.to/#/@user:example.org',
-    'eu.qwky.trinity://matrix.to/#/not-a-room',
-    `eu.qwky.trinity://matrix.to/#/!${'a'.repeat(5000)}:example.org`,
+    'dev.trinityproject.trinity://evil.example/#/!room:example.org',
+    'eu.qwky.trinity://matrix.to/#/!room:example.org',
+    'eu.qwky.trinity://sso-callback?loginToken=OLD',
+    'dev.trinityproject.trinity://matrix.to/#/@user:example.org',
+    'dev.trinityproject.trinity://matrix.to/#/not-a-room',
+    `dev.trinityproject.trinity://matrix.to/#/!${'a'.repeat(5000)}:example.org`,
     'not a url',
   ])('ignores hostile or unsupported link %s', (url) => {
     const test = setup();
@@ -796,6 +825,7 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     expect(inbound.pending()).toBeNull();
     expect(test.navigate).not.toHaveBeenCalled();
+    expect(test.closeAuthentication).not.toHaveBeenCalled();
     lifetime.unsubscribe();
   });
 
@@ -811,7 +841,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.deepLinks.next({
-      url: 'eu.qwky.trinity://sso-callback?loginToken=TOKEN',
+      url: 'dev.trinityproject.trinity://sso-callback?loginToken=TOKEN',
     });
 
     await vi.waitFor(() => expect(test.navigate).toHaveBeenCalledOnce());
@@ -1042,7 +1072,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     );
     expect(test.showToast).toHaveBeenCalledWith(
       'That notification destination could not be opened.',
-      { duration: 4000 },
+      { duration: 4000, variant: 'danger' },
     );
     expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
@@ -1096,7 +1126,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     );
     expect(test.showToast).toHaveBeenCalledWith(
       'A notification could not be shown.',
-      { duration: 4000 },
+      { duration: 4000, variant: 'danger' },
     );
     expect(test.workspaceNavigate).not.toHaveBeenCalled();
     expect(lifetime.closed).toBe(false);
@@ -1211,6 +1241,83 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.setHistoryGesturesEnabled).toHaveBeenCalledTimes(
       callsAfterStop,
     );
+  });
+
+  it('keeps the native Back gesture on a routed Settings page until a dialog or panel covers it', () => {
+    const test = setup();
+    const routedSettings: WorkspaceSurface = {
+      layer: 'application',
+      surface: { kind: 'settings', section: 'appearance' },
+    };
+    test.routedSurface.set(routedSettings);
+    test.workspaceSurface.set(routedSettings);
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
+
+    test.dialogOpen.set(true);
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(false);
+    test.dialogOpen.set(false);
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
+
+    test.workspaceSurface.set({ layer: 'room', surface: { kind: 'threads' } });
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(false);
+    test.workspaceSurface.set(routedSettings);
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
+    lifetime.unsubscribe();
+  });
+
+  it.each(['setup', 'unlock', 'verify'] as const)(
+    'keeps the native Back gesture on the routed Encryption %s page',
+    (flow) => {
+      const test = setup();
+      const routedTrust: WorkspaceSurface = {
+        layer: 'application',
+        surface: { kind: 'trust', flow },
+      };
+      test.routedSurface.set(routedTrust);
+      test.workspaceSurface.set(routedTrust);
+      const lifetime = test.adapter.run(of(void 0)).subscribe();
+      TestBed.tick();
+
+      expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
+      lifetime.unsubscribe();
+    },
+  );
+
+  it('turns the native Back gesture on over a Conversation pushed over its list (#1113)', () => {
+    const test = setup();
+    test.workspaceSurface.set({
+      layer: 'conversation',
+      surface: { kind: 'conversation', accountId: 'a1', roomId: '!r:hs' },
+    });
+    test.conversationOverList.set(true);
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(true);
+
+    // A panel over it, or a dialog, still owns Back.
+    test.workspaceSurface.set({ layer: 'room', surface: { kind: 'threads' } });
+    TestBed.tick();
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(false);
+    lifetime.unsubscribe();
+  });
+
+  it('keeps the native Back gesture off over a phone Conversation, which Workspace dismisses to the list', () => {
+    const test = setup();
+    test.workspaceSurface.set({
+      layer: 'conversation',
+      surface: { kind: 'conversation', accountId: 'a1', roomId: '!r:hs' },
+    });
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    TestBed.tick();
+
+    expect(test.setHistoryGesturesEnabled).toHaveBeenLastCalledWith(false);
+    lifetime.unsubscribe();
   });
 
   it('offers, activates and reloads a ready service-worker version', async () => {

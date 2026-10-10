@@ -6,47 +6,29 @@ import {
   input,
   output,
 } from '@angular/core';
-import { NgTemplateOutlet } from '@angular/common';
-import {
-  TrnActionAvailability,
-  TrnIconButton,
-} from '@trinity/components/controls';
-import { TrnBadge, TrnTooltip } from '@trinity/components/generic-content';
-import {
-  TrnDropdownMenu,
-  TrnDropdownMenuItem,
-  TrnDropdownMenuItemSubIndicatorComponent,
-  TrnDropdownMenuRadio,
-  TrnDropdownMenuRadioIndicatorComponent,
-  TrnDropdownMenuSeparator,
-  TrnDropdownMenuSub,
-  TrnDropdownMenuSubTrigger,
-  TrnDropdownMenuTrigger,
-} from '@trinity/components/overlay';
-import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { TrnIconButton } from '@trinity/components/controls';
 import {
   AvatarComponent,
+  EmptyStateComponent,
+  TrnTooltip,
   type AccountBadge,
 } from '@trinity/components/generic-content';
-import { unreadBadgeLabel } from '../../shared/unread-badge';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import {
   ROOM_LIST_STYLE,
+  type PendingInvite,
   type RoomSummary,
 } from '@trinity/data-access/room-library';
+import type { RoomNotifyMode } from '@trinity/data-access/notifications';
 import {
-  RoomNotificationsService,
-  type RoomNotifyDisplayMode,
-  type RoomNotifyMode,
-} from '@trinity/data-access/notifications';
-import { IdentityPresenceService } from '@trinity/data-access/identity';
-import { formatTypingNotice, type PresenceState } from '@trinity/util/matrix';
-import { type PendingInvite } from '@trinity/data-access/room-library';
-import { TrnIconComponent } from '@trinity/components/foundations';
+  SidebarRoomRowComponent,
+  type SidebarRoomAction,
+} from './sidebar-room-row/sidebar-room-row.component';
 
 /**
- * The scrolling body of the channel sidebar: pending invites, the favourite and
- * everything-else partitions, the empty state, and the row template both partitions render
- * through.
+ * The scrolling body of the channel sidebar: pending invites, the three room partitions
+ * (favourites, other, low priority), the empty state, and the `trn-sidebar-room-row`s
+ * those partitions render.
  *
  * Extracted from `ChannelSidebarComponent`, whose template was 561 lines — past the 250-300
  * refactor threshold in `.claude/rules/code-quality.md`, and the single region that every
@@ -64,27 +46,14 @@ import { TrnIconComponent } from '@trinity/components/foundations';
   styleUrls: ['sidebar-room-list.component.scss'],
   imports: [
     TrnIconButton,
-    TrnActionAvailability,
     TrnTooltip,
-    TrnBadge,
     EmptyStateComponent,
     AvatarComponent,
     TrnIconComponent,
-    NgTemplateOutlet,
-    TrnDropdownMenuTrigger,
-    TrnDropdownMenu,
-    TrnDropdownMenuItem,
-    TrnDropdownMenuItemSubIndicatorComponent,
-    TrnDropdownMenuRadio,
-    TrnDropdownMenuRadioIndicatorComponent,
-    TrnDropdownMenuSeparator,
-    TrnDropdownMenuSub,
-    TrnDropdownMenuSubTrigger,
+    SidebarRoomRowComponent,
   ],
 })
 export class SidebarRoomListComponent {
-  private readonly presence = inject(IdentityPresenceService);
-  private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly roomListStyle = inject(ROOM_LIST_STYLE);
 
   /** Compact rows use a 20px avatar; the avatar derives its dot and badge floors from it. */
@@ -137,6 +106,7 @@ export class SidebarRoomListComponent {
     roomId: string;
     accountIds: readonly string[];
   }>();
+  readonly previewInvite = output<PendingInvite>();
   readonly acceptInvite = output<PendingInvite>();
   readonly declineInvite = output<PendingInvite>();
   readonly favouriteChange = output<RoomSummary>();
@@ -167,47 +137,36 @@ export class SidebarRoomListComponent {
     this.rooms().filter((r) => !r.favourite && !r.lowPriority),
   );
 
-  readonly badgeLabel = unreadBadgeLabel;
-
   badgeFor(accountId: string): AccountBadge | null {
     return this.accountBadges().get(accountId) ?? null;
   }
 
-  /** "X is typing" for a room's preview line, or `''` when nobody in it is. */
-  typingIn(roomId: string): string {
-    return formatTypingNotice(this.typingByRoom()[roomId] ?? []);
-  }
-
-  presenceOf(room: RoomSummary): PresenceState | null {
-    // Presence is projected from the ACTIVE client only, so a mixed-in account's DM partner
-    // has no entry there and would render a grey dot — indistinguishable from genuinely
-    // offline. Show nothing rather than something false.
-    const active = this.activeUserId();
-    if (
-      !room.directUserId ||
-      (active && room.accountId && room.accountId !== active)
-    ) {
-      return null;
+  onRoomAction(action: SidebarRoomAction): void {
+    const { room } = action;
+    const { id: roomId, accountId, accountIds } = room;
+    switch (action.kind) {
+      case 'select':
+        return this.selectRoom.emit({ roomId, accountId });
+      case 'leave':
+        return this.leaveRoom.emit({ roomId, accountId });
+      case 'remove':
+        return this.removeRoom.emit(roomId);
+      case 'mark-read':
+        return this.markRead.emit({ roomId, accountIds });
+      case 'mark-unread':
+        return this.markUnread.emit({ roomId, accountIds });
+      case 'favourite':
+        return this.favouriteChange.emit(room);
+      case 'low-priority':
+        return this.priorityChange.emit(room);
+      case 'notify':
+        return this.setNotifyMode.emit({
+          roomId,
+          accountIds,
+          mode: action.mode,
+        });
+      default:
+        action satisfies never;
     }
-    return this.presence.presenceFor(room.directUserId)();
-  }
-
-  /** Flip the room's `m.lowpriority` tag on every account joined to the merged row. */
-  toggleLowPriority(room: RoomSummary): void {
-    this.priorityChange.emit(room);
-  }
-
-  /** Flip the room's `m.favourite` tag on every account joined to the merged row. */
-  toggleFavourite(room: RoomSummary): void {
-    this.favouriteChange.emit(room);
-  }
-
-  /**
-   * The room's current notification level, read fresh from its push rules to seed the
-   * ⋮ menu's radio checks. Re-read each time the submenu opens (the write is delegated to
-   * the host via {@link setNotifyMode}), so the check reflects the persisted preference.
-   */
-  notifyMode(room: RoomSummary): RoomNotifyDisplayMode {
-    return this.roomNotifications.modeForAccounts(room.id, room.accountIds);
   }
 }

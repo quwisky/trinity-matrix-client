@@ -1,9 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { SwUpdate } from '@angular/service-worker';
 import {
+  HOST_LIFECYCLE_OPERATION,
   HostCapabilitiesService,
+  HostLifecycleService,
   unavailableHostManifest,
 } from '@trinity/runtime/host';
+import { desktopBridgeFixture } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,8 +15,10 @@ import { WebHostCapabilityAdapter } from './host-capability.adapters';
 import {
   CapacitorHostOperationAdapter,
   DocumentHostLifecycleAdapter,
+  ElectronHostLifecycleAdapter,
   HostFileExportAdapter,
   ServiceWorkerHostUpdatesAdapter,
+  hostOperationProviders,
 } from './host-operation.adapters';
 
 const app = vi.hoisted(() => ({
@@ -67,7 +72,7 @@ describe('CapacitorHostOperationAdapter event streams', () => {
       remove: vi.fn(() => Promise.resolve()),
     });
     app.getLaunchUrl.mockResolvedValue({
-      url: 'eu.qwky.trinity://matrix.to/#/!a:b.c',
+      url: 'dev.trinityproject.trinity://matrix.to/#/!a:b.c',
     });
     const adapter = new CapacitorHostOperationAdapter();
     const urls: string[] = [];
@@ -78,11 +83,11 @@ describe('CapacitorHostOperationAdapter event streams', () => {
     adapter.received.subscribe(({ url }) => urls.push(url));
     await new Promise((resolve) => setTimeout(resolve));
 
-    expect(urls).toEqual(['eu.qwky.trinity://matrix.to/#/!a:b.c']);
+    expect(urls).toEqual(['dev.trinityproject.trinity://matrix.to/#/!a:b.c']);
   });
 
   describe('cold-start link and later taps', () => {
-    const link = 'eu.qwky.trinity://matrix.to/#/!a:b.c';
+    const link = 'dev.trinityproject.trinity://matrix.to/#/!a:b.c';
     let open!: (event: { url: string }) => void;
     const urls: string[] = [];
 
@@ -124,7 +129,7 @@ describe('CapacitorHostOperationAdapter event streams', () => {
     });
 
     it('delivers a different URL after the launch link', async () => {
-      const other = 'eu.qwky.trinity://matrix.to/#/!d:e.f';
+      const other = 'dev.trinityproject.trinity://matrix.to/#/!d:e.f';
       await attach(true, link);
       open({ url: other });
 
@@ -263,6 +268,115 @@ describe('file, lifecycle and update host operation contracts', () => {
     const background = firstValueFrom(adapter.events);
     document.dispatchEvent(new Event('visibilitychange'));
     await expect(background).resolves.toEqual({ kind: 'background' });
+  });
+
+  describe('on the desktop shell', () => {
+    const visibility: { emit: (value: 'visible' | 'hidden') => void } = {
+      emit: () => undefined,
+    };
+    const releaseMemory = vi.fn();
+    const unsubscribe = vi.fn();
+
+    beforeEach(() => {
+      visibility.emit = () => undefined;
+      releaseMemory.mockClear();
+      unsubscribe.mockClear();
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+        desktopBridgeFixture({
+          capabilities: {
+            lifecycle: {
+              subscribeVisibility: (callback) => {
+                visibility.emit = callback;
+                return unsubscribe;
+              },
+              releaseMemory,
+            },
+          },
+        });
+    });
+
+    afterEach(() => {
+      delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+    });
+
+    function configure(lifecycle: 'supported' | 'unavailable') {
+      const value = manifest();
+      TestBed.configureTestingModule({
+        providers: [
+          hostOperationProviders(),
+          MockProvider(HostCapabilitiesService, {
+            manifest: () =>
+              of({
+                ...value,
+                operations: {
+                  ...value.operations,
+                  lifecycle:
+                    lifecycle === 'supported'
+                      ? { kind: 'supported' as const }
+                      : {
+                          kind: 'unavailable' as const,
+                          reason: 'not-implemented' as const,
+                        },
+                },
+              }),
+          }),
+        ],
+      });
+      return TestBed.inject(HostLifecycleService);
+    }
+
+    it('selects the Electron lifecycle adapter', () => {
+      configure('supported');
+      expect(TestBed.inject(HOST_LIFECYCLE_OPERATION)).toBeInstanceOf(
+        ElectronHostLifecycleAdapter,
+      );
+    });
+
+    it('maps window visibility from the shell onto background and active', () => {
+      const seen: string[] = [];
+      const subscription = configure('supported').events.subscribe((event) =>
+        seen.push(event.kind),
+      );
+
+      visibility.emit('hidden');
+      visibility.emit('hidden');
+      visibility.emit('visible');
+      subscription.unsubscribe();
+
+      expect(seen).toEqual(['background', 'active']);
+      expect(unsubscribe).toHaveBeenCalledOnce();
+    });
+
+    it('asks the shell to release memory only when lifecycle is granted', async () => {
+      const command = configure('supported').releaseMemory();
+      expect(releaseMemory).not.toHaveBeenCalled();
+
+      await expect(firstValueFrom(command)).resolves.toEqual({
+        kind: 'completed',
+      });
+      expect(releaseMemory).toHaveBeenCalledOnce();
+    });
+
+    it('stays silent and inert while lifecycle is unavailable', async () => {
+      const lifecycle = configure('unavailable');
+      const seen = vi.fn();
+      lifecycle.events.subscribe(seen);
+      visibility.emit('hidden');
+
+      await expect(firstValueFrom(lifecycle.releaseMemory())).resolves.toEqual({
+        kind: 'unavailable',
+        reason: 'not-implemented',
+      });
+      expect(seen).not.toHaveBeenCalled();
+      expect(releaseMemory).not.toHaveBeenCalled();
+    });
+  });
+
+  it('reports memory release unsupported in a plain document', async () => {
+    TestBed.configureTestingModule({ providers: [hostOperationProviders()] });
+    await expect(
+      firstValueFrom(TestBed.inject(HostLifecycleService).releaseMemory()),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'not-supported' });
   });
 
   it('returns explicit update unavailability when this host has no service worker', async () => {

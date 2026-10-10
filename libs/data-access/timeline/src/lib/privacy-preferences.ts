@@ -84,17 +84,48 @@ export const ENCRYPTED_LINK_PREVIEWS_PREFERENCE = definePreference({
   validate: validateBoolean,
 } satisfies PreferenceDescriptor<boolean>);
 
+/**
+ * Whether the camera plugin also keeps what the composer captures in the device's photo
+ * library. Its own section, so the Privacy page shows it only where the native camera
+ * exists: a browser capture input has no gallery to write to.
+ */
+export const SAVE_CAPTURES_TO_GALLERY_PREFERENCE = definePreference({
+  id: 'conversations.privacy.save-captures-to-gallery',
+  owner: 'conversations',
+  section: 'privacy-capture',
+  order: 10,
+  scope: 'installation',
+  defaultValue: false,
+  sensitivity: 'private',
+  storage: 'device-preferences',
+  export: 'portable',
+  editor: {
+    kind: 'toggle',
+    label: "Save photos and videos I take to this device's gallery",
+    description:
+      'Off by default. When on, a photo or video you take in Trinity is also kept in your photo library, outside Trinity.',
+    testId: 'privacy-save-captures-to-gallery',
+  },
+  persistence: {
+    key: 'trinity.privacy.save-captures-to-gallery',
+    migration: booleanMigration(),
+  },
+  validate: validateBoolean,
+} satisfies PreferenceDescriptor<boolean>);
+
 export const PRIVACY_PREFERENCE_DESCRIPTORS: readonly PreferenceDescriptor<PreferenceValue>[] =
   [
     SEND_READ_RECEIPTS_PREFERENCE,
     LINK_PREVIEWS_PREFERENCE,
     ENCRYPTED_LINK_PREVIEWS_PREFERENCE,
+    SAVE_CAPTURES_TO_GALLERY_PREFERENCE,
   ];
 
 export const CONVERSATION_PRIVACY_PREFERENCES = {
   sendReadReceipts: SEND_READ_RECEIPTS_PREFERENCE,
   linkPreviews: LINK_PREVIEWS_PREFERENCE,
   linkPreviewsInEncrypted: ENCRYPTED_LINK_PREVIEWS_PREFERENCE,
+  saveCapturesToGallery: SAVE_CAPTURES_TO_GALLERY_PREFERENCE,
 } as const;
 
 /** Contributes Conversations-owned privacy policy to the application catalog. */

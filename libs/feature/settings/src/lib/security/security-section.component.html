@@ -117,6 +117,27 @@
     </p>
   </trn-settings-group>
 
+  <!-- A store created before stores were encrypted stays as it is; a new sign-in
+     creates an encrypted one. -->
+  @if (cryptoStoreEncrypted() === false) {
+    <trn-settings-group
+      title="Keys on this device"
+      data-testid="security-stored-keys"
+    >
+      <p class="m-0 py-3 text-sm text-muted-foreground">
+        @if (keyBackupActive() === false) {
+          Key backup is off, so first save your room keys with Encrypted key
+          export below: signing out deletes the keys on this device. Then sign
+          out and back in on this device to encrypt your stored keys.
+        } @else {
+          Sign out and back in on this device to encrypt your stored keys.
+          Signing out deletes the keys on this device, so first check that key
+          backup is on and that you have your recovery key.
+        }
+      </p>
+    </trn-settings-group>
+  }
+
   <!-- Encrypted key export / import file -->
   <trn-settings-group
     title="Encrypted key export"

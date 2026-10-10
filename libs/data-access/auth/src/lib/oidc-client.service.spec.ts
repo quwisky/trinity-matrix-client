@@ -46,8 +46,8 @@ const createClientMock = vi.mocked(createClient);
 const HOMESERVER = 'https://hs.example';
 const REDIRECT_URI = 'https://app/sso-callback';
 const CLIENT_ID = 'client-123';
-/** Where the dynamic-registration client id is cached (prefix + issuer). */
-const CLIENT_ID_KEY = 'oidc.clientId.v2:https://op.example';
+/** Where the dynamic-registration client id is cached (prefix + homeserver + issuer). */
+const CLIENT_ID_KEY = 'oidc.clientId.v4:https://hs.example https://op.example';
 
 const PARAMS: OidcAuthorizationParams = {
   baseUrl: HOMESERVER,
@@ -63,6 +63,7 @@ const CONTEXT: OidcGrantContext = {
   clientId: CLIENT_ID,
   deviceId: 'DEV42',
   codeVerifier: 'code-verifier-from-the-stash',
+  issuer: AUTH_METADATA.issuer,
 };
 
 const WHOAMI = { user_id: '@me:hs', device_id: 'DEV42' };
@@ -108,22 +109,38 @@ type Handler = (init: RequestInit) => unknown;
 
 /** Minimal stand-in for a `Response`: the SDK reads only these three members. */
 const jsonResponse = (body: unknown, status = 200) => ({
+  ok: status >= 200 && status < 300,
   status,
   headers: new Headers(),
   json: async () => body,
 });
 
+/** The issuer's own discovery documents (RFC 8414 first, then OpenID Connect). */
+const RFC8414_DISCOVERY =
+  'https://op.example/.well-known/oauth-authorization-server';
+const OIDC_DISCOVERY = 'https://op.example/.well-known/openid-configuration';
+
 /**
  * Route `globalThis.fetch` to a fake provider so the real `OAuth2` runs end to end.
  * An unrouted endpoint throws rather than silently resolving, so a stray request can't
- * hide inside the best-effort `catchError` on the revocation path.
+ * hide inside the best-effort `catchError` on the revocation path. `byUrl` routes any
+ * other URL, such as the issuer's discovery documents. Unless a test routes them, both
+ * discovery documents answer 404, so the exchange takes the no-discovery path on purpose.
  */
-function stubFetch(routes: Partial<Record<keyof typeof ENDPOINTS, Handler>>) {
+function stubFetch(
+  routes: Partial<Record<keyof typeof ENDPOINTS, Handler>>,
+  byUrl: Record<string, Handler> = {},
+) {
+  const urls: Record<string, Handler> = {
+    [RFC8414_DISCOVERY]: () => jsonResponse({}, 404),
+    [OIDC_DISCOVERY]: () => jsonResponse({}, 404),
+    ...byUrl,
+  };
   const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
     const role = (Object.keys(ENDPOINTS) as (keyof typeof ENDPOINTS)[]).find(
       (name) => ENDPOINTS[name] === url,
     );
-    const handler = role && routes[role];
+    const handler = (role && routes[role]) || urls[url];
     if (!handler) {
       throw new Error(`unexpected fetch to ${url}`);
     }
@@ -137,6 +154,8 @@ const jsonBody = (init: RequestInit): Record<string, unknown> =>
   JSON.parse(String(init.body));
 const formBody = (init: RequestInit): URLSearchParams =>
   new URLSearchParams(String(init.body));
+const tokenPosts = (fetchMock: ReturnType<typeof stubFetch>) =>
+  fetchMock.mock.calls.filter(([url]) => url === AUTH_METADATA.token_endpoint);
 
 /** The PKCE challenge a given verifier must produce (RFC 7636 S256). */
 async function challengeFor(codeVerifier: string): Promise<string> {
@@ -194,7 +213,7 @@ describe('OidcClientService', () => {
       // camelCase wrapper (applicationType / redirectUris).
       expect(jsonBody(fetchMock.mock.calls[0][1])).toMatchObject({
         client_name: 'Trinity',
-        client_uri: 'https://trinity.qwky.eu',
+        client_uri: 'https://trinity.trinityproject.dev',
         application_type: 'web',
         redirect_uris: [REDIRECT_URI],
       });
@@ -275,10 +294,12 @@ describe('OidcClientService', () => {
       expect(request.deviceId).not.toBe('OLDDEV');
     });
 
-    it('forwards `prompt` to the provider (account registration)', async () => {
-      // Also pins the positional-argument order of the three-arg
-      // generateAuthorizationCodeGrantUrl(state, responseMode, prompt): a prompt
-      // landing in the responseMode slot would silently un-fix the test above.
+    it('puts redirect_uri, response_mode and prompt each in its own parameter', async () => {
+      // matrix-js-sdk 43 moved redirect_uri out of the OAuth2 context into the 2nd
+      // positional argument of generateAuthorizationCodeGrantUrl(state, redirectUri,
+      // responseMode, prompt). `(state, 'query')` still typechecks and would send
+      // redirect_uri=query with the default `fragment` response mode, where no callback
+      // reader in this app looks.
       stubFetch({ registration: () => jsonResponse({ client_id: CLIENT_ID }) });
 
       const request = await firstValueFrom(
@@ -286,8 +307,9 @@ describe('OidcClientService', () => {
       );
 
       const params = new URL(request.url).searchParams;
-      expect(params.get('prompt')).toBe('create');
+      expect(params.get('redirect_uri')).toBe(REDIRECT_URI);
       expect(params.get('response_mode')).toBe('query');
+      expect(params.get('prompt')).toBe('create');
     });
 
     it('caches the registered client id per issuer (no re-registration)', async () => {
@@ -299,6 +321,58 @@ describe('OidcClientService', () => {
       await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
 
       expect(fetchMock).toHaveBeenCalledTimes(1); // second call used the cache
+      expect(prefs.get(CLIENT_ID_KEY)).toBe(CLIENT_ID);
+    });
+
+    it('keeps a separate client id for each homeserver naming the same issuer', async () => {
+      // A homeserver chooses the issuer it names, so a cache keyed on the issuer alone
+      // would let one homeserver's registration be reused by another's sign-in.
+      let registered = 0;
+      const fetchMock = stubFetch({
+        registration: () =>
+          jsonResponse({ client_id: `client-${++registered}` }),
+      });
+      const other = { ...PARAMS, baseUrl: 'https://other-hs.example' };
+
+      const first = await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
+      const second = await firstValueFrom(svc.buildAuthorizationRequest(other));
+      const again = await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
+
+      expect(first.clientId).toBe('client-1');
+      expect(second.clientId).toBe('client-2');
+      expect(again.clientId).toBe('client-1');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('ignores a client id cached under the issuer alone by an earlier version', async () => {
+      prefs.set('oidc.clientId.v2:https://op.example', 'client-from-v2');
+      const fetchMock = stubFetch({
+        registration: () => jsonResponse({ client_id: CLIENT_ID }),
+      });
+
+      const request = await firstValueFrom(
+        svc.buildAuthorizationRequest(PARAMS),
+      );
+
+      expect(request.clientId).toBe(CLIENT_ID);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores a client id registered under v3 for the retired eu.qwky redirect', async () => {
+      prefs.set(
+        'oidc.clientId.v3:https://hs.example https://op.example',
+        'client-from-v3',
+      );
+      const fetchMock = stubFetch({
+        registration: () => jsonResponse({ client_id: CLIENT_ID }),
+      });
+
+      const request = await firstValueFrom(
+        svc.buildAuthorizationRequest(PARAMS),
+      );
+
+      expect(request.clientId).toBe(CLIENT_ID);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(prefs.get(CLIENT_ID_KEY)).toBe(CLIENT_ID);
     });
   });
@@ -328,14 +402,16 @@ describe('OidcClientService', () => {
       // The token POST carries the PKCE verifier out of the stash — nothing else has a
       // copy since v42 dropped oidc-client-ts, so this is what makes a callback in a
       // different browsing context (native / Electron) completable at all.
-      expect(fetchMock.mock.calls[0][0]).toBe(AUTH_METADATA.token_endpoint);
-      expect(Object.fromEntries(formBody(fetchMock.mock.calls[0][1]))).toEqual({
-        grant_type: 'authorization_code',
-        client_id: CLIENT_ID,
-        code_verifier: CONTEXT.codeVerifier,
-        redirect_uri: REDIRECT_URI,
-        code: 'CODE',
-      });
+      expect(tokenPosts(fetchMock)).toHaveLength(1);
+      expect(Object.fromEntries(formBody(tokenPosts(fetchMock)[0][1]))).toEqual(
+        {
+          grant_type: 'authorization_code',
+          client_id: CLIENT_ID,
+          code_verifier: CONTEXT.codeVerifier,
+          redirect_uri: REDIRECT_URI,
+          code: 'CODE',
+        },
+      );
       // toEqual, not toMatchObject: the binding must NOT carry idTokenClaims any more
       // (no id_token exists in v42), and the issuer comes from discovery, not the stash.
       expect(result).toEqual({
@@ -475,6 +551,376 @@ describe('OidcClientService', () => {
     });
   });
 
+  describe('checks that the sign-in response comes from the provider it started with', () => {
+    const TOKEN = { token_type: 'Bearer', access_token: 'access-tok' };
+    const PROVIDER_ERROR = /sign-in provider/i;
+
+    describe('the callback iss (RFC 9207)', () => {
+      it('proceeds when iss names the provider the sign-in started with', async () => {
+        stubClient({ whoami: WHOAMI });
+        const fetchMock = stubFetch({ token: () => jsonResponse(TOKEN) });
+
+        const result = await firstValueFrom(
+          svc.completeGrant('CODE', { ...CONTEXT, iss: 'https://op.example' }),
+        );
+
+        expect(result.accessToken).toBe('access-tok');
+        expect(tokenPosts(fetchMock)).toHaveLength(1);
+      });
+
+      it('refuses an iss from another provider without sending the code', async () => {
+        stubClient({ whoami: WHOAMI });
+        const fetchMock = stubFetch({ token: () => jsonResponse(TOKEN) });
+
+        await expect(
+          firstValueFrom(
+            svc.completeGrant('CODE', {
+              ...CONTEXT,
+              iss: 'https://other-provider.example',
+            }),
+          ),
+        ).rejects.toThrow(PROVIDER_ERROR);
+        expect(tokenPosts(fetchMock)).toHaveLength(0);
+      });
+
+      it('compares iss as an exact string, not as an equivalent URL', async () => {
+        // RFC 9207 section 2.4: simple string comparison. A trailing slash is a
+        // different issuer.
+        stubClient({ whoami: WHOAMI });
+        const fetchMock = stubFetch({ token: () => jsonResponse(TOKEN) });
+
+        await expect(
+          firstValueFrom(
+            svc.completeGrant('CODE', {
+              ...CONTEXT,
+              iss: 'https://op.example/',
+            }),
+          ),
+        ).rejects.toThrow(PROVIDER_ERROR);
+        expect(tokenPosts(fetchMock)).toHaveLength(0);
+      });
+
+      it('refuses a missing iss when the provider says it always sends one', async () => {
+        stubClient({
+          metadata: {
+            ...AUTH_METADATA,
+            authorization_response_iss_parameter_supported: true,
+          },
+          whoami: WHOAMI,
+        });
+        const fetchMock = stubFetch({ token: () => jsonResponse(TOKEN) });
+
+        await expect(
+          firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
+        ).rejects.toThrow(PROVIDER_ERROR);
+        expect(tokenPosts(fetchMock)).toHaveLength(0);
+      });
+
+      it('proceeds without iss when the provider does not say it sends one', async () => {
+        stubClient({ whoami: WHOAMI });
+        const fetchMock = stubFetch({ token: () => jsonResponse(TOKEN) });
+
+        await firstValueFrom(svc.completeGrant('CODE', CONTEXT));
+
+        expect(tokenPosts(fetchMock)).toHaveLength(1);
+      });
+    });
+
+    it('refuses when the homeserver now names another issuer, without sending the code', async () => {
+      // The metadata is fetched again at the callback. If it no longer names the issuer
+      // the sign-in started with, its token endpoint is not that provider's.
+      stubClient({
+        metadata: {
+          ...AUTH_METADATA,
+          issuer: 'https://other-provider.example',
+        },
+        whoami: WHOAMI,
+      });
+      const fetchMock = stubFetch({ token: () => jsonResponse(TOKEN) });
+
+      await expect(
+        firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
+      ).rejects.toThrow(PROVIDER_ERROR);
+      expect(tokenPosts(fetchMock)).toHaveLength(0);
+    });
+
+    describe("the issuer's own discovery document", () => {
+      it('proceeds when it agrees with the homeserver', async () => {
+        stubClient({ whoami: WHOAMI });
+        const fetchMock = stubFetch(
+          { token: () => jsonResponse(TOKEN) },
+          { [RFC8414_DISCOVERY]: () => jsonResponse(AUTH_METADATA) },
+        );
+
+        await firstValueFrom(svc.completeGrant('CODE', CONTEXT));
+
+        expect(fetchMock).toHaveBeenCalledWith(
+          RFC8414_DISCOVERY,
+          expect.anything(),
+        );
+        expect(tokenPosts(fetchMock)).toHaveLength(1);
+      });
+
+      it('refuses when it names another token endpoint, without sending the code', async () => {
+        stubClient({ whoami: WHOAMI });
+        const fetchMock = stubFetch(
+          { token: () => jsonResponse(TOKEN) },
+          {
+            [RFC8414_DISCOVERY]: () =>
+              jsonResponse({
+                ...AUTH_METADATA,
+                token_endpoint: 'https://op.example/real-token',
+              }),
+          },
+        );
+
+        await expect(
+          firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
+        ).rejects.toThrow(PROVIDER_ERROR);
+        expect(tokenPosts(fetchMock)).toHaveLength(0);
+      });
+
+      it('refuses when it names another authorization endpoint', async () => {
+        stubClient({ whoami: WHOAMI });
+        const fetchMock = stubFetch(
+          { token: () => jsonResponse(TOKEN) },
+          {
+            [RFC8414_DISCOVERY]: () =>
+              jsonResponse({
+                ...AUTH_METADATA,
+                authorization_endpoint: 'https://op.example/real-authorize',
+              }),
+          },
+        );
+
+        await expect(
+          firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
+        ).rejects.toThrow(PROVIDER_ERROR);
+        expect(tokenPosts(fetchMock)).toHaveLength(0);
+      });
+
+      it('refuses when it names another revocation endpoint', async () => {
+        stubClient({ whoami: WHOAMI });
+        const fetchMock = stubFetch(
+          { token: () => jsonResponse(TOKEN) },
+          {
+            [RFC8414_DISCOVERY]: () =>
+              jsonResponse({
+                ...AUTH_METADATA,
+                revocation_endpoint: 'https://op.example/real-revoke',
+              }),
+          },
+        );
+
+        await expect(
+          firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
+        ).rejects.toThrow(PROVIDER_ERROR);
+        expect(tokenPosts(fetchMock)).toHaveLength(0);
+      });
+
+      it('refuses when it names the issuer but no token endpoint', async () => {
+        stubClient({ whoami: WHOAMI });
+        const { token_endpoint: _omitted, ...withoutToken } = AUTH_METADATA;
+        const fetchMock = stubFetch(
+          { token: () => jsonResponse(TOKEN) },
+          { [RFC8414_DISCOVERY]: () => jsonResponse(withoutToken) },
+        );
+
+        await expect(
+          firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
+        ).rejects.toThrow(PROVIDER_ERROR);
+        expect(tokenPosts(fetchMock)).toHaveLength(0);
+      });
+
+      it('accepts endpoints written with the default port or in another case', async () => {
+        // Compared as parsed URLs: scheme and host are case-insensitive and :443 is the
+        // https default, so these name the same endpoints as the homeserver's metadata.
+        stubClient({ whoami: WHOAMI });
+        const fetchMock = stubFetch(
+          { token: () => jsonResponse(TOKEN) },
+          {
+            [RFC8414_DISCOVERY]: () =>
+              jsonResponse({
+                ...AUTH_METADATA,
+                authorization_endpoint: 'HTTPS://OP.Example/authorize',
+                token_endpoint: 'https://op.example:443/oauth2/token',
+                revocation_endpoint: 'https://OP.EXAMPLE:443/oauth2/revoke',
+              }),
+          },
+        );
+
+        await firstValueFrom(svc.completeGrant('CODE', CONTEXT));
+
+        expect(tokenPosts(fetchMock)).toHaveLength(1);
+      });
+
+      it('still refuses an endpoint that differs by a trailing slash', async () => {
+        stubClient({ whoami: WHOAMI });
+        const fetchMock = stubFetch(
+          { token: () => jsonResponse(TOKEN) },
+          {
+            [RFC8414_DISCOVERY]: () =>
+              jsonResponse({
+                ...AUTH_METADATA,
+                token_endpoint: 'https://op.example/oauth2/token/',
+              }),
+          },
+        );
+
+        await expect(
+          firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
+        ).rejects.toThrow(PROVIDER_ERROR);
+        expect(tokenPosts(fetchMock)).toHaveLength(0);
+      });
+
+      it('refuses an endpoint that is not a URL', async () => {
+        stubClient({ whoami: WHOAMI });
+        const fetchMock = stubFetch(
+          { token: () => jsonResponse(TOKEN) },
+          {
+            [RFC8414_DISCOVERY]: () =>
+              jsonResponse({ ...AUTH_METADATA, token_endpoint: 'not a url' }),
+          },
+        );
+
+        await expect(
+          firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
+        ).rejects.toThrow(PROVIDER_ERROR);
+        expect(tokenPosts(fetchMock)).toHaveLength(0);
+      });
+
+      it('does not require a revocation endpoint the issuer does not publish', async () => {
+        stubClient({ whoami: WHOAMI });
+        const { revocation_endpoint: _omitted, ...withoutRevocation } =
+          AUTH_METADATA;
+        const fetchMock = stubFetch(
+          { token: () => jsonResponse(TOKEN) },
+          { [RFC8414_DISCOVERY]: () => jsonResponse(withoutRevocation) },
+        );
+
+        await firstValueFrom(svc.completeGrant('CODE', CONTEXT));
+
+        expect(tokenPosts(fetchMock)).toHaveLength(1);
+      });
+
+      it('falls back to the OpenID Connect document when RFC 8414 has none', async () => {
+        stubClient({ whoami: WHOAMI });
+        const fetchMock = stubFetch(
+          { token: () => jsonResponse(TOKEN) },
+          {
+            [RFC8414_DISCOVERY]: () => jsonResponse({}, 404),
+            [OIDC_DISCOVERY]: () =>
+              jsonResponse({
+                ...AUTH_METADATA,
+                token_endpoint: 'https://op.example/real-token',
+              }),
+          },
+        );
+
+        await expect(
+          firstValueFrom(svc.completeGrant('CODE', CONTEXT)),
+        ).rejects.toThrow(PROVIDER_ERROR);
+        expect(tokenPosts(fetchMock)).toHaveLength(0);
+      });
+
+      it('resolves both documents against an issuer with a path, as the RFCs place them', async () => {
+        // RFC 8414 section 3.1 inserts the well-known segment between host and path,
+        // dropping a terminating "/"; OpenID Connect Discovery appends it to the issuer.
+        const issuer = 'https://op.example/tenant/';
+        stubClient({ metadata: { ...AUTH_METADATA, issuer }, whoami: WHOAMI });
+        const elsewhere = () =>
+          jsonResponse({
+            ...AUTH_METADATA,
+            issuer,
+            token_endpoint: 'https://op.example/tenant/real-token',
+          });
+        const rfc8414 = stubFetch(
+          { token: () => jsonResponse(TOKEN) },
+          {
+            'https://op.example/.well-known/oauth-authorization-server/tenant':
+              elsewhere,
+          },
+        );
+
+        await expect(
+          firstValueFrom(svc.completeGrant('CODE', { ...CONTEXT, issuer })),
+        ).rejects.toThrow(PROVIDER_ERROR);
+        expect(tokenPosts(rfc8414)).toHaveLength(0);
+
+        const openid = stubFetch(
+          { token: () => jsonResponse(TOKEN) },
+          {
+            'https://op.example/tenant/.well-known/openid-configuration':
+              elsewhere,
+          },
+        );
+
+        await expect(
+          firstValueFrom(svc.completeGrant('CODE', { ...CONTEXT, issuer })),
+        ).rejects.toThrow(PROVIDER_ERROR);
+        expect(tokenPosts(openid)).toHaveLength(0);
+      });
+
+      it('ignores a document that names another issuer (RFC 8414 section 3.3)', async () => {
+        stubClient({ whoami: WHOAMI });
+        const fetchMock = stubFetch(
+          { token: () => jsonResponse(TOKEN) },
+          {
+            [RFC8414_DISCOVERY]: () =>
+              jsonResponse({
+                ...AUTH_METADATA,
+                issuer: 'https://other-provider.example',
+                token_endpoint: 'https://other-provider.example/token',
+              }),
+          },
+        );
+
+        await firstValueFrom(svc.completeGrant('CODE', CONTEXT));
+
+        expect(tokenPosts(fetchMock)).toHaveLength(1);
+      });
+
+      it('falls through to the iss and issuer checks when it is unreachable', async () => {
+        // Matrix does not require the issuer to publish its own discovery document; the
+        // homeserver's metadata is the source the spec names.
+        stubClient({ whoami: WHOAMI });
+        const fetchMock = stubFetch(
+          { token: () => jsonResponse(TOKEN) },
+          {
+            [RFC8414_DISCOVERY]: () => {
+              throw new TypeError('Failed to fetch');
+            },
+            [OIDC_DISCOVERY]: () => {
+              throw new TypeError('Failed to fetch');
+            },
+          },
+        );
+
+        const result = await firstValueFrom(
+          svc.completeGrant('CODE', { ...CONTEXT, iss: 'https://op.example' }),
+        );
+
+        expect(result.accessToken).toBe('access-tok');
+        expect(tokenPosts(fetchMock)).toHaveLength(1);
+      });
+
+      it('still checks iss when it is unreachable', async () => {
+        stubClient({ whoami: WHOAMI });
+        const fetchMock = stubFetch({ token: () => jsonResponse(TOKEN) });
+
+        await expect(
+          firstValueFrom(
+            svc.completeGrant('CODE', {
+              ...CONTEXT,
+              iss: 'https://other-provider.example',
+            }),
+          ),
+        ).rejects.toThrow(PROVIDER_ERROR);
+        expect(tokenPosts(fetchMock)).toHaveLength(0);
+      });
+    });
+  });
+
   describe('revokeTokens', () => {
     it('still revokes both tokens when the provider answers RFC 7009-style', async () => {
       // RFC 7009 s2.2 mandates 200 with an EMPTY body, but the SDK's shared fetch helper
@@ -609,11 +1055,31 @@ describe('OidcClientService', () => {
 
   describe('forgetClientId', () => {
     it('removes the cached client id so the next login re-registers', async () => {
-      prefs.set(CLIENT_ID_KEY, CLIENT_ID);
+      const fetchMock = stubFetch({
+        registration: () => jsonResponse({ client_id: CLIENT_ID }),
+      });
+      await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
 
-      await firstValueFrom(svc.forgetClientId(AUTH_METADATA.issuer));
+      await firstValueFrom(
+        svc.forgetClientId(HOMESERVER, AUTH_METADATA.issuer),
+      );
+      await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
 
-      expect(prefs.get(CLIENT_ID_KEY)).toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps another homeserver's client id for the same issuer", async () => {
+      const fetchMock = stubFetch({
+        registration: () => jsonResponse({ client_id: CLIENT_ID }),
+      });
+      await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
+
+      await firstValueFrom(
+        svc.forgetClientId('https://other-hs.example', AUTH_METADATA.issuer),
+      );
+      await firstValueFrom(svc.buildAuthorizationRequest(PARAMS));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 });

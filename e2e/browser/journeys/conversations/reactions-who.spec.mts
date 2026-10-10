@@ -16,8 +16,8 @@ import {
   closeSettings,
   openSettingsFromRooms,
 } from '../../../support/journeys/navigation.mts';
+import { sendWithRetry } from '../../support/cs-api.mts';
 import { hasDarkMode } from '../../support/settings-journey.mts';
-import { setTimeout as wait } from 'node:timers/promises';
 
 // Covers "who reacted" (issue #8): a reaction pill names its reactors on hover, and
 // the trailing chip opens the full list, grouped by emoji.
@@ -43,41 +43,6 @@ async function loginApi(
   expect(response.ok(), `login ${user}: ${response.status()}`).toBe(true);
   const json = await response.json();
   return json.access_token as string;
-}
-
-/** Synapse rate-limits joins into a room; honor its retry delay, bounded to five tries. */
-async function joinWithRetry(
-  request: APIRequestContext,
-  hs: string,
-  roomId: string,
-  headers: Record<string, string>,
-  user: string,
-): Promise<void> {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const response = await request.post(
-      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
-      { headers },
-    );
-    if (response.ok()) {
-      expect(response.status(), `join ${user}: final status`).toBeLessThan(300);
-      return;
-    }
-    if (response.status() !== 429) {
-      throw new Error(
-        `join ${user}: ${response.status()} ${await response.text()}`,
-      );
-    }
-    const body = (await response.json().catch(() => ({}))) as {
-      retry_after_ms?: number;
-    };
-    const retryAfter = Number(body.retry_after_ms);
-    await wait(
-      Number.isFinite(retryAfter)
-        ? Math.min(Math.max(retryAfter, 1), 10_000)
-        : 1_000,
-    );
-  }
-  throw new Error(`join ${user}: still rate-limited after 5 attempts`);
 }
 
 interface Seeded {
@@ -137,7 +102,12 @@ async function seedReactedMessage(
   expect(roomResponse.ok(), `create room: ${roomResponse.status()}`).toBe(true);
   const { room_id: roomId } = await roomResponse.json();
   for (const { user, headers } of otherHeaders) {
-    await joinWithRetry(request, hs, roomId, headers, user);
+    await sendWithRetry(`join ${user}`, () =>
+      request.post(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
+        { headers },
+      ),
+    );
   }
 
   const messageResponse = await request.put(

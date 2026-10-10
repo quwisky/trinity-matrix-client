@@ -154,12 +154,17 @@ export class RoomLinkService {
 
   preview(
     target: Extract<MatrixLinkTarget, { kind: 'room' }>,
+    accountId?: string,
   ): Observable<RoomLinkPreview> {
     return defer(() => {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
-      const client = this.matrix.instance;
+      // An invite row names its own account; a pasted link previews as the active one.
+      const client = accountId
+        ? this.matrix.clientFor(accountId)
+        : this.matrix.instance;
+      if (!client) return throwError(() => new Error('Account unavailable.'));
       const local = this.localRoom(client, target.roomIdOrAlias);
       const localMembership = membershipOf(local?.getMyMembership());
       if (

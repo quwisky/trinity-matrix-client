@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import {
@@ -61,6 +62,20 @@ async function renderRows(
 }
 
 describe('SidebarRoomListComponent rows', () => {
+  it('re-reads the notification level of only the rows whose summary object changed', async () => {
+    const a = room({ id: '!a:hs' });
+    const b = room({ id: '!b:hs', name: 'other' });
+    const { fixture } = await renderRows([a, b]);
+    const modeFor = TestBed.inject(RoomNotificationsService)
+      .modeForAccounts as ReturnType<typeof vi.fn>;
+    modeFor.mockClear();
+
+    fixture.componentRef.setInput('rooms', [a, { ...b, name: 'renamed' }]);
+    fixture.detectChanges();
+
+    expect(modeFor.mock.calls.map(([id]) => id)).toEqual(['!b:hs']);
+  });
+
   it('marks the selected room', async () => {
     const { container } = await renderRows(
       [room({ id: '!a:hs' }), room({ id: '!b:hs', name: 'other' })],
@@ -205,16 +220,48 @@ describe('SidebarRoomListComponent rows', () => {
     ).not.toBeNull();
     expect(container.querySelector('[trnBadge]')).toBeNull();
   });
+
+  it('previews an invite from its row, separately from Accept and Decline', async () => {
+    const invite = {
+      roomId: '!inv:hs',
+      accountId: '@me:hs',
+      name: 'Book club',
+      initial: 'B',
+      avatarMxc: null,
+      inviterName: 'Ann',
+      isSpace: false,
+      isDirect: false,
+    };
+    const { fixture, container } = await renderRows([], null, 'all', 'rich', {
+      invites: [invite],
+    });
+    const previewed = vi.fn();
+    fixture.componentInstance.previewInvite.subscribe(previewed);
+
+    const open = container.querySelector<HTMLButtonElement>(
+      '[data-testid="invite-open"]',
+    )!;
+    // The name carries the visible "Room · from Ann" line (label in name).
+    expect(open.getAttribute('aria-label')).toBe(
+      'Preview invite to Book club, Room from Ann',
+    );
+    expect(open.querySelector('button')).toBeNull();
+    // Accept and Decline stay their own tab stops, siblings of the preview button.
+    expect(open.closest('.invite')!.querySelectorAll('button')).toHaveLength(3);
+    open.click();
+
+    expect(previewed).toHaveBeenCalledWith(invite);
+  });
 });
 
 function scssText(): string {
   return readFileSync(
-    join(__dirname, 'sidebar-room-list.component.scss'),
+    join(__dirname, 'sidebar-room-row', 'sidebar-room-row.component.scss'),
     'utf8',
   ).replace(/\s+/g, ' ');
 }
 
-describe('sidebar-room-list.component.scss', () => {
+describe('sidebar-room-row.component.scss', () => {
   // Whitespace-normalised: prettier wraps the long compound selector.
   const scss = scssText();
 

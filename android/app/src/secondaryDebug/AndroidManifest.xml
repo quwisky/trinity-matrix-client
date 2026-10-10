@@ -7,7 +7,7 @@
              component name. It must not compete with the primary package for launcher
              or auth callback intents, otherwise a provider redirect opens Android's app
              chooser instead of proving Trinity's registered deep-link round trip. -->
-        <activity android:name="eu.qwky.trinity.MainActivity">
+        <activity android:name="dev.trinityproject.trinity.MainActivity">
             <intent-filter tools:node="remove">
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -16,7 +16,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="eu.qwky.trinity" />
+                <data android:scheme="dev.trinityproject.trinity" />
             </intent-filter>
         </activity>
     </application>

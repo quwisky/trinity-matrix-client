@@ -7,6 +7,12 @@ import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TrnAlertService } from './trn-alert.service';
 
+const platform = vi.hoisted(() => ({ mobile: false }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isMobileOs: () => platform.mobile,
+}));
+
 function render(): void {
   // CDK Dialog renders its portal via the ApplicationRef; flush a tick so the
   // dialog's buttons/input are in the DOM before we interact.
@@ -21,6 +27,25 @@ function clickButton(text: string): void {
 }
 
 describe('TrnAlertService', () => {
+  it('opens a confirm as a sheet on a tablet at desktop width', () => {
+    platform.mobile = true;
+    try {
+      TestBed.inject(TrnAlertService)
+        .confirm$({ header: 'Leave room?', confirmText: 'Leave' })
+        .subscribe();
+      render();
+
+      expect(
+        document
+          .querySelector('[data-testid=alert-surface] [data-trn-layout]')
+          ?.getAttribute('data-trn-layout'),
+      ).toBe('sheet');
+    } finally {
+      platform.mobile = false;
+      TestBed.inject(Dialog).closeAll();
+    }
+  });
+
   it('keeps the reactive confirmation command cold', async () => {
     const svc = TestBed.inject(TrnAlertService);
     const command = svc.confirm$({
@@ -60,6 +85,55 @@ describe('TrnAlertService', () => {
     render();
     clickButton('Cancel');
     expect(await result).toBe(false);
+  });
+
+  it('returns focus to the control a tap pressed, which never took focus', async () => {
+    // jsdom's click() moves no focus, which is exactly a WebKit tap.
+    const svc = TestBed.inject(TrnAlertService);
+    const opener = document.createElement('button');
+    opener.textContent = 'Leave room';
+    document.body.append(opener);
+    try {
+      let result: Promise<boolean> | undefined;
+      opener.addEventListener(
+        'click',
+        () =>
+          (result = firstValueFrom(
+            svc.confirm$({ header: 'Leave?', confirmText: 'Leave' }),
+          )),
+        { once: true },
+      );
+      opener.click();
+      render();
+      expect(document.activeElement).not.toBe(opener);
+
+      clickButton('Cancel');
+      expect(await result).toBe(false);
+      render();
+
+      expect(document.activeElement).toBe(opener);
+    } finally {
+      opener.remove();
+    }
+  });
+
+  it.each([
+    ['Export keys', 'alternative'],
+    ['Remove anyway', 'confirm'],
+    ['Cancel', 'cancel'],
+  ] as const)('choose resolves %s as %s', async (button, choice) => {
+    const svc = TestBed.inject(TrnAlertService);
+    const result = firstValueFrom(
+      svc.choose$({
+        header: 'Export room keys first?',
+        alternativeText: 'Export keys',
+        confirmText: 'Remove anyway',
+        variant: 'danger',
+      }),
+    );
+    render();
+    clickButton(button);
+    expect(await result).toBe(choice);
   });
 
   it('can keep a route-guard confirmation open across navigation cancellation', async () => {

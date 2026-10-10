@@ -50,6 +50,11 @@ export interface TrinityDesktopBridge {
     secureStore: {
       isAvailable: () => Promise<boolean>;
       get: (key: string) => Promise<string | null>;
+      /**
+       * Read with "no entry" kept apart from "cannot decrypt now" (a `SecureStorageRead`,
+       * unvalidated). Optional so a shell without it still validates; `get` then stands in.
+       */
+      read?: (key: string) => Promise<unknown>;
       set: (key: string, value: string) => Promise<boolean>;
       delete: (key: string) => Promise<void>;
     };
@@ -61,6 +66,15 @@ export interface TrinityDesktopBridge {
     location: {
       /** Resolve an opt-in, city-level IP estimate or `null` when unavailable. */
       approximate: () => Promise<{ lat: number; lng: number } | null>;
+    };
+    /** Window visibility, which `document.visibilityState` never reports in the shell. */
+    lifecycle: {
+      /** Subscribe to the window leaving (`hidden`) or returning to (`visible`) the screen. */
+      subscribeVisibility: (
+        callback: (visibility: 'visible' | 'hidden') => void,
+      ) => () => void;
+      /** Clear Blink's resource caches; call only after memory use went down. */
+      releaseMemory: () => void;
     };
     /** Trinity's own title row: overlay colours, the app menu and the system-bar opt-out. */
     titleBar: {
@@ -145,6 +159,9 @@ export function getTrinityDesktopBridge(): TrinityDesktopBridge | undefined {
     typeof capabilities.networkCors.allowOrigin === 'function' &&
     !!capabilities.location &&
     typeof capabilities.location.approximate === 'function' &&
+    !!capabilities.lifecycle &&
+    typeof capabilities.lifecycle.subscribeVisibility === 'function' &&
+    typeof capabilities.lifecycle.releaseMemory === 'function' &&
     !!capabilities.titleBar &&
     typeof capabilities.titleBar.setOverlayColors === 'function' &&
     typeof capabilities.titleBar.popupMenu === 'function' &&

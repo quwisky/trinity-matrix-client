@@ -16,7 +16,9 @@
 
     <div>
       @if (searching()) {
-        <div class="picker-status" aria-live="polite"><trn-spinner /></div>
+        <trn-empty-state layout="line" aria-live="polite"
+          ><trn-spinner
+        /></trn-empty-state>
       }
       @for (user of results(); track user.userId) {
         <button

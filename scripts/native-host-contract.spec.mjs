@@ -81,7 +81,10 @@ function validInput() {
         'ios:verify': 'nx run trinity-ios:verify',
       },
     },
-    capacitor: "webDir: 'www'",
+    capacitor: [
+      "webDir: 'www',",
+      "loggingBehavior: process.env['TRINITY_CAPACITOR_LOGS'] === '1' ? 'debug' : 'none',",
+    ].join('\n'),
     capabilityAdapter: [
       'capacitorSupportedOperations(',
       "platform === 'android' ? (['back'] as const) : []",
@@ -112,16 +115,66 @@ function validInput() {
       'CapacitorStatusBar',
       'CapawesomeCapacitorBadge',
     ].join('\n'),
-    androidManifest: 'android:scheme="eu.qwky.trinity"',
+    androidManifest: 'android:scheme="dev.trinityproject.trinity"',
     iosInfo:
       '<key>UIViewControllerBasedStatusBarAppearance</key><true/>' +
-      '<key>CFBundleURLSchemes</key><string>eu.qwky.trinity</string>',
+      '<key>CFBundleURLSchemes</key><string>dev.trinityproject.trinity</string>' +
+      '<key>UIApplicationSceneManifest</key><dict>' +
+      '<key>UISceneDelegateClassName</key>' +
+      '<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string></dict>',
   };
 }
 
 describe('native host contract', () => {
   it('validates the checked-in Android and iOS hosts', () => {
     expect(validateCurrentNativeHosts).not.toThrow();
+  });
+
+  it('rejects Capacitor logging that is on by default', () => {
+    // The bridge logs plugin arguments (Android) and results (iOS), tokens included.
+    const optIn =
+      "loggingBehavior: process.env['TRINITY_CAPACITOR_LOGS'] === '1' ? 'debug' : 'none',";
+    for (const capacitor of [
+      "webDir: 'www'",
+      "webDir: 'www',\nloggingBehavior: 'debug',",
+      "webDir: 'www',\nloggingBehavior: 'production',",
+      // Only a comment names the safe value.
+      "webDir: 'www',\n// loggingBehavior: 'none',\nloggingBehavior: 'debug',",
+      // The opt-in inverted: logs unless the variable is set.
+      "webDir: 'www',\nloggingBehavior: process.env['TRINITY_CAPACITOR_LOGS'] === '1' ? 'none' : 'debug',",
+      // A platform override wins over the top-level value.
+      `webDir: 'www',\n${optIn}\nandroid: { loggingBehavior: 'debug' },`,
+    ]) {
+      const input = validInput();
+      input.capacitor = capacitor;
+      const errors = [];
+
+      validateNativeHostContract(input, errors);
+
+      expect(errors, capacitor).toContain(
+        'Capacitor logging must default to none: the bridge logs plugin arguments and results',
+      );
+    }
+  });
+
+  it('accepts Capacitor logging that is off unless a local build opts in', () => {
+    for (const capacitor of [
+      "webDir: 'www',\nloggingBehavior: 'none',",
+      [
+        "webDir: 'www',",
+        '// Off in every build; TRINITY_CAPACITOR_LOGS=1 opts a local build in.',
+        'loggingBehavior:',
+        "  process.env['TRINITY_CAPACITOR_LOGS'] === '1' ? 'debug' : 'none',",
+      ].join('\n'),
+    ]) {
+      const input = validInput();
+      input.capacitor = capacitor;
+      const errors = [];
+
+      validateNativeHostContract(input, errors);
+
+      expect(errors, capacitor).toEqual([]);
+    }
   });
 
   it('rejects a native lifecycle hidden outside Nx', () => {
@@ -227,8 +280,8 @@ describe('native host contract', () => {
     [
       'Android deep link',
       'androidManifest',
-      'android:scheme="eu.qwky.trinity"',
-      '<!-- android:scheme="eu.qwky.trinity" -->',
+      'android:scheme="dev.trinityproject.trinity"',
+      '<!-- android:scheme="dev.trinityproject.trinity" -->',
       'Android host is missing the authentication deep-link scheme',
     ],
     [
@@ -244,6 +297,13 @@ describe('native host contract', () => {
       '<key>UIViewControllerBasedStatusBarAppearance</key><true/>',
       '<!-- <key>UIViewControllerBasedStatusBarAppearance</key><true/> -->',
       'iOS host must delegate status-bar appearance to its view controller',
+    ],
+    [
+      'iOS scene lifecycle',
+      'iosInfo',
+      '<key>UIApplicationSceneManifest</key>',
+      '<!-- <key>UIApplicationSceneManifest</key> -->',
+      'iOS host must adopt the UIScene lifecycle',
     ],
   ])(
     'rejects commented-out %s wiring',

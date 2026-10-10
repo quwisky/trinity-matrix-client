@@ -11,6 +11,15 @@ import { MockProvider, ngMocks } from 'ng-mocks';
 import { NEVER, Subject, Subscription, defer, lastValueFrom, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from './notification.service';
+import { PushService } from './push.service';
+import {
+  LEGACY_NOTIFICATION_SOUND_EVENT,
+  NOTIFICATION_SOUND_EVENT,
+} from './notification-sound.service';
+import {
+  LEGACY_REACTION_NOTIFICATION_EVENT,
+  REACTION_NOTIFICATION_EVENT,
+} from './reaction-notification-settings.service';
 import type {
   NotificationDestination,
   NotificationRuntimeEvent,
@@ -58,6 +67,8 @@ function fakeClient(userId: string, soundEnabled?: boolean) {
         : { getContent: () => ({ enabled: soundEnabled }) },
     getPushActionsForEvent: vi.fn(() => ({ notify: true, tweaks: {} })),
     getRoom: vi.fn(() => room),
+    getRooms: vi.fn((): unknown[] => []),
+    getCrypto: vi.fn((): unknown => undefined),
     getSyncState: vi.fn((): SyncState | null => SyncState.Prepared),
     on: vi.fn(),
     off: vi.fn(),
@@ -68,6 +79,9 @@ function setup(
   opts: {
     accounts?: string[];
     active?: string;
+    backgroundDelivery?: 'app' | 'push';
+    /** Page visibility reported to the policy; defaults to visible. */
+    hidden?: boolean;
     /** Stored "play a sound" preference; omitted means "not set" (defaults to on). */
     soundEnabled?: boolean;
     /** Pre-built per-account clients, for cases where two accounts must differ. */
@@ -90,6 +104,11 @@ function setup(
     providers: [
       provideHostCapabilities(),
       NotificationService,
+      MockProvider(PushService, {
+        backgroundDelivery: signal<'app' | 'push'>(
+          opts.backgroundDelivery ?? 'app',
+        ).asReadonly(),
+      }),
       MockProvider(MatrixClientService, {
         // A session can start signed out. Notification Runtime must remain dormant
         // instead of completing, then attach when the first Account appears.
@@ -106,6 +125,7 @@ function setup(
         useValue: {
           snapshot: () => ({
             foreground: typeof document !== 'undefined' && document.hasFocus(),
+            hidden: opts.hidden ?? false,
             conversation: timeline.openRoomId
               ? {
                   accountId: activeUserId() ?? '',
@@ -243,8 +263,50 @@ function event(
     isDecryptionFailure: () => !!opts.failure,
   };
 }
-const room = { roomId: '!r:hs', name: 'General' };
+const room = {
+  roomId: '!r:hs',
+  name: 'General',
+  hasEncryptionStateEvent: () => false,
+};
 const live = { liveEvent: true };
+
+/**
+ * A fake client whose account data is a mutable store keyed by event type. Its `on`/`off`
+ * keep a real listener set, so `emit` reaches only the handlers still bound.
+ */
+function accountDataClient(userId: string, stored: Record<string, unknown>) {
+  const listeners = new Map<string, Set<() => void>>();
+  return {
+    ...fakeClient(userId),
+    getAccountData: vi.fn((type: string) =>
+      type in stored ? { getContent: () => stored[type] } : undefined,
+    ),
+    setAccountData: vi.fn(async (type: string, content: unknown) => {
+      stored[type] = content;
+      return {};
+    }),
+    on: vi.fn((type: string, handler: () => void) => {
+      const bound = listeners.get(type) ?? new Set<() => void>();
+      bound.add(handler);
+      listeners.set(type, bound);
+    }),
+    off: vi.fn((type: string, handler: () => void) => {
+      listeners.get(type)?.delete(handler);
+    }),
+    emit: (type: string): void => {
+      for (const handler of listeners.get(type) ?? []) handler();
+    },
+  };
+}
+
+/** Grab the handler registered for `event` via client.on. */
+function handlerFor(
+  client: { on: { mock: { calls: unknown[][] } } },
+  event: ClientEvent,
+) {
+  const call = client.on.mock.calls.find((c) => c[0] === event);
+  return call?.[1] as () => void;
+}
 
 /** Grab the RoomEvent.Timeline handler registered via client.on. */
 function timelineHandler(client: { on: { mock: { calls: unknown[][] } } }) {
@@ -264,6 +326,11 @@ function decryptedHandler(client: { on: { mock: { calls: unknown[][] } } }) {
 function syncHandler(client: { on: { mock: { calls: unknown[][] } } }) {
   const call = client.on.mock.calls.find((c) => c[0] === ClientEvent.Sync);
   return call?.[1] as (state: SyncState) => void;
+}
+
+/** The event types bound via client.on, in order. */
+function boundEvents(client: { on: { mock: { calls: unknown[][] } } }) {
+  return client.on.mock.calls.map(([type]) => type);
 }
 
 describe('NotificationService', () => {
@@ -304,6 +371,45 @@ describe('NotificationService', () => {
     expect(MockNotification.instances[0].options).toMatchObject({
       body: 'hello there',
       tag: '@me:hs !r:hs',
+    });
+  });
+
+  describe('once Android push owns the background', () => {
+    it('leaves a hidden-page message to the native push renderer', () => {
+      const { svc, client } = setup({
+        backgroundDelivery: 'push',
+        hidden: true,
+      });
+      svc.connect();
+
+      timelineHandler(client)(event(), room, false, false, live);
+
+      expect(MockNotification.instances).toHaveLength(0);
+    });
+
+    it('still notifies while the page is visible but unfocused', () => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+      const { svc, client } = setup({
+        backgroundDelivery: 'push',
+        hidden: false,
+      });
+      svc.connect();
+
+      timelineHandler(client)(event(), room, false, false, live);
+
+      expect(MockNotification.instances).toHaveLength(1);
+    });
+
+    it('keeps notifying while hidden when push is not registered', () => {
+      const { svc, client } = setup({
+        backgroundDelivery: 'app',
+        hidden: true,
+      });
+      svc.connect();
+
+      timelineHandler(client)(event(), room, false, false, live);
+
+      expect(MockNotification.instances).toHaveLength(1);
     });
   });
 
@@ -476,7 +582,8 @@ describe('NotificationService', () => {
     const { svc, client, health } = setup();
     svc.connect();
 
-    expect(client.on).not.toHaveBeenCalled();
+    // Only the permission-independent retired account-data copy is bound.
+    expect(boundEvents(client)).toEqual([ClientEvent.AccountData]);
     expect(MockNotification.instances).toHaveLength(0);
     expect(health.at(-1)).toBe('notification-presentation-disabled');
   });
@@ -594,12 +701,13 @@ describe('NotificationService', () => {
     });
 
     svc.connect();
-    expect(client.on).not.toHaveBeenCalled();
+    // Only the permission-independent retired account-data copy is bound.
+    expect(boundEvents(client)).toEqual([ClientEvent.AccountData]);
     svc.disconnect();
     support.next({ kind: 'supported' });
 
     expect(support.observed).toBe(false);
-    expect(client.on).not.toHaveBeenCalled();
+    expect(boundEvents(client)).toEqual([ClientEvent.AccountData]);
     expect(requestPermission).not.toHaveBeenCalled();
   });
 
@@ -638,7 +746,9 @@ describe('NotificationService', () => {
     ).resolves.toEqual({ kind: 'success' });
     expect(support).toHaveBeenCalledTimes(2);
     expect(health.at(-1)).toBe('notification-presentation-ready');
-    expect(client.on).toHaveBeenCalledTimes(6);
+    // The account-data copy stays bound across the release; delivery binds Sync +
+    // Timeline + Decrypted on each of the two attaches.
+    expect(client.on).toHaveBeenCalledTimes(7);
   });
 
   it('reports disabled permission without attaching or ending the session', () => {
@@ -658,7 +768,8 @@ describe('NotificationService', () => {
     svc.connect();
 
     expect(health.at(-1)).toBe('notification-presentation-disabled');
-    expect(client.on).not.toHaveBeenCalled();
+    // Only the permission-independent retired account-data copy is bound.
+    expect(boundEvents(client)).toEqual([ClientEvent.AccountData]);
   });
 
   it('reports a presenter rejection as an incident while keeping activation delivery alive', () => {
@@ -743,6 +854,77 @@ describe('NotificationService', () => {
       expect(MockNotification.instances).toHaveLength(0);
     });
 
+    // A message sent without encryption into an encrypted room is not what the room's
+    // members can vouch for, so its text stays out of the notification preview.
+    it('does not preview the text of a plaintext message in an encrypted room', () => {
+      const { svc, client } = setup();
+      svc.connect();
+      const encryptedRoom = { ...room, hasEncryptionStateEvent: () => true };
+
+      timelineHandler(client)(
+        event({ body: 'sent in the clear' }),
+        encryptedRoom,
+        false,
+        false,
+        live,
+      );
+
+      expect(MockNotification.instances).toHaveLength(1);
+      expect(MockNotification.instances[0].options).toMatchObject({
+        body: 'New message',
+      });
+    });
+
+    // The client encrypts for a room its crypto store has recorded as encrypted even when
+    // the room's state lacks the encryption event, so the same rule applies here.
+    it('does not preview plaintext when only the crypto store knows the room is encrypted', async () => {
+      const { svc, client } = setup();
+      const isEncryptionEnabledInRoom = vi.fn(() => Promise.resolve(true));
+      client.getCrypto.mockReturnValue({ isEncryptionEnabledInRoom });
+      client.getRooms.mockReturnValue([room]);
+      svc.connect();
+      await vi.waitFor(() =>
+        expect(isEncryptionEnabledInRoom).toHaveBeenCalledWith('!r:hs'),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      timelineHandler(client)(
+        event({ body: 'sent in the clear' }),
+        room,
+        false,
+        false,
+        live,
+      );
+
+      expect(MockNotification.instances).toHaveLength(1);
+      expect(MockNotification.instances[0].options).toMatchObject({
+        body: 'New message',
+      });
+    });
+
+    it('still previews a decrypted message in an encrypted room', () => {
+      const { svc, client } = setup();
+      svc.connect();
+      const encryptedRoom = { ...room, hasEncryptionStateEvent: () => true };
+      client.getRoom.mockReturnValue(encryptedRoom);
+
+      timelineHandler(client)(
+        event({ id: '$e5', encrypted: true }),
+        encryptedRoom,
+        false,
+        false,
+        live,
+      );
+      decryptedHandler(client)(
+        event({ id: '$e5', decrypted: true, body: 'sealed hello' }),
+      );
+
+      expect(MockNotification.instances).toHaveLength(1);
+      expect(MockNotification.instances[0].options).toMatchObject({
+        body: 'sealed hello',
+      });
+    });
+
     it('notifies a decrypted event at most once', () => {
       const { svc, client } = setup();
       svc.connect();
@@ -754,6 +936,210 @@ describe('NotificationService', () => {
       decryptedHandler(client)(event({ id: '$e3', decrypted: true }));
 
       expect(MockNotification.instances).toHaveLength(1);
+    });
+  });
+
+  describe('retired account data', () => {
+    it('copies legacy-only account data when the notifier is built, without settings', () => {
+      const stored: Record<string, unknown> = {
+        [LEGACY_NOTIFICATION_SOUND_EVENT]: { enabled: false },
+        [LEGACY_REACTION_NOTIFICATION_EVENT]: { enabled: true },
+      };
+      const legacy = accountDataClient('@me:hs', stored);
+      const { svc } = setup({
+        clients: new Map([['@me:hs', legacy as never]]),
+      });
+
+      svc.connect();
+
+      expect(legacy.setAccountData).toHaveBeenCalledWith(
+        NOTIFICATION_SOUND_EVENT,
+        { enabled: false },
+      );
+      expect(legacy.setAccountData).toHaveBeenCalledWith(
+        REACTION_NOTIFICATION_EVENT,
+        { enabled: true },
+      );
+    });
+
+    it('copies for a background account too', () => {
+      const bg = accountDataClient('@bg:hs', {
+        [LEGACY_NOTIFICATION_SOUND_EVENT]: { enabled: false },
+      });
+      const { svc } = setup({
+        accounts: ['@me:hs', '@bg:hs'],
+        clients: new Map([
+          ['@me:hs', fakeClient('@me:hs') as never],
+          ['@bg:hs', bg as never],
+        ]),
+      });
+
+      svc.connect();
+
+      expect(bg.setAccountData).toHaveBeenCalledWith(NOTIFICATION_SOUND_EVENT, {
+        enabled: false,
+      });
+    });
+
+    it('copies when the account data arrives after the notifier is built', () => {
+      const stored: Record<string, unknown> = {};
+      const late = accountDataClient('@me:hs', stored);
+      const { svc } = setup({
+        clients: new Map([['@me:hs', late as never]]),
+      });
+      svc.connect();
+      expect(late.setAccountData).not.toHaveBeenCalled();
+
+      stored[LEGACY_REACTION_NOTIFICATION_EVENT] = { enabled: true };
+      handlerFor(late, ClientEvent.AccountData)();
+
+      expect(late.setAccountData).toHaveBeenCalledTimes(1);
+      expect(late.setAccountData).toHaveBeenCalledWith(
+        REACTION_NOTIFICATION_EVENT,
+        { enabled: true },
+      );
+    });
+
+    it('copies nothing when the new names already exist', () => {
+      const current = accountDataClient('@me:hs', {
+        [NOTIFICATION_SOUND_EVENT]: { enabled: true },
+        [LEGACY_NOTIFICATION_SOUND_EVENT]: { enabled: false },
+        [REACTION_NOTIFICATION_EVENT]: { enabled: false },
+        [LEGACY_REACTION_NOTIFICATION_EVENT]: { enabled: true },
+      });
+      const { svc } = setup({
+        clients: new Map([['@me:hs', current as never]]),
+      });
+
+      svc.connect();
+
+      expect(current.setAccountData).not.toHaveBeenCalled();
+    });
+
+    it('unbinds the account-data listener on disconnect', () => {
+      const client = accountDataClient('@me:hs', {});
+      const { svc } = setup({
+        clients: new Map([['@me:hs', client as never]]),
+      });
+      svc.connect();
+      const bound = handlerFor(client, ClientEvent.AccountData);
+
+      svc.disconnect();
+
+      expect(client.off).toHaveBeenCalledWith(ClientEvent.AccountData, bound);
+    });
+
+    it('copies for an account that denied notification permission', () => {
+      MockNotification.permission = 'denied';
+      const legacy = accountDataClient('@me:hs', {
+        [LEGACY_NOTIFICATION_SOUND_EVENT]: { enabled: false },
+        [LEGACY_REACTION_NOTIFICATION_EVENT]: { enabled: true },
+      });
+      const { svc, health } = setup({
+        clients: new Map([['@me:hs', legacy as never]]),
+      });
+
+      svc.connect();
+
+      expect(health.at(-1)).toBe('notification-presentation-disabled');
+      expect(legacy.setAccountData).toHaveBeenCalledWith(
+        NOTIFICATION_SOUND_EVENT,
+        { enabled: false },
+      );
+      expect(legacy.setAccountData).toHaveBeenCalledWith(
+        REACTION_NOTIFICATION_EVENT,
+        { enabled: true },
+      );
+    });
+
+    it('copies on a host where notification presentation is unsupported', () => {
+      const legacy = accountDataClient('@me:hs', {
+        [LEGACY_NOTIFICATION_SOUND_EVENT]: { enabled: false },
+      });
+      const requestPermission = vi.fn(() => of({ kind: 'completed' as const }));
+      const { svc, health } = setup({
+        clients: new Map([['@me:hs', legacy as never]]),
+        hostNotifications: {
+          support: () =>
+            of({ kind: 'unavailable' as const, reason: 'not-supported' }),
+          activated: NEVER,
+          requestPermission,
+          present: () => of({ kind: 'completed' as const }),
+        },
+      });
+
+      svc.connect();
+
+      expect(health.at(-1)).toBe('notification-presentation-unsupported');
+      expect(requestPermission).not.toHaveBeenCalled();
+      expect(legacy.setAccountData).toHaveBeenCalledWith(
+        NOTIFICATION_SOUND_EVENT,
+        { enabled: false },
+      );
+    });
+
+    it('copies account data that arrives later without notification permission', () => {
+      MockNotification.permission = 'denied';
+      const stored: Record<string, unknown> = {};
+      const late = accountDataClient('@me:hs', stored);
+      const { svc } = setup({
+        clients: new Map([['@me:hs', late as never]]),
+      });
+      svc.connect();
+      expect(late.setAccountData).not.toHaveBeenCalled();
+
+      stored[LEGACY_NOTIFICATION_SOUND_EVENT] = { enabled: false };
+      late.emit(ClientEvent.AccountData);
+
+      expect(late.setAccountData).toHaveBeenCalledExactlyOnceWith(
+        NOTIFICATION_SOUND_EVENT,
+        { enabled: false },
+      );
+    });
+
+    it('stops copying for an account once it is removed', () => {
+      MockNotification.permission = 'denied';
+      const stored: Record<string, unknown> = {};
+      const bg = accountDataClient('@bg:hs', stored);
+      const { svc, accountIds } = setup({
+        accounts: ['@me:hs', '@bg:hs'],
+        clients: new Map([
+          ['@me:hs', fakeClient('@me:hs') as never],
+          ['@bg:hs', bg as never],
+        ]),
+      });
+      svc.connect();
+      expect(bg.on).toHaveBeenCalledWith(
+        ClientEvent.AccountData,
+        expect.any(Function),
+      );
+
+      accountIds.set(['@me:hs']);
+      TestBed.inject(ApplicationRef).tick();
+      stored[LEGACY_NOTIFICATION_SOUND_EVENT] = { enabled: false };
+      bg.emit(ClientEvent.AccountData);
+
+      expect(bg.setAccountData).not.toHaveBeenCalled();
+    });
+
+    it('stops copying once the service stops', () => {
+      MockNotification.permission = 'denied';
+      const stored: Record<string, unknown> = {};
+      const client = accountDataClient('@me:hs', stored);
+      const { svc } = setup({
+        clients: new Map([['@me:hs', client as never]]),
+      });
+      svc.connect();
+      expect(client.on).toHaveBeenCalledWith(
+        ClientEvent.AccountData,
+        expect.any(Function),
+      );
+
+      svc.disconnect();
+      stored[LEGACY_NOTIFICATION_SOUND_EVENT] = { enabled: false };
+      client.emit(ClientEvent.AccountData);
+
+      expect(client.setAccountData).not.toHaveBeenCalled();
     });
   });
 
@@ -901,7 +1287,7 @@ describe('NotificationService', () => {
         RoomEvent.Timeline,
         expect.any(Function),
       );
-      expect(fresh.on).toHaveBeenCalledTimes(3); // Sync + Timeline + Decrypted
+      expect(fresh.on).toHaveBeenCalledTimes(4); // AccountData copy + Sync + Timeline + Decrypted
 
       timelineHandler(fresh)(event(), room, false, false, live);
 
@@ -926,7 +1312,7 @@ describe('NotificationService', () => {
       accountIds.set(['@next:hs']);
       TestBed.inject(ApplicationRef).tick();
 
-      expect(next.on).toHaveBeenCalledTimes(3);
+      expect(next.on).toHaveBeenCalledTimes(4);
     });
 
     it('does not negotiate Web permission until the session has an account', () => {
@@ -961,8 +1347,8 @@ describe('NotificationService', () => {
       accountIds.set(['@me:hs', '@bg:hs']); // new array ref → effect re-runs
       TestBed.inject(ApplicationRef).tick();
 
-      // Attached exactly once: attach() binds Sync + Timeline + Decrypted.
-      expect(bg.on).toHaveBeenCalledTimes(3);
+      // Attached exactly once: the account-data copy + Sync + Timeline + Decrypted.
+      expect(bg.on).toHaveBeenCalledTimes(4);
       expect(bg.on).toHaveBeenCalledWith(
         RoomEvent.Timeline,
         expect.any(Function),

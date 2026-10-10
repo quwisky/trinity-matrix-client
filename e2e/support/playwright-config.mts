@@ -60,6 +60,45 @@ export function e2eEndpoint(endpoint: E2EEndpoint): string {
   return sessionForConfig()?.endpoints[endpoint] ?? 'http://127.0.0.1:1';
 }
 
+/**
+ * The Playwright shard named by `TRINITY_E2E_SHARD` (`<current>/<total>`, one-based).
+ * CI runs the browser journeys as one job per shard; unset runs the whole suite.
+ * A malformed value throws: silently ignoring it would run every test in every job.
+ */
+export function e2eShard(
+  value: string | undefined = process.env['TRINITY_E2E_SHARD'],
+): PlaywrightTestConfig['shard'] {
+  if (!value) return null;
+  const match = /^(\d+)\/(\d+)$/u.exec(value);
+  const current = Number(match?.[1]);
+  const total = Number(match?.[2]);
+  if (!match || current < 1 || current > total) {
+    throw new Error(
+      `TRINITY_E2E_SHARD must be <current>/<total> with 1 <= current <= total, got ${JSON.stringify(value)}`,
+    );
+  }
+  return { current, total };
+}
+
+/**
+ * The journey file named by `TRINITY_E2E_SPEC` (a path below the suite's test directory,
+ * such as `accounts/mas-session.spec.mts`), as a `testMatch`; unset runs every spec.
+ * CI selects the file this way, like the shard, because the E2E registry pins the CI
+ * command line and so leaves no room for a path argument. A malformed value throws:
+ * silently ignoring it would run the whole suite in a job sized for one file.
+ */
+export function e2eSpec(
+  value: string | undefined = process.env['TRINITY_E2E_SPEC'],
+): RegExp | undefined {
+  if (!value) return undefined;
+  if (!/^(?:[\w-][\w.-]*\/)*[\w-][\w.-]*\.spec\.mts$/u.test(value)) {
+    throw new Error(
+      `TRINITY_E2E_SPEC must be a journey path such as accounts/mas-session.spec.mts, got ${JSON.stringify(value)}`,
+    );
+  }
+  return new RegExp(`/${value.replaceAll('.', '\\.')}$`, 'u');
+}
+
 /** Resolve one suite path below dist/.playwright/<project>/<run-id>/. */
 export function e2eArtifactPath(
   project: string,

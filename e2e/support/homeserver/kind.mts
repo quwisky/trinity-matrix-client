@@ -50,3 +50,41 @@ export function resolveHomeserverRuntime(
   }
   return value as HomeserverRuntime;
 }
+
+/**
+ * Whether `TRINITY_E2E_MAS=1` asked for the opt-in MAS stack (mas/docker-compose.yml).
+ * Exact values only, like the selectors above. MAS runs in Docker, so native refuses it.
+ */
+export function resolveMasEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const value = env['TRINITY_E2E_MAS'] ?? '';
+  if (value !== '' && value !== '0' && value !== '1') {
+    throw new Error(`Unknown TRINITY_E2E_MAS "${value}"; expected 1 or 0`);
+  }
+  if (value === '1' && resolveHomeserverRuntime(env) === 'native') {
+    throw new Error('TRINITY_E2E_MAS=1 needs the Docker runtime');
+  }
+  return value === '1';
+}
+
+/**
+ * Whether `TRINITY_E2E_SSO_PROVIDER=mock` asked Dex to sign in through its `mockCallback`
+ * connector, which answers without a login form. The iOS runner sets it: the Simulator
+ * drops keystrokes typed into the Safari view. Only the native runtime writes its own
+ * dex.yaml, so Docker refuses it rather than quietly keeping the password form.
+ */
+export function resolveSsoMock(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env['TRINITY_E2E_SSO_PROVIDER'] ?? '';
+  if (value !== '' && value !== 'mock') {
+    throw new Error(
+      `Unknown TRINITY_E2E_SSO_PROVIDER "${value}"; expected mock, or unset for Dex's password form`,
+    );
+  }
+  if (value === 'mock' && resolveHomeserverRuntime(env) !== 'native') {
+    throw new Error(
+      'TRINITY_E2E_SSO_PROVIDER=mock needs the native runtime: set TRINITY_E2E_HOMESERVER=synapse and TRINITY_E2E_HOMESERVER_RUNTIME=native',
+    );
+  }
+  return value === 'mock';
+}

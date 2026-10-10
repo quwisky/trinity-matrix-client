@@ -1,8 +1,10 @@
 <trn-media-bubble
   [item]="media()"
   [src]="src()"
+  [poster]="poster()"
   [loading]="loading()"
   [error]="hasError()"
   (openLightbox)="openLightbox()"
   (download)="download()"
+  (playRequested)="play()"
 />

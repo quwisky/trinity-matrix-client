@@ -1,4 +1,4 @@
-import { browser } from '@wdio/globals';
+import { browser, expect } from '@wdio/globals';
 import { HS_TLS } from '../../support/homeserver/start.mjs';
 import { readSession } from '../../support/session.mts';
 import { fillByLabel, tap, waitForRooms } from '../support/app.mts';
@@ -70,9 +70,35 @@ async function answerDexInCustomTab(
   await browser.pressKeyCode(66);
 }
 
-describe('Android SSO sign-in', () => {
+describe('mobile SSO sign-in', () => {
+  before(function skipWithoutSso(this: Mocha.Context) {
+    const sso = readSession().homeserver?.sso;
+    const title = this.test?.parent?.fullTitle() ?? 'mobile SSO sign-in';
+    if (!sso) {
+      // Dex is part of the Docker stack, and of the native one when `dex` is on PATH.
+      console.log(
+        `[mobile] skipped: ${title} — the homeserver came up without Dex, so there is no SSO account`,
+      );
+      this.skip();
+    }
+    // XCUITest drops keystrokes typed into the Safari view on the iOS 26.5 Simulator, and
+    // the keyboard's accessory bar covers Dex's Login button, so iOS signs in only through
+    // Dex's form-free mock connector. A homeserver shared with suites that fill Dex's form
+    // (pnpm e2e:all) keeps the form, so the spec has nothing it can drive.
+    if (browser.isIOS && !sso?.mock) {
+      console.log(
+        `[mobile] skipped on ios: ${title} — the homeserver uses Dex's password form; start it with TRINITY_E2E_SSO_PROVIDER=mock`,
+      );
+      this.skip();
+    }
+  });
+
   beforeEach(async () => {
     await native();
+    if (browser.isIOS) {
+      await resetApp();
+      return;
+    }
     // `adb shell` joins its arguments into one device command line, so pass the whole
     // script as the command: split into `sh -c` arguments, the redirect wrote an empty file.
     await shell(`echo '${CHROME_FLAGS}' > ${CHROME_FLAGS_FILE}`);
@@ -83,19 +109,28 @@ describe('Android SSO sign-in', () => {
     await resetApp();
   });
 
-  it('signs in through the Custom Tab and returns on the eu.qwky.trinity callback', async () => {
+  it('signs in through the in-app browser and returns on the dev.trinityproject.trinity callback', async () => {
     const sso = readSession().homeserver?.sso;
     if (!sso) throw new Error('the E2E stack came up without an SSO account');
 
     await fillByLabel('Homeserver', HS_TLS);
-    await tap('//button[normalize-space()="Continue"]');
-    await tap('//button[normalize-space()="Continue with SSO"]');
+    if (browser.isIOS) {
+      // As login() does: an element click reaches the button wherever the keyboard sits; a
+      // touch aimed at it missed on the iOS 26.5 Simulator.
+      await $('//button[normalize-space()="Continue"]').click();
+      const sso = $('//button[normalize-space()="Continue with SSO"]');
+      await expect(sso).toBeDisplayed({ wait: 30_000 });
+      await sso.click();
+    } else {
+      await tap('//button[normalize-space()="Continue"]');
+      await tap('//button[normalize-space()="Continue with SSO"]');
+      await native();
+      await answerDexInCustomTab(sso.email, sso.pass);
+    }
 
-    await native();
-    await answerDexInCustomTab(sso.email, sso.pass);
-
-    // The homeserver redirects to eu.qwky.trinity://sso-callback, which Android hands to
-    // the app; the Rooms shell appearing proves the login token was exchanged.
+    // The homeserver redirects to dev.trinityproject.trinity://sso-callback, which the OS hands to the
+    // app (its scene delegate on iOS); the Rooms shell appearing proves the login token was
+    // exchanged.
     await webview();
     await waitForRooms(90_000);
   });

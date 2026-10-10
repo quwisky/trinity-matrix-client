@@ -48,16 +48,16 @@ R58M123\tunauthorized
     ).toBeUndefined();
   });
 
-  it('rejects physical, wrong-API, and wrong-ABI targets independently', () => {
-    expect(
-      validateEmulator({ qemu: '0', apiLevel: '35', abi: 'arm64-v8a' }),
-    ).toEqual([
+  it('rejects physical and wrong-API targets independently', () => {
+    expect(validateEmulator({ qemu: '0', apiLevel: '35' })).toEqual([
       'target is not an emulator',
       'API 35 is not 36',
-      'ABI arm64-v8a is not x86_64',
     ]);
-    expect(
-      validateEmulator({ qemu: '1', apiLevel: '36', abi: 'x86_64' }),
-    ).toEqual([]);
+  });
+
+  // CI boots x86_64; Apple-silicon hosts can only boot arm64-v8a. The app ships no
+  // native code of its own, so the ABI is not part of what makes a test emulator.
+  it('accepts an API 36 emulator whatever its ABI', () => {
+    expect(validateEmulator({ qemu: '1', apiLevel: '36' })).toEqual([]);
   });
 });

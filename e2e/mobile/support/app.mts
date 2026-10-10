@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { connect } from 'node:tls';
 import { browser, expect } from '@wdio/globals';
 import { HS_TLS } from '../../support/homeserver/start.mjs';
+import { readSession } from '../../support/session.mts';
 import { APP_PACKAGE, iosPreferences, native, webview } from './session.mts';
 
 /** Fill an input through its `<label for>`, like the browser suite's fillLabeledInput. */
@@ -33,13 +36,83 @@ export async function waitForRooms(timeout = 30_000): Promise<void> {
   );
 }
 
+/**
+ * Time a TLS handshake from this host to the native Caddy on one address family, verified
+ * against the run's own Caddy root: the one the runner trusts in the Simulator keychain.
+ */
+function probeHandshake(host: string, ca: Buffer): Promise<string> {
+  const { port } = new URL(HS_TLS);
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const socket = connect(
+      {
+        host,
+        port: Number(port),
+        servername: 'localhost',
+        ca,
+        timeout: 10_000,
+      },
+      () => {
+        resolve(`${host} handshake ${Date.now() - started} ms`);
+        socket.end();
+      },
+    );
+    socket.on('timeout', () => {
+      resolve(`${host} no handshake after 10 s`);
+      socket.destroy();
+    });
+    socket.on('error', (error) =>
+      resolve(`${host} ${error.message} after ${Date.now() - started} ms`),
+    );
+  });
+}
+
+/**
+ * Evidence for a failed homeserver discovery, taken while the failure is still live: is
+ * the host's Caddy answering a handshake now on each family, and how long does the same
+ * well-known fetch take from inside the WebView?
+ */
+async function discoveryDiagnostics(): Promise<string> {
+  const caddyRoot = readSession().homeserver?.caddyRoot;
+  if (!caddyRoot)
+    return 'no Caddy root in the E2E session to probe the host with';
+  const ca = readFileSync(caddyRoot);
+  const [v6, v4] = await Promise.all([
+    probeHandshake('::1', ca),
+    probeHandshake('127.0.0.1', ca),
+  ]);
+  const webview = await browser
+    .executeAsync((url: string, done: (result: string) => void) => {
+      const started = Date.now();
+      fetch(`${url}/.well-known/matrix/client`, {
+        signal: AbortSignal.timeout(15_000),
+      })
+        .then((res) => done(`fetch ${res.status} ${Date.now() - started} ms`))
+        .catch((error: unknown) =>
+          done(`fetch ${String(error)} after ${Date.now() - started} ms`),
+        );
+    }, HS_TLS)
+    .catch((error: unknown) => `webview probe failed: ${String(error)}`);
+  return `host ${v6}; host ${v4}; webview ${webview}`;
+}
+
 export async function login(user: string, pass: string): Promise<void> {
   await fillByLabel('Homeserver', HS_TLS);
   const next = $('//button[normalize-space()="Continue"]');
   await expect(next).toBeDisplayed({ wait: 30_000 });
-  await next.click();
   const signIn = $('//button[normalize-space()="Sign in"]');
-  await expect(signIn).toBeDisplayed({ wait: 30_000 });
+  await next.click();
+  try {
+    await expect(signIn).toBeDisplayed({ wait: 30_000 });
+  } catch (error) {
+    if (!browser.isIOS) throw error;
+    const alert = $('#login-homeserver-error');
+    if (!(await alert.isDisplayed())) throw error;
+    throw new Error(
+      `homeserver discovery failed at ${HS_TLS}: "${await alert.getText()}"; ${await discoveryDiagnostics()}`,
+      { cause: error },
+    );
+  }
   await fillByLabel('Username', user);
   await fillByLabel('Password', pass);
   await signIn.click();

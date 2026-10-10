@@ -92,6 +92,11 @@ const TEST_PRIVACY_PREFERENCES: PrivacyPreferenceSet = {
     'trinity.privacy.link-previews-encrypted',
     false,
   ),
+  saveCapturesToGallery: testPrivacyPreference(
+    'conversations.test.save-captures-to-gallery',
+    'trinity.privacy.save-captures-to-gallery',
+    false,
+  ),
 };
 
 /** The app's wiring: the platform entries registered, as `main.ts` does it. */
@@ -448,6 +453,20 @@ describe('AppConfigService', () => {
 
       expect(plan.ok).toBe(false);
       expect(plan.ok === false && plan.problems[0]).toContain('not valid JSON');
+    });
+
+    it('does not let a retired qwky.eu schema id block an import', () => {
+      // export() never writes `$id`, so this pins that an unknown top-level key, such as
+      // an old `$id` pasted in from a hand-written file, does not reject the config.
+      const config = setup();
+      const exported = config.export();
+      const withOldId = {
+        ...exported,
+        $id: 'https://qwky.eu/trinity/config-v3.schema.json',
+      };
+
+      expect(config.validate(withOldId).ok).toBe(true);
+      expect(config.validate(withOldId)).toEqual(config.validate(exported));
     });
 
     it('refuses a malformed shortcut binding rather than letting it reach resolve', () => {

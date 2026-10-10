@@ -15,6 +15,13 @@
     },
     "build": {
       "executor": "nx:run-commands",
+      "//": "The Markdown pipeline renders version references from these manifests.",
+      "inputs": [
+        "production",
+        "^production",
+        "{workspaceRoot}/package.json",
+        "{workspaceRoot}/electron/package.json"
+      ],
       "outputs": ["{workspaceRoot}/dist/docs/developers"],
       "options": {
         "command": "astro build",

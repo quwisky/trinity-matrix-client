@@ -50,7 +50,7 @@ export const CAPABILITY_STATUS_CATALOG = {
   'preferences:hydrate-gestures': preferenceCopy('message gestures'),
   'preferences:hydrate-privacy': preferenceCopy('privacy settings'),
   'preferences:hydrate-account-scope': preferenceCopy('Account scope'),
-  'preferences:hydrate-push-gateway': preferenceCopy('push gateway settings'),
+  'preferences:hydrate-rail-unread': preferenceCopy('space rail settings'),
   'preferences:hydrate-shortcuts': preferenceCopy('keyboard shortcuts'),
   'preferences:hydrate-system-lines': preferenceCopy('system-message settings'),
   'room-library:hydrate-order': {
@@ -149,6 +149,8 @@ const CAPABILITY_DIAGNOSTIC_REASONS = {
       'account-restore-transient-network',
       'account-restore-corrupt-local-state',
       'account-restore-crypto-failure',
+      'account-restore-crypto-store-key-lost',
+      'account-restore-secure-storage-unavailable',
     ],
   }),
   'identity:presence': projectionReasons('presence', [
@@ -181,11 +183,9 @@ const CAPABILITY_DIAGNOSTIC_REASONS = {
   'preferences:hydrate-account-scope': preferenceReasons('account-scope', [
     'account-scope-preference-hydration-partial',
   ]),
-  'preferences:hydrate-push-gateway': preferenceReasons(
-    'push-gateway',
-    [],
-    ['push-gateway-platform-unavailable'],
-  ),
+  'preferences:hydrate-rail-unread': preferenceReasons('rail-unread', [
+    'rail-unread-preference-hydration-partial',
+  ]),
   'preferences:hydrate-shortcuts': preferenceReasons('shortcuts'),
   'preferences:hydrate-system-lines': preferenceReasons('system-lines'),
   'room-library:hydrate-order': reasons({

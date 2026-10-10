@@ -5,7 +5,9 @@ import {
 } from '@trinity/data-access/matrix-client';
 import {
   AccountAlreadyStoredError,
+  AccountHomeserverMismatchError,
   SessionStorageService,
+  sameHomeserver,
 } from '@trinity/platform-native';
 import {
   Observable,
@@ -16,7 +18,10 @@ import {
   switchMap,
   tap,
   throwError,
+  timeout,
 } from 'rxjs';
+import type { MatrixSession } from '@trinity/util/matrix';
+import { ACCOUNT_CLEANUP_STEP_BUDGET_MS } from './account-cleanup-policy';
 import { AccountLifecycleAdapter } from './account-lifecycle.adapter';
 import { ACCOUNT_LIFECYCLE_PORT } from './account-lifecycle.port';
 import type {
@@ -115,28 +120,42 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
         } as const);
       }
       const pending = this.pendingNewAccounts.get(session.userId);
+      let replaced: MatrixSession | null = null;
       const persisted$ =
         intent.accountRecord === 'new' &&
         pending &&
         sameAuthenticatedAccountGrant(pending.grant, grant)
           ? of(pending.stored)
-          : this.storage
-              .persistForEstablishment(session, intent.accountRecord)
-              .pipe(
-                tap((stored) => {
-                  if (intent.accountRecord === 'new') {
-                    this.pendingNewAccounts.set(session.userId, {
-                      grant,
-                      stored,
-                    });
-                  }
-                }),
-              );
+          : this.replacedDevice(session).pipe(
+              tap((device) => {
+                replaced = device;
+              }),
+              switchMap(() =>
+                this.storage.persistForEstablishment(
+                  session,
+                  intent.accountRecord,
+                ),
+              ),
+              tap((stored) => {
+                if (intent.accountRecord === 'new') {
+                  this.pendingNewAccounts.set(session.userId, {
+                    grant,
+                    stored,
+                  });
+                }
+              }),
+            );
       const prepare$ =
         intent.liveAccounts === 'replace'
           ? defer(() => {
               this.lifecycle.releaseSharedCaches();
-              return this.lifecycle.unregisterNotifications();
+              // Best effort: a refused or stalled handoff write must neither fail nor block
+              // the sign-in, nor skip the pusher teardown.
+              return this.lifecycle.forgetPushHandoff().pipe(
+                timeout(ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister),
+                catchError(() => of(void 0)),
+                switchMap(() => this.lifecycle.unregisterNotifications()),
+              );
             })
           : of(void 0);
 
@@ -147,7 +166,13 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
         switchMap((persisted) =>
           persisted.kind === 'failed'
             ? of(persisted)
-            : this.matrix.restorePersisted(persisted.stored, 'background'),
+            : this.matrix.restorePersisted(persisted.stored, 'background').pipe(
+                tap((started) => {
+                  if (started.kind === 'ready' && replaced) {
+                    this.signOutReplacedDevice(replaced);
+                  }
+                }),
+              ),
         ),
         switchMap((started) => {
           if (started.kind === 'failed') {
@@ -263,6 +288,13 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   ): Observable<
     Extract<AdapterAccountEstablishmentOutcome, { readonly kind: 'failed' }>
   > {
+    if (error instanceof AccountHomeserverMismatchError) {
+      return of({
+        kind: 'failed',
+        failure: 'homeserver-mismatch',
+        storedBaseUrl: error.storedBaseUrl,
+      });
+    }
     if (error instanceof AccountAlreadyStoredError) {
       return of({ kind: 'failed', failure: 'account-already-stored' });
     }
@@ -314,6 +346,44 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
       ),
       switchMap(() => this.storageFailure(originalError)),
     );
+  }
+
+  /**
+   * The stored device a sign-in is about to replace, read before saving the new session
+   * overwrites its token, or null when there is none. Saving reclaims its local store, so
+   * nothing could reach that device afterwards; the typical case is a lost store key, where
+   * re-authentication signs in as a new device. A device saved through another server is
+   * not replaced: saving refuses that sign-in (`AccountHomeserverMismatchError`) and keeps
+   * the saved account as it is.
+   */
+  private replacedDevice(
+    session: MatrixSession,
+  ): Observable<MatrixSession | null> {
+    return defer(() => this.storage.load(session.userId)).pipe(
+      map((stored) =>
+        stored &&
+        stored.deviceId !== session.deviceId &&
+        sameHomeserver(stored.baseUrl, session.baseUrl)
+          ? stored
+          : null,
+      ),
+      catchError(() => of(null)),
+    );
+  }
+
+  /**
+   * Sign the replaced device out on the server, once the new session is saved and started:
+   * starting it detached any old live client for this account, so that client's logout
+   * handling never sees this sign-out, and a failed save never leaves the account without
+   * any session. Best-effort with the old token on a detached client (for OAuth,
+   * `logout(true)` revokes at the provider); it never delays or fails the sign-in.
+   */
+  private signOutReplacedDevice(stored: MatrixSession): void {
+    defer(() =>
+      this.matrix
+        .detachedClient(stored, { persistRefreshedTokens: false })
+        .logout(true),
+    ).subscribe({ error: () => undefined });
   }
 
   private toAdapterOutcome(

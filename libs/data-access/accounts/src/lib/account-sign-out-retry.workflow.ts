@@ -24,6 +24,31 @@ export interface SignOutRetryContext {
   session: MatrixSession | null;
 }
 
+/**
+ * End the account's remote session once. matrix-js-sdk 43's `logout()` revokes an
+ * OAuth-native session's tokens at its provider (and sends no `POST /logout`), and logs a
+ * password or SSO session out at the homeserver. Without a live client, a stored OAuth
+ * session is logged out through a detached client so its tokens are still revoked.
+ */
+export function remoteLogout(
+  context: SignOutRetryContext,
+  matrix: MatrixClientService,
+): Observable<unknown> {
+  return defer(() => {
+    const client =
+      context.client ??
+      (context.session?.oidc ? matrix.detachedClient(context.session) : null);
+    return client ? from(client.logout(true)) : of(void 0);
+  });
+}
+
+/** Where a failed {@link remoteLogout} is reported: the provider owns OAuth tokens. */
+export function remoteLogoutScope(
+  context: SignOutRetryContext,
+): AccountCleanupScope {
+  return context.providerExpected ? 'provider-session' : 'matrix-session';
+}
+
 /** Retains only the context required to retry settled, safe Account-removal residue. */
 @Injectable({ providedIn: 'root' })
 export class AccountSignOutRetryWorkflow {
@@ -84,33 +109,20 @@ export class AccountSignOutRetryWorkflow {
     );
     const operations: Observable<unknown>[] = [];
     if (retryable.has('notifications')) {
-      operations.push(
-        this.retryStep(
-          attempt,
-          context.remainingAccountIds.length === 0
-            ? this.lifecycle.unregisterNotifications()
-            : this.lifecycle.unregisterNotifications(context.accountId),
-          'notifications',
-          ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
-        ),
-      );
+      operations.push(...this.retryNotifications(attempt, context));
     }
-    if (retryable.has('provider-session') && context.session?.oidc) {
+    const logoutScope = remoteLogoutScope(context);
+    // Without a client or a stored OAuth session there is nothing to log out with, and
+    // resolving the residue anyway would claim a revocation that never happened.
+    if (
+      retryable.has(logoutScope) &&
+      (context.client || context.session?.oidc)
+    ) {
       operations.push(
         this.retryStep(
           attempt,
-          this.lifecycle.revokeProviderSession(context.session),
-          'provider-session',
-          ACCOUNT_CLEANUP_STEP_BUDGET_MS.providerLogout,
-        ),
-      );
-    }
-    if (retryable.has('matrix-session') && context.client) {
-      operations.push(
-        this.retryStep(
-          attempt,
-          defer(() => from(context.client!.logout(true))),
-          'matrix-session',
+          remoteLogout(context, this.matrix),
+          logoutScope,
           ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixLogout,
         ),
       );
@@ -137,6 +149,36 @@ export class AccountSignOutRetryWorkflow {
           concatMap((operation) => operation),
           reduce(() => undefined, undefined),
         );
+  }
+
+  /**
+   * The push handoff removal and the pusher teardown share the `notifications` scope but
+   * run as separate steps, so a refused removal never skips the teardown. The residue is
+   * resolved only once both have succeeded.
+   */
+  private retryNotifications(
+    attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
+    context: SignOutRetryContext,
+  ): Observable<unknown>[] {
+    let succeeded = 0;
+    const step = (source: Observable<unknown>): Observable<unknown> =>
+      attempt.step(source, {
+        budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
+        scope: 'notifications',
+        recovery: 'retry-sign-out',
+        onSettled: () => {
+          succeeded += 1;
+          if (succeeded === 2) attempt.resolveIssue('notifications');
+        },
+      });
+    return [
+      step(this.lifecycle.forgetPushHandoff(context.accountId)),
+      step(
+        context.remainingAccountIds.length === 0
+          ? this.lifecycle.unregisterNotifications()
+          : this.lifecycle.unregisterNotifications(context.accountId),
+      ),
+    ];
   }
 
   private retryAccountRegistry(

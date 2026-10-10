@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runCommand, runPrerequisites } from './ci-prerequisites.mjs';
 
 const tempDirs = [];
@@ -79,6 +79,27 @@ describe('runCommand', () => {
     expect(existsSync(marker)).toBe(false);
   });
 
+  it('settles when signalling the reaped group reports EPERM, as macOS does for zombies', async () => {
+    const kill = process.kill.bind(process);
+    const spy = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+      if (pid < 0)
+        throw Object.assign(new Error('kill EPERM'), { code: 'EPERM' });
+      return kill(pid, signal);
+    });
+    try {
+      const result = await runCommand({
+        command: node,
+        args: ['-e', '0'],
+        label: 'eperm',
+        logDir: makeLogDir(),
+      });
+      expect(result.exitCode).toBe(0);
+      expect(spy).toHaveBeenCalledWith(expect.any(Number), 'SIGTERM');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('aborts a running process group and reports cancellation', async () => {
     const controller = new AbortController();
     const promise = runCommand({
@@ -147,4 +168,125 @@ describe('runPrerequisites', () => {
       }
     },
   );
+
+  it.each([
+    [{}, ['chromium', 'webkit']],
+    [{ TRINITY_PLAYWRIGHT_BROWSERS: 'chromium' }, ['chromium']],
+    [
+      { TRINITY_PLAYWRIGHT_BROWSERS: ' chromium  firefox ' },
+      ['chromium', 'firefox'],
+    ],
+  ])(
+    'installs the selected Playwright browsers (%o)',
+    async (env, browsers) => {
+      const calls = [];
+      await runPrerequisites({
+        logDir: makeLogDir(),
+        env,
+        run: async (spec) => {
+          calls.push(spec);
+          return { label: spec.label, exitCode: 0, signal: null };
+        },
+      });
+      const install = calls.find(({ label }) => label === 'playwright-install');
+      expect(install.args).toEqual([
+        'exec',
+        'playwright',
+        'install',
+        '--with-deps',
+        ...browsers,
+      ]);
+    },
+  );
+
+  describe('playwright-install attempts', () => {
+    const sixMinutes = 6 * 60 * 1000;
+    const attempts = async (exitCodes, extra = {}) => {
+      const calls = [];
+      const warnings = [];
+      const warn = vi.spyOn(console, 'warn').mockImplementation((line) => {
+        warnings.push(line);
+      });
+      try {
+        const outcome = await runPrerequisites({
+          logDir: makeLogDir(),
+          timeoutMs: 1234,
+          run: async (spec) => {
+            calls.push(spec);
+            const install = spec.label === 'playwright-install';
+            const exitCode = install ? (exitCodes.shift() ?? 0) : 0;
+            return {
+              label: spec.label,
+              exitCode,
+              signal: null,
+              timedOut: install && exitCode === 124,
+              aborted: false,
+              ...extra,
+            };
+          },
+        });
+        return { outcome, calls, warnings };
+      } finally {
+        warn.mockRestore();
+      }
+    };
+
+    it('bounds each attempt to six minutes and keeps the other timeouts', async () => {
+      const { calls } = await attempts([0]);
+      const byLabel = Object.fromEntries(
+        calls.map(({ label, timeoutMs }) => [label, timeoutMs]),
+      );
+      expect(byLabel).toEqual({
+        'playwright-install': sixMinutes,
+        'docker-pull': 1234,
+        'development-build': 1234,
+      });
+    });
+
+    it('retries once after a failed attempt and logs the retry', async () => {
+      const { outcome, calls, warnings } = await attempts([23, 0]);
+      expect(
+        calls.filter(({ label }) => label === 'playwright-install'),
+      ).toHaveLength(2);
+      expect(outcome.exitCode).toBe(0);
+      expect(warnings).toContain(
+        '::warning::playwright install attempt 1 failed (rc=23); retrying',
+      );
+    });
+
+    it('reports the second attempt when both fail, including a timeout', async () => {
+      const { outcome, calls } = await attempts([23, 124, 0]);
+      expect(
+        calls.filter(({ label }) => label === 'playwright-install'),
+      ).toHaveLength(2);
+      expect(outcome.exitCode).toBe(124);
+    });
+
+    it('does not retry a cancelled install', async () => {
+      const { calls } = await attempts([143], { aborted: true });
+      expect(
+        calls.filter(({ label }) => label === 'playwright-install'),
+      ).toHaveLength(1);
+    });
+  });
+
+  it.each([
+    [{}, true],
+    [{ TRINITY_PLAYWRIGHT_WITH_DEPS: 'true' }, true],
+    [{ TRINITY_PLAYWRIGHT_WITH_DEPS: 'false' }, false],
+    // Never inferred from the browser list.
+    [{ TRINITY_PLAYWRIGHT_BROWSERS: 'chromium' }, true],
+  ])('passes --with-deps only unless opted out (%o)', async (env, withDeps) => {
+    const calls = [];
+    await runPrerequisites({
+      logDir: makeLogDir(),
+      env,
+      run: async (spec) => {
+        calls.push(spec);
+        return { label: spec.label, exitCode: 0, signal: null };
+      },
+    });
+    const install = calls.find(({ label }) => label === 'playwright-install');
+    expect(install.args.includes('--with-deps')).toBe(withDeps);
+  });
 });

@@ -1,7 +1,8 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
-import { Observable, defer, from, map, of } from 'rxjs';
+import { Observable, catchError, defer, from, map, of, switchMap } from 'rxjs';
+import { PushHandoffBridge } from './push-handoff.bridge';
 
 export type NativePushRegistrationEvent =
   | { readonly kind: 'ready' }
@@ -12,9 +13,18 @@ export type NativePushRegistrationEvent =
       readonly data: Readonly<Record<string, unknown>>;
     };
 
+/**
+ * `requested`: the OS was asked for a token, which arrives as a `registered` or
+ * `registration-failed` event. `unavailable`: this host cannot request one (an Android
+ * build without Firebase), so nothing was asked and no event follows.
+ */
+export type NativePushRegisterOutcome = 'requested' | 'unavailable';
+
 /** Platform adapter for the OS token-registration half of Matrix push. */
 @Injectable({ providedIn: 'root' })
 export class NativePushRegistrationService {
+  private readonly handoff = inject(PushHandoffBridge);
+
   readonly platform = nativePushPlatform();
 
   supported(): boolean {
@@ -108,8 +118,29 @@ export class NativePushRegistrationService {
     });
   }
 
-  register(): Observable<void> {
-    return defer(() => from(PushNotifications.register()));
+  /** Cold. Asks the OS for a push token, unless this host cannot request one. */
+  register(): Observable<NativePushRegisterOutcome> {
+    return this.registrationAvailable().pipe(
+      switchMap((available) =>
+        available
+          ? from(PushNotifications.register()).pipe(
+              map((): NativePushRegisterOutcome => 'requested'),
+            )
+          : of<NativePushRegisterOutcome>('unavailable'),
+      ),
+    );
+  }
+
+  /**
+   * The plugin's Android `register()` calls Firebase unguarded, so without
+   * `google-services.json` it crashes the app; only the host can tell. A host that cannot
+   * answer (no plugin, or the call failed) counts as "cannot register". iOS can always ask.
+   */
+  private registrationAvailable(): Observable<boolean> {
+    if (this.platform !== 'android') return of(true);
+    return this.handoff
+      .registrationAvailable()
+      .pipe(catchError(() => of(false)));
   }
 }
 

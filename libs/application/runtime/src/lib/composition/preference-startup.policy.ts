@@ -11,7 +11,7 @@ export const PREFERENCE_STARTUP_PRODUCERS = [
   'shortcuts',
   'gifs',
   'account-scope',
-  'push-gateway',
+  'rail-unread',
 ] as const;
 
 export type PreferenceStartupProducer =
@@ -53,7 +53,7 @@ export type PreferenceSafeDefaultKey =
   | 'shortcuts-built-in-bindings'
   | 'gifs-klipy-unconfigured'
   | 'account-scope-active-only'
-  | 'push-gateway-build-default';
+  | 'rail-unread-up-to-five';
 
 function policy(
   producer: PreferenceStartupProducer,
@@ -83,5 +83,5 @@ export const PREFERENCE_STARTUP_PRODUCER_POLICIES = {
   shortcuts: policy('shortcuts', 'shortcuts-built-in-bindings'),
   gifs: policy('gifs', 'gifs-klipy-unconfigured'),
   'account-scope': policy('account-scope', 'account-scope-active-only'),
-  'push-gateway': policy('push-gateway', 'push-gateway-build-default'),
+  'rail-unread': policy('rail-unread', 'rail-unread-up-to-five'),
 } satisfies Record<PreferenceStartupProducer, PreferenceStartupProducerPolicy>;

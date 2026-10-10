@@ -10,6 +10,9 @@ import {
   titleBarOptions,
 } from './window-prefs';
 
+// preload.ts mirrors this by string value.
+const CLOSE_WINDOW_CHANNEL = 'trinity:window:close';
+
 let mainWindow: BrowserWindow | null = null;
 // The mode the current window was created with; the saved pref applies only after a relaunch.
 let systemTitleBarActive = false;
@@ -115,6 +118,9 @@ export function installPermissionPolicy(session: Electron.Session): void {
   );
 }
 
+// preload.ts mirrors this by string value.
+const VISIBILITY_CHANNEL = 'trinity:host:v1:lifecycle:visibility';
+
 export function createWindow(): void {
   const prefs = readWindowPrefs();
   systemTitleBarActive = prefs.systemTitleBar;
@@ -168,6 +174,19 @@ export function createWindow(): void {
 
   mainWindow.once('ready-to-show', () => mainWindow?.show());
 
+  // backgroundThrottling keeps document.visibilityState 'visible', so tell the renderer
+  // itself when the window leaves or returns to the screen; it frees memory while hidden.
+  const win = mainWindow;
+  const sendVisibility = (visibility: 'visible' | 'hidden') => () => {
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.send(VISIBILITY_CHANNEL, visibility);
+    }
+  };
+  win.on('hide', sendVisibility('hidden'));
+  win.on('minimize', sendVisibility('hidden'));
+  win.on('show', sendVisibility('visible'));
+  win.on('restore', sendVisibility('visible'));
+
   // Close-to-tray: a user-initiated window close hides the window instead of
   // destroying it, keeping the process, renderer, and `/sync` alive so
   // background notifications keep working. An explicit Quit sets `isQuitting`
@@ -178,6 +197,13 @@ export function createWindow(): void {
       mainWindow?.hide();
     }
   });
+
+  // A page's `window.close()` destroys the WebContents, and with it the window, without
+  // ever emitting the cancellable `close` above. Preload sends it here instead, so it
+  // takes the same path as a user close.
+  mainWindow.webContents.ipc.on(CLOSE_WINDOW_CHANNEL, () =>
+    mainWindow?.close(),
+  );
 
   mainWindow.on('closed', () => {
     mainWindow = null;

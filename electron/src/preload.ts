@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webFrame } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 
 /**
@@ -14,7 +14,7 @@ import type { IpcRendererEvent } from 'electron';
  *   (globalThis as any).trinityDesktop?.isElectron === true
  *
  * Deep-link contract (consumed by the selected host adapter):
- *   trinityDesktop.capabilities.deepLinks.subscribe(cb) receives `eu.qwky.trinity://…` URLs that
+ *   trinityDesktop.capabilities.deepLinks.subscribe(cb) receives `dev.trinityproject.trinity://…` URLs that
  *   the main process forwards over the `deep-link` ipcRenderer channel (used for
  *   the desktop SSO callback) and returns an unsubscribe function. Only the URL
  *   string is passed to the callback — the raw IpcRendererEvent is never leaked.
@@ -37,6 +37,8 @@ const NOTIFICATION_CLICK_CHANNEL = 'notification-click';
 // as with SHOW_NOTIFICATION_CHANNEL / NOTIFICATION_CLICK_CHANNEL above).
 const SET_BADGE_COUNT_CHANNEL = 'trinity:host:v1:badge:set';
 const HOST_NEGOTIATE_CHANNEL = 'trinity:host:v1:negotiate';
+// Mirrors window.ts by string value: main reports the window leaving or returning to the screen.
+const VISIBILITY_CHANNEL = 'trinity:host:v1:lifecycle:visibility';
 // Mirror title-bar-ipc.ts by string value; main re-validates every payload.
 const SET_OVERLAY_CHANNEL = 'trinity:host:v1:title-bar:set-overlay';
 const POPUP_MENU_CHANNEL = 'trinity:host:v1:title-bar:popup-menu';
@@ -45,6 +47,8 @@ const GET_SYSTEM_TITLE_BAR_CHANNEL =
 const SET_SYSTEM_TITLE_BAR_CHANNEL =
   'trinity:host:v1:title-bar:set-system-title-bar';
 const RELAUNCH_CHANNEL = 'trinity:host:v1:title-bar:relaunch';
+// Mirrors window.ts by string value; main only closes the window, as a user close does.
+const CLOSE_WINDOW_CHANNEL = 'trinity:window:close';
 // window.ts appends the running title-bar mode to argv; anything else means "no row".
 const TITLE_BAR_ARGUMENT = '--trinity-title-bar=';
 const titleBarArgument = process.argv
@@ -166,6 +170,16 @@ async function negotiate(operations: readonly string[]): Promise<unknown> {
   }
 }
 
+// A page's `window.close()` would destroy the renderer, skipping close-to-tray and
+// stopping `/sync`. Route it to main, which closes the window like a user close.
+contextBridge.executeInMainWorld({
+  func: (requestClose: () => void) => {
+    // The main world's globalThis is its window; Node typings carry no DOM lib.
+    (globalThis as { close?: () => void }).close = () => requestClose();
+  },
+  args: [() => ipcRenderer.send(CLOSE_WINDOW_CHANNEL)],
+});
+
 contextBridge.exposeInMainWorld('trinityDesktop', {
   protocolVersion: 1,
   isElectron: true,
@@ -260,6 +274,14 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
               string | null
             >)
           : Promise.resolve(null),
+      // Not granted reads as unavailable, never as absent: absent means a lost secret.
+      read: (key: string): Promise<unknown> =>
+        grantedOperations.has('secure-store')
+          ? (ipcRenderer.invoke(
+              'trinity:secure-store:read',
+              key,
+            ) as Promise<unknown>)
+          : Promise.resolve({ kind: 'unavailable' }),
       set: (key: string, value: string): Promise<boolean> =>
         grantedOperations.has('secure-store')
           ? (ipcRenderer.invoke(
@@ -294,6 +316,25 @@ contextBridge.exposeInMainWorld('trinityDesktop', {
               lng: number;
             } | null>)
           : Promise.resolve(null),
+    },
+    lifecycle: {
+      subscribeVisibility(
+        callback: (visibility: 'visible' | 'hidden') => void,
+      ): () => void {
+        if (!grantedOperations.has('lifecycle')) return () => undefined;
+        const listener = (_event: IpcRendererEvent, visibility: unknown) => {
+          if (!grantedOperations.has('lifecycle')) return;
+          if (visibility === 'visible' || visibility === 'hidden') {
+            callback(visibility);
+          }
+        };
+        ipcRenderer.on(VISIBILITY_CHANNEL, listener);
+        return () => ipcRenderer.removeListener(VISIBILITY_CHANNEL, listener);
+      },
+      // Electron advises this only after an event that lowers memory use, such as hiding.
+      releaseMemory: (): void => {
+        if (grantedOperations.has('lifecycle')) webFrame.clearCache();
+      },
     },
     titleBar: {
       // Not a privilege: the mode this window was created with, known before negotiation.

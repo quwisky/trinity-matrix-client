@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '../../../fixtures.mts';
 import {
+  databaseNames,
   login,
   preferenceKeys,
   seedPreference,
@@ -39,17 +40,6 @@ function storageKeys(page: Page): Promise<string[]> {
   return preferenceKeys(page).then((keys) =>
     keys.map((key) => `CapacitorStorage.${key}`),
   );
-}
-
-/** Every IndexedDB database name, or [] where the browser cannot enumerate. */
-function databaseNames(page: Page): Promise<string[]> {
-  return page.evaluate(async () => {
-    if (typeof indexedDB.databases !== 'function') {
-      return [];
-    }
-    const dbs = await indexedDB.databases();
-    return dbs.map((d) => d.name).filter((n): n is string => !!n);
-  });
 }
 
 /**
@@ -107,6 +97,15 @@ test.describe('Clear all data', () => {
     expect(before.dbs.some((n) => n.endsWith('::matrix-sdk-crypto'))).toBe(
       true,
     );
+    // The crypto store's key, wrapped, and the IndexedDB database of its wrapping key.
+    expect(
+      before.keys.some((k) =>
+        k.startsWith(
+          'CapacitorStorage.secure.matrix.cryptoStoreKey:trinity-crypto:@',
+        ),
+      ),
+    ).toBe(true);
+    expect(before.dbs).toContain('trinity-crypto-store-keys');
 
     // Deliberately from ?add: the clients are LIVE, holding open the very databases the
     // wipe has to delete. That is the state the bounded-delete path exists for, and the
@@ -153,16 +152,12 @@ test.describe('Clear all data', () => {
     page,
   }) => {
     // The case the issue is actually about: cannot sign in, so there is no account to read
-    // — but a bad preference (here a dead push gateway) is still on disk with no way to
+    // — but a bad preference (here an unreadable date format) is still on disk with no way to
     // reach it from the UI.
     await page.goto('/login', { waitUntil: 'networkidle' });
-    await seedPreference(
-      page,
-      'trinity.push.gateway',
-      'https://dead.example/_matrix/push/v1/notify',
-    );
+    await seedPreference(page, 'trinity.format.date', 'not-a-format');
     expect(await storageKeys(page)).toContain(
-      'CapacitorStorage.trinity.push.gateway',
+      'CapacitorStorage.trinity.format.date',
     );
 
     await page.getByTestId('clear-all-data').click();

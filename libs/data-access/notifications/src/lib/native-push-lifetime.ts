@@ -20,7 +20,6 @@ import type {
   NativePushHealth,
   NativePushLifetimeEvent,
 } from './notification-health.models';
-import { PushGatewayService } from './push-gateway.service';
 import { PushService } from './push.service';
 
 const PREPARATION_BUDGET_MS = 10_000;
@@ -30,7 +29,6 @@ const PREPARATION_BUDGET_MS = 10_000;
 export class NativePushLifetime {
   private readonly injector = inject(Injector);
   private readonly matrix = inject(MatrixClientService);
-  private readonly gateway = inject(PushGatewayService);
   private readonly push = inject(PushService);
   private readonly context: CapabilityContext = Symbol();
   private readonly changes = new Subject<NativePushHealth>();
@@ -171,11 +169,11 @@ export class NativePushLifetime {
             ? 'available'
             : state.status === 'disabled'
               ? 'disabled'
-              : 'degraded',
+              : state.status === 'unsupported'
+                ? 'not-applicable'
+                : 'degraded',
           state.code,
-          state.status === 'available' || state.status === 'disabled'
-            ? 'acknowledged'
-            : 'failed',
+          state.status === 'degraded' ? 'failed' : 'acknowledged',
         );
       };
 
@@ -210,7 +208,6 @@ export class NativePushLifetime {
       const demandChanges = effect(
         () => {
           this.matrix.accountIds();
-          this.gateway.configured();
           untracked(apply);
         },
         { injector: this.injector },

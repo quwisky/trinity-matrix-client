@@ -9,6 +9,7 @@ import {
   syncStoreIndexedDbName,
 } from '@trinity/util/matrix';
 import { SecureStorageService } from './secure-storage.service';
+import { CryptoStoreKeyService } from './crypto-store-key.service';
 
 /**
  * Non-secret per-account record. Both credentials — the access token and the OIDC
@@ -21,6 +22,20 @@ export type AccountRecord = Omit<MatrixSession, 'accessToken' | 'refreshToken'>;
 export class AccountAlreadyStoredError extends Error {
   constructor(readonly userId: string) {
     super(`The account ${userId} is already stored on this device.`);
+  }
+}
+
+/**
+ * A sign-in for an account that is already saved under another homeserver. The saved
+ * account is left as it is; the user removes it before signing in to it through a
+ * different server.
+ */
+export class AccountHomeserverMismatchError extends Error {
+  constructor(
+    readonly userId: string,
+    readonly storedBaseUrl: string,
+  ) {
+    super(`${userId} is already signed in through ${storedBaseUrl}.`);
   }
 }
 
@@ -47,6 +62,8 @@ const REFRESH_TOKEN_KEY_PREFIX = 'matrix.refreshToken:';
 /** Legacy single-slot keys (migration source), retired on first read. */
 const LEGACY_SESSION_KEY = 'matrix.session';
 const LEGACY_TOKEN_KEY = 'matrix.accessToken';
+/** Device-scoped crypto-store prefix: `${CRYPTO_PREFIX}${userId}:${deviceId}`. */
+const CRYPTO_PREFIX = 'trinity-crypto:';
 
 /**
  * Persists signed-in Matrix accounts. Each account's **access token** (the full
@@ -66,6 +83,7 @@ const LEGACY_TOKEN_KEY = 'matrix.accessToken';
 @Injectable({ providedIn: 'root' })
 export class SessionStorageService {
   private readonly secure = inject(SecureStorageService);
+  private readonly storeKeys = inject(CryptoStoreKeyService);
 
   /**
    * Serializes registry read-modify-write cycles. The OIDC token refresher calls
@@ -183,6 +201,24 @@ export class SessionStorageService {
     );
   }
 
+  /**
+   * The device a re-authentication may sign back in on, or null when it has to sign in as
+   * a new device: a keyed store whose key is missing (a restore onto a new phone, a wiped
+   * keychain) can never be opened again, so reusing its device would fail the same way on
+   * every attempt. A new device gets a new store and key, and the old store is reclaimed.
+   * A key that is only unavailable (a locked keyring) keeps the device, so the store is
+   * never replaced over an outage; that sign-in fails until the keychain is back.
+   */
+  reusableDeviceId(record: AccountRecord): Observable<string | null> {
+    return defer(() =>
+      from(
+        this.storeKeyMissing(record).then((missing) =>
+          missing ? null : record.deviceId,
+        ),
+      ),
+    );
+  }
+
   /** Make `userId` the active account (no-op if it isn't stored). */
   setActive(userId: string): Observable<void> {
     return defer(() =>
@@ -295,7 +331,16 @@ export class SessionStorageService {
     if (constraint === 'new' && existing) {
       throw new AccountAlreadyStoredError(incoming.userId);
     }
+    if (existing && !sameHomeserver(existing.baseUrl, incoming.baseUrl)) {
+      throw new AccountHomeserverMismatchError(
+        existing.userId,
+        existing.baseUrl,
+      );
+    }
     const deviceChanged = !!existing && existing.deviceId !== incoming.deviceId;
+    const newPrefix =
+      incoming.cryptoPrefix ??
+      `${CRYPTO_PREFIX}${incoming.userId}:${incoming.deviceId}`;
     const record: AccountRecord =
       existing && !deviceChanged
         ? // Same-device re-login (soft-logout re-auth, token rotation): reuse the exact
@@ -306,7 +351,6 @@ export class SessionStorageService {
           // OIDC) rather than keeping the stale ones.
           {
             ...existing,
-            baseUrl: incoming.baseUrl,
             accessTokenExpiresAt: incoming.accessTokenExpiresAt,
             oidc: incoming.oidc,
           }
@@ -317,14 +361,15 @@ export class SessionStorageService {
           // store under a new device makes the Rust OlmMachine reject the mismatch
           // ("the account in the store doesn't match the account in the constructor").
           {
-            baseUrl: incoming.baseUrl,
+            // An existing account keeps the base URL it was saved with: an equivalent
+            // spelling (trailing slash, host case) is not a reason to rewrite it.
+            baseUrl: existing?.baseUrl ?? incoming.baseUrl,
             userId: incoming.userId,
             deviceId: incoming.deviceId,
             accessTokenExpiresAt: incoming.accessTokenExpiresAt,
             oidc: incoming.oidc,
-            cryptoPrefix:
-              incoming.cryptoPrefix ??
-              `trinity-crypto:${incoming.userId}:${incoming.deviceId}`,
+            cryptoPrefix: newPrefix,
+            cryptoStoreKeyed: true,
           };
     registry.accounts = [
       ...registry.accounts.filter((a) => a.userId !== incoming.userId),
@@ -332,6 +377,14 @@ export class SessionStorageService {
     ];
     if (activation === 'activate') {
       registry.activeUserId = incoming.userId;
+    }
+    if (!existing || deviceChanged) {
+      // A new store gets a new key, named by the store and written BEFORE the tokens and
+      // the registry: a keyed record without its key could never open its store, and a
+      // failure here must leave the stored device's tokens as they were. A key left behind
+      // by a later failure is harmless. A same-device re-login keeps whatever its existing
+      // store has, including no key at all.
+      await this.storeKeys.create(newPrefix);
     }
     await this.secure.set(this.tokenKey(incoming.userId), accessToken);
     // Persist (or clear) the OIDC refresh token alongside the access token: set it for
@@ -351,6 +404,7 @@ export class SessionStorageService {
       // device-scoped crypto store. No logout wiped the old device's store (this is a
       // re-login, not a sign-out), so reclaim it here — otherwise it leaks on disk.
       this.reclaimCryptoStore(existing.cryptoPrefix);
+      await this.removeStoreKey(existing);
     }
     return {
       ...record,
@@ -417,6 +471,7 @@ export class SessionStorageService {
     // stores (or a legacy account's SDK-default pair) and its message sync store. Never
     // delete these.
     const owned = new Set<string>();
+    const orphanedStores = new Set<string>();
     for (const account of registry.accounts) {
       for (const dbName of rustCryptoStoreDbNames(account.cryptoPrefix)) {
         owned.add(dbName);
@@ -438,8 +493,51 @@ export class SessionStorageService {
         } catch {
           // Best-effort — leave anything we can't delete for a later run.
         }
+        if (isRustCryptoStoreDbName(name)) {
+          orphanedStores.add(name.slice(0, name.lastIndexOf('::')));
+        }
       }
     }
+    if (orphanedStores.size > 0) {
+      await this.serialize(() => this.removeOrphanedStoreKeys(orphanedStores));
+    }
+  }
+
+  /**
+   * Delete the keys of swept stores, which are named by the store. Serialized and
+   * re-reading the registry, so a sign-in that binds one of these prefixes in the
+   * meantime keeps the key it just created.
+   */
+  private async removeOrphanedStoreKeys(prefixes: Set<string>): Promise<void> {
+    const registry = await this.readRegistry();
+    for (const prefix of prefixes) {
+      if (!registry.accounts.some((a) => a.cryptoPrefix === prefix)) {
+        await this.storeKeys.remove(prefix).catch(() => undefined);
+      }
+    }
+  }
+
+  /**
+   * Delete a store's key, best-effort. Callers run it AFTER the registry stops naming the
+   * store: deleting first, then failing the registry write, would leave a keyed record
+   * whose store can never open. A key left behind here (also by a crash between deleting
+   * the store and its key) is harmless residue that the installation reset removes.
+   */
+  private async removeStoreKey(record: AccountRecord): Promise<void> {
+    if (record.cryptoStoreKeyed && record.cryptoPrefix) {
+      await this.storeKeys.remove(record.cryptoPrefix).catch(() => undefined);
+    }
+  }
+
+  /** Whether a keyed store's key is gone for good (not merely unreachable right now). */
+  private async storeKeyMissing(record: AccountRecord): Promise<boolean> {
+    if (!record.cryptoStoreKeyed || !record.cryptoPrefix) {
+      return false;
+    }
+    const read = await this.storeKeys
+      .read(record.cryptoPrefix)
+      .catch(() => ({ kind: 'unavailable' }) as const);
+    return read.kind === 'missing';
   }
 
   private async loadOne(userId?: string): Promise<MatrixSession | null> {
@@ -483,6 +581,7 @@ export class SessionStorageService {
 
   private async removeInternal(userId: string): Promise<void> {
     const registry = await this.readRegistry();
+    const removed = registry.accounts.find((a) => a.userId === userId);
     registry.accounts = registry.accounts.filter((a) => a.userId !== userId);
     if (registry.activeUserId === userId) {
       registry.activeUserId = registry.accounts[0]?.userId ?? null;
@@ -490,6 +589,9 @@ export class SessionStorageService {
     await this.secure.remove(this.tokenKey(userId));
     await this.secure.remove(this.refreshTokenKey(userId));
     await this.writeRegistry(registry);
+    if (removed) {
+      await this.removeStoreKey(removed);
+    }
   }
 
   private async clearInternal(): Promise<readonly AccountRecord[]> {
@@ -504,6 +606,9 @@ export class SessionStorageService {
     // Defensively retire any legacy single-slot residue too.
     await Preferences.remove({ key: LEGACY_SESSION_KEY });
     await this.secure.remove(LEGACY_TOKEN_KEY);
+    await Promise.all(
+      registry.accounts.map((account) => this.removeStoreKey(account)),
+    );
     return registry.accounts;
   }
 
@@ -559,4 +664,21 @@ export class SessionStorageService {
     await Preferences.remove({ key: LEGACY_SESSION_KEY });
     return registry;
   }
+}
+
+/**
+ * Whether two homeserver base URLs address the same server: scheme and host case, a
+ * default port and trailing slashes do not matter, the path does. An unparseable value
+ * only equals an identical one.
+ */
+export function sameHomeserver(a: string, b: string): boolean {
+  const key = (raw: string): string => {
+    try {
+      const { protocol, host, pathname } = new URL(raw);
+      return `${protocol}//${host}${pathname.replace(/\/+$/, '')}`;
+    } catch {
+      return raw;
+    }
+  };
+  return key(a) === key(b);
 }

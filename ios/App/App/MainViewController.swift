@@ -18,6 +18,8 @@ class MainViewController: CAPBridgeViewController {
         super.capacitorDidLoad()
         webView?.allowsBackForwardNavigationGestures = false
         bridge?.registerPluginInstance(NativeNavigationPlugin())
+        bridge?.registerPluginInstance(AppSettingsPlugin())
+        bridge?.registerPluginInstance(PushHandoffPlugin())
     }
 }
 
@@ -38,6 +40,35 @@ class NativeNavigationPlugin: CAPInstancePlugin, CAPBridgedPlugin {
         DispatchQueue.main.async { [weak self] in
             self?.bridge?.webView?.allowsBackForwardNavigationGestures = enabled
             call.resolve()
+        }
+    }
+}
+
+/**
+ * Opens Trinity's page in the Settings app, where a permission the user refused can be turned
+ * back on. The composer offers it after camera or photo-library access is denied (#919).
+ */
+@objc(AppSettingsPlugin)
+class AppSettingsPlugin: CAPInstancePlugin, CAPBridgedPlugin {
+    let identifier = "AppSettingsPlugin"
+    let jsName = "AppSettings"
+    let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "openAppSettings", returnType: CAPPluginReturnPromise)
+    ]
+
+    @objc func openAppSettings(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let url = URL(string: UIApplication.openSettingsURLString) else {
+                call.reject("Settings are unavailable")
+                return
+            }
+            UIApplication.shared.open(url) { opened in
+                if opened {
+                    call.resolve()
+                } else {
+                    call.reject("Settings are unavailable")
+                }
+            }
         }
     }
 }

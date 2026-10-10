@@ -15,7 +15,7 @@ import {
   closeSettings,
   openSettingsSection,
 } from '../../../support/journeys/navigation.mts';
-import { setTimeout as wait } from 'node:timers/promises';
+import { sendWithRetry } from '../../support/cs-api.mts';
 
 // Covers NotificationService's core rule end to end: a live message fires an OS
 // notification unless the user is actually looking at that room — i.e. the window
@@ -254,26 +254,11 @@ async function joinReactionRoom(
   roomId: string,
   reactor: ApiUser,
 ): Promise<void> {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const response = await request.post(
+  await sendWithRetry(`join ${reactor.userId}`, () =>
+    request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
       { headers: reactor.headers },
-    );
-    if (response.ok()) return;
-    if (response.status() !== 429) {
-      throw new Error(
-        `join ${reactor.userId}: ${response.status()} ${await response.text()}`,
-      );
-    }
-    const json = (await response.json().catch(() => ({}))) as {
-      retry_after_ms?: number;
-    };
-    await wait(
-      Math.min(Math.max(Number(json.retry_after_ms) || 1_000, 1), 10_000),
-    );
-  }
-  throw new Error(
-    `join ${reactor.userId}: still rate-limited after 5 attempts`,
+    ),
   );
 }
 
@@ -284,7 +269,7 @@ async function storedReactionPreference(
   token: string,
 ): Promise<{ enabled: boolean } | undefined> {
   const response = await request.get(
-    `${hs}/_matrix/client/v3/user/${encodeURIComponent(userId)}/account_data/eu.qwky.trinity.reaction_notifications`,
+    `${hs}/_matrix/client/v3/user/${encodeURIComponent(userId)}/account_data/dev.trinityproject.trinity.reaction_notifications`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (response.status() === 404) return undefined;

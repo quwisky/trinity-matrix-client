@@ -1,5 +1,8 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { PrivacySettingsService } from '@trinity/platform-native';
+import {
+  MediaPickerService,
+  PrivacySettingsService,
+} from '@trinity/platform-native';
 import { UrlPreviewService } from '@trinity/data-access/timeline';
 import { PreferenceCatalogSectionComponent } from '../shared/preference-catalog-section/preference-catalog-section.component';
 import { TrnSettingsGroupComponent } from '@trinity/components/overlay';
@@ -19,4 +22,8 @@ export class PrivacySettingsComponent {
    * page can explain that the previews toggle has no effect on this server.
    */
   readonly previewsSupported = inject(UrlPreviewService).supported;
+
+  /** Saving to the gallery is a camera-plugin option, so it exists only on iOS/Android. */
+  protected readonly captureSupported =
+    inject(MediaPickerService).captureSupported === true;
 }

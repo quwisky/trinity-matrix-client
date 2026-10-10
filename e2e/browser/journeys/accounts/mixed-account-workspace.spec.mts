@@ -1,4 +1,10 @@
-import { devices, expect, test, testResourceId } from '../../../fixtures.mts';
+import {
+  devices,
+  expect,
+  test,
+  testResourceId,
+  type Page,
+} from '../../../fixtures.mts';
 import { login } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
@@ -8,6 +14,21 @@ import {
   mixInAccount,
   session,
 } from '../../support/multi-account-journey.mts';
+
+/**
+ * Resolves once every open menu has finished its entrance. A submenu is placed against its
+ * trigger as it stands when the submenu opens, and the placement is not redone, so one opened
+ * mid-entrance stays offset. Near the bottom of the viewport that offset has the placement
+ * pushed flush against the edge, where the menu ends up a fraction of a pixel past it.
+ */
+const settleMenus = (page: Page) =>
+  page
+    .locator('.cdk-overlay-container')
+    .evaluate((container) =>
+      Promise.all(
+        container.getAnimations({ subtree: true }).map((a) => a.finished),
+      ),
+    );
 
 test.describe('Multiple accounts', () => {
   configureMultiAccountSuite();
@@ -225,6 +246,7 @@ test.describe('Multiple accounts', () => {
         { dark },
       );
       await desktopTrigger.press('ArrowDown');
+      await settleMenus(page);
       await selectorTrigger.focus();
       await selectorTrigger.press('ArrowRight');
       await expect(desktopSelector).toBeVisible();
@@ -287,6 +309,7 @@ test.describe('Multiple accounts', () => {
       document.documentElement.style.fontSize = fontSize;
     }, originalTheme);
     await desktopTrigger.press('ArrowDown');
+    await settleMenus(page);
     await selectorTrigger.focus();
     await selectorTrigger.press('ArrowRight');
 

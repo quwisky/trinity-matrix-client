@@ -1,8 +1,6 @@
 import {
-  AfterViewInit,
   ChangeDetectionStrategy,
   Component,
-  ElementRef,
   DestroyRef,
   Injector,
   afterNextRender,
@@ -12,25 +10,22 @@ import {
   viewChild,
   inject,
 } from '@angular/core';
+import { WorkspaceBackService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
 import {
   AvatarComponent,
+  EmptyStateComponent,
   TrnSpinnerComponent,
 } from '@trinity/components/generic-content';
 import {
-  TrnDialogService,
+  TrnDialogRef,
   TrnSettingsLayoutComponent,
+  TrnSurfaceService,
   type TrnSettingsLayoutSection,
 } from '@trinity/components/overlay';
-import {
-  BELOW_MD_QUERY,
-  matchesQuery,
-  textScaledViewportSignal,
-} from '@trinity/util/ui';
-import { isMobileOs } from '@trinity/platform-native';
+import { textScaledViewportSignal } from '@trinity/util/ui';
 import type { CapabilityRecoveryOutcome } from '@trinity/runtime/projection';
-import { take } from 'rxjs';
-import { SystemStatusVisibilityService } from '../../system-status-visibility.service';
+import { of, take } from 'rxjs';
 import { ApplicationRuntimeService } from '../../application-runtime.service';
 import {
   CapabilityStatusService,
@@ -38,39 +33,30 @@ import {
 } from '../../capability-status.service';
 import { ApplicationRecoveryPresenter } from '../application-recovery.presenter';
 
+/** Capability health and recovery, opened by the application root as a modal surface. */
 @Component({
   selector: 'trn-system-status',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AvatarComponent,
+    EmptyStateComponent,
     TrnButton,
     TrnSettingsLayoutComponent,
     TrnSpinnerComponent,
   ],
   templateUrl: './system-status.component.html',
   styleUrl: './system-status.component.scss',
-  host: {
-    '[class.system-status--sheet]': "presentation === 'sheet'",
-    '(document:keydown)': 'keydown($event)',
-  },
 })
-export class SystemStatusComponent implements AfterViewInit {
-  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
-  private readonly dialog = inject(TrnDialogService);
+export class SystemStatusComponent {
+  private readonly ref = inject<TrnDialogRef<void>>(TrnDialogRef);
+  private readonly surfaces = inject(TrnSurfaceService);
   private readonly runtime = inject(ApplicationRuntimeService);
   private readonly startupRecovery = inject(ApplicationRecoveryPresenter);
-
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly layout = viewChild(TrnSettingsLayoutComponent);
 
   readonly status = inject(CapabilityStatusService);
-  /**
-   * Fixed at open, as a dialog's is: a sheet on a phone, otherwise a centred dialog. It
-   * opens outside the dialog service, so it tells the layout how it is presented.
-   */
-  readonly presentation =
-    isMobileOs() || matchesQuery(BELOW_MD_QUERY) ? 'sheet' : 'dialog';
   readonly wide = textScaledViewportSignal(48, this.destroyRef);
   readonly selectedSection = signal<string | null>('overview');
   readonly sections = computed<readonly TrnSettingsLayoutSection[]>(() => [
@@ -100,11 +86,25 @@ export class SystemStatusComponent implements AfterViewInit {
   );
 
   constructor() {
-    this.destroyRef.onDestroy(
-      inject(SystemStatusVisibilityService).registerBackHandler(() =>
-        this.back(),
-      ),
-    );
+    // On a sheet or small screen, Back steps from a section to the list first; with the list
+    // showing nothing is registered, and the host's Back closes the surface.
+    const unregister = inject(WorkspaceBackService).register({
+      surface: () => {
+        const section = this.selectedSection();
+        return !this.wide() && section !== null
+          ? {
+              layer: 'application',
+              surface: { kind: 'system-status', section },
+            }
+          : null;
+      },
+      dismiss: () => {
+        this.back();
+        return of('dismissed' as const);
+      },
+      ownsTopmostOverlay: () => this.surfaces.isTopmost(this.ref),
+    });
+    this.destroyRef.onDestroy(unregister);
     effect(() => {
       const selected = this.selectedSection();
       if (
@@ -117,15 +117,14 @@ export class SystemStatusComponent implements AfterViewInit {
     });
   }
 
-  ngAfterViewInit(): void {
-    this.host.nativeElement.querySelector<HTMLElement>('h1')?.focus();
-  }
-
   protected selectSection(id: string): void {
     this.selectedSection.set(id);
     afterNextRender(
       () => {
-        if (!this.dialog.hasOpen()) this.layout()?.focusSectionHeading();
+        // A recovery confirmation over this surface keeps its focus.
+        if (this.surfaces.isTopmost(this.ref)) {
+          this.layout()?.focusSectionHeading();
+        }
       },
       { injector: this.injector },
     );
@@ -140,50 +139,26 @@ export class SystemStatusComponent implements AfterViewInit {
       });
       return;
     }
-    this.status.close();
+    this.close();
   }
 
-  protected keydown(event: KeyboardEvent): void {
-    if (event.defaultPrevented || this.dialog.hasOpen()) return;
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      this.status.close();
-      return;
-    }
-    if (event.key !== 'Tab') return;
-    const focusable = [
-      ...this.host.nativeElement.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ),
-    ].filter((element) => element.getClientRects().length > 0);
-    if (focusable.length === 0) return;
-    const first = focusable[0]!;
-    const last = focusable.at(-1)!;
-    const active = document.activeElement;
-    const beforeFirst =
-      active &&
-      first.compareDocumentPosition(active) & Node.DOCUMENT_POSITION_PRECEDING;
-    const afterLast =
-      active &&
-      last.compareDocumentPosition(active) & Node.DOCUMENT_POSITION_FOLLOWING;
-    if (event.shiftKey && (active === first || beforeFirst)) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && (active === last || afterLast)) {
-      event.preventDefault();
-      first.focus();
-    }
+  protected close(): void {
+    this.ref.close();
   }
 
   protected retry(entry: CapabilityStatusEntry): void {
     this.status.retry(entry);
   }
 
-  protected recoverStartup(): void {
+  protected recoverStartup(secondary = false): void {
     const state = this.runtime.state();
     if (state.phase !== 'blocked') return;
+    const recovery = secondary
+      ? state.failure.secondaryRecovery
+      : state.failure.recovery;
+    if (!recovery) return;
     this.startupRecovery
-      .confirmAndRecover(state.failure.recovery)
+      .confirmAndRecover(recovery)
       .pipe(take(1))
       .subscribe((outcome) => this.startupRecovery.present(outcome));
   }

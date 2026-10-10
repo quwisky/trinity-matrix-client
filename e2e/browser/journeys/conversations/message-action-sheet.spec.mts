@@ -232,7 +232,7 @@ test.describe('Message actions on a phone', () => {
     // one part of the sheet that is not a plain button row, so it gets its own check.
     const rowSel = await openRoomWithMessage(page, request, 'b');
     await longPress(page, rowSel);
-    await expect(page.locator('trn-action-sheet')).toBeVisible({
+    await expect(page.locator('trn-action-list')).toBeVisible({
       timeout: 10_000,
     });
 
@@ -241,7 +241,7 @@ test.describe('Message actions on a phone', () => {
     // Reordering the sheet would silently start clicking "More reactions…" instead.
     await page.locator('[data-testid="sheet-react-👍"]').click();
 
-    await expect(page.locator('trn-action-sheet')).toHaveCount(0);
+    await expect(page.locator('trn-action-list')).toHaveCount(0);
     await expect(page.locator(`${rowSel} trn-message-reactions`)).toContainText(
       '👍',
       { timeout: 15_000 },
@@ -256,7 +256,7 @@ test.describe('Message actions on a phone', () => {
     // move away. Nothing must fire on the way.
     const rowSel = await openRoomWithMessage(page, request, 'c');
     await longPress(page, rowSel);
-    const sheet = page.locator('trn-action-sheet');
+    const sheet = page.locator('trn-action-list');
     await expect(sheet).toBeVisible({ timeout: 10_000 });
 
     await page
@@ -276,7 +276,7 @@ test.describe('Message actions on a phone', () => {
     const timeline = page.locator('[data-message-scroller]').first();
     const rows = timeline.locator('trn-message-row');
 
-    await expect(page.locator('trn-virtual-message-list')).toBeVisible();
+    await expect(page.locator('trn-message-list')).toBeVisible();
     await expect
       .poll(
         async () => {

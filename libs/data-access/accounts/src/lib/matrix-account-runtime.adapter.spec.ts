@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   AccountAlreadyStoredError,
+  AccountHomeserverMismatchError,
   LocalDataWipeService,
   SessionStorageService,
   type AccountRecord,
@@ -65,6 +66,7 @@ function setup(activeAccountId: string | null = '@old:hs') {
     wipeServiceWorkerRegistrations: vi.fn(() => Promise.resolve(true)),
   };
   const lifecycle: AccountLifecyclePort = {
+    forgetPushHandoff: vi.fn(() => of(void 0)),
     registerNotifications: vi.fn(() => of(void 0)),
     unregisterNotifications: vi.fn(() => of(void 0)),
     revokeProviderSession: vi.fn(() => of(void 0)),
@@ -118,6 +120,26 @@ function deferred<T>(): {
   });
   return { promise, resolve };
 }
+
+const OIDC_BINDING = {
+  issuer: 'https://issuer',
+  clientId: 'client',
+  redirectUri: 'https://app/sso-callback',
+};
+const OIDC_RECORD = {
+  userId: '@oidc:hs',
+  baseUrl: 'https://hs',
+  deviceId: 'A',
+  oidc: OIDC_BINDING,
+} as never;
+const OIDC_STORED = {
+  userId: '@oidc:hs',
+  baseUrl: 'https://hs',
+  deviceId: 'A',
+  accessToken: 'at',
+  refreshToken: 'rt',
+  oidc: OIDC_BINDING,
+} as never;
 
 describe('MatrixAccountRuntimeAdapter', () => {
   it('signs out one explicit Account while keeping the surviving Account active', async () => {
@@ -189,21 +211,144 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(storage.clear).toHaveBeenCalledOnce();
   });
 
-  it('does not claim provider cleanup when an OIDC session cannot be read', async () => {
-    const { adapter, matrix, storage, lifecycle, active } = setup('@oidc:hs');
+  it('forgets the push handoff before sign-out reads the session or contacts the homeserver', async () => {
+    const { adapter, matrix, storage, lifecycle } = setup('@outgoing:hs');
     vi.mocked(matrix.clientFor).mockReturnValue({
       logout: vi.fn(() => Promise.resolve()),
     } as never);
     vi.mocked(storage.list).mockReturnValue(
       of([
-        {
-          userId: '@oidc:hs',
-          baseUrl: 'https://hs',
-          deviceId: 'A',
-          oidc: { issuer: 'https://issuer' },
-        } as never,
+        { userId: '@outgoing:hs', baseUrl: 'https://hs', deviceId: 'A' },
+        { userId: '@survivor:hs', baseUrl: 'https://hs', deviceId: 'B' },
       ]),
     );
+    vi.mocked(storage.load).mockReturnValue(of(null));
+    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.setActive).mockReturnValue(of(void 0));
+
+    await firstValueFrom(adapter.signOutAccount('@outgoing:hs'));
+
+    expect(lifecycle.forgetPushHandoff).toHaveBeenCalledWith('@outgoing:hs');
+    const forgotAt = vi.mocked(lifecycle.forgetPushHandoff).mock
+      .invocationCallOrder[0];
+    expect(forgotAt).toBeLessThan(
+      vi.mocked(storage.load).mock.invocationCallOrder[0],
+    );
+    expect(forgotAt).toBeLessThan(
+      vi.mocked(lifecycle.unregisterNotifications).mock.invocationCallOrder[0],
+    );
+  });
+
+  it('retries a refused push handoff removal with the notification cleanup', async () => {
+    const { adapter, matrix, storage, lifecycle } = setup('@outgoing:hs');
+    vi.mocked(matrix.clientFor).mockReturnValue({
+      logout: vi.fn(() => Promise.resolve()),
+    } as never);
+    vi.mocked(storage.list).mockReturnValue(
+      of([
+        { userId: '@outgoing:hs', baseUrl: 'https://hs', deviceId: 'A' },
+        { userId: '@survivor:hs', baseUrl: 'https://hs', deviceId: 'B' },
+      ]),
+    );
+    vi.mocked(storage.load).mockReturnValue(of(null));
+    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.setActive).mockReturnValue(of(void 0));
+    vi.mocked(lifecycle.forgetPushHandoff)
+      .mockReturnValueOnce(throwError(() => new Error('keychain locked')))
+      .mockReturnValue(of(void 0));
+
+    const first = await firstValueFrom(adapter.signOutAccount('@outgoing:hs'));
+    expect(first).toMatchObject({
+      kind: 'partial-cleanup',
+      issues: [{ scope: 'notifications', recovery: 'retry-sign-out' }],
+    });
+
+    await expect(
+      firstValueFrom(
+        adapter.retrySignOutCleanup(
+          '@outgoing:hs',
+          first.kind === 'partial-cleanup' ? first.issues : [],
+        ),
+      ),
+    ).resolves.toMatchObject({ kind: 'ready' });
+    expect(lifecycle.forgetPushHandoff).toHaveBeenCalledTimes(2);
+    expect(lifecycle.forgetPushHandoff).toHaveBeenLastCalledWith(
+      '@outgoing:hs',
+    );
+  });
+
+  it('still tears the pusher down on retry when the push handoff refuses again', async () => {
+    const { adapter, matrix, storage, lifecycle } = setup('@outgoing:hs');
+    vi.mocked(matrix.clientFor).mockReturnValue({
+      logout: vi.fn(() => Promise.resolve()),
+    } as never);
+    vi.mocked(storage.list).mockReturnValue(
+      of([
+        { userId: '@outgoing:hs', baseUrl: 'https://hs', deviceId: 'A' },
+        { userId: '@survivor:hs', baseUrl: 'https://hs', deviceId: 'B' },
+      ]),
+    );
+    vi.mocked(storage.load).mockReturnValue(of(null));
+    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.setActive).mockReturnValue(of(void 0));
+    vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(
+      throwError(() => new Error('keychain locked')),
+    );
+    vi.mocked(lifecycle.unregisterNotifications)
+      .mockReturnValueOnce(throwError(() => new Error('homeserver down')))
+      .mockReturnValue(of(void 0));
+    const first = await firstValueFrom(adapter.signOutAccount('@outgoing:hs'));
+    const issues = first.kind === 'partial-cleanup' ? first.issues : [];
+    expect(issues).toEqual([
+      { scope: 'notifications', recovery: 'retry-sign-out' },
+    ]);
+
+    const retried = await firstValueFrom(
+      adapter.retrySignOutCleanup('@outgoing:hs', issues),
+    );
+
+    // The pusher teardown is its own step: a refused handoff removal never skips it, and
+    // its success does not hide the handoff residue.
+    expect(lifecycle.unregisterNotifications).toHaveBeenCalledTimes(2);
+    expect(lifecycle.unregisterNotifications).toHaveBeenLastCalledWith(
+      '@outgoing:hs',
+    );
+    expect(retried).toMatchObject({
+      kind: 'partial-cleanup',
+      issues: [{ scope: 'notifications', recovery: 'retry-sign-out' }],
+    });
+  });
+
+  it('revokes an OIDC account once, through its live client', async () => {
+    const { adapter, matrix, storage, lifecycle, active } = setup('@oidc:hs');
+    const client = { logout: vi.fn(() => Promise.resolve()) };
+    vi.mocked(matrix.clientFor).mockReturnValue(client as never);
+    vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
+    vi.mocked(storage.load).mockReturnValue(of(OIDC_STORED));
+    vi.mocked(matrix.remove).mockImplementation(() => {
+      active.set(null);
+      return of(void 0);
+    });
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+    await expect(
+      firstValueFrom(adapter.signOutAccount('@oidc:hs')),
+    ).resolves.toMatchObject({ kind: 'ready' });
+    // matrix-js-sdk 43's logout() revokes at the provider itself; a second, Trinity-owned
+    // revocation would revoke every token twice.
+    expect(client.logout).toHaveBeenCalledOnce();
+    expect(client.logout).toHaveBeenCalledWith(true);
+    expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
+  });
+
+  it('revokes through the live client even when the stored OIDC session cannot be read', async () => {
+    const { adapter, matrix, storage, lifecycle, active } = setup('@oidc:hs');
+    const client = { logout: vi.fn(() => Promise.resolve()) };
+    vi.mocked(matrix.clientFor).mockReturnValue(client as never);
+    vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
     vi.mocked(storage.load).mockReturnValue(
       throwError(() => new Error('secure read failed')),
     );
@@ -216,13 +361,239 @@ describe('MatrixAccountRuntimeAdapter', () => {
     await expect(
       firstValueFrom(adapter.signOutAccount('@oidc:hs')),
     ).resolves.toEqual({
+      kind: 'ready',
+      accountId: '@oidc:hs',
+      activeAccountId: null,
+      remainingAccountIds: [],
+    });
+    expect(client.logout).toHaveBeenCalledOnce();
+    expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed OIDC revocation as provider residue and retries it through the client', async () => {
+    const { adapter, matrix, storage, lifecycle, active } = setup('@oidc:hs');
+    const client = {
+      logout: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('provider unreachable'))
+        .mockResolvedValue(undefined),
+    };
+    vi.mocked(matrix.clientFor).mockReturnValue(client as never);
+    vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
+    vi.mocked(storage.load).mockReturnValue(of(OIDC_STORED));
+    vi.mocked(matrix.remove).mockImplementation(() => {
+      active.set(null);
+      return of(void 0);
+    });
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+    const first = await firstValueFrom(adapter.signOutAccount('@oidc:hs'));
+    expect(first).toEqual({
+      kind: 'partial-cleanup',
+      accountId: '@oidc:hs',
+      activeAccountId: null,
+      remainingAccountIds: [],
+      issues: [{ scope: 'provider-session', recovery: 'retry-sign-out' }],
+    });
+    // Local removal did not wait on the provider.
+    expect(matrix.remove).toHaveBeenCalledWith('@oidc:hs');
+    expect(storage.clear).toHaveBeenCalledOnce();
+
+    await expect(
+      firstValueFrom(
+        adapter.retrySignOutCleanup(
+          '@oidc:hs',
+          first.kind === 'partial-cleanup' ? first.issues : [],
+        ),
+      ),
+    ).resolves.toMatchObject({ kind: 'ready' });
+    expect(client.logout).toHaveBeenCalledTimes(2);
+    expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
+  });
+
+  it('keeps a failed live revocation as provider residue when the session read settles late', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, matrix, storage, active } = setup('@oidc:hs');
+      const sessionRead = new Subject<MatrixSession | null>();
+      vi.mocked(matrix.clientFor).mockReturnValue({
+        logout: vi.fn(() => Promise.reject(new Error('provider unreachable'))),
+      } as never);
+      vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
+      vi.mocked(storage.load).mockReturnValue(sessionRead);
+      vi.mocked(matrix.remove).mockImplementation(() => {
+        active.set(null);
+        return of(void 0);
+      });
+      vi.mocked(storage.clear).mockReturnValue(of(void 0));
+      const outcomes: AccountSignOutOutcome[] = [];
+
+      adapter
+        .signOutAccount('@oidc:hs')
+        .subscribe((outcome) => outcomes.push(outcome));
+      await vi.advanceTimersByTimeAsync(
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.sessionRead,
+      );
+      sessionRead.next(OIDC_STORED);
+      sessionRead.complete();
+      await vi.runAllTimersAsync();
+
+      expect(outcomes.at(-1)).toEqual({
+        kind: 'partial-cleanup',
+        accountId: '@oidc:hs',
+        activeAccountId: null,
+        remainingAccountIds: [],
+        issues: [{ scope: 'provider-session', recovery: 'retry-sign-out' }],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('revokes an OIDC account without a live client through a detached client', async () => {
+    const { adapter, matrix, storage, lifecycle } = setup(null);
+    const detached = { logout: vi.fn(() => Promise.resolve()) };
+    vi.mocked(matrix.clientFor).mockReturnValue(null);
+    vi.mocked(matrix.detachedClient).mockReturnValue(detached as never);
+    vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
+    vi.mocked(storage.load).mockReturnValue(of(OIDC_STORED));
+    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+    await expect(
+      firstValueFrom(adapter.signOutAccount('@oidc:hs')),
+    ).resolves.toMatchObject({ kind: 'ready' });
+    expect(matrix.detachedClient).toHaveBeenCalledWith(OIDC_STORED);
+    expect(detached.logout).toHaveBeenCalledOnce();
+    expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
+  });
+
+  it('retries a failed detached revocation through a new detached client', async () => {
+    const { adapter, matrix, storage, lifecycle } = setup(null);
+    const detached = {
+      logout: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('provider unreachable'))
+        .mockResolvedValue(undefined),
+    };
+    vi.mocked(matrix.clientFor).mockReturnValue(null);
+    vi.mocked(matrix.detachedClient).mockReturnValue(detached as never);
+    vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
+    vi.mocked(storage.load).mockReturnValue(of(OIDC_STORED));
+    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+    const first = await firstValueFrom(adapter.signOutAccount('@oidc:hs'));
+    expect(first).toMatchObject({
+      kind: 'partial-cleanup',
+      issues: [{ scope: 'provider-session', recovery: 'retry-sign-out' }],
+    });
+
+    await expect(
+      firstValueFrom(
+        adapter.retrySignOutCleanup(
+          '@oidc:hs',
+          first.kind === 'partial-cleanup' ? first.issues : [],
+        ),
+      ),
+    ).resolves.toMatchObject({ kind: 'ready' });
+    expect(matrix.detachedClient).toHaveBeenCalledTimes(2);
+    expect(matrix.detachedClient).toHaveBeenLastCalledWith(OIDC_STORED);
+    expect(detached.logout).toHaveBeenCalledTimes(2);
+    expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
+  });
+
+  it('does not resolve provider residue on retry when there is nothing to revoke with', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, matrix, storage } = setup(null);
+      const sessionRead = new Subject<MatrixSession | null>();
+      vi.mocked(matrix.clientFor).mockReturnValue(null);
+      vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
+      vi.mocked(storage.load).mockReturnValue(sessionRead);
+      vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+      vi.mocked(storage.clear).mockReturnValue(of(void 0));
+      const outcomes: AccountSignOutOutcome[] = [];
+
+      adapter
+        .signOutAccount('@oidc:hs')
+        .subscribe((outcome) => outcomes.push(outcome));
+      await vi.advanceTimersByTimeAsync(
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.sessionRead,
+      );
+      const interim = outcomes.at(-1)!;
+      expect(interim).toMatchObject({
+        kind: 'uncertain-cleanup',
+        issues: [{ scope: 'provider-session', recovery: 'retry-sign-out' }],
+      });
+      sessionRead.next(null);
+      sessionRead.complete();
+      await vi.runAllTimersAsync();
+
+      const retried: AccountSignOutOutcome[] = [];
+      adapter
+        .retrySignOutCleanup(
+          '@oidc:hs',
+          interim.kind === 'uncertain-cleanup' ? interim.issues : [],
+        )
+        .subscribe((outcome) => retried.push(outcome));
+      await vi.runAllTimersAsync();
+
+      expect(retried.at(-1)).toMatchObject({
+        kind: 'partial-cleanup',
+        issues: [{ scope: 'provider-session' }],
+      });
+      expect(matrix.detachedClient).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not claim provider cleanup without a live client when the OIDC session cannot be read', async () => {
+    const { adapter, matrix, storage } = setup(null);
+    vi.mocked(matrix.clientFor).mockReturnValue(null);
+    vi.mocked(storage.list).mockReturnValue(of([OIDC_RECORD]));
+    vi.mocked(storage.load).mockReturnValue(
+      throwError(() => new Error('secure read failed')),
+    );
+    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+    await expect(
+      firstValueFrom(adapter.signOutAccount('@oidc:hs')),
+    ).resolves.toEqual({
       kind: 'partial-cleanup',
       accountId: '@oidc:hs',
       activeAccountId: null,
       remainingAccountIds: [],
       issues: [{ scope: 'provider-session', recovery: 'restart-application' }],
     });
-    expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
+    expect(matrix.detachedClient).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed homeserver logout of a password account as matrix-session residue', async () => {
+    const { adapter, matrix, storage, active } = setup('@pw:hs');
+    vi.mocked(matrix.clientFor).mockReturnValue({
+      logout: vi.fn(() => Promise.reject(new Error('homeserver down'))),
+    } as never);
+    vi.mocked(storage.list).mockReturnValue(
+      of([{ userId: '@pw:hs', baseUrl: 'https://hs', deviceId: 'A' }]),
+    );
+    vi.mocked(storage.load).mockReturnValue(
+      of({ userId: '@pw:hs', baseUrl: 'https://hs' } as never),
+    );
+    vi.mocked(matrix.remove).mockImplementation(() => {
+      active.set(null);
+      return of(void 0);
+    });
+    vi.mocked(storage.clear).mockReturnValue(of(void 0));
+
+    await expect(
+      firstValueFrom(adapter.signOutAccount('@pw:hs')),
+    ).resolves.toMatchObject({
+      kind: 'partial-cleanup',
+      issues: [{ scope: 'matrix-session', recovery: 'retry-sign-out' }],
+    });
   });
 
   it('wipes the explicit last Account even when it has no live client', async () => {
@@ -376,6 +747,12 @@ describe('MatrixAccountRuntimeAdapter', () => {
     const { adapter, matrix, storage, wipe, lifecycle } = setup();
     const order: string[] = [];
     vi.mocked(storage.list).mockReturnValue(of([]));
+    vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(
+      defer(() => {
+        order.push('push-handoff');
+        return of(void 0);
+      }),
+    );
     vi.mocked(lifecycle.unregisterNotifications).mockReturnValue(
       defer(() => {
         order.push('notifications');
@@ -431,6 +808,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
       kind: 'ready',
     });
     expect(order).toEqual([
+      'push-handoff',
       'notifications',
       'sign-out',
       'stop',
@@ -1002,6 +1380,257 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(matrix.activateAccount).toHaveBeenCalledWith('@new:hs', 'replace');
   });
 
+  it('empties the push handoff before replacing the live Accounts', async () => {
+    const { adapter, matrix, storage, lifecycle } = setup();
+    const order: string[] = [];
+    vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(
+      defer(() => {
+        order.push('forget-handoff');
+        return of(void 0);
+      }),
+    );
+    vi.mocked(lifecycle.unregisterNotifications).mockReturnValue(
+      defer(() => {
+        order.push('unregister');
+        return of(void 0);
+      }),
+    );
+    vi.mocked(storage.persistForEstablishment).mockReturnValue(
+      defer(() => {
+        order.push('persist');
+        return of(session);
+      }),
+    );
+    vi.mocked(matrix.restorePersisted).mockReturnValue(
+      of({ kind: 'ready' as const }),
+    );
+    vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+
+    await firstValueFrom(
+      adapter.establishAccount(
+        AuthenticatedAccountGrant.issue(session),
+        activeIntent,
+      ),
+    );
+
+    expect(lifecycle.forgetPushHandoff).toHaveBeenCalledWith();
+    expect(order).toEqual(['forget-handoff', 'unregister', 'persist']);
+  });
+
+  it('still signs in and tears pushers down when the push handoff refuses to empty', async () => {
+    const { adapter, matrix, storage, lifecycle } = setup();
+    vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(
+      throwError(() => new Error('keychain locked')),
+    );
+    vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+    vi.mocked(matrix.restorePersisted).mockReturnValue(
+      of({ kind: 'ready' as const }),
+    );
+    vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+
+    await expect(
+      firstValueFrom(
+        adapter.establishAccount(
+          AuthenticatedAccountGrant.issue(session),
+          activeIntent,
+        ),
+      ),
+    ).resolves.toEqual({ kind: 'ready' });
+    expect(lifecycle.unregisterNotifications).toHaveBeenCalledWith();
+    expect(storage.persistForEstablishment).toHaveBeenCalledOnce();
+  });
+
+  it('still signs in and tears pushers down when emptying the push handoff never settles', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, matrix, storage, lifecycle } = setup();
+      vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(NEVER);
+      vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+      vi.mocked(matrix.restorePersisted).mockReturnValue(
+        of({ kind: 'ready' as const }),
+      );
+      vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+      const outcomes: unknown[] = [];
+
+      adapter
+        .establishAccount(
+          AuthenticatedAccountGrant.issue(session),
+          activeIntent,
+        )
+        .subscribe((outcome) => outcomes.push(outcome));
+      await vi.advanceTimersByTimeAsync(
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
+      );
+
+      expect(outcomes).toEqual([{ kind: 'ready' }]);
+      expect(lifecycle.unregisterNotifications).toHaveBeenCalledWith();
+      expect(storage.persistForEstablishment).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  describe('replacing a stored device', () => {
+    const OLD_SESSION = {
+      ...session,
+      deviceId: 'OLDDEVICE',
+      accessToken: 'old-access',
+    };
+
+    function establish(test: AdapterTest, order: string[] = []) {
+      vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
+        defer(() => {
+          order.push('persist');
+          return of(session);
+        }),
+      );
+      vi.mocked(test.matrix.restorePersisted).mockReturnValue(
+        defer(() => {
+          order.push('start');
+          return of({ kind: 'ready' as const });
+        }),
+      );
+      vi.mocked(test.storage.setActiveForEstablishment).mockReturnValue(
+        of(void 0),
+      );
+      return firstValueFrom(
+        test.adapter.establishAccount(
+          AuthenticatedAccountGrant.issue(session),
+          activeIntent,
+        ),
+      );
+    }
+
+    it('signs the replaced device out with its old token once the new session has started', async () => {
+      const test = setup();
+      const order: string[] = [];
+      const logout = vi.fn(() => {
+        order.push('logout');
+        return Promise.resolve();
+      });
+      vi.mocked(test.storage.load).mockReturnValue(of(OLD_SESSION));
+      vi.mocked(test.matrix.detachedClient).mockReturnValue({
+        logout,
+      } as never);
+
+      await expect(establish(test, order)).resolves.toEqual({ kind: 'ready' });
+
+      expect(test.storage.load).toHaveBeenCalledWith('@new:hs');
+      // Its token refreshes must never be saved over the new device's tokens.
+      expect(test.matrix.detachedClient).toHaveBeenCalledWith(OLD_SESSION, {
+        persistRefreshedTokens: false,
+      });
+      expect(logout).toHaveBeenCalledWith(true);
+      // The old record is read before the save overwrites it; the sign-out waits until the
+      // new session is saved and started, which also detached any old live client.
+      expect(order).toEqual(['persist', 'start', 'logout']);
+    });
+
+    it('keeps the replaced device signed in when saving the new session fails', async () => {
+      const test = setup();
+      vi.mocked(test.storage.load).mockReturnValue(of(OLD_SESSION));
+      vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
+        throwError(() => new DOMException('quota', 'QuotaExceededError')),
+      );
+
+      await expect(
+        firstValueFrom(
+          test.adapter.establishAccount(
+            AuthenticatedAccountGrant.issue(session),
+            activeIntent,
+          ),
+        ),
+      ).resolves.toEqual({
+        kind: 'failed',
+        failure: 'local-state-unavailable',
+      });
+      expect(test.matrix.detachedClient).not.toHaveBeenCalled();
+    });
+
+    it('keeps the replaced device signed in when the new session does not start', async () => {
+      const test = setup();
+      vi.mocked(test.storage.load).mockReturnValue(of(OLD_SESSION));
+      vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
+        of(session),
+      );
+      vi.mocked(test.matrix.restorePersisted).mockReturnValue(
+        of({ kind: 'failed' as const, failure: 'transient-network' as const }),
+      );
+
+      await expect(
+        firstValueFrom(
+          test.adapter.establishAccount(
+            AuthenticatedAccountGrant.issue(session),
+            activeIntent,
+          ),
+        ),
+      ).resolves.toEqual({ kind: 'failed', failure: 'transient-network' });
+      expect(test.matrix.detachedClient).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['fails', () => Promise.reject(new Error('offline'))],
+      ['never answers', () => new Promise<never>(() => undefined)],
+    ])('still signs in when that logout %s', async (_case, logout) => {
+      const test = setup();
+      vi.mocked(test.storage.load).mockReturnValue(of(OLD_SESSION));
+      vi.mocked(test.matrix.detachedClient).mockReturnValue({
+        logout: vi.fn(logout),
+      } as never);
+
+      await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+    });
+
+    it('leaves a device saved through another server signed in when the sign-in is refused', async () => {
+      const test = setup();
+      vi.mocked(test.storage.load).mockReturnValue(
+        of({ ...OLD_SESSION, baseUrl: 'https://stored.example' }),
+      );
+      vi.mocked(test.storage.persistForEstablishment).mockReturnValue(
+        throwError(
+          () =>
+            new AccountHomeserverMismatchError(
+              session.userId,
+              'https://stored.example',
+            ),
+        ),
+      );
+
+      await expect(
+        firstValueFrom(
+          test.adapter.establishAccount(
+            AuthenticatedAccountGrant.issue(session),
+            activeIntent,
+          ),
+        ),
+      ).resolves.toEqual({
+        kind: 'failed',
+        failure: 'homeserver-mismatch',
+        storedBaseUrl: 'https://stored.example',
+      });
+      expect(test.matrix.detachedClient).not.toHaveBeenCalled();
+    });
+
+    it('still signs in when the detached client cannot be built', async () => {
+      const test = setup();
+      vi.mocked(test.storage.load).mockReturnValue(of(OLD_SESSION));
+      vi.mocked(test.matrix.detachedClient).mockImplementation(() => {
+        throw new Error('bad base URL');
+      });
+
+      await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+    });
+
+    it('leaves the device alone on a same-device re-login', async () => {
+      const test = setup();
+      vi.mocked(test.storage.load).mockReturnValue(of(session));
+
+      await expect(establish(test)).resolves.toEqual({ kind: 'ready' });
+
+      expect(test.matrix.detachedClient).not.toHaveBeenCalled();
+    });
+  });
+
   it('keeps inactive placement in the background without changing Active Account', async () => {
     const { adapter, matrix, storage } = setup();
     vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
@@ -1080,6 +1709,35 @@ describe('MatrixAccountRuntimeAdapter', () => {
     });
     expect(second.storage.setActiveForEstablishment).not.toHaveBeenCalled();
     expect(second.matrix.activateAccount).not.toHaveBeenCalled();
+  });
+
+  it('reports a sign-in through another server as a typed failure and starts no live client', async () => {
+    const { adapter, matrix, storage } = setup();
+    vi.mocked(storage.persistForEstablishment).mockReturnValue(
+      throwError(
+        () =>
+          new AccountHomeserverMismatchError(
+            '@new:hs',
+            'https://stored.example',
+          ),
+      ),
+    );
+
+    await expect(
+      firstValueFrom(
+        adapter.establishAccount(
+          AuthenticatedAccountGrant.issue(session),
+          activeIntent,
+        ),
+      ),
+    ).resolves.toEqual({
+      kind: 'failed',
+      failure: 'homeserver-mismatch',
+      storedBaseUrl: 'https://stored.example',
+    });
+    expect(matrix.restorePersisted).not.toHaveBeenCalled();
+    expect(storage.setActiveForEstablishment).not.toHaveBeenCalled();
+    expect(matrix.activateAccount).not.toHaveBeenCalled();
   });
 
   it('types recognized storage outages but preserves adapter defects', async () => {

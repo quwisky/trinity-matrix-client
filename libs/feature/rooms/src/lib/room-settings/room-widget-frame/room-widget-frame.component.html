@@ -4,11 +4,12 @@
   bodyClass="flex flex-col p-0"
   (closed)="close()"
 >
-  <p class="widget-frame__notice">
+  <trn-banner variant="neutral" class="widget-frame__notice">
+    <trn-icon trnBannerIcon name="shield-alert" />
     {{ embed().origin }}. This third-party site can use its existing cookies and
     storage. Trinity does not grant it Matrix messages, account data, OpenID,
     media, client navigation, or TURN access through the Widget API.
-  </p>
+  </trn-banner>
 
   <p
     class="widget-frame__status"

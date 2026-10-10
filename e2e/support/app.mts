@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { readSession } from './session.mts';
-import type { HomeserverKind } from './homeserver/kind.mts';
+import type { HomeserverKind, HomeserverRuntime } from './homeserver/kind.mts';
 import type { Navigate } from './platform-contracts.mts';
 export const webNavigate: Navigate = async (page, path) => {
   await page.goto(path, { waitUntil: 'networkidle' });
@@ -35,6 +35,17 @@ export async function preferenceKeys(page: Page): Promise<string[]> {
   );
 }
 
+/** Every IndexedDB database name, or [] where the browser cannot enumerate. */
+export function databaseNames(page: Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    if (typeof indexedDB.databases !== 'function') {
+      return [];
+    }
+    const dbs = await indexedDB.databases();
+    return dbs.map((d) => d.name).filter((n): n is string => !!n);
+  });
+}
+
 /** Seed a preference before a journey reads it during application startup. */
 export async function seedPreference(
   page: Page,
@@ -61,6 +72,8 @@ export interface SsoAccount {
   user: string;
   email: string;
   pass: string;
+  /** Dex's form-free mock identity (TRINITY_E2E_SSO_PROVIDER=mock); `pass` is then empty. */
+  mock?: boolean;
 }
 
 export interface HomeserverSession {
@@ -74,6 +87,8 @@ export interface HomeserverSession {
    */
   kind?: HomeserverKind;
   version?: string;
+  /** Docker Compose, or host processes (`native`), where harness-served pages live on loopback. */
+  runtime?: HomeserverRuntime;
   secondary?: {
     hs: string;
     serverName: string;
@@ -87,6 +102,14 @@ export interface HomeserverSession {
    * `fullyParallel` runs the two SSO specs in different workers — see e2e/support/homeserver/dex.yaml.
    */
   ssoReset?: SsoAccount;
+  /** The opt-in MAS stack's account (TRINITY_E2E_MAS=1); absent when it is not running. */
+  mas?: {
+    hs: string;
+    serverName: string;
+    issuer: string;
+    user: string;
+    pass: string;
+  };
 }
 
 /** Read the homeserver session published by the invocation owner. */
@@ -175,8 +198,15 @@ export async function openSettingsTab(
     | 'widgets',
 ): Promise<void> {
   const tabButton = page.getByTestId(`${prefix}-tab-${tab}`);
-  if (!(await tabButton.isVisible().catch(() => false))) {
-    await page.getByTestId(`${prefix}-mobile-back`).click();
+  const backButton = page.getByTestId(`${prefix}-mobile-back`);
+  // Wait for the dialog to settle before choosing a layout: a one-shot
+  // visibility check races the first render and would click a back button
+  // that desktop never has.
+  await expect(tabButton.or(backButton).first()).toBeVisible({
+    timeout: 10_000,
+  });
+  if (!(await tabButton.isVisible())) {
+    await backButton.click();
   }
   await tabButton.click();
   await expect(page.getByTestId(`${prefix}-panel-${tab}`)).toBeVisible({

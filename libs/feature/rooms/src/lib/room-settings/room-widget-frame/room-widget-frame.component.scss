@@ -1,5 +1,4 @@
 @layer components {
-  .widget-frame__notice,
   .widget-frame__status {
     flex: none;
     padding: 8px 16px;
@@ -8,7 +7,7 @@
   }
 
   .widget-frame__notice {
-    border-bottom: 1px solid var(--trinity-divider);
+    flex: none;
   }
 
   .widget-frame__status {

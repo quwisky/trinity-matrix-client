@@ -366,6 +366,15 @@ export class ConversationRuntime {
     this.evictRetained(handle.key.accountId);
   }
 
+  /** Retire every warm, non-focused handle; reopening one later attaches it cold. */
+  retireRetained(): void {
+    for (const account of [...this.entries.values()]) {
+      for (const entry of [...account.values()]) {
+        if (entry.state() === 'retained') this.retire(entry);
+      }
+    }
+  }
+
   retireAll(): void {
     const failures: unknown[] = [];
     for (const account of [...this.entries.values()]) {

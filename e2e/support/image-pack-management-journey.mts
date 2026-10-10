@@ -96,7 +96,7 @@ async function putRoomState(
   try {
     // Account data wakes the sync that is already waiting, so it returns.
     await request.put(
-      `${session.hs as string}/_matrix/client/v3/user/${encodeURIComponent(userId)}/account_data/eu.qwky.trinity.e2e.sync_fence`,
+      `${session.hs as string}/_matrix/client/v3/user/${encodeURIComponent(userId)}/account_data/dev.trinityproject.trinity.e2e.sync_fence`,
       { headers, data: { at: Date.now() } },
     );
     await reachedGate;

@@ -4,7 +4,6 @@ import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_APP_ID, PUSH_CONFIG, type PushConfig } from './push-config';
-import { PushGatewayService } from './push-gateway.service';
 import { PushService } from './push.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
@@ -12,8 +11,15 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 const h = vi.hoisted(() => {
   const listeners: Record<string, (arg: unknown) => void> = {};
   const handles: { remove: ReturnType<typeof vi.fn> }[] = [];
-  const state = { platform: 'ios', permission: 'granted' as string };
-  const prefs = new Map<string, string>();
+  const state = {
+    platform: 'ios',
+    permission: 'granted' as string,
+    // Android only: whether the host has Firebase (the PushHandoff plugin answers).
+    canRegister: true,
+  };
+  const handoff = {
+    registrationAvailable: vi.fn(async () => ({ value: state.canRegister })),
+  };
   const push = {
     requestPermissions: vi.fn(async () => ({ receive: state.permission })),
     register: vi.fn(async () => undefined),
@@ -26,11 +32,11 @@ const h = vi.hoisted(() => {
     }),
     removeAllListeners: vi.fn(async () => undefined),
   };
-  return { listeners, handles, state, push, prefs };
+  return { listeners, handles, state, push, handoff };
 });
 
 vi.mock('@capacitor/core', () => ({
-  registerPlugin: vi.fn(() => ({})),
+  registerPlugin: vi.fn(() => h.handoff),
   Capacitor: {
     getPlatform: () => h.state.platform,
     // Electron reports isNativePlatform() === true but has no push plugin — the
@@ -41,26 +47,9 @@ vi.mock('@capacitor/core', () => ({
   },
 }));
 vi.mock('@capacitor/push-notifications', () => ({ PushNotifications: h.push }));
-// PushService now resolves its config through the real PushGatewayService, which
-// persists to Preferences. Back it with an in-memory store so these tests stay
-// hermetic and can drive an override without touching device storage.
-vi.mock('@capacitor/preferences', () => ({
-  Preferences: {
-    get: vi.fn(async ({ key }: { key: string }) => ({
-      value: h.prefs.get(key) ?? null,
-    })),
-    set: vi.fn(async ({ key, value }: { key: string; value: string }) => {
-      h.prefs.set(key, value);
-    }),
-    remove: vi.fn(async ({ key }: { key: string }) => {
-      h.prefs.delete(key);
-    }),
-  },
-}));
-
 const CONFIG: PushConfig = {
   gatewayUrl: 'https://push.example/_matrix/push/v1/notify',
-  appId: 'eu.qwky.trinity',
+  appId: 'dev.trinityproject.trinity',
 };
 
 /**
@@ -110,10 +99,6 @@ function setup(
   TestBed.configureTestingModule({
     providers: [
       PushService,
-      // The real gateway service, so PushService's config resolution
-      // (override ?? PUSH_CONFIG) is exercised end to end. Provided explicitly — not
-      // relying on the root singleton — so its signals start clean each test.
-      PushGatewayService,
       MockProvider(MatrixClientService, {
         isInitialized: true,
         accountIds: accountIds.asReadonly(),
@@ -152,9 +137,9 @@ describe('PushService', () => {
     TestBed.resetTestingModule();
     h.state.platform = 'ios';
     h.state.permission = 'granted';
+    h.state.canRegister = true;
     for (const k of Object.keys(h.listeners)) delete h.listeners[k];
     h.handles.length = 0;
-    h.prefs.clear();
     vi.clearAllMocks();
   });
 
@@ -171,7 +156,7 @@ describe('PushService', () => {
 
     expect(client.setPusher).toHaveBeenCalledWith(
       expect.objectContaining({
-        app_id: 'eu.qwky.trinity.ios',
+        app_id: 'dev.trinityproject.trinity.ios',
         pushkey: 'TOKEN123',
         kind: 'http',
         // Must be true: all accounts share one device token, so `false` would make
@@ -183,6 +168,9 @@ describe('PushService', () => {
           url: CONFIG.gatewayUrl,
           format: 'event_id_only',
           trinity_user_id: '@me:hs',
+          // Asks the gateway for a push the device renders itself (data-only on
+          // Android, mutable-content on iOS).
+          trinity_render: 'device',
         },
       }),
     );
@@ -206,6 +194,25 @@ describe('PushService', () => {
     }
   });
 
+  it('asks for device rendering on every account pusher', async () => {
+    const { svc, clients } = setup({ accounts: ['@me:hs', '@alt:hs'] });
+
+    await firstValueFrom(svc.register());
+    h.listeners['registration']({ value: 'TOKEN123' });
+    await flush();
+
+    for (const client of clients.values()) {
+      expect(client.setPusher).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            format: 'event_id_only',
+            trinity_render: 'device',
+          }),
+        }),
+      );
+    }
+  });
+
   it('creates the Android notification channel before registering', async () => {
     h.state.platform = 'android';
     const { svc } = setup();
@@ -216,6 +223,23 @@ describe('PushService', () => {
       expect.objectContaining({ id: 'messages' }),
     );
     expect(h.push.register).toHaveBeenCalled();
+  });
+
+  it('stays quietly unavailable on an Android build that cannot register', async () => {
+    // Without Firebase the plugin's Android register() would crash the app.
+    h.state.platform = 'android';
+    h.state.canRegister = false;
+    const { svc, client } = setup();
+
+    await firstValueFrom(svc.register());
+
+    expect(h.push.register).not.toHaveBeenCalled();
+    expect(client.setPusher).not.toHaveBeenCalled();
+    expect(svc.runtimeStatus()).toEqual({
+      status: 'unsupported',
+      code: 'push-registration-unsupported',
+    });
+    expect(svc.registration()).toEqual({ status: 'idle' });
   });
 
   it('no-ops on web (plugin unavailable)', async () => {
@@ -247,143 +271,82 @@ describe('PushService', () => {
     expect(h.push.requestPermissions).not.toHaveBeenCalled();
   });
 
-  describe('user-set gateway', () => {
-    /** Store an override the way PushGatewayService.save() would, then load it. */
-    async function withOverride(
-      svc: PushService,
-      value: { gatewayUrl: string; appId?: string; appliedAppId?: string },
-    ): Promise<void> {
-      h.prefs.set('trinity.push.gateway', JSON.stringify(value));
-      await TestBed.inject(PushGatewayService).init();
+  describe('background delivery', () => {
+    async function registerWithToken(svc: PushService): Promise<void> {
+      await firstValueFrom(svc.register());
+      h.listeners['registration']?.({ value: 'TOKEN123' });
+      await flush();
     }
 
-    it('registers push against the override when no build config exists', async () => {
-      // The headline case: environment.push is null (a stock build), the user sets a
-      // gateway, and push comes alive pointing at it.
-      const { svc, client } = setup({ config: null });
-      await withOverride(svc, {
-        gatewayUrl: 'https://mine.example/_matrix/push/v1/notify',
-      });
+    it('hands the background to native push once Android pushers carry the token', async () => {
+      h.state.platform = 'android';
+      const { svc } = setup();
+      expect(svc.backgroundDelivery()).toBe('app');
 
-      await firstValueFrom(svc.register());
-      h.listeners['registration']({ value: 'TOKEN123' });
-      await flush();
+      await registerWithToken(svc);
 
-      expect(client.setPusher).toHaveBeenCalledWith(
-        expect.objectContaining({
-          app_id: `${DEFAULT_APP_ID}.ios`,
-          data: expect.objectContaining({
-            url: 'https://mine.example/_matrix/push/v1/notify',
-          }),
-        }),
-      );
+      expect(svc.runtimeStatus().status).toBe('available');
+      expect(svc.backgroundDelivery()).toBe('push');
     });
 
-    it('prefers the override URL over the build-time default', async () => {
-      const { svc, client } = setup({ config: CONFIG });
-      await withOverride(svc, {
-        gatewayUrl: 'https://override.example/_matrix/push/v1/notify',
-      });
+    it('keeps the background with the app on iOS even when registered', async () => {
+      const { svc } = setup();
 
-      await firstValueFrom(svc.register());
-      h.listeners['registration']({ value: 'TOKEN123' });
-      await flush();
+      await registerWithToken(svc);
 
-      expect(client.setPusher).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            url: 'https://override.example/_matrix/push/v1/notify',
-          }),
-        }),
-      );
+      expect(svc.runtimeStatus().status).toBe('available');
+      expect(svc.backgroundDelivery()).toBe('app');
     });
 
-    it('removes the stale pusher before setting the new one when the app id changes', async () => {
-      // A previous round registered under `old.app.id`; the user has now changed it.
-      // The pusher tuple is (user_id, app_id, pushkey), so the old row must be deleted
-      // explicitly or it keeps delivering to the previous gateway.
-      const { svc, client } = setup({ config: null });
-      await withOverride(svc, {
-        gatewayUrl: 'https://mine.example/_matrix/push/v1/notify',
-        appId: 'new.app.id',
-        appliedAppId: 'old.app.id',
-      });
+    it('keeps the background with the app on Android when permission is denied', async () => {
+      h.state.platform = 'android';
+      h.state.permission = 'denied';
+      const { svc } = setup();
 
+      // A denied permission never reaches the OS registration, so no token arrives.
       await firstValueFrom(svc.register());
-      h.listeners['registration']({ value: 'TOKEN123' });
-      await flush();
 
-      expect(client.removePusher).toHaveBeenCalledWith(
-        'TOKEN123',
-        'old.app.id.ios',
-      );
-      expect(client.setPusher).toHaveBeenCalledWith(
-        expect.objectContaining({ app_id: 'new.app.id.ios' }),
-      );
-      // Order matters: the delete must precede the set, else a crash between them
-      // leaves the old gateway live.
-      const removeOrder = client.removePusher.mock.invocationCallOrder[0];
-      const setOrder = client.setPusher.mock.invocationCallOrder[0];
-      expect(removeOrder).toBeLessThan(setOrder);
+      expect(svc.runtimeStatus().status).toBe('disabled');
+      expect(svc.backgroundDelivery()).toBe('app');
     });
 
-    it('does not remove anything when the app id is unchanged', async () => {
-      const { svc, client } = setup({ config: null });
-      await withOverride(svc, {
-        gatewayUrl: 'https://mine.example/_matrix/push/v1/notify',
-        appId: 'same.app.id',
-        appliedAppId: 'same.app.id',
-      });
+    it('keeps the background with the app on Android when the homeserver refuses the pusher', async () => {
+      h.state.platform = 'android';
+      const { svc, client } = setup();
+      client.setPusher.mockRejectedValueOnce(new Error('server down'));
 
-      await firstValueFrom(svc.register());
-      h.listeners['registration']({ value: 'TOKEN123' });
-      await flush();
+      await registerWithToken(svc);
 
-      expect(client.removePusher).not.toHaveBeenCalled();
-      expect(client.setPusher).toHaveBeenCalledWith(
-        expect.objectContaining({ app_id: 'same.app.id.ios' }),
-      );
+      expect(svc.runtimeStatus().status).toBe('degraded');
+      expect(svc.backgroundDelivery()).toBe('app');
     });
 
-    it('records the applied app id after a successful round', async () => {
+    it('keeps the background with the app on Android without a gateway', async () => {
+      h.state.platform = 'android';
       const { svc } = setup({ config: null });
-      await withOverride(svc, {
-        gatewayUrl: 'https://mine.example/_matrix/push/v1/notify',
-        appId: 'new.app.id',
-      });
 
-      await firstValueFrom(svc.register());
-      h.listeners['registration']({ value: 'TOKEN123' });
-      await flush();
+      await registerWithToken(svc);
 
-      expect(TestBed.inject(PushGatewayService).appliedAppId()).toBe(
-        'new.app.id',
-      );
+      expect(svc.backgroundDelivery()).toBe('app');
     });
 
-    it('does not advance the applied id when an account fails to register', async () => {
-      // Partial failure must leave the ledger on the old id so the next round retries
-      // the swap rather than orphaning a pusher.
-      const { svc, clients } = setup({
-        config: null,
-        accounts: ['@me:hs', '@alt:hs'],
-      });
-      await withOverride(svc, {
-        gatewayUrl: 'https://mine.example/_matrix/push/v1/notify',
-        appId: 'new.app.id',
-        appliedAppId: 'old.app.id',
-      });
-      clients
-        .get('@alt:hs')!
-        .setPusher.mockRejectedValueOnce(new Error('server down'));
+    it('returns the background to the app when push is torn down', async () => {
+      h.state.platform = 'android';
+      const { svc } = setup();
+      await registerWithToken(svc);
+
+      await firstValueFrom(svc.unregister());
+
+      expect(svc.backgroundDelivery()).toBe('app');
+    });
+
+    it('leaves web with the app', async () => {
+      h.state.platform = 'web';
+      const { svc } = setup();
 
       await firstValueFrom(svc.register());
-      h.listeners['registration']({ value: 'TOKEN123' });
-      await flush();
 
-      expect(TestBed.inject(PushGatewayService).appliedAppId()).toBe(
-        'old.app.id',
-      );
+      expect(svc.backgroundDelivery()).toBe('app');
     });
   });
 
@@ -689,7 +652,7 @@ describe('PushService', () => {
     for (const [, client] of clients) {
       expect(client.removePusher).toHaveBeenCalledWith(
         'TOKEN123',
-        'eu.qwky.trinity.ios',
+        'dev.trinityproject.trinity.ios',
       );
     }
     expect(h.push.removeAllListeners).not.toHaveBeenCalled();
@@ -713,7 +676,7 @@ describe('PushService', () => {
 
     expect(clients.get('@alt:hs')!.removePusher).toHaveBeenCalledWith(
       'TOKEN123',
-      'eu.qwky.trinity.ios',
+      'dev.trinityproject.trinity.ios',
     );
     expect(clients.get('@me:hs')!.removePusher).not.toHaveBeenCalled();
     // A single-account teardown must NOT detach the shared listeners.

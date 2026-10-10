@@ -9,7 +9,7 @@ notification pipeline. Public host prerequisites live in the developer site.
 | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | Decide whether a Matrix event is eligible          | Server-side Matrix push rules, stored per account and shared with that account's other clients.                        |
 | Present an alert while Trinity is connected        | The Notifications capability and the selected web, desktop, or native host presentation adapter.                       |
-| Wake a suspended iOS or Android installation       | A Matrix pusher registered for the device token and its configured push gateway.                                       |
+| Wake a suspended iOS or Android installation       | A Matrix pusher registered for the device token and the build's push gateway.                                          |
 | Open an account, room, or event from an activation | Application Runtime submits a typed intent; Workspace owns the account transition, room readiness, and URL projection. |
 
 Keep those paths separate. A successful pusher registration does not prove FCM or
@@ -68,7 +68,8 @@ parameter, or shell store.
 ### Reaction notifications while connected
 
 `ReactionNotificationSettingsService` stores the opt-in as
-`eu.qwky.trinity.reaction_notifications` account data (`{ enabled: boolean }`, default `false`).
+`dev.trinityproject.trinity.reaction_notifications` account data (`{ enabled: boolean }`, default `false`).
+Accounts that still hold the retired `eu.qwky.trinity.reaction_notifications` event are read from it, and `NotificationService` copies it to the new name once for every signed-in account.
 It does not alter server push rules or pusher registration. Each account's notification lifetime
 owns a `ReactionNotificationBatch` for live `m.reaction` annotation events. The original message
 must belong to that account; own reactions, ignored senders, redactions, history and backfill are
@@ -93,51 +94,63 @@ Mobile push needs a gateway that can deliver to the platform service. Trinity
 registers one pusher per signed-in account using the installation's device token
 as the shared `pushkey`. It uses `event_id_only`, so the gateway receives event
 and room identifiers, unread counts, priority, and pusher metadata rather than
-message text.
+message text. Each pusher also sends `trinity_render: "device"`: Android receives a
+data-only message and iOS an alert with `mutable-content: 1`, both rendered on the
+device (below).
 
 ### Provision the gateway and native build
 
-1. Deploy a Matrix push gateway and expose its notify endpoint, for example
-   `https://push.example/_matrix/push/v1/notify`. Configure its platform credentials
-   using the gateway's own instructions; [Sygnal's application configuration](https://github.com/matrix-org/sygnal/blob/main/docs/applications.md)
-   describes its FCM and APNs integrations. Platform credentials belong on the
+1. The gateway is the [Trinity push gateway](https://github.com/quwisky/trinity-push-gateway),
+   deployed and credentialed outside this repository; platform credentials belong on the
    gateway, not in Trinity's `PushConfig`.
-2. Select the endpoint in **Settings → Notifications → Push gateway**, or set
-   `environment.push` in the appropriate build environment:
-   [`environment.ts`](../../apps/trinity/src/environments/environment.ts) or
-   [`environment.prod.ts`](../../apps/trinity/src/environments/environment.prod.ts).
-   Both checked-in defaults are `null`. A saved device override takes precedence
-   over the build default; with neither configured, registration is disabled.
+2. The gateway is build configuration. Both
+   [`environment.ts`](../../apps/trinity/src/environments/environment.ts) and
+   [`environment.prod.ts`](../../apps/trinity/src/environments/environment.prod.ts) point
+   at it:
 
    ```ts
-   push: { gatewayUrl: 'https://push.example/_matrix/push/v1/notify' },
+   push: { gatewayUrl: 'https://push.trinityproject.dev/_matrix/push/v1/notify' },
    ```
+
+   A fork sets its own URL there, or `null` to build without native push. There is no
+   device override: the former Settings → Notifications → Push gateway setting is gone, a
+   saved override from an earlier build is deleted at startup
+   ([`retired-push-gateway.ts`](../../libs/data-access/notifications/src/lib/retired-push-gateway.ts)),
+   and an imported settings file (export format version 4) that still carries `push.gateway`
+   imports with that entry ignored and a warning.
 
    [`PushConfig`](../../libs/data-access/notifications/src/lib/push-config.ts)
    accepts `gatewayUrl` and an optional base `appId`. Omitting `appId` uses
-   `eu.qwky.trinity`. `PushService` appends the platform suffix, so configure the
-   gateway entries as `eu.qwky.trinity.android` and `eu.qwky.trinity.ios`, or the
+   `dev.trinityproject.trinity`. `PushService` appends the platform suffix, so the gateway's
+   entries are `dev.trinityproject.trinity.android` and `dev.trinityproject.trinity.ios`, or the
    equivalent suffixed names for a custom base ID. The gateway's app key is
    distinct from the native bundle/package ID, which has no platform suffix.
 
-3. For Android, register package `eu.qwky.trinity` in the matching Firebase
+3. For Android, register package `dev.trinityproject.trinity` in the matching Firebase
    project and place its downloaded configuration at
-   `android/app/google-services.json`, following [Firebase's Android setup](https://firebase.google.com/docs/android/setup).
+   `android/app/google-services.json` (git-ignored), following [Firebase's Android setup](https://firebase.google.com/docs/android/setup).
    [`build.gradle`](../../android/app/build.gradle) applies Google Services only
-   when this nonempty file exists. The manifest already declares
-   `POST_NOTIFICATIONS` and the `messages` channel; runtime permission and a
-   correctly configured gateway are still required for delivery.
-4. For iOS, provision the App ID and signing profile with Push Notifications
-   enabled, then add that capability to the App target in Xcode as described in
-   [Capacitor's iOS push setup](https://capacitorjs.com/docs/apis/push-notifications#ios).
-   The checked-in project has registration callbacks in
-   [`AppDelegate.swift`](../../ios/App/App/AppDelegate.swift), but no push
-   entitlement; callback code alone does not provision the capability. Configure
-   the gateway with credentials permitted for this bundle and APNs environment.
-   For token authentication, [create an APNs-enabled private key](https://developer.apple.com/help/account/keys/create-a-private-key)
-   and supply its key file, Key ID and Team ID through the gateway's configuration.
+   when this nonempty file exists. Without it the build still runs and push stays
+   unsupported: Android registers only when Firebase is initialized
+   (`PushHandoff.registrationAvailable()`), so a missing configuration never crashes the
+   app. The manifest already declares `POST_NOTIFICATIONS` and the `messages` channel;
+   runtime permission and a correctly configured gateway are still required for delivery.
+4. For iOS, register both App IDs, `dev.trinityproject.trinity` and
+   `dev.trinityproject.trinity.NotificationService`, with Push Notifications, App Groups
+   (`group.dev.trinityproject.trinity`) and Keychain Sharing; the checked-in
+   [`App.entitlements`](../../ios/App/App/App.entitlements) and
+   [`NotificationService.entitlements`](../../ios/App/NotificationService/NotificationService.entitlements)
+   request them. Add the iOS app to the Firebase project, upload the APNs `.p8` key there
+   (the gateway sends through FCM, which relays to APNs), and place `GoogleService-Info.plist`
+   at `ios/App/App/GoogleService-Info.plist` (git-ignored; a build phase copies it when
+   present). [`AppDelegate.swift`](../../ios/App/App/AppDelegate.swift) then configures
+   Firebase, hands the APNs token to Firebase Messaging and reports the FCM token as the
+   pushkey; `FirebaseAppDelegateProxyEnabled` is `NO`, so the delegate does this itself.
+   Without the plist the APNs token is reported, which the gateway cannot deliver to.
+   Firebase is pinned to 12.17.0, the last version whose FCM-token API is not deprecated.
    Do not infer silent background handling from notification registration: the
    [Capacitor plugin does not implement iOS silent push](https://capacitorjs.com/docs/apis/push-notifications#silent-push-notifications--data-only-notifications).
+   The out-of-repo setup is tracked in [#1152](https://github.com/quwisky/trinity-matrix-client/issues/1152).
 5. Rebuild, sync and install the native host with `pnpm android:run`, or
    `pnpm ios:run` on macOS with Xcode and signing configured. These commands own
    the web build and Capacitor sync; see the public developer
@@ -171,17 +184,11 @@ than assuming arbitrary pusher metadata survives delivery.
 4. `unregister(userId)` removes that account's pushers. `unregister()` removes
    pushers for every account and clears local token/registration state; the
    listener ends with the runtime `run()` subscription, rather than during
-   unregister. Remove pushers before invalidating credentials or clearing the
-   gateway configuration.
-
+   unregister. Remove pushers before invalidating credentials.
 5. Listener preparation and recovery observation are bounded, but a healthy retained listener has
    no idle timeout. Targeted retry reuses retained ownership for registration failures and
    reattaches only the push listener when ownership was released. Diagnostics include stable
    registration codes, never tokens, Account IDs, gateway responses or notification payloads.
-
-The gateway setting is device-local and not secret: its URL is sent to the
-homeserver in pusher metadata. The application validates and explains this boundary
-when a user configures the setting.
 
 Treat the gateway as a metadata boundary. Its shared device token can correlate
 the installation's account pushers, and the pusher owner tag can identify an
@@ -189,36 +196,78 @@ account when forwarded for activation. `event_id_only` excludes message text,
 but it does not make room/event identifiers, unread counts, priority, or account
 metadata private from the gateway operator.
 
-## Keep a gateway migration recoverable
+## Render pushes on the device
 
-A pusher is identified by account, app ID, and device token. Changing the app ID
-creates another pusher; it does not update the old one. The separate
-`appliedAppId` ledger records the app ID that reached the homeserver. On an app
-ID change, `PushService` removes stale pushers before setting replacements. If
-that sequence stops after removal, the account stays unregistered until the next
-registration; setting first would leave the old gateway receiving events.
+The device turns `event_id_only` pushes into readable notifications; #1152 tracks the
+out-of-repo setup and the device checks.
 
-The ledger advances only after every account succeeds. Clearing a gateway must
-therefore unregister first, while the ledger still identifies every app ID to
-remove. The service attempts a pusher readback for the app-ID/token identity. A
-definitive missing tuple changes registration to an error; a failed readback is
-inconclusive and preserves the applied result. Neither result proves a gateway
-or platform service delivered an alert.
+**Push handoff store.** `PushHandoffService` (data-access/notifications) keeps a native
+store current through the `PushHandoff` plugin (`setAccount`, `setRooms`, `removeAccount`,
+`clear`, `clearRoom`). Per signed-in account it holds the homeserver URL, the access token
+(rewritten when the SDK refreshes it) and the notification-sound choice, plus room display
+names and DM flags written in one batch per sync or rename. It never holds refresh tokens,
+crypto keys or message history. An account's entry is removed as the first step of its
+sign-out, together with that account's delivered pushes, and the store is emptied, with
+every delivered push, by clear-all-data and before a replace sign-in. A handoff failure
+never blocks sign-in or sign-out; the replace sign-in waits for it for at most the
+notification cleanup budget. On iOS the accounts live in the shared keychain
+access group `$(AppIdentifierPrefix)dev.trinityproject.trinity.shared` with
+`kSecAttrAccessibleAfterFirstUnlock`, and the rooms in the app-group file
+`push-handoff/rooms.json`. On Android each value is AES-GCM encrypted with a non-exportable
+Android Keystore key and stored in the private preferences file `trinity_push_handoff`
+(`EncryptedSharedPreferences` is deprecated).
 
-A rotated device token has a different identity from an app-ID change. Current
-registration does not remove the old-token pusher automatically; logout or
-explicit cleanup remains the recovery path.
+**Rendering.** iOS runs the `NotificationService` extension; Android replaces the push
+plugin's messaging service with `TrinityMessagingService`, which treats the app as
+foreground, and leaves the notification to the app, while an activity is visible. Both
+fetch the event, the sender's member state and, for a room the store does not know, its
+`m.room.name` state, within one 5 s budget and without retries. Android enforces the budget
+with a watchdog that falls back without the network; iOS shares one deadline across the
+reads and also answers `serviceExtensionTimeWillExpire`. Redirects are refused, so the
+token never follows one. Both apply the shared text rules (including the 200 code point
+limit and Unicode `White_Space` trimming) pinned by
+[`push-render-cases.json`](../../native/push-render/push-render-cases.json), which JUnit and
+XCTest both run. A push for an account the store does not know keeps the gateway's
+"Trinity" / "New message". The renderers never refresh a token (an expired one shows the
+room-name fallback) and never log tokens, IDs, room names or message text. Android posts
+one `MessagingStyle` notification per room on `messages` and cancels it when a push without
+`event_id` arrives for that room. The operating system's preview settings decide what shows
+on the lock screen.
+
+**Who presents in the background.** Once Android push is registered,
+`PushService.backgroundDelivery` is `push`, and the notification policy stops the running
+app presenting its own message notifications while the page is hidden
+(`document.visibilityState === 'hidden'`, not merely unfocused), so `TrinityMessagingService`
+is the only source. Opted-in reaction notifications are exempt, because no push carries
+them. A visible app, and iOS, web and desktop, present as before.
+
+**Opening a room** clears that account's delivered notifications for it:
+`NotificationSessionService` calls `PushHandoff.clearRoom` once each time a room becomes the
+focused Conversation, and again for the focused room when the app returns to the foreground
+(pushes for it were shown natively while the app was hidden). Android cancels the notification tagged with the room ID for that
+account; iOS removes notifications whose `threadIdentifier` is the room and whose
+`trinity_user_id` is that account, or absent.
 
 ## Verify the boundary you changed
 
 - Use notification and push-service unit tests for rule translation,
-  transactions, account attribution, error states, and gateway migration.
+  transactions, account attribution, and error states.
 - Use the browser journey for web notification policy and activation rendering.
   It cannot prove FCM, APNs, operating-system delivery, or a deployed gateway.
 - Use a real native host, token, gateway, and credentials before claiming mobile
   delivery. Record unavailable platform or operator prerequisites plainly.
+- Run `pnpm nx run trinity-ios:test-push` and `pnpm nx run trinity-android:verify-native` (the
+  Android unit tests; CI runs them) for the text rules and the bounded reads.
+- `e2e/mobile/specs/push-render-ios.e2e.mts` and `push-render-android.e2e.mts` drive the
+  renderers through debug-only probes; the Android spec also taps the notification it posted
+  with the app terminated and checks that the room opens. They do not show a real FCM token,
+  the extension launching, locked-phone rendering or closed-app delivery through
+  `push.trinityproject.dev`, and nothing covers tap-to-open on iOS; check those on a device
+  ([#1152](https://github.com/quwisky/trinity-matrix-client/issues/1152)).
 
 The source of truth is
 [`push.service.ts`](../../libs/data-access/notifications/src/lib/push.service.ts),
-[`push-gateway.service.ts`](../../libs/data-access/notifications/src/lib/push-gateway.service.ts),
-and [`native-push-registration.service.ts`](../../libs/platform-native/src/lib/native-push-registration.service.ts).
+[`push-handoff.service.ts`](../../libs/data-access/notifications/src/lib/push-handoff.service.ts),
+[`native-push-registration.service.ts`](../../libs/platform-native/src/lib/native-push-registration.service.ts),
+[`NotificationService.swift`](../../ios/App/NotificationService/NotificationService.swift) and
+[`TrinityMessagingService.kt`](../../android/app/src/main/kotlin/dev/trinityproject/trinity/push/TrinityMessagingService.kt).

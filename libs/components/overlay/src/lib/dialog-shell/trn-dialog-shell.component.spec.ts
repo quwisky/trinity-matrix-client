@@ -69,12 +69,6 @@ class HandledCloseHostComponent {
 })
 class NamedCloseHostComponent {}
 
-@Component({
-  imports: [TrnDialogShellComponent],
-  template: `<trn-dialog-shell title="Status" presentation="sheet" />`,
-})
-class SelfPresentedSheetHostComponent {}
-
 function refFor(presentation: TrnDialogPresentation): {
   close: ReturnType<typeof vi.fn>;
   providers: Provider[];
@@ -190,6 +184,8 @@ describe('TrnDialogShellComponent', () => {
   it('presents a sheet with a decorative handle and the sheet entrance', async () => {
     await render(PlainHostComponent, { providers: refFor('sheet').providers });
 
+    // Every sheet renders through the one sheet frame.
+    expect(surface().tagName).toBe('TRN-SHEET-FRAME');
     expect(surface().getAttribute('data-trn-layout')).toBe('sheet');
     expect(surface().classList).toContain('trn-overlay-enter-sheet');
     expect(screen.getByTestId('sheet-handle').getAttribute('aria-hidden')).toBe(
@@ -204,14 +200,6 @@ describe('TrnDialogShellComponent', () => {
 
     expect(screen.getByTestId('sheet-handle')).toBeTruthy();
     expect(screen.queryByTestId('dialog-close')).toBeNull();
-  });
-
-  it('takes its presentation from the host when no dialog ref opened it', async () => {
-    await render(SelfPresentedSheetHostComponent);
-
-    expect(surface().getAttribute('data-trn-layout')).toBe('sheet');
-    // Only the dialog service can dismiss on a swipe, so there is no handle to drag.
-    expect(screen.queryByTestId('sheet-handle')).toBeNull();
   });
 
   it('presents a centred dialog with the dialog entrance and no handle', async () => {

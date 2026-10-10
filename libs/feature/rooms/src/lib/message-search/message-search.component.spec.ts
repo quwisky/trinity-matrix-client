@@ -194,8 +194,11 @@ describe('MessageSearchComponent', () => {
     setQuery('hello', c);
     fixture.detectChanges();
 
+    // The button belongs in the banner's action slot, not its text.
     expect(
-      container.querySelector('[data-testid="search-server"]'),
+      container
+        .querySelector('[data-testid="search-server"]')
+        ?.closest('.banner__actions'),
     ).toBeTruthy();
     expect(container.querySelector('[data-testid="e2ee-note"]')).toBeNull();
   });

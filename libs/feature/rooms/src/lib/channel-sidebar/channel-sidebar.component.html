@@ -1,80 +1,19 @@
 <div class="sidebar">
-  <header class="sidebar__header">
-    @if (spaceActive()) {
-      <button
-        trnBtn
-        type="button"
-        variant="secondary"
-        presentation="ghost"
-        class="sidebar__title sidebar__title--button"
-        [trnDropdownMenuTrigger]="spaceMenu"
-        align="start"
-        [attr.aria-label]="spaceName() + ' actions'"
-        data-testid="space-header"
-      >
-        <span class="sidebar__title-text">{{ spaceName() }}</span>
-        <trn-icon name="chevron-down" />
-      </button>
-    } @else {
-      <span class="sidebar__title">{{ spaceName() }}</span>
-    }
-    <div class="sidebar__actions">
-      @if (showSwitcher()) {
-        <button
-          trnIconButton
-          class="sidebar__action"
-          (click)="openSwitcher.emit()"
-          aria-label="Search (Ctrl/Cmd+K)"
-          trnTooltip="Search (Ctrl/Cmd+K)"
-          data-testid="open-switcher"
-        >
-          <trn-icon name="command" motion="pop" />
-        </button>
-      }
-      <!-- A space keeps only its most-reached-for action out here; the rest live in the
-           space-name menu. The sidebar is a fixed 280px at EVERY breakpoint, so this is not a
-           narrow-layout concern the way the room header's `md:hidden` demotion is: six
-           buttons left the space name about six characters of room on a desktop, and on
-           touch (44px targets) they were wider than the sidebar itself. -->
-      @if (spaceActive()) {
-        <button
-          trnIconButton
-          class="sidebar__action"
-          (click)="createRoom.emit()"
-          [trnActionAllowed]="canCurateSpace()"
-          [trnActionDisabledReason]="curateSpaceReason()"
-          aria-label="Create a room"
-          [trnTooltip]="curateSpaceReason() ?? 'Create a room'"
-        >
-          <trn-icon name="plus" motion="rotate" />
-        </button>
-      } @else {
-        <!-- Home has three buttons and already fits, so it keeps the flat row: an overflow
-             holding a single conditional item would be worse than the row it replaced. -->
-        @if (hasAnyUnread()) {
-          <button
-            trnIconButton
-            class="sidebar__action"
-            (click)="markAllRead.emit()"
-            aria-label="Mark all as read"
-            trnTooltip="Mark all as read"
-            data-testid="mark-all-read"
-          >
-            <trn-icon name="check-check" motion="pop" />
-          </button>
-        }
-        <button
-          trnIconButton
-          class="sidebar__action"
-          (click)="newChat.emit()"
-          aria-label="New room or direct message"
-          trnTooltip="New room or direct message"
-        >
-          <trn-icon name="plus" motion="rotate" />
-        </button>
-      }
-    </div>
-  </header>
+  <trn-sidebar-space-header
+    [spaceName]="spaceName()"
+    [spaceActive]="spaceActive()"
+    [showSwitcher]="showSwitcher()"
+    [hasAnyUnread]="hasAnyUnread()"
+    [canConfigureSpace]="canConfigureSpace()"
+    [canCurateSpace]="canCurateSpace()"
+    [curateSpaceReason]="curateSpaceReason()"
+    [canInviteToSpace]="canInviteToSpace()"
+    [inviteToSpaceReason]="inviteToSpaceReason()"
+    [sortMode]="sortMode()"
+    [sortOverridden]="sortOverridden()"
+    [defaultSortMode]="defaultSortMode()"
+    (spaceAction)="onSpaceAction($event)"
+  />
 
   <!-- Persistent rather than a toggled affordance: the point of this box over the Ctrl/Cmd+K
        switcher is that the narrowed list STAYS on screen while you work through it, so the
@@ -140,257 +79,18 @@
       (setNotifyMode)="setNotifyMode.emit($event)"
       (markRead)="markRead.emit($event)"
       (markUnread)="markUnread.emit($event)"
+      (previewInvite)="previewInvite.emit($event)"
       (acceptInvite)="acceptInvite.emit($event)"
       (declineInvite)="declineInvite.emit($event)"
       (favouriteChange)="favouriteChange.emit($event)"
       (priorityChange)="priorityChange.emit($event)"
     />
     @if (spaceActive()) {
-      @if (childrenLoading()) {
-        <!-- Pending and failed, not empty — the same line in the same place, which is why the
-             one rule styled all three. `variant="danger"` is what makes the failure read as one
-             without reaching for `--destructive`, whose dark value is a near-black maroon. -->
-        <trn-empty-state layout="line" body="Loading rooms…" />
-      } @else if (childrenError()) {
-        <trn-empty-state
-          layout="line"
-          variant="danger"
-          body="Couldn’t load this space’s rooms."
-        />
-      } @else {
-        @if (filteredJoinableRooms().length) {
-          <div class="category">More rooms</div>
-          @for (child of filteredJoinableRooms(); track child.roomId) {
-            <div class="joinable">
-              <span class="joinable__hash">#</span>
-              <div class="joinable__text">
-                <span
-                  class="joinable__name"
-                  [trnTooltip]="child.topic || child.name"
-                  >{{ child.name }}</span
-                >
-                @if (child.suggested) {
-                  <span class="joinable__tag">Suggested</span>
-                }
-              </div>
-              <button
-                trnBtn
-                variant="secondary"
-                presentation="outline"
-                size="sm"
-                class="joinable__action"
-                (click)="joinRoom.emit(child)"
-                [attr.aria-label]="'Join ' + child.name"
-                [attr.data-testid]="'join-child-' + child.roomId"
-              >
-                Join
-              </button>
-            </div>
-          }
-        }
-
-        @if (filteredChildSpaces().length) {
-          <div class="category">Spaces</div>
-          @for (child of filteredChildSpaces(); track child.roomId) {
-            <div class="joinable joinable--space">
-              <trn-avatar
-                class="joinable__avatar"
-                [mxc]="child.avatarMxc"
-                [initial]="child.initial"
-                [name]="child.name"
-                size="sm"
-                shape="place"
-              />
-              <div class="joinable__text">
-                <span class="joinable__name" [trnTooltip]="child.name">{{
-                  child.name
-                }}</span>
-              </div>
-              @if (child.joined) {
-                <button
-                  trnBtn
-                  variant="secondary"
-                  presentation="outline"
-                  size="sm"
-                  class="joinable__action"
-                  (click)="
-                    openChildSpace.emit({
-                      spaceId: child.roomId,
-                      accountId: child.accountId,
-                    })
-                  "
-                  [attr.aria-label]="'Open ' + child.name"
-                >
-                  Open
-                </button>
-              } @else {
-                <button
-                  trnBtn
-                  variant="secondary"
-                  presentation="outline"
-                  size="sm"
-                  class="joinable__action"
-                  (click)="joinRoom.emit(child)"
-                  [attr.aria-label]="'Join ' + child.name"
-                >
-                  Join
-                </button>
-              }
-            </div>
-          }
-        }
-      }
+      <trn-space-children-list
+        [filter]="normalizedFilter()"
+        (join)="joinRoom.emit($event)"
+        (open)="openChildSpace.emit($event)"
+      />
     }
   </div>
-
-  <!-- The space's own actions. Ordered by how often they are reached for, with the two
-       destructive-adjacent ones last and separated: Leave sat one 30px target from Invite in
-       the old row, on exactly the platform where targets are hardest to hit. #40 adds Space
-       settings here. -->
-  <ng-template #spaceMenu>
-    <div trnDropdownMenu aria-label="Space actions">
-      @if (hasAnyUnread()) {
-        <button
-          trnDropdownMenuItem
-          (triggered)="markAllRead.emit()"
-          data-testid="mark-all-read"
-        >
-          <trn-icon name="check-check" />
-          Mark all as read
-        </button>
-      }
-      <!-- The effective ordering is named on the row rather than left to be discovered by
-           opening the submenu — it was on the old trigger's aria-label, and a screen-reader
-           user should not have to walk into a radio group to learn the current value. -->
-      <button
-        trnDropdownMenuItem
-        [trnDropdownMenuSubTrigger]="sortMenu"
-        [attr.aria-label]="'Order rooms: ' + sortModeLabel()"
-        data-testid="space-sort"
-      >
-        <trn-icon name="arrow-down-wide-narrow" />
-        Order rooms
-        <!-- No auto margin here: the sub-indicator already carries `ms-auto`, and a second
-             one splits the free space between the two rather than pinning either. `ps-3`
-             (logical, like every Helm class around it) just spaces the value off the label. -->
-        <span class="ps-3 text-xs font-normal text-muted-foreground">
-          {{ sortModeLabel() }}
-        </span>
-        <trn-dropdown-menu-item-sub-indicator />
-      </button>
-      <button
-        trnDropdownMenuItem
-        (triggered)="inviteToSpace.emit()"
-        [trnActionAllowed]="canInviteToSpace()"
-        [trnActionDisabledReason]="inviteToSpaceReason()"
-        [trnTooltip]="inviteToSpaceReason() ?? 'Invite people'"
-        data-testid="space-invite"
-      >
-        <trn-icon name="user-plus" />
-        Invite people
-      </button>
-      <button
-        trnDropdownMenuItem
-        (triggered)="openSpaceMembers.emit()"
-        data-testid="open-space-members"
-      >
-        <trn-icon name="users" />
-        Members
-      </button>
-      <button
-        trnDropdownMenuItem
-        (triggered)="addToSpace.emit()"
-        [trnActionAllowed]="canCurateSpace()"
-        [trnActionDisabledReason]="curateSpaceReason()"
-        [trnTooltip]="curateSpaceReason() ?? 'Add existing rooms'"
-        data-testid="space-add-rooms"
-      >
-        <trn-icon name="folder-plus" />
-        Add existing rooms
-      </button>
-      <button
-        trnDropdownMenuItem
-        (triggered)="manageSpaceRooms.emit()"
-        [trnActionAllowed]="canCurateSpace()"
-        [trnActionDisabledReason]="curateSpaceReason()"
-        [trnTooltip]="curateSpaceReason() ?? 'Organise rooms in Space settings'"
-        data-testid="space-manage-rooms"
-      >
-        <trn-icon name="list-ordered" />
-        Organise rooms
-      </button>
-      <button
-        trnDropdownMenuItem
-        (triggered)="createSubspace.emit()"
-        [trnActionAllowed]="canCurateSpace()"
-        [trnActionDisabledReason]="curateSpaceReason()"
-        [trnTooltip]="curateSpaceReason() ?? 'Create a space inside'"
-        data-testid="space-create-subspace"
-      >
-        <trn-icon name="layers" />
-        Create a space inside
-      </button>
-      @if (canConfigureSpace()) {
-        <button
-          trnDropdownMenuItem
-          (triggered)="openSpaceSettings.emit()"
-          data-testid="open-space-settings"
-        >
-          <trn-icon name="settings" />
-          Space settings
-        </button>
-      }
-      <div trnDropdownMenuSeparator></div>
-      <button
-        trnDropdownMenuItem
-        variant="danger"
-        (triggered)="leaveSpace.emit()"
-        data-testid="space-leave"
-      >
-        <trn-icon name="log-out" />
-        Leave space
-      </button>
-    </div>
-
-    <ng-template #sortMenu>
-      <div trnDropdownMenuSub>
-        <div trnDropdownMenuLabel>Order rooms in {{ spaceName() }}</div>
-        <button
-          trnDropdownMenuRadio
-          [checked]="!sortOverridden()"
-          [keepOpen]="false"
-          (triggered)="setSortMode.emit(null)"
-          data-testid="space-sort-default"
-        >
-          <trn-dropdown-menu-radio-indicator />
-          Use my default ({{ labelFor(defaultSortMode()) }})
-        </button>
-        <div trnDropdownMenuSeparator></div>
-        @for (option of sortModes; track option.id) {
-          <button
-            trnDropdownMenuRadio
-            [checked]="sortOverridden() && sortMode() === option.id"
-            [keepOpen]="false"
-            (triggered)="setSortMode.emit(option.id)"
-            [attr.data-testid]="'space-sort-' + option.id"
-          >
-            <trn-dropdown-menu-radio-indicator />
-            <span class="flex flex-col items-start gap-0.5">
-              <span>{{ option.label }}</span>
-              <span class="text-xs font-normal text-muted-foreground">
-                {{ option.description }}
-              </span>
-            </span>
-          </button>
-        }
-        <!-- Favourites are lifted into their own group before any of these orderings is
-           visible, so say so rather than letting "Space order" look broken. Trailing helper
-           text, NOT an trnDropdownMenuLabel: that directive captions the group that follows
-           it, and there is nothing after this. -->
-        <p class="px-3 py-2.5 text-xs text-muted-foreground">
-          Favourites stay in their own group.
-        </p>
-      </div>
-    </ng-template>
-  </ng-template>
 </div>

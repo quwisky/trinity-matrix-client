@@ -101,6 +101,10 @@ or from the `Trinity-Web-X.Y.Z.zip` attached to each
 — not offered by that app. Element X is Element's mobile app, so Element Web/Desktop
 shows — for Android and iOS. Trinity's macOS builds are Apple Silicon only, and its
 Linux builds are x86-64 only.
+From Trinity 0.3, OAuth 2.0 sign-in needs Synapse 1.138 or newer when the server uses
+Matrix Authentication Service (MAS). On an older Synapse with MAS, accounts stop
+connecting when their access token expires but keep their local encryption keys; see
+[Server requirements](https://quwisky.github.io/trinity-matrix-client/users/#server-requirements).
 
 Trinity also supports polls, voice messages, location sharing, stickers and GIFs, jump
 to date, pinned messages, room key export and import, and desktop notifications.
@@ -111,7 +115,10 @@ same feature definitions.
 
 ## Run from source
 
-Use Node `^24.15.0` and the pnpm version pinned in `package.json`:
+Use the Node.js range in `package.json`'s `engines.node` and the pnpm version pinned in
+its `packageManager` field; the
+[prerequisites](https://quwisky.github.io/trinity-matrix-client/developers/start/prerequisites/)
+page shows both. Then install and start the development server:
 
 ```bash
 corepack enable

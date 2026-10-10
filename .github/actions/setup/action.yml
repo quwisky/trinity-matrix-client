@@ -5,8 +5,8 @@ description: The .nvmrc Node, the pinned pnpm, and installed dependencies.
 # runners, so each one repeats this; the pnpm store cache is what keeps that cheap.
 #
 # Actions are pinned to commit SHAs, not tags. A tag is mutable — `pnpm/action-setup@v6`
-# has been re-pointed repeatedly in normal maintenance — and this action installs the
-# pnpm binary that later runs electron-builder with the signing certificates in its
+# has been re-pointed repeatedly in normal maintenance — and the same pin installs the
+# pnpm binary that runs electron-builder with the signing certificates in its
 # environment (release.yml). Retargeting one tag is exactly how CVE-2025-30066 reached
 # ~23k repositories. Renovate (.github/renovate.json) keeps the pins current — it updates
 # the digest behind each tag rather than letting the pin quietly rot.

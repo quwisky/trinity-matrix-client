@@ -117,7 +117,7 @@ test.describe('Mobile composer insert sheet', () => {
         );
         const rows = [
           ...document.querySelectorAll<HTMLElement>('[data-testid^=insert-]'),
-        ].filter((row) => row.closest('trn-action-sheet'));
+        ].filter((row) => row.closest('trn-action-list'));
         if (!surface || rows.length === 0)
           throw new Error('sheet is incomplete');
         const box = surface.getBoundingClientRect();
@@ -148,6 +148,51 @@ test.describe('Mobile composer insert sheet', () => {
       await expect(sheet).toBeHidden();
       await expect(trigger).toBeFocused();
       await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    test('opens the phone camera from Take photo and stages the shot', async ({
+      page,
+    }) => {
+      await openSeededRoom(page);
+      await page.getByTestId('composer-insert').click();
+      const dialog = page.getByRole('dialog', { name: 'Add to message' });
+      const rows = dialog.locator('[data-testid^=insert-]');
+      await expect(rows.nth(0)).toHaveAttribute('data-testid', 'insert-attach');
+      await expect(rows.nth(1)).toHaveAttribute(
+        'data-testid',
+        'insert-take-photo',
+      );
+      await expect(rows.nth(2)).toHaveAttribute(
+        'data-testid',
+        'insert-record-video',
+      );
+
+      const photoInput = page.getByTestId('composer-photo-capture-input');
+      await expect(photoInput).toHaveAttribute('accept', 'image/*');
+      await expect(photoInput).toHaveAttribute('capture', '');
+
+      const chooser = page.waitForEvent('filechooser');
+      await dialog.getByTestId('insert-take-photo').click();
+      await (
+        await chooser
+      ).setFiles({
+        name: 'photo.jpg',
+        mimeType: 'image/jpeg',
+        buffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+      });
+      await expect(page.getByTestId('composer-pending')).toContainText(
+        'photo.jpg',
+      );
+    });
+  });
+
+  test.describe('desktop profile', () => {
+    test('offers no camera actions in the tray', async ({ page }) => {
+      await openSeededRoom(page);
+      await page.getByTestId('composer-insert').click();
+      await expect(page.getByTestId('insert-attach')).toBeVisible();
+      await expect(page.getByTestId('insert-take-photo')).toHaveCount(0);
+      await expect(page.getByTestId('insert-record-video')).toHaveCount(0);
     });
   });
 

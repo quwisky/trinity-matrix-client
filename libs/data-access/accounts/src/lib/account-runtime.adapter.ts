@@ -4,7 +4,7 @@ import { MatrixAccountRuntimeAdapter } from './matrix-account-runtime.adapter';
 import type { AuthenticatedAccountGrant } from './authenticated-account-grant';
 import type {
   AccountCleanupIssue,
-  AccountEstablishmentFailure,
+  AccountEstablishmentFailureDetail,
   AccountEstablishmentIntent,
   AccountRestoreFailure,
   AccountRestoreRole,
@@ -28,10 +28,7 @@ export type AdapterAccountRestoreOutcome =
 
 export type AdapterAccountEstablishmentOutcome =
   | { readonly kind: 'ready' }
-  | {
-      readonly kind: 'failed';
-      readonly failure: AccountEstablishmentFailure;
-    };
+  | (AccountEstablishmentFailureDetail & { readonly kind: 'failed' });
 
 export type AdapterAccountSwitchOutcome =
   | { readonly kind: 'ready' }

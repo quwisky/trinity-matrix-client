@@ -41,8 +41,12 @@ import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.comp
 import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
-import { SimpleMessageListComponent } from '../message-list/simple-message-list/simple-message-list.component';
-import { VirtualMessageListComponent } from '../message-list/virtual-message-list/virtual-message-list.component';
+import { MessageListComponent } from '../message-list/message-list.component';
+import {
+  NO_RAIL_UNREAD_CHATS,
+  type RailUnreadChat,
+  type RailUnreadChats,
+} from '../server-rail/rail-unread-chats';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
 import { AccountRoutingService } from './account-routing.service';
@@ -98,7 +102,13 @@ const ROOM: RoomSummary = {
 
 beforeEach(() => setRouteRoom(null));
 
-function buildPage() {
+interface BuildOptions {
+  /** Render the real space rail instead of a mock, so its entries can be activated. */
+  readonly realRail?: boolean;
+  readonly routing?: Partial<Record<keyof AccountRoutingService, unknown>>;
+}
+
+function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
   const vm = {
     accountBadges: signal(new Map()),
     accounts: signal([]),
@@ -120,6 +130,7 @@ function buildPage() {
       stale: null,
     }),
     railSpaces: signal([]),
+    railUnreadChats: signal<RailUnreadChats>(NO_RAIL_UNREAD_CHATS),
     railUnread: signal({
       recent: { unread: 0, mentions: 0 },
       home: { unread: 0, mentions: 0 },
@@ -226,8 +237,7 @@ function buildPage() {
         ChannelSidebarComponent,
         SidebarUserPanelComponent,
         PaneHandleComponent,
-        SimpleMessageListComponent,
-        VirtualMessageListComponent,
+        MessageListComponent,
         EncryptionBannerComponent,
         ConnectivityBannerComponent,
         TombstoneBannerComponent,
@@ -268,6 +278,7 @@ function buildPage() {
           useFactory: (surfaces: RoomSurfaceLifecycle) => ({
             onOpenRoomMembers: () =>
               surfaces.transition({ kind: 'toggle-members' }),
+            ...routing,
           }),
           deps: [RoomSurfaceLifecycle],
         },
@@ -286,12 +297,11 @@ function buildPage() {
         { provide: SessionActionsService, useValue: {} },
       ],
       imports: [
-        MockComponent(ServerRailComponent),
+        realRail ? ServerRailComponent : MockComponent(ServerRailComponent),
         MockComponent(ChannelSidebarComponent),
         MockComponent(SidebarUserPanelComponent),
         MockComponent(PaneHandleComponent),
-        MockComponent(SimpleMessageListComponent),
-        MockComponent(VirtualMessageListComponent),
+        MockComponent(MessageListComponent),
         MockComponent(EncryptionBannerComponent),
         MockComponent(ConnectivityBannerComponent),
         MockComponent(TombstoneBannerComponent),
@@ -299,12 +309,12 @@ function buildPage() {
     },
   });
   setRouteRoom('!r:hs');
-  return TestBed.createComponent(RoomsPage);
+  return { fixture: TestBed.createComponent(RoomsPage), vm };
 }
 
 describe('RoomsPage rendered right-panel focus', () => {
   it('hands focus through the real members → member @switch render', () => {
-    const fixture = buildPage();
+    const { fixture } = buildPage();
     fixture.debugElement.injector
       .get(RoomSurfaceLifecycle)
       .transition({ kind: 'open-members' });
@@ -334,7 +344,7 @@ describe('RoomsPage rendered right-panel focus', () => {
       media: query,
     }));
     try {
-      const fixture = buildPage();
+      const { fixture } = buildPage();
       fixture.detectChanges();
       const host = fixture.nativeElement as HTMLElement;
       const toggle = host.querySelector<HTMLElement>(
@@ -361,5 +371,101 @@ describe('RoomsPage rendered right-panel focus', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+const UNREAD_CHAT: RailUnreadChat = {
+  key: '@me:hs\u0000!c:hs',
+  selection: { accountId: '@me:hs', roomId: '!c:hs' },
+  name: 'Team',
+  initial: 'T',
+  avatarMxc: null,
+  direct: false,
+  countLabel: '3',
+  accountBadge: null,
+  label: 'Team · 3 unread',
+  activityTs: 0,
+};
+
+describe('RoomsPage rail unread chat focus', () => {
+  it('moves focus into the conversation when the activated entry leaves the rail', () => {
+    let ready: (() => void) | undefined;
+    const onSelectRoomSelection = vi.fn(
+      (_selection: unknown, _origin: unknown, onReady?: () => void) => {
+        ready = onReady;
+      },
+    );
+    const { fixture, vm } = buildPage({
+      realRail: true,
+      routing: { onSelectRoomSelection },
+    });
+    vm.railUnreadChats.set({
+      entries: [UNREAD_CHAT],
+      overflow: 0,
+      overflowEntries: [],
+    });
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    const entry = host.querySelector<HTMLElement>(
+      '[data-testid="rail-unread-chat"] button',
+    )!;
+    expect(entry).not.toBeNull();
+    entry.focus();
+    expect(document.activeElement).toBe(entry);
+
+    entry.click();
+    // Workspace opens the chat: the split view stops listing it, then navigation is ready.
+    vm.railUnreadChats.set(NO_RAIL_UNREAD_CHATS);
+    ready?.();
+    fixture.detectChanges();
+    TestBed.tick();
+
+    expect(host.querySelector('[data-testid="rail-unread-chat"]')).toBeNull();
+    const active = document.activeElement;
+    expect(active).not.toBe(document.body);
+    expect(active?.isConnected).toBe(true);
+    expect(active).toBe(host.querySelector('main'));
+    expect(onSelectRoomSelection).toHaveBeenCalledWith(
+      UNREAD_CHAT.selection,
+      'rail-unread',
+      expect.any(Function),
+    );
+  });
+
+  it('leaves focus alone when something else took it before the chat opened', () => {
+    let ready: (() => void) | undefined;
+    const { fixture, vm } = buildPage({
+      realRail: true,
+      routing: {
+        onSelectRoomSelection: (
+          _selection: unknown,
+          _origin: unknown,
+          onReady?: () => void,
+        ) => {
+          ready = onReady;
+        },
+      },
+    });
+    vm.railUnreadChats.set({
+      entries: [UNREAD_CHAT],
+      overflow: 0,
+      overflowEntries: [],
+    });
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    host
+      .querySelector<HTMLElement>('[data-testid="rail-unread-chat"] button')!
+      .click();
+    const recent = host.querySelector<HTMLElement>(
+      '[data-testid="rail-recent"]',
+    )!;
+    recent.focus();
+
+    vm.railUnreadChats.set(NO_RAIL_UNREAD_CHATS);
+    ready?.();
+    fixture.detectChanges();
+    TestBed.tick();
+
+    expect(document.activeElement).toBe(recent);
   });
 });

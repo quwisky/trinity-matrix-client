@@ -1,8 +1,11 @@
 import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 import { DefaultUrlSerializer, Router } from '@angular/router';
-import { WorkspaceBackService } from '@trinity/application/workspace';
-import { TrnDialogService } from '@trinity/components/overlay';
+import {
+  WorkspaceBackService,
+  WorkspaceNavigationService,
+} from '@trinity/application/workspace';
+import { TrnSurfaceService } from '@trinity/components/overlay';
 import { WorkspaceRoutedSurfaceAdapter } from './composition/workspace-routed-surface.adapter';
 import {
   firstValueFrom,
@@ -22,6 +25,9 @@ function setup(
     readonly activeOwnsTopmostOverlay?: boolean;
     readonly routedOwnsActive?: boolean;
     readonly outcome?: 'dismissed' | 'unhandled';
+    readonly conversation?: boolean;
+    readonly conversationOverList?: boolean;
+    readonly projectingLocation?: boolean;
   },
 ) {
   const back = vi.fn(() =>
@@ -42,12 +48,28 @@ function setup(
             options.activeOwnsTopmostOverlay ?? false,
           back,
           activeSurface: () =>
-            options.active
-              ? {
-                  layer: 'application',
-                  surface: { kind: 'settings', section: null },
-                }
-              : null,
+            !options.active
+              ? null
+              : options.conversation
+                ? {
+                    layer: 'conversation',
+                    surface: {
+                      kind: 'conversation',
+                      accountId: '@alice:example.org',
+                      roomId: '!room:example.org',
+                    },
+                  }
+                : {
+                    layer: 'application',
+                    surface: { kind: 'settings', section: null },
+                  },
+        },
+      },
+      {
+        provide: WorkspaceNavigationService,
+        useValue: {
+          projectingLocation: options.projectingLocation ?? false,
+          conversationOverList: () => options.conversationOverList ?? false,
         },
       },
       {
@@ -57,7 +79,7 @@ function setup(
         },
       },
       {
-        provide: TrnDialogService,
+        provide: TrnSurfaceService,
         useValue: {
           hasOpen: () => options.dialogOpen ?? false,
           closeTopmost,
@@ -95,7 +117,14 @@ describe('workspaceBrowserBackGuard', () => {
         },
         { provide: Location, useValue: { back: vi.fn() } },
         {
-          provide: TrnDialogService,
+          provide: WorkspaceNavigationService,
+          useValue: {
+            projectingLocation: false,
+            conversationOverList: () => false,
+          },
+        },
+        {
+          provide: TrnSurfaceService,
           useValue: { hasOpen: () => false, closeTopmost: vi.fn() },
         },
       ],
@@ -167,5 +196,37 @@ describe('workspaceBrowserBackGuard', () => {
     expect(await firstValueFrom(result as Observable<boolean>)).toBe(false);
     expect(back).toHaveBeenCalledOnce();
     expect(closeTopmost).not.toHaveBeenCalled();
+  });
+
+  it("lets Workspace's own history pop land without offering it to any surface", () => {
+    const test = setup('popstate', {
+      active: true,
+      conversation: true,
+      projectingLocation: true,
+    });
+
+    expect(test.result).toBe(true);
+    expect(test.back).not.toHaveBeenCalled();
+  });
+
+  it('lets history leave a Conversation pushed over its list (#1113)', () => {
+    const test = setup('popstate', {
+      active: true,
+      conversation: true,
+      conversationOverList: true,
+    });
+
+    expect(test.result).toBe(true);
+    expect(test.back).not.toHaveBeenCalled();
+  });
+
+  it('still offers a Conversation with no list below to Workspace', async () => {
+    const test = setup('popstate', { active: true, conversation: true });
+
+    expect(isObservable(test.result)).toBe(true);
+    await expect(
+      firstValueFrom(test.result as Observable<boolean>),
+    ).resolves.toBe(false);
+    expect(test.back).toHaveBeenCalledOnce();
   });
 });

@@ -1,3 +1,4 @@
+import { TrnCardImports } from '@trinity/components/navigation-layout';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -45,6 +46,8 @@ import {
   TrnAlertService,
   TrnSettingsGroupComponent,
 } from '@trinity/components/overlay';
+import { shownError } from '@trinity/util/ui';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 
 interface SourceFormModel {
   source: string;
@@ -54,6 +57,8 @@ interface SourceFormModel {
   selector: 'trn-image-packs-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    EmptyStateComponent,
+    TrnCardImports,
     TrnSettingsGroupComponent,
     FormField,
     FormRoot,
@@ -81,6 +86,7 @@ export class ImagePacksSectionComponent {
 
   /** Initial room/account source supplied by the modal presenter. */
   readonly initialSource = input<string>();
+  readonly shownError = shownError;
   readonly installed = this.management.installed;
   readonly discovery = signal<ImagePackDiscovery | null>(null);
   readonly finding = signal(false);

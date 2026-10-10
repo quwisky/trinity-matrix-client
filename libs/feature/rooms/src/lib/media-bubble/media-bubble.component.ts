@@ -1,3 +1,4 @@
+import { TrnIconComponent } from '@trinity/components/foundations';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -7,6 +8,7 @@ import {
   output,
   signal,
 } from '@angular/core';
+import { formatMediaDuration } from '../shared/format-media-duration';
 
 /** Renderable media category (mirrors `MediaKind` in `@trinity/util/matrix`). */
 export type MediaBubbleKind = 'image' | 'file' | 'video' | 'audio';
@@ -23,6 +25,8 @@ export interface MediaBubbleItem {
   size?: number;
   width?: number;
   height?: number;
+  /** Declared length of a video or audio clip, shown before its bytes are loaded. */
+  durationMs?: number;
 }
 
 /**
@@ -36,10 +40,15 @@ const DEFAULT_MEDIA_RATIO = '16 / 9';
  * download file-card, driven entirely by inputs (a resolved `src` object URL plus
  * metadata) — it performs no fetching/decryption and has no `@trinity/core`
  * dependency. A smart wrapper resolves the URL and feeds `loading`/`error`/`src`.
+ *
+ * A video or audio clip has no `src` until the reader asks for it: it shows a play control
+ * (a poster for video) and emits {@link playRequested}, because fetching and decrypting the whole file
+ * for every row that merely scrolls past costs far more memory than the row is worth.
  */
 @Component({
   selector: 'trn-media-bubble',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TrnIconComponent],
   templateUrl: './media-bubble.component.html',
   styleUrl: './media-bubble.component.scss',
   host: {
@@ -51,13 +60,17 @@ const DEFAULT_MEDIA_RATIO = '16 / 9';
 export class MediaBubbleComponent {
   /** The media item to render (metadata only — no bytes). */
   readonly item = input.required<MediaBubbleItem>();
-  /** Resolved `blob:`/`https:` URL, or null while loading. */
+  /** Resolved `blob:`/`https:` URL, or null while loading (or, for video/audio, until played). */
   readonly src = input<string | null>(null);
+  /** Still shown behind a video's play button; null draws a neutral placeholder. */
+  readonly poster = input<string | null>(null);
   readonly loading = input(false);
   readonly error = input(false);
 
   readonly openLightbox = output<void>();
   readonly download = output<void>();
+  /** The reader asked to play a video or audio clip that has not been loaded yet. */
+  readonly playRequested = output<void>();
 
   /** Terse accessors so the template needn't unwrap `item()` repeatedly. */
   readonly kind = computed(() => this.item().kind);
@@ -87,11 +100,20 @@ export class MediaBubbleComponent {
   readonly showError = computed(() => this.error() || this.imgFailed());
 
   /** Coarse render state, surfaced as `data-media-state` for tests/styling. */
-  readonly state = computed<'loading' | 'ready' | 'error'>(() => {
+  readonly state = computed<'idle' | 'loading' | 'ready' | 'error'>(() => {
     if (this.showError()) {
       return 'error';
     }
-    return this.loading() || !this.src() ? 'loading' : 'ready';
+    if (this.loading()) {
+      return 'loading';
+    }
+    if (this.src()) {
+      return 'ready';
+    }
+    // A clip waits for the reader; anything else with no src is still on its way.
+    return this.kind() === 'video' || this.kind() === 'audio'
+      ? 'idle'
+      : 'loading';
   });
 
   /**
@@ -129,6 +151,29 @@ export class MediaBubbleComponent {
   readonly subtitle = computed(
     () => formatSize(this.item().size) ?? this.item().mimeType,
   );
+
+  /** Declared length and size of a clip, e.g. `1:23 · 5.0 MB`; empty when the event says neither. */
+  readonly playMeta = computed(() => {
+    const { durationMs, size } = this.item();
+    return [formatMediaDuration(durationMs), formatSize(size)]
+      .filter(Boolean)
+      .join(' · ');
+  });
+
+  /** Press on a clip's play control; ignored while the file is already on its way. */
+  requestPlay(): void {
+    if (!this.loading()) {
+      this.playRequested.emit();
+    }
+  }
+
+  /**
+   * Start a clip the reader asked for once its source can be played. A host may still refuse
+   * (autoplay policy after a long fetch); the native controls are then the way to start it.
+   */
+  startPlayback(media: HTMLMediaElement): void {
+    media.play().catch(() => undefined);
+  }
 
   constructor() {
     // Reset the per-image failure flag when the source changes (instances are

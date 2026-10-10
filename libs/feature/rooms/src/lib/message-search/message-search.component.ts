@@ -22,8 +22,12 @@ import {
   type MessageHit,
   ConversationRuntime,
 } from '@trinity/data-access/timeline';
+import { initialOf } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
-import { EmptyStateComponent } from '@trinity/components/generic-content';
+import {
+  BannerComponent,
+  EmptyStateComponent,
+} from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
@@ -59,7 +63,7 @@ interface HighlightPart {
  *
  * The query field is focused when the panel appears, by this component.
  *
- * That used to be CDK's job: search was a dialog, and `TrnDialogService` was passed
+ * That used to be CDK's job: search was a dialog, and `TrnSurfaceService` was passed
  * `autoFocus: '[data-autofocus]'`. Rendered inline in the shell's panel slot there is no CDK
  * focus pass, so without the call below opening search would leave focus wherever it was and
  * a keyboard user would have to tab into the field they just asked for. The marker attribute
@@ -73,6 +77,7 @@ interface HighlightPart {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     SidePanelHeaderComponent,
+    BannerComponent,
     EmptyStateComponent,
     TrnIconComponent,
     AvatarComponent,
@@ -261,10 +266,7 @@ export class MessageSearchComponent {
     return parts;
   }
 
-  initialOf(name: string): string {
-    const stripped = name.replace(/^[#@!]+/, '').trim();
-    return (stripped[0] ?? '?').toUpperCase();
-  }
+  readonly initialOf = initialOf;
 
   /** Only the latest server request may write results; `runWithBusy` also bounds it to the component. */
   private inFlight: Subscription | null = null;

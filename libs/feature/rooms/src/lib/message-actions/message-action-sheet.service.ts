@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import {
-  TrnActionSheetService,
+  TrnSurfaceService,
   type TrnActionSheetRef,
   type ActionSheetButton,
 } from '@trinity/components/overlay';
@@ -44,13 +44,14 @@ type PayloadFreeAction = Exclude<
 >;
 
 /**
- * A message's actions as a bottom sheet, for the long press on a phone or tablet.
+ * A message's actions for the long press on a phone or tablet: a bottom sheet, or a menu beside
+ * the row where one fits.
  *
  * ## Why a service, and not the component that was pressed
  *
  * A row is destroyed by any of the things that routinely happen to a message — a redaction,
  * an edit, the local-echo id swap when your own send lands, or simply scrolling out of the
- * virtual window, which happens behind the sheet's own backdrop where the reader cannot see
+ * list's window, which happens behind the sheet's own backdrop where the reader cannot see
  * it. An `output()` on a destroyed component is a SILENT no-op, so a sheet holding the row's
  * handlers would be a menu where every row is still tappable and nothing happens.
  *
@@ -61,11 +62,11 @@ type PayloadFreeAction = Exclude<
  *
  * ## Why a service, and not a method on the list
  *
- * It started as one, and that was wrong: `trn-message-row` has THREE consumers, not two. The
- * two message lists extend `MessageListBase`, but {@link ThreadViewComponent} does not — it
+ * It started as one, and that was wrong: `trn-message-row` has two consumers. The
+ * message list extends `MessageListBase`, but {@link ThreadViewComponent} does not — it
  * carries its own `onRowAction`. A long press on a thread reply consequently emitted into
  * nothing and every action on it was unreachable by touch, with the Android `contextmenu`
- * fallback removed as well. Shared here so a fourth consumer inherits the behaviour instead
+ * fallback removed as well. Shared here so a third consumer inherits the behaviour instead
  * of having to remember it.
  *
  * ## Why `open` and `close` take an owner
@@ -79,7 +80,7 @@ type PayloadFreeAction = Exclude<
  */
 @Injectable({ providedIn: 'root' })
 export class MessageActionSheetService {
-  private readonly sheet = inject(TrnActionSheetService);
+  private readonly surfaces = inject(TrnSurfaceService);
   private ref: TrnActionSheetRef | null = null;
   private owner: object | null = null;
   private viewport: MessageSheetViewportSession | null = null;
@@ -101,7 +102,7 @@ export class MessageActionSheetService {
   ): void {
     let viewport: MessageSheetViewportSession | null = null;
     const run = (action: MessageRowAction) => {
-      // TrnActionSheetComponent closes before invoking a handler. Whether `closed` emits
+      // TrnActionListComponent closes before invoking a handler. Whether `closed` emits
       // synchronously or on the next turn, this captured session makes restoration happen
       // before the action edits, redacts, or replaces the anchor.
       viewport?.release();
@@ -217,7 +218,7 @@ export class MessageActionSheetService {
 
     this.dismiss();
     this.owner = owner;
-    const ref = this.sheet.open(
+    const ref = this.surfaces.openActions(
       {
         buttons,
         reactions: QUICK_SHEET_REACTIONS.map((key) => ({
@@ -225,10 +226,11 @@ export class MessageActionSheetService {
           handler: () => run({ type: 'react', key }),
         })),
       },
-      'Message actions',
+      { ariaLabel: 'Message actions', anchor: context?.anchor },
     );
     this.ref = ref;
-    if (context) {
+    // Only a bottom sheet covers the timeline; a menu beside the row needs no clearance.
+    if (context && ref.presentation === 'sheet') {
       viewport = new MessageSheetViewportSession(context, () => ref.surface);
       this.viewport = viewport;
       viewport.start();

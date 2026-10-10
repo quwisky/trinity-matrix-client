@@ -15,6 +15,14 @@ import {
   type MediaResult,
   type PermissionStatus,
 } from '@capacitor/camera';
+import {
+  CapturePermissionDeniedError,
+  NoCameraError,
+  toCapturedMedia,
+  type CaptureKind,
+  type CaptureOptions,
+  type CapturedMedia,
+} from './captured-media';
 
 /**
  * Raised by {@link MediaPickerService.pickImages} when photo-library access is denied.
@@ -28,7 +36,7 @@ class GalleryPermissionDeniedError extends Error {
 }
 
 /**
- * Host adapter that picks media for the composer. On a native platform it opens the
+ * Host adapter that picks and captures media for the composer. On a native platform it opens the
  * Capacitor gallery picker and materializes the choice into a `File`; on the web
  * it is a no-op ({@link available} === false) and the composer falls back to a
  * hidden `<input type="file">` — which itself surfaces the native picker/camera
@@ -38,6 +46,30 @@ class GalleryPermissionDeniedError extends Error {
 export class MediaPickerService {
   /** True when the native gallery picker should be used instead of `<input>`. */
   readonly available = Capacitor.isNativePlatform();
+
+  /** True where the camera plugin can take photos and record video (iOS, Android). */
+  readonly captureSupported = Capacitor.isNativePlatform();
+
+  /** Open the camera for a photo; null when the user cancels. */
+  capturePhoto(options: CaptureOptions): Observable<CapturedMedia | null> {
+    return this.capture('photo', options, () =>
+      Camera.takePhoto({
+        includeMetadata: true,
+        correctOrientation: true,
+        saveToGallery: options.saveToGallery,
+      }),
+    );
+  }
+
+  /** Open the camera for a video; null when the user cancels. */
+  captureVideo(options: CaptureOptions): Observable<CapturedMedia | null> {
+    return this.capture('video', options, () =>
+      Camera.recordVideo({
+        includeMetadata: true,
+        saveToGallery: options.saveToGallery,
+      }),
+    );
+  }
 
   /**
    * Open the native gallery and resolve every chosen image as a File — empty when the user
@@ -87,6 +119,65 @@ export class MediaPickerService {
     );
   }
 
+  /**
+   * Gate on camera access, open the camera, and materialize the result. Cancelling is a
+   * choice (null); a denial, a missing camera and an over-limit capture are typed errors the
+   * composer turns into a notice or a toast.
+   */
+  private capture(
+    kind: CaptureKind,
+    options: CaptureOptions,
+    open: () => Promise<MediaResult>,
+  ): Observable<CapturedMedia | null> {
+    if (!this.captureSupported) {
+      return of(null);
+    }
+    return defer(() => from(this.ensureCameraAccess())).pipe(
+      switchMap(() => from(open())),
+      switchMap((result) =>
+        from(
+          // Awaited only now: a cancel rejects `open()` above and never reaches this.
+          Promise.resolve(options.maxBytes ?? null).then((maxBytes) =>
+            toCapturedMedia(kind, result, maxBytes),
+          ),
+        ),
+      ),
+      catchError((err: unknown): Observable<CapturedMedia | null> => {
+        const code = errorCode(err);
+        if (
+          code === CameraErrorCode.TakePhotoCancelled ||
+          code === CameraErrorCode.RecordVideoCancelled
+        ) {
+          return of(null);
+        }
+        if (code === CameraErrorCode.CameraPermissionDenied) {
+          return throwError(() => new CapturePermissionDeniedError('camera'));
+        }
+        if (code === CameraErrorCode.GalleryPermissionDenied) {
+          return throwError(() => new CapturePermissionDeniedError('photos'));
+        }
+        if (code === CameraErrorCode.NoCameraAvailable) {
+          return throwError(() => new NoCameraError());
+        }
+        return throwError(() => err);
+      }),
+    );
+  }
+
+  /** Resolve once camera access is granted; reject with a typed error if denied. */
+  private async ensureCameraAccess(): Promise<void> {
+    let status: PermissionStatus = await Camera.checkPermissions();
+    if (
+      status.camera === 'prompt' ||
+      status.camera === 'prompt-with-rationale'
+    ) {
+      status = await Camera.requestPermissions({ permissions: ['camera'] });
+    }
+    if (status.camera !== 'granted') {
+      throw new CapturePermissionDeniedError('camera');
+    }
+  }
+
   /** Resolve once photo-library access is granted; reject with a typed error if denied. */
   private async ensurePhotoAccess(): Promise<void> {
     let status: PermissionStatus = await Camera.checkPermissions();
@@ -124,7 +215,12 @@ async function toFile(result: MediaResult | undefined): Promise<File | null> {
   if (!src) {
     return null;
   }
-  const blob = await fetch(src).then((r) => r.blob());
+  const response = await fetch(src);
+  // An error status resolves rather than rejects; throwing drops this photo like a failed fetch.
+  if (!response.ok) {
+    throw new Error(`The picked photo could not be read (${response.status}).`);
+  }
+  const blob = await response.blob();
   const type = blob.type || 'image/jpeg';
   const ext = type.split('/')[1]?.split('+')[0] || 'jpg';
   return new File([blob], `image.${ext}`, { type });

@@ -15,6 +15,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { HostNotificationPresentationService } from '@trinity/runtime/host';
 import { NotificationPolicy } from './notification-policy';
 import { NotificationService } from './notification.service';
+import { PushService } from './push.service';
 import { ReactionNotificationSettingsService } from './reaction-notification-settings.service';
 import { RoomNotificationsService } from './room-notifications.service';
 import { NotificationSoundService } from './notification-sound.service';
@@ -60,6 +61,7 @@ describe('reaction notifications integration', () => {
   let handlers: Map<string, (...args: unknown[]) => void>;
   let owner: { unsubscribe(): void };
   let service: NotificationService;
+  let backgroundDelivery: ReturnType<typeof signal<'app' | 'push'>>;
   let accountIds: ReturnType<typeof signal<readonly string[]>>;
   let clients: Map<string, ReturnType<typeof setupClient>>;
   let activation: Subject<{
@@ -75,6 +77,8 @@ describe('reaction notifications integration', () => {
       getUserId: () => userId,
       getSyncState: vi.fn(() => SyncState.Prepared),
       getRoom: () => room,
+      getRooms: () => [],
+      getCrypto: () => undefined,
       getPushActionsForEvent: vi.fn(() => ({ notify: true, tweaks: {} })),
       getAccountData: () => undefined,
       pushRules: {
@@ -112,8 +116,13 @@ describe('reaction notifications integration', () => {
     rooms = { modeFor: vi.fn(() => 'all') };
     sound = { isOn: vi.fn(() => true) };
     visibility = {
-      snapshot: vi.fn(() => ({ foreground: false, conversation: null })),
+      snapshot: vi.fn(() => ({
+        foreground: false,
+        hidden: false,
+        conversation: null,
+      })),
     };
+    backgroundDelivery = signal<'app' | 'push'>('app');
     accountIds = signal<readonly string[]>([ACCOUNT]);
     clients = new Map([[ACCOUNT, client]]);
     activation = new Subject();
@@ -135,6 +144,10 @@ describe('reaction notifications integration', () => {
         { provide: RoomNotificationsService, useValue: rooms },
         { provide: NotificationSoundService, useValue: sound },
         { provide: NOTIFICATION_VISIBILITY, useValue: visibility },
+        {
+          provide: PushService,
+          useValue: { backgroundDelivery: backgroundDelivery.asReadonly() },
+        },
         {
           provide: HostNotificationPresentationService,
           useValue: {
@@ -216,10 +229,24 @@ describe('reaction notifications integration', () => {
     },
   );
 
+  it('keeps presenting reactions while hidden when push owns the background', async () => {
+    settings.isOn.mockReturnValue(true);
+    backgroundDelivery.set('push');
+    visibility.snapshot.mockReturnValue({
+      foreground: false,
+      hidden: true,
+      conversation: null,
+    });
+    emit(reaction('$hidden'));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(present).toHaveBeenCalledTimes(1);
+  });
+
   it('suppresses visible reactions and respects sound', async () => {
     settings.isOn.mockReturnValue(true);
     visibility.snapshot.mockReturnValue({
       foreground: true,
+      hidden: false,
       conversation: { accountId: ACCOUNT, roomId: ROOM },
     });
     emit(reaction('$visible'));
@@ -228,6 +255,7 @@ describe('reaction notifications integration', () => {
 
     visibility.snapshot.mockReturnValue({
       foreground: false,
+      hidden: false,
       conversation: null,
     });
     sound.isOn.mockReturnValue(false);

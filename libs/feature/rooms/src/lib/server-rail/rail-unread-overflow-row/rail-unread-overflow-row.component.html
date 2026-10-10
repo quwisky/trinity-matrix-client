@@ -1,0 +1,42 @@
+@let c = chat();
+<trn-avatar
+  class="shrink-0"
+  [mxc]="c.avatarMxc"
+  [accountId]="c.selection.accountId"
+  [initial]="c.initial"
+  [name]="c.name"
+  [shape]="c.direct ? 'person' : 'place'"
+  size="xl"
+  [accountBadge]="c.accountBadge"
+/>
+<span class="flex min-w-0 flex-1 flex-col">
+  <span
+    class="truncate text-sm font-semibold text-[var(--trinity-text-bright)]"
+  >
+    {{ c.name }}
+  </span>
+  @if (detail()) {
+    <span
+      class="truncate text-xs font-normal text-[var(--trinity-text-muted)]"
+      data-testid="rail-overflow-detail"
+      >{{ detail() }}</span
+    >
+  }
+</span>
+@if (c.countLabel; as count) {
+  <span
+    trnBadge
+    variant="danger"
+    size="xs"
+    class="shrink-0"
+    aria-hidden="true"
+    data-testid="rail-overflow-count"
+    >{{ count }}</span
+  >
+} @else {
+  <span
+    class="size-2 shrink-0 rounded-full bg-[var(--trinity-text)]"
+    aria-hidden="true"
+    data-testid="rail-overflow-dot"
+  ></span>
+}

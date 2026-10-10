@@ -1,7 +1,11 @@
 <trn-settings-group
-  description="Control receipts and link previews stored on this device."
+  description="Control receipts, link previews and what Trinity keeps on this device."
 >
   <trn-preference-catalog-section section="privacy" />
+
+  @if (captureSupported) {
+    <trn-preference-catalog-section section="privacy-capture" />
+  }
 
   @if (privacy.linkPreviews() && previewsSupported() === false) {
     <p

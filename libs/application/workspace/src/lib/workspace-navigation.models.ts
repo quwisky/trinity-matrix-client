@@ -14,7 +14,8 @@ export type WorkspaceRoomNavigationOrigin =
   | 'direct-invitation'
   | 'room-invitation'
   | 'global-search'
-  | 'deep-link';
+  | 'deep-link'
+  | /** A chat with new messages picked from the space rail, possibly on another Account. */ 'rail-unread';
 
 /** Product intent for opening one exact Room. */
 export interface WorkspaceRoomNavigationIntent {
@@ -23,7 +24,16 @@ export interface WorkspaceRoomNavigationIntent {
   readonly roomId: string;
   readonly scope?: WorkspaceNavigationScope;
   readonly origin: WorkspaceRoomNavigationOrigin;
+  /**
+   * The sidebar lists that show this Room, supplied by the caller that can see the Room
+   * Library. A `'rail-unread'` open keeps the list already on screen only when it is named
+   * here; left out, the Room opens in Recent, which lists every chat.
+   */
+  readonly listedIn?: readonly WorkspaceListedScopeKind[];
 }
+
+/** A sidebar list that may show a given Room (a Space lists its own children instead). */
+export type WorkspaceListedScopeKind = 'recent' | 'home' | 'rooms';
 
 /** One Account-and-Room identity eligible for visit-history navigation. */
 export interface WorkspaceRoomIdentity {

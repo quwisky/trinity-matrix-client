@@ -10,7 +10,9 @@ async function navigate(path: string): Promise<void> {
         () => typeof window.history.state?.navigationId === 'number',
       ),
     {
-      timeout: 20_000,
+      // The first spec meets a cold Simulator and WebView: on the iOS 26.5 nightly runner the
+      // first navigation outlasted 20 s, while it takes about 9 s on a warm local Simulator.
+      timeout: 60_000,
       timeoutMsg: 'router never completed its first navigation',
     },
   );
@@ -28,7 +30,7 @@ async function navigate(path: string): Promise<void> {
   }, target);
 }
 
-describe('Android app shell', () => {
+describe('mobile app shell', () => {
   beforeEach(resetApp);
 
   it('renders login and protects authenticated routes in the installed app', async () => {

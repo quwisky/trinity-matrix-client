@@ -1,155 +1,294 @@
 <nav class="rail">
-  <div
-    class="item"
-    [class.active]="recentActive()"
-    [class.item--unread]="showDot(unread().recent)"
-  >
-    <span class="indicator" [class.indicator--selected]="recentActive()"></span>
-    <button
-      trnIconButton
-      class="pill recent"
-      (click)="showRecent.emit()"
-      [attr.aria-current]="recentActive() ? 'true' : null"
-      [attr.aria-label]="pillLabel('Recent activity', unread().recent)"
-      trnTooltip="Recent activity"
-      position="right"
-      data-testid="rail-recent"
-    >
-      <trn-icon name="clock" motion="pop" />
-    </button>
-    <ng-container
-      [ngTemplateOutlet]="mention"
-      [ngTemplateOutletContext]="{ $implicit: unread().recent, top: false }"
-    />
-  </div>
-
-  @let homeActive =
-    activeSpaceId() === null && !roomsActive() && !recentActive();
-  <div
-    class="item"
-    [class.active]="homeActive"
-    [class.item--unread]="showDot(unread().home)"
-  >
-    <span class="indicator" [class.indicator--selected]="homeActive"></span>
-    <button
-      trnIconButton
-      class="pill home"
-      (click)="selectHome()"
-      [attr.aria-current]="homeActive ? 'true' : null"
-      [attr.aria-label]="pillLabel('Direct messages', unread().home)"
-      trnTooltip="Direct messages"
-      position="right"
-    >
-      <trn-icon name="house" motion="pop" />
-    </button>
-    <ng-container
-      [ngTemplateOutlet]="mention"
-      [ngTemplateOutletContext]="{ $implicit: unread().home, top: false }"
-    />
-  </div>
-
-  <div
-    class="item"
-    [class.active]="roomsActive()"
-    [class.item--unread]="showDot(unread().rooms)"
-  >
-    <span class="indicator" [class.indicator--selected]="roomsActive()"></span>
-    <button
-      trnIconButton
-      class="pill rooms"
-      (click)="showRooms.emit()"
-      [attr.aria-current]="roomsActive() ? 'true' : null"
-      [attr.aria-label]="pillLabel('Rooms', unread().rooms)"
-      trnTooltip="Rooms"
-      position="right"
-      data-testid="rail-rooms"
-    >
-      <trn-icon name="door-open" motion="pop" />
-    </button>
-    <ng-container
-      [ngTemplateOutlet]="mention"
-      [ngTemplateOutletContext]="{ $implicit: unread().rooms, top: false }"
-    />
-  </div>
-
-  <div class="separator"></div>
-
-  @for (space of spaces(); track space.id) {
-    @let counts = unread().perSpace[space.id];
-    @let spaceActive = activeSpaceId() === space.id && !roomsActive();
+  <div class="rail-fixed">
     <div
       class="item"
-      [class.active]="spaceActive"
-      [class.item--unread]="showDot(counts)"
+      [class.active]="recentActive()"
+      [class.item--unread]="showDot(unread().recent)"
     >
-      <span class="indicator" [class.indicator--selected]="spaceActive"></span>
+      <span
+        class="indicator"
+        [class.indicator--selected]="recentActive()"
+      ></span>
       <button
-        trnBtn
-        shape="icon"
-        presentation="ghost"
-        variant="secondary"
-        class="pill size-12"
-        (click)="
-          selectSpace.emit({ spaceId: space.id, accountId: space.accountId })
-        "
-        [attr.aria-current]="spaceActive ? 'true' : null"
-        [attr.aria-label]="
-          pillLabel(
-            badgeFor(space.accountId)
-              ? space.name + ' — ' + badgeFor(space.accountId)!.name
-              : space.name,
-            counts
-          )
-        "
-        [trnTooltip]="space.name"
+        trnIconButton
+        class="pill recent"
+        (click)="showRecent.emit()"
+        [attr.aria-current]="recentActive() ? 'true' : null"
+        [attr.aria-label]="pillLabel('Recent activity', unread().recent)"
+        trnTooltip="Recent activity"
         position="right"
+        data-testid="rail-recent"
       >
-        <trn-avatar
-          [mxc]="space.avatarMxc"
-          [accountId]="space.accountId"
-          [initial]="space.initial"
-          [name]="space.name"
-          shape="place"
-          size="2xl"
-          [accountBadge]="badgeFor(space.accountId)"
-        />
+        <trn-icon name="clock" motion="pop" />
       </button>
       <ng-container
         [ngTemplateOutlet]="mention"
-        [ngTemplateOutletContext]="{
-          $implicit: counts,
-          top: !!badgeFor(space.accountId),
-        }"
+        [ngTemplateOutletContext]="{ $implicit: unread().recent }"
       />
     </div>
-  }
 
-  <div class="item">
-    <span class="indicator"></span>
-    <button
-      trnIconButton
-      class="pill add"
-      (click)="createSpace.emit()"
-      aria-label="Create a space"
-      trnTooltip="Create a space"
-      position="right"
+    @let homeActive =
+      activeSpaceId() === null && !roomsActive() && !recentActive();
+    <div
+      class="item"
+      [class.active]="homeActive"
+      [class.item--unread]="showDot(unread().home)"
     >
-      <trn-icon name="plus" motion="rotate" />
-    </button>
+      <span class="indicator" [class.indicator--selected]="homeActive"></span>
+      <button
+        trnIconButton
+        class="pill home"
+        (click)="selectHome()"
+        [attr.aria-current]="homeActive ? 'true' : null"
+        [attr.aria-label]="pillLabel('Direct messages', unread().home)"
+        trnTooltip="Direct messages"
+        position="right"
+      >
+        <trn-icon name="house" motion="pop" />
+      </button>
+      <ng-container
+        [ngTemplateOutlet]="mention"
+        [ngTemplateOutletContext]="{ $implicit: unread().home }"
+      />
+    </div>
+
+    <div
+      class="item"
+      [class.active]="roomsActive()"
+      [class.item--unread]="showDot(unread().rooms)"
+    >
+      <span
+        class="indicator"
+        [class.indicator--selected]="roomsActive()"
+      ></span>
+      <button
+        trnIconButton
+        class="pill rooms"
+        (click)="showRooms.emit()"
+        [attr.aria-current]="roomsActive() ? 'true' : null"
+        [attr.aria-label]="pillLabel('Rooms', unread().rooms)"
+        trnTooltip="Rooms"
+        position="right"
+        data-testid="rail-rooms"
+      >
+        <trn-icon name="door-open" motion="pop" />
+      </button>
+      <ng-container
+        [ngTemplateOutlet]="mention"
+        [ngTemplateOutletContext]="{ $implicit: unread().rooms }"
+      />
+    </div>
+  </div>
+
+  <div class="rail-scroll" data-testid="rail-scroll">
+    @let chats = unreadChats();
+    @if (chats.entries.length > 0) {
+      <div
+        class="unread-chats"
+        role="group"
+        aria-label="Unread chats"
+        data-testid="rail-unread-chats"
+      >
+        @for (chat of chats.entries; track chat.key) {
+          <div class="item" data-testid="rail-unread-chat">
+            <span class="indicator"></span>
+            <button
+              trnBtn
+              shape="icon"
+              presentation="ghost"
+              variant="secondary"
+              class="pill unread-chat size-12"
+              [class.pill--person]="chat.direct"
+              (click)="openUnreadChat.emit(chat.selection)"
+              [attr.aria-label]="chat.label"
+              [trnTooltip]="chat.label"
+              position="right"
+            >
+              <trn-avatar
+                [mxc]="chat.avatarMxc"
+                [accountId]="chat.selection.accountId"
+                [initial]="chat.initial"
+                [name]="chat.name"
+                [shape]="chat.direct ? 'person' : 'place'"
+                size="2xl"
+                [accountBadge]="chat.accountBadge"
+              />
+            </button>
+            @if (chat.countLabel; as count) {
+              <span
+                trnBadge
+                variant="danger"
+                size="xs"
+                class="rail-count"
+                aria-hidden="true"
+                data-testid="rail-unread-count"
+                >{{ count }}</span
+              >
+            } @else {
+              <span
+                class="unread-dot rail-count"
+                aria-hidden="true"
+                data-testid="rail-unread-dot"
+              ></span>
+            }
+          </div>
+        }
+        @if (chats.overflow > 0) {
+          <div class="item">
+            <span class="indicator"></span>
+            @if (overflowInSheet()) {
+              <button
+                trnBtn
+                presentation="ghost"
+                variant="secondary"
+                class="pill overflow size-12"
+                aria-haspopup="dialog"
+                [attr.aria-expanded]="overflowSheetOpen()"
+                (click)="openOverflowSheet()"
+                [attr.aria-label]="overflowLabel(chats.overflow)"
+                data-testid="rail-unread-overflow"
+              >
+                <span class="overflow-text">{{
+                  overflowText(chats.overflow)
+                }}</span>
+              </button>
+            } @else {
+              <button
+                trnBtn
+                presentation="ghost"
+                variant="secondary"
+                class="pill overflow size-12"
+                [trnDropdownMenuTrigger]="overflowMenu"
+                side="right"
+                align="end"
+                [attr.aria-label]="overflowLabel(chats.overflow)"
+                [trnTooltip]="overflowLabel(chats.overflow)"
+                position="right"
+                data-testid="rail-unread-overflow"
+              >
+                <span class="overflow-text">{{
+                  overflowText(chats.overflow)
+                }}</span>
+              </button>
+            }
+          </div>
+        }
+      </div>
+    }
+
+    <div class="separator"></div>
+
+    @for (space of spaces(); track space.id) {
+      @let counts = unread().perSpace[space.id];
+      @let spaceActive = activeSpaceId() === space.id && !roomsActive();
+      <div
+        class="item"
+        [class.active]="spaceActive"
+        [class.item--unread]="showDot(counts)"
+      >
+        <span
+          class="indicator"
+          [class.indicator--selected]="spaceActive"
+        ></span>
+        <button
+          trnBtn
+          shape="icon"
+          presentation="ghost"
+          variant="secondary"
+          class="pill size-12"
+          (click)="
+            selectSpace.emit({ spaceId: space.id, accountId: space.accountId })
+          "
+          [attr.aria-current]="spaceActive ? 'true' : null"
+          [attr.aria-label]="
+            pillLabel(
+              badgeFor(space.accountId)
+                ? space.name + ' — ' + badgeFor(space.accountId)!.name
+                : space.name,
+              counts
+            )
+          "
+          [trnTooltip]="space.name"
+          position="right"
+        >
+          <trn-avatar
+            [mxc]="space.avatarMxc"
+            [accountId]="space.accountId"
+            [initial]="space.initial"
+            [name]="space.name"
+            shape="place"
+            size="2xl"
+            [accountBadge]="badgeFor(space.accountId)"
+          />
+        </button>
+        <ng-container
+          [ngTemplateOutlet]="mention"
+          [ngTemplateOutletContext]="{ $implicit: counts }"
+        />
+      </div>
+    }
+
+    <div class="item">
+      <span class="indicator"></span>
+      <button
+        trnIconButton
+        class="pill add"
+        (click)="createSpace.emit()"
+        aria-label="Create a space"
+        trnTooltip="Create a space"
+        position="right"
+      >
+        <trn-icon name="plus" motion="rotate" />
+      </button>
+    </div>
   </div>
 </nav>
 
-<!-- Mention count: bottom-right of the icon, or top-right when an account badge holds the bottom. -->
-<ng-template #mention let-counts let-top="top">
+<!-- Mention count: always top-right of the icon; an account badge holds the bottom. -->
+<ng-template #mention let-counts>
   @if (mentionLabel(counts); as label) {
     <span
       trnBadge
       variant="danger"
       size="xs"
-      [class.badge--top]="top"
-      [class.badge--bottom]="!top"
+      class="rail-count"
       aria-hidden="true"
       >{{ label }}</span
     >
   }
+</ng-template>
+
+<!-- "+N" beside the rail: the chats it holds, every account's, newest first. The CDK menu
+     gives the arrow keys, Enter/Space, and Escape back to "+N". -->
+<ng-template #overflowMenu>
+  @let more = overflowEntries();
+  <div
+    trnDropdownMenu
+    class="max-h-[min(32rem,calc(100dvh-var(--trinity-title-row-inset,0px)-1rem))] w-80 overflow-y-auto"
+    [attr.aria-label]="overflowLabel(more.length)"
+    data-testid="rail-overflow-list"
+  >
+    <div trnDropdownMenuLabel>{{ overflowLabel(more.length) }}</div>
+    @for (chat of more; track chat.key) {
+      <button
+        trnDropdownMenuItem
+        type="button"
+        [attr.aria-label]="chat.label"
+        data-testid="rail-overflow-chat"
+        (triggered)="openUnreadChat.emit(chat.selection)"
+      >
+        <trn-rail-unread-overflow-row [chat]="chat" />
+      </button>
+    }
+    <div trnDropdownMenuSeparator></div>
+    <button
+      trnDropdownMenuItem
+      type="button"
+      class="text-[var(--trinity-link)]"
+      data-testid="rail-overflow-show-recent"
+      (triggered)="showRecent.emit()"
+    >
+      Show all in Recent activity
+    </button>
+  </div>
 </ng-template>

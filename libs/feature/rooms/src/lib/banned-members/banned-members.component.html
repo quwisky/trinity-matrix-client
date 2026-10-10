@@ -16,9 +16,11 @@
   }
 
   @if (isEmpty()) {
-    <p class="text-13 text-muted-foreground" data-testid="banned-members-empty">
-      No one is banned.
-    </p>
+    <trn-empty-state
+      layout="line"
+      body="No one is banned."
+      data-testid="banned-members-empty"
+    />
   } @else if (banned().length > 0) {
     <ul class="flex flex-col gap-2">
       @for (member of banned(); track member.userId) {

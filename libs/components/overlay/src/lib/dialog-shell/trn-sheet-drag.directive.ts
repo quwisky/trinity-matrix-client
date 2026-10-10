@@ -4,10 +4,12 @@ import {
   ElementRef,
   InjectionToken,
   booleanAttribute,
+  computed,
   inject,
   input,
 } from '@angular/core';
 import type { Dialog } from '@angular/cdk/dialog';
+import { TrnDialogRef } from '../dialog/trn-dialog-ref';
 
 /** Dismisses the surrounding sheet; returns whether it actually closed (a guard may refuse). */
 export const TRN_SHEET_DISMISS = new InjectionToken<() => boolean>(
@@ -43,6 +45,7 @@ export class TrnSheetDrag {
   private readonly host =
     inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
   private readonly dismiss = inject(TRN_SHEET_DISMISS);
+  private readonly ref = inject(TrnDialogRef, { optional: true });
   private stopDrag: (() => void) | null = null;
 
   /** `[trnSheetDrag]="false"` turns the drag off, e.g. for a centred dialog. */
@@ -50,13 +53,15 @@ export class TrnSheetDrag {
     alias: 'trnSheetDrag',
     transform: booleanAttribute,
   });
+  /** On unless turned off, and never for a sheet its dialog opened `disableClose`. */
+  readonly active = computed(() => this.enabled() && !this.ref?.disableClose);
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.stopDrag?.());
   }
 
   begin(event: PointerEvent): void {
-    if (!this.enabled() || event.button !== 0) return;
+    if (!this.active() || event.button !== 0) return;
     this.stopDrag?.();
     const startY = event.clientY;
     const startT = event.timeStamp;
@@ -111,8 +116,8 @@ export class TrnSheetDrag {
   selector: '[trnSheetDragHandle]',
   host: {
     '(pointerdown)': 'start($event)',
-    '[style.touch-action]': 'sheet?.enabled() ? "none" : null',
-    '[style.user-select]': 'sheet?.enabled() ? "none" : null',
+    '[style.touch-action]': 'sheet?.active() ? "none" : null',
+    '[style.user-select]': 'sheet?.active() ? "none" : null',
   },
 })
 export class TrnSheetDragHandle {

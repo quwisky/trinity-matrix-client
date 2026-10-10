@@ -15,6 +15,40 @@ describe('mobile E2E artifact scrub', () => {
     );
   });
 
+  it('redacts tokens by key and bearer header, whatever their format', () => {
+    // A Capacitor bridge log line: Tuwunel tokens are not syt_-prefixed.
+    expect(
+      scrub(
+        'methodData: {"homeserverUrl":"https:\\/\\/localhost:8448","accessToken":"TSvAPxmkLZIuqmljW9op","sound":true}',
+      ),
+    ).toBe(
+      'methodData: {"homeserverUrl":"https:\\/\\/localhost:8448","accessToken":"<token>","sound":true}',
+    );
+    expect(
+      scrub(
+        '{\\"access_token\\":\\"abc123\\",\\"refresh_token\\":\\"def456\\",\\"refreshToken\\":\\"ghi\\"}',
+      ),
+    ).toBe(
+      '{\\"access_token\\":\\"<token>\\",\\"refresh_token\\":\\"<token>\\",\\"refreshToken\\":\\"<token>\\"}',
+    );
+    expect(
+      scrub(
+        'GET /_matrix/media/v3/download/x/y?access_token=abc123&allow_redirect=true',
+      ),
+    ).toBe(
+      'GET /_matrix/media/v3/download/x/y?access_token=<token>&allow_redirect=true',
+    );
+    expect(
+      scrub('[SafariConsole] {"text":"{\\"accessToken\\":\\"abc\\"}"}'),
+    ).toBe('[SafariConsole] {"text":"{\\"accessToken\\":\\"<token>\\"}"}');
+    expect(scrub('Authorization: Bearer QWxhZGRpbjpvcGVu.c2VzYW1l')).toBe(
+      'Authorization: Bearer <token>',
+    );
+    expect(scrub('[SafariConsole] authorization: bearer abc.def')).toBe(
+      '[SafariConsole] authorization: bearer <token>',
+    );
+  });
+
   it('redacts text typed into a form field', () => {
     expect(scrub('body: {"text":"smoke-pass-123"}')).toBe(
       'body: {"text":"<typed>"}',

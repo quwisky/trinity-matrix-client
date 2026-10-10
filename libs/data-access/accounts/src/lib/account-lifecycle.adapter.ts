@@ -22,6 +22,8 @@ import { ACCOUNT_LIFECYCLE_PORT } from './account-lifecycle.port';
 import { accountSignOutSettlement } from './account-sign-out-outcome';
 import {
   AccountSignOutRetryWorkflow,
+  remoteLogout,
+  remoteLogoutScope,
   type SignOutRetryContext,
 } from './account-sign-out-retry.workflow';
 import type {
@@ -153,42 +155,51 @@ export class AccountLifecycleAdapter {
     context: SignOutRetryContext,
   ): Observable<unknown> {
     const { accountId, remainingAccountIds } = context;
-    const serverLogout$ = context.client
-      ? defer(() => from(context.client!.logout(true)))
-      : of(void 0);
+    // A live client carries its own tokens; only without one does revoking at the
+    // provider depend on reading the stored session.
+    const providerNeedsSession = context.providerExpected && !context.client;
+    // The push handoff goes first, while the token it holds is still valid: once a
+    // later step revokes it, a lingering copy would only sit in the native store.
     return attempt
-      .step(
-        this.storage.load(accountId).pipe(
-          catchError(() => {
-            attempt.addIssue('secure-storage', 'retry-sign-out');
-            if (context.providerExpected) {
-              attempt.addIssue('provider-session', 'restart-application');
-            }
-            return of(null);
-          }),
-        ),
-        {
-          budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.sessionRead,
-          scope: 'secure-storage',
-          recovery: 'retry-sign-out',
-          fallback: null,
-          onTimeout: () => {
-            if (context.providerExpected) {
-              attempt.addIssue('provider-session', 'retry-sign-out');
-            }
-          },
-          onSettled: (session) => {
-            context.session = session;
-            if (!context.providerExpected) {
-              attempt.resolveIssue('provider-session');
-            } else if (!session?.oidc) {
-              attempt.addIssue('provider-session', 'restart-application');
-            }
-          },
-        },
+      .capture(
+        this.lifecycle.forgetPushHandoff(accountId),
+        'notifications',
+        'retry-sign-out',
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
       )
       .pipe(
-        switchMap((session) =>
+        concatMap(() =>
+          attempt.step(
+            this.storage.load(accountId).pipe(
+              catchError(() => {
+                attempt.addIssue('secure-storage', 'retry-sign-out');
+                if (providerNeedsSession) {
+                  attempt.addIssue('provider-session', 'restart-application');
+                }
+                return of(null);
+              }),
+            ),
+            {
+              budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.sessionRead,
+              scope: 'secure-storage',
+              recovery: 'retry-sign-out',
+              fallback: null,
+              onTimeout: () => {
+                if (providerNeedsSession) {
+                  attempt.addIssue('provider-session', 'retry-sign-out');
+                }
+              },
+              onSettled: (session) => {
+                context.session = session;
+                // Never resolves: a late read must not erase a failed revocation.
+                if (providerNeedsSession && !session?.oidc) {
+                  attempt.addIssue('provider-session', 'restart-application');
+                }
+              },
+            },
+          ),
+        ),
+        switchMap(() =>
           from([
             attempt.capture(
               remainingAccountIds.length === 0
@@ -198,19 +209,11 @@ export class AccountLifecycleAdapter {
               'retry-sign-out',
               ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
             ),
-            ...(session?.oidc
-              ? [
-                  attempt.capture(
-                    this.lifecycle.revokeProviderSession(session),
-                    'provider-session',
-                    'retry-sign-out',
-                    ACCOUNT_CLEANUP_STEP_BUDGET_MS.providerLogout,
-                  ),
-                ]
-              : []),
+            // One remote step. A separate provider revocation would revoke every OAuth
+            // token twice now that logout() does it.
             attempt.capture(
-              serverLogout$,
-              'matrix-session',
+              remoteLogout(context, this.matrix),
+              remoteLogoutScope(context),
               'retry-sign-out',
               ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixLogout,
             ),

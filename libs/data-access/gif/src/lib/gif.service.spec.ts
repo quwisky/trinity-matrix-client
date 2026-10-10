@@ -111,7 +111,31 @@ describe('GifService', () => {
     fetchMock.mockResolvedValue({ ok: true, blob: async () => blob });
     const objectUrl = await firstValueFrom(gifs.fetchPreview('https://x/tiny'));
     expect(fetchMock).toHaveBeenCalledWith('https://x/tiny');
-    expect(URL.createObjectURL).toHaveBeenCalledWith(blob);
+    const bound = vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob;
+    expect(bound.size).toBe(blob.size);
+    expect(bound.type).toBe('image/gif');
     expect(objectUrl).toBe('blob:preview');
   });
+
+  it.each([
+    ['image/svg+xml', 'application/octet-stream'],
+    ['image/svg+xml; charset=utf-8', 'application/octet-stream'],
+    ['text/html', 'application/octet-stream'],
+    ['', 'application/octet-stream'],
+    ['image/webp', 'image/webp'],
+    ['Image/GIF; charset=binary', 'image/gif'],
+  ])(
+    'fetchPreview() binds a response declared %j as a %s blob',
+    async (declared, expected) => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        blob: async () => new Blob(['bytes'], { type: declared }),
+      });
+
+      await firstValueFrom(gifs.fetchPreview('https://x/tiny'));
+
+      const bound = vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob;
+      expect(bound.type).toBe(expected);
+    },
+  );
 });

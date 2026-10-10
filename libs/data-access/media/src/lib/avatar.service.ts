@@ -140,6 +140,16 @@ export class AvatarService {
     this.retryAfter.clear();
   }
 
+  /** Revoke every resolved avatar no subscriber is showing (the app went to the background). */
+  releaseUnpinned(): void {
+    for (const [key, entry] of this.cache) {
+      if (entry.url && entry.holders === 0) {
+        this.cache.delete(key);
+        URL.revokeObjectURL(entry.url);
+      }
+    }
+  }
+
   /** The live entry for a key (touched as most recent), a new fetch, or null in cooldown. */
   private entryFor(
     key: string,
@@ -175,7 +185,9 @@ export class AvatarService {
           if (this.cache.get(key) !== entry) {
             return null;
           }
-          entry.url = URL.createObjectURL(new Blob([bytes]));
+          entry.url = URL.createObjectURL(
+            new Blob([bytes], { type: 'application/octet-stream' }),
+          );
           this.evict();
           return entry.url;
         }),

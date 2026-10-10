@@ -12,7 +12,7 @@ Start with the web workspace. Desktop, Android, iOS, and Matrix end-to-end work 
 
 ## Required for every checkout {#required-tools}
 
-Trinity currently requires Node.js `^24.15.0`. pnpm runs the version pinned in `package.json`'s `packageManager` field (`12.8.1`); the install guard rejects npm and Yarn so they cannot create a competing lockfile.
+Trinity currently requires Node.js `version:engines.node`. pnpm runs the version pinned in `package.json`'s `packageManager` field (`version:packageManager`); the install guard rejects npm and Yarn so they cannot create a competing lockfile.
 
 Check the active tools:
 

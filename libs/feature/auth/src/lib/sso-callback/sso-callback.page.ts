@@ -11,10 +11,13 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, type ParamMap } from '@angular/router';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
-import { AuthService } from '@trinity/data-access/auth';
+import {
+  AuthService,
+  OidcStateStore,
+  SsoStateStore,
+  type OidcGrantContext,
+} from '@trinity/data-access/auth';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
-import { SsoStateStore } from '../sso-state.store';
-import { OidcStateStore } from '../oidc-state.store';
 import { accountEstablishmentError } from '../account-establishment-outcome';
 
 /**
@@ -136,6 +139,7 @@ export class SsoCallbackPage implements OnInit {
         loginToken,
         stash.mode,
         stash.deviceId ?? undefined,
+        stash.expectedUserId ?? undefined,
       )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
@@ -186,25 +190,27 @@ export class SsoCallbackPage implements OnInit {
       !stash.redirectUri ||
       !stash.clientId ||
       !stash.deviceId ||
-      !stash.codeVerifier
+      !stash.codeVerifier ||
+      !stash.issuer
     ) {
       this.error.set('Missing sign-in details. Please sign in again.');
       return;
     }
 
+    // RFC 9207 `iss`: the exchange checks that the sign-in response comes from the
+    // provider it started with.
+    const iss = params.get('iss');
+    const context: OidcGrantContext = {
+      baseUrl: stash.baseUrl,
+      redirectUri: stash.redirectUri,
+      clientId: stash.clientId,
+      deviceId: stash.deviceId,
+      codeVerifier: stash.codeVerifier,
+      issuer: stash.issuer,
+      ...(iss !== null ? { iss } : {}),
+    };
     this.auth
-      .completeOidcLogin(
-        code,
-        {
-          baseUrl: stash.baseUrl,
-          redirectUri: stash.redirectUri,
-          clientId: stash.clientId,
-          deviceId: stash.deviceId,
-          codeVerifier: stash.codeVerifier,
-        },
-        stash.mode,
-        stash.expectedUserId,
-      )
+      .completeOidcLogin(code, context, stash.mode, stash.expectedUserId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (outcome) => {
@@ -218,9 +224,9 @@ export class SsoCallbackPage implements OnInit {
         error: (err) => {
           // A provider that pruned our dynamic registration fails with invalid_client
           // forever; forget the cached client id so the next attempt re-registers.
-          if (stash.issuer && /invalid_client/i.test(this.messageOf(err))) {
+          if (/invalid_client/i.test(this.messageOf(err))) {
             this.auth
-              .forgetOidcClientId(stash.issuer)
+              .forgetOidcClientId(context.baseUrl, context.issuer)
               .pipe(takeUntilDestroyed(this.destroyRef))
               .subscribe({ error: () => undefined });
           }

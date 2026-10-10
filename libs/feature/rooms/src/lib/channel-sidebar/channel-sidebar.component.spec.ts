@@ -4,7 +4,6 @@ import { By } from '@angular/platform-browser';
 import { TrnButton } from '@trinity/components/controls';
 import { type AccountBadge } from '@trinity/components/generic-content';
 import { provideTrnIcons } from '@trinity/components/foundations';
-import { SidebarRoomListComponent } from './sidebar-room-list/sidebar-room-list.component';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -29,20 +28,6 @@ import {
 } from '@trinity/data-access/notifications';
 import { type PresenceState } from '@trinity/util/matrix';
 import { ChannelSidebarComponent } from './channel-sidebar.component';
-
-/**
- * The room-list child, resolved from a rendered sidebar.
- *
- * `presenceOf`, `badgeLabel` and `notifyMode` moved to SidebarRoomListComponent when the
- * room-list body was extracted. They are unit-tested here rather than through the parent
- * because the parent no longer has them — asserting on the owner is the point of the split.
- */
-function roomList(
-  fixture: ComponentFixture<ChannelSidebarComponent>,
-): SidebarRoomListComponent {
-  return fixture.debugElement.query(By.directive(SidebarRoomListComponent))
-    .componentInstance as SidebarRoomListComponent;
-}
 
 // Stub presence: @bob is online, everyone else offline.
 const presenceStub = {
@@ -203,19 +188,11 @@ describe('ChannelSidebarComponent', () => {
         ],
       },
     });
-    const sidebar = roomList(fixture);
     // Presence tracks the DM's other participant; a non-DM room gets null (no dot).
-    expect(sidebar.presenceOf(room({ directUserId: '@bob:hs' }))).toBe(
-      'online',
-    );
-    expect(sidebar.presenceOf(room({ directUserId: '@carol:hs' }))).toBe(
-      'offline',
-    );
-    expect(sidebar.presenceOf(room())).toBeNull();
-    // The DM row actually renders a presence dot; the plain room does not.
-    expect(
-      fixture.nativeElement.querySelectorAll('.presence-dot'),
-    ).toHaveLength(1);
+    // The DM row renders its counterpart's presence dot; the plain room does not.
+    const dots = fixture.nativeElement.querySelectorAll('.presence-dot');
+    expect(dots).toHaveLength(1);
+    expect(dots[0].getAttribute('data-presence')).toBe('online');
   });
 
   it('lists rooms and emits selectRoom when one is clicked', async () => {
@@ -288,13 +265,6 @@ describe('ChannelSidebarComponent', () => {
     expect(badges).toHaveLength(1);
     expect(badges[0].textContent!.trim()).toBe('2');
     expect(container.querySelectorAll('.channel--unread').length).toBe(2);
-  });
-
-  it('caps badgeLabel exactly at the 99/100 boundary', async () => {
-    const { fixture } = await renderSidebar();
-
-    expect(roomList(fixture).badgeLabel(99)).toBe('99');
-    expect(roomList(fixture).badgeLabel(100)).toBe('99+');
   });
 
   it('shows only the new-chat affordance on Home (no space actions)', async () => {
@@ -426,16 +396,19 @@ describe('ChannelSidebarComponent', () => {
     expect(document.querySelector('[data-testid="mark-all-read"]')).toBeNull();
   });
 
-  it('emits newChat from the Home "+" affordance', async () => {
+  it('emits newChat with the Home "+" button it was opened from', async () => {
     const { fixture, container } = await renderSidebar();
+    const opened: HTMLElement[] = [];
+    fixture.componentInstance.newChat.subscribe((anchor) =>
+      opened.push(anchor),
+    );
+    const plus = container.querySelector<HTMLElement>(
+      '[aria-label="New room or direct message"]',
+    )!;
 
-    let opened = false;
-    fixture.componentInstance.newChat.subscribe(() => (opened = true));
-    container
-      .querySelector<HTMLElement>('[aria-label="New room or direct message"]')!
-      .click();
+    plus.click();
 
-    expect(opened).toBe(true);
+    expect(opened).toEqual([plus]);
   });
 
   it('shows the space actions and emits createRoom / inviteToSpace / leaveSpace', async () => {
@@ -1235,19 +1208,20 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('reads the level from every account represented by the row', async () => {
-    const { fixture, container } = await renderSidebar({
-      inputs: { rooms: [room({ id: '!a:hs' })] },
+    const { container } = await renderSidebar({
+      inputs: {
+        rooms: [
+          room({
+            id: '!a:hs',
+            accountId: '@alt:hs',
+            accountIds: ['@alt:hs'],
+          }),
+        ],
+      },
       notifyMode: 'mentions',
     });
 
-    const foreign = room({
-      id: '!a:hs',
-      accountId: '@alt:hs',
-      accountIds: ['@alt:hs'],
-    });
-    expect(roomList(fixture).notifyMode(foreign)).toBe('mentions');
     expect(modeForSpy).toHaveBeenCalledWith('!a:hs', ['@alt:hs']);
-    fixture.detectChanges();
     expect(
       container
         .querySelector('[data-testid="room-muted"]')
@@ -1880,7 +1854,12 @@ describe('ChannelSidebarComponent room filter', () => {
           room({ id: '!a:hs', name: 'design' }),
           room({ id: '!b:hs', name: 'design docs' }),
         ],
+        spaceActive: true,
       },
+      joinableRooms: [
+        child({ roomId: '!j1:hs', name: 'design crit' }),
+        child({ roomId: '!j2:hs', name: 'ops' }),
+      ],
     });
     const status = () =>
       container
@@ -1890,8 +1869,9 @@ describe('ChannelSidebarComponent room filter', () => {
     // Silent when nothing is typed — the unfiltered list is not news.
     expect(status()).toBe('');
 
+    // Two joined rooms plus the one joinable child the child list renders.
     type(fixture, 'design');
-    expect(status()).toBe('2 results');
+    expect(status()).toBe('3 results');
   });
 
   it('keeps Mark all as read while the filter hides the unread room', async () => {

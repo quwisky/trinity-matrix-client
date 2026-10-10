@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "eu.qwky.trinity"
+    namespace = "dev.trinityproject.trinity"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "eu.qwky.trinity"
+        applicationId "dev.trinityproject.trinity"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -42,10 +42,20 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // TrinityMessagingService extends the push plugin's FirebaseMessagingService subclass;
+    // the plugin declares Firebase as `implementation`, so the app names it itself.
+    implementation "com.google.firebase:firebase-messaging:$firebaseMessagingVersion"
     testImplementation "junit:junit:$junitVersion"
+    // org.json is an Android framework API; JVM unit tests need a real implementation.
+    testImplementation "org.json:json:$orgJsonVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+}
+
+// PushRenderRulesTest reads the text-rule fixture it shares with the iOS XCTest suite.
+tasks.withType(Test).configureEach {
+    inputs.file('../../native/push-render/push-render-cases.json')
 }
 
 apply from: 'capacitor.build.gradle'

@@ -3,6 +3,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,7 +16,14 @@ import {
   HOMESERVER_RUNTIMES,
   resolveHomeserverKind,
   resolveHomeserverRuntime,
+  resolveMasEnabled,
+  resolveSsoMock,
 } from '../e2e/support/homeserver/kind.mts';
+import {
+  MAS_HS_TLS,
+  MAS_ISSUER,
+  MAS_SERVER_NAME,
+} from '../e2e/support/homeserver/constants.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
 const HERE = 'e2e/support/homeserver';
@@ -128,6 +136,11 @@ describe('Nightly Synapse workflow', () => {
   const path = '.github/workflows/e2e-synapse-nightly.yml';
   const workflow = () => parse(read(path));
   const commands = (job) => job.steps.map((step) => step.run ?? '').join('\n');
+  /** The suite jobs; `notify` only calls the reusable alert workflow and has no steps. */
+  const suites = () =>
+    Object.entries(workflow().jobs)
+      .filter(([id]) => id !== 'notify')
+      .map(([, job]) => job);
 
   it('runs daily and on demand, outside ci.yml', () => {
     const { on } = workflow();
@@ -139,13 +152,12 @@ describe('Nightly Synapse workflow', () => {
   });
 
   it('runs the browser, Electron full and protocol suites against Synapse', () => {
-    const { env, jobs } = workflow();
-    expect(env.TRINITY_E2E_HOMESERVER).toBe('synapse');
-    const all = Object.values(jobs).map(commands).join('\n');
+    expect(workflow().env.TRINITY_E2E_HOMESERVER).toBe('synapse');
+    const all = suites().map(commands).join('\n');
     expect(all).toContain('pnpm exec nx run trinity-e2e-browser:e2e');
     expect(all).toContain('xvfb-run -a pnpm nx run trinity-e2e-electron:full');
     expect(all).toContain('pnpm e2e:protocol');
-    for (const job of Object.values(jobs)) {
+    for (const job of suites()) {
       expect(job['timeout-minutes']).toBeGreaterThan(0);
       expect(
         job.steps.some(
@@ -154,6 +166,23 @@ describe('Nightly Synapse workflow', () => {
         ),
       ).toBe(true);
     }
+  });
+
+  it('runs the MAS journeys in their own job', () => {
+    const { jobs } = workflow();
+    expect(jobs.mas.env.TRINITY_E2E_MAS).toBe('1');
+    expect(commands(jobs.mas)).toContain(
+      '--timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e -- accounts/mas-session.spec.mts',
+    );
+    // The Synapse browser shards stay MAS-free: the MAS stack is opt-in and has its own job.
+    expect(jobs.browser.env?.TRINITY_E2E_MAS).toBeUndefined();
+  });
+
+  it('runs the browser journeys as three shards', () => {
+    const { jobs } = workflow();
+    const step = jobs.browser.steps.find((entry) => entry.id === 'browser');
+    expect(jobs.browser.strategy.matrix.shard).toEqual([1, 2, 3]);
+    expect(step.env.TRINITY_E2E_SHARD).toBe('${{ matrix.shard }}/3');
   });
 });
 
@@ -205,8 +234,9 @@ describe('Synapse adapter config generation', () => {
     stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
     const { ensureConfig } = await adapterIn(stateDir);
     const generate = generateInto(stateDir);
-    await ensureConfig({ log: () => undefined, sso: false, generate });
-    await ensureConfig({ log: () => undefined, sso: false, generate });
+    const ctx = { log: () => undefined, native: true, sso: false, generate };
+    await ensureConfig(ctx);
+    await ensureConfig(ctx);
     const yaml = readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8');
     expect(generate).toHaveBeenCalledOnce();
     expect(yaml).toContain(
@@ -224,6 +254,44 @@ describe('Synapse adapter config generation', () => {
     expect(yaml).not.toContain('oidc_providers');
   });
 
+  it('adds Dex on loopback for a native runtime with Dex, keeping the native blocklist', async () => {
+    stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
+    const { ensureConfig } = await adapterIn(stateDir);
+    await ensureConfig({
+      log: () => undefined,
+      native: true,
+      generate: generateInto(stateDir),
+    });
+    const yaml = readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8');
+    expect(yaml).toContain('idp_id: dex');
+    // No compose network natively: Synapse reaches Dex on the loopback it shares.
+    expect(yaml).toContain('token_endpoint: "http://localhost:5556/dex/token"');
+    expect(yaml).not.toContain('dex:5556');
+    expect(yaml).toMatch(
+      /url_preview_ip_range_blacklist:\n\s+- '127\.0\.0\.0\/8'/,
+    );
+  });
+
+  it("points Synapse at Dex's mock connector and maps its email to the localpart", async () => {
+    stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
+    const { ensureConfig } = await adapterIn(stateDir);
+    await ensureConfig({
+      log: () => undefined,
+      native: true,
+      ssoMock: true,
+      generate: generateInto(stateDir),
+    });
+    const yaml = readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8');
+    expect(yaml).toContain(
+      'authorization_endpoint: "http://localhost:5556/dex/auth/mock"',
+    );
+    // The mock's `name` is "Kilgore Trout", not a legal localpart.
+    expect(yaml).toContain(
+      'localpart_template: "{{ user.email | localpart_from_email }}"',
+    );
+    expect(yaml).toContain('display_name_template: "{{ user.name }}"');
+  });
+
   it('keeps the Dex block for the Docker runtime', async () => {
     stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
     const { ensureConfig } = await adapterIn(stateDir);
@@ -234,5 +302,165 @@ describe('Synapse adapter config generation', () => {
     const yaml = readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8');
     expect(yaml).toContain('idp_id: dex');
     expect(yaml).toContain('url_preview_ip_range_blacklist: []');
+    expect(yaml).toContain(
+      'authorization_endpoint: "http://localhost:5556/dex/auth"',
+    );
+    expect(yaml).toContain('localpart_template: "{{ user.name }}"');
+  });
+
+  it('selects the Dex mock connector only for TRINITY_E2E_SSO_PROVIDER=mock on native', () => {
+    const native = {
+      TRINITY_E2E_HOMESERVER: 'synapse',
+      TRINITY_E2E_HOMESERVER_RUNTIME: 'native',
+    };
+    expect(resolveSsoMock(native)).toBe(false);
+    expect(
+      resolveSsoMock({ ...native, TRINITY_E2E_SSO_PROVIDER: 'mock' }),
+    ).toBe(true);
+    expect(() =>
+      resolveSsoMock({ ...native, TRINITY_E2E_SSO_PROVIDER: 'Mock' }),
+    ).toThrow(/TRINITY_E2E_SSO_PROVIDER/);
+    expect(() => resolveSsoMock({ TRINITY_E2E_SSO_PROVIDER: 'mock' })).toThrow(
+      /native runtime/,
+    );
+  });
+});
+
+describe('Opt-in MAS stack', () => {
+  const masCompose = () => parse(read(`${HERE}/mas/docker-compose.yml`));
+  const masConfig = () => parse(read(`${HERE}/mas/mas.yaml`));
+
+  it('is off unless TRINITY_E2E_MAS=1, and runs only on Docker', () => {
+    expect(resolveMasEnabled({})).toBe(false);
+    expect(resolveMasEnabled({ TRINITY_E2E_MAS: '0' })).toBe(false);
+    expect(resolveMasEnabled({ TRINITY_E2E_MAS: '1' })).toBe(true);
+    expect(() => resolveMasEnabled({ TRINITY_E2E_MAS: 'yes' })).toThrow(
+      /TRINITY_E2E_MAS/,
+    );
+    expect(() =>
+      resolveMasEnabled({
+        TRINITY_E2E_MAS: '1',
+        TRINITY_E2E_HOMESERVER: 'synapse',
+        TRINITY_E2E_HOMESERVER_RUNTIME: 'native',
+      }),
+    ).toThrow(/Docker/);
+  });
+
+  it('layers its compose file only when enabled', async () => {
+    const { composeFiles } =
+      await import('../e2e/support/homeserver/paths.mjs');
+    expect(composeFiles('tuwunel', '').join(' ')).not.toContain(
+      'mas/docker-compose.yml',
+    );
+    expect(composeFiles('tuwunel', '', { mas: true }).join(' ')).toContain(
+      'mas/docker-compose.yml',
+    );
+  });
+
+  it('pins MAS, PostgreSQL and the Synapse the Synapse adapter runs', async () => {
+    const { services } = masCompose();
+    // The adapter generates config with these images, so they must be the ones compose runs.
+    const { MAS_IMAGE, SYNAPSE_IMAGE } =
+      await import('../e2e/support/homeserver/mas/adapter.mjs');
+    expect(MAS_IMAGE).toBe(services.mas.image);
+    expect(SYNAPSE_IMAGE).toBe(services['homeserver-mas'].image);
+    expect(services.mas.image).toBe(
+      'ghcr.io/element-hq/matrix-authentication-service:1.26.0',
+    );
+    expect(services['homeserver-mas'].image).toBe(
+      parse(read(`${HERE}/synapse/docker-compose.yml`)).services.homeserver
+        .image,
+    );
+  });
+
+  it("issues 60 s access tokens and accepts the web app's registration", () => {
+    const config = masConfig();
+    expect(config.experimental.access_token_ttl).toBe(60);
+    expect(config.policy.data.client_registration).toEqual({
+      allow_insecure_uris: true,
+      allow_host_mismatch: true,
+    });
+    expect(config.http).toEqual({
+      public_base: MAS_ISSUER,
+      issuer: MAS_ISSUER,
+    });
+    expect(config.matrix).toMatchObject({
+      homeserver: MAS_SERVER_NAME,
+      endpoint: 'http://homeserver-mas:8008/',
+    });
+    // Secrets and signing keys are generated into mas-data at start, never committed.
+    expect(config.secrets).toBeUndefined();
+  });
+
+  it("raises MAS's per-IP login limit above its default burst of 3", () => {
+    // By default MAS allows a burst of 3 password logins per IP, refilled at one per 20 s,
+    // and answers the next with "too many requests". Every journey signs in from localhost.
+    expect(masConfig().rate_limiting.login.per_ip.burst).toBeGreaterThan(3);
+  });
+
+  it('delegates its Synapse to MAS with the shared secret, once', async () => {
+    const { delegateToMas } =
+      await import('../e2e/support/homeserver/mas/adapter.mjs');
+    const generated =
+      'server_name: "localhost:8450"\ntrusted_key_servers:\n  - server_name: "matrix.org"\n';
+    const once = delegateToMas(generated);
+    expect(delegateToMas(once)).toBe(once);
+    const yaml = parse(once);
+    expect(yaml.matrix_authentication_service).toEqual({
+      enabled: true,
+      endpoint: 'http://mas:8080/',
+      secret: masConfig().matrix.secret,
+    });
+    expect(yaml.password_config).toEqual({ enabled: false });
+    expect(yaml.trusted_key_servers).toEqual([]);
+    expect(yaml.public_baseurl).toBe(`${MAS_HS_TLS}/`);
+  });
+
+  it("leaves MAS's config readable to its non-root container under a umask of 077", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'trinity-mas-'));
+    const previousUmask = process.umask(0o077);
+    try {
+      const mode = (path) => statSync(join(dir, path)).mode & 0o777;
+      // Existing config files mean prepareMas needs no Docker to generate them.
+      mkdirSync(join(dir, 'mas-data/homeserver'), { recursive: true });
+      mkdirSync(join(dir, 'mas-data/mas'), { recursive: true });
+      writeFileSync(
+        join(dir, 'mas-data/homeserver/homeserver.yaml'),
+        'server_name: "localhost:8450"\n',
+      );
+      writeFileSync(join(dir, 'mas-data/mas/generated.yaml'), 'secrets: {}\n');
+      vi.stubEnv('TRINITY_E2E_STATE_DIR', dir);
+      vi.resetModules();
+      const { prepareMas } =
+        await import('../e2e/support/homeserver/mas/adapter.mjs');
+
+      await prepareMas({ log: () => undefined });
+
+      expect(mode('mas-data')).toBe(0o755);
+      expect(mode('mas-data/mas')).toBe(0o755);
+      expect(mode('mas-data/mas/generated.yaml')).toBe(0o644);
+    } finally {
+      process.umask(previousUmask);
+      vi.unstubAllEnvs();
+      vi.resetModules();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('serves its Synapse on 8008, not the port generate derives', async () => {
+    const { delegateToMas } =
+      await import('../e2e/support/homeserver/mas/adapter.mjs');
+    // Synapse's `generate` listens on the server name's port minus 400: 8050 here.
+    const generated =
+      'server_name: "localhost:8450"\nlisteners:\n  - port: 8050\n    type: http\n';
+    expect(parse(delegateToMas(generated)).listeners[0].port).toBe(8008);
+  });
+
+  it('fronts the MAS homeserver and MAS on TLS', () => {
+    const caddy = read(`${HERE}/Caddyfile`);
+    expect(caddy).toContain('https://localhost:8450 {');
+    expect(caddy).toContain('reverse_proxy homeserver-mas:8008');
+    expect(caddy).toContain('https://localhost:8451 {');
+    expect(caddy).toContain('reverse_proxy mas:8080');
   });
 });

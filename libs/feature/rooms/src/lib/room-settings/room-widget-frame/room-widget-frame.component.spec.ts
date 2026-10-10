@@ -7,8 +7,14 @@ import {
 } from '@trinity/data-access/widgets';
 import { fireEvent, render, screen, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RoomWidgetFrameComponent } from './room-widget-frame.component';
+
+const platform = vi.hoisted(() => ({ native: false }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isInstalledNativePlatform: () => platform.native,
+}));
 
 const WIDGET: RoomWidget = {
   id: 'board',
@@ -28,6 +34,10 @@ const EMBED: WidgetEmbed = {
 };
 
 describe('RoomWidgetFrameComponent', () => {
+  afterEach(() => {
+    platform.native = false;
+  });
+
   it('starts only after the protected frame exists and pins its restrictions', async () => {
     const stop = vi.fn();
     const start = vi.fn(
@@ -127,5 +137,25 @@ describe('RoomWidgetFrameComponent', () => {
     ).toHaveTextContent(
       'Trinity could not start this widget. No third-party page was loaded.',
     );
+  });
+
+  it('never loads a page on the installed mobile apps, even with a valid embed', async () => {
+    platform.native = true;
+    const start = vi.fn();
+    const { container } = await render(RoomWidgetFrameComponent, {
+      inputs: { roomId: '!r:hs', widget: WIDGET, embed: EMBED },
+      providers: [
+        MockProvider(WidgetBridgeService, { start }),
+        MockProvider(TrnDialogRef, { close: vi.fn() }),
+      ],
+    });
+
+    expect(start).not.toHaveBeenCalled();
+    expect(
+      container.querySelector<HTMLIFrameElement>('iframe')?.hasAttribute('src'),
+    ).toBe(false);
+    expect(
+      container.querySelector('[data-testid="widget-frame-status"]'),
+    ).toHaveTextContent('No third-party page was loaded.');
   });
 });

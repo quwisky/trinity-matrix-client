@@ -32,7 +32,7 @@ work, and [packaging](packaging.md) for artifacts and signing.
 ## Current desktop contract
 
 The renderer is served from the privileged `trinity://app` scheme, rather than
-`file://`; the separate `eu.qwky.trinity://` scheme is an OS deep-link callback.
+`file://`; the separate `dev.trinityproject.trinity://` scheme is an OS deep-link callback.
 The main process owns the window, protocol, native integrations, and the
 capability negotiation endpoint. See the implementation in
 [`main.ts`](../../../electron/src/main.ts),

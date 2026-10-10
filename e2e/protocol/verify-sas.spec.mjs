@@ -156,13 +156,38 @@ async function main(protocolBrowser) {
 
     // 4. A's host auto-pops the incoming-request modal — accept it.
     log('A: waiting for incoming request modal');
-    await waitForStage(A, ['requested', 'ready']);
-    // Accept is only present in the 'requested' stage; if A already auto-advanced
-    // to 'ready' the accept step is implicit.
-    if ((await stageOf(A)) === 'requested') {
-      await A.getByTestId('verify-accept').click();
-      log('A: accepted');
-    }
+    // A is the trusted device and B is a session it has not seen, so A is always asked: the
+    // request reads as a new sign-in, names B with details from /devices, and offers
+    // "Not me" before "It was me".
+    await waitForStage(A, 'requested');
+    const request = A.getByTestId('verify-page');
+    await expect(
+      request.getByRole('heading', {
+        name: 'A new session wants access to your encrypted messages',
+      }),
+    ).toBeVisible();
+    const details = A.getByTestId('verify-new-session');
+    await expect(details).toContainText('Device ID');
+    // The details are filled in from /devices once it answers; nothing stays unknown.
+    await expect(details).not.toContainText('unknown');
+    await expect(request).toContainText(
+      'Only accept if you just signed in on that device yourself.',
+    );
+    await expect(request).not.toContainText('Verify this device?');
+    const decline = request.getByTestId('verify-decline');
+    const accept = request.getByTestId('verify-accept');
+    await expect(decline).toHaveText('Not me');
+    await expect(accept).toHaveText('It was me');
+    await expect(decline).toBeFocused();
+    // Both answers are described by the note, not just labelled.
+    await expect(decline).toHaveAccessibleDescription(
+      /Only accept if you just signed in/,
+    );
+    await expect(accept).toHaveAccessibleDescription(
+      /Only accept if you just signed in/,
+    );
+    await accept.click();
+    log('A: accepted');
 
     // 5. Both become ready; one side starts the emoji SAS. Either device may drive
     //    it — once one calls startVerification the SDK advances both. We click the
@@ -209,6 +234,14 @@ async function main(protocolBrowser) {
     }
     log('emoji match across both devices ✓');
 
+    // Only the trusted device is told which screen to compare with.
+    await expect(A.getByTestId('verify-page')).toContainText(
+      'Compare with the screen of the device you just signed in on.',
+    );
+    await expect(B.getByTestId('verify-page')).not.toContainText(
+      'Compare with the screen of the device you just signed in on.',
+    );
+
     // 7. A answers first. The verification cannot complete until B answers too, so
     //    this is the real two-device window the waiting spinner exists for — and the
     //    only place it can be observed honestly (a single-client test would have to
@@ -245,6 +278,17 @@ async function main(protocolBrowser) {
       throw new Error('A still shows the waiting spinner after completing');
     }
     log('both reached data-stage="done" ✓');
+
+    // Each side's outcome describes itself: A has let B in, B is now trusted.
+    await expect(A.getByTestId('verify-page')).toContainText(
+      'can now read your encrypted messages.',
+    );
+    await expect(A.getByTestId('verify-page')).not.toContainText(
+      'This session is now trusted',
+    );
+    await expect(B.getByTestId('verify-page')).toContainText(
+      'This session is now trusted.',
+    );
 
     console.log('\nRESULT: PASS');
     exit = 0;

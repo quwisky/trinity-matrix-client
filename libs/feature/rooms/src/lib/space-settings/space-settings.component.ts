@@ -22,7 +22,7 @@ import { SpaceSettingsContentsComponent } from './space-settings-contents.compon
 import { SpaceSettingsDraftService } from './space-settings-draft.service';
 import { SpaceSettingsForYouDraftService } from './space-settings-for-you/space-settings-for-you-draft.service';
 import { SpaceSettingsForYouComponent } from './space-settings-for-you/space-settings-for-you.component';
-import { SpaceSettingsGeneralComponent } from './space-settings-general.component';
+import { PlaceGeneralSettingsComponent } from '../shared/place-general-settings/place-general-settings.component';
 
 type SpaceSettingsSection =
   'general' | 'for-you' | 'access' | 'contents' | 'members' | 'addresses';
@@ -88,7 +88,7 @@ const SECTIONS: readonly (SettingsHubSection & {
     SpaceSettingsAccessComponent,
     SpaceSettingsContentsComponent,
     SpaceSettingsForYouComponent,
-    SpaceSettingsGeneralComponent,
+    PlaceGeneralSettingsComponent,
   ],
   templateUrl: './space-settings.component.html',
   styleUrl: './space-settings.component.scss',

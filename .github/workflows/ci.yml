@@ -6,23 +6,25 @@ on:
     # absent from this workflow and pull-request suites keep their existing jobs.
     - cron: '23 3 * * 0'
   push:
-    # renovate/patch-** is load-bearing, not housekeeping. Patch updates are automerged as
-    # a branch with no pull request (.github/renovate.json), so the `pull_request` trigger
-    # below — which is what gives every other branch its CI — never fires for them. Without
+    # renovate/patch-** is load-bearing, not housekeeping. Patch updates are set to automerge
+    # as a branch without a pull request (.github/renovate.json), so until one falls back to a
+    # pull request the `pull_request` trigger below never fires for it. Without
     # this line those branches carry no status checks at all, Renovate refuses to merge an
     # untested branch, and after its 24h pending window it opens a PR instead: the automerge
     # rule stops working quietly rather than failing. Renovate pushes with a GitHub App
     # token, which does trigger workflows; the default GITHUB_TOKEN would not (renovate.yml).
     #
     # Matched on the patch- prefix, NOT on renovate/** — the pattern has to select exactly
-    # the branches that never get a PR. Every other Renovate branch does get one, and would
+    # the branches meant to merge without a PR. Every other Renovate branch does get one, and would
     # otherwise run all five jobs twice per rebase: once here, once for the pull request.
     branches: [main, 'release/**', 'renovate/patch-**']
   pull_request:
 
-# A newer push to the same branch makes the run in flight obsolete.
+# A newer push to the same branch makes the run in flight obsolete. The weekly cron run reports
+# to an issue and its ref is main too, so it gets its own group: a push must not cancel it, and
+# a cancelled run would open a false "Nightly E2E failing" issue.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'schedule' && '-schedule' || '' }}
   cancel-in-progress: true
 
 permissions:
@@ -36,6 +38,7 @@ jobs:
     outputs:
       mode: ${{ steps.classify.outputs.mode }}
       classification: ${{ steps.classify.outputs.classification }}
+      mas: ${{ steps.mas.outputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -45,6 +48,29 @@ jobs:
           node-version-file: .nvmrc
       - id: classify
         run: node scripts/ci-classify.mjs
+      # Whether a pull request touches what the `mas-e2e` journeys check: sign-in code, the
+      # matrix-js-sdk or crypto-wasm version, the SDK patch, and the MAS harness with those
+      # journeys. It is a step here, not an `on.pull_request.paths` filter, so a pull request
+      # that skips the journeys still reports the required check. Pushes skip them: the Synapse
+      # nightly runs the same journeys against main. The diffs are read into variables first,
+      # and a missing base is rejected, so a failure fails the step instead of quietly skipping
+      # the journeys.
+      - id: mas
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          run=false
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            : "${BASE:?pull request has no base sha}"
+            paths='^(libs/data-access/(auth|matrix-client|accounts)/|libs/feature/auth/|libs/platform-native/src/lib/(session|secure)-storage\.service\.ts$|libs/util/matrix/src/lib/session\.model\.ts$|libs/application/runtime/src/lib/composition/application-capability\.providers\.ts$|patches/matrix-js-sdk|e2e/support/homeserver/mas/|e2e/support/homeserver/(Caddyfile|start\.mjs|stop\.mjs|constants\.mjs|kind\.mts|paths\.mjs)$|e2e/browser/journeys/accounts/mas-[^/]*\.spec\.mts$|e2e/browser/support/mas\.mts$)'
+            changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
+            # A version bump rewrites the matrix-js-sdk or crypto-wasm entries in these manifests.
+            manifests=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json pnpm-lock.yaml pnpm-workspace.yaml)
+            if grep -qE "$paths" <<< "$changed" || grep -qE '^[+-].*(matrix-js-sdk|@matrix-org/matrix-sdk-crypto-wasm)' <<< "$manifests"; then
+              run=true
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
 
   docs-gate:
     name: Documentation site
@@ -97,6 +123,12 @@ jobs:
       - run: pnpm stylelint
       # `format:check` verifies and exits non-zero on drift, where `pnpm format` fixes.
       - run: pnpm format:check
+      # Specs are excluded from every project's tsconfig.json AND from the type-aware
+      # ESLint block, and Vitest transpiles them without checking — so this is the only CI
+      # step that runs the compiler over test files. It checks every project here, in the
+      # job with spare time, so `Unit tests` can skip projects a pull request leaves alone.
+      - if: ${{ !cancelled() }}
+        run: pnpm exec nx run-many -t typecheck
 
   test:
     needs: classify
@@ -108,14 +140,22 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup
-      # Specs are excluded from every project's tsconfig.json AND from the type-aware
-      # ESLint block, and Vitest transpiles them without checking — so before this step
-      # existed nothing in CI ever ran the compiler over a single test file. Runs BEFORE
-      # `pnpm test`: a spec whose mock has drifted out of shape with the code it doubles
-      # should fail as the type error it is, not as a downstream assertion nobody can
-      # read.
-      - run: pnpm exec nx run-many -t typecheck
-      - run: pnpm test
+      # Pull requests test only the projects their diff affects, by the Nx project graph
+      # against the PR base. Any root-level file or anything under .github/ runs every
+      # project: Nx maps files such as .nvmrc or the setup action to no project. Pushes to
+      # main, release/** and renovate/patch-** always run every project.
+      - id: unit
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            pnpm test
+          elif git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD" | grep -E '^[^/]+$|^\.github/' > /dev/null; then
+            echo 'Root-level or workflow files changed; testing every project.'
+            pnpm test
+          else
+            pnpm nx affected -t test --base="$BASE" --head=HEAD
+          fi
 
   # The production AOT build remains independent of unit/type checks.
   renderer:
@@ -191,20 +231,20 @@ jobs:
         if: ${{ !cancelled() }}
         run: git diff --exit-code
 
+  # The renderer-backed part of the E2E tier: it needs the verified production artifact,
+  # so it still waits for `renderer`. The browser journeys and the Storybook check run in
+  # their own jobs below, and `e2e-result` reports all three under the required check name.
   e2e:
     needs: [classify, renderer]
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' }}
-    name: E2E (Playwright + homeserver)
+    name: E2E (renderer, styling, QR)
     runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: read
-    # 110 canonical browser specs, each doing a cold UI login (Rust-crypto init + first
-    # /sync), at workers: 2 with one diagnostic retry — plus browser installation, three Docker image
-    # pulls and a full development build. The measured critical path is 8-11 minutes
-    # (developer testing guide); the 75-minute ceiling is hang containment, not an
-    # expected duration. Keep this count synchronized with the executable E2E registry.
-    timeout-minutes: 75
+    # Production renderer, styling and QR take about 3 minutes after setup; the ceiling is
+    # hang containment, not an expected duration.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -221,23 +261,11 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
         with:
-          name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.job }}
           path: dist/.ci/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
-
-      # Separate from the homeserver suite: this builds and serves the component Storybook, then
-      # verifies its palette × mode canvas and focused text contrast in the installed browser.
-      - id: storybook
-        run: |
-          echo 'started=true' >> "$GITHUB_OUTPUT"
-          node scripts/ci-run-command.mjs --timeout-ms 600000 -- pnpm exec nx run trinity-e2e-components:storybook
-      - uses: ./.github/actions/upload-playwright-diagnostics
-        if: ${{ !cancelled() && steps.storybook.outputs.started == 'true' }}
-        with:
-          surface: storybook
-          report-path: dist/.playwright/trinity-e2e-components/*/components.storybook/**
 
       - uses: ./.github/actions/restore-verified-renderer
         with:
@@ -274,21 +302,10 @@ jobs:
 
       # No env var needed to make this strict: the harness's graceful "Docker is missing,
       # skip the authenticated specs" fallback turns itself off whenever CI is set, so a
-      # runner that cannot reach Docker Hub fails here instead of reporting a green E2E
-      # job that tested almost nothing. See e2e/playwright/support/global-setup.mts.
-      - id: browser
-        run: |
-          echo 'started=true' >> "$GITHUB_OUTPUT"
-          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e
-      - uses: ./.github/actions/upload-playwright-diagnostics
-        if: ${{ !cancelled() && steps.browser.outputs.started == 'true' }}
-        with:
-          surface: browser
-          report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
-
-      # The QR protocol harness owns the same fixed homeserver stack, so run it only after
-      # the main suite has completed and torn its stack down. Its synthetic camera feeds
-      # a real SDK payload through production rendering, decoding and reciprocation.
+      # runner that cannot reach Docker Hub fails here instead of reporting a green job.
+      # The QR protocol harness is the only homeserver suite in this job. Its synthetic
+      # camera feeds a real SDK payload through production rendering, decoding and
+      # reciprocation.
       - id: qr
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
@@ -299,18 +316,203 @@ jobs:
           surface: qr
           report-path: dist/.playwright/trinity-e2e-protocol/*/protocol.verify-qr/**
 
+  # The app journeys, driven against a disposable homeserver (Tuwunel) + Caddy stack in
+  # Docker, split into three Playwright shards. Each shard job starts its own homeserver,
+  # so the per-homeserver worker cap in e2e/browser/playwright.config.mts holds per job.
+  # The journeys use the development build, not the production renderer, so they start
+  # without waiting for `renderer`.
+  browser-e2e:
+    needs: classify
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
+    name: E2E browser journeys (${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    # 110 canonical browser specs, each doing a cold UI login (Rust-crypto init + first
+    # /sync), at workers: 2 with one diagnostic retry, split across three jobs — plus
+    # browser installation, three Docker image pulls and a full development build per job.
+    # Keep this count synchronized with the executable E2E registry. The ceiling is hang
+    # containment, not an expected duration.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      # The browser project is Chromium only: skip WebKit and the host libraries the
+      # ubuntu image already provides for Chrome.
+      - uses: ./.github/actions/setup-playwright
+        with:
+          browsers: chromium
+          install: 'false'
+          with-deps: 'false'
+      - name: Prepare e2e prerequisites
+        id: prerequisites
+        env:
+          TRINITY_PLAYWRIGHT_BROWSERS: chromium
+          TRINITY_PLAYWRIGHT_WITH_DEPS: 'false'
+        run: node scripts/ci-prerequisites.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
+        with:
+          name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.job }}-${{ matrix.shard }}
+          path: dist/.ci/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+      # The registry validator pins this command line, so the shard is an environment
+      # variable read by the Playwright config rather than a --shard argument.
+      - id: browser
+        env:
+          TRINITY_E2E_SHARD: ${{ matrix.shard }}/3
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.browser.outputs.started == 'true' }}
+        with:
+          surface: browser
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
+
+  # Builds and serves the component Storybook, then verifies its palette × mode canvas and
+  # focused text contrast in the installed browsers. It needs neither the renderer nor a
+  # homeserver, so it starts as soon as `classify` finishes.
+  storybook:
+    needs: classify
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
+    name: E2E Storybook
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/setup-playwright
+      - id: storybook
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 600000 -- pnpm exec nx run trinity-e2e-components:storybook
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.storybook.outputs.started == 'true' }}
+        with:
+          surface: storybook
+          report-path: dist/.playwright/trinity-e2e-components/*/components.storybook/**
+
+  # The MAS-backed OAuth journeys (accounts/mas-session.spec.mts) against the opt-in MAS
+  # stack, only for a pull request that touches sign-in code (the `mas` step of `classify`).
+  # The refresh journey waits out two real 60 s token lifetimes (about three minutes), so the
+  # file takes about six minutes on two workers; the Synapse nightly runs it against main.
+  mas-e2e:
+    needs: classify
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mas == 'true' }}
+    name: E2E browser journeys (MAS)
+    runs-on: ubuntu-latest
+    # Hang containment. Expected ~12 min: setup and build ~5, images and stack ~1, specs ~6.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/setup-playwright
+        with:
+          browsers: chromium
+          install: 'false'
+          with-deps: 'false'
+      - name: Prepare e2e prerequisites
+        id: prerequisites
+        env:
+          TRINITY_PLAYWRIGHT_BROWSERS: chromium
+          TRINITY_PLAYWRIGHT_WITH_DEPS: 'false'
+        run: node scripts/ci-prerequisites.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
+        with:
+          name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.job }}
+          path: dist/.ci/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+      # The registry validator pins this command line, so the journey file is an environment
+      # variable read by the Playwright config (as the shard is), not an argument.
+      - id: browser
+        env:
+          TRINITY_E2E_MAS: '1'
+          TRINITY_E2E_SPEC: accounts/mas-session.spec.mts
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.browser.outputs.started == 'true' }}
+        with:
+          surface: browser-mas
+          report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
+
+  # Branch rules require the check "E2E (Playwright + homeserver)". The work behind it now
+  # runs in several jobs, so this job reports under that name and succeeds only when every
+  # one of them succeeded. A skipped job (for example after a renderer failure) fails it,
+  # except `mas-e2e`, which is skipped by design when a pull request leaves sign-in code alone.
+  e2e-result:
+    needs: [classify, e2e, browser-e2e, storybook, mas-e2e]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
+    name: E2E (Playwright + homeserver)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every split job to succeed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key) \(.value.result)"'
+          echo "$NEEDS" | jq -e 'to_entries | all(.[]; .value.result == "success" or (.key == "mas-e2e" and .value.result == "skipped"))' > /dev/null
+
   # WebdriverIO + Appium on the installed app: it boots an API 36 emulator because browser
   # E2E cannot substitute for native Back, process relaunch, Android TLS policy, or the
   # packaged application itself. See e2e/README.md.
+  #
+  # Two jobs, each with its own emulator and homeserver, split the spec files by measured
+  # duration (run 37659485183): navigation (~2:20) and deep-link (~1:30) are the slow ones
+  # and sit in different shards, about 4:50 of specs each. Put a new spec in the lighter
+  # shard; scripts/ci-workflow.spec.mjs fails while a spec file is in neither.
   mobile-e2e:
     needs: [classify, renderer]
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' }}
-    name: Mobile E2E (Android)
+    name: Mobile E2E (Android ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: read
     timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: 1
+            specs: >-
+              ./specs/app-shell.e2e.mts,
+              ./specs/appearance.e2e.mts,
+              ./specs/capture.e2e.mts,
+              ./specs/location.e2e.mts,
+              ./specs/navigation.e2e.mts,
+              ./specs/notifications.e2e.mts,
+              ./specs/push-render-android.e2e.mts
+          - shard: 2
+            specs: >-
+              ./specs/attachments.e2e.mts,
+              ./specs/composer-format-native.e2e.mts,
+              ./specs/deep-link.e2e.mts,
+              ./specs/native-capabilities.e2e.mts,
+              ./specs/push-render-ios.e2e.mts,
+              ./specs/session.e2e.mts,
+              ./specs/share.e2e.mts,
+              ./specs/smoke.e2e.mts,
+              ./specs/sso.e2e.mts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -352,8 +554,32 @@ jobs:
           sudo udevadm settle --timeout=30
           test -r /dev/kvm -a -w /dev/kvm
 
+      # Parallel steps: the app build and the homeserver image pull run while the emulator
+      # action installs its system image and boots (~1:50 measured). The emulator script's
+      # first line waits for the build's status file, so the suite's own sync and Gradle
+      # run find everything up to date and never race this build.
+      - name: Build the Android app while the emulator boots
+        id: android-prebuild
+        background: true
+        timeout-minutes: 20
+        run: |
+          set +e
+          pnpm android:build:prebuilt && ./android/gradlew -p android assembleSecondaryDebug testDebugUnitTest
+          status=$?
+          mkdir -p dist/.ci
+          echo "$status" > dist/.ci/android-prebuild.status
+          exit "$status"
+      - name: Pull the homeserver images while the emulator boots
+        id: homeserver-pull
+        background: true
+        # Optional, like the browser prerequisites' pre-pull: the suite pulls what is missing.
+        continue-on-error: true
+        run: docker compose -f e2e/support/homeserver/docker-compose.yml -f e2e/support/homeserver/tuwunel/docker-compose.yml pull -q
+
       - id: mobile
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          TRINITY_MOBILE_SPECS: ${{ matrix.specs }}
         with:
           api-level: 36
           target: google_apis
@@ -365,9 +591,15 @@ jobs:
           ram-size: 4096M
           cores: 4
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          # The action runs each line as its own `sh -c`. The first line fails the step with
+          # the background build's exit code, or after 15 minutes without one.
           script: |
+            timeout 900 sh -c 'until [ -s dist/.ci/android-prebuild.status ]; do sleep 5; done; exit "$(cat dist/.ci/android-prebuild.status)"'
             echo 'started=true' >> "$GITHUB_OUTPUT"
             TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:mobile
+
+      - name: Wait for the background build and image pull
+        wait: [android-prebuild, homeserver-pull]
 
       # Also covers dist/.ci (full run stdout) and a run killed before its own cleanup.
       - name: Scrub identifiers from mobile artifacts
@@ -379,11 +611,28 @@ jobs:
         if: ${{ !cancelled() && steps.mobile.outputs.started == 'true' && steps.mobile-scrub.outcome == 'success' }}
         with:
           surface: mobile
+          shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-mobile/*/mobile.android/**
 
       - name: Verify Mobile E2E left the worktree unchanged
         if: ${{ !cancelled() }}
         run: git diff --exit-code
+
+  # Branch rules require the check "Mobile E2E (Android)"; both Android jobs report under
+  # it through this job, which succeeds only when both succeeded.
+  mobile-e2e-result:
+    needs: [classify, mobile-e2e]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
+    name: Mobile E2E (Android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every split job to succeed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key) \(.value.result)"'
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' > /dev/null
 
   ios-native-build:
     name: iOS Native Build
@@ -457,3 +706,14 @@ jobs:
         with:
           surface: scheduled
           report-path: dist/.playwright/**/**
+
+  # Weekly run only: opens, updates and closes the "Nightly E2E failing" issue.
+  notify:
+    name: Scheduled E2E issue
+    needs: [scheduled-e2e]
+    if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    permissions:
+      issues: write
+    uses: ./.github/workflows/_nightly-alert.yml
+    with:
+      needs: ${{ toJSON(needs) }}

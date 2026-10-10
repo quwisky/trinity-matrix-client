@@ -155,6 +155,7 @@ test('negotiates the grouped protocol-v1 bridge without exposing Node', async ()
   expect(exposure.capabilityGroups).toEqual([
     'badge',
     'deepLinks',
+    'lifecycle',
     'location',
     'networkCors',
     'notificationPresentation',
@@ -513,5 +514,44 @@ test('fetches pack media through the scoped homeserver CORS bridge', async () =>
       .toBe(true);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test('hides to the tray when the page calls window.close()', async () => {
+  // Its own instance: the shared one must keep its window for the tests above.
+  const closing = await launchApp();
+  try {
+    const closingPage = await closing.firstWindow();
+    await expect(closingPage.getByLabel('Homeserver')).toBeVisible();
+    const mainWindowState = () =>
+      closing.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().map(
+          (win: {
+            isVisible(): boolean;
+            webContents: { isDestroyed(): boolean };
+          }) => ({
+            visible: win.isVisible(),
+            contentsAlive: !win.webContents.isDestroyed(),
+          }),
+        ),
+      );
+
+    await closingPage.evaluate(() => window.close());
+
+    // Hidden like a user close, with the renderer (and its `/sync`) still running.
+    await expect
+      .poll(mainWindowState)
+      .toEqual([{ visible: false, contentsAlive: true }]);
+    await expect(closingPage.getByLabel('Homeserver')).toBeAttached();
+
+    // A second launch reveals the same window again.
+    await closing.evaluate(({ app }) =>
+      app.emit('second-instance', {}, [process.execPath]),
+    );
+    await expect
+      .poll(mainWindowState)
+      .toEqual([{ visible: true, contentsAlive: true }]);
+  } finally {
+    await closing.close();
   }
 });

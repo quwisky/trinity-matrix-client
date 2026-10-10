@@ -18,7 +18,7 @@ file, not a symlink.
 
 | Event                                  | Script                                                  | Effect                                                                                                                                                                                                                                                                                  |
 | -------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PreToolUse` `Bash`                    | [agent-guard.mjs](../scripts/agent-guard.mjs)         | Blocks staging `docs/superpowers` or `.superpowers`, `pgrep -f` wait loops, and a `git push` whose `node scripts/nx.mjs affected -t typecheck --base=origin/main` fails (branch deletions skip the typecheck). |
+| `PreToolUse` `Bash`                    | [agent-guard.mjs](../scripts/agent-guard.mjs)         | Blocks staging `docs/superpowers` or `.superpowers`, `pgrep -f` wait loops, a `git push` whose `node scripts/nx.mjs affected -t typecheck --base=origin/main` fails (branch deletions skip the typecheck), `gh pr create` without `--draft`, and `gh pr ready` when `gh pr checks` does not pass. |
 | `PostToolUse` `Edit\|Write\|MultiEdit` | [agent-format.mjs](../scripts/agent-format.mjs)       | Runs the repository Prettier on the edited file; skips unsupported and `.prettierignore` paths and never blocks.                                                                                                                                                                       |
 
 To turn a hook off for yourself, set `"disableAllHooks": true` in your untracked
@@ -29,7 +29,7 @@ everyone. `scripts/agent-guard.spec.mjs` covers the guard.
 
 | Agent                                                     | Model  | Use                                                                                                    |
 | --------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------ |
-| [ci-fixer](agents/ci-fixer.md)                            | Sonnet | Classify a PR's CI failures as branch-caused, pre-existing or flaky; fix and push branch-caused ones.  |
+| [ci-fixer](agents/ci-fixer.md)                            | Sonnet | Classify a PR's CI failures as branch-caused, pre-existing or flaky; fix and push branch-caused ones. Owner's same-repository PRs only, unless approved. |
 | [design-system-reviewer](agents/design-system-reviewer.md) | Sonnet | Read-only review of changed templates and styles against the design-system contracts.                  |
 
 Which instructions or plugins a client loads depends on its runtime and configuration.

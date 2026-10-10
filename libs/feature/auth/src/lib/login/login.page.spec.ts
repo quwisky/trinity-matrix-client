@@ -1,10 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
+  ReauthAccountMismatchError,
   AuthService,
   AUTHENTICATION_HOMESERVER_DISCOVERY,
+  NewDeviceSignInCancelledError,
+  OidcStateStore,
   RegistrationService,
-  type OidcAuthorizationParams,
+  SignInRedirectService,
 } from '@trinity/data-access/auth';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
@@ -13,13 +16,11 @@ import {
   provideHostCapabilities,
 } from '@trinity/platform-native';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { desktopBridgeFixture, fireEvent, render } from '@trinity/testing';
+import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, map, of, throwError, type Observable } from 'rxjs';
-import { describe, expect, it, type Mock, vi } from 'vitest';
+import { NEVER, Subject, map, of, throwError, type Observable } from 'rxjs';
+import { describe, expect, it, vi } from 'vitest';
 import { LoginPage } from './login.page';
-import { SsoStateStore } from '../sso-state.store';
-import { OidcStateStore } from '../oidc-state.store';
 import { ConnectionError, MatrixError } from '@trinity/util/matrix';
 
 const READY_OUTCOME = {
@@ -36,7 +37,11 @@ async function renderLogin(
     add?: boolean;
     reauth?: string;
     record?: unknown;
+    /** The device re-auth may reuse; defaults to the record's own. */
+    reusableDevice?: string | null;
     oidcStore?: Partial<OidcStateStore>;
+    /** Overrides for the redirect handoff (cold Observables that complete). */
+    redirect?: Partial<SignInRedirectService>;
     /** Accounts the registry reports, which the erase confirmation names. */
     stored?: { userId: string }[];
     /** Make the registry read fail, as a wedged install would. */
@@ -50,7 +55,7 @@ async function renderLogin(
   fixture: Awaited<ReturnType<typeof render<LoginPage>>>['fixture'];
   cmp: LoginPage;
   router: Router;
-  ssoStore: SsoStateStore;
+  redirect: SignInRedirectService;
   oidcStore: OidcStateStore;
   alert: TrnAlertService;
   reset: AccountRuntimeService;
@@ -78,7 +83,11 @@ async function renderLogin(
         getAvailability: vi.fn(() => of('unknown' as const)),
       }),
       MockProvider(Router),
-      MockProvider(SsoStateStore),
+      MockProvider(SignInRedirectService, {
+        startSso: vi.fn(() => of(undefined)),
+        startOidc: vi.fn(() => of(undefined)),
+        ...opts.redirect,
+      }),
       MockProvider(OidcStateStore, {
         save: vi.fn().mockResolvedValue(undefined),
         peek: vi.fn().mockResolvedValue({}),
@@ -86,6 +95,13 @@ async function renderLogin(
       }),
       MockProvider(SessionStorageService, {
         record: vi.fn(() => of(opts.record ?? null) as never),
+        reusableDeviceId: vi.fn((record: { deviceId: string }) =>
+          of(
+            opts.reusableDevice === undefined
+              ? record.deviceId
+              : opts.reusableDevice,
+          ),
+        ),
         list: vi.fn(() =>
           opts.listFails
             ? throwError(() => new Error('registry unreadable'))
@@ -123,7 +139,7 @@ async function renderLogin(
     fixture,
     cmp: fixture.componentInstance,
     router: TestBed.inject(Router),
-    ssoStore: TestBed.inject(SsoStateStore),
+    redirect: TestBed.inject(SignInRedirectService),
     oidcStore: TestBed.inject(OidcStateStore),
     alert: TestBed.inject(TrnAlertService),
     reset: TestBed.inject(AccountRuntimeService),
@@ -376,6 +392,7 @@ describe('LoginPage', () => {
       'hunter2',
       'replace',
       undefined, // no device id → a fresh (not re-auth) login
+      undefined, // and no expected user
     );
     expect(router.navigateByUrl).toHaveBeenCalledWith('/rooms', {
       replaceUrl: true,
@@ -400,6 +417,7 @@ describe('LoginPage', () => {
       'bob',
       'hunter2',
       'add',
+      undefined,
       undefined,
     );
   });
@@ -439,6 +457,43 @@ describe('LoginPage', () => {
       'hunter2',
       'add',
       'OLDDEV',
+      '@bob:hs', // the callback must return as this account
+    );
+  });
+
+  it('re-auth signs in as a new device when the stored keys can no longer be unlocked', async () => {
+    const loginWithPassword = vi.fn(() => of(READY_OUTCOME));
+    const { cmp } = await renderLogin(
+      {
+        loginWithPassword,
+        getSupportedFlows: vi.fn(() => of(['m.login.password'])),
+        getDelegatedAuthConfig: vi.fn(() => of(null)),
+      } as unknown as Partial<AuthService>,
+      {
+        reauth: '@bob:hs',
+        record: {
+          baseUrl: 'https://hs.example',
+          userId: '@bob:hs',
+          deviceId: 'OLDDEV',
+          cryptoPrefix: 'trinity-crypto:@bob:hs:OLDDEV',
+          cryptoStoreKeyed: true,
+        },
+        reusableDevice: null,
+      },
+    );
+
+    cmp.credentialsForm.password().value.set('hunter2');
+    cmp.loginPassword();
+
+    // No device id: the server makes a new device, which gets a new store and key. The
+    // sign-in is still bound to the account being reconnected.
+    expect(loginWithPassword).toHaveBeenCalledWith(
+      'https://hs.example',
+      '@bob:hs',
+      'hunter2',
+      'add',
+      undefined,
+      '@bob:hs',
     );
   });
 
@@ -500,6 +555,22 @@ describe('LoginPage', () => {
     expect(cmp.credentialsError()).toBe("We couldn't sign you in. Try again.");
   });
 
+  it('explains a sign-in cancelled to keep a stored account’s keys', async () => {
+    const { cmp, router } = await renderLogin({
+      loginWithPassword: vi.fn(() =>
+        throwError(() => new NewDeviceSignInCancelledError('@me:hs')),
+      ),
+    } as unknown as Partial<AuthService>);
+    cmp.baseUrl.set('https://hs.example');
+
+    cmp.loginPassword();
+
+    expect(cmp.credentialsError()).toBe(
+      'Sign-in cancelled. @me:hs stays on this device with its keys.',
+    );
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
+  });
+
   it('surfaces an expected Account Runtime failure without navigating', async () => {
     const { cmp, router } = await renderLogin({
       loginWithPassword: vi.fn(() =>
@@ -519,42 +590,89 @@ describe('LoginPage', () => {
     expect(router.navigateByUrl).not.toHaveBeenCalled();
   });
 
-  it('starts SSO with a state nonce stashed and bound to the callback redirect', async () => {
-    const getSsoUrl = vi.fn(
-      (_baseUrl: string, _redirectUrl: string) =>
-        'https://hs.example/_matrix/sso?redirectUrl=x',
+  it('names the stored account and its server when a sign-in is refused', async () => {
+    // A sign-in for a user id saved under another server is refused. The refusal is an
+    // ordinary sign-in error beside the password field, not a crash or a silent no-op.
+    const { cmp, router, fixture } = await renderLogin({
+      loginWithPassword: vi.fn(() =>
+        of({
+          kind: 'failed' as const,
+          accountId: '@alice:example.org',
+          placement: 'active' as const,
+          failure: 'homeserver-mismatch' as const,
+          storedBaseUrl: 'https://example.org',
+        }),
+      ),
+    } as unknown as Partial<AuthService>);
+    cmp.baseUrl.set('https://other-server.example');
+    cmp.passwordSupported.set(true);
+
+    cmp.loginPassword();
+    fixture.detectChanges();
+
+    expect(cmp.credentialsError()).toContain(
+      '@alice:example.org is already signed in through https://example.org',
     );
-    const { cmp, ssoStore } = await renderLogin({
-      getSsoUrl,
+    // The way out matches the menu item that removes an account.
+    expect(cmp.credentialsError()).toContain(
+      'Remove that account from this device first',
+    );
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector<HTMLInputElement>('#password');
+    const described = root.querySelector(
+      `#${input?.getAttribute('aria-describedby')}`,
+    );
+    expect(described?.textContent).toContain(
+      '@alice:example.org is already signed in through https://example.org',
+    );
+  });
+
+  it('explains a password re-auth that came back as a different account', async () => {
+    const { cmp, router } = await renderLogin({
+      loginWithPassword: vi.fn(() =>
+        throwError(
+          () => new ReauthAccountMismatchError('@bob:hs', '@alice:hs'),
+        ),
+      ),
     } as unknown as Partial<AuthService>);
     cmp.baseUrl.set('https://hs.example');
 
-    await cmp.startSso();
+    cmp.loginPassword();
 
-    // The nonce + homeserver are persisted via the store (Preferences) so a native
-    // cold-start callback can still validate — not in sessionStorage.
-    expect(ssoStore.save).toHaveBeenCalledTimes(1);
-    const [state, savedBaseUrl] = vi.mocked(ssoStore.save).mock.calls[0] as [
-      string,
-      string,
-    ];
-    expect(savedBaseUrl).toBe('https://hs.example');
-    expect(state).toBeTruthy();
-    // The state round-trips via the redirect URL handed to the homeserver.
-    const redirect = getSsoUrl.mock.calls[0][1] as string;
-    expect(redirect).toContain('/sso-callback?sso_state=');
-    expect(redirect).toContain(state);
+    expect(cmp.credentialsError()).toMatch(/@bob:hs.*@alice:hs/);
+    expect(cmp.credentialsError()).not.toBe(
+      "We couldn't sign you in. Try again.",
+    );
+    expect(router.navigateByUrl).not.toHaveBeenCalled();
   });
 
-  it('re-auth SSO stashes an add-mode nonce bound to the existing device', async () => {
-    const getSsoUrl = vi.fn(
-      (_baseUrl: string, _redirectUrl: string) => 'https://hs.example/sso',
+  it('starts SSO through the redirect service under the busy state', async () => {
+    const handoff = new Subject<void>();
+    const { cmp, redirect } = await renderLogin(
+      {} as unknown as Partial<AuthService>,
+      { redirect: { startSso: vi.fn(() => handoff) } },
     );
-    const getSupportedFlows = vi.fn(() => of(['m.login.sso']));
-    const { cmp, ssoStore } = await renderLogin(
+    cmp.baseUrl.set('https://hs.example');
+
+    cmp.startSso();
+
+    expect(redirect.startSso).toHaveBeenCalledWith(
+      'https://hs.example',
+      'replace',
+      undefined,
+      undefined,
+    );
+    expect(cmp.busy()).toBe(true);
+
+    handoff.complete();
+    expect(cmp.busy()).toBe(false);
+  });
+
+  it('re-auth SSO is add mode bound to the existing device', async () => {
+    const { cmp, redirect } = await renderLogin(
       {
-        getSsoUrl,
-        getSupportedFlows,
+        getSupportedFlows: vi.fn(() => of(['m.login.sso'])),
         getDelegatedAuthConfig: vi.fn(() => of(null)),
       } as unknown as Partial<AuthService>,
       {
@@ -567,20 +685,28 @@ describe('LoginPage', () => {
       },
     );
 
-    // The constructor loaded the record: the homeserver comes from the stored account.
-    expect(cmp.baseUrl()).toBe('https://hs.example');
+    cmp.startSso();
 
-    await cmp.startSso();
+    expect(redirect.startSso).toHaveBeenCalledWith(
+      'https://hs.example',
+      'add',
+      'OLDDEV',
+      '@bob:hs',
+    );
+  });
 
-    // The SSO round-trip re-authenticates the EXISTING device: the stash carries add
-    // mode + OLDDEV, so the homeserver mints no new device and no re-verification runs.
-    expect(ssoStore.save).toHaveBeenCalledTimes(1);
-    const [state, savedBaseUrl, mode, deviceId] = vi.mocked(ssoStore.save).mock
-      .calls[0] as [string, string, string, string];
-    expect(savedBaseUrl).toBe('https://hs.example');
-    expect(mode).toBe('add');
-    expect(deviceId).toBe('OLDDEV');
-    expect(state).toBeTruthy();
+  it('shows a failed SSO handoff as a page error and clears busy', async () => {
+    const { cmp } = await renderLogin({} as unknown as Partial<AuthService>, {
+      redirect: {
+        startSso: vi.fn(() => throwError(() => new Error('write failed'))),
+      },
+    });
+    cmp.baseUrl.set('https://hs.example');
+
+    cmp.startSso();
+
+    expect(cmp.error()).toBe("We couldn't sign you in. Try again.");
+    expect(cmp.busy()).toBe(false);
   });
 
   describe('clear all data', () => {
@@ -779,53 +905,12 @@ describe('LoginPage', () => {
     });
   });
 
-  it('uses the eu.qwky.trinity:// scheme and opens externally on Electron', async () => {
-    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
-      desktopBridgeFixture();
-    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
-    try {
-      const getSsoUrl = vi.fn(
-        (_baseUrl: string, _redirectUrl: string) => 'https://hs.example/sso',
-      );
-      const { cmp } = await renderLogin({
-        getSsoUrl,
-      } as unknown as Partial<AuthService>);
-      cmp.baseUrl.set('https://hs.example');
-
-      await cmp.startSso();
-
-      const redirect = getSsoUrl.mock.calls[0][1] as string;
-      expect(redirect).toContain('eu.qwky.trinity://sso-callback?sso_state=');
-      expect(open).toHaveBeenCalledWith('https://hs.example/sso', '_blank');
-    } finally {
-      open.mockRestore();
-      delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
-    }
-  });
-
   describe('OIDC (next-gen auth)', () => {
-    /**
-     * What OidcClientService hands back: the URL plus the PKCE context the caller is now
-     * the sole custodian of (matrix-js-sdk 42 persists none of it itself).
-     */
-    const OIDC_REQUEST = {
-      url: 'https://op/authorize?client_id=abc&state=STATE1',
-      state: 'STATE1',
-      clientId: 'CLIENT1',
-      deviceId: 'DEVICE1',
-      codeVerifier: 'VERIFIER1',
-    };
-
     /** An OIDC-native login page: discovered homeserver + provider metadata. */
-    async function renderOidcReady(
-      buildOidcAuthorizationRequest: Mock,
-      oidcStore?: Partial<OidcStateStore>,
-    ) {
+    async function renderOidcReady(redirect?: Partial<SignInRedirectService>) {
       const rendered = await renderLogin(
-        {
-          buildOidcAuthorizationRequest,
-        } as unknown as Partial<AuthService>,
-        oidcStore ? { oidcStore } : {},
+        {} as unknown as Partial<AuthService>,
+        redirect ? { redirect } : {},
       );
       rendered.cmp.baseUrl.set('https://hs.example');
       rendered.cmp.oidcMetadata.set({ issuer: 'https://op' } as never);
@@ -876,13 +961,30 @@ describe('LoginPage', () => {
       }
     });
 
-    it('re-authenticates the stored device instead of minting a new one', async () => {
-      const buildOidcAuthorizationRequest = vi.fn(
-        (_params: OidcAuthorizationParams) => of(OIDC_REQUEST),
-      );
-      const { cmp, oidcStore } = await renderLogin(
+    it('hands the discovered provider to the redirect service, under the busy state', async () => {
+      const handoff = new Subject<void>();
+      const { cmp, redirect } = await renderOidcReady({
+        startOidc: vi.fn(() => handoff),
+      });
+
+      cmp.startOidc('create');
+
+      expect(redirect.startOidc).toHaveBeenCalledWith({
+        baseUrl: 'https://hs.example',
+        metadata: { issuer: 'https://op' },
+        mode: 'replace',
+        prompt: 'create',
+        expectedUserId: null,
+      });
+      expect(cmp.busy()).toBe(true);
+
+      handoff.complete();
+      expect(cmp.busy()).toBe(false);
+    });
+
+    it('re-auth reuses the stored device and expects the same account back', async () => {
+      const { cmp, redirect } = await renderLogin(
         {
-          buildOidcAuthorizationRequest,
           getDelegatedAuthConfig: vi.fn(() =>
             of({ issuer: 'https://op' } as never),
           ),
@@ -897,195 +999,38 @@ describe('LoginPage', () => {
           },
         },
       );
-      cmp.oidcMetadata.set({ issuer: 'https://op' } as never);
 
       cmp.startOidc();
-      await Promise.resolve();
 
-      // Re-auth exists to recover a soft-logged-out account WITHOUT the user verifying a
-      // fresh device. matrix-js-sdk 41 could not express this — the authorize helper took
-      // no device id and always generated one — so an OIDC re-auth silently produced a new
-      // device and demanded re-verification. v42's OAuth2 context accepts one.
-      const params = buildOidcAuthorizationRequest.mock.calls[0][0] as {
-        deviceId?: string;
-      };
-      expect(params.deviceId).toBe('OLDDEV');
-      // Reusing the device makes the identity check load-bearing: a provider that still
-      // holds a browser session authorizes with no interaction, so on a homeserver with
-      // two accounts this could come back as the other one and inherit OLDDEV. The
-      // callback can only refuse that if the expectation travels in the stash.
-      await Promise.resolve();
-      expect(vi.mocked(oidcStore.save).mock.calls[0][0]).toMatchObject({
-        expectedUserId: '@bob:hs',
-      });
+      expect(redirect.startOidc).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: 'add',
+          deviceId: 'OLDDEV',
+          expectedUserId: '@bob:hs',
+        }),
+      );
     });
 
-    it('stashes no expectation for an ordinary login', async () => {
-      // Any account the user picks is the right answer here, so an expectation would only
-      // create a way to reject a perfectly good sign-in.
-      const buildOidcAuthorizationRequest = vi.fn(
-        (_params: OidcAuthorizationParams) => of(OIDC_REQUEST),
-      );
-      const { cmp, oidcStore } = await renderOidcReady(
-        buildOidcAuthorizationRequest,
-      );
+    it('shows a failed redirect as a page error and clears busy', async () => {
+      const { cmp } = await renderOidcReady({
+        startOidc: vi.fn(() => throwError(() => new Error('raw sdk failure'))),
+      });
 
       cmp.startOidc();
-      await Promise.resolve();
-      await Promise.resolve();
 
-      expect(vi.mocked(oidcStore.save).mock.calls[0][0]).toMatchObject({
-        expectedUserId: null,
-      });
+      expect(cmp.error()).toBe("We couldn't sign you in. Try again.");
+      expect(cmp.busy()).toBe(false);
     });
 
-    it('builds the authorization request, stashes the sign-in state, then redirects (web)', async () => {
-      const buildOidcAuthorizationRequest = vi.fn(
-        (_params: OidcAuthorizationParams) => of(OIDC_REQUEST),
+    it('does nothing without a discovered provider', async () => {
+      const { cmp, redirect } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
       );
-      const { cmp, oidcStore } = await renderOidcReady(
-        buildOidcAuthorizationRequest,
-      );
-
-      cmp.startOidc();
-      // Let the awaited stash write settle before asserting the redirect ordering.
-      await Promise.resolve();
-      await Promise.resolve();
-
-      // The client registers as `web` with the origin callback (no extra query params).
-      const params = buildOidcAuthorizationRequest.mock.calls[0][0] as {
-        applicationType: string;
-        redirectUri: string;
-      };
-      expect(params.applicationType).toBe('web');
-      expect(params.redirectUri).toContain('/sso-callback');
-      // The whole PKCE context — including the code_verifier — is stashed before the
-      // redirect ON WEB TOO. matrix-js-sdk 42 persists no sign-in state of its own, so
-      // this stash is the only copy; skipping it on web would simply break web login.
-      expect(oidcStore.save).toHaveBeenCalledTimes(1);
-      expect(vi.mocked(oidcStore.save).mock.calls[0][0]).toMatchObject({
-        state: 'STATE1',
-        baseUrl: 'https://hs.example',
-        issuer: 'https://op',
-        redirectUri: params.redirectUri,
-        clientId: 'CLIENT1',
-        deviceId: 'DEVICE1',
-        codeVerifier: 'VERIFIER1',
-      });
-    });
-
-    it('redirects on web, and only after the stash is durably written', async () => {
-      // Two gaps this closes. Nothing asserted the web redirect fires at all — emptying
-      // that branch broke web sign-in with the suite green. And nothing asserted the
-      // ORDERING, despite a sibling test named "...stashes the sign-in state, then
-      // redirects": reversing the two left every assertion passing. If the redirect wins
-      // the race, a native cold start or a fast provider can return before the
-      // code_verifier is on disk, and the exchange has nothing to present.
-      const original = Object.getOwnPropertyDescriptor(window, 'location');
-      const locationStub = { href: '' };
-      Object.defineProperty(window, 'location', {
-        value: locationStub,
-        writable: true,
-        configurable: true,
-      });
-      try {
-        let releaseSave: (() => void) | undefined;
-        const savePending = new Promise<void>((resolve) => {
-          releaseSave = resolve;
-        });
-        const buildOidcAuthorizationRequest = vi.fn(
-          (_params: OidcAuthorizationParams) => of(OIDC_REQUEST),
-        );
-        const { cmp } = await renderOidcReady(buildOidcAuthorizationRequest, {
-          save: vi.fn(() => savePending),
-        });
-
-        cmp.startOidc();
-        await Promise.resolve();
-        await Promise.resolve();
-
-        // The stash has not settled yet, so nothing may have navigated.
-        expect(locationStub.href).toBe('');
-
-        releaseSave?.();
-        await Promise.resolve();
-        await Promise.resolve();
-
-        expect(locationStub.href).toBe(OIDC_REQUEST.url);
-      } finally {
-        if (original) Object.defineProperty(window, 'location', original);
-      }
-    });
-
-    it('sends prompt=create for registration when the provider supports it', async () => {
-      const request = {
-        ...OIDC_REQUEST,
-        url: 'https://op/authorize?state=STATE1',
-      };
-      const buildOidcAuthorizationRequest = vi.fn(
-        (_params: OidcAuthorizationParams) => of(request),
-      );
-      const { cmp } = await renderLogin({
-        buildOidcAuthorizationRequest,
-      } as unknown as Partial<AuthService>);
       cmp.baseUrl.set('https://hs.example');
-      cmp.oidcMetadata.set({
-        issuer: 'https://op',
-        prompt_values_supported: ['create'],
-      } as never);
 
-      expect(cmp.oidcRegistrationSupported()).toBe(true);
-      cmp.startOidc('create');
-      await Promise.resolve();
+      cmp.startOidc();
 
-      const params = buildOidcAuthorizationRequest.mock.calls[0][0] as {
-        prompt?: string;
-      };
-      expect(params.prompt).toBe('create');
-    });
-
-    it('registers as native + opens externally on Electron', async () => {
-      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
-        desktopBridgeFixture();
-      const open = vi.spyOn(window, 'open').mockImplementation(() => null);
-      try {
-        const request = {
-          ...OIDC_REQUEST,
-          url: 'https://op/authorize?state=STATE1',
-        };
-        const buildOidcAuthorizationRequest = vi.fn(
-          (_params: OidcAuthorizationParams) => of(request),
-        );
-        const { cmp, oidcStore } = await renderOidcReady(
-          buildOidcAuthorizationRequest,
-        );
-
-        cmp.startOidc();
-        await Promise.resolve();
-        await Promise.resolve();
-
-        const params = buildOidcAuthorizationRequest.mock.calls[0][0] as {
-          applicationType: string;
-          redirectUri: string;
-        };
-        expect(params.applicationType).toBe('native');
-        // RFC 8252 §7.1: a private-use scheme redirect has NO authority, so only a
-        // single slash follows the scheme. `//sso-callback` would put the path in the
-        // authority position, which strict providers reject at dynamic registration.
-        expect(params.redirectUri).toBe('eu.qwky.trinity:/sso-callback');
-        expect(open).toHaveBeenCalledWith(request.url, '_blank');
-        // Native/Electron durably stash the PKCE context against a cold-start callback
-        // in a different browsing context — the same write web now performs.
-        expect(vi.mocked(oidcStore.save).mock.calls[0][0]).toMatchObject({
-          redirectUri: 'eu.qwky.trinity:/sso-callback',
-          clientId: 'CLIENT1',
-          deviceId: 'DEVICE1',
-          codeVerifier: 'VERIFIER1',
-        });
-      } finally {
-        open.mockRestore();
-        delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
-      }
+      expect(redirect.startOidc).not.toHaveBeenCalled();
     });
   });
 });

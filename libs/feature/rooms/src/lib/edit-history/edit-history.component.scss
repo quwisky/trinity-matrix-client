@@ -12,15 +12,6 @@
     flex-direction: column;
   }
 
-  .center {
-    text-align: center;
-    padding: var(--trinity-space-5) var(--trinity-space-4);
-
-    p {
-      margin: 8px 0 0;
-    }
-  }
-
   .truncated {
     margin: 0 0 var(--trinity-space-3);
     color: var(--trinity-text-muted);

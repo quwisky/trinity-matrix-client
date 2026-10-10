@@ -53,23 +53,12 @@
     />
   </trn-settings-row>
   @if (appearance.status.mode.failed()) {
-    <div
-      role="alert"
-      class="flex flex-wrap items-center justify-end gap-2 py-2 text-13 text-danger"
+    <trn-save-failure
+      class="justify-end py-2"
       data-testid="theme-mode-failure"
-    >
-      <span>This choice could not be saved.</span>
-      <button
-        trnBtn
-        type="button"
-        presentation="outline"
-        size="sm"
-        data-testid="theme-mode-retry"
-        (click)="appearance.retry('mode')"
-      >
-        Try again
-      </button>
-    </div>
+      retryTestId="theme-mode-retry"
+      (retry)="appearance.retry('mode')"
+    />
   }
   <trn-appearance-preference-field [field]="themeField" />
 </trn-settings-group>
@@ -152,6 +141,13 @@
     A space you order individually keeps its own choice. Favourites always stay
     in their own group.
   </p>
+</trn-settings-group>
+
+<trn-settings-group
+  title="Space rail"
+  description="Choose what the rail beside your rooms shows."
+>
+  <trn-preference-catalog-section section="space-rail" />
 </trn-settings-group>
 
 <trn-settings-group

@@ -16,6 +16,7 @@ public developer guide.
 | [`docs-pages.yml`](../../.github/workflows/docs-pages.yml)           | A `main` push, a published stable release, or a manual dispatch            | Validated user and developer sites deployed to GitHub Pages                                                                                                     |
 | [`release.yml`](../../.github/workflows/release.yml)                 | A push to `main` or `release/**`, or a manual dispatch with a tag input    | release-please release PRs and tags, then tag verification, desktop packages, a draft GitHub release, its publication, and the back-merge PR after a stable tag |
 | [`homebrew.yml`](../../.github/workflows/homebrew.yml)               | A release is published, or a manual dispatch with a tag input              | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                                                                              |
+| [`e2e-ios-nightly.yml`](../../.github/workflows/e2e-ios-nightly.yml) | Daily at 04:13 UTC or a manual dispatch (`specs` input narrows the run)    | The installed iOS app on the Simulator against native Synapse, with scrubbed diagnostics                                                                        |
 | [`renovate.yml`](../../.github/workflows/renovate.yml)               | Daily at 00:00 UTC or a manual dispatch                                    | Dependency update maintenance through a GitHub App token                                                                                                        |
 | [`release-stable.yml`](../../.github/workflows/release-stable.yml)   | A manual dispatch with `from` and `dry_run` inputs                         | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                                   |
 | [`backport.yml`](../../.github/workflows/backport.yml)               | A merged `main` pull request is closed or labeled `backport release/X.Y.x` | Opens a PR that cherry-picks the fix onto each labeled release branch, through a GitHub App token                                                               |
@@ -35,9 +36,33 @@ unavailable diffs, branch creation, ambiguous merge bases, and every other path
 select the full code graph. Configuration, scripts, lockfiles, root documents,
 private documentation, and documentation-site code therefore retain full validation.
 
+The `classify` job also runs a `mas` step that decides whether `mas-e2e` runs. For a pull request it
+reads the diff against the base and answers `true` when a path under `libs/data-access/auth/`,
+`libs/data-access/matrix-client/`, `libs/data-access/accounts/`, `libs/feature/auth/`,
+`patches/matrix-js-sdk*` or `e2e/support/homeserver/mas/` changed, when the session or secure storage
+service in `libs/platform-native`, the session model in `libs/util/matrix` or the factory reset's
+`application-capability.providers.ts` changed, when a MAS journey or its support file changed, when a shared
+harness file the MAS stack uses changed (`e2e/support/homeserver/` `Caddyfile`, `start.mjs`, `stop.mjs`,
+`constants.mjs`, `kind.mts` or `paths.mjs`), or when a `matrix-js-sdk` or
+`@matrix-org/matrix-sdk-crypto-wasm` line changed in `package.json`, `pnpm-lock.yaml` or
+`pnpm-workspace.yaml` (a version bump rewrites that dependency's entries; any other dependency leaves the
+answer `false`). An empty base commit fails the step instead of answering `false`. Pushes answer `false`:
+the Synapse nightly runs the same journeys against `main`. Renovate `renovate/patch-**` pushes that
+automerge therefore skip `mas-e2e`, and the nightly covers them. It is a step, not an
+`on.pull_request.paths` filter, so a pull request that skips the journeys still reports every required check.
+
 The classifier emits its reason and expected jobs. Wiring an aggregate required-result
 status into branch rules belongs to the later protection slice
 of [#462](https://github.com/quwisky/trinity-matrix-client/issues/462).
+
+Result jobs keep the required check names stable while the work behind them runs in
+several jobs. `e2e-result` reports `E2E (Playwright + homeserver)` for `e2e`, the three
+`browser-e2e` shards, `storybook` and `mas-e2e`; `mobile-e2e-result` reports `Mobile E2E (Android)`
+for both `mobile-e2e` jobs. A result job passes only when every job it covers succeeded,
+so a failed or skipped shard blocks a merge exactly as the single job did. The one exception
+is `mas-e2e`, which is skipped by design when a pull request leaves sign-in code alone:
+`e2e-result` accepts that job skipped, while a failed or cancelled `mas-e2e` and every other
+skipped job still fail it. Branch rules need no change when a result job gains or loses a job it covers.
 
 ### Configure GitHub Pages
 
@@ -53,7 +78,8 @@ the same site without uploading or deploying a Pages artifact.
 CI validation jobs and release verification/package jobs use the shared
 [setup action](../../.github/actions/setup/action.yml). Renovate uses its own App-token
 and container-action setup; the draft-release job consumes artifacts without installing
-the workspace.
+the workspace, and the macOS signing job installs only `electron/`'s lockfile, with
+`--ignore-scripts`.
 It installs pinned pnpm before Node because Node's pnpm cache lookup invokes pnpm.
 The pnpm version comes from `packageManager`; Node follows `.nvmrc`; and installation
 uses a frozen lockfile. A dependency or lockfile mismatch therefore fails at setup,
@@ -64,7 +90,20 @@ The desktop shell is a second pnpm project, so omitting its lockfile makes its
 dependency changes miss cache saves. There is deliberately no Nx cache sharing
 between hosted runners: Nx's local result index is machine-specific, and this
 repository has no remote Nx cache. Treat a repeated build in another CI job as
-an independent build, not a cache regression.
+an independent build, not a cache regression. Pull requests instead save
+time by testing only affected projects (see the `test` job below); there is still no cache.
+
+Playwright's `--with-deps` installs its host libraries with apt, which once timed out on a slow
+Ubuntu mirror. The [Playwright action](../../.github/actions/setup-playwright/action.yml) therefore
+points apt at `~/.cache/apt-archives` (a drop-in setting `Dir::Cache::Archives`) and caches the
+`.deb` files under `apt-<OS>-<ImageOS>-<ImageVersion>-<browsers>-<lockfile hash>`, with a prefix
+fallback. A hit skips the package downloads; `apt-get update` still fetches the index, and a missing
+or corrupt `.deb` is downloaded again, so a stale cache cannot fail the job. A new runner image
+version starts a new cache. Each `playwright install` attempt (in the action and in
+`scripts/ci-prerequisites.mjs`) is bounded to six minutes and retried once, with a
+`::warning::` naming the first failure. The Chromium-only browser shards skip `--with-deps`
+through `with-deps: 'false'` and `TRINITY_PLAYWRIGHT_WITH_DEPS`, because the hosted Ubuntu image
+already ships Chrome's libraries; every job that installs WebKit keeps the system packages.
 
 ## The CI jobs
 
@@ -73,17 +112,33 @@ log. Do not infer repository-wide merge rules from the workflow YAML: branch
 protection and rulesets live in GitHub settings and may impose additional
 requirements.
 
-| Job                     | Checks                                                                                                                                                          | First recovery step                                                                                                                                                                                                         |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `quality`               | `pnpm lint`, `pnpm stylelint`, and `pnpm format:check`                                                                                                          | Fix the reported rule or formatting issue. Stylelint is separate from lint.                                                                                                                                                 |
-| `test`                  | Workspace-wide typecheck, then `pnpm test`                                                                                                                      | Fix the type or unit failure; a passing Vitest run does not replace the typecheck.                                                                                                                                          |
-| `renderer`              | One verified production web renderer build, recorded as a SHA/configuration/file manifest artifact                                                              | Inspect the renderer workflow's build, manifest, or upload step. Downstream hosts must consume this artifact.                                                                                                               |
-| `desktop`               | Electron install, compile, typecheck, unit tests, and launched-shell E2E using the verified renderer                                                            | Use the [desktop guide](../../apps/docs-developers/src/content/docs/platforms/electron.md) to reproduce the matching shell or packaging step.                                                                               |
-| `e2e`                   | Component Storybook, production renderer, styling, disposable-homeserver (Tuwunel) browser journeys, then QR verification                                       | Read the Playwright report and reproduce the smallest owned journey. The homeserver-backed flows use a fixed disposable stack, so run them sequentially.                                                                    |
-| `mobile-e2e`            | WebdriverIO and Appium suite against the installed Capacitor app on an API 36 emulator, with identifiers scrubbed before upload                                 | Reproduce with `pnpm e2e:mobile`; check the uploaded `mobile.android` artifact for the WebView and chromedriver versions line.                                                                                              |
-| `ios-native-build`      | Unsigned iOS Simulator host compile on `macos-26`, using the verified renderer and checking only Cordova extras                                                 | Inspect the retained Xcode log and result bundle; this is a compile gate, not installed-device evidence.                                                                                                                    |
-| `scheduled-e2e`         | Chromium, Firefox, and WebKit scheduled suite                                                                                                                   | This weekly Sunday 03:23 UTC job is separate from pull-request jobs; diagnose its browser-specific artifact and environment.                                                                                                |
-| `E2E (Synapse nightly)` | Separate `e2e-synapse-nightly.yml` workflow: browser, Electron full and protocol suites with `TRINITY_E2E_HOMESERVER=synapse`, daily at 02:47 UTC and on demand | Reproduce locally with the same variable, for example `TRINITY_E2E_HOMESERVER=synapse pnpm e2e:browser`. A failure that Tuwunel does not show is a server difference: branch the expectation on `homeserverSession().kind`. |
+| Job                     | Checks                                                                                                                                                                                                                                                                                                   | First recovery step                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `quality`               | `pnpm lint`, `pnpm stylelint`, `pnpm format:check`, then the workspace-wide typecheck                                                                                                                                                                                                                    | Fix the reported rule, formatting or type error. Stylelint is separate from lint, and a passing Vitest run does not replace the typecheck.                                                                                                                                                                                                                      |
+| `test`                  | Unit tests. A pull request tests the projects `nx affected` selects against its base commit; a change to any root-level file or under `.github/` tests every project, as does every push                                                                                                                 | Fix the unit failure. To see the selection locally, run `pnpm nx show projects --affected --base=<base sha> --withTarget test`.                                                                                                                                                                                                                                 |
+| `renderer`              | One verified production web renderer build, recorded as a SHA/configuration/file manifest artifact                                                                                                                                                                                                       | Inspect the renderer workflow's build, manifest, or upload step. Downstream hosts must consume this artifact.                                                                                                                                                                                                                                                   |
+| `desktop`               | Electron install, compile, typecheck, unit tests, and launched-shell E2E using the verified renderer                                                                                                                                                                                                     | Use the [desktop guide](../../apps/docs-developers/src/content/docs/platforms/electron.md) to reproduce the matching shell or packaging step.                                                                                                                                                                                                                   |
+| `e2e`                   | Production renderer, styling, then QR verification against the disposable homeserver, using the verified renderer                                                                                                                                                                                        | Read the Playwright report and reproduce the smallest owned journey. Homeserver-backed suites on one machine share a fixed stack, so run them sequentially.                                                                                                                                                                                                     |
+| `browser-e2e`           | Disposable-homeserver (Tuwunel) browser journeys as three Playwright shards. Each job sets `TRINITY_E2E_SHARD=<n>/3`, starts its own homeserver and development build, and does not wait for the renderer                                                                                                | Open the failing shard's artifact (surface `browser`, shard `<n>`) and reproduce the failing spec; `TRINITY_E2E_SHARD=<n>/3 pnpm exec nx run trinity-e2e-browser:e2e` replays the whole shard.                                                                                                                                                                  |
+| `storybook`             | Component Storybook palette, mode and contrast checks with three workers; no renderer or homeserver                                                                                                                                                                                                      | Reproduce with `pnpm exec nx run trinity-e2e-components:storybook`.                                                                                                                                                                                                                                                                                             |
+| `mas-e2e`               | MAS-backed OAuth journeys (`accounts/mas-session.spec.mts`) with `TRINITY_E2E_MAS=1`, only when `classify` found sign-in, `matrix-js-sdk` or MAS changes in the pull request; otherwise skipped. The E2E registry pins the browser command line, so `TRINITY_E2E_SPEC` selects the file                  | Open the failing job's artifact (surface `browser-mas`). Reproduce with `TRINITY_E2E_MAS=1 pnpm nx run trinity-e2e-browser:e2e -- accounts/mas-session.spec.mts`; the refresh journey alone takes about three minutes.                                                                                                                                          |
+| `e2e-result`            | Reports the required `E2E (Playwright + homeserver)` check; passes only when `e2e`, every `browser-e2e` shard and `storybook` succeeded and `mas-e2e` succeeded or was skipped                                                                                                                           | Its log lists each job's result; open the one that did not succeed.                                                                                                                                                                                                                                                                                             |
+| `mobile-e2e`            | WebdriverIO and Appium suite against the installed Capacitor app on an API 36 emulator, as two jobs that each select half the specs through `TRINITY_MOBILE_SPECS`. The app build and the homeserver image pull run as background steps while the emulator boots; identifiers are scrubbed before upload | Reproduce with `pnpm e2e:mobile`, or one shard with `TRINITY_MOBILE_SPECS=<its list in ci.yml> pnpm e2e:mobile`; check the uploaded `mobile.android` artifact for the WebView and chromedriver versions line. A failed background build fails the emulator step at its first line; read the `Build the Android app while the emulator boots` step.              |
+| `mobile-e2e-result`     | Reports the required `Mobile E2E (Android)` check; passes only when both `mobile-e2e` jobs succeeded                                                                                                                                                                                                     | Its log lists each job's result; open the one that did not succeed.                                                                                                                                                                                                                                                                                             |
+| `ios-native-build`      | Unsigned iOS Simulator host compile on `macos-26`, using the verified renderer and checking only Cordova extras                                                                                                                                                                                          | Inspect the retained Xcode log and result bundle; this is a compile gate, not installed-device evidence.                                                                                                                                                                                                                                                        |
+| `scheduled-e2e`         | Chromium, Firefox, and WebKit scheduled suite                                                                                                                                                                                                                                                            | This weekly Sunday 03:23 UTC job is separate from pull-request jobs; diagnose its browser-specific artifact and environment.                                                                                                                                                                                                                                    |
+| `E2E (Synapse nightly)` | Separate `e2e-synapse-nightly.yml` workflow: browser (three shards, like `browser-e2e`), Electron full and protocol suites with `TRINITY_E2E_HOMESERVER=synapse`, daily at 02:47 UTC and on demand; a separate `Browser E2E (MAS)` job runs `accounts/mas-session.spec.mts` with `TRINITY_E2E_MAS=1`     | Reproduce locally with the same variable, for example `TRINITY_E2E_HOMESERVER=synapse pnpm e2e:browser`. A failure that Tuwunel does not show is a server difference: branch the expectation on `homeserverSession().kind`. Reproduce a MAS failure with `TRINITY_E2E_MAS=1 pnpm nx run trinity-e2e-browser:e2e -- accounts/mas-session.spec.mts`.              |
+| `E2E (iOS nightly)`     | Separate `e2e-ios-nightly.yml` workflow on `macos-26`: the mobile suite through XCUITest on the pinned iPhone 17 / iOS 26.5 Simulator, native Synapse, Caddy and Dex (Homebrew `dexidp`, for the SSO spec), caches for WebDriverAgent, pip, Appium and Caddy                                             | Reproduce with `TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native pnpm e2e:mobile:ios` on macOS; dispatch with `gh workflow run e2e-ios-nightly.yml -f specs=./specs/<file>.e2e.mts`; read `mobile.ios/host-output` and `wdio/appium.log` in the artifact. A pin missing from a new runner image fails with the available simulators listed. |
+
+A red scheduled run notifies nobody, so `scheduled-e2e` and every job of the Synapse nightly feed a
+`notify` job that calls the reusable [`_nightly-alert.yml`](../../.github/workflows/_nightly-alert.yml).
+On `main`, a failed (or cancelled) job opens one `Nightly E2E failing: <workflow name>` issue labelled
+`ci-nightly`, or reuses the open one, and comments with the run URL, the failed job ids and the date. The
+next all-green run comments and closes it. Pull requests and other branches never touch it, and the job
+holds only `issues: write`. Because a cancelled job counts as failed, the weekly `ci.yml` run has its own
+concurrency group: a push to `main` cancels the in-flight push run but never the scheduled one. Give any
+new scheduled E2E workflow the same `notify` job and list it in `scripts/nightly-alert-workflow.spec.mjs`,
+which fails until it does.
 
 Started Playwright suites upload hidden `dist/.playwright/` output through the
 [diagnostics action](../../.github/actions/upload-playwright-diagnostics/action.yml).
@@ -122,10 +177,10 @@ Desktop, Android, iOS, and the production renderer journey download that artifac
 validate its coordinates, manifest digest, file contents, and expected checkout before
 installing the payload into the canonical `www/` directory. The native wrappers allow
 only their generated Cordova files alongside the manifest payload. A failed validation
-does not replace `www/`. The `e2e` job still builds its development bundle while
-preparing Docker/browser prerequisites; the production renderer step restores the
-verified artifact afterward, while styling and browser journeys intentionally use the
-development server.
+does not replace `www/`. The `e2e` and `browser-e2e` jobs build the development bundle while
+preparing Docker/browser prerequisites. In `e2e`, the production renderer step restores the
+verified artifact afterward, while styling uses the development server. The browser
+journeys use only the development server, so `browser-e2e` does not wait for the renderer.
 
 For local host parity checks against an already recorded artifact, use:
 
@@ -159,9 +214,10 @@ Electron package licenses remain MIT, with matching OCI metadata and preserved t
 notices. Releases publish it: `release.yml`'s `package-web` job attaches `Trinity-Web-<version>.zip`
 (the verified renderer, `LICENSE` and its web-bundle manifest) to the draft, and
 [`container.yml`](../../.github/workflows/container.yml) runs when the release is published. It
-verifies that zip against the tag commit, runs `trinity-web-container:smoke`, then pushes
-`linux/amd64` and `linux/arm64` to `ghcr.io/quwisky/trinity-web` with `X.Y.Z`, `X.Y` and `latest`
-(stable) or `X.Y.Z-next.N` and `next` (prerelease). Moving tags only follow the newest release on
+verifies that zip against the tag commit, runs `trinity-web-container:smoke` and stages the
+image context with a read-only token. Its `publish` job, the only one with the registry token,
+installs nothing and pushes that context as `linux/amd64` and `linux/arm64` to
+`ghcr.io/quwisky/trinity-web` with `X.Y.Z`, `X.Y` and `latest` (stable) or `X.Y.Z-next.N` and `next` (prerelease). Moving tags only follow the newest release on
 their line. To republish, run the Container workflow with the tag; recovery for a cancelled run or a
 missing zip is under [Recover a release run](#recover-a-release-run).
 
@@ -186,7 +242,11 @@ from the Conventional Commits since the last release. Release PRs on both lines 
 `release: cut the vX.Y.Z release` (`pull-request-title-pattern` in both configs), and
 release PRs merge as a squash, which keeps that title as the commit; commitlint allows the `release` type. Merging the release PR bumps
 `package.json`, `electron/package.json` and the manifest, and release-please then
-tags the squash commit and creates a **draft** GitHub release. The same workflow run
+tags the squash commit and creates a **draft** GitHub release. release-please works with
+the release App's token, so the App opens and updates the release PRs, which run
+pull-request CI like any other PR, and creates the tags and draft releases; the workflow
+token in that job is read-only. No workflow listens for tag pushes or draft creation, and
+no workflow script creates or moves a tag. The same workflow run
 verifies the tag and attaches the desktop packages to that draft. The `publish`
 job then publishes it once every package is attached; see
 [Automatic publishing](#automatic-publishing).
@@ -209,7 +269,8 @@ to cut the same version twice.
    branch. While the branch has no stable `vX.Y.*` tag in its history,
    [`scripts/release-version.mjs`](../../scripts/release-version.mjs) takes the newest
    `vX.Y.Z-next.N` tag reachable from it and the `Release PR and tag` job runs the
-   release-please CLI (pinned to `17.11.2`) with `--release-as X.Y.Z`, which opens the
+   release-please CLI (locked by `tools/release-please/pnpm-lock.yaml` and installed with
+   `--ignore-scripts`) with `--release-as X.Y.Z`, which opens the
    stable release PR with version `X.Y.Z`, so stable ships exactly the tested code. The
    action then only tags and releases. Every later push before the release (a fix merged
    first, say) keeps the PR at `X.Y.Z` the same way. Once `vX.Y.Z` is tagged, the job runs the action alone and the stable config's
@@ -247,13 +308,16 @@ It pushes with the release App's installation token, not `GITHUB_TOKEN`: pushes 
 `GITHUB_TOKEN` trigger no workflows, so `release.yml` would never run on the new branch.
 The release App is a GitHub App (for example "Trinity Release") installed only on this
 repository with Contents, Pull requests and Issues: read & write (labels and pull request
-comments use the issues API). Its
+comments use the issues API). Each job mints its token with `permission-*` inputs for only the
+scopes it writes with: Contents for `publish` and `land-back-merge.yml`, Contents and Pull
+requests for `release-please`, `back-merge` and `backport.yml` (release-please's labels and
+comment go on the release PR itself), and Contents and Issues for `cut`. Its
 `RELEASE_APP_CLIENT_ID` variable and `RELEASE_APP_PRIVATE_KEY` secret live in the
 `release-app` environment, whose deployment branch policy allows `main` and `release/**`;
-the jobs that mint the token (`back-merge` and `publish` in `release.yml`, `cut` in
+the jobs that mint the token (`release-please`, `back-merge` and `publish` in `release.yml`, `cut` in
 `release-stable.yml`, `backport.yml` and `land-back-merge.yml`) declare `environment: release-app`. Give
-`release-app` no required reviewers: they would stall every cut, publish, back-merge and
-backport. Reviewers belong on `release`, where they gate packaging only. The release App, not
+`release-app` no required reviewers: they would stall every release PR, cut, publish, back-merge and
+backport. Reviewers belong on `release`, where they gate macOS signing only. The release App, not
 Renovate, is the only bypass actor for `release/**` in the ruleset, and it is a bypass actor
 on `main`'s ruleset so it can push back-merge commits. Renovate keeps its
 own App and credentials.
@@ -379,12 +443,15 @@ git merge --no-ff vX.Y.Z
 # resolve the conflicts, then
 git add -A && git commit --no-edit
 git push -u origin back-merge/vX.Y.Z
-gh pr create --base main --head back-merge/vX.Y.Z \
+gh pr create --draft --base main --head back-merge/vX.Y.Z \
   --title "chore: back-merge vX.Y.Z into main" \
   --body "Merges release/X.Y.x at vX.Y.Z back into main; conflicts resolved by hand."
+# once CI is green
+gh pr ready <number>
 ```
 
-CI runs on the PR and `land-back-merge.yml` lands it when it passes, as above. If that run
+The PR opens as a draft, as every pull request does, and `land-back-merge.mjs` refuses drafts.
+Mark it ready once CI is green; `land-back-merge.yml` then lands it, as above. If that run
 refused or is gone, re-run the `Land back-merge` workflow once CI is green, or, as a bypass
 actor on `main`'s ruleset, land it yourself from an up-to-date clone with Node 24 or newer:
 
@@ -428,8 +495,8 @@ run release-please.
    Make the release App, not Renovate, the only bypass actor for `release/**`.
 6. Change the deployment rules of the environments: `github-pages`, `homebrew` and `apt`
    (if present) to `main`, plus `release/**` where a job runs from a release tag. The
-   `release` environment, which gates packaging in `release.yml`, must allow `main` and
-   `release/**`; it may have required reviewers, which gate packaging only.
+   `release` environment, which gates macOS signing in `release.yml`, must allow `main` and
+   `release/**`; it may have required reviewers, which gate that job only.
 7. Update each local clone:
 
    ```bash
@@ -502,12 +569,15 @@ change before merging the release PR, following [testing](../../apps/docs-develo
 ## Package and review the draft
 
 After verification, the package matrix builds the desktop shell with publishing
-disabled. It uploads these artifacts for 30 days:
+disabled and without any signing secret, and packages the Linux and Windows installers. The
+`desktop-shell` job builds the same compiled shell and renderer on Linux, and the `sign-mac`
+job packages, signs and notarizes it for macOS without waiting for the matrix. The jobs
+upload these artifacts for 30 days:
 
 | Host    | Current artifacts                                                             | Distribution boundary                                                                                                                                                    |
 | ------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Linux   | AppImage and `.deb`                                                           | The workflow packages them; it does not publish them to a download service.                                                                                              |
-| macOS   | `.dmg` and `.zip`, using the current `macos-26` runner's default architecture | Signing and notarization depend on configured credentials. Verify the archive architecture before merging the release PR; `publish` only checks that assets are present. |
+| macOS   | `.dmg` and `.zip` from `sign-mac`, using the `macos-26` runner's default arch | Signing and notarization depend on configured credentials. Verify the archive architecture before merging the release PR; `publish` only checks that assets are present. |
 | Windows | NSIS `.exe`                                                                   | The workflow packages the installer; distribution remains a maintainer action.                                                                                           |
 | Web     | `Trinity-Web-<version>.zip` from the `package-web` job                        | Publishing the release runs `container.yml`, which pushes the image built from this zip to GHCR.                                                                         |
 
@@ -525,19 +595,31 @@ stores, or check signing status for you.
 
 ### Signing and notarization
 
-The package jobs use the GitHub `release` environment, which holds the signing secrets.
-Its presence in YAML does not prove that required reviewers or environment protections
-are configured; maintainers must check the repository settings before relying on them.
-Reviewers on `release` gate packaging only: the release App jobs run in `release-app`.
+Only the `sign-mac` job reads the signing secrets, and only it uses the GitHub `release`
+environment. It installs `electron/`'s own lockfile with `--ignore-scripts` and runs
+electron-builder, with its `afterPack` hook, on the shell the `desktop-shell` job built. It
+downloads that artifact outside the checkout and copies only `dist` and `www` into `electron/`,
+failing if the artifact holds anything else or a symbolic link. No workspace install, Nx or
+renderer build runs next to the certificate. electron-builder signs and notarizes only while it
+packs, never a `--prepackaged` app, which is why the packing moved into this job.
+`scripts/release-workflow.spec.mjs` keeps every signing secret name out of all other jobs.
+Store the signing secrets in the `release` environment rather than as repository secrets, so
+no other job can read them.
+
+The environment's presence in YAML does not prove that required reviewers or environment
+protections are configured; maintainers must check the repository settings before relying
+on them. Reviewers on `release` gate macOS signing only: the release App jobs run in
+`release-app`.
 
 The workflow recognizes these secret names only:
 
 - macOS signing: `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`
-- Windows signing: `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`
 - macOS Apple ID notarization: `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`,
   `APPLE_TEAM_ID`
 
-Without the applicable credentials, packaging can produce unsigned artifacts.
+Without them, `sign-mac` produces unsigned macOS artifacts. Windows signing is not wired
+up: the Windows leg builds without credentials, and adding them needs a signing job like
+`sign-mac`.
 
 An unsigned Windows installer may be published. Windows SmartScreen shows
 "Windows protected your PC" until the user chooses **More info → Run anyway**,
@@ -584,9 +666,9 @@ commit predates `homebrew.yml` never triggers it; dispatch it from `main` instea
 
 1. Join the Apple Developer Program, create a **Developer ID Application**
    certificate, export it as `.p12`, and create an app-specific password. Set the
-   secrets `MAC_CSC_LINK` (base64 of the `.p12`), `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`,
-   `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`. `release.yml` fails the macOS
-   build when only some of them are set.
+   `release` environment secrets `MAC_CSC_LINK` (base64 of the `.p12`),
+   `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID`.
+   `release.yml` fails the macOS signing job when only some of them are set.
 2. Create the public repository `quwisky/homebrew-trinity` **with an initial commit**
    (a README is enough); checkout and push fail on an empty repository.
 3. Create the environment `homebrew` in this repository. Under deployment branches
@@ -634,9 +716,10 @@ re-run is reproducible by hash alone.
 
 Renovate runs daily at 00:00 UTC and can be manually dispatched with a dry-run
 and log-level choice. It reads [`.github/renovate.json`](../../.github/renovate.json)
-and authenticates with the `RENOVATE_APP_CLIENT_ID` repository variable and
-`RENOVATE_APP_PRIVATE_KEY` secret. Those names identify setup inputs only; never
-copy their values into a ticket or log.
+and authenticates with the `RENOVATE_APP_CLIENT_ID` repository variable and the
+`RENOVATE_APP_PRIVATE_KEY` secret of the `renovate` environment, which deploys from `main`
+only; `scripts/renovate-config.spec.mjs` keeps every other job from reading the key. Those
+names identify setup inputs only; never copy their values into a ticket or log.
 
 The workflow uses a GitHub App token instead of the default workflow token so
 the update pull requests can start CI. Its health check requires a completed
@@ -650,14 +733,15 @@ The committed [Renovate policy](../../.github/renovate.json) applies a
 three-day minimum release age before its exceptions. Use this table when
 reviewing an update branch or diagnosing why it did not merge.
 
-| Update                        | Current behavior                                                                                                                                                                     | Maintainer action                                                                                                                |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| Ordinary non-patch dependency | Waits for Dependency Dashboard approval and opens a pull request.                                                                                                                    | Approve the dashboard entry, then review CI.                                                                                     |
-| Patch dependency              | After the three-day age, Renovate uses branch automerge and rebases behind `main`; it waits for CI on `renovate/patch-*`. A failed or 24-hour-pending branch becomes a pull request. | Keep the narrow `ci.yml` push trigger for `renovate/patch-**`; without it, patch automerge silently falls back to pull requests. |
-| Security advisory             | Bypasses the age and dashboard gate, keeps a pull request, and can automerge after CI.                                                                                               | Review the advisory and its labeled pull request; it intentionally does not use the patch-branch path.                           |
-| GitHub Actions digest         | Stays behind dashboard approval and does not patch-automerge.                                                                                                                        | Review the changed pinned action digest before approval.                                                                         |
-| Native platform dependency    | Stays behind dashboard approval.                                                                                                                                                     | Use the evidence described in the developer native platform guides before approval.                                              |
-| TypeScript                    | Moves root and `electron/` manifests together in the `typescript` group, pinned below `6.1.0` for Angular 22's compiler window.                                                      | Widen that bound deliberately with an Angular upgrade; do not split the Electron version.                                        |
+| Update                        | Current behavior                                                                                                                                                                                                                                                                                                                                           | Maintainer action                                                                                                                |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Ordinary non-patch dependency | Waits for Dependency Dashboard approval and opens a pull request.                                                                                                                                                                                                                                                                                          | Approve the dashboard entry, then review CI.                                                                                     |
+| Patch dependency              | After the three-day age, Renovate uses branch automerge and rebases behind `main`; it waits for CI on `renovate/patch-*`. A failed or 24-hour-pending branch becomes a pull request. `Protect main` requires a pull request, so unless Renovate is a bypass actor the direct merge is refused; recent patches arrived as `renovate/patch-*` pull requests. | Keep the narrow `ci.yml` push trigger for `renovate/patch-**`; without it, patch automerge silently falls back to pull requests. |
+| Security update               | Bypasses the dashboard gate, waits one day instead of three, keeps a pull request, and can automerge after CI unless it is a shipped runtime package below.                                                                                                                                                                                                | Review the security details Renovate links and its labeled pull request; it intentionally does not use the patch-branch path.    |
+| Shipped runtime package       | `dompurify`, `matrix-js-sdk`, `@matrix-org/matrix-sdk-crypto-wasm`, `matrix-widget-api` and `electron` patches open a pull request on `renovate/runtime-*` without the dashboard gate but never automerge. Security updates for them open on `renovate/*` and do not automerge either.                                                                     | Review the upstream changes and merge the pull request by hand.                                                                  |
+| GitHub Actions digest         | Stays behind dashboard approval and does not patch-automerge.                                                                                                                                                                                                                                                                                              | Review the changed pinned action digest before approval.                                                                         |
+| Native platform dependency    | Stays behind dashboard approval.                                                                                                                                                                                                                                                                                                                           | Use the evidence described in the developer native platform guides before approval.                                              |
+| TypeScript                    | Moves root and `electron/` manifests together in the `typescript` group, pinned below `6.1.0` for Angular 22's compiler window.                                                                                                                                                                                                                            | Widen that bound deliberately with an Angular upgrade; do not split the Electron version.                                        |
 
 ## Source of truth
 

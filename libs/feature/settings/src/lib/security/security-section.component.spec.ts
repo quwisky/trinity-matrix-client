@@ -14,6 +14,7 @@ import {
 } from '@trinity/data-access/trust';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { HostFileExportService } from '@trinity/runtime/host';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { SecuritySectionComponent } from './security-section.component';
 
 async function build(
@@ -22,6 +23,7 @@ async function build(
     verified?: boolean;
     backup?: boolean;
     availability?: TrustHealth['availability'];
+    cryptoStoreEncrypted?: boolean | null;
   } = {},
   over: {
     exportRoomKeys?: Mock;
@@ -70,6 +72,11 @@ async function build(
       MockProvider(TrnAlertService, { prompt$: prompt }),
       MockProvider(TrnToastService, { show: toastShow }),
       MockProvider(HostFileExportService, { save: fileSave }),
+      MockProvider(MatrixClientService, {
+        cryptoStoreEncrypted: signal(
+          opts.cryptoStoreEncrypted ?? true,
+        ).asReadonly(),
+      }),
     ],
   });
   return {
@@ -231,6 +238,52 @@ describe('SecuritySectionComponent', () => {
     expect(container.querySelector('[data-testid=security-unlock]')).toBeNull();
     expect(container.querySelector('[data-testid=security-verify]')).toBeNull();
   });
+
+  it('asks to sign in again when this device keeps its keys in an unencrypted store', async () => {
+    const { container } = await build({
+      cryptoStoreEncrypted: false,
+      backup: true,
+    });
+
+    const notice = container.querySelector(
+      '[data-testid=security-stored-keys]',
+    );
+    expect(notice?.textContent).toContain(
+      'Sign out and back in on this device to encrypt your stored keys',
+    );
+    // Signing out deletes this device's keys, so the notice points at the backup first.
+    expect(notice?.textContent).toContain('recovery key');
+    expect(notice?.textContent).not.toContain('Encrypted key export');
+  });
+
+  it('points to the key export before sign-out while key backup is off', async () => {
+    const { container } = await build({
+      cryptoStoreEncrypted: false,
+      backup: false,
+    });
+
+    const text = (
+      container.querySelector('[data-testid=security-stored-keys]')
+        ?.textContent ?? ''
+    ).toLowerCase();
+    const signOut = text.indexOf(
+      'sign out and back in on this device to encrypt your stored keys',
+    );
+    expect(signOut).toBeGreaterThan(-1);
+    expect(text.indexOf('encrypted key export')).toBeGreaterThan(-1);
+    expect(text.indexOf('encrypted key export')).toBeLessThan(signOut);
+  });
+
+  it.each([true, null])(
+    'shows no stored-keys notice when the store is encrypted or unknown (%s)',
+    async (cryptoStoreEncrypted) => {
+      const { container } = await build({ cryptoStoreEncrypted });
+
+      expect(
+        container.querySelector('[data-testid=security-stored-keys]'),
+      ).toBeNull();
+    },
+  );
 
   it('exports room keys with the entered passphrase and toasts', async () => {
     const { cmp, exportRoomKeys, prompt, toastShow, fileSave } = await build();

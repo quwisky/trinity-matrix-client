@@ -121,6 +121,15 @@ describe('AvatarService', () => {
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer tok');
   });
 
+  it('binds avatar bytes as an opaque blob rather than an untyped one', async () => {
+    const { svc } = setup();
+
+    await firstValueFrom(svc.resolve('mxc://hs/abc'));
+
+    const bound = createObjectURL.mock.calls[0][0] as Blob;
+    expect(bound.type).toBe('application/octet-stream');
+  });
+
   it('caches per mxc+size so re-resolving does not refetch', async () => {
     const { svc } = setup();
 
@@ -356,6 +365,29 @@ describe('AvatarService', () => {
     // Cache cleared → the same avatar fetches again.
     await firstValueFrom(svc.resolve('mxc://hs/abc'));
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('releaseUnpinned revokes only avatars no subscriber is showing', async () => {
+    const { svc } = setup();
+    let shownUrl: string | null = null;
+    const shown = svc.resolve('mxc://hs/shown').subscribe((url) => {
+      shownUrl = url;
+    });
+    await vi.waitFor(() => expect(shownUrl).not.toBeNull());
+    const unused = await firstValueFrom(svc.resolve('mxc://hs/unused'));
+    fetchMock.mockClear();
+
+    svc.releaseUnpinned();
+
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith(unused);
+    // The held avatar is still cached; the released one fetches again.
+    await expect(firstValueFrom(svc.resolve('mxc://hs/shown'))).resolves.toBe(
+      shownUrl,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    await firstValueFrom(svc.resolve('mxc://hs/unused'));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    shown.unsubscribe();
   });
 });
 

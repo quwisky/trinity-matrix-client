@@ -14,7 +14,7 @@ import { AvatarComponent } from '@trinity/components/generic-content';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import {
   TrnAlertService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnSettingsParts,
   TrnToastService,
 } from '@trinity/components/overlay';
@@ -31,8 +31,6 @@ import { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import { ImagePackManagementService } from '@trinity/data-access/media';
 import {
   KeywordRulesService,
-  PushGatewayService,
-  PushService,
   NotificationSoundService,
   PushRulesService,
   ReactionNotificationSettingsService,
@@ -40,6 +38,7 @@ import {
 import {
   SpaceRoomOrderService,
   TRINITY_ROOM_SORTS,
+  provideRoomLibraryPreferences,
 } from '@trinity/data-access/room-library';
 import {
   CONVERSATION_PRIVACY_PREFERENCES,
@@ -157,6 +156,7 @@ const SETUPS: Record<string, () => Setup> = {
     return {
       providers: [
         provideAppearancePreferences(),
+        provideRoomLibraryPreferences(),
         STORAGE,
         MockProvider(AppearanceEffects, {
           resolved: signal(undefined).asReadonly(),
@@ -195,14 +195,7 @@ const SETUPS: Record<string, () => Setup> = {
         hasLoaded: () => true,
       }),
       MockProvider(TrnToastService),
-      MockProvider(PushGatewayService, {
-        supported: signal(true).asReadonly(),
-        override: signal(null).asReadonly(),
-      }),
-      MockProvider(PushService, {
-        registration: signal({ status: 'idle' as const }).asReadonly(),
-      }),
-      MockProvider(TrnDialogService),
+      MockProvider(TrnSurfaceService),
     ],
   }),
   privacy: () => ({

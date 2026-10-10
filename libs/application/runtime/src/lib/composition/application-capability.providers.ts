@@ -19,6 +19,7 @@ import {
 import {
   AUTHENTICATION_HOMESERVER_DISCOVERY,
   AuthService,
+  NEW_DEVICE_SIGN_IN,
   OidcClientService,
   type AuthenticationHomeserverDiscovery,
 } from '@trinity/data-access/auth';
@@ -28,10 +29,10 @@ import { AvatarService, MediaService } from '@trinity/data-access/media';
 import {
   NOTIFICATION_VISIBILITY,
   PUSH_CONFIG,
+  PushHandoffService,
   PushService,
   type NotificationVisibilityPort,
   type PushConfig,
-  providePushConfigEntries,
 } from '@trinity/data-access/notifications';
 import {
   RoomActionPermissionsService,
@@ -42,6 +43,7 @@ import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
   ROOM_LIST_STYLE,
   type RoomLibraryGovernancePolicy,
+  provideRoomLibraryConfigEntries,
   provideRoomLibraryPreferences,
 } from '@trinity/data-access/room-library';
 import {
@@ -71,6 +73,7 @@ import {
 } from '@trinity/platform-native';
 import { HostBadgeService } from '@trinity/runtime/host';
 import { of } from 'rxjs';
+import { NewDeviceSignInPresenter } from './new-device-sign-in.presenter';
 
 interface ApplicationCapabilityProviderOptions {
   readonly buildInfo: BuildInfo;
@@ -165,6 +168,7 @@ export function applicationCapabilityProviders(
         return {
           snapshot: () => ({
             foreground: document.hasFocus(),
+            hidden: document.visibilityState === 'hidden',
             conversation: conversations.focused()?.key ?? null,
           }),
         };
@@ -176,9 +180,11 @@ export function applicationCapabilityProviders(
         const avatars = inject(AvatarService);
         const media = inject(MediaService);
         const push = inject(PushService);
+        const handoff = inject(PushHandoffService);
         const drafts = inject(DraftStoreService);
         const oidc = inject(OidcClientService);
         return {
+          forgetPushHandoff: (accountId) => handoff.forget(accountId),
           registerNotifications: () => push.register(),
           unregisterNotifications: (accountId) => push.unregister(accountId),
           revokeProviderSession: (session) =>
@@ -196,6 +202,7 @@ export function applicationCapabilityProviders(
         };
       },
     },
+    { provide: NEW_DEVICE_SIGN_IN, useExisting: NewDeviceSignInPresenter },
     {
       provide: TRUST_PROVIDER_RECOVERY,
       useFactory: (): TrustProviderRecoveryPort => {
@@ -213,7 +220,7 @@ export function applicationCapabilityProviders(
     },
     providePlatformConfigEntries(),
     provideGifConfigEntries(),
-    providePushConfigEntries(),
+    provideRoomLibraryConfigEntries(),
     { provide: PUSH_CONFIG, useValue: options.pushConfig },
     { provide: BUILD_INFO, useValue: options.buildInfo },
   ];

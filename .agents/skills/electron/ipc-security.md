@@ -23,7 +23,7 @@ generic channel or exposing an Electron object.
    and a foreign sender. Keep protocol and bridge tests aligned.
 
 The renderer's application origin is `trinity://app`; it is not `file://`.
-`eu.qwky.trinity://` is only the operating-system deep-link callback. Preserve
+`dev.trinityproject.trinity://` is only the operating-system deep-link callback. Preserve
 that distinction in navigation, permission, and CORS work; see
 [`scheme.ts`](../../../electron/src/scheme.ts),
 [`window.ts`](../../../electron/src/window.ts), and

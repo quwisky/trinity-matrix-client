@@ -51,25 +51,34 @@ export class InstallationResetWorkflow {
           pending,
         }),
         (attempt) =>
+          // Empties the push handoff before anything can invalidate the tokens it holds.
           attempt
-            .step(
-              this.storage.list().pipe(
-                catchError(() => {
-                  attempt.addIssue(
-                    'account-registry',
-                    'retry-installation-reset',
-                  );
-                  return of([]);
-                }),
-              ),
-              {
-                budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryRead,
-                scope: 'account-registry',
-                recovery: 'retry-installation-reset',
-                waitAfterBudget: true,
-              },
+            .capture(
+              this.lifecycle.forgetPushHandoff(),
+              'notifications',
+              'restart-application',
+              ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
             )
             .pipe(
+              concatMap(() =>
+                attempt.step(
+                  this.storage.list().pipe(
+                    catchError(() => {
+                      attempt.addIssue(
+                        'account-registry',
+                        'retry-installation-reset',
+                      );
+                      return of([]);
+                    }),
+                  ),
+                  {
+                    budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryRead,
+                    scope: 'account-registry',
+                    recovery: 'retry-installation-reset',
+                    waitAfterBudget: true,
+                  },
+                ),
+              ),
               concatMap((records) => this.readSessions(attempt, records)),
               concatMap(({ records, sessions }) =>
                 this.courtesySignOut(attempt, sessions).pipe(

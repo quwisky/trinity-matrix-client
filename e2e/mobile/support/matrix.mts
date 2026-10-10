@@ -2,6 +2,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import {
   REGISTRATION_SHARED_SECRET,
   HOMESERVER_HTTP,
+  SERVER_NAME,
 } from '../../support/homeserver/start.mjs';
 
 export function uniqueId(prefix: string): string {
@@ -109,4 +110,98 @@ export async function sendMessage(
     ),
   );
   return response['event_id'] as string;
+}
+
+/** A client-server API call as the token's user; throws unless it succeeds. */
+async function clientRequest(
+  token: string,
+  method: 'POST' | 'PUT',
+  path: string,
+  body: Record<string, unknown> = {},
+): Promise<Record<string, unknown>> {
+  return json(
+    await fetch(`${HOMESERVER_HTTP}/_matrix/client/v3/${path}`, {
+      method,
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+export async function inviteUser(
+  token: string,
+  roomId: string,
+  userId: string,
+): Promise<void> {
+  await clientRequest(
+    token,
+    'POST',
+    `rooms/${encodeURIComponent(roomId)}/invite`,
+    {
+      user_id: userId,
+    },
+  );
+}
+
+export async function joinRoom(token: string, roomId: string): Promise<void> {
+  await clientRequest(token, 'POST', `join/${encodeURIComponent(roomId)}`);
+}
+
+/** Replace the user's `m.direct` account data: DM room ids by the other user's id. */
+export async function setDirectRooms(
+  token: string,
+  userId: string,
+  direct: Readonly<Record<string, readonly string[]>>,
+): Promise<void> {
+  await clientRequest(
+    token,
+    'PUT',
+    `user/${encodeURIComponent(userId)}/account_data/m.direct`,
+    direct,
+  );
+}
+
+/** A registered user's named room that a second registered user, the sender, has joined. */
+export interface RoomWithSender {
+  readonly user: string;
+  readonly pass: string;
+  readonly userId: string;
+  readonly token: string;
+  /** The sender's localpart: also its display name, which Synapse defaults to it. */
+  readonly sender: string;
+  readonly senderId: string;
+  readonly senderToken: string;
+  readonly roomId: string;
+  readonly roomName: string;
+}
+
+/** Register a user and a sender, and put both in a new room named after the user. */
+export async function roomWithSender(prefix: string): Promise<RoomWithSender> {
+  const user = uniqueId(prefix);
+  const pass = `${user}-pass`;
+  const sender = uniqueId(`${prefix}-sender`);
+  const senderPass = `${sender}-pass`;
+  const roomName = `Room ${user}`;
+  await registerUser(user, pass);
+  await registerUser(sender, senderPass);
+  const token = await accessToken(user, pass);
+  const senderToken = await accessToken(sender, senderPass);
+  const roomId = await createRoom(token, roomName);
+  const senderId = `@${sender}:${SERVER_NAME}`;
+  await inviteUser(token, roomId, senderId);
+  await joinRoom(senderToken, roomId);
+  return {
+    user,
+    pass,
+    userId: `@${user}:${SERVER_NAME}`,
+    token,
+    sender,
+    senderId,
+    senderToken,
+    roomId,
+    roomName,
+  };
 }

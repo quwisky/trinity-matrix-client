@@ -11,7 +11,34 @@ import {
   registerUser,
   uniqueId,
 } from '../support/matrix.mts';
-import { pressBack, resetApp, restartApp } from '../support/session.mts';
+import {
+  goBack,
+  resetApp,
+  restartApp,
+  historyGestures,
+  recordHistoryGestures,
+} from '../support/session.mts';
+import { onlyOn } from '../support/platform.mts';
+
+/** iOS has no system Back for an open panel: MainViewController turns the edge swipe off. */
+const PANEL_BACK_ANDROID_ONLY =
+  'iOS has no system Back for an open sheet or panel; MainViewController disables the edge swipe while Angular holds one';
+const IME_BACK_ANDROID_ONLY =
+  'Android consumes Back at the IME before the app; iOS has no system Back for an open panel';
+
+const backToSections =
+  '[data-testid="settings-detail"] .settings-layout__topbar button[aria-label="Back to sections"]';
+const closeSettings = '[data-testid="close-settings"]';
+
+/**
+ * Take one step back in the Settings dialog. Android takes the system Back; iOS has no
+ * system Back while a dialog is open (MainViewController disables the edge swipe), so a
+ * user taps the dialog's own `control` instead.
+ */
+async function backFromSettings(control: string): Promise<void> {
+  if (browser.isIOS) await tap(control);
+  else await goBack();
+}
 
 const viewportHeight = (): Promise<number> =>
   browser.execute(() => window.visualViewport?.height ?? window.innerHeight);
@@ -55,17 +82,17 @@ const clickButton = async (name: string): Promise<void> => {
   await button.click();
 };
 
-describe('Android navigation', () => {
+describe('mobile navigation', () => {
   beforeEach(resetApp);
 
-  it('@renderer-smoke logs in, opens settings by touch, and handles hardware Back', async () => {
+  it('@renderer-smoke logs in, opens settings by touch, and goes Back', async () => {
     const user = uniqueId('android-nav');
     const pass = `${user}-pass`;
     await registerUser(user, pass);
     await login(user, pass);
     await openSettingsFromRooms();
 
-    await pressBack();
+    await backFromSettings(closeSettings);
     await expect($(settingsDialog)).not.toBeDisplayed({ wait: 10_000 });
     await waitForRooms();
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
@@ -89,7 +116,7 @@ describe('Android navigation', () => {
     await expect($('trn-rooms')).toBeDisplayed({ wait: 30_000 });
   });
 
-  it('drills into a section and restores its directory link on hardware Back', async () => {
+  it('drills into a section and restores its directory link on Back', async () => {
     const user = uniqueId('android-settings');
     const pass = `${user}-pass`;
     await registerUser(user, pass);
@@ -110,7 +137,7 @@ describe('Android navigation', () => {
     ).toBeDisplayed();
     expect(await pathname()).not.toMatch(/^\/settings/u);
 
-    await pressBack();
+    await backFromSettings(backToSections);
     await expect(appearance).toBeFocused({ wait: 10_000 });
     await expect($(settingsDialog)).toBeDisplayed();
     expect(await pathname()).not.toMatch(/^\/settings/u);
@@ -121,13 +148,123 @@ describe('Android navigation', () => {
     );
     expect(horizontalOverflow).toBeLessThanOrEqual(1);
 
-    await pressBack();
+    await backFromSettings(closeSettings);
     await expect($(settingsDialog)).not.toBeDisplayed({ wait: 10_000 });
     await waitForRooms();
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
   });
 
-  it('dismisses the native keyboard before opening a bounded sheet and handles hardware Back', async () => {
+  it('turns the iOS history swipe on for a routed Settings page, whose Back is history', async function () {
+    onlyOn(
+      'ios',
+      "WebKit's edge swipe; Android's system Back on routed pages is covered above",
+    ).call(this);
+    const user = uniqueId('ios-swipe');
+    const pass = `${user}-pass`;
+    await registerUser(user, pass);
+    await login(user, pass);
+    await waitForRooms();
+    const { search } = new URL(await browser.getUrl());
+    await recordHistoryGestures();
+
+    // A phone opens Settings as a sheet; a direct link still renders the routed page.
+    // Push it as one in-app history entry, the way the router would follow such a link.
+    await browser.execute((path: string) => {
+      history.pushState(null, '', path);
+      dispatchEvent(new PopStateEvent('popstate', { state: null }));
+    }, `/settings/appearance${search}`);
+    await browser.waitUntil(
+      async () => (await pathname()) === '/settings/appearance',
+      { timeout: 20_000, timeoutMsg: 'routed Settings never opened' },
+    );
+    await expect($('trn-settings')).toBeDisplayed({ wait: 20_000 });
+    await browser.waitUntil(
+      async () => (await historyGestures()).at(-1) === true,
+      {
+        timeout: 10_000,
+        timeoutMsg: 'routed Settings never turned the history swipe on',
+      },
+    );
+
+    // The swipe itself is WebKit's: a synthesized edge pan fires it only intermittently on
+    // the Simulator, so the spec takes the same history step it would.
+    await browser.execute(() => history.back());
+    await browser.waitUntil(async () => (await pathname()) === '/rooms', {
+      timeout: 20_000,
+      timeoutMsg: 'history Back never left routed Settings',
+    });
+    await waitForRooms();
+  });
+
+  it('turns the iOS history swipe on over a room opened from the list, and pops it on Back', async function () {
+    onlyOn(
+      'ios',
+      "WebKit's edge swipe; Android's system Back over a room is covered below",
+    ).call(this);
+    const { user, pass, roomName } = await seedComposerRoom();
+    await login(user, pass);
+    await tap('[data-testid="rail-rooms"]');
+    const room = $(
+      `//button[contains(@class,"channel")][contains(.,"${roomName}")]`,
+    );
+    await expect(room).toBeDisplayed({ wait: 30_000 });
+    await recordHistoryGestures();
+
+    await tap(
+      `//button[contains(@class,"channel")][contains(.,"${roomName}")]`,
+    );
+    await expect($('[data-testid="composer-input"]')).toBeDisplayed({
+      wait: 20_000,
+    });
+    // The room sits on the list as one history entry, so the swipe stays on (#1113).
+    await browser.waitUntil(
+      async () => (await historyGestures()).at(-1) === true,
+      {
+        timeout: 10_000,
+        timeoutMsg:
+          'a room opened from the list never turned the history swipe on',
+      },
+    );
+    const entries = await browser.execute(() => history.length);
+
+    await tap('[data-testid="back-to-rooms"]');
+    await expect(room).toBeDisplayed({ wait: 20_000 });
+    // The in-app Back popped the room's entry; it did not push a list on top of it.
+    expect(await browser.execute(() => history.length)).toBe(entries);
+  });
+
+  it('steps System status back to its sections, then closes it, on hardware Back', async function () {
+    onlyOn('android', PANEL_BACK_ANDROID_ONLY).call(this);
+    const { user, pass, roomName } = await seedComposerRoom();
+    await login(user, pass);
+    await tap('[data-testid="rail-rooms"]');
+    const room = $(
+      `//button[contains(@class,"channel")][contains(.,"${roomName}")]`,
+    );
+    await expect(room).toBeDisplayed({ wait: 30_000 });
+    await room.click();
+    await expect($('[data-testid="composer-input"]')).toBeDisplayed({
+      wait: 20_000,
+    });
+
+    await tap('[data-testid="room-actions-overflow"]');
+    await tap('[data-testid="overflow-open-system-status"]');
+    const status = $('[role="dialog"][aria-label="System status"]');
+    await expect(status).toBeDisplayed({ wait: 10_000 });
+    await expect($('[data-testid="sheet-handle"]')).toBeDisplayed();
+    const sections = $('nav[aria-label="System status sections"]');
+    await expect(sections).not.toBeDisplayed();
+
+    await goBack();
+    await expect(sections).toBeDisplayed({ wait: 5_000 });
+    await expect(status).toBeDisplayed();
+    await goBack();
+    await expect(status).not.toBeDisplayed({ wait: 10_000 });
+    await expect($('[data-testid="composer-input"]')).toBeDisplayed();
+  });
+
+  it('dismisses the native keyboard before opening a bounded sheet and handles hardware Back', async function () {
+    onlyOn('android', PANEL_BACK_ANDROID_ONLY).call(this);
     const { user, pass, roomName } = await seedComposerRoom();
     await login(user, pass);
     await $('[data-testid="rail-rooms"]').click();
@@ -183,14 +320,15 @@ describe('Android navigation', () => {
     });
     expect(geometry.top).toBeGreaterThanOrEqual(geometry.viewportTop - 1);
     expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportBottom + 1);
-    await pressBack();
+    await goBack();
     await expect(sheet).not.toBeDisplayed({ wait: 5_000 });
     await expect(trigger).toBeFocused({ wait: 5_000 });
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
     await expect($('[data-testid="composer-input"]')).toBeDisplayed();
   });
 
-  it('dismisses members before the compact Conversation on hardware Back', async () => {
+  it('dismisses members before the compact Conversation on hardware Back', async function () {
+    onlyOn('android', IME_BACK_ANDROID_ONLY).call(this);
     const { user, pass, roomName } = await seedComposerRoom();
     await login(user, pass);
     await tap('[data-testid="rail-rooms"]');
@@ -221,20 +359,20 @@ describe('Android navigation', () => {
     // Android consumes Back at the IME before Capacitor can publish a host intent. Once the
     // focused filter's keyboard has gone, the next Back is offered to the Room surface and
     // only the following one to Conversation.
-    await pressBack();
+    await goBack();
     await browser.waitUntil(
       async () => (await viewportHeight()) > fullViewportHeight - 20,
       { timeout: 10_000, timeoutMsg: 'viewport never restored after the IME' },
     );
     await expect($('.chat-members')).toBeDisplayed({ wait: 5_000 });
 
-    await pressBack();
+    await goBack();
     await expect($('.chat-members')).not.toBeDisplayed({ wait: 5_000 });
     await expect($('[data-testid="composer-input"]')).toBeDisplayed({
       wait: 5_000,
     });
 
-    await pressBack();
+    await goBack();
     await expect(room).toBeDisplayed({ wait: 5_000 });
     await expect($('[data-testid="composer-input"]')).not.toBeDisplayed({
       wait: 5_000,
@@ -263,16 +401,36 @@ describe('Android navigation', () => {
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
     // The phone layout hides the pane holding the shell's <h1>; focus must still
     // land inside Rooms rather than on <body> (#859).
-    await browser.waitUntil(
-      () =>
-        browser.execute(
-          () =>
-            document
-              .querySelector('trn-rooms')
-              ?.contains(document.activeElement) ?? false,
-        ),
-      { timeout: 20_000, timeoutMsg: 'focus did not enter trn-rooms' },
-    );
+    try {
+      await browser.waitUntil(
+        () =>
+          browser.execute(
+            () =>
+              document
+                .querySelector('trn-rooms')
+                ?.contains(document.activeElement) ?? false,
+          ),
+        { timeout: 20_000 },
+      );
+    } catch (error) {
+      // Say where focus was, so a recurrence shows whether the handoff ran at all.
+      const state = await browser.execute(() => {
+        const rooms = document.querySelector('trn-rooms');
+        const active = document.activeElement;
+        return {
+          path: location.pathname + location.search,
+          active: active
+            ? `${active.tagName.toLowerCase()}${active.id ? `#${active.id}` : ''}`
+            : null,
+          roomsTabindex: rooms?.getAttribute('tabindex') ?? null,
+          hasFocus: document.hasFocus(),
+        };
+      });
+      throw new Error(
+        `focus did not enter trn-rooms: ${JSON.stringify(state)}`,
+        { cause: error },
+      );
+    }
   });
 
   it('stacks Verify device over the Settings sheet and returns focus to its opener on Close', async () => {
@@ -297,7 +455,8 @@ describe('Android navigation', () => {
     await clickButton('Close');
     await expect(verify).not.toBeDisplayed({ wait: 10_000 });
     await expect($(settingsDialog)).toBeDisplayed();
-    // The stacked dialog restores focus to the control that opened it.
+    // The stacked dialog restores focus to the control that opened it, also on iOS,
+    // where the tap never focused it (#1109).
     await expect($('[data-testid="security-verify"]')).toBeFocused({
       wait: 10_000,
     });

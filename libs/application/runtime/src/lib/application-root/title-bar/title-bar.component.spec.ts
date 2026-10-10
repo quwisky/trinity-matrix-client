@@ -341,12 +341,10 @@ describe('TitleBarComponent', () => {
         /\.trn-title-row :is\(\.cdk-global-overlay-wrapper, \.cdk-overlay-backdrop\)\s*{\s*inset-block: var\(--trinity-title-row-inset\) 0 !important;/,
       );
       expect(global).not.toMatch(/\.cdk-overlay-container\s*{/);
-      for (const file of [
-        'libs/application/runtime/src/lib/application-root/system-status/system-status.component.scss',
-        'libs/feature/rooms/src/lib/rooms/rooms.page.scss',
-      ]) {
-        expect(read(file), file).toContain(inset);
-      }
+      // System status is a surface in the global overlay layer, which the rule above moves.
+      expect(
+        read('libs/feature/rooms/src/lib/rooms/rooms.page.scss'),
+      ).toContain(inset);
       expect(
         read('libs/feature/rooms/src/lib/rooms/rooms.page.html'),
       ).toContain('top-[var(--trinity-title-row-inset,0px)]');

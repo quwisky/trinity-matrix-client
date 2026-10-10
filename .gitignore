@@ -113,6 +113,7 @@ storybook-static
 /e2e/**/*-snapshots/
 /e2e/support/homeserver/data/
 /e2e/support/homeserver/remote-data/
+/e2e/support/homeserver/mas-data/
 /e2e/support/homeserver/native-venv/
 
 # Repo-local APPIUM_HOME (pinned drivers and downloaded chromedrivers)
@@ -121,3 +122,16 @@ storybook-static
 # Local agent plans, specs and SDD workspaces: never committed
 /docs/superpowers/
 /.superpowers/
+
+# Signing material: certificates, keys and provisioning profiles stay out of git. The
+# end-to-end suite's throwaway localhost certificate is the one tracked exception.
+*.p12
+*.pfx
+*.p8
+*.keystore
+*.jks
+*.mobileprovision
+*.key
+*.pem
+!/e2e/electron/fixtures/localhost-*.pem
+/android/key.properties

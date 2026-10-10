@@ -27,10 +27,10 @@ describe('matchingSettingsSections', () => {
   });
 
   it('matches a part of a section that does not match itself', () => {
-    const results = matchingSettingsSections('push');
+    const results = matchingSettingsSections('keyword');
     expect(
       results.map(({ section, part }) => [section.path, part?.id]),
-    ).toEqual([['notifications', 'push-gateway-this-device']]);
+    ).toEqual([['notifications', 'keywords']]);
   });
 
   it('does not repeat a section as its own part', () => {

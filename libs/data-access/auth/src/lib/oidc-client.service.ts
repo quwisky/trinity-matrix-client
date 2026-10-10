@@ -23,16 +23,25 @@ import type { OidcSessionBinding } from '@trinity/util/matrix';
 /** How this client identifies itself to an OIDC provider during dynamic registration. */
 const CLIENT_NAME = 'Trinity';
 /** Stable https identifier for the app (dynamic-registration `client_uri`). */
-const CLIENT_URI = 'https://trinity.qwky.eu';
+const CLIENT_URI = 'https://trinity.trinityproject.dev';
 /**
- * Preferences key prefix for the dynamic-registration client id, cached per issuer.
+ * Preferences key prefix for the dynamic-registration client id, cached per homeserver
+ * and issuer ({@link clientIdKey}).
  * Versioned: a registration pins the redirect_uris it was created with, so changing the
  * redirect_uri we send strands every id cached under the old shape (the provider then
  * rejects the authorization with a redirect mismatch, which is NOT the `invalid_client`
  * that {@link OidcClientService.forgetClientId} recovers from). Bump on any change to
- * the registered metadata to force a clean re-registration.
+ * the registered metadata to force a clean re-registration. v3 added the homeserver to
+ * the key; ids cached under v2 (issuer only) are ignored and re-registered. v4: the
+ * dev.trinityproject identity move changed redirect_uri and client_uri, so ids cached
+ * under v3 (registered for the old eu.qwky redirect) are ignored and re-registered.
  */
-const CLIENT_ID_KEY_PREFIX = 'oidc.clientId.v2:';
+const CLIENT_ID_KEY_PREFIX = 'oidc.clientId.v4:';
+/** Shown when the callback or the homeserver names a provider other than the one signed in with. */
+const PROVIDER_MISMATCH =
+  "Sign-in could not be completed with this server's sign-in provider. Try again.";
+/** The issuer's own discovery is a side check; an unresponsive host must not hold the callback. */
+const DISCOVERY_TIMEOUT_MS = 8_000;
 
 /** What platform this build registers as (drives redirect-uri + registration policy). */
 export type OidcApplicationType = 'web' | 'native';
@@ -76,13 +85,20 @@ export interface OidcAuthorizationRequest {
   codeVerifier: string;
 }
 
-/** The PKCE context recovered from the stash, needed to exchange the code for tokens. */
+/**
+ * The PKCE context recovered from the stash, needed to exchange the code for tokens, plus
+ * the callback's `iss`.
+ */
 export interface OidcGrantContext {
   baseUrl: string;
   redirectUri: string;
   clientId: string;
   deviceId: string;
   codeVerifier: string;
+  /** The issuer the sign-in started with. The callback and the metadata must name it. */
+  issuer: string;
+  /** The callback's RFC 9207 `iss` parameter, when the provider sent one. */
+  iss?: string;
 }
 
 /** A completed OIDC login: tokens + resolved identity + the provider binding to persist. */
@@ -98,7 +114,7 @@ export interface OidcGrant {
 
 /**
  * Owns the matrix-js-sdk OIDC ("next-gen auth", MSC3861) orchestration: dynamic client
- * registration (cached per issuer), building the PKCE authorization URL, and exchanging
+ * registration (cached per homeserver and issuer), building the PKCE authorization URL, and exchanging
  * the returned code for tokens + identity. {@link AuthService} composes this with its
  * Account Runtime establishment command; components never touch it or the SDK directly.
  */
@@ -108,16 +124,19 @@ export class OidcClientService {
 
   /**
    * Build the authorization URL to redirect to. Registers this client with the provider
-   * (dynamic registration, cached per issuer) if needed, generates a PKCE authorization
+   * (dynamic registration, cached per homeserver and issuer) if needed, generates a PKCE authorization
    * request, and returns the context the callback needs to complete it — the SDK keeps
    * none of it, so the caller must stash what comes back.
    */
   buildAuthorizationRequest(
     params: OidcAuthorizationParams,
   ): Observable<OidcAuthorizationRequest> {
-    return this.ensureClientId(params.metadata, params.applicationType, [
-      params.redirectUri,
-    ]).pipe(switchMap((clientId) => from(this.buildUrl(params, clientId))));
+    return this.ensureClientId(
+      params.baseUrl,
+      params.metadata,
+      params.applicationType,
+      [params.redirectUri],
+    ).pipe(switchMap((clientId) => from(this.buildUrl(params, clientId))));
   }
 
   /**
@@ -203,16 +222,22 @@ export class OidcClientService {
     const metadata = await createClient({
       baseUrl: context.baseUrl,
     }).getAuthMetadata();
+    // Check that the sign-in response comes from the provider it started with before the
+    // code or the verifier is sent anywhere.
+    checkIssuer(metadata, context);
+    await checkIssuerDiscovery(metadata);
     const auth = new OAuth2(metadata, {
       clientId: context.clientId,
-      redirectUri: context.redirectUri,
       codeVerifier: context.codeVerifier,
       deviceId: context.deviceId,
     });
     // Stamped BEFORE the POST: `expires_in` is relative to when the provider issued the
     // token, so measuring from after a slow round-trip would over-state the lifetime.
     const requestedAt = Date.now();
-    const token = await auth.completeAuthorizationCodeGrant(code);
+    const token = await auth.completeAuthorizationCodeGrant(
+      code,
+      context.redirectUri,
+    );
     return { token, metadata, requestedAt };
   }
 
@@ -222,10 +247,7 @@ export class OidcClientService {
     context: OidcGrantContext,
     token: BearerTokenResponse,
   ): Promise<void> {
-    const auth = new OAuth2(metadata, {
-      clientId: context.clientId,
-      redirectUri: context.redirectUri,
-    });
+    const auth = new OAuth2(metadata, { clientId: context.clientId });
     return this.revokeBoth(auth, {
       accessToken: token.access_token,
       refreshToken: token.refresh_token,
@@ -253,12 +275,12 @@ export class OidcClientService {
   }
 
   /**
-   * Forget the cached dynamic-registration client id for an issuer, so the next login
-   * re-registers instead of reusing an id the provider has rejected (e.g. `invalid_client`
-   * after the provider pruned or expired the registration).
+   * Forget the cached dynamic-registration client id for a homeserver's issuer, so the
+   * next login re-registers instead of reusing an id the provider has rejected (e.g.
+   * `invalid_client` after the provider pruned or expired the registration).
    */
-  forgetClientId(issuer: string): Observable<void> {
-    return this.storage.remove(CLIENT_ID_KEY_PREFIX + issuer);
+  forgetClientId(baseUrl: string, issuer: string): Observable<void> {
+    return this.storage.remove(clientIdKey(baseUrl, issuer));
   }
 
   private async revoke(
@@ -272,10 +294,7 @@ export class OidcClientService {
     // The RFC 7009 POST used to be hand-rolled here because the SDK exposed no revocation
     // helper. It does now, and `revocation_endpoint` is required on ValidatedAuthMetadata,
     // so the old "no endpoint, give up quietly" guard is gone with it.
-    const auth = new OAuth2(metadata, {
-      clientId: binding.clientId,
-      redirectUri: binding.redirectUri,
-    });
+    const auth = new OAuth2(metadata, { clientId: binding.clientId });
     await this.revokeBoth(auth, tokens);
   }
 
@@ -295,26 +314,30 @@ export class OidcClientService {
   }
 
   /**
-   * Resolve the dynamic-registration client id for an issuer, registering once and
-   * caching it in Preferences so a later launch (or account) reuses it instead of
-   * minting a fresh registration each time.
+   * Resolve the dynamic-registration client id for a homeserver's issuer, registering
+   * once and caching it in Preferences so a later launch (or account) reuses it instead
+   * of minting a fresh registration each time.
    */
   private ensureClientId(
+    baseUrl: string,
     metadata: ValidatedAuthMetadata,
     applicationType: OidcApplicationType,
     redirectUris: string[],
   ): Observable<string> {
     return defer(() =>
-      from(this.resolveClientId(metadata, applicationType, redirectUris)),
+      from(
+        this.resolveClientId(baseUrl, metadata, applicationType, redirectUris),
+      ),
     );
   }
 
   private async resolveClientId(
+    baseUrl: string,
     metadata: ValidatedAuthMetadata,
     applicationType: OidcApplicationType,
     redirectUris: string[],
   ): Promise<string> {
-    const key = CLIENT_ID_KEY_PREFIX + metadata.issuer;
+    const key = clientIdKey(baseUrl, metadata.issuer);
     const cached = await firstValueFrom(this.storage.get(key));
     if (cached) {
       return cached;
@@ -322,7 +345,7 @@ export class OidcClientService {
     // snake_case in v42 (the registration request is now the wire shape verbatim);
     // v41 took a camelCase wrapper. The fields a provider pins a later authorization
     // against — redirect_uris, application_type, client_uri — are otherwise unchanged,
-    // which is why the cache key above does NOT need a version bump.
+    // so this change alone needed no version bump (v3 keys the cache by homeserver as well).
     const request: OAuthRegistrationRequest = {
       client_name: CLIENT_NAME,
       client_uri: CLIENT_URI,
@@ -340,7 +363,6 @@ export class OidcClientService {
   ): Promise<OidcAuthorizationRequest> {
     const auth = new OAuth2(params.metadata, {
       clientId,
-      redirectUri: params.redirectUri,
       // Omitted for a normal login, where OAuth2 mints one (`?? secureRandomString(10)`).
       ...(params.deviceId ? { deviceId: params.deviceId } : {}),
     });
@@ -356,6 +378,7 @@ export class OidcClientService {
     // readers to parse a fragment first — a separate change.
     const url = await auth.generateAuthorizationCodeGrantUrl(
       state,
+      params.redirectUri,
       'query',
       params.prompt,
     );
@@ -380,5 +403,129 @@ export class OidcClientService {
     return typeof token.expires_in === 'number'
       ? requestedAt + token.expires_in * 1000
       : undefined;
+  }
+}
+
+/**
+ * Check that the sign-in response comes from the provider it started with (RFC 9207).
+ *
+ * An `iss` on the callback must equal the issuer the sign-in started with, by simple string
+ * comparison, and a provider that says it always sends `iss` must have sent one. The
+ * metadata fetched again for the exchange must still name that issuer too, or the token
+ * endpoint it gives is not that provider's.
+ */
+function checkIssuer(
+  metadata: ValidatedAuthMetadata,
+  context: OidcGrantContext,
+): void {
+  const issRequired =
+    'authorization_response_iss_parameter_supported' in metadata &&
+    metadata.authorization_response_iss_parameter_supported === true;
+  if (
+    metadata.issuer !== context.issuer ||
+    (context.iss === undefined ? issRequired : context.iss !== context.issuer)
+  ) {
+    throw new Error(PROVIDER_MISMATCH);
+  }
+}
+
+/**
+ * The cache key for a client id. The homeserver is part of it because the homeserver
+ * chooses the issuer it names: keyed on the issuer alone, one homeserver could leave a
+ * client id that another homeserver's sign-in to the same issuer reuses. A URL has no
+ * space, so the first space separates the two.
+ */
+function clientIdKey(baseUrl: string, issuer: string): string {
+  return `${CLIENT_ID_KEY_PREFIX}${baseUrl} ${issuer}`;
+}
+
+/**
+ * Check the homeserver's provider endpoints against the issuer's own discovery document.
+ *
+ * Matrix makes the homeserver the metadata source and does not require the issuer to
+ * publish a document of its own, so when none can be fetched this passes and
+ * {@link checkIssuer} is the whole check.
+ *
+ * Limit: the homeserver picks the issuer, so this stops only a verbatim issuer copy;
+ * a provider that sends RFC 9207 `iss` closes the rest.
+ */
+async function checkIssuerDiscovery(
+  metadata: ValidatedAuthMetadata,
+): Promise<void> {
+  const own = await issuerDiscovery(metadata.issuer);
+  if (
+    own &&
+    (!sameUrl(own['authorization_endpoint'], metadata.authorization_endpoint) ||
+      !sameUrl(own['token_endpoint'], metadata.token_endpoint) ||
+      (own['revocation_endpoint'] !== undefined &&
+        !sameUrl(own['revocation_endpoint'], metadata.revocation_endpoint)))
+  ) {
+    throw new Error(PROVIDER_MISMATCH);
+  }
+}
+
+/**
+ * Whether two endpoint values name the same URL once parsed, so scheme and host case and
+ * a default port do not count as a difference. Anything that does not parse is a
+ * mismatch. The issuer is not compared this way: RFC 8414 section 3.3 and RFC 9207
+ * section 2.4 require it to match exactly.
+ */
+function sameUrl(a: unknown, b: string): boolean {
+  if (typeof a !== 'string') {
+    return false;
+  }
+  try {
+    return new URL(a).href === new URL(b).href;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The issuer's own metadata: RFC 8414 first, then OpenID Connect Discovery. A document
+ * that names another issuer is not used (RFC 8414 section 3.3). Null when neither is usable.
+ */
+async function issuerDiscovery(
+  issuer: string,
+): Promise<Record<string, unknown> | null> {
+  for (const url of discoveryUrls(issuer)) {
+    const doc = await getJson(url);
+    if (doc?.['issuer'] === issuer) {
+      return doc;
+    }
+  }
+  return null;
+}
+
+/**
+ * RFC 8414 section 3.1 inserts the well-known segment between host and path, dropping a
+ * terminating "/"; OpenID Connect Discovery 1.0 section 4 appends it to the issuer.
+ */
+function discoveryUrls(issuer: string): string[] {
+  let url: URL;
+  try {
+    url = new URL(issuer);
+  } catch {
+    return [];
+  }
+  const path = url.pathname.replace(/\/$/, '');
+  return [
+    `${url.origin}/.well-known/oauth-authorization-server${path}`,
+    `${url.origin}${path}/.well-known/openid-configuration`,
+  ];
+}
+
+async function getJson(url: string): Promise<Record<string, unknown> | null> {
+  try {
+    const res = await fetch(url, {
+      credentials: 'omit',
+      signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
+    });
+    const body: unknown = res.ok ? await res.json() : null;
+    return body !== null && typeof body === 'object'
+      ? (body as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
   }
 }

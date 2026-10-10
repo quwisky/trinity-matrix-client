@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   EMPTY,
   Observable,
@@ -15,8 +15,7 @@ import {
   NativePushRegistrationService,
   type NativePushRegistrationEvent,
 } from '@trinity/platform-native';
-import { DEFAULT_APP_ID } from './push-config';
-import { PushGatewayService } from './push-gateway.service';
+import { DEFAULT_APP_ID, PUSH_CONFIG } from './push-config';
 
 /** Semantic destination emitted by a native notification tap. */
 export interface NativePushActivation {
@@ -29,6 +28,10 @@ export interface NativePushActivation {
  * gateway must forward this from `devices[].data` into the delivered push payload so
  * a tap can switch to the right account. */
 const ACCOUNT_DATA_KEY = 'trinity_user_id';
+/** Pusher `data` key choosing the gateway's render mode (see the gateway README). */
+const RENDER_DATA_KEY = 'trinity_render';
+/** Data-only on Android, mutable-content on iOS: the device fetches and renders the event. */
+const DEVICE_RENDER = 'device';
 
 /**
  * Outcome of the most recent pusher-registration round, for the settings UI.
@@ -55,6 +58,11 @@ export type PushRegistrationState =
 export type PushRuntimeStatus =
   | { readonly status: 'idle'; readonly code: 'push-registration-idle' }
   | { readonly status: 'available'; readonly code: 'push-registration-ready' }
+  /** The host cannot request a token (an Android build without Firebase): not an error. */
+  | {
+      readonly status: 'unsupported';
+      readonly code: 'push-registration-unsupported';
+    }
   | {
       readonly status: 'disabled' | 'degraded';
       readonly code:
@@ -116,12 +124,8 @@ function deviceErrorMessage(err: unknown): string {
 export class PushService {
   private readonly matrix = inject(MatrixClientService);
   private readonly nativePush = inject(NativePushRegistrationService);
-  /**
-   * Resolves the gateway to use — the user's setting, else the build-time
-   * `PUSH_CONFIG`. Injected rather than reading the token directly so a change
-   * made in settings takes effect on the next `register()` without a restart.
-   */
-  private readonly gateway = inject(PushGatewayService);
+  /** The build's gateway (`environment.push`); null builds without native push. */
+  private readonly config = inject(PUSH_CONFIG, { optional: true });
 
   /** The device push token (FCM/APNs), shared by every account's pusher. */
   private currentPushkey: string | null = null;
@@ -131,22 +135,32 @@ export class PushService {
   private readonly _registration = signal<PushRegistrationState>({
     status: 'idle',
   });
-  /**
-   * The most recent registration outcome, for the settings gateway UI to surface
-   * instead of the failures being swallowed. Updated on every `setPushers()` round;
-   * reset to idle when all pushers are torn down.
-   */
+  /** The most recent registration outcome. Updated on every `setPushers()` round; reset to idle when all pushers are torn down. */
   readonly registration = this._registration.asReadonly();
   private readonly _runtimeStatus = signal<PushRuntimeStatus>({
     status: 'idle',
     code: 'push-registration-idle',
   });
   readonly runtimeStatus = this._runtimeStatus.asReadonly();
+  /**
+   * Who shows a notification while the app is in the background. On Android, once every
+   * account's pusher carries this device's token, `push`: TrinityMessagingService renders
+   * background and closed-app pushes itself, so the running app must not show a second
+   * notification for the same message. Everywhere else (iOS, web, desktop, and Android
+   * before registration succeeds or after it fails or is torn down) `app`, so nobody
+   * loses notifications.
+   */
+  readonly backgroundDelivery = computed<'app' | 'push'>(() =>
+    this.nativePush.platform === 'android' &&
+    this._runtimeStatus().status === 'available'
+      ? 'push'
+      : 'app',
+  );
 
   runtimePrerequisite():
     'ready' | 'unsupported' | 'not-configured' | 'no-account' {
     if (!this.nativePush.supported()) return 'unsupported';
-    if (!this.gateway.configured()) return 'not-configured';
+    if (!this.config) return 'not-configured';
     if (!this.matrix.isInitialized) return 'no-account';
     return 'ready';
   }
@@ -232,17 +246,30 @@ export class PushService {
       // Fires the `registration` listener with the FCM/APNs token — or `registrationError`.
       // A rejection here means the OS flow never started, so release the one-time guard:
       // holding it would make every later register() early-exit for the process lifetime.
-      await firstValueFrom(this.nativePush.register()).catch((e: unknown) => {
+      const outcome = await firstValueFrom(this.nativePush.register()).catch(
+        (e: unknown) => {
+          this.registered = false;
+          this._registration.set({
+            status: 'error',
+            message: deviceErrorMessage(e),
+          });
+          this._runtimeStatus.set({
+            status: 'degraded',
+            code: 'push-device-registration-failed',
+          });
+          return null;
+        },
+      );
+      if (outcome === 'unavailable') {
+        // Nothing was asked of the OS, so no token callback will settle this flow. Like a
+        // platform without push: quiet, neither a failure nor a refused permission.
         this.registered = false;
-        this._registration.set({
-          status: 'error',
-          message: deviceErrorMessage(e),
-        });
+        this._registration.set({ status: 'idle' });
         this._runtimeStatus.set({
-          status: 'degraded',
-          code: 'push-device-registration-failed',
+          status: 'unsupported',
+          code: 'push-registration-unsupported',
         });
-      });
+      }
     });
   }
 
@@ -263,20 +290,17 @@ export class PushService {
   unregister(userId?: string): Observable<void> {
     return defer(async () => {
       const pushkey = this.currentPushkey;
-      const appIds = this.liveAppIds();
+      const appId = this.pusherAppId();
       if (userId) {
         const client = this.matrix.clientFor(userId);
         if (pushkey && client) {
-          for (const appId of appIds) {
-            await client.removePusher(pushkey, appId).catch(() => undefined);
-          }
+          await client.removePusher(pushkey, appId).catch(() => undefined);
         }
         return;
       }
       this.currentPushkey = null;
       this.registered = false;
-      // Every pusher is going away — a lingering "applied to N accounts" would be a lie
-      // the settings page shows after a clear or logout.
+      // Every pusher is going away — a lingering "applied to N accounts" would be a lie.
       this._registration.set({ status: 'idle' });
       this._runtimeStatus.set({
         status: 'idle',
@@ -284,34 +308,12 @@ export class PushService {
       });
       if (pushkey) {
         for (const account of this.matrix.all()) {
-          for (const appId of appIds) {
-            await account.client
-              .removePusher(pushkey, appId)
-              .catch(() => undefined);
-          }
+          await account.client
+            .removePusher(pushkey, appId)
+            .catch(() => undefined);
         }
       }
     });
-  }
-
-  /**
-   * Every per-platform app id a pusher of ours might currently be registered under:
-   * the one last written (the ledger) plus the one currently configured. Usually the
-   * same value, so usually one entry — they diverge only when an app-id change was
-   * interrupted, and removing both is what stops that stranding a pusher on the old
-   * gateway. `removePusher` against an id with no pusher is harmless.
-   */
-  private liveAppIds(): readonly string[] {
-    const ids = new Set<string>();
-    const applied = this.gateway.appliedAppId();
-    if (applied) {
-      ids.add(this.platformAppId(applied));
-    }
-    const config = this.gateway.effective();
-    if (config) {
-      ids.add(this.platformAppId(config.appId));
-    }
-    return [...ids];
   }
 
   private canPush(): boolean {
@@ -319,21 +321,20 @@ export class PushService {
     // Electron desktop shell, where `getPlatform()` is also `'web'` — there is no
     // push plugin, so this keeps push a no-op everywhere except real iOS/Android.
     return (
-      this.gateway.configured() &&
+      this.config !== null &&
       this.matrix.isInitialized &&
       this.nativePush.supported()
     );
   }
 
   /**
-   * Per-platform app id the gateway is keyed by, e.g. `eu.qwky.trinity.ios`.
+   * Per-platform app id the gateway is keyed by, e.g. `dev.trinityproject.trinity.ios`.
    *
    * Falls back to {@link DEFAULT_APP_ID} rather than interpolating the optional field
-   * directly: `${undefined}` would stringify to the literal `"undefined.ios"` and be
-   * sent to the homeserver as a real app id, producing a pusher no gateway can match.
+   * directly: `${undefined}` would stringify to the literal `"undefined.ios"`.
    */
-  private platformAppId(baseId: string | undefined): string {
-    return `${baseId ?? DEFAULT_APP_ID}.${this.nativePush.platform ?? 'web'}`;
+  private pusherAppId(): string {
+    return `${this.config?.appId ?? DEFAULT_APP_ID}.${this.nativePush.platform ?? 'web'}`;
   }
 
   private handleNativeEvent(
@@ -377,54 +378,30 @@ export class PushService {
   /**
    * Register (or refresh) a pusher for every signed-in account with `pushkey`.
    *
-   * When the configured app id differs from the one last written, each account's stale
-   * pusher is removed *before* the new one is set. A pusher's identity is
-   * `(user_id, app_id, pushkey)`, so a changed app id does not update the existing row —
-   * it adds a second one and the first keeps delivering to the previous gateway
-   * (verified against Synapse: `GET /pushers` returns two rows after such a change).
-   * Remove-then-set is the safe order: interrupted after the remove, the account is
-   * simply unregistered until the next `register()` re-applies it; interrupted the other
-   * way round, the old gateway would keep receiving indefinitely.
-   *
-   * The ledger only advances once *every* account succeeded, so a partial failure leaves
-   * the old id recorded and the next round retries the removal. Re-removing an id that
-   * is already gone is harmless.
+   * `event_id_only` keeps message content off the gateway; `trinity_user_id` tags the
+   * pusher so the gateway can fan out to the right account and a tap can switch to it;
+   * `trinity_render: "device"` makes the gateway send a push the device renders itself.
+   * Built as a value, not an inline literal: the Matrix spec allows extra `data` keys but
+   * the SDK types the field narrowly (`{ url, format, brand }`).
    */
   private async setPushers(pushkey: string): Promise<void> {
-    const config = this.gateway.effective();
+    const config = this.config;
     if (!config) {
       return;
     }
     this.currentPushkey = pushkey;
-    const appId = this.platformAppId(config.appId);
-    const appliedBase = this.gateway.appliedAppId();
-    const stale =
-      appliedBase && this.platformAppId(appliedBase) !== appId
-        ? this.platformAppId(appliedBase)
-        : null;
-    // The first failure's message, if any: kept so the settings UI can show why the
-    // gateway did not take, instead of the round failing silently. A null failure gates
-    // the ledger advance exactly as the old boolean did — a stale removal that failed
-    // keeps the old id recorded so the next round retries it.
+    const appId = this.pusherAppId();
+    // The first failure's message, kept so diagnostics can say why registration failed.
     let failure: string | null = null;
     let accounts = 0;
 
     for (const account of this.matrix.all()) {
       accounts++;
-      if (stale) {
-        await account.client
-          .removePusher(pushkey, stale)
-          .catch((e) => (failure ??= pushErrorMessage(e)));
-      }
-      // `event_id_only` keeps message content off the gateway; the client fetches the
-      // event after sync. `trinity_user_id` tags the pusher so the gateway can fan out
-      // to the right account and a tap can switch to it (see docs-internal/maintenance/push-notifications.md). Built as a
-      // value, not an inline literal: the Matrix spec allows extra `data` keys but the
-      // SDK types the field narrowly (`{ url, format, brand }`).
       const data = {
         url: config.gatewayUrl,
         format: 'event_id_only',
         [ACCOUNT_DATA_KEY]: account.userId,
+        [RENDER_DATA_KEY]: DEVICE_RENDER,
       };
       await account.client
         .setPusher({
@@ -440,16 +417,13 @@ export class PushService {
           // (app_id, pushkey). It must be true here: every account shares one device
           // token, so `false` makes each account in this loop delete the previous
           // one's pusher whenever two accounts live on the same homeserver, leaving
-          // only the last. Verified against Synapse: with `false` the earlier
-          // account's pusher count drops to 0; with `true` both survive, and
-          // re-registering the same account stays idempotent at one pusher.
+          // only the last. Verified against Synapse.
           append: true,
         })
         .catch((e) => (failure ??= pushErrorMessage(e)));
     }
 
     if (failure === null) {
-      await this.gateway.markApplied(config.appId ?? DEFAULT_APP_ID);
       this._registration.set({ status: 'applied', accounts, at: Date.now() });
       this._runtimeStatus.set({
         status: 'available',

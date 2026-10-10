@@ -47,5 +47,6 @@
         "declaration-property-value-disallowed-list": null
       }
     }
-  ]
+  ],
+  "ignoreFiles": ["e2e/support/homeserver/native-venv/**"]
 }

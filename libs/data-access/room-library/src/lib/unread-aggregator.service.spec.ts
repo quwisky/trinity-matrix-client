@@ -7,16 +7,31 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
 type Listener = (...args: unknown[]) => void;
 
+let roomSeq = 0;
+
 /** A room exposing just the bits the aggregator reads; `unread` is mutable per test. */
 function fakeRoom(
   unread: number,
-  opts: { space?: boolean; membership?: string; markedUnread?: boolean } = {},
+  opts: {
+    space?: boolean;
+    membership?: string;
+    markedUnread?: boolean;
+    id?: string;
+    name?: string;
+    ts?: number;
+    avatarMxc?: string | null;
+  } = {},
 ) {
   const room = {
     unread,
+    roomId: opts.id ?? `!room${++roomSeq}:hs`,
+    name: opts.name ?? 'Room',
     isSpaceRoom: () => opts.space ?? false,
     getMyMembership: () => opts.membership ?? 'join',
     getUnreadNotificationCount: () => room.unread,
+    getLastActiveTimestamp: () => opts.ts ?? 0,
+    getMxcAvatarUrl: () => opts.avatarMxc ?? null,
+    getAvatarFallbackMember: () => undefined,
     getAccountData: (type: string) =>
       opts.markedUnread && type === 'm.marked_unread'
         ? { getContent: () => ({ unread: true }) }
@@ -26,10 +41,15 @@ function fakeRoom(
 }
 
 /** A client shaped like matrix-js-sdk's event emitter over a fixed room list. */
-function fakeClient(rooms: ReturnType<typeof fakeRoom>[]) {
+function fakeClient(
+  rooms: ReturnType<typeof fakeRoom>[],
+  direct: Record<string, string[]> = {},
+) {
   const handlers = new Map<string, Set<Listener>>();
   return {
     getRooms: () => rooms,
+    getAccountData: (type: string) =>
+      type === 'm.direct' ? { getContent: () => direct } : undefined,
     on(evt: string, handler: Listener) {
       (handlers.get(evt) ?? handlers.set(evt, new Set()).get(evt)!).add(
         handler,
@@ -155,7 +175,7 @@ describe('UnreadAggregatorService', () => {
     await flush();
     expect(svc.totalUnread()).toBe(2);
 
-    // Count getRooms reads for the burst only (flush() → unreadFor → getRooms once each).
+    // Count getRooms reads for the burst only (flush() → unreadRoomsFor → getRooms once each).
     let getRoomsCalls = 0;
     const readRooms = client.getRooms;
     client.getRooms = () => {
@@ -274,5 +294,133 @@ describe('UnreadAggregatorService', () => {
     await flush();
 
     expect(svc.totalUnread()).toBe(1);
+  });
+});
+
+describe('unread chats', () => {
+  it('lists every unread joined chat on every account with what the rail draws', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    clients.set(
+      '@a:hs',
+      fakeClient(
+        [
+          fakeRoom(2, {
+            id: '!dm:hs',
+            name: 'Bob',
+            ts: 20,
+            avatarMxc: 'mxc://hs/bob',
+          }),
+          fakeRoom(0, { id: '!read:hs' }),
+        ],
+        { '@bob:hs': ['!dm:hs'] },
+      ),
+    );
+    clients.set(
+      '@b:hs',
+      fakeClient([fakeRoom(5, { id: '!team:hs', name: 'Team', ts: 30 })]),
+    );
+    accountIds.set(['@a:hs', '@b:hs']);
+    await flush();
+
+    expect(svc.unreadRooms()).toEqual([
+      {
+        accountId: '@a:hs',
+        roomId: '!dm:hs',
+        name: 'Bob',
+        initial: 'B',
+        avatarMxc: 'mxc://hs/bob',
+        direct: true,
+        unreadCount: 2,
+        markedUnread: false,
+        activityTs: 20,
+      },
+      {
+        accountId: '@b:hs',
+        roomId: '!team:hs',
+        name: 'Team',
+        initial: 'T',
+        avatarMxc: null,
+        direct: false,
+        unreadCount: 5,
+        markedUnread: false,
+        activityTs: 30,
+      },
+    ]);
+  });
+
+  it('applies the app badge rule: no spaces, no invites, a flagged chat with no count stays', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    clients.set(
+      '@a:hs',
+      fakeClient([
+        fakeRoom(4, { id: '!space:hs', space: true }),
+        fakeRoom(4, { id: '!invite:hs', membership: 'invite' }),
+        fakeRoom(0, { id: '!flagged:hs', markedUnread: true }),
+      ]),
+    );
+    accountIds.set(['@a:hs']);
+    await flush();
+
+    expect(
+      svc.unreadRooms().map((r) => [r.roomId, r.unreadCount, r.markedUnread]),
+    ).toEqual([['!flagged:hs', 0, true]]);
+    expect(svc.totalUnread()).toBe(1);
+  });
+
+  it('lists a room joined by two accounts once per account', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    clients.set('@a:hs', fakeClient([fakeRoom(1, { id: '!shared:hs' })]));
+    clients.set('@b:hs', fakeClient([fakeRoom(3, { id: '!shared:hs' })]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    await flush();
+
+    expect(svc.unreadRooms().map((r) => `${r.accountId} ${r.roomId}`)).toEqual([
+      '@a:hs !shared:hs',
+      '@b:hs !shared:hs',
+    ]);
+  });
+
+  it('drops a chat once it is read', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    const room = fakeRoom(2, { id: '!x:hs' });
+    const client = fakeClient([room]);
+    clients.set('@a:hs', client);
+    accountIds.set(['@a:hs']);
+    await flush();
+    expect(svc.unreadRooms()).toHaveLength(1);
+
+    room.unread = 0;
+    client.emit(RoomEvent.Receipt);
+    await flush();
+
+    expect(svc.unreadRooms()).toEqual([]);
+  });
+
+  it('drops a signed-out account’s chats', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    clients.set('@a:hs', fakeClient([fakeRoom(1)]));
+    clients.set('@b:hs', fakeClient([fakeRoom(1)]));
+    accountIds.set(['@a:hs', '@b:hs']);
+    await flush();
+
+    accountIds.set(['@b:hs']);
+    clients.delete('@a:hs');
+    await flush();
+
+    expect(svc.unreadRooms().map((r) => r.accountId)).toEqual(['@b:hs']);
+  });
+
+  it('keeps the same list object when a sync changes nothing', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    const client = fakeClient([fakeRoom(2, { id: '!x:hs', name: 'X', ts: 5 })]);
+    clients.set('@a:hs', client);
+    accountIds.set(['@a:hs']);
+    await flush();
+    const before = svc.unreadRooms();
+
+    client.emit(ClientEvent.Sync);
+    await flush();
+
+    expect(svc.unreadRooms()).toBe(before);
   });
 });

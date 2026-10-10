@@ -82,7 +82,7 @@ describe('StickerPickerComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('No stickers found.');
     expect(
       fixture.nativeElement
-        .querySelector('.picker__empty')
+        .querySelector('trn-empty-state')
         .getAttribute('role'),
     ).toBe('status');
   });

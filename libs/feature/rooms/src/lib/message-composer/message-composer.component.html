@@ -1,30 +1,9 @@
-@if (editing()) {
-  <div class="composer__banner">
-    Editing message — <kbd>Esc</kbd> to cancel
-    <button
-      type="button"
-      trnIconButton
-      class="composer__cancel"
-      aria-label="Cancel edit"
-      (click)="cancelEdit.emit()"
-    >
-      <trn-icon name="x" motion="rotate" />
-    </button>
-  </div>
-} @else if (replyingTo()) {
-  <div class="composer__banner">
-    Replying to <strong>{{ replyingTo() }}</strong>
-    <button
-      type="button"
-      trnIconButton
-      class="composer__cancel"
-      aria-label="Cancel reply"
-      (click)="cancelReply.emit()"
-    >
-      <trn-icon name="x" motion="rotate" />
-    </button>
-  </div>
-}
+<trn-composer-banner
+  [editing]="editing()"
+  [replyingTo]="replyingTo()"
+  (cancelEdit)="cancelEdit.emit()"
+  (cancelReply)="cancelReply.emit()"
+/>
 
 <trn-composer-attachment-strip
   [uploadProgress]="contextUploadProgress()"
@@ -35,7 +14,50 @@
   (retryStaged)="retryStaged($event)"
 />
 
-<div class="composer">
+<!-- Persistent, so the notice is announced when it appears: `trn-banner` leaves announcing
+     to its consumer, and a live region inserted with its text is not reliably read. -->
+<span class="sr-only" aria-live="assertive">{{
+  attachments.captureNoticeMessage()
+}}</span>
+@if (attachments.captureNotice(); as notice) {
+  <trn-banner
+    class="composer__notice"
+    variant="neutral"
+    data-testid="composer-capture-notice"
+  >
+    <trn-icon trnBannerIcon [name]="notice === 'camera' ? 'camera' : 'image'" />
+    {{ attachments.captureNoticeMessage() }}
+    <span trnBannerActions>
+      @if (attachments.canOpenSettings) {
+        <button
+          trnBtn
+          presentation="outline"
+          size="sm"
+          type="button"
+          data-testid="composer-capture-open-settings"
+          (click)="attachments.openCaptureSettings()"
+        >
+          Open settings
+        </button>
+      }
+      <button
+        trnBtn
+        presentation="ghost"
+        size="sm"
+        type="button"
+        data-testid="composer-capture-notice-dismiss"
+        (click)="attachments.dismissCaptureNotice()"
+      >
+        Dismiss
+      </button>
+    </span>
+  </trn-banner>
+}
+
+<div
+  class="composer"
+  [class.composer--recording]="attachments.recordingVoice()"
+>
   <!-- Both pickers render in the CDK overlay container, anchored to the input row. They were
        `position: absolute` children pinned at `bottom: calc(100% + 4px)`, which is what made
        `.composer` have to stay `position: relative` and what would have let any
@@ -71,37 +93,12 @@
     />
   </ng-template>
   @if (attachments.recordingVoice()) {
-    <div class="composer__recording" data-testid="composer-voice-recording">
-      <span class="sr-only" role="status" aria-live="polite"
-        >Voice recording started</span
-      >
-      <button
-        #voiceCancel
-        type="button"
-        trnIconButton
-        class="composer__recording-cancel"
-        aria-label="Cancel voice recording"
-        data-testid="composer-voice-cancel"
-        (click)="cancelVoiceRecording()"
-      >
-        <trn-icon name="trash-2" motion="nudge-down" />
-      </button>
-      <span class="composer__recording-dot" aria-hidden="true"></span>
-      <span class="composer__recording-time" data-testid="composer-voice-time">
-        Recording {{ attachments.voiceTimeLabel() }}
-      </span>
-      <button
-        type="button"
-        trnIconButton
-        class="composer__recording-send"
-        aria-label="Send voice message"
-        data-testid="composer-voice-send"
-        [disabled]="sendBlocked()"
-        (click)="stopVoiceRecording()"
-      >
-        <trn-icon name="send" motion="nudge-up-right" />
-      </button>
-    </div>
+    <trn-composer-voice-bar
+      [timeLabel]="attachments.voiceTimeLabel()"
+      [sendBlocked]="sendBlocked()"
+      (cancelRecording)="cancelVoiceRecording()"
+      (sendRecording)="stopVoiceRecording()"
+    />
   }
   <!-- The option ids this stamps are what the textarea's `aria-activedescendant` below points
        at, and what `scrollSuggestionIntoView` looks up — see the child's own note. -->
@@ -132,6 +129,27 @@
     hidden
     (change)="onFilePicked($event)"
   />
+  <!-- Mobile web only: `capture` opens the phone's camera instead of the file picker. -->
+  <input
+    #photoCaptureInput
+    type="file"
+    class="composer__file-input"
+    data-testid="composer-photo-capture-input"
+    accept="image/*"
+    capture
+    hidden
+    (change)="onCaptureInput($event, 'photo')"
+  />
+  <input
+    #videoCaptureInput
+    type="file"
+    class="composer__file-input"
+    data-testid="composer-video-capture-input"
+    accept="video/*"
+    capture
+    hidden
+    (change)="onCaptureInput($event, 'video')"
+  />
   <!-- The FIELD: one box holding the insert button, the input and the emoji/send buttons, and
        what all four floating layers anchor to. A grid rather than a flex row, so the preview
        can occupy the textarea's own cell instead of standing beside it — see the stylesheet.
@@ -156,12 +174,15 @@
       [locationSharing]="attachments.locationSharing()"
       [stickerEnabled]="stickerEnabled()"
       [sendBlocked]="sendBlocked()"
+      [captureMode]="attachments.captureMode"
       (attachFile)="onAttach()"
       (pickGif)="toggleGifPicker()"
       (createPoll)="openPollDialog()"
       (shareLocation)="shareLocation()"
       (recordVoice)="startVoiceRecording()"
       (pickSticker)="toggleStickerPicker()"
+      (takePhoto)="onTakePhoto()"
+      (recordVideo)="onRecordVideo()"
     />
     <!-- The preview replaces the input rather than sitting beside it, so the composer keeps its
        height and nothing below it moves. The textarea stays in the DOM (hidden) so its value,
@@ -179,11 +200,7 @@
         tabindex="-1"
         [class.msg__text--html]="preview().rich"
         data-testid="composer-preview"
-        trnSpoilerReveal
-        trnMatrixLink
-        [trnInlineMxcImages]="preview().rich ? preview().html : ''"
-        [trnCodeHighlight]="preview().html"
-        [innerHTML]="preview().html"
+        [trnMatrixHtml]="preview().html"
       ></div>
     }
     <textarea
@@ -201,24 +218,8 @@
             : placeholder() || 'Message #' + roomName()
       "
       aria-autocomplete="list"
-      [attr.aria-controls]="
-        menus.mentionOpen()
-          ? 'mention-suggestions'
-          : menus.emojiOpen()
-            ? 'emoji-suggestions'
-            : menus.slashOpen()
-              ? 'slash-suggestions'
-              : null
-      "
-      [attr.aria-activedescendant]="
-        menus.mentionOpen()
-          ? 'mention-suggestion-' + menus.mentionActiveIndex()
-          : menus.emojiOpen()
-            ? 'emoji-suggestion-' + menus.emojiActiveIndex()
-            : menus.slashOpen()
-              ? 'slash-suggestion-' + menus.slashActiveIndex()
-              : null
-      "
+      [attr.aria-controls]="activeListId()"
+      [attr.aria-activedescendant]="activeOptionId()"
       (input)="onInput($event)"
       (compositionstart)="composing.set(true)"
       (compositionend)="composing.set(false)"
@@ -239,10 +240,10 @@
         contextUploadProgress() !== null ||
         attachments.recordingVoice()
       "
-      (beforeOpen)="captureFormatSelection()"
-      (format)="onMenuFormat($event)"
+      (beforeOpen)="formatting.captureSelection()"
+      (format)="formatting.onMenuFormat($event)"
       (preview)="onTogglePreview()"
-      (dismissed)="restoreFormatSelection()"
+      (dismissed)="formatting.restoreSelection()"
     />
     <button
       type="button"
@@ -268,12 +269,7 @@
         trnTooltip="Send"
         aria-label="Send message"
         data-testid="composer-send"
-        [disabled]="
-          sendBlocked() ||
-          textSending() ||
-          (!text().trim() && !attachments.hasStaged()) ||
-          (!editing() && attachments.hasStaged() && !canSendMedia())
-        "
+        [disabled]="!canSubmit()"
         (click)="submit()"
       >
         <trn-icon name="send" motion="nudge-up-right" />

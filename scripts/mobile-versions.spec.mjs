@@ -44,7 +44,7 @@ describe('mobile E2E version reporting', () => {
       'No Chromedriver found that can automate Chrome 133',
     );
     const error = webviewSwitchError(
-      'WEBVIEW_eu.qwky.trinity',
+      'WEBVIEW_dev.trinityproject.trinity',
       {
         webview: 'com.google.android.webview, 133.0.6943.137',
         chromedriver: `none found in ${dir}`,
@@ -52,7 +52,7 @@ describe('mobile E2E version reporting', () => {
       cause,
     );
     expect(error.message).toBe(
-      'Could not switch to WEBVIEW_eu.qwky.trinity (Android System WebView ' +
+      'Could not switch to WEBVIEW_dev.trinityproject.trinity (Android System WebView ' +
         `com.google.android.webview, 133.0.6943.137; chromedriver none found in ${dir}): ` +
         'No Chromedriver found that can automate Chrome 133',
     );
@@ -61,14 +61,39 @@ describe('mobile E2E version reporting', () => {
 });
 
 describe('iOS launch race classifier', () => {
-  it('retries only FrontBoard not-found errors', () => {
+  it('retries only FrontBoard not-found and launch-refused errors', () => {
     expect(
       isAppNotYetKnown(
         new Error(
-          'FBSOpenApplicationErrorDomain Code=4 "Application "eu.qwky.trinity" is unknown to FrontBoard." (NotFound)',
+          'FBSOpenApplicationErrorDomain Code=4 "Application "dev.trinityproject.trinity" is unknown to FrontBoard." (NotFound)',
         ),
       ),
     ).toBe(true);
+    expect(
+      isAppNotYetKnown(
+        new Error(
+          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=1 "The request to open "dev.trinityproject.trinity" failed." UserInfo={BSErrorCodeDescription=RequestDenied}',
+        ),
+      ),
+    ).toBe(true);
+    // The iOS 26.5 nightly on 2026-10-10 reported the same just-installed race this way.
+    expect(
+      isAppNotYetKnown(
+        new Error(
+          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=4 "The request to open "dev.trinityproject.trinity" failed." UserInfo={BSErrorCodeDescription=InvalidRequest, NSUnderlyingError=0x1 {Error Domain=FBSOpenApplicationErrorDomain Code=4 "Application info provider (FBSApplicationLibrary) returned nil for "dev.trinityproject.trinity"" UserInfo={BSErrorCodeDescription=NotFound}}}',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isAppNotYetKnown(
+        new Error(
+          'Error Domain=FBSOpenApplicationServiceErrorDomain Code=4 "The request to open "dev.trinityproject.trinity" failed." UserInfo={BSErrorCodeDescription=InvalidRequest}',
+        ),
+      ),
+    ).toBe(false);
+    expect(isAppNotYetKnown(new Error('RequestDenied by the proxy'))).toBe(
+      false,
+    );
     expect(isAppNotYetKnown(new Error('socket hang up'))).toBe(false);
     expect(isAppNotYetKnown('is unknown to FrontBoard')).toBe(true);
   });

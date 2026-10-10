@@ -47,6 +47,7 @@ import {
   lucideLoaderCircle,
   lucideLocateFixed,
   lucideLock,
+  lucideLockOpen,
   lucideLogOut,
   lucideMail,
   lucideMailOpen,
@@ -84,6 +85,7 @@ import {
   lucideUser,
   lucideUserPlus,
   lucideUsers,
+  lucideVideo,
   lucideVote,
   lucideX,
 } from '@ng-icons/lucide';
@@ -146,6 +148,7 @@ export const TRN_ICONS: Record<TrnIconName, string> = {
   'loader-circle': lucideLoaderCircle,
   'locate-fixed': lucideLocateFixed,
   lock: lucideLock,
+  'lock-open': lucideLockOpen,
   'log-out': lucideLogOut,
   mail: lucideMail,
   'mail-open': lucideMailOpen,
@@ -183,6 +186,7 @@ export const TRN_ICONS: Record<TrnIconName, string> = {
   user: lucideUser,
   'user-plus': lucideUserPlus,
   users: lucideUsers,
+  video: lucideVideo,
   vote: lucideVote,
   x: lucideX,
 };

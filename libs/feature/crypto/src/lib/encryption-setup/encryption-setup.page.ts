@@ -13,7 +13,10 @@ import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { TrustService } from '@trinity/data-access/trust';
 import { type PasswordPrompt } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
-import { PageHeaderComponent } from '@trinity/components/navigation-layout';
+import {
+  PageHeaderComponent,
+  TrnCardImports,
+} from '@trinity/components/navigation-layout';
 import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
 import {
   confirmLeaving,
@@ -33,6 +36,7 @@ import {
   templateUrl: 'encryption-setup.page.html',
   styleUrls: ['encryption-setup.page.scss'],
   imports: [
+    TrnCardImports,
     PageHeaderComponent,
     TrnButton,
     TrnSpinnerComponent,

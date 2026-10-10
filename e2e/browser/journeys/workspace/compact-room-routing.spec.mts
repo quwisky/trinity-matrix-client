@@ -212,6 +212,45 @@ test.describe('Mobile navigation (separate list/chat pages)', () => {
     await expect(page.getByTestId('back-to-rooms')).toBeHidden();
   });
 
+  // #1113: a room opened from the list is one history entry on top of that list, so the
+  // browser's (and iOS WebKit's edge-swipe) Back is the same step as the in-app button.
+  test('browser Back returns to the list a room was opened from', async ({
+    page,
+  }) => {
+    const channel = page.locator('button.channel', { hasText: ROOM_NAME });
+    await channel
+      .first()
+      .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
+    await channel.first().click();
+    await expect(page.getByTestId('back-to-rooms')).toBeVisible();
+
+    await page.goBack();
+
+    await expect(shellSide(page)).toBeVisible();
+    await expect(page.getByTestId('back-to-rooms')).toBeHidden();
+    // The list keeps the room it left selected, as the in-app button does.
+    expect(new URL(page.url()).searchParams.get('pane')).toBe('list');
+  });
+
+  test('after the in-app back button, browser Back does not reopen the room', async ({
+    page,
+  }) => {
+    const channel = page.locator('button.channel', { hasText: ROOM_NAME });
+    await channel
+      .first()
+      .waitFor({ state: 'attached', timeout: ROOM_ATTACH_TIMEOUT });
+    await channel.first().click();
+    await expect(page.getByTestId('back-to-rooms')).toBeVisible();
+    await page.getByTestId('back-to-rooms').click();
+    await expect(shellSide(page)).toBeVisible();
+
+    // The button popped the room's entry rather than pushing a list on top of it, so
+    // history Back now leaves the list instead of returning to the room.
+    await page.goBack();
+
+    await expect(page.getByTestId('back-to-rooms')).toBeHidden();
+  });
+
   // The composer's narrow layout is decided purely by a media query, so nothing in the
   // unit suite can observe it — jsdom does not lay out. Every other composer spec runs
   // at the 1280px project viewport, i.e. on the *other* side of the breakpoint. Without

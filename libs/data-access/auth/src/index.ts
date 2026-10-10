@@ -1,5 +1,6 @@
 export * from './lib/auth.service';
 export * from './lib/registration.service';
+export { ReauthAccountMismatchError } from './lib/account-establishment';
 export type { LoginMode } from './lib/account-establishment';
 export { OidcClientService } from './lib/oidc-client.service';
 export type {
@@ -17,3 +18,9 @@ export type {
 // boundary. `AuthMetadata` is the name this workspace uses; only this line tracks theirs.
 export type { ValidatedAuthMetadata as AuthMetadata } from 'matrix-js-sdk';
 export * from './lib/homeserver-discovery.port';
+export { OidcStateStore } from './lib/oidc-state.store';
+export type { OidcStateStash } from './lib/oidc-state.store';
+export { SsoStateStore } from './lib/sso-state.store';
+export type { SsoStateStash } from './lib/sso-state.store';
+export { SignInRedirectService } from './lib/sign-in-redirect.service';
+export * from './lib/new-device-sign-in.port';

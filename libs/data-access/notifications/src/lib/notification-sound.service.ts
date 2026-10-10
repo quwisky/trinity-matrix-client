@@ -3,6 +3,7 @@ import { ClientEvent } from 'matrix-js-sdk';
 import { projectFromClient } from '@trinity/data-access/matrix-client';
 import { Observable, defer, from, map, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { migratedAccountDataContent } from './legacy-account-data';
 
 /**
  * Account-data type holding the global "play a sound" preference.
@@ -10,7 +11,11 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
  * Cast at the call sites because the SDK types account-data keys as a closed union of the
  * events it knows about; a client-namespaced type is by definition not in it.
  */
-export const NOTIFICATION_SOUND_EVENT = 'eu.qwky.trinity.notification_sound';
+export const NOTIFICATION_SOUND_EVENT =
+  'dev.trinityproject.trinity.notification_sound';
+/** Retired name; read while only it exists; `NotificationService` copies it to {@link NOTIFICATION_SOUND_EVENT}. */
+export const LEGACY_NOTIFICATION_SOUND_EVENT =
+  'eu.qwky.trinity.notification_sound';
 
 /** Sound is on unless the account says otherwise — the Matrix default is audible. */
 const DEFAULT_ON = true;
@@ -59,7 +64,9 @@ export class NotificationSoundService {
    */
   readonly enabled = this._enabled.asReadonly();
 
-  private readonly onAccountData = (): void => this._enabled.set(this.isOn());
+  private readonly onAccountData = (): void => {
+    this._enabled.set(this.isOn());
+  };
 
   private readonly projection = projectFromClient({
     id: 'notifications.sound',
@@ -100,9 +107,11 @@ export class NotificationSoundService {
     const client = userId
       ? this.matrix.clientFor(userId)
       : this.matrix.instance;
-    const content = client
-      ?.getAccountData?.(NOTIFICATION_SOUND_EVENT as never)
-      ?.getContent?.() as { enabled?: unknown } | undefined;
+    const content = migratedAccountDataContent(
+      client as never,
+      NOTIFICATION_SOUND_EVENT,
+      LEGACY_NOTIFICATION_SOUND_EVENT,
+    ) as { enabled?: unknown } | undefined;
     return typeof content?.enabled === 'boolean' ? content.enabled : DEFAULT_ON;
   }
 

@@ -63,7 +63,7 @@ async function openComposer(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${runId}-${index}`,
       {
         headers: { Authorization: `Bearer ${token}` },
-        // Keep the first sync page taller than the viewport so the simple list does not
+        // Keep the first sync page taller than the viewport so the unwindowed list does not
         // immediately backfill the second page merely to fill empty space. The test below
         // controls that pagination explicitly and asserts its exact 20 -> 40 boundary.
         data: {
@@ -145,6 +145,9 @@ test.describe('Composer formatting', () => {
     await page.keyboard.press('Control+b');
     await expect(back).toHaveValue('say hello there');
 
+    // An unclaimed Ctrl+B goes back to the platform. On macOS that is the text system's
+    // "move backward", which collapses the selection, so select the word again.
+    await selectWord(page, 'hello');
     await page.keyboard.press('Control+Shift+B');
     await expect(back).toHaveValue('say **hello** there');
   });
@@ -331,11 +334,11 @@ test.describe('Composer formatting', () => {
     }
   });
 
-  test('composer growth preserves the simple timeline anchor', async ({
+  test('composer growth preserves the unwindowed timeline anchor', async ({
     page,
     request,
   }) => {
-    // Configure the simple list before first opening the seeded room. Opening it once and
+    // Turn windowing off before first opening the seeded room. Opening it once and
     // then reloading lets its viewport-fill backfill cache all 40 events, so the reload no
     // longer begins at the 20-event initial-sync boundary this test is meant to paginate.
     const { composer, openRoom } = await openComposer(
@@ -350,7 +353,7 @@ test.describe('Composer formatting', () => {
     await seedPreference(page, 'trinity.flags.virtual-timeline', 'false');
     await page.reload({ waitUntil: 'domcontentloaded' });
     await openRoom();
-    await expect(page.locator('trn-simple-message-list')).toBeVisible();
+    await expect(page.locator('trn-message-list')).toBeVisible();
     await expect(page.locator('.msg__text')).toHaveCount(20, {
       timeout: 30_000,
     });

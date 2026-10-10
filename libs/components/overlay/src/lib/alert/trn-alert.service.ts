@@ -4,7 +4,8 @@ import { Overlay } from '@angular/cdk/overlay';
 import type { TrnVariant } from '@trinity/components/foundations';
 import { defer, map, take, type Observable } from 'rxjs';
 import { TrnDialogRef } from '../dialog/trn-dialog-ref';
-import { dialogPresentation } from '../dialog/trn-dialog.service';
+import { TrnDialogOpenerService } from '../dialog/trn-dialog-opener.service';
+import { dialogPresentation, prefersSheet } from '../dialog/trn-dialog.service';
 import {
   TrnAlertDialogComponent,
   type AlertDialogData,
@@ -28,6 +29,15 @@ export interface ConfirmOptions {
   /** Whether navigation closes the alert. Route guards set false so their prompt survives cancellation. */
   closeOnNavigation?: boolean;
 }
+
+/** A confirm with a second way forward, offered beside the confirm button. */
+export interface ChooseOptions extends ConfirmOptions {
+  /** Label for the alternative action. */
+  alternativeText: string;
+}
+
+/** Which button closed a {@link TrnAlertService.choose$}; backdrop and escape are 'cancel'. */
+export type TrnAlertChoice = 'confirm' | 'alternative' | 'cancel';
 
 export interface PromptOptions extends ConfirmOptions {
   placeholder?: string;
@@ -56,28 +66,16 @@ export interface PromptOptions extends ConfirmOptions {
 export class TrnAlertService {
   private readonly dialog = inject(Dialog);
   private readonly overlay = inject(Overlay);
+  private readonly opener = inject(TrnDialogOpenerService);
 
   /** Emits true when confirmed, false on cancel / backdrop / escape. */
   confirm$(opts: ConfirmOptions): Observable<boolean> {
-    const data: AlertDialogData = {
-      kind: 'confirm',
-      header: opts.header,
-      message: opts.message,
-      confirmText: opts.confirmText,
-      cancelText: opts.cancelText ?? 'Cancel',
-      variant: opts.variant ?? 'neutral',
-    };
-    return defer(() => {
-      const ref = this.dialog.open<
-        boolean,
-        AlertDialogData,
-        TrnAlertDialogComponent
-      >(TrnAlertDialogComponent, this.config(data, opts));
-      return ref.closed.pipe(
-        take(1),
-        map((value) => value ?? false),
-      );
-    });
+    return this.openChoice(opts).pipe(map((choice) => choice === 'confirm'));
+  }
+
+  /** Emits which of the confirm, alternative and cancel actions closed the alert. */
+  choose$(opts: ChooseOptions): Observable<TrnAlertChoice> {
+    return this.openChoice(opts);
   }
 
   /** Emits the entered string, or null on cancel / backdrop / escape. */
@@ -109,14 +107,47 @@ export class TrnAlertService {
     });
   }
 
-  /** A centred alert, or a bottom sheet below `md`, like any centred dialog. */
+  private openChoice(
+    opts: ConfirmOptions & { alternativeText?: string },
+  ): Observable<TrnAlertChoice> {
+    const data: AlertDialogData = {
+      kind: 'confirm',
+      header: opts.header,
+      message: opts.message,
+      confirmText: opts.confirmText,
+      cancelText: opts.cancelText ?? 'Cancel',
+      variant: opts.variant ?? 'neutral',
+      ...(opts.alternativeText
+        ? { alternativeText: opts.alternativeText }
+        : {}),
+    };
+    return defer(() => {
+      const ref = this.dialog.open<
+        boolean | 'alternative',
+        AlertDialogData,
+        TrnAlertDialogComponent
+      >(TrnAlertDialogComponent, this.config(data, opts));
+      return ref.closed.pipe(
+        take(1),
+        map((value) =>
+          value === true
+            ? 'confirm'
+            : value === 'alternative'
+              ? 'alternative'
+              : 'cancel',
+        ),
+      );
+    });
+  }
+
+  /** A bottom sheet on a phone or tablet or below md, a centred alert otherwise. */
   private config<R>(
     data: AlertDialogData,
     opts: ConfirmOptions,
   ): DialogConfig<AlertDialogData, DialogRef<R, TrnAlertDialogComponent>> {
     const { pane, createRef } = dialogPresentation(
       this.overlay,
-      'center',
+      prefersSheet() ? 'bottom' : 'center',
       null,
     );
     return {
@@ -124,6 +155,8 @@ export class TrnAlertService {
       // No `ariaLabel`: `pane.ariaLabelledBy` names the dialog by the shell's visible title.
       backdropClass: ['cdk-overlay-dark-backdrop'],
       closeOnNavigation: opts.closeOnNavigation ?? true,
+      // The pressed control, not only what held focus: a WebKit tap never focuses it.
+      restoreFocus: this.opener.restoreTarget(),
       ...pane,
       // The dialog shell reads the presentation from the ref it injects.
       providers: (cdkRef) => [

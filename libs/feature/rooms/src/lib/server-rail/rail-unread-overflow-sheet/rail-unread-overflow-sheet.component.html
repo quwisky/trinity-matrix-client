@@ -1,0 +1,33 @@
+<trn-dialog-shell
+  [title]="title()"
+  [closable]="false"
+  size="sm"
+  data-testid="rail-overflow-list"
+>
+  <div class="flex flex-col gap-0.5">
+    @for (chat of chats()(); track chat.key) {
+      <button
+        trnBtn
+        type="button"
+        shape="row"
+        presentation="ghost"
+        variant="secondary"
+        [attr.aria-label]="chat.label"
+        data-testid="rail-overflow-chat"
+        (click)="choose({ kind: 'chat', selection: chat.selection })"
+      >
+        <trn-rail-unread-overflow-row [chat]="chat" />
+      </button>
+    }
+  </div>
+  <div class="my-2 h-px bg-border" role="separator"></div>
+  <button
+    trnBtn
+    type="button"
+    presentation="link"
+    data-testid="rail-overflow-show-recent"
+    (click)="choose({ kind: 'recent' })"
+  >
+    Show all in Recent activity
+  </button>
+</trn-dialog-shell>

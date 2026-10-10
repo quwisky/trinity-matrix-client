@@ -46,6 +46,13 @@ const requiredTags = [
   'capability:composition',
 ];
 
+// The accepted `loggingBehavior` values, whitespace-normalized: always off, or off unless
+// a local build sets TRINITY_CAPACITOR_LOGS=1 at sync time.
+const CAPACITOR_LOGGING_OFF = [
+  "'none'",
+  "process.env['TRINITY_CAPACITOR_LOGS'] === '1' ? 'debug' : 'none'",
+];
+
 const androidPluginMarkers = [
   ':aparajita-capacitor-secure-storage',
   ':capacitor-app',
@@ -248,6 +255,24 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
   if (!/webDir:\s*['"]www['"]/u.test(input.capacitor)) {
     errors.push('Capacitor hosts must consume the shared flat www artifact');
   }
+  // Capacitor's bridge logs every plugin call's arguments (Android) and the start of every
+  // result (iOS) to the device log, access tokens and sessions included. Exactly one
+  // setting, outside comments, with no platform override, and off unless a local build
+  // opts in.
+  const loggingBehaviors = [
+    ...input.capacitor
+      .replace(/\/\*[\s\S]*?\*\//gu, '')
+      .replace(/^\s*\/\/.*$/gmu, '')
+      .matchAll(/loggingBehavior:\s*([^,}]+)/gu),
+  ].map(([, value]) => value.replace(/\s+/gu, ' ').replaceAll('"', "'").trim());
+  if (
+    loggingBehaviors.length !== 1 ||
+    !CAPACITOR_LOGGING_OFF.includes(loggingBehaviors[0])
+  ) {
+    errors.push(
+      'Capacitor logging must default to none: the bridge logs plugin arguments and results',
+    );
+  }
   if (!capabilityCode.includes('capacitorSupportedOperations(')) {
     errors.push('Capacitor capability support must be explicit at composition');
   }
@@ -274,12 +299,14 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
       errors.push(`iOS host is missing plugin wiring: ${marker}`);
     }
   }
-  if (!androidManifest.includes('android:scheme="eu.qwky.trinity"')) {
+  if (
+    !androidManifest.includes('android:scheme="dev.trinityproject.trinity"')
+  ) {
     errors.push('Android host is missing the authentication deep-link scheme');
   }
   if (
     !iosInfo.includes('<key>CFBundleURLSchemes</key>') ||
-    !iosInfo.includes('<string>eu.qwky.trinity</string>')
+    !iosInfo.includes('<string>dev.trinityproject.trinity</string>')
   ) {
     errors.push('iOS host is missing the authentication deep-link scheme');
   }
@@ -291,6 +318,16 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
     errors.push(
       'iOS host must delegate status-bar appearance to its view controller',
     );
+  }
+  // Xcode 27 builds abort at launch without the UIScene lifecycle, and iOS only
+  // delivers the authentication redirect to the scene delegate once it is adopted.
+  if (
+    !iosInfo.includes('<key>UIApplicationSceneManifest</key>') ||
+    !/<key>UISceneDelegateClassName<\/key>\s*<string>\$\(PRODUCT_MODULE_NAME\)\.SceneDelegate<\/string>/u.test(
+      iosInfo,
+    )
+  ) {
+    errors.push('iOS host must adopt the UIScene lifecycle');
   }
 }
 

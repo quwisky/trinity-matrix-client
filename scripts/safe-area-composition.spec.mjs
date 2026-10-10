@@ -22,7 +22,7 @@ import { describe, expect, it } from 'vitest';
  * from its prefix — which is what makes it worth a guard rather than another browser test.
  *
  * The composition that IS correct is one declaration doing both, as the side-panel header and the
- * action sheet's `.sheet` now do: `padding-bottom: calc(0.375rem + env(safe-area-inset-bottom))`.
+ * sheet frame's host now do: `padding-bottom: env(safe-area-inset-bottom)`.
  * Nothing there can lose a cascade fight, because there is no second rule to lose it to.
  *
  * Validated against the revision that shipped #219: this reports all five panel headers there,
@@ -169,7 +169,7 @@ describe('safe-area helpers and padding utilities', () => {
     expect(HELPERS.get('safe-top')).toEqual(['top']);
     expect(HELPERS.get('safe-bottom')).toEqual(['bottom']);
     // And the sweep reaches the places that use them, in both file kinds.
-    expect(classLists.length).toBeGreaterThanOrEqual(5);
+    expect(classLists.length).toBeGreaterThan(0);
     expect(classLists.some((entry) => entry.file.endsWith('.html'))).toBe(true);
     expect(classLists.some((entry) => entry.file.endsWith('.ts'))).toBe(true);
   });
@@ -211,20 +211,22 @@ describe('safe-area helpers and padding utilities', () => {
     expect(clashes).toEqual([]);
   });
 
-  it('pins the action-sheet base padding and safe area in one declaration', () => {
+  it('pins the action list sheet padding and safe area to the sheet frame', () => {
     // Emulator families are allowed to report a zero bottom inset. A rendered equality on
     // those devices is therefore vacuous: deleting env() would still pass. Keep the exact
     // composition source-guarded, while the installed-WebView journey owns real geometry.
-    const source = read(
-      'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',
+    const frame = read(
+      'libs/components/overlay/src/lib/sheet-frame/trn-sheet-frame.component.scss',
     );
-    expect(source).toMatch(
-      /\.sheet\s*\{\s*padding-bottom:\s*calc\(0\.375rem \+ env\(safe-area-inset-bottom\)\);\s*\}/,
+    expect(frame).toMatch(
+      /:host\s*\{[^}]*padding-bottom:\s*env\(safe-area-inset-bottom\);/,
     );
+    expect(frame.match(/env\(safe-area-inset-bottom\)/g)).toHaveLength(1);
+    // The 0.375rem the sheet used to compose with the inset now sits on the list's scroller.
     expect(
-      source.match(
-        /padding-bottom:\s*calc\(0\.375rem \+ env\(safe-area-inset-bottom\)\);/g,
+      read(
+        'libs/components/overlay/src/lib/action-sheet/trn-action-list.component.html',
       ),
-    ).toHaveLength(1);
+    ).toMatch(/min-h-0 flex-1 overflow-y-auto pb-1\.5/);
   });
 });

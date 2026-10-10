@@ -367,6 +367,11 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     key: 'trinity.privacy.link-previews-encrypted',
     owner: 'platform-native',
   },
+  {
+    disposition: 'exported',
+    key: 'trinity.privacy.save-captures-to-gallery',
+    owner: 'platform-native',
+  },
 
   // — system-line-settings.service.ts —
   {
@@ -427,18 +432,20 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
 
   // — data-access/notifications —
   {
-    disposition: 'exported',
+    disposition: 'excluded',
     key: 'trinity.push.gateway',
     owner: 'data-access/notifications',
+    reason:
+      'Retired: the device override of the push gateway from before the gateway became ' +
+      'build configuration. RetiredPushGatewayCleanup deletes it at startup; nothing reads it.',
   },
   {
     disposition: 'excluded',
     key: 'trinity.push.applied-app-id',
     owner: 'data-access/notifications',
     reason:
-      'Not a preference: the ledger recording which push app id actually reached the ' +
-      'homeserver. Importing a foreign value would make the client believe a pusher exists ' +
-      'that does not, stranding the real one on the old gateway indefinitely.',
+      'Retired: the ledger of the push app id the retired gateway setting registered. ' +
+      'RetiredPushGatewayCleanup deletes it at startup; nothing reads it.',
   },
 
   // — platform-native, excluded —
@@ -480,6 +487,13 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
       'spaces the importing account may not have joined.',
   },
 
+  // — data-access/room-library, exported —
+  {
+    disposition: 'exported',
+    key: 'trinity.rail.unread-chats',
+    owner: 'data-access/room-library',
+  },
+
   // — runtime/projection —
   {
     disposition: 'excluded',
@@ -498,7 +512,7 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     reason:
       'Not a stored key at all: a map key standing for the sound switch inside the ' +
       'notifications page optimistic-state map. The preference itself lives in Matrix ' +
-      'account data (`eu.qwky.trinity.notification_sound`), which is out of scope.',
+      'account data (`dev.trinityproject.trinity.notification_sound`), which is out of scope.',
   },
 ];
 
@@ -549,8 +563,8 @@ export const CONFIG_EXCLUSION_NOTES: readonly {
  * The keys one library is expected to contribute entries for.
  *
  * Exported from the barrel because its consumers are the *other* libs' registry specs —
- * `gif-config-entries.spec.ts` and `push-config-entries.spec.ts` assert their entries match
- * this list — and the Nx boundaries route those through `@trinity/platform-native`.
+ * `gif-config-entries.spec.ts` and the other libs' config-entries specs assert their entries
+ * match this list — and the Nx boundaries route those through `@trinity/platform-native`.
  */
 export function exportedKeysFor(owner: ConfigOwner): readonly string[] {
   const keys: string[] = [];
@@ -568,8 +582,9 @@ export function exportedKeysFor(owner: ConfigOwner): readonly string[] {
  * Bumped when a path is renamed or removed, so an import can tell a document written by an
  * older build from a malformed one — without it the two are indistinguishable.
  */
-// Version 3 records removal of the legacy composer toolbar preferences.
-export const CONFIG_EXPORT_VERSION = 3;
+// Version 3 records removal of the legacy composer toolbar preferences; version 4 the
+// push gateway override (`push.gateway`).
+export const CONFIG_EXPORT_VERSION = 4;
 
 /** The exported document: a versioned envelope around the nested settings. */
 export interface ConfigDocument {

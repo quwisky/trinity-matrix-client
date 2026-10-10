@@ -22,6 +22,7 @@ import {
   TrnSettingsRowComponent,
   TrnToastService,
 } from '@trinity/components/overlay';
+import { EmptyStateComponent } from '@trinity/components/generic-content';
 
 /**
  * The keyword list in Settings → Notifications: words that notify wherever they are said.
@@ -39,6 +40,7 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './keyword-rules-block.component.html',
   imports: [
+    EmptyStateComponent,
     TrnSettingsRowComponent,
     TrnSettingsGroupComponent,
     FormField,

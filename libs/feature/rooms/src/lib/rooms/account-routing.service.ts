@@ -130,12 +130,17 @@ export class AccountRoutingService {
       });
   }
 
-  /** Open the exact Account-and-Room identity emitted by a visible Room row. */
+  /**
+   * Open the exact Account-and-Room identity emitted by a visible Room row. `onReady` runs
+   * once Workspace has opened it, for a caller that hands focus on from a control the open
+   * removes.
+   */
   onSelectRoomSelection(
     selection: ExactRoomSelection,
     origin: WorkspaceRoomNavigationOrigin = 'room-list',
+    onReady?: () => void,
   ): void {
-    this.openRoom(selection, origin);
+    this.openRoom(selection, origin, onReady);
   }
 
   /** Open one exact Conversation and present its member roster once Workspace is ready. */
@@ -350,7 +355,15 @@ export class AccountRoutingService {
     const changesAccount =
       selection.accountId !== this.workspace.activeAccountId();
     this.navigate(
-      { kind: 'room', ...selection, origin },
+      {
+        kind: 'room',
+        ...selection,
+        origin,
+        // A rail chat keeps the current list only when that list shows it.
+        ...(origin === 'rail-unread'
+          ? { listedIn: this.vm.listsShowing(selection) }
+          : {}),
+      },
       changesAccount
         ? 'Unable to open that account right now.'
         : 'Unable to open that destination right now.',

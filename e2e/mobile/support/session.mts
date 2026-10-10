@@ -20,7 +20,7 @@ import {
 const execFileAsync = promisify(execFile);
 
 /** Android package and iOS bundle id: Capacitor uses `appId` for both. */
-export const APP_PACKAGE = 'eu.qwky.trinity';
+export const APP_PACKAGE = 'dev.trinityproject.trinity';
 const WEBVIEW_CONTEXT = `WEBVIEW_${APP_PACKAGE}`;
 /** WKWebView serves the bundled app from this origin. */
 export const IOS_APP_ORIGIN = 'capacitor://localhost';
@@ -168,7 +168,19 @@ export async function resetApp(): Promise<void> {
     const app = requiredEnv('TRINITY_IOS_APP');
     await browser.removeApp(APP_PACKAGE);
     await browser.installApp(app);
-    await activateWhenKnown();
+    try {
+      await activateWhenKnown(15_000);
+    } catch (error) {
+      if (!isAppNotYetKnown(error)) throw error;
+      // On a cold hosted runner FrontBoard once never registered a 1.4 s reinstall within
+      // 15 s, while every other reinstall in the run launched within two attempts.
+      // Installing again re-registers it.
+      console.log(
+        '[mobile] launch still not ready after 15 s; reinstalling once',
+      );
+      await browser.installApp(app);
+      await activateWhenKnown(30_000);
+    }
   } else {
     const cleared = await shell('pm', ['clear', APP_PACKAGE]);
     if (!cleared.includes('Success'))
@@ -187,15 +199,18 @@ export async function resetApp(): Promise<void> {
   await webview();
 }
 
-/** FrontBoard lags a fresh install by a moment: retry only its NotFound, for up to 15 s. */
-async function activateWhenKnown(): Promise<void> {
-  const deadline = Date.now() + 15_000;
+/** FrontBoard lags a fresh install by a moment: retry its NotFound or RequestDenied for `ms`. */
+async function activateWhenKnown(ms: number): Promise<void> {
+  const deadline = Date.now() + ms;
   for (;;) {
     try {
       await browser.activateApp(APP_PACKAGE);
       return;
     } catch (error) {
       if (!isAppNotYetKnown(error) || Date.now() > deadline) throw error;
+      console.log(
+        `[mobile] launch not ready yet, retrying: ${String(error).split('\n')[0].slice(0, 160)}`,
+      );
       await browser.pause(500);
     }
   }
@@ -208,10 +223,52 @@ export async function restartApp(): Promise<void> {
   await webview();
 }
 
-export async function pressBack(): Promise<void> {
+/**
+ * Android's system Back. iOS has no equivalent for an open dialog, sheet or panel: WebKit's
+ * edge swipe is off while one is active (see the gesture policy in
+ * trinity-application-session.adapter), so iOS specs use their in-app controls there. On a
+ * routed page the swipe is history Back; {@link historyGestures} shows it switched on.
+ */
+export async function goBack(): Promise<void> {
   await native();
   await browser.pressKeyCode(4);
   await webview();
+}
+
+/**
+ * Record what the app asks MainViewController to do with WebKit's history swipe, by
+ * watching the `NativeNavigation.setGesturesEnabled` calls crossing the Capacitor bridge.
+ * Read them back with {@link historyGestures}; a reload clears the record.
+ */
+export async function recordHistoryGestures(): Promise<void> {
+  await browser.execute(() => {
+    const w = window as unknown as {
+      __trnHistoryGestures?: boolean[];
+      Capacitor: { toNative: (...args: unknown[]) => unknown };
+    };
+    if (w.__trnHistoryGestures) return;
+    w.__trnHistoryGestures = [];
+    const toNative = w.Capacitor.toNative;
+    w.Capacitor.toNative = (...args: unknown[]) => {
+      const [plugin, method, options] = args as [
+        string,
+        string,
+        { enabled?: unknown },
+      ];
+      if (plugin === 'NativeNavigation' && method === 'setGesturesEnabled')
+        w.__trnHistoryGestures?.push(options?.enabled === true);
+      return toNative.apply(w.Capacitor, args);
+    };
+  });
+}
+
+/** Every history-swipe switch since {@link recordHistoryGestures}, oldest first. */
+export async function historyGestures(): Promise<boolean[]> {
+  return browser.execute(
+    () =>
+      (window as unknown as { __trnHistoryGestures?: boolean[] })
+        .__trnHistoryGestures ?? [],
+  );
 }
 
 export async function webviewVersion(): Promise<string> {
@@ -241,6 +298,16 @@ export async function iosPreferences(): Promise<string> {
     join(container, 'Library/Preferences', `${APP_PACKAGE}.plist`),
   ]);
   return stdout;
+}
+
+/** The installed app's container for an app group it shares with its extensions. */
+export async function iosAppGroupContainer(group: string): Promise<string> {
+  return simctl(
+    'get_app_container',
+    requiredEnv('TRINITY_IOS_UDID'),
+    APP_PACKAGE,
+    group,
+  );
 }
 
 /** The chromedriver Appium chose for this run, read from its server log. */

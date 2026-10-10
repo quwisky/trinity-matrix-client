@@ -35,7 +35,18 @@ const skeletonSeen = (page: Page) =>
     () => (window as unknown as { __skeletonSeen: boolean }).__skeletonSeen,
   );
 
-/** Strip these Rooms' timelines from /sync so the client must backfill via /messages. */
+/**
+ * Strip these Rooms' messages from /sync so the client must backfill via /messages.
+ *
+ * Only a sync that carries timeline events is rewritten, and it is rewritten the way a limited
+ * sync looks. Synapse differs from Tuwunel in two ways that matter here:
+ * - It puts a small room's state events (create, membership, name, ...) in the timeline of its
+ *   first sync and leaves `state` empty. Emptying the timeline then left the client a room with
+ *   no name or membership, which never reached the room list. Those events move into `state`.
+ * - It lists the room in every sync that has a typing, receipt or account-data change, with an
+ *   empty timeline. Marking those `limited` makes the client drop what it has backfilled, and
+ *   the delayed /messages then starts over, so the messages never settle.
+ */
 async function forceBackfill(
   page: Page,
   roomIds: readonly string[],
@@ -44,11 +55,18 @@ async function forceBackfill(
     const response = await route.fetch();
     const body = await response.json();
     for (const roomId of roomIds) {
-      const timeline = body?.rooms?.join?.[roomId]?.timeline;
-      if (timeline) {
-        timeline.events = [];
-        timeline.limited = true;
-      }
+      const joined = body?.rooms?.join?.[roomId];
+      const events: { state_key?: string }[] = joined?.timeline?.events ?? [];
+      if (events.length === 0) continue;
+      joined.state = {
+        ...joined.state,
+        events: [
+          ...(joined.state?.events ?? []),
+          ...events.filter((event) => event.state_key !== undefined),
+        ],
+      };
+      joined.timeline.events = [];
+      joined.timeline.limited = true;
     }
     await route.fulfill({ response, json: body });
   });

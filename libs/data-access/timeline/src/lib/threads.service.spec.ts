@@ -46,6 +46,19 @@ function emitter() {
   };
 }
 
+/** A settled edit as `replacingEvent()` returns it, in the clear unless told otherwise. */
+function fakeEdit(id: string, encrypted = false, ts = 0) {
+  return {
+    getId: () => `${id}~edit`,
+    getTs: () => ts,
+    isEncrypted: () => encrypted,
+    isDecryptionFailure: () => false,
+    isRedacted: () => false,
+    isState: () => false,
+    status: null,
+  };
+}
+
 function fakeEvent(o: {
   id: string;
   sender: string;
@@ -58,12 +71,16 @@ function fakeEvent(o: {
   replyTo?: string;
   status?: string | null;
   editRelation?: boolean;
+  stateKey?: string;
+  /** The event `replacingEvent()` returns: the latest edit of this one. */
+  replacement?: ReturnType<typeof fakeEdit>;
 }) {
   return {
     getId: () => o.id,
     getSender: () => o.sender,
     getTs: () => o.ts ?? 0,
     getType: () => o.type ?? 'm.room.message',
+    isState: () => o.stateKey !== undefined,
     getRoomId: () => '!r:hs',
     getContent: () => ({ body: o.body ?? '', msgtype: 'm.text' }),
     isRedacted: () => o.redacted ?? false,
@@ -72,7 +89,7 @@ function fakeEvent(o: {
     isRelation: (relType?: string) =>
       o.editRelation === true &&
       (relType === undefined || relType === 'm.replace'),
-    replacingEvent: () => (o.editRelation ? {} : null),
+    replacingEvent: () => o.replacement ?? (o.editRelation ? {} : null),
     replyEventId: o.replyTo,
     status: o.status ?? null,
   };
@@ -113,6 +130,12 @@ function fakeThread(o: {
 
 type FakeThread = ReturnType<typeof fakeThread>;
 
+function stubPaginate(client: unknown, fn: () => Promise<boolean>): void {
+  (
+    client as { paginateEventTimeline: () => Promise<boolean> }
+  ).paginateEventTimeline = fn;
+}
+
 /** A MediaService stub whose uploadMedia echoes a plaintext-url image descriptor. */
 function fakeMediaService() {
   return {
@@ -134,6 +157,9 @@ function setup(
   extraEvents: FakeEvent[] = [],
   _sendReadReceipts = true,
   getEncryptionInfoForEvent?: Mock,
+  roomEncrypted = false,
+  storeEncrypted = false,
+  encryptionTs?: number,
 ) {
   const all = [
     ...extraEvents,
@@ -142,8 +168,27 @@ function setup(
       ...t.events,
     ]),
   ];
+  // Thread replies live on their thread; only roots and plain messages are in the
+  // room's main timeline.
+  const mainTimeline = [
+    ...extraEvents,
+    ...threads.flatMap((t) => (t.rootEvent ? [t.rootEvent] : [])),
+  ];
   const room = {
     roomId: '!r:hs',
+    getLiveTimeline: () => ({
+      getEvents: () => mainTimeline,
+      // The room's current `m.room.encryption` state event, dated `encryptionTs`.
+      getState: () =>
+        encryptionTs === undefined
+          ? undefined
+          : {
+              getStateEvents: (type: string) =>
+                type === 'm.room.encryption'
+                  ? { getTs: () => encryptionTs }
+                  : null,
+            },
+    }),
     getThreads: () => threads,
     getThread: (id: string) => threads.find((t) => t.id === id) ?? null,
     findEventById: (id: string) => all.find((e) => e.getId() === id),
@@ -179,7 +224,7 @@ function setup(
           ? reactions[id]
           : undefined,
     },
-    hasEncryptionStateEvent: () => false,
+    hasEncryptionStateEvent: () => roomEncrypted,
     ...emitter(),
   };
   const client = {
@@ -230,8 +275,14 @@ function setup(
       sent.push(['resend', event.getId()]);
       return Promise.resolve({});
     },
-    ...(getEncryptionInfoForEvent
-      ? { getCrypto: () => ({ getEncryptionInfoForEvent }) }
+    ...(getEncryptionInfoForEvent || storeEncrypted
+      ? {
+          getCrypto: () => ({
+            getEncryptionInfoForEvent:
+              getEncryptionInfoForEvent ?? vi.fn(() => Promise.resolve(null)),
+            isEncryptionEnabledInRoom: () => Promise.resolve(storeEncrypted),
+          }),
+        }
       : {}),
     ...emitter(),
   };
@@ -661,6 +712,219 @@ describe('ThreadsService', () => {
     expect(getInfo).toHaveBeenCalled();
   });
 
+  describe('in a room with encryption enabled', () => {
+    function openEncryptedThread(
+      replies: FakeEvent[],
+      getInfo: Mock = vi.fn(),
+      {
+        stateEncrypted = true,
+        storeEncrypted = false,
+        encryptionTs,
+      }: {
+        stateEncrypted?: boolean;
+        storeEncrypted?: boolean;
+        encryptionTs?: number;
+      } = {},
+    ) {
+      const root = fakeEvent({
+        id: '$root',
+        sender: '@a:hs',
+        body: 'root',
+        encrypted: true,
+      });
+      const encryption = fakeEvent({
+        id: '$enc',
+        sender: '@a:hs',
+        type: 'm.room.encryption',
+        stateKey: '',
+      });
+      const made = setup(
+        [fakeThread({ id: '$root', rootEvent: root, events: replies })],
+        [],
+        {},
+        [encryption],
+        true,
+        getInfo,
+        stateEncrypted,
+        storeEncrypted,
+        encryptionTs,
+      );
+      made.svc.attachThreadRoot('$root');
+      return { ...made, getInfo };
+    }
+
+    const shieldOf = (
+      svc: ThreadsService,
+      id: string,
+    ): { level: string } | null =>
+      svc.threadMessages().find((m) => m.id === id)?.shield ?? null;
+
+    it('marks a plaintext thread reply as not encrypted', () => {
+      const { svc } = openEncryptedThread([
+        fakeEvent({ id: '$plain', sender: '@a:hs', body: 'hi' }),
+      ]);
+
+      expect(shieldOf(svc, '$plain')).toEqual({
+        level: 'unencrypted',
+        reason: 'Not encrypted',
+        explanation: 'This message was sent without end-to-end encryption.',
+      });
+    });
+
+    it('leaves an encrypted reply on its crypto-derived shield', async () => {
+      const getInfo = vi.fn().mockResolvedValue({
+        shieldColour: EventShieldColour.GREY,
+        shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+      });
+      const { svc } = openEncryptedThread(
+        [
+          fakeEvent({
+            id: '$sealed',
+            sender: '@a:hs',
+            body: 'hi',
+            encrypted: true,
+          }),
+        ],
+        getInfo,
+      );
+
+      await vi.waitFor(() =>
+        expect(shieldOf(svc, '$sealed')).toMatchObject({ level: 'grey' }),
+      );
+    });
+
+    it('marks a reply dated before encryption grey and one dated after it red', () => {
+      const { svc } = openEncryptedThread(
+        [
+          fakeEvent({ id: '$old', sender: '@a:hs', body: 'one', ts: 500 }),
+          fakeEvent({ id: '$new', sender: '@a:hs', body: 'two', ts: 1500 }),
+        ],
+        vi.fn(),
+        { encryptionTs: 1000 },
+      );
+
+      expect(shieldOf(svc, '$old')).toEqual({
+        level: 'unencrypted-history',
+        reason: 'Not encrypted',
+        explanation:
+          'This message is dated before the room turned on end-to-end encryption.',
+      });
+      expect(shieldOf(svc, '$new')).toMatchObject({ level: 'unencrypted' });
+    });
+
+    it('marks every reply red when the room has no encryption state event', () => {
+      const { svc } = openEncryptedThread([
+        fakeEvent({ id: '$old', sender: '@a:hs', body: 'one', ts: 1 }),
+        fakeEvent({ id: '$new', sender: '@a:hs', body: 'two', ts: 9999 }),
+      ]);
+
+      expect(shieldOf(svc, '$old')).toMatchObject({ level: 'unencrypted' });
+      expect(shieldOf(svc, '$new')).toMatchObject({ level: 'unencrypted' });
+    });
+
+    it('marks an encrypted reply whose plaintext edit is dated after encryption red', () => {
+      const { svc } = openEncryptedThread(
+        [
+          fakeEvent({
+            id: '$sealed',
+            sender: '@a:hs',
+            body: 'edited text',
+            encrypted: true,
+            ts: 500,
+            replacement: fakeEdit('$sealed', false, 1500),
+          }),
+        ],
+        vi.fn(),
+        { encryptionTs: 1000 },
+      );
+
+      expect(shieldOf(svc, '$sealed')).toMatchObject({ level: 'unencrypted' });
+    });
+
+    it('probes the crypto API with the edit, which supplies the text', async () => {
+      const getInfo = vi.fn().mockResolvedValue({
+        shieldColour: EventShieldColour.GREY,
+        shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+      });
+      const { svc } = openEncryptedThread(
+        [
+          fakeEvent({
+            id: '$sealed',
+            sender: '@a:hs',
+            body: 'edited text',
+            encrypted: true,
+            replacement: fakeEdit('$sealed', true),
+          }),
+        ],
+        getInfo,
+      );
+
+      await vi.waitFor(() =>
+        expect(shieldOf(svc, '$sealed')).toMatchObject({ level: 'grey' }),
+      );
+      const probed = getInfo.mock.calls.map(([event]) => event.getId());
+      expect(probed).toContain('$sealed~edit');
+      expect(probed).not.toContain('$sealed');
+    });
+
+    it('does not show a state event of a message type as a reply', () => {
+      const { svc } = openEncryptedThread([
+        fakeEvent({
+          id: '$state-message',
+          sender: '@a:hs',
+          body: 'keyed',
+          stateKey: 'x',
+        }),
+        fakeEvent({ id: '$real', sender: '@a:hs', body: 'real' }),
+      ]);
+
+      const ids = svc.threadMessages().map((m) => m.id);
+      expect(ids).not.toContain('$state-message');
+      expect(ids).toContain('$real');
+    });
+
+    // Same rule as the main timeline: the SDK encrypts when the state says so OR the crypto
+    // store has the room recorded as encrypted.
+    it('marks a plaintext reply when only the crypto store knows the room is encrypted', async () => {
+      const { svc } = openEncryptedThread(
+        [fakeEvent({ id: '$plain', sender: '@a:hs', body: 'hi' })],
+        vi.fn(),
+        { stateEncrypted: false, storeEncrypted: true },
+      );
+
+      await vi.waitFor(() =>
+        expect(shieldOf(svc, '$plain')).toMatchObject({ level: 'unencrypted' }),
+      );
+    });
+
+    it('does not mark a pending reply', () => {
+      const { svc } = openEncryptedThread([
+        fakeEvent({
+          id: '$echo',
+          sender: '@me:hs',
+          body: 'sending',
+          status: 'sending',
+        }),
+      ]);
+
+      expect(svc.threadMessages().map((m) => m.id)).toContain('$echo');
+      expect(shieldOf(svc, '$echo')).toBeNull();
+    });
+  });
+
+  it('shows no unencrypted shield in a room without encryption', () => {
+    const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+    const reply = fakeEvent({ id: '$r1', sender: '@a:hs', body: 'plain' });
+    const { svc } = setup([
+      fakeThread({ id: '$root', rootEvent: root, events: [reply] }),
+    ]);
+    svc.attachThreadRoot('$root');
+
+    expect(
+      svc.threadMessages().find((m) => m.id === '$r1')?.shield ?? null,
+    ).toBeNull();
+  });
+
   it('renders the unable-to-decrypt fallback for an E2EE failure in a thread', () => {
     const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root msg' });
     const failed = fakeEvent({ id: '$f', sender: '@b:hs', decryptFail: true });
@@ -963,6 +1227,262 @@ describe('ThreadsService', () => {
           id: '$root',
           rootEvent: root,
           events: [root],
+          paginationToken: 'tok',
+        }),
+      ]);
+      svc.attachThreadRoot('$root');
+
+      expect(svc.canPaginateThread()).toBe(true);
+    });
+
+    it('reports nothing older once every reply the server counts is loaded', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({
+        id: '$r1',
+        sender: '@b:hs',
+        body: 'only reply',
+        ts: 1000,
+      });
+      const { svc } = setup([
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [root, reply],
+          length: 1,
+          paginationToken: 'tok',
+        }),
+      ]);
+      svc.attachThreadRoot('$root');
+
+      expect(svc.canPaginateThread()).toBe(false);
+    });
+
+    it('does not count an edit as a reply when deciding whether older replies remain', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({
+        id: '$r2',
+        sender: '@b:hs',
+        body: 'reply',
+        ts: 2000,
+      });
+      const edit = fakeEvent({
+        id: '$e2',
+        sender: '@b:hs',
+        body: '* reply',
+        ts: 2100,
+        editRelation: true,
+      });
+      const { svc } = setup([
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [root, reply, edit],
+          length: 2,
+          paginationToken: 'tok',
+        }),
+      ]);
+      svc.attachThreadRoot('$root');
+
+      expect(svc.canPaginateThread()).toBe(true);
+    });
+
+    it('offers no older replies when the server count is zero', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const { svc } = setup([
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [root],
+          length: 0,
+          paginationToken: 'tok',
+        }),
+      ]);
+      svc.attachThreadRoot('$root');
+
+      expect(svc.canPaginateThread()).toBe(false);
+    });
+
+    it('keeps the button hidden when a live reply grows the count and is loaded', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const first = fakeEvent({
+        id: '$r1',
+        sender: '@b:hs',
+        body: 'one',
+        ts: 1000,
+      });
+      const thread = fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root, first],
+        length: 1,
+        paginationToken: 'tok',
+      });
+      const { svc } = setup([thread]);
+      svc.attachThreadRoot('$root');
+      expect(svc.canPaginateThread()).toBe(false);
+
+      thread.events.push(
+        fakeEvent({ id: '$r2', sender: '@b:hs', body: 'two', ts: 2000 }),
+      );
+      thread.length = 2;
+      thread.emit(ThreadEvent.NewReply);
+
+      expect(svc.canPaginateThread()).toBe(false);
+    });
+
+    it('stops offering older replies when a page returns no events despite the count', async () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({
+        id: '$r1',
+        sender: '@b:hs',
+        body: 'one',
+        ts: 1000,
+      });
+      // The count includes a reply of a type the client never shows; the token never clears.
+      const thread = fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root, reply],
+        length: 2,
+        paginationToken: 'tok',
+      });
+      const { svc, client } = setup([thread]);
+      stubPaginate(client, () => Promise.resolve(true));
+      svc.attachThreadRoot('$root');
+      expect(svc.canPaginateThread()).toBe(true);
+
+      await firstValueFrom(svc.paginateOpenThread());
+      expect(svc.canPaginateThread()).toBe(false);
+
+      // Sticky: a later live reply refresh does not offer the empty page again.
+      thread.emit(ThreadEvent.NewReply);
+      expect(svc.canPaginateThread()).toBe(false);
+    });
+
+    it('keeps offering older replies after a real page, even though events re-enter the refresh mid-page', async () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const newest = fakeEvent({
+        id: '$r3',
+        sender: '@b:hs',
+        body: 'three',
+        ts: 3000,
+      });
+      const thread = fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root, newest],
+        length: 5,
+        paginationToken: 'tok',
+      });
+      const { svc, client } = setup([thread]);
+      // Mirror the SDK: each added event emits Timeline (re-emitted by Thread) before the
+      // pagination promise resolves, so refreshThread runs with the page already loaded.
+      stubPaginate(client, () => {
+        for (const n of [2, 1]) {
+          thread.events.splice(
+            1,
+            0,
+            fakeEvent({ id: `$r${n}`, sender: '@b:hs', body: `${n}`, ts: n }),
+          );
+          thread.emit(RoomEvent.Timeline);
+        }
+        return Promise.resolve(true);
+      });
+      svc.attachThreadRoot('$root');
+
+      await firstValueFrom(svc.paginateOpenThread());
+
+      expect(svc.threadMessages()).toHaveLength(4);
+      expect(svc.canPaginateThread()).toBe(true);
+    });
+
+    it('keeps offering older replies when a page returns only edits or reactions', async () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const reply = fakeEvent({
+        id: '$r2',
+        sender: '@b:hs',
+        body: 'two',
+        ts: 2000,
+      });
+      const thread = fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root, reply],
+        length: 3,
+        paginationToken: 'tok',
+      });
+      const { svc, client } = setup([thread]);
+      stubPaginate(client, () => {
+        thread.events.splice(
+          1,
+          0,
+          fakeEvent({ id: '$e1', sender: '@b:hs', editRelation: true }),
+        );
+        return Promise.resolve(true);
+      });
+      svc.attachThreadRoot('$root');
+
+      await firstValueFrom(svc.paginateOpenThread());
+
+      expect(svc.canPaginateThread()).toBe(true);
+    });
+
+    it('ignores a page that resolves after the user switched to another thread', async () => {
+      const rootA = fakeEvent({ id: '$a', sender: '@a:hs', body: 'a' });
+      const rootB = fakeEvent({ id: '$b', sender: '@a:hs', body: 'b' });
+      const { svc, client } = setup([
+        fakeThread({
+          id: '$a',
+          rootEvent: rootA,
+          events: [rootA],
+          length: 3,
+          paginationToken: 'tok',
+        }),
+        fakeThread({
+          id: '$b',
+          rootEvent: rootB,
+          events: [rootB],
+          length: 3,
+          paginationToken: 'tok',
+        }),
+      ]);
+      let finish: (v: boolean) => void = () => undefined;
+      stubPaginate(
+        client,
+        () => new Promise<boolean>((resolve) => (finish = resolve)),
+      );
+      svc.attachThreadRoot('$a');
+      const done = firstValueFrom(svc.paginateOpenThread());
+
+      svc.attachThreadRoot('$b');
+      finish(true); // thread A's page returns nothing, after the switch
+      await done;
+
+      expect(svc.canPaginateThread()).toBe(true);
+    });
+
+    it('keeps offering older replies when a live redaction lowers the count to the loaded replies', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const redacted = fakeEvent({
+        id: '$r2',
+        sender: '@b:hs',
+        ts: 2000,
+        redacted: true,
+      });
+      const newest = fakeEvent({
+        id: '$r3',
+        sender: '@b:hs',
+        body: 'three',
+        ts: 3000,
+      });
+      // Three replies existed ($r1 older and unloaded); $r2 was redacted live, so the
+      // server count dropped to 2 while only one non-redacted reply is loaded.
+      const { svc } = setup([
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [root, redacted, newest],
+          length: 2,
           paginationToken: 'tok',
         }),
       ]);

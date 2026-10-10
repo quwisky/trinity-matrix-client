@@ -60,12 +60,19 @@ export interface NotificationPolicyInput {
   };
   readonly visibility: {
     readonly foreground: boolean;
+    /** The page is not visible at all (`document.visibilityState === 'hidden'`). */
+    readonly hidden: boolean;
     readonly conversation: {
       readonly accountId: string;
       readonly roomId: string;
     } | null;
   };
   readonly duplicate: boolean;
+  /**
+   * Who presents message notifications while the page is hidden: this policy (`app`), or
+   * the native push renderer (`push`, Android once push is registered; see PushService).
+   */
+  readonly backgroundDelivery: 'app' | 'push';
 }
 
 export type NotificationPolicyDecision =
@@ -77,5 +84,6 @@ export type NotificationPolicyDecision =
         | 'visible-conversation'
         | 'rules'
         | 'duplicate'
+        | 'push-owns-background'
         | 'missing-destination';
     };

@@ -8,11 +8,17 @@ import {
 import {
   ACCOUNT_REMOVAL_CONSEQUENCES,
   AccountRuntimeService,
+  ROOM_KEYS_AT_RISK,
+  ROOM_KEYS_MAY_BE_LOST,
+  roomKeysAtRiskHeader,
 } from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { TrnAlertService } from '@trinity/components/overlay';
+import {
+  TrnAlertService,
+  type TrnAlertChoice,
+} from '@trinity/components/overlay';
 import { ShellStatusService } from './shell-status.service';
-import { filter, switchMap } from 'rxjs';
+import { filter, map, of, switchMap, tap, type Observable } from 'rxjs';
 
 /**
  * Session-level actions reachable from the account menu: switching account, adding one,
@@ -34,9 +40,10 @@ export class SessionActionsService {
   private readonly status = inject(ShellStatusService);
   private readonly destroyRef = inject(DestroyRef);
 
-  goToSettings(): void {
+  /** Open Settings, at `section` when given ('security' holds the room key export). */
+  goToSettings(section: string | null = null): void {
     this.applicationSurfaces
-      .open({ surface: { kind: 'settings', section: null } })
+      .open({ surface: { kind: 'settings', section } })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
   }
@@ -79,6 +86,13 @@ export class SessionActionsService {
       })
       .pipe(
         filter(Boolean),
+        switchMap(() => this.confirmRoomKeysLoss(userId)),
+        tap((choice) => {
+          if (choice === 'alternative') {
+            this.goToSettings('security');
+          }
+        }),
+        filter((choice) => choice === 'confirm'),
         switchMap(() => this.accounts.signOutAccount(userId)),
         takeUntilDestroyed(this.destroyRef),
       )
@@ -109,5 +123,38 @@ export class SessionActionsService {
           this.status.showError('Unable to remove this account right now.');
         }
       });
+  }
+
+  /**
+   * Removing an account deletes its room keys from this device. When key backup is known
+   * to be incomplete, offer the existing key export first ('alternative'); when the status
+   * cannot be read, nothing can export either, so only warn.
+   */
+  private confirmRoomKeysLoss(userId: string): Observable<TrnAlertChoice> {
+    return this.matrix.roomKeysBackedUp(userId).pipe(
+      switchMap((backedUp): Observable<TrnAlertChoice> => {
+        if (backedUp) {
+          return of('confirm');
+        }
+        const header = roomKeysAtRiskHeader(backedUp);
+        if (backedUp === null) {
+          return this.alert
+            .confirm$({
+              header,
+              message: `Account ${userId}\n\n${ROOM_KEYS_MAY_BE_LOST}`,
+              confirmText: 'Remove anyway',
+              variant: 'danger',
+            })
+            .pipe(map((confirmed) => (confirmed ? 'confirm' : 'cancel')));
+        }
+        return this.alert.choose$({
+          header,
+          message: `Account ${userId}\n\n${ROOM_KEYS_AT_RISK}`,
+          alternativeText: 'Export keys',
+          confirmText: 'Remove anyway',
+          variant: 'danger',
+        });
+      }),
+    );
   }
 }

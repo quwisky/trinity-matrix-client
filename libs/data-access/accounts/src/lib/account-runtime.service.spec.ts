@@ -567,6 +567,14 @@ describe('AccountRuntimeService', () => {
   it.each([
     ['reauthentication-required', { kind: 'reauthentication-required' }],
     ['crypto-failure', { kind: 'failed', failure: 'crypto-failure' }],
+    [
+      'crypto-store-key-lost',
+      { kind: 'failed', failure: 'crypto-store-key-lost' },
+    ],
+    [
+      'secure-storage-unavailable',
+      { kind: 'failed', failure: 'secure-storage-unavailable' },
+    ],
     ['corrupt-local-state', { kind: 'failed', failure: 'corrupt-local-state' }],
   ] as const)(
     'reports an Active Account %s outcome without collapsing it into no-account',
@@ -721,6 +729,34 @@ describe('AccountRuntimeService', () => {
       activeAccountId: '@active:hs',
       totalAccounts: 1,
       outcomes: [],
+    });
+  });
+
+  it('reports the server an Account is saved under when a sign-in through another one is refused', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: null,
+      accountIds: [],
+    });
+    test.establishAccount.mockReturnValue(
+      of({
+        kind: 'failed',
+        failure: 'homeserver-mismatch',
+        storedBaseUrl: 'https://stored.example',
+      }),
+    );
+    const runtime = setup(test);
+
+    await expect(
+      firstValueFrom(
+        runtime.establishAuthenticatedAccount(grant(), activeIntent),
+      ),
+    ).resolves.toEqual({
+      kind: 'failed',
+      accountId: '@new:hs',
+      placement: 'active',
+      failure: 'homeserver-mismatch',
+      storedBaseUrl: 'https://stored.example',
     });
   });
 

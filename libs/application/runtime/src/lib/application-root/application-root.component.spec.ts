@@ -1,10 +1,14 @@
-import { Component, signal } from '@angular/core';
-import { WORKSPACE_SYSTEM_STATUS } from '@trinity/application/workspace';
+import { ApplicationRef, Component, signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import {
+  WORKSPACE_SYSTEM_STATUS,
+  WorkspaceBackService,
+} from '@trinity/application/workspace';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import { provideRouter, Router, type Routes } from '@angular/router';
 import {
   TrnAlertService,
-  TrnDialogService,
+  TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
@@ -14,9 +18,9 @@ import {
   type TrustStatus,
 } from '@trinity/data-access/trust';
 import { BUILD_INFO } from '@trinity/platform-native';
-import { render } from '@trinity/testing';
+import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, of, type Observable } from 'rxjs';
+import { NEVER, firstValueFrom, of, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import type {
   ApplicationRecoveryOutcome,
@@ -34,6 +38,15 @@ import { TrinityApplicationSessionAdapter } from '../composition/trinity-applica
 })
 class RouteProbeComponent {}
 
+@Component({ template: '<p>Probe dialog</p>' })
+class ProbeDialogComponent {}
+
+/** Run the root's effects, then render what the overlay container now holds. */
+function settle(fixture: { detectChanges(): void }): void {
+  fixture.detectChanges();
+  TestBed.inject(ApplicationRef).tick();
+}
+
 describe('ApplicationRootComponent', () => {
   async function setup(initial: ApplicationRuntimeState, routes: Routes = []) {
     const state = signal(initial);
@@ -44,7 +57,6 @@ describe('ApplicationRootComponent', () => {
     const prompt = vi.fn(() => of<string | null>(null));
     const confirm = vi.fn(() => of(true));
     const showToast = vi.fn();
-    const hasOpenDialog = vi.fn(() => false);
     const rendered = await render(ApplicationRootComponent, {
       providers: [
         provideRouter(routes),
@@ -71,7 +83,6 @@ describe('ApplicationRootComponent', () => {
         }),
         MockProvider(TrustService, { status: trust.asReadonly() }),
         MockProvider(TrustVerificationService, { active: signal(null) }),
-        MockProvider(TrnDialogService, { hasOpen: hasOpenDialog }),
         MockProvider(TrnAlertService, { prompt$: prompt, confirm$: confirm }),
         MockProvider(TrnToastService, { show: showToast }),
         MockProvider(TrinityApplicationSessionAdapter, {
@@ -86,7 +97,6 @@ describe('ApplicationRootComponent', () => {
       recover,
       prompt,
       confirm,
-      hasOpenDialog,
       showToast,
       router: rendered.fixture.debugElement.injector.get(Router),
       health: rendered.fixture.debugElement.injector.get(
@@ -141,6 +151,58 @@ describe('ApplicationRootComponent', () => {
     fixture.detectChanges();
     expect(queryByTestId('app-booting')).toBeNull();
     expect(fixture.nativeElement.querySelector('router-outlet')).toBeTruthy();
+  });
+
+  it('asks to unlock the keychain when it blocks startup', async () => {
+    const { getByTestId } = await setup({
+      phase: 'blocked',
+      attempt: 1,
+      failure: {
+        stage: 'account-restoration',
+        recovery: 'retry-startup',
+        secondaryRecovery: 'reauthenticate',
+        diagnostic: { code: 'account-secure-storage-unavailable' },
+      },
+      settlements: [],
+    });
+
+    expect(getByTestId('app-startup-blocked').textContent).toContain(
+      'Your system keychain is locked or unavailable. Unlock it and try again.',
+    );
+    expect(getByTestId('app-startup-recovery').textContent).toContain(
+      'Retry startup',
+    );
+  });
+
+  it('offers account removal behind a confirm when the keychain blocks startup', async () => {
+    const { fixture, getByTestId, recover, confirm } = await setup({
+      phase: 'blocked',
+      attempt: 1,
+      failure: {
+        stage: 'account-restoration',
+        recovery: 'retry-startup',
+        secondaryRecovery: 'reauthenticate',
+        diagnostic: { code: 'account-secure-storage-unavailable' },
+      },
+      settlements: [],
+    });
+    const remove = getByTestId('app-startup-secondary-recovery');
+    expect(remove.textContent).toContain('Remove account');
+
+    confirm.mockReturnValueOnce(of(false));
+    remove.click();
+    fixture.detectChanges();
+    expect(recover).not.toHaveBeenCalled();
+
+    remove.click();
+    fixture.detectChanges();
+    expect(confirm).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        header: 'Remove account and sign in again',
+        message: expect.stringContaining('local encryption keys'),
+      }),
+    );
+    expect(recover).toHaveBeenCalledExactlyOnceWith('reauthenticate');
   });
 
   it('focuses blocked startup on user-function copy and confirms Account removal', async () => {
@@ -208,49 +270,71 @@ describe('ApplicationRootComponent', () => {
     );
   });
 
-  it('keeps System status open when Escape dismisses a recovery confirmation', async () => {
-    const { fixture, getByTestId, queryByTestId, confirm, hasOpenDialog } =
-      await setup({
-        phase: 'blocked',
-        attempt: 1,
-        failure: {
-          stage: 'account-restoration',
-          recovery: 'reauthenticate',
-          diagnostic: { code: 'active-account-unavailable' },
-        },
-        settlements: [],
-      });
-    [...fixture.nativeElement.querySelectorAll('button')]
-      .find((item: HTMLButtonElement) =>
-        item.textContent?.includes('System status'),
-      )
-      .click();
-    fixture.detectChanges();
-    confirm.mockReturnValue(NEVER);
-    [...fixture.nativeElement.querySelectorAll('button')]
-      .find((item: HTMLButtonElement) =>
-        item.textContent?.includes('Sign in again'),
-      )
-      .click();
-    hasOpenDialog.mockReturnValue(true);
-
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    fixture.detectChanges();
-    expect(getByTestId('system-status')).toBeTruthy();
-
-    hasOpenDialog.mockReturnValue(false);
-    const handledByConfirmation = new KeyboardEvent('keydown', {
-      key: 'Escape',
-      cancelable: true,
+  it('presents System status as a surface that Escape closes', async () => {
+    const { fixture, getByTestId } = await setup({
+      phase: 'ready',
+      attempt: 1,
+      settlements: [],
     });
-    handledByConfirmation.preventDefault();
-    document.dispatchEvent(handledByConfirmation);
-    fixture.detectChanges();
-    expect(getByTestId('system-status')).toBeTruthy();
+    getByTestId('system-status-access').click();
+    settle(fixture);
+    expect(screen.getByRole('dialog', { name: 'System status' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Overview' })).toBe(
+      document.activeElement,
+    );
 
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    fixture.detectChanges();
-    expect(queryByTestId('system-status')).toBeNull();
+    document.body.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Escape',
+        keyCode: 27,
+        bubbles: true,
+      }),
+    );
+    settle(fixture);
+
+    expect(screen.queryByRole('dialog', { name: 'System status' })).toBeNull();
+    expect(
+      fixture.debugElement.injector.get(SystemStatusVisibilityService).open(),
+    ).toBe(false);
+  });
+
+  it('closes the System status surface when its state closes', async () => {
+    const { fixture, getByTestId } = await setup({
+      phase: 'ready',
+      attempt: 1,
+      settlements: [],
+    });
+    getByTestId('system-status-access').click();
+    settle(fixture);
+
+    fixture.debugElement.injector.get(SystemStatusVisibilityService).close();
+    settle(fixture);
+
+    expect(screen.queryByRole('dialog', { name: 'System status' })).toBeNull();
+  });
+
+  it('stacks System status over an open dialog and closes it first', async () => {
+    const { fixture, getByTestId } = await setup({
+      phase: 'ready',
+      attempt: 1,
+      settlements: [],
+    });
+    const surfaces = TestBed.inject(TrnSurfaceService);
+    surfaces.open(ProbeDialogComponent, { ariaLabel: 'Probe' });
+    settle(fixture);
+    getByTestId('system-status-access').click();
+    settle(fixture);
+    expect(screen.getByRole('dialog', { name: 'System status' })).toBeTruthy();
+
+    expect(surfaces.closeTopmost()).toBe(true);
+    settle(fixture);
+
+    expect(screen.queryByRole('dialog', { name: 'System status' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Probe' })).toBeTruthy();
+    expect(
+      fixture.debugElement.injector.get(SystemStatusVisibilityService).open(),
+    ).toBe(false);
+    surfaces.closeAll();
   });
 
   it('keeps routed content while grouping scoped problems in System status', async () => {
@@ -287,8 +371,8 @@ describe('ApplicationRootComponent', () => {
       (item: HTMLButtonElement) => item.textContent?.includes('System status'),
     );
     button.click();
-    fixture.detectChanges();
-    const status = getByTestId('system-status');
+    settle(fixture);
+    const status = screen.getByTestId('system-status');
     expect(status.textContent).toContain('Accounts');
     expect(status.textContent).toContain('Alice');
     expect(status.textContent).not.toContain('@private:example.org');
@@ -328,7 +412,7 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('opens Overview and navigates to safe Support details without leaving startup', async () => {
-    const { fixture, getByTestId, getByRole, queryByRole } = await setup({
+    const { fixture, getByRole } = await setup({
       phase: 'blocked',
       attempt: 1,
       failure: {
@@ -340,35 +424,38 @@ describe('ApplicationRootComponent', () => {
     });
     // The startup entry point is available independently of a ready Workspace.
     getByRole('button', { name: 'System status' }).click();
-    fixture.detectChanges();
-    const navigation = getByRole('navigation', {
+    settle(fixture);
+    const navigation = screen.getByRole('navigation', {
       name: 'System status sections',
     });
     expect(navigation).toBeTruthy();
-    expect(getByRole('button', { name: 'Overview' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Overview' })).toHaveAttribute(
       'aria-current',
       'page',
     );
-    expect(getByRole('heading', { name: 'Overview' })).toBeTruthy();
-    expect(getByTestId('system-status').textContent).toContain(
+    expect(screen.getByRole('heading', { name: 'Overview' })).toBeTruthy();
+    expect(screen.getByTestId('system-status').textContent).toContain(
       'Trinity could not finish starting',
     );
 
-    getByRole('button', { name: 'Support details' }).click();
-    fixture.detectChanges();
-    expect(getByRole('heading', { name: 'Support details' })).toBeTruthy();
-    expect(getByRole('button', { name: 'Copy support details' })).toBeTruthy();
-    expect(queryByRole('heading', { name: 'Overview' })).toBeNull();
-    expect(getByTestId('app-startup-blocked')).toBeTruthy();
+    screen.getByRole('button', { name: 'Support details' }).click();
+    settle(fixture);
+    expect(
+      screen.getByRole('heading', { name: 'Support details' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Copy support details' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Overview' })).toBeNull();
+    expect(screen.getByTestId('app-startup-blocked')).toBeTruthy();
   });
 
   it('keeps the selected capability through refresh and returns to Overview when it resolves', async () => {
-    const { fixture, health, getByRole, getByTestId, queryByRole } =
-      await setup({
-        phase: 'ready',
-        attempt: 1,
-        settlements: [],
-      });
+    const { fixture, health, getByRole } = await setup({
+      phase: 'ready',
+      attempt: 1,
+      settlements: [],
+    });
     const fact = {
       capability: 'accounts',
       operation: 'restore',
@@ -383,23 +470,23 @@ describe('ApplicationRootComponent', () => {
     health.report(fact, () => of({ kind: 'success' as const }));
     fixture.detectChanges();
     getByRole('button', { name: 'System status' }).click();
-    fixture.detectChanges();
-    getByRole('button', { name: 'Accounts' }).click();
-    fixture.detectChanges();
-    expect(queryByRole('heading', { name: 'Overview' })).toBeNull();
-    expect(getByRole('heading', { name: 'Accounts' })).toBeTruthy();
+    settle(fixture);
+    screen.getByRole('button', { name: 'Accounts' }).click();
+    settle(fixture);
+    expect(screen.queryByRole('heading', { name: 'Overview' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Accounts' })).toBeTruthy();
 
     health.report(fact, () => of({ kind: 'success' as const }));
-    fixture.detectChanges();
-    expect(getByRole('button', { name: 'Accounts' })).toHaveAttribute(
+    settle(fixture);
+    expect(screen.getByRole('button', { name: 'Accounts' })).toHaveAttribute(
       'aria-current',
       'page',
     );
     health.reset();
-    fixture.detectChanges();
-    expect(queryByRole('button', { name: 'Accounts' })).toBeNull();
-    expect(getByRole('heading', { name: 'Overview' })).toBeTruthy();
-    expect(getByTestId('system-status-all-working')).toBeTruthy();
+    settle(fixture);
+    expect(screen.queryByRole('button', { name: 'Accounts' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Overview' })).toBeTruthy();
+    expect(screen.getByTestId('system-status-all-working')).toBeTruthy();
   });
 
   it('returns mobile Back to sections before dismissing System status', async () => {
@@ -409,39 +496,43 @@ describe('ApplicationRootComponent', () => {
       value: 390,
     });
     try {
-      const { fixture, getByTestId, getByRole, queryByTestId } = await setup({
+      const { fixture, getByTestId } = await setup({
         phase: 'ready',
         attempt: 1,
         settlements: [],
       });
       getByTestId('system-status-access').click();
-      fixture.detectChanges();
-      getByRole('button', { name: 'Back to sections' }).click();
-      fixture.detectChanges();
-      expect(getByTestId('system-status-detail')).toHaveClass(
+      settle(fixture);
+      screen.getByRole('button', { name: 'Back to sections' }).click();
+      settle(fixture);
+      expect(screen.getByTestId('system-status-detail')).toHaveClass(
         'settings-pane--hidden',
       );
-      expect(getByTestId('system-status-directory')).not.toHaveClass(
+      expect(screen.getByTestId('system-status-directory')).not.toHaveClass(
         'settings-pane--hidden',
       );
-      getByRole('button', { name: 'Support details' }).click();
-      fixture.detectChanges();
-      expect(getByRole('heading', { name: 'Support details' })).toBeTruthy();
+      screen.getByRole('button', { name: 'Support details' }).click();
+      settle(fixture);
+      expect(
+        screen.getByRole('heading', { name: 'Support details' }),
+      ).toBeTruthy();
 
-      const visibility = fixture.debugElement.injector.get(
-        SystemStatusVisibilityService,
-      );
-      visibility.back();
-      fixture.detectChanges();
-      expect(getByTestId('system-status-directory')).not.toHaveClass(
+      const back = TestBed.inject(WorkspaceBackService);
+      await firstValueFrom(back.back());
+      settle(fixture);
+      expect(screen.getByTestId('system-status-directory')).not.toHaveClass(
         'settings-pane--hidden',
       );
-      visibility.back();
-      fixture.detectChanges();
-      expect(queryByTestId('system-status')).toBeNull();
+      // With the list showing nothing is registered; the host's Back closes the surface.
+      await expect(firstValueFrom(back.back())).resolves.toEqual({
+        kind: 'unhandled',
+      });
+      expect(TestBed.inject(TrnSurfaceService).closeTopmost()).toBe(true);
+      settle(fixture);
+      expect(screen.queryByTestId('system-status')).toBeNull();
       getByTestId('system-status-access').click();
-      fixture.detectChanges();
-      expect(getByRole('heading', { name: 'Overview' })).toBeTruthy();
+      settle(fixture);
+      expect(screen.getByRole('heading', { name: 'Overview' })).toBeTruthy();
     } finally {
       Object.defineProperty(window, 'innerWidth', width);
     }
@@ -454,14 +545,14 @@ describe('ApplicationRootComponent', () => {
       settlements: [],
     });
     getByTestId('system-status-access').click();
-    fixture.detectChanges();
-    expect(getByTestId('system-status-all-working').textContent).toContain(
-      'All systems are working',
-    );
+    settle(fixture);
+    expect(
+      screen.getByTestId('system-status-all-working').textContent,
+    ).toContain('All systems are working');
   });
 
   it('uses the safe generic catalogue entry for an unknown fault', async () => {
-    const { fixture, health, getByTestId } = await setup({
+    const { fixture, health } = await setup({
       phase: 'ready',
       attempt: 1,
       settlements: [],
@@ -486,12 +577,12 @@ describe('ApplicationRootComponent', () => {
         item.textContent?.includes('System status'),
       )
       .click();
-    fixture.detectChanges();
-    expect(getByTestId('system-status').textContent).toContain(
+    settle(fixture);
+    expect(screen.getByTestId('system-status').textContent).toContain(
       'A feature needs attention',
     );
     expect(
-      fixture.nativeElement.querySelector('.system-status__entry').textContent,
+      document.querySelector('.system-status__entry')?.textContent,
     ).not.toContain('safe-unknown-code');
   });
 });

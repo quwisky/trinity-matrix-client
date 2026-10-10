@@ -311,6 +311,75 @@ describe('MessageRowComponent', () => {
     expect(shield?.getAttribute('tabindex')).toBe('0');
   });
 
+  // A plaintext message in an encrypted room looks like any other row unless it carries
+  // its own marker, so it needs a label a screen reader announces and a tooltip.
+  it('renders the not-encrypted shield with the red warning styling, a label and a tooltip', async () => {
+    const { container } = await renderRow({
+      row: row({
+        shield: {
+          level: 'unencrypted',
+          reason: 'Not encrypted',
+          explanation: 'This message was sent without end-to-end encryption.',
+        },
+      }),
+    });
+    const shield = container.querySelector(
+      '[data-testid=msg-shield-unencrypted]',
+    ) as HTMLElement;
+
+    expect(shield).not.toBeNull();
+    expect(shield.getAttribute('aria-label')).toBe('Not encrypted');
+    expect(shield.classList.contains('msg__shield--red')).toBe(true);
+    expect(shield.getAttribute('tabindex')).toBe('0');
+
+    fireEvent.pointerEnter(shield, { pointerType: 'mouse' });
+    const tip = await waitFor(() => {
+      const found = document.body.querySelector('[data-testid=msg-shield-tip]');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    expect(tip.textContent).toContain('Not encrypted');
+    expect(tip.textContent).toContain(
+      'This message was sent without end-to-end encryption.',
+    );
+    expect(shield.getAttribute('aria-describedby')).not.toBeNull();
+  });
+
+  // A plaintext message dated before the room turned encryption on is still marked, in the
+  // quieter grey tone, and says why it is quieter.
+  it('renders the dated-before-encryption shield in the grey tone, with a label and a tooltip', async () => {
+    const { container } = await renderRow({
+      row: row({
+        shield: {
+          level: 'unencrypted-history',
+          reason: 'Not encrypted',
+          explanation:
+            'This message is dated before the room turned on end-to-end encryption.',
+        },
+      }),
+    });
+    const shield = container.querySelector(
+      '[data-testid=msg-shield-unencrypted-history]',
+    ) as HTMLElement;
+
+    expect(shield).not.toBeNull();
+    expect(shield.getAttribute('aria-label')).toBe('Not encrypted');
+    expect(shield.classList.contains('msg__shield--red')).toBe(false);
+    expect(shield.getAttribute('tabindex')).toBe('0');
+
+    fireEvent.pointerEnter(shield, { pointerType: 'mouse' });
+    const tip = await waitFor(() => {
+      const found = document.body.querySelector('[data-testid=msg-shield-tip]');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    expect(tip.textContent).toContain('Not encrypted');
+    expect(tip.textContent).toContain(
+      'This message is dated before the room turned on end-to-end encryption.',
+    );
+    expect(shield.getAttribute('aria-describedby')).not.toBeNull();
+  });
+
   // The icon alone cannot say what is wrong; the tooltip is where the meaning lives, so
   // it has to actually open and carry BOTH halves — the finding and what it means.
   it('opens a tooltip explaining the shield on hover', async () => {
@@ -426,6 +495,12 @@ describe('MessageRowComponent', () => {
     // are distinguishable without colour. The template binds both shields to this.
     expect(cmp.shieldIcon('red')).toBe('shield-alert');
     expect(cmp.shieldIcon('grey')).toBe('shield-question');
+    expect(cmp.shieldIcon('unencrypted')).toBe('shield-alert');
+    // The quieter not-encrypted mark has its own glyph, never the grey caution's.
+    expect(cmp.shieldIcon('unencrypted-history')).toBe('lock-open');
+    expect(cmp.shieldIcon('unencrypted-history')).not.toBe(
+      cmp.shieldIcon('grey'),
+    );
   });
 
   // The shield qualifies the whole message but shares the body grid with its content. This
@@ -468,11 +543,14 @@ describe('MessageRowComponent', () => {
     const body = container.querySelector('.msg__body');
     const children = [...(body?.children ?? [])];
 
-    expect(children.map((child) => child.className)).toEqual([
-      'msg__content',
-      expect.stringContaining('msg__shield'),
-      expect.stringContaining('msg__receipts'),
-    ]);
+    // The receipts are a `display: contents` component, so the host stands in the grid order.
+    expect(children.map((child) => child.className || child.localName)).toEqual(
+      [
+        'msg__content',
+        expect.stringContaining('msg__shield'),
+        'trn-message-receipts',
+      ],
+    );
   });
 
   // The marker is the only way into the edit history, and it has to work identically in

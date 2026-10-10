@@ -3,10 +3,17 @@
 <plist version="1.0">
 <dict>
 	<key>application-identifier</key>
-	<string>$(AppIdentifierPrefix)eu.qwky.trinity</string>
+	<string>$(AppIdentifierPrefix)dev.trinityproject.trinity</string>
+	<key>aps-environment</key>
+	<string>development</string>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.dev.trinityproject.trinity</string>
+	</array>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)eu.qwky.trinity</string>
+		<string>$(AppIdentifierPrefix)dev.trinityproject.trinity</string>
+		<string>$(AppIdentifierPrefix)dev.trinityproject.trinity.shared</string>
 	</array>
 </dict>
 </plist>

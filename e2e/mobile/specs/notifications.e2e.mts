@@ -18,6 +18,7 @@ import {
   shell,
   webview,
 } from '../support/session.mts';
+import { onlyOn } from '../support/platform.mts';
 
 const POST_NOTIFICATIONS = 'android.permission.POST_NOTIFICATIONS';
 // Android's ActivityManager state for an app whose process is alive but not on screen.
@@ -49,7 +50,13 @@ async function matrixApi(
 const roomButton = (name: string) =>
   $(`//button[contains(@class,"channel")][contains(.,"${name}")]`);
 
-describe('Android local notifications', () => {
+describe('mobile local notifications', () => {
+  before(
+    onlyOn(
+      'android',
+      'grants POST_NOTIFICATIONS and reads the Android notification shade; the harness cannot read iOS Notification Center',
+    ),
+  );
   beforeEach(resetApp);
 
   it('shows a notification for a message received in the background and opens its room when tapped', async () => {
@@ -135,14 +142,28 @@ describe('Android local notifications', () => {
       'new UiSelector().resourceIdMatches(".*permission_allow_button")',
     );
     await expect(allow).toBeDisplayed({ wait: 30_000 });
-    await allow.click();
 
+    // The system dialog can drop a tap that lands while it is still settling (CI logcat: one
+    // click during a 977 ms frame stall, dialog still showing, no second request), so keep
+    // pressing Allow until the grant shows up.
     await browser.waitUntil(
-      async () =>
-        /POST_NOTIFICATIONS: granted=true/.test(
-          await shell('dumpsys', ['package', APP_PACKAGE]),
-        ),
-      { timeout: 10_000, timeoutMsg: 'POST_NOTIFICATIONS was never granted' },
+      async () => {
+        if (
+          /POST_NOTIFICATIONS: granted=true/.test(
+            await shell('dumpsys', ['package', APP_PACKAGE]),
+          )
+        ) {
+          return true;
+        }
+        if (await allow.isDisplayed())
+          await allow.click().catch(() => undefined);
+        return false;
+      },
+      {
+        timeout: 30_000,
+        interval: 1_000,
+        timeoutMsg: 'POST_NOTIFICATIONS was never granted',
+      },
     );
   });
 });

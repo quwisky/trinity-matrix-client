@@ -7,6 +7,7 @@ import {
 import {
   RoomLibraryService,
   SelectedRoomLibraryService,
+  RailUnreadChatsPreference,
   SpaceRoomOrderService,
   UnreadAggregatorService,
   comparatorFor,
@@ -15,12 +16,19 @@ import {
   type RoomSummary,
   type SpaceSummary,
 } from '@trinity/data-access/room-library';
+import { initialOf } from '@trinity/util/matrix';
+import { type WorkspaceListedScopeKind } from '@trinity/application/workspace';
+import { type ExactRoomSelection } from '../shared/exact-selection';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { RoomShellStore } from './room-shell-store';
 import {
   AccountIdentitiesService,
   type IdentityProfile,
 } from '@trinity/data-access/identity';
+import {
+  buildRailUnreadChats,
+  type RailUnreadChats,
+} from '../server-rail/rail-unread-chats';
 import { type RailUnread } from '../server-rail/server-rail.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 
@@ -45,6 +53,7 @@ export class RoomShellViewModel {
   private readonly spaceOrder = inject(SpaceRoomOrderService);
   private readonly accountBadgesSvc = inject(AccountBadgesService);
   private readonly unreadAgg = inject(UnreadAggregatorService);
+  private readonly railUnreadPreference = inject(RailUnreadChatsPreference);
   private readonly matrix = inject(MatrixClientService);
   private readonly identities = inject(AccountIdentitiesService);
 
@@ -80,9 +89,7 @@ export class RoomShellViewModel {
     const all = view.rooms;
     // Rooms view: non-DM joined rooms that aren't owned by a space (overrides the space scope).
     if (this.store.roomsView()) {
-      return all.filter(
-        (room) => !this.isDirectRow(room) && !this.isSpaceChild(room),
-      );
+      return all.filter((room) => this.isRoomsViewRow(room));
     }
     const spaceId = this.store.activeSpaceId();
     if (!spaceId) {
@@ -104,6 +111,26 @@ export class RoomShellViewModel {
       comparatorFor(this.spaceOrder.effectiveFor(spaceId), childIds),
     );
   });
+
+  /**
+   * The sidebar lists that show one Room, by the rules {@link visibleRooms} applies. Recent
+   * lists every chat. A Room the selected library does not hold is claimed only by Recent,
+   * the one list that always has it.
+   */
+  listsShowing(
+    selection: ExactRoomSelection,
+  ): readonly WorkspaceListedScopeKind[] {
+    const row = this.selectedLibrary
+      .view()
+      .rooms.find(
+        (room) =>
+          room.id === selection.roomId &&
+          room.accountIds.includes(selection.accountId),
+      );
+    if (!row) return ['recent'];
+    if (this.isDirectRow(row)) return ['recent', 'home'];
+    return this.isSpaceChild(row) ? ['recent'] : ['recent', 'rooms'];
+  }
 
   /**
    * {@link visibleRooms} narrowed by the sidebar's filter box.
@@ -168,6 +195,11 @@ export class RoomShellViewModel {
       ? this.activeSpaceName()
       : 'Direct messages';
   });
+
+  /** Whether the Rooms view lists a row: a non-DM room that belongs to no space. */
+  private isRoomsViewRow(room: RoomSummary): boolean {
+    return !this.isDirectRow(room) && !this.isSpaceChild(room);
+  }
 
   /**
    * Whether a selected row is a direct message. The selected projection preserves the
@@ -273,6 +305,26 @@ export class RoomShellViewModel {
     };
   });
 
+  /**
+   * Unread chats for the rail, across every signed-in account. A chat counts as open only
+   * while it is on screen: on a phone's list page the remembered chat is hidden, so it may
+   * be listed again.
+   */
+  readonly railUnreadChats = computed<RailUnreadChats>(() => {
+    const accountId = this.store.activeAccountId();
+    const roomId = this.store.activeRoomId();
+    const onScreen =
+      !!accountId && !!roomId && this.store.placement() !== 'list';
+    return buildRailUnreadChats({
+      rooms: this.unreadAgg.unreadRooms(),
+      mode: this.railUnreadPreference.mode(),
+      open: onScreen ? { accountId, roomId } : null,
+      activeAccountId: accountId,
+      mixed: this.accountBadgesSvc.mixed(),
+      badges: this.accountBadgesSvc.everyAccount(),
+    });
+  });
+
   readonly activeRoom = computed(() => {
     const id = this.store.activeRoomId();
     return id ? (this.rooms.rooms().find((r) => r.id === id) ?? null) : null;
@@ -319,13 +371,7 @@ export class RoomShellViewModel {
   );
 
   /** First letter of the active account's display name, for the header chip's avatar. */
-  readonly userInitial = computed(() =>
-    (
-      this.userName()
-        .replace(/^[@#!]+/, '')
-        .trim()[0] ?? '?'
-    ).toUpperCase(),
-  );
+  readonly userInitial = computed(() => initialOf(this.userName()));
 
   /** The signed-in user's profile, bundled for the channel sidebar's user panel. */
   readonly userProfile = computed<IdentityProfile>(() => ({

@@ -1,7 +1,7 @@
 import { parseMatrixLink, type MatrixLinkTarget } from './matrix-to';
 
-/** Remainder of an app link is exactly a matrix.to link: `eu.qwky.trinity://matrix.to/#/...`. */
-const APP_LINK_PREFIX = /^eu\.qwky\.trinity:\/\/matrix\.to\/#\//i;
+/** Remainder of an app link is exactly a matrix.to link: `dev.trinityproject.trinity://matrix.to/#/...`. */
+const APP_LINK_PREFIX = /^dev\.trinityproject\.trinity:\/\/matrix\.to\/#\//i;
 const MAX_LINK_LENGTH = 2048;
 const MAX_ID_LENGTH = 255;
 
@@ -12,7 +12,7 @@ function isSafeId(id: string): boolean {
 }
 
 /**
- * Parse an untrusted `eu.qwky.trinity://matrix.to/#/<room id or alias>[/<event id>][?via=...]`
+ * Parse an untrusted `dev.trinityproject.trinity://matrix.to/#/<room id or alias>[/<event id>][?via=...]`
  * link into a room target. Returns `null` for anything else, so callers can ignore it.
  */
 export function parseTrinityRoomLink(

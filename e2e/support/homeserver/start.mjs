@@ -33,6 +33,11 @@ import {
   DEX_ISSUER,
   HOMESERVER_HTTP,
   HS_TLS,
+  MAS_HS_TLS,
+  MAS_ISSUER,
+  MAS_PASS,
+  MAS_SERVER_NAME,
+  MAS_USER,
   REGISTRATION_SHARED_SECRET,
   SECONDARY_HTTP,
   SERVER_NAME,
@@ -44,17 +49,25 @@ import {
   TEST_PASS,
   TEST_USER,
 } from './constants.mjs';
-import { resolveHomeserverKind, resolveHomeserverRuntime } from './kind.mts';
+import {
+  resolveHomeserverKind,
+  resolveHomeserverRuntime,
+  resolveMasEnabled,
+  resolveSsoMock,
+} from './kind.mts';
 import {
   ensureSynapseVenv,
   generateSynapseConfig,
   nativeCaddyfile,
+  nativeDexConfig,
+  nativeDexVersion,
   nativeLogTail,
   nativePaths,
   nodeProcessApi,
   startNativeServices,
 } from './native.mts';
 import { acquireHomeserverLease, releaseHomeserverLease } from './lease.mts';
+import { masMountedConfig, prepareMas } from './mas/adapter.mjs';
 import { synapse } from './synapse/adapter.mjs';
 import { tuwunel } from './tuwunel/adapter.mjs';
 
@@ -98,6 +111,8 @@ let networkContainer = '';
 let operationSignal;
 let kind;
 let runtime;
+let masEnabled = false;
+let ssoMock = false;
 
 function secondaryServerName() {
   return networkContainer ? 'localhost:9448' : 'caddy:9448';
@@ -106,7 +121,11 @@ function secondaryServerName() {
 async function compose(args, opts = {}) {
   return exec(
     'docker',
-    ['compose', ...composeFiles(kind, networkContainer), ...args],
+    [
+      'compose',
+      ...composeFiles(kind, networkContainer, { mas: masEnabled }),
+      ...args,
+    ],
     {
       cwd: HERE,
       signal: operationSignal,
@@ -247,6 +266,33 @@ async function registerUser() {
   throw new Error(`registering the test user failed: ${res.status} ${text}`);
 }
 
+/** Seed the MAS account through MAS's own CLI; MAS provisions it on its homeserver. */
+async function registerMasUser() {
+  log(`registering MAS user @${MAS_USER}:${MAS_SERVER_NAME}…`);
+  try {
+    await compose([
+      'exec',
+      '-T',
+      'mas',
+      'mas-cli',
+      'manage',
+      'register-user',
+      '--yes',
+      '--ignore-password-complexity',
+      '--password',
+      MAS_PASS,
+      MAS_USER,
+    ]);
+    log('MAS user registered');
+  } catch (error) {
+    const text = `${error.stdout ?? ''}${error.stderr ?? ''}`;
+    if (/already exists|taken|in use/i.test(text)) {
+      return log('MAS user already exists — reusing');
+    }
+    throw error;
+  }
+}
+
 /**
  * The running server's software version, after checking it is the selected kind — a
  * stack of the other kind left running would otherwise pass every readiness poll.
@@ -281,14 +327,69 @@ async function wellKnownReady() {
   return body['m.homeserver']?.base_url === HS_TLS;
 }
 
+// Discovery rather than /healthz: it also proves the issuer Dex serves is the one the
+// homeserver was configured with, which is the mismatch that would otherwise only
+// surface as an opaque token-exchange failure mid-login.
+async function dexDiscoveryReady() {
+  const res = await fetch(`${DEX_ISSUER}/.well-known/openid-configuration`, {
+    signal: operationSignal,
+  });
+  return res.ok && (await res.json()).issuer === DEX_ISSUER;
+}
+
+// The one poll that reads the HOMESERVER's view of the provider rather than Dex's own.
+// It only advertises `m.login.sso` when it has loaded an SSO provider, so this is what
+// turns "we configured a provider" into "the running server has one".
+async function ssoLoginFlowReady() {
+  const res = await fetch(`${HOMESERVER_HTTP}/_matrix/client/v3/login`, {
+    signal: operationSignal,
+  });
+  if (!res.ok) return false;
+  const { flows = [] } = await res.json();
+  return flows.some((flow) => flow.type === 'm.login.sso');
+}
+
+/** The SSO identities in dex.yaml, which the homeserver creates on first sign-in. */
+const ssoAccounts = () => ({
+  // The SSO accounts are not registered here: the homeserver creates each the first
+  // time someone completes the Dex round-trip, and they have no Matrix password to
+  // register with. Two of them, because the reset spec permanently seeds the one it
+  // uses — see SSO_RESET_USER and dex.yaml.
+  sso: { user: SSO_USER, email: SSO_EMAIL, pass: SSO_PASS },
+  ssoReset: {
+    user: SSO_RESET_USER,
+    email: SSO_RESET_EMAIL,
+    pass: SSO_PASS,
+  },
+});
+
+/**
+ * The identity Dex's `mockCallback` connector always returns (connector/mock in Dex
+ * 2.46): Synapse takes the localpart from its email, and it has no password.
+ */
+const mockSsoAccount = () => ({
+  sso: {
+    user: 'kilgore',
+    email: 'kilgore@kilgore.trout',
+    pass: '',
+    mock: true,
+  },
+});
+
 /**
  * Native runtime: Synapse from a venv and Caddy as host processes, primary server only.
- * Dex, the secondary server and the `m.login.sso` poll are skipped, and the session says
- * so (`unavailable`) instead of inventing values.
+ * Dex runs too when a `dex` binary is on PATH (`brew install dexidp`), and then SSO is
+ * available. The secondary server always is not, nor SSO without Dex, and the session
+ * says so (`unavailable`) instead of inventing values. With TRINITY_E2E_SSO_PROVIDER=mock
+ * Dex signs in through its mock connector, so the session offers only that identity.
  */
 async function startNative() {
   const paths = nativePaths(STATE_DIR, DATA);
-  log(`${kind}, native runtime (host processes, primary server only)`);
+  const dexVersion = await nativeDexVersion(nodeProcessApi, operationSignal);
+  const sso = dexVersion !== null;
+  log(
+    `${kind}, native runtime (host processes, primary server only; ${sso ? `Dex ${dexVersion}${ssoMock ? ', mock connector' : ''}` : 'no dex on PATH, so no SSO'})`,
+  );
   await prepareStateDir();
   await ensureSynapseVenv(paths, nodeProcessApi, {
     signal: operationSignal,
@@ -297,7 +398,9 @@ async function startNative() {
   await synapse.preparePrimary({
     signal: operationSignal,
     log,
-    sso: false,
+    native: true,
+    sso,
+    ssoMock,
     generate: () =>
       generateSynapseConfig(
         paths,
@@ -314,12 +417,25 @@ async function startNative() {
     ),
     'utf8',
   );
-  startNativeServices(paths, nodeProcessApi, process.env);
+  if (sso) {
+    await writeFile(
+      paths.dexConfig,
+      nativeDexConfig(await readFile(join(STATE_DIR, 'dex.yaml'), 'utf8'), {
+        mock: ssoMock,
+      }),
+      'utf8',
+    );
+  }
+  startNativeServices(paths, nodeProcessApi, process.env, { dex: sso });
   await waitFor(
     'homeserver client versions',
     'homeserver',
     clientVersionsReady,
   );
+  if (sso) {
+    await waitFor('dex discovery', 'dex', dexDiscoveryReady);
+    await waitFor('homeserver sso login flow', 'homeserver', ssoLoginFlowReady);
+  }
   await registerUser();
   await waitFor('caddy well-known (https)', 'caddy', wellKnownReady);
   const version = await serverVersion();
@@ -339,8 +455,9 @@ async function startNative() {
     kind,
     version,
     runtime,
-    unavailable: ['remote', 'sso'],
+    unavailable: sso ? ['remote'] : ['remote', 'sso'],
     caddyRoot: paths.caddyRoot,
+    ...(sso ? (ssoMock ? mockSsoAccount() : ssoAccounts()) : {}),
   };
 }
 
@@ -348,9 +465,16 @@ export async function start({ signal } = {}) {
   operationSignal = signal;
   kind = resolveHomeserverKind();
   runtime = resolveHomeserverRuntime();
+  masEnabled = resolveMasEnabled();
+  ssoMock = resolveSsoMock();
   if (runtime === 'native') return startNative();
   const adapter = ADAPTERS[kind];
   networkContainer = await resolveNetworkContainer();
+  if (masEnabled && networkContainer) {
+    throw new Error(
+      'TRINITY_E2E_MAS=1 needs published ports; the shared-namespace topology is not supported',
+    );
+  }
   log(
     `${kind}, ${
       networkContainer
@@ -358,14 +482,21 @@ export async function start({ signal } = {}) {
         : 'publishing ports on the docker host'
     }`,
   );
-  await prepareStateDir(adapter.configFiles);
+  await prepareStateDir([
+    ...adapter.configFiles,
+    ...(masEnabled ? ['mas/mas.yaml'] : []),
+  ]);
   await adapter.prepare({
     networkContainer,
     signal: operationSignal,
     log,
     secondaryServerName: secondaryServerName(),
   });
-  const mounted = mountedConfig(adapter);
+  if (masEnabled) await prepareMas({ signal: operationSignal, log });
+  const mounted = {
+    ...mountedConfig(adapter),
+    ...(masEnabled ? masMountedConfig : {}),
+  };
   const fingerprints = await configFingerprints(mounted);
   const wasRunning = await runningServices(Object.keys(mounted));
   log('docker compose up…');
@@ -425,31 +556,36 @@ export async function start({ signal } = {}) {
     },
   );
 
-  // Discovery rather than /healthz: it also proves the issuer Dex serves is the one the
-  // homeserver was configured with, which is the mismatch that would otherwise only
-  // surface as an opaque token-exchange failure mid-login.
-  await waitFor('dex discovery', 'dex', async () => {
-    const res = await fetch(`${DEX_ISSUER}/.well-known/openid-configuration`, {
-      signal: operationSignal,
-    });
-    return res.ok && (await res.json()).issuer === DEX_ISSUER;
-  });
-
-  // The one poll that reads the HOMESERVER's view of the provider rather than Dex's own.
-  // It only advertises `m.login.sso` when it has loaded an SSO provider, so this is what
-  // turns "we configured a provider" into "the running server has one".
-  await waitFor('homeserver sso login flow', 'homeserver', async () => {
-    const res = await fetch(`${HOMESERVER_HTTP}/_matrix/client/v3/login`, {
-      signal: operationSignal,
-    });
-    if (!res.ok) return false;
-    const { flows = [] } = await res.json();
-    return flows.some((flow) => flow.type === 'm.login.sso');
-  });
+  await waitFor('dex discovery', 'dex', dexDiscoveryReady);
+  await waitFor('homeserver sso login flow', 'homeserver', ssoLoginFlowReady);
 
   await registerUser();
 
   await waitFor('caddy well-known (https)', 'caddy', wellKnownReady);
+
+  if (masEnabled) {
+    await waitFor('mas discovery (https)', 'mas', async () => {
+      const res = await fetch(`${MAS_ISSUER}.well-known/openid-configuration`, {
+        signal: operationSignal,
+      });
+      return res.ok && (await res.json()).issuer === MAS_ISSUER;
+    });
+    // Synapse's view of the provider, through Caddy: delegation is on and routed.
+    await waitFor(
+      'mas homeserver auth metadata (https)',
+      'homeserver-mas',
+      async () => {
+        const res = await fetch(
+          `${MAS_HS_TLS}/_matrix/client/v1/auth_metadata`,
+          {
+            signal: operationSignal,
+          },
+        );
+        return res.ok && (await res.json()).issuer === MAS_ISSUER;
+      },
+    );
+    await registerMasUser();
+  }
 
   const version = await serverVersion();
   log(
@@ -469,16 +605,18 @@ export async function start({ signal } = {}) {
       serverName: secondaryServerName(),
       registrationSecret: REGISTRATION_SHARED_SECRET,
     },
-    // The SSO accounts are not registered here: the homeserver creates each the first
-    // time someone completes the Dex round-trip, and they have no Matrix password to
-    // register with. Two of them, because the reset spec permanently seeds the one it
-    // uses — see SSO_RESET_USER and dex.yaml.
-    sso: { user: SSO_USER, email: SSO_EMAIL, pass: SSO_PASS },
-    ssoReset: {
-      user: SSO_RESET_USER,
-      email: SSO_RESET_EMAIL,
-      pass: SSO_PASS,
-    },
+    ...ssoAccounts(),
+    ...(masEnabled
+      ? {
+          mas: {
+            hs: MAS_HS_TLS,
+            serverName: MAS_SERVER_NAME,
+            issuer: MAS_ISSUER,
+            user: MAS_USER,
+            pass: MAS_PASS,
+          },
+        }
+      : {}),
   };
 }
 

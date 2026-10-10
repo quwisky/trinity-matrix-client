@@ -37,6 +37,8 @@ import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
 } from '@trinity/components/overlay';
+import { SaveFailureComponent } from './save-failure/save-failure.component';
+import { PreferenceCatalogSectionComponent } from '../shared/preference-catalog-section/preference-catalog-section.component';
 
 /**
  * Appearance settings sub-page: Mode, Theme, text and code size,
@@ -52,6 +54,8 @@ import {
   templateUrl: './appearance-settings.component.html',
   providers: [AppearanceSettingsController],
   imports: [
+    PreferenceCatalogSectionComponent,
+    SaveFailureComponent,
     TrnButton,
     TrnRadioGroupComponent,
     TrnSelectComponent,

@@ -35,6 +35,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
   const view = signal({ rooms: [] } as unknown as SelectedRoomLibraryView);
   const syncState = signal<SyncState | null>(null);
   let navigate: Mock;
+  let listsShowing: Mock;
   let showError: Mock;
   let transition: Mock;
   let loadEvent: Mock;
@@ -52,6 +53,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
 
   function build(): AccountRoutingService {
     navigate = vi.fn(() => of({ kind: 'ready' }));
+    listsShowing = vi.fn(() => ['recent', 'home']);
     showError = vi.fn();
     transition = vi.fn();
     loadEvent = vi.fn(() => of(true));
@@ -63,7 +65,7 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
           activeAccountId: signal<string | null>('@me:hs'),
           pane: signal('list') as never,
         }),
-        MockProvider(RoomShellViewModel),
+        MockProvider(RoomShellViewModel, { listsShowing }),
         MockProvider(ShellStatusService, { showError }),
         MockProvider(WorkspaceNavigationService, {
           navigate,
@@ -349,5 +351,43 @@ describe('AccountRoutingService.openLinkedRoom on a cold start', () => {
     sync([joined], 'SYNCING' as SyncState);
     expect(loadEvent).not.toHaveBeenCalled();
     expect(showError).not.toHaveBeenCalled();
+  });
+
+  it('hands a rail entry its ready callback only once Workspace has opened the room', () => {
+    const routing = build();
+    const onReady = vi.fn();
+    const chat = { accountId: '@me:hs', roomId: '!c:hs' };
+
+    routing.onSelectRoomSelection(chat, 'rail-unread', onReady);
+
+    expect(navigate).toHaveBeenCalledExactlyOnceWith({
+      kind: 'room',
+      ...chat,
+      origin: 'rail-unread',
+      listedIn: ['recent', 'home'],
+    });
+    expect(listsShowing).toHaveBeenCalledWith(chat);
+    expect(onReady).toHaveBeenCalledOnce();
+
+    navigate.mockReturnValueOnce(
+      of({ kind: 'unavailable', reason: 'navigation-rejected' }),
+    );
+    routing.onSelectRoomSelection(chat, 'rail-unread', onReady);
+
+    expect(onReady).toHaveBeenCalledOnce();
+    expect(showError).toHaveBeenCalledOnce();
+  });
+
+  it('names the lists that show a rail chat, and leaves other opens without that hint', () => {
+    const routing = build();
+    const chat = { accountId: '@me:hs', roomId: '!c:hs' };
+
+    routing.onSelectRoomSelection(chat, 'room-list');
+    routing.onSelectRoomSelection(chat, 'room-invitation');
+
+    expect(listsShowing).not.toHaveBeenCalled();
+    for (const [intent] of navigate.mock.calls) {
+      expect(intent).not.toHaveProperty('listedIn');
+    }
   });
 });

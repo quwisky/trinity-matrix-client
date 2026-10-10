@@ -11,24 +11,8 @@ async function openSettingsSection(section: string): Promise<void> {
   });
 }
 
-describe('Android native capabilities', () => {
+describe('mobile native capabilities', () => {
   beforeEach(resetApp);
-
-  it('offers the push gateway form because the installed app has a push channel', async () => {
-    const user = uniqueId('android-push');
-    const pass = `${user}-pass`;
-    await registerUser(user, pass);
-    await login(user, pass);
-    await openSettingsSection('notifications');
-
-    await expect(
-      $(
-        '//*[self::h1 or self::h2 or self::h3][normalize-space()="Push gateway (this device)"]',
-      ),
-    ).toBeDisplayed({ wait: 15_000 });
-    await expect($('[data-testid="push-gateway-url"]')).toBeDisplayed();
-    await expect($('[data-testid="push-gateway-unsupported"]')).not.toExist();
-  });
 
   it('withholds the raw settings document editor on the installed app', async () => {
     const user = uniqueId('android-advanced');

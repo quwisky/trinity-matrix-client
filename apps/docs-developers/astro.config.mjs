@@ -1,10 +1,14 @@
 import { unified } from '@astrojs/markdown-remark';
 import starlight from '@astrojs/starlight';
 import explicitHeadingIds from '@docs/markdown/explicit-heading-ids.mjs';
+import manifestVersions, {
+  readManifestVersions,
+} from '@docs/markdown/manifest-versions.mjs';
 import { defineConfig } from 'astro/config';
 import { fileURLToPath } from 'node:url';
 
 const docsRoot = fileURLToPath(new URL('../../tools/docs/', import.meta.url));
+const workspaceRoot = fileURLToPath(new URL('../../', import.meta.url));
 
 export default defineConfig({
   site: 'https://quwisky.github.io',
@@ -13,7 +17,12 @@ export default defineConfig({
     new URL('../../dist/docs/developers/', import.meta.url),
   ),
   markdown: {
-    processor: unified({ remarkPlugins: [explicitHeadingIds] }),
+    processor: unified({
+      remarkPlugins: [
+        explicitHeadingIds,
+        [manifestVersions, readManifestVersions(workspaceRoot)],
+      ],
+    }),
   },
   vite: {
     resolve: { alias: { '@docs': docsRoot } },
