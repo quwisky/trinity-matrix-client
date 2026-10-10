@@ -7,10 +7,16 @@ import {
   type Signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { finalize, of, switchMap, take, timeout, type Observable } from 'rxjs';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
   MediaPickerService,
+  PrivacySettingsService,
   VoiceRecorderService,
+  captureModeFor,
+  isMobileOs,
+  type CaptureKind,
+  type CaptureMode,
 } from '@trinity/platform-native';
 import {
   GifService,
@@ -18,7 +24,7 @@ import {
   type GifResult,
 } from '@trinity/data-access/gif';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
-import { MediaPipeline } from '@trinity/data-access/media';
+import { MediaPipeline, type MediaHints } from '@trinity/data-access/media';
 import { CreatePollService } from '../poll/create-poll.service';
 import { LocationShareService } from '../location-share/location-share.service';
 import {
@@ -39,6 +45,8 @@ import { type BatchProgress } from '../shared/send-media-batch';
 export interface ComposerAttachmentsHost {
   /** Active room/thread id — a recording is abandoned if it changes mid-acquisition. */
   readonly roomId: Signal<string | null>;
+  /** Account the composer sends as — whose homeserver's upload limit applies. */
+  readonly accountId: Signal<string | null>;
   /** Whether the composer is in edit mode (an edit can't become media). */
   readonly editing: Signal<boolean>;
   /** Which file of how many is uploading and how far along, else null (idle). */
@@ -53,6 +61,8 @@ export interface ComposerAttachmentsHost {
   leavePreview(): void;
   /** Open the composer's hidden file input (no native gallery picker available). */
   openFileDialog(): void;
+  /** Open the hidden capture input for a photo or a video (mobile web). */
+  openCaptureInput(kind: CaptureKind): void;
 }
 
 /**
@@ -76,6 +86,9 @@ export class ComposerAttachmentsService {
   private readonly gifSettings = inject(GifSettingsService);
   private readonly mediaPipeline = inject(MediaPipeline);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly privacy = inject(PrivacySettingsService);
+  /** True from a native capture's start until it settles (re-entry guard). */
+  private capturing = false;
 
   /**
    * The composer these workflows act on. Deliberately not optional: an unwired service throws
@@ -122,6 +135,11 @@ export class ComposerAttachmentsService {
   readonly gifEnabled = computed(() => this.gifSettings.configured());
   /** True while a location is being resolved and sent (drives the button's busy state). */
   readonly locationSharing = this.locationShare.sharing;
+  /** How this host takes photos and videos; fixed for the life of the page. */
+  readonly captureMode: CaptureMode = captureModeFor(
+    this.picker.captureSupported === true,
+    isMobileOs(),
+  );
 
   constructor() {
     // Revoke EVERY staged preview on teardown. The scalar version revoked exactly one, which
@@ -170,6 +188,63 @@ export class ComposerAttachmentsService {
     const input = event.target as HTMLInputElement;
     this.stageAll(Array.from(input.files ?? []));
     input.value = ''; // let the same file be picked again
+  }
+
+  /** Take photo / Record video: the native camera on device, the capture input on a phone browser. */
+  capture(kind: CaptureKind): void {
+    if (this.host.editing()) return;
+    if (this.captureMode === 'web') {
+      // Synchronous, inside the tap: a browser only opens a file input from a user gesture.
+      this.host.openCaptureInput(kind);
+      return;
+    }
+    if (this.captureMode !== 'native' || this.capturing) return;
+    this.capturing = true;
+    const roomAtStart = this.host.roomId();
+    const saveToGallery = this.privacy.saveCapturesToGallery();
+    this.uploadLimit()
+      .pipe(
+        switchMap((maxBytes) =>
+          kind === 'photo'
+            ? this.picker.capturePhoto({ saveToGallery, maxBytes })
+            : this.picker.captureVideo({ saveToGallery, maxBytes }),
+        ),
+        finalize(() => (this.capturing = false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (captured) => {
+          // A capture belongs to the room it was started in, as a recording does.
+          if (!captured || this.host.roomId() !== roomAtStart) return;
+          this.stageCapture(captured.file, captured.hints);
+        },
+        error: (err: unknown) => this.showCaptureError(kind, err),
+      });
+  }
+
+  /** A capture input's change → stage its one file, if the homeserver would take it. */
+  captureInputPicked(event: Event, kind: CaptureKind): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    input.value = ''; // the same capture can be retaken
+    if (!file) return;
+    const roomAtStart = this.host.roomId();
+    this.uploadLimit()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((limit) => {
+        if (this.host.roomId() !== roomAtStart) return;
+        if (limit !== null && file.size > limit) {
+          this.showTooLarge(kind, limit);
+          return;
+        }
+        this.stageCapture(file);
+      });
+  }
+
+  /** Put a capture into the composer as a pending attachment, through the picked-file path. */
+  stageCapture(file: File, hints?: MediaHints): StagedAttachment | null {
+    if (this.host.editing()) return null;
+    return this.stageAll([file], hints)[0] ?? null;
   }
 
   /**
@@ -415,12 +490,15 @@ export class ComposerAttachmentsService {
     this.stageAll(files);
   }
 
-  private stageAll(files: readonly File[]): readonly StagedAttachment[] {
+  private stageAll(
+    files: readonly File[],
+    hints?: MediaHints,
+  ): readonly StagedAttachment[] {
     if (!files.length) {
       return [];
     }
     const added = files
-      .map((file) => stageAttachment(file, this.mediaPipeline))
+      .map((file) => stageAttachment(file, this.mediaPipeline, hints))
       .filter(
         (attachment): attachment is StagedAttachment => attachment !== null,
       );
@@ -443,4 +521,43 @@ export class ComposerAttachmentsService {
       { duration: 4000, variant: 'danger' },
     );
   }
+
+  /**
+   * The composer account's upload limit, once. Bounded: the media-config request has no
+   * timeout of its own, and a hung one must never keep the camera from opening — after
+   * {@link UPLOAD_LIMIT_WAIT_MS} the limit is treated as unknown and the server stays the judge.
+   */
+  private uploadLimit(): Observable<number | null> {
+    return this.mediaPipeline
+      .uploadLimit(this.host.accountId())
+      .pipe(
+        take(1),
+        timeout({ first: UPLOAD_LIMIT_WAIT_MS, with: () => of(null) }),
+      );
+  }
+
+  /** Surface a failed capture; Task 9 adds the permission notice and the size/no-camera copy. */
+  private showCaptureError(kind: CaptureKind, _err: unknown): void {
+    this.toast.show(
+      kind === 'photo'
+        ? 'Could not take a photo. Try again.'
+        : 'Could not record a video. Try again.',
+      { duration: 4000, variant: 'danger' },
+    );
+  }
+
+  private showTooLarge(kind: CaptureKind, limit: number): void {
+    this.toast.show(
+      `That ${kind} is too large to send. Your homeserver accepts files up to ${formatMegabytes(limit)}.`,
+      { duration: 6000, variant: 'danger' },
+    );
+  }
+}
+
+/** How long a capture waits for the homeserver's upload limit before going without it. */
+const UPLOAD_LIMIT_WAIT_MS = 3000;
+
+/** A byte limit as whole megabytes for copy ("100 MB"); never "0 MB". */
+function formatMegabytes(bytes: number): string {
+  return `${Math.max(1, Math.round(bytes / 1_048_576))} MB`;
 }

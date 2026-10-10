@@ -34,8 +34,9 @@ let nextId = 0;
 export function stageAttachment(
   file: File,
   pipeline: MediaPipeline,
+  hints?: MediaHints,
 ): StagedAttachment | null {
-  const outcome = pipeline.stage(file);
+  const outcome = pipeline.stage(file, hints);
   if (outcome.kind === 'rejected') return null;
   return {
     id: `attachment-${++nextId}`,
@@ -55,5 +56,6 @@ export function releaseAttachment(
 }
 import {
   MediaPipeline,
+  type MediaHints,
   type StagedMediaReference,
 } from '@trinity/data-access/media';

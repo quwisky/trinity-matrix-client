@@ -89,6 +89,27 @@
     hidden
     (change)="onFilePicked($event)"
   />
+  <!-- Mobile web only: `capture` opens the phone's camera instead of the file picker. -->
+  <input
+    #photoCaptureInput
+    type="file"
+    class="composer__file-input"
+    data-testid="composer-photo-capture-input"
+    accept="image/*"
+    capture
+    hidden
+    (change)="onCaptureInput($event, 'photo')"
+  />
+  <input
+    #videoCaptureInput
+    type="file"
+    class="composer__file-input"
+    data-testid="composer-video-capture-input"
+    accept="video/*"
+    capture
+    hidden
+    (change)="onCaptureInput($event, 'video')"
+  />
   <!-- The FIELD: one box holding the insert button, the input and the emoji/send buttons, and
        what all four floating layers anchor to. A grid rather than a flex row, so the preview
        can occupy the textarea's own cell instead of standing beside it — see the stylesheet.
@@ -113,12 +134,15 @@
       [locationSharing]="attachments.locationSharing()"
       [stickerEnabled]="stickerEnabled()"
       [sendBlocked]="sendBlocked()"
+      [captureMode]="attachments.captureMode"
       (attachFile)="onAttach()"
       (pickGif)="toggleGifPicker()"
       (createPoll)="openPollDialog()"
       (shareLocation)="shareLocation()"
       (recordVoice)="startVoiceRecording()"
       (pickSticker)="toggleStickerPicker()"
+      (takePhoto)="onTakePhoto()"
+      (recordVideo)="onRecordVideo()"
     />
     <!-- The preview replaces the input rather than sitting beside it, so the composer keeps its
        height and nothing below it moves. The textarea stays in the DOM (hidden) so its value,
