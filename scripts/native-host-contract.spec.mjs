@@ -117,7 +117,11 @@ function validInput() {
       'CapawesomeCapacitorBadge',
       'TrinityCapacitorPush',
     ].join('\n'),
-    androidManifest: 'android:scheme="dev.trinityproject.trinity"',
+    androidManifest: [
+      'android:scheme="dev.trinityproject.trinity"',
+      '<service android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"',
+      '  tools:node="remove" />',
+    ].join('\n'),
     iosInfo:
       '<key>UIViewControllerBasedStatusBarAppearance</key><true/>' +
       '<key>CFBundleURLSchemes</key><string>dev.trinityproject.trinity</string>' +
@@ -406,6 +410,20 @@ describe('native host contract', () => {
         );
       },
       'Android PushHandoff plugin must be discoverable by cap sync',
+    ],
+    [
+      'a missing removal of the push plugin service',
+      (input) => {
+        input.androidManifest = 'android:scheme="dev.trinityproject.trinity"';
+      },
+      'Android host must remove the push plugin MessagingService from the app manifest',
+    ],
+    [
+      'a commented-out removal of the push plugin service',
+      (input) => {
+        input.androidManifest = `<!-- ${input.androidManifest} -->`;
+      },
+      'Android host must remove the push plugin MessagingService from the app manifest',
     ],
     [
       'unbranded Android push notifications',

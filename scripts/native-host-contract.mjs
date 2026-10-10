@@ -345,6 +345,18 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
   ) {
     errors.push('Android host must brand device-rendered push notifications');
   }
+  // The push plugin's own MESSAGING_EVENT service must stay removed here: a merge-rule marker
+  // only applies from the higher-priority manifest. Otherwise FCM can deliver to it and
+  // closed-app pushes silently stop rendering.
+  if (
+    !/<service\s[^>]*android:name="com\.capacitorjs\.plugins\.pushnotifications\.MessagingService"[^>]*tools:node="remove"/u.test(
+      androidManifest,
+    )
+  ) {
+    errors.push(
+      'Android host must remove the push plugin MessagingService from the app manifest',
+    );
+  }
   if (
     !androidManifest.includes('android:scheme="dev.trinityproject.trinity"')
   ) {
