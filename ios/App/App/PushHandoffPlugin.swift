@@ -5,7 +5,8 @@ import UserNotifications
 /**
  * Writes the push handoff store the NotificationService extension reads: each account's
  * homeserver, access token and sound choice, and its room names. PushHandoffService in
- * data-access/notifications is the only caller. Never logs what it stores.
+ * data-access/notifications is the only caller (debug builds add renderProbe for the e2e
+ * suite). Never logs what it stores.
  *
  * Without a store (a build lacking the app group), removing and clearing resolve, since there
  * is nothing to remove, so sign-out and clear-all-data never wait on it; writes reject.
@@ -14,14 +15,20 @@ import UserNotifications
 class PushHandoffPlugin: CAPInstancePlugin, CAPBridgedPlugin {
     let identifier = "PushHandoffPlugin"
     let jsName = "PushHandoff"
-    let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "setAccount", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "setRooms", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "removeAccount", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "clear", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "clearRoom", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "registrationAvailable", returnType: CAPPluginReturnPromise),
-    ]
+    let pluginMethods: [CAPPluginMethod] = {
+        var methods: [CAPPluginMethod] = [
+            CAPPluginMethod(name: "setAccount", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "setRooms", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "removeAccount", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "clear", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "clearRoom", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "registrationAvailable", returnType: CAPPluginReturnPromise),
+        ]
+        #if DEBUG
+        methods.append(CAPPluginMethod(name: "renderProbe", returnType: CAPPluginReturnPromise))
+        #endif
+        return methods
+    }()
     private let store = PushHandoffStore.fromMainBundle()
 
     @objc func setAccount(_ call: CAPPluginCall) {
@@ -134,4 +141,41 @@ class PushHandoffPlugin: CAPInstancePlugin, CAPBridgedPlugin {
     @objc func registrationAvailable(_ call: CAPPluginCall) {
         call.resolve(["value": true])
     }
+
+    #if DEBUG
+    /// Debug builds only, for the installed-app e2e suite: renders `payload`, shaped like the
+    /// gateway's APNs push, through the NotificationService extension's path (PushRender over
+    /// this store and URLSessionMatrixPushAPI) and resolves what it would show. The Simulator
+    /// does not run the extension for `xcrun simctl push`, so the suite calls this instead.
+    /// A push the extension leaves alone resolves the gateway's own alert.
+    @objc func renderProbe(_ call: CAPPluginCall) {
+        guard let payload = call.getObject("payload") else {
+            call.reject("Must provide payload")
+            return
+        }
+        let userInfo: [AnyHashable: Any] = payload
+        guard let render = PushRender(userInfo: userInfo, store: store, api: URLSessionMatrixPushAPI()) else {
+            let aps = payload["aps"] as? JSObject
+            let alert = aps?["alert"] as? JSObject
+            call.resolve([
+                "title": alert?["title"] as? String ?? "",
+                "subtitle": alert?["subtitle"] as? String ?? "",
+                "body": alert?["body"] as? String ?? "",
+                "threadIdentifier": aps?["thread-id"] as? String ?? "",
+                "sound": aps?["sound"] != nil,
+            ])
+            return
+        }
+        Task {
+            let content = await render.resolve()
+            call.resolve([
+                "title": content.title,
+                "subtitle": content.subtitle,
+                "body": content.body,
+                "threadIdentifier": content.threadIdentifier,
+                "sound": content.sound,
+            ])
+        }
+    }
+    #endif
 }

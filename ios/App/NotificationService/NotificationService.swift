@@ -14,29 +14,22 @@ final class NotificationService: UNNotificationServiceExtension {
         _ request: UNNotificationRequest,
         withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void
     ) {
+        // An unknown or removed account, or another kind of push, keeps the gateway's alert.
         guard let content = request.content.mutableCopy() as? UNMutableNotificationContent,
-              let payload = PushPayload(userInfo: request.content.userInfo),
-              let store = PushHandoffStore.fromMainBundle()
+              let render = PushRender(
+                  userInfo: request.content.userInfo,
+                  store: PushHandoffStore.fromMainBundle(),
+                  api: URLSessionMatrixPushAPI()
+              )
         else {
             contentHandler(request.content)
             return
         }
-        let resolver = PushContentResolver(store: store, api: URLSessionMatrixPushAPI())
-        // An unknown or removed account keeps the gateway's "Trinity" / "New message".
-        guard let fallback = resolver.fallback(for: payload) else {
-            contentHandler(request.content)
-            return
-        }
-        Self.apply(fallback, threadIdentifier: payload.roomId, to: content)
-        content.sound = store.account(payload.accountId)?.sound == false ? nil : .default
+        Self.apply(render.fallback, to: content)
         let delivery = deliveries.begin(content, handler: contentHandler)
         delivery.track(Task {
-            if case let .rendered(rendered, sound) = await resolver.resolve(payload) {
-                delivery.update { content in
-                    Self.apply(rendered, threadIdentifier: payload.roomId, to: content)
-                    content.sound = sound ? .default : nil
-                }
-            }
+            let rendered = await render.resolve()
+            delivery.update { Self.apply(rendered, to: $0) }
             delivery.finish()
         })
     }
@@ -47,15 +40,11 @@ final class NotificationService: UNNotificationServiceExtension {
         deliveries.finishAll()
     }
 
-    private static func apply(
-        _ rendered: RenderedNotification,
-        threadIdentifier: String,
-        to content: UNMutableNotificationContent
-    ) {
+    private static func apply(_ rendered: PushNotificationContent, to content: UNMutableNotificationContent) {
         content.title = rendered.title
         content.subtitle = rendered.subtitle
         content.body = rendered.body
-        content.threadIdentifier = threadIdentifier
+        content.threadIdentifier = rendered.threadIdentifier
+        content.sound = rendered.sound ? .default : nil
     }
 }
-

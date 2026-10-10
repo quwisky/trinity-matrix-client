@@ -148,3 +148,43 @@ final class PushContentResolverTests: XCTestCase {
         XCTAssertNil(PushPayload(userInfo: ["trinity_user_id": "@a:hs", "room_id": "!r:hs", "unread": "0"]))
     }
 }
+
+final class PushRenderTests: XCTestCase {
+    private let bob = HandoffAccount(homeserverUrl: "https://b.example", accessToken: "token-b", sound: false)
+
+    private func userInfo(user: String = "@bob:hs") -> [AnyHashable: Any] {
+        [
+            "aps": ["alert": ["title": "Trinity", "body": "New message"], "mutable-content": 1],
+            "trinity_user_id": user,
+            "room_id": "!r:hs",
+            "event_id": "$e",
+        ]
+    }
+
+    func testStartsFromTheRoomFallbackAndResolvesToTheMessage() async throws {
+        let store = FakeStore(accounts: ["@bob:hs": bob], rooms: ["@bob:hs": ["!r:hs": HandoffRoom(name: "Team", direct: false)]])
+        let api = FakeAPI(event: ["type": "m.room.message", "sender": "@carol:hs", "content": ["msgtype": "m.text", "body": "hello"]], memberName: "Carol")
+
+        let render = try XCTUnwrap(PushRender(userInfo: userInfo(), store: store, api: api))
+        let resolved = await render.resolve()
+
+        XCTAssertEqual(
+            render.fallback,
+            PushNotificationContent(title: "Team", subtitle: "", body: "New message", threadIdentifier: "!r:hs", sound: false)
+        )
+        XCTAssertEqual(
+            resolved,
+            PushNotificationContent(title: "Team", subtitle: "Carol", body: "hello", threadIdentifier: "!r:hs", sound: false)
+        )
+    }
+
+    func testLeavesOtherPushesAndUnknownAccountsToTheGatewaysAlert() {
+        let store = FakeStore(accounts: ["@bob:hs": bob])
+        var badgeOnly = userInfo()
+        badgeOnly["event_id"] = nil
+
+        XCTAssertNil(PushRender(userInfo: userInfo(user: "@alice:hs"), store: store, api: FakeAPI()))
+        XCTAssertNil(PushRender(userInfo: badgeOnly, store: store, api: FakeAPI()))
+        XCTAssertNil(PushRender(userInfo: userInfo(), store: nil, api: FakeAPI()))
+    }
+}
