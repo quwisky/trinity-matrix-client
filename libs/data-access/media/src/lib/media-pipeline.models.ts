@@ -28,6 +28,8 @@ export interface StagedMediaReference {
   readonly mimeType: string;
   readonly size: number;
   readonly previewUrl: string | null;
+  /** Host measurements carried from capture to upload; absent for picked or pasted files. */
+  readonly hints?: MediaHints;
 }
 
 export type MediaStageFailure = 'empty-file';

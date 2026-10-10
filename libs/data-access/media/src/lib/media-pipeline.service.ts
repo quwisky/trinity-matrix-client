@@ -9,6 +9,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { mediaCaptionFields, type MediaPayload } from '@trinity/util/matrix';
 import { MediaService, type UploadedMedia } from './media.service';
 import type {
+  MediaHints,
   MediaStageOutcome,
   MediaTransferEvent,
   MediaTransferRequest,
@@ -54,18 +55,24 @@ export class MediaPipeline {
     PresentedEntry
   >();
 
-  stage(file: File): MediaStageOutcome {
+  stage(file: File, hints?: MediaHints): MediaStageOutcome {
     if (!file || file.size === 0) {
       return { kind: 'rejected', failure: 'empty-file', retryable: false };
     }
+    // An image previews as itself; a captured video previews from the poster its host
+    // rendered. Anything else has no preview until it is sent.
+    const previewSource = file.type.startsWith('image/')
+      ? file
+      : file.type.startsWith('video/')
+        ? (hints?.thumbnail?.blob ?? null)
+        : null;
     const reference = Object.freeze({
       id: `staged-media-${++nextStagedId}`,
       filename: file.name || 'attachment',
       mimeType: file.type || 'application/octet-stream',
       size: file.size,
-      previewUrl: file.type.startsWith('image/')
-        ? URL.createObjectURL(file)
-        : null,
+      previewUrl: previewSource ? URL.createObjectURL(previewSource) : null,
+      ...(hints ? { hints: Object.freeze({ ...hints }) } : {}),
     }) as StagedMediaReference;
     this.staged.set(reference, { file, uploads: new Map() });
     this.liveStaged.add(reference);
@@ -267,6 +274,7 @@ export class MediaPipeline {
               (fraction) => progress('uploading', fraction),
               abortController,
               client,
+              request.media.hints,
             )
             .subscribe({
               next: (media) => {
