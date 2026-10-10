@@ -345,6 +345,27 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
   ) {
     errors.push('Android host must brand device-rendered push notifications');
   }
+  // Without the library's own MESSAGING_EVENT service only Firebase's fallback service remains
+  // and closed-app pushes silently stop rendering.
+  const pushLibraryManifest = withoutXmlComments(
+    input.androidPushLibraryManifest,
+  );
+  const declaresMessagingService = (
+    pushLibraryManifest.match(/<service\b[^>]*>(?:.|\n)*?<\/service>/gu) ?? []
+  ).some(
+    (service) =>
+      /android:name="(?:dev\.trinityproject\.trinity\.push)?\.TrinityMessagingService"/u.test(
+        service,
+      ) &&
+      /<action\s+android:name="com\.google\.firebase\.MESSAGING_EVENT"/u.test(
+        service,
+      ),
+  );
+  if (!declaresMessagingService) {
+    errors.push(
+      'Capacitor push library must declare TrinityMessagingService for FCM messages',
+    );
+  }
   // The push plugin's own MESSAGING_EVENT service must stay removed here: a merge-rule marker
   // only applies from the higher-priority manifest. Otherwise FCM can deliver to it and
   // closed-app pushes silently stop rendering.
@@ -418,6 +439,9 @@ export function validateCurrentNativeHosts(selectedHosts) {
       ),
       iosPushPlugin: read(
         'libs/native/capacitor-push/ios/Sources/PushHandoffPlugin/PushHandoffPlugin.swift',
+      ),
+      androidPushLibraryManifest: read(
+        'libs/native/capacitor-push/android/src/main/AndroidManifest.xml',
       ),
       androidPushAppearance: read(
         'android/app/src/main/res/values/push_notification_appearance.xml',

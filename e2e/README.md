@@ -108,8 +108,9 @@ Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed
   registration on ad-hoc builds. `push-render-android.e2e.mts` (Android only) drives
   `DevicePushHandler` through the debug-only, DUMP-protected `PushRenderProbeReceiver` (from the
   `@trinity/capacitor-push` module's debug source set) with the app terminated, reads the
-  notification shade, then taps the notification and checks that its room opens; on CI the native code does not trust the run's Caddy CA, so the body there is the
-  fallback "New message". Neither shows a real FCM token, the extension launching, locked-phone
+  notification shade, then taps the notification and checks that its room opens; on CI the
+  native code does not trust the run's Caddy CA, so the body there is the fallback "New
+  message". Neither shows a real FCM token, the extension launching, locked-phone
   rendering or closed-app delivery through `push.trinityproject.dev`, and the iOS spec does not
   cover tap-to-open.
 - CI runs iOS in the `E2E (iOS nightly)` workflow, never on pull requests.

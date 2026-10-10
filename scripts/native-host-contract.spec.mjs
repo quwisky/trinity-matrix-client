@@ -65,6 +65,20 @@ function project(platform) {
   };
 }
 
+function pushLibraryManifest(
+  service = [
+    '<service',
+    '    android:name="dev.trinityproject.trinity.push.TrinityMessagingService"',
+    '    android:exported="false">',
+    '  <intent-filter>',
+    '    <action android:name="com.google.firebase.MESSAGING_EVENT" />',
+    '  </intent-filter>',
+    '</service>',
+  ].join('\n'),
+) {
+  return `<manifest><application>${service}</application></manifest>`;
+}
+
 function validInput() {
   return {
     projects: { android: project('android'), ios: project('ios') },
@@ -143,6 +157,7 @@ function validInput() {
       'public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {',
       '    public let jsName = "PushHandoff"',
     ].join('\n'),
+    androidPushLibraryManifest: pushLibraryManifest(),
     androidPushAppearance: [
       '<drawable name="trinity_push_small_icon">@drawable/ic_stat_trinity</drawable>',
       '<color name="trinity_push_color">@color/ic_launcher_background</color>',
@@ -153,6 +168,23 @@ function validInput() {
 describe('native host contract', () => {
   it('validates the checked-in Android and iOS hosts', () => {
     expect(validateCurrentNativeHosts).not.toThrow();
+  });
+
+  it('accepts the push library service with reordered attributes', () => {
+    const input = validInput();
+    input.androidPushLibraryManifest = pushLibraryManifest(
+      [
+        '<service android:exported="false"',
+        '    android:name=".TrinityMessagingService">',
+        '  <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT"/></intent-filter>',
+        '</service>',
+      ].join('\n'),
+    );
+    const errors = [];
+
+    validateNativeHostContract(input, errors);
+
+    expect(errors).toEqual([]);
   });
 
   it('rejects Capacitor logging that is on by default', () => {
@@ -424,6 +456,29 @@ describe('native host contract', () => {
         input.androidManifest = `<!-- ${input.androidManifest} -->`;
       },
       'Android host must remove the push plugin MessagingService from the app manifest',
+    ],
+    [
+      'a push library without the messaging service',
+      (input) => {
+        input.androidPushLibraryManifest = pushLibraryManifest('');
+      },
+      'Capacitor push library must declare TrinityMessagingService for FCM messages',
+    ],
+    [
+      'a push library service without the FCM action',
+      (input) => {
+        input.androidPushLibraryManifest = pushLibraryManifest(
+          '<service android:name="dev.trinityproject.trinity.push.TrinityMessagingService" />',
+        );
+      },
+      'Capacitor push library must declare TrinityMessagingService for FCM messages',
+    ],
+    [
+      'a commented-out push library service',
+      (input) => {
+        input.androidPushLibraryManifest = `<!-- ${input.androidPushLibraryManifest} -->`;
+      },
+      'Capacitor push library must declare TrinityMessagingService for FCM messages',
     ],
     [
       'unbranded Android push notifications',
