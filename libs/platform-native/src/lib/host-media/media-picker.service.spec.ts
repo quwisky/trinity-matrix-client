@@ -66,6 +66,7 @@ describe('MediaPickerService host adapter', () => {
       ],
     });
     const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
       blob: () =>
         Promise.resolve(
           new Blob([new Uint8Array([1, 2])], { type: 'image/png' }),
@@ -105,6 +106,7 @@ describe('MediaPickerService host adapter', () => {
         src === 'blob:broken'
           ? Promise.reject(new Error('cannot read'))
           : Promise.resolve({
+              ok: true,
               blob: () =>
                 Promise.resolve(
                   new Blob([new Uint8Array([1])], { type: 'image/png' }),
@@ -121,6 +123,52 @@ describe('MediaPickerService host adapter', () => {
     vi.unstubAllGlobals();
   });
 
+  it('drops a photo the local file server answers with an error page', async () => {
+    // A 404 resolves rather than rejects, so without the status check its HTML body
+    // would be staged and sent as the image.
+    isNative.mockReturnValue(true);
+    chooseFromGallery.mockResolvedValue({
+      results: [
+        { webPath: 'blob:missing', type: 'photo' },
+        { webPath: 'blob:good', type: 'photo' },
+      ],
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((src: string) =>
+        Promise.resolve(
+          src === 'blob:missing'
+            ? {
+                ok: false,
+                status: 404,
+                blob: () =>
+                  Promise.resolve(
+                    new Blob(['<html>Not found</html>'], {
+                      type: 'text/html',
+                    }),
+                  ),
+              }
+            : {
+                ok: true,
+                status: 200,
+                blob: () =>
+                  Promise.resolve(
+                    new Blob([new Uint8Array([1])], { type: 'image/png' }),
+                  ),
+              },
+        ),
+      ),
+    );
+
+    const svc = makeService();
+    const files = await firstValueFrom(svc.pickImages());
+
+    expect(files).toHaveLength(1);
+    expect(files[0]?.type).toBe('image/png');
+
+    vi.unstubAllGlobals();
+  });
+
   it('drops a result it cannot resolve to a URL, keeping the rest', async () => {
     // A gallery entry with neither `webPath` nor `uri` yields no File; one unusable photo
     // must not take the others with it, nor leave a null in the staged list.
@@ -131,6 +179,7 @@ describe('MediaPickerService host adapter', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
+        ok: true,
         blob: () =>
           Promise.resolve(
             new Blob([new Uint8Array([1])], { type: 'image/png' }),
@@ -159,6 +208,7 @@ describe('MediaPickerService host adapter', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
+        ok: true,
         blob: () =>
           Promise.resolve(
             new Blob([new Uint8Array([1])], { type: 'image/png' }),
@@ -190,6 +240,7 @@ describe('MediaPickerService host adapter', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
+        ok: true,
         blob: () =>
           Promise.resolve(
             new Blob([new Uint8Array([1])], { type: 'image/png' }),

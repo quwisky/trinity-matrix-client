@@ -124,7 +124,12 @@ async function toFile(result: MediaResult | undefined): Promise<File | null> {
   if (!src) {
     return null;
   }
-  const blob = await fetch(src).then((r) => r.blob());
+  const response = await fetch(src);
+  // An error status resolves rather than rejects; throwing drops this photo like a failed fetch.
+  if (!response.ok) {
+    throw new Error(`The picked photo could not be read (${response.status}).`);
+  }
+  const blob = await response.blob();
   const type = blob.type || 'image/jpeg';
   const ext = type.split('/')[1]?.split('+')[0] || 'jpg';
   return new File([blob], `image.${ext}`, { type });
