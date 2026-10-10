@@ -39,6 +39,8 @@ export interface HomeserverSsoAccount {
   user: string;
   email: string;
   pass: string;
+  /** Dex's form-free mock identity (TRINITY_E2E_SSO_PROVIDER=mock); `pass` is then empty. */
+  mock?: boolean;
 }
 
 /** The seeded account on the opt-in MAS stack (TRINITY_E2E_MAS=1). */

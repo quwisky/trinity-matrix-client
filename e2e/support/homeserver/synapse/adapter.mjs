@@ -95,7 +95,8 @@ function oidcBlock(ctx) {
     '    client_secret: "trinity-e2e-secret"',
     '    scopes: ["openid", "profile", "email"]',
     // Browser-facing: the user's own navigation, so it must be the published port.
-    `    authorization_endpoint: "${DEX_ISSUER}/auth"`,
+    // Dex routes /auth/{connector} straight to that connector, so the mock skips the form.
+    `    authorization_endpoint: "${DEX_ISSUER}/auth${ctx.ssoMock ? '/mock' : ''}"`,
     // Server-facing: Synapse calls these itself, from inside the network.
     `    token_endpoint: "http://${internal}/dex/token"`,
     `    jwks_uri: "http://${internal}/dex/keys"`,
@@ -104,8 +105,12 @@ function oidcBlock(ctx) {
     '      config:',
     '        subject_claim: "sub"',
     // Dex puts the static user's `username` in `name`; mapping it straight through
-    // gives a deterministic localpart and skips Synapse's pick-a-username page.
-    '        localpart_template: "{{ user.name }}"',
+    // gives a deterministic localpart and skips Synapse's pick-a-username page. The
+    // mock's `name` is "Kilgore Trout" and it sends no preferred_username (Dex 2.46), so
+    // its localpart comes from its email, kilgore@kilgore.trout.
+    ctx.ssoMock
+      ? '        localpart_template: "{{ user.email | localpart_from_email }}"'
+      : '        localpart_template: "{{ user.name }}"',
     '        display_name_template: "{{ user.name }}"',
     OIDC_END,
   ].join('\n');
@@ -160,7 +165,8 @@ const NATIVE_URL_PREVIEW_BLACKLIST = [
  *
  * `ctx.generate` replaces the Docker scaffold (the native runtime runs Synapse's own
  * --generate-config), and `ctx.native` marks it. `ctx.sso === false` leaves the Dex block
- * out, for a native runtime without a `dex` binary.
+ * out, for a native runtime without a `dex` binary; `ctx.ssoMock` points it at Dex's
+ * form-free mock connector (TRINITY_E2E_SSO_PROVIDER=mock).
  */
 export async function ensureConfig(ctx) {
   if (!(await exists(CONFIG))) {

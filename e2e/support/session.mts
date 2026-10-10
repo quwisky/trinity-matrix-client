@@ -38,6 +38,8 @@ export interface HomeserverSessionDescriptor {
     readonly user: string;
     readonly email: string;
     readonly pass: string;
+    /** Dex's form-free mock identity (TRINITY_E2E_SSO_PROVIDER=mock); `pass` is then empty. */
+    readonly mock?: boolean;
   };
   readonly ssoReset?: {
     readonly user: string;

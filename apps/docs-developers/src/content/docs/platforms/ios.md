@@ -36,7 +36,7 @@ The static verifier checks shared host contracts on any supported development ma
 TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native pnpm e2e:mobile:ios
 ```
 
-The WebdriverIO and Appium suite drives the simulator build through the XCUITest driver. It needs macOS, Xcode, the pinned iOS Simulator runtime, `python3` and `caddy` on `PATH`; Synapse runs from a venv instead of Docker, without SSO or a second homeserver. Read [desktop and native tests](../../testing/desktop-and-native-tests/) for what simulator evidence does and does not prove.
+The WebdriverIO and Appium suite drives the simulator build through the XCUITest driver. It needs macOS, Xcode, the pinned iOS Simulator runtime, `python3` and `caddy` on `PATH`; Synapse runs from a venv instead of Docker, without a second homeserver; with `dex` on `PATH`, the SSO spec signs in through Dex's form-free mock connector. Read [desktop and native tests](../../testing/desktop-and-native-tests/) for what simulator evidence does and does not prove.
 
 ## Respect native ownership {#native-ownership}
 

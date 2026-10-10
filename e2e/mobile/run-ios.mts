@@ -247,6 +247,11 @@ async function releaseDevice(): Promise<void> {
   if (ownsBoot) await simctl('shutdown', simulator.udid).catch(() => undefined);
 }
 
+// The iOS Simulator drops keystrokes typed into the Safari view, so Dex's login form
+// cannot be filled reliably; its mock connector signs in without a form. The homeserver
+// starts in this process (openE2EInvocation), so it reads this.
+process.env['TRINITY_E2E_SSO_PROVIDER'] ??= 'mock';
+
 startMobileRun({
   platform: 'iOS',
   resources: ['homeserver', 'ios-simulator'],

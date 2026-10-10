@@ -17,6 +17,7 @@ import {
   resolveHomeserverKind,
   resolveHomeserverRuntime,
   resolveMasEnabled,
+  resolveSsoMock,
 } from '../e2e/support/homeserver/kind.mts';
 import {
   MAS_HS_TLS,
@@ -271,6 +272,26 @@ describe('Synapse adapter config generation', () => {
     );
   });
 
+  it("points Synapse at Dex's mock connector and maps its email to the localpart", async () => {
+    stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
+    const { ensureConfig } = await adapterIn(stateDir);
+    await ensureConfig({
+      log: () => undefined,
+      native: true,
+      ssoMock: true,
+      generate: generateInto(stateDir),
+    });
+    const yaml = readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8');
+    expect(yaml).toContain(
+      'authorization_endpoint: "http://localhost:5556/dex/auth/mock"',
+    );
+    // The mock's `name` is "Kilgore Trout", not a legal localpart.
+    expect(yaml).toContain(
+      'localpart_template: "{{ user.email | localpart_from_email }}"',
+    );
+    expect(yaml).toContain('display_name_template: "{{ user.name }}"');
+  });
+
   it('keeps the Dex block for the Docker runtime', async () => {
     stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
     const { ensureConfig } = await adapterIn(stateDir);
@@ -281,6 +302,27 @@ describe('Synapse adapter config generation', () => {
     const yaml = readFileSync(join(stateDir, 'data/homeserver.yaml'), 'utf8');
     expect(yaml).toContain('idp_id: dex');
     expect(yaml).toContain('url_preview_ip_range_blacklist: []');
+    expect(yaml).toContain(
+      'authorization_endpoint: "http://localhost:5556/dex/auth"',
+    );
+    expect(yaml).toContain('localpart_template: "{{ user.name }}"');
+  });
+
+  it('selects the Dex mock connector only for TRINITY_E2E_SSO_PROVIDER=mock on native', () => {
+    const native = {
+      TRINITY_E2E_HOMESERVER: 'synapse',
+      TRINITY_E2E_HOMESERVER_RUNTIME: 'native',
+    };
+    expect(resolveSsoMock(native)).toBe(false);
+    expect(
+      resolveSsoMock({ ...native, TRINITY_E2E_SSO_PROVIDER: 'mock' }),
+    ).toBe(true);
+    expect(() =>
+      resolveSsoMock({ ...native, TRINITY_E2E_SSO_PROVIDER: 'Mock' }),
+    ).toThrow(/TRINITY_E2E_SSO_PROVIDER/);
+    expect(() => resolveSsoMock({ TRINITY_E2E_SSO_PROVIDER: 'mock' })).toThrow(
+      /native runtime/,
+    );
   });
 });
 

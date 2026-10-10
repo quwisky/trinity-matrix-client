@@ -53,6 +53,7 @@ import {
   resolveHomeserverKind,
   resolveHomeserverRuntime,
   resolveMasEnabled,
+  resolveSsoMock,
 } from './kind.mts';
 import {
   ensureSynapseVenv,
@@ -111,6 +112,7 @@ let operationSignal;
 let kind;
 let runtime;
 let masEnabled = false;
+let ssoMock = false;
 
 function secondaryServerName() {
   return networkContainer ? 'localhost:9448' : 'caddy:9448';
@@ -362,17 +364,31 @@ const ssoAccounts = () => ({
 });
 
 /**
+ * The identity Dex's `mockCallback` connector always returns (connector/mock in Dex
+ * 2.46): Synapse takes the localpart from its email, and it has no password.
+ */
+const mockSsoAccount = () => ({
+  sso: {
+    user: 'kilgore',
+    email: 'kilgore@kilgore.trout',
+    pass: '',
+    mock: true,
+  },
+});
+
+/**
  * Native runtime: Synapse from a venv and Caddy as host processes, primary server only.
  * Dex runs too when a `dex` binary is on PATH (`brew install dexidp`), and then SSO is
  * available. The secondary server always is not, nor SSO without Dex, and the session
- * says so (`unavailable`) instead of inventing values.
+ * says so (`unavailable`) instead of inventing values. With TRINITY_E2E_SSO_PROVIDER=mock
+ * Dex signs in through its mock connector, so the session offers only that identity.
  */
 async function startNative() {
   const paths = nativePaths(STATE_DIR, DATA);
   const dexVersion = await nativeDexVersion(nodeProcessApi, operationSignal);
   const sso = dexVersion !== null;
   log(
-    `${kind}, native runtime (host processes, primary server only; ${sso ? `Dex ${dexVersion}` : 'no dex on PATH, so no SSO'})`,
+    `${kind}, native runtime (host processes, primary server only; ${sso ? `Dex ${dexVersion}${ssoMock ? ', mock connector' : ''}` : 'no dex on PATH, so no SSO'})`,
   );
   await prepareStateDir();
   await ensureSynapseVenv(paths, nodeProcessApi, {
@@ -384,6 +400,7 @@ async function startNative() {
     log,
     native: true,
     sso,
+    ssoMock,
     generate: () =>
       generateSynapseConfig(
         paths,
@@ -403,7 +420,9 @@ async function startNative() {
   if (sso) {
     await writeFile(
       paths.dexConfig,
-      nativeDexConfig(await readFile(join(STATE_DIR, 'dex.yaml'), 'utf8')),
+      nativeDexConfig(await readFile(join(STATE_DIR, 'dex.yaml'), 'utf8'), {
+        mock: ssoMock,
+      }),
       'utf8',
     );
   }
@@ -438,7 +457,7 @@ async function startNative() {
     runtime,
     unavailable: sso ? ['remote'] : ['remote', 'sso'],
     caddyRoot: paths.caddyRoot,
-    ...(sso ? ssoAccounts() : {}),
+    ...(sso ? (ssoMock ? mockSsoAccount() : ssoAccounts()) : {}),
   };
 }
 
@@ -447,6 +466,7 @@ export async function start({ signal } = {}) {
   kind = resolveHomeserverKind();
   runtime = resolveHomeserverRuntime();
   masEnabled = resolveMasEnabled();
+  ssoMock = resolveSsoMock();
   if (runtime === 'native') return startNative();
   const adapter = ADAPTERS[kind];
   networkContainer = await resolveNetworkContainer();
