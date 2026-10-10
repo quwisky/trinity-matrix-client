@@ -9,8 +9,10 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   catchError,
+  defaultIfEmpty,
   finalize,
   firstValueFrom,
+  map,
   of,
   take,
   timeout,
@@ -26,6 +28,7 @@ import {
   PrivacySettingsService,
   VoiceRecorderService,
   captureModeFor,
+  isInstalledNativePlatform,
   isMobileOs,
   type CaptureKind,
   type CaptureMode,
@@ -46,6 +49,11 @@ import {
   type StagedAttachment,
 } from './staged-attachment';
 import { type BatchProgress } from '../shared/send-media-batch';
+import {
+  effectiveUploadLimit,
+  tooLargeMessage,
+  type UploadLimit,
+} from './upload-limit';
 
 /**
  * What the attachment workflows need back from the composer that owns them.
@@ -103,6 +111,8 @@ export class ComposerAttachmentsService {
   private readonly appSettings = inject(AppSettingsService);
   /** True from a native capture's start until it settles (re-entry guard). */
   private capturing = false;
+  /** The Android or iOS app, whose WebView gets the smaller fallback upload ceiling. */
+  private readonly nativeMobile = isInstalledNativePlatform();
 
   /**
    * The composer these workflows act on. Deliberately not optional: an unwired service throws
@@ -206,7 +216,7 @@ export class ComposerAttachmentsService {
         .pickImages()
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe({
-          next: (files) => this.stageAll(files),
+          next: (files) => this.stagePicked(files),
           // A user-cancel resolves to null above; this catches a denied photo
           // permission (or a genuine picker failure) instead of leaving it
           // unhandled, and shows the reason.
@@ -220,7 +230,7 @@ export class ComposerAttachmentsService {
   /** Hidden file input change → stage every picked file, then reset for re-picking. */
   filePicked(event: Event): void {
     const input = event.target as HTMLInputElement;
-    this.stageAll(Array.from(input.files ?? []));
+    this.stagePicked(Array.from(input.files ?? []));
     input.value = ''; // let the same file be picked again
   }
 
@@ -239,13 +249,13 @@ export class ComposerAttachmentsService {
     const saveToGallery = this.privacy.saveCapturesToGallery();
     // The camera opens at once; the limit is looked up alongside it and the picker awaits it only
     // once a capture comes back, so a slow media-config request never delays the viewfinder.
-    // `defaultValue`: a lookup that completes without a value must not reject a promise that a
-    // cancelled capture never awaits.
-    const maxBytes = firstValueFrom(
-      this.uploadLimit().pipe(catchError(() => of(null))),
-      { defaultValue: null },
-    );
-    const options = { saveToGallery, maxBytes };
+    // The lookup always settles to a limit, so this promise never rejects unawaited when the
+    // capture is cancelled.
+    const limit = firstValueFrom(this.uploadLimit());
+    const options = {
+      saveToGallery,
+      maxBytes: limit.then((settled) => settled.bytes),
+    };
     (kind === 'photo'
       ? this.picker.capturePhoto(options)
       : this.picker.captureVideo(options)
@@ -260,11 +270,11 @@ export class ComposerAttachmentsService {
           if (!captured || this.host.roomId() !== roomAtStart) return;
           this.stageCapture(captured.file, captured.hints);
         },
-        error: (err: unknown) => this.showCaptureError(kind, err),
+        error: (err: unknown) => this.showCaptureError(kind, err, limit),
       });
   }
 
-  /** A capture input's change → stage its one file, if the homeserver would take it. */
+  /** A capture input's change → stage its one file, if it is within the upload limit. */
   captureInputPicked(event: Event, kind: CaptureKind): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0] ?? null;
@@ -275,8 +285,8 @@ export class ComposerAttachmentsService {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((limit) => {
         if (this.host.roomId() !== roomAtStart) return;
-        if (limit !== null && file.size > limit) {
-          this.showTooLarge(kind, limit);
+        if (file.size > limit.bytes) {
+          this.showTooLarge(tooLargeMessage(kind, limit));
           return;
         }
         this.stageCapture(file);
@@ -320,7 +330,7 @@ export class ComposerAttachmentsService {
     }
     if (images.length) {
       event.preventDefault(); // don't also drop the raw image into the textarea
-      this.stageAll(images);
+      this.stagePicked(images);
     }
   }
 
@@ -529,7 +539,31 @@ export class ComposerAttachmentsService {
     if (this.host.editing()) {
       return;
     }
-    this.stageAll(files);
+    this.stagePicked(files);
+  }
+
+  /**
+   * Stage files the user chose (picked, pasted or dropped) that are within the upload limit,
+   * refusing the rest by their reported size before anything reads them — a long video can be
+   * hundreds of MB, and sending reads it whole into the WebView. Like a capture, the files
+   * belong to the room they were chosen in.
+   */
+  private stagePicked(files: readonly File[]): void {
+    if (!files.length) {
+      return;
+    }
+    const roomAtStart = this.host.roomId();
+    this.uploadLimit()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((limit) => {
+        if (this.host.roomId() !== roomAtStart) return;
+        const fitting = files.filter((file) => file.size <= limit.bytes);
+        const refused = files.length - fitting.length;
+        if (refused > 0) {
+          this.showTooLarge(tooLargeMessage('file', limit, refused));
+        }
+        this.stageAll(fitting);
+      });
   }
 
   private stageAll(
@@ -565,27 +599,38 @@ export class ComposerAttachmentsService {
   }
 
   /**
-   * The composer account's upload limit, once. Bounded: the media-config request has no
-   * timeout of its own, and a hung one must never hold up a capture — after
-   * {@link UPLOAD_LIMIT_WAIT_MS} the limit is treated as unknown and the server stays the judge.
+   * The upload limit for the composer's account, once; always emits. Bounded: the media-config
+   * request has no timeout of its own, and a hung one must never hold up a capture or a pick —
+   * after {@link UPLOAD_LIMIT_WAIT_MS}, or on a failed or empty lookup, the homeserver's limit
+   * is treated as unknown and this device's fallback ceiling applies.
    */
-  private uploadLimit(): Observable<number | null> {
-    return this.mediaPipeline
-      .uploadLimit(this.host.accountId())
-      .pipe(
-        take(1),
-        timeout({ first: UPLOAD_LIMIT_WAIT_MS, with: () => of(null) }),
-      );
+  private uploadLimit(): Observable<UploadLimit> {
+    return this.mediaPipeline.uploadLimit(this.host.accountId()).pipe(
+      take(1),
+      timeout({ first: UPLOAD_LIMIT_WAIT_MS, with: () => of(null) }),
+      catchError(() => of(null)),
+      defaultIfEmpty(null),
+      map((bytes) => effectiveUploadLimit(bytes, this.nativeMobile)),
+    );
   }
 
-  /** Denials become the inline notice; everything else a toast naming the cause. */
-  private showCaptureError(kind: CaptureKind, err: unknown): void {
+  /**
+   * Denials become the inline notice; everything else a toast naming the cause. An over-limit
+   * capture names the limit it was held to, which `limit` has settled to by the time it fails.
+   */
+  private showCaptureError(
+    kind: CaptureKind,
+    err: unknown,
+    limit: Promise<UploadLimit>,
+  ): void {
     if (err instanceof CapturePermissionDeniedError) {
       this.captureNotice.set(err.permission);
       return;
     }
     if (err instanceof CaptureTooLargeError) {
-      this.showTooLarge(kind, err.limit);
+      void limit.then((settled) =>
+        this.showTooLarge(tooLargeMessage(kind, settled)),
+      );
       return;
     }
     this.toast.show(
@@ -598,21 +643,13 @@ export class ComposerAttachmentsService {
     );
   }
 
-  private showTooLarge(kind: CaptureKind, limit: number): void {
-    this.toast.show(
-      `That ${kind} is too large to send. Your homeserver accepts files up to ${formatMegabytes(limit)}.`,
-      { duration: 6000, variant: 'danger' },
-    );
+  private showTooLarge(message: string): void {
+    this.toast.show(message, { duration: 6000, variant: 'danger' });
   }
 }
 
-/** How long a capture's size check waits for the homeserver's upload limit before going without it. */
+/** How long a size check waits for the homeserver's upload limit before going without it. */
 const UPLOAD_LIMIT_WAIT_MS = 3000;
-
-/** A byte limit as whole megabytes for copy ("100 MB"); never "0 MB". */
-function formatMegabytes(bytes: number): string {
-  return `${Math.max(1, Math.round(bytes / 1_048_576))} MB`;
-}
 
 function captureNoticeCopy(permission: CapturePermission | null): string {
   switch (permission) {

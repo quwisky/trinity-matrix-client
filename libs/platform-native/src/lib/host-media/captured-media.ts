@@ -42,7 +42,8 @@ export interface CaptureOptions {
   /** Also keep the capture in the device's photo library (Settings › Privacy). */
   readonly saveToGallery: boolean;
   /**
-   * The homeserver's upload limit in bytes; null or absent when unknown. It may still be
+   * The largest capture the caller accepts, in bytes (the homeserver's upload limit, or a
+   * device ceiling when the server states none); null or absent for no check. It may still be
    * resolving when the camera opens: it is awaited only after a capture returns, so a slow
    * lookup never delays the camera and a cancelled capture never waits for it.
    */
@@ -69,13 +70,13 @@ export class NoCameraError extends Error {
   }
 }
 
-/** The capture is larger than the homeserver accepts. */
+/** The capture is larger than the caller's `maxBytes` allows. */
 export class CaptureTooLargeError extends Error {
   constructor(
     readonly size: number,
     readonly limit: number,
   ) {
-    super('The capture is larger than the homeserver accepts.');
+    super('The capture is larger than can be sent.');
     this.name = 'CaptureTooLargeError';
   }
 }
