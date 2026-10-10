@@ -76,18 +76,18 @@ class DevicePushHandler(
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setAutoCancel(true)
             .setSilent(!outcome.sound)
-            .setContentIntent(tapIntent(outcome, messageId))
+            .setContentIntent(tapIntent(outcome, key, messageId))
             .build()
         compat.notify(key.tag, key.id, notification)
     }
 
-    private fun tapIntent(outcome: PushOutcome.Post, messageId: String?): PendingIntent {
+    private fun tapIntent(outcome: PushOutcome.Post, key: RoomNotificationKey, messageId: String?): PendingIntent {
         val intent = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         for ((key, value) in pushTapExtras(outcome, messageId)) intent.putExtra(key, value)
         return PendingIntent.getActivity(
             context,
-            "${outcome.accountId}\u0000${outcome.roomId}".hashCode(),
+            tapRequestCode(key),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )

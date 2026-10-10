@@ -29,3 +29,10 @@ fun pushTapExtras(outcome: PushOutcome.Post, messageId: String?): Map<String, St
     outcome.roomId?.let { put("room_id", it) }
     put("event_id", outcome.eventId)
 }
+
+/**
+ * The PendingIntent request code of a notification's tap. Derived from the notification's own
+ * identity, so every delivered notification (a room's, or a room-less push's per event) keeps
+ * its own extras instead of FLAG_UPDATE_CURRENT overwriting another's.
+ */
+fun tapRequestCode(key: RoomNotificationKey): Int = 31 * key.tag.hashCode() + key.id

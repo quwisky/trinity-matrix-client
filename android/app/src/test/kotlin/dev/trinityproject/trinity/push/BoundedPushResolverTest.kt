@@ -88,4 +88,17 @@ class BoundedPushResolverTest {
 
         assertEquals(RenderedNotification("Team", "Carol", "hello"), outcome.notification)
     }
+
+    @Test
+    fun aStoreThatThrowsStillYieldsTheGenericFallback() {
+        val faulty = object : HandoffReader {
+            override fun account(userId: String): HandoffAccount? = throw java.security.ProviderException("keystore")
+
+            override fun room(userId: String, roomId: String): HandoffRoom? = throw java.security.ProviderException("keystore")
+        }
+
+        val outcome = BoundedPushResolver(faulty, BlockingApi(), budgetMillis = 100).resolve(push) as PushOutcome.Post
+
+        assertEquals(RenderedNotification("Trinity", "", "New message"), outcome.notification)
+    }
 }

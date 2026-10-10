@@ -48,4 +48,19 @@ class PushTapTest {
         assertNotEquals(key, roomNotificationKey("@b:hs", "!r:hs"))
         assertNotEquals(key, roomNotificationKey("@a:hs", "!other:hs"))
     }
+
+    @Test
+    fun everyDeliveredNotificationKeepsItsOwnTapRequestCode() {
+        val keys = listOf(
+            roomNotificationKey("@a:hs", "!r:hs"),
+            roomNotificationKey("@b:hs", "!r:hs"),
+            roomNotificationKey("@a:hs", "!other:hs"),
+            // Room-less pushes are tagged with their event ID.
+            roomNotificationKey("@a:hs", "\$e1"),
+            roomNotificationKey("@a:hs", "\$e2"),
+        )
+
+        assertEquals(keys.size, keys.map(::tapRequestCode).toSet().size)
+        assertEquals(tapRequestCode(keys[0]), tapRequestCode(roomNotificationKey("@a:hs", "!r:hs")))
+    }
 }

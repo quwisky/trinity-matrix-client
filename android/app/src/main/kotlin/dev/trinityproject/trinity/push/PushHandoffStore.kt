@@ -1,6 +1,7 @@
 package dev.trinityproject.trinity.push
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -23,8 +24,14 @@ import org.json.JSONObject
  * reaches the private SharedPreferences file. Writes report failure as `false` and never
  * log what they store.
  */
-class PushHandoffStore(context: Context) : HandoffReader {
-    private val preferences = context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+class PushHandoffStore internal constructor(
+    private val preferences: SharedPreferences,
+    private val crypto: ValueCrypto,
+) : HandoffReader {
+    constructor(context: Context) : this(
+        context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE),
+        KeystoreCrypto(),
+    )
 
     @Synchronized
     fun setAccount(userId: String, account: HandoffAccount): Boolean = write(
@@ -72,28 +79,49 @@ class PushHandoffStore(context: Context) : HandoffReader {
     }
 
     private fun write(key: String, value: JSONObject): Boolean = try {
-        preferences.edit().putString(key, encrypt(value.toString())).commit()
+        preferences.edit().putString(key, crypto.encrypt(value.toString())).commit()
     } catch (error: GeneralSecurityException) {
         false
     } catch (error: IOException) {
+        false
+    } catch (error: RuntimeException) {
+        // The Keystore also throws ProviderException (and StrongBoxUnavailableException).
         false
     }
 
     private fun read(key: String): JSONObject? {
         val stored = preferences.getString(key, null) ?: return null
         return try {
-            JSONObject(decrypt(stored))
+            JSONObject(crypto.decrypt(stored))
         } catch (error: GeneralSecurityException) {
             null
         } catch (error: IOException) {
             null
         } catch (error: JSONException) {
             null
-        } catch (error: IllegalArgumentException) {
+        } catch (error: RuntimeException) {
             null
         }
     }
 
+    private fun accountKey(userId: String) = "account:$userId"
+
+    private fun roomsKey(userId: String) = "rooms:$userId"
+
+    private companion object {
+        const val FILE = "trinity_push_handoff"
+    }
+}
+
+/** Seals and opens stored values; failures surface as exceptions the store maps to false/null. */
+internal interface ValueCrypto {
+    fun encrypt(plain: String): String
+
+    fun decrypt(stored: String): String
+}
+
+/** AES-256-GCM under a non-exportable Android Keystore key. */
+internal class KeystoreCrypto : ValueCrypto {
     private fun key(): SecretKey {
         val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
         (keyStore.getEntry(ALIAS, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
@@ -108,26 +136,21 @@ class PushHandoffStore(context: Context) : HandoffReader {
         return generator.generateKey()
     }
 
-    private fun encrypt(plain: String): String {
+    override fun encrypt(plain: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val sealed = cipher.iv + cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
         return Base64.encodeToString(sealed, Base64.NO_WRAP)
     }
 
-    private fun decrypt(stored: String): String {
+    override fun decrypt(stored: String): String {
         val sealed = Base64.decode(stored, Base64.NO_WRAP)
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(TAG_BITS, sealed, 0, IV_BYTES))
         return String(cipher.doFinal(sealed, IV_BYTES, sealed.size - IV_BYTES), Charsets.UTF_8)
     }
 
-    private fun accountKey(userId: String) = "account:$userId"
-
-    private fun roomsKey(userId: String) = "rooms:$userId"
-
     private companion object {
-        const val FILE = "trinity_push_handoff"
         const val ALIAS = "trinity_push_handoff"
         const val KEYSTORE = "AndroidKeyStore"
         const val TRANSFORMATION = "AES/GCM/NoPadding"

@@ -13,11 +13,12 @@ import org.json.JSONObject
  * stored room name (or "Trinity") with "New message", without further network.
  */
 class BoundedPushResolver(
-    private val store: HandoffReader,
+    store: HandoffReader,
     api: MatrixApi,
     private val budgetMillis: Long = Deadline.BUDGET_MILLIS,
 ) {
-    private val resolver = PushResolver(store, api)
+    private val store: HandoffReader = FaultTolerantReader(store)
+    private val resolver = PushResolver(this.store, api)
 
     fun resolve(data: Map<String, String>): PushOutcome {
         val pending = EXECUTOR.submit<PushOutcome> { resolver.resolve(data) }
@@ -36,6 +37,21 @@ class BoundedPushResolver(
     }
 
     private fun offline(data: Map<String, String>): PushOutcome = PushResolver(store, NoNetworkApi).resolve(data)
+
+    /** A store fault reads as "no such account or room", which resolves to the generic fallback. */
+    private class FaultTolerantReader(private val delegate: HandoffReader) : HandoffReader {
+        override fun account(userId: String): HandoffAccount? = try {
+            delegate.account(userId)
+        } catch (error: RuntimeException) {
+            null
+        }
+
+        override fun room(userId: String, roomId: String): HandoffRoom? = try {
+            delegate.room(userId, roomId)
+        } catch (error: RuntimeException) {
+            null
+        }
+    }
 
     private object NoNetworkApi : MatrixApi {
         override fun event(account: HandoffAccount, roomId: String, eventId: String, deadline: Deadline): JSONObject? = null
