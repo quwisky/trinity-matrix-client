@@ -201,10 +201,10 @@ export async function captureHints(result: MediaResult): Promise<CaptureHints> {
   const thumbnail = result.thumbnail
     ? await decodeThumbnail(result.thumbnail)
     : null;
+  // Without a decoded thumbnail there is nothing to tell whether `resolution` is sensor-
+  // oriented, so the size is left out and the upload probe measures the file itself.
   const size =
-    resolution && thumbnail
-      ? orientToThumbnail(resolution, thumbnail)
-      : resolution;
+    resolution && thumbnail ? orientToThumbnail(resolution, thumbnail) : null;
   return {
     ...(size ? { width: size.width, height: size.height } : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
@@ -235,7 +235,11 @@ export async function toCapturedMedia(
   if (!src) {
     throw new Error('The camera returned no file.');
   }
-  const blob = await fetch(src).then((response) => response.blob());
+  const response = await fetch(src);
+  if (!response.ok) {
+    throw new Error(`The camera file could not be read (${response.status}).`);
+  }
+  const blob = await response.blob();
   if (maxBytes !== null && blob.size > maxBytes) {
     throw new CaptureTooLargeError(blob.size, maxBytes);
   }

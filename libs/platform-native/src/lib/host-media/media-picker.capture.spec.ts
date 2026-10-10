@@ -57,6 +57,8 @@ function makeService(): MediaPickerService {
 
 function serveBlob(bytes: number, type: string): Mock {
   const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
     blob: () => Promise.resolve(new Blob([new Uint8Array(bytes)], { type })),
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -190,6 +192,67 @@ describe('MediaPickerService capture', () => {
 
     expect(captured?.file.name).toBe('photo.jpeg');
     expect(captured?.hints.thumbnail).toBeUndefined();
+  });
+
+  it('leaves the size to the probe when the thumbnail cannot be decoded', async () => {
+    serveBlob(3, 'image/jpeg');
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(() => Promise.reject(new Error('bad'))),
+    );
+    takePhoto.mockResolvedValue({
+      type: 0,
+      webPath: 'blob:p',
+      thumbnail: JPEG_BASE64,
+      saved: false,
+      metadata: { format: 'jpeg', resolution: '4032x3024' },
+    });
+    const svc = makeService();
+
+    const captured = await firstValueFrom(
+      svc.capturePhoto({ saveToGallery: false }),
+    );
+
+    expect(captured?.hints).not.toHaveProperty('width');
+    expect(captured?.hints).not.toHaveProperty('height');
+  });
+
+  it('leaves the size to the probe when the capture has no thumbnail', async () => {
+    serveBlob(3, 'image/jpeg');
+    takePhoto.mockResolvedValue({
+      type: 0,
+      webPath: 'blob:p',
+      saved: false,
+      metadata: { format: 'jpeg', resolution: '4032x3024' },
+    });
+    const svc = makeService();
+
+    const captured = await firstValueFrom(
+      svc.capturePhoto({ saveToGallery: false }),
+    );
+
+    expect(captured?.hints).not.toHaveProperty('width');
+    expect(captured?.hints).not.toHaveProperty('height');
+  });
+
+  it('fails the capture when the local file cannot be read', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      blob: () => Promise.resolve(new Blob(['<h1>Not found</h1>'])),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    takePhoto.mockResolvedValue({
+      type: 0,
+      webPath: 'blob:p',
+      saved: false,
+      metadata: { format: 'jpeg' },
+    });
+    const svc = makeService();
+
+    await expect(
+      firstValueFrom(svc.capturePhoto({ saveToGallery: false })),
+    ).rejects.toThrow(/could not be read/u);
   });
 
   it('turns a sensor-oriented photo resolution to match its portrait thumbnail', async () => {
