@@ -14,7 +14,7 @@ import type { IpcRendererEvent } from 'electron';
  *   (globalThis as any).trinityDesktop?.isElectron === true
  *
  * Deep-link contract (consumed by the selected host adapter):
- *   trinityDesktop.capabilities.deepLinks.subscribe(cb) receives `eu.qwky.trinity://…` URLs that
+ *   trinityDesktop.capabilities.deepLinks.subscribe(cb) receives `dev.trinityproject.trinity://…` URLs that
  *   the main process forwards over the `deep-link` ipcRenderer channel (used for
  *   the desktop SSO callback) and returns an unsubscribe function. Only the URL
  *   string is passed to the callback — the raw IpcRendererEvent is never leaked.

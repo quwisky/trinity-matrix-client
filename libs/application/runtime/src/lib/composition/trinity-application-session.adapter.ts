@@ -327,6 +327,7 @@ export class TrinityApplicationSessionAdapter {
     } catch {
       return EMPTY;
     }
+    if (parsed.protocol !== APP_URL_PROTOCOL) return EMPTY;
     const path = parsed.host || parsed.pathname.replace(/^\/+/, '');
     const params = parsed.searchParams;
     if (
@@ -532,6 +533,9 @@ export class TrinityApplicationSessionAdapter {
     );
   }
 }
+
+/** The only scheme the app registers; a callback on any other scheme is not ours. */
+const APP_URL_PROTOCOL = 'dev.trinityproject.trinity:';
 
 const CALLBACK_PARAMS = [
   'loginToken',

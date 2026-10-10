@@ -28,7 +28,7 @@ import { resolveWidgetLaunch } from './widget-template';
 
 /** The legacy room-state event used by deployed Matrix widgets. */
 export const WIDGET_EVENT_TYPE = 'im.vector.modular.widgets';
-const TRINITY_WIDGET_CLIENT_ID = 'eu.qwky.trinity';
+const TRINITY_WIDGET_CLIENT_ID = 'dev.trinityproject.trinity';
 
 interface WatchedRoom {
   readonly target: RoomWidgetTarget;

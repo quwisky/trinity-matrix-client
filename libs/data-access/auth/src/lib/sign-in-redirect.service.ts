@@ -52,7 +52,7 @@ export class SignInRedirectService {
         .then(() => {
           const callback = this.handoff.callback({
             webUrl: `${window.location.origin}/sso-callback`,
-            appUrl: 'eu.qwky.trinity://sso-callback',
+            appUrl: 'dev.trinityproject.trinity://sso-callback',
           });
           const redirect = `${callback.url}?sso_state=${encodeURIComponent(state)}`;
           return this.auth.getSsoUrl(baseUrl, redirect);
@@ -74,7 +74,7 @@ export class SignInRedirectService {
       // dynamic registration ("must not have an authority") before login can start.
       const callback = this.handoff.callback({
         webUrl: `${window.location.origin}/sso-callback`,
-        appUrl: 'eu.qwky.trinity:/sso-callback',
+        appUrl: 'dev.trinityproject.trinity:/sso-callback',
       });
       const redirectUri = callback.url;
       return this.auth

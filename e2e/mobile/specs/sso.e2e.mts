@@ -109,7 +109,7 @@ describe('mobile SSO sign-in', () => {
     await resetApp();
   });
 
-  it('signs in through the in-app browser and returns on the eu.qwky.trinity callback', async () => {
+  it('signs in through the in-app browser and returns on the dev.trinityproject.trinity callback', async () => {
     const sso = readSession().homeserver?.sso;
     if (!sso) throw new Error('the E2E stack came up without an SSO account');
 
@@ -128,7 +128,7 @@ describe('mobile SSO sign-in', () => {
       await answerDexInCustomTab(sso.email, sso.pass);
     }
 
-    // The homeserver redirects to eu.qwky.trinity://sso-callback, which the OS hands to the
+    // The homeserver redirects to dev.trinityproject.trinity://sso-callback, which the OS hands to the
     // app (its scene delegate on iOS); the Rooms shell appearing proves the login token was
     // exchanged.
     await webview();

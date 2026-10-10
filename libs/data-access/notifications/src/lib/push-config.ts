@@ -27,11 +27,11 @@ export interface PushConfig {
 /**
  * Fallback base app id: the application identifier itself, kept in step with
  * `capacitor.config.ts`, `android/app/build.gradle` (`applicationId`) and the Xcode
- * `PRODUCT_BUNDLE_IDENTIFIER` — all three are `eu.qwky.trinity`. APNs binds its auth key
+ * `PRODUCT_BUNDLE_IDENTIFIER` — all three are `dev.trinityproject.trinity`. APNs binds its auth key
  * to the bundle id and FCM to the sender project, so a gateway that can physically
  * deliver to this build is almost always keyed by this id.
  */
-export const DEFAULT_APP_ID = 'eu.qwky.trinity';
+export const DEFAULT_APP_ID = 'dev.trinityproject.trinity';
 
 /** Build-time default gateway (`environment.push`); null disables push. */
 export const PUSH_CONFIG = new InjectionToken<PushConfig | null>('PUSH_CONFIG');

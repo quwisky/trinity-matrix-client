@@ -20,7 +20,7 @@ import {
 const execFileAsync = promisify(execFile);
 
 /** Android package and iOS bundle id: Capacitor uses `appId` for both. */
-export const APP_PACKAGE = 'eu.qwky.trinity';
+export const APP_PACKAGE = 'dev.trinityproject.trinity';
 const WEBVIEW_CONTEXT = `WEBVIEW_${APP_PACKAGE}`;
 /** WKWebView serves the bundled app from this origin. */
 export const IOS_APP_ORIGIN = 'capacitor://localhost';

@@ -74,7 +74,7 @@ function oidcBlock(ctx) {
   // restarting Synapse between environment adapters.
   const clientWhitelist = [
     `${appOrigin.replace(/\/$/, '')}/`,
-    'eu.qwky.trinity://sso-callback',
+    'dev.trinityproject.trinity://sso-callback',
   ];
   return [
     OIDC_START,

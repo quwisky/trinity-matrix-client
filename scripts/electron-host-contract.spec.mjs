@@ -179,7 +179,7 @@ function validInput() {
       'asar: true',
       'afterPack: ./afterPack.cjs',
       'protocols:',
-      '  - eu.qwky.trinity',
+      '  - dev.trinityproject.trinity',
     ].join('\n'),
   };
 }
@@ -326,8 +326,8 @@ describe('Electron host contract', () => {
   it('rejects commented-out protocol packaging', () => {
     const input = validInput();
     input.builder = input.builder.replace(
-      '  - eu.qwky.trinity',
-      '  # - eu.qwky.trinity',
+      '  - dev.trinityproject.trinity',
+      '  # - dev.trinityproject.trinity',
     );
     const errors = [];
 

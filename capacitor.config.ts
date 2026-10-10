@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'eu.qwky.trinity',
+  appId: 'dev.trinityproject.trinity',
   appName: 'Trinity',
   webDir: 'www',
   plugins: {

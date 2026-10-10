@@ -87,10 +87,12 @@ describe('push config entries', () => {
   it('exports the override as one value, app id and all', async () => {
     const { config, push } = setup();
 
-    await push.save(NOTIFY, 'eu.qwky.trinity');
+    await push.save(NOTIFY, 'dev.trinityproject.trinity');
 
     expect(config.settings()).toEqual({
-      push: { gateway: { gatewayUrl: NOTIFY, appId: 'eu.qwky.trinity' } },
+      push: {
+        gateway: { gatewayUrl: NOTIFY, appId: 'dev.trinityproject.trinity' },
+      },
     });
   });
 
@@ -162,7 +164,7 @@ describe('push config entries', () => {
 
     it('drops the override when the document says there is none', async () => {
       const { config, push } = setup();
-      await push.save(NOTIFY, 'eu.qwky.trinity');
+      await push.save(NOTIFY, 'dev.trinityproject.trinity');
       const plan = config.validate(envelope(null));
       if (!plan.ok) {
         throw new Error(plan.problems.join(' / '));
@@ -210,8 +212,8 @@ describe('push config entries', () => {
 
   it('resets to the build-time default, leaving the applied-id ledger alone', async () => {
     const { config, push } = setup();
-    await push.save(NOTIFY, 'eu.qwky.trinity');
-    await push.markApplied('eu.qwky.trinity');
+    await push.save(NOTIFY, 'dev.trinityproject.trinity');
+    await push.markApplied('dev.trinityproject.trinity');
 
     await new Promise<void>((resolve, reject) =>
       config.resetToDefaults().subscribe({ complete: resolve, error: reject }),
@@ -220,8 +222,10 @@ describe('push config entries', () => {
     expect(push.override()).toBeNull();
     // The ledger names pushers that are live on the homeserver right now; wiping it here
     // would strand them on the old gateway with nothing recording where they went.
-    expect(push.appliedAppId()).toBe('eu.qwky.trinity');
-    expect(h.store.get('trinity.push.applied-app-id')).toBe('eu.qwky.trinity');
+    expect(push.appliedAppId()).toBe('dev.trinityproject.trinity');
+    expect(h.store.get('trinity.push.applied-app-id')).toBe(
+      'dev.trinityproject.trinity',
+    );
   });
 
   it('tears the pushers down before it clears the stored gateway', async () => {
@@ -229,8 +233,8 @@ describe('push config entries', () => {
     const teardown = new Promise<void>((resolve) => (torndown = resolve));
     unregisterSpy = vi.fn(() => defer(async () => await teardown));
     const { config, push } = setup();
-    await push.save(NOTIFY, 'eu.qwky.trinity');
-    await push.markApplied('eu.qwky.trinity');
+    await push.save(NOTIFY, 'dev.trinityproject.trinity');
+    await push.markApplied('dev.trinityproject.trinity');
     const clearSpy = vi.spyOn(push, 'clear');
 
     const reset = new Promise<void>((resolve, reject) =>

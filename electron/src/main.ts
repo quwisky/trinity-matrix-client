@@ -47,7 +47,7 @@ import {
 // Windows toast identity: OS notifications are attributed to this
 // AppUserModelID (must match the installer's appId). Set once at startup;
 // no-op on macOS/Linux.
-const APP_USER_MODEL_ID = 'eu.qwky.trinity';
+const APP_USER_MODEL_ID = 'dev.trinityproject.trinity';
 
 // Custom schemes must be registered as privileged BEFORE the app is ready.
 registerPrivilegedScheme();
@@ -55,7 +55,7 @@ registerPrivilegedScheme();
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  // Become the OS handler for `eu.qwky.trinity://` (the SSO callback). Only the
+  // Become the OS handler for `dev.trinityproject.trinity://` (the SSO callback). Only the
   // lock-holding instance registers; safe to call before `ready`.
   registerDeepLinkProtocol();
 

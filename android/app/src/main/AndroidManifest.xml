@@ -28,10 +28,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- App deep links. Room links: eu.qwky.trinity://matrix.to/#/<room id or alias>
+            <!-- App deep links. Room links: dev.trinityproject.trinity://matrix.to/#/<room id or alias>
                  (see parseTrinityRoomLink). Auth callback links, two shapes that must match:
-                   legacy SSO: eu.qwky.trinity://sso-callback?loginToken=…
-                   OIDC:       eu.qwky.trinity:/sso-callback?code=…
+                   legacy SSO: dev.trinityproject.trinity://sso-callback?loginToken=…
+                   OIDC:       dev.trinityproject.trinity:/sso-callback?code=…
                  The OIDC form follows RFC 8252 §7.1 (private-use scheme, no
                  authority), so it has no host for android:host to match against —
                  hence a scheme-only filter. TrinityApplicationSessionAdapter.handleDeepLink()
@@ -40,7 +40,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="eu.qwky.trinity" />
+                <data android:scheme="dev.trinityproject.trinity" />
             </intent-filter>
 
         </activity>

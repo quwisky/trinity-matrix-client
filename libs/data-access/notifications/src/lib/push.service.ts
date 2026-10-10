@@ -326,7 +326,7 @@ export class PushService {
   }
 
   /**
-   * Per-platform app id the gateway is keyed by, e.g. `eu.qwky.trinity.ios`.
+   * Per-platform app id the gateway is keyed by, e.g. `dev.trinityproject.trinity.ios`.
    *
    * Falls back to {@link DEFAULT_APP_ID} rather than interpolating the optional field
    * directly: `${undefined}` would stringify to the literal `"undefined.ios"` and be

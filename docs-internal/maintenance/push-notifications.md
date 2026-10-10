@@ -115,12 +115,12 @@ message text.
 
    [`PushConfig`](../../libs/data-access/notifications/src/lib/push-config.ts)
    accepts `gatewayUrl` and an optional base `appId`. Omitting `appId` uses
-   `eu.qwky.trinity`. `PushService` appends the platform suffix, so configure the
-   gateway entries as `eu.qwky.trinity.android` and `eu.qwky.trinity.ios`, or the
+   `dev.trinityproject.trinity`. `PushService` appends the platform suffix, so configure the
+   gateway entries as `dev.trinityproject.trinity.android` and `dev.trinityproject.trinity.ios`, or the
    equivalent suffixed names for a custom base ID. The gateway's app key is
    distinct from the native bundle/package ID, which has no platform suffix.
 
-3. For Android, register package `eu.qwky.trinity` in the matching Firebase
+3. For Android, register package `dev.trinityproject.trinity` in the matching Firebase
    project and place its downloaded configuration at
    `android/app/google-services.json`, following [Firebase's Android setup](https://firebase.google.com/docs/android/setup).
    [`build.gradle`](../../android/app/build.gradle) applies Google Services only

@@ -8,7 +8,7 @@ export const config = mobileWdioConfig({
     platformName: 'Android',
     'appium:automationName': 'UiAutomator2',
     'appium:udid': process.env['TRINITY_ANDROID_SERIAL'],
-    'appium:appPackage': 'eu.qwky.trinity',
+    'appium:appPackage': 'dev.trinityproject.trinity',
     'appium:appActivity': '.MainActivity',
     'appium:noReset': true,
     'appium:autoGrantPermissions': true,

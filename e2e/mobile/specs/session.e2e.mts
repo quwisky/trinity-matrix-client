@@ -18,9 +18,9 @@ describe('mobile session', () => {
       expect(await browser.getUrl()).toMatch(/^capacitor:\/\/localhost(\/|$)/u);
     } else {
       expect((await browser.getContexts()).map(String)).toContain(
-        'WEBVIEW_eu.qwky.trinity',
+        'WEBVIEW_dev.trinityproject.trinity',
       );
-      expect(context).toBe('WEBVIEW_eu.qwky.trinity');
+      expect(context).toBe('WEBVIEW_dev.trinityproject.trinity');
     }
     await expect($('label=Homeserver')).toBeDisplayed();
   });

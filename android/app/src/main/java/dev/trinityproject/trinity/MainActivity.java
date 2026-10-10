@@ -1,4 +1,4 @@
-package eu.qwky.trinity;
+package dev.trinityproject.trinity;
 
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
