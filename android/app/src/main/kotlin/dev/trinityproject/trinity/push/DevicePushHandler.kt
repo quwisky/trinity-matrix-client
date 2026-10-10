@@ -33,12 +33,7 @@ class DevicePushHandler(
                 val key = roomNotificationKey(outcome.accountId, outcome.roomId)
                 compat.cancel(key.tag, key.id)
             }
-            is PushOutcome.CancelAccount -> {
-                val id = notificationId(outcome.accountId)
-                for (active in platformManager()?.activeNotifications.orEmpty()) {
-                    if (active.id == id && active.tag != null) compat.cancel(active.tag, id)
-                }
-            }
+            is PushOutcome.CancelAccount -> cancelDeliveredPushes(context, outcome.accountId)
             PushOutcome.Ignore -> Unit
         }
     }
@@ -84,7 +79,7 @@ class DevicePushHandler(
     private fun tapIntent(outcome: PushOutcome.Post, key: RoomNotificationKey, messageId: String?): PendingIntent {
         val intent = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        for ((key, value) in pushTapExtras(outcome, messageId)) intent.putExtra(key, value)
+        for ((name, value) in pushTapExtras(outcome, messageId)) intent.putExtra(name, value)
         return PendingIntent.getActivity(
             context,
             tapRequestCode(key),

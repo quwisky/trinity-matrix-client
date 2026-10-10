@@ -1,15 +1,16 @@
 package dev.trinityproject.trinity;
 
+import androidx.core.app.NotificationManagerCompat;
 import com.getcapacitor.JSArray;
+import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
-import androidx.core.app.NotificationManagerCompat;
-import com.getcapacitor.JSObject;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.google.firebase.FirebaseApp;
+import dev.trinityproject.trinity.push.DeliveredPushesKt;
 import dev.trinityproject.trinity.push.HandoffAccount;
 import dev.trinityproject.trinity.push.HandoffRoom;
-import com.google.firebase.FirebaseApp;
 import dev.trinityproject.trinity.push.PushHandoffStore;
 import dev.trinityproject.trinity.push.PushTapKt;
 import dev.trinityproject.trinity.push.RoomNotificationKey;
@@ -81,6 +82,8 @@ public class PushHandoffPlugin extends Plugin {
             call.reject("Must provide userId");
             return;
         }
+        // Its delivered notifications go too: they carry message text of an account now gone.
+        DeliveredPushesKt.cancelDeliveredPushes(getContext(), userId);
         if (store.removeAccount(userId)) {
             call.resolve();
         } else {
@@ -90,6 +93,7 @@ public class PushHandoffPlugin extends Plugin {
 
     @PluginMethod
     public void clear(PluginCall call) {
+        DeliveredPushesKt.cancelDeliveredPushes(getContext(), null);
         if (store.clear()) {
             call.resolve();
         } else {
