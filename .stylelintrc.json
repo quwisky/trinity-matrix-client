@@ -48,5 +48,8 @@
       }
     }
   ],
-  "ignoreFiles": ["e2e/support/homeserver/native-venv/**"]
+  "ignoreFiles": [
+    "e2e/support/homeserver/native-venv/**",
+    "libs/native/*/android/build/**"
+  ]
 }

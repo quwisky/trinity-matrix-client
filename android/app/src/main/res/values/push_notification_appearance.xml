@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brands device-rendered push notifications (@trinity/capacitor-push): the same icon and
+         accent the FCM default_notification_icon/default_notification_color meta-data name. -->
+    <drawable name="trinity_push_small_icon">@drawable/ic_stat_trinity</drawable>
+    <color name="trinity_push_color">@color/ic_launcher_background</color>
+</resources>

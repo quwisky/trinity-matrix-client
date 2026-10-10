@@ -10,8 +10,12 @@ import org.junit.Test
 class PushRenderRulesTest {
     @Test
     fun everySharedFixtureCaseRendersAsExpected() {
-        // Gradle runs unit tests from the module directory (android/app).
-        val fixture = File("../../native/push-render/push-render-cases.json")
+        // build.gradle passes the fixture's path; the module is no fixed distance from the root.
+        val fixture = File(
+            checkNotNull(System.getProperty("trinity.pushRenderCases")) {
+                "trinity.pushRenderCases is unset: run this test through Gradle"
+            },
+        )
         val cases = JSONObject(fixture.readText()).getJSONArray("cases")
         assertTrue("the fixture has cases", cases.length() > 0)
         for (index in 0 until cases.length()) {

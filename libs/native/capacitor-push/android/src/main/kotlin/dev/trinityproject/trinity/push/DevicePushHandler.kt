@@ -12,8 +12,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.content.ContextCompat
-import dev.trinityproject.trinity.MainActivity
-import dev.trinityproject.trinity.R
 
 /**
  * Posts, updates or cancels the notification for one device-rendered push: one
@@ -53,7 +51,7 @@ class DevicePushHandler(
             ?.notification
         val style = previous?.let { NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(it) }
             ?: NotificationCompat.MessagingStyle(
-                Person.Builder().setName(context.getString(R.string.app_name)).build(),
+                Person.Builder().setName(context.applicationInfo.loadLabel(context.packageManager)).build(),
             )
         style.setConversationTitle(if (outcome.direct) null else rendered.title)
         style.setGroupConversation(!outcome.direct)
@@ -63,8 +61,8 @@ class DevicePushHandler(
             Person.Builder().setName(rendered.subtitle.ifEmpty { rendered.title }).build(),
         )
         val notification = NotificationCompat.Builder(context, MESSAGES_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_trinity)
-            .setColor(ContextCompat.getColor(context, R.color.ic_launcher_background))
+            .setSmallIcon(R.drawable.trinity_push_small_icon)
+            .setColor(ContextCompat.getColor(context, R.color.trinity_push_color))
             .setContentTitle(rendered.title)
             .setContentText(rendered.body)
             .setStyle(style)
@@ -76,8 +74,16 @@ class DevicePushHandler(
         compat.notify(key.tag, key.id, notification)
     }
 
-    private fun tapIntent(outcome: PushOutcome.Post, key: RoomNotificationKey, messageId: String?): PendingIntent {
-        val intent = Intent(context, MainActivity::class.java)
+    /**
+     * Opens the host's launcher activity (MainActivity) with the push's extras, as an explicit
+     * intent with the same flags as before; this module cannot name the app's classes. Null
+     * only where the host has no launcher (the E2E-only secondaryDebug peer), which then
+     * posts without a tap action.
+     */
+    private fun tapIntent(outcome: PushOutcome.Post, key: RoomNotificationKey, messageId: String?): PendingIntent? {
+        val activity = context.packageManager.getLaunchIntentForPackage(context.packageName)?.component
+            ?: return null
+        val intent = Intent().setComponent(activity)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         for ((name, value) in pushTapExtras(outcome, messageId)) intent.putExtra(name, value)
         return PendingIntent.getActivity(

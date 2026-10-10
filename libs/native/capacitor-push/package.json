@@ -4,5 +4,10 @@
   "private": true,
   "type": "module",
   "description": "Trinity's local Capacitor plugin: the PushHandoff bridge and the native push renderers.",
-  "license": "MIT"
+  "license": "MIT",
+  "capacitor": {
+    "android": {
+      "src": "android"
+    }
+  }
 }

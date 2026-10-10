@@ -5,7 +5,8 @@ import com.capacitorjs.plugins.pushnotifications.MessagingService
 import com.google.firebase.messaging.RemoteMessage
 
 /**
- * Replaces the push plugin's MessagingService (see AndroidManifest.xml). With the app in
+ * Replaces the push plugin's MessagingService: this module's manifest declares it and the
+ * host app's manifest removes the plugin's. With the app in
  * the foreground the plugin handles the message exactly as before, and the running app's
  * notification policy decides what shows. Otherwise Trinity renders the gateway's data-only
  * device-render push itself. Token callbacks stay the plugin's.
