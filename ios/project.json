@@ -63,8 +63,6 @@
       }
     },
     "verify": {
-      "//": "Android's verify runs its JVM unit tests; iOS's runs the TrinityPush XCTests the same way, so CI needs no step of its own for them.",
-      "dependsOn": ["test-push"],
       "executor": "nx:run-commands",
       "options": {
         "command": "node scripts/native-host-contract.mjs ios",
@@ -72,7 +70,7 @@
       }
     },
     "test-push": {
-      "//": "XCTest for the TrinityPush package: the shared text-rule fixture (native/push-render), the resolver and the bounded reads. Runs on the macOS host; needs Xcode.",
+      "//": "XCTest for the TrinityPush package: the shared text-rule fixture (native/push-render), the resolver and the bounded reads. Needs Xcode, so it runs before the native builds (verify-native locally, build-prebuilt in CI) rather than from the static verify.",
       "cache": false,
       "executor": "nx:run-commands",
       "options": {
@@ -82,7 +80,7 @@
     },
     "verify-native": {
       "cache": false,
-      "dependsOn": ["sync"],
+      "dependsOn": ["sync", "test-push"],
       "executor": "nx:run-commands",
       "options": {
         "command": "xcodebuild -project App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug build CODE_SIGNING_ALLOWED=NO",
@@ -91,7 +89,7 @@
     },
     "build-prebuilt": {
       "cache": false,
-      "dependsOn": ["sync-prebuilt"],
+      "dependsOn": ["sync-prebuilt", "test-push"],
       "executor": "nx:run-commands",
       "options": {
         "command": "mkdir -p ../dist/ios-native && xcodebuild -project App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath ../dist/ios-native/DerivedData -resultBundlePath \"$(mktemp -d ../dist/ios-native/run.XXXXXX)/build.xcresult\" build CODE_SIGNING_ALLOWED=NO",
