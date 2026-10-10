@@ -194,8 +194,15 @@ export async function openSettingsTab(
     | 'widgets',
 ): Promise<void> {
   const tabButton = page.getByTestId(`${prefix}-tab-${tab}`);
-  if (!(await tabButton.isVisible().catch(() => false))) {
-    await page.getByTestId(`${prefix}-mobile-back`).click();
+  const backButton = page.getByTestId(`${prefix}-mobile-back`);
+  // Wait for the dialog to settle before choosing a layout: a one-shot
+  // visibility check races the first render and would click a back button
+  // that desktop never has.
+  await expect(tabButton.or(backButton).first()).toBeVisible({
+    timeout: 10_000,
+  });
+  if (!(await tabButton.isVisible())) {
+    await backButton.click();
   }
   await tabButton.click();
   await expect(page.getByTestId(`${prefix}-panel-${tab}`)).toBeVisible({
