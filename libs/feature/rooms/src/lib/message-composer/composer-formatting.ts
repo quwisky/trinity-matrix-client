@@ -271,7 +271,17 @@ export class ComposerFormatting {
       this.ports.autoGrow();
     };
     restore();
-    if (focus) afterNextRender(restore, { injector: this.injector });
+    if (!focus) return;
+    // The second pass takes back focus that the closing surface moved after the first, or
+    // that a still-hidden textarea could not take. A textarea that kept focus already has
+    // the restored range, and any selection made in it since is newer than that range.
+    afterNextRender(
+      () => {
+        const el = this.ports.textarea()?.nativeElement;
+        if (el && el.ownerDocument.activeElement !== el) restore();
+      },
+      { injector: this.injector },
+    );
   }
 
   private isCurrent(saved: FormatSelection): boolean {
