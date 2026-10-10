@@ -72,12 +72,25 @@ async function answerDexInCustomTab(
 
 describe('mobile SSO sign-in', () => {
   before(function skipWithoutSso(this: Mocha.Context) {
-    if (readSession().homeserver?.sso) return;
-    // Dex is part of the Docker stack, and of the native one when `dex` is on PATH.
-    console.log(
-      `[mobile] skipped: ${this.test?.parent?.fullTitle() ?? 'mobile SSO sign-in'} — the homeserver came up without Dex, so there is no SSO account`,
-    );
-    this.skip();
+    const sso = readSession().homeserver?.sso;
+    const title = this.test?.parent?.fullTitle() ?? 'mobile SSO sign-in';
+    if (!sso) {
+      // Dex is part of the Docker stack, and of the native one when `dex` is on PATH.
+      console.log(
+        `[mobile] skipped: ${title} — the homeserver came up without Dex, so there is no SSO account`,
+      );
+      this.skip();
+    }
+    // XCUITest drops keystrokes typed into the Safari view on the iOS 26.5 Simulator, and
+    // the keyboard's accessory bar covers Dex's Login button, so iOS signs in only through
+    // Dex's form-free mock connector. A homeserver shared with suites that fill Dex's form
+    // (pnpm e2e:all) keeps the form, so the spec has nothing it can drive.
+    if (browser.isIOS && !sso?.mock) {
+      console.log(
+        `[mobile] skipped on ios: ${title} — the homeserver uses Dex's password form; start it with TRINITY_E2E_SSO_PROVIDER=mock`,
+      );
+      this.skip();
+    }
   });
 
   beforeEach(async () => {
@@ -99,15 +112,6 @@ describe('mobile SSO sign-in', () => {
   it('signs in through the in-app browser and returns on the eu.qwky.trinity callback', async () => {
     const sso = readSession().homeserver?.sso;
     if (!sso) throw new Error('the E2E stack came up without an SSO account');
-
-    // XCUITest drops keystrokes typed into the Safari view on the iOS 26.5 Simulator, and
-    // the keyboard's accessory bar covers Dex's Login button, so iOS signs in through Dex's
-    // mock connector, which answers without a form.
-    if (browser.isIOS && !sso.mock) {
-      throw new Error(
-        "iOS signs in through Dex's mock connector: start the homeserver with TRINITY_E2E_SSO_PROVIDER=mock",
-      );
-    }
 
     await fillByLabel('Homeserver', HS_TLS);
     if (browser.isIOS) {

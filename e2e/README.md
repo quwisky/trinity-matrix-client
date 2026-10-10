@@ -80,11 +80,11 @@ Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed
   through `TRINITY_MOBILE_SPECS` (comma-separated paths relative to `e2e/mobile`, listed in
   `.github/workflows/ci.yml`); `TRINITY_MOBILE_SPECS=./specs/smoke.e2e.mts pnpm e2e:mobile`
   narrows a local run the same way.
-- iOS: `TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native pnpm e2e:mobile:ios`
+- iOS: `TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native TRINITY_E2E_SSO_PROVIDER=mock pnpm e2e:mobile:ios`
   on macOS with Xcode, `python3` and `caddy` on `PATH`, plus `dex` (`brew install dexidp`) for the
-  SSO spec, which skips without it. That spec signs in through Dex's form-free mock connector
-  (the runner sets `TRINITY_E2E_SSO_PROVIDER=mock`), because the Simulator drops keystrokes
-  typed into the Safari view. It boots (or reuses) the pinned `iPhone 17` on `iOS 26.5`
+  SSO spec, which skips without it. That spec signs in through Dex's form-free mock connector,
+  because the Simulator drops keystrokes typed into the Safari view; without
+  `TRINITY_E2E_SSO_PROVIDER=mock` the homeserver keeps Dex's password form and the spec skips. It boots (or reuses) the pinned `iPhone 17` on `iOS 26.5`
   (override with `TRINITY_IOS_DEVICE`, `TRINITY_IOS_RUNTIME` or `TRINITY_IOS_UDID`), builds and
   installs the simulator app, trusts the run's Caddy root in the Simulator keychain and installs
   the pinned XCUITest driver. The first session builds

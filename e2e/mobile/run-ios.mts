@@ -248,8 +248,9 @@ async function releaseDevice(): Promise<void> {
 }
 
 // The iOS Simulator drops keystrokes typed into the Safari view, so Dex's login form
-// cannot be filled reliably; its mock connector signs in without a form. The homeserver
-// starts in this process (openE2EInvocation), so it reads this.
+// cannot be filled reliably; its mock connector signs in without a form. This reaches the
+// homeserver only when this runner starts it; under the suite runner (pnpm e2e:mobile:ios)
+// it is already up, so the iOS nightly sets the variable in its workflow environment.
 process.env['TRINITY_E2E_SSO_PROVIDER'] ??= 'mock';
 
 startMobileRun({
