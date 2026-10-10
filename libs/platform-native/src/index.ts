@@ -44,3 +44,4 @@ export * from './lib/host-network-policy.service';
 export * from './lib/external-browser.service';
 export * from './lib/host-media/file-save.service';
 export * from './lib/host-media/media-picker.service';
+export * from './lib/host-media/captured-media';
