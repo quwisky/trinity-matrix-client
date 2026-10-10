@@ -465,9 +465,34 @@ test.describe('Space rail unread chats', () => {
       'true',
     );
 
-    // All: every chat, and nothing left over for "+N".
+    // A row opens its chat on its account, and the open chat leaves the list: "+2" becomes
+    // "+1", holding only the older chat.
+    await overflowEntry(page).click();
+    await expect(overflowMenu).toBeVisible();
+    await overflowRows.filter({ hasText: seeded.rooms[1] }).click();
+    await expect(overflowMenu).toHaveCount(0);
+    await expect(page.locator('.userbar__handle')).toContainText(
+      `@${seeded.user}:`,
+    );
+    await expect(
+      page.locator('trn-channel-sidebar .channel.channel--selected', {
+        hasText: seeded.rooms[1],
+      }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(overflowEntry(page)).toHaveText('+1');
+    await overflowEntry(page).click();
+    const oneMoreMenu = page.getByRole('menu', { name: '1 more unread chat' });
+    await expect(oneMoreMenu).toBeVisible();
+    await expect(oneMoreMenu.getByTestId('rail-overflow-chat')).toHaveCount(1);
+    await expect(
+      oneMoreMenu.getByTestId('rail-overflow-chat').first(),
+    ).toHaveAccessibleName(`${seeded.rooms[0]} · 1 unread`);
+    await page.keyboard.press('Escape');
+    await expect(oneMoreMenu).toHaveCount(0);
+
+    // All: every chat but the open one, and nothing left over for "+N".
     await chooseRailUnreadChats(page, 'all');
-    await expect(railEntries(page)).toHaveCount(7);
+    await expect(railEntries(page)).toHaveCount(6);
     await expect(overflowEntry(page)).toHaveCount(0);
 
     // Off: the section goes altogether.
