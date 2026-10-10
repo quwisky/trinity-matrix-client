@@ -6,6 +6,7 @@ import {
   provideConversationPrivacyPreferences,
 } from '@trinity/data-access/timeline';
 import {
+  MediaPickerService,
   PrivacySettingsService,
   providePrivacyPreferenceSet,
 } from '@trinity/platform-native';
@@ -24,7 +25,7 @@ describe('PrivacySettingsComponent', () => {
     previewsSupported = signal<boolean | null>(null);
   });
 
-  function renderPage() {
+  function renderPage(captureSupported = false) {
     return render(PrivacySettingsComponent, {
       providers: [
         provideConversationPrivacyPreferences(),
@@ -37,6 +38,7 @@ describe('PrivacySettingsComponent', () => {
           },
         },
         MockProvider(UrlPreviewService, { supported: previewsSupported }),
+        MockProvider(MediaPickerService, { captureSupported }),
       ],
     });
   }
@@ -80,6 +82,28 @@ describe('PrivacySettingsComponent', () => {
       container.querySelector(
         '[data-testid=privacy-link-previews-unsupported]',
       ),
+    ).toBeNull();
+  });
+
+  it('offers saving captures to the gallery, off, only where the native camera exists', async () => {
+    const { container } = await renderPage(true);
+    const row = container.querySelector(
+      '[data-testid=privacy-save-captures-to-gallery]',
+    );
+
+    expect(row?.textContent).toContain(
+      "Save photos and videos I take to this device's gallery",
+    );
+    expect(
+      row?.querySelector<HTMLInputElement>('input[role="switch"]')?.checked,
+    ).toBe(false);
+  });
+
+  it('leaves the gallery setting out where there is no native camera', async () => {
+    const { container } = await renderPage(false);
+
+    expect(
+      container.querySelector('[data-testid=privacy-save-captures-to-gallery]'),
     ).toBeNull();
   });
 });

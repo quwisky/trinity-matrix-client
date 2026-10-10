@@ -21,6 +21,7 @@ export interface PrivacyPreferenceSet {
   readonly sendReadReceipts: PreferenceDescriptor<boolean>;
   readonly linkPreviews: PreferenceDescriptor<boolean>;
   readonly linkPreviewsInEncrypted: PreferenceDescriptor<boolean>;
+  readonly saveCapturesToGallery: PreferenceDescriptor<boolean>;
 }
 
 const PRIVACY_PREFERENCE_SET = new InjectionToken<PrivacyPreferenceSet>(
@@ -44,6 +45,10 @@ export class PrivacySettingsService {
   readonly linkPreviews = this.booleanValue(this.descriptors.linkPreviews);
   readonly linkPreviewsInEncrypted = this.booleanValue(
     this.descriptors.linkPreviewsInEncrypted,
+  );
+  /** Whether captures are also saved to the device's photo library (default off). */
+  readonly saveCapturesToGallery = this.booleanValue(
+    this.descriptors.saveCapturesToGallery,
   );
 
   init(): Observable<PreferenceHydrationOutcome> {
@@ -88,6 +93,14 @@ export class PrivacySettingsService {
     );
   }
 
+  setSaveCapturesToGallery(on: boolean): Observable<PreferenceCommandOutcome> {
+    return this.preferences.setPreference(
+      this.descriptors.saveCapturesToGallery,
+      INSTALLATION_PREFERENCE_CONTEXT,
+      on,
+    );
+  }
+
   resetSendReadReceipts(): Observable<PreferenceCommandOutcome> {
     return this.setSendReadReceipts(
       this.descriptors.sendReadReceipts.defaultValue,
@@ -101,6 +114,12 @@ export class PrivacySettingsService {
   resetLinkPreviewsInEncrypted(): Observable<PreferenceCommandOutcome> {
     return this.setLinkPreviewsInEncrypted(
       this.descriptors.linkPreviewsInEncrypted.defaultValue,
+    );
+  }
+
+  resetSaveCapturesToGallery(): Observable<PreferenceCommandOutcome> {
+    return this.setSaveCapturesToGallery(
+      this.descriptors.saveCapturesToGallery.defaultValue,
     );
   }
 

@@ -67,6 +67,7 @@ function setup() {
     pin: vi.fn(),
     unpin: vi.fn(),
     releaseAll: vi.fn(),
+    uploadLimit: vi.fn(() => of(1024)),
   };
   const matrix = {
     clientFor: vi.fn((_accountId: string): typeof client | null => client),
@@ -92,7 +93,10 @@ function setup() {
   };
 }
 
-afterEach(() => TestBed.resetTestingModule());
+afterEach(() => {
+  vi.restoreAllMocks();
+  TestBed.resetTestingModule();
+});
 
 describe('MediaPipeline', () => {
   it('keeps a transfer cold, encrypts for the exact Room, streams progress, and accepts its local echo', async () => {
@@ -121,6 +125,7 @@ describe('MediaPipeline', () => {
       expect.any(Function),
       expect.any(AbortController),
       client,
+      undefined,
     );
     expect(events.at(-1)).toEqual({ kind: 'sent', eventId: '$event' });
     expect(events.some((event) => event.kind === 'progress')).toBe(true);
@@ -527,5 +532,93 @@ describe('MediaPipeline', () => {
 
     expect(revoke).toHaveBeenCalledWith(staged.media.previewUrl);
     expect(pipeline.hasStaged(staged.media)).toBe(false);
+  });
+
+  it('keeps capture hints on the staged reference and forwards them to the upload', async () => {
+    const { pipeline, bytes, client } = setup();
+    const hints = {
+      width: 1920,
+      height: 1080,
+      durationMs: 12_500,
+      thumbnail: {
+        blob: new Blob([new Uint8Array([1])], { type: 'image/jpeg' }),
+        w: 480,
+        h: 270,
+      },
+    };
+    const staged = pipeline.stage(
+      new File([new Uint8Array([1, 2, 3])], 'video.mov', {
+        type: 'video/quicktime',
+      }),
+      hints,
+    );
+    if (staged.kind !== 'staged') throw new Error('not staged');
+
+    expect(staged.media.hints).toEqual(hints);
+    await firstValueFrom(
+      pipeline
+        .transfer({ key: KEY, media: staged.media, caption: '' })
+        .pipe(toArray()),
+    );
+
+    expect(bytes.uploadMedia).toHaveBeenCalledWith(
+      expect.any(File),
+      true,
+      expect.any(Function),
+      expect.any(AbortController),
+      client,
+      hints,
+    );
+  });
+
+  it('previews a staged video from its hinted thumbnail and releases that preview', () => {
+    const { pipeline } = setup();
+    const create = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockReturnValue('blob:poster');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL');
+    const poster = new Blob([new Uint8Array([1])], { type: 'image/jpeg' });
+    const staged = pipeline.stage(
+      new File([new Uint8Array([1])], 'video.mp4', { type: 'video/mp4' }),
+      { thumbnail: { blob: poster, w: 480, h: 270 } },
+    );
+    if (staged.kind !== 'staged') throw new Error('not staged');
+
+    expect(create).toHaveBeenCalledWith(poster);
+    expect(staged.media.previewUrl).toBe('blob:poster');
+    pipeline.releaseStaged(staged.media);
+    expect(revoke).toHaveBeenCalledWith('blob:poster');
+  });
+
+  it('has no preview for a video staged without a thumbnail', () => {
+    const { pipeline } = setup();
+    const staged = pipeline.stage(
+      new File([new Uint8Array([1])], 'clip.mp4', { type: 'video/mp4' }),
+    );
+    if (staged.kind !== 'staged') throw new Error('not staged');
+
+    expect(staged.media.previewUrl).toBeNull();
+    expect(staged.media.hints).toBeUndefined();
+  });
+
+  it('reads the upload limit through the exact account client', async () => {
+    const { pipeline, bytes, client, matrix } = setup();
+
+    expect(await firstValueFrom(pipeline.uploadLimit(KEY.accountId))).toBe(
+      1024,
+    );
+    expect(matrix.clientFor).toHaveBeenCalledWith(KEY.accountId);
+    expect(bytes.uploadLimit).toHaveBeenCalledWith(client);
+  });
+
+  it('has no limit for a missing or unknown account', async () => {
+    const { pipeline, bytes, matrix } = setup();
+    matrix.clientFor.mockReturnValue(null);
+
+    expect(await firstValueFrom(pipeline.uploadLimit(null))).toBeNull();
+    expect(
+      await firstValueFrom(pipeline.uploadLimit('@ghost:example.org')),
+    ).toBeNull();
+    expect(bytes.uploadLimit).not.toHaveBeenCalled();
   });
 });

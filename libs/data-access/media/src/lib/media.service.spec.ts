@@ -1592,6 +1592,150 @@ describe('MediaService', () => {
       expect(client.uploadContent).toHaveBeenCalledTimes(1); // main only
     });
 
+    describe('with capture hints', () => {
+      const hintedThumbnail = (w: number, h: number) => ({
+        blob: new Blob([new Uint8Array([7, 7])], { type: 'image/jpeg' }),
+        w,
+        h,
+      });
+
+      it('lets complete video hints win and skips the WebView probe entirely', async () => {
+        const { svc, client } = setup();
+        client.uploadContent
+          .mockResolvedValueOnce({ content_uri: 'mxc://hs/hinted-poster' })
+          .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+        // What a probe WOULD report, so one that ran would show in the result.
+        videoMeta = { duration: 3, videoWidth: 640, videoHeight: 480 };
+        const created = vi.spyOn(document, 'createElement');
+
+        const res = await firstValueFrom(
+          svc.uploadMedia(
+            mediaFile('video.mov', 'video/quicktime'),
+            false,
+            undefined,
+            undefined,
+            undefined,
+            {
+              width: 1920,
+              height: 1080,
+              durationMs: 12_500,
+              thumbnail: hintedThumbnail(480, 270),
+            },
+          ),
+        );
+
+        expect(created).not.toHaveBeenCalledWith('video');
+        expect(res.msgtype).toBe('m.video');
+        expect(res.info).toMatchObject({
+          w: 1920,
+          h: 1080,
+          duration: 12_500,
+          thumbnail_url: 'mxc://hs/hinted-poster',
+          thumbnail_info: { mimetype: 'image/jpeg', w: 480, h: 270, size: 2 },
+        });
+      });
+
+      it('probes only for what partial hints leave out', async () => {
+        const { svc, client } = setup();
+        client.uploadContent
+          .mockResolvedValueOnce({ content_uri: 'mxc://hs/poster' })
+          .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+        videoMeta = { duration: 8, videoWidth: 640, videoHeight: 480 };
+
+        const res = await firstValueFrom(
+          svc.uploadMedia(
+            mediaFile('video.mp4', 'video/mp4'),
+            false,
+            undefined,
+            undefined,
+            undefined,
+            { width: 1920, height: 1080 },
+          ),
+        );
+
+        // Hints win for the size; the probe supplies duration and poster.
+        expect(res.info.w).toBe(1920);
+        expect(res.info.h).toBe(1080);
+        expect(res.info.duration).toBe(8000);
+        expect(res.info.thumbnail_url).toBe('mxc://hs/poster');
+        expect(res.info.thumbnail_info).toMatchObject({ w: 480, h: 360 });
+      });
+
+      it('renders its own thumbnail when the hinted one exceeds the thumbnail bound', async () => {
+        const { svc, client } = setup();
+        client.uploadContent
+          .mockResolvedValueOnce({ content_uri: 'mxc://hs/poster' })
+          .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+        videoMeta = { duration: 3, videoWidth: 640, videoHeight: 480 };
+
+        const res = await firstValueFrom(
+          svc.uploadMedia(
+            mediaFile('video.mov', 'video/quicktime'),
+            false,
+            undefined,
+            undefined,
+            undefined,
+            {
+              width: 1920,
+              height: 1080,
+              durationMs: 12_500,
+              thumbnail: hintedThumbnail(1280, 720),
+            },
+          ),
+        );
+
+        expect(res.info.duration).toBe(12_500); // the hint still wins
+        expect(res.info.thumbnail_info).toMatchObject({ w: 480, h: 360 });
+      });
+
+      it('lets complete photo hints skip decoding the image', async () => {
+        const { svc, client } = setup();
+        client.uploadContent
+          .mockResolvedValueOnce({ content_uri: 'mxc://hs/thumb' })
+          .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+        stubBitmap(4000, 3000);
+
+        const res = await firstValueFrom(
+          svc.uploadMedia(imageFile(), false, undefined, undefined, undefined, {
+            width: 4032,
+            height: 3024,
+            thumbnail: hintedThumbnail(480, 360),
+          }),
+        );
+
+        expect(createImageBitmap).not.toHaveBeenCalled();
+        expect(res.info).toMatchObject({ w: 4032, h: 3024 });
+        expect(res.info.thumbnail_url).toBe('mxc://hs/thumb');
+      });
+
+      it('still sends when a hinted thumbnail fails to upload', async () => {
+        const { svc, client } = setup();
+        client.uploadContent
+          .mockRejectedValueOnce(new Error('thumb upload failed'))
+          .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+
+        const res = await firstValueFrom(
+          svc.uploadMedia(
+            mediaFile('video.mov', 'video/quicktime'),
+            false,
+            undefined,
+            undefined,
+            undefined,
+            {
+              width: 1920,
+              height: 1080,
+              durationMs: 4000,
+              thumbnail: hintedThumbnail(480, 270),
+            },
+          ),
+        );
+
+        expect(res.mxc).toBe('mxc://hs/full');
+        expect(res.info.thumbnail_url).toBeUndefined();
+        expect(res.info.duration).toBe(4000);
+      });
+    });
+
     it('probes duration (ms) for audio without dimensions', async () => {
       const { svc } = setup();
       audioMeta = { duration: 30 };
@@ -1653,6 +1797,45 @@ describe('MediaService', () => {
       expect(res.msgtype).toBe('m.audio');
       expect(res.info.duration).toBeUndefined();
       expect(revokeObjectURL).toHaveBeenCalled(); // URL revoked on the error path too
+    });
+  });
+
+  describe('uploadLimit', () => {
+    it('reads m.upload.size once per client and shares it', async () => {
+      const getMediaConfig = vi
+        .fn()
+        .mockResolvedValue({ 'm.upload.size': 52_428_800 });
+      const { svc, client } = setup({ getMediaConfig });
+      const c = client as unknown as MatrixClient;
+
+      expect(await firstValueFrom(svc.uploadLimit(c))).toBe(52_428_800);
+      expect(await firstValueFrom(svc.uploadLimit(c))).toBe(52_428_800);
+      expect(getMediaConfig).toHaveBeenCalledTimes(1);
+      expect(getMediaConfig).toHaveBeenCalledWith(true); // authenticated media
+    });
+
+    it('is null when the server states no limit', async () => {
+      const { svc, client } = setup({
+        getMediaConfig: vi.fn().mockResolvedValue({}),
+      });
+
+      expect(
+        await firstValueFrom(
+          svc.uploadLimit(client as unknown as MatrixClient),
+        ),
+      ).toBeNull();
+    });
+
+    it('is null when the server cannot be asked, and asks again next time', async () => {
+      const getMediaConfig = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockResolvedValueOnce({ 'm.upload.size': 1000 });
+      const { svc, client } = setup({ getMediaConfig });
+      const c = client as unknown as MatrixClient;
+
+      expect(await firstValueFrom(svc.uploadLimit(c))).toBeNull();
+      expect(await firstValueFrom(svc.uploadLimit(c))).toBe(1000);
     });
   });
 });

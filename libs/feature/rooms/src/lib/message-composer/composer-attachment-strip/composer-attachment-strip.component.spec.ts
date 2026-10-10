@@ -295,5 +295,105 @@ describe('ComposerAttachmentStripComponent', () => {
     ).toBe('Remove holiday.png');
   });
 
+  const video = (
+    previewUrl: string | null,
+    durationMs?: number,
+  ): StagedAttachment => {
+    const file = new File(['x'], 'video.mov', { type: 'video/quicktime' });
+    return {
+      id: 'id-video',
+      media: {
+        id: 'media-video',
+        filename: file.name,
+        mimeType: file.type,
+        size: file.size,
+        previewUrl,
+        ...(durationMs === undefined ? {} : { hints: { durationMs } }),
+      } as StagedAttachment['media'],
+      file,
+      previewUrl,
+      failed: false,
+    };
+  };
+
+  it('previews a pending video from its poster with a play glyph and an m:ss badge', async () => {
+    const { container } = await render(ComposerAttachmentStripComponent, {
+      inputs: { staged: [video('blob:poster', 72_000)] },
+    });
+
+    const preview = container.querySelector(
+      '[data-testid=composer-pending-video]',
+    );
+    expect(preview?.querySelector('img')?.getAttribute('src')).toBe(
+      'blob:poster',
+    );
+    expect(preview?.querySelector('trn-icon[name=play]')).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-testid=composer-pending-duration]')
+        ?.textContent?.trim(),
+    ).toBe('1:12');
+  });
+
+  it('shows a video glyph and no badge for a video with no poster or length yet', async () => {
+    const { container } = await render(ComposerAttachmentStripComponent, {
+      inputs: { staged: [video(null)] },
+    });
+
+    const preview = container.querySelector(
+      '[data-testid=composer-pending-video]',
+    );
+    expect(preview?.querySelector('img')).toBeNull();
+    expect(preview?.querySelector('trn-icon[name=video]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid=composer-pending-duration]'),
+    ).toBeNull();
+  });
+
+  it('keeps an h:mm:ss length inside the preview, in the smaller type', async () => {
+    const { container } = await render(ComposerAttachmentStripComponent, {
+      inputs: { staged: [video('blob:poster', 3_725_000)] },
+    });
+
+    const badge = container.querySelector(
+      '[data-testid=composer-pending-duration]',
+    );
+    expect(badge?.textContent?.trim()).toBe('1:02:05');
+    expect(badge?.classList).toContain('composer__pending-duration--long');
+    expect(badge?.parentElement?.getAttribute('data-testid')).toBe(
+      'composer-pending-video',
+    );
+  });
+
+  it('uses the regular badge size for an m:ss length', async () => {
+    const { container } = await render(ComposerAttachmentStripComponent, {
+      inputs: { staged: [video('blob:poster', 72_000)] },
+    });
+
+    expect(
+      container.querySelector('[data-testid=composer-pending-duration]')
+        ?.classList,
+    ).not.toContain('composer__pending-duration--long');
+  });
+
+  it('shows the length of a video with no poster, in the same sized box', async () => {
+    const { container } = await render(ComposerAttachmentStripComponent, {
+      inputs: { staged: [video(null, 12_500)] },
+    });
+
+    const preview = container.querySelector(
+      '[data-testid=composer-pending-video]',
+    );
+    expect(preview?.classList).toContain('composer__pending-poster');
+    expect(preview?.classList).toContain('composer__pending-poster--timed');
+    expect(preview?.querySelector('img')).toBeNull();
+    expect(preview?.querySelector('trn-icon[name=video]')).not.toBeNull();
+    expect(
+      container
+        .querySelector('[data-testid=composer-pending-duration]')
+        ?.textContent?.trim(),
+    ).toBe('0:13');
+  });
+
   afterEach(() => TestBed.resetTestingModule());
 });

@@ -8,6 +8,7 @@ import {
   output,
   signal,
 } from '@angular/core';
+import { formatMediaDuration } from '../shared/format-media-duration';
 
 /** Renderable media category (mirrors `MediaKind` in `@trinity/util/matrix`). */
 export type MediaBubbleKind = 'image' | 'file' | 'video' | 'audio';
@@ -154,7 +155,7 @@ export class MediaBubbleComponent {
   /** Declared length and size of a clip, e.g. `1:23 · 5.0 MB`; empty when the event says neither. */
   readonly playMeta = computed(() => {
     const { durationMs, size } = this.item();
-    return [formatDuration(durationMs), formatSize(size)]
+    return [formatMediaDuration(durationMs), formatSize(size)]
       .filter(Boolean)
       .join(' · ');
   });
@@ -185,20 +186,6 @@ export class MediaBubbleComponent {
       this.loadedRatio.set(null);
     });
   }
-}
-
-/** `m:ss`, or `h:mm:ss` from an hour up; null when the length is unknown. */
-function formatDuration(ms: number | undefined): string | null {
-  if (ms == null || !Number.isFinite(ms) || ms < 0) {
-    return null;
-  }
-  const total = Math.round(ms / 1000);
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor((total % 3600) / 60);
-  const seconds = String(total % 60).padStart(2, '0');
-  return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, '0')}:${seconds}`
-    : `${minutes}:${seconds}`;
 }
 
 /** Format a byte count as a short human-readable string, or null if unknown. */

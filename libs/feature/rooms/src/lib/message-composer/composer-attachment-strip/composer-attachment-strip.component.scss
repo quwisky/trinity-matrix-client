@@ -3,6 +3,14 @@
   // composer element, exactly where they sat before they were extracted.
   :host {
     display: contents;
+
+    // One square for every preview, photo or video; the badge height is the metadata line box.
+    --composer-pending-preview-size: 40px;
+    --composer-pending-badge-size: var(--trinity-type-metadata-size);
+    --composer-pending-badge-leading: var(--trinity-type-metadata-line-height);
+    --composer-pending-badge-height: calc(
+      var(--composer-pending-badge-size) * var(--composer-pending-badge-leading)
+    );
   }
 
   .composer__upload {
@@ -80,11 +88,62 @@
   }
 
   .composer__pending-thumb {
-    width: 40px;
-    height: 40px;
+    width: var(--composer-pending-preview-size);
+    height: var(--composer-pending-preview-size);
     flex-shrink: 0;
     object-fit: cover;
     border-radius: var(--trinity-radius-sm);
+  }
+
+  // A pending video: always the same square as a photo's thumb, so the filename never shifts.
+  // The play glyph sits in the top-start corner and the length spans the bottom edge, so the
+  // two never meet at this size; with no poster, the video glyph is centred in what the length
+  // leaves free.
+  .composer__pending-poster {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: var(--composer-pending-preview-size);
+    height: var(--composer-pending-preview-size);
+  }
+
+  .composer__pending-play {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    display: flex;
+    padding: var(--trinity-space-1);
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-surface-raised);
+    color: var(--trinity-text);
+  }
+
+  .composer__pending-poster--timed .composer__pending-icon {
+    margin-block-end: var(--composer-pending-badge-height);
+  }
+
+  // Opaque surface rather than a tint, so the length stays readable over any poster. It spans
+  // the box so the text centres within it and cannot spill past the edge.
+  .composer__pending-duration {
+    position: absolute;
+    inset-block-end: 0;
+    inset-inline: 0;
+    overflow: hidden;
+    border-radius: var(--trinity-radius-sm);
+    background: var(--trinity-surface-raised);
+    color: var(--trinity-text);
+    font-size: var(--trinity-type-metadata-size);
+    font-variant-numeric: tabular-nums;
+    line-height: var(--trinity-type-metadata-line-height);
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  // `h:mm:ss` is seven characters; at the metadata size it is wider than the box.
+  .composer__pending-duration--long {
+    font-size: calc(var(--trinity-type-metadata-size) * 0.8);
   }
 
   .composer__pending-icon {

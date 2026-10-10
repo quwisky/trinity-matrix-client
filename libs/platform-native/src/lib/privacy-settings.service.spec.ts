@@ -25,6 +25,7 @@ const values = new Map<string, string>();
 const READ_RECEIPTS_KEY = 'trinity.privacy.send-read-receipts';
 const LINK_PREVIEWS_KEY = 'trinity.privacy.link-previews';
 const ENCRYPTED_PREVIEWS_KEY = 'trinity.privacy.link-previews-encrypted';
+const SAVE_CAPTURES_KEY = 'trinity.privacy.save-captures-to-gallery';
 
 function testPreference(
   id: string,
@@ -89,6 +90,11 @@ const TEST_PRIVACY_PREFERENCES: PrivacyPreferenceSet = {
     ENCRYPTED_PREVIEWS_KEY,
     false,
   ),
+  saveCapturesToGallery: testPreference(
+    'conversations.test.save-captures-to-gallery',
+    SAVE_CAPTURES_KEY,
+    false,
+  ),
 };
 
 describe('PrivacySettingsService preference facade', () => {
@@ -124,22 +130,25 @@ describe('PrivacySettingsService preference facade', () => {
     expect(svc.sendReadReceipts()).toBe(true);
     expect(svc.linkPreviews()).toBe(true);
     expect(svc.linkPreviewsInEncrypted()).toBe(false);
+    expect(svc.saveCapturesToGallery()).toBe(false);
   });
 
-  it('hydrates all three preferences through one finite command', async () => {
+  it('hydrates all four preferences through one finite command', async () => {
     values.set(READ_RECEIPTS_KEY, 'false');
     values.set(LINK_PREVIEWS_KEY, 'false');
     values.set(ENCRYPTED_PREVIEWS_KEY, 'true');
+    values.set(SAVE_CAPTURES_KEY, 'true');
     const svc = service();
 
     await expect(firstValueFrom(svc.init())).resolves.toEqual({
       kind: 'ready',
-      hydrated: 3,
+      hydrated: 4,
     });
     expect(svc.sendReadReceipts()).toBe(false);
     expect(svc.linkPreviews()).toBe(false);
     expect(svc.linkPreviewsInEncrypted()).toBe(true);
-    expect(get).toHaveBeenCalledTimes(3);
+    expect(svc.saveCapturesToGallery()).toBe(true);
+    expect(get).toHaveBeenCalledTimes(4);
   });
 
   it('migrates legacy booleans into versioned envelopes', async () => {
@@ -191,5 +200,19 @@ describe('PrivacySettingsService preference facade', () => {
       diagnostic: { code: 'preference-storage-write-failed' },
     });
     expect(svc.linkPreviews()).toBe(true);
+  });
+
+  it('saves the gallery choice and resets it to off', async () => {
+    const svc = service();
+
+    await firstValueFrom(svc.setSaveCapturesToGallery(true));
+    expect(svc.saveCapturesToGallery()).toBe(true);
+    expect(set).toHaveBeenCalledWith({
+      key: SAVE_CAPTURES_KEY,
+      value: '{"version":1,"value":true}',
+    });
+
+    await firstValueFrom(svc.resetSaveCapturesToGallery());
+    expect(svc.saveCapturesToGallery()).toBe(false);
   });
 });

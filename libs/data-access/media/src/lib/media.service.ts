@@ -23,6 +23,7 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { fetchMediaBytes } from '@trinity/util/matrix';
 import type { EncryptedFileInfo, MediaPayload } from '@trinity/util/matrix';
+import type { MediaHints } from './media-pipeline.models';
 
 /** Which rendition of an attachment to resolve. */
 export type MediaVariant = 'thumbnail' | 'full';
@@ -176,6 +177,11 @@ export class MediaService {
   private readonly release$ = new Subject<void>();
   /** Cached authenticated-media probe per exact client/account. */
   private authedMedia = new WeakMap<MatrixClient, Observable<boolean>>();
+  /** Upload limit per exact client; a failed lookup is dropped so the next caller retries. */
+  private readonly uploadLimits = new WeakMap<
+    MatrixClient,
+    Observable<number | null>
+  >();
   /** Stable cache namespace per live client so identical MXCs cannot cross Accounts. */
   private readonly clientIds = new WeakMap<MatrixClient, number>();
   private nextClientId = 0;
@@ -236,6 +242,8 @@ export class MediaService {
    * encrypted room the ciphertext is uploaded with no filename/MIME (those leak),
    * and `info.url` is filled with the resulting `mxc://`; otherwise the original
    * file is uploaded as-is. `progress` reports an upload fraction in [0, 1].
+   * `hints` (from a camera capture) win over the probe, which then fills only
+   * what they leave out.
    */
   uploadMedia(
     file: File,
@@ -243,10 +251,42 @@ export class MediaService {
     progress?: (fraction: number) => void,
     abortController?: AbortController,
     client: MatrixClient = this.matrix.instance,
+    hints?: MediaHints,
   ): Observable<UploadedMedia> {
     return defer(() =>
-      from(this.doUpload(client, file, encrypt, progress, abortController)),
+      from(
+        this.doUpload(client, file, encrypt, progress, abortController, hints),
+      ),
     );
+  }
+
+  /**
+   * The homeserver's upload limit in bytes (`m.upload.size`), or null when the server does
+   * not state one or cannot be asked. A null never blocks a send; the server stays the judge.
+   */
+  uploadLimit(
+    client: MatrixClient = this.matrix.instance,
+  ): Observable<number | null> {
+    const cached = this.uploadLimits.get(client);
+    if (cached) {
+      return cached;
+    }
+    const limit = this.supportsAuthedMedia(client).pipe(
+      switchMap((authed) => from(client.getMediaConfig(authed))),
+      map((config) => {
+        const size = config['m.upload.size'];
+        return typeof size === 'number' && Number.isFinite(size) && size > 0
+          ? size
+          : null;
+      }),
+      catchError(() => {
+        this.uploadLimits.delete(client);
+        return of(null);
+      }),
+      shareReplay(1),
+    );
+    this.uploadLimits.set(client, limit);
+    return limit;
   }
 
   private async doUpload(
@@ -255,14 +295,14 @@ export class MediaService {
     encrypt: boolean,
     progress?: (fraction: number) => void,
     abortController?: AbortController,
+    hints?: MediaHints,
   ): Promise<UploadedMedia> {
     abortController?.signal.throwIfAborted();
     const msgtype = msgTypeFor(file.type);
-    // Probe dimensions/duration and (for images) render a downscaled thumbnail
-    // before the main upload. For E2EE rooms this is the *only* thumbnail the
-    // timeline can show — the server can't scale an encrypted original — so
-    // without it every image row would fetch and decrypt the full-size bytes.
-    const { dims, thumbnail } = await analyzeMedia(file);
+    // What the capturing host already measured wins; the WebView probe runs only for what is
+    // missing, and not at all when nothing is. For E2EE rooms the thumbnail is the *only* one
+    // the timeline can show — the server can't scale an encrypted original.
+    const { dims, thumbnail } = await describeMedia(file, hints);
     abortController?.signal.throwIfAborted();
     const thumb = await this.uploadThumbnail(
       client,
@@ -597,6 +637,79 @@ function mediaInfo(
     ...(dims.durationMs != null ? { duration: dims.durationMs } : {}),
     ...(thumbnail ?? {}),
   };
+}
+
+/**
+ * Dimensions, duration and thumbnail for an upload. Hints from the host win; `analyzeMedia`
+ * fills only what they leave out and is skipped when they leave out nothing.
+ */
+async function describeMedia(
+  file: File,
+  hints: MediaHints | undefined,
+): Promise<MediaAnalysis> {
+  const known = analysisFromHints(hints);
+  if (isCompleteFor(file, known)) {
+    return known;
+  }
+  const probed = await analyzeMedia(file);
+  return {
+    dims: {
+      w: known.dims.w ?? probed.dims.w,
+      h: known.dims.h ?? probed.dims.h,
+      durationMs: known.dims.durationMs ?? probed.dims.durationMs,
+    },
+    thumbnail: known.thumbnail ?? probed.thumbnail,
+  };
+}
+
+/** The usable part of host hints: a whole size pair, a duration, a bounded thumbnail. */
+function analysisFromHints(hints: MediaHints | undefined): MediaAnalysis {
+  if (!hints) {
+    return { dims: {}, thumbnail: null };
+  }
+  const w = positiveInteger(hints.width);
+  const h = positiveInteger(hints.height);
+  const durationMs = positiveInteger(hints.durationMs);
+  const hinted = hints.thumbnail;
+  const thumbW = positiveInteger(hinted?.w);
+  const thumbH = positiveInteger(hinted?.h);
+  // A host thumbnail larger than the bound a rendered one gets counts as missing, so a
+  // full-size frame never ships as a "thumbnail".
+  const thumbnail =
+    hinted &&
+    hinted.blob.size > 0 &&
+    thumbW !== undefined &&
+    thumbH !== undefined &&
+    Math.max(thumbW, thumbH) <= THUMBNAIL_PX
+      ? { blob: hinted.blob, w: thumbW, h: thumbH }
+      : null;
+  return {
+    dims: {
+      ...(w !== undefined && h !== undefined ? { w, h } : {}),
+      ...(durationMs !== undefined ? { durationMs } : {}),
+    },
+    thumbnail,
+  };
+}
+
+/** Whether hints already say everything analysis would for this kind of file. */
+function isCompleteFor(file: File, known: MediaAnalysis): boolean {
+  const sized = known.dims.w !== undefined && known.dims.h !== undefined;
+  if (file.type.startsWith('video/')) {
+    return (
+      sized && known.dims.durationMs !== undefined && known.thumbnail !== null
+    );
+  }
+  if (file.type.startsWith('image/')) {
+    return sized && known.thumbnail !== null;
+  }
+  return false;
+}
+
+function positiveInteger(value: number | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.round(value)
+    : undefined;
 }
 
 /**

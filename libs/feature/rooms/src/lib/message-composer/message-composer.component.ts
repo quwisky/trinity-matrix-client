@@ -16,11 +16,15 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnIconButton } from '@trinity/components/controls';
-import { TrnTooltip } from '@trinity/components/generic-content';
+import { TrnButton, TrnIconButton } from '@trinity/components/controls';
+import {
+  BannerComponent,
+  TrnTooltip,
+} from '@trinity/components/generic-content';
 import {
   DraftStoreService,
   KeyboardShortcutsService,
+  type CaptureKind,
 } from '@trinity/platform-native';
 import { type GifResult } from '@trinity/data-access/gif';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
@@ -85,9 +89,11 @@ let nextPickerId = 0;
   selector: 'trn-message-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    BannerComponent,
     ComposerBannerComponent,
     ComposerVoiceBarComponent,
     MatrixHtmlDirective,
+    TrnButton,
     TrnIconButton,
     TrnIconComponent,
     TrnTooltip,
@@ -232,22 +238,25 @@ export class MessageComposerComponent {
 
   readonly pickerOpen = signal(false);
   readonly stickerPickerOpen = signal(false);
-  /**
-   * Whether the narrow-layout `+` opens the insert tray rather than the file picker
-   * directly. With only one insert action left to offer — the thread composer with no
-   * GIF provider configured — a one-item menu is pure friction, so `+` stays a plain
-   * attach button there. See the media query in the SCSS for where the tray applies.
-   */
   readonly stickerEnabled = computed(() =>
     this.stickerPacks().some((pack) =>
       pack.images.some((image) => image.usage.includes('sticker')),
     ),
   );
+  /**
+   * Whether the narrow-layout `+` opens the insert tray rather than the file picker
+   * directly. With only one insert action left to offer — the thread composer with no
+   * GIF provider configured — a one-item menu is pure friction, so `+` stays a plain
+   * attach button there; it becomes a tray when a GIF provider or sticker is available,
+   * or when this host can capture, which is what gives the thread composer the tray on
+   * phones. See the media query in the SCSS for where the tray applies.
+   */
   readonly hasInsertMenu = computed(
     () =>
       this.richActions() ||
       this.attachments.gifEnabled() ||
-      this.stickerEnabled(),
+      this.stickerEnabled() ||
+      this.attachments.captureMode !== 'none',
   );
   /**
    * The three autocomplete menus: `:shortcode`, `@mention` and `/command`.
@@ -322,6 +331,10 @@ export class MessageComposerComponent {
   private readonly field: ComposerTextField;
   private readonly fileInput =
     viewChild<ElementRef<HTMLInputElement>>('fileInput');
+  private readonly photoCaptureInput =
+    viewChild<ElementRef<HTMLInputElement>>('photoCaptureInput');
+  private readonly videoCaptureInput =
+    viewChild<ElementRef<HTMLInputElement>>('videoCaptureInput');
   private readonly voiceBar = viewChild(ComposerVoiceBarComponent);
   private readonly injector = inject(Injector);
   private readonly emojiIndex = inject(TrnEmojiIndex);
@@ -372,6 +385,7 @@ export class MessageComposerComponent {
     // the room-change effect below can already ask them to drop a staged file.
     this.attachments.connect({
       roomId: this.roomId,
+      accountId: this.accountId,
       editing: this.editing,
       uploadProgress: this.contextUploadProgress,
       sendMedia: (attachment, caption) => {
@@ -395,6 +409,11 @@ export class MessageComposerComponent {
       focusInput: () => queueMicrotask(() => this.field.focus()),
       leavePreview: () => this.previewing.set(false),
       openFileDialog: () => this.fileInput()?.nativeElement.click(),
+      openCaptureInput: (kind) =>
+        (kind === 'photo'
+          ? this.photoCaptureInput()
+          : this.videoCaptureInput()
+        )?.nativeElement.click(),
     });
 
     // Unassigned on purpose: its effects are its whole lifetime, and `drafts` is already taken
@@ -749,6 +768,21 @@ export class MessageComposerComponent {
   /** Hidden file input change → stage the picked file, then reset for re-picking. */
   onFilePicked(event: Event): void {
     this.attachments.filePicked(event);
+  }
+
+  /** Take photo, from the insert menu. */
+  onTakePhoto(): void {
+    this.attachments.capture('photo');
+  }
+
+  /** Record video, from the insert menu. */
+  onRecordVideo(): void {
+    this.attachments.capture('video');
+  }
+
+  /** A mobile-web capture input changed → stage what the camera produced. */
+  onCaptureInput(event: Event, kind: CaptureKind): void {
+    this.attachments.captureInputPicked(event, kind);
   }
 
   /**
