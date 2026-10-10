@@ -113,9 +113,13 @@ async function answerDexInSafariView(
   await describeScreen('dex form', started);
   // By label, not position: on iOS 26 the Safari view's own address bar is a text field too.
   // addValue, not setValue: the fields start empty, and clearing one took ~50 s on iOS 26.5.
-  await $(
+  const emailField = $(
     '-ios predicate string:type == "XCUIElementTypeTextField" AND (label CONTAINS[c] "email" OR placeholderValue CONTAINS[c] "email")',
-  ).addValue(email);
+  );
+  // On iOS 26.5, typing into this element (addValue/setValue) leaves Dex's email field empty,
+  // so the form never submitted. Typing into the focused element with `mobile: keys` lands.
+  await emailField.click();
+  await browser.execute('mobile: keys', { keys: [...email] });
   await $(
     '-ios predicate string:type == "XCUIElementTypeSecureTextField" AND label CONTAINS[c] "password"',
   ).addValue(pass);
