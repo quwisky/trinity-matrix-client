@@ -455,7 +455,9 @@ describe('AppConfigService', () => {
       expect(plan.ok === false && plan.problems[0]).toContain('not valid JSON');
     });
 
-    it('imports a config exported under the retired qwky.eu schema id', () => {
+    it('does not let a retired qwky.eu schema id block an import', () => {
+      // export() never writes `$id`, so this pins that an unknown top-level key, such as
+      // an old `$id` pasted in from a hand-written file, does not reject the config.
       const config = setup();
       const exported = config.export();
       const withOldId = {
@@ -463,6 +465,7 @@ describe('AppConfigService', () => {
         $id: 'https://qwky.eu/trinity/config-v3.schema.json',
       };
 
+      expect(config.validate(withOldId).ok).toBe(true);
       expect(config.validate(withOldId)).toEqual(config.validate(exported));
     });
 

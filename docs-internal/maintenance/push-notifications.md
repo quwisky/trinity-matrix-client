@@ -69,7 +69,7 @@ parameter, or shell store.
 
 `ReactionNotificationSettingsService` stores the opt-in as
 `dev.trinityproject.trinity.reaction_notifications` account data (`{ enabled: boolean }`, default `false`).
-Accounts that still hold the retired eu.qwky.trinity.reaction_notifications event are read from it and copied to the new name once.
+Accounts that still hold the retired `eu.qwky.trinity.reaction_notifications` event are read from it, and `NotificationService` copies it to the new name once for every signed-in account.
 It does not alter server push rules or pusher registration. Each account's notification lifetime
 owns a `ReactionNotificationBatch` for live `m.reaction` annotation events. The original message
 must belong to that account; own reactions, ignored senders, redactions, history and backfill are
