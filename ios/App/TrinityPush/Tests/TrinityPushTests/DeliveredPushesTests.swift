@@ -1,16 +1,18 @@
 import XCTest
 @testable import TrinityPush
 
-/// What PushHandoff.clearRoom removes when a room is opened.
+/// What PushHandoff removes when a room is opened, an account signs out or all data is cleared.
 final class DeliveredPushesTests: XCTestCase {
-    func testClearsOnlyTheOpeningAccountsNotificationsForTheRoom() {
-        let delivered = [
-            DeliveredPush(identifier: "mine", threadIdentifier: "!r:hs", accountId: "@a:hs"),
-            DeliveredPush(identifier: "other-account", threadIdentifier: "!r:hs", accountId: "@b:hs"),
-            DeliveredPush(identifier: "other-room", threadIdentifier: "!o:hs", accountId: "@a:hs"),
-            DeliveredPush(identifier: "untagged", threadIdentifier: "!r:hs", accountId: nil),
-        ]
+    private let delivered = [
+        DeliveredPush(identifier: "mine", threadIdentifier: "!r:hs", accountId: "@a:hs", fromPush: true),
+        DeliveredPush(identifier: "other-account", threadIdentifier: "!r:hs", accountId: "@b:hs", fromPush: true),
+        DeliveredPush(identifier: "other-room", threadIdentifier: "!o:hs", accountId: "@a:hs", fromPush: true),
+        DeliveredPush(identifier: "untagged", threadIdentifier: "!r:hs", accountId: nil, fromPush: true),
+        // The running app's own notification for the room.
+        DeliveredPush(identifier: "local", threadIdentifier: "!o:hs", accountId: nil, fromPush: false),
+    ]
 
+    func testClearsOnlyTheOpeningAccountsNotificationsForTheRoom() {
         XCTAssertEqual(
             DeliveredPushes.identifiers(in: delivered, accountId: "@a:hs", roomId: "!r:hs"),
             ["mine", "untagged"]
@@ -18,8 +20,19 @@ final class DeliveredPushesTests: XCTestCase {
     }
 
     func testClearsNothingWhenTheRoomHasNoNotifications() {
-        let delivered = [DeliveredPush(identifier: "1", threadIdentifier: "!o:hs", accountId: "@a:hs")]
+        XCTAssertEqual(DeliveredPushes.identifiers(in: delivered, accountId: "@a:hs", roomId: "!x:hs"), [])
+    }
 
-        XCTAssertEqual(DeliveredPushes.identifiers(in: delivered, accountId: "@a:hs", roomId: "!r:hs"), [])
+    func testSigningOutRemovesOnlyThatAccountsPushes() {
+        XCTAssertEqual(DeliveredPushes.identifiers(in: delivered, accountId: "@a:hs"), ["mine", "other-room"])
+        XCTAssertEqual(DeliveredPushes.identifiers(in: delivered, accountId: "@b:hs"), ["other-account"])
+        XCTAssertEqual(DeliveredPushes.identifiers(in: delivered, accountId: "@c:hs"), [])
+    }
+
+    func testClearingAllDataRemovesEveryPushButNotTheAppsOwnNotifications() {
+        XCTAssertEqual(
+            DeliveredPushes.pushIdentifiers(in: delivered),
+            ["mine", "other-account", "other-room", "untagged"]
+        )
     }
 }

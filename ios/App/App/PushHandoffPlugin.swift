@@ -10,6 +10,8 @@ import UserNotifications
  *
  * Without a store (a build lacking the app group), removing and clearing resolve, since there
  * is nothing to remove, so sign-out and clear-all-data never wait on it; writes reject.
+ * Removing an account also removes its delivered pushes, and clearing removes every delivered
+ * push, so no message text outlives a sign-out; that removal never rejects.
  */
 @objc(PushHandoffPlugin)
 class PushHandoffPlugin: CAPInstancePlugin, CAPBridgedPlugin {
@@ -88,6 +90,7 @@ class PushHandoffPlugin: CAPInstancePlugin, CAPBridgedPlugin {
             call.reject("Must provide userId")
             return
         }
+        removeDelivered { DeliveredPushes.identifiers(in: $0, accountId: userId) }
         guard let store else {
             call.resolve()
             return
@@ -101,6 +104,7 @@ class PushHandoffPlugin: CAPInstancePlugin, CAPBridgedPlugin {
     }
 
     @objc func clear(_ call: CAPPluginCall) {
+        removeDelivered { DeliveredPushes.pushIdentifiers(in: $0) }
         guard let store else {
             call.resolve()
             return
@@ -119,20 +123,32 @@ class PushHandoffPlugin: CAPInstancePlugin, CAPBridgedPlugin {
             call.reject("Must provide userId and roomId")
             return
         }
+        removeDelivered({ DeliveredPushes.identifiers(in: $0, accountId: userId, roomId: roomId) }) {
+            call.resolve()
+        }
+    }
+
+    /// Remove the delivered notifications `select` picks, then run `completion`. Best effort:
+    /// the notification center reports no failure, so neither does this.
+    private func removeDelivered(
+        _ select: @escaping ([DeliveredPush]) -> [String],
+        completion: (() -> Void)? = nil
+    ) {
         let center = UNUserNotificationCenter.current()
         center.getDeliveredNotifications { notifications in
             let delivered = notifications.map {
                 DeliveredPush(
                     identifier: $0.request.identifier,
                     threadIdentifier: $0.request.content.threadIdentifier,
-                    accountId: $0.request.content.userInfo["trinity_user_id"] as? String
+                    accountId: $0.request.content.userInfo["trinity_user_id"] as? String,
+                    fromPush: $0.request.trigger is UNPushNotificationTrigger
                 )
             }
-            let identifiers = DeliveredPushes.identifiers(in: delivered, accountId: userId, roomId: roomId)
+            let identifiers = select(delivered)
             if !identifiers.isEmpty {
                 center.removeDeliveredNotifications(withIdentifiers: identifiers)
             }
-            call.resolve()
+            completion?()
         }
     }
 
