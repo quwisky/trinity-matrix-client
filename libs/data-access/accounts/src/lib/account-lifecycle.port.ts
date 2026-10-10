@@ -4,6 +4,11 @@ import { Observable, of } from 'rxjs';
 
 /** App-shell integrations needed by Account Runtime without crossing capability boundaries. */
 export interface AccountLifecyclePort {
+  /**
+   * Remove one account from the native push handoff store, or empty it without an id.
+   * The first step of signing an account out, ahead of anything that invalidates its token.
+   */
+  forgetPushHandoff(accountId?: string): Observable<void>;
   registerNotifications(): Observable<void>;
   unregisterNotifications(accountId?: string): Observable<void>;
   revokeProviderSession(session: MatrixSession): Observable<void>;
@@ -12,6 +17,7 @@ export interface AccountLifecyclePort {
 }
 
 const NOOP_ACCOUNT_LIFECYCLE_PORT: AccountLifecyclePort = {
+  forgetPushHandoff: () => of(void 0),
   registerNotifications: () => of(void 0),
   unregisterNotifications: () => of(void 0),
   revokeProviderSession: () => of(void 0),

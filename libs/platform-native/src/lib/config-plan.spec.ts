@@ -152,6 +152,33 @@ describe('planConfigApply', () => {
       ]);
     });
 
+    it('imports a document that still carries the retired push gateway, ignoring it', () => {
+      const plan = planConfigApply(
+        document(
+          {
+            theme: { palette: 'amethyst' },
+            push: {
+              gateway: {
+                gatewayUrl: 'https://push.example/_matrix/push/v1/notify',
+                appId: null,
+              },
+            },
+          },
+          3,
+        ),
+        registry,
+      );
+
+      expect(plan.ok).toBe(true);
+      expect(plan.warnings).toEqual([
+        'push.gateway.gatewayUrl is not a setting this version of Trinity has, so it will not be applied.',
+        'push.gateway.appId is not a setting this version of Trinity has, so it will not be applied.',
+      ]);
+      expect(plan.ok && plan.changes).toEqual([
+        { path: 'theme.palette', from: 'trinity', to: 'amethyst' },
+      ]);
+    });
+
     it('warns and applies the rest, rather than silently dropping it', () => {
       const plan = planConfigApply(
         document({

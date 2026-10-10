@@ -1,8 +1,6 @@
-import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AppearancePreferences } from '@trinity/application/appearance';
 import { GifSettingsService } from '@trinity/data-access/gif';
-import { PushGatewayService } from '@trinity/data-access/notifications';
 import {
   AccountScopeService,
   RailUnreadChatsPreference,
@@ -27,14 +25,9 @@ vi.mock('@capacitor/preferences', () => ({
 
 describe('TrinityPreferenceStartupSources', () => {
   const ready = { init: vi.fn(async () => ({ kind: 'ready' as const })) };
-  const push = {
-    init: vi.fn(async () => ({ kind: 'ready' as const })),
-    supported: signal(true),
-  };
 
   beforeEach(() => {
     vi.clearAllMocks();
-    push.supported.set(true);
     preferences.get.mockRejectedValue(new Error('access_token=do-not-export'));
     TestBed.configureTestingModule({
       providers: [
@@ -65,7 +58,6 @@ describe('TrinityPreferenceStartupSources', () => {
               of({ kind: 'partial' as const, hydrated: 0, failures: [] }),
           },
         },
-        { provide: PushGatewayService, useValue: push },
       ],
     });
   });
@@ -102,15 +94,5 @@ describe('TrinityPreferenceStartupSources', () => {
     expect(evidence.kind === 'defaulted' && typeof evidence.recover).toBe(
       'function',
     );
-  });
-
-  it('retires push-gateway hydration when the host disables push', async () => {
-    push.supported.set(false);
-    const sources = TestBed.inject(TrinityPreferenceStartupSources).sources();
-
-    await expect(firstValueFrom(sources['push-gateway']())).resolves.toEqual({
-      kind: 'not-applicable',
-      code: 'push-gateway-platform-unavailable',
-    });
   });
 });

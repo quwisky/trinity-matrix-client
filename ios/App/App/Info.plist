@@ -87,5 +87,11 @@
 	<string>Trinity needs your location to share it in a message when you choose to.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Trinity needs your location to share it in a message when you choose to.</string>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
+	<key>TrinityAppGroup</key>
+	<string>group.dev.trinityproject.trinity</string>
+	<key>TrinityKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)dev.trinityproject.trinity.shared</string>
 </dict>
 </plist>

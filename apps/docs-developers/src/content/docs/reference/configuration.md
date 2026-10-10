@@ -12,7 +12,7 @@ Configuration is split by owner. Do not create a second general-purpose environm
 
 ## Build-time environment {#build-environment}
 
-`apps/trinity/src/environments/` selects production mode and an optional native push gateway configuration. Production builds replace the development environment file through the `trinity` target. The default push value is `null`, which leaves native push disabled.
+`apps/trinity/src/environments/` selects production mode and an optional native push gateway configuration. Production builds replace the development environment file through the `trinity` target. Both environments point at the Trinity push gateway (`https://push.trinityproject.dev/_matrix/push/v1/notify`); a fork can set its own URL, or `null` to build without native push. Push is build configuration only: there is no per-device gateway setting.
 
 A push gateway URL and public application identifier are configuration; FCM/APNs credentials and deployment procedures are not application source and do not belong in public documentation.
 
@@ -26,6 +26,6 @@ Electron owns a separate package and build configuration. Each native project re
 
 ## Portable settings {#portable-settings}
 
-The configuration service exports only registered preference descriptors in a versioned JSON document. It validates the whole document before applying changes through owning service setters. Accounts, tokens, drafts, push ledgers, and other recovery-critical state are not portable settings.
+The configuration service exports only registered preference descriptors in a versioned JSON document. It validates the whole document before applying changes through owning service setters. The export format is version 4; an older file that still carries `push.gateway` imports with that entry ignored and a warning. Accounts, tokens, drafts, and other recovery-critical state are not portable settings.
 
 Sensitive preferences declare storage and export restrictions. Never add a key to export merely because it appears in local storage. Read [security invariants](../security-invariants/) before changing configuration scope.

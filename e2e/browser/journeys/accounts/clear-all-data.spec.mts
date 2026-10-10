@@ -152,16 +152,12 @@ test.describe('Clear all data', () => {
     page,
   }) => {
     // The case the issue is actually about: cannot sign in, so there is no account to read
-    // — but a bad preference (here a dead push gateway) is still on disk with no way to
+    // — but a bad preference (here an unreadable date format) is still on disk with no way to
     // reach it from the UI.
     await page.goto('/login', { waitUntil: 'networkidle' });
-    await seedPreference(
-      page,
-      'trinity.push.gateway',
-      'https://dead.example/_matrix/push/v1/notify',
-    );
+    await seedPreference(page, 'trinity.format.date', 'not-a-format');
     expect(await storageKeys(page)).toContain(
-      'CapacitorStorage.trinity.push.gateway',
+      'CapacitorStorage.trinity.format.date',
     );
 
     await page.getByTestId('clear-all-data').click();

@@ -19,6 +19,7 @@ import {
   AccountRuntimeService,
   type AccountRestoreResult,
 } from '@trinity/data-access/accounts';
+import { RetiredPushGatewayCleanup } from '@trinity/data-access/notifications';
 import {
   AppConfigService,
   DraftStoreService,
@@ -84,6 +85,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly accounts = inject(AccountRuntimeService);
   private readonly session = inject(TrinityApplicationSessionAdapter);
   private readonly drafts = inject(DraftStoreService);
+  private readonly retiredPushGateway = inject(RetiredPushGatewayCleanup);
   private readonly appConfig = inject(AppConfigService);
   private readonly storagePersistence = inject(StoragePersistenceService);
   private readonly accountHealth = inject(AccountStartupHealthService);
@@ -135,6 +137,8 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
       drafts: defer(() => from(this.drafts.init())).pipe(
         catchError(() => of(void 0)),
       ),
+      // Keys from the retired push gateway setting; never read, deleted before anything runs.
+      retiredPushGateway: this.retiredPushGateway.run(),
     }).pipe(map(({ preferences }) => preferences));
   }
 

@@ -1,7 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { AppearancePreferences } from '@trinity/application/appearance';
 import { GifSettingsService } from '@trinity/data-access/gif';
-import { PushGatewayService } from '@trinity/data-access/notifications';
 import {
   AccountScopeService,
   RailUnreadChatsPreference,
@@ -38,7 +37,6 @@ export class TrinityPreferenceStartupSources {
   private readonly gifs = inject(GifSettingsService);
   private readonly accountScope = inject(AccountScopeService);
   private readonly railUnread = inject(RailUnreadChatsPreference);
-  private readonly pushGateway = inject(PushGatewayService);
 
   sources(): PreferenceStartupSources {
     const initialized = (
@@ -157,17 +155,6 @@ export class TrinityPreferenceStartupSources {
                             },
                       ),
                     ),
-                },
-          ),
-        ),
-      'push-gateway': () =>
-        initialized('push-gateway', () => this.pushGateway.init()).pipe(
-          map((evidence): PreferencePreparationEvidence =>
-            this.pushGateway.supported()
-              ? evidence
-              : {
-                  kind: 'not-applicable',
-                  code: 'push-gateway-platform-unavailable',
                 },
           ),
         ),

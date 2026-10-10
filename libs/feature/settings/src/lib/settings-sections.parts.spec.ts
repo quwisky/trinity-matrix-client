@@ -31,8 +31,6 @@ import { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import { ImagePackManagementService } from '@trinity/data-access/media';
 import {
   KeywordRulesService,
-  PushGatewayService,
-  PushService,
   NotificationSoundService,
   PushRulesService,
   ReactionNotificationSettingsService,
@@ -197,13 +195,6 @@ const SETUPS: Record<string, () => Setup> = {
         hasLoaded: () => true,
       }),
       MockProvider(TrnToastService),
-      MockProvider(PushGatewayService, {
-        supported: signal(true).asReadonly(),
-        override: signal(null).asReadonly(),
-      }),
-      MockProvider(PushService, {
-        registration: signal({ status: 'idle' as const }).asReadonly(),
-      }),
       MockProvider(TrnSurfaceService),
     ],
   }),

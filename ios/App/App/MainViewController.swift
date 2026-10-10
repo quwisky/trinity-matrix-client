@@ -19,6 +19,7 @@ class MainViewController: CAPBridgeViewController {
         webView?.allowsBackForwardNavigationGestures = false
         bridge?.registerPluginInstance(NativeNavigationPlugin())
         bridge?.registerPluginInstance(AppSettingsPlugin())
+        bridge?.registerPluginInstance(PushHandoffPlugin())
     }
 }
 

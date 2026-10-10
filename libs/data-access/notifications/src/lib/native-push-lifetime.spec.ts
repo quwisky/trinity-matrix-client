@@ -9,7 +9,6 @@ import type {
   NativePushLifetimeEvent,
 } from './notification-health.models';
 import { NativePushLifetime } from './native-push-lifetime';
-import { PushGatewayService } from './push-gateway.service';
 import {
   PushService,
   type NativePushActivation,
@@ -18,7 +17,6 @@ import {
 
 describe('NativePushLifetime', () => {
   const accountIds = signal<readonly string[]>(['@a:example.org']);
-  const configured = signal(true);
   const runtimeStatus = signal<PushRuntimeStatus>({
     status: 'idle',
     code: 'push-registration-idle',
@@ -40,7 +38,6 @@ describe('NativePushLifetime', () => {
   beforeEach(() => {
     vi.useRealTimers();
     accountIds.set(['@a:example.org']);
-    configured.set(true);
     runtimeStatus.set({
       status: 'idle',
       code: 'push-registration-idle',
@@ -53,9 +50,6 @@ describe('NativePushLifetime', () => {
         NativePushLifetime,
         MockProvider(MatrixClientService, {
           accountIds: accountIds.asReadonly(),
-        }),
-        MockProvider(PushGatewayService, {
-          configured: configured.asReadonly(),
         }),
         MockProvider(PushService, {
           run,
@@ -113,6 +107,36 @@ describe('NativePushLifetime', () => {
       code: 'push-registration-ready',
     });
     expect(lifetime.closed).toBe(false);
+    lifetime.unsubscribe();
+    vi.useRealTimers();
+  });
+
+  it('settles as expected dormancy when the host turns out unable to register', () => {
+    vi.useFakeTimers();
+    const events: NativePushLifetimeEvent[] = [];
+    const lifetime = TestBed.inject(NativePushLifetime)
+      .run()
+      .subscribe((event) => events.push(event));
+
+    runtimeStatus.set({
+      status: 'unsupported',
+      code: 'push-registration-unsupported',
+    });
+    TestBed.tick();
+    vi.advanceTimersByTime(30_000);
+
+    const facts = events.flatMap((event) =>
+      event.kind === 'health' ? [event.fact] : [],
+    );
+    expect(facts.at(-1)).toMatchObject({
+      condition: 'not-applicable',
+      code: 'push-registration-unsupported',
+      preparation: 'acknowledged',
+    });
+    expect(facts.some(({ code }) => code === 'push-registration-timeout')).toBe(
+      false,
+    );
+    expect(events).toContainEqual({ kind: 'prepared' });
     lifetime.unsubscribe();
     vi.useRealTimers();
   });

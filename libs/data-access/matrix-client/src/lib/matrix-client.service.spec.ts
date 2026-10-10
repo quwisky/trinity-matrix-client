@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MATRIX_SYNC_PROJECTION_BASELINE,
   MatrixClientService,
+  type AccessTokenRotation,
 } from './matrix-client.service';
 import {
   CryptoStoreKeyService,
@@ -380,6 +381,34 @@ describe('MatrixClientService', () => {
     write.next();
     write.complete();
     await expect(pending).resolves.toBeUndefined();
+  });
+
+  it('publishes a rotated access token only after storage accepted it', async () => {
+    const client = fakeClient();
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc, storage } = setup();
+    const write = new Subject<void>();
+    vi.mocked(storage.updateTokens).mockReturnValue(write);
+    const rotations: AccessTokenRotation[] = [];
+    svc.accessTokenRotations.subscribe((rotation) => rotations.push(rotation));
+    await firstValueFrom(svc.init(OIDC_SESSION));
+    const opts = vi.mocked(createClient).mock.calls[0][0];
+
+    const pending = opts.onTokenRefresh?.({
+      accessToken: 'a2',
+      refreshToken: 'r2',
+      expiry: new Date(5_000),
+    }) as unknown as Promise<void>;
+    await Promise.resolve();
+    expect(rotations).toEqual([]);
+
+    write.next();
+    write.complete();
+    await pending;
+
+    // The access token only: refresh tokens rotate, and a second refresher would sign
+    // the app out, so the push handoff never sees one.
+    expect(rotations).toEqual([{ userId: '@me:hs', accessToken: 'a2' }]);
   });
 
   describe('signOutAll', () => {

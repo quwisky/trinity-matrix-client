@@ -18,7 +18,6 @@ import {
   type PushRuleToggle,
 } from '@trinity/data-access/notifications';
 import { KeywordRulesBlockComponent } from './keyword-rules-block.component';
-import { PushGatewayBlockComponent } from './push-gateway-block.component';
 import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
@@ -41,7 +40,6 @@ import { Subject, takeUntil } from 'rxjs';
     TrnSettingsGroupComponent,
     TrnSwitchComponent,
     KeywordRulesBlockComponent,
-    PushGatewayBlockComponent,
   ],
 })
 export class NotificationsSectionComponent implements OnInit, OnDestroy {

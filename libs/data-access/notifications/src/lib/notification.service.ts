@@ -30,6 +30,7 @@ import type { NotificationRuntimeEvent } from './notification-intent';
 import { NotificationPolicy } from './notification-policy';
 import { NotificationPresenterService } from './notification-presenter.service';
 import { NOTIFICATION_VISIBILITY } from './notification-visibility.port';
+import { PushService } from './push.service';
 import type {
   CapabilityContext,
   CapabilityRecoveryOutcome,
@@ -138,6 +139,7 @@ export class NotificationService {
   );
   private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly visibility = inject(NOTIFICATION_VISIBILITY);
+  private readonly push = inject(PushService);
   private readonly policy = inject(NotificationPolicy);
   private readonly presenter = inject(NotificationPresenterService);
   private readonly destroyRef = inject(DestroyRef);
@@ -594,6 +596,7 @@ export class NotificationService {
         silent: !this.sound.isOn(userId),
       },
       visibility: this.visibility.snapshot(),
+      backgroundDelivery: this.push.backgroundDelivery(),
       duplicate: this.notified.has(key),
     });
     if (decision.kind === 'suppress') return;
@@ -615,6 +618,7 @@ export class NotificationService {
       viewerId: client.getUserId() ?? userId,
       rules: { notify: true, silent: !this.sound.isOn(userId) },
       visibility: this.visibility.snapshot(),
+      backgroundDelivery: this.push.backgroundDelivery(),
       duplicate: false,
     });
     if (decision.kind === 'suppress') return;

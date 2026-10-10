@@ -11,6 +11,7 @@ import { MockProvider, ngMocks } from 'ng-mocks';
 import { NEVER, Subject, Subscription, defer, lastValueFrom, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from './notification.service';
+import { PushService } from './push.service';
 import {
   LEGACY_NOTIFICATION_SOUND_EVENT,
   NOTIFICATION_SOUND_EVENT,
@@ -78,6 +79,9 @@ function setup(
   opts: {
     accounts?: string[];
     active?: string;
+    backgroundDelivery?: 'app' | 'push';
+    /** Page visibility reported to the policy; defaults to visible. */
+    hidden?: boolean;
     /** Stored "play a sound" preference; omitted means "not set" (defaults to on). */
     soundEnabled?: boolean;
     /** Pre-built per-account clients, for cases where two accounts must differ. */
@@ -100,6 +104,11 @@ function setup(
     providers: [
       provideHostCapabilities(),
       NotificationService,
+      MockProvider(PushService, {
+        backgroundDelivery: signal<'app' | 'push'>(
+          opts.backgroundDelivery ?? 'app',
+        ).asReadonly(),
+      }),
       MockProvider(MatrixClientService, {
         // A session can start signed out. Notification Runtime must remain dormant
         // instead of completing, then attach when the first Account appears.
@@ -116,6 +125,7 @@ function setup(
         useValue: {
           snapshot: () => ({
             foreground: typeof document !== 'undefined' && document.hasFocus(),
+            hidden: opts.hidden ?? false,
             conversation: timeline.openRoomId
               ? {
                   accountId: activeUserId() ?? '',
@@ -361,6 +371,45 @@ describe('NotificationService', () => {
     expect(MockNotification.instances[0].options).toMatchObject({
       body: 'hello there',
       tag: '@me:hs !r:hs',
+    });
+  });
+
+  describe('once Android push owns the background', () => {
+    it('leaves a hidden-page message to the native push renderer', () => {
+      const { svc, client } = setup({
+        backgroundDelivery: 'push',
+        hidden: true,
+      });
+      svc.connect();
+
+      timelineHandler(client)(event(), room, false, false, live);
+
+      expect(MockNotification.instances).toHaveLength(0);
+    });
+
+    it('still notifies while the page is visible but unfocused', () => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+      const { svc, client } = setup({
+        backgroundDelivery: 'push',
+        hidden: false,
+      });
+      svc.connect();
+
+      timelineHandler(client)(event(), room, false, false, live);
+
+      expect(MockNotification.instances).toHaveLength(1);
+    });
+
+    it('keeps notifying while hidden when push is not registered', () => {
+      const { svc, client } = setup({
+        backgroundDelivery: 'app',
+        hidden: true,
+      });
+      svc.connect();
+
+      timelineHandler(client)(event(), room, false, false, live);
+
+      expect(MockNotification.instances).toHaveLength(1);
     });
   });
 

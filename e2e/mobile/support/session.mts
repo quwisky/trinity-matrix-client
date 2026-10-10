@@ -300,6 +300,16 @@ export async function iosPreferences(): Promise<string> {
   return stdout;
 }
 
+/** The installed app's container for an app group it shares with its extensions. */
+export async function iosAppGroupContainer(group: string): Promise<string> {
+  return simctl(
+    'get_app_container',
+    requiredEnv('TRINITY_IOS_UDID'),
+    APP_PACKAGE,
+    group,
+  );
+}
+
 /** The chromedriver Appium chose for this run, read from its server log. */
 export function chromedriverVersion(): string {
   const log = appiumLogPath();

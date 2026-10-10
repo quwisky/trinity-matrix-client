@@ -91,7 +91,7 @@ Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed
   `.github/workflows/ci.yml`); `TRINITY_MOBILE_SPECS=./specs/smoke.e2e.mts pnpm e2e:mobile`
   narrows a local run the same way.
 - iOS: `TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_HOMESERVER_RUNTIME=native TRINITY_E2E_SSO_PROVIDER=mock pnpm e2e:mobile:ios`
-  on macOS with Xcode, `python3` and `caddy` on `PATH`, plus `dex` (`brew install dexidp`) for the
+  on macOS with Xcode, `caddy` and a Python 3 new enough for the pinned Synapse (the system Python 3.9 is too old) on `PATH`, plus `dex` (`brew install dexidp`) for the
   SSO spec, which skips without it. That spec signs in through Dex's form-free mock connector,
   because the Simulator drops keystrokes typed into the Safari view; without
   `TRINITY_E2E_SSO_PROVIDER=mock` the homeserver keeps Dex's password form and the spec skips. It boots (or reuses) the pinned `iPhone 17` on `iOS 26.5`
@@ -102,6 +102,16 @@ Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed
 - Platform-only tests call `onlyOn('android' | 'ios', reason)`, which skips with the reason in
   the run log; Back for open panels, attachments, location, notifications and share are
   Android-only.
+- Device-rendered push: `push-render-ios.e2e.mts` (iOS only) drives the extension's rendering
+  path through a debug-only `PushHandoff.renderProbe` call inside the app, because the Simulator
+  neither launches notification service extensions for `xcrun simctl push` nor completes APNs
+  registration on ad-hoc builds. `push-render-android.e2e.mts` (Android only) drives
+  `DevicePushHandler` through the debug-only, DUMP-protected `PushRenderProbeReceiver` with the
+  app terminated, reads the notification shade, then taps the notification and checks that its
+  room opens; on CI the native code does not trust the run's Caddy CA, so the body there is the
+  fallback "New message". Neither shows a real FCM token, the extension launching, locked-phone
+  rendering or closed-app delivery through `push.trinityproject.dev`, and the iOS spec does not
+  cover tap-to-open.
 - CI runs iOS in the `E2E (iOS nightly)` workflow, never on pull requests.
 
 ## MSC2545 image-pack management

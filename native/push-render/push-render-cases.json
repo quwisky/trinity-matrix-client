@@ -1,0 +1,635 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "text message in a named room",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "  Hello there\n"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "Hello there"
+      }
+    },
+    {
+      "name": "notice",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@bot:hs",
+        "content": {
+          "msgtype": "m.notice",
+          "body": "Build passed"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Build bot",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Build bot",
+        "body": "Build passed"
+      }
+    },
+    {
+      "name": "emote",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.emote",
+          "body": "waves"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "* Alice waves"
+      }
+    },
+    {
+      "name": "emote from a member without a display name",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.emote",
+          "body": "waves"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": null,
+      "expected": {
+        "title": "Team",
+        "subtitle": "@alice:hs",
+        "body": "* @alice:hs waves"
+      }
+    },
+    {
+      "name": "formatted body is never parsed",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "plain words",
+          "format": "org.matrix.custom.html",
+          "formatted_body": "<b>bold words</b>"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "plain words"
+      }
+    },
+    {
+      "name": "image",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.image",
+          "body": "cat.png",
+          "url": "mxc://hs/cat"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "sent an image"
+      }
+    },
+    {
+      "name": "video",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.video",
+          "body": "clip.mp4"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "sent a video"
+      }
+    },
+    {
+      "name": "audio",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.audio",
+          "body": "voice.ogg"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "sent an audio message"
+      }
+    },
+    {
+      "name": "file without a body",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.file"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "sent a file"
+      }
+    },
+    {
+      "name": "location",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.location",
+          "body": "Here",
+          "geo_uri": "geo:51.5,0.1"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "shared a location"
+      }
+    },
+    {
+      "name": "sticker",
+      "event": {
+        "type": "m.sticker",
+        "sender": "@alice:hs",
+        "content": {
+          "body": "a cat",
+          "url": "mxc://hs/sticker"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "sent a sticker"
+      }
+    },
+    {
+      "name": "encrypted event",
+      "event": {
+        "type": "m.room.encrypted",
+        "sender": "@alice:hs",
+        "content": {
+          "algorithm": "m.megolm.v1.aes-sha2",
+          "ciphertext": "AwgAEn"
+        }
+      },
+      "storedRoom": {
+        "name": "Secret",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Secret",
+        "subtitle": "Alice",
+        "body": "Encrypted message"
+      }
+    },
+    {
+      "name": "redacted message",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {},
+        "unsigned": {
+          "redacted_because": {
+            "type": "m.room.redaction"
+          }
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "New message"
+      }
+    },
+    {
+      "name": "whitespace-only body",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "  \n  "
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "New message"
+      }
+    },
+    {
+      "name": "body that is not text",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": 5
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "New message"
+      }
+    },
+    {
+      "name": "unknown msgtype",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "org.example.poll",
+          "body": "Lunch?"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "New message"
+      }
+    },
+    {
+      "name": "other event type",
+      "event": {
+        "type": "m.room.member",
+        "sender": "@alice:hs",
+        "content": {
+          "membership": "join"
+        },
+        "state_key": "@alice:hs"
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "New message"
+      }
+    },
+    {
+      "name": "fetch failed (401, 403, 404, timeout or network)",
+      "event": null,
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": null,
+      "expected": {
+        "title": "Team",
+        "subtitle": "",
+        "body": "New message"
+      }
+    },
+    {
+      "name": "DM has no subtitle",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@bob:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "hi"
+        }
+      },
+      "storedRoom": {
+        "name": "Bob",
+        "direct": true
+      },
+      "stateRoomName": null,
+      "senderName": "Bob",
+      "expected": {
+        "title": "Bob",
+        "subtitle": "",
+        "body": "hi"
+      }
+    },
+    {
+      "name": "room not stored takes its name from room state",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "welcome"
+        }
+      },
+      "storedRoom": null,
+      "stateRoomName": "Lobby",
+      "senderName": "Alice",
+      "expected": {
+        "title": "Lobby",
+        "subtitle": "Alice",
+        "body": "welcome"
+      }
+    },
+    {
+      "name": "room neither stored nor named",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "welcome"
+        }
+      },
+      "storedRoom": null,
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Trinity",
+        "subtitle": "Alice",
+        "body": "welcome"
+      }
+    },
+    {
+      "name": "body of exactly 200 code points is kept",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "long body is capped at 200 code points",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa…"
+      }
+    },
+    {
+      "name": "long emoji body is capped at 200 code points",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀…"
+      }
+    },
+    {
+      "name": "emote is capped before the sender is added",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.emote",
+          "body": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "* Alice eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee…"
+      }
+    },
+    {
+      "name": "body padded with next line and no-break space is trimmed",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "\u0085\u00a0 padded \u00a0\u0085"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "padded"
+      }
+    },
+    {
+      "name": "body of only next line and no-break spaces",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "\u0085\u00a0\u00a0\u0085"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "New message"
+      }
+    },
+    {
+      "name": "body padded with ideographic and line separators is trimmed",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "\u3000\u2028words\u2029\u3000"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "words"
+      }
+    },
+    {
+      "name": "body with information separator at the edges keeps it",
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "\u001fkept\u001f"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "\u001fkept\u001f"
+      }
+    }
+  ]
+}

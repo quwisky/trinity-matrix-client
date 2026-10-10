@@ -467,10 +467,9 @@ describe('AdvancedSettingsComponent', () => {
     );
   });
 
-  // Resetting the push gateway deregisters this device's pushers (see
-  // `push-config-entries.ts`), which is the one thing here that reaches the server. The gate
-  // used to promise the opposite — a promise the user acts on before anything is destroyed.
-  it('warns that the reset removes this device’s push registrations', async () => {
+  // The push gateway is build configuration, so the reset neither lists it nor touches the
+  // server; the disclosure must not promise otherwise.
+  it('discloses a device-only reset that leaves push registrations alone', async () => {
     const { container } = await render(AdvancedSettingsComponent, {
       providers: mockedConfig(),
     });
@@ -478,13 +477,18 @@ describe('AdvancedSettingsComponent', () => {
     button(container, 'advanced-reset')?.click();
     await flush();
 
-    expect(RESET_CONFIG_CONSEQUENCES).toContain('push registrations');
-    expect(RESET_CONFIG_CONSEQUENCES).not.toContain(
-      'nothing on your homeserver changes',
+    expect(RESET_CONFIG_CONSEQUENCES).not.toContain('push gateway');
+    expect(RESET_CONFIG_CONSEQUENCES).toContain(
+      'Nothing on your homeserver changes',
+    );
+    expect(RESET_CONFIG_CONSEQUENCES).toContain(
+      'your push registrations are kept',
     );
     const prompt: unknown = alertPrompt.mock.calls[0]?.[0];
     expect(prompt).toMatchObject({
-      message: expect.stringContaining('push registrations') as unknown,
+      message: expect.stringContaining(
+        'push registrations are kept',
+      ) as unknown,
     });
   });
 

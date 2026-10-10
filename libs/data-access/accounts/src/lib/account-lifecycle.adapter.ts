@@ -158,37 +158,47 @@ export class AccountLifecycleAdapter {
     // A live client carries its own tokens; only without one does revoking at the
     // provider depend on reading the stored session.
     const providerNeedsSession = context.providerExpected && !context.client;
+    // The push handoff goes first, while the token it holds is still valid: once a
+    // later step revokes it, a lingering copy would only sit in the native store.
     return attempt
-      .step(
-        this.storage.load(accountId).pipe(
-          catchError(() => {
-            attempt.addIssue('secure-storage', 'retry-sign-out');
-            if (providerNeedsSession) {
-              attempt.addIssue('provider-session', 'restart-application');
-            }
-            return of(null);
-          }),
-        ),
-        {
-          budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.sessionRead,
-          scope: 'secure-storage',
-          recovery: 'retry-sign-out',
-          fallback: null,
-          onTimeout: () => {
-            if (providerNeedsSession) {
-              attempt.addIssue('provider-session', 'retry-sign-out');
-            }
-          },
-          onSettled: (session) => {
-            context.session = session;
-            // Never resolves: a late read must not erase a failed revocation.
-            if (providerNeedsSession && !session?.oidc) {
-              attempt.addIssue('provider-session', 'restart-application');
-            }
-          },
-        },
+      .capture(
+        this.lifecycle.forgetPushHandoff(accountId),
+        'notifications',
+        'retry-sign-out',
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
       )
       .pipe(
+        concatMap(() =>
+          attempt.step(
+            this.storage.load(accountId).pipe(
+              catchError(() => {
+                attempt.addIssue('secure-storage', 'retry-sign-out');
+                if (providerNeedsSession) {
+                  attempt.addIssue('provider-session', 'restart-application');
+                }
+                return of(null);
+              }),
+            ),
+            {
+              budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.sessionRead,
+              scope: 'secure-storage',
+              recovery: 'retry-sign-out',
+              fallback: null,
+              onTimeout: () => {
+                if (providerNeedsSession) {
+                  attempt.addIssue('provider-session', 'retry-sign-out');
+                }
+              },
+              onSettled: (session) => {
+                context.session = session;
+                // Never resolves: a late read must not erase a failed revocation.
+                if (providerNeedsSession && !session?.oidc) {
+                  attempt.addIssue('provider-session', 'restart-application');
+                }
+              },
+            },
+          ),
+        ),
         switchMap(() =>
           from([
             attempt.capture(
