@@ -562,7 +562,7 @@ jobs:
         timeout-minutes: 20
         run: |
           set +e
-          pnpm android:build:prebuilt && ./android/gradlew -p android assembleSecondaryDebug
+          pnpm android:build:prebuilt && ./android/gradlew -p android assembleSecondaryDebug testDebugUnitTest
           status=$?
           mkdir -p dist/.ci
           echo "$status" > dist/.ci/android-prebuild.status
