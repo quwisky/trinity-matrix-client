@@ -24,19 +24,24 @@ export interface RailUnreadChat {
   readonly accountBadge: AccountBadge | null;
   /** Accessible name: the chat, its unread state and, when badged, the account. */
   readonly label: string;
+  /** Last activity (`room.getLastActiveTimestamp()`), for the "+N" list's relative time. */
+  readonly activityTs: number;
 }
 
-/** The rail's unread chats and how many more are not listed. */
+/** The rail's unread chats and the ones beyond its cap. */
 export interface RailUnreadChats {
   readonly entries: readonly RailUnreadChat[];
-  /** Chats beyond the "Up to 5" cap, shown as the "+N" entry. */
+  /** How many chats are beyond the "Up to 5" cap, shown as the "+N" entry. */
   readonly overflow: number;
+  /** Those chats, newest first, listed when "+N" is pressed. */
+  readonly overflowEntries: readonly RailUnreadChat[];
 }
 
 /** Shared empty result, so an empty rail keeps one stable reference. */
 export const NO_RAIL_UNREAD_CHATS: RailUnreadChats = Object.freeze({
   entries: [],
   overflow: 0,
+  overflowEntries: [],
 });
 
 export interface RailUnreadChatsInput {
@@ -52,7 +57,7 @@ export interface RailUnreadChatsInput {
 
 /**
  * The space rail's unread chats: the open chat removed, newest first, capped for "Up to
- * 5" with the rest counted for the "+N" entry, each badged by the account rule.
+ * 5" with the rest kept for the "+N" entry, each badged by the account rule.
  */
 export function buildRailUnreadChats(
   input: RailUnreadChatsInput,
@@ -67,9 +72,11 @@ export function buildRailUnreadChats(
       ? candidates
       : candidates.slice(0, RAIL_UNREAD_CHAT_LIMIT);
   if (shown.length === 0) return NO_RAIL_UNREAD_CHATS;
+  const rest = candidates.slice(shown.length);
   return {
     entries: shown.map((room) => entryFor(room, input)),
-    overflow: candidates.length - shown.length,
+    overflow: rest.length,
+    overflowEntries: rest.map((room) => entryFor(room, input)),
   };
 }
 
@@ -112,6 +119,7 @@ function entryFor(
       state,
       ...(accountBadge ? [accountBadge.name] : []),
     ].join(' · '),
+    activityTs: room.activityTs,
   };
 }
 
@@ -122,4 +130,9 @@ function fallbackBadge(accountId: string): AccountBadge {
     initial: initialOf(accountId),
     avatarMxc: null,
   };
+}
+
+/** "+N"'s accessible name and the title of the list it opens. */
+export function moreUnreadChatsLabel(count: number): string {
+  return `${count} more unread ${count === 1 ? 'chat' : 'chats'}`;
 }

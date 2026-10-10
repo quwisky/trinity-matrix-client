@@ -413,14 +413,14 @@ test.describe('Space rail unread chats', () => {
     await expect(railEntries(page)).toHaveCount(5, { timeout: 30_000 });
     await expect(overflowEntry(page)).toHaveText('+2');
     await expect(overflowEntry(page)).toHaveAccessibleName(
-      '2 more unread chats in Recent activity',
+      '2 more unread chats',
     );
     for (const entry of await railEntryNames(page)) {
       expect(entry).toMatch(/^Unread \d\d .* · 1 unread$/);
     }
 
-    // "+2" is a way to the rest: it shows Recent activity. Recent is the default view, so
-    // step away to Rooms first to see the change.
+    // "+2" lists the other two beside the rail, newest first. Recent is the default view, so
+    // step away to Rooms first to see "Show all in Recent activity" change it.
     await page.getByTestId('rail-rooms').click();
     await expect(page.getByTestId('rail-rooms')).toHaveAttribute(
       'aria-current',
@@ -431,6 +431,35 @@ test.describe('Space rail unread chats', () => {
       'true',
     );
     await overflowEntry(page).click();
+    const overflowMenu = page.getByRole('menu', {
+      name: '2 more unread chats',
+    });
+    await expect(overflowMenu).toBeVisible();
+    await expect(overflowEntry(page)).toHaveAttribute('aria-expanded', 'true');
+    const overflowRows = overflowMenu.getByTestId('rail-overflow-chat');
+    await expect(overflowRows).toHaveCount(2);
+    await expect(overflowRows.nth(0)).toHaveAccessibleName(
+      `${seeded.rooms[1]} · 1 unread`,
+    );
+    await expect(overflowRows.nth(1)).toHaveAccessibleName(
+      `${seeded.rooms[0]} · 1 unread`,
+    );
+
+    // Escape closes it and gives focus back to "+2"; Enter opens it again from there.
+    await page.keyboard.press('Escape');
+    await expect(overflowMenu).toHaveCount(0);
+    await expect(overflowEntry(page)).toBeFocused();
+    await expect(overflowEntry(page)).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press('Enter');
+    await expect(overflowRows.first()).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(overflowRows.nth(1)).toBeFocused();
+
+    // "Show all in Recent activity" is still the way to the rest of Recent.
+    await overflowMenu
+      .getByRole('menuitem', { name: 'Show all in Recent activity' })
+      .click();
+    await expect(overflowMenu).toHaveCount(0);
     await expect(page.getByTestId('rail-recent')).toHaveAttribute(
       'aria-current',
       'true',

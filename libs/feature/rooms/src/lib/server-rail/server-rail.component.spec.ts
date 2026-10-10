@@ -1,14 +1,21 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { render, screen } from '@trinity/testing';
+import { fireEvent, render, screen } from '@trinity/testing';
 import { type SpaceSummary } from '@trinity/data-access/room-library';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { By } from '@angular/platform-browser';
+import { TestBed } from '@angular/core/testing';
 import { MockComponent, ngMocks } from 'ng-mocks';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type ExactRoomSelection } from '../shared/exact-selection';
-import { type RailUnreadChat } from './rail-unread-chats';
+import { type RailUnreadChat, type RailUnreadChats } from './rail-unread-chats';
 import { ServerRailComponent, type RailUnread } from './server-rail.component';
+
+const platform = vi.hoisted(() => ({ mobile: false }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isMobileOs: () => platform.mobile,
+}));
 
 function space(over: Partial<SpaceSummary> = {}): SpaceSummary {
   return {
@@ -485,15 +492,38 @@ const unreadChat = (over: Partial<RailUnreadChat> = {}): RailUnreadChat => ({
   countLabel: '3',
   accountBadge: null,
   label: 'Team · 3 unread',
+  activityTs: 0,
   ...over,
 });
+
+/** The rail's unread chats: `entries` shown, `more` behind "+N". */
+const railChats = (
+  entries: RailUnreadChat[],
+  more: RailUnreadChat[] = [],
+): RailUnreadChats => ({
+  entries,
+  overflow: more.length,
+  overflowEntries: more,
+});
+
+/** `count` overflow chats, each its own room. */
+const moreChats = (count: number): RailUnreadChat[] =>
+  Array.from({ length: count }, (_, i) =>
+    unreadChat({
+      key: `@me:hs\u0000!m${i}:hs`,
+      selection: { accountId: '@me:hs', roomId: `!m${i}:hs` },
+      name: `More ${i}`,
+      label: `More ${i} · 1 unread`,
+      countLabel: '1',
+    }),
+  );
 
 describe('unread chats', () => {
   it('sits between Rooms and the separator', async () => {
     const { container } = await render(ServerRailComponent, {
       inputs: {
         activeAccountId: '@me:hs',
-        unreadChats: { entries: [unreadChat()], overflow: 0 },
+        unreadChats: railChats([unreadChat()]),
       },
       imports: [MockComponent(AvatarComponent)],
     });
@@ -528,15 +558,12 @@ describe('unread chats', () => {
     const { fixture } = await render(ServerRailComponent, {
       inputs: {
         activeAccountId: '@me:hs',
-        unreadChats: {
-          entries: [
-            unreadChat({
-              selection: { accountId: '@ben:hs', roomId: '!c:hs' },
-              label: 'Team · 3 unread · Ben',
-            }),
-          ],
-          overflow: 0,
-        },
+        unreadChats: railChats([
+          unreadChat({
+            selection: { accountId: '@ben:hs', roomId: '!c:hs' },
+            label: 'Team · 3 unread · Ben',
+          }),
+        ]),
       },
       imports: [MockComponent(AvatarComponent)],
     });
@@ -550,17 +577,14 @@ describe('unread chats', () => {
     const { container } = await render(ServerRailComponent, {
       inputs: {
         activeAccountId: '@me:hs',
-        unreadChats: {
-          entries: [
-            unreadChat({ countLabel: '99+' }),
-            unreadChat({
-              key: 'k2',
-              countLabel: null,
-              label: 'Team · marked unread',
-            }),
-          ],
-          overflow: 0,
-        },
+        unreadChats: railChats([
+          unreadChat({ countLabel: '99+' }),
+          unreadChat({
+            key: 'k2',
+            countLabel: null,
+            label: 'Team · marked unread',
+          }),
+        ]),
       },
       imports: [MockComponent(AvatarComponent)],
     });
@@ -578,20 +602,17 @@ describe('unread chats', () => {
     const { fixture } = await render(ServerRailComponent, {
       inputs: {
         activeAccountId: '@me:hs',
-        unreadChats: {
-          entries: [
-            unreadChat({
-              direct: true,
-              accountBadge: {
-                id: '@ben:hs',
-                name: 'Ben',
-                initial: 'B',
-                avatarMxc: null,
-              },
-            }),
-          ],
-          overflow: 0,
-        },
+        unreadChats: railChats([
+          unreadChat({
+            direct: true,
+            accountBadge: {
+              id: '@ben:hs',
+              name: 'Ben',
+              initial: 'B',
+              avatarMxc: null,
+            },
+          }),
+        ]),
       },
       imports: [MockComponent(AvatarComponent)],
     });
@@ -603,36 +624,26 @@ describe('unread chats', () => {
     expect(avatar.shape()).toBe('person');
   });
 
-  it('offers +N for the rest, which opens Recent', async () => {
-    const { fixture } = await render(ServerRailComponent, {
+  it('names +N for the chats it holds', async () => {
+    await render(ServerRailComponent, {
       inputs: {
         activeAccountId: '@me:hs',
-        unreadChats: { entries: [unreadChat()], overflow: 4 },
+        unreadChats: railChats([unreadChat()], moreChats(4)),
       },
-      imports: [MockComponent(AvatarComponent)],
     });
-    let recent = false;
-    fixture.componentInstance.showRecent.subscribe(() => (recent = true));
-    const more = screen.getByRole('button', {
-      name: '4 more unread chats in Recent activity',
-    });
+    const more = screen.getByRole('button', { name: '4 more unread chats' });
     expect(more.textContent?.trim()).toBe('+4');
-    more.click();
-    expect(recent).toBe(true);
   });
 
   it('names a single remaining chat in the singular', async () => {
     await render(ServerRailComponent, {
       inputs: {
         activeAccountId: '@me:hs',
-        unreadChats: { entries: [unreadChat()], overflow: 1 },
+        unreadChats: railChats([unreadChat()], moreChats(1)),
       },
-      imports: [MockComponent(AvatarComponent)],
     });
     expect(
-      screen.getByRole('button', {
-        name: '1 more unread chat in Recent activity',
-      }),
+      screen.getByRole('button', { name: '1 more unread chat' }),
     ).toBeTruthy();
   });
 
@@ -640,13 +651,12 @@ describe('unread chats', () => {
     const { fixture } = await render(ServerRailComponent, {
       inputs: {
         activeAccountId: '@me:hs',
-        unreadChats: { entries: [unreadChat()], overflow: 150 },
+        unreadChats: railChats([unreadChat()], moreChats(150)),
       },
-      imports: [MockComponent(AvatarComponent)],
     });
     expect(fixture.componentInstance.overflowText(150)).toBe('+99');
     const more = screen.getByRole('button', {
-      name: '150 more unread chats in Recent activity',
+      name: '150 more unread chats',
     });
     expect(more.textContent?.trim()).toBe('+99');
   });
@@ -655,7 +665,7 @@ describe('unread chats', () => {
     const { container } = await render(ServerRailComponent, {
       inputs: {
         activeAccountId: '@me:hs',
-        unreadChats: { entries: [unreadChat()], overflow: 2 },
+        unreadChats: railChats([unreadChat()], moreChats(2)),
       },
       imports: [MockComponent(AvatarComponent)],
     });
@@ -707,5 +717,259 @@ describe('unread chats', () => {
     expect(
       container.querySelector('[data-testid=rail-unread-chats]'),
     ).toBeNull();
+  });
+});
+
+const ben = { id: '@ben:hs', name: 'Ben', initial: 'B', avatarMxc: null };
+const NOW = Date.UTC(2026, 9, 10, 12);
+
+/** Three chats behind "+3": a badged DM, a marked-unread room and a busy room. */
+const overflowChats = (): RailUnreadChat[] => [
+  unreadChat({
+    key: '@ben:hs\u0000!dm:hs',
+    selection: { accountId: '@ben:hs', roomId: '!dm:hs' },
+    name: 'Alex',
+    direct: true,
+    countLabel: '1',
+    accountBadge: ben,
+    label: 'Alex · 1 unread · Ben',
+    activityTs: NOW - 2 * 60 * 60_000,
+  }),
+  unreadChat({
+    key: '@me:hs\u0000!plan:hs',
+    selection: { accountId: '@me:hs', roomId: '!plan:hs' },
+    name: 'Planning',
+    countLabel: null,
+    label: 'Planning · marked unread',
+    activityTs: NOW - 5 * 60_000,
+  }),
+  unreadChat({
+    key: '@me:hs\u0000!busy:hs',
+    selection: { accountId: '@me:hs', roomId: '!busy:hs' },
+    name: 'Busy',
+    countLabel: '99+',
+    label: 'Busy · 120 unread',
+    activityTs: NOW - 3 * 60_000,
+  }),
+];
+
+async function renderOverflow() {
+  const result = await render(ServerRailComponent, {
+    inputs: {
+      activeAccountId: '@me:hs',
+      unreadChats: railChats([unreadChat()], overflowChats()),
+    },
+  });
+  const opened: ExactRoomSelection[] = [];
+  let recent = 0;
+  result.fixture.componentInstance.openUnreadChat.subscribe((s) =>
+    opened.push(s),
+  );
+  result.fixture.componentInstance.showRecent.subscribe(() => recent++);
+  const trigger = screen.getByTestId<HTMLButtonElement>('rail-unread-overflow');
+  return { ...result, opened, recent: () => recent, trigger };
+}
+
+/** The rows of whichever overflow list is open, in order. */
+const overflowRows = (): HTMLElement[] => [
+  ...document.querySelectorAll<HTMLElement>('[data-testid=rail-overflow-chat]'),
+];
+
+const overflowList = (): HTMLElement | null =>
+  document.querySelector<HTMLElement>('[data-testid=rail-overflow-list]');
+
+describe('unread chats beyond the cap, at desktop width', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    TestBed.resetTestingModule();
+  });
+
+  it('opens a menu of the remaining chats from +N', async () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+    const { fixture, trigger } = await renderOverflow();
+    expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+
+    trigger.click();
+    await fixture.whenStable();
+
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    const menu = screen.getByRole('menu', { name: '3 more unread chats' });
+    expect(menu.textContent).toContain('3 more unread chats');
+    expect(overflowRows().map((row) => row.getAttribute('aria-label'))).toEqual(
+      [
+        'Alex · 1 unread · Ben',
+        'Planning · marked unread',
+        'Busy · 120 unread',
+      ],
+    );
+  });
+
+  it('draws each row like its rail entry, with account and last activity', async () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
+    const { fixture, trigger } = await renderOverflow();
+    trigger.click();
+    await fixture.whenStable();
+
+    const [alex, planning, busy] = overflowRows();
+    const detail = (row: HTMLElement) =>
+      row
+        .querySelector('[data-testid=rail-overflow-detail]')
+        ?.textContent?.trim();
+    expect(detail(alex)).toBe('Ben · 2 hr. ago');
+    expect(detail(planning)).toBe('Marked unread');
+    expect(detail(busy)).toBe('3 min. ago');
+    expect(
+      busy.querySelector('[data-testid=rail-overflow-count]')?.textContent,
+    ).toContain('99+');
+    expect(
+      planning.querySelector('[data-testid=rail-overflow-dot]'),
+    ).toBeTruthy();
+    expect(
+      planning.querySelector('[data-testid=rail-overflow-count]'),
+    ).toBeNull();
+    const avatar = alex.querySelector('trn-avatar');
+    expect(avatar?.getAttribute('data-shape')).toBe('person');
+    expect(
+      planning.querySelector('trn-avatar')?.getAttribute('data-shape'),
+    ).toBe('place');
+  });
+
+  it("opens a row's chat on its own account and closes", async () => {
+    const { fixture, trigger, opened } = await renderOverflow();
+    trigger.click();
+    await fixture.whenStable();
+
+    overflowRows()[0].click();
+    await fixture.whenStable();
+
+    expect(opened).toEqual([{ accountId: '@ben:hs', roomId: '!dm:hs' }]);
+    expect(overflowList()).toBeNull();
+  });
+
+  it('keeps Show all in Recent activity as the way to Recent', async () => {
+    const { fixture, trigger, recent, opened } = await renderOverflow();
+    trigger.click();
+    await fixture.whenStable();
+
+    screen
+      .getByRole('menuitem', { name: 'Show all in Recent activity' })
+      .click();
+    await fixture.whenStable();
+
+    expect(recent()).toBe(1);
+    expect(opened).toEqual([]);
+    expect(overflowList()).toBeNull();
+  });
+
+  it('opens from the keyboard and moves between rows with the arrow keys', async () => {
+    const { fixture, trigger } = await renderOverflow();
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowDown', keyCode: 40 });
+    await fixture.whenStable();
+    const rows = overflowRows();
+    expect(document.activeElement).toBe(rows[0]);
+
+    fireEvent.keyDown(rows[0], { key: 'ArrowDown', keyCode: 40 });
+    await fixture.whenStable();
+
+    expect(document.activeElement).toBe(rows[1]);
+  });
+
+  it('closes on Escape and returns focus to +N', async () => {
+    const { fixture, trigger } = await renderOverflow();
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ArrowDown', keyCode: 40 });
+    await fixture.whenStable();
+
+    fireEvent.keyDown(overflowRows()[0], { key: 'Escape', keyCode: 27 });
+    await fixture.whenStable();
+
+    expect(overflowList()).toBeNull();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(trigger);
+  });
+});
+
+describe('unread chats beyond the cap, on a phone', () => {
+  afterEach(() => {
+    platform.mobile = false;
+    TestBed.resetTestingModule();
+  });
+
+  it('shows the remaining chats in a bottom sheet', async () => {
+    platform.mobile = true;
+    const { fixture, trigger } = await renderOverflow();
+    expect(trigger.getAttribute('aria-haspopup')).toBe('dialog');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+
+    trigger.click();
+    await fixture.whenStable();
+
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    const sheet = screen.getByRole('dialog', { name: '3 more unread chats' });
+    expect(sheet.querySelector('trn-sheet-frame')).toBeTruthy();
+    expect(overflowRows().map((row) => row.getAttribute('aria-label'))).toEqual(
+      [
+        'Alex · 1 unread · Ben',
+        'Planning · marked unread',
+        'Busy · 120 unread',
+      ],
+    );
+  });
+
+  it("opens a row's chat on its own account and closes", async () => {
+    platform.mobile = true;
+    const { fixture, trigger, opened } = await renderOverflow();
+    trigger.click();
+    await fixture.whenStable();
+
+    overflowRows()[1].click();
+    await fixture.whenStable();
+
+    expect(opened).toEqual([{ accountId: '@me:hs', roomId: '!plan:hs' }]);
+    expect(overflowList()).toBeNull();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('keeps Show all in Recent activity as the way to Recent', async () => {
+    platform.mobile = true;
+    const { fixture, trigger, recent } = await renderOverflow();
+    trigger.click();
+    await fixture.whenStable();
+
+    screen.getByRole('button', { name: 'Show all in Recent activity' }).click();
+    await fixture.whenStable();
+
+    expect(recent()).toBe(1);
+    expect(overflowList()).toBeNull();
+  });
+
+  it('closes on Escape and returns focus to +N', async () => {
+    platform.mobile = true;
+    const { fixture, trigger } = await renderOverflow();
+    trigger.focus();
+    trigger.click();
+    await fixture.whenStable();
+
+    fireEvent.keyDown(overflowRows()[0], { key: 'Escape', keyCode: 27 });
+    await fixture.whenStable();
+
+    expect(overflowList()).toBeNull();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('closes once no chats are left behind +N', async () => {
+    platform.mobile = true;
+    const { fixture, trigger } = await renderOverflow();
+    trigger.click();
+    await fixture.whenStable();
+    expect(overflowList()).toBeTruthy();
+
+    fixture.componentRef.setInput('unreadChats', railChats([unreadChat()]));
+    await fixture.whenStable();
+
+    expect(overflowList()).toBeNull();
   });
 });
