@@ -11,6 +11,7 @@ import {
   type NotificationRuntimeEvent,
 } from '@trinity/data-access/notifications';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
+import { HostLifecycleService } from '@trinity/runtime/host';
 import {
   WorkspaceNavigationService,
   type WorkspaceNavigationIntent,
@@ -22,7 +23,10 @@ import {
   catchError,
   concatMap,
   defer,
+  filter,
+  ignoreElements,
   merge,
+  mergeMap,
   switchMap,
 } from 'rxjs';
 import { CapabilityHealthService } from '../capability-health.service';
@@ -34,6 +38,7 @@ export class NotificationSessionService {
   private readonly push = inject(NativePushLifetime);
   private readonly handoff = inject(PushHandoffService);
   private readonly conversations = inject(ConversationRuntime);
+  private readonly lifecycle = inject(HostLifecycleService);
   private readonly navigation = inject(WorkspaceNavigationService);
   private readonly health = inject(CapabilityHealthService);
   private readonly toast = inject(TrnToastService);
@@ -49,6 +54,7 @@ export class NotificationSessionService {
       // Keeps the closed-app push renderers' store current; inert off native mobile.
       this.handoff.run(),
       this.clearOpenedRooms(),
+      this.clearResumedRoom(),
     );
   }
 
@@ -82,6 +88,23 @@ export class NotificationSessionService {
         clearing.unsubscribe();
       };
     });
+  }
+
+  /**
+   * When the app returns to the foreground, clear the delivered notifications of the room
+   * still open: while it was hidden, pushes for that room were shown natively (Android
+   * hands the background to push). Best effort, like {@link clearOpenedRooms}.
+   */
+  private clearResumedRoom(): Observable<never> {
+    return this.lifecycle.events.pipe(
+      filter((event) => event.kind === 'active'),
+      mergeMap(() => {
+        const key = untracked(() => this.conversations.focused()?.key);
+        return key ? this.handoff.clearRoom(key.accountId, key.roomId) : EMPTY;
+      }),
+      ignoreElements(),
+      catchError(() => EMPTY),
+    );
   }
 
   private handlePush(event: NativePushLifetimeEvent): Observable<never> {

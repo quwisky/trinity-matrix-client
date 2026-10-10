@@ -8,8 +8,9 @@ import {
   PushHandoffService,
 } from '@trinity/data-access/notifications';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
+import { HostLifecycleService } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
-import { EMPTY, of, type Observable } from 'rxjs';
+import { EMPTY, Subject, of, type Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CapabilityHealthService } from '../capability-health.service';
 import { NotificationSessionService } from './notification-session.service';
@@ -21,8 +22,11 @@ interface FocusedConversation {
 describe('NotificationSessionService', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it("clears a room's delivered notifications once each time it becomes the active room", () => {
+  type LifecycleEvent = { readonly kind: 'active' | 'background' };
+
+  function setup() {
     const focused = signal<FocusedConversation | null>(null);
+    const lifecycle = new Subject<LifecycleEvent>();
     const clearRoom = vi.fn(
       (_userId: string, _roomId: string): Observable<void> => of(void 0),
     );
@@ -34,6 +38,9 @@ describe('NotificationSessionService', () => {
         MockProvider(PushHandoffService, { run: () => EMPTY, clearRoom }),
         MockProvider(ConversationRuntime, {
           focused: focused.asReadonly() as never,
+        }),
+        MockProvider(HostLifecycleService, {
+          events: lifecycle.asObservable(),
         }),
         MockProvider(WorkspaceNavigationService),
         MockProvider(CapabilityHealthService),
@@ -48,6 +55,11 @@ describe('NotificationSessionService', () => {
       .run()
       .subscribe();
     TestBed.tick();
+    return { focused, lifecycle, clearRoom, open, lifetime };
+  }
+
+  it("clears a room's delivered notifications once each time it becomes the active room", () => {
+    const { focused, clearRoom, open, lifetime } = setup();
     expect(clearRoom).not.toHaveBeenCalled();
 
     open('@me:hs', '!a:hs');
@@ -67,5 +79,31 @@ describe('NotificationSessionService', () => {
     lifetime.unsubscribe();
     open('@me:hs', '!c:hs');
     expect(clearRoom).toHaveBeenCalledTimes(3);
+  });
+
+  it('clears the open room again when the app returns to the foreground', () => {
+    const { lifecycle, clearRoom, open, lifetime } = setup();
+    open('@me:hs', '!a:hs');
+    clearRoom.mockClear();
+
+    // Pushes for the open room arrived as native notifications while the app was hidden.
+    lifecycle.next({ kind: 'background' });
+    expect(clearRoom).not.toHaveBeenCalled();
+    lifecycle.next({ kind: 'active' });
+    expect(clearRoom.mock.calls).toEqual([['@me:hs', '!a:hs']]);
+
+    lifetime.unsubscribe();
+    lifecycle.next({ kind: 'background' });
+    lifecycle.next({ kind: 'active' });
+    expect(clearRoom).toHaveBeenCalledOnce();
+  });
+
+  it('clears nothing on return to the foreground when no room is open', () => {
+    const { lifecycle, clearRoom } = setup();
+
+    lifecycle.next({ kind: 'background' });
+    lifecycle.next({ kind: 'active' });
+
+    expect(clearRoom).not.toHaveBeenCalled();
   });
 });
