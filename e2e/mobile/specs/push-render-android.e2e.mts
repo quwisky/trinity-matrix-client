@@ -84,13 +84,16 @@ describe('device-rendered push on Android', () => {
     // Native code does not trust this run's Caddy CA, so the fetch fails and the renderer
     // shows the stored room name with its fetch-failure text. The message text is proven by
     // the shared render fixture (JUnit) and the iOS spec.
-    const notification = uiSelector(
-      `new UiSelector().textContains("${room.roomName}")`,
-    );
-    await expect(notification).toBeDisplayed({ wait: 30_000 });
     await expect(
-      uiSelector('new UiSelector().textContains("New message")'),
-    ).toBeDisplayed();
+      uiSelector(`new UiSelector().textContains("${room.roomName}")`),
+    ).toBeDisplayed({ wait: 30_000 });
+    // Tap the message text, as the local-notification spec taps its body. The room name
+    // resolves to the conversation header (`header_text_secondary`, not clickable); a tap
+    // there left the notification in the shade and started nothing in CI.
+    const notification = uiSelector(
+      'new UiSelector().textContains("New message")',
+    );
+    await expect(notification).toBeDisplayed();
     await notification.click();
 
     await webview();
