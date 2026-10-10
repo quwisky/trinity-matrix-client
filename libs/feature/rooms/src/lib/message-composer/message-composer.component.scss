@@ -4,6 +4,13 @@
     background: var(--trinity-surface-workspace);
   }
 
+  // A refused capture permission, above the input, with its "Open settings".
+  .composer__notice {
+    display: block;
+    margin: 0 var(--trinity-density-composer-padding-inline)
+      var(--trinity-space-3);
+  }
+
   .composer {
     // The one type size the field and its preview share. Touch devices lift it to the 16px
     // text-entry floor so iOS does not zoom on focus (#974); the preview follows so the cell

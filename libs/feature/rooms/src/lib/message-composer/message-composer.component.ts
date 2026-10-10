@@ -16,8 +16,11 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { TrnIconButton } from '@trinity/components/controls';
-import { TrnTooltip } from '@trinity/components/generic-content';
+import { TrnButton, TrnIconButton } from '@trinity/components/controls';
+import {
+  BannerComponent,
+  TrnTooltip,
+} from '@trinity/components/generic-content';
 import {
   DraftStoreService,
   KeyboardShortcutsService,
@@ -86,9 +89,11 @@ let nextPickerId = 0;
   selector: 'trn-message-composer',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    BannerComponent,
     ComposerBannerComponent,
     ComposerVoiceBarComponent,
     MatrixHtmlDirective,
+    TrnButton,
     TrnIconButton,
     TrnIconComponent,
     TrnTooltip,

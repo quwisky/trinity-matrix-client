@@ -14,6 +14,46 @@
   (retryStaged)="retryStaged($event)"
 />
 
+<!-- Persistent, so the notice is announced when it appears: `trn-banner` leaves announcing
+     to its consumer, and a live region inserted with its text is not reliably read. -->
+<span class="sr-only" aria-live="assertive">{{
+  attachments.captureNoticeMessage()
+}}</span>
+@if (attachments.captureNotice(); as notice) {
+  <trn-banner
+    class="composer__notice"
+    variant="neutral"
+    data-testid="composer-capture-notice"
+  >
+    <trn-icon trnBannerIcon [name]="notice === 'camera' ? 'camera' : 'image'" />
+    {{ attachments.captureNoticeMessage() }}
+    <span trnBannerActions>
+      @if (attachments.canOpenSettings) {
+        <button
+          trnBtn
+          presentation="outline"
+          size="sm"
+          type="button"
+          data-testid="composer-capture-open-settings"
+          (click)="attachments.openCaptureSettings()"
+        >
+          Open settings
+        </button>
+      }
+      <button
+        trnBtn
+        presentation="ghost"
+        size="sm"
+        type="button"
+        data-testid="composer-capture-notice-dismiss"
+        (click)="attachments.dismissCaptureNotice()"
+      >
+        Dismiss
+      </button>
+    </span>
+  </trn-banner>
+}
+
 <div
   class="composer"
   [class.composer--recording]="attachments.recordingVoice()"

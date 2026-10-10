@@ -10,13 +10,18 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize, of, switchMap, take, timeout, type Observable } from 'rxjs';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
+  AppSettingsService,
+  CapturePermissionDeniedError,
+  CaptureTooLargeError,
   MediaPickerService,
+  NoCameraError,
   PrivacySettingsService,
   VoiceRecorderService,
   captureModeFor,
   isMobileOs,
   type CaptureKind,
   type CaptureMode,
+  type CapturePermission,
 } from '@trinity/platform-native';
 import {
   GifService,
@@ -87,6 +92,7 @@ export class ComposerAttachmentsService {
   private readonly mediaPipeline = inject(MediaPipeline);
   private readonly destroyRef = inject(DestroyRef);
   private readonly privacy = inject(PrivacySettingsService);
+  private readonly appSettings = inject(AppSettingsService);
   /** True from a native capture's start until it settles (re-entry guard). */
   private capturing = false;
 
@@ -140,6 +146,14 @@ export class ComposerAttachmentsService {
     this.picker.captureSupported === true,
     isMobileOs(),
   );
+  /** Which permission a capture was refused, while its notice shows; else null. */
+  readonly captureNotice = signal<CapturePermission | null>(null);
+  /** The notice's sentence, also announced through the composer's persistent live region. */
+  readonly captureNoticeMessage = computed(() =>
+    captureNoticeCopy(this.captureNotice()),
+  );
+  /** Whether "Open settings" can take the user to Trinity's system settings page. */
+  readonly canOpenSettings = this.appSettings.available;
 
   constructor() {
     // Revoke EVERY staged preview on teardown. The scalar version revoked exactly one, which
@@ -158,6 +172,18 @@ export class ComposerAttachmentsService {
   /** Whether this device can record voice (mic + MediaRecorder present). */
   get voiceSupported(): boolean {
     return this.voiceRecorder.supported;
+  }
+
+  dismissCaptureNotice(): void {
+    this.captureNotice.set(null);
+  }
+
+  openCaptureSettings(): void {
+    this.captureNotice.set(null);
+    this.appSettings
+      .openAppSettings()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 
   /** Bind the workflows to their composer. Called once, from its constructor. */
@@ -200,6 +226,7 @@ export class ComposerAttachmentsService {
     }
     if (this.captureMode !== 'native' || this.capturing) return;
     this.capturing = true;
+    this.captureNotice.set(null);
     const roomAtStart = this.host.roomId();
     const saveToGallery = this.privacy.saveCapturesToGallery();
     this.uploadLimit()
@@ -536,12 +563,22 @@ export class ComposerAttachmentsService {
       );
   }
 
-  /** Surface a failed capture; Task 9 adds the permission notice and the size/no-camera copy. */
-  private showCaptureError(kind: CaptureKind, _err: unknown): void {
+  /** Denials become the inline notice; everything else a toast naming the cause. */
+  private showCaptureError(kind: CaptureKind, err: unknown): void {
+    if (err instanceof CapturePermissionDeniedError) {
+      this.captureNotice.set(err.permission);
+      return;
+    }
+    if (err instanceof CaptureTooLargeError) {
+      this.showTooLarge(kind, err.limit);
+      return;
+    }
     this.toast.show(
-      kind === 'photo'
-        ? 'Could not take a photo. Try again.'
-        : 'Could not record a video. Try again.',
+      err instanceof NoCameraError
+        ? 'This device has no camera.'
+        : kind === 'photo'
+          ? 'Could not take a photo. Try again.'
+          : 'Could not record a video. Try again.',
       { duration: 4000, variant: 'danger' },
     );
   }
@@ -560,4 +597,15 @@ const UPLOAD_LIMIT_WAIT_MS = 3000;
 /** A byte limit as whole megabytes for copy ("100 MB"); never "0 MB". */
 function formatMegabytes(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1_048_576))} MB`;
+}
+
+function captureNoticeCopy(permission: CapturePermission | null): string {
+  switch (permission) {
+    case 'camera':
+      return "Trinity can't use the camera. Allow camera access in your device settings.";
+    case 'photos':
+      return "Trinity can't save to your photo library. Allow photo access in your device settings, or turn off saving under Privacy.";
+    default:
+      return '';
+  }
 }
