@@ -84,7 +84,7 @@ export function stripPng(bytes: Bytes): FormatStrip {
         const orientation = readTiffOrientation(
           bytes.subarray(pos + 8, pos + 8 + length),
         );
-        if (orientation === null) return MALFORMED;
+        // An unreadable Exif block is dropped whole: the container around it is sound.
         if (isRotatedOrMirrored(orientation)) {
           out.insert(chunk('eXIf', orientationTiff(orientation)));
         }

@@ -55,7 +55,12 @@ export function orientationTiff(orientation: number): Bytes {
   );
 }
 
-/** Whether an orientation needs keeping: anything but the default "top-left". */
-export function isRotatedOrMirrored(orientation: number): boolean {
-  return orientation >= 2 && orientation <= 8;
+/**
+ * Whether an orientation needs keeping: anything but the default "top-left". An unreadable
+ * block (null) has none a decoder could apply either.
+ */
+export function isRotatedOrMirrored(
+  orientation: number | null,
+): orientation is number {
+  return orientation !== null && orientation >= 2 && orientation <= 8;
 }

@@ -98,7 +98,7 @@ export function stripJpeg(bytes: Bytes): FormatStrip {
         if (seenExif) break;
         seenExif = true;
         const orientation = readTiffOrientation(payload.subarray(6));
-        if (orientation === null) return MALFORMED;
+        // An unreadable Exif block is dropped whole: the container around it is sound.
         if (isRotatedOrMirrored(orientation))
           out.insert(orientationSegment(orientation));
         break;

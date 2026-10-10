@@ -70,7 +70,7 @@ export function stripWebp(bytes: Bytes): FormatStrip {
         const orientation = readTiffOrientation(
           exifTiff(bytes.subarray(pos + 8, dataEnd)),
         );
-        if (orientation === null) return MALFORMED;
+        // An unreadable Exif block is dropped whole: the container around it is sound.
         if (isRotatedOrMirrored(orientation)) {
           body.insert(chunk('EXIF', orientationTiff(orientation)));
           keptExif = true;

@@ -510,9 +510,30 @@ export function identifyingHeic(
     readonly exifOffsetDelta?: number;
     /** Store the Exif item in the meta box's `idat` (construction method 1). */
     readonly exifInIdat?: boolean;
+    /** The XMP item's `content_type`. */
+    readonly xmpContentType?: string;
+    /** How the mdat header states its size: plain, 64-bit `largesize`, or 0 (to the end). */
+    readonly mdatSize?: 'plain' | 'largesize' | 'to-end';
   } = {},
 ): Uint8Array<ArrayBuffer> {
   const inIdat = overrides.exifInIdat ?? false;
+  const mdatSize = overrides.mdatSize ?? 'plain';
+  const mdatBox = (
+    ...payload: readonly Uint8Array[]
+  ): Uint8Array<ArrayBuffer> => {
+    const body = concat(...payload);
+    if (mdatSize === 'largesize') {
+      return concat(
+        u32be(1),
+        ascii('mdat'),
+        u32be(0),
+        u32be(body.length + 16),
+        body,
+      );
+    }
+    if (mdatSize === 'to-end') return concat(u32be(0), ascii('mdat'), body);
+    return box('mdat', body);
+  };
   const ftyp = box(
     'ftyp',
     ascii('heic'),
@@ -559,18 +580,19 @@ export function identifyingHeic(
         u16be(3),
         infe(1, 'hvc1'),
         infe(2, 'Exif'),
-        infe(3, 'mime', 'application/rdf+xml'),
+        infe(3, 'mime', overrides.xmpContentType ?? 'application/rdf+xml'),
       ),
       iloc,
       ...(inIdat ? [box('idat', HEIF_EXIF_PAYLOAD)] : []),
     );
     const mdat = inIdat
-      ? box('mdat', HEIF_PIXELS, HEIF_XMP_PAYLOAD)
-      : box('mdat', HEIF_PIXELS, HEIF_EXIF_PAYLOAD, HEIF_XMP_PAYLOAD);
+      ? mdatBox(HEIF_PIXELS, HEIF_XMP_PAYLOAD)
+      : mdatBox(HEIF_PIXELS, HEIF_EXIF_PAYLOAD, HEIF_XMP_PAYLOAD);
     return { meta, mdat };
   };
   const first = build([0, 0, 0]);
-  const mdatPayload = ftyp.length + first.meta.length + 8;
+  const mdatPayload =
+    ftyp.length + first.meta.length + (mdatSize === 'largesize' ? 16 : 8);
   const exifOffset = inIdat ? 0 : mdatPayload + HEIF_PIXELS.length;
   const { meta, mdat } = build([
     mdatPayload,
@@ -578,4 +600,76 @@ export function identifyingHeic(
     mdatPayload + HEIF_PIXELS.length + (inIdat ? 0 : HEIF_EXIF_PAYLOAD.length),
   ]);
   return concat(ftyp, meta, mdat);
+}
+
+/**
+ * A HEIF whose iloc (version 0, offset/length/base sizes all 0) declares `items` items of
+ * 0xFFFF zero-byte extents each: 6 bytes per item that ask for 65,535 iterations apiece.
+ */
+export function pathologicalIlocHeic(items: number): Uint8Array<ArrayBuffer> {
+  const entries = new Uint8Array(items * 6);
+  for (let i = 0; i < items; i++) {
+    entries.set(concat(u16be(i + 1), u16be(0), u16be(0xffff)), i * 6);
+  }
+  return concat(
+    box('ftyp', ascii('heic'), u32be(0), ascii('mif1'), ascii('heic')),
+    fullBox(
+      'meta',
+      0,
+      fullBox(
+        'hdlr',
+        0,
+        u32be(0),
+        ascii('pict'),
+        new Uint8Array(12),
+        ascii('\0'),
+      ),
+      fullBox('iinf', 0, u16be(1), infe(1, 'Exif')),
+      fullBox('iloc', 0, Uint8Array.of(0x00, 0x00), u16be(items), entries),
+    ),
+    box('mdat', HEIF_EXIF_PAYLOAD),
+  );
+}
+
+/** A HEIF whose Exif item is split into `extents` one-byte extents (8 iloc bytes each). */
+export function manyExtentsHeic(extents: number): Uint8Array<ArrayBuffer> {
+  const ftyp = box(
+    'ftyp',
+    ascii('heic'),
+    u32be(0),
+    ascii('mif1'),
+    ascii('heic'),
+  );
+  const build = (mdatPayload: number) => {
+    const table = new Uint8Array(extents * 8);
+    for (let i = 0; i < extents; i++) {
+      table.set(concat(u32be(mdatPayload + i), u32be(1)), i * 8);
+    }
+    return fullBox(
+      'meta',
+      0,
+      fullBox(
+        'hdlr',
+        0,
+        u32be(0),
+        ascii('pict'),
+        new Uint8Array(12),
+        ascii('\0'),
+      ),
+      fullBox('iinf', 0, u16be(1), infe(1, 'Exif')),
+      fullBox(
+        'iloc',
+        0,
+        Uint8Array.of(0x44, 0x00),
+        u16be(1),
+        u16be(1),
+        u16be(0),
+        u16be(extents),
+        table,
+      ),
+    );
+  };
+  const metaLength = build(0).length;
+  const meta = build(ftyp.length + metaLength + 8);
+  return concat(ftyp, meta, box('mdat', new Uint8Array(extents).fill(0x41)));
 }

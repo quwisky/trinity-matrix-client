@@ -41,8 +41,9 @@ import {
   identifyingTiff,
   identifyingWebp,
   jpegExif,
-  jpegSegment,
   orientationOnlyTiff,
+  manyExtentsHeic,
+  pathologicalIlocHeic,
   pngChunk,
   riffChunk,
   u32le,
@@ -50,6 +51,19 @@ import {
   webpFile,
 } from './image-metadata.fixture';
 import { joinParts, stripImageMetadata } from './image-metadata';
+
+/** Exif TIFF blocks a decoder cannot read, inside otherwise well-formed containers. */
+const UNREADABLE_TIFFS: readonly [string, Uint8Array<ArrayBuffer>][] = [
+  [
+    'an IFD0 pointing past its end',
+    concat(ascii('MM'), Uint8Array.of(0, 42, 0x7f, 0, 0, 0), ascii('52.5200N')),
+  ],
+  ['a truncated IFD0', identifyingTiff(6).slice(0, 20)],
+  [
+    'an unknown byte order',
+    concat(ascii('XX'), identifyingTiff(6).subarray(2)),
+  ],
+];
 
 /** Run the stripper and return the joined output, failing unless it stripped. */
 function stripped(input: Uint8Array<ArrayBuffer>): Uint8Array {
@@ -199,17 +213,6 @@ describe('stripImageMetadata', () => {
         ),
       ],
       [
-        'an Exif IFD pointing outside the segment',
-        concat(
-          JPEG_SOI,
-          jpegSegment(
-            0xe1,
-            concat(ascii('Exif\0\0MM'), Uint8Array.of(0, 42, 0x7f, 0, 0, 0)),
-          ),
-          JPEG_IMAGE_DATA,
-        ),
-      ],
-      [
         'an end-of-image marker before any scan',
         concat(JPEG_SOI, jpegExif(identifyingTiff(6)), JPEG_EOI),
       ],
@@ -219,6 +222,22 @@ describe('stripImageMetadata', () => {
         reason: 'malformed',
       });
     });
+    it.each(UNREADABLE_TIFFS)(
+      'drops an Exif segment with %s, keeping everything else',
+      (_label, tiff) => {
+        const input = concat(
+          JPEG_SOI,
+          JPEG_JFIF,
+          jpegExif(tiff),
+          JPEG_ICC,
+          JPEG_IMAGE_DATA,
+        );
+
+        expect(Array.from(stripped(input))).toEqual(
+          Array.from(concat(JPEG_SOI, JPEG_JFIF, JPEG_ICC, JPEG_IMAGE_DATA)),
+        );
+      },
+    );
   });
 
   describe('PNG', () => {
@@ -305,6 +324,25 @@ describe('stripImageMetadata', () => {
       });
     });
 
+    it.each(UNREADABLE_TIFFS)(
+      'drops an eXIf chunk with %s, keeping everything else',
+      (_label, tiff) => {
+        const clean = [PNG_IHDR, PNG_SRGB, PNG_IDAT, PNG_IEND] as const;
+        const input = concat(
+          PNG_SIGNATURE,
+          clean[0],
+          clean[1],
+          pngChunk('eXIf', tiff),
+          clean[2],
+          clean[3],
+        );
+
+        expect(Array.from(stripped(input))).toEqual(
+          Array.from(concat(PNG_SIGNATURE, ...clean)),
+        );
+      },
+    );
+
     it('has a CRC fixture that agrees with the PNG specification', () => {
       expect(fixtureCrc32(ascii('IEND'))).toBe(0xae426082);
     });
@@ -349,6 +387,22 @@ describe('stripImageMetadata', () => {
         reason: 'clean',
       });
     });
+
+    it.each(UNREADABLE_TIFFS)(
+      'drops an EXIF chunk with %s, keeping everything else',
+      (_label, tiff) => {
+        const input = webpFile(
+          vp8x(VP8X_ICC | VP8X_EXIF),
+          WEBP_ICCP,
+          WEBP_VP8L,
+          riffChunk('EXIF', tiff),
+        );
+
+        expect(Array.from(stripped(input))).toEqual(
+          Array.from(webpFile(vp8x(VP8X_ICC), WEBP_ICCP, WEBP_VP8L)),
+        );
+      },
+    );
 
     it('leaves a WebP whose RIFF size overruns the file unchanged', () => {
       const input = identifyingWebp();
@@ -401,6 +455,56 @@ describe('stripImageMetadata', () => {
       expect(out.length).toBe(input.length);
       expectNoIdentifyingMetadata(out);
       expect(containsBytes(out, HEIF_PIXELS)).toBe(true);
+    });
+
+    it('blanks an XMP item whose content type carries parameters', () => {
+      const out = stripped(
+        identifyingHeic({
+          xmpContentType: ' Application/RDF+XML ; charset=utf-8',
+        }),
+      );
+
+      expectNoIdentifyingMetadata(out);
+    });
+
+    it.each(['largesize', 'to-end'] as const)(
+      'follows an mdat whose size is given as %s',
+      (mdatSize) => {
+        const input = identifyingHeic({ mdatSize });
+        const out = stripped(input);
+
+        expect(out.length).toBe(input.length);
+        expectNoIdentifyingMetadata(out);
+        expect(containsBytes(out, HEIF_PIXELS)).toBe(true);
+      },
+    );
+
+    it('leaves a HEIF whose last box is cut short unchanged', () => {
+      const input = identifyingHeic();
+
+      expect(stripImageMetadata(input.slice(0, input.length - 10))).toEqual({
+        kind: 'unchanged',
+        reason: 'malformed',
+      });
+    });
+
+    it('rejects an iloc whose items claim far more extents than its bytes hold, quickly', () => {
+      const input = pathologicalIlocHeic(2_000);
+
+      const started = performance.now();
+      const result = stripImageMetadata(input);
+      const elapsed = performance.now() - started;
+
+      expect(result).toEqual({ kind: 'unchanged', reason: 'malformed' });
+      expect(elapsed).toBeLessThan(100);
+    });
+
+    it('accepts an item split into many extents up to the cap, and no further', () => {
+      expect(stripImageMetadata(manyExtentsHeic(4_096)).kind).toBe('stripped');
+      expect(stripImageMetadata(manyExtentsHeic(4_097))).toEqual({
+        kind: 'unchanged',
+        reason: 'malformed',
+      });
     });
 
     it.each([

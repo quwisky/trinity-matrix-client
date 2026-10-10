@@ -40,6 +40,13 @@ interface Extent {
   readonly length: number;
 }
 
+/**
+ * Upper bound on extents across all items. Real stills (even large grids of tiles) use
+ * one extent per item; the cap keeps the metadata-vs-other-items overlap check, which is
+ * quadratic, cheap on hostile input.
+ */
+const MAX_EXTENTS = 4096;
+
 /** Thrown inside the parser on any structural doubt; never escapes {@link stripHeif}. */
 class Malformed extends Error {}
 
@@ -195,9 +202,10 @@ function metadataItems(bytes: Bytes, iinf: Box): Map<number, 'exif' | 'xmp'> {
     } else if (type === 'mime') {
       const nameEnd = bytes.indexOf(0, at);
       if (nameEnd < 0 || nameEnd >= infe.end) throw new Malformed();
+      // Compare the media type only: "application/rdf+xml; charset=utf-8" is XMP too.
       const contentType = cString(bytes, nameEnd + 1, infe.end);
-      if (contentType.toLowerCase() === 'application/rdf+xml')
-        items.set(id, 'xmp');
+      const mediaType = (contentType.split(';')[0] ?? '').trim().toLowerCase();
+      if (mediaType === 'application/rdf+xml') items.set(id, 'xmp');
     }
   }
   return items;
@@ -224,6 +232,13 @@ function itemLocations(
   at += 2;
   const count = version < 2 ? u16be(bytes, at) : u32be(bytes, at);
   at += version < 2 ? 2 : 4;
+  // Every count is checked against the bytes that would have to hold it before looping,
+  // so a crafted iloc cannot make the parser spin: work stays linear in the box size.
+  const idSize = version < 2 ? 2 : 4;
+  const itemHeader = idSize + (version > 0 ? 2 : 0) + 2 + baseOffsetSize + 2;
+  if (count * itemHeader > iloc.end - at) throw new Malformed();
+  const perExtent = indexSize + offsetSize + lengthSize;
+  let totalExtents = 0;
 
   const locations = new Map<number, Extent[] | null>();
   for (let i = 0; i < count; i++) {
@@ -240,6 +255,15 @@ function itemLocations(
     at += baseOffsetSize;
     const extentCount = u16be(bytes, at);
     at += 2;
+    // Zero-sized fields make every extent read nothing; more than one is then meaningless.
+    if (
+      extentCount > 1 &&
+      (perExtent === 0 || extentCount * perExtent > iloc.end - at)
+    ) {
+      throw new Malformed();
+    }
+    totalExtents += extentCount;
+    if (totalExtents > MAX_EXTENTS) throw new Malformed();
     const extents: Extent[] = [];
     for (let e = 0; e < extentCount; e++) {
       at += indexSize;

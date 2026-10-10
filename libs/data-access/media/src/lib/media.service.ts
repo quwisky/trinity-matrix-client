@@ -242,10 +242,13 @@ export class MediaService {
 
   /**
    * Upload a picked file to the media repo, encrypting it first for E2EE rooms,
-   * and return the descriptor {@link TimelineService} turns into an event. In an
+   * and return the descriptor {@link TimelineService} turns into an event. A JPEG,
+   * PNG, WebP or HEIF image first loses its identifying metadata (location, camera,
+   * capture time; orientation is kept), on the plaintext before any encryption;
+   * anything else, or an image whose structure is in doubt, goes up as picked. In an
    * encrypted room the ciphertext is uploaded with no filename/MIME (those leak),
-   * and `info.url` is filled with the resulting `mxc://`; otherwise the original
-   * file is uploaded as-is. `progress` reports an upload fraction in [0, 1].
+   * and `info.url` is filled with the resulting `mxc://`; otherwise the file itself
+   * is uploaded. `progress` reports an upload fraction in [0, 1].
    * `hints` (from a camera capture) win over the probe, which then fills only
    * what they leave out.
    */
