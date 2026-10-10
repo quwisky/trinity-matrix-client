@@ -124,10 +124,11 @@ const requireText = (page, values) => {
 export const validatePublishedSourceReference = (contentRoot, reference) => {
   const root =
     contentRoot instanceof URL ? fileURLToPath(contentRoot) : contentRoot;
-  const packageVersion = (name) => {
-    const version = reference.packages[name];
-    if (!version) throw new Error(`Source reference has no package ${name}.`);
-    return version;
+  const declaredPackage = (name) => {
+    if (!reference.packages[name]) {
+      throw new Error(`Source reference has no package ${name}.`);
+    }
+    return name;
   };
   const scriptCommand = (name) => {
     if (!reference.scripts[name]) {
@@ -148,21 +149,26 @@ export const validatePublishedSourceReference = (contentRoot, reference) => {
     return name;
   };
 
-  requireText(join(root, 'reference/technology-stack.md'), [
-    reference.node,
-    reference.packageManager.split('@').at(-1),
-    packageVersion('@angular/core'),
-    packageVersion('matrix-js-sdk'),
-    packageVersion('rxjs'),
-    packageVersion('nx'),
-    packageVersion('typescript'),
-    packageVersion('vitest'),
-    packageVersion('@playwright/test'),
-    packageVersion('@capacitor/core'),
-    packageVersion('electron'),
-    packageVersion('astro'),
-    packageVersion('@astrojs/starlight'),
-  ]);
+  // The docs build renders these references from the manifests, so the page keeps the
+  // rows without copying a version that each dependency update would make stale.
+  requireText(
+    join(root, 'reference/technology-stack.md'),
+    [
+      'engines.node',
+      'packageManager',
+      declaredPackage('@angular/core'),
+      declaredPackage('matrix-js-sdk'),
+      declaredPackage('rxjs'),
+      declaredPackage('nx'),
+      declaredPackage('typescript'),
+      declaredPackage('vitest'),
+      declaredPackage('@playwright/test'),
+      declaredPackage('@capacitor/core'),
+      `electron/${declaredPackage('electron')}`,
+      declaredPackage('astro'),
+      declaredPackage('@astrojs/starlight'),
+    ].map((selector) => `\`version:${selector}\``),
+  );
   requireText(
     join(root, 'reference/commands.md'),
     [
