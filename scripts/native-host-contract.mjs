@@ -140,8 +140,16 @@ function withoutComments(source, preserveStrings = false) {
   return result;
 }
 
+// Repeated until nothing changes: one pass over overlapping or nested comments, such as
+// `<!<!-- x -->-- y -->`, can join the pieces of a new `<!--`.
 function withoutXmlComments(source) {
-  return source.replaceAll(/<!--(?:.|\n)*?-->/gu, '');
+  let previous;
+  let result = source;
+  do {
+    previous = result;
+    result = result.replaceAll(/<!--(?:.|\n)*?-->/gu, '');
+  } while (result !== previous);
+  return result;
 }
 
 // Attribute order, quoting and layout are formatting; the contract reads the parsed
