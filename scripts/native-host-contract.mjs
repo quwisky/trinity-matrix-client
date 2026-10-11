@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { JSDOM } from 'jsdom';
 
 const workspaceRoot = join(import.meta.dirname, '..');
+
+const ANDROID_NAMESPACE = 'http://schemas.android.com/apk/res/android';
+const TOOLS_NAMESPACE = 'http://schemas.android.com/tools';
 
 const hosts = {
   android: {
@@ -138,6 +142,30 @@ function withoutComments(source, preserveStrings = false) {
 
 function withoutXmlComments(source) {
   return source.replaceAll(/<!--(?:.|\n)*?-->/gu, '');
+}
+
+// Attribute order, quoting and layout are formatting; the contract reads the parsed
+// <service> elements under <application>. Returns null for a manifest that is not
+// well-formed XML, so callers report that instead of a rule passing vacuously.
+function manifestServices(manifest) {
+  try {
+    const { document } = new JSDOM(manifest, {
+      contentType: 'text/xml',
+    }).window;
+    return [...document.getElementsByTagName('service')]
+      .filter((service) => service.parentElement?.tagName === 'application')
+      .map((service) => ({
+        name: service.getAttributeNS(ANDROID_NAMESPACE, 'name'),
+        node: service.getAttributeNS(TOOLS_NAMESPACE, 'node'),
+        actions: [...service.children]
+          .filter((child) => child.tagName === 'intent-filter')
+          .flatMap((filter) => [...filter.children])
+          .filter((child) => child.tagName === 'action')
+          .map((action) => action.getAttributeNS(ANDROID_NAMESPACE, 'name')),
+      }));
+  } catch {
+    return null;
+  }
 }
 
 function dependsOnProjectTarget(target, project, dependencyTarget) {
@@ -314,21 +342,25 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
   if (withoutComments(input.iosHostController).includes('PushHandoffPlugin')) {
     errors.push('iOS host must not register PushHandoffPlugin by hand');
   }
+  // Mirrors the Capacitor CLI's `^@(?:CapacitorPlugin|NativePlugin)[\s\S]+?class ([\w]+)`
+  // (android/update.js): one space after `class`, never more lenient than the CLI.
   if (
-    !/^@CapacitorPlugin\(name = "PushHandoff"\)\s+public class PushHandoffPlugin extends Plugin\b/mu.test(
+    !/^@CapacitorPlugin\(\s*name\s*=\s*"PushHandoff"\s*\)\s+public\s+class PushHandoffPlugin\s+extends\s+Plugin\b/mu.test(
       withoutComments(input.androidPushPlugin, true),
     )
   ) {
     errors.push('Android PushHandoff plugin must be discoverable by cap sync');
   }
+  // The `@objc(Name)` patterns mirror the CLI's `/@objc\(([A-Za-z0-9_-]+)\)/`
+  // (util/iosplugin.js): no inner whitespace, or cap sync skips the plugin silently.
   const iosPushPlugin = withoutComments(input.iosPushPlugin, true);
   if (
     input.iosPushPlugin.match(/@objc\(([A-Za-z0-9_-]+)\)/u)?.[1] !==
       'PushHandoffPlugin' ||
-    !/@objc\(PushHandoffPlugin\)\s+public class PushHandoffPlugin:\s*CAPPlugin,\s*CAPBridgedPlugin\b/u.test(
+    !/@objc\(PushHandoffPlugin\)\s+public\s+class\s+PushHandoffPlugin\s*:\s*CAPPlugin\s*,\s*CAPBridgedPlugin\b/u.test(
       iosPushPlugin,
     ) ||
-    !iosPushPlugin.includes('public let jsName = "PushHandoff"')
+    !/public\s+let\s+jsName\s*=\s*"PushHandoff"/u.test(iosPushPlugin)
   ) {
     errors.push('iOS PushHandoff plugin must be discoverable by cap sync');
   }
@@ -350,16 +382,17 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
   const pushLibraryManifest = withoutXmlComments(
     input.androidPushLibraryManifest,
   );
-  const declaresMessagingService = (
-    pushLibraryManifest.match(/<service\b[^>]*>(?:.|\n)*?<\/service>/gu) ?? []
-  ).some(
+  const libraryServices = manifestServices(pushLibraryManifest);
+  if (libraryServices === null) {
+    errors.push('Capacitor push library manifest is not well-formed XML');
+  }
+  const declaresMessagingService = (libraryServices ?? []).some(
     (service) =>
-      /android:name="(?:dev\.trinityproject\.trinity\.push)?\.TrinityMessagingService"/u.test(
-        service,
-      ) &&
-      /<action\s+android:name="com\.google\.firebase\.MESSAGING_EVENT"/u.test(
-        service,
-      ),
+      [
+        'dev.trinityproject.trinity.push.TrinityMessagingService',
+        '.TrinityMessagingService',
+      ].includes(service.name) &&
+      service.actions.includes('com.google.firebase.MESSAGING_EVENT'),
   );
   if (!declaresMessagingService) {
     errors.push(
@@ -369,9 +402,16 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
   // The push plugin's own MESSAGING_EVENT service must stay removed here: a merge-rule marker
   // only applies from the higher-priority manifest. Otherwise FCM can deliver to it and
   // closed-app pushes silently stop rendering.
+  const appServices = manifestServices(androidManifest);
+  if (appServices === null) {
+    errors.push('Android host manifest is not well-formed XML');
+  }
   if (
-    !/<service\s[^>]*android:name="com\.capacitorjs\.plugins\.pushnotifications\.MessagingService"[^>]*tools:node="remove"/u.test(
-      androidManifest,
+    !(appServices ?? []).some(
+      (service) =>
+        service.name ===
+          'com.capacitorjs.plugins.pushnotifications.MessagingService' &&
+        service.node === 'remove',
     )
   ) {
     errors.push(
