@@ -223,7 +223,10 @@ every delivered push, by clear-all-data and before a replace sign-in. A handoff 
 never blocks sign-in or sign-out; the replace sign-in waits for it for at most the
 notification cleanup budget. On iOS the accounts live in the shared keychain
 access group `$(AppIdentifierPrefix)dev.trinityproject.trinity.shared` with
-`kSecAttrAccessibleAfterFirstUnlock`, and the rooms in the app-group file
+`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so the tokens stay off other phones restored
+from an encrypted backup (items written with the older `kSecAttrAccessibleAfterFirstUnlock`
+class move over when the app next writes them, at its next start), and the rooms in the
+app-group file
 `push-handoff/rooms.json`. On Android each value is AES-GCM encrypted with a non-exportable
 Android Keystore key and stored in the private preferences file `trinity_push_handoff`
 (`EncryptedSharedPreferences` is deprecated).
