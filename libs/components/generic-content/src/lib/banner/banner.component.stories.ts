@@ -51,6 +51,24 @@ export const Accent: Story = {
   }),
 };
 
+/**
+ * The encryption prompt's shape: two solid actions on the attention surface. They invert to
+ * the on-attention action roles, so each reads as a button with a visible hover and focus.
+ */
+export const AccentActions: Story = {
+  render: () => ({
+    template: `
+      <trn-banner variant="accent">
+        <trn-icon trnBannerIcon name="lock" />
+        Verify this device to read your encrypted messages.
+        <span trnBannerActions>
+          <button trnBtn size="sm">Verify with another device</button>
+          <button trnBtn size="sm">Use recovery key</button>
+        </span>
+      </trn-banner>`,
+  }),
+};
+
 export const LongMessage: Story = {
   // The state a screenshot never covers and a narrow window always finds: the text has to
   // wrap without pushing the actions off the end or crushing the icon.

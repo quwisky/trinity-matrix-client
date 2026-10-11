@@ -118,6 +118,43 @@ describe('TrnButton', () => {
     expect(solidDanger).not.toContain('text-destructive');
   });
 
+  it('inverts a solid primary action only inside an attention surface', () => {
+    const recipe = (
+      variant: TrnButtonVariant,
+      presentation: TrnButtonPresentation,
+    ) => trnButtonRecipe({ presentation, shape: 'label', size: 'sm', variant });
+    const attention = 'in-data-[trn-surface=attention]:';
+    const solidPrimary = recipe('primary', 'solid').split(' ');
+
+    // The accent fill stays the default; the attention classes only add a scoped override.
+    expect(solidPrimary).toContain('bg-primary');
+    expect(solidPrimary).toEqual(
+      expect.arrayContaining([
+        `${attention}bg-[color:var(--trinity-state-attention-action-surface)]`,
+        `${attention}text-[color:var(--trinity-state-attention-action-foreground)]`,
+        `${attention}hover:bg-[color:var(--trinity-state-attention-action-hover-surface)]`,
+        `${attention}focus-visible:ring-offset-[length:var(--trinity-focus-ring-offset)]`,
+        `${attention}focus-visible:ring-offset-[color:var(--trinity-state-attention-surface)]`,
+      ]),
+    );
+    expect(
+      solidPrimary.filter((name) => name.includes('attention-action')),
+    ).toEqual(
+      solidPrimary.filter(
+        (name) =>
+          name.startsWith(attention) && name.includes('attention-action'),
+      ),
+    );
+    for (const [variant, presentation] of [
+      ['secondary', 'solid'],
+      ['danger', 'solid'],
+      ['primary', 'outline'],
+      ['primary', 'ghost'],
+    ] as const) {
+      expect(recipe(variant, presentation)).not.toContain(attention);
+    }
+  });
+
   it('keeps the Helm substrate private while preserving native button semantics', async () => {
     const { container } = await render(HostComponent);
     const button = container.querySelector('button');
