@@ -81,7 +81,10 @@ describe('ApplicationRootComponent', () => {
             avatarMxc: null,
           }),
         }),
-        MockProvider(TrustService, { status: trust.asReadonly() }),
+        MockProvider(TrustService, {
+          status: trust.asReadonly(),
+          recoverySetupElsewhere: signal(false).asReadonly(),
+        }),
         MockProvider(TrustVerificationService, { active: signal(null) }),
         MockProvider(TrnAlertService, { prompt$: prompt, confirm$: confirm }),
         MockProvider(TrnToastService, { show: showToast }),

@@ -24,6 +24,7 @@ async function build(
     backup?: boolean;
     availability?: TrustHealth['availability'];
     cryptoStoreEncrypted?: boolean | null;
+    identityElsewhere?: boolean;
   } = {},
   over: {
     exportRoomKeys?: Mock;
@@ -36,6 +37,7 @@ async function build(
     status: opts.status === 'unknown' ? 'ready' : (opts.status ?? 'ready'),
     keyBackupActive: opts.backup ?? false,
     thisDeviceVerified: opts.verified ?? false,
+    identityElsewhere: opts.identityElsewhere ?? false,
   } as const;
   const health: TrustHealth =
     opts.availability === 'unavailable'
@@ -64,6 +66,11 @@ async function build(
         ).asReadonly(),
         thisDeviceVerified: signal(
           health.current?.thisDeviceVerified ?? null,
+        ).asReadonly(),
+        recoverySetupElsewhere: signal(
+          health.current?.status === 'needs-setup' &&
+            health.current.thisDeviceVerified &&
+            health.current.identityElsewhere,
         ).asReadonly(),
         exportRoomKeys,
         importRoomKeys,
@@ -100,7 +107,88 @@ function fileEvent(text?: string): Event {
   return { target: { files, value: '' } } as unknown as Event;
 }
 
+/** Click a control by its test id, as the user would. */
+function click(container: Element, testId: string): void {
+  const button = container.querySelector<HTMLElement>(
+    `[data-testid=${testId}]`,
+  );
+  expect(button).not.toBeNull();
+  button?.click();
+}
+
 describe('SecuritySectionComponent', () => {
+  it('offers verification and an explicit reset when the identity lives elsewhere', async () => {
+    const { container, open } = await build({
+      status: 'needs-verification',
+    });
+
+    expect(
+      container.querySelector('[data-testid=security-needs-verification]'),
+    ).not.toBeNull();
+    expect(container.querySelector('[data-testid=security-setup]')).toBeNull();
+    // One label per action, the same words the rooms banner uses.
+    expect(
+      container
+        .querySelector('[data-testid=security-verify-device]')
+        ?.textContent?.trim(),
+    ).toBe('Verify with another device');
+    expect(
+      container
+        .querySelector('[data-testid=security-reset-identity]')
+        ?.textContent?.trim(),
+    ).toBe('Reset my identity');
+    // The card leads with the verify action; the session group must not repeat it.
+    expect(
+      [...container.querySelectorAll('button')].filter(
+        (b) => b.textContent?.trim() === 'Verify with another device',
+      ),
+    ).toHaveLength(1);
+    expect(container.querySelector('[data-testid=security-verify]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid=security-session]')?.textContent,
+    ).toContain('This session isn’t verified yet.');
+
+    click(container, 'security-verify-device');
+    expect(open).toHaveBeenLastCalledWith({
+      surface: { kind: 'trust', flow: 'verify' },
+      context: { returnTo: { kind: 'settings', section: 'security' } },
+    });
+
+    click(container, 'security-reset-identity');
+    expect(open).toHaveBeenLastCalledWith({
+      surface: { kind: 'trust', flow: 'unlock' },
+      context: {
+        returnTo: { kind: 'settings', section: 'security' },
+        offerReset: true,
+      },
+    });
+  });
+
+  it('points a verified device without the keys to the other device instead of setup', async () => {
+    const { container, open } = await build({
+      status: 'needs-setup',
+      verified: true,
+      identityElsewhere: true,
+    });
+
+    expect(
+      container.querySelector('[data-testid=security-setup-elsewhere]')
+        ?.textContent,
+    ).toContain(
+      'Set up recovery on the device where you first set up encryption.',
+    );
+    expect(container.querySelector('[data-testid=security-setup]')).toBeNull();
+
+    click(container, 'security-reset-identity');
+    expect(open).toHaveBeenLastCalledWith({
+      surface: { kind: 'trust', flow: 'unlock' },
+      context: {
+        returnTo: { kind: 'settings', section: 'security' },
+        offerReset: true,
+      },
+    });
+  });
+
   it('offers setup when encryption needs setting up', async () => {
     const { container, cmp, open } = await build({ status: 'needs-setup' });
     expect(
@@ -143,6 +231,9 @@ describe('SecuritySectionComponent', () => {
       '[data-testid=security-reset-recovery]',
     );
     expect(lost).not.toBeNull();
+    // A quiet door to the same reset as "Reset my identity", so it shares the danger tone.
+    expect(lost?.getAttribute('variant')).toBe('danger');
+    expect(lost?.getAttribute('presentation')).toBe('ghost');
 
     lost?.click();
 
@@ -213,9 +304,46 @@ describe('SecuritySectionComponent', () => {
     expect(container.textContent).toContain('backed up to the server');
   });
 
-  it('reflects key backup being off', async () => {
-    const { container } = await build({ backup: false });
-    expect(container.textContent).toContain('Key backup is off');
+  it('reflects key backup being off and offers recovery setup', async () => {
+    const { container } = await build({ status: 'needs-setup', backup: false });
+    expect(
+      container.querySelector('[data-testid=security-backup]')?.textContent,
+    ).toContain(
+      'Key backup is off — set up recovery to back up your message keys.',
+    );
+  });
+
+  it('points key backup to the original device when the identity lives elsewhere', async () => {
+    const { container } = await build({
+      status: 'needs-verification',
+      backup: false,
+    });
+    const backup =
+      container.querySelector('[data-testid=security-backup]')?.textContent ??
+      '';
+    expect(backup).toContain('Key backup is off.');
+    expect(backup).toContain(
+      'Set up recovery on the device where you first set up encryption.',
+    );
+    expect(backup).not.toContain('back up your message keys');
+  });
+
+  it('points key backup to the original device for a verified device without the keys', async () => {
+    // needs-setup here only because the device is verified; setup would still replace
+    // the identity the other device holds, so the backup line must not invite it.
+    const { container } = await build({
+      status: 'needs-setup',
+      verified: true,
+      identityElsewhere: true,
+      backup: false,
+    });
+    const backup =
+      container.querySelector('[data-testid=security-backup]')?.textContent ??
+      '';
+    expect(backup).toContain(
+      'Set up recovery on the device where you first set up encryption.',
+    );
+    expect(backup).not.toContain('back up your message keys');
   });
 
   it('labels stale Trust and offers no actions that infer current state', async () => {

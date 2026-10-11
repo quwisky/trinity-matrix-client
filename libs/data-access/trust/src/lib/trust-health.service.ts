@@ -9,16 +9,27 @@ import {
 } from '@trinity/data-access/matrix-client';
 import type { ProjectionReconcileContext } from '@trinity/runtime/projection';
 import { recoverTrustOperation } from './trust-operation-error';
+import { readTrustSnapshot } from './trust-snapshot';
 
-/** Where this device stands relative to the Account's encryption setup. */
+/**
+ * Where this device stands relative to the Account's encryption setup.
+ * `needs-verification`: the Account has an identity published elsewhere and no recovery;
+ * only verifying with a device that holds it (or an explicit reset) helps.
+ */
 export type TrustStatus =
-  'unknown' | 'ready' | 'needs-setup' | 'needs-recovery';
+  'unknown' | 'ready' | 'needs-setup' | 'needs-recovery' | 'needs-verification';
 
 /** One coherent read of the active Account's authoritative crypto state. */
 export interface TrustHealthSnapshot {
   readonly status: Exclude<TrustStatus, 'unknown'>;
   readonly keyBackupActive: boolean;
   readonly thisDeviceVerified: boolean;
+  /**
+   * The Account has no recovery and its published identity's private keys are on
+   * another device, not this one. Local-only, like the `needs-verification` decision;
+   * false whenever recovery exists or the device is ready.
+   */
+  readonly identityElsewhere: boolean;
 }
 
 /**
@@ -62,6 +73,18 @@ export class TrustHealthService {
   readonly thisDeviceVerified = computed(
     () => this.health().current?.thisDeviceVerified ?? null,
   );
+  /**
+   * This device is verified but setup would replace the identity another device holds,
+   * so recovery can only be set up there (or the identity explicitly reset).
+   */
+  readonly recoverySetupElsewhere = computed(() => {
+    const current = this.health().current;
+    return (
+      current?.status === 'needs-setup' &&
+      current.thisDeviceVerified &&
+      current.identityElsewhere
+    );
+  });
 
   /** Monotonic token so a slow status run cannot overwrite a newer one. */
   // Guards reconcileProjection (a reconcile superseded within one projection generation;
@@ -166,30 +189,7 @@ export class TrustHealthService {
     client: TrustMatrixClient | null,
     crypto: TrustCryptoApi | null,
   ): Promise<TrustHealthSnapshot | null> {
-    if (!client || !crypto) return null;
-    const [crossSigningReady, secretStorageReady, backupVersion, defaultKeyId] =
-      await Promise.all([
-        crypto.isCrossSigningReady(),
-        crypto.isSecretStorageReady(),
-        crypto.getActiveSessionBackupVersion(),
-        client.secretStorage.getDefaultKeyId(),
-      ]);
-    const deviceId = client.getDeviceId();
-    const userId = client.getUserId();
-    const deviceStatus =
-      userId && deviceId
-        ? await crypto.getDeviceVerificationStatus(userId, deviceId)
-        : null;
-    return {
-      keyBackupActive: backupVersion !== null,
-      thisDeviceVerified: deviceStatus?.crossSigningVerified ?? false,
-      status:
-        crossSigningReady && secretStorageReady
-          ? 'ready'
-          : defaultKeyId
-            ? 'needs-recovery'
-            : 'needs-setup',
-    };
+    return client && crypto ? readTrustSnapshot(client, crypto) : null;
   }
 
   private publishSnapshot(snapshot: TrustHealthSnapshot | null): void {

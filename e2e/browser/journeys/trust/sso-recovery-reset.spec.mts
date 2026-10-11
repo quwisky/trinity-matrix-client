@@ -96,7 +96,7 @@ test.describe('Recovery reset on an SSO account', () => {
     //  - deep-linking to the provider → the other message, wrong for legacy SSO, where
     //    there is no account-management URL to deep-link to.
     await expect(page.getByTestId('unlock-error')).toContainText(
-      'Your identity provider has to reset encryption for this account',
+      'Your identity provider has to reset your identity for this account',
       { timeout: 60_000 },
     );
 

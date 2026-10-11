@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionBannerComponent } from './encryption-banner.component';
 
 const status = signal<TrustStatus>('unknown');
+const setupElsewhere = signal(false);
 const slot = signal<'status' | 'encryption' | null>('encryption');
 const open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
   of({ kind: 'presented' as const, surface: request.surface }),
@@ -21,7 +22,10 @@ const open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
 function renderBanner() {
   return render(EncryptionBannerComponent, {
     providers: [
-      MockProvider(TrustService, { status: status.asReadonly() }),
+      MockProvider(TrustService, {
+        status: status.asReadonly(),
+        recoverySetupElsewhere: setupElsewhere.asReadonly(),
+      }),
       MockProvider(WorkspaceApplicationSurfaceService, { open }),
       {
         provide: WORKSPACE_SYSTEM_STATUS,
@@ -37,6 +41,7 @@ function renderBanner() {
 
 beforeEach(() => {
   status.set('unknown');
+  setupElsewhere.set(false);
   slot.set('encryption');
   open.mockClear();
 });
@@ -105,7 +110,7 @@ describe('EncryptionBannerComponent', () => {
     const labels = [...container.querySelectorAll('button')].map(
       (b: HTMLElement) => b.textContent?.trim(),
     );
-    expect(labels).toEqual(['Use recovery key', 'Verify another device']);
+    expect(labels).toEqual(['Use recovery key', 'Verify with another device']);
   });
 
   it('opens unlock and verify through the same semantic presenter', async () => {
@@ -113,12 +118,51 @@ describe('EncryptionBannerComponent', () => {
     const { container } = await renderBanner();
 
     clickAction(container, 'Use recovery key');
-    clickAction(container, 'Verify another device');
+    clickAction(container, 'Verify with another device');
     expect(open).toHaveBeenNthCalledWith(1, {
       surface: { kind: 'trust', flow: 'unlock' },
     });
     expect(open).toHaveBeenNthCalledWith(2, {
       surface: { kind: 'trust', flow: 'verify' },
+    });
+  });
+
+  it('offers verification, never setup, when the identity lives on another device', async () => {
+    status.set('needs-verification');
+    const { container } = await renderBanner();
+
+    expect(container.querySelector('trn-banner')?.textContent).toContain(
+      'verify it with one of your other devices',
+    );
+    const labels = [...container.querySelectorAll('trn-banner button')].map(
+      (button) => button.textContent?.trim(),
+    );
+    expect(labels).toEqual(['Verify with another device']);
+
+    clickAction(container, 'Verify with another device');
+    expect(open).toHaveBeenCalledWith({
+      surface: { kind: 'trust', flow: 'verify' },
+    });
+  });
+
+  it('sends a verified device to the other device for recovery, never to setup', async () => {
+    status.set('needs-setup');
+    setupElsewhere.set(true);
+    const { container } = await renderBanner();
+
+    expect(container.querySelector('trn-banner')?.textContent).toContain(
+      'Set up recovery on the device where you first set up encryption.',
+    );
+    // The banner cannot be dismissed, so its only action must not be destructive: the
+    // reset stays in Security settings, behind its typed confirmation.
+    const labels = [...container.querySelectorAll('trn-banner button')].map(
+      (button) => button.textContent?.trim(),
+    );
+    expect(labels).toEqual(['Security settings']);
+
+    clickAction(container, 'Security settings');
+    expect(open).toHaveBeenCalledExactlyOnceWith({
+      surface: { kind: 'settings', section: 'security' },
     });
   });
 });
