@@ -1,5 +1,5 @@
 import { Injectable, type Signal } from '@angular/core';
-import { defer, from, map, type Observable } from 'rxjs';
+import { defer, from, map, timeout, type Observable } from 'rxjs';
 import type { RoomWidget, WidgetEmbed } from './widget.model';
 
 export type WidgetBridgeState =
@@ -9,6 +9,10 @@ export interface WidgetBridgeSession {
   readonly state: Signal<WidgetBridgeState>;
   stop(): void;
 }
+
+// The runtime chunk is ~125 kB raw (~20 kB brotli), so 20 s is generous even on slow mobile.
+// It precedes, and is separate from, the handshake timer that starts once the bridge exists.
+export const WIDGET_RUNTIME_LOAD_TIMEOUT_MS = 20_000;
 
 @Injectable({ providedIn: 'root' })
 export class WidgetBridgeService {
@@ -30,6 +34,8 @@ export class WidgetBridgeService {
     return defer(() => {
       const url = validatedEmbedUrl(widget, embed);
       return from(import('./widget-bridge-runtime')).pipe(
+        // Unsubscribing on timeout drops a late chunk before it can bind anything.
+        timeout(WIDGET_RUNTIME_LOAD_TIMEOUT_MS),
         map(({ startWidgetBridge }) => {
           this.active?.stop();
           const session = startWidgetBridge(
