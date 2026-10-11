@@ -40,6 +40,9 @@ export default defineConfig({
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
       testMatch: ['**/*.webkit.spec.mts', '**/tooltip-input.spec.mts'],
+      // Parallel WebKit pages exhaust a local VM's paravirtualized GPU and reset it,
+      // taking down other Metal apps; CI runners keep the suite-wide limit.
+      ...(process.env['CI'] ? {} : { workers: 1 }),
     },
   ],
 });
