@@ -216,7 +216,8 @@
   // `:has(:focus)` rather than `:focus-within`: an action-capable row is itself focusable
   // (#958), and a mouse click that focuses the row must not pin its bar open. Keyboard focus
   // on the row shows it via `:focus-visible`; focus on a control inside it still does.
-  .msg:is(:hover, :focus-visible, :has(:focus), .msg--revealed) .msg__toolbar {
+  .msg:is(:hover, :focus-visible, :has(:focus), .msg--revealed, .msg--menu-open)
+    .msg__toolbar {
     opacity: 1;
     pointer-events: auto;
   }

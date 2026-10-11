@@ -74,6 +74,7 @@ let nextPickerId = 0;
   host: {
     '(pointerenter)': 'placeToolbar()',
     '(focusin)': 'placeToolbar()',
+    '(document:pointerdown)': 'onDocumentPointerDown($event)',
     '[class.toolbar-host--picker-below]': 'pickerBelow()',
   },
   imports: [
@@ -99,8 +100,10 @@ export class MessageToolbarComponent {
   });
   readonly action = output<MessageAction>();
   /**
-   * Whether the overflow menu is open. The menu lives in an overlay outside the row, so the
-   * row needs this to keep the (lazily mounted) toolbar alive until the menu closes.
+   * Whether the quick reactions or the overflow menu is open. Both reach outside the row
+   * (the reactions above or below the bar, the menu in an overlay), and the pointer can leave
+   * the row on its way to them, so the row needs this to keep the lazily mounted toolbar
+   * mounted and visible until they close.
    */
   readonly menuOpenChange = output<boolean>();
 
@@ -115,6 +118,8 @@ export class MessageToolbarComponent {
   readonly quickEmojis = QUICK_EMOJIS;
   readonly pickerOpen = signal(false);
   readonly pickerBelow = signal(false);
+  private readonly overflowOpen = signal(false);
+  private reportedOpen = false;
   /** Unique id linking the reaction toggle to its picker via aria-controls. */
   readonly pickerId = `trn-reaction-picker-${nextPickerId++}`;
 
@@ -140,12 +145,39 @@ export class MessageToolbarComponent {
    */
   togglePicker(): void {
     if (this.pickerOpen()) {
-      this.pickerOpen.set(false);
+      this.setPickerOpen(false);
       return;
     }
 
-    this.pickerOpen.set(true);
+    this.setPickerOpen(true);
     requestAnimationFrame(() => this.placePicker());
+  }
+
+  setPickerOpen(open: boolean): void {
+    this.pickerOpen.set(open);
+    this.reportOpen();
+  }
+
+  setOverflowOpen(open: boolean): void {
+    this.overflowOpen.set(open);
+    this.reportOpen();
+  }
+
+  /** Leaving the row no longer closes quick reactions, so a click anywhere else does. */
+  onDocumentPointerDown(event: Event): void {
+    if (
+      this.pickerOpen() &&
+      !this.element.nativeElement.contains(event.target as Node)
+    ) {
+      this.setPickerOpen(false);
+    }
+  }
+
+  private reportOpen(): void {
+    const open = this.pickerOpen() || this.overflowOpen();
+    if (open === this.reportedOpen) return;
+    this.reportedOpen = open;
+    this.menuOpenChange.emit(open);
   }
 
   /** Clamp the raised toolbar to the real upper clipping edge before it is shown. */
@@ -194,12 +226,12 @@ export class MessageToolbarComponent {
 
   pick(emoji: string): void {
     this.action.emit({ type: 'react', key: emoji });
-    this.pickerOpen.set(false);
+    this.setPickerOpen(false);
   }
 
   /** Escalate from the quick set to the full emoji picker (handled by the host). */
   pickMore(): void {
     this.action.emit({ type: 'react-more' });
-    this.pickerOpen.set(false);
+    this.setPickerOpen(false);
   }
 }
