@@ -41,4 +41,12 @@ export interface PushHandoffPlugin {
    * configured (`register()` would crash the app otherwise); iOS always.
    */
   registrationAvailable(): Promise<{ value: boolean }>;
+  /**
+   * Asks the OS to keep the app running in the background until `endBackgroundWork`, or until
+   * the OS ends the time it granted. iOS only (`beginBackgroundTask`); Android holds nothing
+   * and answers `id: 0`.
+   */
+  beginBackgroundWork(): Promise<{ id: number }>;
+  /** Releases what `beginBackgroundWork` returned; an unknown or ended `id` is a no-op. */
+  endBackgroundWork(options: { id: number }): Promise<void>;
 }

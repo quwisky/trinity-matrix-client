@@ -2042,6 +2042,28 @@ describe('OAuth tokens through a real MatrixClient', () => {
     expectStillSignedIn(svc, client);
   });
 
+  it('disarms the grant bound once the provider has answered', async () => {
+    fakeNetwork('rotate');
+    const { client } = await startReal();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      await expect(client.http.refreshOAuthTokens()).resolves.toBe(true);
+      const grant = vi
+        .mocked(globalThis.fetch)
+        .mock.calls.find(
+          ([input]) => String(input) === METADATA.token_endpoint,
+        );
+      const signal = grant?.[1]?.signal;
+      expect(signal).toBeInstanceOf(AbortSignal);
+
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(signal?.aborted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('joins a refresh already in flight instead of starting another', async () => {
     const net = fakeNetwork('rotate');
     const { svc, client } = await startReal();

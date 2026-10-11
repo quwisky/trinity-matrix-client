@@ -63,7 +63,8 @@ export class NotificationSessionService {
   /**
    * Each time the app goes to the background, refresh OAuth access tokens, so the copy the
    * closed-app renderers read lives a full lifetime from then. A refresh still running when
-   * the app leaves again is not doubled. Best effort: a failure never ends the session.
+   * the app leaves again is not doubled; the handoff bounds each run, so a hung one never
+   * holds off the next. Best effort: a failure never ends the session.
    */
   private refreshTokensOnBackground(): Observable<never> {
     return this.lifecycle.events.pipe(

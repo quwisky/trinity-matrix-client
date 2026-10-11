@@ -70,6 +70,25 @@ export class PushHandoffBridge {
     );
   }
 
+  /**
+   * Cold. Asks the OS to keep the app running in the background until
+   * {@link endBackgroundWork}, and emits the id to end it with. iOS holds background time;
+   * Android and hosts without the plugin hold nothing and emit 0. Errors when the native side
+   * failed to answer.
+   */
+  beginBackgroundWork(): Observable<number> {
+    return defer(() =>
+      this.available
+        ? from(pushHandoff.beginBackgroundWork()).pipe(map(({ id }) => id))
+        : of(0),
+    );
+  }
+
+  /** Cold. Ends what {@link beginBackgroundWork} began; an unknown or ended id is a no-op. */
+  endBackgroundWork(id: number): Observable<void> {
+    return this.call(() => pushHandoff.endBackgroundWork({ id }));
+  }
+
   private call(command: () => Promise<void>): Observable<void> {
     return defer(() => (this.available ? from(command()) : of(void 0)));
   }

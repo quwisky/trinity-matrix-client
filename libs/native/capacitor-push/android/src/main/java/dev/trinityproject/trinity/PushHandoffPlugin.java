@@ -129,4 +129,21 @@ public class PushHandoffPlugin extends Plugin {
         result.put("value", !FirebaseApp.getApps(getContext()).isEmpty());
         call.resolve(result);
     }
+
+    /**
+     * iOS holds background run time here; Android has no equivalent the web layer needs, so this
+     * holds nothing and answers id 0.
+     */
+    @PluginMethod
+    public void beginBackgroundWork(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("id", 0);
+        call.resolve(result);
+    }
+
+    /** Nothing was held by beginBackgroundWork, so there is nothing to end. */
+    @PluginMethod
+    public void endBackgroundWork(PluginCall call) {
+        call.resolve();
+    }
 }

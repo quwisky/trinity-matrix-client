@@ -1,12 +1,14 @@
 import Capacitor
 import TrinityPush
+import UIKit
 import UserNotifications
 
 /**
  * Writes the push handoff store the NotificationService extension reads: each account's
  * homeserver, access token (with its expiry, when it has one) and sound choice, and its room
  * names. PushHandoffService in data-access/notifications is the only caller (debug builds add
- * renderProbe for the e2e suite). Never logs what it stores.
+ * renderProbe for the e2e suite), and it also holds background run time through it while a
+ * token refresh reaches the store. Never logs what it stores.
  *
  * Without a store (a build lacking the app group), removing and clearing resolve, since there
  * is nothing to remove, so sign-out and clear-all-data never wait on it; writes reject.
@@ -28,6 +30,8 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
             CAPPluginMethod(name: "clear", returnType: CAPPluginReturnPromise),
             CAPPluginMethod(name: "clearRoom", returnType: CAPPluginReturnPromise),
             CAPPluginMethod(name: "registrationAvailable", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "beginBackgroundWork", returnType: CAPPluginReturnPromise),
+            CAPPluginMethod(name: "endBackgroundWork", returnType: CAPPluginReturnPromise),
         ]
         #if DEBUG
         methods.append(CAPPluginMethod(name: "renderProbe", returnType: CAPPluginReturnPromise))
@@ -35,6 +39,8 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
         return methods
     }()
     private let store = PushHandoffStore.fromMainBundle()
+    /// Background tasks begun and not yet ended. Main thread only.
+    private var backgroundTasks = Set<UIBackgroundTaskIdentifier>()
 
     @objc func setAccount(_ call: CAPPluginCall) {
         guard let store else {
@@ -166,6 +172,41 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
     /// configured and the APNs token otherwise, and neither path can crash the app.
     @objc func registrationAvailable(_ call: CAPPluginCall) {
         call.resolve(["value": true])
+    }
+
+    /// Ask iOS for background run time, so a token refresh begun as the app leaves can reach
+    /// the store before the app is suspended. Resolves the task's identifier for
+    /// endBackgroundWork; when iOS ends the granted time first, the task ends itself.
+    @objc func beginBackgroundWork(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            var task = UIBackgroundTaskIdentifier.invalid
+            task = UIApplication.shared.beginBackgroundTask(withName: "Trinity token refresh") {
+                self.endBackgroundTask(task)
+            }
+            if task != .invalid {
+                self.backgroundTasks.insert(task)
+            }
+            call.resolve(["id": task.rawValue])
+        }
+    }
+
+    /// End background run time that beginBackgroundWork began. An unknown or already ended
+    /// identifier is a no-op.
+    @objc func endBackgroundWork(_ call: CAPPluginCall) {
+        guard let id = call.getInt("id") else {
+            call.reject("Must provide id")
+            return
+        }
+        DispatchQueue.main.async {
+            self.endBackgroundTask(UIBackgroundTaskIdentifier(rawValue: id))
+            call.resolve()
+        }
+    }
+
+    /// Main thread only. Ends `task` once, whether the app or iOS asks first.
+    private func endBackgroundTask(_ task: UIBackgroundTaskIdentifier) {
+        guard backgroundTasks.remove(task) != nil else { return }
+        UIApplication.shared.endBackgroundTask(task)
     }
 
     #if DEBUG

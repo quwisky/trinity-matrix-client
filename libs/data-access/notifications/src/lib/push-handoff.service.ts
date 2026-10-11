@@ -16,13 +16,19 @@ import {
 import {
   Observable,
   catchError,
+  concat,
   defaultIfEmpty,
   defer,
+  finalize,
+  firstValueFrom,
   forkJoin,
   from,
+  ignoreElements,
   lastValueFrom,
   map,
   of,
+  switchMap,
+  timeout,
 } from 'rxjs';
 import {
   LEGACY_NOTIFICATION_SOUND_EVENT,
@@ -35,6 +41,22 @@ import {
  * background: the refresh would add less than this to its life and cost a rotation.
  */
 export const BACKGROUND_REFRESH_MIN_AGE_MS = 60_000;
+
+/**
+ * How long the background refresh waits for each account's refresh, and then for the store
+ * writes they queued. A refresh the OS suspends mid-flight can hang: past this bound the
+ * action completes without it, so the next background event refreshes again, while the
+ * request itself stays with the SDK until the patched SDK's 30 s grant bound aborts it. Half
+ * the roughly 30 s of background time iOS grants.
+ */
+export const BACKGROUND_REFRESH_TIMEOUT_MS = 15_000;
+
+/**
+ * When the whole background refresh run gives up, from asking for background time to
+ * releasing it: the refresh bound and the write bound together, the begin included, never
+ * outlast the roughly 30 s of background time iOS grants.
+ */
+export const BACKGROUND_RUN_DEADLINE_MS = 25_000;
 
 /** One live account's listeners and what was last written for its rooms. */
 interface HandoffBinding {
@@ -138,8 +160,11 @@ export class PushHandoffService {
    * the copy the closed-app renderers read lives a full lifetime from now. Run as the app
    * goes to the background. Skips an account whose token rotated within
    * {@link BACKGROUND_REFRESH_MIN_AGE_MS}. Each new token reaches the store as an ordinary
-   * rotation. Cold; emits once and completes; never errors and never signs anything out.
-   * Inert off native mobile.
+   * rotation. While any account is due, holds background run time (iOS) until the refreshes
+   * have finished or given up after {@link BACKGROUND_REFRESH_TIMEOUT_MS} and the store
+   * writes they queued have landed, and always releases it; the whole run ends by
+   * {@link BACKGROUND_RUN_DEADLINE_MS}. Cold; emits once and completes;
+   * never errors and never signs anything out. Inert off native mobile.
    */
   refreshBeforeBackground(): Observable<void> {
     return defer(() => {
@@ -160,16 +185,25 @@ export class PushHandoffService {
           ? []
           : [userId];
       });
-      return forkJoin(
-        due.map((userId) =>
-          this.matrix
-            .refreshAccessToken(userId)
-            .pipe(catchError(() => of(false))),
+      if (due.length === 0) return of(void 0);
+      const refreshed = defer(() =>
+        forkJoin(
+          due.map((userId) =>
+            this.matrix.refreshAccessToken(userId).pipe(
+              timeout({
+                first: BACKGROUND_REFRESH_TIMEOUT_MS,
+                with: () => of(false),
+              }),
+              catchError(() => of(false)),
+            ),
+          ),
         ),
       ).pipe(
+        // A rotation queues its store write before its refresh resolves; wait for it to land.
+        switchMap(() => this.drained()),
         map(() => void 0),
-        defaultIfEmpty(void 0),
       );
+      return this.holdingBackgroundTime(refreshed);
     });
   }
 
@@ -293,6 +327,51 @@ export class PushHandoffService {
 
   private isRetired(userId: string, client: MatrixClient): boolean {
     return this.retired.get(userId)?.has(client) ?? false;
+  }
+
+  /**
+   * Run `work` while the OS keeps the app running in the background: begin, run `work`,
+   * then end, and complete once the end has landed. The whole run, the begin included, is
+   * cut off at {@link BACKGROUND_RUN_DEADLINE_MS}. Work runs without background time when the
+   * host could not grant it.
+   */
+  private holdingBackgroundTime(work: Observable<void>): Observable<void> {
+    return defer(() => {
+      let ended = false;
+      const begun = firstValueFrom(this.bridge.beginBackgroundWork()).catch(
+        () => undefined,
+      );
+      const end = (id: number | undefined): Observable<void> =>
+        defer(() => {
+          if (ended || id === undefined) return of(void 0);
+          ended = true;
+          return this.bridge
+            .endBackgroundWork(id)
+            .pipe(catchError(() => of(void 0)));
+        }).pipe(defaultIfEmpty(void 0));
+      return from(begun).pipe(
+        switchMap((id) => concat(work.pipe(ignoreElements()), end(id))),
+        timeout({ first: BACKGROUND_RUN_DEADLINE_MS, with: () => of(void 0) }),
+        finalize(() => {
+          // Past the deadline, on an error or on unsubscription the stream can no longer
+          // carry the end, and the begin may not have answered yet: end once it does.
+          if (ended) return;
+          void begun
+            .then((id) => lastValueFrom(end(id), { defaultValue: undefined }))
+            .catch(() => undefined);
+        }),
+      );
+    });
+  }
+
+  /** Completes once every bridge call queued so far has settled, or after the bound. */
+  private drained(): Observable<void> {
+    return defer(() => from(this.tail)).pipe(
+      timeout({
+        first: BACKGROUND_REFRESH_TIMEOUT_MS,
+        with: () => of(void 0),
+      }),
+    );
   }
 
   private schedule(operation: () => Observable<void>): Promise<void> {

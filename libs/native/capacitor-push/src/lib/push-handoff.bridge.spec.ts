@@ -11,6 +11,8 @@ const plugin = vi.hoisted(() => ({
   clear: vi.fn(),
   clearRoom: vi.fn(),
   registrationAvailable: vi.fn(),
+  beginBackgroundWork: vi.fn(),
+  endBackgroundWork: vi.fn(),
 }));
 // Recorded outside the mock: the registration happens once at import, and the runner clears
 // mock call history before each test.
@@ -43,6 +45,7 @@ describe('PushHandoffBridge', () => {
       method.mockReset().mockResolvedValue(undefined);
     }
     plugin.registrationAvailable.mockResolvedValue({ value: true });
+    plugin.beginBackgroundWork.mockResolvedValue({ id: 42 });
   });
 
   it('registers the native plugin under the name both hosts export', () => {
@@ -68,6 +71,8 @@ describe('PushHandoffBridge', () => {
     await firstValueFrom(handoff.clear());
     await firstValueFrom(handoff.clearRoom('@me:hs', '!a:hs'));
     expect(await firstValueFrom(handoff.registrationAvailable())).toBe(false);
+    expect(await firstValueFrom(handoff.beginBackgroundWork())).toBe(0);
+    await firstValueFrom(handoff.endBackgroundWork(0));
     expect(Object.values(plugin).some((m) => m.mock.calls.length > 0)).toBe(
       false,
     );
@@ -158,5 +163,23 @@ describe('PushHandoffBridge', () => {
     await expect(
       firstValueFrom(handoff.registrationAvailable()),
     ).rejects.toThrow('no Firebase');
+  });
+
+  it('begins and ends background work with the id the native host returned', async () => {
+    isNative.mockReturnValue(true);
+    isAvailable.mockReturnValue(true);
+    const handoff = bridge();
+
+    const id = await firstValueFrom(handoff.beginBackgroundWork());
+    await firstValueFrom(handoff.endBackgroundWork(id));
+
+    expect(id).toBe(42);
+    expect(plugin.beginBackgroundWork).toHaveBeenCalledOnce();
+    expect(plugin.endBackgroundWork).toHaveBeenCalledWith({ id: 42 });
+
+    plugin.beginBackgroundWork.mockRejectedValue(new Error('no main thread'));
+    await expect(firstValueFrom(handoff.beginBackgroundWork())).rejects.toThrow(
+      'no main thread',
+    );
   });
 });

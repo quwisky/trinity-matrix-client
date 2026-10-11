@@ -242,15 +242,27 @@ the SDK's own token manager (`client.http.refreshOAuthTokens()`, added by
 `patches/matrix-js-sdk@43.0.0.patch`). It therefore joins a refresh already in flight,
 persists the pair before the SDK adopts it and reaches the store as an ordinary rotation. The
 app stays the only process that rotates tokens. A refused refresh signs nothing out at that
-moment; the account's next request meets the refusal and takes the usual path. The refresh
-is not proven to finish before the OS suspends the app, and an interrupted one can leave
-three things behind.
+moment; the account's next request meets the refusal and takes the usual path.
+
+The run is bounded. `BACKGROUND_REFRESH_TIMEOUT_MS` (15 s) caps each account's refresh, and
+then the wait for the store writes it queued; past it the run completes without that account,
+so the next background event refreshes again. `BACKGROUND_RUN_DEADLINE_MS` (25 s) cuts off the
+whole run, asking for background time included, so the worst case is about 25 s. While any
+account is due, the run holds iOS background time (`PushHandoff.beginBackgroundWork`,
+`UIApplication.beginBackgroundTask`) from before the refreshes until the rotation's native
+write has landed or a bound has passed. It completes only once the release has landed, and
+still releases on error, unsubscription or a late grant; the task ends itself if iOS ends the
+granted time first. Android holds nothing, and a run with no account due asks for nothing.
+The refresh is still not proven to finish before the OS suspends the app: iOS can end
+background time early, and Android can freeze or stop a backgrounded app. An interrupted
+refresh can leave three things behind.
 
 - Interrupted native write. If the server rotated but the native store write never ran,
   the store still holds the previous token with its previous expiry. The forced refresh
   revoked that token, so pushes for the account read "New message" only until that old
   expiry passes: at most one token lifetime, about 5 minutes on MAS defaults. After that
-  they read "Open Trinity to read this message".
+  they read "Open Trinity to read this message". Holding iOS background time until the write
+  lands narrows this window but does not close it.
 - Spent refresh token. This does not need the process to die. If the refresh grant's
   response is lost, for example because the connection is cut as the OS suspends the app,
   the app keeps the spent refresh token in memory and in storage, and the next refresh
@@ -259,11 +271,15 @@ three things behind.
   include its idempotent refresh-token grant (matrix-authentication-service PR #3650)
   accept the reuse while neither the new access token nor the new refresh token has been
   used, which is the lost-response case. Other providers may not; the device check under
-  #1152 step 5 confirms the behaviour for the deployment in use.
-- Suspended refresh request. The refresh request has no timeout. If the OS suspends it
-  mid-flight and it hangs rather than fails, requests for that account wait on it. The
-  device check should include "go to the background mid-refresh, come back, confirm sync
-  resumes".
+  #1152 step 5 confirms the behaviour for the deployment in use. The grant bound below
+  aborts a request the server may already have answered, which is the same case.
+- Suspended refresh request. The patch aborts every refresh-token grant after 30 s, the
+  same bound `localTimeoutMs` puts on every other Matrix request. An aborted grant fails
+  like a network error: nothing signs out, the SDK's shared refresh settles, and the next
+  request refreshes again. A request suspended mid-flight therefore holds the account's
+  requests for at most the rest of those 30 s of run time once the app resumes, and the
+  15 s run bound frees the background refresh sooner. The device check should still
+  include "go to the background mid-refresh, come back, confirm sync resumes".
 
 **Rendering.** iOS runs the `NotificationService` extension; Android replaces the push
 plugin's messaging service with `TrinityMessagingService`, which treats the app as

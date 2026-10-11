@@ -53,7 +53,11 @@ import {
 } from '@trinity/util/matrix';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 
-/** Default deadline for ordinary Matrix HTTP requests made by an account client. */
+/**
+ * Default deadline for ordinary Matrix HTTP requests made by an account client. The
+ * matrix-js-sdk patch's refresh-token grant abort (`REFRESH_TOKEN_GRANT_TIMEOUT_MS` in
+ * `patches/matrix-js-sdk@43.0.0.patch`) mirrors this value and must change with it.
+ */
 const MATRIX_REQUEST_TIMEOUT_MS = 30_000;
 
 /** Resource ceiling for the first production Projection Runtime adapter. */
