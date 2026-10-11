@@ -101,6 +101,19 @@ export function manyAttributesSvg(
   );
 }
 
+/** An Inkscape drawing of `paths` paths with 6 attributes each, 2 of them Inkscape's. */
+export function inkscapePathsSvg(paths: number): Uint8Array<ArrayBuffer> {
+  const path = (i: number) =>
+    `<path id="p${i}" d="M0 0L10 10" style="fill:#f00" class="c" ` +
+    `sodipodi:nodetypes="cc" inkscape:connector-curvature="0"/>`;
+  return utf8(
+    `<svg xmlns="${SVG_NS}" ` +
+      'xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" ' +
+      'xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">' +
+      `<!-- Alice Example -->${Array.from({ length: paths }, (_, i) => path(i)).join('')}</svg>`,
+  );
+}
+
 /** An SVG of `elements` empty groups. */
 export function manyElementsSvg(elements: number): Uint8Array<ArrayBuffer> {
   return utf8(

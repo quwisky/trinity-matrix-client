@@ -11,6 +11,7 @@ import {
   INKSCAPE_SVG,
   INKSCAPE_SVG_STRIPPED,
   SVG_NS,
+  inkscapePathsSvg,
   manyAttributesSvg,
   manyElementsSvg,
   utf8,
@@ -205,13 +206,18 @@ describe('stripImageMetadata: SVG', () => {
     expectMalformed(manyAttributesSvg(1, 1_025));
   });
 
-  it('counts attributes against the walk budget', () => {
-    // 129 elements of 1,024 kept attributes: under the per-element cap, over the budget.
-    const kept = { editor: false };
-    expect(stripImageMetadata(manyAttributesSvg(127, 1_024, kept)).kind).toBe(
-      'stripped',
+  it('strips a large Inkscape drawing: attributes have their own budget', () => {
+    // 20,000 paths of 6 attributes: 140,000 elements and attributes together, more than
+    // the element walk allows, so this only strips while attributes are counted apart.
+    const input = inkscapePathsSvg(20_000);
+
+    const out = strippedText(input);
+
+    expect(out.includes('inkscape')).toBe(false);
+    expect(out.includes('sodipodi')).toBe(false);
+    expect(parse(out).getElementsByTagNameNS(SVG_NS, 'path')).toHaveLength(
+      20_000,
     );
-    expectMalformed(manyAttributesSvg(129, 1_024, kept));
   });
 
   it('bounds the work of removing attributes, which grows with each element', () => {
