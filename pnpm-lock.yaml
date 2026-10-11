@@ -164,7 +164,7 @@ settings:
 
 patchedDependencies:
   '@spartan-ng/brain@1.5.0': 0779a0141f07aae23e171c954aafebe172e6ec409ff4e3685ddd7d00dd8c1955
-  matrix-js-sdk@43.0.0: e822a53748e271844919b64b6a3bc72941b742497ed9c98503c4ced59159a876
+  matrix-js-sdk@43.0.0: e0c731595c087644b7518757f3b1a25e517096fb06590131d7b41dc711a77f7a
   matrix-widget-api@1.20.0: 91cea261f6205a2447b8841d35ae12e99d438546e56e4aeffe6bf8d7acd1a79c
   pagefind@1.5.2: f9b8a0c9dfa656ac64bbbe9bfa2144b3bd8e195a65de0ce4fca0758fbce8f64f
 
@@ -318,7 +318,7 @@ importers:
         version: 18.0.14
       matrix-js-sdk:
         specifier: ^43.0.0
-        version: 43.0.0(patch_hash=e822a53748e271844919b64b6a3bc72941b742497ed9c98503c4ced59159a876)
+        version: 43.0.0(patch_hash=e0c731595c087644b7518757f3b1a25e517096fb06590131d7b41dc711a77f7a)
       matrix-widget-api:
         specifier: 1.20.0
         version: 1.20.0(patch_hash=91cea261f6205a2447b8841d35ae12e99d438546e56e4aeffe6bf8d7acd1a79c)
@@ -23418,7 +23418,7 @@ snapshots:
 
   matrix-events-sdk@0.0.1: {}
 
-  matrix-js-sdk@43.0.0(patch_hash=e822a53748e271844919b64b6a3bc72941b742497ed9c98503c4ced59159a876):
+  matrix-js-sdk@43.0.0(patch_hash=e0c731595c087644b7518757f3b1a25e517096fb06590131d7b41dc711a77f7a):
     dependencies:
       '@babel/runtime': 8.0.5
       '@matrix-org/matrix-sdk-crypto-wasm': 18.9.0

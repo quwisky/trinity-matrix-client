@@ -1,5 +1,102 @@
+diff --git a/lib/http-api/refresh.js b/lib/http-api/refresh.js
+index 1a7147907487b62ca6a72440b767a7619a205b6f..a7ee87d295742c9d15fbe86ddb545854ff7fa0ff 100644
+--- a/lib/http-api/refresh.js
++++ b/lib/http-api/refresh.js
+@@ -156,8 +156,10 @@ export class TokenManager {
+       // successfully got new tokens
+       return TokenRefreshOutcome.Success;
+     } catch (error) {
+-      // If we get a TokenError or MatrixError, we should log out, otherwise assume transient
+-      if (error instanceof TokenRefreshLogoutError || error instanceof MatrixError) {
++      // Trinity patch: a temporary server error during token refresh must not end the session.
++      // Only the token endpoint's OAuth 400/401 refusal (TokenRefreshLogoutError) logs out; a
++      // MatrixError (any JSON error body, e.g. from auth_metadata discovery) is retried later.
++      if (error instanceof TokenRefreshLogoutError) {
+         this.opts.logger?.error("Failed to refresh token", error);
+         return TokenRefreshOutcome.Logout;
+       }
+diff --git a/lib/matrix.d.ts b/lib/matrix.d.ts
+index 847c2910715bb7d6b12f11872beb4102f39b1b10..171239d83a1af802292a3a3b4d0e07b438ee1ec5 100644
+--- a/lib/matrix.d.ts
++++ b/lib/matrix.d.ts
+@@ -1,10 +1,9 @@
+-import { type WidgetApi } from "matrix-widget-api";
+ import { MatrixClient, type ICreateClientOpts } from "./client.ts";
+-import { type ICapabilities } from "./embedded.ts";
+ import { type CryptoStore } from "./crypto/store/base.ts";
+ export * from "./client.ts";
+ export * from "./serverCapabilities.ts";
+-export * from "./embedded.ts";
++// Trinity patch: no embedded.js re-export. Trinity hosts widgets and never runs as one, and
++// embedded.js imports matrix-widget-api statically, which kept it in the initial bundle.
+ export * from "./http-api/index.ts";
+ export * from "./autodiscovery.ts";
+ export * from "./sync-accumulator.ts";
+@@ -100,19 +99,5 @@ export declare function setCryptoStoreFactory(fac: () => CryptoStore): void;
+  * `opts`.
+  */
+ export declare function createClient(opts: ICreateClientOpts): MatrixClient;
+-/**
+- * Construct a Matrix Client that works in a widget.
+- * This client has a subset of features compared to a full client.
+- * It uses the widget-api to communicate with matrix. (widget \<-\> client \<-\> homeserver)
+- * @returns A new matrix client with a subset of features.
+- * @param opts - The configuration options for this client. These configuration
+- * options will be passed directly to {@link MatrixClient}.
+- * @param widgetApi - The widget api to use for communication.
+- * @param capabilities - The capabilities the widget client will request.
+- * @param roomId - The room id the widget is associated with.
+- * @param sendContentLoaded - Whether to send a content loaded widget action immediately after initial setup.
+- *   Set to `false` if the widget uses `waitForIFrameLoad=true` (in this case the client does not expect a content loaded action at all),
+- *   or if the the widget wants to send the `ContentLoaded` action at a later point in time after the initial setup.
+- */
+-export declare function createRoomWidgetClient(widgetApi: WidgetApi, capabilities: ICapabilities, roomId: string, opts: ICreateClientOpts, sendContentLoaded?: boolean): MatrixClient;
++// Trinity patch: createRoomWidgetClient removed with the embedded.js re-export.
+ //# sourceMappingURL=matrix.d.ts.map
+\ No newline at end of file
+diff --git a/lib/matrix.js b/lib/matrix.js
+index d48e3a17c0e732e390ecb85ad90052335445018d..f128752e62e37ae35f49b392a27104a0f3cc287e 100644
+--- a/lib/matrix.js
++++ b/lib/matrix.js
+@@ -18,10 +18,10 @@ import { MemoryCryptoStore } from "./crypto/store/memory-crypto-store.js";
+ import { MemoryStore } from "./store/memory.js";
+ import { MatrixScheduler } from "./scheduler.js";
+ import { MatrixClient } from "./client.js";
+-import { RoomWidgetClient } from "./embedded.js";
+ export * from "./client.js";
+ export * from "./serverCapabilities.js";
+-export * from "./embedded.js";
++// Trinity patch: no embedded.js re-export. Trinity hosts widgets and never runs as one, and
++// embedded.js imports matrix-widget-api statically, which kept it in the initial bundle.
+ export * from "./http-api/index.js";
+ export * from "./autodiscovery.js";
+ export * from "./sync-accumulator.js";
+@@ -121,21 +121,5 @@ export function createClient(opts) {
+   return new MatrixClient(amendClientOpts(opts));
+ }
+ 
+-/**
+- * Construct a Matrix Client that works in a widget.
+- * This client has a subset of features compared to a full client.
+- * It uses the widget-api to communicate with matrix. (widget \<-\> client \<-\> homeserver)
+- * @returns A new matrix client with a subset of features.
+- * @param opts - The configuration options for this client. These configuration
+- * options will be passed directly to {@link MatrixClient}.
+- * @param widgetApi - The widget api to use for communication.
+- * @param capabilities - The capabilities the widget client will request.
+- * @param roomId - The room id the widget is associated with.
+- * @param sendContentLoaded - Whether to send a content loaded widget action immediately after initial setup.
+- *   Set to `false` if the widget uses `waitForIFrameLoad=true` (in this case the client does not expect a content loaded action at all),
+- *   or if the the widget wants to send the `ContentLoaded` action at a later point in time after the initial setup.
+- */
+-export function createRoomWidgetClient(widgetApi, capabilities, roomId, opts, sendContentLoaded = true) {
+-  return new RoomWidgetClient(widgetApi, capabilities, roomId, amendClientOpts(opts), sendContentLoaded);
+-}
++// Trinity patch: createRoomWidgetClient removed with the embedded.js re-export.
+ //# sourceMappingURL=matrix.js.map
+\ No newline at end of file
 diff --git a/lib/models/thread.js b/lib/models/thread.js
-index 6e22f6f725f879a2aec3ea825ee23056dce2ddef..71749b976d9d9f6cf7653cc1ac9dd3197f8454e3 100644
+index cd840e00452252b417e042912aaf35c8f59da059..9b202c7ad38bf0841cca44b8089c25194f469490 100644
 --- a/lib/models/thread.js
 +++ b/lib/models/thread.js
 @@ -98,6 +98,8 @@ export class Thread extends ReadReceipt {
@@ -22,7 +119,7 @@ index 6e22f6f725f879a2aec3ea825ee23056dce2ddef..71749b976d9d9f6cf7653cc1ac9dd319
            this.replyCount++;
          }
        }
-@@ -462,6 +466,7 @@ export class Thread extends ReadReceipt {
+@@ -470,6 +474,7 @@ export class Thread extends ReadReceipt {
      const bundledRelationship = this.getRootEventBundledRelationship();
      if (Thread.hasServerSideSupport && bundledRelationship) {
        this.replyCount = bundledRelationship.count;
@@ -30,8 +127,103 @@ index 6e22f6f725f879a2aec3ea825ee23056dce2ddef..71749b976d9d9f6cf7653cc1ac9dd319
        this._currentUserParticipated = !!bundledRelationship.current_user_participated;
        const mapper = this.client.getEventMapper();
        // re-insert roomId
+diff --git a/lib/oauth/tokenRefresher.js b/lib/oauth/tokenRefresher.js
+index e5f15214886cca4fa33073e684f954c75df50ddd..15b11c285cdf8930ca18ea3a01d10655dac34f26 100644
+--- a/lib/oauth/tokenRefresher.js
++++ b/lib/oauth/tokenRefresher.js
+@@ -62,14 +62,18 @@ export class TokenRefresher {
+   shouldLogoutOnError(error) {
+     // Treat as logout as per https://spec.matrix.org/v1.18/client-server-api/#refresh-token-grant
+     // after making sure it is an RFC 6749 section 5.2 error response
+-    return error instanceof OAuth2HTTPError && typeof error.httpStatus === "number" && error.httpStatus < 500 && error.httpStatus >= 400;
++    // Trinity patch: only an RFC 6749 section 5.2 refusal (400, or 401 for client authentication)
++    // ends the session; a temporary or proxy error (403, 404, 408, 429, 5xx) must not.
++    return error instanceof OAuth2HTTPError && (error.httpStatus === 400 || error.httpStatus === 401);
+   }
+   async getNewTokens(refreshToken) {
+     const requestStart = Date.now();
+     const response = await this.auth.performRefreshTokenGrant(refreshToken);
+     const tokens = {
+       accessToken: response.access_token,
+-      refreshToken: response.refresh_token,
++      // Trinity patch: RFC 6749 section 6 lets a provider omit refresh_token (or send '');
++      // the current one then stays valid, so carry it forward.
++      refreshToken: response.refresh_token || refreshToken,
+       // We use the request start time to calculate the expiry time as we don't know when the server received our request
+       expiry: response.expires_in ? new Date(requestStart + response.expires_in * 1000) : undefined
+     };
+diff --git a/src/http-api/refresh.ts b/src/http-api/refresh.ts
+index c95d7fec172c152ec0cb4b12d8ce0ce4a4957c21..973a03794b07cd638cb3fe8f3a7bf1499c4de4c3 100644
+--- a/src/http-api/refresh.ts
++++ b/src/http-api/refresh.ts
+@@ -171,8 +171,10 @@ export class TokenManager {
+             // successfully got new tokens
+             return TokenRefreshOutcome.Success;
+         } catch (error) {
+-            // If we get a TokenError or MatrixError, we should log out, otherwise assume transient
+-            if (error instanceof TokenRefreshLogoutError || error instanceof MatrixError) {
++            // Trinity patch: a temporary server error during token refresh must not end the session.
++            // Only the token endpoint's OAuth 400/401 refusal (TokenRefreshLogoutError) logs out; a
++            // MatrixError (any JSON error body, e.g. from auth_metadata discovery) is retried later.
++            if (error instanceof TokenRefreshLogoutError) {
+                 this.opts.logger?.error("Failed to refresh token", error);
+                 return TokenRefreshOutcome.Logout;
+             }
+diff --git a/src/matrix.ts b/src/matrix.ts
+index 249d5156ad098720a05b3f2a53e1dd59290fa8ae..9c6773947ae7ed78ff971152e4b1702c8f13a88a 100644
+--- a/src/matrix.ts
++++ b/src/matrix.ts
+@@ -14,18 +14,16 @@ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
+ 
+-import { type WidgetApi } from "matrix-widget-api";
+-
+ import { MemoryCryptoStore } from "./crypto/store/memory-crypto-store.ts";
+ import { MemoryStore } from "./store/memory.ts";
+ import { MatrixScheduler } from "./scheduler.ts";
+ import { MatrixClient, type ICreateClientOpts } from "./client.ts";
+-import { RoomWidgetClient, type ICapabilities } from "./embedded.ts";
+ import { type CryptoStore } from "./crypto/store/base.ts";
+ 
+ export * from "./client.ts";
+ export * from "./serverCapabilities.ts";
+-export * from "./embedded.ts";
++// Trinity patch: no embedded.js re-export. Trinity hosts widgets and never runs as one, and
++// embedded.js imports matrix-widget-api statically, which kept it in the initial bundle.
+ export * from "./http-api/index.ts";
+ export * from "./autodiscovery.ts";
+ export * from "./sync-accumulator.ts";
+@@ -150,26 +148,4 @@ export function createClient(opts: ICreateClientOpts): MatrixClient {
+     return new MatrixClient(amendClientOpts(opts));
+ }
+ 
+-/**
+- * Construct a Matrix Client that works in a widget.
+- * This client has a subset of features compared to a full client.
+- * It uses the widget-api to communicate with matrix. (widget \<-\> client \<-\> homeserver)
+- * @returns A new matrix client with a subset of features.
+- * @param opts - The configuration options for this client. These configuration
+- * options will be passed directly to {@link MatrixClient}.
+- * @param widgetApi - The widget api to use for communication.
+- * @param capabilities - The capabilities the widget client will request.
+- * @param roomId - The room id the widget is associated with.
+- * @param sendContentLoaded - Whether to send a content loaded widget action immediately after initial setup.
+- *   Set to `false` if the widget uses `waitForIFrameLoad=true` (in this case the client does not expect a content loaded action at all),
+- *   or if the the widget wants to send the `ContentLoaded` action at a later point in time after the initial setup.
+- */
+-export function createRoomWidgetClient(
+-    widgetApi: WidgetApi,
+-    capabilities: ICapabilities,
+-    roomId: string,
+-    opts: ICreateClientOpts,
+-    sendContentLoaded = true,
+-): MatrixClient {
+-    return new RoomWidgetClient(widgetApi, capabilities, roomId, amendClientOpts(opts), sendContentLoaded);
+-}
++// Trinity patch: createRoomWidgetClient removed with the embedded.js re-export.
 diff --git a/src/models/thread.ts b/src/models/thread.ts
-index 151bff6d1155ee3ae928135aa9629c4a1b011917..160d8cde2ee355491f106656ae224f42e0a16c9f 100644
+index 24d9cf123525922407827ba716720920b01586ee..ad8017358544e45b9a6d8db78846a25175f9d2ed 100644
 --- a/src/models/thread.ts
 +++ b/src/models/thread.ts
 @@ -119,6 +119,8 @@ export class Thread extends ReadReceipt<ThreadEmittedEvents, ThreadEventHandlerM
@@ -58,7 +250,7 @@ index 151bff6d1155ee3ae928135aa9629c4a1b011917..160d8cde2ee355491f106656ae224f42
                  this.replyCount++;
              }
          }
-@@ -545,6 +553,7 @@ export class Thread extends ReadReceipt<ThreadEmittedEvents, ThreadEventHandlerM
+@@ -554,6 +562,7 @@ export class Thread extends ReadReceipt<ThreadEmittedEvents, ThreadEventHandlerM
          const bundledRelationship = this.getRootEventBundledRelationship();
          if (Thread.hasServerSideSupport && bundledRelationship) {
              this.replyCount = bundledRelationship.count;
@@ -66,33 +258,8 @@ index 151bff6d1155ee3ae928135aa9629c4a1b011917..160d8cde2ee355491f106656ae224f42
              this._currentUserParticipated = !!bundledRelationship.current_user_participated;
  
              const mapper = this.client.getEventMapper();
-diff --git a/lib/oauth/tokenRefresher.js b/lib/oauth/tokenRefresher.js
-index e5f1521..15b11c2 100644
---- a/lib/oauth/tokenRefresher.js
-+++ b/lib/oauth/tokenRefresher.js
-@@ -62,14 +62,18 @@ export class TokenRefresher {
-   shouldLogoutOnError(error) {
-     // Treat as logout as per https://spec.matrix.org/v1.18/client-server-api/#refresh-token-grant
-     // after making sure it is an RFC 6749 section 5.2 error response
--    return error instanceof OAuth2HTTPError && typeof error.httpStatus === "number" && error.httpStatus < 500 && error.httpStatus >= 400;
-+    // Trinity patch: only an RFC 6749 section 5.2 refusal (400, or 401 for client authentication)
-+    // ends the session; a temporary or proxy error (403, 404, 408, 429, 5xx) must not.
-+    return error instanceof OAuth2HTTPError && (error.httpStatus === 400 || error.httpStatus === 401);
-   }
-   async getNewTokens(refreshToken) {
-     const requestStart = Date.now();
-     const response = await this.auth.performRefreshTokenGrant(refreshToken);
-     const tokens = {
-       accessToken: response.access_token,
--      refreshToken: response.refresh_token,
-+      // Trinity patch: RFC 6749 section 6 lets a provider omit refresh_token (or send '');
-+      // the current one then stays valid, so carry it forward.
-+      refreshToken: response.refresh_token || refreshToken,
-       // We use the request start time to calculate the expiry time as we don't know when the server received our request
-       expiry: response.expires_in ? new Date(requestStart + response.expires_in * 1000) : undefined
-     };
 diff --git a/src/oauth/tokenRefresher.ts b/src/oauth/tokenRefresher.ts
-index d19d64c..4a1fd6b 100644
+index d19d64c4820e63a4030b056ab331912ad9589833..4a1fd6b6485397ef5dd11d3d13d334ebc1c0c1fc 100644
 --- a/src/oauth/tokenRefresher.ts
 +++ b/src/oauth/tokenRefresher.ts
 @@ -67,12 +67,9 @@ export class TokenRefresher {
@@ -122,37 +289,3 @@ index d19d64c..4a1fd6b 100644
              // We use the request start time to calculate the expiry time as we don't know when the server received our request
              expiry: response.expires_in ? new Date(requestStart + response.expires_in * 1000) : undefined,
          } satisfies AccessTokens;
-diff --git a/lib/http-api/refresh.js b/lib/http-api/refresh.js
-index 1a71479..a7ee87d 100644
---- a/lib/http-api/refresh.js
-+++ b/lib/http-api/refresh.js
-@@ -156,8 +156,10 @@ export class TokenManager {
-       // successfully got new tokens
-       return TokenRefreshOutcome.Success;
-     } catch (error) {
--      // If we get a TokenError or MatrixError, we should log out, otherwise assume transient
--      if (error instanceof TokenRefreshLogoutError || error instanceof MatrixError) {
-+      // Trinity patch: a temporary server error during token refresh must not end the session.
-+      // Only the token endpoint's OAuth 400/401 refusal (TokenRefreshLogoutError) logs out; a
-+      // MatrixError (any JSON error body, e.g. from auth_metadata discovery) is retried later.
-+      if (error instanceof TokenRefreshLogoutError) {
-         this.opts.logger?.error("Failed to refresh token", error);
-         return TokenRefreshOutcome.Logout;
-       }
-diff --git a/src/http-api/refresh.ts b/src/http-api/refresh.ts
-index c95d7fe..973a037 100644
---- a/src/http-api/refresh.ts
-+++ b/src/http-api/refresh.ts
-@@ -171,8 +171,10 @@ export class TokenManager {
-             // successfully got new tokens
-             return TokenRefreshOutcome.Success;
-         } catch (error) {
--            // If we get a TokenError or MatrixError, we should log out, otherwise assume transient
--            if (error instanceof TokenRefreshLogoutError || error instanceof MatrixError) {
-+            // Trinity patch: a temporary server error during token refresh must not end the session.
-+            // Only the token endpoint's OAuth 400/401 refusal (TokenRefreshLogoutError) logs out; a
-+            // MatrixError (any JSON error body, e.g. from auth_metadata discovery) is retried later.
-+            if (error instanceof TokenRefreshLogoutError) {
-                 this.opts.logger?.error("Failed to refresh token", error);
-                 return TokenRefreshOutcome.Logout;
-             }

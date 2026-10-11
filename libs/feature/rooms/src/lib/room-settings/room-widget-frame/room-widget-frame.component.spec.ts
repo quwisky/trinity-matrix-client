@@ -3,10 +3,12 @@ import { TrnDialogRef } from '@trinity/components/overlay';
 import {
   WidgetBridgeService,
   type RoomWidget,
+  type WidgetBridgeSession,
   type WidgetEmbed,
 } from '@trinity/data-access/widgets';
 import { fireEvent, render, screen, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
+import { of, Subject, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RoomWidgetFrameComponent } from './room-widget-frame.component';
 
@@ -43,7 +45,7 @@ describe('RoomWidgetFrameComponent', () => {
     const start = vi.fn(
       (_widget, _embed, _roomId, iframe: HTMLIFrameElement) => {
         expect(iframe.getAttribute('src')).toBeNull();
-        return { state: signal<'frame-loading'>('frame-loading'), stop };
+        return of({ state: signal<'frame-loading'>('frame-loading'), stop });
       },
     );
     const { container } = await render(RoomWidgetFrameComponent, {
@@ -74,7 +76,8 @@ describe('RoomWidgetFrameComponent', () => {
       inputs: { roomId: '!r:hs', widget: WIDGET, embed: EMBED },
       providers: [
         MockProvider(WidgetBridgeService, {
-          start: () => ({ state: signal('ready'), stop: vi.fn() }),
+          start: () =>
+            of<WidgetBridgeSession>({ state: signal('ready'), stop: vi.fn() }),
         }),
         MockProvider(TrnDialogRef, { close, presentation: 'fullscreen' }),
       ],
@@ -99,13 +102,57 @@ describe('RoomWidgetFrameComponent', () => {
     expect(close).toHaveBeenCalled();
   });
 
+  it('assigns the frame src only once the Widget API session exists', async () => {
+    const session = new Subject<WidgetBridgeSession>();
+    const { container, fixture } = await render(RoomWidgetFrameComponent, {
+      inputs: { roomId: '!r:hs', widget: WIDGET, embed: EMBED },
+      providers: [
+        MockProvider(WidgetBridgeService, { start: () => session }),
+        MockProvider(TrnDialogRef, { close: vi.fn() }),
+      ],
+    });
+    const iframe = container.querySelector<HTMLIFrameElement>('iframe');
+
+    expect(iframe?.hasAttribute('src')).toBe(false);
+    expect(
+      container.querySelector('[data-testid="widget-frame-status"]'),
+    ).toHaveTextContent('Loading the third-party widget…');
+
+    session.next({ state: signal('negotiating'), stop: vi.fn() });
+    session.complete();
+    fixture.detectChanges();
+
+    expect(iframe?.getAttribute('src')).toBe(EMBED.url);
+    expect(
+      container.querySelector('[data-testid="widget-frame-status"]'),
+    ).toHaveTextContent('Negotiating the restricted Widget API connection…');
+  });
+
+  it('abandons a Widget API load that is still pending when destroyed', async () => {
+    const session = new Subject<WidgetBridgeSession>();
+    const { container, fixture } = await render(RoomWidgetFrameComponent, {
+      inputs: { roomId: '!r:hs', widget: WIDGET, embed: EMBED },
+      providers: [
+        MockProvider(WidgetBridgeService, { start: () => session }),
+        MockProvider(TrnDialogRef, { close: vi.fn() }),
+      ],
+    });
+    const iframe = container.querySelector<HTMLIFrameElement>('iframe');
+
+    fixture.destroy();
+
+    expect(session.observed).toBe(false);
+    expect(iframe?.hasAttribute('src')).toBe(false);
+  });
+
   it('stops the bridge on destroy', async () => {
     const stop = vi.fn();
     const { fixture } = await render(RoomWidgetFrameComponent, {
       inputs: { roomId: '!r:hs', widget: WIDGET, embed: EMBED },
       providers: [
         MockProvider(WidgetBridgeService, {
-          start: () => ({ state: signal('ready'), stop }),
+          start: () =>
+            of<WidgetBridgeSession>({ state: signal('ready'), stop }),
         }),
         MockProvider(TrnDialogRef, { close: vi.fn() }),
       ],
@@ -121,9 +168,7 @@ describe('RoomWidgetFrameComponent', () => {
       inputs: { roomId: '!r:hs', widget: WIDGET, embed: EMBED },
       providers: [
         MockProvider(WidgetBridgeService, {
-          start: () => {
-            throw new Error('bridge unavailable');
-          },
+          start: () => throwError(() => new Error('bridge unavailable')),
         }),
         MockProvider(TrnDialogRef, { close: vi.fn() }),
       ],
