@@ -14,6 +14,7 @@ import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import { Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  MATRIX_REQUEST_TIMEOUT_MS,
   MATRIX_SYNC_PROJECTION_BASELINE,
   MatrixClientService,
   type AccessTokenRotation,
@@ -1678,6 +1679,8 @@ describe('OAuth tokens through a real MatrixClient', () => {
       provider: 'up' as ProviderEndpoint,
       /** Rotate at the provider, then drop the answer, as when iOS suspends the app mid-grant. */
       loseGrantResponse: false,
+      /** How long auth metadata discovery takes to answer. */
+      discoveryDelayMs: 0,
     };
     // Like MAS, a grant revokes the access token issued with the refresh token it spends.
     const issuedWith = new Map<string, string>();
@@ -1694,6 +1697,11 @@ describe('OAuth tokens through a real MatrixClient', () => {
         const form = new URLSearchParams(String(init.body ?? ''));
         calls.push(`${init.method ?? 'GET'} ${url.host}${url.pathname}`);
         if (url.pathname === '/_matrix/client/v1/auth_metadata') {
+          if (state.discoveryDelayMs > 0) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, state.discoveryDelayMs),
+            );
+          }
           if (state.discovery === 'down')
             throw new TypeError('Failed to fetch');
           if (state.discovery !== 'up') {
@@ -1702,6 +1710,10 @@ describe('OAuth tokens through a real MatrixClient', () => {
           return json(METADATA);
         }
         if (url.href === METADATA.token_endpoint) {
+          // Like fetch, an already aborted signal sends nothing.
+          if (init.signal?.aborted) {
+            throw new DOMException('The operation was aborted.', 'AbortError');
+          }
           if (state.provider === 'down') throw new TypeError('Failed to fetch');
           if (state.provider === 'hang') {
             return new Promise<Response>((_, reject) => {
@@ -2071,7 +2083,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
       const signal = grant?.[1]?.signal;
       expect(signal).toBeInstanceOf(AbortSignal);
 
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(MATRIX_REQUEST_TIMEOUT_MS);
 
       expect(signal?.aborted).toBe(false);
     } finally {
@@ -2136,7 +2148,8 @@ describe('OAuth tokens through a real MatrixClient', () => {
       let settled: boolean | undefined;
       void client.http.refreshOAuthTokens().then((value) => (settled = value));
 
-      await vi.advanceTimersByTimeAsync(29_999);
+      // The patch mirrors the app's request deadline; changing one alone fails here.
+      await vi.advanceTimersByTimeAsync(MATRIX_REQUEST_TIMEOUT_MS - 1);
       expect(settled).toBeUndefined();
       await vi.advanceTimersByTimeAsync(1);
       expect(settled).toBe(false);
@@ -2150,6 +2163,106 @@ describe('OAuth tokens through a real MatrixClient', () => {
     net.state.provider = 'up';
     await expect(client.whoami()).resolves.toMatchObject({ user_id: '@me:hs' });
     expect(net.grants).toHaveLength(1);
+  });
+
+  describe('a forced refresh with a grant bound', () => {
+    /** The bound is counted from the call, so the clock is faked as well as the timers. */
+    const useFakeClock = () =>
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+
+    /** Start a refresh through the service and record what it answers. */
+    function refreshing(svc: MatrixClientService, timeoutMs?: number) {
+      const outcome: { value?: boolean } = {};
+      svc
+        .refreshAccessToken(
+          OIDC_SESSION.userId,
+          timeoutMs === undefined ? undefined : { timeoutMs },
+        )
+        .subscribe((value) => (outcome.value = value));
+      return outcome;
+    }
+
+    it('aborts the grant at the given time, stays signed in and refreshes again', async () => {
+      const net = fakeNetwork('rotate');
+      const { svc, client } = await startReal();
+      const loggedOut = vi.fn();
+      client.on(HttpApiEvent.SessionLoggedOut, loggedOut);
+      net.state.provider = 'hang';
+      useFakeClock();
+      try {
+        const outcome = refreshing(svc, 8_000);
+
+        await vi.advanceTimersByTimeAsync(7_999);
+        expect(outcome.value).toBeUndefined();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(outcome.value).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(loggedOut).not.toHaveBeenCalled();
+      expectStillSignedIn(svc, client);
+      net.state.provider = 'up';
+      await expect(client.whoami()).resolves.toMatchObject({
+        user_id: '@me:hs',
+      });
+      expect(net.grants).toHaveLength(1);
+    });
+
+    it('counts the bound from the call, so a slow discovery leaves the grant less time', async () => {
+      const net = fakeNetwork('rotate');
+      const { svc } = await startReal();
+      net.state.discoveryDelayMs = 5_000;
+      net.state.provider = 'hang';
+      useFakeClock();
+      try {
+        const outcome = refreshing(svc, 8_000);
+
+        await vi.advanceTimersByTimeAsync(7_999);
+        expect(outcome.value).toBeUndefined();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(outcome.value).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('sends no grant once the bound has passed before the grant could start', async () => {
+      const net = fakeNetwork('rotate');
+      const { svc, client, storage } = await startReal();
+      net.state.discoveryDelayMs = 8_000;
+      useFakeClock();
+      try {
+        const outcome = refreshing(svc, 8_000);
+
+        await vi.advanceTimersByTimeAsync(8_000);
+        expect(outcome.value).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(net.grants).toHaveLength(0);
+      expect(storage.updateTokens).not.toHaveBeenCalled();
+      expect(client.getAccessToken()).toBe(OIDC_SESSION.accessToken);
+      expectStillSignedIn(svc, client);
+    });
+
+    it('keeps the default grant bound when none is given', async () => {
+      const net = fakeNetwork('rotate');
+      const { svc } = await startReal();
+      net.state.provider = 'hang';
+      useFakeClock();
+      try {
+        const outcome = refreshing(svc);
+
+        await vi.advanceTimersByTimeAsync(MATRIX_REQUEST_TIMEOUT_MS - 1);
+        expect(outcome.value).toBeUndefined();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(outcome.value).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('answers false for a session without OAuth and emits no sign-out', async () => {

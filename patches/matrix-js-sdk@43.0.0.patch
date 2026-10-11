@@ -1,25 +1,28 @@
 diff --git a/lib/http-api/fetch.d.ts b/lib/http-api/fetch.d.ts
-index 70dc3337d28e22f122bb05b221ed9d1823c25f75..38798a1eeb4a5630291e742b3114d1ff3a915090 100644
+index 70dc3337d28e22f122bb05b221ed9d1823c25f75..89832c91b4b510df3c7248f7d74f09f50b2cbdda 100644
 --- a/lib/http-api/fetch.d.ts
 +++ b/lib/http-api/fetch.d.ts
-@@ -15,6 +15,12 @@ export declare class FetchHttpApi<O extends IHttpOpts> {
+@@ -15,6 +15,15 @@ export declare class FetchHttpApi<O extends IHttpOpts> {
       * @throws when discovery of the auth server metadata, or revocation of either token, fails
       */
      revokeOAuthTokens(): Promise<void>;
 +    /**
 +     * Trinity patch: refresh an OAuth2-native session's tokens now, sharing a refresh already in
 +     * flight; `onTokenRefresh` runs as for any refresh. Resolves false when nothing was refreshed
-+     * (no OAuth2 config, a network error or a refusal). Never emits SessionLoggedOut.
++     * (no OAuth2 config, a network error or a refusal). Never emits SessionLoggedOut. With
++     * `timeoutMs`, a grant this call starts is aborted unless it answers within that time.
 +     */
-+    refreshOAuthTokens(): Promise<boolean>;
++    refreshOAuthTokens(opts?: {
++        timeoutMs?: number;
++    }): Promise<boolean>;
      fetch(resource: URL | string, options?: RequestInit): ReturnType<typeof globalThis.fetch>;
      /**
       * Sets the base URL for the identity server
 diff --git a/lib/http-api/fetch.js b/lib/http-api/fetch.js
-index dde6d845be2926397f2a4bdc3b09325748cd1adc..ad788bc2ad1fea7ac0a0af9be496378e0b29f119 100644
+index dde6d845be2926397f2a4bdc3b09325748cd1adc..3519a4910e128336a9b8c997884d41314c9a4918 100644
 --- a/lib/http-api/fetch.js
 +++ b/lib/http-api/fetch.js
-@@ -53,6 +53,15 @@ export class FetchHttpApi {
+@@ -53,6 +53,16 @@ export class FetchHttpApi {
    async revokeOAuthTokens() {
      return this.tokenManager.revokeTokens();
    }
@@ -27,37 +30,39 @@ index dde6d845be2926397f2a4bdc3b09325748cd1adc..ad788bc2ad1fea7ac0a0af9be496378e
 +  /**
 +   * Trinity patch: refresh an OAuth2-native session's tokens now, sharing a refresh already in
 +   * flight; `onTokenRefresh` runs as for any refresh. Resolves false when nothing was refreshed
-+   * (no OAuth2 config, a network error or a refusal). Never emits SessionLoggedOut.
++   * (no OAuth2 config, a network error or a refusal). Never emits SessionLoggedOut. With
++   * `timeoutMs`, a grant this call starts is aborted unless it answers within that time.
 +   */
-+  async refreshOAuthTokens() {
-+    return this.tokenManager.refreshNow();
++  async refreshOAuthTokens(opts) {
++    return this.tokenManager.refreshNow(opts?.timeoutMs);
 +  }
    fetch(resource, options) {
      if (this.opts.fetchFn) {
        return this.opts.fetchFn(resource, options);
 diff --git a/lib/http-api/refresh.d.ts b/lib/http-api/refresh.d.ts
-index 223f4c8bb02839a87d04f68b7fed846f3b5fc577..33d1754064df22cf2ea3203a6a134c6e9d82515a 100644
+index 223f4c8bb02839a87d04f68b7fed846f3b5fc577..9e8d450c6e7552f7cb5c99d4fb649a7bf34660f0 100644
 --- a/lib/http-api/refresh.d.ts
 +++ b/lib/http-api/refresh.d.ts
-@@ -41,6 +41,13 @@ export declare class TokenManager {
+@@ -41,6 +41,14 @@ export declare class TokenManager {
       * @returns a TokenRefreshOutcome indicating the result of the refresh attempt
       */
      handleUnknownToken(snapshot: AccessTokens, attempt: number): Promise<TokenRefreshOutcome>;
 +    /**
 +     * Trinity patch: refresh now, whatever the known expiry, joining a refresh already in
 +     * flight. Never signs out: a refusal is left to the next request, which meets it as
-+     * M_UNKNOWN_TOKEN and takes the usual path.
++     * M_UNKNOWN_TOKEN and takes the usual path. With `timeoutMs`, a grant this call starts is
++     * aborted unless it answers within that time.
 +     * @returns true when new tokens were adopted
 +     */
-+    refreshNow(): Promise<boolean>;
++    refreshNow(timeoutMs?: number): Promise<boolean>;
      private _handleUnknownToken;
      /**
       * Attempt to refresh access tokens.
 diff --git a/lib/http-api/refresh.js b/lib/http-api/refresh.js
-index 1a7147907487b62ca6a72440b767a7619a205b6f..0ca05c757c940690ac86c41a52a7698c7be51a7b 100644
+index 1a7147907487b62ca6a72440b767a7619a205b6f..9f85b133d8ee2296676fac57a809f1b676be63cf 100644
 --- a/lib/http-api/refresh.js
 +++ b/lib/http-api/refresh.js
-@@ -97,8 +97,28 @@ export class TokenManager {
+@@ -97,8 +97,37 @@ export class TokenManager {
    async handleUnknownToken(snapshot, attempt) {
      return this._handleUnknownToken(snapshot, attempt);
    }
@@ -65,14 +70,23 @@ index 1a7147907487b62ca6a72440b767a7619a205b6f..0ca05c757c940690ac86c41a52a7698c
 +  /**
 +   * Trinity patch: refresh now, whatever the known expiry, joining a refresh already in
 +   * flight. Never signs out: a refusal is left to the next request, which meets it as
-+   * M_UNKNOWN_TOKEN and takes the usual path.
++   * M_UNKNOWN_TOKEN and takes the usual path. With `timeoutMs`, a grant this call starts is
++   * aborted unless it answers within that time.
 +   * @returns true when new tokens were adopted
 +   */
-+  async refreshNow() {
++  async refreshNow(timeoutMs) {
 +    // Trinity patch: forget the expiry first. A forced refresh revokes the current token long before
 +    // it, so a failed or lost one must leave later 401s on the refresh path, not the Logout shortcut.
 +    this.latestTokenRefreshExpiry = undefined;
-+    return (await this._handleUnknownToken()) === TokenRefreshOutcome.Success;
++    // Trinity patch: as _handleUnknownToken() would, but a grant this call starts must answer by the
++    // deadline. A refresh already in flight keeps its own bound.
++    const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
++    this.tokenRefreshPromise ??= this.doTokenRefresh(undefined, deadline);
++    try {
++      return (await this.tokenRefreshPromise) === TokenRefreshOutcome.Success;
++    } finally {
++      this.tokenRefreshPromise = undefined;
++    }
 +  }
    async _handleUnknownToken(snapshot, attempt) {
 -    if (snapshot?.expiry) {
@@ -87,7 +101,25 @@ index 1a7147907487b62ca6a72440b767a7619a205b6f..0ca05c757c940690ac86c41a52a7698c
        // If our token is unknown, but it should not have expired yet, then we should not refresh
        const expiresIn = snapshot.expiry.getTime() - Date.now();
        // If it still has plenty of time left on the clock, we assume something else must be wrong and
-@@ -156,8 +176,10 @@ export class TokenManager {
+@@ -127,7 +156,7 @@ export class TokenManager {
+    * On success, sets new access and refresh tokens in opts.
+    * @returns Promise that resolves to a boolean - true when token was refreshed successfully
+    */
+-  async doTokenRefresh(attempt) {
++  async doTokenRefresh(attempt, deadline) {
+     if (!this.opts.refreshToken || !this.opts.oauth2ClientConfig) {
+       this.opts.logger?.error("Unable to refresh token - no refresh token or OAuth2 client config");
+       return TokenRefreshOutcome.Logout;
+@@ -147,7 +176,7 @@ export class TokenManager {
+         accessToken,
+         refreshToken,
+         expiry
+-      } = await tokenRefresher.refreshTokens(this.opts.refreshToken);
++      } = await tokenRefresher.refreshTokens(this.opts.refreshToken, deadline);
+       this.opts.accessToken = accessToken;
+       this.opts.refreshToken = refreshToken;
+       this.latestTokenRefreshExpiry = expiry;
+@@ -156,8 +185,10 @@ export class TokenManager {
        // successfully got new tokens
        return TokenRefreshOutcome.Success;
      } catch (error) {
@@ -213,7 +245,7 @@ index cd840e00452252b417e042912aaf35c8f59da059..9b202c7ad38bf0841cca44b8089c2519
        const mapper = this.client.getEventMapper();
        // re-insert roomId
 diff --git a/lib/oauth/index.js b/lib/oauth/index.js
-index e333e24c6097c087a90ea15d3335bcf1d53f0994..ce72b16d58a3122ba43ea5edc80a480897d0a639 100644
+index e333e24c6097c087a90ea15d3335bcf1d53f0994..a7246eed79d7d605b56302a496973c2628b8c8b9 100644
 --- a/lib/oauth/index.js
 +++ b/lib/oauth/index.js
 @@ -31,6 +31,14 @@ export * from "./error.js";
@@ -231,7 +263,13 @@ index e333e24c6097c087a90ea15d3335bcf1d53f0994..ce72b16d58a3122ba43ea5edc80a4808
  /**
   * Type representing the persistent context needed for typical OAuth flows
   */
-@@ -176,12 +184,20 @@ export class OAuth2 {
+@@ -171,17 +179,28 @@ export class OAuth2 {
+    * Refresh the access token using the given refresh token and the refresh token grant
+    * @param refreshToken - the token to use to refresh the access token
+    */
+-  async performRefreshTokenGrant(refreshToken) {
++  async performRefreshTokenGrant(refreshToken, deadline) {
+     const params = new URLSearchParams();
      params.append("grant_type", "refresh_token");
      params.append("client_id", this.context.clientId);
      params.append("refresh_token", refreshToken);
@@ -241,9 +279,12 @@ index e333e24c6097c087a90ea15d3335bcf1d53f0994..ce72b16d58a3122ba43ea5edc80a4808
 -    // throws when response is invalid
 -    validateBearerTokenResponse(tokenResponse);
 -    return normalizeBearerTokenResponseTokenType(tokenResponse);
-+    // Trinity patch: abort the grant, body included, once it outlasts its bound.
++    // Trinity patch: abort the grant, body included, once it outlasts its bound, or at the caller's
++    // deadline (epoch ms) instead. A deadline already passed sends nothing.
 +    const controller = new AbortController();
-+    const timer = setTimeout(() => controller.abort(), REFRESH_TOKEN_GRANT_TIMEOUT_MS);
++    const bound = deadline === undefined ? REFRESH_TOKEN_GRANT_TIMEOUT_MS : deadline - Date.now();
++    if (bound <= 0) controller.abort();
++    const timer = setTimeout(() => controller.abort(), bound);
 +    try {
 +      const res = await this.fetch("token", params, OAuth2Error.RefreshTokenFailed, controller.signal);
 +      const tokenResponse = await res.json();
@@ -257,7 +298,7 @@ index e333e24c6097c087a90ea15d3335bcf1d53f0994..ce72b16d58a3122ba43ea5edc80a4808
    }
  
    /**
-@@ -238,7 +254,7 @@ export class OAuth2 {
+@@ -238,7 +257,7 @@ export class OAuth2 {
     * Make a request to one of the OAuth 2.0 endpoints, throwing if it responds with an error.
     * @returns the {@link Response}, for the caller to parse if the endpoint returns a body.
     */
@@ -266,7 +307,7 @@ index e333e24c6097c087a90ea15d3335bcf1d53f0994..ce72b16d58a3122ba43ea5edc80a4808
      const url = this.metadata[`${target}_endpoint`];
      const res = await fetchWithLogging(this.logger, url, {
        method: Method.Post,
-@@ -246,7 +262,8 @@ export class OAuth2 {
+@@ -246,7 +265,8 @@ export class OAuth2 {
          "Content-Type": "application/x-www-form-urlencoded",
          "Accept": "application/json"
        },
@@ -277,10 +318,23 @@ index e333e24c6097c087a90ea15d3335bcf1d53f0994..ce72b16d58a3122ba43ea5edc80a4808
      if (res.status >= 400) {
        let body;
 diff --git a/lib/oauth/tokenRefresher.js b/lib/oauth/tokenRefresher.js
-index e5f15214886cca4fa33073e684f954c75df50ddd..15b11c285cdf8930ca18ea3a01d10655dac34f26 100644
+index e5f15214886cca4fa33073e684f954c75df50ddd..aecf44dbe42681dbe13f6486e10534045f3f9c16 100644
 --- a/lib/oauth/tokenRefresher.js
 +++ b/lib/oauth/tokenRefresher.js
-@@ -62,14 +62,18 @@ export class TokenRefresher {
+@@ -32,9 +32,10 @@ export class TokenRefresher {
+    * @param refreshToken - refresh token to use in request with token issuer
+    * @throws when token refresh fails
+    */
+-  async refreshTokens(refreshToken) {
++  async refreshTokens(refreshToken, deadline) {
+     if (!this.inflightRefreshRequest) {
+-      this.inflightRefreshRequest = this.getNewTokens(refreshToken);
++      // Trinity patch: pass the caller's grant deadline on (epoch ms; undefined for the default bound).
++      this.inflightRefreshRequest = this.getNewTokens(refreshToken, deadline);
+     }
+     try {
+       const tokens = await this.inflightRefreshRequest;
+@@ -62,14 +63,18 @@ export class TokenRefresher {
    shouldLogoutOnError(error) {
      // Treat as logout as per https://spec.matrix.org/v1.18/client-server-api/#refresh-token-grant
      // after making sure it is an RFC 6749 section 5.2 error response
@@ -289,9 +343,11 @@ index e5f15214886cca4fa33073e684f954c75df50ddd..15b11c285cdf8930ca18ea3a01d10655
 +    // ends the session; a temporary or proxy error (403, 404, 408, 429, 5xx) must not.
 +    return error instanceof OAuth2HTTPError && (error.httpStatus === 400 || error.httpStatus === 401);
    }
-   async getNewTokens(refreshToken) {
+-  async getNewTokens(refreshToken) {
++  async getNewTokens(refreshToken, deadline) {
      const requestStart = Date.now();
-     const response = await this.auth.performRefreshTokenGrant(refreshToken);
+-    const response = await this.auth.performRefreshTokenGrant(refreshToken);
++    const response = await this.auth.performRefreshTokenGrant(refreshToken, deadline);
      const tokens = {
        accessToken: response.access_token,
 -      refreshToken: response.refresh_token,
@@ -302,44 +358,54 @@ index e5f15214886cca4fa33073e684f954c75df50ddd..15b11c285cdf8930ca18ea3a01d10655
        expiry: response.expires_in ? new Date(requestStart + response.expires_in * 1000) : undefined
      };
 diff --git a/src/http-api/fetch.ts b/src/http-api/fetch.ts
-index 387c1ebc6087adaf4947a377be434b9f56e05fe9..8ff78d521d84ff991315d350df42214f93863880 100644
+index 387c1ebc6087adaf4947a377be434b9f56e05fe9..4e7ac563a10e8074aae034c8854706a707c7fc50 100644
 --- a/src/http-api/fetch.ts
 +++ b/src/http-api/fetch.ts
-@@ -66,6 +66,15 @@ export class FetchHttpApi<O extends IHttpOpts> {
+@@ -66,6 +66,16 @@ export class FetchHttpApi<O extends IHttpOpts> {
          return this.tokenManager.revokeTokens();
      }
  
 +    /**
 +     * Trinity patch: refresh an OAuth2-native session's tokens now, sharing a refresh already in
 +     * flight; `onTokenRefresh` runs as for any refresh. Resolves false when nothing was refreshed
-+     * (no OAuth2 config, a network error or a refusal). Never emits SessionLoggedOut.
++     * (no OAuth2 config, a network error or a refusal). Never emits SessionLoggedOut. With
++     * `timeoutMs`, a grant this call starts is aborted unless it answers within that time.
 +     */
-+    public async refreshOAuthTokens(): Promise<boolean> {
-+        return this.tokenManager.refreshNow();
++    public async refreshOAuthTokens(opts?: { timeoutMs?: number }): Promise<boolean> {
++        return this.tokenManager.refreshNow(opts?.timeoutMs);
 +    }
 +
      public fetch(resource: URL | string, options?: RequestInit): ReturnType<typeof globalThis.fetch> {
          if (this.opts.fetchFn) {
              return this.opts.fetchFn(resource, options);
 diff --git a/src/http-api/refresh.ts b/src/http-api/refresh.ts
-index c95d7fec172c152ec0cb4b12d8ce0ce4a4957c21..393c106135c2e094a7fb982c8ac4297a6fb5c085 100644
+index c95d7fec172c152ec0cb4b12d8ce0ce4a4957c21..93682800464342b2c97e0f15d8f411fabe2a5458 100644
 --- a/src/http-api/refresh.ts
 +++ b/src/http-api/refresh.ts
-@@ -109,10 +109,30 @@ export class TokenManager {
+@@ -109,10 +109,39 @@ export class TokenManager {
          return this._handleUnknownToken(snapshot, attempt);
      }
  
 +    /**
 +     * Trinity patch: refresh now, whatever the known expiry, joining a refresh already in
 +     * flight. Never signs out: a refusal is left to the next request, which meets it as
-+     * M_UNKNOWN_TOKEN and takes the usual path.
++     * M_UNKNOWN_TOKEN and takes the usual path. With `timeoutMs`, a grant this call starts is
++     * aborted unless it answers within that time.
 +     * @returns true when new tokens were adopted
 +     */
-+    public async refreshNow(): Promise<boolean> {
++    public async refreshNow(timeoutMs?: number): Promise<boolean> {
 +        // Trinity patch: forget the expiry first. A forced refresh revokes the current token long before
 +        // it, so a failed or lost one must leave later 401s on the refresh path, not the Logout shortcut.
 +        this.latestTokenRefreshExpiry = undefined;
-+        return (await this._handleUnknownToken()) === TokenRefreshOutcome.Success;
++        // Trinity patch: as _handleUnknownToken() would, but a grant this call starts must answer by the
++        // deadline. A refresh already in flight keeps its own bound.
++        const deadline = timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
++        this.tokenRefreshPromise ??= this.doTokenRefresh(undefined, deadline);
++        try {
++            return (await this.tokenRefreshPromise) === TokenRefreshOutcome.Success;
++        } finally {
++            this.tokenRefreshPromise = undefined;
++        }
 +    }
 +
      private async _handleUnknownToken(): Promise<TokenRefreshOutcome>;
@@ -357,7 +423,25 @@ index c95d7fec172c152ec0cb4b12d8ce0ce4a4957c21..393c106135c2e094a7fb982c8ac4297a
              // If our token is unknown, but it should not have expired yet, then we should not refresh
              const expiresIn = snapshot.expiry.getTime() - Date.now();
              // If it still has plenty of time left on the clock, we assume something else must be wrong and
-@@ -171,8 +191,10 @@ export class TokenManager {
+@@ -143,7 +172,7 @@ export class TokenManager {
+      * On success, sets new access and refresh tokens in opts.
+      * @returns Promise that resolves to a boolean - true when token was refreshed successfully
+      */
+-    private async doTokenRefresh(attempt?: number): Promise<TokenRefreshOutcome> {
++    private async doTokenRefresh(attempt?: number, deadline?: number): Promise<TokenRefreshOutcome> {
+         if (!this.opts.refreshToken || !this.opts.oauth2ClientConfig) {
+             this.opts.logger?.error("Unable to refresh token - no refresh token or OAuth2 client config");
+             return TokenRefreshOutcome.Logout;
+@@ -162,7 +191,7 @@ export class TokenManager {
+                 return TokenRefreshOutcome.Logout;
+             }
+ 
+-            const { accessToken, refreshToken, expiry } = await tokenRefresher.refreshTokens(this.opts.refreshToken);
++            const { accessToken, refreshToken, expiry } = await tokenRefresher.refreshTokens(this.opts.refreshToken, deadline);
+             this.opts.accessToken = accessToken;
+             this.opts.refreshToken = refreshToken;
+             this.latestTokenRefreshExpiry = expiry;
+@@ -171,8 +200,10 @@ export class TokenManager {
              // successfully got new tokens
              return TokenRefreshOutcome.Success;
          } catch (error) {
@@ -460,7 +544,7 @@ index 24d9cf123525922407827ba716720920b01586ee..ad8017358544e45b9a6d8db78846a251
  
              const mapper = this.client.getEventMapper();
 diff --git a/src/oauth/index.ts b/src/oauth/index.ts
-index da15b921c5d9e64fbbbe3c1d6016dadf5f09d240..810d3d715430d35c7d762d8c945e0586166b0b7d 100644
+index da15b921c5d9e64fbbbe3c1d6016dadf5f09d240..8bf7c785199671abc855531ac028e154d6cad266 100644
 --- a/src/oauth/index.ts
 +++ b/src/oauth/index.ts
 @@ -47,6 +47,14 @@ export * from "./error.ts";
@@ -478,7 +562,14 @@ index da15b921c5d9e64fbbbe3c1d6016dadf5f09d240..810d3d715430d35c7d762d8c945e0586
  /**
   * Type representing the persistent context needed for typical OAuth flows
   */
-@@ -227,12 +235,19 @@ export class OAuth2 {
+@@ -221,18 +229,28 @@ export class OAuth2 {
+      * Refresh the access token using the given refresh token and the refresh token grant
+      * @param refreshToken - the token to use to refresh the access token
+      */
+-    public async performRefreshTokenGrant(refreshToken: string): Promise<BearerTokenResponse> {
++    public async performRefreshTokenGrant(refreshToken: string, deadline?: number): Promise<BearerTokenResponse> {
+         const params = new URLSearchParams();
+         params.append("grant_type", "refresh_token");
          params.append("client_id", this.context.clientId);
          params.append("refresh_token", refreshToken);
  
@@ -488,9 +579,12 @@ index da15b921c5d9e64fbbbe3c1d6016dadf5f09d240..810d3d715430d35c7d762d8c945e0586
 -        // throws when response is invalid
 -        validateBearerTokenResponse(tokenResponse);
 -        return normalizeBearerTokenResponseTokenType(tokenResponse);
-+        // Trinity patch: abort the grant, body included, once it outlasts its bound.
++        // Trinity patch: abort the grant, body included, once it outlasts its bound, or at the caller's
++        // deadline (epoch ms) instead. A deadline already passed sends nothing.
 +        const controller = new AbortController();
-+        const timer = setTimeout(() => controller.abort(), REFRESH_TOKEN_GRANT_TIMEOUT_MS);
++        const bound = deadline === undefined ? REFRESH_TOKEN_GRANT_TIMEOUT_MS : deadline - Date.now();
++        if (bound <= 0) controller.abort();
++        const timer = setTimeout(() => controller.abort(), bound);
 +        try {
 +            const res = await this.fetch("token", params, OAuth2Error.RefreshTokenFailed, controller.signal);
 +            const tokenResponse = await res.json();
@@ -504,7 +598,7 @@ index da15b921c5d9e64fbbbe3c1d6016dadf5f09d240..810d3d715430d35c7d762d8c945e0586
      }
  
      /**
-@@ -295,6 +310,7 @@ export class OAuth2 {
+@@ -295,6 +313,7 @@ export class OAuth2 {
          target: "token" | "registration" | "revocation",
          params: URLSearchParams,
          error: OAuth2Error,
@@ -512,7 +606,7 @@ index da15b921c5d9e64fbbbe3c1d6016dadf5f09d240..810d3d715430d35c7d762d8c945e0586
      ): Promise<Response> {
          const url = this.metadata[`${target}_endpoint`];
          const res = await fetchWithLogging(this.logger, url, {
-@@ -304,6 +320,7 @@ export class OAuth2 {
+@@ -304,6 +323,7 @@ export class OAuth2 {
                  "Accept": "application/json",
              },
              body: params,
@@ -521,10 +615,23 @@ index da15b921c5d9e64fbbbe3c1d6016dadf5f09d240..810d3d715430d35c7d762d8c945e0586
  
          if (res.status >= 400) {
 diff --git a/src/oauth/tokenRefresher.ts b/src/oauth/tokenRefresher.ts
-index d19d64c4820e63a4030b056ab331912ad9589833..4a1fd6b6485397ef5dd11d3d13d334ebc1c0c1fc 100644
+index d19d64c4820e63a4030b056ab331912ad9589833..86f925c45aca236c353ff9c83e707fea126eb32f 100644
 --- a/src/oauth/tokenRefresher.ts
 +++ b/src/oauth/tokenRefresher.ts
-@@ -67,12 +67,9 @@ export class TokenRefresher {
+@@ -35,9 +35,10 @@ export class TokenRefresher {
+      * @param refreshToken - refresh token to use in request with token issuer
+      * @throws when token refresh fails
+      */
+-    public async refreshTokens(refreshToken: string): Promise<AccessTokens> {
++    public async refreshTokens(refreshToken: string, deadline?: number): Promise<AccessTokens> {
+         if (!this.inflightRefreshRequest) {
+-            this.inflightRefreshRequest = this.getNewTokens(refreshToken);
++            // Trinity patch: pass the caller's grant deadline on (epoch ms; undefined for the default bound).
++            this.inflightRefreshRequest = this.getNewTokens(refreshToken, deadline);
+         }
+ 
+         try {
+@@ -67,22 +68,21 @@ export class TokenRefresher {
      private shouldLogoutOnError(error: HTTPError): boolean {
          // Treat as logout as per https://spec.matrix.org/v1.18/client-server-api/#refresh-token-grant
          // after making sure it is an RFC 6749 section 5.2 error response
@@ -539,8 +646,12 @@ index d19d64c4820e63a4030b056ab331912ad9589833..4a1fd6b6485397ef5dd11d3d13d334eb
 +        return error instanceof OAuth2HTTPError && (error.httpStatus === 400 || error.httpStatus === 401);
      }
  
-     private async getNewTokens(refreshToken: string): Promise<AccessTokens> {
-@@ -82,7 +79,9 @@ export class TokenRefresher {
+-    private async getNewTokens(refreshToken: string): Promise<AccessTokens> {
++    private async getNewTokens(refreshToken: string, deadline?: number): Promise<AccessTokens> {
+         const requestStart = Date.now();
+ 
+-        const response = await this.auth.performRefreshTokenGrant(refreshToken);
++        const response = await this.auth.performRefreshTokenGrant(refreshToken, deadline);
  
          const tokens = {
              accessToken: response.access_token,

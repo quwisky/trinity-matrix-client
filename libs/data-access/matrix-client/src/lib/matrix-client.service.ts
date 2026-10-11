@@ -56,9 +56,10 @@ import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 /**
  * Default deadline for ordinary Matrix HTTP requests made by an account client. The
  * matrix-js-sdk patch's refresh-token grant abort (`REFRESH_TOKEN_GRANT_TIMEOUT_MS` in
- * `patches/matrix-js-sdk@43.0.0.patch`) mirrors this value and must change with it.
+ * `patches/matrix-js-sdk@43.0.0.patch`) mirrors this value and must change with it; the
+ * spec pins the two together.
  */
-const MATRIX_REQUEST_TIMEOUT_MS = 30_000;
+export const MATRIX_REQUEST_TIMEOUT_MS = 30_000;
 
 /** Resource ceiling for the first production Projection Runtime adapter. */
 export const MATRIX_SYNC_PROJECTION_BASELINE = {
@@ -364,12 +365,20 @@ export class MatrixClientService {
    * account's next request meets it and takes the usual path. Cold and finite; never
    * errors; false for an account that is not live, not OAuth or signed in without a
    * refresh token.
+   *
+   * `timeoutMs` bounds when the token grant this call starts may answer, counted from the
+   * call; past it the grant is aborted, which fails like a network error. Without it the
+   * patched SDK's own bound ({@link MATRIX_REQUEST_TIMEOUT_MS}, from the grant's start)
+   * applies. A refresh already in flight keeps its own bound.
    */
-  refreshAccessToken(userId: string): Observable<boolean> {
+  refreshAccessToken(
+    userId: string,
+    options: { readonly timeoutMs?: number } = {},
+  ): Observable<boolean> {
     return defer(() => {
       const client = this.clients.get(userId)?.client;
       if (!client || !this.canRefreshAccessToken(userId)) return of(false);
-      return from(client.http.refreshOAuthTokens());
+      return from(client.http.refreshOAuthTokens(options));
     }).pipe(catchError(() => of(false)));
   }
 
