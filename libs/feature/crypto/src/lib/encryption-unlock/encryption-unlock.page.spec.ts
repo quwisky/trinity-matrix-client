@@ -1,7 +1,12 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import { render, screen, within } from '@trinity/testing';
-import { TrustOperationError, TrustService } from '@trinity/data-access/trust';
+import {
+  TrustOperationError,
+  TrustService,
+  type TrustStatus,
+} from '@trinity/data-access/trust';
 import { TrnDialogRef, TrnAlertService } from '@trinity/components/overlay';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
@@ -27,6 +32,10 @@ interface RenderOptions {
   managementFails?: boolean;
   /** What the "are you sure you want to close" guard resolves to. */
   confirmClose?: boolean;
+  /** The Account's trust status; defaults to an Account with recovery. */
+  status?: TrustStatus;
+  /** A verified device whose identity's keys, and recovery, live on another device. */
+  setupElsewhere?: boolean;
 }
 
 /** Renders the page with mocked DI and returns the fixture + mocked deps. */
@@ -41,6 +50,8 @@ async function renderPage(options: RenderOptions = {}) {
     providerUrl = null,
     managementFails = false,
     confirmClose = true,
+    status = 'needs-recovery',
+    setupElsewhere = false,
   } = options;
   // The type-to-confirm gate and the password prompt both go through prompt$(); the
   // first call is the gate, any later one is the password.
@@ -53,7 +64,10 @@ async function renderPage(options: RenderOptions = {}) {
       ...(offerReset === undefined ? {} : { offerReset }),
     },
     providers: [
-      MockProvider(TrustService),
+      MockProvider(TrustService, {
+        status: signal(status).asReadonly(),
+        recoverySetupElsewhere: signal(setupElsewhere).asReadonly(),
+      }),
       MockProvider(Router),
       MockProvider(ActivatedRoute, {
         snapshot: {
@@ -538,6 +552,63 @@ describe('EncryptionUnlockPage', () => {
       await fixture.componentInstance.resetRecovery();
 
       expect(fixture.componentInstance.title()).toBe('Encryption reset');
+    });
+  });
+
+  describe('an Account with no recovery key to enter', () => {
+    it('asks for the recovery key when the Account has recovery', async () => {
+      await renderPage({ status: 'needs-recovery' });
+
+      expect(screen.getByTestId('recovery-key-input')).toBeTruthy();
+      expect(screen.getByTestId('reset-recovery')).toBeTruthy();
+      expect(screen.queryByTestId('reset-identity-intro')).toBeNull();
+      expect(screen.queryByTestId('reset-identity')).toBeNull();
+      expect(screen.getByText(/Enter the recovery key you saved/)).toBeTruthy();
+    });
+
+    it.each([
+      ['an unverified device', { status: 'needs-verification' as const }],
+      [
+        'a verified device without the keys',
+        { status: 'needs-setup' as const, setupElsewhere: true },
+      ],
+    ])(
+      'offers only the reset, and claims no recovery key, for %s',
+      async (_label, state) => {
+        const { fixture, crypto } = await renderPage({
+          ...state,
+          offerReset: true,
+          typed: null,
+        });
+        await flush();
+        fixture.detectChanges();
+
+        // The gate was cancelled; what is left must not ask for a key that never existed.
+        expect(screen.queryByTestId('recovery-key-input')).toBeNull();
+        expect(screen.queryByTestId('unlock-submit')).toBeNull();
+        expect(screen.queryByTestId('reset-recovery')).toBeNull();
+        expect(
+          screen.queryByText(/Enter the recovery key you saved/),
+        ).toBeNull();
+        expect(
+          screen.getByTestId('reset-identity-intro').textContent,
+        ).toContain('set up on another device without a recovery key');
+        expect(fixture.componentInstance.title()).toBe('Reset your identity');
+        expect(crypto.resetRecovery).not.toHaveBeenCalled();
+      },
+    );
+
+    it('runs the same confirmed reset from its own button', async () => {
+      const { crypto, prompt } = await renderPage({
+        status: 'needs-verification',
+        typed: 'RESET',
+      });
+
+      screen.getByTestId('reset-identity').click();
+      await flush();
+
+      expect(prompt.mock.calls[0][0].variant).toBe('danger');
+      expect(crypto.resetRecovery).toHaveBeenCalledOnce();
     });
   });
 

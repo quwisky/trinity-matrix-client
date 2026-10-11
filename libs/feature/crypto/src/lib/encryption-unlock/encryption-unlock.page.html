@@ -26,39 +26,63 @@
       (confirmed)="finishReset()"
     />
   } @else {
-    <h2 class="heading">Enter your recovery key</h2>
-    <p class="lead">
-      This device isn't trusted yet. Enter the recovery key you saved when you
-      set up encryption to unlock your encrypted messages here.
-    </p>
-
-    <trn-field class="mt-4">
-      <trn-field-label controlId="recovery-key"> Recovery key </trn-field-label>
-      <input
-        id="recovery-key"
-        trnInput
-        autocapitalize="off"
-        autocorrect="off"
-        autocomplete="off"
-        placeholder="EsTx xxxx xxxx …"
-        data-testid="recovery-key-input"
-        [formField]="unlockForm.recoveryKey"
-        (keyup.enter)="unlock()"
-      />
-      <p class="mt-1 text-xs text-muted-foreground">
-        Paste the key you saved during setup. Spaces don't matter.
+    @if (identityWithoutRecovery()) {
+      <!-- No secret storage, so no recovery key to ask for: the identity lives on another
+           device, and this page is only the confirmed way to replace it. -->
+      <h2 class="heading">There’s no recovery key to enter</h2>
+      <p class="lead" data-testid="reset-identity-intro">
+        Encryption for this account was set up on another device without a
+        recovery key. If you can’t use that device, reset your identity to start
+        again with a new recovery key.
       </p>
-    </trn-field>
+      <button
+        trnBtn
+        variant="danger"
+        presentation="outline"
+        class="mt-4 w-full"
+        [disabled]="busy()"
+        (click)="resetRecovery()"
+        data-testid="reset-identity"
+      >
+        Reset my identity
+      </button>
+    } @else {
+      <h2 class="heading">Enter your recovery key</h2>
+      <p class="lead">
+        This device isn't trusted yet. Enter the recovery key you saved when you
+        set up encryption to unlock your encrypted messages here.
+      </p>
 
-    <button
-      trnBtn
-      class="mt-4 w-full"
-      [disabled]="busy() || !hasKey()"
-      (click)="unlock()"
-      data-testid="unlock-submit"
-    >
-      Unlock
-    </button>
+      <trn-field class="mt-4">
+        <trn-field-label controlId="recovery-key">
+          Recovery key
+        </trn-field-label>
+        <input
+          id="recovery-key"
+          trnInput
+          autocapitalize="off"
+          autocorrect="off"
+          autocomplete="off"
+          placeholder="EsTx xxxx xxxx …"
+          data-testid="recovery-key-input"
+          [formField]="unlockForm.recoveryKey"
+          (keyup.enter)="unlock()"
+        />
+        <p class="mt-1 text-xs text-muted-foreground">
+          Paste the key you saved during setup. Spaces don't matter.
+        </p>
+      </trn-field>
+
+      <button
+        trnBtn
+        class="mt-4 w-full"
+        [disabled]="busy() || !hasKey()"
+        (click)="unlock()"
+        data-testid="unlock-submit"
+      >
+        Unlock
+      </button>
+    }
 
     @if (busy()) {
       <div class="status" role="status" aria-live="polite">
@@ -87,19 +111,21 @@
       </a>
     }
 
-    <!-- Subordinate on purpose: this is the way out for someone who has no key, not an
-       alternative to entering one. -->
-    <button
-      trnBtn
-      variant="secondary"
-      presentation="ghost"
-      size="sm"
-      class="mt-4 w-full"
-      [disabled]="busy()"
-      (click)="resetRecovery()"
-      data-testid="reset-recovery"
-    >
-      I've lost my recovery key
-    </button>
+    @if (!identityWithoutRecovery()) {
+      <!-- Subordinate on purpose: this is the way out for someone who has no key, not an
+         alternative to entering one. -->
+      <button
+        trnBtn
+        variant="secondary"
+        presentation="ghost"
+        size="sm"
+        class="mt-4 w-full"
+        [disabled]="busy()"
+        (click)="resetRecovery()"
+        data-testid="reset-recovery"
+      >
+        I’ve lost my recovery key
+      </button>
+    }
   }
 </ng-template>

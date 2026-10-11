@@ -48,6 +48,10 @@ import {
  * enters their recovery key to trust this device — {@link TrustService.recoverWithKey}
  * imports the cross-signing secrets and enables key backup. Key-only by design:
  * Trinity provisions a random recovery key (no passphrase) during setup.
+ *
+ * Also the one home of the irreversible reset. An Account without secret storage (an
+ * identity set up on another device without recovery) arrives here only for that reset,
+ * so the page asks for no recovery key it does not have.
  */
 @Component({
   selector: 'trn-encryption-unlock',
@@ -125,10 +129,27 @@ export class EncryptionUnlockPage {
       : 'Unlocking your encrypted messages…',
   );
 
-  /** Page/modal title, which has to follow what the page is actually doing. */
-  readonly title = computed(() =>
-    this.newRecoveryKey() ? 'Encryption reset' : 'Verify this device',
+  /**
+   * The Account's identity lives on another device and no secret storage backs it, so
+   * there is no recovery key to enter and the page offers only the reset. Every other
+   * reading, `unknown` included, keeps the key form: a status that is not in yet must not
+   * hide the ordinary path.
+   */
+  readonly identityWithoutRecovery = computed(
+    () =>
+      this.crypto.status() === 'needs-verification' ||
+      this.crypto.recoverySetupElsewhere(),
   );
+
+  /** Page/modal title, which has to follow what the page is actually doing. */
+  readonly title = computed(() => {
+    if (this.newRecoveryKey()) {
+      return 'Encryption reset';
+    }
+    return this.identityWithoutRecovery()
+      ? 'Reset your identity'
+      : 'Verify this device';
+  });
 
   /**
    * The recovery key minted by a reset, shown once. Non-null switches the page from
@@ -144,8 +165,8 @@ export class EncryptionUnlockPage {
 
   /**
    * Arrive with the reset already offered, for an entry point whose own label promised
-   * it (Settings → Security's "I've lost my recovery key"). Set as an input by the modal
-   * presentation and as `?reset=1` by the routed one.
+   * it (Settings → Security's "I’ve lost my recovery key" or "Reset my identity"). Set as
+   * an input by the modal presentation and as `?reset=1` by the routed one.
    */
   readonly offerReset = input(false);
 
