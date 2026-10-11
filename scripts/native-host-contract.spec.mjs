@@ -88,7 +88,7 @@ function appManifest(
   ].join('\n'),
 ) {
   return [
-    '<manifest xmlns:android="http://schemas.android.com/apk/res/android"',
+    `<manifest ${ANDROID_NS}`,
     '    xmlns:tools="http://schemas.android.com/tools">',
     '  <application>',
     '    <activity android:name=".MainActivity">',
@@ -215,7 +215,6 @@ describe('native host contract', () => {
       '@CapacitorPlugin( name="PushHandoff" )\n\n\npublic   class',
     );
     input.iosPushPlugin = input.iosPushPlugin
-      .replace('@objc(PushHandoffPlugin)', '@objc( PushHandoffPlugin )')
       .replace(
         'PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin',
         'PushHandoffPlugin :\n    CAPPlugin,\n    CAPBridgedPlugin',
@@ -550,6 +549,47 @@ describe('native host contract', () => {
         );
       },
       'Android host must remove the push plugin MessagingService from the app manifest',
+    ],
+    [
+      'a push library service directly under the manifest',
+      (input) => {
+        input.androidPushLibraryManifest = `<manifest ${ANDROID_NS}><service android:name=".TrinityMessagingService"><intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT"/></intent-filter></service></manifest>`;
+      },
+      'Capacitor push library must declare TrinityMessagingService for FCM messages',
+    ],
+    [
+      'a push library manifest that is not well-formed XML',
+      (input) => {
+        input.androidPushLibraryManifest = '<manifest><application>';
+      },
+      'Capacitor push library manifest is not well-formed XML',
+    ],
+    [
+      'an app manifest that is not well-formed XML',
+      (input) => {
+        input.androidManifest = '<manifest><application>';
+      },
+      'Android host manifest is not well-formed XML',
+    ],
+    [
+      'an iOS plugin name with spaces inside @objc()',
+      (input) => {
+        input.iosPushPlugin = input.iosPushPlugin.replace(
+          '@objc(PushHandoffPlugin)',
+          '@objc( PushHandoffPlugin )',
+        );
+      },
+      'iOS PushHandoff plugin must be discoverable by cap sync',
+    ],
+    [
+      'an Android plugin class with a double space the CLI cannot match',
+      (input) => {
+        input.androidPushPlugin = input.androidPushPlugin.replace(
+          'class PushHandoffPlugin',
+          'class  PushHandoffPlugin',
+        );
+      },
+      'Android PushHandoff plugin must be discoverable by cap sync',
     ],
     [
       'a commented-out push library service',
