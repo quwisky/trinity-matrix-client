@@ -2,6 +2,7 @@ import type {
   TrustCryptoApi,
   TrustMatrixClient,
 } from '@trinity/data-access/matrix-client';
+import { withTimeout } from './recovery-reset';
 import type { TrustHealthSnapshot } from './trust-health.service';
 
 /**
@@ -51,6 +52,27 @@ export async function readTrustSnapshot(
     identityElsewhere,
     status,
   };
+}
+
+/**
+ * The Account's cross-signing master key as the homeserver publishes it (`/keys/query`),
+ * or null when the server has none. Throws when the server cannot be asked.
+ *
+ * The device's own view cannot answer this. A first setup cancelled before its upload
+ * leaves the olm machine holding an identity it created and marked verified, and a key
+ * query that returns no master key does not remove it, so `userHasCrossSigningKeys`,
+ * `getCrossSigningStatus` and `isCrossSigningReady` all report that identity (#1225).
+ */
+export async function readPublishedMasterKey(
+  client: Pick<TrustMatrixClient, 'downloadKeysForUsers' | 'getUserId'>,
+): Promise<string | null> {
+  const userId = client.getUserId();
+  if (!userId) {
+    throw new Error('No signed-in user to query cross-signing keys for.');
+  }
+  const response = await withTimeout(client.downloadKeysForUsers([userId]));
+  const keys = response.master_keys?.[userId]?.keys;
+  return (keys && Object.values(keys)[0]) || null;
 }
 
 /** Whether this device is cross-signed by its own Account's identity. */

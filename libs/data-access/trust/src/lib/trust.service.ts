@@ -44,6 +44,7 @@ import {
 import { TrustHealthService } from './trust-health.service';
 import {
   holdsCrossSigningIdentity,
+  readPublishedMasterKey,
   readThisDeviceVerified,
 } from './trust-snapshot';
 
@@ -116,6 +117,10 @@ export class TrustService {
    *   the published identity first, then checks the keys held locally against it. It fails
    *   closed: the upload that follows needs the same server, and a wrong "no identity"
    *   is the destructive answer.
+   *
+   * When this device holds an identity the server never received (a first setup cancelled
+   * or failed before its upload), setup creates and uploads new keys rather than storing
+   * the unpublished ones in secret storage (#1225).
    */
   setUp(promptPassword: PasswordPrompt): Observable<string> {
     return defer(() =>
@@ -129,13 +134,17 @@ export class TrustService {
           const crypto = this.requireCrypto('setup', context.crypto);
           const userId = client.getUserId() ?? '';
           await assertNoRecoveryOnAccount(client);
-          await assertNoIdentityElsewhere(client, crypto);
+          const identity = await assertNoIdentityElsewhere(client, crypto);
           const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
           await crypto.bootstrapCrossSigning({
             authUploadDeviceSigningKeys: this.passwordUia(
               promptPassword,
               userId,
             ),
+            // Keys this device made and never uploaded: bootstrapping without this does
+            // nothing (CrossSigningIdentity.ts:72-78), so the 4S set up next would hold
+            // keys no server has. The server has no identity, so new keys replace nothing.
+            ...(identity === 'unpublished' && { setupNewCrossSigning: true }),
           });
           await crypto.bootstrapSecretStorage({
             setupNewKeyBackup: true,
@@ -468,6 +477,20 @@ const RECOVERY_ELSEWHERE_MESSAGE =
   'This account already has encryption set up on another device. Set up recovery on that device instead, or reset your identity if you can’t.';
 
 /**
+ * The Account's cross-signing identity as first-device setup finds it:
+ * - `none`: neither the server nor this device has one, so bootstrap creates it;
+ * - `unpublished`: this device created one the server never received, so setup must
+ *   create and upload new keys (nothing exists on the server to replace);
+ * - `held`: the server publishes one and this device holds its private keys.
+ *
+ * Both non-`none` answers need this device to hold an identity's private keys, and `held`
+ * needs the server's key to be exactly that identity. The device's two reads (its own view,
+ * then the raw `/keys/query`) can disagree with a lagging server; neither disagreement may
+ * end in creating keys over an identity the server has or had.
+ */
+type SetupIdentity = 'none' | 'unpublished' | 'held';
+
+/**
  * Refuse first-device setup on an Account whose cross-signing identity lives elsewhere.
  *
  * With no private keys on this device and none in secret storage, `bootstrapCrossSigning`
@@ -490,22 +513,42 @@ const RECOVERY_ELSEWHERE_MESSAGE =
  * refused, with the unverified device's copy.
  */
 async function assertNoIdentityElsewhere(
-  client: Pick<TrustMatrixClient, 'getDeviceId' | 'getUserId'>,
+  client: Pick<
+    TrustMatrixClient,
+    'downloadKeysForUsers' | 'getDeviceId' | 'getUserId'
+  >,
   crypto: TrustCryptoApi,
-): Promise<void> {
+): Promise<SetupIdentity> {
   // The local view can lag right after sign-in; ask the homeserver (own user). Asked
   // first because, for the own user, this also re-queries the published identity
   // (rust-crypto.ts:516-525), so the match below is judged against the server's copy.
   if (!(await withTimeout(crypto.userHasCrossSigningKeys(undefined, true)))) {
-    return;
+    return 'none';
   }
+  // That answer comes from the olm machine (rust-crypto.ts:527-529), which keeps an
+  // identity it created even when the query returns no master key. Only the server can
+  // say whether that identity was ever published.
+  const published = await readPublishedMasterKey(client);
   const [status, crossSigningReady] = await Promise.all([
     crypto.getCrossSigningStatus(),
     crypto.isCrossSigningReady(),
   ]);
-  if (holdsCrossSigningIdentity(status, crossSigningReady)) {
-    // This device holds the identity: bootstrap keeps it and only adds recovery.
-    return;
+  const holds = holdsCrossSigningIdentity(status, crossSigningReady);
+  if (!published) {
+    // Replacing is safe only for this device's own unpublished identity. Without its keys
+    // here, the two reads disagree: the first saw an identity the second missed. Refuse
+    // rather than create keys over one the server may still have.
+    if (holds) return 'unpublished';
+    throw new TrustOperationError(
+      'setup',
+      'server-failure',
+      'retry',
+      'The homeserver could not confirm this account’s encryption identity. Try again.',
+    );
+  }
+  if (holds && (await crypto.getCrossSigningKeyId()) === published) {
+    // This device holds the published identity: bootstrap keeps it and only adds recovery.
+    return 'held';
   }
   const verified = await readThisDeviceVerified(client, crypto).catch(
     () => false,

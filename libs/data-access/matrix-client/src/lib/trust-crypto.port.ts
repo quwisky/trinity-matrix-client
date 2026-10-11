@@ -18,6 +18,7 @@ export type TrustCryptoApi = Pick<
   | 'exportRoomKeysAsJson'
   | 'exportSecretsBundle'
   | 'getActiveSessionBackupVersion'
+  | 'getCrossSigningKeyId'
   | 'getCrossSigningStatus'
   | 'getDeviceVerificationStatus'
   | 'getKeyBackupInfo'
@@ -37,6 +38,7 @@ export type TrustMatrixClient = Pick<
   MatrixClient,
   | 'deleteDevice'
   | 'deleteMultipleDevices'
+  | 'downloadKeysForUsers'
   | 'getDeviceId'
   | 'getDevices'
   | 'getUserId'
