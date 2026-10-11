@@ -30,9 +30,10 @@ async function openStory(
   theme: ThemeId = DEFAULT_STORYBOOK_THEME_PREVIEW.theme.id,
   mode: ResolvedThemeMode = DEFAULT_STORYBOOK_THEME_PREVIEW.mode.id,
   density: 'cosy' | 'compact' | 'spacious' = 'cosy',
+  args?: string,
 ): Promise<void> {
   await page.goto(
-    `/iframe.html?id=${id}&viewMode=story&globals=${globals(theme, mode, density)}`,
+    `/iframe.html?id=${id}&viewMode=story&globals=${globals(theme, mode, density)}${args ? `&args=${args}` : ''}`,
   );
 }
 
@@ -51,6 +52,86 @@ async function computedColour(
     const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
     return { r, g, b };
   }, property);
+}
+
+/**
+ * #1217: a solid action on an attention surface inverts, so its fill stands out from the
+ * surface at rest and on hover, its label stays readable on both, and its focus ring sits
+ * on a gap in the surface colour. Returns the resolved attention hover fill.
+ */
+async function expectAttentionAction(
+  page: Page,
+  surface: Locator,
+  action: Locator,
+): Promise<Srgb> {
+  await action.evaluate((element) =>
+    element.setAttribute('data-testid', 'attention-action'),
+  );
+  const attentionSurface = await computedColour(surface, 'background-color');
+  expect(attentionSurface).toEqual(
+    await resolveTokenSrgb(
+      page,
+      'attention-action',
+      '--trinity-state-attention-surface',
+    ),
+  );
+  const restFill = await computedColour(action, 'background-color');
+  expect(restFill).toEqual(
+    await resolveTokenSrgb(
+      page,
+      'attention-action',
+      '--trinity-state-attention-action-surface',
+    ),
+  );
+  expect(contrastRatio(restFill, attentionSurface)).toBeGreaterThanOrEqual(3);
+  expect((await measureLocatorContrast(action)).ratio).toBeGreaterThanOrEqual(
+    AA_NORMAL_TEXT,
+  );
+
+  await action.hover();
+  const hoverSurface = await resolveTokenSrgb(
+    page,
+    'attention-action',
+    '--trinity-state-attention-action-hover-surface',
+  );
+  await expect
+    .poll(() => computedColour(action, 'background-color'))
+    .toEqual(hoverSurface);
+  expect(hoverSurface).not.toEqual(restFill);
+  expect(contrastRatio(hoverSurface, attentionSurface)).toBeGreaterThanOrEqual(
+    3,
+  );
+  expect((await measureLocatorContrast(action)).ratio).toBeGreaterThanOrEqual(
+    AA_NORMAL_TEXT,
+  );
+  await page.mouse.move(0, 0);
+
+  await action.focus();
+  await expect(action).toBeFocused();
+  const attentionRing = await computedColour(action, 'outline-color');
+  expect(attentionRing).toEqual(
+    await resolveTokenSrgb(
+      page,
+      'attention-action',
+      '--trinity-focus-ring-on-attention',
+    ),
+  );
+  expect(contrastRatio(attentionRing, attentionSurface)).toBeGreaterThanOrEqual(
+    3,
+  );
+  // The ring shares the inverted fill's colour, so a gap in the surface colour is what
+  // keeps it distinct from the button.
+  const ringOffset = await action.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      colour: style.getPropertyValue('--tw-ring-offset-color').trim(),
+      width: style.getPropertyValue('--tw-ring-offset-width').trim(),
+    };
+  });
+  expect(ringOffset.width).not.toMatch(/^0(px)?$/);
+  expect(ringOffset.colour).not.toBe('');
+  await action.evaluate((element: HTMLElement) => element.blur());
+  return hoverSurface;
 }
 
 test.describe('semantic design foundations', () => {
@@ -123,68 +204,11 @@ test.describe('semantic design foundations', () => {
       expect(contrastRatio(focus, floating)).toBeGreaterThanOrEqual(3);
 
       await openStory(page, 'components-banner--accent', theme.id, mode.id);
-      const banner = page.locator('[data-variant="accent"]');
-      const bannerAction = page.getByRole('button', { name: 'Set up' });
-      await bannerAction.evaluate((element) =>
-        element.setAttribute('data-testid', 'attention-action'),
-      );
-      // #1217: a solid action on the attention surface inverts, so its fill stands out from
-      // the banner at rest and on hover, and its label stays readable on both.
-      const bannerSurface = await computedColour(banner, 'background-color');
-      const restFill = await computedColour(bannerAction, 'background-color');
-      expect(restFill).toEqual(
-        await resolveTokenSrgb(
-          page,
-          'attention-action',
-          '--trinity-state-attention-action-surface',
-        ),
-      );
-      expect(contrastRatio(restFill, bannerSurface)).toBeGreaterThanOrEqual(3);
-      expect(
-        (await measureLocatorContrast(bannerAction)).ratio,
-      ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
-      await bannerAction.hover();
-      const hoverSurface = await resolveTokenSrgb(
+      const hoverSurface = await expectAttentionAction(
         page,
-        'attention-action',
-        '--trinity-state-attention-action-hover-surface',
+        page.locator('[data-variant="accent"]'),
+        page.getByRole('button', { name: 'Set up' }),
       );
-      await expect
-        .poll(() => computedColour(bannerAction, 'background-color'))
-        .toEqual(hoverSurface);
-      expect(hoverSurface).not.toEqual(restFill);
-      expect(contrastRatio(hoverSurface, bannerSurface)).toBeGreaterThanOrEqual(
-        3,
-      );
-      expect(
-        (await measureLocatorContrast(bannerAction)).ratio,
-      ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
-      await page.mouse.move(0, 0);
-      await bannerAction.focus();
-      await expect(bannerAction).toBeFocused();
-      const attentionRing = await computedColour(bannerAction, 'outline-color');
-      const attentionSurface = await computedColour(banner, 'background-color');
-      expect(attentionRing).toEqual(
-        await resolveTokenSrgb(
-          page,
-          'attention-action',
-          '--trinity-focus-ring-on-attention',
-        ),
-      );
-      expect(
-        contrastRatio(attentionRing, attentionSurface),
-      ).toBeGreaterThanOrEqual(3);
-      // The ring shares the inverted fill's colour, so a gap in the banner colour is what
-      // keeps it distinct from the button.
-      const ringOffset = await bannerAction.evaluate((element) => {
-        const style = getComputedStyle(element);
-        return {
-          colour: style.getPropertyValue('--tw-ring-offset-color').trim(),
-          width: style.getPropertyValue('--tw-ring-offset-width').trim(),
-        };
-      });
-      expect(ringOffset.width).not.toMatch(/^0(px)?$/);
-      expect(ringOffset.colour).not.toBe('');
 
       // An anchor action needs its own hover rule: Helm's `[a]:hover` outranks the plain one.
       await openStory(
@@ -198,6 +222,45 @@ test.describe('semantic design foundations', () => {
       await expect
         .poll(() => computedColour(linkAction, 'background-color'))
         .toEqual(hoverSurface);
+
+      // #1224: the accent page header and accent overlay surface paint the same attention
+      // surface, so a solid action in either inverts the same way. The toolbar layout's
+      // own background loses to the accent, so it is checked as well.
+      for (const layout of ['page', 'toolbar'] as const) {
+        await openStory(
+          page,
+          'components-page-header--accent-action',
+          theme.id,
+          mode.id,
+          'cosy',
+          `layout:${layout}`,
+        );
+        const header = page.locator('header[data-trn-variant="accent"]');
+        await expect(header).toHaveAttribute('data-trn-layout', layout);
+        await expectAttentionAction(
+          page,
+          header,
+          page.getByRole('button', { name: 'Verify' }),
+        );
+      }
+
+      await openStory(
+        page,
+        'components-overlay-recipes--accent-surface',
+        theme.id,
+        mode.id,
+      );
+      await expectAttentionAction(
+        page,
+        page.getByTestId('accent-overlay-surface'),
+        page.getByRole('button', { name: 'Verify now' }),
+      );
+      const overlayLink = page.getByRole('link', { name: 'Learn more' });
+      await overlayLink.hover();
+      await expect
+        .poll(() => computedColour(overlayLink, 'background-color'))
+        .toEqual(hoverSurface);
+      await page.mouse.move(0, 0);
 
       await openStory(page, 'components-input--default', theme.id, mode.id);
       const field = page.getByRole('textbox', { name: 'Room name' });

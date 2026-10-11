@@ -70,6 +70,16 @@ export class PageHeaderComponent {
     trnPageHeaderRecipe(this.variant(), this.layout()),
   );
 
+  /**
+   * The accent variant paints the attention surface in both layouts (its fill outranks the
+   * toolbar background), so it declares that context for the projected actions: `trnBtn`
+   * reads `data-trn-surface="attention"` and inverts its solid fill, which would otherwise
+   * be the same accent as the header (#1224).
+   */
+  protected readonly surface = computed(() =>
+    this.variant() === 'accent' ? 'attention' : null,
+  );
+
   /** Classes for the single `<h1>`. The toolbar recipe is a flex row so a `#`hash +
    * name + lock icon sit inline and truncate; its color is inherited from the
    * header (matching the pre-migration markup, where the h1 had no color class). */
