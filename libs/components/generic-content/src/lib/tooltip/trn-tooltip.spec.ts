@@ -143,8 +143,8 @@ describe('TrnTooltip', () => {
     });
 
     it('does not open when focus-visible focus follows a touch', async () => {
-      // WebKit on Apple platforms does not focus a tapped link, so focus restored after the
-      // tap still matches :focus-visible there (#1216).
+      // In Playwright on macOS WebKit a tap focuses nothing, so focus restored after it still
+      // matches :focus-visible (#1216).
       expect(await focusWith(true, touch)).toBeNull();
     });
 
