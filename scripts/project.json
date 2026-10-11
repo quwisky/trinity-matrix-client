@@ -30,6 +30,7 @@
         "{workspaceRoot}/libs/**/*.md",
         "{workspaceRoot}/libs/**/project.json",
         "{workspaceRoot}/ios/**/*.swift",
+        "{workspaceRoot}/libs/native/**/*.swift",
         "{workspaceRoot}/android/project.json",
         "{workspaceRoot}/electron/project.json",
         "{workspaceRoot}/e2e/project.json",
