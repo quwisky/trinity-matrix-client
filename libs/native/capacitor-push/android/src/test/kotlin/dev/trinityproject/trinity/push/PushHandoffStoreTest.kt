@@ -118,6 +118,7 @@ class PushHandoffStoreTest {
         assertEquals(1_760_000_000_000L, accessTokenExpiryFrom(1_760_000_000_000L))
         assertEquals(1_000L, accessTokenExpiryFrom(1_000))
         assertEquals(1_760_000_000_000L, accessTokenExpiryFrom(1_760_000_000_000.7))
+        assertEquals(1L, accessTokenExpiryFrom(1.9))
         assertNull(accessTokenExpiryFrom(null))
         assertNull(accessTokenExpiryFrom(JSONObject.NULL))
         assertNull(accessTokenExpiryFrom("1760000000000"))

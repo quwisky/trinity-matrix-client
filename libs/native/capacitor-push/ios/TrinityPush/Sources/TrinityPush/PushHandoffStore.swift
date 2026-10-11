@@ -20,14 +20,15 @@ public struct HandoffAccount: Codable, Equatable {
 
     /// The expiry for a value the app sent as epoch milliseconds. Nil for anything that is
     /// not a usable instant, matching the Android store: a missing or non-numeric value, a
-    /// boolean (which bridges as an `NSNumber`), a non-finite number and a number at or below
-    /// zero. A bad value must not make every push read as expired.
+    /// boolean (which bridges as an `NSNumber`), a non-finite number and a number below one
+    /// once truncated to whole milliseconds, as Android truncates it. A bad value must not
+    /// make every push read as expired.
     public static func expiry(fromEpochMilliseconds raw: Any?) -> Date? {
         guard let number = raw as? NSNumber,
               CFGetTypeID(number as CFTypeRef) != CFBooleanGetTypeID()
         else { return nil }
-        let milliseconds = number.doubleValue
-        guard milliseconds.isFinite, milliseconds > 0 else { return nil }
+        let milliseconds = number.doubleValue.rounded(.towardZero)
+        guard milliseconds.isFinite, milliseconds >= 1 else { return nil }
         return Date(timeIntervalSince1970: milliseconds / 1000)
     }
 

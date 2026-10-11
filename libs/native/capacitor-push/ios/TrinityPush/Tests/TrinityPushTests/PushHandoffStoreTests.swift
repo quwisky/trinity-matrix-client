@@ -95,6 +95,7 @@ final class HandoffAccountTests: XCTestCase {
         XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: "1760000000000"))
         XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: 0)))
         XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: -1)))
+        XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: 0.4)))
         XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: true)))
         XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: false)))
         XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: Double.nan)))
@@ -102,6 +103,15 @@ final class HandoffAccountTests: XCTestCase {
         XCTAssertEqual(
             HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: 1_760_000_000_000.0)),
             Date(timeIntervalSince1970: 1_760_000_000)
+        )
+        // Fractions of a millisecond are dropped, as Android's toLong() drops them.
+        XCTAssertEqual(
+            HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: 1_760_000_000_000.7)),
+            Date(timeIntervalSince1970: 1_760_000_000)
+        )
+        XCTAssertEqual(
+            HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: 1.9)),
+            Date(timeIntervalSince1970: 0.001)
         )
     }
 
