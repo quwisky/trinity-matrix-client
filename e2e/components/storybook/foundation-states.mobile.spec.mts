@@ -54,3 +54,23 @@ test('banner actions wrap below the message instead of squeezing it (#1221)', as
     bannerBox.x + bannerBox.width,
   );
 });
+
+test('a lone banner action leaves no blank message row (#1221)', async ({
+  page,
+}) => {
+  await page.goto(
+    '/iframe.html?id=components-banner--action-only&viewMode=story',
+  );
+  const banner = page.locator('.banner');
+  const action = page.getByRole('button', { name: 'Search all messages' });
+  await expect(action).toBeVisible();
+
+  const bannerBox = (await banner.boundingBox())!;
+  const actionBox = (await action.boundingBox())!;
+  const padding = await banner.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+  });
+  // One row: the banner is the action plus its padding, with no empty line above it.
+  expect(bannerBox.height).toBeLessThanOrEqual(actionBox.height + padding + 1);
+});

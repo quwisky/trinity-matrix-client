@@ -49,7 +49,11 @@
     justify-content: flex-end;
   }
 
-  // Without actions, an empty slot would wrap onto a line of its own in a narrow banner.
+  // An empty slot would still take its basis and a gap: an actions-only banner would wrap
+  // its button below a blank 12rem message, and a banner without actions would wrap an
+  // empty line. The template keeps each slot free of whitespace so `:empty` matches.
+  .banner__icon:empty,
+  .banner__text:empty,
   .banner__actions:empty {
     display: none;
   }

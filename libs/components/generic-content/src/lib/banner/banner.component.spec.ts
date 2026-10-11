@@ -16,6 +16,29 @@ class HostComponent {
   variant: 'neutral' | 'accent' = 'neutral';
 }
 
+// Message search's server-search banner: a lone action, its message slot unused.
+@Component({
+  imports: [BannerComponent],
+  template: `
+    <trn-banner>
+      @if (withMessage) {
+        <span>Showing server results.</span>
+      } @else {
+        <span trnBannerActions><button>Search all messages</button></span>
+      }
+    </trn-banner>
+  `,
+})
+class ActionOnlyHostComponent {
+  withMessage = false;
+}
+
+@Component({
+  imports: [BannerComponent],
+  template: `<trn-banner>Reconnecting…</trn-banner>`,
+})
+class MessageOnlyHostComponent {}
+
 describe('BannerComponent', () => {
   it('projects the icon, message, and actions into their slots', async () => {
     const { container } = await render(HostComponent);
@@ -30,6 +53,32 @@ describe('BannerComponent', () => {
     expect(
       container.querySelector('.banner__actions button')?.textContent?.trim(),
     ).toBe('Do it');
+  });
+
+  // The stylesheet hides empty slots with :empty so they take no basis or gap (#1221).
+  it('leaves the icon and message slots empty for a lone action', async () => {
+    const actionOnly = await render(ActionOnlyHostComponent);
+    expect(
+      actionOnly.container.querySelector('.banner__text')?.matches(':empty'),
+    ).toBe(true);
+    expect(
+      actionOnly.container.querySelector('.banner__icon')?.matches(':empty'),
+    ).toBe(true);
+    expect(
+      actionOnly.container.querySelector('.banner__actions')?.matches(':empty'),
+    ).toBe(false);
+  });
+
+  it('leaves the actions slot empty when there are no actions', async () => {
+    const messageOnly = await render(MessageOnlyHostComponent);
+    expect(
+      messageOnly.container
+        .querySelector('.banner__actions')
+        ?.matches(':empty'),
+    ).toBe(true);
+    expect(
+      messageOnly.container.querySelector('.banner__text')?.matches(':empty'),
+    ).toBe(false);
   });
 
   it('reflects the canonical variant', async () => {

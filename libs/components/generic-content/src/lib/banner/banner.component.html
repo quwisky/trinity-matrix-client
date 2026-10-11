@@ -1,4 +1,6 @@
 <div class="banner" [attr.data-variant]="variant()">
+  <!-- Keep each slot span free of whitespace: the stylesheet hides an empty slot
+       with :empty, and a whitespace text node would keep it (#1221). -->
   <span class="banner__icon"><ng-content select="[trnBannerIcon]" /></span>
   <!-- Presentational only. Announcement is the consumer's job via a persistent
        sr-only live region: a role="status" inserted together with its text (as an

@@ -85,6 +85,21 @@ export const TwoActions: Story = {
   }),
 };
 
+/** Message search's server-search prompt: a lone action, with no icon or message. */
+export const ActionOnly: Story = {
+  render: () => ({
+    template: `
+      <trn-banner variant="neutral">
+        <span trnBannerActions>
+          <button trnBtn variant="secondary" presentation="outline" size="sm">
+            <trn-icon name="server" />
+            Search all messages
+          </button>
+        </span>
+      </trn-banner>`,
+  }),
+};
+
 export const NoActions: Story = {
   render: () => ({
     template: `
