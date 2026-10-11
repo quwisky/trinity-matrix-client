@@ -245,14 +245,19 @@ export class MatrixClientService {
     this._accessTokenRotations.asObservable();
 
   /**
-   * The access token each OAuth account's client holds, with its expiry (epoch ms) when the
-   * server gave one. Set from the session when the client is built, and moved to each
+   * The access token Trinity last saw each OAuth account's client start with or persist,
+   * with its expiry (epoch ms) when the server gave one, and whether the sign-in came with
+   * a refresh token. Set from the session when the client is built, and moved to each
    * refreshed pair once storage accepted it and before the rotation is published. Read
    * through {@link accessTokenExpiry}.
    */
   private readonly oauthTokens = new Map<
     string,
-    { readonly accessToken: string; readonly expiresAt: number | undefined }
+    {
+      readonly accessToken: string;
+      readonly expiresAt: number | undefined;
+      readonly refreshable: boolean;
+    }
   >();
 
   /**
@@ -338,8 +343,8 @@ export class MatrixClientService {
   }
 
   /**
-   * When `accessToken` stops working (epoch ms), if it is the token this account's OAuth
-   * client holds and the server gave it a lifetime. Undefined for password and SSO tokens,
+   * When `accessToken` stops working (epoch ms), if it is the token Trinity last saw this
+   * account's client start with or persist and the server gave it a lifetime. Undefined for password and SSO tokens,
    * a token without `expires_in`, and a token the client has already replaced, so an
    * expiry never travels with the wrong token.
    */
@@ -353,12 +358,15 @@ export class MatrixClientService {
    * in flight. The new pair is persisted and published through `onTokenRefresh` like any
    * refresh. Emits whether new tokens were adopted. A refusal signs nothing out here: the
    * account's next request meets it and takes the usual path. Cold and finite; never
-   * errors; false for an account that is not live or not OAuth.
+   * errors; false for an account that is not live, not OAuth or signed in without a
+   * refresh token.
    */
   refreshAccessToken(userId: string): Observable<boolean> {
     return defer(() => {
       const client = this.clients.get(userId)?.client;
-      if (!client || !this.oauthTokens.has(userId)) return of(false);
+      if (!client || !this.oauthTokens.get(userId)?.refreshable) {
+        return of(false);
+      }
       return from(client.http.refreshOAuthTokens());
     }).pipe(catchError(() => of(false)));
   }
@@ -718,6 +726,7 @@ export class MatrixClientService {
             this.oauthTokens.set(session.userId, {
               accessToken: session.accessToken,
               expiresAt: session.accessTokenExpiresAt,
+              refreshable: !!session.refreshToken,
             });
           }
           // Best-effort cache load; a corrupt/blocked IndexedDB must NOT block login.
@@ -860,10 +869,12 @@ export class MatrixClientService {
                 // Before publishing, so a reader of the rotation finds the new expiry. Only
                 // a tracked (live or starting) client's account: a detached client's
                 // refresh must not invent an entry.
-                if (this.oauthTokens.has(session.userId)) {
+                const tracked = this.oauthTokens.get(session.userId);
+                if (tracked) {
                   this.oauthTokens.set(session.userId, {
                     accessToken: tokens.accessToken,
                     expiresAt: tokens.expiry?.getTime(),
+                    refreshable: tracked.refreshable,
                   });
                 }
                 this._accessTokenRotations.next({

@@ -489,6 +489,22 @@ describe('MatrixClientService', () => {
     expect(client.http.refreshOAuthTokens).not.toHaveBeenCalled();
   });
 
+  it('refreshes nothing for an OAuth sign-in that came without a refresh token', async () => {
+    const client = {
+      ...fakeClient(),
+      http: { refreshOAuthTokens: vi.fn().mockResolvedValue(true) },
+    };
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+    const { refreshToken: _unused, ...withoutRefreshToken } = OIDC_SESSION;
+    await firstValueFrom(svc.init(withoutRefreshToken));
+
+    await expect(
+      firstValueFrom(svc.refreshAccessToken('@me:hs')),
+    ).resolves.toBe(false);
+    expect(client.http.refreshOAuthTokens).not.toHaveBeenCalled();
+  });
+
   it('reports a refresh that throws as false instead of an error', async () => {
     const client = {
       ...fakeClient(),
@@ -2038,6 +2054,12 @@ describe('OAuth tokens through a real MatrixClient', () => {
 
     expect(loggedOut).not.toHaveBeenCalled();
     expectStillSignedIn(svc, client);
+
+    // A dead session still ends through the normal path at its next request.
+    net.expireAll();
+    await client.whoami().catch(() => undefined);
+
+    expect(loggedOut).toHaveBeenCalled();
   });
 
   it('answers an unreachable provider with false and stays signed in', async () => {
@@ -2215,8 +2237,24 @@ describe('OAuth tokens through a real MatrixClient', () => {
         client.getRefreshToken(),
         expect.any(Number),
       );
+      expect(
+        svc.accessTokenExpiry(userId, client.getAccessToken()!),
+      ).toBeGreaterThan(Date.now());
       expectStillSignedIn(svc, client, userId);
     }
+    // Each expiry travels only with its own account's token.
+    expect(
+      svc.accessTokenExpiry(
+        '@me:hs',
+        svc.clientFor('@you:other')!.getAccessToken()!,
+      ),
+    ).toBeUndefined();
+    expect(
+      svc.accessTokenExpiry(
+        '@you:other',
+        svc.clientFor('@me:hs')!.getAccessToken()!,
+      ),
+    ).toBeUndefined();
     expect(net.grants.map((grant) => grant.get('client_id')).sort()).toEqual([
       'client-1',
       'client-2',
