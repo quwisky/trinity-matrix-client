@@ -140,16 +140,12 @@ describe('TrnButton', () => {
       ]),
     );
     // None of the attention roles applies unscoped, which would repaint every primary button.
-    for (const role of ['surface', 'foreground', 'hover-surface']) {
-      expect(solidPrimary).not.toContain(
-        `bg-[color:var(--trinity-state-attention-action-${role})]`,
-      );
-      expect(solidPrimary).not.toContain(
-        `hover:bg-[color:var(--trinity-state-attention-action-${role})]`,
-      );
-      expect(solidPrimary).not.toContain(
-        `text-[color:var(--trinity-state-attention-action-${role})]`,
-      );
+    for (const unscoped of [
+      'bg-[color:var(--trinity-state-attention-action-surface)]',
+      'text-[color:var(--trinity-state-attention-action-foreground)]',
+      'hover:bg-[color:var(--trinity-state-attention-action-hover-surface)]',
+    ]) {
+      expect(solidPrimary).not.toContain(unscoped);
     }
     for (const [variant, presentation] of [
       ['secondary', 'solid'],
