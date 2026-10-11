@@ -204,6 +204,16 @@ describe('MemberInfoComponent', () => {
     expect(container.querySelector('trn-dialog-shell')).toBeNull();
   });
 
+  it('fills the settings detail pane as the panel rather than a fixed-width edge panel', async () => {
+    // The detail pane owns the width. The `panel` overlay layout is a fixed 32rem recipe,
+    // which left an empty strip beside it on a desktop and overflowed the column at 390px.
+    // The dialog and sheet presentations keep the shared shell and are not affected.
+    const { container } = await buildPanel();
+
+    const surface = container.querySelector('[trnoverlaysurface]');
+    expect(surface?.getAttribute('data-trn-layout')).toBe('fullscreen');
+  });
+
   it('carries its own close button as the panel, where nothing else closes it', async () => {
     // In place there is no backdrop of its own — without this the panel would be a dead
     // end: the list it replaced is gone, so there is nothing left to click.
