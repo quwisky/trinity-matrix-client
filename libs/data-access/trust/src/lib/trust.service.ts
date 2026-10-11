@@ -108,11 +108,12 @@ export class TrustService {
    * The key is generated randomly (no passphrase), so accounts onboarded here are
    * recovered via {@link recoverWithKey}, not {@link recoverWithPassphrase}.
    *
-   * Two guards run first, both against the server rather than this device's own view:
+   * Two guards run first, both of which ask the server before trusting this device's view:
    * - {@link assertNoRecoveryOnAccount} refuses an account that already has a 4S key.
    *   It fails open: an unreachable server must not block genuine first-run setup.
    * - {@link assertNoIdentityElsewhere} refuses an account whose cross-signing identity
-   *   this device does not hold, because bootstrapping here would replace it. It fails
+   *   this device does not hold, because bootstrapping here would replace it. It re-reads
+   *   the published identity first, then checks the keys held locally against it. It fails
    *   closed: the upload that follows needs the same server, and a wrong "no identity"
    *   is the destructive answer.
    */

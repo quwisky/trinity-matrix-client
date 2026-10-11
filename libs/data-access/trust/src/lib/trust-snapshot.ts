@@ -99,8 +99,12 @@ export async function identityHeldElsewhere(
  * `crossSigningReady` (`isCrossSigningReady()`) supplies the match. With the privates
  * cached it reduces to `identity.isVerified()` (rust-crypto.ts:802-814), the same test
  * `getCrossSigningKeyId` uses to detect "both public and private keys, but they don't
- * match" (rust-crypto.ts:837-839). The own identity only verifies against the privates
- * that signed it, so stranded privates read false and a completed setup reads true.
+ * match" (rust-crypto.ts:837-839). It is not enough on its own: until the next own-key
+ * query, the olm machine keeps the rotated identity it created locally and marks it
+ * verified, so stranded privates can still read as held. What closes that window is the
+ * query itself: matrix-sdk-crypto replaces the local identity with the published one and
+ * clears private keys that differ from it. `assertNoIdentityElsewhere` therefore asks the
+ * server before it calls this, and `abandonReset` re-queries for the same reason.
  * `hasStrandedCrossSigning` (cross-signing-repair.ts) relies on the same distinction.
  */
 export function holdsCrossSigningIdentity(
