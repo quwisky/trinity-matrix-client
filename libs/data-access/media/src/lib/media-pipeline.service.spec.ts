@@ -60,6 +60,9 @@ function setup() {
         _encrypt: boolean,
         _progress?: (fraction: number) => void,
         _abortController?: AbortController,
+        _client?: unknown,
+        _hints?: unknown,
+        _imageMetadata?: 'strip' | 'keep',
       ) => of(uploaded()),
     ),
     resolveMedia: vi.fn(() => of('blob:resolved')),
@@ -468,6 +471,135 @@ describe('MediaPipeline', () => {
       expect.objectContaining({ body: 'new caption' }),
     );
     expect(bytes.uploadMedia).toHaveBeenCalledTimes(1);
+    expect(retry.at(-1)).toEqual({ kind: 'sent', eventId: '$event' });
+  });
+
+  it('re-uploads stripped and sends a fresh event when a kept-metadata retry must now strip', async () => {
+    const { pipeline, bytes, client } = setup();
+    client.makeTxnId.mockReturnValueOnce('txn-1').mockReturnValueOnce('txn-2');
+    client.sendMessage.mockRejectedValueOnce(new Error('connection lost'));
+    const kept = uploaded();
+    const stripped = uploaded();
+    stripped.file!.url = 'mxc://example.org/stripped';
+    bytes.uploadMedia
+      .mockImplementationOnce(() => of(kept))
+      .mockImplementationOnce(() => of(stripped));
+    const staged = pipeline.stage(
+      new File([new Uint8Array([1])], 'photo.jpg', { type: 'image/jpeg' }),
+    );
+    if (staged.kind !== 'staged') return;
+
+    const first = await firstValueFrom(
+      pipeline
+        .transfer({
+          key: KEY,
+          media: staged.media,
+          caption: '',
+          imageMetadata: 'keep',
+        })
+        .pipe(toArray()),
+    );
+    // The person turns Keep photo metadata off before retrying.
+    const retry = await firstValueFrom(
+      pipeline
+        .transfer({
+          key: KEY,
+          media: staged.media,
+          caption: '',
+          imageMetadata: 'strip',
+        })
+        .pipe(toArray()),
+    );
+
+    expect(first.at(-1)).toEqual({
+      kind: 'rejected',
+      failure: 'send-rejected',
+      retryable: true,
+    });
+    expect(client.cancelPendingEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ id: `~${KEY.roomId}:txn-1` }),
+    );
+    expect(client.resendEvent).not.toHaveBeenCalled();
+    expect(bytes.uploadMedia.mock.calls.map((call) => call[6])).toEqual([
+      'keep',
+      'strip',
+    ]);
+    expect(client.sendMessage.mock.calls.map((call) => call[2])).toEqual([
+      'txn-1',
+      'txn-2',
+    ]);
+    expect(client.sendMessage.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        file: expect.objectContaining({ url: 'mxc://example.org/stripped' }),
+      }),
+    );
+    expect(retry.at(-1)).toEqual({ kind: 'sent', eventId: '$event' });
+  });
+
+  it('does not withdraw a kept-metadata echo the SDK still marks sending', async () => {
+    const { pipeline, bytes, client, pendingEcho } = setup();
+    client.sendMessage.mockRejectedValueOnce(new Error('connection lost'));
+    const staged = pipeline.stage(
+      new File([new Uint8Array([1])], 'photo.jpg', { type: 'image/jpeg' }),
+    );
+    if (staged.kind !== 'staged') return;
+
+    await firstValueFrom(
+      pipeline
+        .transfer({
+          key: KEY,
+          media: staged.media,
+          caption: '',
+          imageMetadata: 'keep',
+        })
+        .pipe(toArray()),
+    );
+    pendingEcho.status = 'sending';
+    const retry = await firstValueFrom(
+      pipeline
+        .transfer({ key: KEY, media: staged.media, caption: '' })
+        .pipe(toArray()),
+    );
+
+    expect(retry.at(-1)).toEqual({
+      kind: 'indeterminate',
+      failure: 'send-in-flight',
+      retryable: true,
+    });
+    expect(client.cancelPendingEvent).not.toHaveBeenCalled();
+    expect(bytes.uploadMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses a stripped upload when a retry would keep metadata', async () => {
+    const { pipeline, bytes, client } = setup();
+    client.sendMessage.mockRejectedValueOnce(new Error('connection lost'));
+    const staged = pipeline.stage(
+      new File([new Uint8Array([1])], 'photo.jpg', { type: 'image/jpeg' }),
+    );
+    if (staged.kind !== 'staged') return;
+
+    await firstValueFrom(
+      pipeline
+        .transfer({ key: KEY, media: staged.media, caption: '' })
+        .pipe(toArray()),
+    );
+    const retry = await firstValueFrom(
+      pipeline
+        .transfer({
+          key: KEY,
+          media: staged.media,
+          caption: '',
+          imageMetadata: 'keep',
+        })
+        .pipe(toArray()),
+    );
+
+    expect(bytes.uploadMedia).toHaveBeenCalledTimes(1);
+    expect(client.cancelPendingEvent).not.toHaveBeenCalled();
+    expect(client.resendEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ id: `~${KEY.roomId}:txn-1` }),
+      expect.objectContaining({ roomId: KEY.roomId }),
+    );
     expect(retry.at(-1)).toEqual({ kind: 'sent', eventId: '$event' });
   });
 

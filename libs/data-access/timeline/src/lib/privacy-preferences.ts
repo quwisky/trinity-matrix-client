@@ -132,7 +132,7 @@ export const KEEP_PHOTO_METADATA_PREFERENCE = definePreference({
     kind: 'toggle',
     label: 'Keep photo metadata',
     description:
-      "Off by default. When on, photos you send in messages go out unchanged: anyone in the room can see where and on what device they were taken, and HDR and Motion Photo data is kept. Profile and room photos are always sent without it, because they're public and stay up.",
+      "⚠ Off by default. When on, photos you send in messages go out unchanged: anyone in the room can see where and on what device they were taken, and HDR and Motion Photo data is kept. Profile and room photos are always sent without it, because they're public and stay up.",
     testId: 'privacy-keep-photo-metadata',
   },
   persistence: {
