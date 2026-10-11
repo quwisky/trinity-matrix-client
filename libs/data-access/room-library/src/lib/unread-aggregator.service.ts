@@ -11,7 +11,12 @@ import {
   MatrixClientService,
 } from '@trinity/data-access/matrix-client';
 import { roomAvatarMxc } from '@trinity/util/matrix';
-import { directMapOf, initialOf, isMarkedUnread } from './room-projection';
+import {
+  directMapOf,
+  initialOf,
+  isMarkedUnread,
+  roomActivityTs,
+} from './room-projection';
 
 /** A no-arg listener reused across every unread-affecting client / room event. */
 type UnreadListener = () => void;
@@ -33,7 +38,7 @@ export interface UnreadRoom {
   /** Total notification count; 0 when the room is only marked unread. */
   readonly unreadCount: number;
   readonly markedUnread: boolean;
-  /** `room.getLastActiveTimestamp()`. */
+  /** {@link roomActivityTs}: the main timeline's last event or a newer thread reply. */
   readonly activityTs: number;
 }
 
@@ -188,7 +193,7 @@ export class UnreadAggregatorService {
         direct: isDirect,
         unreadCount,
         markedUnread,
-        activityTs: room.getLastActiveTimestamp(),
+        activityTs: roomActivityTs(room),
       });
     }
     return unread;

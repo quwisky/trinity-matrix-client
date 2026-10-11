@@ -24,7 +24,7 @@ export interface RailUnreadChat {
   readonly accountBadge: AccountBadge | null;
   /** Accessible name: the chat, its unread state and, when badged, the account. */
   readonly label: string;
-  /** Last activity (`room.getLastActiveTimestamp()`), for the "+N" list's relative time. */
+  /** Last activity (main timeline or a newer thread reply), for the "+N" list's relative time. */
   readonly activityTs: number;
 }
 

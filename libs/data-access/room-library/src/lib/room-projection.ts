@@ -76,6 +76,27 @@ function lastMessageOf(room: Room): string {
 }
 
 /**
+ * When the room was last active, for recency ordering: the newest of its main timeline's last
+ * event and each thread's latest reply (its root, for a thread with no reply yet).
+ *
+ * The client runs with `threadSupport`, so a thread reply lives in its thread's timeline and
+ * `getLastActiveTimestamp()` alone never sees it. As in Element Web, any thread's latest reply
+ * counts, whether or not it would count as unread. Unlike Element, the main-timeline part is
+ * left as the SDK reports it, so reactions and profile changes still move a room.
+ * `getThreads` is called optionally, like `getLiveTimeline` above, for Room stubs without it.
+ */
+export function roomActivityTs(room: Room): number {
+  let latest = room.getLastActiveTimestamp();
+  for (const thread of room.getThreads?.() ?? []) {
+    const ts = (thread.replyToEvent ?? thread.rootEvent)?.getTs();
+    if (ts !== undefined && ts > latest) {
+      latest = ts;
+    }
+  }
+  return latest;
+}
+
+/**
  * The account's `m.direct` map reversed into the set of DM room ids and a roomId →
  * counterpart-user-id lookup, so each DM row can carry the other party. `getAccountData`
  * is optional so a stub client without account data yields empty rather than throwing.
@@ -142,7 +163,7 @@ export function buildRoomSummary(
     // point of flagging it — so the badge and the sidebar's unread filter both follow.
     hasUnread: unreadCount > 0 || markedUnread,
     lastMessage: lastMessageOf(room),
-    activityTs: room.getLastActiveTimestamp(),
+    activityTs: roomActivityTs(room),
     favourite: room.tags?.['m.favourite'] !== undefined,
     lowPriority: room.tags?.['m.lowpriority'] !== undefined,
     directUserId,

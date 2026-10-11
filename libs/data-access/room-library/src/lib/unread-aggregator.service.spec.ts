@@ -19,6 +19,8 @@ function fakeRoom(
     id?: string;
     name?: string;
     ts?: number;
+    /** The latest thread reply's timestamp, for a room with one thread. */
+    threadReplyTs?: number;
     avatarMxc?: string | null;
   } = {},
 ) {
@@ -30,6 +32,15 @@ function fakeRoom(
     getMyMembership: () => opts.membership ?? 'join',
     getUnreadNotificationCount: () => room.unread,
     getLastActiveTimestamp: () => opts.ts ?? 0,
+    getThreads: () =>
+      opts.threadReplyTs === undefined
+        ? []
+        : [
+            {
+              rootEvent: { getTs: () => 0 },
+              replyToEvent: { getTs: () => opts.threadReplyTs },
+            },
+          ],
     getMxcAvatarUrl: () => opts.avatarMxc ?? null,
     getAvatarFallbackMember: () => undefined,
     getAccountData: (type: string) =>
@@ -346,6 +357,18 @@ describe('unread chats', () => {
         activityTs: 30,
       },
     ]);
+  });
+
+  it('dates a chat by its latest thread reply when that is newer than its main timeline', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    clients.set(
+      '@a:hs',
+      fakeClient([fakeRoom(1, { id: '!t:hs', ts: 20, threadReplyTs: 90 })]),
+    );
+    accountIds.set(['@a:hs']);
+    await flush();
+
+    expect(svc.unreadRooms()[0].activityTs).toBe(90);
   });
 
   it('applies the app badge rule: no spaces, no invites, a flagged chat with no count stays', async () => {
