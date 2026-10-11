@@ -3,6 +3,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Observable, defer, from, map, of } from 'rxjs';
 import {
   PUSH_HANDOFF_PLUGIN_NAME,
+  type BackgroundWork,
   type PushHandoffAccount,
   type PushHandoffPlugin,
   type PushHandoffRoom,
@@ -23,7 +24,7 @@ export class PushHandoffBridge {
     Capacitor.isNativePlatform() &&
     Capacitor.isPluginAvailable(PUSH_HANDOFF_PLUGIN_NAME);
 
-  /** Cold. Writes or replaces one account's credentials and sound choice. */
+  /** Cold. Writes or replaces one account's credentials, token expiry and sound choice. */
   setAccount(account: PushHandoffAccount): Observable<void> {
     return this.call(() => pushHandoff.setAccount({ ...account }));
   }
@@ -68,6 +69,36 @@ export class PushHandoffBridge {
           )
         : of(false),
     );
+  }
+
+  /**
+   * Cold. Asks the OS to keep the app running in the background until
+   * {@link endBackgroundWork}, and emits the id to end it with and whether protected data is
+   * available and the device locking. iOS holds background time; Android and hosts without
+   * the plugin hold nothing and emit id 0, available and not locking. Errors when the native
+   * side failed to answer.
+   */
+  beginBackgroundWork(): Observable<BackgroundWork> {
+    return defer(() =>
+      this.available
+        ? from(pushHandoff.beginBackgroundWork()).pipe(
+            map(({ id, protectedDataAvailable, locking }): BackgroundWork => ({
+              id,
+              protectedDataAvailable: protectedDataAvailable !== false,
+              locking: locking === true,
+            })),
+          )
+        : of<BackgroundWork>({
+            id: 0,
+            protectedDataAvailable: true,
+            locking: false,
+          }),
+    );
+  }
+
+  /** Cold. Ends what {@link beginBackgroundWork} began; an unknown or ended id is a no-op. */
+  endBackgroundWork(id: number): Observable<void> {
+    return this.call(() => pushHandoff.endBackgroundWork({ id }));
   }
 
   private call(command: () => Promise<void>): Observable<void> {

@@ -2,15 +2,20 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  computed,
   inject,
   signal,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { firstValueFrom, type Observable } from 'rxjs';
+import { firstValueFrom, tap, type Observable } from 'rxjs';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
-import { TrustService } from '@trinity/data-access/trust';
+import {
+  TrustOperationError,
+  TrustService,
+  type TrustRecovery,
+} from '@trinity/data-access/trust';
 import { type PasswordPrompt } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import {
@@ -49,17 +54,48 @@ export class EncryptionSetupPage {
   private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);
 
+  /** What the last failed setup said the user can do about it; cleared by the next try. */
+  private readonly failureRecovery = signal<TrustRecovery | null>(null);
+
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
+
+  /**
+   * Whether the error's answer lives in Security settings. A refused setup on an Account
+   * whose identity is held elsewhere tells the user to verify this device or reset the
+   * identity, and both live there; without the way to it the message is a dead end.
+   */
+  readonly offerSecuritySettings = computed(() => {
+    const recovery = this.failureRecovery();
+    return (
+      this.error() !== null &&
+      (recovery === 'verify-another-device' ||
+        recovery === 'review-security-settings')
+    );
+  });
 
   /** The generated recovery key — shown once, never persisted. */
   readonly recoveryKey = signal<string | null>(null);
 
   /** Kick off cross-signing + secret-storage + key-backup bootstrap. */
   setUp(): void {
-    this.withBusy(this.crypto.setUp(this.promptPassword)).subscribe((key) => {
+    this.failureRecovery.set(null);
+    const setUp = this.crypto.setUp(this.promptPassword).pipe(
+      tap({
+        error: (err: unknown) =>
+          this.failureRecovery.set(
+            err instanceof TrustOperationError ? err.recovery : null,
+          ),
+      }),
+    );
+    this.withBusy(setUp).subscribe((key) => {
       this.recoveryKey.set(key);
     });
+  }
+
+  /** Go to Security settings, where verifying this device and the reset both live. */
+  openSecuritySettings(): void {
+    void this.router.navigateByUrl('/settings/security');
   }
 
   /** Leave for the app once the user has saved their recovery key. */

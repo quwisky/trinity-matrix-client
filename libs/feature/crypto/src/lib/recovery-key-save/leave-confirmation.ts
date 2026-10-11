@@ -16,17 +16,17 @@ const QUESTIONS: Record<LeaveRisk, { header: string; message: string }> = {
   'unsaved-key': {
     header: 'Leave without saving your key?',
     message:
-      "This key is shown once. Leave now and you won't be able to recover your messages on another device.",
+      'This key is shown once. Leave now and you won’t be able to recover your messages on another device.',
   },
   'setup-in-flight': {
     header: 'Encryption setup in progress',
     message:
-      "Leaving won't stop it, and the recovery key it creates will be lost — your messages would be backed up with a key you never saw. Wait for it to finish.",
+      'Leaving won’t stop it, and the recovery key it creates will be lost — your messages would be backed up with a key you never saw. Wait for it to finish.',
   },
   'reset-in-flight': {
-    header: 'Encryption reset in progress',
+    header: 'Identity reset in progress',
     message:
-      "Leaving won't stop it, and the new recovery key it produces will be lost. Wait for it to finish.",
+      'Leaving won’t stop it, and the new recovery key it produces will be lost. Wait for it to finish.',
   },
 };
 

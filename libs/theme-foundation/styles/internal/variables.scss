@@ -356,6 +356,19 @@
     --trinity-state-selected-hover-foreground: var(--trinity-text-bright);
     --trinity-state-attention-surface: var(--trinity-accent);
     --trinity-state-attention-foreground: var(--trinity-accent-foreground);
+
+    // A solid action on the attention surface. The page's own solid fill is the accent, which
+    // vanishes on an accent ground (#1217), so the action inverts: the attention foreground
+    // becomes its fill and `--trinity-link` its label, so a change to the link role moves
+    // it too. Hover lands on the accent tint, which keeps 3:1 against the attention surface
+    // in every Theme and mode.
+    --trinity-state-attention-action-surface: var(
+      --trinity-state-attention-foreground
+    );
+    --trinity-state-attention-action-hover-surface: var(
+      --trinity-accent-tint-30
+    );
+    --trinity-state-attention-action-foreground: var(--trinity-link);
     --trinity-status-neutral-surface: oklch(91% 0.01 85deg);
     --trinity-status-neutral-foreground: oklch(32% 0.012 60deg);
     --trinity-focus-ring: var(--trinity-link);

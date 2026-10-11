@@ -38,11 +38,11 @@ export function confirmResetIntent(
 ): Observable<ResetIntent> {
   return alert
     .prompt$({
-      header: 'Reset encryption',
+      header: 'Reset your identity',
       message: `${RESET_CONSEQUENCES}\n\nType ${RESET_CONFIRMATION_WORD} to confirm.`,
       placeholder: RESET_CONFIRMATION_WORD,
       inputLabel: `Type ${RESET_CONFIRMATION_WORD} to confirm`,
-      confirmText: 'Reset',
+      confirmText: 'Reset identity',
       cancelText: 'Cancel',
       variant: 'danger',
     })
@@ -59,15 +59,15 @@ export function confirmResetIntent(
 }
 
 /**
- * Password prompt for the reset's device-signing-key upload. Same copy as encryption
- * setup, which drives the identical UIA stage.
+ * Password prompt for the reset's device-signing-key upload. Worded like encryption
+ * setup's prompt for the identical UIA stage, but naming the identity reset.
  */
 export function resetPasswordPrompt(alert: TrnAlertService): PasswordPrompt {
   return () =>
     firstValueFrom(
       alert.prompt$({
         header: 'Confirm your password',
-        message: 'Your homeserver needs your password to reset encryption.',
+        message: 'Your homeserver needs your password to reset your identity.',
         placeholder: 'Password',
         confirmText: 'Confirm',
         inputType: 'password',
@@ -112,7 +112,7 @@ export async function describeResetFailure(
   if (!url) {
     return {
       message:
-        'Your identity provider has to reset encryption for this account. Trinity cannot do it here.',
+        'Your identity provider has to reset your identity for this account. Trinity cannot do it here.',
       providerUrl: null,
     };
   }

@@ -81,6 +81,11 @@ interface CryptoOpts {
    * rotated set it never published, which is the state the repair exists for.
    */
   privatesCachedLocally?: boolean;
+  /**
+   * Whether the homeserver holds a cross-signing identity for the account. False by
+   * default: most tests model a first device or one that already unlocked recovery.
+   */
+  identityOnServer?: boolean;
   providerManagement?: TrustProviderManagement | null;
   providerLookupFails?: boolean;
 }
@@ -137,11 +142,13 @@ function setup(opts: CryptoOpts = {}) {
     checkKeyBackupAndEnable: vi.fn().mockResolvedValue(null),
     exportRoomKeysAsJson: vi.fn().mockResolvedValue(opts.exportedKeys ?? '[]'),
     importRoomKeysAsJson: vi.fn().mockResolvedValue(undefined),
-    userHasCrossSigningKeys: vi.fn().mockResolvedValue(true),
+    userHasCrossSigningKeys: vi
+      .fn()
+      .mockResolvedValue(opts.identityOnServer ?? false),
     // Modelled on rust-crypto's own: 4S "contains" the keys only when all three are
     // there, and the locally cached set is what the olm machine happens to hold.
     getCrossSigningStatus: vi.fn().mockResolvedValue({
-      publicKeysOnDevice: true,
+      publicKeysOnDevice: opts.identityOnServer ?? false,
       privateKeysInSecretStorage: SEED_NAMES.every(
         (name) => opts.storedSecrets?.[name],
       ),
@@ -315,6 +322,54 @@ describe('TrustService', () => {
       expect(svc.thisDeviceVerified()).toBe(false);
     });
 
+    it('is "needs-verification" when another device set up an identity without recovery', async () => {
+      const { svc } = setup({ defaultKeyId: null, identityOnServer: true });
+      await firstValueFrom(svc.refresh());
+
+      expect(svc.status()).toBe('needs-verification');
+      expect(svc.thisDeviceVerified()).toBe(false);
+    });
+
+    it('says recovery belongs on the other device when this one is verified but lacks the keys', async () => {
+      // Verified through another device on an account without secret storage: the SDK
+      // never requests the cross-signing privates afterwards, so setup here would
+      // replace the identity. Only the device holding it can set recovery up.
+      const { svc } = setup({ identityOnServer: true, deviceVerified: true });
+      await firstValueFrom(svc.refresh());
+
+      expect(svc.status()).toBe('needs-setup');
+      expect(svc.recoverySetupElsewhere()).toBe(true);
+    });
+
+    it('offers setup here when this device holds the identity', async () => {
+      const { svc } = setup({
+        identityOnServer: true,
+        deviceVerified: true,
+        privatesCachedLocally: true,
+        crossSigningReady: true,
+      });
+      await firstValueFrom(svc.refresh());
+
+      expect(svc.status()).toBe('needs-setup');
+      expect(svc.recoverySetupElsewhere()).toBe(false);
+    });
+
+    it('offers setup here when the account has no identity yet', async () => {
+      const { svc } = setup();
+      await firstValueFrom(svc.refresh());
+
+      expect(svc.status()).toBe('needs-setup');
+      expect(svc.recoverySetupElsewhere()).toBe(false);
+    });
+
+    it('does not say recovery belongs elsewhere while this device still needs verifying', async () => {
+      const { svc } = setup({ identityOnServer: true });
+      await firstValueFrom(svc.refresh());
+
+      expect(svc.status()).toBe('needs-verification');
+      expect(svc.recoverySetupElsewhere()).toBe(false);
+    });
+
     it('is "needs-recovery" when secret storage exists but this device is not ready', async () => {
       const { svc } = setup({ defaultKeyId: 'k' });
       await firstValueFrom(svc.refresh());
@@ -427,9 +482,199 @@ describe('TrustService', () => {
       });
     }
 
+    it('refuses to replace an identity another device holds', async () => {
+      const { svc, crypto } = setup({ identityOnServer: true });
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({
+        operation: 'setup',
+        kind: 'stale-state',
+        recovery: 'verify-another-device',
+        message: expect.stringMatching(/already has encryption set up/i),
+      });
+
+      expect(crypto.createRecoveryKeyFromPassphrase).not.toHaveBeenCalled();
+      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+      expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
+    });
+
+    it('asks an unverified device to verify with the device that holds the identity', async () => {
+      const { svc } = setup({ identityOnServer: true, deviceVerified: false });
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({
+        kind: 'stale-state',
+        message: expect.stringMatching(/verify this device with that device/i),
+      });
+    });
+
+    it('sends a verified device to set up recovery where the identity is held', async () => {
+      // Already verified with that device, so "verify with it" would be a dead end.
+      const { svc, crypto } = setup({
+        identityOnServer: true,
+        deviceVerified: true,
+      });
+
+      const failure = firstValueFrom(svc.setUp(async () => 'pw'));
+      await expect(failure).rejects.toMatchObject({
+        operation: 'setup',
+        kind: 'stale-state',
+        recovery: 'review-security-settings',
+        message: expect.stringMatching(/set up recovery on that device/i),
+      });
+      await expect(failure).rejects.not.toMatchObject({
+        message: expect.stringMatching(/verify this device/i),
+      });
+      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+    });
+
+    it('still refuses when it cannot tell whether this device is verified', async () => {
+      const { svc, crypto } = setup({ identityOnServer: true });
+      crypto.getDeviceVerificationStatus.mockRejectedValue(new Error('store'));
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({
+        kind: 'stale-state',
+        message: expect.stringMatching(/verify this device with that device/i),
+      });
+      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+    });
+
+    it('asks the server even when this device has not yet seen the identity', async () => {
+      // Right after sign-in the own identity may not be downloaded yet, so the local
+      // cross-signing status reads "no identity". The server is the authority here.
+      const { svc, crypto } = setup({ identityOnServer: false });
+      crypto.userHasCrossSigningKeys.mockResolvedValue(true);
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({ kind: 'stale-state' });
+
+      expect(crypto.userHasCrossSigningKeys).toHaveBeenCalledWith(
+        undefined,
+        true,
+      );
+      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+    });
+
+    it('goes ahead when this device holds the identity and only recovery is missing', async () => {
+      // A device that completed setup: the privates are cached and the own identity
+      // verifies against them, which is what isCrossSigningReady() reports.
+      const { svc, crypto } = setup({
+        identityOnServer: true,
+        privatesCachedLocally: true,
+        crossSigningReady: true,
+      });
+
+      await expect(firstValueFrom(svc.setUp(async () => 'pw'))).resolves.toBe(
+        'EsTRecoveryKey',
+      );
+      expect(crypto.bootstrapSecretStorage).toHaveBeenCalledOnce();
+    });
+
+    it('refuses when the privates this device holds are not the published identity', async () => {
+      // A reset cancelled at the password prompt: resetCrossSigning rotated all three
+      // privates locally and never uploaded them. Setting up here would store those
+      // unpublished seeds in 4S, minting a recovery key that can never verify a device.
+      const { svc, crypto } = setup({
+        identityOnServer: true,
+        privatesCachedLocally: true,
+        crossSigningReady: false,
+      });
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({
+        operation: 'setup',
+        kind: 'stale-state',
+        message: expect.stringMatching(/already has encryption set up/i),
+      });
+
+      expect(crypto.createRecoveryKeyFromPassphrase).not.toHaveBeenCalled();
+      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+      expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
+    });
+
+    it('judges the held privates only after re-reading the identity from the server', async () => {
+      // userHasCrossSigningKeys(own, true) re-queries the own identity, so asking it
+      // first means the local match is judged against the published copy.
+      const { svc, crypto } = setup({
+        identityOnServer: true,
+        privatesCachedLocally: true,
+        crossSigningReady: true,
+      });
+
+      await firstValueFrom(svc.setUp(async () => 'pw'));
+
+      const serverRead =
+        crypto.userHasCrossSigningKeys.mock.invocationCallOrder[0];
+      expect(serverRead).toBeLessThan(
+        crypto.isCrossSigningReady.mock.invocationCallOrder[0],
+      );
+      expect(serverRead).toBeLessThan(
+        crypto.getCrossSigningStatus.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('goes ahead on a fresh account, whose server holds no identity yet', async () => {
+      const { svc, crypto } = setup();
+
+      await expect(firstValueFrom(svc.setUp(async () => 'pw'))).resolves.toBe(
+        'EsTRecoveryKey',
+      );
+      expect(crypto.bootstrapCrossSigning).toHaveBeenCalledOnce();
+      expect(crypto.bootstrapSecretStorage).toHaveBeenCalledOnce();
+    });
+
+    it('fails closed when the server cannot say whether an identity exists', async () => {
+      const { svc, crypto } = setup();
+      crypto.userHasCrossSigningKeys.mockRejectedValue(new Error('offline'));
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({
+        operation: 'setup',
+        kind: 'server-failure',
+        recovery: 'retry',
+      });
+
+      expect(crypto.createRecoveryKeyFromPassphrase).not.toHaveBeenCalled();
+      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+      expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the server never answers whether an identity exists', async () => {
+      vi.useFakeTimers();
+      try {
+        const { svc, crypto } = setup();
+        crypto.userHasCrossSigningKeys.mockReturnValue(
+          new Promise(() => undefined),
+        );
+
+        const failure = firstValueFrom(svc.setUp(async () => 'pw'));
+        const assertion = expect(failure).rejects.toMatchObject({
+          operation: 'setup',
+          kind: 'server-failure',
+          recovery: 'retry',
+        });
+        await vi.advanceTimersByTimeAsync(10_000);
+        await assertion;
+
+        expect(crypto.createRecoveryKeyFromPassphrase).not.toHaveBeenCalled();
+        expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+        expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('authenticates as the account it started on, not whichever is active now', async () => {
-      // Two awaits — the server read and the key generation — sit between entering setUp
-      // and building the UIA callback. A switch across them must not name the new account
+      // Several awaits — the server reads, the local crypto reads and the key generation —
+      // sit between entering setUp and building the UIA callback. A switch across any of
+      // them must not name the new account
       // in the m.id.user identifier: the homeserver refuses an identifier that is not the
       // requester, stranding the setup after the olm machine has been touched.
       const { svc, crypto, client, matrix } = setup({ defaultKeyId: 'k' });

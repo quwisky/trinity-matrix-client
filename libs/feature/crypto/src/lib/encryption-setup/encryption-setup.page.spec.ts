@@ -1,7 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { render, screen } from '@trinity/testing';
-import { TrustService } from '@trinity/data-access/trust';
+import {
+  TrustOperationError,
+  TrustService,
+  type TrustRecovery,
+} from '@trinity/data-access/trust';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import { Observable, Subject, firstValueFrom, of, throwError } from 'rxjs';
@@ -232,5 +236,66 @@ describe('EncryptionSetupPage', () => {
 
     expect(fixture.componentInstance.error()).toBe('Setup failed.');
     expect(fixture.nativeElement.textContent).toContain('Setup failed.');
+    expect(screen.queryByTestId('setup-security-settings')).toBeNull();
+  });
+
+  describe('when setup is refused because the identity lives elsewhere', () => {
+    const refusal = (recovery: TrustRecovery) =>
+      new TrustOperationError(
+        'setup',
+        'stale-state',
+        recovery,
+        'This account already has encryption set up on another device.',
+      );
+
+    it.each(['verify-another-device', 'review-security-settings'] as const)(
+      'offers the way to Security settings (%s)',
+      async (recovery) => {
+        // The message tells them to verify or reset; both live in Security settings.
+        const { fixture, crypto, router } = await setup();
+        vi.mocked(crypto.setUp).mockReturnValue(
+          throwError(() => refusal(recovery)),
+        );
+
+        fixture.componentInstance.setUp();
+        fixture.detectChanges();
+        screen.getByRole('button', { name: 'Security settings' }).click();
+
+        expect(router.navigateByUrl).toHaveBeenCalledWith('/settings/security');
+      },
+    );
+
+    it('does not offer it for a failure that a retry answers', async () => {
+      const { fixture, crypto } = await setup();
+      vi.mocked(crypto.setUp).mockReturnValue(
+        throwError(
+          () =>
+            new TrustOperationError(
+              'setup',
+              'server-failure',
+              'retry',
+              'The homeserver did not answer.',
+            ),
+        ),
+      );
+
+      fixture.componentInstance.setUp();
+      fixture.detectChanges();
+
+      expect(screen.queryByTestId('setup-security-settings')).toBeNull();
+    });
+
+    it('drops the offer when the next attempt starts', async () => {
+      const { fixture, crypto } = await setup();
+      vi.mocked(crypto.setUp).mockReturnValue(
+        throwError(() => refusal('verify-another-device')),
+      );
+      fixture.componentInstance.setUp();
+      fixture.detectChanges();
+
+      startSetUp(fixture, crypto);
+
+      expect(screen.queryByTestId('setup-security-settings')).toBeNull();
+    });
   });
 });

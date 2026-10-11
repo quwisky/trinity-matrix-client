@@ -183,6 +183,14 @@ const ROLES = [
     text: '--trinity-state-attention-foreground',
     on: ['--trinity-state-attention-surface'],
   },
+  // A solid action inside an attention surface (#1217): its label at rest and on hover.
+  {
+    text: '--trinity-state-attention-action-foreground',
+    on: [
+      '--trinity-state-attention-action-surface',
+      '--trinity-state-attention-action-hover-surface',
+    ],
+  },
   {
     text: '--trinity-tooltip-foreground',
     on: ['--trinity-tooltip-surface'],
@@ -230,6 +238,16 @@ const NON_TEXT_ROLES = [
   },
   {
     foreground: '--trinity-focus-ring-on-attention',
+    on: ['--trinity-state-attention-surface'],
+  },
+  // The same action's fill, at rest and on hover, must stand out from the attention surface
+  // around it. Before #1217 it was the accent on the accent: 1:1.
+  {
+    foreground: '--trinity-state-attention-action-surface',
+    on: ['--trinity-state-attention-surface'],
+  },
+  {
+    foreground: '--trinity-state-attention-action-hover-surface',
     on: ['--trinity-state-attention-surface'],
   },
   ...[

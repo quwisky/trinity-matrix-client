@@ -66,7 +66,7 @@ async function setUpEncryption(page: Page, password: string): Promise<string> {
   await key.waitFor({ state: 'visible', timeout: 60_000 });
   const original = (await key.innerText()).trim();
   await page
-    .getByRole('checkbox', { name: /I've saved my recovery key/ })
+    .getByRole('checkbox', { name: /I’ve saved my recovery key/ })
     .click();
   await page.getByRole('button', { name: 'Continue to Trinity' }).click();
   await waitForRooms(page);
@@ -156,7 +156,7 @@ test.describe('Recovery reset', () => {
     const done = page.getByTestId('reset-done');
     await expect(done).toBeDisabled();
     await page
-      .getByRole('checkbox', { name: /I've saved my recovery key/ })
+      .getByRole('checkbox', { name: /I’ve saved my recovery key/ })
       .click();
     await expect(done).toBeEnabled();
     await done.click();

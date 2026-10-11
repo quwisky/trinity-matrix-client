@@ -12,18 +12,41 @@
           </p>
         }
         @case ('needs-setup') {
-          <p class="m-0 text-sm text-muted-foreground">
-            Set up secure backup so you never lose access to your encrypted
-            messages.
-          </p>
-          <button
-            trnBtn
-            size="sm"
-            (click)="setUp()"
-            data-testid="security-setup"
-          >
-            Set up recovery
-          </button>
+          @if (setupElsewhere()) {
+            <p
+              class="m-0 text-sm text-muted-foreground"
+              data-testid="security-setup-elsewhere"
+            >
+              This device is verified, but it doesn’t hold the keys to set up
+              recovery. Set up recovery on the device where you first set up
+              encryption.
+            </p>
+            <!-- No "Set up recovery" here: setup would replace the identity the other
+               device holds. The reset is the explicit, separately confirmed way out. -->
+            <button
+              trnBtn
+              variant="danger"
+              presentation="outline"
+              size="sm"
+              (click)="resetRecovery()"
+              data-testid="security-reset-identity"
+            >
+              Reset my identity
+            </button>
+          } @else {
+            <p class="m-0 text-sm text-muted-foreground">
+              Set up secure backup so you never lose access to your encrypted
+              messages.
+            </p>
+            <button
+              trnBtn
+              size="sm"
+              (click)="setUp()"
+              data-testid="security-setup"
+            >
+              Set up recovery
+            </button>
+          }
         }
         @case ('needs-recovery') {
           <p class="m-0 text-sm text-muted-foreground">
@@ -44,13 +67,42 @@
              otherwise guess it lives behind "Enter recovery key". -->
           <button
             trnBtn
-            variant="secondary"
+            variant="danger"
             presentation="ghost"
             size="sm"
             (click)="resetRecovery()"
             data-testid="security-reset-recovery"
           >
-            I've lost my recovery key
+            I’ve lost my recovery key
+          </button>
+        }
+        @case ('needs-verification') {
+          <p
+            class="m-0 text-sm text-muted-foreground"
+            data-testid="security-needs-verification"
+          >
+            This account already has encryption set up on another device. Verify
+            this device with that one to read and send encrypted messages here.
+          </p>
+          <button
+            trnBtn
+            size="sm"
+            (click)="verifySession()"
+            data-testid="security-verify-device"
+          >
+            Verify with another device
+          </button>
+          <!-- No "Set up recovery" here: setup would replace the identity the other
+             device holds. The reset is the explicit, separately confirmed way out. -->
+          <button
+            trnBtn
+            variant="danger"
+            presentation="outline"
+            size="sm"
+            (click)="resetRecovery()"
+            data-testid="security-reset-identity"
+          >
+            Reset my identity
           </button>
         }
         @default {
@@ -81,18 +133,27 @@
           This session is verified.
         </p>
       } @else if (sessionVerified() === false) {
-        <p class="m-0 text-sm text-muted-foreground">
-          This session isn’t verified yet.
-        </p>
-        <button
-          trnBtn
-          size="sm"
-          presentation="outline"
-          (click)="verifySession()"
-          data-testid="security-verify"
-        >
-          Verify with another device
-        </button>
+        <!-- In needs-verification the encryption card above already leads with this
+           exact action; a second identical button would only compete with it. -->
+        @if (status() === 'needs-verification') {
+          <p class="m-0 text-sm text-muted-foreground">
+            This session isn’t verified yet. Verify it with another device
+            above.
+          </p>
+        } @else {
+          <p class="m-0 text-sm text-muted-foreground">
+            This session isn’t verified yet.
+          </p>
+          <button
+            trnBtn
+            size="sm"
+            presentation="outline"
+            (click)="verifySession()"
+            data-testid="security-verify"
+          >
+            Verify with another device
+          </button>
+        }
       } @else {
         <p
           class="m-0 text-sm text-muted-foreground"
@@ -110,7 +171,13 @@
       @if (keyBackupActive()) {
         Your message keys are backed up to the server.
       } @else if (keyBackupActive() === false) {
-        Key backup is off — set up recovery to back up your message keys.
+        @if (status() === 'needs-verification' || setupElsewhere()) {
+          <!-- Setup here would replace the identity the other device holds. -->
+          Key backup is off. Set up recovery on the device where you first set
+          up encryption.
+        } @else {
+          Key backup is off — set up recovery to back up your message keys.
+        }
       } @else {
         Current key-backup status is unavailable.
       }

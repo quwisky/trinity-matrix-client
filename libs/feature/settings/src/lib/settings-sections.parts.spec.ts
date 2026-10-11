@@ -135,6 +135,7 @@ const SETUPS: Record<string, () => Setup> = {
         status: signal('unknown' as const).asReadonly(),
         keyBackupActive: signal(null).asReadonly(),
         thisDeviceVerified: signal(null).asReadonly(),
+        recoverySetupElsewhere: signal(false).asReadonly(),
       }),
       MockProvider(WorkspaceApplicationSurfaceService),
       MockProvider(TrnAlertService),

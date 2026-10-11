@@ -77,6 +77,57 @@ final class PushContentResolverTests: XCTestCase {
         XCTAssertEqual(resolution, .rendered(RenderedNotification(title: "Team", subtitle: "", body: "New message"), sound: true))
     }
 
+    func testExpiredTokenShowsTheOpenTrinityTextWithoutAnyRead() async {
+        let expired = HandoffAccount(
+            homeserverUrl: "https://a.example",
+            accessToken: "token-a",
+            sound: true,
+            accessTokenExpiresAt: Date(timeIntervalSince1970: 1_000)
+        )
+        let store = FakeStore(accounts: ["@alice:hs": expired], rooms: ["@alice:hs": ["!r:hs": HandoffRoom(name: "Team", direct: false)]])
+        let api = FakeAPI(event: message(), memberName: "Carol", roomName: "Lobby")
+        let resolver = PushContentResolver(store: store, api: api, now: { Date(timeIntervalSince1970: 1_000) })
+        let expected = RenderedNotification(title: "Team", subtitle: "", body: "Open Trinity to read this message")
+
+        let resolution = await resolver.resolve(payload())
+
+        XCTAssertEqual(resolution, .rendered(expected, sound: true))
+        XCTAssertEqual(resolver.fallback(for: payload()), expected)
+        XCTAssertTrue(api.accounts.isEmpty)
+    }
+
+    func testExpiredTokenForARoomNotStoredReadsNoRoomState() async {
+        let expired = HandoffAccount(
+            homeserverUrl: "https://a.example",
+            accessToken: "token-a",
+            sound: false,
+            accessTokenExpiresAt: Date(timeIntervalSince1970: 1_000)
+        )
+        let api = FakeAPI(event: message(), roomName: "Lobby")
+        let resolver = PushContentResolver(store: FakeStore(accounts: ["@alice:hs": expired]), api: api, now: { Date(timeIntervalSince1970: 5_000) })
+
+        let resolution = await resolver.resolve(payload())
+
+        XCTAssertEqual(resolution, .rendered(RenderedNotification(title: "Trinity", subtitle: "", body: "Open Trinity to read this message"), sound: false))
+        XCTAssertTrue(api.accounts.isEmpty)
+    }
+
+    func testATokenBeforeItsExpiryIsStillUsed() async {
+        let fresh = HandoffAccount(
+            homeserverUrl: "https://a.example",
+            accessToken: "token-a",
+            sound: true,
+            accessTokenExpiresAt: Date(timeIntervalSince1970: 1_001)
+        )
+        let store = FakeStore(accounts: ["@alice:hs": fresh], rooms: ["@alice:hs": ["!r:hs": HandoffRoom(name: "Team", direct: false)]])
+        let api = FakeAPI(event: message(), memberName: "Carol")
+
+        let resolution = await PushContentResolver(store: store, api: api, now: { Date(timeIntervalSince1970: 1_000) }).resolve(payload())
+
+        XCTAssertEqual(resolution, .rendered(RenderedNotification(title: "Team", subtitle: "Carol", body: "hello"), sound: true))
+        XCTAssertFalse(api.accounts.isEmpty)
+    }
+
     func testFallbackUsesTheStoredRoomNameBeforeAnyFetch() {
         let store = FakeStore(accounts: ["@alice:hs": alice], rooms: ["@alice:hs": ["!r:hs": HandoffRoom(name: "Team", direct: false)]])
 
@@ -176,6 +227,31 @@ final class PushRenderTests: XCTestCase {
             resolved,
             PushNotificationContent(title: "Team", subtitle: "Carol", body: "hello", threadIdentifier: "!r:hs", sound: false)
         )
+    }
+
+    func testStartsAndEndsWithTheOpenTrinityTextWhenTheStoredTokenHasExpired() async throws {
+        let expired = HandoffAccount(
+            homeserverUrl: "https://b.example",
+            accessToken: "token-b",
+            sound: false,
+            accessTokenExpiresAt: Date(timeIntervalSince1970: 0)
+        )
+        let store = FakeStore(accounts: ["@bob:hs": expired], rooms: ["@bob:hs": ["!r:hs": HandoffRoom(name: "Team", direct: false)]])
+        let api = FakeAPI(event: ["type": "m.room.message", "sender": "@carol:hs", "content": ["msgtype": "m.text", "body": "hello"]], memberName: "Carol")
+        let expected = PushNotificationContent(
+            title: "Team",
+            subtitle: "",
+            body: "Open Trinity to read this message",
+            threadIdentifier: "!r:hs",
+            sound: false
+        )
+
+        let render = try XCTUnwrap(PushRender(userInfo: userInfo(), store: store, api: api))
+        let resolved = await render.resolve()
+
+        XCTAssertEqual(render.fallback, expected)
+        XCTAssertEqual(resolved, expected)
+        XCTAssertTrue(api.accounts.isEmpty)
     }
 
     func testLeavesOtherPushesAndUnknownAccountsToTheGatewaysAlert() {

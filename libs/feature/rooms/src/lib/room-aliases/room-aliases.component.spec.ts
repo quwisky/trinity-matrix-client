@@ -163,6 +163,44 @@ describe('RoomAliasesComponent', () => {
     );
   });
 
+  // #1227: a directory read that started before an add must not erase the new address.
+  it('keeps an added alias when an older directory read answers after it', async () => {
+    const directory = new Subject<string[]>();
+    const { cmp } = await build({}, { localAliases: vi.fn(() => directory) });
+    cmp.controller.aliasForm.localpart().value.set('lounge');
+
+    cmp.controller.add();
+    directory.next(['#older:hs.example']);
+
+    expect(cmp.controller.aliases()).toEqual([
+      '#older:hs.example',
+      '#lounge:hs.example',
+    ]);
+  });
+
+  it('keeps a removed alias out when an older directory read answers after it', async () => {
+    const directory = new Subject<string[]>();
+    const removal = new Subject<void>();
+    const localAliases = vi
+      .fn()
+      .mockReturnValueOnce(of(['#gone:hs.example', '#kept:hs.example']))
+      .mockReturnValue(directory);
+    const { cmp } = await build(
+      {},
+      { localAliases, removeAlias: vi.fn(() => removal) },
+    );
+
+    // The removal is confirmed and in flight when a reload starts (as a live permission
+    // change does); the reload's read reaches the server first and answers last.
+    cmp.controller.remove('#gone:hs.example');
+    cmp.controller.load();
+    removal.next();
+    removal.complete();
+    directory.next(['#gone:hs.example', '#kept:hs.example']);
+
+    expect(cmp.controller.aliases()).toEqual(['#kept:hs.example']);
+  });
+
   it('rejects an invalid localpart without calling the service', async () => {
     const { cmp, addAlias, toastShow } = await build();
     cmp.controller.aliasForm.localpart().value.set('has spaces');

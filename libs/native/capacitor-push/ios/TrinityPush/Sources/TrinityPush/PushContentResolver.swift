@@ -6,31 +6,41 @@ public enum PushResolution: Equatable {
     case rendered(RenderedNotification, sound: Bool)
 }
 
-/// Turns a gateway push into the notification to show. Never refreshes a token: an expired
-/// one reads as a failed fetch and the room-name fallback.
+/// Turns a gateway push into the notification to show. Never refreshes a token. A token the
+/// store marks expired is not sent at all, because only the app can renew it: the push shows
+/// the room name with the expired-token text. Any other failed read shows "New message".
 public struct PushContentResolver {
     private let store: HandoffReading
     private let api: MatrixPushAPI
     private let budget: TimeInterval
+    private let now: () -> Date
 
-    public init(store: HandoffReading, api: MatrixPushAPI, budget: TimeInterval = 5) {
+    public init(
+        store: HandoffReading,
+        api: MatrixPushAPI,
+        budget: TimeInterval = 5,
+        now: @escaping () -> Date = Date.init
+    ) {
         self.store = store
         self.api = api
         self.budget = budget
+        self.now = now
     }
 
-    /// What to show if time runs out: the stored room name (else "Trinity") and "New message".
-    /// Nil for an account the store does not know.
+    /// What to show if time runs out: the stored room name (else "Trinity") with "New
+    /// message", or with the expired-token text when the stored token has expired. Nil for an
+    /// account the store does not know.
     public func fallback(for payload: PushPayload) -> RenderedNotification? {
-        guard store.account(payload.accountId) != nil else { return nil }
-        let title = PushRenderRules.nonBlank(store.room(payload.accountId, payload.roomId)?.name)
-            ?? PushRenderRules.fallbackTitle
-        return RenderedNotification(title: title, subtitle: "", body: PushRenderRules.fallbackBody)
+        guard let account = store.account(payload.accountId) else { return nil }
+        return fallback(for: payload, tokenExpired: account.tokenExpired(at: now()))
     }
 
-    /// One deadline covers every read of the push.
+    /// One deadline covers every read of the push; an expired token makes no read.
     public func resolve(_ payload: PushPayload) async -> PushResolution {
         guard let account = store.account(payload.accountId) else { return .unchanged }
+        if account.tokenExpired(at: now()) {
+            return .rendered(fallback(for: payload, tokenExpired: true), sound: account.sound)
+        }
         let deadline = Date().addingTimeInterval(budget)
         let event = await api.event(account: account, roomId: payload.roomId, eventId: payload.eventId, deadline: deadline)
         let storedRoom = store.room(payload.accountId, payload.roomId)
@@ -49,5 +59,16 @@ public struct PushContentResolver {
             senderName: senderName
         )
         return .rendered(rendered, sound: account.sound)
+    }
+
+    /// The notification from what the store holds alone, without reading anything.
+    private func fallback(for payload: PushPayload, tokenExpired: Bool) -> RenderedNotification {
+        PushRenderRules.render(
+            event: nil,
+            storedRoom: store.room(payload.accountId, payload.roomId),
+            stateRoomName: nil,
+            senderName: nil,
+            tokenExpired: tokenExpired
+        )
     }
 }

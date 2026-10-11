@@ -2,6 +2,7 @@ package dev.trinityproject.trinity.push
 
 import android.content.SharedPreferences
 import java.security.ProviderException
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -87,6 +88,59 @@ class PushHandoffStoreTest {
 
         assertEquals(account, store.account("@a:hs"))
         assertEquals(HandoffRoom("Team", true), store.room("@a:hs", "!r:hs"))
+    }
+
+    @Test
+    fun theTokenExpiryRoundTrips() {
+        val store = PushHandoffStore(MemoryPreferences(), FakeCrypto())
+        val expiring = HandoffAccount("https://hs.example", "token", sound = true, accessTokenExpiresAt = 1_760_000_000_000L)
+
+        assertTrue(store.setAccount("@a:hs", expiring))
+
+        assertEquals(expiring, store.account("@a:hs"))
+    }
+
+    @Test
+    fun anAccountStoredBeforeExpiriesExistedReadsWithoutOne() {
+        val preferences = MemoryPreferences()
+        val crypto = FakeCrypto()
+        preferences.values["account:@a:hs"] =
+            crypto.encrypt("""{"homeserverUrl":"https://hs.example","accessToken":"token","sound":false}""")
+
+        val stored = PushHandoffStore(preferences, crypto).account("@a:hs")
+
+        assertEquals(account, stored)
+        assertNull(stored?.accessTokenExpiresAt)
+    }
+
+    @Test
+    fun anExpiryOfAnyJsonNumberShapeIsKept() {
+        assertEquals(1_760_000_000_000L, accessTokenExpiryFrom(1_760_000_000_000L))
+        assertEquals(1_000L, accessTokenExpiryFrom(1_000))
+        assertEquals(1_760_000_000_000L, accessTokenExpiryFrom(1_760_000_000_000.7))
+        assertEquals(1L, accessTokenExpiryFrom(1.9))
+        assertNull(accessTokenExpiryFrom(null))
+        assertNull(accessTokenExpiryFrom(JSONObject.NULL))
+        assertNull(accessTokenExpiryFrom("1760000000000"))
+    }
+
+    @Test
+    fun anExpiryThatIsNotAFinitePositiveNumberIsAbsent() {
+        assertNull(accessTokenExpiryFrom(true))
+        assertNull(accessTokenExpiryFrom(false))
+        assertNull(accessTokenExpiryFrom(0))
+        assertNull(accessTokenExpiryFrom(-1))
+        assertNull(accessTokenExpiryFrom(-5L))
+        assertNull(accessTokenExpiryFrom(0.4))
+        assertNull(accessTokenExpiryFrom(Double.NaN))
+        assertNull(accessTokenExpiryFrom(Double.POSITIVE_INFINITY))
+        assertNull(accessTokenExpiryFrom(Double.NEGATIVE_INFINITY))
+        assertNull(accessTokenExpiryFrom(JSONObject()))
+    }
+
+    @Test
+    fun anAbsurdlyLargeExpirySaturatesAndIsNeverExpired() {
+        assertEquals(Long.MAX_VALUE, accessTokenExpiryFrom(1e30))
     }
 
     @Test

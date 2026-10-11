@@ -20,15 +20,20 @@ describe('CapabilityStatusService', () => {
   let status: CapabilityStatusService;
   let runtimeState: WritableSignal<ApplicationRuntimeState>;
   let trust: WritableSignal<TrustStatus>;
+  let setupElsewhere: WritableSignal<boolean>;
 
   beforeEach(() => {
     runtimeState = signal({ phase: 'ready', attempt: 7, settlements: [] });
     trust = signal<TrustStatus>('ready');
+    setupElsewhere = signal(false);
     TestBed.configureTestingModule({
       providers: [
         CapabilityHealthService,
         CapabilityStatusService,
-        { provide: TrustService, useValue: { status: trust } },
+        {
+          provide: TrustService,
+          useValue: { status: trust, recoverySetupElsewhere: setupElsewhere },
+        },
         {
           provide: ApplicationRuntimeService,
           useValue: {
@@ -348,6 +353,19 @@ describe('CapabilityStatusService', () => {
       expect(status.bannerSlot()).toBe('encryption');
       trust.set('needs-recovery');
       expect(status.bannerSlot()).toBe('encryption');
+      trust.set('needs-verification');
+      expect(status.bannerSlot()).toBe('encryption');
+    });
+
+    it('does not let guidance for another device outrank a limited capability', () => {
+      // Verified here, but recovery can only be set up on the device that holds the
+      // identity: there is no setup step on this device, so the slot is not claimed as one.
+      trust.set('needs-setup');
+      setupElsewhere.set(true);
+      expect(status.bannerSlot()).toBe('encryption');
+
+      report('@a:hs', 'accounts', 'restore');
+      expect(status.bannerSlot()).toBe('status');
     });
 
     it('lets the encryption prompt outrank a limited capability but not a blocking one', () => {

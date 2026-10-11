@@ -38,7 +38,7 @@ The release target creates an AAB but remains unsigned unless external signing i
 
 Push on a device needs a git-ignored `android/app/google-services.json`. The build runs without it, but Android registers for push only when Firebase is initialized, so push stays unsupported and the app keeps presenting its own notifications. Once registered, the running app stops presenting message notifications while its page is hidden and leaves them to the service; reaction notifications and a visible app are unchanged.
 
-Debug builds (including the E2E-only secondary package) contain the module's shell-only probe receiver that the installed-app suite uses to drive the renderer without FCM: it posts a notification with the app terminated, then taps it and checks that the room opens. On CI that suite shows the fallback "New message" body, because the native code does not trust the end-to-end proxy's certificate authority. A real FCM token and closed-app delivery through the gateway need a physical device.
+Debug builds (including the E2E-only secondary package) contain the module's shell-only probe receiver that the installed-app suite uses to drive the renderer without FCM: it posts a notification with the app terminated, then taps it and checks that the room opens. On CI that suite shows the fallback "New message" body, because the native code does not trust the end-to-end proxy's certificate authority. A second test stores an already expired token and checks for "Open Trinity to read this message", which needs no network. A real FCM token and closed-app delivery through the gateway need a physical device.
 
 ## Test native behavior natively {#native-behavior}
 

@@ -42,6 +42,10 @@ import {
   type TrustProviderManagement,
 } from './trust-provider-recovery.port';
 import { TrustHealthService } from './trust-health.service';
+import {
+  holdsCrossSigningIdentity,
+  readThisDeviceVerified,
+} from './trust-snapshot';
 
 export type {
   TrustHealth,
@@ -78,6 +82,8 @@ export class TrustService {
   readonly status = this.healthRuntime.status;
   readonly keyBackupActive = this.healthRuntime.keyBackupActive;
   readonly thisDeviceVerified = this.healthRuntime.thisDeviceVerified;
+  /** Verified here, but only the device holding the identity can set up recovery. */
+  readonly recoverySetupElsewhere = this.healthRuntime.recoverySetupElsewhere;
 
   /** Cold Trust-health projection retained by the named session lifetime. */
   runProjection(): Observable<void> {
@@ -102,9 +108,14 @@ export class TrustService {
    * The key is generated randomly (no passphrase), so accounts onboarded here are
    * recovered via {@link recoverWithKey}, not {@link recoverWithPassphrase}.
    *
-   * Refuses outright on an account that already has a 4S key — see
-   * {@link assertNoRecoveryOnAccount} for why that check reads the server rather than
-   * this device's own view of it.
+   * Two guards run first, both of which ask the server before trusting this device's view:
+   * - {@link assertNoRecoveryOnAccount} refuses an account that already has a 4S key.
+   *   It fails open: an unreachable server must not block genuine first-run setup.
+   * - {@link assertNoIdentityElsewhere} refuses an account whose cross-signing identity
+   *   this device does not hold, because bootstrapping here would replace it. It re-reads
+   *   the published identity first, then checks the keys held locally against it. It fails
+   *   closed: the upload that follows needs the same server, and a wrong "no identity"
+   *   is the destructive answer.
    */
   setUp(promptPassword: PasswordPrompt): Observable<string> {
     return defer(() =>
@@ -118,6 +129,7 @@ export class TrustService {
           const crypto = this.requireCrypto('setup', context.crypto);
           const userId = client.getUserId() ?? '';
           await assertNoRecoveryOnAccount(client);
+          await assertNoIdentityElsewhere(client, crypto);
           const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
           await crypto.bootstrapCrossSigning({
             authUploadDeviceSigningKeys: this.passwordUia(
@@ -446,6 +458,71 @@ async function assertNoRecoveryOnAccount(
     'review-security-settings',
     'This account already has a recovery key. Unlock this device with that key instead — setting up a new one here would replace it and delete the account’s key backup.',
   );
+}
+
+const IDENTITY_ELSEWHERE_MESSAGE =
+  'This account already has encryption set up on another device. Verify this device with that device instead, or reset your identity if you can’t.';
+
+/** Already verified with that device, so "verify with it" would send the user in a circle. */
+const RECOVERY_ELSEWHERE_MESSAGE =
+  'This account already has encryption set up on another device. Set up recovery on that device instead, or reset your identity if you can’t.';
+
+/**
+ * Refuse first-device setup on an Account whose cross-signing identity lives elsewhere.
+ *
+ * With no private keys on this device and none in secret storage, `bootstrapCrossSigning`
+ * "creat[es] new keys" (CrossSigningIdentity.ts:119-123): the identity is replaced, every
+ * other device of the user stops being cross-signed (and, under MSC4153, stops receiving
+ * room keys from strict senders), and contacts who verified the user see an identity
+ * change. Resetting is a separate, explicitly confirmed action (`resetRecovery`).
+ *
+ * **Fails closed**, unlike {@link assertNoRecoveryOnAccount}: the upload that follows
+ * needs the same homeserver, and a wrong "no identity" here is the destructive answer.
+ *
+ * Privates on this device count only when they match the published identity (see
+ * {@link holdsCrossSigningIdentity}): a reset cancelled before its upload leaves a full
+ * set nobody published, and setting up from there would store those in secret storage.
+ *
+ * The copy depends on whether this device is already verified: a device verified through
+ * the other one still lacks the private keys when the Account has no 4S (matrix-js-sdk 43
+ * does not request missing secrets after verification), so only that device can set up
+ * recovery. The verification read only picks the sentence; if it fails, setup is still
+ * refused, with the unverified device's copy.
+ */
+async function assertNoIdentityElsewhere(
+  client: Pick<TrustMatrixClient, 'getDeviceId' | 'getUserId'>,
+  crypto: TrustCryptoApi,
+): Promise<void> {
+  // The local view can lag right after sign-in; ask the homeserver (own user). Asked
+  // first because, for the own user, this also re-queries the published identity
+  // (rust-crypto.ts:516-525), so the match below is judged against the server's copy.
+  if (!(await withTimeout(crypto.userHasCrossSigningKeys(undefined, true)))) {
+    return;
+  }
+  const [status, crossSigningReady] = await Promise.all([
+    crypto.getCrossSigningStatus(),
+    crypto.isCrossSigningReady(),
+  ]);
+  if (holdsCrossSigningIdentity(status, crossSigningReady)) {
+    // This device holds the identity: bootstrap keeps it and only adds recovery.
+    return;
+  }
+  const verified = await readThisDeviceVerified(client, crypto).catch(
+    () => false,
+  );
+  throw verified
+    ? new TrustOperationError(
+        'setup',
+        'stale-state',
+        'review-security-settings',
+        RECOVERY_ELSEWHERE_MESSAGE,
+      )
+    : new TrustOperationError(
+        'setup',
+        'stale-state',
+        'verify-another-device',
+        IDENTITY_ELSEWHERE_MESSAGE,
+      );
 }
 
 /** A validated provider deep link for MSC2965 cross-signing reset. */

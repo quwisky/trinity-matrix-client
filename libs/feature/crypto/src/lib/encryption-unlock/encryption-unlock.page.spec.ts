@@ -1,11 +1,16 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import { render, screen, within } from '@trinity/testing';
-import { TrustOperationError, TrustService } from '@trinity/data-access/trust';
+import {
+  TrustOperationError,
+  TrustService,
+  type TrustStatus,
+} from '@trinity/data-access/trust';
 import { TrnDialogRef, TrnAlertService } from '@trinity/components/overlay';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
-import { Observable, firstValueFrom, of, throwError } from 'rxjs';
+import { Observable, Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionUnlockPage } from './encryption-unlock.page';
 
@@ -27,6 +32,10 @@ interface RenderOptions {
   managementFails?: boolean;
   /** What the "are you sure you want to close" guard resolves to. */
   confirmClose?: boolean;
+  /** The Account's trust status; defaults to an Account with recovery. */
+  status?: TrustStatus;
+  /** A verified device whose identity's keys, and recovery, live on another device. */
+  setupElsewhere?: boolean;
 }
 
 /** Renders the page with mocked DI and returns the fixture + mocked deps. */
@@ -41,19 +50,27 @@ async function renderPage(options: RenderOptions = {}) {
     providerUrl = null,
     managementFails = false,
     confirmClose = true,
+    status = 'needs-recovery',
+    setupElsewhere = false,
   } = options;
   // The type-to-confirm gate and the password prompt both go through prompt$(); the
   // first call is the gate, any later one is the password.
   const prompt = vi.fn();
   prompt.mockReturnValueOnce(of(typed ?? null)).mockReturnValue(of('pw'));
   const confirm = vi.fn(() => of(confirmClose));
+  // Writable so a test can move the live status while the page is open.
+  const liveStatus = signal<TrustStatus>(status);
+  const liveSetupElsewhere = signal(setupElsewhere);
   const result = await render(EncryptionUnlockPage, {
     inputs: {
       ...(asModal === undefined ? {} : { asModal }),
       ...(offerReset === undefined ? {} : { offerReset }),
     },
     providers: [
-      MockProvider(TrustService),
+      MockProvider(TrustService, {
+        status: liveStatus.asReadonly(),
+        recoverySetupElsewhere: liveSetupElsewhere.asReadonly(),
+      }),
       MockProvider(Router),
       MockProvider(ActivatedRoute, {
         snapshot: {
@@ -90,6 +107,8 @@ async function renderPage(options: RenderOptions = {}) {
     prompt,
     confirm,
     externalBrowser,
+    liveStatus,
+    liveSetupElsewhere,
   };
 }
 
@@ -244,6 +263,9 @@ describe('EncryptionUnlockPage', () => {
       expect(message).toContain('lose their verified status');
       expect(message).toContain('new recovery key');
       expect(prompt.mock.calls[0][0].variant).toBe('danger');
+      // Named like the doors that lead here, so the user knows it is the same action.
+      expect(prompt.mock.calls[0][0].header).toBe('Reset your identity');
+      expect(prompt.mock.calls[0][0].confirmText).toBe('Reset identity');
     });
 
     it('shows the new key once, and only releases Done once it is saved', async () => {
@@ -305,7 +327,7 @@ describe('EncryptionUnlockPage', () => {
       fixture.detectChanges();
 
       expect(fixture.componentInstance.error()).toContain(
-        'identity provider has to reset encryption',
+        'identity provider has to reset your identity',
       );
       expect(externalBrowser.open).not.toHaveBeenCalled();
     });
@@ -537,7 +559,110 @@ describe('EncryptionUnlockPage', () => {
 
       await fixture.componentInstance.resetRecovery();
 
-      expect(fixture.componentInstance.title()).toBe('Encryption reset');
+      expect(fixture.componentInstance.title()).toBe('Identity reset');
+    });
+  });
+
+  describe('an Account with no recovery key to enter', () => {
+    it('asks for the recovery key when the Account has recovery', async () => {
+      await renderPage({ status: 'needs-recovery' });
+
+      expect(screen.getByTestId('recovery-key-input')).toBeTruthy();
+      // A quiet door to the same reset as "Reset my identity", so it shares the danger tone.
+      expect(screen.getByTestId('reset-recovery').getAttribute('variant')).toBe(
+        'danger',
+      );
+      expect(screen.queryByTestId('reset-identity-intro')).toBeNull();
+      expect(screen.queryByTestId('reset-identity')).toBeNull();
+      expect(screen.getByText(/Enter the recovery key you saved/)).toBeTruthy();
+    });
+
+    it.each([
+      ['an unverified device', { status: 'needs-verification' as const }],
+      [
+        'a verified device without the keys',
+        { status: 'needs-setup' as const, setupElsewhere: true },
+      ],
+    ])(
+      'offers only the reset, and claims no recovery key, for %s',
+      async (_label, state) => {
+        const { fixture, crypto } = await renderPage({
+          ...state,
+          offerReset: true,
+          typed: null,
+        });
+        await flush();
+        fixture.detectChanges();
+
+        // The gate was cancelled; what is left must not ask for a key that never existed.
+        expect(screen.queryByTestId('recovery-key-input')).toBeNull();
+        expect(screen.queryByTestId('unlock-submit')).toBeNull();
+        expect(screen.queryByTestId('reset-recovery')).toBeNull();
+        expect(
+          screen.queryByText(/Enter the recovery key you saved/),
+        ).toBeNull();
+        expect(
+          screen.getByTestId('reset-identity-intro').textContent,
+        ).toContain('set up on another device without a recovery key');
+        expect(fixture.componentInstance.title()).toBe('Reset your identity');
+        expect(crypto.resetRecovery).not.toHaveBeenCalled();
+      },
+    );
+
+    it('keeps the key form while a reset moves the live status', async () => {
+      // Mid-reset the 4S pointer is parked and a new identity published, so the live
+      // status passes through readings that would otherwise flip the page's copy.
+      const reset = new Subject<string>();
+      const { fixture, liveStatus, liveSetupElsewhere } = await renderPage({
+        status: 'needs-recovery',
+        typed: 'RESET',
+        reset,
+      });
+      void fixture.componentInstance.resetRecovery();
+      await flush();
+      expect(fixture.componentInstance.resetting()).toBe(true);
+
+      liveStatus.set('needs-verification');
+      liveSetupElsewhere.set(true);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.identityWithoutRecovery()).toBe(false);
+      expect(fixture.componentInstance.title()).toBe('Verify this device');
+
+      reset.error(resetCancelled());
+      await flush();
+
+      // Once the reset is over the page follows the live status again.
+      expect(fixture.componentInstance.identityWithoutRecovery()).toBe(true);
+    });
+
+    it('keeps the reset-only copy while a reset moves the live status', async () => {
+      const { fixture, liveStatus } = await renderPage({
+        status: 'needs-verification',
+        typed: 'RESET',
+        reset: new Observable<string>(() => undefined), // never settles
+      });
+      void fixture.componentInstance.resetRecovery();
+      await flush();
+
+      liveStatus.set('needs-recovery');
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.identityWithoutRecovery()).toBe(true);
+      expect(fixture.componentInstance.title()).toBe('Reset your identity');
+    });
+
+    it('runs the same confirmed reset from its own button', async () => {
+      const { crypto, prompt } = await renderPage({
+        status: 'needs-verification',
+        typed: 'RESET',
+      });
+
+      screen.getByTestId('reset-identity').click();
+      await flush();
+
+      expect(prompt.mock.calls[0][0].variant).toBe('danger');
+      expect(crypto.resetRecovery).toHaveBeenCalledOnce();
     });
   });
 

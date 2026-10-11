@@ -72,11 +72,11 @@ describe('RecoveryKeySaveComponent', () => {
     const { container } = await render(RecoveryKeySaveComponent, { inputs });
 
     expect(container.textContent).toContain(
-      "I've saved my recovery key somewhere safe",
+      'I’ve saved my recovery key somewhere safe',
     );
     expect(
       screen.getByRole('checkbox', {
-        name: /I've saved my recovery key somewhere safe/,
+        name: /I’ve saved my recovery key somewhere safe/,
       }),
     ).toBeTruthy();
   });

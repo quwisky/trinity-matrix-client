@@ -45,6 +45,27 @@ const iconSize = {
 const solidDangerTone =
   'bg-[color:var(--trinity-danger-solid)] dark:bg-[color:var(--trinity-danger-solid)] text-[color:var(--trinity-danger-solid-foreground)] hover:bg-[color:var(--trinity-danger-solid-hover)] dark:hover:bg-[color:var(--trinity-danger-solid-hover)]';
 
+/**
+ * A solid primary action on an attention surface (an accent `trn-banner`, which marks itself
+ * `data-trn-surface="attention"`). Its own fill is the accent, the same colour as that
+ * surface, so it would read as plain text with no visible hover (#1217). There it inverts to
+ * the attention action roles, and its focus ring gains an offset in the surface colour so the
+ * ring, which shares the fill's colour, stays distinct from the button. Outside such a surface
+ * none of these classes match, so every other solid primary button is unchanged.
+ *
+ * Anchors need their own hover class: Helm's `[a]:hover:bg-primary/80` compiles to
+ * `.cls:is(a):hover`, which outranks the plain attention hover. The `[a]:` copy has equal
+ * specificity and is emitted after Helm's, so it wins.
+ */
+const solidPrimaryOnAttention =
+  'in-data-[trn-surface=attention]:bg-[color:var(--trinity-state-attention-action-surface)] in-data-[trn-surface=attention]:text-[color:var(--trinity-state-attention-action-foreground)] in-data-[trn-surface=attention]:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)] in-data-[trn-surface=attention]:[a]:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)] in-data-[trn-surface=attention]:focus-visible:ring-offset-[length:var(--trinity-focus-ring-offset)] in-data-[trn-surface=attention]:focus-visible:ring-offset-[color:var(--trinity-state-attention-surface)]';
+
+const solidTone = {
+  primary: solidPrimaryOnAttention,
+  secondary: '',
+  danger: solidDangerTone,
+} as const;
+
 /** Outline buttons share the text-field border; Helm's `--border` is too faint (1.39:1). */
 const controlBorder =
   'border-[color:var(--trinity-border-control)] dark:border-[color:var(--trinity-border-control)]';
@@ -97,9 +118,7 @@ export function trnButtonRecipe(options: TrnButtonRecipeOptions): string {
       : options.presentation;
   const tone =
     options.presentation === 'solid'
-      ? options.variant === 'danger'
-        ? solidDangerTone
-        : ''
+      ? solidTone[options.variant]
       : nonSolidTone[options.variant][options.presentation];
 
   return hlm(
