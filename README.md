@@ -75,43 +75,48 @@ or from the `Trinity-Web-X.Y.Z.zip` attached to each
 
 ## How Trinity compares
 
-| Platforms               | Trinity  | Element Web/Desktop | Element X | FluffyChat | Cinny |
-| ----------------------- | -------- | ------------------- | --------- | ---------- | ----- |
-| Web                     | ✅ (PWA) | ✅                  | —         | ✅         | ✅    |
-| Windows / macOS / Linux | ✅       | ✅                  | —         | Linux      | ✅    |
-| Android / iOS           | 🚧       | —                   | ✅        | ✅         | —     |
+| Platforms | Trinity            | Element Web/Desktop | Element X | FluffyChat | Cinny |
+| --------- | ------------------ | ------------------- | --------- | ---------- | ----- |
+| Web       | ✅ (PWA)           | ✅                  | —         | ✅         | ✅    |
+| Windows   | ✅                 | ✅                  | —         | ✅         | ✅    |
+| macOS     | ✅ (Apple Silicon) | ✅                  | —         | —          | ✅    |
+| Linux     | ✅ (x86-64)        | ✅                  | —         | ✅         | ✅    |
+| Android   | 🚧                 | —                   | ✅        | ✅         | —     |
+| iOS       | 🚧                 | —                   | ✅        | ✅         | —     |
 
 | Features                          | Trinity           | Element Web/Desktop | Element X | FluffyChat | Cinny |
 | --------------------------------- | ----------------- | ------------------- | --------- | ---------- | ----- |
 | End-to-end encryption             | ✅                | ✅                  | ✅        | ✅         | ✅    |
 | Spaces                            | ✅                | ✅                  | ✅        | ✅         | ✅    |
-| Threads                           | ✅                | ✅                  | 🟡        | ✅         | ❌    |
+| Threads                           | ✅                | ✅                  | 🟡        | ✅         | 🟡    |
 | Multiple accounts                 | ✅                | ❌                  | ❌        | ✅         | ❌    |
-| OAuth 2.0 (next-gen auth)         | ✅                | ✅                  | ✅        | ❔         | ❔    |
+| OAuth 2.0 (next-gen auth)         | ✅                | ✅                  | ✅        | ✅         | ❌    |
 | Legacy SSO                        | ✅                | ✅                  | ❌        | ✅         | ✅    |
-| Emoji and image packs             | 🟡                | 🟡                  | ❔        | 🟡         | 🟡    |
+| Emoji and image packs             | 🟡                | 🟡                  | ❌        | ✅         | ✅    |
 | Voice/video calls (1:1)           | ❌                | ✅                  | ❌        | ❌         | ❌    |
 | Voice/video calls (Jitsi)         | ❌                | ✅                  | ❌        | ❌         | ❌    |
-| Voice/video calls (MatrixRTC)     | ❌                | ✅                  | ✅        | ❔         | ✅    |
-| Invisible cryptography (MSC4153)  | ❌                | 🟡                  | 🟡        | ❔         | ❔    |
-| Simplified sliding sync (MSC4186) | ❌                | ❔                  | ✅        | ❔         | ❔    |
+| Voice/video calls (MatrixRTC)     | ❌                | ✅                  | ✅        | ✅         | ✅    |
+| Invisible cryptography (MSC4153)  | ❌                | 🟡                  | 🟡        | 🟡         | ❌    |
+| Simplified sliding sync (MSC4186) | ❌                | 🟡                  | ✅        | ❌         | ❌    |
 | Multi-language interface          | ❌ (English only) | ✅                  | ✅        | ✅         | ❌    |
 
 ✅ supported · 🟡 partial · ❌ not supported · ❔ unknown · 🚧 in development ·
 — not offered by that app. Element X is Element's mobile app, so Element Web/Desktop
-shows — for Android and iOS. Trinity's macOS builds are Apple Silicon only, and its
-Linux builds are x86-64 only.
+shows — for Android and iOS.
 From Trinity 0.3, OAuth 2.0 sign-in needs Synapse 1.138 or newer when the server uses
 Matrix Authentication Service (MAS). On an older Synapse with MAS, accounts stop
 connecting when their access token expires but keep their local encryption keys; see
 [Server requirements](https://quwisky.github.io/trinity-matrix-client/users/#server-requirements).
 
-Trinity also supports polls, voice messages, location sharing, stickers and GIFs, jump
-to date, pinned messages, room key export and import, and desktop notifications.
+Trinity also supports polls, voice messages, location sharing, stickers, custom emoji
+and GIFs, room widgets, jump to date, pinned messages, room key export and import, and
+desktop notifications.
 
-Other clients: [matrix.org client pages](https://matrix.org/ecosystem/clients/),
-retrieved 2026-10-02. Trinity's column is self-assessed from this repository against the
-same feature definitions.
+Other clients: each client's GitHub repository (code, changelogs and issues) and its
+latest release, with [matrix.org client pages](https://matrix.org/ecosystem/clients/)
+for cross-checking, retrieved 2026-10-11. 🟡 marks a feature that is behind a Labs or
+developer setting, receive-only, or missing part of its scope. Trinity's column is
+self-assessed from this repository against the same feature definitions.
 
 ## Run from source
 
