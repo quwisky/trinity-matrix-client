@@ -1,22 +1,23 @@
 diff --git a/fesm2022/spartan-ng-brain-tooltip.mjs b/fesm2022/spartan-ng-brain-tooltip.mjs
-index a07146268c6cf7957d23fafb45c894bead457f21..da4c09792c595daf957608e195fb4b74d92d09d7 100644
+index a07146268c6cf7957d23fafb45c894bead457f21..a6282b42ebe32593fa579d1324f130e0ad19c0f5 100644
 --- a/fesm2022/spartan-ng-brain-tooltip.mjs
 +++ b/fesm2022/spartan-ng-brain-tooltip.mjs
 @@ -1,3 +1,4 @@
-+import { FocusMonitor } from '@angular/cdk/a11y';
++import { FocusMonitor, InputModalityDetector } from '@angular/cdk/a11y';
  import { Overlay, OverlayPositionBuilder } from '@angular/cdk/overlay';
  import { ComponentPortal } from '@angular/cdk/portal';
  import { DOCUMENT } from '@angular/common';
-@@ -277,6 +278,8 @@ class BrnTooltip {
+@@ -277,6 +278,9 @@ class BrnTooltip {
      _dir = inject(Directionality);
      _group = inject(BrnTooltipGroup, { optional: true });
      _tooltipHovered = false;
 +    _focusMonitor = inject(FocusMonitor);
++    _inputModality = inject(InputModalityDetector);
 +    _focusVisible = false;
      _listenersRefs = [];
      _delaySubject = undefined;
      _componentRef = undefined;
-@@ -377,7 +380,9 @@ class BrnTooltip {
+@@ -377,7 +381,9 @@ class BrnTooltip {
                  if (!this._isHoverPointer(event))
                      return;
                  this._tooltipHovered = false;
@@ -27,7 +28,7 @@ index a07146268c6cf7957d23fafb45c894bead457f21..da4c09792c595daf957608e195fb4b74
              }),
          ];
          return overlayRef;
-@@ -458,6 +463,19 @@ class BrnTooltip {
+@@ -458,6 +464,22 @@ class BrnTooltip {
       * `_isHoverPointer`; use a popover when touch users need to see the content.
       */
      _initHoverListeners() {
@@ -36,10 +37,13 @@ index a07146268c6cf7957d23fafb45c894bead457f21..da4c09792c595daf957608e195fb4b74
 +        this._focusMonitor.monitor(this._elementRef)
 +            .pipe(takeUntilDestroyed(this._destroyRef))
 +            .subscribe((origin) => {
-+                this._focusVisible = origin === 'keyboard' || origin === 'program';
++                // CDK reports focus moved by script after a touch elsewhere, e.g. restored when a
++                // sheet closes, as 'program'. Until the next key or mouse press, that is not keyboard intent.
++                const afterTouch = origin === 'program' && this._inputModality.mostRecentModality === 'touch';
++                this._focusVisible = origin === 'keyboard' || (origin === 'program' && !afterTouch);
 +                if (this._focusVisible)
 +                    this._requestShow();
-+                else if (origin === 'touch')
++                else if (origin === 'touch' || afterTouch)
 +                    this.delay(false);
 +                else if (origin === null)
 +                    this.delay(false, this.hideDelay());
@@ -47,7 +51,7 @@ index a07146268c6cf7957d23fafb45c894bead457f21..da4c09792c595daf957608e195fb4b74
          this._listenersRefs = [
              ...this._listenersRefs,
              this._renderer.listen(this._elementRef.nativeElement, 'pointerenter', (event) => {
-@@ -465,11 +483,16 @@ class BrnTooltip {
+@@ -465,11 +487,16 @@ class BrnTooltip {
                      this._requestShow();
              }),
              this._renderer.listen(this._elementRef.nativeElement, 'pointerleave', (event) => {
