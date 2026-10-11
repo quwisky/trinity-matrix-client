@@ -174,6 +174,14 @@ interface AccountClient {
   readonly backupKeysRemaining: () => number | null;
 }
 
+/**
+ * Which client a set of token options is for: one this service started (whose refreshes
+ * move the account's tracked pair while it owns it) or a detached one (persist only).
+ */
+type TokenRefreshOwner =
+  | { readonly kind: 'started'; readonly client: () => MatrixClient | null }
+  | { readonly kind: 'detached' };
+
 /** An access token the SDK refreshed for one account, published after storage accepted it. */
 export interface AccessTokenRotation {
   readonly userId: string;
@@ -244,7 +252,8 @@ export class MatrixClientService {
   private readonly _accessTokenRotations = new Subject<AccessTokenRotation>();
   /**
    * Access tokens the SDK refreshed (OAuth sessions only), each published once storage has
-   * accepted the new pair. Never replays; the push handoff rewrites its copy from it.
+   * accepted the new pair, and only while the refreshing client is still the account's live
+   * or starting client. Never replays; the push handoff rewrites its copy from it.
    */
   readonly accessTokenRotations: Observable<AccessTokenRotation> =
     this._accessTokenRotations.asObservable();
@@ -255,10 +264,15 @@ export class MatrixClientService {
    * a refresh token. Set from the session when the client is built, and moved to each
    * refreshed pair once storage accepted it and before the rotation is published. Read
    * through {@link accessTokenExpiry}.
+   *
+   * `client` is the start the entry belongs to. Only that client's refreshes move it, and
+   * only that client's teardown drops it: a refresh from a client that was replaced or torn
+   * down, or a teardown racing another start for the account, leaves it alone.
    */
   private readonly oauthTokens = new Map<
     string,
     {
+      readonly client: MatrixClient;
       readonly accessToken: string;
       readonly expiresAt: number | undefined;
       readonly refreshable: boolean;
@@ -425,7 +439,9 @@ export class MatrixClientService {
       persistRefreshedTokens: true,
     },
   ): MatrixClient {
-    const { onTokenRefresh, ...tokens } = this.tokenOptions(session);
+    const { onTokenRefresh, ...tokens } = this.tokenOptions(session, {
+      kind: 'detached',
+    });
     return createClient({
       baseUrl: session.baseUrl,
       localTimeoutMs: MATRIX_REQUEST_TIMEOUT_MS,
@@ -717,7 +733,7 @@ export class MatrixClientService {
         created?.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
         created?.stopClient();
         holder.clear();
-        this.oauthTokens.delete(session.userId);
+        this.forgetOAuthTokens(session.userId, created);
         this.closeStore(store);
       };
       return from(this.wipes.get(session.userId) ?? Promise.resolve()).pipe(
@@ -735,7 +751,10 @@ export class MatrixClientService {
             accessToken: session.accessToken,
             userId: session.userId,
             deviceId: session.deviceId,
-            ...this.tokenOptions(session),
+            ...this.tokenOptions(session, {
+              kind: 'started',
+              client: () => created,
+            }),
             ...(store ? { store } : {}),
             // Lets the crypto stack read/write 4S using the recovery key the user
             // unlocks during the setup/recovery flows (held only in memory).
@@ -746,6 +765,7 @@ export class MatrixClientService {
           });
           if (session.oidc) {
             this.oauthTokens.set(session.userId, {
+              client: created,
               accessToken: session.accessToken,
               expiresAt: session.accessTokenExpiresAt,
               refreshable: !!session.refreshToken,
@@ -867,9 +887,22 @@ export class MatrixClientService {
    * `onTokenRefresh` persists for THIS account only and returns the write: the SDK awaits
    * it before adopting the new pair, so a failed write fails the refresh and the old
    * tokens stay in memory.
+   *
+   * The write is a compare-and-swap on the sign-in the session came from (its
+   * {@link MatrixSession.lineage}): storage applies it only while the account's record still
+   * holds that sign-in. So a client that was retired, rolled back, stopped or removed still
+   * saves the pair it rotated while its sign-in is the stored one (with refresh-token
+   * rotation those are the only valid next tokens), and a client a new sign-in replaced
+   * never writes over the new session.
+   *
+   * A `started` client's refresh then moves the tracked pair and publishes the rotation, but
+   * only while that client still owns the account's tracked pair (it is live or starting).
+   * A `detached` client is never the account's live client, so its refresh is persisted and
+   * nothing more.
    */
   private tokenOptions(
     session: MatrixSession,
+    owner: TokenRefreshOwner,
   ): Pick<
     ICreateClientOpts,
     'refreshToken' | 'oauthClientId' | 'onTokenRefresh'
@@ -879,26 +912,31 @@ export class MatrixClientService {
       ...(session.oidc
         ? {
             oauthClientId: session.oidc.clientId,
-            onTokenRefresh: (tokens: AccessTokens) =>
+            onTokenRefresh: (tokens: AccessTokens): Promise<void> =>
               firstValueFrom(
                 this.storage.updateTokens(
                   session.userId,
+                  session.lineage,
                   tokens.accessToken,
                   tokens.refreshToken,
                   tokens.expiry?.getTime(),
                 ),
               ).then(() => {
-                // Before publishing, so a reader of the rotation finds the new expiry. Only
-                // a tracked (live or starting) client's account: a detached client's
-                // refresh must not invent an entry.
-                const tracked = this.oauthTokens.get(session.userId);
-                if (tracked) {
-                  this.oauthTokens.set(session.userId, {
-                    accessToken: tokens.accessToken,
-                    expiresAt: tokens.expiry?.getTime(),
-                    refreshable: tracked.refreshable,
-                  });
+                if (owner.kind === 'detached') {
+                  return;
                 }
+                // Checked after the write: the client may have been replaced meanwhile.
+                const client = owner.client();
+                const tracked = this.oauthTokens.get(session.userId);
+                if (!client || tracked?.client !== client) {
+                  return;
+                }
+                // Before publishing, so a reader of the rotation finds the new expiry.
+                this.oauthTokens.set(session.userId, {
+                  ...tracked,
+                  accessToken: tokens.accessToken,
+                  expiresAt: tokens.expiry?.getTime(),
+                });
                 this._accessTokenRotations.next({
                   userId: session.userId,
                   accessToken: tokens.accessToken,
@@ -907,6 +945,13 @@ export class MatrixClientService {
           }
         : {}),
     };
+  }
+
+  /** Drop an account's tracked OAuth pair if it still belongs to this client. */
+  private forgetOAuthTokens(userId: string, client: MatrixClient | null): void {
+    if (client && this.oauthTokens.get(userId)?.client === client) {
+      this.oauthTokens.delete(userId);
+    }
   }
 
   /**
@@ -968,9 +1013,10 @@ export class MatrixClientService {
       account.client.stopClient();
       account.holder.clear();
       this.closeStore(account.syncStore);
+      // A start still in flight keeps its pair: it is not torn down here.
+      this.forgetOAuthTokens(account.userId, account.client);
     }
     this.clients.clear();
-    this.oauthTokens.clear();
     this._accountIds.set([]);
     this.publishCorsOrigins();
     this._activeUserId.set(null);
@@ -983,8 +1029,9 @@ export class MatrixClientService {
    */
   private removeInternal(userId: string, wipe: boolean): void {
     this.clearSoftLoggedOut(userId); // any removal clears a stale re-auth flag
-    this.oauthTokens.delete(userId);
     const account = this.clients.get(userId);
+    // Only the removed client's pair: a start in flight for this account keeps its own.
+    this.forgetOAuthTokens(userId, account?.client ?? null);
     if (!account) {
       if (wipe) {
         // "Stop it + wipe its stores" must still wipe when there is nothing to stop —
