@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { computed, effect, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +13,7 @@ import {
   isValidMxcUri,
   readImagePacks,
 } from './image-pack.service';
+import { ImagePackSelectionStore } from './image-pack-selection.store';
 
 function event(
   type: string,
@@ -435,5 +436,44 @@ describe('ImagePackService', () => {
       'Room.myMembership',
       expect.any(Function),
     );
+  });
+
+  it('keeps a room consumer current after an account selection change', async () => {
+    const { service, client, roomEvents, rebuildRoom } = setup();
+    roomEvents.set('!current:hs', []);
+    rebuildRoom('!current:hs');
+    const roomId = signal('!current:hs');
+    // The room page's shape: its template reads the active room's packs, and an effect
+    // holds that room's projection while the room is active.
+    const packs = computed(() => service.packsFor(roomId())());
+    TestBed.runInInjectionContext(() =>
+      effect((onCleanup) => {
+        const id = roomId();
+        service.connect(id);
+        onCleanup(() => service.disconnect(id));
+      }),
+    );
+    TestBed.tick();
+    expect(packs()).toEqual([]);
+
+    // Installing a pack confirms new account data while the room still projects no pack.
+    TestBed.inject(ImagePackSelectionStore).set(client as never, {
+      present: true,
+      content: { rooms: {} },
+    });
+    TestBed.tick();
+
+    roomEvents
+      .get('!current:hs')
+      ?.push(
+        event(IMAGE_PACK_EVENT_TYPE, 'local', pack('Live'), '!current:hs'),
+      );
+    const handler = client.on.mock.calls.find(
+      ([name]) => name === 'RoomState.events',
+    )?.[1] as ((changed: ReturnType<typeof event>) => void) | undefined;
+    handler?.(event(IMAGE_PACK_EVENT_TYPE, 'local', {}, '!current:hs'));
+    await Promise.resolve();
+
+    expect(packs().map((item) => item.name)).toEqual(['Live']);
   });
 });
