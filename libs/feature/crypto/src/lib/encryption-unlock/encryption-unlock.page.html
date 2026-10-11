@@ -20,7 +20,7 @@
     <trn-recovery-key-save
       [recoveryKey]="key"
       heading="Save your new recovery key"
-      warning="We'll only show this key once. Without it, you can't recover your message history on another device."
+      warning="We’ll only show this key once. Without it, you can’t recover your message history on another device."
       confirmLabel="Done"
       confirmTestId="reset-done"
       (confirmed)="finishReset()"
@@ -49,7 +49,7 @@
     } @else {
       <h2 class="heading">Enter your recovery key</h2>
       <p class="lead">
-        This device isn't trusted yet. Enter the recovery key you saved when you
+        This device isn’t trusted yet. Enter the recovery key you saved when you
         set up encryption to unlock your encrypted messages here.
       </p>
 
@@ -69,7 +69,7 @@
           (keyup.enter)="unlock()"
         />
         <p class="mt-1 text-xs text-muted-foreground">
-          Paste the key you saved during setup. Spaces don't matter.
+          Paste the key you saved during setup. Spaces don’t matter.
         </p>
       </trn-field>
 
