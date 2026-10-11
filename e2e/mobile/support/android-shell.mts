@@ -44,3 +44,40 @@ export function parseKeyboardShown(output: string): boolean {
   }
   return match[1] === 'true';
 }
+
+/**
+ * The system server's error dialogs ("<app> isn't responding", "<app> keeps stopping") take
+ * input focus over every app. On cold hosted emulators Pixel Launcher sometimes missed its
+ * NotificationListener service timeout while the boot settled, and its ANR dialog kept focus
+ * for the rest of the run: Back, the IME, permission prompts, the photo picker, the share
+ * chooser and Custom Tabs never reached the app. AppNotRespondingDialog and AppErrorDialog
+ * title their windows this way; list the open ones.
+ */
+export const SYSTEM_ERROR_DIALOGS_COMMAND =
+  'dumpsys window windows | grep -oE "Application (Not Responding|Error): [^ }]+" | sort -u; true';
+
+const SYSTEM_ERROR_DIALOG = /^Application (?:Not Responding|Error): \S+$/u;
+
+export function parseSystemErrorDialogs(output: string): string[] {
+  return output
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => SYSTEM_ERROR_DIALOG.test(line));
+}
+
+/**
+ * Every system error dialog closes itself on this broadcast; an ANR dialog closes its app,
+ * as "Close app" would. The shell holds BROADCAST_CLOSE_SYSTEM_DIALOGS.
+ */
+export const CLOSE_SYSTEM_DIALOGS_COMMAND =
+  'am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS';
+
+/**
+ * Global setting that stops the system server from showing error dialogs; it then closes an
+ * unresponsive app instead. The activity task manager observes it, so it applies at once.
+ */
+export const HIDE_ERROR_DIALOGS_SETTING = 'hide_error_dialogs';
+
+/** The focused window and app: who receives Back and the IME when a spec fails. */
+export const WINDOW_FOCUS_COMMAND =
+  'dumpsys window | grep -E "mCurrentFocus|mFocusedApp"; true';

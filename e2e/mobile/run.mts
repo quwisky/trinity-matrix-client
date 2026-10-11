@@ -25,6 +25,12 @@ import {
 } from './health.mts';
 import { e2eArtifactPath } from '../support/playwright-config.mts';
 import { MOBILE_ANDROID_SUITE } from '../support/host-suites.mts';
+import {
+  CLOSE_SYSTEM_DIALOGS_COMMAND,
+  HIDE_ERROR_DIALOGS_SETTING,
+  SYSTEM_ERROR_DIALOGS_COMMAND,
+  parseSystemErrorDialogs,
+} from './support/android-shell.mts';
 import { appiumLogPath } from './support/artifacts.mts';
 import {
   activeChildPid,
@@ -70,6 +76,8 @@ const changedReverseMappings: Array<{
   previous: string | undefined;
 }> = [];
 let adbFailureCount = 0;
+/** The device's own hide_error_dialogs value, restored on release; undefined if unchanged. */
+let previousHideErrorDialogs: string | undefined;
 
 let androidSdk: { readonly adb: string; readonly emulator: string } | undefined;
 
@@ -315,6 +323,58 @@ async function validateAndWaitForBoot(): Promise<void> {
   }
 }
 
+/**
+ * Keep system error dialogs off the screen for the run (see SYSTEM_ERROR_DIALOGS_COMMAND) and
+ * close any that came up while the emulator booted beside the app build: one left open holds
+ * input focus, and every spec that needs Back, the IME or system UI fails behind it.
+ */
+async function suppressSystemErrorDialogs(): Promise<void> {
+  const current = await adbRun(
+    'shell',
+    'settings',
+    'get',
+    'global',
+    HIDE_ERROR_DIALOGS_SETTING,
+  );
+  if (current !== '1') {
+    await adbRun(
+      'shell',
+      'settings',
+      'put',
+      'global',
+      HIDE_ERROR_DIALOGS_SETTING,
+      '1',
+    );
+    previousHideErrorDialogs = current;
+  }
+  const openDialogs = async (): Promise<string[]> =>
+    parseSystemErrorDialogs(
+      await adbRun('shell', SYSTEM_ERROR_DIALOGS_COMMAND),
+    );
+  const open = await openDialogs();
+  if (open.length === 0) return;
+  console.log(
+    `[mobile] closing system error dialogs before the suite: ${open.join('; ')}`,
+  );
+  await adbRun('shell', CLOSE_SYSTEM_DIALOGS_COMMAND);
+  await waitUntil(
+    `system error dialogs to close (${open.join('; ')})`,
+    async () => (await openDialogs()).length === 0,
+    30_000,
+  );
+}
+
+async function restoreSystemErrorDialogs(): Promise<void> {
+  const previous = previousHideErrorDialogs;
+  if (previous === undefined) return;
+  // `settings get` prints "null" for a setting the device never had.
+  const change =
+    previous === 'null' || previous === ''
+      ? ['delete', 'global', HIDE_ERROR_DIALOGS_SETTING]
+      : ['put', 'global', HIDE_ERROR_DIALOGS_SETTING, previous];
+  await adbRun('shell', 'settings', ...change);
+}
+
 async function configureReverse(): Promise<void> {
   const existing = await adbRun('reverse', '--list');
   for (const port of requiredReversePorts) {
@@ -437,6 +497,7 @@ async function captureDiagnostics(): Promise<void> {
     ['logcat-final.txt', ['logcat', '-b', 'all', '-d']],
     ['crash-final.txt', ['logcat', '-b', 'crash', '-d']],
     ['activity-final.txt', ['shell', 'dumpsys', 'activity', 'activities']],
+    ['window-final.txt', ['shell', 'dumpsys', 'window', 'windows']],
     ['package-final.txt', ['shell', 'dumpsys', 'package', packageName]],
     ['memory-final.txt', ['shell', 'dumpsys', 'meminfo']],
     ['surfaceflinger-final.txt', ['shell', 'dumpsys', 'SurfaceFlinger']],
@@ -453,6 +514,7 @@ async function releaseDevice(): Promise<void> {
       await adbRun('shell', 'am', 'force-stop', packageName).catch(
         () => undefined,
       );
+      await restoreSystemErrorDialogs().catch(() => undefined);
       for (const { local, previous } of changedReverseMappings.reverse()) {
         await adbRun('reverse', '--remove', local).catch(() => undefined);
         if (previous) {
@@ -487,6 +549,7 @@ async function main(): Promise<void> {
   await assertJava21();
   await selectOrStartDevice();
   await validateAndWaitForBoot();
+  await suppressSystemErrorDialogs();
   const reusePrebuiltBundle = process.env['TRINITY_E2E_PREBUILT_WWW'] === '1';
   if (reusePrebuiltBundle) {
     await run(process.execPath, [

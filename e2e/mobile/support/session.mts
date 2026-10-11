@@ -4,9 +4,12 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { browser } from '@wdio/globals';
 import {
+  CLOSE_SYSTEM_DIALOGS_COMMAND,
   KEYBOARD_SHOWN_COMMAND,
+  SYSTEM_ERROR_DIALOGS_COMMAND,
   WEBVIEW_DEVTOOLS_UNFREEZE_COMMAND,
   parseKeyboardShown,
+  parseSystemErrorDialogs,
   parseWebviewDevtoolsUnfreeze,
 } from './android-shell.mts';
 import { appiumLogPath } from './artifacts.mts';
@@ -159,8 +162,28 @@ export async function shell(
   return String(await browser.execute('mobile: shell', { command, args }));
 }
 
+/**
+ * Close any system error dialog left open (see SYSTEM_ERROR_DIALOGS_COMMAND), so the spec
+ * starts with input focus available to the app. The runner stops new ones from showing; this
+ * clears one raised before that, and names it in the run log.
+ */
+async function closeSystemErrorDialogs(): Promise<void> {
+  const openDialogs = async (): Promise<string[]> =>
+    parseSystemErrorDialogs(await shell(SYSTEM_ERROR_DIALOGS_COMMAND));
+  const open = await openDialogs();
+  if (open.length === 0) return;
+  console.log(`[mobile] closing system error dialogs: ${open.join('; ')}`);
+  await shell(CLOSE_SYSTEM_DIALOGS_COMMAND);
+  await browser.waitUntil(async () => (await openDialogs()).length === 0, {
+    timeout: 10_000,
+    interval: 500,
+    timeoutMsg: `system error dialogs stayed open: ${open.join('; ')}`,
+  });
+}
+
 export async function resetApp(): Promise<void> {
   await native();
+  if (!browser.isIOS) await closeSystemErrorDialogs();
   await browser.terminateApp(APP_PACKAGE);
   if (browser.isIOS) {
     // A reinstall is the Simulator's only route to an empty app container. The

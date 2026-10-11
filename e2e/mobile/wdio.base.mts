@@ -7,8 +7,9 @@ import {
 } from '../support/execution-report.mts';
 import type { E2ESuiteDefinition } from '../support/e2e-registry.types.mts';
 import { readSession } from '../support/session.mts';
+import { WINDOW_FOCUS_COMMAND } from './support/android-shell.mts';
 import { wdioOutputDir } from './support/artifacts.mts';
-import { native } from './support/session.mts';
+import { native, shell } from './support/session.mts';
 
 export const workspaceRoot = join(import.meta.dirname, '../..');
 
@@ -92,6 +93,11 @@ export function mobileWdioConfig(options: {
       await native().catch(() => undefined);
       const hierarchy = await browser.getPageSource().catch(() => '');
       writeFileSync(join(outputDir, `${name}.native.xml`), hierarchy);
+      if (!browser.isIOS) {
+        // The hierarchy shows the top window only; name the one that holds input focus.
+        const focus = await shell(WINDOW_FOCUS_COMMAND).catch(String);
+        writeFileSync(join(outputDir, `${name}.focus.txt`), `${focus}\n`);
+      }
     },
     /** Publish the suite summary the E2E aggregate runner validates. */
     onComplete(

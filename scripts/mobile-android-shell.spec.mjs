@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   KEYBOARD_SHOWN_COMMAND,
+  SYSTEM_ERROR_DIALOGS_COMMAND,
   WEBVIEW_DEVTOOLS_UNFREEZE_COMMAND,
   parseKeyboardShown,
+  parseSystemErrorDialogs,
   parseWebviewDevtoolsUnfreeze,
 } from '../e2e/mobile/support/android-shell.mts';
 
@@ -49,5 +51,27 @@ describe('mobile E2E Android shell probes', () => {
     );
     expect(parseKeyboardShown('    mInputShown=false\n')).toBe(false);
     expect(() => parseKeyboardShown('')).toThrow(/mInputShown/);
+  });
+
+  it('lists system error dialog windows by title, filtered on the device', () => {
+    expect(SYSTEM_ERROR_DIALOGS_COMMAND).toBe(
+      'dumpsys window windows | grep -oE "Application (Not Responding|Error): [^ }]+" | sort -u; true',
+    );
+  });
+
+  it('parses ANR and crash dialog titles and ignores everything else', () => {
+    expect(
+      parseSystemErrorDialogs(
+        'Application Not Responding: com.google.android.apps.nexuslauncher\n' +
+          'Application Error: com.android.systemui\r\n',
+      ),
+    ).toEqual([
+      'Application Not Responding: com.google.android.apps.nexuslauncher',
+      'Application Error: com.android.systemui',
+    ]);
+    expect(parseSystemErrorDialogs('')).toEqual([]);
+    expect(
+      parseSystemErrorDialogs('/system/bin/sh: dumpsys: inaccessible'),
+    ).toEqual([]);
   });
 });
