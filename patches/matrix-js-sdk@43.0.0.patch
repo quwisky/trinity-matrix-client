@@ -1,8 +1,80 @@
+diff --git a/lib/http-api/fetch.d.ts b/lib/http-api/fetch.d.ts
+index 70dc3337d28e22f122bb05b221ed9d1823c25f75..38798a1eeb4a5630291e742b3114d1ff3a915090 100644
+--- a/lib/http-api/fetch.d.ts
++++ b/lib/http-api/fetch.d.ts
+@@ -15,6 +15,12 @@ export declare class FetchHttpApi<O extends IHttpOpts> {
+      * @throws when discovery of the auth server metadata, or revocation of either token, fails
+      */
+     revokeOAuthTokens(): Promise<void>;
++    /**
++     * Trinity patch: refresh an OAuth2-native session's tokens now, sharing a refresh already in
++     * flight; `onTokenRefresh` runs as for any refresh. Resolves false when nothing was refreshed
++     * (no OAuth2 config, a network error or a refusal). Never emits SessionLoggedOut.
++     */
++    refreshOAuthTokens(): Promise<boolean>;
+     fetch(resource: URL | string, options?: RequestInit): ReturnType<typeof globalThis.fetch>;
+     /**
+      * Sets the base URL for the identity server
+diff --git a/lib/http-api/fetch.js b/lib/http-api/fetch.js
+index dde6d845be2926397f2a4bdc3b09325748cd1adc..ad788bc2ad1fea7ac0a0af9be496378e0b29f119 100644
+--- a/lib/http-api/fetch.js
++++ b/lib/http-api/fetch.js
+@@ -53,6 +53,15 @@ export class FetchHttpApi {
+   async revokeOAuthTokens() {
+     return this.tokenManager.revokeTokens();
+   }
++
++  /**
++   * Trinity patch: refresh an OAuth2-native session's tokens now, sharing a refresh already in
++   * flight; `onTokenRefresh` runs as for any refresh. Resolves false when nothing was refreshed
++   * (no OAuth2 config, a network error or a refusal). Never emits SessionLoggedOut.
++   */
++  async refreshOAuthTokens() {
++    return this.tokenManager.refreshNow();
++  }
+   fetch(resource, options) {
+     if (this.opts.fetchFn) {
+       return this.opts.fetchFn(resource, options);
+diff --git a/lib/http-api/refresh.d.ts b/lib/http-api/refresh.d.ts
+index 223f4c8bb02839a87d04f68b7fed846f3b5fc577..33d1754064df22cf2ea3203a6a134c6e9d82515a 100644
+--- a/lib/http-api/refresh.d.ts
++++ b/lib/http-api/refresh.d.ts
+@@ -41,6 +41,13 @@ export declare class TokenManager {
+      * @returns a TokenRefreshOutcome indicating the result of the refresh attempt
+      */
+     handleUnknownToken(snapshot: AccessTokens, attempt: number): Promise<TokenRefreshOutcome>;
++    /**
++     * Trinity patch: refresh now, whatever the known expiry, joining a refresh already in
++     * flight. Never signs out: a refusal is left to the next request, which meets it as
++     * M_UNKNOWN_TOKEN and takes the usual path.
++     * @returns true when new tokens were adopted
++     */
++    refreshNow(): Promise<boolean>;
+     private _handleUnknownToken;
+     /**
+      * Attempt to refresh access tokens.
 diff --git a/lib/http-api/refresh.js b/lib/http-api/refresh.js
-index 1a7147907487b62ca6a72440b767a7619a205b6f..a7ee87d295742c9d15fbe86ddb545854ff7fa0ff 100644
+index 1a7147907487b62ca6a72440b767a7619a205b6f..8f361834cdd83d6de22eb9d28676120eb5ba207d 100644
 --- a/lib/http-api/refresh.js
 +++ b/lib/http-api/refresh.js
-@@ -156,8 +156,10 @@ export class TokenManager {
+@@ -97,6 +97,16 @@ export class TokenManager {
+   async handleUnknownToken(snapshot, attempt) {
+     return this._handleUnknownToken(snapshot, attempt);
+   }
++
++  /**
++   * Trinity patch: refresh now, whatever the known expiry, joining a refresh already in
++   * flight. Never signs out: a refusal is left to the next request, which meets it as
++   * M_UNKNOWN_TOKEN and takes the usual path.
++   * @returns true when new tokens were adopted
++   */
++  async refreshNow() {
++    return (await this._handleUnknownToken()) === TokenRefreshOutcome.Success;
++  }
+   async _handleUnknownToken(snapshot, attempt) {
+     if (snapshot?.expiry) {
+       // If our token is unknown, but it should not have expired yet, then we should not refresh
+@@ -156,8 +166,10 @@ export class TokenManager {
        // successfully got new tokens
        return TokenRefreshOutcome.Success;
      } catch (error) {
@@ -152,11 +224,48 @@ index e5f15214886cca4fa33073e684f954c75df50ddd..15b11c285cdf8930ca18ea3a01d10655
        // We use the request start time to calculate the expiry time as we don't know when the server received our request
        expiry: response.expires_in ? new Date(requestStart + response.expires_in * 1000) : undefined
      };
+diff --git a/src/http-api/fetch.ts b/src/http-api/fetch.ts
+index 387c1ebc6087adaf4947a377be434b9f56e05fe9..8ff78d521d84ff991315d350df42214f93863880 100644
+--- a/src/http-api/fetch.ts
++++ b/src/http-api/fetch.ts
+@@ -66,6 +66,15 @@ export class FetchHttpApi<O extends IHttpOpts> {
+         return this.tokenManager.revokeTokens();
+     }
+ 
++    /**
++     * Trinity patch: refresh an OAuth2-native session's tokens now, sharing a refresh already in
++     * flight; `onTokenRefresh` runs as for any refresh. Resolves false when nothing was refreshed
++     * (no OAuth2 config, a network error or a refusal). Never emits SessionLoggedOut.
++     */
++    public async refreshOAuthTokens(): Promise<boolean> {
++        return this.tokenManager.refreshNow();
++    }
++
+     public fetch(resource: URL | string, options?: RequestInit): ReturnType<typeof globalThis.fetch> {
+         if (this.opts.fetchFn) {
+             return this.opts.fetchFn(resource, options);
 diff --git a/src/http-api/refresh.ts b/src/http-api/refresh.ts
-index c95d7fec172c152ec0cb4b12d8ce0ce4a4957c21..973a03794b07cd638cb3fe8f3a7bf1499c4de4c3 100644
+index c95d7fec172c152ec0cb4b12d8ce0ce4a4957c21..0b31065c367dfbd9e6b6fe1ca2d7b0ae5bf6b859 100644
 --- a/src/http-api/refresh.ts
 +++ b/src/http-api/refresh.ts
-@@ -171,8 +171,10 @@ export class TokenManager {
+@@ -109,6 +109,16 @@ export class TokenManager {
+         return this._handleUnknownToken(snapshot, attempt);
+     }
+ 
++    /**
++     * Trinity patch: refresh now, whatever the known expiry, joining a refresh already in
++     * flight. Never signs out: a refusal is left to the next request, which meets it as
++     * M_UNKNOWN_TOKEN and takes the usual path.
++     * @returns true when new tokens were adopted
++     */
++    public async refreshNow(): Promise<boolean> {
++        return (await this._handleUnknownToken()) === TokenRefreshOutcome.Success;
++    }
++
+     private async _handleUnknownToken(): Promise<TokenRefreshOutcome>;
+     private async _handleUnknownToken(snapshot: AccessTokens, attempt: number): Promise<TokenRefreshOutcome>;
+     private async _handleUnknownToken(snapshot?: AccessTokens, attempt?: number): Promise<TokenRefreshOutcome> {
+@@ -171,8 +181,10 @@ export class TokenManager {
              // successfully got new tokens
              return TokenRefreshOutcome.Success;
          } catch (error) {

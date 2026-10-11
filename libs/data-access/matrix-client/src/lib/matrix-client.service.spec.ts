@@ -1869,6 +1869,46 @@ describe('OAuth tokens through a real MatrixClient', () => {
     expectStillSignedIn(svc, client);
   });
 
+  it('refreshes on request through the patched SDK token manager', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, storage, client } = await startReal();
+
+    await expect(client.http.refreshOAuthTokens()).resolves.toBe(true);
+
+    expect(net.grants).toHaveLength(1);
+    expect(net.grants[0].get('refresh_token')).toBe('refresh-tok');
+    expect(client.getAccessToken()).toBe('at-2');
+    expect(storage.updateTokens).toHaveBeenCalledWith(
+      '@me:hs',
+      'at-2',
+      'rt-2',
+      expect.any(Number),
+    );
+    expectStillSignedIn(svc, client);
+  });
+
+  it('joins a refresh already in flight instead of starting another', async () => {
+    const net = fakeNetwork('rotate');
+    const { client } = await startReal();
+
+    await Promise.all([client.whoami(), client.http.refreshOAuthTokens()]);
+
+    expect(net.grants).toHaveLength(1);
+  });
+
+  it('answers a refused refresh with false and emits no sign-out', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, client } = await startReal();
+    const loggedOut = vi.fn();
+    client.on(HttpApiEvent.SessionLoggedOut, loggedOut);
+    net.state.provider = { status: 400, body: { error: 'invalid_grant' } };
+
+    await expect(client.http.refreshOAuthTokens()).resolves.toBe(false);
+
+    expect(loggedOut).not.toHaveBeenCalled();
+    expectStillSignedIn(svc, client);
+  });
+
   it("persists each account's refreshed tokens under that account", async () => {
     const net = fakeNetwork('rotate');
     const { svc, storage } = await startReal();
