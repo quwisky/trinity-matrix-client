@@ -408,8 +408,9 @@ test.describe('Room settings', () => {
     await conversationRow.press('Enter');
     await expect(page.getByTestId('member-info')).toContainText(memberName);
     await page.getByTestId('member-info-close').press('Enter');
+    // Member info is a dialog over the roster: closing it returns focus to the row.
     await expect(conversationRow).toBeVisible();
-    await expect(page.getByTestId('member-filter')).toBeFocused();
+    await expect(conversationRow).toBeFocused();
   });
 
   test('an admin adds a room address and makes it the main one', async ({

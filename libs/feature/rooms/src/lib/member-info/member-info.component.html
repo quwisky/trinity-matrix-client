@@ -6,8 +6,8 @@
     layout="panel"
     class="flex h-full flex-col"
   >
-    <!-- Panel mode only. As a dialog the backdrop and Escape close it; in the slot there is
-         neither above the `members` breakpoint, so the header IS the way out. -->
+    <!-- Embedded mode only (room and space settings). There is no backdrop or Escape of its
+         own there, so the header IS the way back to the settings member list. -->
     <trn-side-panel-header
       title="Member info"
       closeLabel="Close member info"
@@ -22,13 +22,15 @@
     title="Member info"
     size="sm"
     bodyClass="p-0"
+    closeLabel="Close member info"
+    closeTestId="member-info-close"
     (closed)="close()"
   >
     <ng-container [ngTemplateOutlet]="profile" />
   </trn-dialog-shell>
 }
 <ng-template #profile>
-  <div class="member-info safe-bottom" data-testid="member-info">
+  <div class="member-info" data-testid="member-info">
     <trn-avatar
       class="member-info__avatar"
       [mxc]="member().roomAvatarMxc"
@@ -125,9 +127,9 @@
           @if (showModerationAction(permissions().kick)) {
             <button
               trnBtn
-              variant="secondary"
+              variant="danger"
               presentation="outline"
-              class="member-info__danger w-full"
+              class="w-full"
               (click)="kick()"
               [trnActionAllowed]="permissions().kick.available"
               [trnActionDisabledReason]="permissions().kick.reason"

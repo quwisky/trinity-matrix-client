@@ -48,7 +48,6 @@ import { ThreadsListComponent } from '../thread/threads-list.component';
 import { ThreadViewComponent } from '../thread/thread-view.component';
 import { PinnedMessagesPanelComponent } from '../pinned/pinned-messages-panel.component';
 import { MessageSearchComponent } from '../message-search/message-search.component';
-import { MemberInfoComponent } from '../member-info/member-info.component';
 import { PaneHandleComponent } from './pane-handle.component';
 import { DrawerSwipeDirective } from './drawer-swipe.directive';
 import { MessageListComponent } from '../message-list/message-list.component';
@@ -119,14 +118,13 @@ const PANEL_DRAWER_PX = 480;
     ChannelSidebarComponent,
     SidebarUserPanelComponent,
     MemberListComponent,
-    // The five surfaces the right-hand slot can show. Imported by the page rather than
-    // opened by a service, which is the whole of this change: presentation is the shell's
-    // decision, and each panel just announces what the user did.
+    // The temporary surfaces the right-hand slot can show. Imported by the page rather
+    // than opened by a service: presentation is the shell's decision, and each panel just
+    // announces what the user did. Member info is a modal surface instead (#1041).
     ThreadsListComponent,
     ThreadViewComponent,
     PinnedMessagesPanelComponent,
     MessageSearchComponent,
-    MemberInfoComponent,
     PaneHandleComponent,
     DrawerSwipeDirective,
     MessageListComponent,
@@ -141,7 +139,7 @@ const PANEL_DRAWER_PX = 480;
     // modifier is held, so plain typing pays almost nothing. Escape stays a dedicated
     // binding — it's a contextual dismiss, not a configurable navigation shortcut.
     '(document:keydown)': 'onGlobalKeydown($event)',
-    '(document:keydown.escape)': 'onEscapeKey()',
+    '(document:keydown.escape)': 'onEscapeKey($event)',
   },
 })
 export class RoomsPage {
@@ -529,9 +527,15 @@ export class RoomsPage {
    * Escape dismisses the slot, except a wide static roster where the composer owns Escape.
    * Drawer members remain an overlay and dismiss like the temporary surfaces.
    */
-  onEscapeKey(): void {
-    // An open native popover (the topic) takes this Escape for itself.
-    if (document.querySelector('[popover]:popover-open')) return;
+  onEscapeKey(event: Event): void {
+    // A modal surface above the slot (member info over the drawer) already took this
+    // Escape, and an open native popover (the topic) takes it for itself.
+    if (
+      event.defaultPrevented ||
+      document.querySelector('[popover]:popover-open')
+    ) {
+      return;
+    }
     this.roomSurfaces.transition({ kind: 'escape' });
   }
 }

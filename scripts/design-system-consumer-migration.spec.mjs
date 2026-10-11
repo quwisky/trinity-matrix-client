@@ -355,8 +355,9 @@ describe('migrated application design-system consumers', () => {
       ),
     ).toMatch(/<trn-dialog-shell[^>]*\bsize="xl"/u);
 
-    // Member info is a dialog on the shared shell and, in the slot, a panel surface of its own;
-    // it no longer takes its surface through host directive inputs.
+    // Member info is a dialog or sheet on the shared shell and, embedded in settings, a panel
+    // surface of its own; it no longer takes its surface through host directive inputs. The
+    // Room surface slot no longer renders it (#1041).
     const memberInfoDir =
       'libs/feature/rooms/src/lib/member-info/member-info.component';
     expect(source(`${memberInfoDir}.html`)).toMatch(/<trn-dialog-shell\b/u);
@@ -366,7 +367,7 @@ describe('migrated application design-system consumers', () => {
         ['libs/feature/rooms/src/lib/rooms/rooms.page.html'],
         /<trn-member-info\b[^>]*>/gu,
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
 
     // Message source uses a deliberately small inline template, so it is not part of the
     // external-markup collection above. Pin its complete public surface vocabulary here rather

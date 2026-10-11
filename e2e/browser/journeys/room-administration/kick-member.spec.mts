@@ -13,9 +13,9 @@ import {
 import { registerUser } from '../../../support/account.mts';
 import { openSystemStatusFromRooms } from '../../../support/journeys/navigation.mts';
 
-// Covers kick and ban projection recovery. The roster must be visible again before the
-// removed row assertion: opening member info replaces the roster, so asserting only that
-// the row disappeared can pass while the info panel is still covering the stale list.
+// Covers kick and ban projection recovery. Member info opens as a dialog over the roster,
+// so the removed row assertion waits for member info to close first: asserting only that
+// the row disappeared could pass while the dialog still hid the stale list.
 const session = homeserverSession();
 
 interface ApiUser {

@@ -88,9 +88,11 @@ describe('Room surface lifecycle boundary', () => {
     expect(page).not.toContain('manageRightPanelFocus');
     expect(page).not.toContain('activeWorkspaceSurface');
 
+    // Member info is a modal surface over the roster (#1041), not a Room surface.
     const memberActions = source(`${featureRoot}/member-actions.service.ts`);
-    expect(memberActions).toContain('RoomSurfaceLifecycle');
-    expect(memberActions).toContain("kind: 'open-member'");
+    expect(memberActions).toContain('TrnSurfaceService');
+    expect(memberActions).not.toContain('RoomSurfaceLifecycle');
+    expect(memberActions).not.toContain('open-member');
   });
 
   it('keeps legacy surface compatibility usage at zero, including tests and templates', () => {

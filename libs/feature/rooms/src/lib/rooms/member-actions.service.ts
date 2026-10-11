@@ -1,5 +1,12 @@
-import { DestroyRef, Injectable, inject } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  DestroyRef,
+  Injectable,
+  Injector,
+  computed,
+  inject,
+} from '@angular/core';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { filter, take, takeUntil } from 'rxjs';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
@@ -10,102 +17,97 @@ import { UserCardComponent } from '../user-card/user-card.component';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { ShellStatusService } from './shell-status.service';
-import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 
 /**
- * Everything that starts from a person: the member list, a member's info panel, the
- * hover card, and opening a DM with them.
+ * Everything that starts from a person: the member list, a member's info, the hover card,
+ * and opening a DM with them.
  *
- * Extracted from the page so the Conversation member slot, member dialog, hover card and
- * direct-message navigation share one lifecycle owner.
+ * Extracted from the page so the member list, member info, hover card and direct-message
+ * navigation share one lifecycle owner.
  */
 @Injectable()
 export class MemberActionsService {
   private readonly store = inject(RoomShellStore);
-  private readonly roomSurfaces = inject(RoomSurfaceLifecycle);
   private readonly nav = inject(RoomShellNavigationService);
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomLibraryService);
   private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
 
-  /** Member-list row: open the member's info panel; "Message" opens/reuses a DM. */
+  /** Member-list row: open the member's info over the list; "Message" opens/reuses a DM. */
   onSelectMember(member: MemberSummary): void {
     const accountId = this.store.activeAccountId();
     const roomId = this.store.activeRoomId();
     if (accountId && roomId) {
-      // No need to close the list first any more: member info goes into the same slot, so
-      // it REPLACES the roster rather than stacking over it. That closing step existed only
-      // because the info panel was a dialog that would otherwise sit on top of the drawer.
       this.openMemberInfo(member, { accountId, roomId });
     }
   }
 
   /**
-   * Show a member's info — in the shell's slot for the OPEN room, as a dialog anywhere else.
+   * Show a member's info as a modal surface: a bottom sheet on a phone, a tablet or below
+   * `md`, a centred dialog otherwise (the rule `TrnSurfaceService` applies).
    *
-   * The discriminator is the exact Account-and-Room owner, not "is a room open".
-   * A non-Conversation caller may supply a different Room or Space id. There is no shell
-   * slot for that target, and the shell behind it may even have another Conversation open.
-   * Exact comparison keeps the slot tied to the open Conversation even when two Accounts
-   * contain the same Matrix room id.
+   * The Room surface slot is left alone, so the member list stays where it was (the side
+   * column, or the drawer on a phone) underneath. Closing, or a kick or ban landing, returns
+   * to that list with the change visible; "Message" closes it and opens the DM.
+   *
+   * It belongs to the open Conversation (`owner`), like the slot panels: Workspace
+   * navigation does not close overlays, so when another Room or Account becomes active (a
+   * notification tap, say) this closes it, and nothing it started runs as the new Account.
    */
-  openMemberInfo(member: MemberSummary, owner: ExactRoomSelection): void {
-    const activeAccountId = this.store.activeAccountId();
-    const direct =
-      owner.accountId === activeAccountId &&
-      this.rooms.directRoomIds().has(owner.roomId);
-
-    if (
-      owner.accountId === activeAccountId &&
-      owner.roomId === this.store.activeRoomId()
-    ) {
-      this.roomSurfaces.transition({
-        kind: 'open-member',
-        member,
-        direct,
-      });
-      return;
-    }
-
-    this.dialog
-      .openAndWait$<string, MemberInfoComponent>(MemberInfoComponent, {
+  private openMemberInfo(
+    member: MemberSummary,
+    owner: ExactRoomSelection,
+  ): void {
+    const ref = this.dialog.open<string, MemberInfoComponent>(
+      MemberInfoComponent,
+      {
+        ariaLabel: 'Member info',
         inputs: {
           member,
           roomId: owner.roomId,
-          direct,
+          owningAccountId: owner.accountId,
+          direct: this.rooms.directRoomIds().has(owner.roomId),
         },
-      })
+      },
+    );
+    const closed = ref.closed.pipe(take(1));
+
+    toObservable(
+      computed(
+        () =>
+          this.store.activeAccountId() === owner.accountId &&
+          this.store.activeRoomId() === owner.roomId,
+      ),
+      { injector: this.injector },
+    )
+      .pipe(
+        filter((ownerActive) => !ownerActive),
+        take(1),
+        takeUntil(closed),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(() => ref.close());
+
+    closed
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((messageUserId) => {
-        if (messageUserId) this.startDirectMessage(messageUserId);
+        if (messageUserId)
+          this.startDirectMessage(messageUserId, owner.accountId);
       });
   }
 
-  /** "Message" picked in the slot's member panel — the dialog path resolves this itself. */
-  onMemberMessage(userId: string): void {
-    this.roomSurfaces.transition({ kind: 'dismiss' });
-    this.startDirectMessage(userId);
-  }
-
   /**
-   * The member panel closed — go BACK to the roster, not to an empty slot.
-   *
-   * You reach member info by clicking a row in the member list, and with one slot the panel
-   * took that list's place. Closing to `null` would therefore answer "close this member" with
-   * "and also the list you were reading", which is not what was asked — and it is worse after
-   * a moderation write, where the panel closes ITSELF on success and the point is to see the
-   * change land in the list. `promote-member.spec.mts` promotes someone and then looks for
-   * them under a Moderator heading; that heading is in the roster.
+   * Open (or reuse) a direct message with `userId` from `accountId` and navigate to it.
+   * Nothing happens unless `accountId` is still the active Account: a DM is created as the
+   * active Account, and must not be created as one that replaced the requester.
    */
-  onMemberPanelDismissed(): void {
-    this.roomSurfaces.transition({ kind: 'dismiss' });
-  }
-
-  /** Open (or reuse) a direct message with `userId` and navigate to it. */
-  private startDirectMessage(userId: string): void {
-    const accountId = this.store.activeAccountId();
-    if (!accountId) return;
+  private startDirectMessage(
+    userId: string,
+    accountId = this.store.activeAccountId(),
+  ): void {
+    if (!accountId || accountId !== this.store.activeAccountId()) return;
     runWithBusy(this.rooms.createDirectMessage(userId), this.status).subscribe(
       (roomId) => this.nav.onSelectRoom({ roomId, accountId }),
     );

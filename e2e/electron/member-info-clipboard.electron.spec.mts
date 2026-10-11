@@ -67,25 +67,13 @@ test.describe('Electron member clipboard', () => {
       if (!(await members.isVisible().catch(() => false))) {
         await page.getByTestId('toggle-members').click();
       }
-      // Opening the panel intentionally replaces the member list, detaching this row
-      // during Playwright's post-click stability check. Click the live row synchronously;
-      // the Copy action below remains a real user click, which is the behavior this journey
-      // exists to verify.
-      await expect
-        .poll(
-          () =>
-            page.evaluate((name) => {
-              const row = [
-                ...document.querySelectorAll<HTMLElement>(
-                  '[data-testid=member-row]',
-                ),
-              ].find((candidate) => candidate.textContent?.includes(name));
-              row?.click();
-              return Boolean(row);
-            }, displayName),
-          { timeout: 20_000 },
-        )
-        .toBe(true);
+      // Member info opens as a dialog over the member list, so the row stays attached.
+      const row = page
+        .getByTestId('member-row')
+        .filter({ hasText: displayName })
+        .first();
+      await row.waitFor({ state: 'visible', timeout: 20_000 });
+      await row.click();
 
       const handle = page.getByTestId('member-info-handle');
       await expect(handle).toHaveText(account.userId);
