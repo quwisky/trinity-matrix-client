@@ -137,6 +137,16 @@ describe('SecuritySectionComponent', () => {
         .querySelector('[data-testid=security-reset-identity]')
         ?.textContent?.trim(),
     ).toBe('Reset my identity');
+    // The card leads with the verify action; the session group must not repeat it.
+    expect(
+      [...container.querySelectorAll('button')].filter(
+        (b) => b.textContent?.trim() === 'Verify with another device',
+      ),
+    ).toHaveLength(1);
+    expect(container.querySelector('[data-testid=security-verify]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid=security-session]')?.textContent,
+    ).toContain('This session isn’t verified yet.');
 
     click(container, 'security-verify-device');
     expect(open).toHaveBeenLastCalledWith({
@@ -291,9 +301,28 @@ describe('SecuritySectionComponent', () => {
     expect(container.textContent).toContain('backed up to the server');
   });
 
-  it('reflects key backup being off', async () => {
-    const { container } = await build({ backup: false });
-    expect(container.textContent).toContain('Key backup is off');
+  it('reflects key backup being off and offers recovery setup', async () => {
+    const { container } = await build({ status: 'needs-setup', backup: false });
+    expect(
+      container.querySelector('[data-testid=security-backup]')?.textContent,
+    ).toContain(
+      'Key backup is off — set up recovery to back up your message keys.',
+    );
+  });
+
+  it('points key backup to the original device when the identity lives elsewhere', async () => {
+    const { container } = await build({
+      status: 'needs-verification',
+      backup: false,
+    });
+    const backup =
+      container.querySelector('[data-testid=security-backup]')?.textContent ??
+      '';
+    expect(backup).toContain('Key backup is off.');
+    expect(backup).toContain(
+      'Set up recovery on the device where you first set up encryption.',
+    );
+    expect(backup).not.toContain('back up your message keys');
   });
 
   it('labels stale Trust and offers no actions that infer current state', async () => {

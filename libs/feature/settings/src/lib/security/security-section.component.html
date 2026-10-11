@@ -133,18 +133,27 @@
           This session is verified.
         </p>
       } @else if (sessionVerified() === false) {
-        <p class="m-0 text-sm text-muted-foreground">
-          This session isn’t verified yet.
-        </p>
-        <button
-          trnBtn
-          size="sm"
-          presentation="outline"
-          (click)="verifySession()"
-          data-testid="security-verify"
-        >
-          Verify with another device
-        </button>
+        <!-- In needs-verification the encryption card above already leads with this
+           exact action; a second identical button would only compete with it. -->
+        @if (status() === 'needs-verification') {
+          <p class="m-0 text-sm text-muted-foreground">
+            This session isn’t verified yet. Verify it with another device
+            above.
+          </p>
+        } @else {
+          <p class="m-0 text-sm text-muted-foreground">
+            This session isn’t verified yet.
+          </p>
+          <button
+            trnBtn
+            size="sm"
+            presentation="outline"
+            (click)="verifySession()"
+            data-testid="security-verify"
+          >
+            Verify with another device
+          </button>
+        }
       } @else {
         <p
           class="m-0 text-sm text-muted-foreground"
@@ -162,7 +171,13 @@
       @if (keyBackupActive()) {
         Your message keys are backed up to the server.
       } @else if (keyBackupActive() === false) {
-        Key backup is off — set up recovery to back up your message keys.
+        @if (status() === 'needs-verification') {
+          <!-- Setup here would replace the identity the other device holds. -->
+          Key backup is off. Set up recovery on the device where you first set
+          up encryption.
+        } @else {
+          Key backup is off — set up recovery to back up your message keys.
+        }
       } @else {
         Current key-backup status is unavailable.
       }
