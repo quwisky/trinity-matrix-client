@@ -3,8 +3,10 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 /**
  * Opens the story with Playwright's fake clock already in place. Installing it on a live
  * page swaps `Date`, `performance` and the timer globals underneath pending timers and the
- * tooltip's running enter animation; WebKit's renderer crashed inside that swap on CI. Here
- * the clock arrives as an init script, so every page script sees one clock from the start.
+ * tooltip's running enter animation; that swap is the suspected trigger of WebKit's renderer
+ * crash on CI (unconfirmed: no WebKit stderr). Here the clock arrives as an init script, so
+ * every page script sees one clock from the start. `install()` doesn't pause it: time keeps
+ * flowing, and `runFor` jumps it forward to fire the tooltip's delays on demand.
  */
 async function openTouchActionStory(page: Page): Promise<void> {
   await page.clock.install();
@@ -16,14 +18,16 @@ async function openTouchActionStory(page: Page): Promise<void> {
 /**
  * Moves the pointer onto the tooltip once it is really open. Brain attaches the content
  * before change detection renders its state and the overlay positions it, and under the fake
- * clock that render can trail the attach. A bare content element is already "visible" at the
+ * clock that render may trail the attach (seen in a CI trace; not reproduced locally). A bare content element is already "visible" at the
  * page's top-left, so hovering it then leaves the pointer outside both trigger and tooltip
  * once the overlay moves, and the next `runFor` fires the hide delay.
  */
 async function hoverOpenTooltip(tooltip: Locator): Promise<void> {
   await expect(tooltip).toHaveAttribute('data-state', 'open');
   await tooltip.hover();
-  expect(await tooltip.evaluate((el) => el.matches(':hover'))).toBe(true);
+  await expect
+    .poll(() => tooltip.evaluate((el) => el.matches(':hover')))
+    .toBe(true);
 }
 
 test('keyboard tooltip remains open when the pointer leaves its content', async ({
@@ -92,6 +96,7 @@ test.describe('tooltip on a touch-capable desktop', () => {
     await source.hover();
     await expect(page.getByRole('tooltip')).toBeVisible();
     await page.mouse.move(0, 0);
+    await page.clock.runFor(1_000);
     await expect(page.getByRole('tooltip')).toBeHidden();
   });
 });
