@@ -10,7 +10,7 @@ import {
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { HostLifecycleService } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
-import { EMPTY, Subject, of, type Observable } from 'rxjs';
+import { EMPTY, Subject, of, throwError, type Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CapabilityHealthService } from '../capability-health.service';
 import { NotificationSessionService } from './notification-session.service';
@@ -30,12 +30,17 @@ describe('NotificationSessionService', () => {
     const clearRoom = vi.fn(
       (_userId: string, _roomId: string): Observable<void> => of(void 0),
     );
+    const refreshBeforeBackground = vi.fn((): Observable<void> => of(void 0));
     TestBed.configureTestingModule({
       providers: [
         NotificationSessionService,
         MockProvider(NotificationService, { run: () => EMPTY }),
         MockProvider(NativePushLifetime, { run: () => EMPTY }),
-        MockProvider(PushHandoffService, { run: () => EMPTY, clearRoom }),
+        MockProvider(PushHandoffService, {
+          run: () => EMPTY,
+          clearRoom,
+          refreshBeforeBackground,
+        }),
         MockProvider(ConversationRuntime, {
           focused: focused.asReadonly() as never,
         }),
@@ -55,7 +60,14 @@ describe('NotificationSessionService', () => {
       .run()
       .subscribe();
     TestBed.tick();
-    return { focused, lifecycle, clearRoom, open, lifetime };
+    return {
+      focused,
+      lifecycle,
+      clearRoom,
+      refreshBeforeBackground,
+      open,
+      lifetime,
+    };
   }
 
   it("clears a room's delivered notifications once each time it becomes the active room", () => {
@@ -105,5 +117,49 @@ describe('NotificationSessionService', () => {
     lifecycle.next({ kind: 'active' });
 
     expect(clearRoom).not.toHaveBeenCalled();
+  });
+
+  it('refreshes tokens for the push handoff each time the app goes to the background', () => {
+    const { lifecycle, refreshBeforeBackground, lifetime } = setup();
+
+    lifecycle.next({ kind: 'background' });
+    lifecycle.next({ kind: 'active' });
+    lifecycle.next({ kind: 'background' });
+    expect(refreshBeforeBackground).toHaveBeenCalledTimes(2);
+
+    lifetime.unsubscribe();
+    lifecycle.next({ kind: 'background' });
+    expect(refreshBeforeBackground).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not start a second refresh while the first is still running', () => {
+    const { lifecycle, refreshBeforeBackground } = setup();
+    const pending = new Subject<void>();
+    refreshBeforeBackground.mockReturnValueOnce(pending);
+
+    lifecycle.next({ kind: 'background' });
+    lifecycle.next({ kind: 'active' });
+    lifecycle.next({ kind: 'background' });
+    expect(refreshBeforeBackground).toHaveBeenCalledOnce();
+
+    pending.complete();
+    lifecycle.next({ kind: 'background' });
+    expect(refreshBeforeBackground).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps refreshing and clearing after a refresh fails', () => {
+    const { lifecycle, refreshBeforeBackground, clearRoom, open } = setup();
+    open('@me:hs', '!a:hs');
+    clearRoom.mockClear();
+    refreshBeforeBackground.mockReturnValueOnce(
+      throwError(() => new Error('offline')),
+    );
+
+    lifecycle.next({ kind: 'background' });
+    lifecycle.next({ kind: 'active' });
+    lifecycle.next({ kind: 'background' });
+
+    expect(refreshBeforeBackground).toHaveBeenCalledTimes(2);
+    expect(clearRoom.mock.calls).toEqual([['@me:hs', '!a:hs']]);
   });
 });

@@ -16,12 +16,15 @@ import {
   type Observable,
   type Subscription,
 } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   NOTIFICATION_SOUND_EVENT,
   NotificationSoundService,
 } from './notification-sound.service';
-import { PushHandoffService } from './push-handoff.service';
+import {
+  BACKGROUND_REFRESH_MIN_AGE_MS,
+  PushHandoffService,
+} from './push-handoff.service';
 
 vi.mock('@capacitor/core', () => ({
   registerPlugin: vi.fn(() => ({})),
@@ -96,6 +99,7 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
   const expiry = vi.fn(
     (_userId: string, _accessToken: string): number | undefined => undefined,
   );
+  const refresh = vi.fn((_userId: string): Observable<boolean> => of(true));
   TestBed.configureTestingModule({
     providers: [
       PushHandoffService,
@@ -104,6 +108,7 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
         clientFor: (id: string) => (clients.get(id) as never) ?? null,
         accessTokenRotations: rotations.asObservable(),
         accessTokenExpiry: expiry,
+        refreshAccessToken: refresh,
       }),
       { provide: PushHandoffBridge, useValue: bridge },
       { provide: NotificationSoundService, useValue: sound },
@@ -117,6 +122,7 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
     bridge,
     sound,
     expiry,
+    refresh,
   };
 }
 
@@ -515,5 +521,73 @@ describe('PushHandoffService', () => {
     lifetime.unsubscribe();
 
     expect(me(h).listeners()).toBe(0);
+  });
+
+  describe('refreshBeforeBackground', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('refreshes each account whose token expires, and no other', async () => {
+      const h = setup({
+        clients: [fakeClient('@me:hs', []), fakeClient('@pw:hs', [])],
+      });
+      h.expiry.mockImplementation((userId: string) =>
+        userId === '@me:hs' ? Date.now() + 300_000 : undefined,
+      );
+      await start(h);
+
+      await firstValueFrom(h.service.refreshBeforeBackground());
+
+      expect(h.refresh.mock.calls).toEqual([['@me:hs']]);
+    });
+
+    it('skips an account whose token rotated within the last minute', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(1_000_000);
+      const h = setup();
+      h.expiry.mockReturnValue(1_300_000);
+      await start(h);
+      h.rotations.next({ userId: '@me:hs', accessToken: 'token-@me:hs' });
+      await flush();
+
+      vi.setSystemTime(1_000_000 + BACKGROUND_REFRESH_MIN_AGE_MS - 1);
+      await firstValueFrom(h.service.refreshBeforeBackground());
+      expect(h.refresh).not.toHaveBeenCalled();
+
+      vi.setSystemTime(1_000_000 + BACKGROUND_REFRESH_MIN_AGE_MS);
+      await firstValueFrom(h.service.refreshBeforeBackground());
+      expect(h.refresh.mock.calls).toEqual([['@me:hs']]);
+    });
+
+    it('refreshes nothing off a native host', async () => {
+      const h = setup({ available: false });
+      h.expiry.mockReturnValue(Date.now() + 300_000);
+      await start(h);
+
+      await firstValueFrom(h.service.refreshBeforeBackground());
+
+      expect(h.refresh).not.toHaveBeenCalled();
+    });
+
+    it('does not refresh an account whose sign-out began', async () => {
+      const h = setup();
+      h.expiry.mockReturnValue(Date.now() + 300_000);
+      await start(h);
+      await firstValueFrom(h.service.forget('@me:hs'));
+
+      await firstValueFrom(h.service.refreshBeforeBackground());
+
+      expect(h.refresh).not.toHaveBeenCalled();
+    });
+
+    it('completes even when a refresh fails', async () => {
+      const h = setup();
+      h.expiry.mockReturnValue(Date.now() + 300_000);
+      h.refresh.mockReturnValue(throwError(() => new Error('offline')));
+      await start(h);
+
+      await expect(
+        firstValueFrom(h.service.refreshBeforeBackground()),
+      ).resolves.toBeUndefined();
+    });
   });
 });

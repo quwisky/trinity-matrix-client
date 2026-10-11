@@ -234,6 +234,18 @@ app-group file
 Android Keystore key and stored in the private preferences file `trinity_push_handoff`
 (`EncryptedSharedPreferences` is deprecated).
 
+**Refresh before the background.** Each time the app goes to the background,
+`NotificationSessionService` asks `PushHandoffService.refreshBeforeBackground` to refresh
+every bound account whose token has an expiry, unless that token rotated within the last
+minute, so the copy in the store lives one full lifetime from then. The refresh runs through
+the SDK's own token manager (`client.http.refreshOAuthTokens()`, added by
+`patches/matrix-js-sdk@43.0.0.patch`). It therefore joins a refresh already in flight,
+persists the pair before the SDK adopts it and reaches the store as an ordinary rotation. The
+app stays the only process that rotates tokens. A refused refresh signs nothing out at that
+moment; the account's next request meets the refusal and takes the usual path. iOS may
+suspend the app before the refresh or the store write finishes; the store then keeps the
+previous token and its expiry.
+
 **Rendering.** iOS runs the `NotificationService` extension; Android replaces the push
 plugin's messaging service with `TrinityMessagingService`, which treats the app as
 foreground, and leaves the notification to the app, while an activity is visible. Both

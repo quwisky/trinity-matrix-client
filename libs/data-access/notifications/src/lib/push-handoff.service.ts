@@ -13,12 +13,28 @@ import {
   type PushHandoffAccount,
   type PushHandoffRoom,
 } from '@trinity/capacitor-push';
-import { Observable, catchError, defer, from, lastValueFrom, of } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  defaultIfEmpty,
+  defer,
+  forkJoin,
+  from,
+  lastValueFrom,
+  map,
+  of,
+} from 'rxjs';
 import {
   LEGACY_NOTIFICATION_SOUND_EVENT,
   NOTIFICATION_SOUND_EVENT,
   NotificationSoundService,
 } from './notification-sound.service';
+
+/**
+ * A token that rotated more recently than this is not refreshed again as the app goes to the
+ * background: the refresh would add less than this to its life and cost a rotation.
+ */
+export const BACKGROUND_REFRESH_MIN_AGE_MS = 60_000;
 
 /** One live account's listeners and what was last written for its rooms. */
 interface HandoffBinding {
@@ -57,6 +73,8 @@ export class PushHandoffService {
    * saw the account leave in between.
    */
   private readonly retired = new Map<string, Set<MatrixClient>>();
+  /** When each bound account's token last rotated (epoch ms), for the background refresh. */
+  private readonly rotatedAt = new Map<string, number>();
   private tail: Promise<void> = Promise.resolve();
 
   /** Own the handoff for one Application Runtime session. Never emits. */
@@ -71,7 +89,10 @@ export class PushHandoffService {
         { injector: this.injector },
       );
       const rotations = this.matrix.accessTokenRotations.subscribe(
-        ({ userId, accessToken }) => this.writeAccount(userId, accessToken),
+        ({ userId, accessToken }) => {
+          this.rotatedAt.set(userId, Date.now());
+          this.writeAccount(userId, accessToken);
+        },
       );
       return () => {
         accounts.destroy();
@@ -105,6 +126,46 @@ export class PushHandoffService {
         this.schedule(() =>
           userId ? this.bridge.removeAccount(userId) : this.bridge.clear(),
         ),
+      );
+    });
+  }
+
+  /**
+   * Refresh the token of every bound account whose token expires on a schedule (OAuth), so
+   * the copy the closed-app renderers read lives a full lifetime from now. Run as the app
+   * goes to the background. Skips an account whose token rotated within
+   * {@link BACKGROUND_REFRESH_MIN_AGE_MS}. Each new token reaches the store as an ordinary
+   * rotation. Cold; emits once and completes; never errors and never signs anything out.
+   * Inert off native mobile.
+   */
+  refreshBeforeBackground(): Observable<void> {
+    return defer(() => {
+      if (!this.bridge.available) return of(void 0);
+      const now = Date.now();
+      const due = [...this.bindings].flatMap(([userId, binding]) => {
+        if (this.isRetired(userId, binding.client)) return [];
+        const token = binding.client.getAccessToken();
+        if (
+          !token ||
+          this.matrix.accessTokenExpiry(userId, token) === undefined
+        ) {
+          return [];
+        }
+        const rotated = this.rotatedAt.get(userId);
+        return rotated !== undefined &&
+          now - rotated < BACKGROUND_REFRESH_MIN_AGE_MS
+          ? []
+          : [userId];
+      });
+      return forkJoin(
+        due.map((userId) =>
+          this.matrix
+            .refreshAccessToken(userId)
+            .pipe(catchError(() => of(false))),
+        ),
+      ).pipe(
+        map(() => void 0),
+        defaultIfEmpty(void 0),
       );
     });
   }
@@ -179,6 +240,7 @@ export class PushHandoffService {
   private unbind(userId: string): void {
     this.bindings.get(userId)?.detach();
     this.bindings.delete(userId);
+    this.rotatedAt.delete(userId);
   }
 
   /** `accessToken` is passed on rotation: the SDK adopts the new token after this runs. */
