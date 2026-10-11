@@ -42,7 +42,14 @@ import {
   identifyingWebp,
   jpegExif,
   orientationOnlyTiff,
+  alternatingJpeg,
+  repeated,
+  alternatingPng,
+  alternatingWebp,
+  longJpeg,
   manyExtentsHeic,
+  manyIdatPng,
+  manyItemsHeic,
   pathologicalIlocHeic,
   pngChunk,
   riffChunk,
@@ -532,6 +539,66 @@ describe('stripImageMetadata', () => {
       expect(
         stripImageMetadata(identifyingHeic({ exifOffsetDelta: delta })),
       ).toEqual({ kind: 'unchanged', reason: 'malformed' });
+    });
+  });
+
+  describe('hostile structure counts', () => {
+    /** Strip `input`, asserting the original is kept and the verdict comes fast. */
+    function expectQuickMalformed(input: Uint8Array<ArrayBuffer>): void {
+      const started = performance.now();
+      const result = stripImageMetadata(input);
+      const elapsed = performance.now() - started;
+
+      expect(result).toEqual({ kind: 'unchanged', reason: 'malformed' });
+      expect(elapsed).toBeLessThan(100);
+    }
+
+    it.each([
+      [
+        'a JPEG alternating kept and dropped segments',
+        () => alternatingJpeg(200_000),
+      ],
+      ['a JPEG with a very long run of kept segments', () => longJpeg(200_000)],
+      [
+        'a PNG alternating kept and dropped chunks',
+        () => alternatingPng(200_000),
+      ],
+      [
+        'a WebP alternating kept and dropped chunks',
+        () => alternatingWebp(200_000),
+      ],
+      [
+        'a HEIF iloc with more items than iinf may hold',
+        () => manyItemsHeic(200_000),
+      ],
+    ])('returns %s unchanged, quickly', (_label, build) => {
+      expectQuickMalformed(build());
+    });
+
+    it('walks entropy-coded data full of stuffed 0xFF bytes in linear time', () => {
+      const scan = repeated(Uint8Array.of(0xff, 0x00), 10_000_000); // 20 MB
+      const input = concat(JPEG_SOI, JPEG_COMMENT, JPEG_SOS, scan, JPEG_EOI);
+
+      const started = performance.now();
+      const result = stripImageMetadata(input);
+      const elapsed = performance.now() - started;
+
+      expect(result.kind).toBe('stripped');
+      expect(elapsed).toBeLessThan(100);
+    });
+
+    it('still strips files with many structures under the caps', () => {
+      expect(stripImageMetadata(alternatingJpeg(500)).kind).toBe('stripped');
+      expect(stripImageMetadata(alternatingPng(500)).kind).toBe('stripped');
+      expect(stripImageMetadata(alternatingWebp(500)).kind).toBe('stripped');
+      expect(stripImageMetadata(longJpeg(100_000)).kind).toBe('stripped');
+    });
+
+    it('strips a large PNG whose pixels span many IDAT chunks', () => {
+      // 64k IDATs is a 512 MB PNG written in libpng's default 8 KiB chunks.
+      const out = stripped(manyIdatPng(65_536));
+
+      expectNoIdentifyingMetadata(out);
     });
   });
 

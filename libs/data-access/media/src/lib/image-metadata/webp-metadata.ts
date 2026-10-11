@@ -52,6 +52,7 @@ export function stripWebp(bytes: Bytes): FormatStrip {
   let pos = 12;
 
   while (pos < riffEnd) {
+    body.step();
     if (pos + 8 > riffEnd) return MALFORMED;
     const type = fourCC(bytes, pos);
     const size = u32le(bytes, pos + 4);

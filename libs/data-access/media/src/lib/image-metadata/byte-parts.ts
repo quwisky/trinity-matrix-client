@@ -15,16 +15,45 @@ export const CLEAN: FormatStrip = { kind: 'clean' };
 export const MALFORMED: FormatStrip = { kind: 'malformed' };
 
 /**
+ * Thrown by a parser on structural doubt, including a structure count past the caps below.
+ * `stripImageMetadata` turns it into `unchanged/malformed`, so the original file is sent.
+ */
+export class MalformedImage extends Error {}
+
+/**
+ * Upper bound on segments/chunks one walk may visit. 2^17 leaves room for a 512 MB PNG
+ * written in libpng's default 8 KiB IDAT chunks (65,536) or an animation with tens of
+ * thousands of frames; a photo has a few dozen. Each step is cheap, so the cap keeps a
+ * crafted file of millions of tiny structures to a few milliseconds.
+ */
+export const MAX_WALK_STEPS = 131_072;
+
+/**
+ * Upper bound on output parts. Kept runs merge, so a real photo yields a handful (one per
+ * gap left by removed metadata, plus rewritten headers); only crafted alternation of kept
+ * and dropped structures gets near this.
+ */
+export const MAX_PARTS = 1024;
+
+/**
  * Collects the output of a strip. Kept ranges that touch are merged into one view, so a
  * file with a single metadata block becomes two or three parts, not one per segment.
+ * It also counts the walk: {@link step} once per structure visited. Past either cap it
+ * throws {@link MalformedImage}.
  */
 export class PartsBuilder {
   private readonly parts: Bytes[] = [];
   private runStart = -1;
   private runEnd = -1;
   private edited = false;
+  private steps = 0;
 
   constructor(private readonly source: Bytes) {}
+
+  /** Count one visited segment, chunk or box. */
+  step(): void {
+    if (++this.steps > MAX_WALK_STEPS) throw new MalformedImage();
+  }
 
   /** Keep `source[start, end)` verbatim. */
   keep(start: number, end: number): void {
@@ -46,7 +75,7 @@ export class PartsBuilder {
   /** Write new bytes at the current position. */
   insert(bytes: Bytes): void {
     this.flush();
-    this.parts.push(bytes);
+    this.push(bytes);
     this.edited = true;
   }
 
@@ -62,10 +91,15 @@ export class PartsBuilder {
 
   private flush(): void {
     if (this.runStart >= 0 && this.runEnd > this.runStart) {
-      this.parts.push(this.source.subarray(this.runStart, this.runEnd));
+      this.push(this.source.subarray(this.runStart, this.runEnd));
     }
     this.runStart = -1;
     this.runEnd = -1;
+  }
+
+  private push(part: Bytes): void {
+    if (this.parts.length >= MAX_PARTS) throw new MalformedImage();
+    this.parts.push(part);
   }
 }
 

@@ -62,6 +62,7 @@ export function stripPng(bytes: Bytes): FormatStrip {
   let seenExif = false;
 
   for (let index = 0; ; index++) {
+    out.step();
     if (pos + 12 > n) return MALFORMED;
     const length = u32be(bytes, pos);
     const type = fourCC(bytes, pos + 4);

@@ -689,3 +689,93 @@ export function manyExtentsHeic(
     box('mdat', new Uint8Array(extents).fill(0x41)),
   );
 }
+
+// ---------------------------------------------------------------------------------------
+// Hostile shapes: many tiny structures that would each cost a loop step or an output part.
+
+/** `unit` repeated `times` times, written into one buffer. */
+export function repeated(
+  unit: Uint8Array,
+  times: number,
+): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(unit.length * times);
+  for (let i = 0; i < times; i++) out.set(unit, i * unit.length);
+  return out;
+}
+
+/** A JPEG whose header alternates `pairs` times between a kept DRI and a dropped COM. */
+export function alternatingJpeg(pairs: number): Uint8Array<ArrayBuffer> {
+  const pair = concat(
+    jpegSegment(0xdd, Uint8Array.of(0, 0)),
+    jpegSegment(0xfe, new Uint8Array(0)),
+  );
+  return concat(JPEG_SOI, repeated(pair, pairs), JPEG_IMAGE_DATA);
+}
+
+/** A JPEG with `segments` kept DRI segments in a row, then a comment to drop. */
+export function longJpeg(segments: number): Uint8Array<ArrayBuffer> {
+  return concat(
+    JPEG_SOI,
+    repeated(jpegSegment(0xdd, Uint8Array.of(0, 0)), segments),
+    jpegSegment(0xfe, ascii('Shot at home')),
+    JPEG_IMAGE_DATA,
+  );
+}
+
+/** A PNG whose chunks alternate `pairs` times between a kept sRGB and a dropped tEXt. */
+export function alternatingPng(pairs: number): Uint8Array<ArrayBuffer> {
+  const pair = concat(PNG_SRGB, pngChunk('tEXt', ascii('a\0b')));
+  return concat(
+    PNG_SIGNATURE,
+    PNG_IHDR,
+    repeated(pair, pairs),
+    PNG_IDAT,
+    PNG_IEND,
+  );
+}
+
+/** A PNG whose pixels are split over `chunks` IDAT chunks, with one tEXt to drop. */
+export function manyIdatPng(chunks: number): Uint8Array<ArrayBuffer> {
+  return concat(
+    PNG_SIGNATURE,
+    PNG_IHDR,
+    pngChunk('tEXt', ascii('Author\0Alice Example')),
+    repeated(PNG_IDAT, chunks),
+    PNG_IEND,
+  );
+}
+
+/** A WebP whose chunks alternate `pairs` times between a kept ALPH and an unknown chunk. */
+export function alternatingWebp(pairs: number): Uint8Array<ArrayBuffer> {
+  const pair = concat(
+    riffChunk('ALPH', new Uint8Array(0)),
+    riffChunk('ABCD', new Uint8Array(0)),
+  );
+  return webpFile(vp8x(VP8X_ALPHA), repeated(pair, pairs), WEBP_VP8L);
+}
+
+/** A HEIF with an iloc (version 2) of `items` zero-extent items, 10 bytes each. */
+export function manyItemsHeic(items: number): Uint8Array<ArrayBuffer> {
+  const entries = new Uint8Array(items * 10);
+  for (let i = 0; i < items; i++) {
+    entries.set(concat(u32be(i + 1), u16be(0), u16be(0), u16be(0)), i * 10);
+  }
+  return concat(
+    box('ftyp', ascii('heic'), u32be(0), ascii('mif1'), ascii('heic')),
+    fullBox(
+      'meta',
+      0,
+      fullBox(
+        'hdlr',
+        0,
+        u32be(0),
+        ascii('pict'),
+        new Uint8Array(12),
+        ascii('\0'),
+      ),
+      fullBox('iinf', 0, u16be(1), infe(1, 'Exif')),
+      fullBox('iloc', 2, Uint8Array.of(0x44, 0x00), u32be(items), entries),
+    ),
+    box('mdat', HEIF_EXIF_PAYLOAD),
+  );
+}

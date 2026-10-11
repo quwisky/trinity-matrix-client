@@ -54,6 +54,7 @@ export function stripJpeg(bytes: Bytes): FormatStrip {
   let seenScan = false;
 
   for (;;) {
+    out.step();
     if (pos >= n || bytes[pos] !== 0xff) return MALFORMED;
     let at = pos + 1;
     while (at < n && bytes[at] === 0xff) at++; // fill bytes before a marker
@@ -139,21 +140,23 @@ function classify(
  * The offset of the first marker after entropy-coded data starting at `from`, or -1 when the
  * data runs off the end. Inside a scan 0xFF is followed by 0x00 (a stuffed byte), a restart
  * marker, or another 0xFF (fill); anything else ends the scan.
+ *
+ * A plain byte loop rather than repeated `indexOf(0xFF)`: data crafted to be all stuffed
+ * bytes would otherwise cost one native call per two bytes (~0.5 s per 50 MB); the loop
+ * stays linear and cheap (~30 ms per 50 MB) for any content.
  */
 function nextMarkerAfterScan(bytes: Uint8Array, from: number): number {
-  let i = from;
-  for (;;) {
-    const ff = bytes.indexOf(0xff, i);
-    if (ff < 0 || ff + 1 >= bytes.length) return -1;
-    const next = bytes[ff + 1] ?? 0;
+  const last = bytes.length - 1;
+  for (let i = from; i < last; i++) {
+    if (bytes[i] !== 0xff) continue;
+    const next = bytes[i + 1] ?? 0;
     if (next === 0x00 || (next >= 0xd0 && next <= 0xd7)) {
-      i = ff + 2;
-    } else if (next === 0xff) {
-      i = ff + 1;
-    } else {
-      return ff;
+      i++; // skip the stuffed byte or restart marker
+    } else if (next !== 0xff) {
+      return i;
     }
   }
+  return -1;
 }
 
 function orientationSegment(orientation: number): Bytes {

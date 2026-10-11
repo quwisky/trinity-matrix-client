@@ -1,10 +1,12 @@
 import {
   CLEAN,
   MALFORMED,
+  MalformedImage,
   PartsBuilder,
   asciiBytes,
   fourCC,
   hasAscii,
+  joinParts,
   u16be,
   u32be,
   type Bytes,
@@ -66,8 +68,8 @@ const MAX_ITEMS = 4096;
  */
 const MAX_MEDIA_DATA_BOXES = 16;
 
-/** Thrown inside the parser on any structural doubt; never escapes {@link stripHeif}. */
-class Malformed extends Error {}
+/** Structural doubt; never escapes {@link stripHeif}. */
+const Malformed = MalformedImage;
 
 export function isHeif(bytes: Uint8Array): boolean {
   if (!hasAscii(bytes, 4, 'ftyp')) return false;
@@ -165,12 +167,20 @@ function blankMetadataItems(bytes: Bytes): FormatStrip {
   ranges.sort((a, b) => a.extent.offset - b.extent.offset);
   const out = new PartsBuilder(bytes);
   let pos = 0;
+  // Extents that follow each other directly are written as one part, so an item split
+  // into many adjacent pieces does not count against the part cap once per piece.
+  let pending: Bytes[] = [];
   for (const { extent, fill } of ranges) {
     if (extent.offset < pos) throw new Malformed(); // overlapping items
+    if (extent.offset > pos && pending.length > 0) {
+      out.insert(joinParts(pending));
+      pending = [];
+    }
     out.keep(pos, extent.offset);
-    out.insert(fill);
+    pending.push(fill);
     pos = extent.offset + extent.length;
   }
+  if (pending.length > 0) out.insert(joinParts(pending));
   out.keep(pos, bytes.length);
   return out.result();
 }
@@ -256,6 +266,7 @@ function itemLocations(
   at += 2;
   const count = version < 2 ? u16be(bytes, at) : u32be(bytes, at);
   at += version < 2 ? 2 : 4;
+  if (count > MAX_ITEMS) throw new Malformed();
   // Every count is checked against the bytes that would have to hold it before looping,
   // so a crafted iloc cannot make the parser spin: work stays linear in the box size.
   const idSize = version < 2 ? 2 : 4;
