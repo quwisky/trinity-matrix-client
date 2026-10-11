@@ -194,10 +194,12 @@ describe('stripImageMetadata: SVG', () => {
     expect(elapsed).toBeLessThan(100);
   });
 
+  // jsdom parses these large documents far slower than a browser; past the shared walk cap
+  // they cannot be smaller, so they get their own timeout.
   it('caps the elements one strip may visit', () => {
     expect(stripImageMetadata(manyElementsSvg(10_000)).kind).toBe('stripped');
     expectMalformed(manyElementsSvg(140_000));
-  });
+  }, 30_000);
 
   it('leaves an SVG with an element of more than 1024 attributes unchanged', () => {
     expect(stripImageMetadata(manyAttributesSvg(1, 1_024)).kind).toBe(
@@ -218,7 +220,7 @@ describe('stripImageMetadata: SVG', () => {
     expect(parse(out).getElementsByTagNameNS(SVG_NS, 'path')).toHaveLength(
       20_000,
     );
-  });
+  }, 30_000);
 
   it('bounds the work of removing attributes, which grows with each element', () => {
     // Emptying a 1,024-attribute element costs about 1,024²/2 attribute scans.
