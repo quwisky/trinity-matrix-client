@@ -65,7 +65,10 @@ Playwright owns renderer journeys (`e2e/browser`, including touch and mobile vie
 profiles) and Electron. `pnpm e2e:mobile` runs the WebdriverIO and Appium suite in
 `e2e/mobile`, which owns installed-app behavior. It builds the production Capacitor app,
 installs it on a validated dedicated emulator, and can clear the test application and change
-ADB reverse mappings. Set `TRINITY_ANDROID_SERIAL` only for a disposable dedicated emulator.
+ADB reverse mappings. For the run it also hides Android's system error dialogs (the
+`hide_error_dialogs` global setting, restored afterwards) and closes any already open, since an
+"isn't responding" dialog holds input focus. Set `TRINITY_ANDROID_SERIAL` only for a
+disposable dedicated emulator.
 
 Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed app (native plugin, OS UI, hardware or system event, deep link). Everything else stays in `e2e/browser`.
 

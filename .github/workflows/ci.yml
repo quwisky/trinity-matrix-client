@@ -591,9 +591,14 @@ jobs:
           ram-size: 4096M
           cores: 4
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          # The action runs each line as its own `sh -c`. The first line fails the step with
-          # the background build's exit code, or after 15 minutes without one.
+          # The action runs each line as its own `sh -c`. The first line hides system error
+          # dialogs at once, since the launcher has frozen during the prebuild wait and left
+          # an "isn't responding" dialog holding input focus (#1194); the suite turns the
+          # setting on again and closes open dialogs, so a failure here is only logged. The
+          # second line fails the step with the background build's exit code, or after 15
+          # minutes without one.
           script: |
+            adb shell settings put global hide_error_dialogs 1 || echo 'could not hide error dialogs'
             timeout 900 sh -c 'until [ -s dist/.ci/android-prebuild.status ]; do sleep 5; done; exit "$(cat dist/.ci/android-prebuild.status)"'
             echo 'started=true' >> "$GITHUB_OUTPUT"
             TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:mobile
