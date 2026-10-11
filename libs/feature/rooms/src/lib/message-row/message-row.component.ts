@@ -6,6 +6,7 @@ import {
   Injector,
   afterNextRender,
   computed,
+  effect,
   inject,
   input,
   output,
@@ -177,9 +178,14 @@ export class MessageRowComponent {
     anchor: HTMLElement;
   } | null = null;
   private dismissReveal: (() => void) | null = null;
-  /** Plain fields, not signals: they only gate {@link releaseToolbar}, never the template. */
+  /** A plain field, not a signal: it only gates {@link releaseToolbar}, never the template. */
   private pointerInside = false;
-  private menuOpen = false;
+  /**
+   * Whether the toolbar's quick reactions or overflow menu is open. It keeps the bar mounted
+   * ({@link releaseToolbar}) and visible (`.msg--menu-open`) while the pointer or focus is
+   * elsewhere: WebKit doesn't focus a clicked button, so `:has(:focus)` alone can't.
+   */
+  protected readonly menuOpen = signal(false);
 
   /** Whether the pointer or focus is on this row, which is what mounts its toolbar. */
   readonly toolbarActive = signal(false);
@@ -199,6 +205,11 @@ export class MessageRowComponent {
   readonly revealed = signal(false);
 
   constructor() {
+    // A toolbar removed with a menu open (a revealed bar hidden by a scroll or an outside
+    // tap) never reports the menu closed, and a stale flag would pin every later bar.
+    effect(() => {
+      if (!this.toolbar()) this.menuOpen.set(false);
+    });
     this.destroyRef.onDestroy(() => {
       this.cancelLongPress();
       this.hideToolbar();
@@ -462,7 +473,7 @@ export class MessageRowComponent {
   }
 
   onMenuOpenChange(open: boolean): void {
-    this.menuOpen = open;
+    this.menuOpen.set(open);
     if (!open) {
       // Closing may hand focus back to the "⋯" trigger in the same turn; decide after it has.
       queueMicrotask(() => this.releaseToolbar(document.activeElement));
@@ -478,7 +489,7 @@ export class MessageRowComponent {
   private releaseToolbar(focus: EventTarget | null): void {
     if (
       this.pointerInside ||
-      this.menuOpen ||
+      this.menuOpen() ||
       // Only keyboard focus pins the bar: a click also focuses the row, and that must not
       // keep it there while the pointer is over another row (#986 K6).
       (focus instanceof Element &&

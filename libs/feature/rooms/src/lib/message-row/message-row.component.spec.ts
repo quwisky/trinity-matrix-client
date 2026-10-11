@@ -944,6 +944,61 @@ describe('MessageRowComponent', () => {
       expect(fixture.componentInstance.toolbarActive()).toBe(false);
     });
 
+    it('keeps the toolbar mounted and visible while quick reactions are open', async () => {
+      // The quick reactions sit partly outside the row, so the pointer can leave it on the
+      // way to an emoji; a mouse click doesn't pin the bar the way keyboard focus does.
+      const { container } = await renderRow({ row: row(), caps: caps() });
+
+      fireEvent.pointerEnter(msg(container));
+      await settle();
+      container
+        .querySelector<HTMLButtonElement>('button[aria-label="Add reaction"]')!
+        .click();
+      fireEvent.pointerLeave(msg(container));
+      await settle();
+
+      expect(toolbar(container)).not.toBeNull();
+      expect(msg(container).classList).toContain('msg--menu-open');
+
+      container
+        .querySelector<HTMLButtonElement>(
+          '.toolbar__emoji:not(.toolbar__emoji--more)',
+        )!
+        .click();
+      await settle();
+
+      expect(msg(container).classList).not.toContain('msg--menu-open');
+      expect(toolbar(container)).toBeNull();
+    });
+
+    it('forgets an open menu when its toolbar is removed with it', async () => {
+      const { container, fixture } = await renderRow({
+        row: row(),
+        caps: caps(),
+      });
+
+      fireEvent.pointerEnter(msg(container));
+      await settle();
+      container
+        .querySelector<HTMLButtonElement>('button[aria-label="Add reaction"]')!
+        .click();
+      await settle();
+      expect(msg(container).classList).toContain('msg--menu-open');
+
+      // Removed with the picker still open, as a revealed bar is by a scroll.
+      fixture.componentInstance.toolbarActive.set(false);
+      await settle();
+      expect(toolbar(container)).toBeNull();
+      expect(msg(container).classList).not.toContain('msg--menu-open');
+
+      // The next hover mounts a bar that leaving unmounts again.
+      fireEvent.pointerEnter(msg(container));
+      await settle();
+      fireEvent.pointerLeave(msg(container));
+      await settle();
+      expect(toolbar(container)).toBeNull();
+    });
+
     it('unmounts the toolbar when focus leaves the row', async () => {
       const { container } = await renderRow({ row: row(), caps: caps() });
       const outside = document.createElement('button');

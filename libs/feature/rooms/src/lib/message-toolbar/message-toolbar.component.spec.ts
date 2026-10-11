@@ -178,6 +178,60 @@ describe('MessageToolbarComponent', () => {
     expect(cmp.pickerOpen()).toBe(false); // closes after picking
   });
 
+  it('reports quick reactions as an open menu until Escape or an outside click', async () => {
+    const { fixture, container } = await render(MessageToolbarComponent);
+    const cmp = fixture.componentInstance;
+    const reported: boolean[] = [];
+    cmp.menuOpenChange.subscribe((open) => reported.push(open));
+    const addReaction = () =>
+      container
+        .querySelector<HTMLButtonElement>('[aria-label="Add reaction"]')!
+        .click();
+
+    addReaction();
+    fixture.detectChanges();
+    container
+      .querySelector('.toolbar__picker')!
+      .dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+      );
+    expect(cmp.pickerOpen()).toBe(false);
+
+    addReaction();
+    fixture.detectChanges();
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(cmp.pickerOpen()).toBe(false);
+
+    expect(reported).toEqual([true, false, true, false]);
+  });
+
+  it('keeps quick reactions open on a press inside the toolbar', async () => {
+    const { fixture, container } = await render(MessageToolbarComponent);
+    const cmp = fixture.componentInstance;
+    cmp.setPickerOpen(true);
+    fixture.detectChanges();
+
+    container
+      .querySelector('.toolbar__picker')!
+      .dispatchEvent(new Event('pointerdown', { bubbles: true }));
+
+    expect(cmp.pickerOpen()).toBe(true);
+  });
+
+  it('closes quick reactions when the overflow menu opens, still reporting open', async () => {
+    const { fixture } = await render(MessageToolbarComponent);
+    const cmp = fixture.componentInstance;
+    const reported: boolean[] = [];
+    cmp.menuOpenChange.subscribe((open) => reported.push(open));
+
+    cmp.setPickerOpen(true);
+    cmp.setOverflowOpen(true);
+    expect(cmp.pickerOpen()).toBe(false);
+    cmp.setOverflowOpen(false);
+
+    expect(reported).toEqual([true, false]);
+  });
+
   it('escalates to the full picker via the "+" button', async () => {
     const { fixture, container } = await render(MessageToolbarComponent);
     const cmp = fixture.componentInstance;

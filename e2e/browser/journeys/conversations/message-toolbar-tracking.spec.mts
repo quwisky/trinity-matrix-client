@@ -100,4 +100,48 @@ test.describe('Message toolbar tracking', () => {
     await expect(page.locator(toolbars)).toHaveCount(1);
     await expect(other.locator(toolbars)).toHaveCount(1);
   });
+
+  // Quick reactions and the "More actions" menu both sit partly outside the row. Reaching
+  // them can take the pointer off the row, over the gap or the row above; the bar must stay
+  // mounted and visible until the reaction is picked or the menu closes.
+  test('quick reactions stay pickable after the pointer leaves the row', async ({
+    page,
+  }) => {
+    const rows = textRows(page);
+    const row = rows.nth(-3);
+    await row.hover();
+    await row.getByRole('button', { name: 'Add reaction' }).click();
+    const picker = row.locator('.toolbar__picker');
+    await expect(picker).toBeVisible();
+
+    // Off the row, as a pointer crossing the gap to the emoji row can be.
+    const box = (await row.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y - 30);
+
+    await expect(picker).toBeVisible();
+    const emoji = picker.getByRole('button').first();
+    const label = (await emoji.getAttribute('aria-label')) as string;
+    await emoji.click();
+    await expect(row.locator('.reaction', { hasText: label })).toBeVisible({
+      timeout: 20_000,
+    });
+  });
+
+  test('the toolbar stays visible while its More actions menu is open', async ({
+    page,
+  }) => {
+    const rows = textRows(page);
+    const row = rows.nth(-3);
+    await row.hover();
+    await row.getByRole('button', { name: 'More actions' }).click();
+    const item = page.getByRole('menuitem').first();
+    await expect(item).toBeVisible();
+    await item.hover();
+
+    const toolbar = row.locator(toolbars);
+    await expect(toolbar).toHaveCount(1);
+    await expect
+      .poll(() => toolbar.evaluate((el) => getComputedStyle(el).opacity))
+      .toBe('1');
+  });
 });
