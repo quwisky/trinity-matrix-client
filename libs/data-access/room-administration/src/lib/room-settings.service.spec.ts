@@ -234,6 +234,46 @@ describe('RoomSettingsService', () => {
     );
   });
 
+  it('setAvatar uploads a photo without its comment metadata', async () => {
+    const { svc, uploadContent } = setup();
+    const comment = Array.from('Shot at home', (c) => c.charCodeAt(0));
+    // SOI, a COM segment, a one-component scan with two bytes of data, EOI.
+    const jpeg = Uint8Array.of(
+      0xff,
+      0xd8,
+      0xff,
+      0xfe,
+      0x00,
+      comment.length + 2,
+      ...comment,
+      0xff,
+      0xda,
+      0x00,
+      0x08,
+      0x01,
+      0x01,
+      0x00,
+      0x00,
+      0x3f,
+      0x00,
+      0x12,
+      0x34,
+      0xff,
+      0xd9,
+    );
+    const photo = new File([jpeg], 'photo.jpg', { type: 'image/jpeg' });
+
+    await firstValueFrom(svc.setAvatar('!r:hs', photo));
+
+    const [body, opts] = uploadContent.mock.calls[0] as [File, unknown];
+    expect(body).not.toBe(photo);
+    expect(opts).toEqual({ name: 'photo.jpg', type: 'image/jpeg' });
+    expect(Array.from(new Uint8Array(await body.arrayBuffer()))).toEqual([
+      0xff, 0xd8, 0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00,
+      0x12, 0x34, 0xff, 0xd9,
+    ]);
+  });
+
   it('setJoinRule is cold and writes m.room.join_rules on subscribe', async () => {
     const { svc, sendStateEvent } = setup();
 

@@ -24,6 +24,10 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { fetchMediaBytes } from '@trinity/util/matrix';
 import type { EncryptedFileInfo, MediaPayload } from '@trinity/util/matrix';
 import type { MediaHints } from './media-pipeline.models';
+import {
+  bytesWithoutImageMetadata,
+  withoutImageMetadata,
+} from './image-metadata/strip-file-metadata';
 
 /** Which rendition of an attachment to resolve. */
 export type MediaVariant = 'thumbnail' | 'full';
@@ -238,10 +242,13 @@ export class MediaService {
 
   /**
    * Upload a picked file to the media repo, encrypting it first for E2EE rooms,
-   * and return the descriptor {@link TimelineService} turns into an event. In an
+   * and return the descriptor {@link TimelineService} turns into an event. A JPEG,
+   * PNG, WebP or HEIF image first loses its identifying metadata (location, camera,
+   * capture time; orientation is kept), on the plaintext before any encryption;
+   * anything else, or an image whose structure is in doubt, goes up as picked. In an
    * encrypted room the ciphertext is uploaded with no filename/MIME (those leak),
-   * and `info.url` is filled with the resulting `mxc://`; otherwise the original
-   * file is uploaded as-is. `progress` reports an upload fraction in [0, 1].
+   * and `info.url` is filled with the resulting `mxc://`; otherwise the file itself
+   * is uploaded. `progress` reports an upload fraction in [0, 1].
    * `hints` (from a camera capture) win over the probe, which then fills only
    * what they leave out.
    */
@@ -315,8 +322,13 @@ export class MediaService {
           progress(p.total ? p.loaded / p.total : 0)
       : undefined;
 
+    // Photos leave without their location, camera and capture time (#1140); orientation is
+    // kept. Stripping happens on the plaintext, before encryption, and anything it cannot
+    // handle with certainty is uploaded exactly as picked.
     if (encrypt) {
-      const { data, info } = await encryptAttachment(await file.arrayBuffer());
+      const plaintext = await bytesWithoutImageMetadata(file);
+      abortController?.signal.throwIfAborted();
+      const { data, info } = await encryptAttachment(plaintext);
       abortController?.signal.throwIfAborted();
       const res = await client.uploadContent(new Blob([data]), {
         // Don't leak the plaintext filename/MIME on an encrypted upload.
@@ -335,7 +347,9 @@ export class MediaService {
       };
     }
 
-    const res = await client.uploadContent(file, {
+    const upload = await withoutImageMetadata(file);
+    abortController?.signal.throwIfAborted();
+    const res = await client.uploadContent(upload, {
       name: file.name,
       type: file.type || 'application/octet-stream',
       progressHandler: onProgress,
@@ -346,7 +360,7 @@ export class MediaService {
       body: file.name || 'attachment',
       mxc: res.content_uri,
       file: null,
-      info: mediaInfo(file, file.size, dims, thumb),
+      info: mediaInfo(file, upload.size, dims, thumb),
     };
   }
 
