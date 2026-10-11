@@ -1486,6 +1486,55 @@ describe('MediaService', () => {
         expect(containsAscii(plaintext, 'iPhone 15 Pro')).toBe(false);
       });
 
+      it('uploads a plaintext video byte for byte when its metadata is kept', async () => {
+        const { svc, client } = setup();
+        const clip = new File([identifyingMovie()], 'clip.mp4', {
+          type: 'video/mp4',
+        });
+
+        const res = await firstValueFrom(
+          svc.uploadMedia(
+            clip,
+            false,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            'keep',
+          ),
+        );
+
+        expect(withoutMediaMetadata).not.toHaveBeenCalled();
+        expect(client.uploadContent.mock.calls.at(-1)?.[0]).toBe(clip);
+        expect(res.info).toMatchObject({ size: clip.size });
+      });
+
+      it('encrypts an E2EE video byte for byte when its metadata is kept', async () => {
+        const { svc } = setup();
+        const clip = new File([identifyingMovie()], 'clip.mov', {
+          type: 'video/quicktime',
+        });
+
+        await firstValueFrom(
+          svc.uploadMedia(
+            clip,
+            true,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            'keep',
+          ),
+        );
+
+        expect(bytesWithoutMediaMetadata).not.toHaveBeenCalled();
+        const plaintext = new Uint8Array(
+          encryptMock.mock.calls[0]?.[0] as ArrayBuffer,
+        );
+        expect(plaintext).toEqual(new Uint8Array(await clip.arrayBuffer()));
+        expect(containsAscii(plaintext, 'iPhone 15 Pro')).toBe(true);
+      });
+
       it('uploads a file that is neither a photo nor a movie exactly as picked', async () => {
         const { svc, client } = setup();
         const clip = mediaFile('clip.webm', 'video/webm');
@@ -1947,6 +1996,29 @@ describe('MediaService', () => {
           expect(plaintext.length).toBeGreaterThan(0);
           expect(containsAscii(plaintext, '52.5200')).toBe(false);
           expect(containsAscii(plaintext, 'Canon')).toBe(false);
+        });
+
+        it('strips it even when the video keeps its metadata', async () => {
+          const { svc, client } = setup();
+          const clip = mediaFile('video.mov', 'video/quicktime');
+
+          await firstValueFrom(
+            svc.uploadMedia(
+              clip,
+              false,
+              undefined,
+              undefined,
+              undefined,
+              hints(),
+              'keep',
+            ),
+          );
+
+          // A derived preview, not the person's file: keeping metadata covers the video only.
+          const thumb = client.uploadContent.mock.calls[0]?.[0] as Blob;
+          const sent = new Uint8Array(await thumb.arrayBuffer());
+          expect(containsAscii(sent, '52.5200')).toBe(false);
+          expect(client.uploadContent.mock.calls.at(-1)?.[0]).toBe(clip);
         });
       });
 

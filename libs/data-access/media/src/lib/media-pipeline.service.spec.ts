@@ -499,7 +499,7 @@ describe('MediaPipeline', () => {
         })
         .pipe(toArray()),
     );
-    // The person turns Keep photo metadata off before retrying.
+    // The person turns Keep photo and video metadata off before retrying.
     const retry = await firstValueFrom(
       pipeline
         .transfer({

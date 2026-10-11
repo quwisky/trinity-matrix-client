@@ -53,7 +53,7 @@ Apple `keys` items that are stripped stay listed, with zeroed values.
 
 The pure byte-level parsers live in `libs/data-access/media/src/lib/image-metadata`. An Exif block that cannot be read inside an otherwise sound file is dropped whole, orientation included. Stripping never blocks a send: a file whose container cannot be parsed with certainty, a fragmented movie, a movie with a `moov` over 64 MiB, and every other format (GIF, TIFF, SVG, WebM, documents), is uploaded unchanged, with whatever metadata it carries.
 
-Settings → Privacy → **Keep photo metadata** (off by default, stored per device) lets a person send message attachments with their metadata. Conversations reads the choice when a send starts and passes it to Media Pipeline as the transfer's `imageMetadata` policy; with `'keep'` the file is uploaded byte for byte, never partially stripped. Profile and room photos ignore the setting and are always stripped, because they are public and persistent.
+Settings → Privacy → **Keep photo and video metadata** (off by default, stored per device under the older key `trinity.privacy.keep-photo-metadata`) lets a person send message attachments with their metadata. Conversations reads the choice when a send starts and passes it to Media Pipeline as the transfer's `imageMetadata` policy; with `'keep'` a photo or video is uploaded byte for byte, in plaintext and encrypted rooms alike, never partially stripped. A thumbnail supplied by the native camera is still stripped, since it is a derived preview rather than the person's file. Profile and room photos ignore the setting and are always stripped, because they are public and persistent.
 
 ## Logout and reset are ordered cleanup {#cleanup-order}
 

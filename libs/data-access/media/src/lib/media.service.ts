@@ -253,7 +253,8 @@ export class MediaService {
    * is uploaded. `progress` reports an upload fraction in [0, 1].
    * `hints` (from a camera capture) win over the probe, which then fills only
    * what they leave out. `imageMetadata: 'keep'` (the person's opt-in for message
-   * attachments) skips stripping entirely, so the file goes up byte for byte.
+   * attachments) skips stripping entirely, so a photo or video goes up byte for byte;
+   * a host-supplied thumbnail is still stripped, being a derived preview.
    */
   uploadMedia(
     file: File,
@@ -338,8 +339,8 @@ export class MediaService {
     // Photos leave without their location, camera and capture time (#1140); orientation is
     // kept. Videos leave without their location and device (#1179), blanked in place.
     // Stripping happens on the plaintext, before encryption, and anything it cannot handle
-    // with certainty is uploaded exactly as picked. Someone who chose to keep the metadata
-    // (#1178) gets the file untouched, never a partial strip.
+    // with certainty is uploaded exactly as picked. Someone who chose to keep photo and
+    // video metadata (#1178) gets the file untouched, never a partial strip.
     const keep = imageMetadata === 'keep';
     if (encrypt) {
       const plaintext = keep
@@ -400,8 +401,9 @@ export class MediaService {
     }
     const { w, h } = thumbnail;
     // A host-rendered thumbnail (a native camera capture) is an image file of its own, so it
-    // loses its metadata like any photo before it goes up, encrypted or not. One rendered
-    // here on a canvas has none and comes back as it was.
+    // loses its metadata like any photo before it goes up, encrypted or not, even when the
+    // person keeps the video's own metadata: it is a derived preview, not their file. One
+    // rendered here on a canvas has none and comes back as it was.
     const blob = await withoutImageMetadata(
       new File([thumbnail.blob], 'thumbnail', { type: thumbnail.blob.type }),
     );
