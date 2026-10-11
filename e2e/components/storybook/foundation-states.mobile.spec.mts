@@ -48,7 +48,10 @@ test('banner actions wrap below the message instead of squeezing it (#1221)', as
   const textBox = (await text.boundingBox())!;
   const actionsBox = (await actions.boundingBox())!;
   // The message keeps its readable minimum (12rem) rather than a word-wide column.
-  expect(textBox.width).toBeGreaterThanOrEqual(192);
+  const rem = await page.evaluate(() =>
+    parseFloat(getComputedStyle(document.documentElement).fontSize),
+  );
+  expect(textBox.width).toBeGreaterThanOrEqual(12 * rem);
   expect(actionsBox.y).toBeGreaterThanOrEqual(textBox.y + textBox.height);
   expect(actionsBox.x + actionsBox.width).toBeLessThanOrEqual(
     bannerBox.x + bannerBox.width,

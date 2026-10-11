@@ -9,6 +9,9 @@ export type TrnBannerVariant = Extract<TrnVariant, 'neutral' | 'accent'>;
  * trailing actions. Everything is projected, so the consumer owns the icon,
  * copy, and any buttons; this component only supplies the layout + tone.
  *
+ * Render the `trnBannerActions` element only when it has content: an empty slot collapses,
+ * but an element that renders no buttons still takes a gap at the end of the row.
+ *
  * ```html
  * <trn-banner variant="accent">
  *   <trn-icon trnBannerIcon name="lock" />

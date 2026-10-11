@@ -243,5 +243,6 @@ test('banner actions share the message row when there is room (#1221)', async ({
   const textBox = (await text.boundingBox())!;
   const actionsBox = (await actions.boundingBox())!;
   expect(actionsBox.y).toBeLessThan(textBox.y + textBox.height);
+  // Left-to-right: Storybook renders LTR, so the actions sit after the message.
   expect(actionsBox.x).toBeGreaterThanOrEqual(textBox.x + textBox.width);
 });

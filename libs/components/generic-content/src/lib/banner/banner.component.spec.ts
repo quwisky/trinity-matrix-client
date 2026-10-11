@@ -35,6 +35,22 @@ class ActionOnlyHostComponent {
 
 @Component({
   imports: [BannerComponent],
+  template: `
+    <trn-banner>
+      @if (withMessage) {
+        <span>Showing server results.</span>
+      } @else {
+        <span trnBannerActions><button>Search all messages</button></span>
+      }
+    </trn-banner>
+  `,
+})
+class ServerSummaryHostComponent {
+  withMessage = true;
+}
+
+@Component({
+  imports: [BannerComponent],
   template: `<trn-banner>Reconnecting…</trn-banner>`,
 })
 class MessageOnlyHostComponent {}
@@ -67,6 +83,22 @@ describe('BannerComponent', () => {
     expect(
       actionOnly.container.querySelector('.banner__actions')?.matches(':empty'),
     ).toBe(false);
+    // The @else branch's single root lands in the actions slot, not the message slot.
+    expect(
+      actionOnly.container.querySelector(
+        '.banner__actions > [trnBannerActions]',
+      ),
+    ).not.toBeNull();
+  });
+
+  it('routes the @if branch message into the message slot', async () => {
+    const summary = await render(ServerSummaryHostComponent);
+    expect(
+      summary.container.querySelector('.banner__text')?.textContent?.trim(),
+    ).toBe('Showing server results.');
+    expect(
+      summary.container.querySelector('.banner__actions')?.matches(':empty'),
+    ).toBe(true);
   });
 
   it('leaves the actions slot empty when there are no actions', async () => {
