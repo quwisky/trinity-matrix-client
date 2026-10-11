@@ -322,7 +322,7 @@ describe('EncryptionUnlockPage', () => {
       fixture.detectChanges();
 
       expect(fixture.componentInstance.error()).toContain(
-        'identity provider has to reset encryption',
+        'identity provider has to reset your identity',
       );
       expect(externalBrowser.open).not.toHaveBeenCalled();
     });
@@ -554,7 +554,7 @@ describe('EncryptionUnlockPage', () => {
 
       await fixture.componentInstance.resetRecovery();
 
-      expect(fixture.componentInstance.title()).toBe('Encryption reset');
+      expect(fixture.componentInstance.title()).toBe('Identity reset');
     });
   });
 

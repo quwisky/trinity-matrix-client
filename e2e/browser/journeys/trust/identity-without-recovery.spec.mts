@@ -145,7 +145,7 @@ test.describe('An identity set up elsewhere without recovery', () => {
     const newKey = page.getByTestId('recovery-key');
     await expect(newKey).toBeVisible({ timeout: 60_000 });
     await page
-      .getByRole('checkbox', { name: /I've saved my recovery key/ })
+      .getByRole('checkbox', { name: /I’ve saved my recovery key/ })
       .click();
     await page.getByTestId('reset-done').click();
 

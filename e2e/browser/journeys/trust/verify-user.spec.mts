@@ -83,7 +83,7 @@ async function setUpEncryption(page: Page, password: string): Promise<void> {
 
   await key.waitFor({ state: 'visible', timeout: 60_000 });
   await page
-    .getByRole('checkbox', { name: /I've saved my recovery key/ })
+    .getByRole('checkbox', { name: /I’ve saved my recovery key/ })
     .click();
   await page.getByRole('button', { name: 'Continue to Trinity' }).click();
   await waitForRooms(page);

@@ -97,7 +97,7 @@ export class RecoveryKeyDisplayComponent {
     this.copied.set(false);
     this.copyFailed.set(true);
     this.announcement.set(
-      "Couldn't copy — select the key and copy it manually.",
+      'Couldn’t copy — select the key and copy it manually.',
     );
   }
 }

@@ -125,7 +125,7 @@ export class EncryptionUnlockPage {
   /** What the busy spinner says — the two operations are not interchangeable. */
   readonly progressMessage = computed(() =>
     this.resetting()
-      ? 'Resetting your encryption…'
+      ? 'Resetting your identity…'
       : 'Unlocking your encrypted messages…',
   );
 
@@ -144,7 +144,7 @@ export class EncryptionUnlockPage {
   /** Page/modal title, which has to follow what the page is actually doing. */
   readonly title = computed(() => {
     if (this.newRecoveryKey()) {
-      return 'Encryption reset';
+      return 'Identity reset';
     }
     return this.identityWithoutRecovery()
       ? 'Reset your identity'
