@@ -41,7 +41,7 @@ describe('mobile E2E artifact scrub', () => {
     expect(
       scrub('[SafariConsole] {"text":"{\\"accessToken\\":\\"abc\\"}"}'),
     ).toBe('[SafariConsole] {"text":"{\\"accessToken\\":\\"<token>\\"}"}');
-    expect(scrub('Authorization: Bearer QWxhZGRpbjpvcGVu.c2VzYW1l')).toBe(
+    expect(scrub('Authorization: Bearer not-a.real_token~value')).toBe(
       'Authorization: Bearer <token>',
     );
     expect(scrub('[SafariConsole] authorization: bearer abc.def')).toBe(
