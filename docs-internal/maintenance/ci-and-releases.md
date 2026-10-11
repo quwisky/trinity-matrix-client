@@ -21,6 +21,7 @@ public developer guide.
 | [`release-stable.yml`](../../.github/workflows/release-stable.yml)   | A manual dispatch with `from` and `dry_run` inputs                         | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                                   |
 | [`backport.yml`](../../.github/workflows/backport.yml)               | A merged `main` pull request is closed or labeled `backport release/X.Y.x` | Opens a PR that cherry-picks the fix onto each labeled release branch, through a GitHub App token                                                               |
 | [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml) | `CI` completes on a `back-merge/**` branch of this repository              | Pushes the back-merge commit to `main` as a fast-forward, through a GitHub App token                                                                            |
+| [`codeql.yml`](../../.github/workflows/codeql.yml)                   | A push to `main`, a pull request to `main`, or Mondays at 05:37 UTC        | CodeQL code scanning for GitHub Actions, Java/Kotlin, JavaScript/TypeScript and Swift (see [Code scanning](#code-scanning))                                     |
 
 The branch workflow accepts pushes to `main`, `release/**`, and
 `renovate/patch-**`; pull requests are its usual review path. A newer run for
@@ -72,6 +73,48 @@ The workflow also checks the exact branch ref before building or deploying, keep
 the build job read-only, and grants `pages: write` plus `id-token: write` only to
 the deployment job. It uploads only `dist/docs-site`; pull-request CI validates
 the same site without uploading or deploying a Pages artifact.
+
+### Code scanning
+
+CodeQL runs as an advanced setup from [`codeql.yml`](../../.github/workflows/codeql.yml), not
+as GitHub's default setup. Default setup analysed `actions`, `java-kotlin` and
+`javascript-typescript` but could not include Swift: its Swift autobuild builds the biggest
+Xcode target, `ios/App`, and that needs `pnpm install` and `cap sync` first because
+`ios/App/CapApp-SPM/Package.swift` points into `node_modules/.pnpm`.
+
+The workflow analyses the three default-setup languages on `ubuntu-latest` with
+`build-mode: none`, on every pull request to `main`, every push to `main` and the weekly
+run. Swift runs on `macos-26` with `build-mode: manual`: it builds the TrinityPush package
+(`libs/native/capacitor-push/ios/TrinityPush`) with `swift build`, and CodeQL analyses what
+that build compiles. Because macOS runners cost the most, a pull request runs the Swift job
+only when it changes a `.swift` file, a `Package.resolved`, an `.xcodeproj` or
+`.xcworkspace`, or `codeql.yml` itself; the `Swift changes` job reads the diff, as the `mas`
+step does in `ci.yml`. Pushes to `main` and the weekly run always analyse Swift. No CodeQL
+check is required by the `Protect main` ruleset, and a skipped job reports as skipped, so a
+pull request that skips Swift waits on nothing.
+
+Swift that CodeQL does not analyse:
+
+- The PushHandoff plugin in `libs/native/capacitor-push/ios/Sources`. Its package depends on
+  capacitor-swift-pm's `Capacitor` product alone, and Capacitor's headers import `Cordova`,
+  so the package builds only inside the app, where CapApp-SPM also links `Cordova`.
+  Adding the `Cordova` product to the plugin's dependencies, as Capacitor's plugin template
+  does, makes it build on its own for the iOS Simulator; the workflow could then build and
+  analyse it too.
+- `ios/App`: the app target and the NotificationService extension. They need the workspace's
+  `node_modules` and `cap sync`; `ci.yml`'s `ios-native-build` job compiles them.
+
+Each analysis uploads under the category `/language:<language>`, the category default setup
+used, so the alert history of the three existing languages continues. Swift starts a new
+`/language:swift` history.
+
+Only one setup can upload: while default setup is on, GitHub rejects this workflow's
+uploads, so its analyze jobs fail. Before the pull request that adds the workflow merges, a
+repository administrator opens **Settings → Code security → Code scanning → CodeQL
+analysis** and switches it from **Default** to **Advanced** (or disables default setup
+there), then re-runs the pull request's failed CodeQL jobs. If GitHub offers a `codeql.yml`
+template while switching, close it without committing: the workflow already exists. The
+setting is a separate external action, not something a pull request changes.
 
 ### Diagnose setup and cache failures
 
@@ -750,6 +793,7 @@ The executable contracts are [`ci.yml`](../../.github/workflows/ci.yml),
 [`release.yml`](../../.github/workflows/release.yml),
 [`release-stable.yml`](../../.github/workflows/release-stable.yml),
 [`renovate.yml`](../../.github/workflows/renovate.yml),
+[`codeql.yml`](../../.github/workflows/codeql.yml),
 and [`electron-builder.yml`](../../electron/electron-builder.yml), which notarizes signed macOS
 builds with electron-builder's built-in notarization. Keep this guide aligned
 with those files when a trigger, job, artifact, or credential name changes.
