@@ -303,13 +303,14 @@ refresh can leave three things behind, and a refresh that outlasts a lock a four
   `protectedDataDidBecomeAvailableNotification` since); the run refreshes nothing in either
   case, still ends the background task, and the next background event with the phone
   unlocked refreshes. Otherwise every refresh starts at once as background time is granted,
-  so a lock that arrives mid-run finds none left to start, and each grant is bound to 8 s
-  from its start, so it answers inside the 10 s after any later lock. What remains: a grant
-  aborted at the 8 s bound after the server processed it spends the refresh token (the
-  spent-refresh-token case), and a refresh the run joined because it was already in flight
-  keeps the SDK's 30 s bound. The device check (#1211, step B4) should include locking the
-  phone with the side button mid-refresh, then unlocking and confirming the account is still
-  signed in and syncs.
+  so a lock that arrives mid-run finds none left to start, and each grant must answer within
+  8 s of the refresh call. The keychain write that saves the answer is not covered by that
+  bound, so it has about 2 s of the 10 s left after a lock that came as the run started.
+  What remains: a grant aborted at the 8 s bound after the server processed it spends the
+  refresh token (the spent-refresh-token case), and a refresh the run joined because it was
+  already in flight keeps the SDK's 30 s bound. The device check (#1211, step B4) should
+  include locking the phone with the side button mid-refresh, then unlocking and confirming
+  the account is still signed in and syncs.
 
 **Rendering.** iOS runs the `NotificationService` extension; Android replaces the push
 plugin's messaging service with `TrinityMessagingService`, which treats the app as
