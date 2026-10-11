@@ -6,13 +6,6 @@ import { withTimeout } from './recovery-reset';
 import type { TrustHealthSnapshot } from './trust-health.service';
 
 /**
- * Clients whose homeserver has confirmed a published master key. A published identity
- * is never removed, only replaced, so a confirmation lasts for the client's lifetime and
- * a ready device asks the server once rather than on every device-list change.
- */
-const confirmedPublished = new WeakSet<object>();
-
-/**
  * One coherent read of an Account's authoritative crypto state, usable for any live
  * Account (the active-Account projection and the per-Account summaries share it).
  *
@@ -26,11 +19,6 @@ const confirmedPublished = new WeakSet<object>();
  * verified through another device on an Account without 4S never receives the private
  * keys (matrix-js-sdk 43 does not request missing secrets after verification), so it
  * reads `needs-setup` while only the holding device can set up recovery.
- *
- * `ready` also needs the server to publish a master key. A device whose first setup was
- * retried after a cancelled upload holds an identity and secret storage that no server
- * ever saw, so its recovery key cannot restore anything elsewhere (#1225). It reads
- * `needs-recovery` (it has secret storage) instead of telling the user they are backed up.
  */
 export async function readTrustSnapshot(
   client: TrustMatrixClient,
@@ -44,10 +32,7 @@ export async function readTrustSnapshot(
       client.secretStorage.getDefaultKeyId(),
     ]);
   const thisDeviceVerified = await readThisDeviceVerified(client, crypto);
-  const ready =
-    crossSigningReady &&
-    secretStorageReady &&
-    (await identityPublishedOrUnknown(client));
+  const ready = crossSigningReady && secretStorageReady;
   // Only asked where there is no recovery: with secret storage the privates are
   // reachable through the recovery key, and a ready device needs nothing.
   const identityElsewhere =
@@ -88,28 +73,6 @@ export async function readPublishedMasterKey(
   const response = await withTimeout(client.downloadKeysForUsers([userId]));
   const keys = response.master_keys?.[userId]?.keys;
   return (keys && Object.values(keys)[0]) || null;
-}
-
-/**
- * Whether a device that reads ready locally has its identity on the server. Fails open:
- * an offline device must not stop reading ready, and setup itself asks the server and
- * fails closed (`TrustService.setUp`).
- */
-async function identityPublishedOrUnknown(
-  client: Pick<TrustMatrixClient, 'downloadKeysForUsers' | 'getUserId'>,
-): Promise<boolean> {
-  if (confirmedPublished.has(client)) {
-    return true;
-  }
-  try {
-    if (!(await readPublishedMasterKey(client))) {
-      return false;
-    }
-  } catch {
-    return true;
-  }
-  confirmedPublished.add(client);
-  return true;
 }
 
 /** Whether this device is cross-signed by its own Account's identity. */

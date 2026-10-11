@@ -17,11 +17,6 @@ interface AccountState {
   deviceVerified?: boolean;
   publicKeysOnDevice?: boolean;
   privates?: { master: boolean; selfSigning: boolean; userSigning: boolean };
-  /**
-   * Whether `/keys/query` returns the account's master key. Defaults to
-   * `crossSigningReady`: a device normally reads ready only after its upload.
-   */
-  masterKeyOnServer?: boolean;
 }
 
 function account(state: AccountState = {}) {
@@ -55,24 +50,10 @@ function account(state: AccountState = {}) {
     secretStorage: {
       getDefaultKeyId: vi.fn(async () => state.defaultKeyId ?? null),
     },
-    downloadKeysForUsers: vi.fn(async (userIds: string[]) =>
-      (state.masterKeyOnServer ?? state.crossSigningReady ?? false)
-        ? {
-            master_keys: {
-              [userIds[0]]: {
-                user_id: userIds[0],
-                usage: ['master'],
-                keys: { 'ed25519:MASTER': 'MASTER' },
-              },
-            },
-          }
-        : {},
-    ),
   };
   return {
     client: client as unknown as TrustMatrixClient,
     crypto: crypto as unknown as TrustCryptoApi,
-    downloadKeysForUsers: client.downloadKeysForUsers,
   };
 }
 
@@ -93,73 +74,6 @@ describe('readTrustSnapshot', () => {
       keyBackupActive: true,
       thisDeviceVerified: true,
       identityElsewhere: false,
-    });
-  });
-
-  describe('an identity this device made but never published (#1225)', () => {
-    // A first setup cancelled at the password prompt created the keys on this device and
-    // uploaded none; a retry then stored them in secret storage. Every local read says
-    // ready, but no other device can ever use that recovery key.
-    const unpublished = {
-      crossSigningReady: true,
-      secretStorageReady: true,
-      backupVersion: '3',
-      deviceVerified: true,
-      defaultKeyId: 'k',
-      privates: ALL_PRIVATES,
-      masterKeyOnServer: false,
-    } satisfies AccountState;
-
-    it('is not ready while the server has no master key', async () => {
-      const { client, crypto, downloadKeysForUsers } = account(unpublished);
-
-      await expect(readTrustSnapshot(client, crypto)).resolves.toMatchObject({
-        status: 'needs-recovery',
-      });
-      expect(downloadKeysForUsers).toHaveBeenCalledWith(['@me:hs']);
-    });
-
-    it('stays ready when the server cannot be asked', async () => {
-      // A status read must not flip a ready device whenever it is offline.
-      const { client, crypto, downloadKeysForUsers } = account(unpublished);
-      downloadKeysForUsers.mockRejectedValue(new Error('offline'));
-
-      await expect(readTrustSnapshot(client, crypto)).resolves.toMatchObject({
-        status: 'ready',
-      });
-    });
-
-    it('asks the server only when this device reads ready', async () => {
-      const { client, crypto, downloadKeysForUsers } = account({
-        defaultKeyId: 'k',
-      });
-
-      await readTrustSnapshot(client, crypto);
-
-      expect(downloadKeysForUsers).not.toHaveBeenCalled();
-    });
-
-    it('asks again until the server has the identity, then stops asking', async () => {
-      const { client, crypto, downloadKeysForUsers } = account(unpublished);
-
-      await readTrustSnapshot(client, crypto);
-      await readTrustSnapshot(client, crypto);
-      expect(downloadKeysForUsers).toHaveBeenCalledTimes(2);
-
-      downloadKeysForUsers.mockResolvedValue({
-        master_keys: {
-          '@me:hs': {
-            user_id: '@me:hs',
-            usage: ['master'],
-            keys: { 'ed25519:MASTER': 'MASTER' },
-          },
-        },
-      });
-      await expect(readTrustSnapshot(client, crypto)).resolves.toMatchObject({
-        status: 'ready',
-      });
-      await readTrustSnapshot(client, crypto);
-      expect(downloadKeysForUsers).toHaveBeenCalledTimes(3);
     });
   });
 
