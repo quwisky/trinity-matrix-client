@@ -4,7 +4,7 @@
   "projectType": "application",
   "sourceRoot": "ios/App/App",
   "tags": ["type:app", "scope:matrix", "role:app", "capability:composition"],
-  "implicitDependencies": ["trinity"],
+  "implicitDependencies": ["trinity", "native-capacitor-push-ios"],
   "targets": {
     "sync": {
       "//": "Build the shared production renderer first, then let Capacitor copy that exact www artifact and refresh Swift Package Manager plugin wiring. Sync mutates checked-in generated native files, so it is deliberately uncached.",
@@ -70,8 +70,13 @@
       }
     },
     "test-push": {
-      "//": "XCTest for the TrinityPush package of @trinity/capacitor-push (libs/native/capacitor-push/ios/TrinityPush): the shared text-rule fixture (native/push-render), the resolver and the bounded reads. Needs Xcode, so it runs before the native builds (verify-native locally, build-prebuilt in CI) rather than from the static verify.",
+      "//": "XCTest for the TrinityPush package of @trinity/capacitor-push (libs/native/capacitor-push/ios/TrinityPush): the shared text-rule fixture (native/push-render), the resolver and the bounded reads. Needs Xcode, so it runs before the native builds (verify-native locally, build-prebuilt in CI) rather than from the static verify. The package is the project native-capacitor-push-ios, an implicit dependency, so `^default` covers it; native/push-render belongs to no Nx project, so its input is what marks this host affected when the fixture changes.",
       "cache": false,
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/native/push-render/**/*"
+      ],
       "executor": "nx:run-commands",
       "options": {
         "command": "swift test --package-path libs/native/capacitor-push/ios/TrinityPush",

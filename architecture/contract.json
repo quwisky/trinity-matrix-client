@@ -110,6 +110,14 @@
     {
       "project": "spartan-tests",
       "reason": "The generated-kit contract project contains tests and has no production API."
+    },
+    {
+      "project": "native-capacitor-push-android",
+      "reason": "The push plugin's Kotlin and Java module, reached by the Android host through Capacitor sync, not through a TypeScript import."
+    },
+    {
+      "project": "native-capacitor-push-ios",
+      "reason": "The push plugin's Swift sources, reached by the iOS host through Capacitor sync, not through a TypeScript import."
     }
   ],
   "secondaryEntrypoints": [],
