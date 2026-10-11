@@ -354,10 +354,11 @@ The NSE also parses server JSON, so a parsing bug there would now sit next to ke
 material. The WASM store holds the same session keys, so the protection classes, not the
 key set, are what changes.
 
-**Deletion.** Each per-account store and inbox is keyed by the account's crypto prefix
-(user and device), like the WASM store. Every path that deletes a WASM store or its key
+**Deletion.** Under option 3, each per-account store and inbox would be keyed by the
+account's crypto prefix (user and device), like the WASM store. Every path that deletes a
+WASM store or its key
 ([encryption and trust](../../apps/docs-developers/src/content/docs/architecture/encryption-and-trust.md#crypto-storage))
-deletes these too:
+would delete these too:
 
 - sign-out and hard logout, including a server-side logout the app detects (`M_UNKNOWN_TOKEN`
   without `soft_logout`);
@@ -365,7 +366,7 @@ deletes these too:
 - installation reset and clear-all-data;
 - re-authentication after a lost store key, which reclaims the old device's store.
 
-A soft logout keeps them, as it keeps the WASM store.
+A soft logout would keep them, as it keeps the WASM store.
 
 A remote sign-out while the app is closed leaves keys on disk. The notification code can
 notice it: an event fetch answered `401 M_UNKNOWN_TOKEN` without `soft_logout` means the
