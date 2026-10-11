@@ -73,6 +73,29 @@ describe('PushHandoffBridge', () => {
     );
   });
 
+  it('passes the access-token expiry through when the account has one', async () => {
+    isNative.mockReturnValue(true);
+    isAvailable.mockReturnValue(true);
+
+    await firstValueFrom(
+      bridge().setAccount({
+        userId: '@me:hs',
+        homeserverUrl: 'https://hs',
+        accessToken: 't',
+        sound: true,
+        accessTokenExpiresAt: 1_760_000_000_000,
+      }),
+    );
+
+    expect(plugin.setAccount).toHaveBeenCalledWith({
+      userId: '@me:hs',
+      homeserverUrl: 'https://hs',
+      accessToken: 't',
+      sound: true,
+      accessTokenExpiresAt: 1_760_000_000_000,
+    });
+  });
+
   it('hands the native plugin plain objects on a native host', async () => {
     isNative.mockReturnValue(true);
     isAvailable.mockReturnValue(true);

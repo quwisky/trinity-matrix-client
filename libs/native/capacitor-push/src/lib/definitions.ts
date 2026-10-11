@@ -8,6 +8,13 @@ export interface PushHandoffAccount {
   readonly accessToken: string;
   /** The account's "play a sound" notification preference. */
   readonly sound: boolean;
+  /**
+   * When `accessToken` stops working (epoch ms), for an OAuth account whose server gave the
+   * token a lifetime; absent when it does not expire on a schedule. Once it has passed, the
+   * renderers read nothing and show the expired-token text. Not secret; it still never goes
+   * to a log.
+   */
+  readonly accessTokenExpiresAt?: number;
 }
 
 /** A joined room's display name as the SDK computes it, and whether it is a DM. */

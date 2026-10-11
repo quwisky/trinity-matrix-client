@@ -215,7 +215,10 @@ app-owned `push_notification_appearance.xml` notification icon and accent.
 **Push handoff store.** `PushHandoffService` (data-access/notifications) keeps a native
 store current through the `PushHandoff` plugin (`setAccount`, `setRooms`, `removeAccount`,
 `clear`, `clearRoom`). Per signed-in account it holds the homeserver URL, the access token
-(rewritten when the SDK refreshes it) and the notification-sound choice, plus room display
+(rewritten when the SDK refreshes it), the token's expiry when the account signed in through
+OAuth 2.0 and its server gave the token a lifetime (MAS defaults to five minutes;
+`MatrixClientService.accessTokenExpiry` hands it over only with the token it belongs to) and
+the notification-sound choice, plus room display
 names and DM flags written in one batch per sync or rename. It never holds refresh tokens,
 crypto keys or message history. An account's entry is removed as the first step of its
 sign-out, together with that account's delivered pushes, and the store is emptied, with
@@ -242,8 +245,11 @@ token never follows one. Both apply the shared text rules (including the 200 cod
 limit and Unicode `White_Space` trimming) pinned by
 [`push-render-cases.json`](../../native/push-render/push-render-cases.json), which JUnit and
 XCTest both run. A push for an account the store does not know keeps the gateway's
-"Trinity" / "New message". The renderers never refresh a token (an expired one shows the
-room-name fallback) and never log tokens, IDs, room names or message text. Android posts
+"Trinity" / "New message". The renderers never refresh a token. Once the stored expiry has
+passed they read nothing and show the room name (or "Trinity") with "Open Trinity to read this
+message", because only the running app can renew the token; any other failed read shows
+"New message". Password and SSO tokens carry no expiry and are always read. The renderers
+never log tokens, expiries, IDs, room names or message text. Android posts
 one `MessagingStyle` notification per room on `messages` and cancels it when a push without
 `event_id` arrives for that room. The operating system's preview settings decide what shows
 on the lock screen.

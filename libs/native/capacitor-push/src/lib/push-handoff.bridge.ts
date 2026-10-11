@@ -23,7 +23,7 @@ export class PushHandoffBridge {
     Capacitor.isNativePlatform() &&
     Capacitor.isPluginAvailable(PUSH_HANDOFF_PLUGIN_NAME);
 
-  /** Cold. Writes or replaces one account's credentials and sound choice. */
+  /** Cold. Writes or replaces one account's credentials, token expiry and sound choice. */
   setAccount(account: PushHandoffAccount): Observable<void> {
     return this.call(() => pushHandoff.setAccount({ ...account }));
   }

@@ -93,6 +93,9 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
     clearRoom: vi.fn((): Observable<void> => of(void 0)),
   };
   const sound = { isOn: vi.fn(() => true) };
+  const expiry = vi.fn(
+    (_userId: string, _accessToken: string): number | undefined => undefined,
+  );
   TestBed.configureTestingModule({
     providers: [
       PushHandoffService,
@@ -100,6 +103,7 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
         accountIds: accountIds.asReadonly(),
         clientFor: (id: string) => (clients.get(id) as never) ?? null,
         accessTokenRotations: rotations.asObservable(),
+        accessTokenExpiry: expiry,
       }),
       { provide: PushHandoffBridge, useValue: bridge },
       { provide: NotificationSoundService, useValue: sound },
@@ -112,6 +116,7 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
     rotations,
     bridge,
     sound,
+    expiry,
   };
 }
 
@@ -152,6 +157,61 @@ describe('PushHandoffService', () => {
     expect(h.bridge.setAccount).toHaveBeenLastCalledWith(
       expect.objectContaining({ userId: '@me:hs', accessToken: 'fresh' }),
     );
+  });
+
+  it('hands the access-token expiry over with the token it belongs to', async () => {
+    const h = setup();
+    h.expiry.mockImplementation((userId: string, token: string) =>
+      userId === '@me:hs' && token === 'token-@me:hs'
+        ? 1_760_000_000_000
+        : undefined,
+    );
+    await start(h);
+
+    expect(h.bridge.setAccount).toHaveBeenCalledWith({
+      userId: '@me:hs',
+      homeserverUrl: 'https://hs.example',
+      accessToken: 'token-@me:hs',
+      sound: true,
+      accessTokenExpiresAt: 1_760_000_000_000,
+    });
+  });
+
+  it('writes a refreshed token with its own expiry', async () => {
+    const h = setup();
+    h.expiry.mockImplementation((_userId: string, token: string) =>
+      token === 'fresh' ? 1_760_000_300_000 : undefined,
+    );
+    await start(h);
+
+    h.rotations.next({ userId: '@me:hs', accessToken: 'fresh' });
+    await flush();
+
+    expect(h.bridge.setAccount).toHaveBeenLastCalledWith({
+      userId: '@me:hs',
+      homeserverUrl: 'https://hs.example',
+      accessToken: 'fresh',
+      sound: true,
+      accessTokenExpiresAt: 1_760_000_300_000,
+    });
+  });
+
+  it('hands over no expiry for a token the client does not hold', async () => {
+    const h = setup();
+    h.expiry.mockImplementation((_userId: string, token: string) =>
+      token === 'token-@me:hs' ? 1_760_000_000_000 : undefined,
+    );
+    await start(h);
+
+    h.rotations.next({ userId: '@me:hs', accessToken: 'stale' });
+    await flush();
+
+    expect(h.bridge.setAccount).toHaveBeenLastCalledWith({
+      userId: '@me:hs',
+      homeserverUrl: 'https://hs.example',
+      accessToken: 'stale',
+      sound: true,
+    });
   });
 
   it('writes joined room names and DM flags as one batch', async () => {

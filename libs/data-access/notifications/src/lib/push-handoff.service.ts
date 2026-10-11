@@ -10,6 +10,7 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   PushHandoffBridge,
+  type PushHandoffAccount,
   type PushHandoffRoom,
 } from '@trinity/capacitor-push';
 import { Observable, catchError, defer, from, lastValueFrom, of } from 'rxjs';
@@ -33,7 +34,9 @@ interface HandoffBinding {
  * extension) can fetch and title a notification without the app running.
  *
  * Writes each account's homeserver URL, access token and sound choice when it signs in,
- * when the SDK refreshes its access token and when the sound setting changes; writes room
+ * when the SDK refreshes its access token and when the sound setting changes. An OAuth
+ * token's expiry goes with it, so the renderers can skip a read that is bound to fail and
+ * say why instead. Writes room
  * names (as the SDK computes them, DM names included) and DM flags in one batch per sync or
  * rename, only for rooms that changed. Every bridge call runs after the previous one
  * settles, so a removal can never be overtaken by a write that started before it.
@@ -184,11 +187,13 @@ export class PushHandoffService {
     if (!binding || this.isRetired(userId, binding.client)) return;
     const token = accessToken ?? binding.client.getAccessToken();
     if (!token) return;
-    const account = {
+    const expiresAt = this.matrix.accessTokenExpiry(userId, token);
+    const account: PushHandoffAccount = {
       userId,
       homeserverUrl: binding.client.getHomeserverUrl(),
       accessToken: token,
       sound: this.sound.isOn(userId),
+      ...(expiresAt === undefined ? {} : { accessTokenExpiresAt: expiresAt }),
     };
     void this.schedule(() => this.bridge.setAccount(account)).catch(
       () => undefined,
