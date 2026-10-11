@@ -1,7 +1,10 @@
 import { firstValueFrom } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RoomWidget, WidgetEmbed } from './widget.model';
-import { WidgetBridgeService } from './widget-bridge.service';
+import {
+  WIDGET_RUNTIME_LOAD_TIMEOUT_MS,
+  WidgetBridgeService,
+} from './widget-bridge.service';
 
 // Counts evaluations of the module that statically imports matrix-widget-api. A static
 // import from the service would evaluate it as soon as this spec loads the service.
@@ -36,6 +39,7 @@ function attachedFrame(): HTMLIFrameElement {
 
 describe('WidgetBridgeService', () => {
   afterEach(() => {
+    vi.useRealTimers();
     document.body.replaceChildren();
     vi.restoreAllMocks();
   });
@@ -125,5 +129,77 @@ describe('WidgetBridgeService', () => {
         ),
       ),
     ).rejects.toThrow('Widget embed destination changed');
+  });
+
+  describe('when the Widget API chunk is slow', () => {
+    afterEach(() => {
+      vi.doUnmock('./widget-bridge-runtime');
+      vi.resetModules();
+    });
+
+    // A fresh module registry and a re-registered mock hold the chunk until `release` runs.
+    async function startWithGatedChunk() {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      let loaded!: () => void;
+      const arrived = new Promise<void>((resolve) => (loaded = resolve));
+      vi.resetModules();
+      vi.doMock('./widget-bridge-runtime', async (importOriginal) => {
+        await gate;
+        const runtimeModule = await importOriginal();
+        loaded();
+        return runtimeModule;
+      });
+      vi.useFakeTimers();
+      const { WidgetBridgeService: Service } =
+        await import('./widget-bridge.service');
+      const iframe = attachedFrame();
+      const addEventListener = vi.spyOn(iframe, 'addEventListener');
+      const service = new Service();
+      const next = vi.fn();
+      const error = vi.fn();
+      service.start(WIDGET, EMBED, '!r:hs', iframe).subscribe({ next, error });
+      return { release, arrived, iframe, addEventListener, next, error };
+    }
+
+    it('errors once the load deadline passes, and not before', async () => {
+      const { next, error } = await startWithGatedChunk();
+
+      await vi.advanceTimersByTimeAsync(WIDGET_RUNTIME_LOAD_TIMEOUT_MS - 1);
+      expect(error).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(error).toHaveBeenCalledTimes(1);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('binds nothing when the chunk arrives after the deadline', async () => {
+      const { release, arrived, iframe, addEventListener, next, error } =
+        await startWithGatedChunk();
+      await vi.advanceTimersByTimeAsync(WIDGET_RUNTIME_LOAD_TIMEOUT_MS);
+
+      release();
+      await arrived;
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(error).toHaveBeenCalledTimes(1);
+      expect(next).not.toHaveBeenCalled();
+      expect(addEventListener).not.toHaveBeenCalled();
+      expect(iframe.isConnected).toBe(true);
+    });
+
+    it('is unaffected when the chunk arrives before the deadline', async () => {
+      const { release, arrived, next, error } = await startWithGatedChunk();
+      await vi.advanceTimersByTimeAsync(WIDGET_RUNTIME_LOAD_TIMEOUT_MS - 1);
+
+      release();
+      await arrived;
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(WIDGET_RUNTIME_LOAD_TIMEOUT_MS);
+
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(error).not.toHaveBeenCalled();
+      next.mock.calls[0][0].stop();
+    });
   });
 });
