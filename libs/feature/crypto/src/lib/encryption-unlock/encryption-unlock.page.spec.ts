@@ -258,6 +258,9 @@ describe('EncryptionUnlockPage', () => {
       expect(message).toContain('lose their verified status');
       expect(message).toContain('new recovery key');
       expect(prompt.mock.calls[0][0].variant).toBe('danger');
+      // Named like the doors that lead here, so the user knows it is the same action.
+      expect(prompt.mock.calls[0][0].header).toBe('Reset your identity');
+      expect(prompt.mock.calls[0][0].confirmText).toBe('Reset identity');
     });
 
     it('shows the new key once, and only releases Done once it is saved', async () => {
@@ -560,7 +563,10 @@ describe('EncryptionUnlockPage', () => {
       await renderPage({ status: 'needs-recovery' });
 
       expect(screen.getByTestId('recovery-key-input')).toBeTruthy();
-      expect(screen.getByTestId('reset-recovery')).toBeTruthy();
+      // A quiet door to the same reset as "Reset my identity", so it shares the danger tone.
+      expect(screen.getByTestId('reset-recovery').getAttribute('variant')).toBe(
+        'danger',
+      );
       expect(screen.queryByTestId('reset-identity-intro')).toBeNull();
       expect(screen.queryByTestId('reset-identity')).toBeNull();
       expect(screen.getByText(/Enter the recovery key you saved/)).toBeTruthy();

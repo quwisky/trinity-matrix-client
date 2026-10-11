@@ -38,11 +38,11 @@ export function confirmResetIntent(
 ): Observable<ResetIntent> {
   return alert
     .prompt$({
-      header: 'Reset encryption',
+      header: 'Reset your identity',
       message: `${RESET_CONSEQUENCES}\n\nType ${RESET_CONFIRMATION_WORD} to confirm.`,
       placeholder: RESET_CONFIRMATION_WORD,
       inputLabel: `Type ${RESET_CONFIRMATION_WORD} to confirm`,
-      confirmText: 'Reset',
+      confirmText: 'Reset identity',
       cancelText: 'Cancel',
       variant: 'danger',
     })

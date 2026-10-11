@@ -231,6 +231,9 @@ describe('SecuritySectionComponent', () => {
       '[data-testid=security-reset-recovery]',
     );
     expect(lost).not.toBeNull();
+    // A quiet door to the same reset as "Reset my identity", so it shares the danger tone.
+    expect(lost?.getAttribute('variant')).toBe('danger');
+    expect(lost?.getAttribute('presentation')).toBe('ghost');
 
     lost?.click();
 
