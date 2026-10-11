@@ -6,6 +6,7 @@ import {
   Injector,
   afterNextRender,
   computed,
+  effect,
   inject,
   input,
   output,
@@ -204,6 +205,11 @@ export class MessageRowComponent {
   readonly revealed = signal(false);
 
   constructor() {
+    // A toolbar removed with a menu open (a revealed bar hidden by a scroll or an outside
+    // tap) never reports the menu closed, and a stale flag would pin every later bar.
+    effect(() => {
+      if (!this.toolbar()) this.menuOpen.set(false);
+    });
     this.destroyRef.onDestroy(() => {
       this.cancelLongPress();
       this.hideToolbar();

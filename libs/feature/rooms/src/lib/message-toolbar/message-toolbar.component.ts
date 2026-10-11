@@ -88,6 +88,9 @@ let nextPickerId = 0;
 })
 export class MessageToolbarComponent {
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly overflowOpen = signal(false);
+  /** A plain field, not a signal: the open state last reported, to emit only on change. */
+  private reportedOpen = false;
 
   readonly caps = input<MessageToolbarCaps>({
     canEdit: false,
@@ -118,8 +121,6 @@ export class MessageToolbarComponent {
   readonly quickEmojis = QUICK_EMOJIS;
   readonly pickerOpen = signal(false);
   readonly pickerBelow = signal(false);
-  private readonly overflowOpen = signal(false);
-  private reportedOpen = false;
   /** Unique id linking the reaction toggle to its picker via aria-controls. */
   readonly pickerId = `trn-reaction-picker-${nextPickerId++}`;
 
@@ -159,6 +160,8 @@ export class MessageToolbarComponent {
   }
 
   setOverflowOpen(open: boolean): void {
+    // One surface at a time: the menu replaces quick reactions rather than stacking on them.
+    if (open) this.pickerOpen.set(false);
     this.overflowOpen.set(open);
     this.reportOpen();
   }
