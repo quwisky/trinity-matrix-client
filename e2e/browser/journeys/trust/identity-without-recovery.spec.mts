@@ -107,7 +107,8 @@ test.describe('An identity set up elsewhere without recovery', () => {
     } as HomeserverSession);
     const banner = page.locator('trn-encryption-banner trn-banner');
     await expect(banner).toBeVisible({ timeout: 30_000 });
-    // Reset lives in Security only: the persistent banner offers nothing destructive.
+    // The banner offers nothing destructive here. This only guards against a regression:
+    // it never offered a reset in this state, and its actions are unit-tested.
     await expect(banner.getByRole('button', { name: /reset/i })).toHaveCount(0);
 
     // Settings opens over the rooms shell, so the same app instance shows the banner
