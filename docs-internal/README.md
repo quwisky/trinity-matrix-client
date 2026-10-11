@@ -5,6 +5,7 @@ This directory contains repository records and maintainer procedures that are in
 ## Contents
 
 - `decisions/` preserves accepted architecture decision records.
+- `research/` holds spike and investigation write-ups that await an owner decision.
 - `architecture/dependency-map.md` is generated from the current Nx graph.
 - `maintenance/ci-and-releases.md` covers private CI and release operations.
 - `maintenance/push-notifications.md` covers push infrastructure and operator setup.
