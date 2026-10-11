@@ -2,7 +2,15 @@ import type {
   TrustCryptoApi,
   TrustMatrixClient,
 } from '@trinity/data-access/matrix-client';
+import { withTimeout } from './recovery-reset';
 import type { TrustHealthSnapshot } from './trust-health.service';
+
+/**
+ * Clients whose homeserver has confirmed a published master key. A published identity
+ * is never removed, only replaced, so a confirmation lasts for the client's lifetime and
+ * a ready device asks the server once rather than on every device-list change.
+ */
+const confirmedPublished = new WeakSet<object>();
 
 /**
  * One coherent read of an Account's authoritative crypto state, usable for any live
@@ -18,6 +26,11 @@ import type { TrustHealthSnapshot } from './trust-health.service';
  * verified through another device on an Account without 4S never receives the private
  * keys (matrix-js-sdk 43 does not request missing secrets after verification), so it
  * reads `needs-setup` while only the holding device can set up recovery.
+ *
+ * `ready` also needs the server to publish a master key. A device whose first setup was
+ * retried after a cancelled upload holds an identity and secret storage that no server
+ * ever saw, so its recovery key cannot restore anything elsewhere (#1225). It reads
+ * `needs-recovery` (it has secret storage) instead of telling the user they are backed up.
  */
 export async function readTrustSnapshot(
   client: TrustMatrixClient,
@@ -31,7 +44,10 @@ export async function readTrustSnapshot(
       client.secretStorage.getDefaultKeyId(),
     ]);
   const thisDeviceVerified = await readThisDeviceVerified(client, crypto);
-  const ready = crossSigningReady && secretStorageReady;
+  const ready =
+    crossSigningReady &&
+    secretStorageReady &&
+    (await identityPublishedOrUnknown(client));
   // Only asked where there is no recovery: with secret storage the privates are
   // reachable through the recovery key, and a ready device needs nothing.
   const identityElsewhere =
@@ -51,6 +67,49 @@ export async function readTrustSnapshot(
     identityElsewhere,
     status,
   };
+}
+
+/**
+ * The Account's cross-signing master key as the homeserver publishes it (`/keys/query`),
+ * or null when the server has none. Throws when the server cannot be asked.
+ *
+ * The device's own view cannot answer this. A first setup cancelled before its upload
+ * leaves the olm machine holding an identity it created and marked verified, and a key
+ * query that returns no master key does not remove it, so `userHasCrossSigningKeys`,
+ * `getCrossSigningStatus` and `isCrossSigningReady` all report that identity (#1225).
+ */
+export async function readPublishedMasterKey(
+  client: Pick<TrustMatrixClient, 'downloadKeysForUsers' | 'getUserId'>,
+): Promise<string | null> {
+  const userId = client.getUserId();
+  if (!userId) {
+    throw new Error('No signed-in user to query cross-signing keys for.');
+  }
+  const response = await withTimeout(client.downloadKeysForUsers([userId]));
+  const keys = response.master_keys?.[userId]?.keys;
+  return (keys && Object.values(keys)[0]) || null;
+}
+
+/**
+ * Whether a device that reads ready locally has its identity on the server. Fails open:
+ * an offline device must not stop reading ready, and setup itself asks the server and
+ * fails closed (`TrustService.setUp`).
+ */
+async function identityPublishedOrUnknown(
+  client: Pick<TrustMatrixClient, 'downloadKeysForUsers' | 'getUserId'>,
+): Promise<boolean> {
+  if (confirmedPublished.has(client)) {
+    return true;
+  }
+  try {
+    if (!(await readPublishedMasterKey(client))) {
+      return false;
+    }
+  } catch {
+    return true;
+  }
+  confirmedPublished.add(client);
+  return true;
 }
 
 /** Whether this device is cross-signed by its own Account's identity. */

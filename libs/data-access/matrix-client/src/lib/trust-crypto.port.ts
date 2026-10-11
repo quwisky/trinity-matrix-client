@@ -37,6 +37,7 @@ export type TrustMatrixClient = Pick<
   MatrixClient,
   | 'deleteDevice'
   | 'deleteMultipleDevices'
+  | 'downloadKeysForUsers'
   | 'getDeviceId'
   | 'getDevices'
   | 'getUserId'
