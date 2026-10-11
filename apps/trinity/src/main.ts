@@ -27,6 +27,9 @@ void bootstrapApplication(ApplicationRootComponent, {
     provideTrinityApplication({
       routes,
       pushConfig: environment.push,
+      // matrix-js-sdk logs sync, crypto and request details at debug level; production
+      // builds keep its warnings and errors only.
+      matrixSdkLogLevel: environment.production ? 'warn' : 'debug',
       buildInfo: BUILD_INFO_VALUE,
       dialogLoaders: APPLICATION_DIALOG_LOADERS,
     }),

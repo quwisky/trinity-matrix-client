@@ -7,9 +7,16 @@ import {
   exportedKeysFor,
   type BuildInfo,
 } from '@trinity/platform-native';
+import { EnvironmentInjector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import {
+  configureMatrixSdkLogging,
+  matrixSdkLogLevel,
+} from '@trinity/data-access/matrix-client';
+import { NEVER } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { applicationCapabilityProviders } from './application-capability.providers';
+import { provideTrinityApplication } from './trinity-application.providers';
 
 describe('Trinity application provider composition', () => {
   it('pins portable Appearance descriptors to the Advanced config ledger', () => {
@@ -79,5 +86,30 @@ describe('Trinity application provider composition', () => {
       'push.gateway.appId is not a setting this version of Trinity has, so it will not be applied.',
     ]);
     expect(plan.ok && plan.changes).toEqual([]);
+  });
+
+  it('applies the host-selected matrix-js-sdk log level at startup', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideTrinityApplication({
+          routes: [],
+          pushConfig: null,
+          matrixSdkLogLevel: 'warn',
+          buildInfo: {} as BuildInfo,
+          dialogLoaders: {
+            settings: () => NEVER,
+            encryption: { unlock: () => NEVER, verify: () => NEVER },
+          },
+        }),
+      ],
+    });
+
+    try {
+      TestBed.inject(EnvironmentInjector);
+
+      expect(matrixSdkLogLevel()).toBe('warn');
+    } finally {
+      configureMatrixSdkLogging('debug');
+    }
   });
 });

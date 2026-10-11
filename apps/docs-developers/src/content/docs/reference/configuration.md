@@ -14,6 +14,8 @@ Configuration is split by owner. Do not create a second general-purpose environm
 
 `apps/trinity/src/environments/` selects production mode and an optional native push gateway configuration. Production builds replace the development environment file through the `trinity` target. Both environments point at the Trinity push gateway (`https://push.trinityproject.dev/_matrix/push/v1/notify`); a fork can set its own URL, or `null` to build without native push. Push is build configuration only: there is no per-device gateway setting.
 
+Production mode also sets matrix-js-sdk console logging. `main.ts` passes `matrixSdkLogLevel` to `provideTrinityApplication()`, which applies it through `provideMatrixSdkLogging()` from `@trinity/data-access/matrix-client` before any client is created. Production builds, including the Web and Electron renderer, log the SDK's warnings and errors only. Development builds keep its debug and info output, which covers sync, crypto and request details. To see that output, use a development build.
+
 A push gateway URL and public application identifier are configuration; FCM/APNs credentials and deployment procedures are not application source and do not belong in public documentation.
 
 ## Capacitor host {#capacitor-host}

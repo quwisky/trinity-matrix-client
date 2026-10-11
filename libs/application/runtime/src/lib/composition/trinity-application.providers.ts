@@ -22,6 +22,10 @@ import {
 } from '@trinity/application/workspace';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import { provideTrnOverlayDefaults } from '@trinity/components/overlay';
+import {
+  provideMatrixSdkLogging,
+  type MatrixSdkLogLevel,
+} from '@trinity/data-access/matrix-client';
 import type { PushConfig } from '@trinity/data-access/notifications';
 import {
   TrinityErrorHandler,
@@ -51,6 +55,8 @@ export interface TrinityApplicationDialogLoaders {
 export interface TrinityApplicationProviderOptions {
   readonly routes: Routes;
   readonly pushConfig: PushConfig | null;
+  /** matrix-js-sdk console verbosity; applied before any client is created. */
+  readonly matrixSdkLogLevel: MatrixSdkLogLevel;
   readonly buildInfo: BuildInfo;
   readonly dialogLoaders: TrinityApplicationDialogLoaders;
 }
@@ -65,6 +71,7 @@ export function provideTrinityApplication(
   options: TrinityApplicationProviderOptions,
 ): EnvironmentProviders {
   return makeEnvironmentProviders([
+    provideMatrixSdkLogging(options.matrixSdkLogLevel),
     provideZonelessChangeDetection(),
     provideHostCapabilities(),
     provideCapacitorPreferenceStorage(),
