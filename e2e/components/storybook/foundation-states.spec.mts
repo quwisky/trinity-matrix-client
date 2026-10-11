@@ -135,52 +135,39 @@ async function expectAttentionAction(
 }
 
 /**
- * #1224: the on-attention ring belongs to buttons, not to the surface. A ghost action on the
- * attention surface uses it; a text field inside keeps the normal ring. The field is
- * transparent, so that ring sits on the accent at about 1.3-1.45:1 in every Theme and mode.
- * The measured ratio is recorded as an annotation rather than asserted until the field's
- * treatment on an attention surface is decided.
+ * #1224: every focusable on an attention surface sits on the accent, so the surface switches
+ * them all to the on-attention ring. A text field (transparent, so its own background is the
+ * accent) and a ghost action both use it, at 3:1 or more against the surface.
  */
-async function expectAttentionScopedRing(
+async function expectAttentionSurfaceRing(
   page: Page,
   surface: Locator,
-  button: Locator,
-  field: Locator,
+  focusables: readonly Locator[],
 ): Promise<void> {
   const attentionSurface = await computedColour(surface, 'background-color');
-  await button.evaluate((element) =>
-    element.setAttribute('data-testid', 'attention-ghost-action'),
-  );
-  await button.focus();
-  await expect(button).toBeFocused();
-  const buttonRing = await computedColour(button, 'outline-color');
-  expect(buttonRing).toEqual(
-    await resolveTokenSrgb(
-      page,
-      'attention-ghost-action',
-      '--trinity-focus-ring-on-attention',
-    ),
-  );
-  expect(contrastRatio(buttonRing, attentionSurface)).toBeGreaterThanOrEqual(3);
-
-  await field.focus();
-  await expect(field).toBeFocused();
-  const fieldRing = await computedColour(field, 'border-top-color');
-  expect(fieldRing).toEqual(
-    await computedColour(page.locator('html'), '--trinity-focus-ring'),
-  );
-  const fieldBackground = await field.evaluate(
-    (element) => getComputedStyle(element).backgroundColor,
-  );
-  const ownBackground = /^rgba\(.*,\s*0\)$|^transparent$/u.test(fieldBackground)
-    ? attentionSurface
-    : await computedColour(field, 'background-color');
-  const ratio = contrastRatio(fieldRing, ownBackground);
-  test.info().annotations.push({
-    type: 'field ring contrast',
-    description: `${ratio.toFixed(2)}:1 ring ${JSON.stringify(fieldRing)} on ${JSON.stringify(ownBackground)} (field background ${fieldBackground})`,
-  });
-  await field.evaluate((element: HTMLElement) => element.blur());
+  for (const [index, focusable] of focusables.entries()) {
+    const testId = `attention-focusable-${index}`;
+    await focusable.evaluate(
+      (element, id) => element.setAttribute('data-testid', id),
+      testId,
+    );
+    await focusable.focus();
+    await expect(focusable).toBeFocused();
+    // Buttons draw the global outline; trnInput draws its ring as border and shadow.
+    const ring = await focusable.evaluate((element) =>
+      getComputedStyle(element).outlineStyle === 'none'
+        ? 'border-top-color'
+        : 'outline-color',
+    );
+    const ringColour = await computedColour(focusable, ring);
+    expect(contrastRatio(ringColour, attentionSurface)).toBeGreaterThanOrEqual(
+      3,
+    );
+    expect(ringColour).toEqual(
+      await resolveTokenSrgb(page, testId, '--trinity-focus-ring-on-attention'),
+    );
+    await focusable.evaluate((element: HTMLElement) => element.blur());
+  }
 }
 
 test.describe('semantic design foundations', () => {
@@ -299,6 +286,14 @@ test.describe('semantic design foundations', () => {
         theme.id,
         mode.id,
       );
+      await expectAttentionSurfaceRing(
+        page,
+        page.getByTestId('accent-overlay-surface'),
+        [
+          page.getByRole('textbox', { name: 'Recovery key' }),
+          page.getByRole('button', { name: 'Not now' }),
+        ],
+      );
       await expectAttentionAction(
         page,
         page.getByTestId('accent-overlay-surface'),
@@ -311,12 +306,6 @@ test.describe('semantic design foundations', () => {
         .poll(() => computedColour(overlayLink, 'background-color'))
         .toEqual(hoverSurface);
       await page.mouse.move(0, 0);
-      await expectAttentionScopedRing(
-        page,
-        page.getByTestId('accent-overlay-surface'),
-        page.getByRole('button', { name: 'Not now' }),
-        page.getByRole('textbox', { name: 'Recovery key' }),
-      );
 
       await openStory(page, 'components-input--default', theme.id, mode.id);
       const field = page.getByRole('textbox', { name: 'Room name' });

@@ -92,8 +92,8 @@ export const Feedback: Story = {
 /**
  * An accent dialog with its own primary action, an anchor and a ghost action. The surface
  * marks itself as an attention surface, so the solid actions invert to the on-attention roles
- * instead of an accent fill that would vanish on the accent ground, and every button uses the
- * on-attention focus ring. The text field is not a button, so it keeps the normal ring.
+ * instead of an accent fill that would vanish on the accent ground. Every focusable inside,
+ * the transparent text field included, sits on the accent and uses the on-attention ring.
  */
 export const AccentSurface: Story = {
   render: () => ({

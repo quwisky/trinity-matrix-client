@@ -120,8 +120,10 @@ describe('PageHeaderComponent', () => {
     fixture.componentRef.setInput('variant', 'accent');
     await fixture.whenStable();
     expect(header().getAttribute('data-trn-surface')).toBe('attention');
-    // The on-attention ring is scoped to trnBtn, so a field in the header keeps its own.
-    expect(header().className).not.toContain('focus-ring-on-attention');
+    // Every focusable in the header sits on the accent, so it gets the on-attention ring.
+    expect(header().className).toContain(
+      '[--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]',
+    );
 
     // The accent fill outranks the toolbar's workspace background, so the toolbar layout
     // paints the attention surface too and needs the same opt-in.
@@ -134,6 +136,14 @@ describe('PageHeaderComponent', () => {
       'bg-[var(--trinity-surface-workspace)]',
     );
     expect(header().getAttribute('data-trn-surface')).toBe('attention');
+    expect(header().className).toContain(
+      '[--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]',
+    );
+
+    // Back to neutral, the header stops declaring the attention context and its ring.
+    fixture.componentRef.setInput('variant', 'neutral');
+    await fixture.whenStable();
+    expect(header().hasAttribute('data-trn-surface')).toBe(false);
     expect(header().className).not.toContain('focus-ring-on-attention');
   });
 

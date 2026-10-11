@@ -21,6 +21,8 @@
   }
 
   .banner[data-variant='accent'] {
+    --trinity-focus-ring: var(--trinity-focus-ring-on-attention);
+
     background: var(--trinity-state-attention-surface);
     color: var(--trinity-state-attention-foreground);
   }

@@ -96,13 +96,9 @@ const nonSolidTone = {
 /**
  * One keyboard-focus ring for every button, matching `trnInput` and the global baseline.
  * `dark:focus-visible:ring-*` out-merges Helm destructive's `dark:focus-visible:ring-destructive/40`.
- *
- * On an attention surface every presentation sits directly on the accent, where the default
- * ring (the link colour) fails 3:1, so the button switches to the on-attention ring. It is set
- * on the button, not the surface, so a field or other control inside keeps its normal ring.
  */
 const focusRing =
-  'focus-visible:border-[color:var(--trinity-focus-ring)] focus-visible:ring-[color:var(--trinity-focus-ring)] dark:focus-visible:ring-[color:var(--trinity-focus-ring)] in-data-[trn-surface=attention]:[--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]';
+  'focus-visible:border-[color:var(--trinity-focus-ring)] focus-visible:ring-[color:var(--trinity-focus-ring)] dark:focus-visible:ring-[color:var(--trinity-focus-ring)]';
 
 /** A full-width list row: the label starts at the inline start and wraps instead of clipping. */
 const rowShape = 'h-auto w-full justify-start text-start whitespace-normal';

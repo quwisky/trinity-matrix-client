@@ -37,9 +37,9 @@ The shell uses two surface roles. `--trinity-surface-app` is the app background 
 
 A component that paints the attention surface (`--trinity-state-attention-surface`, the accent) marks its root `data-trn-surface="attention"`: the accent `trn-banner`, the accent `trn-page-header` in either layout, and an accent `trnOverlaySurface` do. Set the attribute only on a component that owns the attention surface, never from feature code.
 
-Inside that element, a solid primary `trnBtn` inverts to the `--trinity-state-attention-action-*` roles, because its normal accent fill would vanish on the accent ground. Every `trnBtn`, whatever its presentation, also switches to `--trinity-focus-ring-on-attention`, because the default ring fails against the accent. The ring switch is set on the button, so a text field or other control inside keeps the normal ring. In an accent overlay this includes the overlay's own primary action, which is the button that needs it. Menus and tooltips opened from inside render in a portal outside the surface and keep their normal look.
+Inside that element, a solid primary `trnBtn` inverts to the `--trinity-state-attention-action-*` roles, because its normal accent fill would vanish on the accent ground. In an accent overlay this includes the overlay's own primary action, which is the button that needs it. The surface also switches every focusable inside it, including buttons of any presentation, fields and links, to `--trinity-focus-ring-on-attention`, because they all sit on the accent and the default ring fails against it. Menus and tooltips opened from inside render in a portal outside the surface and keep their normal look.
 
-The attribute applies to every descendant, so neutral content placed directly inside an attention surface, such as a neutral card or banner, is unsupported: its buttons would invert too.
+Both effects apply to every descendant, so neutral content placed directly inside an attention surface, such as a neutral card or banner, is unsupported: its buttons would invert, and its focus ring would be tuned against the wrong background.
 
 Density has three options: cosy, compact, and spacious. Density changes spacing and sizing only and never sets colors; touch targets keep their 44px floor.
 

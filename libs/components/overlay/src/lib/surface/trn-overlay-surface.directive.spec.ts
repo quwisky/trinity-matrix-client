@@ -105,6 +105,7 @@ describe('Trinity overlay surface recipe', () => {
     const surface = getByTestId('variant-surface');
     // Neutral paints the raised surface; a solid button keeps its accent fill there.
     expect(surface.hasAttribute('data-trn-surface')).toBe(false);
+    expect(surface.className).not.toContain('focus-ring-on-attention');
 
     // Accent paints the attention surface, the same colour as a solid primary fill, so it
     // tells trnBtn to use the on-attention action roles instead, including for the
@@ -112,9 +113,10 @@ describe('Trinity overlay surface recipe', () => {
     fixture.componentInstance.variant.set('accent');
     await fixture.whenStable();
     expect(surface.getAttribute('data-trn-surface')).toBe('attention');
-    // The on-attention ring is scoped to trnBtn, so a field or a neutral card inside the
-    // surface keeps the normal ring.
-    expect(surface.className).not.toContain('focus-ring-on-attention');
+    // Every focusable inside sits on the accent, so it gets the on-attention ring.
+    expect(surface.className).toContain(
+      '[--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]',
+    );
 
     // Back to neutral, the surface stops declaring the attention context.
     fixture.componentInstance.variant.set('neutral');
