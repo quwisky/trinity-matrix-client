@@ -59,7 +59,13 @@ export const TRN_TOOLTIP_CONTENT_CLASSES = trn(
  * that stayed until the next interaction. Brain has no hook to filter focus and its `delay`
  * method is private, so a focus without a ring switches the tooltip off through the public
  * `mutableTooltipDisabled` signal; Brain checks it when the show delay elapses. Blur or a
- * pointer entering switches it back on, so hover is unaffected and Tab focus is evaluated anew.
+ * mouse or pen entering switches it back on, and a focus that lands while one is over the host
+ * (hover, then click within the show delay) is left alone, so hover is unaffected and Tab
+ * focus is evaluated anew.
+ *
+ * Known gap: after a dialog close Brain marks the restored focus as visible, so a later hover
+ * opens the tooltip and it outlives `pointerleave`. Closing it needs Brain's private `delay`,
+ * which this wrapper deliberately does not reach into.
  */
 @Directive({
   selector: '[trnTooltip]',
@@ -76,7 +82,8 @@ export const TRN_TOOLTIP_CONTENT_CLASSES = trn(
   host: {
     '(focusin)': 'suppressUnlessFocusVisible()',
     '(focusout)': 'restore()',
-    '(pointerenter)': 'restore()',
+    '(pointerenter)': 'hoverStart($event)',
+    '(pointerleave)': 'hoverEnd($event)',
   },
   hostDirectives: [
     {
@@ -87,12 +94,28 @@ export const TRN_TOOLTIP_CONTENT_CLASSES = trn(
   ],
 })
 export class TrnTooltip {
+  private hovered = false;
   private readonly tooltip = inject(BrnTooltip, { self: true });
   private readonly host =
     inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
   protected suppressUnlessFocusVisible(): void {
-    this.tooltip.mutableTooltipDisabled.set(!this.isFocusVisible());
+    if (!this.hovered) {
+      this.tooltip.mutableTooltipDisabled.set(!this.isFocusVisible());
+    }
+  }
+
+  protected hoverStart(event: PointerEvent): void {
+    if (isHoverPointer(event)) {
+      this.hovered = true;
+      this.restore();
+    }
+  }
+
+  protected hoverEnd(event: PointerEvent): void {
+    if (isHoverPointer(event)) {
+      this.hovered = false;
+    }
   }
 
   protected restore(): void {
@@ -107,4 +130,8 @@ export class TrnTooltip {
       return true;
     }
   }
+}
+
+function isHoverPointer(event: PointerEvent): boolean {
+  return event.pointerType === 'mouse' || event.pointerType === 'pen';
 }

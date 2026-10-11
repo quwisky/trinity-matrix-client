@@ -475,10 +475,9 @@ describe('MessageRowComponent', () => {
       '[data-testid=msg-shield-grey]',
     ) as HTMLElement;
 
-    // jsdom's :focus-visible depends on earlier pointer events, so state the keyboard intent.
-    vi.spyOn(shield, 'matches').mockImplementation(
-      (selector) => selector === ':focus-visible',
-    );
+    // @testing-library/user-event is not installed, so express keyboard intent by hand: a Tab
+    // keydown right before focus is what makes a browser (and jsdom) report :focus-visible.
+    fireEvent.keyDown(document.body, { key: 'Tab' });
     shield.focus();
     expect(document.activeElement).toBe(shield); // tabindex actually took
     fireEvent.focus(shield);
