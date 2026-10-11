@@ -9,6 +9,7 @@ import {
   throwError,
 } from 'rxjs';
 import { Capacitor } from '@capacitor/core';
+import { Filesystem } from '@capacitor/filesystem';
 import {
   Camera,
   CameraErrorCode,
@@ -85,10 +86,12 @@ export class MediaPickerService {
    * {@link GalleryPermissionDeniedError} — so the composer shows feedback instead of an
    * unhandled rejection.
    *
-   * A photo whose plugin-reported size is over `maxBytes` is skipped BEFORE its bytes are
+   * A photo whose size on disk is over `maxBytes` is skipped BEFORE its bytes are
    * fetched into the WebView and counted in {@link PickedImages.oversized}, so the caller can
-   * say so while the rest still arrive. A photo with no reported size is read as before, and
-   * the caller's own size check on the file still applies. `maxBytes` may still be resolving
+   * say so while the rest still arrive. The size is a filesystem `stat` of the picked file, not
+   * the plugin's `includeMetadata`, which decodes every photo in full to build its EXIF. A photo
+   * whose size cannot be read is fetched as before, and the caller's own size check on the file
+   * still applies. `maxBytes` may still be resolving
    * when the gallery opens: it is awaited only after the user has chosen, so a slow lookup
    * never delays the picker and a dismissed picker never waits for it.
    *
@@ -107,7 +110,6 @@ export class MediaPickerService {
         from(
           Camera.chooseFromGallery({
             allowMultipleSelection: true,
-            includeMetadata: true,
           }),
         ),
       ),
@@ -217,7 +219,8 @@ function errorCode(err: unknown): string | undefined {
 }
 
 /**
- * Read every result within `maxBytes` into a File and count the ones over it, unread.
+ * Read every result within `maxBytes` into a File and count the ones over it, unread. The
+ * sizes are stat-ed in parallel.
  * `allSettled`, not `all`: one photo whose `webPath` will not fetch must cost you that photo,
  * not the other nine — the same principle the batch send commits to.
  */
@@ -225,9 +228,13 @@ async function materialize(
   results: readonly MediaResult[],
   maxBytes: number | null,
 ): Promise<PickedImages> {
-  const readable = results.filter((result) => {
-    const size = result.metadata?.size;
-    return maxBytes === null || typeof size !== 'number' || size <= maxBytes;
+  const sizes =
+    maxBytes === null
+      ? []
+      : await Promise.all(results.map((result) => sizeOnDisk(result)));
+  const readable = results.filter((_, i) => {
+    const size = sizes[i];
+    return size === undefined || maxBytes === null || size <= maxBytes;
   });
   const settled = await Promise.allSettled(readable.map((r) => toFile(r)));
   return {
@@ -236,6 +243,22 @@ async function materialize(
       .filter((file): file is File => file !== null),
     oversized: results.length - readable.length,
   };
+}
+
+/**
+ * A picked file's size in bytes from the filesystem, without reading it; undefined when it
+ * cannot be told (no `uri`, a failed stat, or a size that is not a positive number).
+ */
+async function sizeOnDisk(result: MediaResult): Promise<number | undefined> {
+  if (!result.uri) {
+    return undefined;
+  }
+  try {
+    const { size } = await Filesystem.stat({ path: result.uri });
+    return Number.isFinite(size) && size > 0 ? size : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Materialize a gallery result into a File via its web-accessible URL. */
