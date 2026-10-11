@@ -18,6 +18,19 @@ public struct HandoffAccount: Codable, Equatable {
         self.accessTokenExpiresAt = accessTokenExpiresAt
     }
 
+    /// The expiry for a value the app sent as epoch milliseconds. Nil for anything that is
+    /// not a usable instant, matching the Android store: a missing or non-numeric value, a
+    /// boolean (which bridges as an `NSNumber`), a non-finite number and a number at or below
+    /// zero. A bad value must not make every push read as expired.
+    public static func expiry(fromEpochMilliseconds raw: Any?) -> Date? {
+        guard let number = raw as? NSNumber,
+              CFGetTypeID(number as CFTypeRef) != CFBooleanGetTypeID()
+        else { return nil }
+        let milliseconds = number.doubleValue
+        guard milliseconds.isFinite, milliseconds > 0 else { return nil }
+        return Date(timeIntervalSince1970: milliseconds / 1000)
+    }
+
     /// Whether the token had expired at `now`. A token without an expiry never has.
     public func tokenExpired(at now: Date) -> Bool {
         guard let accessTokenExpiresAt else { return false }

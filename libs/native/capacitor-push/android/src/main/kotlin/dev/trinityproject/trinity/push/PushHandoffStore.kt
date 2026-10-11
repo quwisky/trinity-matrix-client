@@ -18,8 +18,7 @@ import org.json.JSONObject
 /**
  * The push handoff store: per account its homeserver URL, access token (with its expiry,
  * when it has one) and sound choice, and its room names and DM flags. Written by
- * PushHandoffPlugin, read by
- * TrinityMessagingService while the app is closed.
+ * PushHandoffPlugin, read by TrinityMessagingService while the app is closed.
  *
  * Every value is AES-256-GCM encrypted with a non-exportable Android Keystore key before it
  * reaches the private SharedPreferences file. Writes report failure as `false` and never

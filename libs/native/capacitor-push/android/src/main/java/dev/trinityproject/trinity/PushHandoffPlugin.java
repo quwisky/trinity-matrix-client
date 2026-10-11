@@ -23,8 +23,8 @@ import org.json.JSONObject;
 /**
  * Writes the push handoff store TrinityMessagingService reads while the app is closed: each
  * account's homeserver, access token (with its expiry, when it has one) and sound choice, and
- * its room names. PushHandoffService
- * in data-access/notifications is the only caller. Never logs what it stores.
+ * its room names. PushHandoffService in data-access/notifications is the only caller. Never
+ * logs what it stores.
  */
 @CapacitorPlugin(name = "PushHandoff")
 public class PushHandoffPlugin extends Plugin {

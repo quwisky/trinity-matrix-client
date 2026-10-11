@@ -128,12 +128,18 @@ class PushHandoffStoreTest {
         assertNull(accessTokenExpiryFrom(true))
         assertNull(accessTokenExpiryFrom(false))
         assertNull(accessTokenExpiryFrom(0))
+        assertNull(accessTokenExpiryFrom(-1))
         assertNull(accessTokenExpiryFrom(-5L))
         assertNull(accessTokenExpiryFrom(0.4))
         assertNull(accessTokenExpiryFrom(Double.NaN))
         assertNull(accessTokenExpiryFrom(Double.POSITIVE_INFINITY))
         assertNull(accessTokenExpiryFrom(Double.NEGATIVE_INFINITY))
         assertNull(accessTokenExpiryFrom(JSONObject()))
+    }
+
+    @Test
+    fun anAbsurdlyLargeExpirySaturatesAndIsNeverExpired() {
+        assertEquals(Long.MAX_VALUE, accessTokenExpiryFrom(1e30))
     }
 
     @Test
