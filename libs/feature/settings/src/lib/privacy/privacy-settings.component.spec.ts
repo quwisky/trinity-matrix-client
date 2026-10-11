@@ -11,18 +11,20 @@ import {
   providePrivacyPreferenceSet,
 } from '@trinity/platform-native';
 import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
-import { render } from '@trinity/testing';
+import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrivacySettingsComponent } from './privacy-settings.component';
 
 describe('PrivacySettingsComponent', () => {
   let previewsSupported: ReturnType<typeof signal<boolean | null>>;
+  let write: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     TestBed.resetTestingModule();
     previewsSupported = signal<boolean | null>(null);
+    write = vi.fn(() => of({ kind: 'completed' }));
   });
 
   function renderPage(captureSupported = false) {
@@ -34,7 +36,7 @@ describe('PrivacySettingsComponent', () => {
           provide: PREFERENCE_STORAGE_ADAPTER,
           useValue: {
             read: () => of({ kind: 'missing' }),
-            write: () => of({ kind: 'completed' }),
+            write,
           },
         },
         MockProvider(UrlPreviewService, { supported: previewsSupported }),
@@ -105,5 +107,38 @@ describe('PrivacySettingsComponent', () => {
     expect(
       container.querySelector('[data-testid=privacy-save-captures-to-gallery]'),
     ).toBeNull();
+  });
+
+  it('offers keeping photo metadata, off, and explains what it shares', async () => {
+    const { container } = await renderPage();
+
+    const toggle = screen.getByRole('switch', { name: 'Keep photo metadata' });
+    expect(toggle).not.toBeChecked();
+    expect(toggle).toHaveAccessibleDescription(/where and on what device/);
+    expect(toggle).toHaveAccessibleDescription(/HDR and Motion Photo/);
+    expect(
+      container.querySelector('[data-testid=privacy-keep-photo-metadata]')
+        ?.textContent,
+    ).toContain('Profile and room photos');
+  });
+
+  it('saves keeping photo metadata on this device', async () => {
+    const { fixture } = await renderPage();
+    const toggle = screen.getByRole('switch', { name: 'Keep photo metadata' });
+
+    toggle.click();
+    await fixture.whenStable();
+
+    expect(write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: 'trinity.privacy.keep-photo-metadata',
+        storage: 'device-preferences',
+        payload: '{"version":1,"value":true}',
+      }),
+    );
+    expect(TestBed.inject(PrivacySettingsService).keepPhotoMetadata()).toBe(
+      true,
+    );
+    expect(toggle).toBeChecked();
   });
 });

@@ -12,12 +12,12 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
-// Covers power-level editing: from the member info panel an admin uses a role
+// Covers power-level editing: from the member info dialog an admin uses a role
 // button (data-testid="member-info-role-50" = Moderator), confirms
 // (data-testid="alert-confirm"), and the member is promoted
-// (RoomModerationService.setPowerLevel → client.setPowerLevel → sync), moving them
-// into the Moderator section of the member list. Needs a Synapse homeserver
-// (Docker); self-skips otherwise.
+// (RoomModerationService.setPowerLevel → client.setPowerLevel → sync). Member info
+// closes itself and the member list it opened over shows them in the Moderator
+// section. Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = homeserverSession();
 
 interface ApiUser {
@@ -109,19 +109,24 @@ test.describe('Promote a member', () => {
       page.locator('.members__section-label', { hasText: 'Moderator' }),
     ).toHaveCount(0);
 
-    // Open the member's panel and make them a Moderator.
+    // Open the member's info over the list and make them a Moderator.
     const memberRow = page.locator('[data-testid="member-row"]', {
       hasText: memberName,
     });
     await memberRow.first().waitFor({ state: 'visible', timeout: 20_000 });
     await memberRow.first().click();
-    await expect(page.getByTestId('member-info')).toBeVisible({
+    const memberInfo = page.getByRole('dialog', { name: 'Member info' });
+    await expect(memberInfo.getByTestId('member-info')).toBeVisible({
       timeout: 10_000,
     });
+    await expect(page.locator('.chat-members')).toBeVisible();
     await page.getByTestId('member-info-role-50').click();
     await page.getByTestId('alert-confirm').click();
 
-    // The member now sits under a Moderator section.
+    // Member info closes once the change lands, back to the list it opened over, where the
+    // member now sits under a Moderator section.
+    await expect(memberInfo).toHaveCount(0, { timeout: 30_000 });
+    await expect(page.locator('.chat-members')).toBeVisible();
     const moderatorSection = page.locator('.members__section', {
       has: page.locator('.members__section-label', { hasText: 'Moderator' }),
     });

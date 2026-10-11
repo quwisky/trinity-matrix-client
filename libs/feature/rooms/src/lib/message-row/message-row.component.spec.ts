@@ -475,6 +475,9 @@ describe('MessageRowComponent', () => {
       '[data-testid=msg-shield-grey]',
     ) as HTMLElement;
 
+    // @testing-library/user-event is not installed, so express keyboard intent by hand: a Tab
+    // keydown right before focus is what makes a browser (and jsdom) report :focus-visible.
+    fireEvent.keyDown(document.body, { key: 'Tab' });
     shield.focus();
     expect(document.activeElement).toBe(shield); // tabindex actually took
     fireEvent.focus(shield);

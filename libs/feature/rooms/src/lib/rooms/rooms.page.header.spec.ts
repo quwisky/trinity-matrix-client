@@ -309,15 +309,7 @@ function renderHeader(
         },
         {
           provide: MemberActionsService,
-          useFactory: (surfaces: RoomSurfaceLifecycle) => ({
-            onSelectMember: (member: MemberSummary) =>
-              surfaces.transition({
-                kind: 'open-member',
-                member,
-                direct: false,
-              }),
-          }),
-          deps: [RoomSurfaceLifecycle],
+          useValue: { onSelectMember: vi.fn() },
         },
         { provide: AccountRoutingService, useValue: {} },
         { provide: InviteActionsService, useValue: {} },

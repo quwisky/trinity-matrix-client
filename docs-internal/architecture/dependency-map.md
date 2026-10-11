@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **68 Nx projects** and **270 dependencies**. No project cycles detected.
+This snapshot contains **70 Nx projects** and **273 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -35,7 +35,7 @@ Capability-to-capability dependencies are valid only inside the same named capab
 | `role:application`   |        7 | `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`             |
 | `role:capability`    |       14 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
 | `role:kernel`        |        5 | `role:kernel`                                                                                          |
-| `role:adapter`       |        4 | `role:adapter`, `role:kernel`                                                                          |
+| `role:adapter`       |        6 | `role:adapter`, `role:kernel`                                                                          |
 | `role:design-system` |       19 | `role:design-system`, `role:kernel`, `role:adapter`                                                    |
 
 ## Frozen dependency exceptions
@@ -141,7 +141,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `data-access-matrix-client`       | `libs/data-access/matrix-client`       | role:adapter; capability:matrix-runtime         |                   4 |
 | `data-access-media`               | `libs/data-access/media`               | role:adapter; capability:media                  |                   2 |
 | `data-access-notifications`       | `libs/data-access/notifications`       | role:capability; capability:notifications       |                   7 |
-| `data-access-room-administration` | `libs/data-access/room-administration` | role:capability; capability:room-administration |                   3 |
+| `data-access-room-administration` | `libs/data-access/room-administration` | role:capability; capability:room-administration |                   4 |
 | `data-access-room-library`        | `libs/data-access/room-library`        | role:capability; capability:room-library        |                   6 |
 | `data-access-timeline`            | `libs/data-access/timeline`            | role:capability; capability:conversations       |                   6 |
 | `data-access-trust`               | `libs/data-access/trust`               | role:capability; capability:trust               |                   3 |
@@ -157,6 +157,8 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `feature-settings`                | `libs/feature/settings`                | role:application; capability:settings           |                  23 |
 | `label`                           | `libs/spartan/label`                   | role:design-system; capability:design-system    |                   1 |
 | `native-capacitor-push`           | `libs/native/capacitor-push`           | role:adapter; capability:host                   |                   0 |
+| `native-capacitor-push-android`   | `libs/native/capacitor-push/android`   | role:adapter; capability:host                   |                   0 |
+| `native-capacitor-push-ios`       | `libs/native/capacitor-push/ios`       | role:adapter; capability:host                   |                   0 |
 | `platform-native`                 | `libs/platform-native`                 | role:adapter; capability:host                   |                   6 |
 | `progress`                        | `libs/spartan/progress`                | role:design-system; capability:design-system    |                   1 |
 | `projection-runtime`              | `libs/runtime/projection`              | role:kernel; capability:shared                  |                   0 |
@@ -171,7 +173,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `theme-foundation`                | `libs/theme-foundation`                | role:kernel; capability:design-system           |                   0 |
 | `tooltip`                         | `libs/spartan/tooltip`                 | role:design-system; capability:design-system    |                   1 |
 | `trinity`                         | `apps/trinity`                         | role:app; capability:composition                |                   8 |
-| `trinity-android`                 | `android`                              | role:app; capability:composition                |                   1 |
+| `trinity-android`                 | `android`                              | role:app; capability:composition                |                   2 |
 | `trinity-desktop`                 | `electron`                             | role:app; capability:composition                |                   1 |
 | `trinity-e2e`                     | `e2e`                                  | unmanaged tooling/test                          |                   2 |
 | `trinity-e2e-browser`             | `e2e/browser`                          | unmanaged tooling/test                          |                   5 |
@@ -181,7 +183,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `trinity-e2e-protocol`            | `e2e/protocol`                         | unmanaged tooling/test                          |                   4 |
 | `trinity-e2e-support`             | `e2e/support`                          | unmanaged tooling/test                          |                   0 |
 | `trinity-e2e-web`                 | `e2e/web`                              | unmanaged tooling/test                          |                   6 |
-| `trinity-ios`                     | `ios`                                  | role:app; capability:composition                |                   1 |
+| `trinity-ios`                     | `ios`                                  | role:app; capability:composition                |                   2 |
 | `trinity-web-container`           | `container`                            | role:app; capability:composition                |                   1 |
 | `util-matrix`                     | `libs/util/matrix`                     | role:kernel; capability:shared                  |                   0 |
 | `util-ui`                         | `libs/util/ui`                         | role:design-system; capability:design-system    |                   0 |

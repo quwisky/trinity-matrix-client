@@ -97,6 +97,11 @@ const TEST_PRIVACY_PREFERENCES: PrivacyPreferenceSet = {
     'trinity.privacy.save-captures-to-gallery',
     false,
   ),
+  keepPhotoMetadata: testPrivacyPreference(
+    'conversations.test.keep-photo-metadata',
+    'trinity.privacy.keep-photo-metadata',
+    false,
+  ),
 };
 
 /** The app's wiring: the platform entries registered, as `main.ts` does it. */
@@ -277,6 +282,7 @@ describe('AppConfigService', () => {
 
       expect(at(settings, 'shell.sidebarWidth')).toBe(420);
       expect(at(settings, 'privacy.sendReadReceipts')).toBe(true);
+      expect(at(settings, 'privacy.keepPhotoMetadata')).toBe(false);
       expect(at(settings, 'flags.virtualTimeline')).toBe(true);
       // The stored key must not leak into the document — the path IS the format.
       expect(JSON.stringify(settings)).not.toContain(

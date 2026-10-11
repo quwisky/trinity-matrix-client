@@ -9,6 +9,7 @@ import {
   throwError,
 } from 'rxjs';
 import { Capacitor } from '@capacitor/core';
+import { Filesystem } from '@capacitor/filesystem';
 import {
   Camera,
   CameraErrorCode,
@@ -33,6 +34,13 @@ class GalleryPermissionDeniedError extends Error {
     super('Photo access is denied. Enable it in Settings to attach images.');
     this.name = 'GalleryPermissionDeniedError';
   }
+}
+
+/** What {@link MediaPickerService.pickImages} resolved: the photos it read, and how many it skipped. */
+export interface PickedImages {
+  readonly files: File[];
+  /** Photos whose reported size was over `maxBytes`; their bytes were never read. */
+  readonly oversized: number;
 }
 
 /**
@@ -78,36 +86,44 @@ export class MediaPickerService {
    * {@link GalleryPermissionDeniedError} — so the composer shows feedback instead of an
    * unhandled rejection.
    *
+   * A photo whose size on disk is over `maxBytes` is skipped BEFORE its bytes are
+   * fetched into the WebView and counted in {@link PickedImages.oversized}, so the caller can
+   * say so while the rest still arrive. The size is a filesystem `stat` of the picked file, not
+   * the plugin's `includeMetadata`, which decodes every photo in full to build its EXIF. A photo
+   * whose size cannot be read is fetched as before, and the caller's own size check on the file
+   * still applies. `maxBytes` may still be resolving
+   * when the gallery opens: it is awaited only after the user has chosen, so a slow lookup
+   * never delays the picker and a dismissed picker never waits for it.
+   *
    * Materializing runs in parallel, unlike the SEND: each is a local `fetch` of a
    * `file://`/blob URL the WebView already holds, with none of the ordering, memory or
    * scheduler constraints that make uploads sequential.
    */
-  pickImages(): Observable<File[]> {
+  pickImages(
+    maxBytes?: number | null | PromiseLike<number | null>,
+  ): Observable<PickedImages> {
     if (!this.available) {
-      return of([]);
+      return of({ files: [], oversized: 0 });
     }
     return defer(() => from(this.ensurePhotoAccess())).pipe(
       switchMap(() =>
-        from(Camera.chooseFromGallery({ allowMultipleSelection: true })),
+        from(
+          Camera.chooseFromGallery({
+            allowMultipleSelection: true,
+          }),
+        ),
       ),
       switchMap((res) =>
         from(
-          // `allSettled`, not `all`: one photo whose `webPath` will not fetch must cost you
-          // that photo, not the other nine — the same principle the batch send commits to.
-          Promise.allSettled(res.results.map((result) => toFile(result))).then(
-            (settled) =>
-              settled
-                .map((entry) =>
-                  entry.status === 'fulfilled' ? entry.value : null,
-                )
-                .filter((file): file is File => file !== null),
+          Promise.resolve(maxBytes ?? null).then((limit) =>
+            materialize(res.results, limit),
           ),
         ),
       ),
       catchError((err: unknown) => {
         // Dismissing the picker is a user choice, not a failure → null, no error.
         if (errorCode(err) === CameraErrorCode.ChooseMediaCancelled) {
-          return of([]);
+          return of({ files: [], oversized: 0 });
         }
         // A denial raised at pick time (rather than the gate) normalizes to the
         // same typed error, so there's a single clear message to show.
@@ -200,6 +216,49 @@ function errorCode(err: unknown): string | undefined {
     return String((err as { code: unknown }).code);
   }
   return undefined;
+}
+
+/**
+ * Read every result within `maxBytes` into a File and count the ones over it, unread. The
+ * sizes are stat-ed in parallel.
+ * `allSettled`, not `all`: one photo whose `webPath` will not fetch must cost you that photo,
+ * not the other nine — the same principle the batch send commits to.
+ */
+async function materialize(
+  results: readonly MediaResult[],
+  maxBytes: number | null,
+): Promise<PickedImages> {
+  const sizes =
+    maxBytes === null
+      ? []
+      : await Promise.all(results.map((result) => sizeOnDisk(result)));
+  const readable = results.filter((_, i) => {
+    const size = sizes[i];
+    return size === undefined || maxBytes === null || size <= maxBytes;
+  });
+  const settled = await Promise.allSettled(readable.map((r) => toFile(r)));
+  return {
+    files: settled
+      .map((entry) => (entry.status === 'fulfilled' ? entry.value : null))
+      .filter((file): file is File => file !== null),
+    oversized: results.length - readable.length,
+  };
+}
+
+/**
+ * A picked file's size in bytes from the filesystem, without reading it; undefined when it
+ * cannot be told (no `uri`, a failed stat, or a size that is not a positive number).
+ */
+async function sizeOnDisk(result: MediaResult): Promise<number | undefined> {
+  if (!result.uri) {
+    return undefined;
+  }
+  try {
+    const { size } = await Filesystem.stat({ path: result.uri });
+    return Number.isFinite(size) && size > 0 ? size : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Materialize a gallery result into a File via its web-accessible URL. */

@@ -1,0 +1,7 @@
+{
+  "name": "native-capacitor-push-android",
+  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+  "//": "The plugin's Kotlin and Java module, split from the TypeScript project native-capacitor-push so that Nx maps these files here (the deepest project root owns a file). Owned by the TypeScript project, a native-only edit marked every TypeScript dependent affected; trinity-android reaches this project through an implicit dependency instead, so the edit still marks the Android host and the checks that depend on it. An .nxignore entry would not do: Nx drops ignored files from affected and hashing altogether, the Android host included.",
+  "projectType": "library",
+  "tags": ["type:platform", "scope:shared", "role:adapter", "capability:host"]
+}

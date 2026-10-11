@@ -33,6 +33,7 @@ import {
   throwError,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { withoutImageMetadata } from '@trinity/data-access/media';
 import type { RoomJoinRulesEventContent } from 'matrix-js-sdk/lib/@types/state_events';
 import { liveRoomState } from '@trinity/util/matrix';
 import {
@@ -174,12 +175,15 @@ export class RoomSettingsService {
       }
       this.permissions.assert(context.permissions.avatar);
       const { client, roomId } = context;
-      return from(
-        client.uploadContent(file, {
-          name: file.name,
-          type: file.type || 'application/octet-stream',
-        }),
-      ).pipe(
+      // A room photo is visible to everyone who can see the room, so it leaves without
+      // its location, camera and capture time, like any other photo.
+      return from(withoutImageMetadata(file)).pipe(
+        switchMap((upload) =>
+          client.uploadContent(upload, {
+            name: file.name,
+            type: file.type || 'application/octet-stream',
+          }),
+        ),
         switchMap((res) =>
           defer(() => {
             if (this.clientFor(target) !== client) {

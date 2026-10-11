@@ -46,9 +46,11 @@ import {
 import { AvatarComponent } from '@trinity/components/generic-content';
 
 /**
- * A room-scoped info panel for a member (avatar, name, id, live presence, role), shown
- * when a member row is clicked. It is the launch surface for member actions: **Message**
- * (closes resolving the user id so the host opens/reuses a DM), **Copy user ID**, and —
+ * A room-scoped info card for a member (avatar, name, id, live presence, role), shown
+ * when a member row is clicked: a dialog on a large screen, a bottom sheet on a phone or
+ * tablet or below `md`, or in place inside settings. It is the launch surface for member
+ * actions: **Message** (closes resolving the user id so the host opens/reuses a DM),
+ * **Copy user ID**, and —
  * when the viewer's power permits — **change role** and **remove / ban**. The moderation
  * writes run here; the host only handles the DM and computes the permission caps.
  */
@@ -68,7 +70,7 @@ import { AvatarComponent } from '@trinity/components/generic-content';
   templateUrl: './member-info.component.html',
   styleUrl: './member-info.component.scss',
   host: {
-    // In the document slot the shell row owns the height, so the panel surface inside fills it.
+    // Embedded in settings, the detail column owns the height, so the panel surface fills it.
     class: 'flex h-full flex-col',
     // Drives the panel presentation in the stylesheet — see the note on {@link isPanel}.
     '[class.member-info--panel]': 'isPanel',
@@ -80,6 +82,12 @@ export class MemberInfoComponent {
   readonly roomId = input.required<string>();
   /** Immutable Account owner when this panel is hosted from settings. */
   readonly accountId = input<string | null>(null);
+  /**
+   * The Account a Conversation opened this for. While it is the active Account the
+   * commands read the live active-Account room; if another Account becomes active before
+   * the host closes this, they stay on this one rather than following the switch.
+   */
+  readonly owningAccountId = input<string | null>(null);
   /** Whether the immutable Account-and-Room target can still supply live authority. */
   readonly exactTargetAvailable = input(true);
   readonly targetName = input('this room');
@@ -94,10 +102,10 @@ export class MemberInfoComponent {
   readonly embedded = input(false);
 
   /**
-   * Present when this is a DIALOG, absent when it is the shell's right-hand panel.
+   * Present when this is a dialog or sheet, absent when a host renders it in place.
    *
-   * The one surface that has to work both ways. Conversation member info belongs in the
-   * slot beside the timeline; settings embeds the same content inside its owning dialog.
+   * The one surface that has to work both ways. Member info from the member list opens
+   * through `TrnSurfaceService`; settings embeds the same content inside its owning dialog.
    * Rather than fork the component, every exit goes through {@link finish}, which closes
    * its own dialog when present and otherwise announces itself for the host to act on.
    */
@@ -106,19 +114,19 @@ export class MemberInfoComponent {
     { optional: true },
   );
 
-  /** The viewer picked "Message": open (or reuse) a DM with them. Panel mode only. */
+  /** The viewer picked "Message": open (or reuse) a DM with them. Embedded mode only. */
   readonly messageUser = output<string>();
-  /** Closed without picking anything. Panel mode only. */
+  /** Closed without picking anything. Embedded mode only. */
   readonly dismissed = output<void>();
 
   /**
-   * Whether this is the shell's right-hand panel rather than a dialog.
+   * Whether this renders in place (embedded in settings) rather than as a dialog or sheet.
    *
-   * The two presentations are genuinely different surfaces, not a skin: a dialog is a
-   * centred profile card that the backdrop and Escape dismiss, while the slot is a
-   * full-height panel with no backdrop and — above the `members` breakpoint — no Escape
-   * either, so it has to carry its own header and close button or there is no way out of
-   * it. Read from the ref rather than passed in, so the two can never disagree.
+   * The two presentations are genuinely different surfaces, not a skin: a dialog or sheet
+   * is a profile card on the shared shell that its X, the backdrop and Escape dismiss,
+   * while in place it is a full-height panel with no backdrop of its own, so it carries its
+   * own header and close button. Read from the ref rather than passed in, so the two can
+   * never disagree.
    */
   get isPanel(): boolean {
     return this.embedded() || !this.dialogRef;
@@ -142,16 +150,29 @@ export class MemberInfoComponent {
     this.ignoredUsers.isIgnored(this.member().userId),
   );
 
+  /** The owning Account is no longer the active one (the host is about to close this). */
+  private readonly ownerInactive = computed(() => {
+    const owner = this.owningAccountId();
+    return owner !== null && owner !== this.identity.activeUserId();
+  });
+
+  /** The Account the commands run as, when one is known. */
+  private readonly commandAccountId = computed(
+    () => this.accountId() ?? this.owningAccountId(),
+  );
+
   /** Live online status for the presence dot. */
   readonly presenceState = computed(() =>
-    this.accountId() ? null : this.presence.presenceFor(this.member().userId)(),
+    this.accountId() || this.ownerInactive()
+      ? null
+      : this.presence.presenceFor(this.member().userId)(),
   );
 
   /** Whether this row is the signed-in user — no point messaging yourself. */
   readonly isSelf = computed(
     () =>
       this.member().userId ===
-      (this.accountId() ?? this.identity.activeUserId()),
+      (this.commandAccountId() ?? this.identity.activeUserId()),
   );
 
   /** The member's role in the room, by the standard power-level convention. */
@@ -159,7 +180,9 @@ export class MemberInfoComponent {
   readonly direct = input(false);
 
   readonly target = computed(() => {
-    const accountId = this.accountId();
+    const accountId =
+      this.accountId() ??
+      (this.ownerInactive() ? this.owningAccountId() : null);
     return accountId ? { accountId, roomId: this.roomId() } : this.roomId();
   });
 
@@ -227,6 +250,8 @@ export class MemberInfoComponent {
    * comparison. Failure keeps the panel open with a toast.
    */
   verify(): void {
+    // Verification and blocking run as the active Account; never as one that replaced ours.
+    if (this.ownerInactive()) return;
     const userId = this.member().userId;
     this.verification
       .startUserVerification(userId, this.rooms.createDirectMessage(userId))
@@ -288,6 +313,7 @@ export class MemberInfoComponent {
 
   /** Block or unblock the member (account-wide ignore); flips the button on success. */
   toggleIgnore(): void {
+    if (this.ownerInactive()) return;
     const userId = this.member().userId;
     const wasIgnored = this.ignored();
     const action = wasIgnored
@@ -317,7 +343,7 @@ export class MemberInfoComponent {
     this.alert
       .prompt$({
         header: `Remove from ${this.noun().toLowerCase()}`,
-        message: `Remove ${this.member().roomDisplayName} from ${this.targetName()} using account ${this.accountId() ?? 'currently active'}? They can rejoin if invited or if this ${this.noun().toLowerCase()} is public.`,
+        message: `Remove ${this.member().roomDisplayName} from ${this.targetName()} using account ${this.commandAccountId() ?? 'currently active'}? They can rejoin if invited or if this ${this.noun().toLowerCase()} is public.`,
         confirmText: 'Remove',
         variant: 'danger',
         placeholder: 'Reason (optional)',
@@ -346,7 +372,7 @@ export class MemberInfoComponent {
     this.alert
       .prompt$({
         header: `Ban from ${this.noun().toLowerCase()}`,
-        message: `Ban ${this.member().roomDisplayName} from ${this.targetName()} using account ${this.accountId() ?? 'currently active'}? They won't be able to rejoin until they're unbanned.`,
+        message: `Ban ${this.member().roomDisplayName} from ${this.targetName()} using account ${this.commandAccountId() ?? 'currently active'}? They won't be able to rejoin until they're unbanned.`,
         confirmText: 'Ban',
         variant: 'danger',
         placeholder: 'Reason (optional)',
@@ -375,7 +401,7 @@ export class MemberInfoComponent {
     this.alert
       .confirm$({
         header: 'Change role',
-        message: `Change ${this.member().roomDisplayName}'s role in ${this.targetName()} to ${option.label} using account ${this.accountId() ?? 'currently active'}?`,
+        message: `Change ${this.member().roomDisplayName}'s role in ${this.targetName()} to ${option.label} using account ${this.commandAccountId() ?? 'currently active'}?`,
         confirmText: 'Change',
         // A demotion is the weightier direction.
         variant:
