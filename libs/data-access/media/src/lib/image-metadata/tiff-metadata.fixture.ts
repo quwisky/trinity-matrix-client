@@ -234,7 +234,7 @@ export function identifyingPage(
         v.rational(33434, 1, 125),
         v.text(36867, '2026:10:01 12:34:56'),
         v.text(36868, '2026:10:01 12:34:56'),
-        v.entry(37500, UNDEFINED, 24, ascii('Canon makernote 52.5200N')),
+        v.entry(37500, UNDEFINED, 24, ascii('Canon makernote lens1234')),
         v.entry(37510, UNDEFINED, 20, ascii('ASCII\0\0\0Shot at home')),
         v.shortEntry(40961, 1),
         v.text(42032, 'Alice Example'),
@@ -288,25 +288,42 @@ export function cleanPage(order: TiffOrder, label = 'page0'): FixtureIfd {
 }
 
 /**
- * The bytes a strip of `layout` must produce: the input with every target value zeroed,
- * and each GPS IFD's table and values zeroed.
+ * The bytes a strip of `layout` must produce: each GPS IFD's table and values zeroed and,
+ * unless the file is a camera raw, every other target value zeroed too.
  */
-export function expectedStrip(layout: TiffLayout): Uint8Array<ArrayBuffer> {
+export function expectedStrip(
+  layout: TiffLayout,
+  { raw = false }: { readonly raw?: boolean } = {},
+): Uint8Array<ArrayBuffer> {
   const out = layout.bytes.slice();
   for (const [key, [start, end]] of layout.values) {
     const [label = '', tagText = ''] = key.split(':');
     const tag = Number(tagText);
     const target = label.endsWith('-gps')
       ? true
-      : label.endsWith('-exif')
-        ? (EXIF_IFD_TARGETS as readonly number[]).includes(tag)
-        : (IMAGE_IFD_TARGETS as readonly number[]).includes(tag);
+      : raw
+        ? false
+        : label.endsWith('-exif')
+          ? (EXIF_IFD_TARGETS as readonly number[]).includes(tag)
+          : (IMAGE_IFD_TARGETS as readonly number[]).includes(tag);
     if (target) out.fill(0, start, end);
   }
   for (const [label, [start, end]] of layout.ifds) {
     if (label.endsWith('-gps')) out.fill(0, start, end);
   }
   return out;
+}
+
+/** {@link identifyingPage} as a DNG writes it: the same tags plus DNGVersion 1.4. */
+export function identifyingDngPage(order: TiffOrder): FixtureIfd {
+  const page = identifyingPage(order);
+  return {
+    ...page,
+    entries: [
+      ...page.entries,
+      tiffValues(order).entry(50706, BYTE, 4, Uint8Array.of(1, 4, 0, 0)),
+    ],
+  };
 }
 
 /** `count` empty IFDs chained one after another. */

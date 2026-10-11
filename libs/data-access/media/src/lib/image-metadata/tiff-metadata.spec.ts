@@ -17,6 +17,7 @@ import {
   TIFF_PIXELS,
   cleanPage,
   expectedStrip,
+  identifyingDngPage,
   identifyingPage,
   longChainTiff,
   manyEntriesTiff,
@@ -191,6 +192,72 @@ describe('stripImageMetadata: TIFF', () => {
     const out = stripped(tiffLayout('MM', pages).bytes);
 
     expect(containsAscii(out, 'Canon')).toBe(false);
+  });
+
+  describe('camera raw files', () => {
+    /** What a raw must keep: everything a raw converter reads, GPS aside. */
+    const RAW_KEEPS = [
+      'Canon',
+      'EOS R6',
+      'makernote',
+      'SN-0123456789',
+      'xpacket',
+    ];
+
+    it('blanks only the GPS IFD of a DNG, found by its DNGVersion tag', () => {
+      const layout = tiffLayout('II', [identifyingDngPage('II')]);
+
+      const out = stripped(layout.bytes);
+
+      expect(Array.from(out)).toEqual(
+        Array.from(expectedStrip(layout, { raw: true })),
+      );
+      for (const marker of RAW_KEEPS) {
+        expect(containsAscii(out, marker), marker).toBe(true);
+      }
+    });
+
+    it.each([
+      ['a raw file name', { name: 'DSC_0001.NEF' }],
+      ['a raw file name without a type', { name: 'IMG_0001.cr2', type: '' }],
+      ['a raw MIME type', { name: 'download', type: 'image/x-nikon-nef' }],
+      ['a DNG MIME type', { type: 'image/x-adobe-dng' }],
+    ])('blanks only the GPS IFD of a TIFF named by %s', (_label, hints) => {
+      const layout = tiffLayout('MM', [identifyingPage('MM')]);
+
+      const result = stripImageMetadata(layout.bytes, hints);
+      if (result.kind !== 'stripped') throw new Error(result.reason);
+
+      expect(Array.from(joinParts(result.parts))).toEqual(
+        Array.from(expectedStrip(layout, { raw: true })),
+      );
+    });
+
+    it('reports a raw file without GPS as clean', () => {
+      const layout = tiffLayout('MM', [
+        { ...identifyingPage('MM'), gps: undefined },
+      ]);
+
+      expect(
+        stripImageMetadata(layout.bytes, { name: 'DSC_0001.nef' }),
+      ).toEqual({ kind: 'unchanged', reason: 'clean' });
+    });
+
+    it.each([
+      ['a .tif name', { name: 'scan.tif', type: 'image/tiff' }],
+      ['a .tiff name', { name: 'scan.TIFF' }],
+      ['a raw-looking word that is not the extension', { name: 'nef.tif' }],
+      ['no name at all', {}],
+    ])('still blanks the full list for %s', (_label, hints) => {
+      const layout = tiffLayout('MM', [identifyingPage('MM')]);
+
+      const result = stripImageMetadata(layout.bytes, hints);
+      if (result.kind !== 'stripped') throw new Error(result.reason);
+
+      expect(Array.from(joinParts(result.parts))).toEqual(
+        Array.from(expectedStrip(layout)),
+      );
+    });
   });
 
   describe('fail-open', () => {

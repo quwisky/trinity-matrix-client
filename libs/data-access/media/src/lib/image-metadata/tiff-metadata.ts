@@ -1,4 +1,5 @@
 import {
+  type FileHints,
   CLEAN,
   MALFORMED,
   MAX_WALK_STEPS,
@@ -19,6 +20,35 @@ const SUB_IFDS = 330;
 const EXIF_IFD = 34665;
 const GPS_IFD = 34853;
 const INTEROPERABILITY_IFD = 40965;
+const DNG_VERSION = 50706;
+
+/**
+ * Camera raw formats built on TIFF, by file extension or the last part of a MIME subtype
+ * (`image/x-nikon-nef`, `image/x-adobe-dng`). Some (ORF, RW2, RAF, X3F, MRW) use their own
+ * magic and never reach this parser; they are listed so the rule reads as one set.
+ */
+const RAW_FORMATS = new Set([
+  'dng',
+  'cr2',
+  'nef',
+  'nrw',
+  'arw',
+  'srf',
+  'sr2',
+  'pef',
+  'orf',
+  'rw2',
+  'raf',
+  '3fr',
+  'iiq',
+  'erf',
+  'srw',
+  'mos',
+  'kdc',
+  'dcr',
+  'mrw',
+  'x3f',
+]);
 
 /**
  * Identifying tags of an image IFD: ImageDescription, Make, Model, Software, DateTime,
@@ -98,6 +128,10 @@ export function isTiff(bytes: Uint8Array): boolean {
 /**
  * Zero identifying values in a classic TIFF in place, so no offset anywhere moves.
  *
+ * A camera raw (any IFD carries DNGVersion, or `hints` name a raw format) only has its GPS
+ * IFD emptied. Raw converters read Make, Model, MakerNote and the rest to decode the
+ * sensor data, so those stay; GPS plays no part in decoding.
+ *
  * In every image IFD (the page chain and SubIFDs) the values of ImageDescription, Make,
  * Model, Software, DateTime, Artist, HostComputer, XMP, Copyright, IPTC and Photoshop
  * resources are zeroed; in each Exif IFD, capture times, MakerNote, UserComment, owner
@@ -110,9 +144,9 @@ export function isTiff(bytes: Uint8Array): boolean {
  * value that is kept and all image data; anything else leaves the file unchanged. TIFFs are
  * rare uploads, so the output is one modified copy rather than views into the input.
  */
-export function stripTiff(bytes: Bytes): FormatStrip {
+export function stripTiff(bytes: Bytes, hints: FileHints = {}): FormatStrip {
   try {
-    return blankIdentifyingValues(bytes);
+    return blankIdentifyingValues(bytes, namesRawFormat(hints));
   } catch (error: unknown) {
     if (error instanceof MalformedImage || error instanceof RangeError) {
       return MALFORMED;
@@ -121,7 +155,7 @@ export function stripTiff(bytes: Bytes): FormatStrip {
   }
 }
 
-function blankIdentifyingValues(bytes: Bytes): FormatStrip {
+function blankIdentifyingValues(bytes: Bytes, namedRaw: boolean): FormatStrip {
   const n = bytes.length;
   const little = bytes[0] === 0x49;
   const u16 = (at: number): number => {
@@ -134,6 +168,11 @@ function blankIdentifyingValues(bytes: Bytes): FormatStrip {
     little ? u16(at) + u16(at + 2) * 0x10000 : u16(at) * 0x10000 + u16(at + 2);
 
   const ifds = readIfds(u16, u32, n);
+  const raw =
+    namedRaw ||
+    ifds.some((ifd) => ifd.entries.some((entry) => entry.tag === DNG_VERSION));
+  const isTarget = (kind: IfdKind, tag: number): boolean =>
+    kind === 'gps' || (!raw && isIdentifying(kind, tag));
 
   // Where each entry's value lives: inline in its 4-byte field, or at the offset it holds.
   const valueRange = (entry: Entry): Range => {
@@ -202,6 +241,9 @@ function blankIdentifyingValues(bytes: Bytes): FormatStrip {
 
   if (!allTargets.some((range) => hasNonZero(bytes, range))) return CLEAN;
   const out = bytes.slice();
+  // Zeroed ASCII values keep their count, so libtiff warns that an ASCII value "contains
+  // null byte" when reading them back. The warning is harmless: the image decodes the same,
+  // and the tag reads as an empty string.
   for (const range of allTargets) out.fill(0, range.start, range.end);
   return { kind: 'stripped', parts: [out] };
 }
@@ -282,11 +324,22 @@ function readIfds(
   return ifds;
 }
 
-function isTarget(kind: IfdKind, tag: number): boolean {
-  if (kind === 'gps') return true;
+/** Whether `tag` is on the blanking list of an IFD of `kind` (GPS IFDs are emptied whole). */
+function isIdentifying(kind: IfdKind, tag: number): boolean {
   if (kind === 'image') return IMAGE_TARGETS.has(tag);
   if (kind === 'exif') return EXIF_TARGETS.has(tag);
   return false;
+}
+
+/** Whether the file name's extension or the MIME subtype names a camera raw format. */
+function namesRawFormat(hints: FileHints): boolean {
+  const extension = /\.([a-z0-9]+)$/iu.exec(hints.name ?? '')?.[1];
+  const subtype = /^image\/(?:[a-z0-9.+]+-)*([a-z0-9]+)$/iu.exec(
+    (hints.type ?? '').trim(),
+  )?.[1];
+  return [extension, subtype].some(
+    (name) => name !== undefined && RAW_FORMATS.has(name.toLowerCase()),
+  );
 }
 
 /** The `index`th SHORT or LONG of an offsets or lengths entry whose values start at `at`. */

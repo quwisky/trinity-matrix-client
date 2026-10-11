@@ -20,8 +20,9 @@ const IMAGE_DESCRIPTOR = 10;
 
 /**
  * Application extensions a decoder uses: loop control (Netscape and its AnimExts alias) and
- * an ICC colour profile, which JPEG, PNG and WebP keep too. Every other application
- * extension goes, among them XMP ("XMP DataXMP") and editor-private data.
+ * an ICC colour profile. The ICC profile is kept on purpose, as the JPEG, PNG and WebP
+ * strippers keep theirs: it is colour data, not identifying metadata. Every other
+ * application extension goes, among them XMP ("XMP DataXMP") and editor-private data.
  */
 const KEPT_APPLICATIONS = new Set([
   'NETSCAPE2.0',
