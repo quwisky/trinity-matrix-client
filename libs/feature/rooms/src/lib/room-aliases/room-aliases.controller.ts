@@ -48,6 +48,12 @@ export class RoomAliasesController {
   private readonly aliasModel = signal({ localpart: '' });
   private readonly targetSwitch = latestGuard();
   private targetToken = this.targetSwitch.next();
+  /**
+   * Adds and removals that succeeded since the current directory read started. That read
+   * may have reached the homeserver before them, so its answer is merged with these rather
+   * than replacing the list (#1227).
+   */
+  private sinceLoad = { added: new Set<string>(), removed: new Set<string>() };
   /** A newer directory load cancels the one still in flight. */
   private readonly loads = new Subject<{
     readonly target: RoomSettingsTarget;
@@ -102,7 +108,7 @@ export class RoomAliasesController {
       .subscribe(({ target, token, aliases }) => {
         if (!this.isCurrent(target, token)) return;
         this.loading.set(false);
-        if (aliases) this.aliases.set(aliases);
+        if (aliases) this.aliases.set(this.withLocalChanges(aliases));
         else this.loadFailed.set(true);
       });
   }
@@ -132,6 +138,7 @@ export class RoomAliasesController {
     this.loading.set(true);
     this.loadFailed.set(false);
     this.aliases.set([]);
+    this.sinceLoad = { added: new Set(), removed: new Set() };
     this.canonical.set(this.aliasesSvc.currentCanonical(target));
     this.loads.next({ target, token: this.targetToken });
   }
@@ -174,7 +181,11 @@ export class RoomAliasesController {
         next: () => {
           if (!this.isCurrent(target, token)) return;
           this.adding.set(false);
-          this.aliases.update((list) => [...list, alias]);
+          this.sinceLoad.added.add(alias);
+          this.sinceLoad.removed.delete(alias);
+          this.aliases.update((list) =>
+            list.includes(alias) ? list : [...list, alias],
+          );
           this.aliasForm().reset({ localpart: '' });
           this.toast.show(`Added ${alias}.`, {
             duration: 3000,
@@ -264,6 +275,13 @@ export class RoomAliasesController {
       });
   }
 
+  /** A directory answer, with the adds and removals that landed after its read began. */
+  private withLocalChanges(directory: readonly string[]): readonly string[] {
+    const { added, removed } = this.sinceLoad;
+    const kept = directory.filter((alias) => !removed.has(alias));
+    return [...kept, ...[...added].filter((alias) => !kept.includes(alias))];
+  }
+
   private runRemove(
     target: RoomSettingsTarget,
     token: LatestToken,
@@ -277,6 +295,8 @@ export class RoomAliasesController {
         next: () => {
           if (!this.isCurrent(target, token)) return;
           this.setRemoving(alias, false);
+          this.sinceLoad.removed.add(alias);
+          this.sinceLoad.added.delete(alias);
           this.aliases.update((list) => list.filter((item) => item !== alias));
           if (this.canonical() === alias) this.canonical.set(null);
           this.toast.show(`Removed ${alias}.`, {
