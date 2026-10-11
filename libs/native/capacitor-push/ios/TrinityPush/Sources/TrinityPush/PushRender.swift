@@ -31,7 +31,8 @@ public struct PushNotificationContent: Equatable {
 /// so the app's debug render probe runs the same path. The extension shows `fallback` at once
 /// and replaces it with `resolve()` when that finishes in time.
 public struct PushRender {
-    /// What to show if time runs out: the stored room name (else "Trinity") and "New message".
+    /// What to show if time runs out: the stored room name (else "Trinity") and "New message",
+    /// or the expired-token text when the stored token has expired.
     public let fallback: PushNotificationContent
     private let payload: PushPayload
     private let resolver: PushContentResolver

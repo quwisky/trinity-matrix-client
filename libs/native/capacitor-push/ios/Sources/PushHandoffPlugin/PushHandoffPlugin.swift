@@ -4,7 +4,8 @@ import UserNotifications
 
 /**
  * Writes the push handoff store the NotificationService extension reads: each account's
- * homeserver, access token and sound choice, and its room names. PushHandoffService in
+ * homeserver, access token (with its expiry, when it has one) and sound choice, and its room
+ * names. PushHandoffService in
  * data-access/notifications is the only caller (debug builds add renderProbe for the e2e
  * suite). Never logs what it stores.
  *
@@ -49,9 +50,17 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("Must provide userId, homeserverUrl, accessToken and sound")
             return
         }
+        // Epoch milliseconds from the app; absent for a token that does not expire on a schedule.
+        let expiresAt = (call.getValue("accessTokenExpiresAt") as? NSNumber)
+            .map { Date(timeIntervalSince1970: $0.doubleValue / 1000) }
         do {
             try store.setAccount(
-                HandoffAccount(homeserverUrl: homeserverUrl, accessToken: accessToken, sound: sound),
+                HandoffAccount(
+                    homeserverUrl: homeserverUrl,
+                    accessToken: accessToken,
+                    sound: sound,
+                    accessTokenExpiresAt: expiresAt
+                ),
                 for: userId
             )
             call.resolve()

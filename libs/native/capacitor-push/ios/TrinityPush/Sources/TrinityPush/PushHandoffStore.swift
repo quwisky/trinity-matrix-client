@@ -6,11 +6,22 @@ public struct HandoffAccount: Codable, Equatable {
     public let homeserverUrl: String
     public let accessToken: String
     public let sound: Bool
+    /// When `accessToken` stops working, for an OAuth account whose server gave it a
+    /// lifetime; nil when it does not expire on a schedule. Items stored before this field
+    /// existed decode as nil (synthesized `Codable` decodes optionals with `decodeIfPresent`).
+    public let accessTokenExpiresAt: Date?
 
-    public init(homeserverUrl: String, accessToken: String, sound: Bool) {
+    public init(homeserverUrl: String, accessToken: String, sound: Bool, accessTokenExpiresAt: Date? = nil) {
         self.homeserverUrl = homeserverUrl
         self.accessToken = accessToken
         self.sound = sound
+        self.accessTokenExpiresAt = accessTokenExpiresAt
+    }
+
+    /// Whether the token had expired at `now`. A token without an expiry never has.
+    public func tokenExpired(at now: Date) -> Bool {
+        guard let accessTokenExpiresAt else { return false }
+        return now >= accessTokenExpiresAt
     }
 }
 

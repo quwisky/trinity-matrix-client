@@ -64,3 +64,38 @@ final class PushHandoffStoreTests: XCTestCase {
         XCTAssertNil(store.account("@never-stored:hs"))
     }
 }
+
+/// The stored account record: items written before expiries existed must still decode.
+final class HandoffAccountTests: XCTestCase {
+    func testAnAccountStoredBeforeExpiriesExistedDecodesWithoutOne() throws {
+        let legacy = Data(#"{"homeserverUrl":"https://hs.example","accessToken":"token","sound":false}"#.utf8)
+
+        let account = try JSONDecoder().decode(HandoffAccount.self, from: legacy)
+
+        XCTAssertEqual(account, HandoffAccount(homeserverUrl: "https://hs.example", accessToken: "token", sound: false))
+        XCTAssertNil(account.accessTokenExpiresAt)
+        XCTAssertFalse(account.tokenExpired(at: .distantFuture))
+    }
+
+    func testTheExpiryRoundTripsThroughTheStoredEncoding() throws {
+        let account = HandoffAccount(
+            homeserverUrl: "https://hs.example",
+            accessToken: "token",
+            sound: true,
+            accessTokenExpiresAt: Date(timeIntervalSince1970: 1_760_000_000)
+        )
+
+        let decoded = try JSONDecoder().decode(HandoffAccount.self, from: JSONEncoder().encode(account))
+
+        XCTAssertEqual(decoded, account)
+    }
+
+    func testATokenHasExpiredFromItsExpiryInstantOn() {
+        let expiry = Date(timeIntervalSince1970: 1_000)
+        let account = HandoffAccount(homeserverUrl: "https://hs.example", accessToken: "token", sound: true, accessTokenExpiresAt: expiry)
+
+        XCTAssertFalse(account.tokenExpired(at: expiry.addingTimeInterval(-0.001)))
+        XCTAssertTrue(account.tokenExpired(at: expiry))
+        XCTAssertTrue(account.tokenExpired(at: expiry.addingTimeInterval(60)))
+    }
+}
