@@ -35,6 +35,13 @@ class GalleryPermissionDeniedError extends Error {
   }
 }
 
+/** What {@link MediaPickerService.pickImages} resolved: the photos it read, and how many it skipped. */
+export interface PickedImages {
+  readonly files: File[];
+  /** Photos whose reported size was over `maxBytes`; their bytes were never read. */
+  readonly oversized: number;
+}
+
 /**
  * Host adapter that picks and captures media for the composer. On a native platform it opens the
  * Capacitor gallery picker and materializes the choice into a `File`; on the web
@@ -78,36 +85,43 @@ export class MediaPickerService {
    * {@link GalleryPermissionDeniedError} — so the composer shows feedback instead of an
    * unhandled rejection.
    *
+   * A photo whose plugin-reported size is over `maxBytes` is skipped BEFORE its bytes are
+   * fetched into the WebView and counted in {@link PickedImages.oversized}, so the caller can
+   * say so while the rest still arrive. A photo with no reported size is read as before, and
+   * the caller's own size check on the file still applies. `maxBytes` may still be resolving
+   * when the gallery opens: it is awaited only after the user has chosen, so a slow lookup
+   * never delays the picker and a dismissed picker never waits for it.
+   *
    * Materializing runs in parallel, unlike the SEND: each is a local `fetch` of a
    * `file://`/blob URL the WebView already holds, with none of the ordering, memory or
    * scheduler constraints that make uploads sequential.
    */
-  pickImages(): Observable<File[]> {
+  pickImages(
+    maxBytes?: number | null | PromiseLike<number | null>,
+  ): Observable<PickedImages> {
     if (!this.available) {
-      return of([]);
+      return of({ files: [], oversized: 0 });
     }
     return defer(() => from(this.ensurePhotoAccess())).pipe(
       switchMap(() =>
-        from(Camera.chooseFromGallery({ allowMultipleSelection: true })),
+        from(
+          Camera.chooseFromGallery({
+            allowMultipleSelection: true,
+            includeMetadata: true,
+          }),
+        ),
       ),
       switchMap((res) =>
         from(
-          // `allSettled`, not `all`: one photo whose `webPath` will not fetch must cost you
-          // that photo, not the other nine — the same principle the batch send commits to.
-          Promise.allSettled(res.results.map((result) => toFile(result))).then(
-            (settled) =>
-              settled
-                .map((entry) =>
-                  entry.status === 'fulfilled' ? entry.value : null,
-                )
-                .filter((file): file is File => file !== null),
+          Promise.resolve(maxBytes ?? null).then((limit) =>
+            materialize(res.results, limit),
           ),
         ),
       ),
       catchError((err: unknown) => {
         // Dismissing the picker is a user choice, not a failure → null, no error.
         if (errorCode(err) === CameraErrorCode.ChooseMediaCancelled) {
-          return of([]);
+          return of({ files: [], oversized: 0 });
         }
         // A denial raised at pick time (rather than the gate) normalizes to the
         // same typed error, so there's a single clear message to show.
@@ -200,6 +214,28 @@ function errorCode(err: unknown): string | undefined {
     return String((err as { code: unknown }).code);
   }
   return undefined;
+}
+
+/**
+ * Read every result within `maxBytes` into a File and count the ones over it, unread.
+ * `allSettled`, not `all`: one photo whose `webPath` will not fetch must cost you that photo,
+ * not the other nine — the same principle the batch send commits to.
+ */
+async function materialize(
+  results: readonly MediaResult[],
+  maxBytes: number | null,
+): Promise<PickedImages> {
+  const readable = results.filter((result) => {
+    const size = result.metadata?.size;
+    return maxBytes === null || typeof size !== 'number' || size <= maxBytes;
+  });
+  const settled = await Promise.allSettled(readable.map((r) => toFile(r)));
+  return {
+    files: settled
+      .map((entry) => (entry.status === 'fulfilled' ? entry.value : null))
+      .filter((file): file is File => file !== null),
+    oversized: results.length - readable.length,
+  };
 }
 
 /** Materialize a gallery result into a File via its web-accessible URL. */

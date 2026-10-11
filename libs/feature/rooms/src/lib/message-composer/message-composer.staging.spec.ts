@@ -79,7 +79,7 @@ describe('MessageComposerComponent — staging files for the next send', () => {
     const { fixture } = await renderComposer({}, [
       MockProvider(MediaPickerService, {
         available: true,
-        pickImages: () => of(picked),
+        pickImages: () => of({ files: picked, oversized: 0 }),
       }),
     ]);
     const cmp = fixture.componentInstance;

@@ -1,6 +1,14 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from 'vitest';
 import { Capacitor } from '@capacitor/core';
 import { Camera } from '@capacitor/camera';
 import { MediaPickerService } from './media-picker.service';
@@ -51,7 +59,10 @@ describe('MediaPickerService host adapter', () => {
     const svc = makeService();
 
     expect(svc.available).toBe(false);
-    expect(await firstValueFrom(svc.pickImages())).toEqual([]);
+    expect(await firstValueFrom(svc.pickImages())).toEqual({
+      files: [],
+      oversized: 0,
+    });
     expect(chooseFromGallery).not.toHaveBeenCalled();
   });
 
@@ -75,11 +86,12 @@ describe('MediaPickerService host adapter', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const svc = makeService();
-    const files = await firstValueFrom(svc.pickImages());
+    const { files } = await firstValueFrom(svc.pickImages());
 
     expect(svc.available).toBe(true);
     expect(chooseFromGallery).toHaveBeenCalledWith({
       allowMultipleSelection: true,
+      includeMetadata: true,
     });
     expect(fetchMock).toHaveBeenCalledWith('blob:one');
     expect(fetchMock).toHaveBeenCalledWith('blob:two');
@@ -88,6 +100,114 @@ describe('MediaPickerService host adapter', () => {
     expect(files[0]?.type).toBe('image/png');
 
     vi.unstubAllGlobals();
+  });
+
+  describe('with a size limit', () => {
+    const okFetch = () =>
+      vi.fn().mockResolvedValue({
+        ok: true,
+        blob: () =>
+          Promise.resolve(
+            new Blob([new Uint8Array([1])], { type: 'image/png' }),
+          ),
+      });
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('never fetches a photo whose reported size is over the limit, and counts it', async () => {
+      isNative.mockReturnValue(true);
+      chooseFromGallery.mockResolvedValue({
+        results: [
+          { webPath: 'blob:huge', type: 'photo', metadata: { size: 300 } },
+          { webPath: 'blob:small', type: 'photo', metadata: { size: 100 } },
+        ],
+      });
+      const fetchMock = okFetch();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const { files, oversized } = await firstValueFrom(
+        makeService().pickImages(200),
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith('blob:small');
+      expect(fetchMock).not.toHaveBeenCalledWith('blob:huge');
+      expect(files).toHaveLength(1);
+      expect(oversized).toBe(1);
+    });
+
+    it('reads a photo exactly at the limit', async () => {
+      isNative.mockReturnValue(true);
+      chooseFromGallery.mockResolvedValue({
+        results: [
+          { webPath: 'blob:edge', type: 'photo', metadata: { size: 200 } },
+        ],
+      });
+      const fetchMock = okFetch();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const { files, oversized } = await firstValueFrom(
+        makeService().pickImages(200),
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith('blob:edge');
+      expect(files).toHaveLength(1);
+      expect(oversized).toBe(0);
+    });
+
+    it('still reads a photo whose size the plugin does not report', async () => {
+      isNative.mockReturnValue(true);
+      chooseFromGallery.mockResolvedValue({
+        results: [{ webPath: 'blob:unknown', type: 'photo' }],
+      });
+      const fetchMock = okFetch();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const { files, oversized } = await firstValueFrom(
+        makeService().pickImages(200),
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith('blob:unknown');
+      expect(files).toHaveLength(1);
+      expect(oversized).toBe(0);
+    });
+
+    it('awaits a limit that is still resolving after the picker returns', async () => {
+      isNative.mockReturnValue(true);
+      chooseFromGallery.mockResolvedValue({
+        results: [
+          { webPath: 'blob:huge', type: 'photo', metadata: { size: 300 } },
+        ],
+      });
+      const fetchMock = okFetch();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const { files, oversized } = await firstValueFrom(
+        makeService().pickImages(Promise.resolve(200)),
+      );
+
+      expect(fetchMock).not.toHaveBeenCalledWith('blob:huge');
+      expect(files).toHaveLength(0);
+      expect(oversized).toBe(1);
+    });
+
+    it('reads everything when the limit is null', async () => {
+      isNative.mockReturnValue(true);
+      chooseFromGallery.mockResolvedValue({
+        results: [
+          { webPath: 'blob:huge', type: 'photo', metadata: { size: 300 } },
+        ],
+      });
+      const fetchMock = okFetch();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const { files, oversized } = await firstValueFrom(
+        makeService().pickImages(null),
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith('blob:huge');
+      expect(files).toHaveLength(1);
+      expect(oversized).toBe(0);
+    });
   });
 
   it('keeps the photos that resolved when one of them cannot be fetched', async () => {
@@ -116,7 +236,7 @@ describe('MediaPickerService host adapter', () => {
     );
 
     const svc = makeService();
-    const files = await firstValueFrom(svc.pickImages());
+    const { files } = await firstValueFrom(svc.pickImages());
 
     expect(files).toHaveLength(1);
 
@@ -161,7 +281,7 @@ describe('MediaPickerService host adapter', () => {
     );
 
     const svc = makeService();
-    const files = await firstValueFrom(svc.pickImages());
+    const { files } = await firstValueFrom(svc.pickImages());
 
     expect(files).toHaveLength(1);
     expect(files[0]?.type).toBe('image/png');
@@ -188,7 +308,7 @@ describe('MediaPickerService host adapter', () => {
     );
 
     const svc = makeService();
-    const files = await firstValueFrom(svc.pickImages());
+    const { files } = await firstValueFrom(svc.pickImages());
 
     expect(files).toHaveLength(1);
 
@@ -217,7 +337,7 @@ describe('MediaPickerService host adapter', () => {
     );
 
     const svc = makeService();
-    const files = await firstValueFrom(svc.pickImages());
+    const { files } = await firstValueFrom(svc.pickImages());
 
     expect(requestPermissions).toHaveBeenCalledWith({
       permissions: ['photos'],
@@ -249,7 +369,7 @@ describe('MediaPickerService host adapter', () => {
     );
 
     const svc = makeService();
-    const files = await firstValueFrom(svc.pickImages());
+    const { files } = await firstValueFrom(svc.pickImages());
 
     expect(requestPermissions).not.toHaveBeenCalled(); // already answered
     expect(files).toHaveLength(1);
@@ -276,7 +396,10 @@ describe('MediaPickerService host adapter', () => {
 
     const svc = makeService();
 
-    expect(await firstValueFrom(svc.pickImages())).toEqual([]);
+    expect(await firstValueFrom(svc.pickImages())).toEqual({
+      files: [],
+      oversized: 0,
+    });
   });
 
   it('surfaces a denial raised at pick time as the permission error', async () => {
