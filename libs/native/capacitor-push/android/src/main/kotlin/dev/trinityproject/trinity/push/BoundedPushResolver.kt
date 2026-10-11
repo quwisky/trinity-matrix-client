@@ -16,9 +16,10 @@ class BoundedPushResolver(
     store: HandoffReader,
     api: MatrixApi,
     private val budgetMillis: Long = Deadline.BUDGET_MILLIS,
+    private val wallClock: () -> Long = System::currentTimeMillis,
 ) {
     private val store: HandoffReader = FaultTolerantReader(store)
-    private val resolver = PushResolver(this.store, api)
+    private val resolver = PushResolver(this.store, api, wallClock)
 
     fun resolve(data: Map<String, String>): PushOutcome {
         val pending = EXECUTOR.submit<PushOutcome> { resolver.resolve(data) }
@@ -36,7 +37,7 @@ class BoundedPushResolver(
         }
     }
 
-    private fun offline(data: Map<String, String>): PushOutcome = PushResolver(store, NoNetworkApi).resolve(data)
+    private fun offline(data: Map<String, String>): PushOutcome = PushResolver(store, NoNetworkApi, wallClock).resolve(data)
 
     /** A store fault reads as "no such account or room", which resolves to the generic fallback. */
     private class FaultTolerantReader(private val delegate: HandoffReader) : HandoffReader {

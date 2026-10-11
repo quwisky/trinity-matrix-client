@@ -12,6 +12,7 @@ import dev.trinityproject.trinity.push.DeliveredPushesKt;
 import dev.trinityproject.trinity.push.HandoffAccount;
 import dev.trinityproject.trinity.push.HandoffRoom;
 import dev.trinityproject.trinity.push.PushHandoffStore;
+import dev.trinityproject.trinity.push.PushHandoffStoreKt;
 import dev.trinityproject.trinity.push.PushTapKt;
 import dev.trinityproject.trinity.push.RoomNotificationKey;
 import java.util.HashMap;
@@ -21,7 +22,8 @@ import org.json.JSONObject;
 
 /**
  * Writes the push handoff store TrinityMessagingService reads while the app is closed: each
- * account's homeserver, access token and sound choice, and its room names. PushHandoffService
+ * account's homeserver, access token (with its expiry, when it has one) and sound choice, and
+ * its room names. PushHandoffService
  * in data-access/notifications is the only caller. Never logs what it stores.
  */
 @CapacitorPlugin(name = "PushHandoff")
@@ -43,7 +45,9 @@ public class PushHandoffPlugin extends Plugin {
             call.reject("Must provide userId, homeserverUrl, accessToken and sound");
             return;
         }
-        if (store.setAccount(userId, new HandoffAccount(homeserverUrl, accessToken, sound))) {
+        // Epoch milliseconds; absent for a token that does not expire on a schedule.
+        Long accessTokenExpiresAt = PushHandoffStoreKt.accessTokenExpiryFrom(call.getData().opt("accessTokenExpiresAt"));
+        if (store.setAccount(userId, new HandoffAccount(homeserverUrl, accessToken, sound, accessTokenExpiresAt))) {
             call.resolve();
         } else {
             call.reject("Could not store the push account");

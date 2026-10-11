@@ -16,8 +16,9 @@ import org.json.JSONException
 import org.json.JSONObject
 
 /**
- * The push handoff store: per account its homeserver URL, access token and sound choice,
- * and its room names and DM flags. Written by PushHandoffPlugin, read by
+ * The push handoff store: per account its homeserver URL, access token (with its expiry,
+ * when it has one) and sound choice, and its room names and DM flags. Written by
+ * PushHandoffPlugin, read by
  * TrinityMessagingService while the app is closed.
  *
  * Every value is AES-256-GCM encrypted with a non-exportable Android Keystore key before it
@@ -39,7 +40,8 @@ class PushHandoffStore internal constructor(
         JSONObject()
             .put("homeserverUrl", account.homeserverUrl)
             .put("accessToken", account.accessToken)
-            .put("sound", account.sound),
+            .put("sound", account.sound)
+            .apply { account.accessTokenExpiresAt?.let { put("accessTokenExpiresAt", it) } },
     )
 
     /** Upserts the given rooms; rooms not listed keep their entries. */
@@ -68,7 +70,12 @@ class PushHandoffStore internal constructor(
         val json = read(accountKey(userId)) ?: return null
         val homeserverUrl = PushRenderRules.stringOrNull(json, "homeserverUrl") ?: return null
         val accessToken = PushRenderRules.stringOrNull(json, "accessToken") ?: return null
-        return HandoffAccount(homeserverUrl, accessToken, json.optBoolean("sound", true))
+        return HandoffAccount(
+            homeserverUrl,
+            accessToken,
+            json.optBoolean("sound", true),
+            accessTokenExpiryFrom(json.opt("accessTokenExpiresAt")),
+        )
     }
 
     @Synchronized
@@ -111,6 +118,19 @@ class PushHandoffStore internal constructor(
     private companion object {
         const val FILE = "trinity_push_handoff"
     }
+}
+
+/**
+ * A token expiry as epoch milliseconds from any JSON number: the plugin call's value, or the
+ * stored one. Capacitor's `getLong` reads only numbers parsed as Long, so a whole number
+ * that fits an Integer, or one with a fraction, would otherwise be dropped. Null for
+ * anything else, including a non-positive or non-finite number: a bad value must not make
+ * every push read as expired.
+ */
+fun accessTokenExpiryFrom(raw: Any?): Long? {
+    val number = raw as? Number ?: return null
+    if (!number.toDouble().isFinite()) return null
+    return number.toLong().takeIf { it > 0 }
 }
 
 /** Seals and opens stored values; failures surface as exceptions the store maps to false/null. */
