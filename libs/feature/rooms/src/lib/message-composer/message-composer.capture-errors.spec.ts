@@ -89,8 +89,13 @@ describe('MessageComposerComponent — capture errors', () => {
     const { fixture } = await renderComposer({}, [
       failingCamera(new CaptureTooLargeError(200 * MB, 100 * MB)),
     ]);
+    vi.spyOn(TestBed.inject(MediaPipeline), 'uploadLimit').mockReturnValue(
+      of(100 * MB),
+    );
 
     fixture.componentInstance.onRecordVideo();
+    // The message names the limit the capture was held to, once that lookup has settled.
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(TestBed.inject(TrnToastService).show).toHaveBeenCalledWith(
       'That video is too large to send. Your homeserver accepts files up to 100 MB.',
