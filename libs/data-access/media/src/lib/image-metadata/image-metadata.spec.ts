@@ -604,7 +604,7 @@ describe('stripImageMetadata', () => {
 
   describe('anything else', () => {
     it.each([
-      ['GIF', ascii('GIF89a\x01\x00\x01\x00')],
+      ['a BMP', ascii('BM\x3a\x00\x00\x00\x00\x00\x00\x00')],
       [
         'an MP4 video',
         concat(Uint8Array.of(0, 0, 0, 0x18), ascii('ftypmp42\0\0\0\0mp42isom')),

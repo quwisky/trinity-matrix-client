@@ -11,6 +11,17 @@ export type FormatStrip =
   | { readonly kind: 'clean' }
   | { readonly kind: 'malformed' };
 
+/**
+ * What a caller knows about a file besides its bytes. The format is always judged by
+ * content; these only refine how a format is handled (a TIFF-based camera raw, say).
+ */
+export interface FileHints {
+  /** The file name, e.g. `DSC_0001.NEF`. */
+  readonly name?: string;
+  /** The MIME type, e.g. `image/x-nikon-nef`; often empty. */
+  readonly type?: string;
+}
+
 export const CLEAN: FormatStrip = { kind: 'clean' };
 export const MALFORMED: FormatStrip = { kind: 'malformed' };
 
