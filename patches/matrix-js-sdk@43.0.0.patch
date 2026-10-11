@@ -212,6 +212,70 @@ index cd840e00452252b417e042912aaf35c8f59da059..9b202c7ad38bf0841cca44b8089c2519
        this._currentUserParticipated = !!bundledRelationship.current_user_participated;
        const mapper = this.client.getEventMapper();
        // re-insert roomId
+diff --git a/lib/oauth/index.js b/lib/oauth/index.js
+index e333e24c6097c087a90ea15d3335bcf1d53f0994..ce72b16d58a3122ba43ea5edc80a480897d0a639 100644
+--- a/lib/oauth/index.js
++++ b/lib/oauth/index.js
+@@ -31,6 +31,14 @@ export * from "./error.js";
+ export * from "./register.js";
+ export * from "./discover.js";
+ 
++/**
++ * Trinity patch: how long a refresh token grant may take, as long as every other Matrix request
++ * Trinity makes (localTimeoutMs). The request has no other bound, so one the OS suspends mid-flight
++ * could hang and hold every request that waits on the refresh. Aborting fails it like a network
++ * error: the session stays signed in and the next request refreshes again.
++ */
++const REFRESH_TOKEN_GRANT_TIMEOUT_MS = 30000;
++
+ /**
+  * Type representing the persistent context needed for typical OAuth flows
+  */
+@@ -176,12 +184,20 @@ export class OAuth2 {
+     params.append("grant_type", "refresh_token");
+     params.append("client_id", this.context.clientId);
+     params.append("refresh_token", refreshToken);
+-    const res = await this.fetch("token", params, OAuth2Error.RefreshTokenFailed);
+-    const tokenResponse = await res.json();
+ 
+-    // throws when response is invalid
+-    validateBearerTokenResponse(tokenResponse);
+-    return normalizeBearerTokenResponseTokenType(tokenResponse);
++    // Trinity patch: abort the grant, body included, once it outlasts its bound.
++    const controller = new AbortController();
++    const timer = setTimeout(() => controller.abort(), REFRESH_TOKEN_GRANT_TIMEOUT_MS);
++    try {
++      const res = await this.fetch("token", params, OAuth2Error.RefreshTokenFailed, controller.signal);
++      const tokenResponse = await res.json();
++
++      // throws when response is invalid
++      validateBearerTokenResponse(tokenResponse);
++      return normalizeBearerTokenResponseTokenType(tokenResponse);
++    } finally {
++      clearTimeout(timer);
++    }
+   }
+ 
+   /**
+@@ -238,7 +254,7 @@ export class OAuth2 {
+    * Make a request to one of the OAuth 2.0 endpoints, throwing if it responds with an error.
+    * @returns the {@link Response}, for the caller to parse if the endpoint returns a body.
+    */
+-  async fetch(target, params, error) {
++  async fetch(target, params, error, signal) {
+     const url = this.metadata[`${target}_endpoint`];
+     const res = await fetchWithLogging(this.logger, url, {
+       method: Method.Post,
+@@ -246,7 +262,8 @@ export class OAuth2 {
+         "Content-Type": "application/x-www-form-urlencoded",
+         "Accept": "application/json"
+       },
+-      body: params
++      body: params,
++      signal
+     });
+     if (res.status >= 400) {
+       let body;
 diff --git a/lib/oauth/tokenRefresher.js b/lib/oauth/tokenRefresher.js
 index e5f15214886cca4fa33073e684f954c75df50ddd..15b11c285cdf8930ca18ea3a01d10655dac34f26 100644
 --- a/lib/oauth/tokenRefresher.js
@@ -395,6 +459,67 @@ index 24d9cf123525922407827ba716720920b01586ee..ad8017358544e45b9a6d8db78846a251
              this._currentUserParticipated = !!bundledRelationship.current_user_participated;
  
              const mapper = this.client.getEventMapper();
+diff --git a/src/oauth/index.ts b/src/oauth/index.ts
+index da15b921c5d9e64fbbbe3c1d6016dadf5f09d240..810d3d715430d35c7d762d8c945e0586166b0b7d 100644
+--- a/src/oauth/index.ts
++++ b/src/oauth/index.ts
+@@ -47,6 +47,14 @@ export * from "./error.ts";
+ export * from "./register.ts";
+ export * from "./discover.ts";
+ 
++/**
++ * Trinity patch: how long a refresh token grant may take, as long as every other Matrix request
++ * Trinity makes (localTimeoutMs). The request has no other bound, so one the OS suspends mid-flight
++ * could hang and hold every request that waits on the refresh. Aborting fails it like a network
++ * error: the session stays signed in and the next request refreshes again.
++ */
++const REFRESH_TOKEN_GRANT_TIMEOUT_MS = 30_000;
++
+ /**
+  * Type representing the persistent context needed for typical OAuth flows
+  */
+@@ -227,12 +235,19 @@ export class OAuth2 {
+         params.append("client_id", this.context.clientId);
+         params.append("refresh_token", refreshToken);
+ 
+-        const res = await this.fetch("token", params, OAuth2Error.RefreshTokenFailed);
+-        const tokenResponse = await res.json();
+-
+-        // throws when response is invalid
+-        validateBearerTokenResponse(tokenResponse);
+-        return normalizeBearerTokenResponseTokenType(tokenResponse);
++        // Trinity patch: abort the grant, body included, once it outlasts its bound.
++        const controller = new AbortController();
++        const timer = setTimeout(() => controller.abort(), REFRESH_TOKEN_GRANT_TIMEOUT_MS);
++        try {
++            const res = await this.fetch("token", params, OAuth2Error.RefreshTokenFailed, controller.signal);
++            const tokenResponse = await res.json();
++
++            // throws when response is invalid
++            validateBearerTokenResponse(tokenResponse);
++            return normalizeBearerTokenResponseTokenType(tokenResponse);
++        } finally {
++            clearTimeout(timer);
++        }
+     }
+ 
+     /**
+@@ -295,6 +310,7 @@ export class OAuth2 {
+         target: "token" | "registration" | "revocation",
+         params: URLSearchParams,
+         error: OAuth2Error,
++        signal?: AbortSignal,
+     ): Promise<Response> {
+         const url = this.metadata[`${target}_endpoint`];
+         const res = await fetchWithLogging(this.logger, url, {
+@@ -304,6 +320,7 @@ export class OAuth2 {
+                 "Accept": "application/json",
+             },
+             body: params,
++            signal,
+         });
+ 
+         if (res.status >= 400) {
 diff --git a/src/oauth/tokenRefresher.ts b/src/oauth/tokenRefresher.ts
 index d19d64c4820e63a4030b056ab331912ad9589833..4a1fd6b6485397ef5dd11d3d13d334ebc1c0c1fc 100644
 --- a/src/oauth/tokenRefresher.ts

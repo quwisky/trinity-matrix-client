@@ -1640,6 +1640,9 @@ describe('OAuth tokens through a real MatrixClient', () => {
   /** `up` answers normally, `down` drops the connection, anything else is the error sent instead. */
   type Endpoint = 'up' | 'down' | { status: number; body: unknown };
 
+  /** The provider can also `hang`: never answer, until the caller aborts. */
+  type ProviderEndpoint = Endpoint | 'hang';
+
   const json = (body: unknown, status = 200): Response =>
     new Response(JSON.stringify(body), {
       status,
@@ -1657,7 +1660,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
     const calls: string[] = [];
     const state = {
       discovery: 'up' as Endpoint,
-      provider: 'up' as Endpoint,
+      provider: 'up' as ProviderEndpoint,
       /** Rotate at the provider, then drop the answer, as when iOS suspends the app mid-grant. */
       loseGrantResponse: false,
     };
@@ -1685,6 +1688,16 @@ describe('OAuth tokens through a real MatrixClient', () => {
         }
         if (url.href === METADATA.token_endpoint) {
           if (state.provider === 'down') throw new TypeError('Failed to fetch');
+          if (state.provider === 'hang') {
+            return new Promise<Response>((_, reject) => {
+              const abort = () =>
+                reject(
+                  new DOMException('The operation was aborted.', 'AbortError'),
+                );
+              if (init.signal?.aborted) abort();
+              init.signal?.addEventListener('abort', abort);
+            });
+          }
           if (state.provider !== 'up') {
             return json(state.provider.body, state.provider.status);
           }
@@ -2073,6 +2086,33 @@ describe('OAuth tokens through a real MatrixClient', () => {
 
     expect(loggedOut).not.toHaveBeenCalled();
     expectStillSignedIn(svc, client);
+  });
+
+  it('gives up on a refresh the provider never answers, stays signed in and refreshes again', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, client } = await startReal();
+    const loggedOut = vi.fn();
+    client.on(HttpApiEvent.SessionLoggedOut, loggedOut);
+    net.state.provider = 'hang';
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let settled: boolean | undefined;
+      void client.http.refreshOAuthTokens().then((value) => (settled = value));
+
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(settled).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(loggedOut).not.toHaveBeenCalled();
+    expectStillSignedIn(svc, client);
+    // The aborted grant released the SDK's shared refresh: the next request refreshes anew.
+    net.state.provider = 'up';
+    await expect(client.whoami()).resolves.toMatchObject({ user_id: '@me:hs' });
+    expect(net.grants).toHaveLength(1);
   });
 
   it('answers false for a session without OAuth and emits no sign-out', async () => {
