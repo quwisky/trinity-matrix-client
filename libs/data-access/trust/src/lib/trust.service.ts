@@ -43,7 +43,7 @@ import {
 } from './trust-provider-recovery.port';
 import { TrustHealthService } from './trust-health.service';
 import {
-  holdsAllCrossSigningPrivates,
+  holdsCrossSigningIdentity,
   readThisDeviceVerified,
 } from './trust-snapshot';
 
@@ -108,9 +108,13 @@ export class TrustService {
    * The key is generated randomly (no passphrase), so accounts onboarded here are
    * recovered via {@link recoverWithKey}, not {@link recoverWithPassphrase}.
    *
-   * Refuses outright on an account that already has a 4S key — see
-   * {@link assertNoRecoveryOnAccount} for why that check reads the server rather than
-   * this device's own view of it.
+   * Two guards run first, both against the server rather than this device's own view:
+   * - {@link assertNoRecoveryOnAccount} refuses an account that already has a 4S key.
+   *   It fails open: an unreachable server must not block genuine first-run setup.
+   * - {@link assertNoIdentityElsewhere} refuses an account whose cross-signing identity
+   *   this device does not hold, because bootstrapping here would replace it. It fails
+   *   closed: the upload that follows needs the same server, and a wrong "no identity"
+   *   is the destructive answer.
    */
   setUp(promptPassword: PasswordPrompt): Observable<string> {
     return defer(() =>
@@ -474,6 +478,10 @@ const RECOVERY_ELSEWHERE_MESSAGE =
  * **Fails closed**, unlike {@link assertNoRecoveryOnAccount}: the upload that follows
  * needs the same homeserver, and a wrong "no identity" here is the destructive answer.
  *
+ * Privates on this device count only when they match the published identity (see
+ * {@link holdsCrossSigningIdentity}): a reset cancelled before its upload leaves a full
+ * set nobody published, and setting up from there would store those in secret storage.
+ *
  * The copy depends on whether this device is already verified: a device verified through
  * the other one still lacks the private keys when the Account has no 4S (matrix-js-sdk 43
  * does not request missing secrets after verification), so only that device can set up
@@ -484,12 +492,18 @@ async function assertNoIdentityElsewhere(
   client: Pick<TrustMatrixClient, 'getDeviceId' | 'getUserId'>,
   crypto: TrustCryptoApi,
 ): Promise<void> {
-  if (holdsAllCrossSigningPrivates(await crypto.getCrossSigningStatus())) {
-    // This device holds the identity: bootstrap keeps it and only adds recovery.
+  // The local view can lag right after sign-in; ask the homeserver (own user). Asked
+  // first because, for the own user, this also re-queries the published identity
+  // (rust-crypto.ts:516-525), so the match below is judged against the server's copy.
+  if (!(await withTimeout(crypto.userHasCrossSigningKeys(undefined, true)))) {
     return;
   }
-  // The local view can lag right after sign-in; ask the homeserver (own user).
-  if (!(await withTimeout(crypto.userHasCrossSigningKeys(undefined, true)))) {
+  const [status, crossSigningReady] = await Promise.all([
+    crypto.getCrossSigningStatus(),
+    crypto.isCrossSigningReady(),
+  ]);
+  if (holdsCrossSigningIdentity(status, crossSigningReady)) {
+    // This device holds the identity: bootstrap keeps it and only adds recovery.
     return;
   }
   const verified = await readThisDeviceVerified(client, crypto).catch(

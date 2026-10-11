@@ -35,7 +35,9 @@ export async function readTrustSnapshot(
   // Only asked where there is no recovery: with secret storage the privates are
   // reachable through the recovery key, and a ready device needs nothing.
   const identityElsewhere =
-    !ready && !defaultKeyId && (await identityHeldElsewhere(crypto));
+    !ready &&
+    !defaultKeyId &&
+    (await identityHeldElsewhere(crypto, crossSigningReady));
   const status: TrustHealthSnapshot['status'] = ready
     ? 'ready'
     : defaultKeyId
@@ -69,18 +71,47 @@ export async function readThisDeviceVerified(
  * Whether the Account has a published identity whose private keys this device does not
  * hold. A purely local read: right after sign-in the own identity may not have been
  * downloaded yet, so destructive callers must also ask the server (see `TrustService.setUp`).
+ *
+ * `crossSigningReady` is this device's `isCrossSigningReady()`, passed in because the
+ * snapshot has already read it.
  */
 export async function identityHeldElsewhere(
   crypto: Pick<TrustCryptoApi, 'getCrossSigningStatus'>,
+  crossSigningReady: boolean,
 ): Promise<boolean> {
   const status = await crypto.getCrossSigningStatus();
-  return status.publicKeysOnDevice && !holdsAllCrossSigningPrivates(status);
+  return (
+    status.publicKeysOnDevice &&
+    !holdsCrossSigningIdentity(status, crossSigningReady)
+  );
 }
 
-/** Whether the olm machine caches all three cross-signing private keys locally. */
-export function holdsAllCrossSigningPrivates(
+/**
+ * Whether this device holds the Account's cross-signing identity: all three private keys
+ * cached locally, and those keys matching the published identity.
+ *
+ * Holding three privates is not enough. `resetCrossSigning` rotates them in the olm
+ * machine before it uploads anything (CrossSigningIdentity.ts:139-167), so a reset
+ * cancelled at the password prompt leaves a device with a full set nobody published.
+ * Counting those as the identity would offer setup here, and setup would then store the
+ * unpublished seeds in secret storage: a recovery key that can never verify a device.
+ *
+ * `crossSigningReady` (`isCrossSigningReady()`) supplies the match. With the privates
+ * cached it reduces to `identity.isVerified()` (rust-crypto.ts:802-814), the same test
+ * `getCrossSigningKeyId` uses to detect "both public and private keys, but they don't
+ * match" (rust-crypto.ts:837-839). The own identity only verifies against the privates
+ * that signed it, so stranded privates read false and a completed setup reads true.
+ * `hasStrandedCrossSigning` (cross-signing-repair.ts) relies on the same distinction.
+ */
+export function holdsCrossSigningIdentity(
   status: Awaited<ReturnType<TrustCryptoApi['getCrossSigningStatus']>>,
+  crossSigningReady: boolean,
 ): boolean {
   const cached = status.privateKeysCachedLocally;
-  return cached.masterKey && cached.selfSigningKey && cached.userSigningKey;
+  return (
+    crossSigningReady &&
+    cached.masterKey &&
+    cached.selfSigningKey &&
+    cached.userSigningKey
+  );
 }

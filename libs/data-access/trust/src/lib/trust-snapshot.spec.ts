@@ -4,7 +4,7 @@ import type {
   TrustMatrixClient,
 } from '@trinity/data-access/matrix-client';
 import {
-  holdsAllCrossSigningPrivates,
+  holdsCrossSigningIdentity,
   identityHeldElsewhere,
   readTrustSnapshot,
 } from './trust-snapshot';
@@ -107,14 +107,70 @@ describe('readTrustSnapshot', () => {
   });
 
   it('needs setup when this device holds the identity and only recovery is missing', async () => {
+    // A device that completed setup: its privates verify the published identity.
     const { client, crypto } = account({
       publicKeysOnDevice: true,
       privates: ALL_PRIVATES,
+      crossSigningReady: true,
+      deviceVerified: true,
     });
 
     await expect(readTrustSnapshot(client, crypto)).resolves.toMatchObject({
       status: 'needs-setup',
+      identityElsewhere: false,
     });
+  });
+
+  // A reset cancelled at the password prompt rotates all three privates in the olm
+  // machine and never uploads them, so the own identity does not verify against them.
+  // Those privates are not the identity: offering setup here would store them in 4S.
+  it('does not count privates that fail to verify the published identity as holding it', async () => {
+    const { client, crypto } = account({
+      publicKeysOnDevice: true,
+      privates: ALL_PRIVATES,
+      crossSigningReady: false,
+    });
+
+    await expect(readTrustSnapshot(client, crypto)).resolves.toMatchObject({
+      status: 'needs-verification',
+      identityElsewhere: true,
+    });
+  });
+
+  it('says a verified device holding stranded privates still lacks the identity', async () => {
+    const { client, crypto } = account({
+      publicKeysOnDevice: true,
+      privates: ALL_PRIVATES,
+      crossSigningReady: false,
+      deviceVerified: true,
+    });
+
+    await expect(readTrustSnapshot(client, crypto)).resolves.toMatchObject({
+      thisDeviceVerified: true,
+      identityElsewhere: true,
+    });
+  });
+
+  it('propagates a failed crypto read instead of reporting needs-setup', async () => {
+    const { client, crypto } = account({ publicKeysOnDevice: true });
+    vi.mocked(crypto.getCrossSigningStatus).mockRejectedValue(
+      new Error('olm machine closed'),
+    );
+
+    await expect(readTrustSnapshot(client, crypto)).rejects.toThrow(
+      'olm machine closed',
+    );
+  });
+
+  it('propagates a failed readiness read instead of reporting needs-setup', async () => {
+    const { client, crypto } = account();
+    vi.mocked(crypto.isCrossSigningReady).mockRejectedValue(
+      new Error('store unavailable'),
+    );
+
+    await expect(readTrustSnapshot(client, crypto)).rejects.toThrow(
+      'store unavailable',
+    );
   });
 
   it('does not ask a device that is already verified to verify again', async () => {
@@ -152,6 +208,7 @@ describe('readTrustSnapshot', () => {
       publicKeysOnDevice: true,
       deviceVerified: true,
       privates: ALL_PRIVATES,
+      crossSigningReady: true,
     });
 
     await expect(
@@ -190,16 +247,35 @@ describe('identityHeldElsewhere', () => {
       privates: { master: true, selfSigning: false, userSigning: true },
     });
 
-    await expect(identityHeldElsewhere(crypto)).resolves.toBe(true);
+    await expect(identityHeldElsewhere(crypto, false)).resolves.toBe(true);
+  });
+
+  it('is true when this device holds all three privates but they do not match', async () => {
+    const { crypto } = account({
+      publicKeysOnDevice: true,
+      privates: ALL_PRIVATES,
+    });
+
+    await expect(identityHeldElsewhere(crypto, false)).resolves.toBe(true);
+  });
+
+  it('is false when this device holds the matching private keys', async () => {
+    const { crypto } = account({
+      publicKeysOnDevice: true,
+      privates: ALL_PRIVATES,
+    });
+
+    await expect(identityHeldElsewhere(crypto, true)).resolves.toBe(false);
   });
 
   it('is false when the account has no published identity', async () => {
     const { crypto } = account({ privates: ALL_PRIVATES });
 
-    await expect(identityHeldElsewhere(crypto)).resolves.toBe(false);
+    await expect(identityHeldElsewhere(crypto, false)).resolves.toBe(false);
   });
 });
-describe('holdsAllCrossSigningPrivates', () => {
+
+describe('holdsCrossSigningIdentity', () => {
   const status = (
     master: boolean,
     selfSigning: boolean,
@@ -213,12 +289,22 @@ describe('holdsAllCrossSigningPrivates', () => {
         selfSigningKey: selfSigning,
         userSigningKey: userSigning,
       },
-    }) as Parameters<typeof holdsAllCrossSigningPrivates>[0];
+    }) as Parameters<typeof holdsCrossSigningIdentity>[0];
 
   it('is true only when all three private keys are cached locally', () => {
-    expect(holdsAllCrossSigningPrivates(status(true, true, true))).toBe(true);
-    expect(holdsAllCrossSigningPrivates(status(true, true, false))).toBe(false);
-    expect(holdsAllCrossSigningPrivates(status(false, false, false))).toBe(
+    expect(holdsCrossSigningIdentity(status(true, true, true), true)).toBe(
+      true,
+    );
+    expect(holdsCrossSigningIdentity(status(true, true, false), true)).toBe(
+      false,
+    );
+    expect(holdsCrossSigningIdentity(status(false, false, false), true)).toBe(
+      false,
+    );
+  });
+
+  it('is false for a full set of privates the published identity does not verify', () => {
+    expect(holdsCrossSigningIdentity(status(true, true, true), false)).toBe(
       false,
     );
   });
