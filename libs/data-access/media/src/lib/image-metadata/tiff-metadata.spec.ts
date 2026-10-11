@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readTiffOrientation } from './exif-orientation';
 import {
+  HOSTILE_INPUT_BUDGET_MS,
   IDENTIFYING_MARKERS,
   ascii,
   concat,
@@ -54,7 +55,7 @@ function expectQuickMalformed(input: Uint8Array<ArrayBuffer>): void {
   const elapsed = performance.now() - started;
 
   expect(result).toEqual({ kind: 'unchanged', reason: 'malformed' });
-  expect(elapsed).toBeLessThan(100);
+  expect(elapsed).toBeLessThan(HOSTILE_INPUT_BUDGET_MS);
 }
 
 function at(layout: TiffLayout, key: string): number {

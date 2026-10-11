@@ -5,6 +5,14 @@
  * must never appear in a stripped result.
  */
 
+/**
+ * Wall-clock budget for the hostile-input checks. Each also asserts the cap's verdict, so
+ * the budget only has to catch a cap that stops working: without one these inputs take
+ * seconds to minutes. It is set well above a quiet run, because a loaded CI runner has
+ * taken 131 ms for what runs in about 20 ms locally.
+ */
+export const HOSTILE_INPUT_BUDGET_MS = 1_000;
+
 export const IDENTIFYING_MARKERS = [
   'Canon',
   'EOS R6',

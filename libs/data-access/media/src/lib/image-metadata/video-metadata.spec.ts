@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  HOSTILE_INPUT_BUDGET_MS,
   ascii,
   box,
   concat,
@@ -524,7 +525,7 @@ describe('stripVideoMetadata', () => {
       const elapsed = performance.now() - started;
 
       expect(result).toEqual(expected);
-      expect(elapsed).toBeLessThan(250);
+      expect(elapsed).toBeLessThan(HOSTILE_INPUT_BUDGET_MS);
     }
 
     it('gives up on a file made of thousands of tiny top-level boxes', async () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { concat } from './image-metadata.fixture';
+import { HOSTILE_INPUT_BUDGET_MS, concat } from './image-metadata.fixture';
 import {
   joinParts,
   strippableFormat,
@@ -191,7 +191,7 @@ describe('stripImageMetadata: SVG', () => {
     const elapsed = performance.now() - started;
 
     expect(result).toEqual({ kind: 'unchanged', reason: 'malformed' });
-    expect(elapsed).toBeLessThan(100);
+    expect(elapsed).toBeLessThan(HOSTILE_INPUT_BUDGET_MS);
   });
 
   // jsdom parses these large documents far slower than a browser; past the shared walk cap

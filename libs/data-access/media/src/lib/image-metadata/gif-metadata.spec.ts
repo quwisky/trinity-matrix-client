@@ -15,7 +15,12 @@ import {
   identifyingGif,
   tinySubBlocksGif,
 } from './gif-metadata.fixture';
-import { ascii, concat, containsAscii } from './image-metadata.fixture';
+import {
+  HOSTILE_INPUT_BUDGET_MS,
+  ascii,
+  concat,
+  containsAscii,
+} from './image-metadata.fixture';
 import {
   joinParts,
   strippableFormat,
@@ -39,7 +44,7 @@ function expectQuickMalformed(input: Uint8Array<ArrayBuffer>): void {
   const elapsed = performance.now() - started;
 
   expect(result).toEqual({ kind: 'unchanged', reason: 'malformed' });
-  expect(elapsed).toBeLessThan(100);
+  expect(elapsed).toBeLessThan(HOSTILE_INPUT_BUDGET_MS);
 }
 
 describe('stripImageMetadata: GIF', () => {
