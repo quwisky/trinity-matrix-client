@@ -411,6 +411,101 @@ describe('MatrixClientService', () => {
     expect(rotations).toEqual([{ userId: '@me:hs', accessToken: 'a2' }]);
   });
 
+  it('knows the expiry of the OAuth token a client starts with, and only for that token', async () => {
+    vi.mocked(createClient).mockReturnValue(fakeClient() as never);
+    const { svc } = setup();
+
+    await firstValueFrom(svc.init(OIDC_SESSION));
+
+    expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBe(1234);
+    expect(svc.accessTokenExpiry('@me:hs', 'another')).toBeUndefined();
+    expect(svc.accessTokenExpiry('@you:other', 'tok')).toBeUndefined();
+  });
+
+  it('knows no expiry for a password session', async () => {
+    vi.mocked(createClient).mockReturnValue(fakeClient() as never);
+    const { svc } = setup();
+
+    await firstValueFrom(svc.init(SESSION));
+
+    expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBeUndefined();
+  });
+
+  it('moves the expiry to a refreshed token before publishing the rotation', async () => {
+    vi.mocked(createClient).mockReturnValue(fakeClient() as never);
+    const { svc, storage } = setup();
+    const write = new Subject<void>();
+    vi.mocked(storage.updateTokens).mockReturnValue(write);
+    const seen: (number | undefined)[] = [];
+    svc.accessTokenRotations.subscribe(({ userId, accessToken }) =>
+      seen.push(svc.accessTokenExpiry(userId, accessToken)),
+    );
+    await firstValueFrom(svc.init(OIDC_SESSION));
+    const opts = vi.mocked(createClient).mock.calls[0][0];
+
+    const pending = opts.onTokenRefresh?.({
+      accessToken: 'a2',
+      refreshToken: 'r2',
+      expiry: new Date(5_000),
+    }) as unknown as Promise<void>;
+    await Promise.resolve();
+    // Not stored yet: the client still holds the old token.
+    expect(svc.accessTokenExpiry('@me:hs', 'a2')).toBeUndefined();
+    expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBe(1234);
+
+    write.next();
+    write.complete();
+    await pending;
+
+    expect(seen).toEqual([5_000]);
+    expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBeUndefined();
+  });
+
+  it('forgets the expiry when the account is removed', async () => {
+    vi.mocked(createClient).mockReturnValue(fakeClient() as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(OIDC_SESSION));
+
+    await firstValueFrom(svc.remove('@me:hs'));
+
+    expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBeUndefined();
+  });
+
+  it('refreshes nothing for an account that is not a live OAuth account', async () => {
+    const client = {
+      ...fakeClient(),
+      http: { refreshOAuthTokens: vi.fn().mockResolvedValue(true) },
+    };
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(SESSION));
+
+    await expect(
+      firstValueFrom(svc.refreshAccessToken('@me:hs')),
+    ).resolves.toBe(false);
+    await expect(
+      firstValueFrom(svc.refreshAccessToken('@nobody:hs')),
+    ).resolves.toBe(false);
+    expect(client.http.refreshOAuthTokens).not.toHaveBeenCalled();
+  });
+
+  it('reports a refresh that throws as false instead of an error', async () => {
+    const client = {
+      ...fakeClient(),
+      http: {
+        refreshOAuthTokens: vi.fn().mockRejectedValue(new Error('boom')),
+      },
+    };
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(OIDC_SESSION));
+
+    await expect(
+      firstValueFrom(svc.refreshAccessToken('@me:hs')),
+    ).resolves.toBe(false);
+    expect(client.http.refreshOAuthTokens).toHaveBeenCalledOnce();
+  });
+
   describe('signOutAll', () => {
     it('logs out every live client', async () => {
       const a = fakeClient();
@@ -2060,6 +2155,37 @@ describe('OAuth tokens through a real MatrixClient', () => {
       expect(net.grants[2].get('refresh_token')).toBe('rt-2');
       expectStillSignedIn(svc, client);
     });
+  });
+
+  it('refreshes a live OAuth account before the background and records the new expiry', async () => {
+    const net = fakeNetwork('rotate', 300);
+    const { svc, client } = await startReal();
+    const before = Date.now();
+
+    await expect(
+      firstValueFrom(svc.refreshAccessToken('@me:hs')),
+    ).resolves.toBe(true);
+
+    expect(net.grants).toHaveLength(1);
+    const token = client.getAccessToken() ?? '';
+    expect(token).toBe('at-2');
+    expect(svc.accessTokenExpiry('@me:hs', token)).toBeGreaterThanOrEqual(
+      before + 300_000,
+    );
+    expectStillSignedIn(svc, client);
+  });
+
+  it('signs nothing out when the provider refuses a refresh before the background', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, storage, client } = await startReal();
+    net.state.provider = { status: 400, body: { error: 'invalid_grant' } };
+
+    await expect(
+      firstValueFrom(svc.refreshAccessToken('@me:hs')),
+    ).resolves.toBe(false);
+
+    expectStillSignedIn(svc, client);
+    expect(storage.remove).not.toHaveBeenCalled();
   });
 
   it("persists each account's refreshed tokens under that account", async () => {
