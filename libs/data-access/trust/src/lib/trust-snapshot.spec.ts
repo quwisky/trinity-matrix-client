@@ -73,6 +73,7 @@ describe('readTrustSnapshot', () => {
       status: 'ready',
       keyBackupActive: true,
       thisDeviceVerified: true,
+      identityElsewhere: false,
     });
   });
 
@@ -93,6 +94,7 @@ describe('readTrustSnapshot', () => {
     await expect(readTrustSnapshot(client, crypto)).resolves.toMatchObject({
       status: 'needs-verification',
       thisDeviceVerified: false,
+      identityElsewhere: true,
     });
   });
 
@@ -124,6 +126,59 @@ describe('readTrustSnapshot', () => {
     await expect(readTrustSnapshot(client, crypto)).resolves.toMatchObject({
       status: 'needs-setup',
       thisDeviceVerified: true,
+    });
+  });
+
+  // A device verified by another one, on an Account without secret storage, never
+  // receives the cross-signing privates (matrix-js-sdk 43 does not request missing
+  // secrets after verification). Setup here would replace the identity, so consumers
+  // need to know that only the holding device can set up recovery.
+  it('says the identity is held elsewhere when a verified device lacks its private keys', async () => {
+    const { client, crypto } = account({
+      publicKeysOnDevice: true,
+      deviceVerified: true,
+    });
+
+    await expect(readTrustSnapshot(client, crypto)).resolves.toMatchObject({
+      status: 'needs-setup',
+      thisDeviceVerified: true,
+      identityElsewhere: true,
+    });
+  });
+
+  it('does not say the identity is held elsewhere when there is none or this device holds it', async () => {
+    const none = account({ deviceVerified: true });
+    const held = account({
+      publicKeysOnDevice: true,
+      deviceVerified: true,
+      privates: ALL_PRIVATES,
+    });
+
+    await expect(
+      readTrustSnapshot(none.client, none.crypto),
+    ).resolves.toMatchObject({
+      status: 'needs-setup',
+      identityElsewhere: false,
+    });
+    await expect(
+      readTrustSnapshot(held.client, held.crypto),
+    ).resolves.toMatchObject({
+      status: 'needs-setup',
+      identityElsewhere: false,
+    });
+  });
+
+  it('only reports the identity as held elsewhere when the account has no recovery', async () => {
+    // With secret storage the privates are reachable through recovery, so "elsewhere"
+    // would mislead: the answer there is the recovery key, not the other device.
+    const { client, crypto } = account({
+      defaultKeyId: 'k',
+      publicKeysOnDevice: true,
+    });
+
+    await expect(readTrustSnapshot(client, crypto)).resolves.toMatchObject({
+      status: 'needs-recovery',
+      identityElsewhere: false,
     });
   });
 });

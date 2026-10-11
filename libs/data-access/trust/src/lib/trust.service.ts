@@ -42,7 +42,10 @@ import {
   type TrustProviderManagement,
 } from './trust-provider-recovery.port';
 import { TrustHealthService } from './trust-health.service';
-import { holdsAllCrossSigningPrivates } from './trust-snapshot';
+import {
+  holdsAllCrossSigningPrivates,
+  readThisDeviceVerified,
+} from './trust-snapshot';
 
 export type {
   TrustHealth,
@@ -79,6 +82,8 @@ export class TrustService {
   readonly status = this.healthRuntime.status;
   readonly keyBackupActive = this.healthRuntime.keyBackupActive;
   readonly thisDeviceVerified = this.healthRuntime.thisDeviceVerified;
+  /** Verified here, but only the device holding the identity can set up recovery. */
+  readonly recoverySetupElsewhere = this.healthRuntime.recoverySetupElsewhere;
 
   /** Cold Trust-health projection retained by the named session lifetime. */
   runProjection(): Observable<void> {
@@ -119,7 +124,7 @@ export class TrustService {
           const crypto = this.requireCrypto('setup', context.crypto);
           const userId = client.getUserId() ?? '';
           await assertNoRecoveryOnAccount(client);
-          await assertNoIdentityElsewhere(crypto);
+          await assertNoIdentityElsewhere(client, crypto);
           const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
           await crypto.bootstrapCrossSigning({
             authUploadDeviceSigningKeys: this.passwordUia(
@@ -453,6 +458,10 @@ async function assertNoRecoveryOnAccount(
 const IDENTITY_ELSEWHERE_MESSAGE =
   'This account already has encryption set up on another device. Verify this device with that device instead, or reset your identity if you can’t.';
 
+/** Already verified with that device, so "verify with it" would send the user in a circle. */
+const RECOVERY_ELSEWHERE_MESSAGE =
+  'This account already has encryption set up on another device. Set up recovery on that device instead, or reset your identity if you can’t.';
+
 /**
  * Refuse first-device setup on an Account whose cross-signing identity lives elsewhere.
  *
@@ -464,8 +473,15 @@ const IDENTITY_ELSEWHERE_MESSAGE =
  *
  * **Fails closed**, unlike {@link assertNoRecoveryOnAccount}: the upload that follows
  * needs the same homeserver, and a wrong "no identity" here is the destructive answer.
+ *
+ * The copy depends on whether this device is already verified: a device verified through
+ * the other one still lacks the private keys when the Account has no 4S (matrix-js-sdk 43
+ * does not request missing secrets after verification), so only that device can set up
+ * recovery. The verification read only picks the sentence; if it fails, setup is still
+ * refused, with the unverified device's copy.
  */
 async function assertNoIdentityElsewhere(
+  client: Pick<TrustMatrixClient, 'getDeviceId' | 'getUserId'>,
   crypto: TrustCryptoApi,
 ): Promise<void> {
   if (holdsAllCrossSigningPrivates(await crypto.getCrossSigningStatus())) {
@@ -476,12 +492,22 @@ async function assertNoIdentityElsewhere(
   if (!(await withTimeout(crypto.userHasCrossSigningKeys(undefined, true)))) {
     return;
   }
-  throw new TrustOperationError(
-    'setup',
-    'stale-state',
-    'verify-another-device',
-    IDENTITY_ELSEWHERE_MESSAGE,
+  const verified = await readThisDeviceVerified(client, crypto).catch(
+    () => false,
   );
+  throw verified
+    ? new TrustOperationError(
+        'setup',
+        'stale-state',
+        'review-security-settings',
+        RECOVERY_ELSEWHERE_MESSAGE,
+      )
+    : new TrustOperationError(
+        'setup',
+        'stale-state',
+        'verify-another-device',
+        IDENTITY_ELSEWHERE_MESSAGE,
+      );
 }
 
 /** A validated provider deep link for MSC2965 cross-signing reset. */

@@ -36,6 +36,7 @@ async function build(
     status: opts.status === 'unknown' ? 'ready' : (opts.status ?? 'ready'),
     keyBackupActive: opts.backup ?? false,
     thisDeviceVerified: opts.verified ?? false,
+    identityElsewhere: false,
   } as const;
   const health: TrustHealth =
     opts.availability === 'unavailable'

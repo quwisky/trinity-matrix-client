@@ -330,6 +330,45 @@ describe('TrustService', () => {
       expect(svc.thisDeviceVerified()).toBe(false);
     });
 
+    it('says recovery belongs on the other device when this one is verified but lacks the keys', async () => {
+      // Verified through another device on an account without secret storage: the SDK
+      // never requests the cross-signing privates afterwards, so setup here would
+      // replace the identity. Only the device holding it can set recovery up.
+      const { svc } = setup({ identityOnServer: true, deviceVerified: true });
+      await firstValueFrom(svc.refresh());
+
+      expect(svc.status()).toBe('needs-setup');
+      expect(svc.recoverySetupElsewhere()).toBe(true);
+    });
+
+    it('offers setup here when this device holds the identity', async () => {
+      const { svc } = setup({
+        identityOnServer: true,
+        deviceVerified: true,
+        privatesCachedLocally: true,
+      });
+      await firstValueFrom(svc.refresh());
+
+      expect(svc.status()).toBe('needs-setup');
+      expect(svc.recoverySetupElsewhere()).toBe(false);
+    });
+
+    it('offers setup here when the account has no identity yet', async () => {
+      const { svc } = setup();
+      await firstValueFrom(svc.refresh());
+
+      expect(svc.status()).toBe('needs-setup');
+      expect(svc.recoverySetupElsewhere()).toBe(false);
+    });
+
+    it('does not say recovery belongs elsewhere while this device still needs verifying', async () => {
+      const { svc } = setup({ identityOnServer: true });
+      await firstValueFrom(svc.refresh());
+
+      expect(svc.status()).toBe('needs-verification');
+      expect(svc.recoverySetupElsewhere()).toBe(false);
+    });
+
     it('is "needs-recovery" when secret storage exists but this device is not ready', async () => {
       const { svc } = setup({ defaultKeyId: 'k' });
       await firstValueFrom(svc.refresh());
@@ -457,6 +496,50 @@ describe('TrustService', () => {
       expect(crypto.createRecoveryKeyFromPassphrase).not.toHaveBeenCalled();
       expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
       expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
+    });
+
+    it('asks an unverified device to verify with the device that holds the identity', async () => {
+      const { svc } = setup({ identityOnServer: true, deviceVerified: false });
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({
+        kind: 'stale-state',
+        message: expect.stringMatching(/verify this device with that device/i),
+      });
+    });
+
+    it('sends a verified device to set up recovery where the identity is held', async () => {
+      // Already verified with that device, so "verify with it" would be a dead end.
+      const { svc, crypto } = setup({
+        identityOnServer: true,
+        deviceVerified: true,
+      });
+
+      const failure = firstValueFrom(svc.setUp(async () => 'pw'));
+      await expect(failure).rejects.toMatchObject({
+        operation: 'setup',
+        kind: 'stale-state',
+        recovery: 'review-security-settings',
+        message: expect.stringMatching(/set up recovery on that device/i),
+      });
+      await expect(failure).rejects.not.toMatchObject({
+        message: expect.stringMatching(/verify this device/i),
+      });
+      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+    });
+
+    it('still refuses when it cannot tell whether this device is verified', async () => {
+      const { svc, crypto } = setup({ identityOnServer: true });
+      crypto.getDeviceVerificationStatus.mockRejectedValue(new Error('store'));
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({
+        kind: 'stale-state',
+        message: expect.stringMatching(/verify this device with that device/i),
+      });
+      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
     });
 
     it('asks the server even when this device has not yet seen the identity', async () => {

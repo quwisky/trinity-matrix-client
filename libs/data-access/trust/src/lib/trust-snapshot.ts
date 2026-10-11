@@ -13,6 +13,11 @@ import type { TrustHealthSnapshot } from './trust-health.service';
  * device neither holds the private keys nor is verified. First-device setup there would
  * replace the identity (`CrossSigningIdentity.ts:119-123` creates new keys when none are
  * available locally or in 4S), so it must be offered verification instead.
+ *
+ * `identityElsewhere` carries the same local check for a device that IS verified: one
+ * verified through another device on an Account without 4S never receives the private
+ * keys (matrix-js-sdk 43 does not request missing secrets after verification), so it
+ * reads `needs-setup` while only the holding device can set up recovery.
  */
 export async function readTrustSnapshot(
   client: TrustMatrixClient,
@@ -25,26 +30,39 @@ export async function readTrustSnapshot(
       crypto.getActiveSessionBackupVersion(),
       client.secretStorage.getDefaultKeyId(),
     ]);
+  const thisDeviceVerified = await readThisDeviceVerified(client, crypto);
+  const ready = crossSigningReady && secretStorageReady;
+  // Only asked where there is no recovery: with secret storage the privates are
+  // reachable through the recovery key, and a ready device needs nothing.
+  const identityElsewhere =
+    !ready && !defaultKeyId && (await identityHeldElsewhere(crypto));
+  const status: TrustHealthSnapshot['status'] = ready
+    ? 'ready'
+    : defaultKeyId
+      ? 'needs-recovery'
+      : !thisDeviceVerified && identityElsewhere
+        ? 'needs-verification'
+        : 'needs-setup';
+  return {
+    keyBackupActive: backupVersion !== null,
+    thisDeviceVerified,
+    identityElsewhere,
+    status,
+  };
+}
+
+/** Whether this device is cross-signed by its own Account's identity. */
+export async function readThisDeviceVerified(
+  client: Pick<TrustMatrixClient, 'getDeviceId' | 'getUserId'>,
+  crypto: Pick<TrustCryptoApi, 'getDeviceVerificationStatus'>,
+): Promise<boolean> {
   const deviceId = client.getDeviceId();
   const userId = client.getUserId();
   const deviceStatus =
     userId && deviceId
       ? await crypto.getDeviceVerificationStatus(userId, deviceId)
       : null;
-  const thisDeviceVerified = deviceStatus?.crossSigningVerified ?? false;
-  const status: TrustHealthSnapshot['status'] =
-    crossSigningReady && secretStorageReady
-      ? 'ready'
-      : defaultKeyId
-        ? 'needs-recovery'
-        : !thisDeviceVerified && (await identityHeldElsewhere(crypto))
-          ? 'needs-verification'
-          : 'needs-setup';
-  return {
-    keyBackupActive: backupVersion !== null,
-    thisDeviceVerified,
-    status,
-  };
+  return deviceStatus?.crossSigningVerified ?? false;
 }
 
 /**
