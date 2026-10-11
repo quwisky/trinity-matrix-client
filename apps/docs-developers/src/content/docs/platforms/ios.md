@@ -47,7 +47,7 @@ Debug and Release builds both sign with those entitlements, so a free personal t
 
 Firebase Messaging is a Swift package of the `App` target, pinned to 12.17.0, the last release whose FCM-token API is not deprecated; `FirebaseAppDelegateProxyEnabled` is `NO` because `AppDelegate` forwards the APNs token itself. Push on a device needs a git-ignored `ios/App/App/GoogleService-Info.plist`; the file is optional for building. Without it the app reports the APNs token, which the Trinity gateway does not accept, so no push arrives. The Firebase, APNs key and App ID setup is tracked in [#1152](https://github.com/quwisky/trinity-matrix-client/issues/1152).
 
-The installed-app suite cannot show the extension launching: the Simulator does not start notification service extensions for simulated pushes. `push-render-ios.e2e.mts` drives the same rendering path through a debug-only probe in the app. A real FCM token, the extension on a device, locked-phone rendering, closed-app delivery and tap-to-open need a physical device.
+The installed-app suite cannot show the extension launching: the Simulator does not start notification service extensions for simulated pushes. `push-render-ios.e2e.mts` drives the same rendering path through a debug-only probe in the app. It also stores an already expired token through the plugin and checks that the push reads "Open Trinity to read this message" without any read. A real FCM token, the extension on a device, locked-phone rendering, closed-app delivery and tap-to-open need a physical device.
 
 ## Respect native ownership {#native-ownership}
 

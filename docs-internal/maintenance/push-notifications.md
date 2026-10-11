@@ -298,7 +298,8 @@ account; iOS removes notifications whose `threadIdentifier` is the room and whos
   Android unit tests; CI runs them) for the text rules and the bounded reads.
 - `e2e/mobile/specs/push-render-ios.e2e.mts` and `push-render-android.e2e.mts` drive the
   renderers through debug-only probes; the Android spec also taps the notification it posted
-  with the app terminated and checks that the room opens. They do not show a real FCM token,
+  with the app terminated and checks that the room opens. Both also store an already expired
+  token and check for the expired-token text. They do not show a real FCM token,
   the extension launching, locked-phone rendering or closed-app delivery through
   `push.trinityproject.dev`, and nothing covers tap-to-open on iOS; check those on a device
   ([#1152](https://github.com/quwisky/trinity-matrix-client/issues/1152)).

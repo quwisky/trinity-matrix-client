@@ -9,6 +9,7 @@ import {
   webview,
 } from '../support/session.mts';
 import { onlyOn } from '../support/platform.mts';
+import { storeExpiredPushAccount } from '../support/push-handoff.mts';
 
 const PROBE = `${APP_PACKAGE}/dev.trinityproject.trinity.push.PushRenderProbeReceiver`;
 
@@ -106,5 +107,60 @@ describe('device-rendered push on Android', () => {
         timeoutMsg: `the tap never opened room ${room.roomId}`,
       },
     );
+  });
+
+  it('posts the open-Trinity text without reading anything once the stored token has expired', async () => {
+    const room = await roomWithSender('android-push-expired');
+
+    await login(room.user, room.pass);
+    await tap('[data-testid="rail-rooms"]');
+    await expect(roomButton(room.roomName)).toBeDisplayed({ wait: 30_000 });
+    await browser.waitUntil(
+      async () =>
+        (
+          await shell('run-as', [
+            APP_PACKAGE,
+            'cat',
+            'shared_prefs/trinity_push_handoff.xml',
+          ])
+        ).includes(`rooms:${room.userId}`),
+      {
+        timeout: 30_000,
+        timeoutMsg: 'the app never wrote the room to the push handoff store',
+      },
+    );
+    await storeExpiredPushAccount(room.userId);
+
+    await native();
+    await browser.terminateApp(APP_PACKAGE);
+    const eventId = await sendMessage(
+      room.senderToken,
+      room.roomId,
+      `expired ${uniqueId('msg')}`,
+    );
+    const sent = await shell('am', [
+      'broadcast',
+      '--include-stopped-packages',
+      '-n',
+      PROBE,
+      '--es',
+      'trinity_user_id',
+      quoted(room.userId),
+      '--es',
+      'room_id',
+      quoted(room.roomId),
+      '--es',
+      'event_id',
+      quoted(eventId),
+    ]);
+    expect(sent).toContain('Broadcast completed');
+
+    await browser.execute('mobile: openNotifications');
+    // No network is involved, so unlike the test above this needs no trusted CA.
+    await expect(
+      uiSelector(
+        'new UiSelector().textContains("Open Trinity to read this message")',
+      ),
+    ).toBeDisplayed({ wait: 30_000 });
   });
 });
