@@ -122,7 +122,7 @@ describe('privacy preference descriptors', () => {
     ['link previews', LINK_PREVIEWS_PREFERENCE],
     ['encrypted link previews', ENCRYPTED_LINK_PREVIEWS_PREFERENCE],
     ['save captures to gallery', SAVE_CAPTURES_TO_GALLERY_PREFERENCE],
-    ['keep photo metadata', KEEP_PHOTO_METADATA_PREFERENCE],
+    ['keep photo and video metadata', KEEP_PHOTO_METADATA_PREFERENCE],
   ] as const)('migrates real %s legacy and current values', (_, descriptor) => {
     const migration = descriptor.persistence.migration;
 

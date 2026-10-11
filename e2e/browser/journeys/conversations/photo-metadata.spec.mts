@@ -101,51 +101,6 @@ function moovRange(bytes: Buffer): { start: number; end: number } {
   throw new Error('no moov box');
 }
 
-function box(type: string, ...payload: Buffer[]): Buffer {
-  const body = Buffer.concat(payload);
-  const header = Buffer.alloc(8);
-  header.writeUInt32BE(8 + body.length, 0);
-  header.write(type, 4, 'latin1');
-  return Buffer.concat([header, body]);
-}
-
-/** A QuickTime `©xxx` user-data atom: 16-bit length, 16-bit language, text. */
-function userDataText(type: string, text: string): Buffer {
-  const head = Buffer.alloc(4);
-  head.writeUInt16BE(text.length, 0);
-  head.writeUInt16BE(0x15c7, 2);
-  return box(type, head, Buffer.from(text, 'latin1'));
-}
-
-const MP4_LOCATION = '+48.8584+002.2945/';
-const MP4_MODEL = 'Pixel 9 Pro';
-
-/**
- * A small synthetic MP4 (`isom` brand, `moov` after `mdat`) whose `moov/udta` holds a
- * location and a device model, both of which the default upload blanks.
- */
-const MP4_WITH_LOCATION = Buffer.concat([
-  box(
-    'ftyp',
-    Buffer.from('isom', 'latin1'),
-    Buffer.from([0, 0, 2, 0]),
-    Buffer.from('isomiso2mp41', 'latin1'),
-  ),
-  box(
-    'mdat',
-    Buffer.from('synthetic-video-samples:0123456789abcdef', 'latin1'),
-  ),
-  box(
-    'moov',
-    box('mvhd', Buffer.alloc(100)),
-    box(
-      'udta',
-      userDataText('\xa9xyz', MP4_LOCATION),
-      userDataText('\xa9mod', MP4_MODEL),
-    ),
-  ),
-]);
-
 interface ApiUser {
   headers: { Authorization: string };
 }
@@ -436,17 +391,17 @@ test.describe('Photo metadata', () => {
     expect(stored).toEqual(PHOTO_WITH_LOCATION);
     expect(event.content?.info?.size).toBe(PHOTO_WITH_LOCATION.length);
 
-    // So does a video, which the default upload would have blanked in place.
+    // So does a video: the same movie the default upload is shown above to blank.
     await sendFile(page, {
-      name: 'VID_0001.mp4',
-      mimeType: 'video/mp4',
-      buffer: MP4_WITH_LOCATION,
+      name: 'IMG_0002.MOV',
+      mimeType: 'video/quicktime',
+      buffer: MOVIE_WITH_LOCATION,
     });
     const video = await storedImage(request, hs, api, roomId, 'm.video');
-    expect(video.stored).toEqual(MP4_WITH_LOCATION);
-    expect(video.stored.includes(Buffer.from(MP4_LOCATION, 'latin1'))).toBe(
-      true,
-    );
-    expect(video.event.content?.info?.size).toBe(MP4_WITH_LOCATION.length);
+    expect(video.stored).toEqual(MOVIE_WITH_LOCATION);
+    expect(
+      video.stored.includes(Buffer.from('+52.5200+013.4050', 'latin1')),
+    ).toBe(true);
+    expect(video.event.content?.info?.size).toBe(MOVIE_WITH_LOCATION.length);
   });
 });
