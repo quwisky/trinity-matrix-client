@@ -132,6 +132,11 @@ describe('WidgetBridgeService', () => {
   });
 
   describe('when the Widget API chunk is slow', () => {
+    afterEach(() => {
+      vi.doUnmock('./widget-bridge-runtime');
+      vi.resetModules();
+    });
+
     // A fresh module registry and a re-registered mock hold the chunk until `release` runs.
     async function startWithGatedChunk() {
       let release!: () => void;
