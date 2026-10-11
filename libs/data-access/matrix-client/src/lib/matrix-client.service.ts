@@ -368,11 +368,20 @@ export class MatrixClientService {
   refreshAccessToken(userId: string): Observable<boolean> {
     return defer(() => {
       const client = this.clients.get(userId)?.client;
-      if (!client || !this.oauthTokens.get(userId)?.refreshable) {
-        return of(false);
-      }
+      if (!client || !this.canRefreshAccessToken(userId)) return of(false);
       return from(client.http.refreshOAuthTokens());
     }).pipe(catchError(() => of(false)));
+  }
+
+  /**
+   * Whether {@link refreshAccessToken} can refresh this account now: it is live, signed in
+   * through OAuth and holds a refresh token.
+   */
+  canRefreshAccessToken(userId: string): boolean {
+    return (
+      this.clients.has(userId) &&
+      this.oauthTokens.get(userId)?.refreshable === true
+    );
   }
 
   /**

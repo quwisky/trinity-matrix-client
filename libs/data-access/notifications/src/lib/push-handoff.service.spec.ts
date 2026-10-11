@@ -106,6 +106,7 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
     (_userId: string, _accessToken: string): number | undefined => undefined,
   );
   const refresh = vi.fn((_userId: string): Observable<boolean> => of(true));
+  const refreshable = vi.fn((_userId: string): boolean => true);
   TestBed.configureTestingModule({
     providers: [
       PushHandoffService,
@@ -115,6 +116,7 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
         accessTokenRotations: rotations.asObservable(),
         accessTokenExpiry: expiry,
         refreshAccessToken: refresh,
+        canRefreshAccessToken: refreshable,
       }),
       { provide: PushHandoffBridge, useValue: bridge },
       { provide: NotificationSoundService, useValue: sound },
@@ -129,6 +131,7 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
     sound,
     expiry,
     refresh,
+    refreshable,
   };
 }
 
@@ -899,6 +902,35 @@ describe('PushHandoffService', () => {
       expect(h.refresh).not.toHaveBeenCalled();
       expect(h.bridge.beginBackgroundWork).not.toHaveBeenCalled();
       expect(h.bridge.endBackgroundWork).not.toHaveBeenCalled();
+    });
+
+    it('asks for no background time when no due account can refresh', async () => {
+      const h = setup({
+        clients: [fakeClient('@me:hs', []), fakeClient('@pw:hs', [])],
+      });
+      h.expiry.mockReturnValue(Date.now() + 300_000);
+      h.refreshable.mockReturnValue(false);
+      await start(h);
+
+      await firstValueFrom(h.service.refreshBeforeBackground());
+
+      expect(h.refresh).not.toHaveBeenCalled();
+      expect(h.bridge.beginBackgroundWork).not.toHaveBeenCalled();
+      expect(h.bridge.endBackgroundWork).not.toHaveBeenCalled();
+    });
+
+    it('refreshes only the accounts that can refresh', async () => {
+      const h = setup({
+        clients: [fakeClient('@me:hs', []), fakeClient('@pw:hs', [])],
+      });
+      h.expiry.mockReturnValue(Date.now() + 300_000);
+      h.refreshable.mockImplementation((userId) => userId === '@pw:hs');
+      await start(h);
+
+      await firstValueFrom(h.service.refreshBeforeBackground());
+
+      expect(h.refresh.mock.calls).toEqual([['@pw:hs']]);
+      expect(h.bridge.beginBackgroundWork).toHaveBeenCalledOnce();
     });
 
     it('asks for no background time off a native host', async () => {

@@ -487,6 +487,8 @@ describe('MatrixClientService', () => {
       firstValueFrom(svc.refreshAccessToken('@nobody:hs')),
     ).resolves.toBe(false);
     expect(client.http.refreshOAuthTokens).not.toHaveBeenCalled();
+    expect(svc.canRefreshAccessToken('@me:hs')).toBe(false);
+    expect(svc.canRefreshAccessToken('@nobody:hs')).toBe(false);
   });
 
   it('refreshes nothing for an OAuth sign-in that came without a refresh token', async () => {
@@ -503,6 +505,19 @@ describe('MatrixClientService', () => {
       firstValueFrom(svc.refreshAccessToken('@me:hs')),
     ).resolves.toBe(false);
     expect(client.http.refreshOAuthTokens).not.toHaveBeenCalled();
+    expect(svc.canRefreshAccessToken('@me:hs')).toBe(false);
+  });
+
+  it('can refresh a live OAuth account with a refresh token until it is removed', async () => {
+    vi.mocked(createClient).mockReturnValue(fakeClient() as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(OIDC_SESSION));
+
+    expect(svc.canRefreshAccessToken('@me:hs')).toBe(true);
+
+    await firstValueFrom(svc.remove('@me:hs'));
+
+    expect(svc.canRefreshAccessToken('@me:hs')).toBe(false);
   });
 
   it('reports a refresh that throws as false instead of an error', async () => {

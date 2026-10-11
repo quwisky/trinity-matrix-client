@@ -156,8 +156,9 @@ export class PushHandoffService {
   }
 
   /**
-   * Refresh the token of every bound account whose token expires on a schedule (OAuth), so
-   * the copy the closed-app renderers read lives a full lifetime from now. Run as the app
+   * Refresh the token of every bound account whose token expires on a schedule (OAuth) and
+   * that holds a refresh token, so the copy the closed-app renderers read lives a full
+   * lifetime from now. Run as the app
    * goes to the background. Skips an account whose token rotated within
    * {@link BACKGROUND_REFRESH_MIN_AGE_MS}. Each new token reaches the store as an ordinary
    * rotation. While any account is due, holds background run time (iOS) until the refreshes
@@ -175,7 +176,8 @@ export class PushHandoffService {
         const token = binding.client.getAccessToken();
         if (
           !token ||
-          this.matrix.accessTokenExpiry(userId, token) === undefined
+          this.matrix.accessTokenExpiry(userId, token) === undefined ||
+          !this.matrix.canRefreshAccessToken(userId)
         ) {
           return [];
         }
