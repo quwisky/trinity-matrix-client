@@ -25,7 +25,9 @@ const DNG_VERSION = 50706;
 /**
  * Camera raw formats built on TIFF, by file extension or the last part of a MIME subtype
  * (`image/x-nikon-nef`, `image/x-adobe-dng`). Some (ORF, RW2, RAF, X3F, MRW) use their own
- * magic and never reach this parser; they are listed so the rule reads as one set.
+ * magic and never reach this parser; they are listed so the rule reads as one set. A MIME
+ * subtype ending in `-raw` (`image/x-panasonic-raw`) names a raw too; a `.raw` file name
+ * does not, as it says nothing about the format.
  */
 const RAW_FORMATS = new Set([
   'dng',
@@ -48,23 +50,33 @@ const RAW_FORMATS = new Set([
   'dcr',
   'mrw',
   'x3f',
+  'fff',
+  'mef',
 ]);
 
 /**
- * Identifying tags of an image IFD: ImageDescription, Make, Model, Software, DateTime,
- * Artist, HostComputer, XMP, Copyright, IPTC and Photoshop image resources.
+ * Identifying tags of an image IFD: DocumentName, ImageDescription, Make, Model, PageName,
+ * Software, DateTime, Artist, HostComputer, XMP, Copyright, IPTC, Photoshop image
+ * resources, and Windows' XPTitle, XPComment, XPAuthor, XPKeywords and XPSubject (UCS-2 in
+ * BYTE values, zeroed like the rest).
  */
 const IMAGE_TARGETS = new Set([
-  270, 271, 272, 305, 306, 315, 316, 700, 33432, 33723, 34377,
+  269, 270, 271, 272, 285, 305, 306, 315, 316, 700, 33432, 33723, 34377, 40091,
+  40092, 40093, 40094, 40095,
 ]);
 
 /**
- * Identifying tags of an Exif IFD: capture times, MakerNote, UserComment, owner name, body
- * and lens serial numbers, lens make and model.
+ * Identifying tags of an Exif IFD: capture times and their time-zone offsets, ImageHistory,
+ * MakerNote, UserComment, ImageUniqueID, owner name, body and lens serial numbers, lens
+ * make and model.
  */
 const EXIF_TARGETS = new Set([
-  36867, 36868, 37500, 37510, 42032, 42033, 42035, 42036, 42037,
+  36867, 36868, 36880, 36881, 36882, 37395, 37500, 37510, 42016, 42032, 42033,
+  42035, 42036, 42037,
 ]);
+
+/** The 8-byte header: byte order, magic and the IFD0 offset. */
+const HEADER: Range = { start: 0, end: 8 };
 
 /** Offset/length tag pairs that locate image data: strips, tiles, a JPEG thumbnail. */
 const IMAGE_DATA_TAGS: readonly (readonly [number, number])[] = [
@@ -183,14 +195,11 @@ function blankIdentifyingValues(bytes: Bytes, namedRaw: boolean): FormatStrip {
     return { start, end };
   };
 
-  /** Ranges to zero; `external` ones lie outside any IFD table. */
+  /** Ranges to zero: GPS tables, and values inline in a table or `external` to all. */
   const targets: Range[] = [];
   const external: Range[] = [];
   for (const ifd of ifds) {
-    if (ifd.kind === 'gps') {
-      targets.push(ifd);
-      external.push(ifd);
-    }
+    if (ifd.kind === 'gps') targets.push(ifd);
     for (const entry of ifd.entries) {
       if (!isTarget(ifd.kind, entry.tag) || entry.count === 0) continue;
       if (entry.size < 0) throw new MalformedImage(); // cannot place it to blank it
@@ -201,17 +210,26 @@ function blankIdentifyingValues(bytes: Bytes, namedRaw: boolean): FormatStrip {
   }
   if (targets.length === 0) return CLEAN;
   const allTargets = union(targets);
-  const externalTargets = union(external);
 
-  // Nothing kept may be touched: an inline target sits inside its own table, so tables
-  // are checked against external targets only; kept values and image data against all.
   const guard = (range: Range, against: readonly Range[]) => {
     if (range.end > n) throw new MalformedImage();
     if (overlaps(against, range)) throw new MalformedImage();
   };
+  // Every IFD table (count, entries, next pointer) must stand alone. Then an inline target
+  // can only touch its own table's value field, and a zeroed GPS table no other table.
+  const tables = [...ifds].sort((a, b) => a.start - b.start);
+  for (let i = 1; i < tables.length; i++) {
+    if ((tables[i] as Ifd).start < (tables[i - 1] as Ifd).end) {
+      throw new MalformedImage();
+    }
+  }
+  // Nothing else may be touched: not the header, no table by an external value, and no
+  // kept value or image data by any target.
+  guard(HEADER, allTargets);
+  const externalTargets = union(external);
+  for (const ifd of ifds) guard(ifd, externalTargets);
   for (const ifd of ifds) {
     if (ifd.kind === 'gps') continue;
-    guard(ifd, externalTargets);
     for (const entry of ifd.entries) {
       if (isTarget(ifd.kind, entry.tag) || entry.size <= 4) continue;
       guard(valueRange(entry), allTargets);
@@ -337,8 +355,10 @@ function namesRawFormat(hints: FileHints): boolean {
   const subtype = /^image\/(?:[a-z0-9.+]+-)*([a-z0-9]+)$/iu.exec(
     (hints.type ?? '').trim(),
   )?.[1];
-  return [extension, subtype].some(
-    (name) => name !== undefined && RAW_FORMATS.has(name.toLowerCase()),
+  return (
+    [extension, subtype].some(
+      (name) => name !== undefined && RAW_FORMATS.has(name.toLowerCase()),
+    ) || /^image\/x-[a-z0-9.+-]+-raw$/iu.test((hints.type ?? '').trim())
   );
 }
 

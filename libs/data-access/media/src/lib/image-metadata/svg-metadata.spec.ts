@@ -11,6 +11,7 @@ import {
   INKSCAPE_SVG,
   INKSCAPE_SVG_STRIPPED,
   SVG_NS,
+  manyAttributesSvg,
   manyElementsSvg,
   utf8,
 } from './svg-metadata.fixture';
@@ -195,5 +196,29 @@ describe('stripImageMetadata: SVG', () => {
   it('caps the elements one strip may visit', () => {
     expect(stripImageMetadata(manyElementsSvg(10_000)).kind).toBe('stripped');
     expectMalformed(manyElementsSvg(140_000));
+  });
+
+  it('leaves an SVG with an element of more than 1024 attributes unchanged', () => {
+    expect(stripImageMetadata(manyAttributesSvg(1, 1_024)).kind).toBe(
+      'stripped',
+    );
+    expectMalformed(manyAttributesSvg(1, 1_025));
+  });
+
+  it('counts attributes against the walk budget', () => {
+    // 129 elements of 1,024 kept attributes: under the per-element cap, over the budget.
+    const kept = { editor: false };
+    expect(stripImageMetadata(manyAttributesSvg(127, 1_024, kept)).kind).toBe(
+      'stripped',
+    );
+    expectMalformed(manyAttributesSvg(129, 1_024, kept));
+  });
+
+  it('bounds the work of removing attributes, which grows with each element', () => {
+    // Emptying a 1,024-attribute element costs about 1,024²/2 attribute scans.
+    expect(stripImageMetadata(manyAttributesSvg(3, 1_024)).kind).toBe(
+      'stripped',
+    );
+    expectMalformed(manyAttributesSvg(4, 1_024));
   });
 });

@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { joinParts } from './image-metadata';
 import {
+  JPEG_IMAGE_DATA,
+  JPEG_JFIF,
   JPEG_SOI,
   ascii,
   concat,
@@ -18,6 +21,11 @@ import {
   identifyingPage,
   tiffLayout,
 } from './tiff-metadata.fixture';
+
+vi.mock('./image-metadata', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./image-metadata')>();
+  return { ...real, joinParts: vi.fn(real.joinParts) };
+});
 
 describe('withoutImageMetadata', () => {
   it('returns a new file with the metadata removed, keeping name, type and date', async () => {
@@ -127,6 +135,31 @@ describe('withoutImageMetadata', () => {
 });
 
 describe('bytesWithoutImageMetadata', () => {
+  beforeEach(() => {
+    vi.mocked(joinParts).mockClear();
+  });
+
+  it('hands over a stripped TIFF without copying it again', async () => {
+    const layout = tiffLayout('MM', [identifyingPage('MM')]);
+    const scan = new File([layout.bytes], 'scan.tif', { type: 'image/tiff' });
+
+    const bytes = new Uint8Array(await bytesWithoutImageMetadata(scan));
+
+    expect(Array.from(bytes)).toEqual(Array.from(expectedStrip(layout)));
+    expect(joinParts).not.toHaveBeenCalled();
+  });
+
+  it('copies a single part that is only a view into the original', async () => {
+    const clean = concat(JPEG_SOI, JPEG_JFIF, JPEG_IMAGE_DATA);
+    const photo = new File([clean, ascii('trailing data')], 'IMG.jpg', {
+      type: 'image/jpeg',
+    });
+
+    const bytes = new Uint8Array(await bytesWithoutImageMetadata(photo));
+
+    expect(Array.from(bytes)).toEqual(Array.from(clean));
+  });
+
   it('returns the stripped plaintext for an image', async () => {
     const original = new File([identifyingJpeg()], 'IMG_0001.jpg', {
       type: 'image/jpeg',

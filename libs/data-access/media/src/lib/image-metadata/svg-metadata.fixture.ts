@@ -81,6 +81,26 @@ export const CLEAN_SVG = `<?xml version="1.0"?>
 </svg>
 `;
 
+/**
+ * An SVG of `elements` groups with `attributes` attributes each, plus a comment to remove.
+ * `editor` puts them in Illustrator's namespace, so a strip removes every one of them.
+ */
+export function manyAttributesSvg(
+  elements: number,
+  attributes: number,
+  { editor = true }: { readonly editor?: boolean } = {},
+): Uint8Array<ArrayBuffer> {
+  const prefix = editor ? 'i:' : '';
+  const names = Array.from(
+    { length: attributes },
+    (_, i) => `${prefix}a${i}=""`,
+  ).join(' ');
+  return utf8(
+    `<svg xmlns="${SVG_NS}" xmlns:i="http://ns.adobe.com/AdobeIllustrator/10.0/">` +
+      `<!-- Alice Example -->${`<g ${names}/>`.repeat(elements)}</svg>`,
+  );
+}
+
 /** An SVG of `elements` empty groups. */
 export function manyElementsSvg(elements: number): Uint8Array<ArrayBuffer> {
   return utf8(

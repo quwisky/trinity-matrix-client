@@ -124,6 +124,10 @@ describe('stripImageMetadata: TIFF', () => {
         'RF 24-105mm',
         '8BIM',
         'makernote',
+        '+02:00',
+        '0123456789abcdef',
+        'Berlin trip',
+        'Page by',
       ]) {
         expect(containsAscii(out, marker), marker).toBe(false);
       }
@@ -222,6 +226,9 @@ describe('stripImageMetadata: TIFF', () => {
       ['a raw file name without a type', { name: 'IMG_0001.cr2', type: '' }],
       ['a raw MIME type', { name: 'download', type: 'image/x-nikon-nef' }],
       ['a DNG MIME type', { type: 'image/x-adobe-dng' }],
+      ['a Hasselblad file name', { name: 'B0001234.fff' }],
+      ['a Mamiya file name', { name: 'IMG_0001.MEF' }],
+      ['a vendor raw MIME type', { type: 'image/x-panasonic-raw' }],
     ])('blanks only the GPS IFD of a TIFF named by %s', (_label, hints) => {
       const layout = tiffLayout('MM', [identifyingPage('MM')]);
 
@@ -248,6 +255,11 @@ describe('stripImageMetadata: TIFF', () => {
       ['a .tiff name', { name: 'scan.TIFF' }],
       ['a raw-looking word that is not the extension', { name: 'nef.tif' }],
       ['no name at all', {}],
+      ['a nameless blob with an empty type', { type: '' }],
+      [
+        'a .raw file name, which says nothing of the format',
+        { name: 'scan.raw' },
+      ],
     ])('still blanks the full list for %s', (_label, hints) => {
       const layout = tiffLayout('MM', [identifyingPage('MM')]);
 
@@ -434,6 +446,76 @@ describe('stripImageMetadata: TIFF', () => {
         kind: 'unchanged',
         reason: 'unsupported',
       });
+    });
+  });
+
+  describe('crafted overlaps', () => {
+    /** A little-endian TIFF writer over a zeroed buffer of `length` bytes. */
+    function craft(length: number) {
+      const bytes = new Uint8Array(length);
+      const view = new DataView(bytes.buffer);
+      bytes.set([0x49, 0x49, 42, 0]);
+      return {
+        bytes,
+        u16: (at: number, value: number) => view.setUint16(at, value, true),
+        u32: (at: number, value: number) => view.setUint32(at, value, true),
+        entry: (
+          at: number,
+          tag: number,
+          type: number,
+          count: number,
+          value: number,
+        ) => {
+          view.setUint16(at, tag, true);
+          view.setUint16(at + 2, type, true);
+          view.setUint32(at + 4, count, true);
+          view.setUint32(at + 8, value, true);
+        },
+      };
+    }
+
+    it('leaves a TIFF whose Make points at the header unchanged', () => {
+      const t = craft(16 + 2 + 3 * 12 + 4 + 4);
+      t.u32(4, 16);
+      t.u16(16, 3);
+      t.entry(18, 271, 2, 8, 0); // Make: 8 ASCII bytes at offset 0, the header
+      t.entry(30, 273, 4, 1, 58);
+      t.entry(42, 279, 4, 1, 4);
+
+      expectMalformed(t.bytes);
+    });
+
+    it('leaves a TIFF whose Exif IFD overlaps IFD0 unchanged', () => {
+      // IFD0 at 8 holds 4 entries (8..62). Its Exif pointer leads to 36, inside IFD0, where
+      // entry 3 reads as "DateTimeOriginal" whose inline value is IFD0's next-IFD pointer.
+      const t = craft(150);
+      t.u32(4, 8);
+      t.u16(8, 4);
+      t.entry(10, 273, 4, 1, 140);
+      t.entry(22, 279, 4, 1, 4);
+      t.entry(34, 34665, 4, 1, 36);
+      t.entry(46, 65000, 0, 0x00029003, 4);
+      t.u32(58, 100); // page 2
+      t.u16(100, 2);
+      t.entry(102, 273, 4, 1, 144);
+      t.entry(114, 279, 4, 1, 4);
+      t.bytes.set([1, 2, 3, 4, 5, 6, 7, 8], 140);
+
+      expectMalformed(t.bytes);
+    });
+
+    it('leaves a TIFF whose page tables overlap unchanged', () => {
+      const layout = tiffLayout('MM', [identifyingPage('MM')]);
+      const ifd0 = at(layout, 'page0');
+      // Page 2 starts 12 bytes into IFD0: its table shares IFD0's entries.
+      expectMalformed(
+        pointAt(
+          layout,
+          'MM',
+          (layout.ifds.get('page0')?.[1] ?? 0) - 4,
+          ifd0 + 12,
+        ),
+      );
     });
   });
 

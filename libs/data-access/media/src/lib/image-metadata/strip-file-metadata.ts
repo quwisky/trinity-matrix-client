@@ -52,5 +52,18 @@ export async function bytesWithoutImageMetadata(
     ...(name === undefined ? {} : { name }),
     type: file.type,
   });
-  return result.kind === 'stripped' ? joinParts(result.parts).buffer : buffer;
+  if (result.kind !== 'stripped') return buffer;
+  // A single part that fills its own buffer (a TIFF's modified copy, an SVG's new text) is
+  // handed over as it is, so a large TIFF is not copied a second time.
+  const [only] = result.parts;
+  if (
+    result.parts.length === 1 &&
+    only &&
+    only.byteOffset === 0 &&
+    only.byteLength === only.buffer.byteLength &&
+    only.buffer !== buffer
+  ) {
+    return only.buffer;
+  }
+  return joinParts(result.parts).buffer;
 }

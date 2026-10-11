@@ -190,12 +190,24 @@ export const TIFF_ICC = ascii('fake-icc-profile');
 
 /** Tags whose values a strip must zero in an image IFD. */
 export const IMAGE_IFD_TARGETS = [
-  270, 271, 272, 305, 306, 315, 316, 700, 33432, 33723, 34377,
+  269, 270, 271, 272, 285, 305, 306, 315, 316, 700, 33432, 33723, 34377, 40091,
+  40092, 40093, 40094, 40095,
 ] as const;
 /** Tags whose values a strip must zero in an Exif IFD. */
 export const EXIF_IFD_TARGETS = [
-  36867, 36868, 37500, 37510, 42032, 42033, 42035, 42036, 42037,
+  36867, 36868, 36880, 36881, 36882, 37395, 37500, 37510, 42016, 42032, 42033,
+  42035, 42036, 42037,
 ] as const;
+
+/** `text` as the Windows XP tags store it: UTF-16LE with a terminating NUL, as BYTE. */
+export function ucs2(text: string): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array((text.length + 1) * 2);
+  for (let i = 0; i < text.length; i++) {
+    out[i * 2] = text.charCodeAt(i) & 0xff;
+    out[i * 2 + 1] = text.charCodeAt(i) >> 8;
+  }
+  return out;
+}
 
 /** A camera-style page: every identifying IFD0 tag, an Exif IFD and a GPS IFD. */
 export function identifyingPage(
@@ -213,11 +225,13 @@ export function identifyingPage(
       v.shortEntry(258, 8),
       v.shortEntry(259, 1),
       v.shortEntry(262, 1),
+      v.text(269, '/home/alice/Berlin trip.tif'),
       v.text(270, 'Shot at home'),
       v.text(271, 'Canon'),
       v.text(272, 'EOS R6'),
       v.shortEntry(274, orientation),
       v.shortEntry(277, 1),
+      v.text(285, 'Page by Alice Example'),
       v.text(305, 'Photoshop 2026'),
       v.text(306, '2026:10:01 12:34:56'),
       v.text(315, 'Alice Example'),
@@ -227,6 +241,17 @@ export function identifyingPage(
       v.entry(33723, UNDEFINED, 12, ascii('City: Berlin')),
       v.entry(34377, BYTE, 18, ascii('8BIM\x04\x04City Berlin')),
       v.entry(34675, UNDEFINED, TIFF_ICC.length, TIFF_ICC),
+      ...(
+        [
+          [40091, 'Berlin title'],
+          [40092, 'Shot at home'],
+          [40093, 'Alice Example'],
+          [40094, 'home;Berlin'],
+          [40095, 'Berlin subject'],
+        ] as const
+      ).map(([tag, text]) =>
+        v.entry(tag, BYTE, (text.length + 1) * 2, ucs2(text)),
+      ),
     ],
     exif: {
       label: `${label}-exif`,
@@ -234,9 +259,14 @@ export function identifyingPage(
         v.rational(33434, 1, 125),
         v.text(36867, '2026:10:01 12:34:56'),
         v.text(36868, '2026:10:01 12:34:56'),
+        v.text(36880, '+02:00'),
+        v.text(36881, '+02:00'),
+        v.text(36882, '+02:00'),
+        v.entry(37395, ASCII, 22, ascii('Edited by Alice Exa.\0\0')),
         v.entry(37500, UNDEFINED, 24, ascii('Canon makernote lens1234')),
         v.entry(37510, UNDEFINED, 20, ascii('ASCII\0\0\0Shot at home')),
         v.shortEntry(40961, 1),
+        v.text(42016, '0123456789abcdef0123456789abcdef'),
         v.text(42032, 'Alice Example'),
         v.text(42033, 'SN-0123456789'),
         v.text(42035, 'Canon'),

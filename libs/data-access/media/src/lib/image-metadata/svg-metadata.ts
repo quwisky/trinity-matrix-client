@@ -44,6 +44,21 @@ export const SVG_SNIFF_BYTES = 4096;
  */
 const MAX_SVG_BYTES = 16 * 1024 * 1024;
 
+/**
+ * Upper bound on one element's attributes. Removing an attribute costs time proportional
+ * to the element's attribute count in Blink, so stripping thousands from one element is
+ * quadratic: 60,000 froze Chromium for 17 s. Real drawings have a few dozen at most.
+ */
+const MAX_ATTRIBUTES = 1024;
+
+/**
+ * Upper bound on attribute removal work: each removal counts the attributes its element
+ * still has. Real editor files stay far below (a few removals from elements of a dozen
+ * attributes); without it, 127 elements of 1,024 editor attributes, under both caps
+ * above, still took 0.6 s in Chromium. 2^21 is about 20 ms there.
+ */
+const MAX_REMOVAL_WORK = 1 << 21;
+
 const BOM = [0xef, 0xbb, 0xbf] as const;
 
 /**
@@ -82,8 +97,10 @@ export function isSvg(bytes: Uint8Array): boolean {
  * The file is parsed with the platform XML parser and serialized again as UTF-8, so the
  * output can differ in formatting (attribute quoting, empty-element syntax, a doctype's
  * internal subset, whose entities are already expanded). A file that is not valid UTF-8,
- * declares another encoding, does not parse, or has no SVG root goes out unchanged, as does
- * every SVG where the platform has no `DOMParser`.
+ * declares another encoding, does not parse, has no SVG root, or exceeds a cap (16 MiB,
+ * {@link MAX_ATTRIBUTES} on one element, `MAX_WALK_STEPS` elements, comments and attributes,
+ * {@link MAX_REMOVAL_WORK})
+ * goes out unchanged, as does every SVG where the platform has no `DOMParser`.
  */
 export function stripSvg(bytes: Bytes): FormatStrip {
   if (bytes.length > MAX_SVG_BYTES) return MALFORMED;
@@ -116,6 +133,7 @@ export function stripSvg(bytes: Bytes): FormatStrip {
 
   let removed = false;
   let steps = 0;
+  let removalWork = 0;
   /** `xmlns:prefix` declarations of the SVG namespace itself; see below. */
   const svgPrefixes: Attr[] = [];
   for (const node of Array.from(doc.childNodes)) {
@@ -126,8 +144,15 @@ export function stripSvg(bytes: Bytes): FormatStrip {
   }
   const pending: Element[] = [root];
   for (let element = pending.pop(); element; element = pending.pop()) {
-    for (const attribute of Array.from(element.attributes)) {
+    // Attributes count against the walk budget too, so the removal work stays bounded.
+    const attributes = element.attributes;
+    if (attributes.length > MAX_ATTRIBUTES) return MALFORMED;
+    steps += attributes.length;
+    if (steps > MAX_WALK_STEPS) return MALFORMED;
+    for (const attribute of Array.from(attributes)) {
       if (dropsAttribute(attribute)) {
+        removalWork += attributes.length; // the live count, shrinking as they go
+        if (removalWork > MAX_REMOVAL_WORK) return MALFORMED;
         element.removeAttributeNode(attribute);
         removed = true;
       } else if (
