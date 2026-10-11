@@ -32,27 +32,14 @@ public struct PushContentResolver {
     /// account the store does not know.
     public func fallback(for payload: PushPayload) -> RenderedNotification? {
         guard let account = store.account(payload.accountId) else { return nil }
-        return PushRenderRules.render(
-            event: nil,
-            storedRoom: store.room(payload.accountId, payload.roomId),
-            stateRoomName: nil,
-            senderName: nil,
-            tokenExpired: account.tokenExpired(at: now())
-        )
+        return fallback(for: payload, tokenExpired: account.tokenExpired(at: now()))
     }
 
     /// One deadline covers every read of the push; an expired token makes no read.
     public func resolve(_ payload: PushPayload) async -> PushResolution {
         guard let account = store.account(payload.accountId) else { return .unchanged }
         if account.tokenExpired(at: now()) {
-            let expired = PushRenderRules.render(
-                event: nil,
-                storedRoom: store.room(payload.accountId, payload.roomId),
-                stateRoomName: nil,
-                senderName: nil,
-                tokenExpired: true
-            )
-            return .rendered(expired, sound: account.sound)
+            return .rendered(fallback(for: payload, tokenExpired: true), sound: account.sound)
         }
         let deadline = Date().addingTimeInterval(budget)
         let event = await api.event(account: account, roomId: payload.roomId, eventId: payload.eventId, deadline: deadline)
@@ -72,5 +59,16 @@ public struct PushContentResolver {
             senderName: senderName
         )
         return .rendered(rendered, sound: account.sound)
+    }
+
+    /// The notification from what the store holds alone, without reading anything.
+    private func fallback(for payload: PushPayload, tokenExpired: Bool) -> RenderedNotification {
+        PushRenderRules.render(
+            event: nil,
+            storedRoom: store.room(payload.accountId, payload.roomId),
+            stateRoomName: nil,
+            senderName: nil,
+            tokenExpired: tokenExpired
+        )
     }
 }
