@@ -558,6 +558,53 @@ describe('PushHandoffService', () => {
       expect(h.refresh.mock.calls).toEqual([['@me:hs']]);
     });
 
+    it("does not let one account's rotation suppress another's refresh", async () => {
+      const h = setup({
+        clients: [fakeClient('@me:hs', []), fakeClient('@pw:hs', [])],
+      });
+      h.expiry.mockReturnValue(Date.now() + 300_000);
+      await start(h);
+      h.rotations.next({ userId: '@me:hs', accessToken: 'token-@me:hs' });
+      await flush();
+
+      await firstValueFrom(h.service.refreshBeforeBackground());
+
+      expect(h.refresh.mock.calls).toEqual([['@pw:hs']]);
+    });
+
+    it('forgets a recent rotation when the account leaves and is added again', async () => {
+      const h = setup();
+      h.expiry.mockReturnValue(Date.now() + 300_000);
+      await start(h);
+      h.rotations.next({ userId: '@me:hs', accessToken: 'token-@me:hs' });
+      await flush();
+      h.accountIds.set([]);
+      TestBed.tick();
+      h.accountIds.set(['@me:hs']);
+      TestBed.tick();
+      await flush();
+
+      await firstValueFrom(h.service.refreshBeforeBackground());
+
+      expect(h.refresh.mock.calls).toEqual([['@me:hs']]);
+    });
+
+    it('ignores a rotation that arrives after the account left', async () => {
+      const h = setup();
+      h.expiry.mockReturnValue(Date.now() + 300_000);
+      await start(h);
+      h.accountIds.set([]);
+      TestBed.tick();
+      h.rotations.next({ userId: '@me:hs', accessToken: 'late' });
+      h.accountIds.set(['@me:hs']);
+      TestBed.tick();
+      await flush();
+
+      await firstValueFrom(h.service.refreshBeforeBackground());
+
+      expect(h.refresh.mock.calls).toEqual([['@me:hs']]);
+    });
+
     it('refreshes nothing off a native host', async () => {
       const h = setup({ available: false });
       h.expiry.mockReturnValue(Date.now() + 300_000);

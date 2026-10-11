@@ -242,9 +242,15 @@ the SDK's own token manager (`client.http.refreshOAuthTokens()`, added by
 `patches/matrix-js-sdk@43.0.0.patch`). It therefore joins a refresh already in flight,
 persists the pair before the SDK adopts it and reaches the store as an ordinary rotation. The
 app stays the only process that rotates tokens. A refused refresh signs nothing out at that
-moment; the account's next request meets the refusal and takes the usual path. iOS may
-suspend the app before the refresh or the store write finishes; the store then keeps the
-previous token and its expiry.
+moment; the account's next request meets the refusal and takes the usual path. The refresh
+is not proven to finish before iOS suspends the app, and an interrupted one leaves two
+outcomes. If the server rotated but the native store write never ran, the store may hold a
+token that is already revoked: closed-app notifications for that account then show the
+generic "New message" text, not the expired-token text, until the app next runs. If iOS ends
+the process after the provider rotated the refresh token but before Trinity's storage
+committed it, the next start holds a spent refresh token. Whether that costs the session
+depends on the provider's refresh-token reuse policy; this is unproven, and the owner's
+device check under #1152 step 5 should cover it.
 
 **Rendering.** iOS runs the `NotificationService` extension; Android replaces the push
 plugin's messaging service with `TrinityMessagingService`, which treats the app as

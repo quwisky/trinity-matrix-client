@@ -90,7 +90,10 @@ export class PushHandoffService {
       );
       const rotations = this.matrix.accessTokenRotations.subscribe(
         ({ userId, accessToken }) => {
-          this.rotatedAt.set(userId, Date.now());
+          const binding = this.bindings.get(userId);
+          if (binding && !this.isRetired(userId, binding.client)) {
+            this.rotatedAt.set(userId, Date.now());
+          }
           this.writeAccount(userId, accessToken);
         },
       );
