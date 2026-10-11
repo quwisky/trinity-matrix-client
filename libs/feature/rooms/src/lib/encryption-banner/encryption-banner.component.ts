@@ -16,15 +16,13 @@ import { TrustService } from '@trinity/data-access/trust';
 import { BannerComponent } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
-/** Which encryption flow a banner action triggers. */
-type BannerActionKind = 'setup' | 'unlock' | 'verify' | 'reset';
+/** Which surface a banner action opens: an encryption flow, or Security settings. */
+type BannerActionKind = 'setup' | 'unlock' | 'verify' | 'security';
 
-/** A banner call-to-action: a label, the flow it triggers and its weight. */
+/** A banner call-to-action: a label and the surface it opens. */
 interface BannerAction {
   label: string;
   kind: BannerActionKind;
-  /** Subordinate actions (an irreversible door) recede rather than invite. */
-  secondary?: true;
 }
 
 /**
@@ -35,7 +33,9 @@ interface BannerAction {
  * with another signed-in session; `needs-verification` (an identity set up elsewhere,
  * with no recovery) offers only verification, because setup would replace that identity.
  * A verified device that still lacks that identity's keys (`recoverySetupElsewhere`) is
- * sent to the device that holds them, with the explicit reset as the only action here.
+ * sent to the device that holds them; its only action opens Security settings. The
+ * banner cannot be dismissed, so it never offers the irreversible reset itself — that
+ * stays in Security settings, behind its typed confirmation.
  * Renders nothing when crypto is `ready` or still `unknown`. Its status is the ACTIVE
  * account's, re-projected on an account switch. Lives in feature-rooms (not
  * feature-crypto) because the module boundary forbids feature→feature dependencies.
@@ -86,8 +86,9 @@ export class EncryptionBannerComponent {
 
   readonly actions = computed<BannerAction[]>(() => {
     if (this.setupElsewhere()) {
-      // No "Set up": it would replace the identity the other device holds.
-      return [{ label: 'Reset my identity', kind: 'reset', secondary: true }];
+      // No "Set up": it would replace the identity the other device holds. Security
+      // settings explains the way out, including the confirmed reset.
+      return [{ label: 'Security settings', kind: 'security' }];
     }
     switch (this.status()) {
       case 'needs-setup':
@@ -105,18 +106,14 @@ export class EncryptionBannerComponent {
   });
 
   /**
-   * Trigger a semantic trust surface. The application adapter chooses a modal or
-   * canonical route without exposing Router or platform policy to this capability.
+   * Open a semantic trust surface, or Security settings. The application adapter chooses
+   * a modal or canonical route without exposing Router or platform policy to this
+   * capability.
    */
   run(kind: BannerActionKind): void {
-    // The reset lives on the unlock screen, behind its typed confirmation: one
-    // implementation of an irreversible flow, arrived at with the reset offered.
     const request: WorkspaceApplicationSurfaceRequest =
-      kind === 'reset'
-        ? {
-            surface: { kind: 'trust', flow: 'unlock' },
-            context: { offerReset: true },
-          }
+      kind === 'security'
+        ? { surface: { kind: 'settings', section: 'security' } }
         : { surface: { kind: 'trust', flow: kind } };
     this.applicationSurfaces
       .open(request)

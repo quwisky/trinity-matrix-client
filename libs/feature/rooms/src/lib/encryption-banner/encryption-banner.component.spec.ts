@@ -153,15 +153,16 @@ describe('EncryptionBannerComponent', () => {
     expect(container.querySelector('trn-banner')?.textContent).toContain(
       'Set up recovery on the device where you first set up encryption.',
     );
+    // The banner cannot be dismissed, so its only action must not be destructive: the
+    // reset stays in Security settings, behind its typed confirmation.
     const labels = [...container.querySelectorAll('trn-banner button')].map(
       (button) => button.textContent?.trim(),
     );
-    expect(labels).toEqual(['Reset my identity']);
+    expect(labels).toEqual(['Security settings']);
 
-    clickAction(container, 'Reset my identity');
-    expect(open).toHaveBeenCalledWith({
-      surface: { kind: 'trust', flow: 'unlock' },
-      context: { offerReset: true },
+    clickAction(container, 'Security settings');
+    expect(open).toHaveBeenCalledExactlyOnceWith({
+      surface: { kind: 'settings', section: 'security' },
     });
   });
 });
