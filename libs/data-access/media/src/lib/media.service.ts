@@ -25,8 +25,8 @@ import { fetchMediaBytes } from '@trinity/util/matrix';
 import type { EncryptedFileInfo, MediaPayload } from '@trinity/util/matrix';
 import type { MediaHints } from './media-pipeline.models';
 import {
-  bytesWithoutImageMetadata,
-  withoutImageMetadata,
+  bytesWithoutMediaMetadata,
+  withoutMediaMetadata,
 } from './image-metadata/strip-file-metadata';
 
 /** Which rendition of an attachment to resolve. */
@@ -244,8 +244,9 @@ export class MediaService {
    * Upload a picked file to the media repo, encrypting it first for E2EE rooms,
    * and return the descriptor {@link TimelineService} turns into an event. A JPEG,
    * PNG, WebP or HEIF image first loses its identifying metadata (location, camera,
-   * capture time; orientation is kept), on the plaintext before any encryption;
-   * anything else, or an image whose structure is in doubt, goes up as picked. In an
+   * capture time; orientation is kept), and an MP4/MOV/3GP movie its location and
+   * device, on the plaintext before any encryption; anything else, or a file whose
+   * structure is in doubt, goes up as picked. In an
    * encrypted room the ciphertext is uploaded with no filename/MIME (those leak),
    * and `info.url` is filled with the resulting `mxc://`; otherwise the file itself
    * is uploaded. `progress` reports an upload fraction in [0, 1].
@@ -323,10 +324,11 @@ export class MediaService {
       : undefined;
 
     // Photos leave without their location, camera and capture time (#1140); orientation is
-    // kept. Stripping happens on the plaintext, before encryption, and anything it cannot
-    // handle with certainty is uploaded exactly as picked.
+    // kept. Videos leave without their location and device (#1179), blanked in place.
+    // Stripping happens on the plaintext, before encryption, and anything it cannot handle
+    // with certainty is uploaded exactly as picked.
     if (encrypt) {
-      const plaintext = await bytesWithoutImageMetadata(file);
+      const plaintext = await bytesWithoutMediaMetadata(file);
       abortController?.signal.throwIfAborted();
       const { data, info } = await encryptAttachment(plaintext);
       abortController?.signal.throwIfAborted();
@@ -347,7 +349,7 @@ export class MediaService {
       };
     }
 
-    const upload = await withoutImageMetadata(file);
+    const upload = await withoutMediaMetadata(file);
     abortController?.signal.throwIfAborted();
     const res = await client.uploadContent(upload, {
       name: file.name,

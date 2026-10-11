@@ -1,8 +1,10 @@
+import type { Bytes } from './byte-parts';
 import {
   joinParts,
   strippableFormat,
   stripImageMetadata,
 } from './image-metadata';
+import { isIsoMovie, stripVideoMetadata } from './video-metadata';
 
 /** Enough of a file to recognise every strippable format, including a long `ftyp` box. */
 const SNIFF_BYTES = 512;
@@ -17,28 +19,76 @@ const SNIFF_BYTES = 512;
  */
 export async function withoutImageMetadata(file: File): Promise<File> {
   try {
-    const head = new Uint8Array(await file.slice(0, SNIFF_BYTES).arrayBuffer());
-    if (!strippableFormat(head)) return file;
-    const result = stripImageMetadata(new Uint8Array(await file.arrayBuffer()));
-    if (result.kind !== 'stripped') return file;
-    return new File([...result.parts], file.name, {
-      type: file.type,
-      lastModified: file.lastModified,
-    });
+    const head = await sniff(file);
+    return strippableFormat(head) ? await strippedImage(file) : file;
   } catch {
     return file;
   }
 }
 
 /**
- * The plaintext to encrypt for `file`: its bytes with identifying image metadata removed,
- * or exactly its bytes when there is nothing that can safely be removed. Reads the file
- * once, as the encrypted upload already did, and copies it again only when it stripped.
+ * `file` without identifying image or video metadata: images as {@link withoutImageMetadata},
+ * and MP4/MOV/3GP movies with their location and device blanked in place (see
+ * `stripVideoMetadata`), same length, nothing re-encoded. A movie is never loaded whole:
+ * only its top-level box headers and its `moov` box are read, and the result is composed
+ * of slices of `file` around the patched `moov`, so the samples are never copied. Never
+ * rejects; anything it cannot handle with certainty is returned as `file` itself.
  */
-export async function bytesWithoutImageMetadata(
+export async function withoutMediaMetadata(file: File): Promise<File> {
+  try {
+    const head = await sniff(file);
+    if (strippableFormat(head)) return await strippedImage(file);
+    if (!isIsoMovie(head, file.type)) return file;
+    const read = async (start: number, end: number): Promise<Bytes> =>
+      new Uint8Array(await file.slice(start, end).arrayBuffer());
+    const result = await stripVideoMetadata(read, file.size);
+    if (result.kind !== 'stripped') return file;
+    return new File(
+      [file.slice(0, result.start), result.movie, file.slice(result.end)],
+      file.name,
+      { type: file.type, lastModified: file.lastModified },
+    );
+  } catch {
+    return file;
+  }
+}
+
+/**
+ * The plaintext to encrypt for `file`: its bytes with identifying image or video metadata
+ * removed, or exactly its bytes when there is nothing that can safely be removed. Reads
+ * the file once, as the encrypted upload already did. A stripped image is copied once
+ * more; a movie is blanked in that same buffer, since its length never changes.
+ */
+export async function bytesWithoutMediaMetadata(
   file: Blob,
 ): Promise<ArrayBuffer> {
   const buffer = await file.arrayBuffer();
-  const result = stripImageMetadata(new Uint8Array(buffer));
-  return result.kind === 'stripped' ? joinParts(result.parts).buffer : buffer;
+  const bytes = new Uint8Array(buffer);
+  const head = bytes.subarray(0, SNIFF_BYTES);
+  if (strippableFormat(head)) {
+    const result = stripImageMetadata(bytes);
+    return result.kind === 'stripped' ? joinParts(result.parts).buffer : buffer;
+  }
+  if (isIsoMovie(head, file.type)) {
+    // Edits land in `bytes` only once the whole moov has been checked.
+    await stripVideoMetadata(
+      (start, end) => Promise.resolve(bytes.subarray(start, end)),
+      bytes.length,
+    );
+  }
+  return buffer;
+}
+
+async function sniff(file: Blob): Promise<Uint8Array> {
+  return new Uint8Array(await file.slice(0, SNIFF_BYTES).arrayBuffer());
+}
+
+/** `file` without its image metadata, or `file` when nothing was removed. */
+async function strippedImage(file: File): Promise<File> {
+  const result = stripImageMetadata(new Uint8Array(await file.arrayBuffer()));
+  if (result.kind !== 'stripped') return file;
+  return new File([...result.parts], file.name, {
+    type: file.type,
+    lastModified: file.lastModified,
+  });
 }
