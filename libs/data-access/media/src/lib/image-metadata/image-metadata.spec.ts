@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  HOSTILE_INPUT_BUDGET_MS,
   HEIF_EXIF_PAYLOAD,
   HEIF_PIXELS,
   HEIF_XMP_PAYLOAD,
@@ -503,7 +504,7 @@ describe('stripImageMetadata', () => {
       const elapsed = performance.now() - started;
 
       expect(result).toEqual({ kind: 'unchanged', reason: 'malformed' });
-      expect(elapsed).toBeLessThan(100);
+      expect(elapsed).toBeLessThan(HOSTILE_INPUT_BUDGET_MS);
     });
 
     it('rejects a file of 500,000 top-level mdat boxes, quickly', () => {
@@ -515,7 +516,7 @@ describe('stripImageMetadata', () => {
       const elapsed = performance.now() - started;
 
       expect(result).toEqual({ kind: 'unchanged', reason: 'malformed' });
-      expect(elapsed).toBeLessThan(100);
+      expect(elapsed).toBeLessThan(HOSTILE_INPUT_BUDGET_MS);
     });
 
     it('still strips a file with a few top-level mdat boxes', () => {
@@ -550,7 +551,7 @@ describe('stripImageMetadata', () => {
       const elapsed = performance.now() - started;
 
       expect(result).toEqual({ kind: 'unchanged', reason: 'malformed' });
-      expect(elapsed).toBeLessThan(100);
+      expect(elapsed).toBeLessThan(HOSTILE_INPUT_BUDGET_MS);
     }
 
     it.each([
@@ -584,7 +585,7 @@ describe('stripImageMetadata', () => {
       const elapsed = performance.now() - started;
 
       expect(result.kind).toBe('stripped');
-      expect(elapsed).toBeLessThan(100);
+      expect(elapsed).toBeLessThan(HOSTILE_INPUT_BUDGET_MS);
     });
 
     it('still strips files with many structures under the caps', () => {
