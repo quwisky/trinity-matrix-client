@@ -5,6 +5,7 @@ import {
   type WritableSignal,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import {
   ClientEvent,
@@ -143,19 +144,29 @@ export class ImagePackService {
     return this.watchedRoom(roomId).packs.asReadonly();
   }
 
+  /**
+   * Hold `roomId`'s projection. Callable from an effect: it reads the client and the
+   * account selection untracked, so a selection change cannot re-run the caller's
+   * effect. That re-run would disconnect and recreate the room's entry, stranding a
+   * consumer still reading the old entry's signal.
+   */
   connect(roomId: string): void {
-    this.watchedRoom(roomId).consumers += 1;
-    this.projection.connect();
+    untracked(() => {
+      this.watchedRoom(roomId).consumers += 1;
+      this.projection.connect();
+    });
   }
 
   disconnect(roomId: string): void {
-    const watched = this.watched.get(roomId);
-    if (!watched) return;
-    watched.consumers = Math.max(0, watched.consumers - 1);
-    if (watched.consumers > 0) return;
-    watched.packs.set([]);
-    this.watched.delete(roomId);
-    if (this.watched.size === 0) this.projection.disconnect();
+    untracked(() => {
+      const watched = this.watched.get(roomId);
+      if (!watched) return;
+      watched.consumers = Math.max(0, watched.consumers - 1);
+      if (watched.consumers > 0) return;
+      watched.packs.set([]);
+      this.watched.delete(roomId);
+      if (this.watched.size === 0) this.projection.disconnect();
+    });
   }
 
   private watchedRoom(roomId: string): WatchedRoom {
