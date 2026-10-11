@@ -9,7 +9,7 @@ This directory contains repository records and maintainer procedures that are in
 - `maintenance/ci-and-releases.md` covers private CI and release operations.
 - `maintenance/push-notifications.md` covers push infrastructure and operator setup.
 - `maintenance/validation-warnings.md` records investigated tool warnings.
-- `research/` holds spike and investigation write-ups that await an owner decision.
+- `research/` holds spike and investigation write-ups.
 
 Public release documentation lives under `apps/docs-users/src/content/docs/`. Public integration-branch documentation lives under `apps/docs-developers/src/content/docs/`.
 

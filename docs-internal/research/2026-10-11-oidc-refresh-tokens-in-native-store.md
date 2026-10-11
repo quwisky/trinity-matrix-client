@@ -95,7 +95,9 @@ stricter servers: the homeserver "SHOULD consider that the session is compromise
 invalidated refresh token is used, and SHOULD revoke the session"
 ([refresh token grant](https://spec.matrix.org/v1.19/client-server-api/#refresh-token-grant)).
 MAS does not do that today (its code marks the case `XXX … we *may* want to invalidate the
-session`), but a design that relies on that leniency breaks on a compliant server.
+session`), but a design that relies on MAS tolerating concurrent refreshes, where a second
+holder presents a refresh token the first has already used, breaks on a compliant server.
+Retrying one's own refresh after a lost response is different: the spec guarantees it.
 
 **In Trinity, a refused refresh becomes a hard sign-out.** On `M_UNKNOWN_TOKEN`, matrix-js-sdk
 43 refreshes; a 400/401 refusal is a `TokenRefreshLogoutError`
@@ -105,22 +107,34 @@ SDK emits `SessionLoggedOut` with the original 401 error. Because Synapse sends
 (line 990) takes the hard path: it wipes the account's stores, including the Rust crypto
 store, and forgets the account. Keys missing from backup are lost.
 
-There is a second trap that does not involve the refresh token at all. MAS revokes the previous
-access token on every refresh. If the renderer refreshes while the app still holds a live
-client, for example suspended on iOS or backgrounded on Android, the app's next request gets
-`M_UNKNOWN_TOKEN` for a token it believes is still valid. matrix-js-sdk then does not try to
-refresh: when the known expiry is more than 60 s away it returns `Logout` immediately
-(`_handleUnknownToken` in `node_modules/matrix-js-sdk/src/http-api/refresh.ts`). Any design
-in which the renderer refreshes must therefore also change how the app reacts to a 401.
+There is a second trap that does not involve reusing the refresh token. MAS revokes the
+previous access token on every refresh. If the renderer refreshes while the app still holds a
+live client, for example suspended on iOS or backgrounded on Android, the app's old token stops
+working. Synapse caches introspection results for 2 minutes and has no invalidation
+([`mas.py`](https://github.com/element-hq/synapse/blob/c0805eabb1bda3b1ffc370fec35a73d524674d60/synapse/api/auth/mas.py#L127-L145)),
+so a revoked token can keep working for up to 2 minutes. After that, the app's next request
+gets `M_UNKNOWN_TOKEN` for a token it may believe is still valid. matrix-js-sdk then does not
+try to refresh: when the known expiry is 60 s or more away it returns `Logout` immediately
+(`_handleUnknownToken` in `node_modules/matrix-js-sdk/src/http-api/refresh.ts`).
+
+That known expiry is `latestTokenRefreshExpiry`, which the SDK sets only after a refresh in the
+current process; Trinity passes no initial expiry
+([`session.model.ts`](../../libs/util/matrix/src/lib/session.model.ts) line 17). Right after a
+restore, the SDK therefore does refresh, but with the refresh token it restored, which the
+renderer has already consumed. That gets `invalid_grant`: the same hard sign-out by a different
+route. Any design in which the renderer refreshes must therefore also change how the app reacts
+to a 401 and where it reads its tokens on restore.
 
 ## Constraints
 
 - **One authority per credential.** OAuth 2.0 requires refresh tokens to be confidential in
   transit and storage and shared only between the authorization server and the client
   ([RFC 6749 §10.4](https://www.rfc-editor.org/rfc/rfc6749#section-10.4)). For public clients,
-  [RFC 9700 §4.14.2](https://www.rfc-editor.org/rfc/rfc9700#section-4.14.2) (BCP 240) and
-  [OAuth 2.1 §10](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1-16) require
-  refresh tokens that are either sender-constrained or rotated. Every OIDC homeserver Trinity
+  [RFC 9700 §4.14.2](https://www.rfc-editor.org/rfc/rfc9700#section-4.14.2) (BCP 240) says
+  authorization servers MUST use sender-constrained or rotated refresh tokens. The OAuth 2.1
+  draft carries the same rule in its normative refresh token grant section
+  ([draft 16 §4.3.1](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1-16#section-4.3.1);
+  §10 repeats it informatively). Every OIDC homeserver Trinity
   meets should be assumed to rotate.
 - **Retry of a lost response is safe; reuse after the new pair was used is not.** The Matrix
   spec requires the server to let a client retry a refresh whose response was lost, and asks
@@ -219,8 +233,9 @@ matches the expected generation attribute, or the leased lock in the native cryp
 - **Effort:** high. Native OAuth refresh in Kotlin and Swift, the lock and fencing, the SDK patch
   for the coordinator and the 401 re-read, moving the token authority on mobile, and tests.
 - **Non-MAS homeservers:** relies only on spec behaviour (rotation, retry after a lost response),
-  so it is portable if the lock is never bypassed. It must not rely on MAS's double-refresh
-  tolerance.
+  so it is portable if the lock is never bypassed. It must not rely on MAS tolerating
+  concurrent refreshes by two holders; the retry in step 5 is the spec's lost-response retry by
+  the single holder of the lock, not a second refresher.
 - **#1153/#1154:** a direct fit. #1154 already needs a valid token in the extension, for a
   to-device sync that brings missing room keys, as well as a cross-process lock and a shared
   sync position. Element X uses one lock for all three. Building (a3) separately first risks two
@@ -302,8 +317,8 @@ Assessment:
 
 - **(e1) Refresh before going to the background.** Refresh when the app is paused, so the stored
   token lasts a full lifetime from that moment. It buys at most one lifetime (five minutes on
-  MAS defaults), and matrix-js-sdk exposes no public "refresh now" call, so it needs the same
-  SDK patch point. Cheap, and worth having, but small.
+  MAS defaults), and matrix-js-sdk has no public OAuth refresh call (`client.refreshToken()` exists but uses the
+  legacy MSC2918 `/refresh` endpoint), so it needs the same SDK patch point. Cheap, and worth having, but small.
 - **(e2) OS-scheduled refresh while closed.** Android's periodic WorkManager work runs at most
   every 15 minutes
   ([`PeriodicWorkRequest`](https://developer.android.com/reference/androidx/work/PeriodicWorkRequest)),
@@ -378,9 +393,11 @@ tokens, and theft is detectable, because rotation makes the thief and the app co
 copy; this change does not alter that.
 
 **Detection and response.** On a rotating server, a stolen refresh token used by an attacker
-makes the legitimate holder's next refresh fail. With (a3) that appears as a sign-out, which is
-the intended outcome of rotation. The user signs in again, and, on a strict server, the session
-is revoked.
+makes the legitimate holder's next refresh fail. That sign-out is the intended outcome of
+rotation, but today Trinity takes the hard path for it (`soft_logout: false`), which wipes the
+account's crypto store and loses keys missing from backup. (a3)'s re-read should therefore turn
+a refused refresh into a soft logout that keeps the stores for re-authentication. The user then
+signs in again, and, on a strict server, the session is revoked.
 
 ## Recommendation
 
@@ -420,7 +437,7 @@ stands.
    6. Sign-out removes the entry first and cannot be undone by an in-flight refresh; revocation
       at the provider follows.
    7. The design relies only on spec guarantees (rotation, retry after a lost response), never on
-      MAS's double-refresh tolerance. It is proven by deterministic race tests (JUnit, XCTest)
+      MAS tolerating concurrent refreshes of one refresh token by two holders. It is proven by deterministic race tests (JUnit, XCTest)
       and an on-device check with an OIDC account.
 2. **Sequencing:** build (a3) on the #1153/#1154 lock (recommended), or ship an Android-only
    in-process version earlier?
@@ -469,7 +486,7 @@ stands.
   rejected), [MSC4174](https://github.com/matrix-org/matrix-spec-proposals/pull/4174) (web push).
 - OAuth: [RFC 6749 §6 and §10.4](https://www.rfc-editor.org/rfc/rfc6749#section-10.4),
   [RFC 9700 §4.14](https://www.rfc-editor.org/rfc/rfc9700#section-4.14) (BCP 240),
-  [OAuth 2.1 draft 16 §4.3.3 and §10](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1-16),
+  [OAuth 2.1 draft 16 §4.3.1, §4.3.3 and §10](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1-16#section-4.3.1),
   [RFC 9449](https://www.rfc-editor.org/rfc/rfc9449) (DPoP).
 - MAS: [configuration reference](https://element-hq.github.io/matrix-authentication-service/reference/configuration.html),
   [refresh token grant](https://github.com/element-hq/matrix-authentication-service/blob/2277a37c5928eb08de4781b6e602a8a6c81bcca1/crates/handlers/src/oauth2/token.rs#L624-L803),
