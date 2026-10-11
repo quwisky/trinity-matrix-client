@@ -68,13 +68,14 @@ describe('TrnTooltip', () => {
   });
 
   describe('focus', () => {
-    async function focusWith(focusVisible: boolean) {
+    async function focusWith(focusVisible: boolean, beforeFocus?: () => void) {
       vi.useFakeTimers();
       const { container } = await render(HostComponent);
       const button = container.querySelector('button') as HTMLButtonElement;
       // jsdom's :focus-visible is a heuristic that depends on earlier pointer events; stub it
       // so keyboard intent is deterministic, and defer to the real matcher for anything else.
       stubFocusVisible(button, focusVisible);
+      beforeFocus?.();
       // CDK reports programmatic focus as 'program', which Brain treats as keyboard intent:
       // exactly what restoring focus to a row after a sheet closes looks like.
       button.focus();
@@ -89,6 +90,10 @@ describe('TrnTooltip', () => {
       vi.spyOn(button, 'matches').mockImplementation((selector) =>
         selector === ':focus-visible' ? focusVisible : real(selector),
       );
+    }
+
+    function touch() {
+      document.dispatchEvent(new Event('touchstart', { bubbles: true }));
     }
 
     function pointer(
@@ -129,6 +134,21 @@ describe('TrnTooltip', () => {
 
     it('opens on keyboard-style focus-visible focus', async () => {
       expect(await focusWith(true)).not.toBeNull();
+    });
+
+    it('does not open when focus-visible focus follows a touch', async () => {
+      // WebKit on Apple platforms does not focus a tapped link, so focus restored after the
+      // tap still matches :focus-visible there (#1216).
+      expect(await focusWith(true, touch)).toBeNull();
+    });
+
+    it('opens on focus-visible focus once a key is pressed after a touch', async () => {
+      expect(
+        await focusWith(true, () => {
+          touch();
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
+        }),
+      ).not.toBeNull();
     });
   });
 });
