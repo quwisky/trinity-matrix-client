@@ -4,6 +4,10 @@
   .member-info {
     @include profile-card;
 
+    // The hosts own the bottom safe area: the sheet frame pads it, and so does the settings
+    // column that embeds this. The card only keeps its own inset below the last action.
+    padding-bottom: var(--trinity-space-5);
+
     // Mounted outside .members either way — the CDK overlay as a dialog or sheet, settings'
     // detail column in place — so tell the avatar's presence dot what surface it rings
     // against, else the ring halos (see member-list).
@@ -83,9 +87,5 @@
     margin-top: 6px;
     padding-top: 10px;
     border-top: 1px solid var(--trinity-divider);
-  }
-
-  .member-info__danger {
-    color: var(--trinity-danger);
   }
 }

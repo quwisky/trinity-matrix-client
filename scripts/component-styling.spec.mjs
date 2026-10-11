@@ -167,7 +167,8 @@ describe('component styling reach', () => {
       'libs/feature/rooms/src/lib/pinned/pinned-messages-panel.component.html',
       'libs/feature/rooms/src/lib/thread/thread-view.component.html',
       'libs/feature/rooms/src/lib/thread/threads-list.component.html',
-      'libs/feature/rooms/src/lib/member-info/member-info.component.html',
+      // Member info is no longer a screen-edge panel (#1041): as a sheet the sheet frame pads
+      // the safe area, and embedded in settings the settings column does.
     ];
 
     const unpadded = panels.filter(

@@ -179,6 +179,25 @@ test.describe('Member info', () => {
     await expect(panel).toContainText('Member');
     await expect(panel.getByTestId('member-info-message')).toBeVisible();
 
+    // The card keeps its bottom padding: the last action does not sit on the dialog's edge.
+    const bottomGap = await panel.evaluate((card) => {
+      const buttons = card.querySelectorAll('button');
+      const last = buttons[buttons.length - 1];
+      return (
+        card.getBoundingClientRect().bottom -
+        last.getBoundingClientRect().bottom
+      );
+    });
+    expect(bottomGap).toBeGreaterThanOrEqual(12);
+    // "Remove from room" reads as a danger action, not in the neutral text colour.
+    const kickColour = await panel
+      .getByTestId('member-info-kick')
+      .evaluate((button) => getComputedStyle(button).color);
+    const copyColour = await panel
+      .getByTestId('member-info-copy')
+      .evaluate((button) => getComputedStyle(button).color);
+    expect(kickColour).not.toBe(copyColour);
+
     // Exercise the platform clipboard rather than stubbing writeText: the unique full MXID
     // must paste back exactly, while the deliberately different display name must not.
     // Browsers model the user's clipboard-write choice as a context permission.
