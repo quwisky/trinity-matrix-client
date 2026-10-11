@@ -631,8 +631,14 @@ export function pathologicalIlocHeic(items: number): Uint8Array<ArrayBuffer> {
   );
 }
 
-/** A HEIF whose Exif item is split into `extents` one-byte extents (8 iloc bytes each). */
-export function manyExtentsHeic(extents: number): Uint8Array<ArrayBuffer> {
+/**
+ * A HEIF whose Exif item is split into `extents` one-byte extents (8 iloc bytes each),
+ * stored in a real mdat placed after `emptyMdats` empty 8-byte mdat boxes.
+ */
+export function manyExtentsHeic(
+  extents: number,
+  emptyMdats = 0,
+): Uint8Array<ArrayBuffer> {
   const ftyp = box(
     'ftyp',
     ascii('heic'),
@@ -670,6 +676,16 @@ export function manyExtentsHeic(extents: number): Uint8Array<ArrayBuffer> {
     );
   };
   const metaLength = build(0).length;
-  const meta = build(ftyp.length + metaLength + 8);
-  return concat(ftyp, meta, box('mdat', new Uint8Array(extents).fill(0x41)));
+  const fillerLength = emptyMdats * 8;
+  const meta = build(ftyp.length + metaLength + fillerLength + 8);
+  const filler = new Uint8Array(fillerLength);
+  for (let i = 0; i < emptyMdats; i++) {
+    filler.set(concat(u32be(8), ascii('mdat')), i * 8);
+  }
+  return concat(
+    ftyp,
+    meta,
+    filler,
+    box('mdat', new Uint8Array(extents).fill(0x41)),
+  );
 }

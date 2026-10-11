@@ -47,6 +47,25 @@ interface Extent {
  */
 const MAX_EXTENTS = 4096;
 
+/**
+ * Upper bound on sibling boxes in one walk (top level, or inside `meta`). A still has a
+ * handful (`ftyp`, `meta`, one `mdat`, perhaps `free`); the cap keeps a file made of
+ * millions of tiny boxes a cheap, counted walk instead of a main-thread stall.
+ */
+const MAX_SIBLING_BOXES = 1024;
+
+/**
+ * Upper bound on `infe` entries, matching {@link MAX_EXTENTS}. A tiled 48 MP photo has
+ * well under 200 items (tiles, thumbnail, depth, gain map, Exif, XMP).
+ */
+const MAX_ITEMS = 4096;
+
+/**
+ * Upper bound on top-level `mdat` boxes. Writers emit one (rarely a few, when appending);
+ * every metadata extent is checked against each of them.
+ */
+const MAX_MEDIA_DATA_BOXES = 16;
+
 /** Thrown inside the parser on any structural doubt; never escapes {@link stripHeif}. */
 class Malformed extends Error {}
 
@@ -107,10 +126,9 @@ function blankMetadataItems(bytes: Bytes): FormatStrip {
 
   // Each blanked range must sit inside a top-level mdat or the idat payload, so a hostile
   // iloc cannot point the overwrite at a box header.
-  const containers = [
-    ...top.filter((b) => b.type === 'mdat'),
-    ...(idat ? [idat] : []),
-  ];
+  const mediaData = top.filter((b) => b.type === 'mdat');
+  if (mediaData.length > MAX_MEDIA_DATA_BOXES) throw new Malformed();
+  const containers = [...mediaData, ...(idat ? [idat] : [])];
   // Nor may it touch the data of any other item (the coded image, its thumbnail, ...).
   const otherExtents: Extent[] = [];
   for (const [id, extents] of locations) {
@@ -157,11 +175,17 @@ function blankMetadataItems(bytes: Bytes): FormatStrip {
   return out.result();
 }
 
-/** The boxes laid end to end in `[from, to)`. */
-function children(bytes: Bytes, from: number, to: number): Box[] {
+/** The boxes laid end to end in `[from, to)`; more than `limit` of them is malformed. */
+function children(
+  bytes: Bytes,
+  from: number,
+  to: number,
+  limit = MAX_SIBLING_BOXES,
+): Box[] {
   const boxes: Box[] = [];
   let pos = from;
   while (pos < to) {
+    if (boxes.length >= limit) throw new Malformed();
     if (pos + 8 > to) throw new Malformed();
     let size = u32be(bytes, pos);
     const type = fourCC(bytes, pos + 4);
@@ -186,7 +210,7 @@ function metadataItems(bytes: Bytes, iinf: Box): Map<number, 'exif' | 'xmp'> {
   const version = bytes[iinf.body] ?? 0;
   const entriesAt = iinf.body + 4 + (version === 0 ? 2 : 4);
   const items = new Map<number, 'exif' | 'xmp'>();
-  for (const infe of children(bytes, entriesAt, iinf.end)) {
+  for (const infe of children(bytes, entriesAt, iinf.end, MAX_ITEMS)) {
     if (infe.type !== 'infe') continue;
     const infeVersion = bytes[infe.body] ?? 0;
     if (infeVersion < 2) continue; // pre-HEIF entries have no item type

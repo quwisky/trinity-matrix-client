@@ -499,6 +499,24 @@ describe('stripImageMetadata', () => {
       expect(elapsed).toBeLessThan(100);
     });
 
+    it('rejects a file of 500,000 top-level mdat boxes, quickly', () => {
+      const input = manyExtentsHeic(4_096, 500_000);
+      expect(input.length).toBeGreaterThan(4_000_000);
+
+      const started = performance.now();
+      const result = stripImageMetadata(input);
+      const elapsed = performance.now() - started;
+
+      expect(result).toEqual({ kind: 'unchanged', reason: 'malformed' });
+      expect(elapsed).toBeLessThan(100);
+    });
+
+    it('still strips a file with a few top-level mdat boxes', () => {
+      const out = stripped(manyExtentsHeic(16, 8));
+
+      expect(containsBytes(out, new Uint8Array(16).fill(0x41))).toBe(false);
+    });
+
     it('accepts an item split into many extents up to the cap, and no further', () => {
       expect(stripImageMetadata(manyExtentsHeic(4_096)).kind).toBe('stripped');
       expect(stripImageMetadata(manyExtentsHeic(4_097))).toEqual({
