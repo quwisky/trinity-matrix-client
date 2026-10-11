@@ -147,9 +147,9 @@ async function build(
 }
 
 /**
- * The same component with NO `TrnDialogRef` — the shell's right-hand panel rather than a
- * dialog. Everything it announces goes through outputs here, and it has to carry its own
- * way out: there is no backdrop, and above the `members` breakpoint no Escape either.
+ * The same component with NO `TrnDialogRef` — rendered in place (as settings embeds it)
+ * rather than as a dialog. Everything it announces goes through outputs here, and it has to
+ * carry its own way out: there is no backdrop of its own.
  */
 async function buildPanel(m: MemberSummary = member()) {
   const messaged: string[] = [];
@@ -195,9 +195,7 @@ describe('MemberInfoComponent', () => {
         name: 'Member info',
       }),
     ).toBeTruthy();
-    expect(
-      container.querySelector('[data-testid="member-info-close"]'),
-    ).toBeNull();
+    expect(container.querySelector('trn-side-panel-header')).toBeNull();
   });
 
   it('does not use the dialog shell as the panel', async () => {
@@ -207,9 +205,8 @@ describe('MemberInfoComponent', () => {
   });
 
   it('carries its own close button as the panel, where nothing else closes it', async () => {
-    // In the slot there is no backdrop, and above the `members` breakpoint no Escape either
-    // — without this the panel was a dead end: the roster it replaced is gone, so there is
-    // nothing left to click.
+    // In place there is no backdrop of its own — without this the panel would be a dead
+    // end: the list it replaced is gone, so there is nothing left to click.
     const { container } = await buildPanel();
 
     expect(
@@ -226,14 +223,20 @@ describe('MemberInfoComponent', () => {
     expect(targets[0].getAttribute('aria-label')).toBe('Close member info');
   });
 
-  it('has no close button as a dialog, where the backdrop and Escape do it', async () => {
-    // The pair to the test above, and the reason the header is conditional rather than
-    // always on: a dialog that grew a second dismissal would be the odd one out among them.
-    const { container } = await build();
+  it('names the dialog shell close button for member info', async () => {
+    // Member info from the member list is always a dialog or sheet now, so the shell's X
+    // keeps the name and test hook the panel's close button had.
+    const { close } = await build();
 
-    expect(
-      container.querySelector('[data-testid="member-info-close"]'),
-    ).toBeNull();
+    const closeButton = within(screen.getByTestId('dialog-surface')).getByRole(
+      'button',
+      { name: 'Close member info' },
+    );
+    expect(closeButton.dataset['testid']).toBe('member-info-close');
+    expect(screen.queryByTestId('dialog-close')).toBeNull();
+
+    closeButton.click();
+    expect(close).toHaveBeenCalledWith(null);
   });
 
   it('announces a dismissal from the panel close button', async () => {

@@ -82,15 +82,11 @@ function showSurface(
     shell.surfaces.transition({ kind: `open-${surface.kind}` });
     return;
   }
-  if (surface.kind === 'members') {
-    shell.surfaces.transition({ kind: 'open-members' });
-    return;
-  }
-  shell.surfaces.transition({
-    kind: 'open-member',
-    member: surface.member,
-    direct: surface.direct,
-  });
+  shell.surfaces.transition({ kind: 'open-members' });
+}
+
+function escape(): KeyboardEvent {
+  return new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
 }
 
 // The quick switcher (Ctrl/Cmd+K) presents a modal and, on a selection, jumps per
@@ -596,7 +592,7 @@ describe('RoomsPage mobile navigation', () => {
     setRouteRoom('!r:hs');
     shell.surfaces.transition({ kind: 'open-threads' });
 
-    shell.page.onEscapeKey();
+    shell.page.onEscapeKey(escape());
 
     expect(shell.surfaces.renderedSurface()).toBeNull();
   });
@@ -609,33 +605,42 @@ describe('RoomsPage mobile navigation', () => {
     setRouteRoom('!r:hs');
     showSurface(shell, { kind: 'members' });
 
-    shell.page.onEscapeKey();
+    shell.page.onEscapeKey(escape());
 
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
   });
 
-  it('Escape on member info goes back to the roster, like its close button', () => {
+  it('Escape on a temporary surface goes back to the roster, like its close button', () => {
     // Escape is the keyboard spelling of pressing the panel's own close button, so it has to
     // land in the same place. Only the mobile backdrop empties the slot outright.
     const shell = build();
     setRouteRoom('!r:hs');
     showSurface(shell, { kind: 'members' });
-    showSurface(shell, {
-      kind: 'member',
-      member: {
-        userId: '@bob:hs',
-        roomDisplayName: 'Bob',
-        roomInitial: 'B',
-        roomAvatarMxc: null,
-        powerLevel: 0,
-        isCreator: false,
-      },
-      direct: false,
-    });
+    showSurface(shell, { kind: 'pinned' });
 
-    shell.page.onEscapeKey();
+    shell.page.onEscapeKey(escape());
 
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
+  });
+
+  it('leaves the member drawer open for an Escape a modal surface already handled', () => {
+    // Member info opens as a sheet over the drawer (#1041). The sheet takes the Escape and
+    // marks it handled; this document listener runs after, and must not close the drawer
+    // under it as well.
+    const restore = stubNarrowLayout();
+    try {
+      const shell = build();
+      setRouteRoom('!r:hs');
+      showSurface(shell, { kind: 'members' });
+      const handled = escape();
+      handled.preventDefault();
+
+      shell.page.onEscapeKey(handled);
+
+      expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
+    } finally {
+      restore();
+    }
   });
 
   it('gives focus back to whatever opened the slot once it empties', () => {
@@ -689,19 +694,6 @@ describe('RoomsPage mobile navigation', () => {
     }
   });
 
-  const bobPanel: RenderedRoomSurface = {
-    kind: 'member',
-    member: {
-      userId: '@bob:hs',
-      roomDisplayName: 'Bob',
-      roomInitial: 'B',
-      roomAvatarMxc: null,
-      powerLevel: 0,
-      isCreator: false,
-    },
-    direct: false,
-  };
-
   it.each<{
     name: string;
     from: RenderedRoomSurface;
@@ -715,14 +707,14 @@ describe('RoomsPage mobile navigation', () => {
       targetTag: 'button',
     },
     {
-      name: 'members → member',
+      name: 'members → pinned',
       from: { kind: 'members' },
-      to: bobPanel,
+      to: { kind: 'pinned' },
       targetTag: 'button',
     },
     {
-      name: 'member → members',
-      from: bobPanel,
+      name: 'search → members',
+      from: { kind: 'search' },
       to: { kind: 'members' },
       targetTag: 'input',
     },

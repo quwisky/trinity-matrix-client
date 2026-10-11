@@ -12,11 +12,13 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
-// Covers the member info panel: clicking a member row in the member list
-// (data-testid="member-row") opens a room-scoped info panel
+// Covers member info: clicking a member row in the member list
+// (data-testid="member-row") opens a room-scoped info card
 // (data-testid="member-info") with the member's name, id, role, and a Message /
-// Copy user ID action. Two users so there's a member to click that isn't the
-// viewer. Needs a Synapse homeserver (Docker); self-skips otherwise.
+// Copy user ID action. It is a centred dialog on a large screen and a bottom sheet
+// on a phone-sized window, over the member list either way (#1041). Two users so
+// there's a member to click that isn't the viewer. Needs a Synapse homeserver
+// (Docker); self-skips otherwise.
 const session = homeserverSession();
 
 interface ApiUser {
@@ -66,10 +68,10 @@ async function openMembers(page: Page): Promise<void> {
   await expect(page.locator('.chat-members')).toBeVisible();
 }
 
-test.describe('Member info panel', () => {
+test.describe('Member info', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('clicking a member opens their info panel', async ({
+  test('clicking a member opens their info over the member list', async ({
     context,
     page,
     request,
@@ -158,38 +160,24 @@ test.describe('Member info panel', () => {
 
     await memberRow.first().click();
 
-    // The info panel opens with their name, id, role, and a Message action.
-    const panel = page.getByTestId('member-info');
+    // Member info is a centred dialog on a large screen, on top of the member list rather
+    // than in its place (#1041): the column stays where it was behind the dialog.
+    const dialog = page.getByRole('dialog', { name: 'Member info' });
+    const panel = dialog.getByTestId('member-info');
     await expect(panel).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByTestId('dialog-surface')).toHaveAttribute(
+      'data-trn-layout',
+      'dialog',
+    );
+    await expect(dialog.getByTestId('sheet-handle')).toHaveCount(0);
+    await expect(page.locator('.chat-members')).toBeVisible();
+    await expect(page.locator('.chat-body trn-member-info')).toHaveCount(0);
     await expect(panel.getByTestId('member-info-name')).toHaveText(memberName);
     await expect(panel.getByTestId('member-info-handle')).toHaveText(
       memberB.userId,
     );
     await expect(panel).toContainText('Member');
     await expect(panel.getByTestId('member-info-message')).toBeVisible();
-
-    // The slot supplies position and size only, so the component has to paint its own
-    // surface — otherwise this is a transparent 480px column with a small card floating in
-    // it, swallowing every click on the timeline behind. Measured in a real browser because
-    // that is the only place `:host` and the page's `.chat-panel` rule meet.
-    const surface = await page.locator('trn-member-info').evaluate((host) => {
-      const style = getComputedStyle(host);
-      return {
-        display: style.display,
-        background: style.backgroundColor,
-        height: host.getBoundingClientRect().height,
-        // The row the panel shares with the timeline, which is what "full height" means for
-        // a pane IN FLOW. Not the viewport: the row starts below the room header, so a
-        // viewport-relative bound would be measuring the header, and would answer
-        // differently again if the panel ever went back to being an overlay.
-        row: host.closest('.chat-body')?.getBoundingClientRect().height ?? 0,
-      };
-    });
-    expect(surface.display).toBe('flex');
-    expect(surface.background).not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
-    // As tall as the pane beside it, not a content-sized card floating in the slot.
-    expect(surface.row).toBeGreaterThan(0);
-    expect(Math.abs(surface.height - surface.row)).toBeLessThanOrEqual(1);
 
     // Exercise the platform clipboard rather than stubbing writeText: the unique full MXID
     // must paste back exactly, while the deliberately different display name must not.
@@ -198,10 +186,17 @@ test.describe('Member info panel', () => {
       origin: new URL(page.url()).origin,
     });
 
-    await page.getByTestId('member-info-copy').click();
+    await panel.getByTestId('member-info-copy').click();
     await expect(
       page.getByText('User ID copied.', { exact: true }),
     ).toBeVisible();
+
+    // The X closes it back to the list, and focus returns to the row that opened it.
+    await dialog.getByTestId('member-info-close').click();
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+    await expect(page.locator('.chat-members')).toBeVisible();
+    await expect(memberRow.first()).toBeFocused();
+
     const clipboardProbe = page.locator('[data-testid=clipboard-probe]');
     await page.evaluate(() => {
       const probe = document.createElement('input');
@@ -215,15 +210,64 @@ test.describe('Member info panel', () => {
     await expect(clipboardProbe).toHaveValue(memberB.userId);
     await clipboardProbe.evaluate((node) => node.remove());
 
-    // And it can be closed. As a dialog the backdrop and Escape do that; in the slot at this
-    // width there is neither, so without the header's button the panel is a dead end.
-    // From the page, not the panel: the header is a SIBLING of `member-info`, which is the
-    // body card — the component's host is what wraps both.
-    await page.getByTestId('member-info-close').click();
-    await expect(panel).toBeHidden({ timeout: 10_000 });
-    // Closing member info gives the roster back rather than emptying the slot.
-    await expect(
-      page.locator('[data-testid="member-row"]').first(),
-    ).toBeVisible({ timeout: 10_000 });
+    // Escape closes the dialog and only the dialog.
+    await memberRow.first().click();
+    await expect(panel).toBeVisible({ timeout: 10_000 });
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+    await expect(page.locator('.chat-members')).toBeVisible();
+
+    // On a phone-sized window it is a bottom sheet over the member drawer, with the handle;
+    // dragging the handle down closes the sheet and leaves the drawer open.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator('.chat-members')).toBeHidden();
+    await openMembers(page);
+    await memberRow.first().click();
+    await expect(panel).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByTestId('dialog-surface')).toHaveAttribute(
+      'data-trn-layout',
+      'sheet',
+    );
+    const handle = dialog.getByTestId('sheet-handle');
+    await expect(handle).toBeVisible();
+    await expect(page.locator('.chat-members')).toBeVisible();
+    await expect(page.getByTestId('members-backdrop')).toBeVisible();
+
+    // Escape on the sheet closes the sheet, not the drawer under it as well.
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+    await expect(page.locator('.chat-members')).toBeVisible();
+
+    await memberRow.first().click();
+    await expect(panel).toBeVisible({ timeout: 10_000 });
+    // The sheet slides up on entry; drag once it has settled at the bottom edge.
+    await expect
+      .poll(async () => {
+        const box = await dialog.getByTestId('dialog-surface').boundingBox();
+        return Math.abs((box?.y ?? 0) + (box?.height ?? 0) - 844);
+      })
+      .toBeLessThanOrEqual(1);
+    const box = await handle.boundingBox();
+    expect(box).not.toBeNull();
+    const x = box!.x + box!.width / 2;
+    const y = box!.y + box!.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + 150, { steps: 5 });
+    await page.mouse.move(x, y + 300, { steps: 5 });
+    await page.mouse.up();
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+    await expect(page.locator('.chat-members')).toBeVisible();
+    await expect(memberRow.first()).toBeVisible();
+
+    // "Message" closes the sheet and opens the direct message with them.
+    await memberRow.first().click();
+    await expect(panel).toBeVisible({ timeout: 10_000 });
+    await panel.getByTestId('member-info-message').click();
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+    // The title carries the avatar initial before the name.
+    await expect(page.getByTestId('room-title')).toContainText(memberName, {
+      timeout: 30_000,
+    });
   });
 });

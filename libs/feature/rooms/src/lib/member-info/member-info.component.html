@@ -6,8 +6,8 @@
     layout="panel"
     class="flex h-full flex-col"
   >
-    <!-- Panel mode only. As a dialog the backdrop and Escape close it; in the slot there is
-         neither above the `members` breakpoint, so the header IS the way out. -->
+    <!-- Embedded mode only (room and space settings). There is no backdrop or Escape of its
+         own there, so the header IS the way back to the settings member list. -->
     <trn-side-panel-header
       title="Member info"
       closeLabel="Close member info"
@@ -22,6 +22,8 @@
     title="Member info"
     size="sm"
     bodyClass="p-0"
+    closeLabel="Close member info"
+    closeTestId="member-info-close"
     (closed)="close()"
   >
     <ng-container [ngTemplateOutlet]="profile" />
