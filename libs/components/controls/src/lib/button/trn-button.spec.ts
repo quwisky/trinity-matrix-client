@@ -133,6 +133,8 @@ describe('TrnButton', () => {
         `${attention}bg-[color:var(--trinity-state-attention-action-surface)]`,
         `${attention}text-[color:var(--trinity-state-attention-action-foreground)]`,
         `${attention}hover:bg-[color:var(--trinity-state-attention-action-hover-surface)]`,
+        // Helm's anchor hover outranks the plain one, so anchors carry their own copy.
+        `${attention}[a]:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)]`,
         `${attention}focus-visible:ring-offset-[length:var(--trinity-focus-ring-offset)]`,
         `${attention}focus-visible:ring-offset-[color:var(--trinity-state-attention-surface)]`,
       ]),

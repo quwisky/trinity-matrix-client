@@ -35,6 +35,8 @@ Appearance has three independent choices: mode (light, dark, or system), theme, 
 
 The shell uses two surface roles. `--trinity-surface-app` is the app background behind the rail, sidebar, and user panel. `--trinity-surface-sidebar` is the channel sidebar tone: it follows the app background, and Classic overrides it with its previous sidebar colour. `--trinity-surface-pane` is the inset conversation pane. Consume them instead of a hard-coded color when a shell region needs one of those meanings.
 
+A component that paints the attention surface (`--trinity-state-attention-surface`, the accent) marks its root `data-trn-surface="attention"`; today only the accent `trn-banner` does. A solid primary `trnBtn` anywhere inside that element inverts to the `--trinity-state-attention-action-*` roles, because its normal accent fill would vanish on the accent ground. Set the attribute only on a component that owns the attention surface, never from feature code. It applies to every descendant, so a neutral surface nested inside would also invert its buttons; don't nest one there.
+
 Density has three options: cosy, compact, and spacious. Density changes spacing and sizing only and never sets colors; touch targets keep their 44px floor.
 
 ## Keep overlay behavior centralized {#overlay-behavior}

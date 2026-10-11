@@ -52,9 +52,13 @@ const solidDangerTone =
  * the attention action roles, and its focus ring gains an offset in the surface colour so the
  * ring, which shares the fill's colour, stays distinct from the button. Outside such a surface
  * none of these classes match, so every other solid primary button is unchanged.
+ *
+ * Anchors need their own hover class: Helm's `[a]:hover:bg-primary/80` compiles to
+ * `.cls:is(a):hover`, which outranks the plain attention hover. The `[a]:` copy has equal
+ * specificity and is emitted after Helm's, so it wins.
  */
 const solidPrimaryOnAttention =
-  'in-data-[trn-surface=attention]:bg-[color:var(--trinity-state-attention-action-surface)] in-data-[trn-surface=attention]:text-[color:var(--trinity-state-attention-action-foreground)] in-data-[trn-surface=attention]:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)] in-data-[trn-surface=attention]:focus-visible:ring-offset-[length:var(--trinity-focus-ring-offset)] in-data-[trn-surface=attention]:focus-visible:ring-offset-[color:var(--trinity-state-attention-surface)]';
+  'in-data-[trn-surface=attention]:bg-[color:var(--trinity-state-attention-action-surface)] in-data-[trn-surface=attention]:text-[color:var(--trinity-state-attention-action-foreground)] in-data-[trn-surface=attention]:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)] in-data-[trn-surface=attention]:[a]:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)] in-data-[trn-surface=attention]:focus-visible:ring-offset-[length:var(--trinity-focus-ring-offset)] in-data-[trn-surface=attention]:focus-visible:ring-offset-[color:var(--trinity-state-attention-surface)]';
 
 const solidTone = {
   primary: solidPrimaryOnAttention,

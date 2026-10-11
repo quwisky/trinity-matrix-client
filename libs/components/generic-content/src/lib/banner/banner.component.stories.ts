@@ -52,8 +52,9 @@ export const Accent: Story = {
 };
 
 /**
- * The encryption prompt's shape: two solid actions on the attention surface. They invert to
- * the on-attention action roles, so each reads as a button with a visible hover and focus.
+ * The encryption prompt's shape: solid actions on the attention surface, including an anchor,
+ * which needs its own hover rule. They invert to the on-attention action roles, so each reads
+ * as a button with a visible hover and focus.
  */
 export const AccentActions: Story = {
   render: () => ({
@@ -64,6 +65,7 @@ export const AccentActions: Story = {
         <span trnBannerActions>
           <button trnBtn size="sm">Verify with another device</button>
           <button trnBtn size="sm">Use recovery key</button>
+          <a trnBtn size="sm" href="#">Learn more</a>
         </span>
       </trn-banner>`,
   }),

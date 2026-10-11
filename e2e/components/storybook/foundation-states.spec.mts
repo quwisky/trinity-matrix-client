@@ -175,6 +175,19 @@ test.describe('semantic design foundations', () => {
         contrastRatio(attentionRing, attentionSurface),
       ).toBeGreaterThanOrEqual(3);
 
+      // An anchor action needs its own hover rule: Helm's `[a]:hover` outranks the plain one.
+      await openStory(
+        page,
+        'components-banner--accent-actions',
+        theme.id,
+        mode.id,
+      );
+      const linkAction = page.getByRole('link', { name: 'Learn more' });
+      await linkAction.hover();
+      await expect
+        .poll(() => computedColour(linkAction, 'background-color'))
+        .toEqual(hoverSurface);
+
       await openStory(page, 'components-input--default', theme.id, mode.id);
       const field = page.getByRole('textbox', { name: 'Room name' });
       await field.evaluate((element) => {
