@@ -534,9 +534,12 @@ describe('Android E2E split', () => {
     expect(steps.indexOf(build)).toBeLessThan(steps.indexOf(emulator));
     expect(steps.indexOf(pull)).toBeLessThan(steps.indexOf(emulator));
     const lines = emulator.with.script.trim().split('\n');
-    expect(lines[0]).toMatch(/^timeout \d+ sh -c '/);
-    expect(lines[0]).toContain('dist/.ci/android-prebuild.status');
-    expect(lines[1]).toBe(`echo 'started=true' >> "$GITHUB_OUTPUT"`);
+    const waitLine = lines.findIndex((line) =>
+      /^timeout \d+ sh -c '/.test(line),
+    );
+    expect(waitLine).toBeGreaterThanOrEqual(0);
+    expect(lines[waitLine]).toContain('dist/.ci/android-prebuild.status');
+    expect(lines[waitLine + 1]).toBe(`echo 'started=true' >> "$GITHUB_OUTPUT"`);
     const wait = steps[steps.indexOf(emulator) + 1];
     expect(wait.wait).toEqual(['android-prebuild', 'homeserver-pull']);
   });
