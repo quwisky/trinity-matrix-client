@@ -1831,6 +1831,72 @@ describe('MediaService', () => {
         expect(res.info.thumbnail_url).toBe('mxc://hs/thumb');
       });
 
+      describe('a host thumbnail with GPS Exif', () => {
+        const gpsThumbnail = () => ({
+          blob: new Blob([identifyingJpeg()], { type: 'image/jpeg' }),
+          w: 480,
+          h: 270,
+        });
+        const hints = () => ({
+          width: 1920,
+          height: 1080,
+          durationMs: 4000,
+          thumbnail: gpsThumbnail(),
+        });
+
+        it('uploads it without its location in a plaintext room', async () => {
+          const { svc, client } = setup();
+          client.uploadContent
+            .mockResolvedValueOnce({ content_uri: 'mxc://hs/thumb' })
+            .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+
+          const res = await firstValueFrom(
+            svc.uploadMedia(
+              mediaFile('video.mov', 'video/quicktime'),
+              false,
+              undefined,
+              undefined,
+              undefined,
+              hints(),
+            ),
+          );
+
+          const [body, opts] = client.uploadContent.mock.calls[0] ?? [];
+          expect(opts).toMatchObject({ name: 'thumbnail', type: 'image/jpeg' });
+          const sent = new Uint8Array(await (body as Blob).arrayBuffer());
+          expect(containsAscii(sent, '52.5200')).toBe(false);
+          expect(containsAscii(sent, 'Canon')).toBe(false);
+          expect(sent.length).toBeLessThan(gpsThumbnail().blob.size);
+          expect(res.info.thumbnail_info).toMatchObject({
+            mimetype: 'image/jpeg',
+            size: sent.length,
+          });
+        });
+
+        it('strips it before it is encrypted in an E2EE room', async () => {
+          const { svc } = setup();
+
+          await firstValueFrom(
+            svc.uploadMedia(
+              mediaFile('video.mov', 'video/quicktime'),
+              true,
+              undefined,
+              undefined,
+              undefined,
+              hints(),
+            ),
+          );
+
+          // The thumbnail is encrypted (and uploaded) before the main file.
+          const plaintext = new Uint8Array(
+            encryptMock.mock.calls[0]?.[0] as ArrayBuffer,
+          );
+          expect(plaintext.length).toBeGreaterThan(0);
+          expect(containsAscii(plaintext, '52.5200')).toBe(false);
+          expect(containsAscii(plaintext, 'Canon')).toBe(false);
+        });
+      });
+
       it('still sends when a hinted thumbnail fails to upload', async () => {
         const { svc, client } = setup();
         client.uploadContent

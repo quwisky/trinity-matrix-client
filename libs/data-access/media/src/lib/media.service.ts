@@ -26,6 +26,7 @@ import type { EncryptedFileInfo, MediaPayload } from '@trinity/util/matrix';
 import type { MediaHints } from './media-pipeline.models';
 import {
   bytesWithoutMediaMetadata,
+  withoutImageMetadata,
   withoutMediaMetadata,
 } from './image-metadata/strip-file-metadata';
 
@@ -382,7 +383,13 @@ export class MediaService {
     if (!thumbnail) {
       return null;
     }
-    const { blob, w, h } = thumbnail;
+    const { w, h } = thumbnail;
+    // A host-rendered thumbnail (a native camera capture) is an image file of its own, so it
+    // loses its metadata like any photo before it goes up, encrypted or not. One rendered
+    // here on a canvas has none and comes back as it was.
+    const blob = await withoutImageMetadata(
+      new File([thumbnail.blob], 'thumbnail', { type: thumbnail.blob.type }),
+    );
     const thumbnail_info = { mimetype: blob.type, w, h, size: blob.size };
     try {
       if (encrypt) {
