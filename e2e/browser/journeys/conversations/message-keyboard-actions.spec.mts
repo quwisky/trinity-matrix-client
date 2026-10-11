@@ -14,7 +14,11 @@ import { registerUser } from '../../../support/account.mts';
 // toolbars were most of the timeline's DOM. Needs a Synapse homeserver (Docker).
 const session = homeserverSession();
 const SEED = 60;
-/** The app's `initialSyncLimit`: the timeline page the first /sync delivers. */
+/**
+ * The app's `initialSyncLimit` (`startClient` in
+ * `libs/data-access/matrix-client/src/lib/matrix-client.service.ts`): the timeline page the
+ * first /sync delivers.
+ */
 const INITIAL_SYNC_PAGE = 20;
 
 test.describe('Message actions from the keyboard', () => {
@@ -82,12 +86,17 @@ test.describe('Message actions from the keyboard', () => {
       messages.evaluateAll((rows) =>
         rows.map((row) => row.getAttribute('tabindex')),
       );
+    let tabIndexes: (string | null)[] = [];
     await expect
-      .poll(async () => (await readTabIndexes()).length, { timeout: 30_000 })
+      .poll(
+        async () => {
+          tabIndexes = await readTabIndexes();
+          return tabIndexes.length;
+        },
+        { timeout: 30_000 },
+      )
       .toBeGreaterThan(INITIAL_SYNC_PAGE);
-    expect(
-      (await readTabIndexes()).filter((tabIndex) => tabIndex !== '0'),
-    ).toEqual([]);
+    expect(tabIndexes.filter((tabIndex) => tabIndex !== '0')).toEqual([]);
     await expect(timeline.locator('trn-message-toolbar')).toHaveCount(0);
     await expect(timeline.locator('.toolbar__btn')).toHaveCount(0);
 

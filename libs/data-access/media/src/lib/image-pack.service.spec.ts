@@ -471,7 +471,8 @@ describe('ImagePackService', () => {
     const handler = client.on.mock.calls.find(
       ([name]) => name === 'RoomState.events',
     )?.[1] as ((changed: ReturnType<typeof event>) => void) | undefined;
-    handler?.(event(IMAGE_PACK_EVENT_TYPE, 'local', {}, '!current:hs'));
+    expect(handler).toBeDefined();
+    handler!(event(IMAGE_PACK_EVENT_TYPE, 'local', {}, '!current:hs'));
     await Promise.resolve();
 
     expect(packs().map((item) => item.name)).toEqual(['Live']);
