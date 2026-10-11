@@ -54,12 +54,13 @@ export const TRN_TOOLTIP_CONTENT_CLASSES = trn(
  * a pointer crossing the row opens a tooltip over the neighbouring action on every pass.
  *
  * **Focus opens a tooltip only when the browser would draw a focus ring (`:focus-visible`).**
- * Brain already ignores touch taps and, through our patch, programmatic focus that follows a
- * touch (WebKit on Apple platforms marks focus restored after tapping a link as focus-visible).
- * Any other programmatic focus is keyboard intent to Brain, so focus restored to a trigger
- * after a sheet or dialog closed could open a tooltip that stayed until the next interaction.
- * Brain has no hook to filter focus and its `delay` method is private, so a focus without a
- * ring switches the tooltip off through the public
+ * Our Brain patch ignores touch focus, and programmatic focus while the last input was a touch
+ * (until the next key or mouse press). WebKit doesn't focus a tapped button, so focus restored
+ * after a tap otherwise reaches Brain as programmatic and matches `:focus-visible`; this was
+ * seen in Playwright on macOS WebKit (#1216). Any other programmatic focus is keyboard intent
+ * to Brain, so focus restored to a trigger after a sheet or dialog closed could open a tooltip
+ * that stayed until the next interaction. Brain has no hook to filter focus and its `delay`
+ * method is private, so a focus without a ring switches the tooltip off through the public
  * `mutableTooltipDisabled` signal; Brain checks it when the show delay elapses. Blur or a
  * mouse or pen entering switches it back on, and a focus that lands while one is over the host
  * (hover, then click within the show delay) is left alone, so hover is unaffected and Tab

@@ -38,7 +38,7 @@ index a07146268c6cf7957d23fafb45c894bead457f21..a6282b42ebe32593fa579d1324f130e0
 +            .pipe(takeUntilDestroyed(this._destroyRef))
 +            .subscribe((origin) => {
 +                // CDK reports focus moved by script after a touch elsewhere, e.g. restored when a
-+                // sheet closes, as 'program'. Until a key is pressed that is not keyboard intent.
++                // sheet closes, as 'program'. Until the next key or mouse press, that is not keyboard intent.
 +                const afterTouch = origin === 'program' && this._inputModality.mostRecentModality === 'touch';
 +                this._focusVisible = origin === 'keyboard' || (origin === 'program' && !afterTouch);
 +                if (this._focusVisible)

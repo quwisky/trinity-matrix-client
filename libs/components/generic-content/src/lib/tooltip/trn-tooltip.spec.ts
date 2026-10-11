@@ -75,7 +75,13 @@ describe('TrnTooltip', () => {
       // jsdom's :focus-visible is a heuristic that depends on earlier pointer events; stub it
       // so keyboard intent is deterministic, and defer to the real matcher for anything else.
       stubFocusVisible(button, focusVisible);
-      beforeFocus?.();
+      if (beforeFocus) {
+        beforeFocus();
+        // FocusMonitor attributes focus to the last input for a moment only (1 ms after a
+        // key, 650 ms after a touch). Let that lapse, as it has by the time a sheet closes, so
+        // the focus below reaches Brain as 'program' and the input modality decides.
+        await vi.advanceTimersByTimeAsync(700);
+      }
       // CDK reports programmatic focus as 'program', which Brain treats as keyboard intent:
       // exactly what restoring focus to a row after a sheet closes looks like.
       button.focus();
