@@ -442,6 +442,63 @@ describe('TrustService', () => {
       });
     }
 
+    it('refuses to replace an identity another device holds', async () => {
+      const { svc, crypto } = setup({ identityOnServer: true });
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({
+        operation: 'setup',
+        kind: 'stale-state',
+        recovery: 'verify-another-device',
+        message: expect.stringMatching(/already has encryption set up/i),
+      });
+
+      expect(crypto.createRecoveryKeyFromPassphrase).not.toHaveBeenCalled();
+      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+      expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
+    });
+
+    it('asks the server even when this device has not yet seen the identity', async () => {
+      // Right after sign-in the own identity may not be downloaded yet, so the local
+      // cross-signing status reads "no identity". The server is the authority here.
+      const { svc, crypto } = setup({ identityOnServer: false });
+      crypto.userHasCrossSigningKeys.mockResolvedValue(true);
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({ kind: 'stale-state' });
+
+      expect(crypto.userHasCrossSigningKeys).toHaveBeenCalledWith(
+        undefined,
+        true,
+      );
+      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+    });
+
+    it('goes ahead when this device holds the identity and only recovery is missing', async () => {
+      const { svc, crypto } = setup({
+        identityOnServer: true,
+        privatesCachedLocally: true,
+      });
+
+      await expect(firstValueFrom(svc.setUp(async () => 'pw'))).resolves.toBe(
+        'EsTRecoveryKey',
+      );
+      expect(crypto.bootstrapSecretStorage).toHaveBeenCalledOnce();
+    });
+
+    it('fails closed when the server cannot say whether an identity exists', async () => {
+      const { svc, crypto } = setup();
+      crypto.userHasCrossSigningKeys.mockRejectedValue(new Error('offline'));
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({ operation: 'setup', recovery: 'retry' });
+
+      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+    });
+
     it('authenticates as the account it started on, not whichever is active now', async () => {
       // Two awaits — the server read and the key generation — sit between entering setUp
       // and building the UIA callback. A switch across them must not name the new account

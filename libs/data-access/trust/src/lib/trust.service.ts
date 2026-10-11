@@ -42,6 +42,7 @@ import {
   type TrustProviderManagement,
 } from './trust-provider-recovery.port';
 import { TrustHealthService } from './trust-health.service';
+import { holdsAllCrossSigningPrivates } from './trust-snapshot';
 
 export type {
   TrustHealth,
@@ -118,6 +119,7 @@ export class TrustService {
           const crypto = this.requireCrypto('setup', context.crypto);
           const userId = client.getUserId() ?? '';
           await assertNoRecoveryOnAccount(client);
+          await assertNoIdentityElsewhere(crypto);
           const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
           await crypto.bootstrapCrossSigning({
             authUploadDeviceSigningKeys: this.passwordUia(
@@ -445,6 +447,40 @@ async function assertNoRecoveryOnAccount(
     'stale-state',
     'review-security-settings',
     'This account already has a recovery key. Unlock this device with that key instead — setting up a new one here would replace it and delete the account’s key backup.',
+  );
+}
+
+const IDENTITY_ELSEWHERE_MESSAGE =
+  'This account already has encryption set up on another device. Verify this device with that device instead, or reset your identity if you can’t.';
+
+/**
+ * Refuse first-device setup on an Account whose cross-signing identity lives elsewhere.
+ *
+ * With no private keys on this device and none in secret storage, `bootstrapCrossSigning`
+ * "creat[es] new keys" (CrossSigningIdentity.ts:119-123): the identity is replaced, every
+ * other device of the user stops being cross-signed (and, under MSC4153, stops receiving
+ * room keys from strict senders), and contacts who verified the user see an identity
+ * change. Resetting is a separate, explicitly confirmed action (`resetRecovery`).
+ *
+ * **Fails closed**, unlike {@link assertNoRecoveryOnAccount}: the upload that follows
+ * needs the same homeserver, and a wrong "no identity" here is the destructive answer.
+ */
+async function assertNoIdentityElsewhere(
+  crypto: TrustCryptoApi,
+): Promise<void> {
+  if (holdsAllCrossSigningPrivates(await crypto.getCrossSigningStatus())) {
+    // This device holds the identity: bootstrap keeps it and only adds recovery.
+    return;
+  }
+  // The local view can lag right after sign-in; ask the homeserver (own user).
+  if (!(await withTimeout(crypto.userHasCrossSigningKeys(undefined, true)))) {
+    return;
+  }
+  throw new TrustOperationError(
+    'setup',
+    'stale-state',
+    'verify-another-device',
+    IDENTITY_ELSEWHERE_MESSAGE,
   );
 }
 
