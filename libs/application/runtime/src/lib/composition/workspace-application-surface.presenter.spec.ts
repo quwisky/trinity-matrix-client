@@ -15,6 +15,7 @@ import {
   TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
+import { MANAGE_IDENTITY } from '@trinity/data-access/trust';
 import {
   firstValueFrom,
   of,
@@ -254,101 +255,184 @@ describe('Workspace application-surface composition adapter', () => {
   });
 
   // #1223: the verify dialog cannot reach Settings itself (the trust capability does not
-  // depend on Workspace), so it closes with the surface it wants and the opener shows it.
-  it('opens Security settings when a trust dialog closes asking for it', async () => {
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn(() => ({ matches: true })),
-    );
-    const trustClosed = new Subject<unknown>();
-    dialogOpen.mockReturnValueOnce(
-      new TrnDialogRef({
-        closed: trustClosed,
+  // depend on Workspace), so it closes asking to manage the identity and the opener shows
+  // Security settings. It offers that only where the opener can actually show it.
+  describe('a trust dialog asking to manage the identity', () => {
+    function closable() {
+      const closed = new Subject<unknown>();
+      const ref = new TrnDialogRef({
+        closed,
         close: (result?: unknown) => {
-          trustClosed.next(result);
-          trustClosed.complete();
+          closed.next(result);
+          closed.complete();
         },
-      }),
-    );
-    const restoreFocus = vi.fn();
-    await firstValueFrom(
-      presenter().present({
-        surface: { kind: 'trust', flow: 'verify' },
-        context: { restoreFocus },
-      }),
-    );
+      });
+      return { ref, close: (result?: unknown) => ref.close(result) };
+    }
 
-    trustClosed.next({ kind: 'settings', section: 'security' });
-    trustClosed.complete();
-    await Promise.resolve();
+    function verifyInputs(call: number) {
+      return dialogOpen.mock.calls[call]?.[1]?.inputs;
+    }
 
-    expect(dialogOpen).toHaveBeenNthCalledWith(
-      2,
-      StubSettingsComponent,
-      expect.objectContaining({ inputs: { initialSection: 'security' } }),
-    );
-    expect(restoreFocus).not.toHaveBeenCalled();
-    await expect(
-      firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
-    ).resolves.toMatchObject({
-      kind: 'dismissed',
-      surface: {
-        layer: 'application',
-        surface: { kind: 'settings', section: 'security' },
-      },
-    });
-  });
-
-  it('returns a nested trust dialog to the Settings it was opened from', async () => {
-    const settingsClosed = new Subject<void>();
-    const trustClosed = new Subject<unknown>();
-    dialogOpen
-      .mockReturnValueOnce(
-        new TrnDialogRef({ closed: settingsClosed, close: vi.fn() }),
-      )
-      .mockReturnValueOnce(
-        new TrnDialogRef({ closed: trustClosed, close: vi.fn() }),
+    beforeEach(() => {
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn(() => ({ matches: true })),
       );
-    const restoreFocus = vi.fn();
-    await firstValueFrom(
-      presenter().present({
-        surface: { kind: 'settings', section: 'security' },
-      }),
-    );
-    await firstValueFrom(
-      presenter().present({
-        surface: { kind: 'trust', flow: 'verify' },
-        context: { placement: 'nested', restoreFocus },
-      }),
-    );
+    });
 
-    trustClosed.next({ kind: 'settings', section: 'security' });
-    trustClosed.complete();
-    await Promise.resolve();
+    it('opens Security settings from the top level and restores focus after it', async () => {
+      const trust = closable();
+      const settings = closable();
+      dialogOpen
+        .mockReturnValueOnce(trust.ref)
+        .mockReturnValueOnce(settings.ref);
+      const restoreFocus = vi.fn();
+      await firstValueFrom(
+        presenter().present({
+          surface: { kind: 'trust', flow: 'verify' },
+          context: { restoreFocus },
+        }),
+      );
+      expect(verifyInputs(0)).toEqual({
+        asModal: true,
+        canOpenSecuritySettings: true,
+      });
 
-    expect(dialogOpen).toHaveBeenCalledTimes(2);
-    expect(restoreFocus).toHaveBeenCalledOnce();
-  });
+      trust.close(MANAGE_IDENTITY);
+      await Promise.resolve();
 
-  it('ignores any other close result from a trust dialog', async () => {
-    const trustClosed = new Subject<unknown>();
-    dialogOpen.mockReturnValueOnce(
-      new TrnDialogRef({ closed: trustClosed, close: vi.fn() }),
-    );
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn(() => ({ matches: true })),
-    );
-    await firstValueFrom(
-      presenter().present({ surface: { kind: 'trust', flow: 'verify' } }),
-    );
+      expect(dialogOpen).toHaveBeenNthCalledWith(
+        2,
+        StubSettingsComponent,
+        expect.objectContaining({ inputs: { initialSection: 'security' } }),
+      );
+      expect(restoreFocus).not.toHaveBeenCalled();
+      await expect(
+        firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
+      ).resolves.toMatchObject({
+        kind: 'dismissed',
+        surface: {
+          layer: 'application',
+          surface: { kind: 'settings', section: 'security' },
+        },
+      });
+      await Promise.resolve();
+      expect(restoreFocus).toHaveBeenCalledOnce();
+    });
 
-    trustClosed.next({ kind: 'trust', flow: 'setup' });
-    trustClosed.complete();
-    await Promise.resolve();
+    it('offers it over Settings › Security and returns there on close', async () => {
+      const settings = closable();
+      const trust = closable();
+      dialogOpen
+        .mockReturnValueOnce(settings.ref)
+        .mockReturnValueOnce(trust.ref);
+      const restoreFocus = vi.fn();
+      await firstValueFrom(
+        presenter().present({
+          surface: { kind: 'settings', section: 'security' },
+        }),
+      );
+      await firstValueFrom(
+        presenter().present({
+          surface: { kind: 'trust', flow: 'verify' },
+          context: {
+            placement: 'nested',
+            returnTo: { kind: 'settings', section: 'security' },
+            restoreFocus,
+          },
+        }),
+      );
+      expect(verifyInputs(1)).toEqual({
+        asModal: true,
+        canOpenSecuritySettings: true,
+      });
 
-    expect(dialogOpen).toHaveBeenCalledOnce();
-    expect(navigate).not.toHaveBeenCalled();
+      trust.close(MANAGE_IDENTITY);
+      await Promise.resolve();
+
+      expect(dialogOpen).toHaveBeenCalledTimes(2);
+      expect(restoreFocus).toHaveBeenCalledOnce();
+    });
+
+    it('does not offer it over Settings › Devices', async () => {
+      await firstValueFrom(
+        presenter().present({
+          surface: { kind: 'settings', section: 'devices' },
+        }),
+      );
+      await firstValueFrom(
+        presenter().present({
+          surface: { kind: 'trust', flow: 'verify' },
+          context: {
+            placement: 'nested',
+            returnTo: { kind: 'settings', section: 'devices' },
+          },
+        }),
+      );
+
+      expect(verifyInputs(1)).toEqual({ asModal: true });
+    });
+
+    // The routed Settings page at desktop width: a follow-up dialog would open Settings
+    // over Settings, so it is treated like the nested case.
+    it('does not offer it over a routed Settings section other than Security', async () => {
+      await firstValueFrom(
+        presenter().present({
+          surface: { kind: 'trust', flow: 'verify' },
+          context: { returnTo: { kind: 'settings', section: 'devices' } },
+        }),
+      );
+
+      expect(verifyInputs(0)).toEqual({ asModal: true });
+    });
+
+    it('returns to a routed Security page instead of opening Settings over it', async () => {
+      const trust = closable();
+      dialogOpen.mockReturnValueOnce(trust.ref);
+      const restoreFocus = vi.fn();
+      await firstValueFrom(
+        presenter().present({
+          surface: { kind: 'trust', flow: 'verify' },
+          context: {
+            returnTo: { kind: 'settings', section: 'security' },
+            restoreFocus,
+          },
+        }),
+      );
+      expect(verifyInputs(0)).toEqual({
+        asModal: true,
+        canOpenSecuritySettings: true,
+      });
+
+      trust.close(MANAGE_IDENTITY);
+      await Promise.resolve();
+
+      expect(dialogOpen).toHaveBeenCalledOnce();
+      expect(restoreFocus).toHaveBeenCalledOnce();
+    });
+
+    it('never passes the offer to another trust flow', async () => {
+      await firstValueFrom(
+        presenter().present({ surface: { kind: 'trust', flow: 'unlock' } }),
+      );
+
+      expect(verifyInputs(0)).toEqual({ asModal: true });
+    });
+
+    it('ignores any other close result', async () => {
+      const trust = closable();
+      dialogOpen.mockReturnValueOnce(trust.ref);
+      await firstValueFrom(
+        presenter().present({ surface: { kind: 'trust', flow: 'verify' } }),
+      );
+
+      trust.close({ kind: 'settings', section: 'security' });
+      await Promise.resolve();
+
+      expect(dialogOpen).toHaveBeenCalledOnce();
+      expect(navigate).not.toHaveBeenCalled();
+    });
   });
 
   it('keeps a flow-critical trust dialog blocked while local overlays can sit above it', async () => {
@@ -362,7 +446,7 @@ describe('Workspace application-surface composition adapter', () => {
     );
 
     expect(dialogOpen).toHaveBeenCalledWith(StubVerifyComponent, {
-      inputs: { asModal: true },
+      inputs: { asModal: true, canOpenSecuritySettings: true },
       disableClose: true,
     });
     await expect(

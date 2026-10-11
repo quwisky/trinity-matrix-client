@@ -125,7 +125,10 @@ test.describe('An identity set up elsewhere without recovery', () => {
       .getByRole('button', { name: 'Open Security settings' })
       .click();
     await expect(verify).toBeHidden();
-    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
+    const settings = page.getByRole('dialog', { name: 'Settings' });
+    await expect(settings).toBeVisible();
+    // Focus follows into Settings rather than falling back to the banner or the body.
+    await expect(settings.locator(':focus')).toHaveCount(1);
     await page.getByTestId('security-reset-identity').click();
 
     // The door promised the reset, so the typed confirmation opens straight away.

@@ -413,10 +413,11 @@
       </p>
       <button
         trnBtn
-        presentation="ghost"
+        presentation="outline"
         class="mt-2 w-full"
         data-testid="verify-security-settings"
         aria-describedby="verify-no-other-device"
+        [disabled]="busy()"
         (click)="openSecuritySettings()"
       >
         Open Security settings
