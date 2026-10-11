@@ -96,7 +96,7 @@ jobs:
           pnpm nx run docs-site:e2e
       # Not a registry suite, so not the registry-validated diagnostics action; same
       # artifact conventions. `.playwright` is a dot-directory, hence the hidden files.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.docs-e2e.outputs.started == 'true' }}
         with:
           name: playwright-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.job }}-docs-site
@@ -258,7 +258,7 @@ jobs:
       - name: Prepare e2e prerequisites
         id: prerequisites
         run: node scripts/ci-prerequisites.mjs
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
         with:
           name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.job }}
@@ -355,7 +355,7 @@ jobs:
           TRINITY_PLAYWRIGHT_BROWSERS: chromium
           TRINITY_PLAYWRIGHT_WITH_DEPS: 'false'
         run: node scripts/ci-prerequisites.mjs
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
         with:
           name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.job }}-${{ matrix.shard }}
@@ -431,7 +431,7 @@ jobs:
           TRINITY_PLAYWRIGHT_BROWSERS: chromium
           TRINITY_PLAYWRIGHT_WITH_DEPS: 'false'
         run: node scripts/ci-prerequisites.mjs
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
         with:
           name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.job }}
@@ -671,7 +671,7 @@ jobs:
           pnpm nx run trinity-ios:build-prebuilt 2>&1 | tee dist/ios-native/xcodebuild.log
       - name: Retain Xcode diagnostics
         if: ${{ !cancelled() && steps.ios.outputs.started == 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-native-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: |

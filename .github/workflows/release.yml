@@ -285,7 +285,7 @@ jobs:
         working-directory: electron
         run: pnpm exec electron-builder ${{ matrix.flag }} --publish never
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: trinity-${{ matrix.platform }}
           path: ${{ matrix.assets }}
@@ -314,7 +314,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - run: pnpm electron:build:release
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           # Outside draft-release's trinity-* pattern: build input, not a release asset.
           name: desktop-shell
@@ -362,7 +362,7 @@ jobs:
       - run: pnpm -C electron install --frozen-lockfile --ignore-scripts
       # Outside the checkout, so the artifact can never land on electron-builder.yml,
       # afterPack.cjs or node_modules, which the signing step loads.
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: desktop-shell
           path: ${{ runner.temp }}/desktop-shell
@@ -421,7 +421,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: trinity-mac
           path: |
@@ -452,7 +452,7 @@ jobs:
         env:
           TAG: ${{ needs.verify.outputs.tag }}
         run: node scripts/web-release-zip.mjs --version "${TAG#v}" --out release-web
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: trinity-web
           path: release-web/Trinity-Web-*.zip
@@ -477,7 +477,7 @@ jobs:
         with:
           ref: refs/tags/${{ needs.verify.outputs.tag }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: artifacts
           pattern: trinity-*
