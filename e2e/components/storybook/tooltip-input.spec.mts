@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 /**
  * Opens the story with Playwright's fake clock already in place. Installing it on a live
@@ -13,6 +13,19 @@ async function openTouchActionStory(page: Page): Promise<void> {
   );
 }
 
+/**
+ * Moves the pointer onto the tooltip once it is really open. Brain attaches the content
+ * before change detection renders its state and the overlay positions it, and under the fake
+ * clock that render can trail the attach. A bare content element is already "visible" at the
+ * page's top-left, so hovering it then leaves the pointer outside both trigger and tooltip
+ * once the overlay moves, and the next `runFor` fires the hide delay.
+ */
+async function hoverOpenTooltip(tooltip: Locator): Promise<void> {
+  await expect(tooltip).toHaveAttribute('data-state', 'open');
+  await tooltip.hover();
+  expect(await tooltip.evaluate((el) => el.matches(':hover'))).toBe(true);
+}
+
 test('keyboard tooltip remains open when the pointer leaves its content', async ({
   page,
 }) => {
@@ -23,8 +36,7 @@ test('keyboard tooltip remains open when the pointer leaves its content', async 
   await expect(source).toBeFocused();
 
   const tooltip = page.getByRole('tooltip');
-  await expect(tooltip).toBeVisible();
-  await tooltip.hover();
+  await hoverOpenTooltip(tooltip);
   await page.mouse.move(0, 0);
   await page.clock.runFor(1_000);
 
@@ -42,8 +54,7 @@ test('mouse tooltip remains hoverable and closes after the pointer leaves', asyn
   await openTouchActionStory(page);
   await page.getByTestId('tooltip-touch-source').hover();
   const tooltip = page.getByRole('tooltip');
-  await expect(tooltip).toBeVisible();
-  await tooltip.hover();
+  await hoverOpenTooltip(tooltip);
   await page.clock.runFor(1_000);
   await expect(tooltip).toBeVisible();
   await expect(tooltip).toHaveAttribute('data-state', 'open');
