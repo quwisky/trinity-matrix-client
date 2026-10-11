@@ -54,10 +54,10 @@ index 223f4c8bb02839a87d04f68b7fed846f3b5fc577..33d1754064df22cf2ea3203a6a134c6e
      /**
       * Attempt to refresh access tokens.
 diff --git a/lib/http-api/refresh.js b/lib/http-api/refresh.js
-index 1a7147907487b62ca6a72440b767a7619a205b6f..8f361834cdd83d6de22eb9d28676120eb5ba207d 100644
+index 1a7147907487b62ca6a72440b767a7619a205b6f..0ca05c757c940690ac86c41a52a7698c7be51a7b 100644
 --- a/lib/http-api/refresh.js
 +++ b/lib/http-api/refresh.js
-@@ -97,6 +97,16 @@ export class TokenManager {
+@@ -97,8 +97,28 @@ export class TokenManager {
    async handleUnknownToken(snapshot, attempt) {
      return this._handleUnknownToken(snapshot, attempt);
    }
@@ -69,12 +69,25 @@ index 1a7147907487b62ca6a72440b767a7619a205b6f..8f361834cdd83d6de22eb9d28676120e
 +   * @returns true when new tokens were adopted
 +   */
 +  async refreshNow() {
++    // Trinity patch: forget the expiry first. A forced refresh revokes the current token long before
++    // it, so a failed or lost one must leave later 401s on the refresh path, not the Logout shortcut.
++    this.latestTokenRefreshExpiry = undefined;
 +    return (await this._handleUnknownToken()) === TokenRefreshOutcome.Success;
 +  }
    async _handleUnknownToken(snapshot, attempt) {
-     if (snapshot?.expiry) {
+-    if (snapshot?.expiry) {
++    // Trinity patch: a token rotated behind this request (say by refreshNow) was revoked by that
++    // rotation, not by the server; retry with the current one before the expiry shortcut below.
++    if (snapshot && snapshot.accessToken !== this.opts.accessToken) {
++      return TokenRefreshOutcome.Success;
++    }
++    // Trinity patch: trust the expiry shortcut only while nothing superseded it: not during a refresh
++    // in flight (it may already have revoked this token), nor once refreshNow has cleared the expiry.
++    if (snapshot?.expiry && snapshot.expiry === this.latestTokenRefreshExpiry && !this.tokenRefreshPromise) {
        // If our token is unknown, but it should not have expired yet, then we should not refresh
-@@ -156,8 +166,10 @@ export class TokenManager {
+       const expiresIn = snapshot.expiry.getTime() - Date.now();
+       // If it still has plenty of time left on the clock, we assume something else must be wrong and
+@@ -156,8 +176,10 @@ export class TokenManager {
        // successfully got new tokens
        return TokenRefreshOutcome.Success;
      } catch (error) {
@@ -245,10 +258,10 @@ index 387c1ebc6087adaf4947a377be434b9f56e05fe9..8ff78d521d84ff991315d350df42214f
          if (this.opts.fetchFn) {
              return this.opts.fetchFn(resource, options);
 diff --git a/src/http-api/refresh.ts b/src/http-api/refresh.ts
-index c95d7fec172c152ec0cb4b12d8ce0ce4a4957c21..0b31065c367dfbd9e6b6fe1ca2d7b0ae5bf6b859 100644
+index c95d7fec172c152ec0cb4b12d8ce0ce4a4957c21..393c106135c2e094a7fb982c8ac4297a6fb5c085 100644
 --- a/src/http-api/refresh.ts
 +++ b/src/http-api/refresh.ts
-@@ -109,6 +109,16 @@ export class TokenManager {
+@@ -109,10 +109,30 @@ export class TokenManager {
          return this._handleUnknownToken(snapshot, attempt);
      }
  
@@ -259,13 +272,28 @@ index c95d7fec172c152ec0cb4b12d8ce0ce4a4957c21..0b31065c367dfbd9e6b6fe1ca2d7b0ae
 +     * @returns true when new tokens were adopted
 +     */
 +    public async refreshNow(): Promise<boolean> {
++        // Trinity patch: forget the expiry first. A forced refresh revokes the current token long before
++        // it, so a failed or lost one must leave later 401s on the refresh path, not the Logout shortcut.
++        this.latestTokenRefreshExpiry = undefined;
 +        return (await this._handleUnknownToken()) === TokenRefreshOutcome.Success;
 +    }
 +
      private async _handleUnknownToken(): Promise<TokenRefreshOutcome>;
      private async _handleUnknownToken(snapshot: AccessTokens, attempt: number): Promise<TokenRefreshOutcome>;
      private async _handleUnknownToken(snapshot?: AccessTokens, attempt?: number): Promise<TokenRefreshOutcome> {
-@@ -171,8 +181,10 @@ export class TokenManager {
+-        if (snapshot?.expiry) {
++        // Trinity patch: a token rotated behind this request (say by refreshNow) was revoked by that
++        // rotation, not by the server; retry with the current one before the expiry shortcut below.
++        if (snapshot && snapshot.accessToken !== this.opts.accessToken) {
++            return TokenRefreshOutcome.Success;
++        }
++        // Trinity patch: trust the expiry shortcut only while nothing superseded it: not during a refresh
++        // in flight (it may already have revoked this token), nor once refreshNow has cleared the expiry.
++        if (snapshot?.expiry && snapshot.expiry === this.latestTokenRefreshExpiry && !this.tokenRefreshPromise) {
+             // If our token is unknown, but it should not have expired yet, then we should not refresh
+             const expiresIn = snapshot.expiry.getTime() - Date.now();
+             // If it still has plenty of time left on the clock, we assume something else must be wrong and
+@@ -171,8 +191,10 @@ export class TokenManager {
              // successfully got new tokens
              return TokenRefreshOutcome.Success;
          } catch (error) {
