@@ -1,4 +1,8 @@
-<div class="banner" [attr.data-variant]="variant()">
+<div
+  class="banner"
+  [attr.data-variant]="variant()"
+  [attr.data-trn-surface]="surface()"
+>
   <span class="banner__icon"><ng-content select="[trnBannerIcon]" /></span>
   <!-- Presentational only. Announcement is the consumer's job via a persistent
        sr-only live region: a role="status" inserted together with its text (as an
