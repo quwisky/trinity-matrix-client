@@ -29,6 +29,9 @@ public struct HandoffRoom: Codable, Equatable {
 public enum PushRenderRules {
     public static let fallbackTitle = "Trinity"
     public static let fallbackBody = "New message"
+    /// The body when the stored access token had expired, so nothing was read: only the
+    /// running app can renew an OAuth token, and opening Trinity does.
+    public static let expiredTokenBody = "Open Trinity to read this message"
     public static let encryptedBody = "Encrypted message"
     static let maxBodyCodePoints = 200
 
@@ -40,16 +43,23 @@ public enum PushRenderRules {
         "m.location": "shared a location",
     ]
 
+    /// `tokenExpired`: the account's stored token had expired, so nothing was read and `event`
+    /// is nil. The body then says how to read the message instead of "New message".
     public static func render(
         event: [String: Any]?,
         storedRoom: HandoffRoom?,
         stateRoomName: String?,
-        senderName: String?
+        senderName: String?,
+        tokenExpired: Bool = false
     ) -> RenderedNotification {
         let title = nonBlank(storedRoom?.name) ?? nonBlank(stateRoomName) ?? fallbackTitle
         let sender = nonBlank(senderName) ?? (event?["sender"] as? String)
         let subtitle = storedRoom?.direct == true ? "" : (sender ?? "")
-        return RenderedNotification(title: title, subtitle: subtitle, body: body(event: event, sender: sender ?? ""))
+        return RenderedNotification(
+            title: title,
+            subtitle: subtitle,
+            body: body(event: event, sender: sender ?? "", tokenExpired: tokenExpired)
+        )
     }
 
     /// The value unless it is empty or only Unicode `White_Space` (the set Kotlin's
@@ -59,8 +69,8 @@ public enum PushRenderRules {
         return value
     }
 
-    private static func body(event: [String: Any]?, sender: String) -> String {
-        guard let event else { return fallbackBody }
+    private static func body(event: [String: Any]?, sender: String, tokenExpired: Bool) -> String {
+        guard let event else { return tokenExpired ? expiredTokenBody : fallbackBody }
         if (event["unsigned"] as? [String: Any])?["redacted_because"] != nil { return fallbackBody }
         switch event["type"] as? String {
         case "m.room.encrypted": return encryptedBody
