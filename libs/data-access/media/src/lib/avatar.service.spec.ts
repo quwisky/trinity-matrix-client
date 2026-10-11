@@ -12,6 +12,10 @@ import {
 } from 'vitest';
 import { AvatarService } from './avatar.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  containsAscii,
+  identifyingJpeg,
+} from './image-metadata/image-metadata.fixture';
 
 function fakeClient(overrides: Record<string, unknown> = {}) {
   return {
@@ -98,6 +102,25 @@ describe('AvatarService', () => {
       name: 'me.png',
       type: 'image/png',
     });
+  });
+
+  it('uploads an avatar photo without its location, camera or capture time', async () => {
+    const uploadContent = vi
+      .fn()
+      .mockResolvedValue({ content_uri: 'mxc://hs/new' });
+    const { svc } = setup({ uploadContent });
+    const photo = new File([identifyingJpeg(6)], 'me.jpg', {
+      type: 'image/jpeg',
+    });
+
+    await firstValueFrom(svc.upload(photo, '@me:hs'));
+
+    const [body, opts] = uploadContent.mock.calls[0] as [File, unknown];
+    expect(body).not.toBe(photo);
+    expect(opts).toEqual({ name: 'me.jpg', type: 'image/jpeg' });
+    const sent = new Uint8Array(await body.arrayBuffer());
+    expect(containsAscii(sent, '52.5200')).toBe(false);
+    expect(containsAscii(sent, 'Canon')).toBe(false);
   });
 
   it('keeps avatar upload cold until subscribed', () => {

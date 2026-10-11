@@ -34,6 +34,12 @@ The Trust data-access library owns encryption health, device lists, cross-signin
 
 Verification and recovery actions are finite Observables, while trust health is projected state. Preserve cancellation and account boundaries when a dialog or routed page closes.
 
+## Photos leave without identifying metadata {#media-metadata}
+
+Encryption hides an attachment from the homeserver, not from the people in the room. Before an image is uploaded, its identifying metadata is removed without re-encoding it. Media data access does this for message attachments and profile photos, and Room administration uses Media's `withoutImageMetadata` helper for room photos. It removes Exif with its GPS location, camera make and model, capture time and serial numbers; XMP; IPTC; comments and text chunks; and anything appended after a JPEG's first image, such as Motion Photo videos and MPF secondary images. This covers JPEG, PNG, WebP and HEIF/AVIF. A rotated or mirrored photo keeps an Exif block holding only its orientation, so it still displays the right way up. In encrypted rooms stripping runs on the plaintext, before encryption.
+
+The pure byte-level parsers live in `libs/data-access/media/src/lib/image-metadata`. An Exif block that cannot be read inside an otherwise sound file is dropped whole, orientation included. Stripping never blocks a send: a file whose container cannot be parsed with certainty, and every other format (GIF, TIFF, SVG, videos, documents), is uploaded unchanged. Videos therefore still carry their recording metadata, including any location the camera wrote.
+
 ## Logout and reset are ordered cleanup {#cleanup-order}
 
 Sign-out targets an explicit account. Soft logout preserves recovery-critical local stores for reauthentication; hard logout requests their cleanup. Installation reset gathers the identifiers needed for cleanup before deleting registries and preferences, then clears clients, SDK stores, host secrets, caches, and service workers through bounded operations.

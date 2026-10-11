@@ -29,14 +29,20 @@ import { MessageComposerComponent } from './message-composer.component';
 import { Router } from '@angular/router';
 
 /** Per-test interaction model; desktop remains the default for the composer suite. */
-const platform = vi.hoisted(() => ({ mobile: false }));
+const platform = vi.hoisted(() => ({ mobile: false, native: false }));
 vi.mock('@trinity/platform-native', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@trinity/platform-native')>()),
   isMobileOs: () => platform.mobile,
+  isInstalledNativePlatform: () => platform.native,
 }));
 
 export function setMobilePlatform(mobile: boolean): void {
   platform.mobile = mobile;
+}
+
+/** Run as the installed Android/iOS app; read once, when the composer is created. */
+export function setNativePlatform(native: boolean): void {
+  platform.native = native;
 }
 
 // The draft store persists to Capacitor Preferences (debounced); stub it so the
