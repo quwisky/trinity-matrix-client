@@ -134,6 +134,55 @@ async function expectAttentionAction(
   return hoverSurface;
 }
 
+/**
+ * #1224: the on-attention ring belongs to buttons, not to the surface. A ghost action on the
+ * attention surface uses it; a text field inside keeps the normal ring. The field is
+ * transparent, so that ring sits on the accent at about 1.3-1.45:1 in every Theme and mode.
+ * The measured ratio is recorded as an annotation rather than asserted until the field's
+ * treatment on an attention surface is decided.
+ */
+async function expectAttentionScopedRing(
+  page: Page,
+  surface: Locator,
+  button: Locator,
+  field: Locator,
+): Promise<void> {
+  const attentionSurface = await computedColour(surface, 'background-color');
+  await button.evaluate((element) =>
+    element.setAttribute('data-testid', 'attention-ghost-action'),
+  );
+  await button.focus();
+  await expect(button).toBeFocused();
+  const buttonRing = await computedColour(button, 'outline-color');
+  expect(buttonRing).toEqual(
+    await resolveTokenSrgb(
+      page,
+      'attention-ghost-action',
+      '--trinity-focus-ring-on-attention',
+    ),
+  );
+  expect(contrastRatio(buttonRing, attentionSurface)).toBeGreaterThanOrEqual(3);
+
+  await field.focus();
+  await expect(field).toBeFocused();
+  const fieldRing = await computedColour(field, 'border-top-color');
+  expect(fieldRing).toEqual(
+    await computedColour(page.locator('html'), '--trinity-focus-ring'),
+  );
+  const fieldBackground = await field.evaluate(
+    (element) => getComputedStyle(element).backgroundColor,
+  );
+  const ownBackground = /^rgba\(.*,\s*0\)$|^transparent$/u.test(fieldBackground)
+    ? attentionSurface
+    : await computedColour(field, 'background-color');
+  const ratio = contrastRatio(fieldRing, ownBackground);
+  test.info().annotations.push({
+    type: 'field ring contrast',
+    description: `${ratio.toFixed(2)}:1 ring ${JSON.stringify(fieldRing)} on ${JSON.stringify(ownBackground)} (field background ${fieldBackground})`,
+  });
+  await field.evaluate((element: HTMLElement) => element.blur());
+}
+
 test.describe('semantic design foundations', () => {
   for (const { theme, mode } of STORYBOOK_THEME_PREVIEWS) {
     test(`${theme.id} ${mode.id} toolbar states use accessible semantic recipes`, async ({
@@ -255,12 +304,19 @@ test.describe('semantic design foundations', () => {
         page.getByTestId('accent-overlay-surface'),
         page.getByRole('button', { name: 'Verify now' }),
       );
+      // The attention hover token is shared, so the banner step's `hoverSurface` applies here.
       const overlayLink = page.getByRole('link', { name: 'Learn more' });
       await overlayLink.hover();
       await expect
         .poll(() => computedColour(overlayLink, 'background-color'))
         .toEqual(hoverSurface);
       await page.mouse.move(0, 0);
+      await expectAttentionScopedRing(
+        page,
+        page.getByTestId('accent-overlay-surface'),
+        page.getByRole('button', { name: 'Not now' }),
+        page.getByRole('textbox', { name: 'Recovery key' }),
+      );
 
       await openStory(page, 'components-input--default', theme.id, mode.id);
       const field = page.getByRole('textbox', { name: 'Room name' });

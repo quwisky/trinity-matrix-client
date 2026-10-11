@@ -4,15 +4,11 @@ import { hlm } from '@trinity/helm/utils';
 export type TrnPageHeaderVariant = Extract<TrnVariant, 'neutral' | 'accent'>;
 export type TrnPageHeaderLayout = 'page' | 'toolbar';
 
-/**
- * The accent fill outranks the toolbar layout's background, so both layouts paint the
- * attention surface. Focus rings inside it use the on-attention ring, as the accent banner's
- * do: the default ring is the link colour, which is not drawn for an accent ground.
- */
+/** The accent fill outranks the toolbar layout's background, so both layouts paint it. */
 const variantRecipe = {
   neutral: '',
   accent:
-    'bg-[var(--trinity-state-attention-surface)] text-[var(--trinity-state-attention-foreground)] [--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]',
+    'bg-[var(--trinity-state-attention-surface)] text-[var(--trinity-state-attention-foreground)]',
 } as const;
 
 const layoutRecipe = {

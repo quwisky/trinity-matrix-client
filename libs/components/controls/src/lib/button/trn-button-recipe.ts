@@ -46,8 +46,8 @@ const solidDangerTone =
   'bg-[color:var(--trinity-danger-solid)] dark:bg-[color:var(--trinity-danger-solid)] text-[color:var(--trinity-danger-solid-foreground)] hover:bg-[color:var(--trinity-danger-solid-hover)] dark:hover:bg-[color:var(--trinity-danger-solid-hover)]';
 
 /**
- * A solid primary action on an attention surface (an accent `trn-banner`, which marks itself
- * `data-trn-surface="attention"`). Its own fill is the accent, the same colour as that
+ * A solid primary action on an attention surface (an accent `trn-banner`, `trn-page-header` or
+ * `trnOverlaySurface`, which mark themselves `data-trn-surface="attention"`). Its own fill is the accent, the same colour as that
  * surface, so it would read as plain text with no visible hover (#1217). There it inverts to
  * the attention action roles, and its focus ring gains an offset in the surface colour so the
  * ring, which shares the fill's colour, stays distinct from the button. Outside such a surface
@@ -96,9 +96,13 @@ const nonSolidTone = {
 /**
  * One keyboard-focus ring for every button, matching `trnInput` and the global baseline.
  * `dark:focus-visible:ring-*` out-merges Helm destructive's `dark:focus-visible:ring-destructive/40`.
+ *
+ * On an attention surface every presentation sits directly on the accent, where the default
+ * ring (the link colour) fails 3:1, so the button switches to the on-attention ring. It is set
+ * on the button, not the surface, so a field or other control inside keeps its normal ring.
  */
 const focusRing =
-  'focus-visible:border-[color:var(--trinity-focus-ring)] focus-visible:ring-[color:var(--trinity-focus-ring)] dark:focus-visible:ring-[color:var(--trinity-focus-ring)]';
+  'focus-visible:border-[color:var(--trinity-focus-ring)] focus-visible:ring-[color:var(--trinity-focus-ring)] dark:focus-visible:ring-[color:var(--trinity-focus-ring)] in-data-[trn-surface=attention]:[--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]';
 
 /** A full-width list row: the label starts at the inline start and wraps instead of clipping. */
 const rowShape = 'h-auto w-full justify-start text-start whitespace-normal';

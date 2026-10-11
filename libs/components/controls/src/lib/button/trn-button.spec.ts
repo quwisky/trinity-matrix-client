@@ -56,6 +56,9 @@ class AvailabilityHostComponent {
   readonly activations = signal(0);
 }
 
+const attentionRing =
+  'in-data-[trn-surface=attention]:[--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]';
+
 describe('TrnButton', () => {
   it('carries no dark: text variants, which have no Helm class to override', () => {
     const presentations = ['solid', 'outline', 'ghost', 'link'] as const;
@@ -153,7 +156,35 @@ describe('TrnButton', () => {
       ['primary', 'outline'],
       ['primary', 'ghost'],
     ] as const) {
-      expect(recipe(variant, presentation)).not.toContain(attention);
+      expect(
+        recipe(variant, presentation)
+          .split(' ')
+          .filter((name) => name.startsWith(attention)),
+      ).toEqual([attentionRing]);
+    }
+  });
+
+  it('switches every button to the on-attention focus ring only inside an attention surface', () => {
+    // #1224: the ring is scoped to the button, not set on the surface, so an input or
+    // a neutral card inside an attention surface keeps the normal ring.
+    for (const variant of ['primary', 'secondary', 'danger'] as const) {
+      for (const presentation of [
+        'solid',
+        'outline',
+        'ghost',
+        'link',
+      ] as const) {
+        const classes = trnButtonRecipe({
+          presentation,
+          shape: 'label',
+          size: 'sm',
+          variant,
+        }).split(' ');
+        expect(classes).toContain(attentionRing);
+        expect(classes).not.toContain(
+          '[--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]',
+        );
+      }
     }
   });
 

@@ -120,10 +120,8 @@ describe('PageHeaderComponent', () => {
     fixture.componentRef.setInput('variant', 'accent');
     await fixture.whenStable();
     expect(header().getAttribute('data-trn-surface')).toBe('attention');
-    // The default ring is the link colour; on the accent ground it uses the on-attention one.
-    expect(header().className).toContain(
-      '[--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]',
-    );
+    // The on-attention ring is scoped to trnBtn, so a field in the header keeps its own.
+    expect(header().className).not.toContain('focus-ring-on-attention');
 
     // The accent fill outranks the toolbar's workspace background, so the toolbar layout
     // paints the attention surface too and needs the same opt-in.
@@ -136,9 +134,7 @@ describe('PageHeaderComponent', () => {
       'bg-[var(--trinity-surface-workspace)]',
     );
     expect(header().getAttribute('data-trn-surface')).toBe('attention');
-    expect(header().className).toContain(
-      '[--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]',
-    );
+    expect(header().className).not.toContain('focus-ring-on-attention');
   });
 
   it('does not reflect the title input onto a native title attribute (no whole-bar tooltip)', async () => {

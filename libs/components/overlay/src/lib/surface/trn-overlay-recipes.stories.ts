@@ -4,7 +4,7 @@ import {
   moduleMetadata,
   type StoryObj,
 } from '@storybook/angular-vite';
-import { TrnButton } from '@trinity/components/controls';
+import { TrnButton, TrnInput } from '@trinity/components/controls';
 import { provideTrnOverlayDefaults } from '../provide-overlay-defaults';
 import { DialogOverlayStoryComponent } from './stories/dialog-overlay-story/dialog-overlay-story.component';
 import { DropdownOverlayStoryComponent } from './stories/dropdown-overlay-story/dropdown-overlay-story.component';
@@ -55,6 +55,7 @@ const meta: Meta = {
         FeedbackOverlayStoryComponent,
         LayeredOverlayStoryComponent,
         TrnButton,
+        TrnInput,
         TrnOverlaySurfaceDirective,
       ],
     }),
@@ -89,9 +90,10 @@ export const Feedback: Story = {
 };
 
 /**
- * An accent dialog with its own primary action, including an anchor. The surface marks itself
- * as an attention surface, so the solid actions invert to the on-attention roles instead of
- * an accent fill that would vanish on the accent ground.
+ * An accent dialog with its own primary action, an anchor and a ghost action. The surface
+ * marks itself as an attention surface, so the solid actions invert to the on-attention roles
+ * instead of an accent fill that would vanish on the accent ground, and every button uses the
+ * on-attention focus ring. The text field is not a button, so it keeps the normal ring.
  */
 export const AccentSurface: Story = {
   render: () => ({
@@ -108,7 +110,9 @@ export const AccentSurface: Story = {
         >
           <h2 id="accent-surface-title" class="text-lg font-semibold">Verify this device</h2>
           <p class="text-sm">Verify this device to read your encrypted messages.</p>
+          <input trnInput aria-label="Recovery key" placeholder="Recovery key" />
           <div class="flex flex-wrap justify-end gap-2">
+            <button trnBtn presentation="ghost" size="sm" type="button">Not now</button>
             <a trnBtn size="sm" href="#">Learn more</a>
             <button trnBtn size="sm" type="button">Verify now</button>
           </div>

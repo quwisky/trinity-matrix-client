@@ -112,12 +112,14 @@ describe('Trinity overlay surface recipe', () => {
     fixture.componentInstance.variant.set('accent');
     await fixture.whenStable();
     expect(surface.getAttribute('data-trn-surface')).toBe('attention');
-    // The default ring is the link colour; on the accent ground it uses the on-attention one.
-    expect(surface.className).toContain(
-      '[--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]',
-    );
-    expect(trnOverlaySurfaceRecipe('neutral', 'md', 'dialog')).not.toContain(
-      '--trinity-focus-ring-on-attention',
-    );
+    // The on-attention ring is scoped to trnBtn, so a field or a neutral card inside the
+    // surface keeps the normal ring.
+    expect(surface.className).not.toContain('focus-ring-on-attention');
+
+    // Back to neutral, the surface stops declaring the attention context.
+    fixture.componentInstance.variant.set('neutral');
+    await fixture.whenStable();
+    expect(surface.hasAttribute('data-trn-surface')).toBe(false);
+    expect(surface.className).not.toContain('focus-ring-on-attention');
   });
 });

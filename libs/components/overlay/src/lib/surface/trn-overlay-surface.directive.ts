@@ -27,6 +27,8 @@ export class TrnOverlaySurfaceDirective {
    * content: `trnBtn` reads `data-trn-surface="attention"` and inverts its solid fill, which
    * would otherwise be the same accent as the surface (#1224). That includes the surface's
    * own primary action. Portal content opened from inside renders outside this element.
+   * Every descendant `trnBtn` inverts, so neutral content (a neutral card or banner) placed
+   * directly inside an accent surface is unsupported: its buttons would invert too.
    */
   protected readonly surface = computed(() =>
     this.variant() === 'accent' ? 'attention' : null,
