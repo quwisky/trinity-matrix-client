@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { EnvironmentInjector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { createClient } from 'matrix-js-sdk';
@@ -10,6 +12,21 @@ import {
 } from './matrix-sdk-logging';
 
 describe('configureMatrixSdkLogging', () => {
+  it('shares matrix-js-sdk’s copy of loglevel', () => {
+    // The SDK's loggers live in its loglevel registry. If a dependency bump ever splits
+    // Trinity's `loglevel` from the SDK's, configuring silently does nothing and production
+    // prints the SDK's debug output again (#1208): keep the two versions in step.
+    const fromTrinity = createRequire(import.meta.url);
+    const sdkPackage = realpathSync(
+      fromTrinity.resolve('matrix-js-sdk/package.json'),
+    );
+    const fromSdk = createRequire(sdkPackage);
+    expect(
+      realpathSync(fromTrinity.resolve('loglevel')),
+      'loglevel diverged from matrix-js-sdk’s copy; align their versions',
+    ).toBe(realpathSync(fromSdk.resolve('loglevel')));
+  });
+
   let debug: ReturnType<typeof vi.spyOn>;
   let info: ReturnType<typeof vi.spyOn>;
   let warn: ReturnType<typeof vi.spyOn>;
