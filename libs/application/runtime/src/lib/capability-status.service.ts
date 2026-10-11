@@ -96,14 +96,23 @@ export class CapabilityStatusService {
    * The single global banner slot, by priority: a blocking capability error, then the
    * encryption prompt, then a limited capability. A limited capability is non-blocking
    * and reachable from System Status, while the encryption prompt is the user's one
-   * pending setup step. Per-room banners (offline, tombstone) sit outside this slot.
+   * pending setup step. Guidance to set up recovery on another device is no step on this
+   * one, so it takes the slot only when nothing is limited. Per-room banners (offline,
+   * tombstone) sit outside this slot.
    */
   readonly bannerSlot = computed<'status' | 'encryption' | null>(() => {
     if (this.hasBlocking()) return 'status';
     const trust = this.trust.status();
-    if (trust === 'needs-setup' || trust === 'needs-recovery')
+    const limited = this.visibleEntries().length > 0;
+    if (trust === 'needs-setup' && this.trust.recoverySetupElsewhere())
+      return limited ? 'status' : 'encryption';
+    if (
+      trust === 'needs-setup' ||
+      trust === 'needs-recovery' ||
+      trust === 'needs-verification'
+    )
       return 'encryption';
-    return this.visibleEntries().length > 0 ? 'status' : null;
+    return limited ? 'status' : null;
   });
   /** Names what is limited: the one problem's heading, or up to two capability names. */
   readonly bannerMessage = computed(() => {

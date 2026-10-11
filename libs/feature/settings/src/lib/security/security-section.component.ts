@@ -55,6 +55,8 @@ export class SecuritySectionComponent {
   /** Where this device stands on encryption setup (drives the encryption card). */
   readonly health = this.crypto.health;
   readonly status = this.crypto.status;
+  /** Verified here, but only the device holding the identity can set up recovery. */
+  readonly setupElsewhere = this.crypto.recoverySetupElsewhere;
   /** Whether a server-side key backup is active for this session. */
   readonly keyBackupActive = this.crypto.keyBackupActive;
   /** Whether this session is cross-signing verified. */

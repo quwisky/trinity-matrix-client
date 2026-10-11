@@ -14,6 +14,7 @@
           trnBtn
           class="banner__action"
           size="sm"
+          [presentation]="action.secondary ? 'ghost' : 'solid'"
           (click)="run(action.kind)"
         >
           {{ action.label }}

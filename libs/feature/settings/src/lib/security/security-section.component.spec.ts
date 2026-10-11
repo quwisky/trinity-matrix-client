@@ -24,6 +24,7 @@ async function build(
     backup?: boolean;
     availability?: TrustHealth['availability'];
     cryptoStoreEncrypted?: boolean | null;
+    identityElsewhere?: boolean;
   } = {},
   over: {
     exportRoomKeys?: Mock;
@@ -36,7 +37,7 @@ async function build(
     status: opts.status === 'unknown' ? 'ready' : (opts.status ?? 'ready'),
     keyBackupActive: opts.backup ?? false,
     thisDeviceVerified: opts.verified ?? false,
-    identityElsewhere: false,
+    identityElsewhere: opts.identityElsewhere ?? false,
   } as const;
   const health: TrustHealth =
     opts.availability === 'unavailable'
@@ -65,6 +66,11 @@ async function build(
         ).asReadonly(),
         thisDeviceVerified: signal(
           health.current?.thisDeviceVerified ?? null,
+        ).asReadonly(),
+        recoverySetupElsewhere: signal(
+          health.current?.status === 'needs-setup' &&
+            health.current.thisDeviceVerified &&
+            health.current.identityElsewhere,
         ).asReadonly(),
         exportRoomKeys,
         importRoomKeys,
@@ -101,7 +107,73 @@ function fileEvent(text?: string): Event {
   return { target: { files, value: '' } } as unknown as Event;
 }
 
+/** Click a control by its test id, as the user would. */
+function click(container: Element, testId: string): void {
+  const button = container.querySelector<HTMLElement>(
+    `[data-testid=${testId}]`,
+  );
+  expect(button).not.toBeNull();
+  button?.click();
+}
+
 describe('SecuritySectionComponent', () => {
+  it('offers verification and an explicit reset when the identity lives elsewhere', async () => {
+    const { container, open } = await build({
+      status: 'needs-verification',
+    });
+
+    expect(
+      container.querySelector('[data-testid=security-needs-verification]'),
+    ).not.toBeNull();
+    expect(container.querySelector('[data-testid=security-setup]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid=security-verify-device]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid=security-reset-identity]'),
+    ).not.toBeNull();
+
+    click(container, 'security-verify-device');
+    expect(open).toHaveBeenLastCalledWith({
+      surface: { kind: 'trust', flow: 'verify' },
+      context: { returnTo: { kind: 'settings', section: 'security' } },
+    });
+
+    click(container, 'security-reset-identity');
+    expect(open).toHaveBeenLastCalledWith({
+      surface: { kind: 'trust', flow: 'unlock' },
+      context: {
+        returnTo: { kind: 'settings', section: 'security' },
+        offerReset: true,
+      },
+    });
+  });
+
+  it('points a verified device without the keys to the other device instead of setup', async () => {
+    const { container, open } = await build({
+      status: 'needs-setup',
+      verified: true,
+      identityElsewhere: true,
+    });
+
+    expect(
+      container.querySelector('[data-testid=security-setup-elsewhere]')
+        ?.textContent,
+    ).toContain(
+      'Set up recovery on the device where you first set up encryption.',
+    );
+    expect(container.querySelector('[data-testid=security-setup]')).toBeNull();
+
+    click(container, 'security-reset-identity');
+    expect(open).toHaveBeenLastCalledWith({
+      surface: { kind: 'trust', flow: 'unlock' },
+      context: {
+        returnTo: { kind: 'settings', section: 'security' },
+        offerReset: true,
+      },
+    });
+  });
+
   it('offers setup when encryption needs setting up', async () => {
     const { container, cmp, open } = await build({ status: 'needs-setup' });
     expect(
