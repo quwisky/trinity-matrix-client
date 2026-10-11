@@ -219,8 +219,9 @@ store current through the `PushHandoff` plugin (`setAccount`, `setRooms`, `remov
 OAuth 2.0 and its server gave the token a lifetime (MAS defaults to five minutes;
 `MatrixClientService.accessTokenExpiry` hands it over only with the token it belongs to) and
 the notification-sound choice, plus room display names and DM flags written in one batch per
-sync or rename. It never holds refresh tokens, crypto keys or message history. An account's entry is removed as the first step of its
-sign-out, together with that account's delivered pushes, and the store is emptied, with
+sync or rename. It never holds refresh tokens, crypto keys or message history. An account's
+entry is removed as the first step of its sign-out, together with that account's delivered
+pushes, and the store is emptied, with
 every delivered push, by clear-all-data and before a replace sign-in. A handoff failure
 never blocks sign-in or sign-out; the replace sign-in waits for it for at most the
 notification cleanup budget. On iOS the accounts live in the shared keychain

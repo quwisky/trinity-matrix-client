@@ -344,9 +344,9 @@ export class MatrixClientService {
 
   /**
    * When `accessToken` stops working (epoch ms), if it is the token Trinity last saw this
-   * account's client start with or persist and the server gave it a lifetime. Undefined for password and SSO tokens,
-   * a token without `expires_in`, and a token the client has already replaced, so an
-   * expiry never travels with the wrong token.
+   * account's client start with or persist and the server gave it a lifetime. Undefined
+   * for password and SSO tokens, a token without `expires_in`, and a token the client has
+   * already replaced, so an expiry never travels with the wrong token.
    */
   accessTokenExpiry(userId: string, accessToken: string): number | undefined {
     const held = this.oauthTokens.get(userId);

@@ -53,8 +53,9 @@ interface HandoffBinding {
  * when the SDK refreshes its access token and when the sound setting changes. An OAuth
  * token's expiry goes with it, so the renderers can skip a read that is bound to fail and
  * say why instead. Writes room names (as the SDK computes them, DM names included) and DM
- * flags in one batch per sync or rename, only for rooms that changed. Every bridge call runs after the previous one
- * settles, so a removal can never be overtaken by a write that started before it.
+ * flags in one batch per sync or rename, only for rooms that changed. Every bridge call
+ * runs after the previous one settles, so a removal can never be overtaken by a write that
+ * started before it.
  *
  * Active only where {@link PushHandoffBridge.available}: native iOS and Android.
  */
