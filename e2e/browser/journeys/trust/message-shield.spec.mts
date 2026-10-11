@@ -12,6 +12,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { passwordLogin, registerUser } from '../../../support/account.mts';
+import { focusWithKeyboard } from '../../support/keyboard-focus.mts';
 
 // Covers per-message authenticity shields (message-row `data-testid="msg-shield-*"`):
 // that a plaintext room raises none, that a genuinely shielded message explains itself,
@@ -332,7 +333,7 @@ test.describe('Message authenticity shields', () => {
     await expect(shield).toHaveAttribute('tabindex', '0');
 
     // Keyboard reaches it: brn opens on focus, not only hover.
-    await shield.focus();
+    await focusWithKeyboard(shield);
     const tip = page.getByTestId('msg-shield-tip');
     await expect(tip).toBeVisible({ timeout: 10_000 });
     // Both halves — what was found, and what it means for the reader.
@@ -438,7 +439,7 @@ test.describe('Message authenticity shields', () => {
     await expect(redShield).toBeVisible({ timeout: 30_000 });
     await expect(redShield).toHaveAttribute('aria-label', 'Not encrypted');
     await expect(redShield).toHaveClass(/msg__shield--red/);
-    await redShield.focus();
+    await focusWithKeyboard(redShield);
     await expect(page.getByTestId('msg-shield-tip')).toContainText(
       'This message was sent without end-to-end encryption.',
     );
@@ -458,7 +459,7 @@ test.describe('Message authenticity shields', () => {
       shield.locator('svg').evaluate((svg) => svg.innerHTML);
     expect(await glyph(greyShield)).not.toBe(await glyph(redShield));
     await expect(rowOf(page, earlier).locator(red)).toHaveCount(0);
-    await greyShield.focus();
+    await focusWithKeyboard(greyShield);
     await expect(page.getByTestId('msg-shield-tip')).toContainText(
       'This message is dated before the room turned on end-to-end encryption.',
     );

@@ -13,6 +13,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { focusWithKeyboard } from '../../support/keyboard-focus.mts';
 
 const { defaultBrowserType: _pixelBrowser, ...pixel5 } = devices['Pixel 5'];
 
@@ -514,7 +515,7 @@ test.describe('Member role sections', () => {
       'You can only manage members with a lower role.',
     );
 
-    await kick.focus();
+    await focusWithKeyboard(kick);
     await expect(page.getByRole('tooltip')).toContainText(
       'You can only manage members with a lower role.',
     );
