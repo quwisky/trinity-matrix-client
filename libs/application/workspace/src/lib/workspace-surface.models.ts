@@ -78,8 +78,7 @@ export type WorkspaceRoomSurface =
   | { readonly kind: 'threads' }
   | { readonly kind: 'thread'; readonly rootEventId: string }
   | { readonly kind: 'pinned' }
-  | { readonly kind: 'search' }
-  | { readonly kind: 'member'; readonly userId: string };
+  | { readonly kind: 'search' };
 
 /** The compact master-detail Conversation, below Room surfaces in the Back order. */
 export interface WorkspaceConversationSurface {

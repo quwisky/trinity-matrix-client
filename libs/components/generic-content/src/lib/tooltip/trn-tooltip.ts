@@ -1,4 +1,4 @@
-import { Directive } from '@angular/core';
+import { Directive, ElementRef, inject } from '@angular/core';
 import {
   BrnTooltip,
   type BrnTooltipPosition,
@@ -52,6 +52,20 @@ export const TRN_TOOLTIP_CONTENT_CLASSES = trn(
  * That timing is pinned here because Brain 1.5 changed its own defaults from 150/100 to 0/0.
  * Nearly every call site labels an icon-only button in a dense, hover-revealed toolbar; at 0
  * a pointer crossing the row opens a tooltip over the neighbouring action on every pass.
+ *
+ * **Focus opens a tooltip only when the browser would draw a focus ring (`:focus-visible`).**
+ * Brain already ignores touch taps, but it treats every programmatic focus as keyboard
+ * intent, so focus restored to a trigger after a touch-closed sheet or dialog opened a tooltip
+ * that stayed until the next interaction. Brain has no hook to filter focus and its `delay`
+ * method is private, so a focus without a ring switches the tooltip off through the public
+ * `mutableTooltipDisabled` signal; Brain checks it when the show delay elapses. Blur or a
+ * mouse or pen entering switches it back on, and a focus that lands while one is over the host
+ * (hover, then click within the show delay) is left alone, so hover is unaffected and Tab
+ * focus is evaluated anew.
+ *
+ * Known gap: after a dialog close Brain marks the restored focus as visible, so a later hover
+ * opens the tooltip and it outlives `pointerleave`. Closing it needs Brain's private `delay`,
+ * which this wrapper deliberately does not reach into.
  */
 @Directive({
   selector: '[trnTooltip]',
@@ -65,6 +79,12 @@ export const TRN_TOOLTIP_CONTENT_CLASSES = trn(
         trn(tooltipPositionVariants({ position })),
     }),
   ],
+  host: {
+    '(focusin)': 'suppressUnlessFocusVisible()',
+    '(focusout)': 'restore()',
+    '(pointerenter)': 'hoverStart($event)',
+    '(pointerleave)': 'hoverEnd($event)',
+  },
   hostDirectives: [
     {
       directive: BrnTooltip,
@@ -73,4 +93,45 @@ export const TRN_TOOLTIP_CONTENT_CLASSES = trn(
     },
   ],
 })
-export class TrnTooltip {}
+export class TrnTooltip {
+  private hovered = false;
+  private readonly tooltip = inject(BrnTooltip, { self: true });
+  private readonly host =
+    inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+
+  protected suppressUnlessFocusVisible(): void {
+    if (!this.hovered) {
+      this.tooltip.mutableTooltipDisabled.set(!this.isFocusVisible());
+    }
+  }
+
+  protected hoverStart(event: PointerEvent): void {
+    if (isHoverPointer(event)) {
+      this.hovered = true;
+      this.restore();
+    }
+  }
+
+  protected hoverEnd(event: PointerEvent): void {
+    if (isHoverPointer(event)) {
+      this.hovered = false;
+    }
+  }
+
+  protected restore(): void {
+    this.tooltip.mutableTooltipDisabled.set(false);
+  }
+
+  private isFocusVisible(): boolean {
+    try {
+      return this.host.matches(':focus-visible');
+    } catch {
+      // An engine without the selector cannot tell; keep Brain's behaviour.
+      return true;
+    }
+  }
+}
+
+function isHoverPointer(event: PointerEvent): boolean {
+  return event.pointerType === 'mouse' || event.pointerType === 'pen';
+}

@@ -47,11 +47,19 @@ export interface MediaConversationKey {
   readonly roomId: string;
 }
 
+/**
+ * What an upload does with a photo's identifying metadata: `'strip'` removes its location,
+ * camera and capture time (the default); `'keep'` sends the file byte for byte.
+ */
+export type ImageMetadataPolicy = 'strip' | 'keep';
+
 export interface MediaTransferRequest {
   readonly key: MediaConversationKey;
   readonly threadRootId?: string;
   readonly media: StagedMediaReference;
   readonly caption: string;
+  /** Absent means `'strip'`. */
+  readonly imageMetadata?: ImageMetadataPolicy;
 }
 
 export type MediaTransferFailure =

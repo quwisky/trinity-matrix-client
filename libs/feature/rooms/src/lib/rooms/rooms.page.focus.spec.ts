@@ -109,6 +109,7 @@ interface BuildOptions {
 }
 
 function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
+  const memberActions = { onSelectMember: vi.fn() };
   const vm = {
     accountBadges: signal(new Map()),
     accounts: signal([]),
@@ -261,18 +262,7 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
             eventTarget: signal(null),
           },
         },
-        {
-          provide: MemberActionsService,
-          useFactory: (surfaces: RoomSurfaceLifecycle) => ({
-            onSelectMember: (member: MemberSummary) =>
-              surfaces.transition({
-                kind: 'open-member',
-                member,
-                direct: false,
-              }),
-          }),
-          deps: [RoomSurfaceLifecycle],
-        },
+        { provide: MemberActionsService, useValue: memberActions },
         {
           provide: AccountRoutingService,
           useFactory: (surfaces: RoomSurfaceLifecycle) => ({
@@ -309,12 +299,14 @@ function buildPage({ realRail = false, routing = {} }: BuildOptions = {}) {
     },
   });
   setRouteRoom('!r:hs');
-  return { fixture: TestBed.createComponent(RoomsPage), vm };
+  return { fixture: TestBed.createComponent(RoomsPage), vm, memberActions };
 }
 
 describe('RoomsPage rendered right-panel focus', () => {
-  it('hands focus through the real members → member @switch render', () => {
-    const { fixture } = buildPage();
+  it('keeps the rendered roster and its focused row when a row opens member info', () => {
+    // Member info is a modal surface over the roster (#1041): the row asks for it and the
+    // slot keeps the list, so the dialog's focus restore has a row to come back to.
+    const { fixture, memberActions } = buildPage();
     fixture.debugElement.injector
       .get(RoomSurfaceLifecycle)
       .transition({ kind: 'open-members' });
@@ -328,14 +320,10 @@ describe('RoomsPage rendered right-panel focus', () => {
     fixture.detectChanges();
     TestBed.tick();
 
-    const target = host.querySelector<HTMLElement>(
-      '[data-testid="member-info-close"]',
-    );
-    expect(target).not.toBeNull();
-    expect(target?.closest('[data-right-panel-surface]')?.tagName).toBe(
-      'TRN-MEMBER-INFO',
-    );
-    expect(document.activeElement).toBe(target);
+    expect(memberActions.onSelectMember).toHaveBeenCalledWith(BOB);
+    expect(host.querySelector('trn-member-info')).toBeNull();
+    expect(host.querySelector('[data-testid="member-row"]')).toBe(row);
+    expect(document.activeElement).toBe(row);
   });
 
   it('returns focus to the members toggle when the members drawer X closes it', () => {

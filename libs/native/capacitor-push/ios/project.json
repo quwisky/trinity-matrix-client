@@ -1,0 +1,7 @@
+{
+  "name": "native-capacitor-push-ios",
+  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+  "//": "The plugin's Swift sources and the TrinityPush package (trinity-ios:test-push), split from the TypeScript project native-capacitor-push so that Nx maps these files here (the deepest project root owns a file). Owned by the TypeScript project, a native-only edit marked every TypeScript dependent affected; trinity-ios reaches this project through an implicit dependency instead, so the edit still marks the iOS host and its targets. An .nxignore entry would not do: Nx drops ignored files from affected and hashing altogether, the iOS host included. The plugin manifest ../Package.swift has to stay at the package root, where Capacitor looks for it, so it remains a file of the TypeScript project.",
+  "projectType": "library",
+  "tags": ["type:platform", "scope:shared", "role:adapter", "capability:host"]
+}

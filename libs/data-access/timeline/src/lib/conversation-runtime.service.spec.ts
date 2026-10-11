@@ -2,7 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { NEVER, Subject, firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DraftStoreService } from '@trinity/platform-native';
+import {
+  DraftStoreService,
+  PrivacySettingsService,
+} from '@trinity/platform-native';
 import {
   MediaPipeline,
   type MediaTransferEvent,
@@ -83,6 +86,7 @@ function setup(
     send: vi.fn(() => ({ outcome: sends, cancel: () => false })),
   };
   const mediaEvents = new Subject<MediaTransferEvent>();
+  const keepPhotoMetadata = signal(false);
   const mediaPipeline = {
     transfer: vi.fn(() => mediaEvents.asObservable()),
   };
@@ -159,6 +163,10 @@ function setup(
       { provide: CONVERSATION_TEXT_SENDER, useValue: sender },
       { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: messageAdapter },
       { provide: MediaPipeline, useValue: mediaPipeline },
+      {
+        provide: PrivacySettingsService,
+        useValue: { keepPhotoMetadata: keepPhotoMetadata.asReadonly() },
+      },
       { provide: CONVERSATION_RETENTION_LIMIT, useValue: retainedPerAccount },
     ],
   });
@@ -182,6 +190,7 @@ function setup(
     mediaEvents,
     mediaPipeline,
     messageAdapter,
+    keepPhotoMetadata,
   };
 }
 
@@ -698,6 +707,7 @@ describe('ConversationRuntime', () => {
       key: handle.key,
       media,
       caption: 'classified',
+      imageMetadata: 'strip',
     });
     mediaEvents.next({ kind: 'sent', eventId: '$media' });
     mediaEvents.complete();
@@ -966,8 +976,41 @@ describe('ConversationRuntime', () => {
       threadRootId: '$root',
       media: staged,
       caption: 'caption',
+      imageMetadata: 'strip',
     });
     subscription.unsubscribe();
+  });
+
+  it('keeps photo metadata only when the privacy setting is on as the send starts', () => {
+    const { runtime, mediaPipeline, keepPhotoMetadata } = setup();
+    const conversation = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    const staged = Object.freeze({
+      id: 'photo',
+      filename: 'IMG_0001.jpg',
+      mimeType: 'image/jpeg',
+      size: 4,
+      previewUrl: null,
+    }) as StagedMediaReference;
+    const command = conversation.media.send(staged, '');
+    const threadCommand = conversation.threads
+      .forRoot('$root')!
+      .media.send(staged, '');
+
+    keepPhotoMetadata.set(true);
+    const subscriptions = [command.subscribe(), threadCommand.subscribe()];
+
+    expect(mediaPipeline.transfer).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ imageMetadata: 'keep' }),
+    );
+    expect(mediaPipeline.transfer).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ threadRootId: '$root', imageMetadata: 'keep' }),
+    );
+    subscriptions.forEach((subscription) => subscription.unsubscribe());
   });
 
   it('keeps pin commands cold and rejects the retained exact handle', async () => {

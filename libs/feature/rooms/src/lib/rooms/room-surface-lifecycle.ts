@@ -17,7 +17,6 @@ import {
   type WorkspaceRoomSurface,
   type WorkspaceSurface,
 } from '@trinity/application/workspace';
-import type { MemberSummary } from '@trinity/data-access/room-administration';
 import {
   BELOW_MD_QUERY,
   BELOW_MEMBERS_QUERY,
@@ -29,27 +28,18 @@ import {
 import { Observable, defer, map, of } from 'rxjs';
 import type { ExactRoomSelection } from '../shared/exact-selection';
 
-type MessageRoomSurface = Extract<
+/** Member info is not here: it opens as a modal surface over the roster (#1041). */
+type TemporaryRoomSurface = Extract<
   WorkspaceRoomSurface,
   { readonly kind: 'threads' | 'thread' | 'pinned' | 'search' }
 >;
-
-interface MemberRoomSurface {
-  readonly kind: 'member';
-  readonly member: MemberSummary;
-  readonly direct: boolean;
-}
-
-type TemporaryRoomSurface = MessageRoomSurface | MemberRoomSurface;
 type MembersRoomSurface = { readonly kind: 'members' };
-type MemberReturnSurface = MessageRoomSurface | MembersRoomSurface | null;
 
 export type RenderedRoomSurface = TemporaryRoomSurface | MembersRoomSurface;
 
 interface RoomSurfaceState {
   readonly conversation: ExactRoomSelection;
   readonly surface: TemporaryRoomSurface | null;
-  readonly memberReturnSurface: MemberReturnSurface;
   readonly jumpTarget: string | null;
   readonly jumpRevision: number;
 }
@@ -59,11 +49,6 @@ export type RoomSurfaceTransition =
   | { readonly kind: 'open-thread'; readonly rootEventId: string }
   | { readonly kind: 'open-pinned' }
   | { readonly kind: 'open-search' }
-  | {
-      readonly kind: 'open-member';
-      readonly member: MemberSummary;
-      readonly direct: boolean;
-    }
   | { readonly kind: 'open-members' }
   | { readonly kind: 'toggle-members' }
   | { readonly kind: 'dismiss' }
@@ -114,7 +99,6 @@ export class RoomSurfaceLifecycle {
         ? {
             conversation,
             surface: null,
-            memberReturnSurface: null,
             jumpTarget: null,
             jumpRevision: 0,
           }
@@ -186,35 +170,12 @@ export class RoomSurfaceLifecycle {
                         ? 'pinned'
                         : 'search',
                 },
-          memberReturnSurface: null,
         });
         return { kind: 'applied' };
-
-      case 'open-member': {
-        const memberReturnSurface =
-          state.surface?.kind === 'member'
-            ? state.memberReturnSurface
-            : (state.surface ??
-              (this.membersRequested() ? MEMBERS_SURFACE : null));
-        this.writableState.set({
-          ...state,
-          surface: {
-            kind: 'member',
-            member: intent.member,
-            direct: intent.direct,
-          },
-          memberReturnSurface,
-        });
-        return { kind: 'applied' };
-      }
 
       case 'open-members':
         this.membersRequested.set(true);
-        this.writableState.set({
-          ...state,
-          surface: null,
-          memberReturnSurface: null,
-        });
+        this.writableState.set({ ...state, surface: null });
         return { kind: 'applied' };
 
       case 'toggle-members':
@@ -232,11 +193,7 @@ export class RoomSurfaceLifecycle {
           return { kind: 'unchanged' };
         }
         this.membersRequested.set(false);
-        this.writableState.set({
-          ...state,
-          surface: null,
-          memberReturnSurface: null,
-        });
+        this.writableState.set({ ...state, surface: null });
         return { kind: 'applied' };
 
       case 'escape':
@@ -246,11 +203,7 @@ export class RoomSurfaceLifecycle {
         return this.dismiss(state);
 
       case 'reveal-message':
-        this.writableState.set({
-          ...state,
-          surface: null,
-          memberReturnSurface: null,
-        });
+        this.writableState.set({ ...state, surface: null });
         this.scheduleReveal(
           state.conversation,
           intent.eventId,
@@ -261,31 +214,8 @@ export class RoomSurfaceLifecycle {
   }
 
   private dismiss(state: RoomSurfaceState): RoomSurfaceTransitionOutcome {
-    const surface = state.surface;
-    if (surface?.kind === 'member') {
-      const returnSurface = state.memberReturnSurface;
-      if (returnSurface?.kind === 'members') {
-        this.membersRequested.set(true);
-        this.writableState.set({
-          ...state,
-          surface: null,
-          memberReturnSurface: null,
-        });
-      } else {
-        this.writableState.set({
-          ...state,
-          surface: returnSurface,
-          memberReturnSurface: null,
-        });
-      }
-      return { kind: 'applied' };
-    }
-    if (surface) {
-      this.writableState.set({
-        ...state,
-        surface: null,
-        memberReturnSurface: null,
-      });
+    if (state.surface) {
+      this.writableState.set({ ...state, surface: null });
       return { kind: 'applied' };
     }
     if (this.membersRequested()) {
@@ -296,12 +226,7 @@ export class RoomSurfaceLifecycle {
   }
 
   private clearRememberedMembers(): void {
-    if (!this.membersRequested()) return;
     this.membersRequested.set(false);
-    const state = this.writableState();
-    if (state?.memberReturnSurface?.kind === 'members') {
-      this.writableState.set({ ...state, memberReturnSurface: null });
-    }
   }
 
   private scheduleReveal(
@@ -404,13 +329,7 @@ export class RoomSurfaceLifecycle {
   private activeWorkspaceSurface(): WorkspaceSurface | null {
     const panel = this.renderedSurface();
     if (panel) {
-      return {
-        layer: 'room',
-        surface:
-          panel.kind === 'member'
-            ? { kind: 'member', userId: panel.member.userId }
-            : panel,
-      };
+      return { layer: 'room', surface: panel };
     }
     const accountId = this.workspace.activeAccountId();
     const roomId = this.workspace.activeRoomId();
@@ -462,9 +381,6 @@ function sameRenderedSurface(
   if (left.kind === 'thread' && right.kind === 'thread') {
     return left.rootEventId === right.rootEventId;
   }
-  if (left.kind === 'member' && right.kind === 'member') {
-    return left.member.userId === right.member.userId;
-  }
   return true;
 }
 
@@ -483,9 +399,6 @@ function sameWorkspaceSurface(
   if (left.surface.kind !== right.surface.kind) return false;
   if (left.surface.kind === 'thread' && right.surface.kind === 'thread') {
     return left.surface.rootEventId === right.surface.rootEventId;
-  }
-  if (left.surface.kind === 'member' && right.surface.kind === 'member') {
-    return left.surface.userId === right.surface.userId;
   }
   return true;
 }

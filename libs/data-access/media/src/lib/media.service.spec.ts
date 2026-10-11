@@ -1394,6 +1394,59 @@ describe('MediaService', () => {
         expect(containsAscii(plaintext, 'Canon')).toBe(false);
       });
 
+      it('uploads a plaintext photo byte for byte when its metadata is kept', async () => {
+        const { svc, client } = setup();
+        const original = photo();
+
+        const res = await firstValueFrom(
+          svc.uploadMedia(
+            original,
+            false,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            'keep',
+          ),
+        );
+
+        expect(withoutMediaMetadata).not.toHaveBeenCalled();
+        expect(client.uploadContent.mock.calls[0]?.[0]).toBe(original);
+        expect(res.info).toMatchObject({ size: original.size });
+      });
+
+      it('encrypts an E2EE photo byte for byte when its metadata is kept', async () => {
+        const { svc } = setup();
+        const original = photo();
+
+        await firstValueFrom(
+          svc.uploadMedia(
+            original,
+            true,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            'keep',
+          ),
+        );
+
+        expect(bytesWithoutMediaMetadata).not.toHaveBeenCalled();
+        const plaintext = new Uint8Array(
+          encryptMock.mock.calls[0]?.[0] as ArrayBuffer,
+        );
+        expect(plaintext).toEqual(new Uint8Array(await original.arrayBuffer()));
+      });
+
+      it('strips a photo when the upload states no metadata policy', async () => {
+        const { svc } = setup();
+        const original = photo();
+
+        await firstValueFrom(svc.uploadMedia(original, true));
+
+        expect(bytesWithoutMediaMetadata).toHaveBeenCalledWith(original);
+      });
+
       it('uploads a plaintext video without its location, at the same size', async () => {
         const { svc, client } = setup();
         const clip = new File([identifyingMovie()], 'clip.mp4', {

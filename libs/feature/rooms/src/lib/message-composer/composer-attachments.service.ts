@@ -239,11 +239,21 @@ export class ComposerAttachmentsService {
   /** Attach button: native gallery picker on device, else the hidden file input. */
   attach(): void {
     if (this.picker.available) {
+      // The picker refuses an oversized photo by its reported size before reading it; the limit
+      // may still be resolving, as it is for a capture.
+      const limit = firstValueFrom(this.uploadLimit());
       this.picker
-        .pickImages()
+        .pickImages(limit.then((settled) => settled.bytes))
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe({
-          next: (files) => this.stagePicked(files),
+          next: ({ files, oversized }) => {
+            if (oversized > 0) {
+              void limit.then((settled) =>
+                this.showTooLarge(tooLargeMessage('file', settled, oversized)),
+              );
+            }
+            this.stagePicked(files);
+          },
           // A user-cancel resolves to null above; this catches a denied photo
           // permission (or a genuine picker failure) instead of leaving it
           // unhandled, and shows the reason.

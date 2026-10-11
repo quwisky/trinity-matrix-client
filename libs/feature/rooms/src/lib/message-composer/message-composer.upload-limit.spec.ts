@@ -24,6 +24,7 @@ import {
   CaptureTooLargeError,
   MediaPickerService,
   type CaptureOptions,
+  type PickedImages,
 } from '@trinity/platform-native';
 
 const MB = 1_048_576;
@@ -262,7 +263,9 @@ describe('MessageComposerComponent — upload limit fallback', () => {
       const big = sized('panorama.jpg', 'image/jpeg', 300 * MB);
       const small = sized('photo.jpg', 'image/jpeg', 4 * MB);
       const { fixture } = await renderComposer({}, [
-        camera({ pickImages: vi.fn(() => of([big, small])) }),
+        camera({
+          pickImages: vi.fn(() => of({ files: [big, small], oversized: 0 })),
+        }),
       ]);
       stubLimit(of(null));
 
@@ -271,6 +274,47 @@ describe('MessageComposerComponent — upload limit fallback', () => {
       expect(stagedFiles(fixture.componentInstance)).toEqual([small]);
       expect(toast()).toHaveBeenCalledWith(
         `That file is too large to send. ${DEVICE_256}`,
+        { duration: 6000, variant: 'danger' },
+      );
+    });
+
+    it('hands the gallery picker the limit so an oversized photo is never read', async () => {
+      setNativePlatform(true);
+      const pickImages = vi.fn(() =>
+        of({ files: [], oversized: 2 } satisfies PickedImages),
+      );
+      const { fixture } = await renderComposer({}, [camera({ pickImages })]);
+      stubLimit(of(null));
+
+      fixture.componentInstance.onAttach();
+      await settle();
+
+      const [maxBytes] = pickImages.mock.calls[0] as unknown as [
+        PromiseLike<number | null>,
+      ];
+      expect(await maxBytes).toBe(256 * MB);
+      expect(toast()).toHaveBeenCalledWith(
+        `2 files are too large to send. ${DEVICE_256}`,
+        { duration: 6000, variant: 'danger' },
+      );
+    });
+
+    it('stages the in-limit photos of a gallery pick and names the skipped one', async () => {
+      setNativePlatform(true);
+      const small = sized('photo.jpg', 'image/jpeg', 4 * MB);
+      const { fixture } = await renderComposer({}, [
+        camera({
+          pickImages: vi.fn(() => of({ files: [small], oversized: 1 })),
+        }),
+      ]);
+      stubLimit(of(50 * MB));
+
+      fixture.componentInstance.onAttach();
+      await settle();
+
+      expect(stagedFiles(fixture.componentInstance)).toEqual([small]);
+      expect(toast()).toHaveBeenCalledWith(
+        'That file is too large to send. Your homeserver accepts files up to 50 MB.',
         { duration: 6000, variant: 'danger' },
       );
     });

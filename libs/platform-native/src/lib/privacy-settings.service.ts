@@ -22,6 +22,7 @@ export interface PrivacyPreferenceSet {
   readonly linkPreviews: PreferenceDescriptor<boolean>;
   readonly linkPreviewsInEncrypted: PreferenceDescriptor<boolean>;
   readonly saveCapturesToGallery: PreferenceDescriptor<boolean>;
+  readonly keepPhotoMetadata: PreferenceDescriptor<boolean>;
 }
 
 const PRIVACY_PREFERENCE_SET = new InjectionToken<PrivacyPreferenceSet>(
@@ -49,6 +50,13 @@ export class PrivacySettingsService {
   /** Whether captures are also saved to the device's photo library (default off). */
   readonly saveCapturesToGallery = this.booleanValue(
     this.descriptors.saveCapturesToGallery,
+  );
+  /**
+   * Whether photos sent as message attachments keep their metadata (default off, so they
+   * are stripped). Profile and room photos are stripped regardless.
+   */
+  readonly keepPhotoMetadata = this.booleanValue(
+    this.descriptors.keepPhotoMetadata,
   );
 
   init(): Observable<PreferenceHydrationOutcome> {
@@ -101,6 +109,14 @@ export class PrivacySettingsService {
     );
   }
 
+  setKeepPhotoMetadata(on: boolean): Observable<PreferenceCommandOutcome> {
+    return this.preferences.setPreference(
+      this.descriptors.keepPhotoMetadata,
+      INSTALLATION_PREFERENCE_CONTEXT,
+      on,
+    );
+  }
+
   resetSendReadReceipts(): Observable<PreferenceCommandOutcome> {
     return this.setSendReadReceipts(
       this.descriptors.sendReadReceipts.defaultValue,
@@ -120,6 +136,12 @@ export class PrivacySettingsService {
   resetSaveCapturesToGallery(): Observable<PreferenceCommandOutcome> {
     return this.setSaveCapturesToGallery(
       this.descriptors.saveCapturesToGallery.defaultValue,
+    );
+  }
+
+  resetKeepPhotoMetadata(): Observable<PreferenceCommandOutcome> {
+    return this.setKeepPhotoMetadata(
+      this.descriptors.keepPhotoMetadata.defaultValue,
     );
   }
 

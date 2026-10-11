@@ -11,10 +11,16 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import {
+  closeSettings,
+  openSettingsSection,
+} from '../../../support/journeys/navigation.mts';
 
 // A photo (#1140) or video (#1179) sent from the composer reaches the homeserver without
-// its location. The upload round-trips through the real disposable Synapse; the journey then
-// downloads what the server stored and inspects the bytes. Requires the Synapse homeserver.
+// its location, unless the person chose Settings → Privacy → Keep photo metadata (#1178),
+// which never applies to their profile photo. Uploads round-trip through the real disposable
+// Synapse; the journey then downloads what the server stored and inspects the bytes.
+// Requires the Synapse homeserver.
 const session = homeserverSession();
 
 /** A real, decodable 8x8 JPEG with no metadata of its own. */
@@ -177,6 +183,73 @@ async function openSeededRoom(page: Page, roomName: string): Promise<void> {
   await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
 }
 
+/** Attach the located photo in the open room's composer and send it. */
+async function sendPhoto(page: Page): Promise<void> {
+  await page.getByTestId('composer-insert').click();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByTestId('insert-attach').click();
+  await (
+    await chooser
+  ).setFiles({
+    name: 'IMG_0001.jpg',
+    mimeType: 'image/jpeg',
+    buffer: PHOTO_WITH_LOCATION,
+  });
+  await expect(page.getByTestId('composer-pending')).toContainText(
+    'IMG_0001.jpg',
+  );
+  await page.getByTestId('composer-send').click();
+}
+
+/** The newest `m.image` in the room, once it lands, with the bytes the server stored. */
+async function storedImage(
+  request: APIRequestContext,
+  hs: string,
+  api: ApiUser,
+  roomId: string,
+): Promise<{ event: ImageEvent; stored: Buffer }> {
+  await expect
+    .poll(async () => (await latestImage(request, hs, api, roomId)) !== null, {
+      timeout: 60_000,
+    })
+    .toBe(true);
+  const event = (await latestImage(request, hs, api, roomId)) as ImageEvent;
+  const mxc = event.content?.url ?? '';
+  expect(mxc).toMatch(/^mxc:\/\//);
+  return { event, stored: await downloadMedia(request, hs, api, mxc) };
+}
+
+async function downloadMedia(
+  request: APIRequestContext,
+  hs: string,
+  api: ApiUser,
+  mxc: string,
+): Promise<Buffer> {
+  const download = await request.get(
+    `${hs}/_matrix/client/v1/media/download/${mxc.slice('mxc://'.length)}`,
+    { headers: api.headers },
+  );
+  expect(download.ok()).toBe(true);
+  return download.body();
+}
+
+/** The `avatar_url` of the signed-in API user's profile, or '' while none is set. */
+async function profileAvatar(
+  request: APIRequestContext,
+  hs: string,
+  api: ApiUser,
+): Promise<string> {
+  const { user_id } = await request
+    .get(`${hs}/_matrix/client/v3/account/whoami`, { headers: api.headers })
+    .then((r) => r.json());
+  const profile = await request.get(
+    `${hs}/_matrix/client/v3/profile/${encodeURIComponent(user_id)}/avatar_url`,
+    { headers: api.headers },
+  );
+  if (!profile.ok()) return '';
+  return ((await profile.json()).avatar_url as string | undefined) ?? '';
+}
+
 test.describe('Photo metadata', () => {
   test.skip(!session.available, 'needs a Synapse homeserver');
 
@@ -194,41 +267,9 @@ test.describe('Photo metadata', () => {
 
     await login(page, reader);
     await openSeededRoom(page, roomName);
+    await sendPhoto(page);
 
-    await page.getByTestId('composer-insert').click();
-    const chooser = page.waitForEvent('filechooser');
-    await page.getByTestId('insert-attach').click();
-    await (
-      await chooser
-    ).setFiles({
-      name: 'IMG_0001.jpg',
-      mimeType: 'image/jpeg',
-      buffer: PHOTO_WITH_LOCATION,
-    });
-    await expect(page.getByTestId('composer-pending')).toContainText(
-      'IMG_0001.jpg',
-    );
-    await page.getByTestId('composer-send').click();
-
-    await expect
-      .poll(
-        async () => (await latestImage(request, hs, api, roomId)) !== null,
-        {
-          timeout: 60_000,
-        },
-      )
-      .toBe(true);
-    const event = (await latestImage(request, hs, api, roomId)) as ImageEvent;
-    const mxc = event.content?.url ?? '';
-    expect(mxc).toMatch(/^mxc:\/\//);
-
-    const download = await request.get(
-      `${hs}/_matrix/client/v1/media/download/${mxc.slice('mxc://'.length)}`,
-      { headers: api.headers },
-    );
-    expect(download.ok()).toBe(true);
-    const stored = await download.body();
-
+    const { event, stored } = await storedImage(request, hs, api, roomId);
     expect(stored.includes(Buffer.from(LOCATION_NOTE, 'latin1'))).toBe(false);
     expect(stored.includes(EXIF_TIFF)).toBe(false);
     // Orientation survives, so the photo still displays the right way up.
@@ -239,6 +280,7 @@ test.describe('Photo metadata', () => {
     );
     expect(event.content?.info?.size).toBe(stored.length);
   });
+
   test('uploads a video without its location, keeping every sample byte', async ({
     page,
     request,
@@ -307,5 +349,57 @@ test.describe('Photo metadata', () => {
       MOVIE_WITH_LOCATION.subarray(0, moov.start),
     );
     expect(event.content?.info?.size).toBe(stored.length);
+  });
+
+  test('keeps a sent photo unchanged once the person opts in, but never their profile photo', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = testResourceId('run');
+    const { reader, roomName, roomId, api } = await seedRoom(
+      request,
+      hs,
+      runId,
+    );
+
+    await login(page, reader);
+    await openSettingsSection(page, 'privacy');
+    const keep = page.getByRole('switch', { name: 'Keep photo metadata' });
+    await expect(keep).not.toBeChecked({ timeout: 20_000 });
+    await keep.click();
+    await expect(keep).toBeChecked({ timeout: 10_000 });
+
+    // A profile photo is public and stays up, so it is stripped whatever the setting says.
+    await page.getByTestId('settings-nav-profile').click();
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByTestId('change-avatar').click();
+    await (
+      await chooser
+    ).setFiles({
+      name: 'me.jpg',
+      mimeType: 'image/jpeg',
+      buffer: PHOTO_WITH_LOCATION,
+    });
+    await expect
+      .poll(async () => profileAvatar(request, hs, api), { timeout: 30_000 })
+      .toMatch(/^mxc:\/\//);
+    const avatar = await downloadMedia(
+      request,
+      hs,
+      api,
+      await profileAvatar(request, hs, api),
+    );
+    expect(avatar.includes(Buffer.from(LOCATION_NOTE, 'latin1'))).toBe(false);
+    expect(avatar.includes(ORIENTATION_ONLY)).toBe(true);
+
+    await closeSettings(page);
+    await openSeededRoom(page, roomName);
+    await sendPhoto(page);
+
+    // The message attachment goes up byte for byte, location and all.
+    const { event, stored } = await storedImage(request, hs, api, roomId);
+    expect(stored).toEqual(PHOTO_WITH_LOCATION);
+    expect(event.content?.info?.size).toBe(PHOTO_WITH_LOCATION.length);
   });
 });

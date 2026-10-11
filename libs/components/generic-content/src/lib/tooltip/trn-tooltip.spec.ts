@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { BrnTooltip } from '@spartan-ng/brain/tooltip';
 import { render } from '@trinity/testing';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   TRN_TOOLTIP_CONTENT_CLASSES,
   TRN_TOOLTIP_SVG_CLASSES,
@@ -65,5 +65,70 @@ describe('TrnTooltip', () => {
 
     expect(button?.tagName).toBe('BUTTON');
     expect(button?.getAttribute('aria-label')).toBe('Members');
+  });
+
+  describe('focus', () => {
+    async function focusWith(focusVisible: boolean) {
+      vi.useFakeTimers();
+      const { container } = await render(HostComponent);
+      const button = container.querySelector('button') as HTMLButtonElement;
+      // jsdom's :focus-visible is a heuristic that depends on earlier pointer events; stub it
+      // so keyboard intent is deterministic, and defer to the real matcher for anything else.
+      stubFocusVisible(button, focusVisible);
+      // CDK reports programmatic focus as 'program', which Brain treats as keyboard intent:
+      // exactly what restoring focus to a row after a sheet closes looks like.
+      button.focus();
+      await vi.advanceTimersByTimeAsync(500);
+      return document.querySelector('[role="tooltip"]');
+    }
+
+    afterEach(() => vi.useRealTimers());
+
+    function stubFocusVisible(button: HTMLElement, focusVisible: boolean) {
+      const real = button.matches.bind(button);
+      vi.spyOn(button, 'matches').mockImplementation((selector) =>
+        selector === ':focus-visible' ? focusVisible : real(selector),
+      );
+    }
+
+    function pointer(
+      button: HTMLElement,
+      type: 'pointerenter' | 'pointerleave',
+    ) {
+      const event = new Event(type);
+      Object.defineProperty(event, 'pointerType', { value: 'mouse' });
+      button.dispatchEvent(event);
+    }
+
+    it('keeps the tooltip when a click focuses the host within the show delay', async () => {
+      vi.useFakeTimers();
+      const { container } = await render(HostComponent);
+      const button = container.querySelector('button') as HTMLButtonElement;
+      stubFocusVisible(button, false);
+
+      pointer(button, 'pointerenter');
+      await vi.advanceTimersByTimeAsync(50);
+      button.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+    });
+
+    it('still opens on hover after focus was restored without a ring', async () => {
+      expect(await focusWith(false)).toBeNull();
+      const button = document.querySelector('button') as HTMLButtonElement;
+      pointer(button, 'pointerenter');
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+    });
+
+    it('does not open when focus arrives without focus-visible', async () => {
+      expect(await focusWith(false)).toBeNull();
+    });
+
+    it('opens on keyboard-style focus-visible focus', async () => {
+      expect(await focusWith(true)).not.toBeNull();
+    });
   });
 });

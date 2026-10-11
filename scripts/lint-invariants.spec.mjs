@@ -649,6 +649,16 @@ describe('UI vendor boundary', () => {
       if (ALLOWED_THE_SDK.some((allowed) => root.startsWith(allowed))) {
         continue;
       }
+      // A project with no script source at all, such as the push plugin's Kotlin and Swift
+      // projects under libs/native/capacitor-push, has nothing that could import the SDK.
+      // Measured over the whole root, so one stray script file brings the project back in.
+      const scripts = globSync(`${root}/**/*.{ts,mts,cts,js,mjs,cjs}`, {
+        cwd: workspaceRoot,
+        ignore: ['**/node_modules/**', '**/build/**'],
+      });
+      if (scripts.length === 0) {
+        continue;
+      }
       // A representative source file rather than a fixed `src/index.ts`: `libs/spartan/tests`
       // is a real project with no barrel, and skipping it silently is how a sweep empties out.
       const candidates = globSync(`${root}/src/**/*.ts`, {

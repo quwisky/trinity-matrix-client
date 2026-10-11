@@ -137,6 +137,15 @@ function privacyEntries(
       reset: () => privacy.resetSaveCapturesToGallery(),
       ...flagSetting((on) => privacy.setSaveCapturesToGallery(on)),
     },
+    {
+      path: 'privacy.keepPhotoMetadata',
+      key: 'trinity.privacy.keep-photo-metadata',
+      description:
+        'Whether photos you send in messages keep their location, camera and other metadata. Profile and room photos never do.',
+      read: () => privacy.keepPhotoMetadata(),
+      reset: () => privacy.resetKeepPhotoMetadata(),
+      ...flagSetting((on) => privacy.setKeepPhotoMetadata(on)),
+    },
   ];
 }
 
