@@ -174,6 +174,17 @@ test.describe('semantic design foundations', () => {
       expect(
         contrastRatio(attentionRing, attentionSurface),
       ).toBeGreaterThanOrEqual(3);
+      // The ring shares the inverted fill's colour, so a gap in the banner colour is what
+      // keeps it distinct from the button.
+      const ringOffset = await bannerAction.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          colour: style.getPropertyValue('--tw-ring-offset-color').trim(),
+          width: style.getPropertyValue('--tw-ring-offset-width').trim(),
+        };
+      });
+      expect(ringOffset.width).not.toMatch(/^0(px)?$/);
+      expect(ringOffset.colour).not.toBe('');
 
       // An anchor action needs its own hover rule: Helm's `[a]:hover` outranks the plain one.
       await openStory(

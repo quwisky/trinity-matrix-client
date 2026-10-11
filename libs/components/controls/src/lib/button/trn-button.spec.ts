@@ -139,14 +139,18 @@ describe('TrnButton', () => {
         `${attention}focus-visible:ring-offset-[color:var(--trinity-state-attention-surface)]`,
       ]),
     );
-    expect(
-      solidPrimary.filter((name) => name.includes('attention-action')),
-    ).toEqual(
-      solidPrimary.filter(
-        (name) =>
-          name.startsWith(attention) && name.includes('attention-action'),
-      ),
-    );
+    // None of the attention roles applies unscoped, which would repaint every primary button.
+    for (const role of ['surface', 'foreground', 'hover-surface']) {
+      expect(solidPrimary).not.toContain(
+        `bg-[color:var(--trinity-state-attention-action-${role})]`,
+      );
+      expect(solidPrimary).not.toContain(
+        `hover:bg-[color:var(--trinity-state-attention-action-${role})]`,
+      );
+      expect(solidPrimary).not.toContain(
+        `text-[color:var(--trinity-state-attention-action-${role})]`,
+      );
+    }
     for (const [variant, presentation] of [
       ['secondary', 'solid'],
       ['danger', 'solid'],

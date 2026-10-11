@@ -359,8 +359,9 @@
 
     // A solid action on the attention surface. The page's own solid fill is the accent, which
     // vanishes on an accent ground (#1217), so the action inverts: the attention foreground
-    // becomes its fill and `--trinity-link` its label, so a change to the link role moves it too. Hover lands on the accent
-    // tint, which keeps 3:1 against the attention surface in every Theme and mode.
+    // becomes its fill and `--trinity-link` its label, so a change to the link role moves
+    // it too. Hover lands on the accent tint, which keeps 3:1 against the attention surface
+    // in every Theme and mode.
     --trinity-state-attention-action-surface: var(
       --trinity-state-attention-foreground
     );
