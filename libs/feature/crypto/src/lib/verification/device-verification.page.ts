@@ -98,8 +98,8 @@ export class DeviceVerificationPage {
 
   /**
    * An identity set up elsewhere without recovery can only be verified from a device that
-   * holds it. While this device's own request is unanswered (or has stopped), point
-   * someone without that device to Security settings, where the confirmed reset lives;
+   * holds it. Before this device sends a request, while its own request is unanswered, or
+   * once it has stopped, point someone without that device to Security settings, where the confirmed reset lives;
    * this dialog never offers the reset itself. A modal offers it only when its opener said
    * closing can land there.
    */
@@ -139,7 +139,7 @@ export class DeviceVerificationPage {
     });
   });
 
-  /** When true the page is modal content (incoming); else a routed page. */
+  /** When true the page is dialog content (an incoming request, or one this device opened); else a routed page. */
   readonly asModal = input(false);
   /**
    * Set by the application presenter when closing this modal with `MANAGE_IDENTITY` lands
@@ -246,8 +246,8 @@ export class DeviceVerificationPage {
       return;
     }
     if (this.asModal()) {
-      // Close with the result before dismissing: dismissing clears `active()`, and a host
-      // that closes its dialog on that would close it without the result first.
+      // Close with the result before dismissing, so the result is set however the dialog's
+      // host reacts to `active()` clearing.
       this.closed.emit();
       this.dialogRef?.close(MANAGE_IDENTITY);
       this.cancelInFlight();
