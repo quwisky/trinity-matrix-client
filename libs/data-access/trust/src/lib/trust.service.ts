@@ -482,6 +482,11 @@ const RECOVERY_ELSEWHERE_MESSAGE =
  * - `unpublished`: this device created one the server never received, so setup must
  *   create and upload new keys (nothing exists on the server to replace);
  * - `held`: the server publishes one and this device holds its private keys.
+ *
+ * Both non-`none` answers need this device to hold an identity's private keys, and `held`
+ * needs the server's key to be exactly that identity. The device's two reads (its own view,
+ * then the raw `/keys/query`) can disagree with a lagging server; neither disagreement may
+ * end in creating keys over an identity the server has or had.
  */
 type SetupIdentity = 'none' | 'unpublished' | 'held';
 
@@ -523,15 +528,26 @@ async function assertNoIdentityElsewhere(
   // That answer comes from the olm machine (rust-crypto.ts:527-529), which keeps an
   // identity it created even when the query returns no master key. Only the server can
   // say whether that identity was ever published.
-  if (!(await readPublishedMasterKey(client))) {
-    return 'unpublished';
-  }
+  const published = await readPublishedMasterKey(client);
   const [status, crossSigningReady] = await Promise.all([
     crypto.getCrossSigningStatus(),
     crypto.isCrossSigningReady(),
   ]);
-  if (holdsCrossSigningIdentity(status, crossSigningReady)) {
-    // This device holds the identity: bootstrap keeps it and only adds recovery.
+  const holds = holdsCrossSigningIdentity(status, crossSigningReady);
+  if (!published) {
+    // Replacing is safe only for this device's own unpublished identity. Without its keys
+    // here, the two reads disagree: the first saw an identity the second missed. Refuse
+    // rather than create keys over one the server may still have.
+    if (holds) return 'unpublished';
+    throw new TrustOperationError(
+      'setup',
+      'server-failure',
+      'retry',
+      'The homeserver could not confirm this account’s encryption identity. Try again.',
+    );
+  }
+  if (holds && (await crypto.getCrossSigningKeyId()) === published) {
+    // This device holds the published identity: bootstrap keeps it and only adds recovery.
     return 'held';
   }
   const verified = await readThisDeviceVerified(client, crypto).catch(

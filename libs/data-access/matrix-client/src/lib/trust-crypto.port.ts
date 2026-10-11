@@ -18,6 +18,7 @@ export type TrustCryptoApi = Pick<
   | 'exportRoomKeysAsJson'
   | 'exportSecretsBundle'
   | 'getActiveSessionBackupVersion'
+  | 'getCrossSigningKeyId'
   | 'getCrossSigningStatus'
   | 'getDeviceVerificationStatus'
   | 'getKeyBackupInfo'

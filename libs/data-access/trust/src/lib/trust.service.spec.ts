@@ -87,12 +87,13 @@ interface CryptoOpts {
    */
   identityOnServer?: boolean;
   /**
-   * Whether `/keys/query` returns a master key for the account. Defaults to a published
-   * identity whenever one exists or this device is ready, because a device normally
-   * reads ready only after its identity was uploaded. Set false for the device a
-   * cancelled first setup left with keys it never published (#1225).
+   * Whether `/keys/query` returns a master key for the account. Defaults to
+   * `identityOnServer`. Set false for the device a cancelled first setup left with keys
+   * it never published (#1225).
    */
   masterKeyOnServer?: boolean;
+  /** The master key this device's identity has; the server publishes `MASTER`. */
+  localMasterKey?: string;
   providerManagement?: TrustProviderManagement | null;
   providerLookupFails?: boolean;
 }
@@ -161,6 +162,9 @@ function setup(opts: CryptoOpts = {}) {
     userHasCrossSigningKeys: vi
       .fn()
       .mockResolvedValue(opts.identityOnServer ?? false),
+    getCrossSigningKeyId: vi
+      .fn()
+      .mockResolvedValue(opts.localMasterKey ?? 'MASTER'),
     // Modelled on rust-crypto's own: 4S "contains" the keys only when all three are
     // there, and the locally cached set is what the olm machine happens to hold.
     getCrossSigningStatus: vi.fn().mockResolvedValue({
@@ -206,10 +210,7 @@ function setup(opts: CryptoOpts = {}) {
     getUserId: () => '@me:hs',
     // The account's published identity, as `/keys/query` reports it.
     downloadKeysForUsers: vi.fn(async (userIds: string[]) =>
-      (opts.masterKeyOnServer ??
-      opts.identityOnServer ??
-      opts.crossSigningReady ??
-      false)
+      (opts.masterKeyOnServer ?? opts.identityOnServer ?? false)
         ? { master_keys: { [userIds[0]]: masterKeyFor(userIds[0]) } }
         : {},
     ),
@@ -725,6 +726,45 @@ describe('TrustService', () => {
         expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
       });
 
+      it('refuses when the reads disagree and this device holds no identity', async () => {
+        // The first read saw an identity, a lagging second read missed it, and this device
+        // has none of its keys: creating new ones would replace an identity the server has.
+        const { svc, crypto } = setup({
+          identityOnServer: true,
+          masterKeyOnServer: false,
+        });
+
+        await expect(
+          firstValueFrom(svc.setUp(async () => 'pw')),
+        ).rejects.toMatchObject({
+          operation: 'setup',
+          kind: 'server-failure',
+          recovery: 'retry',
+        });
+
+        expect(crypto.createRecoveryKeyFromPassphrase).not.toHaveBeenCalled();
+        expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+        expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
+      });
+
+      it('refuses when this device holds a different identity from the published one', async () => {
+        // Another device published between this device's two reads: its own leftover
+        // identity still reads as held, but it is not the one on the server.
+        const { svc, crypto } = setup({
+          identityOnServer: true,
+          privatesCachedLocally: true,
+          crossSigningReady: true,
+          localMasterKey: 'OTHER',
+        });
+
+        await expect(
+          firstValueFrom(svc.setUp(async () => 'pw')),
+        ).rejects.toMatchObject({ operation: 'setup', kind: 'stale-state' });
+
+        expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+        expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
+      });
+
       it('keeps the published identity when this device holds it', async () => {
         const { svc, crypto } = setup({
           identityOnServer: true,
@@ -1068,8 +1108,6 @@ describe('TrustService', () => {
       // still go wrong is the UI going on describing the account it used to be.
       const { svc, crypto } = setup({
         defaultKeyId: 'old-key',
-        // The reset uploaded its new identity before the tail failed.
-        masterKeyOnServer: true,
       });
       crypto.bootstrapSecretStorage.mockRejectedValue(
         new Error('network down'),
@@ -1668,8 +1706,6 @@ describe('TrustService', () => {
       try {
         const { svc, crypto } = setup({
           defaultKeyId: 'old-key',
-          // The reset uploaded its new identity before the tail failed.
-          masterKeyOnServer: true,
         });
         crypto.bootstrapSecretStorage.mockReturnValue(
           new Promise(() => undefined),
