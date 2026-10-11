@@ -42,6 +42,13 @@ export interface MatrixSession {
    * existed, which stays unencrypted; a keyed store whose key is gone cannot be opened.
    */
   cryptoStoreKeyed?: true;
+  /**
+   * Names the sign-in whose tokens the stored record holds. Storage mints a new one each
+   * time it saves a session, and a token refresh keeps it, so a refresh writes only over
+   * the tokens of the sign-in it came from, never over a newer one for the same account.
+   * Non-secret. Absent for a session saved before the id existed.
+   */
+  lineage?: string;
 }
 
 /** Non-secret OIDC provider binding persisted with a {@link MatrixSession}. */

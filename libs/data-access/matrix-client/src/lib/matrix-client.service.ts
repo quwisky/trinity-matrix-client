@@ -174,6 +174,14 @@ interface AccountClient {
   readonly backupKeysRemaining: () => number | null;
 }
 
+/**
+ * Which client a set of token options is for: one this service started (whose refreshes
+ * move the account's tracked pair while it owns it) or a detached one (persist only).
+ */
+type TokenRefreshOwner =
+  | { readonly kind: 'started'; readonly client: () => MatrixClient | null }
+  | { readonly kind: 'detached' };
+
 /** An access token the SDK refreshed for one account, published after storage accepted it. */
 export interface AccessTokenRotation {
   readonly userId: string;
@@ -431,7 +439,9 @@ export class MatrixClientService {
       persistRefreshedTokens: true,
     },
   ): MatrixClient {
-    const { onTokenRefresh, ...tokens } = this.tokenOptions(session);
+    const { onTokenRefresh, ...tokens } = this.tokenOptions(session, {
+      kind: 'detached',
+    });
     return createClient({
       baseUrl: session.baseUrl,
       localTimeoutMs: MATRIX_REQUEST_TIMEOUT_MS,
@@ -741,7 +751,10 @@ export class MatrixClientService {
             accessToken: session.accessToken,
             userId: session.userId,
             deviceId: session.deviceId,
-            ...this.tokenOptions(session, () => created),
+            ...this.tokenOptions(session, {
+              kind: 'started',
+              client: () => created,
+            }),
             ...(store ? { store } : {}),
             // Lets the crypto stack read/write 4S using the recovery key the user
             // unlocks during the setup/recovery flows (held only in memory).
@@ -875,45 +888,47 @@ export class MatrixClientService {
    * it before adopting the new pair, so a failed write fails the refresh and the old
    * tokens stay in memory.
    *
-   * `startedClient` names the started client these options are for. Its refresh counts only
-   * while that client is still the account's tracked (live or starting) one: a refresh from a
-   * client that a re-sign-in replaced, or that was removed or torn down, writes nothing,
-   * moves no tracked pair and publishes no rotation. Without it (a detached client, which is
-   * never the account's live client) a refresh is persisted and nothing more.
+   * The write is a compare-and-swap on the sign-in the session came from (its
+   * {@link MatrixSession.lineage}): storage applies it only while the account's record still
+   * holds that sign-in. So a client that was retired, rolled back, stopped or removed still
+   * saves the pair it rotated while its sign-in is the stored one (with refresh-token
+   * rotation those are the only valid next tokens), and a client a new sign-in replaced
+   * never writes over the new session.
+   *
+   * A `started` client's refresh then moves the tracked pair and publishes the rotation, but
+   * only while that client still owns the account's tracked pair (it is live or starting).
+   * A `detached` client is never the account's live client, so its refresh is persisted and
+   * nothing more.
    */
   private tokenOptions(
     session: MatrixSession,
-    startedClient?: () => MatrixClient | null,
+    owner: TokenRefreshOwner,
   ): Pick<
     ICreateClientOpts,
     'refreshToken' | 'oauthClientId' | 'onTokenRefresh'
   > {
-    const ownsTrackedPair = (): boolean => {
-      const client = startedClient?.();
-      return (
-        !!client && this.oauthTokens.get(session.userId)?.client === client
-      );
-    };
     return {
       ...(session.refreshToken ? { refreshToken: session.refreshToken } : {}),
       ...(session.oidc
         ? {
             oauthClientId: session.oidc.clientId,
-            onTokenRefresh: (tokens: AccessTokens): Promise<void> => {
-              if (startedClient && !ownsTrackedPair()) {
-                return Promise.resolve();
-              }
-              return firstValueFrom(
+            onTokenRefresh: (tokens: AccessTokens): Promise<void> =>
+              firstValueFrom(
                 this.storage.updateTokens(
                   session.userId,
+                  session.lineage,
                   tokens.accessToken,
                   tokens.refreshToken,
                   tokens.expiry?.getTime(),
                 ),
               ).then(() => {
-                // Checked again: the client may have been replaced while storage wrote.
+                if (owner.kind === 'detached') {
+                  return;
+                }
+                // Checked after the write: the client may have been replaced meanwhile.
+                const client = owner.client();
                 const tracked = this.oauthTokens.get(session.userId);
-                if (!tracked || !ownsTrackedPair()) {
+                if (!client || tracked?.client !== client) {
                   return;
                 }
                 // Before publishing, so a reader of the rotation finds the new expiry.
@@ -926,8 +941,7 @@ export class MatrixClientService {
                   userId: session.userId,
                   accessToken: tokens.accessToken,
                 });
-              });
-            },
+              }),
           }
         : {}),
     };

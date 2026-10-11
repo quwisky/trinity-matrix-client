@@ -41,16 +41,19 @@ const BOB: MatrixSession = {
   accessToken: 'bob-token-abc',
 };
 // How each looks once stored: a per-account, per-device crypto store is assigned on
-// first save (device id in the prefix so a new-device login never reopens an old store).
+// first save (device id in the prefix so a new-device login never reopens an old store),
+// and each save names its sign-in with a fresh lineage.
 const ALICE_STORED: MatrixSession = {
   ...ALICE,
   cryptoPrefix: 'trinity-crypto:@alice:hs:DEV1',
   cryptoStoreKeyed: true,
+  lineage: expect.any(String),
 };
 const BOB_STORED: MatrixSession = {
   ...BOB,
   cryptoPrefix: 'trinity-crypto:@bob:other:DEV2',
   cryptoStoreKeyed: true,
+  lineage: expect.any(String),
 };
 
 // An OIDC-native ("next-gen auth") session: a refresh token + expiry + provider binding.
@@ -150,6 +153,7 @@ describe('SessionStorageService', () => {
           deviceId: 'DEV1',
           cryptoPrefix: 'trinity-crypto:@alice:hs:DEV1',
           cryptoStoreKeyed: true,
+          lineage: expect.any(String),
         },
       ],
     });
@@ -506,10 +510,16 @@ describe('SessionStorageService', () => {
 
     it('updateTokens rotates access + refresh tokens and refreshes the expiry', async () => {
       const { svc, secure } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      const { lineage } = await firstValueFrom(svc.save(CAROL));
 
       await firstValueFrom(
-        svc.updateTokens('@carol:hs', 'new-access', 'new-refresh', 9999999999),
+        svc.updateTokens(
+          '@carol:hs',
+          lineage,
+          'new-access',
+          'new-refresh',
+          9999999999,
+        ),
       );
 
       expect(secure.store.get('matrix.accessToken:@carol:hs')).toBe(
@@ -527,10 +537,10 @@ describe('SessionStorageService', () => {
 
     it('updateTokens keeps the existing refresh token when the provider rotated none', async () => {
       const { svc, secure } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      const { lineage } = await firstValueFrom(svc.save(CAROL));
 
       await firstValueFrom(
-        svc.updateTokens('@carol:hs', 'new-access', undefined, 8888),
+        svc.updateTokens('@carol:hs', lineage, 'new-access', undefined, 8888),
       );
 
       expect(secure.store.get('matrix.accessToken:@carol:hs')).toBe(
@@ -549,10 +559,10 @@ describe('SessionStorageService', () => {
       // calls this BEFORE the refresher can substitute one, so nothing upstream can
       // save it, and no restart would recover.
       const { svc, secure } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      const { lineage } = await firstValueFrom(svc.save(CAROL));
 
       await firstValueFrom(
-        svc.updateTokens('@carol:hs', 'new-access', '', 8888),
+        svc.updateTokens('@carol:hs', lineage, 'new-access', '', 8888),
       );
 
       expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBe(
@@ -563,10 +573,117 @@ describe('SessionStorageService', () => {
     it('updateTokens is a no-op for an account no longer registered (signed out mid-refresh)', async () => {
       const { svc, secure } = setup();
 
-      await firstValueFrom(svc.updateTokens('@ghost:hs', 'x', 'y', 1));
+      await firstValueFrom(
+        svc.updateTokens('@ghost:hs', undefined, 'x', 'y', 1),
+      );
 
       expect(secure.store.get('matrix.accessToken:@ghost:hs')).toBeUndefined();
       expect(secure.store.get('matrix.refreshToken:@ghost:hs')).toBeUndefined();
+    });
+
+    describe('the sign-in a refresh belongs to', () => {
+      const REISSUED: MatrixSession = {
+        ...CAROL,
+        accessToken: 'reissued',
+        refreshToken: 'reissued-refresh',
+        accessTokenExpiresAt: 777,
+      };
+
+      async function expectReissuedKept(
+        svc: SessionStorageService,
+        store: Map<string, string>,
+      ): Promise<void> {
+        expect(store.get('matrix.accessToken:@carol:hs')).toBe('reissued');
+        expect(store.get('matrix.refreshToken:@carol:hs')).toBe(
+          'reissued-refresh',
+        );
+        expect(
+          (await firstValueFrom(svc.record('@carol:hs')))?.accessTokenExpiresAt,
+        ).toBe(777);
+      }
+
+      it('mints a new lineage on every save, and a refresh keeps it', async () => {
+        const { svc } = setup();
+        const first = await firstValueFrom(svc.save(CAROL));
+        expect(first.lineage).toEqual(expect.any(String));
+
+        await firstValueFrom(
+          svc.updateTokens('@carol:hs', first.lineage, 'a2', 'r2', 2),
+        );
+        expect((await firstValueFrom(svc.load('@carol:hs')))?.lineage).toBe(
+          first.lineage,
+        );
+
+        const again = await firstValueFrom(svc.save(REISSUED));
+        expect(again.lineage).toEqual(expect.any(String));
+        expect(again.lineage).not.toBe(first.lineage);
+        expect((await firstValueFrom(svc.load('@carol:hs')))?.lineage).toBe(
+          again.lineage,
+        );
+      });
+
+      it("writes nothing over a newer sign-in's tokens", async () => {
+        const { svc, secure } = setup();
+        const { lineage } = await firstValueFrom(svc.save(CAROL));
+        await firstValueFrom(svc.save(REISSUED));
+
+        await firstValueFrom(
+          svc.updateTokens('@carol:hs', lineage, 'late', 'late-refresh', 1),
+        );
+
+        await expectReissuedKept(svc, secure.store);
+      });
+
+      it('writes nothing when a new sign-in is saved while the refresh waits', async () => {
+        const { svc, secure } = setup();
+        const { lineage } = await firstValueFrom(svc.save(CAROL));
+
+        // The save is queued first; the refresh's check runs in its own later turn.
+        await Promise.all([
+          firstValueFrom(svc.save(REISSUED)),
+          firstValueFrom(
+            svc.updateTokens('@carol:hs', lineage, 'late', 'late-refresh', 1),
+          ),
+        ]);
+
+        await expectReissuedKept(svc, secure.store);
+      });
+
+      it('writes nothing from a session read before lineages over a newer sign-in', async () => {
+        const { svc, secure } = setup();
+        await firstValueFrom(svc.save(REISSUED));
+
+        await firstValueFrom(
+          svc.updateTokens('@carol:hs', undefined, 'late', 'late-refresh', 1),
+        );
+
+        await expectReissuedKept(svc, secure.store);
+      });
+
+      it.each([undefined, 'any-lineage'])(
+        'still rotates a record saved before lineages existed (refresh from %s)',
+        async (lineage) => {
+          const { svc, secure } = setup();
+          const { lineage: _minted, ...legacy } = await firstValueFrom(
+            svc.save(CAROL),
+          );
+          const { accessToken: _a, refreshToken: _r, ...record } = legacy;
+          prefs.set(
+            'matrix.accounts',
+            JSON.stringify({ activeUserId: '@carol:hs', accounts: [record] }),
+          );
+
+          await firstValueFrom(
+            svc.updateTokens('@carol:hs', lineage, 'a2', 'r2', 2),
+          );
+
+          expect(secure.store.get('matrix.accessToken:@carol:hs')).toBe('a2');
+          expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBe('r2');
+          const stored = await firstValueFrom(svc.record('@carol:hs'));
+          expect(stored?.accessTokenExpiresAt).toBe(2);
+          expect(stored?.lineage).toBeUndefined();
+        },
+      );
     });
 
     it('clearAll returns the records it removed, and a refresh racing it cannot resurrect them', async () => {
@@ -581,12 +698,12 @@ describe('SessionStorageService', () => {
       // sibling no-op test), so this asserts the two mechanisms compose.
       const { svc, secure } = setup();
       await firstValueFrom(svc.save(ALICE));
-      await firstValueFrom(svc.save(CAROL));
+      const { lineage } = await firstValueFrom(svc.save(CAROL));
 
       const [cleared] = await Promise.all([
         firstValueFrom(svc.clearAll()),
         firstValueFrom(
-          svc.updateTokens('@carol:hs', 'late-access', 'late-r', 1),
+          svc.updateTokens('@carol:hs', lineage, 'late-access', 'late-r', 1),
         ),
       ]);
 
@@ -657,12 +774,18 @@ describe('SessionStorageService', () => {
         accessTokenExpiresAt: 111,
         oidc: OIDC_BINDING,
       };
-      await firstValueFrom(svc.save(CAROL));
+      const { lineage } = await firstValueFrom(svc.save(CAROL));
       await firstValueFrom(svc.save(DAVE)); // DAVE saved last → active
 
       // Refresh CAROL (the non-active account, as a background refresh would).
       await firstValueFrom(
-        svc.updateTokens('@carol:hs', 'carol-new', 'carol-new-refresh', 222),
+        svc.updateTokens(
+          '@carol:hs',
+          lineage,
+          'carol-new',
+          'carol-new-refresh',
+          222,
+        ),
       );
 
       // CAROL rotated…
@@ -688,14 +811,20 @@ describe('SessionStorageService', () => {
 
     it('serializes a concurrent remove + token refresh so a signed-out account is not resurrected', async () => {
       const { svc, secure } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      const { lineage } = await firstValueFrom(svc.save(CAROL));
 
       // A sign-out and a background token refresh for the SAME account race. Subscriptions
       // are created in array order, so remove is queued before the refresh.
       await Promise.all([
         firstValueFrom(svc.remove('@carol:hs')),
         firstValueFrom(
-          svc.updateTokens('@carol:hs', 'late-access', 'late-refresh', 999),
+          svc.updateTokens(
+            '@carol:hs',
+            lineage,
+            'late-access',
+            'late-refresh',
+            999,
+          ),
         ),
       ]);
 
@@ -765,6 +894,7 @@ describe('SessionStorageService', () => {
         deviceId: 'DEV1',
         cryptoPrefix: 'trinity-crypto:@alice:hs:DEV1', // reused: same device
         cryptoStoreKeyed: true,
+        lineage: expect.any(String),
       },
     ]);
     expect(await firstValueFrom(svc.load('@alice:hs'))).toMatchObject({
