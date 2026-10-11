@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { BrnTooltip } from '@spartan-ng/brain/tooltip';
 import { render } from '@trinity/testing';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   TRN_TOOLTIP_CONTENT_CLASSES,
   TRN_TOOLTIP_SVG_CLASSES,
@@ -65,5 +65,43 @@ describe('TrnTooltip', () => {
 
     expect(button?.tagName).toBe('BUTTON');
     expect(button?.getAttribute('aria-label')).toBe('Members');
+  });
+
+  describe('focus', () => {
+    async function focusWith(focusVisible: boolean) {
+      vi.useFakeTimers();
+      const { container } = await render(HostComponent);
+      const button = container.querySelector('button') as HTMLButtonElement;
+      // jsdom cannot evaluate :focus-visible, so the browser's verdict is stubbed.
+      vi.spyOn(button, 'matches').mockImplementation(
+        (selector) => selector === ':focus-visible' && focusVisible,
+      );
+      // CDK reports programmatic focus as 'program', which Brain treats as keyboard intent:
+      // exactly what restoring focus to a row after a sheet closes looks like.
+      button.focus();
+      await vi.advanceTimersByTimeAsync(500);
+      return document.querySelector('[role="tooltip"]');
+    }
+
+    afterEach(() => vi.useRealTimers());
+
+    it('still opens on hover after focus was restored without a ring', async () => {
+      expect(await focusWith(false)).toBeNull();
+      const button = document.querySelector('button') as HTMLButtonElement;
+      const enter = new Event('pointerenter');
+      Object.defineProperty(enter, 'pointerType', { value: 'mouse' });
+      button.dispatchEvent(enter);
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+    });
+
+    it('does not open when focus arrives without focus-visible', async () => {
+      expect(await focusWith(false)).toBeNull();
+    });
+
+    it('opens on keyboard-style focus-visible focus', async () => {
+      expect(await focusWith(true)).not.toBeNull();
+    });
   });
 });

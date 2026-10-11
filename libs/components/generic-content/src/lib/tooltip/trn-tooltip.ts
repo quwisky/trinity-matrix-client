@@ -1,4 +1,4 @@
-import { Directive } from '@angular/core';
+import { Directive, ElementRef, inject } from '@angular/core';
 import {
   BrnTooltip,
   type BrnTooltipPosition,
@@ -52,6 +52,14 @@ export const TRN_TOOLTIP_CONTENT_CLASSES = trn(
  * That timing is pinned here because Brain 1.5 changed its own defaults from 150/100 to 0/0.
  * Nearly every call site labels an icon-only button in a dense, hover-revealed toolbar; at 0
  * a pointer crossing the row opens a tooltip over the neighbouring action on every pass.
+ *
+ * **Focus opens a tooltip only when the browser would draw a focus ring (`:focus-visible`).**
+ * Brain already ignores touch taps, but it treats every programmatic focus as keyboard
+ * intent, so focus restored to a trigger after a touch-closed sheet or dialog opened a tooltip
+ * that stayed until the next interaction. Brain has no hook to filter focus and its `delay`
+ * method is private, so a focus without a ring switches the tooltip off through the public
+ * `mutableTooltipDisabled` signal; Brain checks it when the show delay elapses. Blur or a
+ * pointer entering switches it back on, so hover is unaffected and Tab focus is evaluated anew.
  */
 @Directive({
   selector: '[trnTooltip]',
@@ -65,6 +73,11 @@ export const TRN_TOOLTIP_CONTENT_CLASSES = trn(
         trn(tooltipPositionVariants({ position })),
     }),
   ],
+  host: {
+    '(focusin)': 'suppressUnlessFocusVisible()',
+    '(focusout)': 'restore()',
+    '(pointerenter)': 'restore()',
+  },
   hostDirectives: [
     {
       directive: BrnTooltip,
@@ -73,4 +86,25 @@ export const TRN_TOOLTIP_CONTENT_CLASSES = trn(
     },
   ],
 })
-export class TrnTooltip {}
+export class TrnTooltip {
+  private readonly tooltip = inject(BrnTooltip, { self: true });
+  private readonly host =
+    inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+
+  protected suppressUnlessFocusVisible(): void {
+    this.tooltip.mutableTooltipDisabled.set(!this.isFocusVisible());
+  }
+
+  protected restore(): void {
+    this.tooltip.mutableTooltipDisabled.set(false);
+  }
+
+  private isFocusVisible(): boolean {
+    try {
+      return this.host.matches(':focus-visible');
+    } catch {
+      // An engine without the selector cannot tell; keep Brain's behaviour.
+      return true;
+    }
+  }
+}
