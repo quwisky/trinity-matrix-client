@@ -554,6 +554,7 @@ describe('RoomsPage room / DM / invite actions', () => {
   let declineInvite: Mock;
   let canModerate: Mock;
   let dialogOpen: Mock;
+  let surfaceOpen: Mock;
   let resolveRoomId: Mock;
   let pending: WritableSignal<PendingInvite[]>;
 
@@ -588,6 +589,7 @@ describe('RoomsPage room / DM / invite actions', () => {
       myPower: 0,
     }));
     dialogOpen = vi.fn(() => of(null));
+    surfaceOpen = vi.fn();
     resolveRoomId = vi.fn(() => of('!linked:hs'));
     pending = signal<PendingInvite[]>([]);
     TestBed.configureTestingModule({
@@ -643,6 +645,7 @@ describe('RoomsPage room / DM / invite actions', () => {
           ).asReadonly(),
         }),
         MockProvider(TrnSurfaceService, {
+          open: surfaceOpen,
           openAndWait$: dialogOpen,
         }),
         MockProvider(TrnAlertService, { prompt$: alertPrompt }),
@@ -930,7 +933,8 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   // Member info from the list is a modal surface through `TrnSurfaceService` (#1041): the
   // roster keeps its place in the Room surface slot and the dialog or sheet sits on top.
-  // `member-actions.service.spec.ts` renders the real surface stack for its placement.
+  // `member-actions.service.spec.ts` renders the real surface stack for its placement and
+  // for the Account ownership rules.
   const bob = {
     userId: '@bob:hs',
     roomDisplayName: 'Bob',
@@ -940,22 +944,45 @@ describe('RoomsPage room / DM / invite actions', () => {
     isCreator: false,
   };
 
+  /** A member info handle the test closes itself, as the dialog would. */
+  function memberInfoRef() {
+    const closed = new Subject<string | undefined>();
+    const ref = {
+      closed: closed.asObservable(),
+      close: vi.fn((value?: string) => {
+        closed.next(value);
+        closed.complete();
+      }),
+    };
+    surfaceOpen.mockReturnValue(ref);
+    return ref;
+  }
+
+  function memberInfoOptions(roomId: string, direct = false) {
+    return {
+      ariaLabel: 'Member info',
+      inputs: { member: bob, roomId, owningAccountId: '@me:hs', direct },
+    };
+  }
+
   it('opens member info over the roster and starts a DM only if messaged', async () => {
     const shell = build();
     setRouteRoom('!r:hs');
     await settleWorkspace();
     shell.surfaces.transition({ kind: 'open-members' });
-    dialogOpen.mockReturnValue(of('@bob:hs')); // the viewer chose "Message"
+    const ref = memberInfoRef();
 
     shell.members.onSelectMember(bob);
-    await settleWorkspace();
-
     // `direct` says whether the room is a DM — member info must not name an owner in a 1:1
     // chat, where both people sit at power level 100. No `kind`: the surface service applies
     // the sheet-or-dialog rule rather than this caller picking one.
-    expect(dialogOpen).toHaveBeenCalledWith(MemberInfoComponent, {
-      inputs: { member: bob, roomId: '!r:hs', direct: false },
-    });
+    expect(surfaceOpen).toHaveBeenCalledWith(
+      MemberInfoComponent,
+      memberInfoOptions('!r:hs'),
+    );
+    ref.close('@bob:hs'); // the viewer chose "Message"
+    await settleWorkspace();
+
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
     expect(shell.store.activeRoomId()).toBe('!dm:hs');
   });
@@ -965,8 +992,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     setRouteRoom('!r:hs');
     await settleWorkspace();
     shell.surfaces.transition({ kind: 'open-members' });
-    const closed = new Subject<string | null>();
-    dialogOpen.mockReturnValue(closed);
+    const ref = memberInfoRef();
 
     shell.members.onSelectMember(bob);
     // While it is open the roster is still the slot's surface, behind the dialog or sheet.
@@ -974,13 +1000,32 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     // Closing, or a kick or ban landing (member info closes itself with null), returns to
     // the roster — which is where the change shows.
-    closed.next(null);
-    closed.complete();
+    ref.close();
     await settleWorkspace();
 
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
     expect(createDirectMessage).not.toHaveBeenCalled();
     expect(shell.store.activeRoomId()).toBe('!r:hs');
+  });
+
+  it('does not carry member info into the next room', async () => {
+    // Member info is bound to the Conversation it was opened in. A room switch (a link, a
+    // notification tap) closes it rather than leaving it over another room's timeline.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+    shell.surfaces.transition({ kind: 'open-members' });
+    const ref = memberInfoRef();
+    shell.members.onSelectMember(bob);
+    await settleWorkspace();
+    expect(ref.close).not.toHaveBeenCalled();
+
+    setRouteRoom('!other:hs');
+    await settleWorkspace();
+
+    expect(ref.close).toHaveBeenCalledWith();
+    expect(createDirectMessage).not.toHaveBeenCalled();
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
   });
 
   it('keeps the roster when Message reuses the active DM', async () => {
@@ -989,9 +1034,10 @@ describe('RoomsPage room / DM / invite actions', () => {
     await settleWorkspace();
     createDirectMessage.mockReturnValue(of('!dm:hs'));
     shell.surfaces.transition({ kind: 'open-members' });
-    dialogOpen.mockReturnValue(of('@bob:hs'));
+    const ref = memberInfoRef();
 
     shell.members.onSelectMember(bob);
+    ref.close('@bob:hs');
     await settleWorkspace();
 
     expect(shell.store.activeRoomId()).toBe('!dm:hs');
@@ -1005,9 +1051,10 @@ describe('RoomsPage room / DM / invite actions', () => {
     setRouteRoom('!first:hs');
     await settleWorkspace();
     shell.surfaces.transition({ kind: 'open-members' });
-    dialogOpen.mockReturnValue(of('@bob:hs'));
+    const ref = memberInfoRef();
 
     shell.members.onSelectMember(bob);
+    ref.close('@bob:hs');
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
     shell.routing.onSelectRoomSelection({
       accountId: '@me:hs',
@@ -1031,13 +1078,14 @@ describe('RoomsPage room / DM / invite actions', () => {
     setRouteRoom('!dm:hs');
     await settleWorkspace();
     directIds.set(new Set(['!dm:hs']));
+    memberInfoRef();
 
     shell.members.onSelectMember(bob);
-    await Promise.resolve();
 
-    expect(dialogOpen).toHaveBeenCalledWith(MemberInfoComponent, {
-      inputs: { member: bob, roomId: '!dm:hs', direct: true },
-    });
+    expect(surfaceOpen).toHaveBeenCalledWith(
+      MemberInfoComponent,
+      memberInfoOptions('!dm:hs', true),
+    );
   });
 
   it('opens no member info without an active room', () => {
@@ -1049,10 +1097,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     shell.members.onSelectMember(bob);
 
-    expect(dialogOpen).not.toHaveBeenCalledWith(
-      MemberInfoComponent,
-      expect.anything(),
-    );
+    expect(surfaceOpen).not.toHaveBeenCalled();
     expect(shell.surfaces.renderedSurface()).toBe(before);
   });
 
@@ -1066,12 +1111,13 @@ describe('RoomsPage room / DM / invite actions', () => {
       await settleWorkspace();
       shell.surfaces.transition({ kind: 'open-members' });
       expect(shell.surfaces.membersVisible()).toBe(true);
+      memberInfoRef();
 
       shell.members.onSelectMember(bob);
 
       expect(shell.surfaces.membersVisible()).toBe(true);
       expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
-      expect(dialogOpen).toHaveBeenCalledWith(
+      expect(surfaceOpen).toHaveBeenCalledWith(
         MemberInfoComponent,
         expect.anything(),
       );
@@ -1085,59 +1131,16 @@ describe('RoomsPage room / DM / invite actions', () => {
     setRouteRoom('!r:hs');
     await settleWorkspace();
     shell.surfaces.transition({ kind: 'open-members' });
+    memberInfoRef();
 
     shell.members.onSelectMember(bob);
 
     expect(shell.surfaces.membersVisible()).toBe(true);
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
-    expect(dialogOpen).toHaveBeenCalledWith(
+    expect(surfaceOpen).toHaveBeenCalledWith(
       MemberInfoComponent,
       expect.anything(),
     );
-  });
-
-  it('opens member info for another Room or Space without touching the open room’s slot', async () => {
-    // A non-Conversation caller may name a different Room or Space; the dialog is bound to
-    // that target, and the open room's slot is left exactly as it was.
-    const shell = build();
-    setRouteRoom('!r:hs');
-    await settleWorkspace();
-    const before = shell.surfaces.renderedSurface();
-
-    shell.members.openMemberInfo(bob, {
-      accountId: '@me:hs',
-      roomId: '!space:hs',
-    });
-
-    expect(dialogOpen).toHaveBeenCalledWith(MemberInfoComponent, {
-      inputs: { member: bob, roomId: '!space:hs', direct: false },
-    });
-    expect(shell.surfaces.renderedSurface()).toBe(before);
-  });
-
-  it('opens same-room member info for another Account on its exact target', async () => {
-    const shell = build();
-    setRouteRoom('!shared:hs');
-    await settleWorkspace();
-    const before = shell.surfaces.renderedSurface();
-
-    shell.members.openMemberInfo(bob, {
-      accountId: '@other:hs',
-      roomId: '!shared:hs',
-    });
-    await Promise.resolve();
-
-    expect(dialogOpen).toHaveBeenCalledWith(
-      MemberInfoComponent,
-      expect.objectContaining({
-        inputs: expect.objectContaining({
-          member: bob,
-          roomId: '!shared:hs',
-          direct: false,
-        }),
-      }),
-    );
-    expect(shell.surfaces.renderedSurface()).toBe(before);
   });
 
   it('invites the picked user to the active room and toasts success', async () => {

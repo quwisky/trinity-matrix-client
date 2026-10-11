@@ -61,6 +61,9 @@ function build({ narrow = false } = {}) {
   const onSelectRoom = vi.fn();
   const createDirectMessage = vi.fn(() => of('!dm:hs'));
   const kick = vi.fn(() => of(undefined));
+  // The shell and identity read the same active Account in the app; one signal here.
+  const activeAccountId = signal<string | null>('@me:hs');
+  const activeRoomId = signal<string | null>('!r:hs');
   TestBed.configureTestingModule({
     providers: [
       MemberActionsService,
@@ -68,8 +71,8 @@ function build({ narrow = false } = {}) {
       MockProvider(TrnToastService),
       MockProvider(TrnAlertService, { prompt$: () => of('') }),
       MockProvider(RoomShellStore, {
-        activeAccountId: signal<string | null>('@me:hs').asReadonly(),
-        activeRoomId: signal<string | null>('!r:hs').asReadonly(),
+        activeAccountId: activeAccountId.asReadonly(),
+        activeRoomId: activeRoomId.asReadonly(),
       }),
       MockProvider(RoomSurfaceLifecycle, { transition }),
       MockProvider(RoomShellNavigationService, { onSelectRoom }),
@@ -82,7 +85,7 @@ function build({ narrow = false } = {}) {
         useValue: { presenceFor: () => signal(null) },
       },
       MockProvider(IdentityService, {
-        activeUserId: signal<string | null>('@me:hs').asReadonly(),
+        activeUserId: activeAccountId.asReadonly(),
       }),
       MockProvider(RoomModerationService, { kick }),
       MockProvider(RoomActionPermissionsService, {
@@ -108,6 +111,8 @@ function build({ narrow = false } = {}) {
     onSelectRoom,
     createDirectMessage,
     kick,
+    activeAccountId,
+    activeRoomId,
   };
 }
 
@@ -221,5 +226,82 @@ describe('MemberActionsService member info', () => {
       roomId: '!dm:hs',
       accountId: '@me:hs',
     });
+  });
+
+  it('names the dialog by its visible title', () => {
+    const built = build();
+    surfaces = built.surfaces;
+
+    built.members.onSelectMember(BOB);
+    built.tick();
+
+    expect(
+      document.querySelector('[role="dialog"]')?.getAttribute('aria-label'),
+    ).toBe('Member info');
+  });
+
+  it('does not carry member info into the next room', () => {
+    const built = build();
+    surfaces = built.surfaces;
+    built.members.onSelectMember(BOB);
+    built.tick();
+    expect(built.surfaces.hasOpen()).toBe(true);
+
+    built.activeRoomId.set('!other:hs');
+    built.tick();
+
+    expect(built.surfaces.hasOpen()).toBe(false);
+    expect(document.querySelector('trn-member-info')).toBeNull();
+    expect(built.kick).not.toHaveBeenCalled();
+    expect(built.createDirectMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not carry member info into another account', () => {
+    // A notification tap can switch Account while member info is open; its commands and
+    // "Message" belong to the Account it was opened for, so it closes.
+    const built = build();
+    surfaces = built.surfaces;
+    built.members.onSelectMember(BOB);
+    built.tick();
+
+    built.activeAccountId.set('@other:hs');
+    built.tick();
+
+    expect(built.surfaces.hasOpen()).toBe(false);
+    expect(document.querySelector('trn-member-info')).toBeNull();
+    expect(built.kick).not.toHaveBeenCalled();
+    expect(built.createDirectMessage).not.toHaveBeenCalled();
+    expect(built.onSelectRoom).not.toHaveBeenCalled();
+  });
+
+  it('keeps moderation on the owning account before the switch closes it', () => {
+    const built = build();
+    surfaces = built.surfaces;
+    built.members.onSelectMember(BOB);
+    built.tick();
+
+    // The switch has landed but nothing has rendered since: the dialog is still up.
+    built.activeAccountId.set('@other:hs');
+    button('member-info-kick').click();
+
+    expect(built.kick).toHaveBeenCalledWith(
+      { accountId: '@me:hs', roomId: '!r:hs' },
+      '@bob:hs',
+      undefined,
+    );
+  });
+
+  it('opens no direct message from another account than the one that owned it', () => {
+    const built = build();
+    surfaces = built.surfaces;
+    built.members.onSelectMember(BOB);
+    built.tick();
+
+    built.activeAccountId.set('@other:hs');
+    button('member-info-message').click();
+    built.tick();
+
+    expect(built.createDirectMessage).not.toHaveBeenCalled();
+    expect(built.onSelectRoom).not.toHaveBeenCalled();
   });
 });

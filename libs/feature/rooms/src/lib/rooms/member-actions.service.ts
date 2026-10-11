@@ -1,5 +1,12 @@
-import { DestroyRef, Injectable, inject } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  DestroyRef,
+  Injectable,
+  Injector,
+  computed,
+  inject,
+} from '@angular/core';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { filter, take, takeUntil } from 'rxjs';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
@@ -26,6 +33,7 @@ export class MemberActionsService {
   private readonly rooms = inject(RoomLibraryService);
   private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
 
   /** Member-list row: open the member's info over the list; "Message" opens/reuses a DM. */
   onSelectMember(member: MemberSummary): void {
@@ -44,32 +52,62 @@ export class MemberActionsService {
    * column, or the drawer on a phone) underneath. Closing, or a kick or ban landing, returns
    * to that list with the change visible; "Message" closes it and opens the DM.
    *
-   * `owner` is the exact Account-and-Room target the member is viewed in. A non-Conversation
-   * caller may name another Room or Space, and the moderation actions aim at it.
+   * It belongs to the open Conversation (`owner`), like the slot panels: Workspace
+   * navigation does not close overlays, so when another Room or Account becomes active (a
+   * notification tap, say) this closes it, and nothing it started runs as the new Account.
    */
-  openMemberInfo(member: MemberSummary, owner: ExactRoomSelection): void {
-    const direct =
-      owner.accountId === this.store.activeAccountId() &&
-      this.rooms.directRoomIds().has(owner.roomId);
-
-    this.dialog
-      .openAndWait$<string, MemberInfoComponent>(MemberInfoComponent, {
+  private openMemberInfo(
+    member: MemberSummary,
+    owner: ExactRoomSelection,
+  ): void {
+    const ref = this.dialog.open<string, MemberInfoComponent>(
+      MemberInfoComponent,
+      {
+        ariaLabel: 'Member info',
         inputs: {
           member,
           roomId: owner.roomId,
-          direct,
+          owningAccountId: owner.accountId,
+          direct: this.rooms.directRoomIds().has(owner.roomId),
         },
-      })
+      },
+    );
+    const closed = ref.closed.pipe(take(1));
+
+    toObservable(
+      computed(
+        () =>
+          this.store.activeAccountId() === owner.accountId &&
+          this.store.activeRoomId() === owner.roomId,
+      ),
+      { injector: this.injector },
+    )
+      .pipe(
+        filter((ownerActive) => !ownerActive),
+        take(1),
+        takeUntil(closed),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(() => ref.close());
+
+    closed
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((messageUserId) => {
-        if (messageUserId) this.startDirectMessage(messageUserId);
+        if (messageUserId)
+          this.startDirectMessage(messageUserId, owner.accountId);
       });
   }
 
-  /** Open (or reuse) a direct message with `userId` and navigate to it. */
-  private startDirectMessage(userId: string): void {
-    const accountId = this.store.activeAccountId();
-    if (!accountId) return;
+  /**
+   * Open (or reuse) a direct message with `userId` from `accountId` and navigate to it.
+   * Nothing happens unless `accountId` is still the active Account: a DM is created as the
+   * active Account, and must not be created as one that replaced the requester.
+   */
+  private startDirectMessage(
+    userId: string,
+    accountId = this.store.activeAccountId(),
+  ): void {
+    if (!accountId || accountId !== this.store.activeAccountId()) return;
     runWithBusy(this.rooms.createDirectMessage(userId), this.status).subscribe(
       (roomId) => this.nav.onSelectRoom({ roomId, accountId }),
     );

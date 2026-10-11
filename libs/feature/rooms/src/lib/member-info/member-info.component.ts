@@ -48,8 +48,9 @@ import { AvatarComponent } from '@trinity/components/generic-content';
 /**
  * A room-scoped info card for a member (avatar, name, id, live presence, role), shown
  * when a member row is clicked: a dialog on a large screen, a bottom sheet on a phone or
- * tablet or below `md`, or in place inside settings. It is the launch surface for member actions: **Message**
- * (closes resolving the user id so the host opens/reuses a DM), **Copy user ID**, and —
+ * tablet or below `md`, or in place inside settings. It is the launch surface for member
+ * actions: **Message** (closes resolving the user id so the host opens/reuses a DM),
+ * **Copy user ID**, and —
  * when the viewer's power permits — **change role** and **remove / ban**. The moderation
  * writes run here; the host only handles the DM and computes the permission caps.
  */
@@ -81,6 +82,12 @@ export class MemberInfoComponent {
   readonly roomId = input.required<string>();
   /** Immutable Account owner when this panel is hosted from settings. */
   readonly accountId = input<string | null>(null);
+  /**
+   * The Account a Conversation opened this for. While it is the active Account the
+   * commands read the live active-Account room; if another Account becomes active before
+   * the host closes this, they stay on this one rather than following the switch.
+   */
+  readonly owningAccountId = input<string | null>(null);
   /** Whether the immutable Account-and-Room target can still supply live authority. */
   readonly exactTargetAvailable = input(true);
   readonly targetName = input('this room');
@@ -143,16 +150,29 @@ export class MemberInfoComponent {
     this.ignoredUsers.isIgnored(this.member().userId),
   );
 
+  /** The owning Account is no longer the active one (the host is about to close this). */
+  private readonly ownerInactive = computed(() => {
+    const owner = this.owningAccountId();
+    return owner !== null && owner !== this.identity.activeUserId();
+  });
+
+  /** The Account the commands run as, when one is known. */
+  private readonly commandAccountId = computed(
+    () => this.accountId() ?? this.owningAccountId(),
+  );
+
   /** Live online status for the presence dot. */
   readonly presenceState = computed(() =>
-    this.accountId() ? null : this.presence.presenceFor(this.member().userId)(),
+    this.accountId() || this.ownerInactive()
+      ? null
+      : this.presence.presenceFor(this.member().userId)(),
   );
 
   /** Whether this row is the signed-in user — no point messaging yourself. */
   readonly isSelf = computed(
     () =>
       this.member().userId ===
-      (this.accountId() ?? this.identity.activeUserId()),
+      (this.commandAccountId() ?? this.identity.activeUserId()),
   );
 
   /** The member's role in the room, by the standard power-level convention. */
@@ -160,7 +180,9 @@ export class MemberInfoComponent {
   readonly direct = input(false);
 
   readonly target = computed(() => {
-    const accountId = this.accountId();
+    const accountId =
+      this.accountId() ??
+      (this.ownerInactive() ? this.owningAccountId() : null);
     return accountId ? { accountId, roomId: this.roomId() } : this.roomId();
   });
 
@@ -228,6 +250,8 @@ export class MemberInfoComponent {
    * comparison. Failure keeps the panel open with a toast.
    */
   verify(): void {
+    // Verification and blocking run as the active Account; never as one that replaced ours.
+    if (this.ownerInactive()) return;
     const userId = this.member().userId;
     this.verification
       .startUserVerification(userId, this.rooms.createDirectMessage(userId))
@@ -289,6 +313,7 @@ export class MemberInfoComponent {
 
   /** Block or unblock the member (account-wide ignore); flips the button on success. */
   toggleIgnore(): void {
+    if (this.ownerInactive()) return;
     const userId = this.member().userId;
     const wasIgnored = this.ignored();
     const action = wasIgnored
@@ -318,7 +343,7 @@ export class MemberInfoComponent {
     this.alert
       .prompt$({
         header: `Remove from ${this.noun().toLowerCase()}`,
-        message: `Remove ${this.member().roomDisplayName} from ${this.targetName()} using account ${this.accountId() ?? 'currently active'}? They can rejoin if invited or if this ${this.noun().toLowerCase()} is public.`,
+        message: `Remove ${this.member().roomDisplayName} from ${this.targetName()} using account ${this.commandAccountId() ?? 'currently active'}? They can rejoin if invited or if this ${this.noun().toLowerCase()} is public.`,
         confirmText: 'Remove',
         variant: 'danger',
         placeholder: 'Reason (optional)',
@@ -347,7 +372,7 @@ export class MemberInfoComponent {
     this.alert
       .prompt$({
         header: `Ban from ${this.noun().toLowerCase()}`,
-        message: `Ban ${this.member().roomDisplayName} from ${this.targetName()} using account ${this.accountId() ?? 'currently active'}? They won't be able to rejoin until they're unbanned.`,
+        message: `Ban ${this.member().roomDisplayName} from ${this.targetName()} using account ${this.commandAccountId() ?? 'currently active'}? They won't be able to rejoin until they're unbanned.`,
         confirmText: 'Ban',
         variant: 'danger',
         placeholder: 'Reason (optional)',
@@ -376,7 +401,7 @@ export class MemberInfoComponent {
     this.alert
       .confirm$({
         header: 'Change role',
-        message: `Change ${this.member().roomDisplayName}'s role in ${this.targetName()} to ${option.label} using account ${this.accountId() ?? 'currently active'}?`,
+        message: `Change ${this.member().roomDisplayName}'s role in ${this.targetName()} to ${option.label} using account ${this.commandAccountId() ?? 'currently active'}?`,
         confirmText: 'Change',
         // A demotion is the weightier direction.
         variant:

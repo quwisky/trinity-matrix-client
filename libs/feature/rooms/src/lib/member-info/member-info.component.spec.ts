@@ -561,6 +561,62 @@ describe('MemberInfoComponent', () => {
     expect(close).toHaveBeenCalledWith(null);
   });
 
+  it('keeps Conversation moderation on the live room while its owning Account is active', async () => {
+    const alertPrompt = vi.fn(() => of(''));
+    const { cmp, fixture, kick } = await build(member(), {
+      canKick: true,
+      alertPrompt,
+    });
+    fixture.componentRef.setInput('owningAccountId', '@me:hs');
+    await fixture.whenStable();
+
+    cmp.kick();
+
+    expect(kick).toHaveBeenCalledWith('!r:hs', '@bob:hs', undefined);
+    expect(alertPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining('using account @me:hs'),
+      }),
+    );
+  });
+
+  it('aims moderation at the owning Account once another Account is active', async () => {
+    // #1041: member info outlives nothing on purpose, but between an Account switch and the
+    // host closing it a command must still reach the Account it was opened for.
+    const { cmp, fixture, kick, ban, setPowerLevel } = await build(member(), {
+      canKick: true,
+      canBan: true,
+      canSetPower: true,
+      myPower: 100,
+      activeUserId: '@other:hs',
+    });
+    fixture.componentRef.setInput('owningAccountId', '@me:hs');
+    await fixture.whenStable();
+    const owner = { accountId: '@me:hs', roomId: '!r:hs' };
+
+    cmp.kick();
+    cmp.ban();
+    cmp.setRole({ label: 'Moderator', level: 50 });
+
+    expect(kick).toHaveBeenCalledWith(owner, '@bob:hs', undefined);
+    expect(ban).toHaveBeenCalledWith(owner, '@bob:hs', undefined);
+    expect(setPowerLevel).toHaveBeenCalledWith(owner, '@bob:hs', 50);
+  });
+
+  it('runs no identity action once its owning Account is no longer active', async () => {
+    const { cmp, fixture, createDirectMessage, startUserVerification, ignore } =
+      await build(member(), { activeUserId: '@other:hs' });
+    fixture.componentRef.setInput('owningAccountId', '@me:hs');
+    await fixture.whenStable();
+
+    cmp.verify();
+    cmp.toggleIgnore();
+
+    expect(createDirectMessage).not.toHaveBeenCalled();
+    expect(startUserVerification).not.toHaveBeenCalled();
+    expect(ignore).not.toHaveBeenCalled();
+  });
+
   it('confirms exact Space context and keeps the command on the opening Account', async () => {
     const alertPrompt = vi.fn(() => of('spam'));
     const { cmp, fixture, kick, close } = await build(member(), {
