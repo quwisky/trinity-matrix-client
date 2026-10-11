@@ -11,6 +11,7 @@ import {
   type Mock,
 } from 'vitest';
 import { AvatarService } from './avatar.service';
+import { MediaService } from './media.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   containsAscii,
@@ -31,7 +32,7 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
 function setup(clientOverrides: Record<string, unknown> = {}) {
   const client = fakeClient(clientOverrides);
   TestBed.configureTestingModule({
-    providers: [AvatarService, MockProvider(MatrixClientService)],
+    providers: [AvatarService, MediaService, MockProvider(MatrixClientService)],
   });
   const matrix = TestBed.inject(MatrixClientService);
   // `instance` is a getter that would throw before init; stub it to the fake
@@ -119,6 +120,37 @@ describe('AvatarService', () => {
     expect(body).not.toBe(photo);
     expect(opts).toEqual({ name: 'me.jpg', type: 'image/jpeg' });
     const sent = new Uint8Array(await body.arrayBuffer());
+    expect(containsAscii(sent, '52.5200')).toBe(false);
+    expect(containsAscii(sent, 'Canon')).toBe(false);
+  });
+
+  it('strips a profile photo even when photos sent in messages keep their metadata', async () => {
+    const uploadContent = vi
+      .fn()
+      .mockResolvedValue({ content_uri: 'mxc://hs/new' });
+    const { svc, client } = setup({ uploadContent });
+    const photo = new File([identifyingJpeg(6)], 'me.jpg', {
+      type: 'image/jpeg',
+    });
+    // The opt-in reaches Media only as a message attachment's upload policy (#1178).
+    await firstValueFrom(
+      TestBed.inject(MediaService).uploadMedia(
+        photo,
+        false,
+        undefined,
+        undefined,
+        client as never,
+        undefined,
+        'keep',
+      ),
+    );
+    expect(uploadContent.mock.calls[0]?.[0]).toBe(photo);
+
+    await firstValueFrom(svc.upload(photo, '@me:hs'));
+
+    const avatar = uploadContent.mock.calls[1]?.[0] as File;
+    expect(avatar).not.toBe(photo);
+    const sent = new Uint8Array(await avatar.arrayBuffer());
     expect(containsAscii(sent, '52.5200')).toBe(false);
     expect(containsAscii(sent, 'Canon')).toBe(false);
   });

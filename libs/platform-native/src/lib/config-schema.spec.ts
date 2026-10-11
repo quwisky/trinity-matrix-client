@@ -70,6 +70,7 @@ describe('config key ledger', () => {
       'trinity.format.date',
       'trinity.format.time',
       'trinity.message-swipe',
+      'trinity.privacy.keep-photo-metadata',
       'trinity.privacy.link-previews',
       'trinity.privacy.link-previews-encrypted',
       'trinity.privacy.save-captures-to-gallery',
