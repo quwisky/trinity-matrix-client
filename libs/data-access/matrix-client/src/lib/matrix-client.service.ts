@@ -803,7 +803,11 @@ export class MatrixClientService {
         }),
         switchMap(() =>
           from(
-            created!.startClient({ initialSyncLimit: 20, threadSupport: true }),
+            // Eight events per room: on a 500-room account a fresh sign-in downloads about a
+            // third less than at 20, with the same previews and unread state. Opening a room
+            // pages in the rest. Below about 8, rooms whose newest events are all state or
+            // thread replies lose their sidebar preview.
+            created!.startClient({ initialSyncLimit: 8, threadSupport: true }),
           ).pipe(
             catchError((error: unknown) => {
               const failure = expectedClientStartFailure(error);

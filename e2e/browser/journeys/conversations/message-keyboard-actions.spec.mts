@@ -19,7 +19,7 @@ const SEED = 60;
  * `libs/data-access/matrix-client/src/lib/matrix-client.service.ts`): the timeline page the
  * first /sync delivers.
  */
-const INITIAL_SYNC_PAGE = 20;
+const INITIAL_SYNC_PAGE = 8;
 
 test.describe('Message actions from the keyboard', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');

@@ -158,7 +158,7 @@ test.describe('Pinned messages panel', () => {
     await expect(panel).not.toContainText(unpinBody);
   });
 
-  // A pin older than the client's initial-sync window (`initialSyncLimit: 20`, plus the viewport-fill backfill) is not in
+  // A pin older than the client's initial-sync window (`initialSyncLimit`, plus the viewport-fill backfill) is not in
   // the loaded timeline, but `m.room.pinned_events` still names it: the panel has to
   // fetch it, and jumping to it has to page it in.
   test('lists a pin outside the loaded timeline and jumps to it', async ({

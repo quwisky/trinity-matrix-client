@@ -44,7 +44,7 @@ const REPEAT_PIN_BODY = 'pin me twice please';
 // compact message rows can show at once (real overflow, not a guess), and — more
 // importantly — pushed *after* the reader is already logged in and the room is
 // open, so the filler lands as live sync traffic rather than via the initial
-// `/sync`, which `MatrixClientService` caps at `initialSyncLimit: 20` — history
+// `/sync`, which `MatrixClientService` caps at `initialSyncLimit` — history
 // beyond that window only loads via an explicit scroll-to-top backfill (see
 // timeline-virtualization.spec.mts). Live sync is capped too, though: a burst that
 // outruns a sync's timeline limit comes back as a gappy (`limited`) sync, and the SDK
