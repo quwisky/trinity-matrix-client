@@ -171,7 +171,7 @@
       @if (keyBackupActive()) {
         Your message keys are backed up to the server.
       } @else if (keyBackupActive() === false) {
-        @if (status() === 'needs-verification') {
+        @if (status() === 'needs-verification' || setupElsewhere()) {
           <!-- Setup here would replace the identity the other device holds. -->
           Key backup is off. Set up recovery on the device where you first set
           up encryption.

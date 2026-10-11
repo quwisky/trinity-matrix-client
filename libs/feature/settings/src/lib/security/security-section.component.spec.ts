@@ -328,6 +328,24 @@ describe('SecuritySectionComponent', () => {
     expect(backup).not.toContain('back up your message keys');
   });
 
+  it('points key backup to the original device for a verified device without the keys', async () => {
+    // needs-setup here only because the device is verified; setup would still replace
+    // the identity the other device holds, so the backup line must not invite it.
+    const { container } = await build({
+      status: 'needs-setup',
+      verified: true,
+      identityElsewhere: true,
+      backup: false,
+    });
+    const backup =
+      container.querySelector('[data-testid=security-backup]')?.textContent ??
+      '';
+    expect(backup).toContain(
+      'Set up recovery on the device where you first set up encryption.',
+    );
+    expect(backup).not.toContain('back up your message keys');
+  });
+
   it('labels stale Trust and offers no actions that infer current state', async () => {
     const { container } = await build({
       status: 'needs-recovery',
