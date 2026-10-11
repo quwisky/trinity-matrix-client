@@ -132,12 +132,15 @@ public class PushHandoffPlugin extends Plugin {
 
     /**
      * iOS holds background run time here; Android has no equivalent the web layer needs, so this
-     * holds nothing and answers id 0.
+     * holds nothing and answers id 0. Android never locks the session's stored tokens away while
+     * the app runs, so protected data is always available and the device never locking.
      */
     @PluginMethod
     public void beginBackgroundWork(PluginCall call) {
         JSObject result = new JSObject();
         result.put("id", 0);
+        result.put("protectedDataAvailable", true);
+        result.put("locking", false);
         call.resolve(result);
     }
 

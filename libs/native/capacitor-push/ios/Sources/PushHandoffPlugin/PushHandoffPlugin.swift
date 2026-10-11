@@ -38,9 +38,41 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
         #endif
         return methods
     }()
+    /// How long after iOS announces that protected data will become unavailable the device
+    /// counts as locking: iOS discards the key for data protected until the device locks
+    /// about 10 s after the lock.
+    private static let lockingWindow: TimeInterval = 10
     private let store = PushHandoffStore.fromMainBundle()
     /// Background tasks begun and not yet ended. Main thread only.
     private var backgroundTasks = Set<UIBackgroundTaskIdentifier>()
+    /// System uptime when iOS last announced that protected data will become unavailable, until
+    /// it is available again. Main thread only.
+    private var protectedDataLockingSince: TimeInterval?
+    private var observers: [NSObjectProtocol] = []
+
+    override public func load() {
+        let center = NotificationCenter.default
+        observers = [
+            center.addObserver(
+                forName: UIApplication.protectedDataWillBecomeUnavailableNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.protectedDataLockingSince = ProcessInfo.processInfo.systemUptime
+            },
+            center.addObserver(
+                forName: UIApplication.protectedDataDidBecomeAvailableNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.protectedDataLockingSince = nil
+            },
+        ]
+    }
+
+    deinit {
+        observers.forEach(NotificationCenter.default.removeObserver)
+    }
 
     @objc func setAccount(_ call: CAPPluginCall) {
         guard let store else {
@@ -176,7 +208,11 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
 
     /// Ask iOS for background run time, so a token refresh begun as the app leaves can reach
     /// the store before the app is suspended. Resolves the task's identifier for
-    /// endBackgroundWork; when iOS ends the granted time first, the task ends itself.
+    /// endBackgroundWork; when iOS ends the granted time first, the task ends itself. Also
+    /// resolves whether protected data, which holds the session's tokens, is available now and
+    /// whether the device is locking (iOS announced within lockingWindow that it will become
+    /// unavailable), so the app starts no refresh it could not save. Both are read on the main
+    /// thread, after every notification delivered before this call ran.
     @objc func beginBackgroundWork(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             var task = UIBackgroundTaskIdentifier.invalid
@@ -186,7 +222,14 @@ public class PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin {
             if task != .invalid {
                 self.backgroundTasks.insert(task)
             }
-            call.resolve(["id": task.rawValue])
+            let locking = self.protectedDataLockingSince.map {
+                ProcessInfo.processInfo.systemUptime - $0 < Self.lockingWindow
+            } ?? false
+            call.resolve([
+                "id": task.rawValue,
+                "protectedDataAvailable": UIApplication.shared.isProtectedDataAvailable,
+                "locking": locking,
+            ])
         }
     }
 

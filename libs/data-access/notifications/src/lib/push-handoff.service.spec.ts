@@ -6,7 +6,10 @@ import {
   MatrixClientService,
   type AccessTokenRotation,
 } from '@trinity/data-access/matrix-client';
-import { PushHandoffBridge } from '@trinity/capacitor-push';
+import {
+  PushHandoffBridge,
+  type BackgroundWork,
+} from '@trinity/capacitor-push';
 import { MockProvider } from 'ng-mocks';
 import {
   NEVER,
@@ -24,6 +27,7 @@ import {
   NotificationSoundService,
 } from './notification-sound.service';
 import {
+  BACKGROUND_REFRESH_GRANT_TIMEOUT_MS,
   BACKGROUND_REFRESH_MIN_AGE_MS,
   BACKGROUND_REFRESH_TIMEOUT_MS,
   BACKGROUND_RUN_DEADLINE_MS,
@@ -79,6 +83,14 @@ function fakeClient(userId: string, rooms: FakeRoom[]) {
 
 type FakeClient = ReturnType<typeof fakeClient>;
 
+/** Background time granted with the given id; protected data available unless overridden. */
+function grant(
+  id: number,
+  state: Partial<BackgroundWork> = {},
+): BackgroundWork {
+  return { id, protectedDataAvailable: true, locking: false, ...state };
+}
+
 function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
   const clients = new Map(
     (
@@ -98,14 +110,17 @@ function setup(opts: { available?: boolean; clients?: FakeClient[] } = {}) {
     removeAccount: vi.fn((): Observable<void> => of(void 0)),
     clear: vi.fn((): Observable<void> => of(void 0)),
     clearRoom: vi.fn((): Observable<void> => of(void 0)),
-    beginBackgroundWork: vi.fn((): Observable<number> => of(7)),
+    beginBackgroundWork: vi.fn((): Observable<BackgroundWork> => of(grant(7))),
     endBackgroundWork: vi.fn((_id: number): Observable<void> => of(void 0)),
   };
   const sound = { isOn: vi.fn(() => true) };
   const expiry = vi.fn(
     (_userId: string, _accessToken: string): number | undefined => undefined,
   );
-  const refresh = vi.fn((_userId: string): Observable<boolean> => of(true));
+  const refresh = vi.fn(
+    (_userId: string, _options?: { timeoutMs?: number }): Observable<boolean> =>
+      of(true),
+  );
   const refreshable = vi.fn((_userId: string): boolean => true);
   TestBed.configureTestingModule({
     providers: [
@@ -146,6 +161,10 @@ async function start(h: ReturnType<typeof setup>): Promise<Subscription> {
 }
 
 const me = (h: ReturnType<typeof setup>) => h.clients.get('@me:hs')!;
+
+/** The accounts refreshed so far, in order. */
+const refreshed = (h: ReturnType<typeof setup>) =>
+  h.refresh.mock.calls.map(([userId]) => userId);
 
 describe('PushHandoffService', () => {
   beforeEach(() => TestBed.resetTestingModule());
@@ -546,7 +565,7 @@ describe('PushHandoffService', () => {
 
       await firstValueFrom(h.service.refreshBeforeBackground());
 
-      expect(h.refresh.mock.calls).toEqual([['@me:hs']]);
+      expect(refreshed(h)).toEqual(['@me:hs']);
     });
 
     it('skips an account whose token rotated within the last minute', async () => {
@@ -564,7 +583,7 @@ describe('PushHandoffService', () => {
 
       vi.setSystemTime(1_000_000 + BACKGROUND_REFRESH_MIN_AGE_MS);
       await firstValueFrom(h.service.refreshBeforeBackground());
-      expect(h.refresh.mock.calls).toEqual([['@me:hs']]);
+      expect(refreshed(h)).toEqual(['@me:hs']);
     });
 
     it("does not let one account's rotation suppress another's refresh", async () => {
@@ -578,7 +597,7 @@ describe('PushHandoffService', () => {
 
       await firstValueFrom(h.service.refreshBeforeBackground());
 
-      expect(h.refresh.mock.calls).toEqual([['@pw:hs']]);
+      expect(refreshed(h)).toEqual(['@pw:hs']);
     });
 
     it('forgets a recent rotation when the account leaves and is added again', async () => {
@@ -595,7 +614,7 @@ describe('PushHandoffService', () => {
 
       await firstValueFrom(h.service.refreshBeforeBackground());
 
-      expect(h.refresh.mock.calls).toEqual([['@me:hs']]);
+      expect(refreshed(h)).toEqual(['@me:hs']);
     });
 
     it('ignores a rotation that arrives after the account left', async () => {
@@ -611,7 +630,7 @@ describe('PushHandoffService', () => {
 
       await firstValueFrom(h.service.refreshBeforeBackground());
 
-      expect(h.refresh.mock.calls).toEqual([['@me:hs']]);
+      expect(refreshed(h)).toEqual(['@me:hs']);
     });
 
     it('refreshes nothing off a native host', async () => {
@@ -688,7 +707,7 @@ describe('PushHandoffService', () => {
       const next = watch(h.service.refreshBeforeBackground());
       await vi.advanceTimersByTimeAsync(0);
       expect(next.outcome).toEqual({ done: true, error: undefined });
-      expect(h.refresh.mock.calls).toEqual([['@me:hs'], ['@me:hs']]);
+      expect(refreshed(h)).toEqual(['@me:hs', '@me:hs']);
     });
 
     it('finishes the other accounts in a run where one refresh hangs', async () => {
@@ -716,7 +735,7 @@ describe('PushHandoffService', () => {
 
       await vi.advanceTimersByTimeAsync(BACKGROUND_REFRESH_TIMEOUT_MS);
       expect(outcome).toEqual({ done: true, error: undefined });
-      expect(h.refresh.mock.calls).toEqual([['@me:hs'], ['@pw:hs']]);
+      expect(refreshed(h)).toEqual(['@me:hs', '@pw:hs']);
     });
 
     it('holds background time from before the refresh until its store write has landed, and completes after the release', async () => {
@@ -727,7 +746,7 @@ describe('PushHandoffService', () => {
       h.bridge.beginBackgroundWork.mockImplementation(() =>
         defer(() => {
           order.push('begin');
-          return of(7);
+          return of(grant(7));
         }),
       );
       const write = new Subject<void>();
@@ -773,7 +792,7 @@ describe('PushHandoffService', () => {
       h.expiry.mockReturnValue(Date.now() + 300_000);
       await start(h);
       useFakeTimers();
-      const granted = new Subject<number>();
+      const granted = new Subject<BackgroundWork>();
       h.bridge.beginBackgroundWork.mockReturnValue(granted);
 
       const { outcome } = watch(h.service.refreshBeforeBackground());
@@ -783,7 +802,7 @@ describe('PushHandoffService', () => {
       expect(outcome).toEqual({ done: true, error: undefined });
       expect(h.refresh).not.toHaveBeenCalled();
 
-      granted.next(9);
+      granted.next(grant(9));
       granted.complete();
       await vi.advanceTimersByTimeAsync(0);
 
@@ -864,12 +883,12 @@ describe('PushHandoffService', () => {
       const h = setup();
       h.expiry.mockReturnValue(Date.now() + 300_000);
       await start(h);
-      const granted = new Subject<number>();
+      const granted = new Subject<BackgroundWork>();
       h.bridge.beginBackgroundWork.mockReturnValue(granted);
 
       const { subscription } = watch(h.service.refreshBeforeBackground());
       subscription.unsubscribe();
-      granted.next(9);
+      granted.next(grant(9));
       granted.complete();
       await flush();
 
@@ -889,8 +908,91 @@ describe('PushHandoffService', () => {
         firstValueFrom(h.service.refreshBeforeBackground()),
       ).resolves.toBeUndefined();
 
-      expect(h.refresh.mock.calls).toEqual([['@me:hs']]);
+      expect(refreshed(h)).toEqual(['@me:hs']);
       expect(h.bridge.endBackgroundWork).not.toHaveBeenCalled();
+    });
+
+    it('bounds the token grant of every refresh it starts', async () => {
+      const h = setup({
+        clients: [fakeClient('@me:hs', []), fakeClient('@pw:hs', [])],
+      });
+      h.expiry.mockReturnValue(Date.now() + 300_000);
+      await start(h);
+
+      await firstValueFrom(h.service.refreshBeforeBackground());
+
+      expect(h.refresh.mock.calls).toEqual([
+        ['@me:hs', { timeoutMs: BACKGROUND_REFRESH_GRANT_TIMEOUT_MS }],
+        ['@pw:hs', { timeoutMs: BACKGROUND_REFRESH_GRANT_TIMEOUT_MS }],
+      ]);
+      // Inside the roughly 10 s iOS keeps the session's keychain items writable after a lock.
+      expect(BACKGROUND_REFRESH_GRANT_TIMEOUT_MS).toBeLessThan(10_000);
+    });
+
+    it('refreshes nothing when protected data is unavailable, and still releases background time', async () => {
+      const h = setup();
+      h.expiry.mockReturnValue(Date.now() + 300_000);
+      await start(h);
+      h.bridge.beginBackgroundWork.mockReturnValue(
+        of(grant(7, { protectedDataAvailable: false })),
+      );
+
+      await expect(
+        firstValueFrom(h.service.refreshBeforeBackground()),
+      ).resolves.toBeUndefined();
+
+      expect(h.refresh).not.toHaveBeenCalled();
+      expect(h.bridge.endBackgroundWork.mock.calls).toEqual([[7]]);
+    });
+
+    it('refreshes nothing while the device is locking, and still releases background time', async () => {
+      const h = setup();
+      h.expiry.mockReturnValue(Date.now() + 300_000);
+      await start(h);
+      h.bridge.beginBackgroundWork.mockReturnValue(
+        of(grant(7, { locking: true })),
+      );
+
+      await expect(
+        firstValueFrom(h.service.refreshBeforeBackground()),
+      ).resolves.toBeUndefined();
+
+      expect(h.refresh).not.toHaveBeenCalled();
+      expect(h.bridge.endBackgroundWork.mock.calls).toEqual([[7]]);
+
+      // The next background event, with the device unlocked, refreshes again.
+      h.bridge.beginBackgroundWork.mockReturnValue(of(grant(8)));
+      await firstValueFrom(h.service.refreshBeforeBackground());
+      expect(refreshed(h)).toEqual(['@me:hs']);
+      expect(h.bridge.endBackgroundWork.mock.calls).toEqual([[7], [8]]);
+    });
+
+    it('starts every due refresh as soon as background time is granted, so a lock that follows finds none left to start', async () => {
+      const h = setup({
+        clients: [fakeClient('@me:hs', []), fakeClient('@pw:hs', [])],
+      });
+      h.expiry.mockReturnValue(Date.now() + 300_000);
+      await start(h);
+      useFakeTimers();
+      const granted = new Subject<BackgroundWork>();
+      h.bridge.beginBackgroundWork.mockReturnValue(granted);
+      h.refresh.mockReturnValue(NEVER);
+
+      const { outcome } = watch(h.service.refreshBeforeBackground());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.refresh).not.toHaveBeenCalled();
+
+      granted.next(grant(7));
+      granted.complete();
+      // Microtasks only: no timer, bridge event or other task runs in between.
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      expect(refreshed(h)).toEqual(['@me:hs', '@pw:hs']);
+
+      // A lock now can stop nothing further; the run ends with its bounds and releases.
+      await vi.advanceTimersByTimeAsync(BACKGROUND_REFRESH_TIMEOUT_MS);
+      expect(outcome).toEqual({ done: true, error: undefined });
+      expect(refreshed(h)).toEqual(['@me:hs', '@pw:hs']);
+      expect(h.bridge.endBackgroundWork.mock.calls).toEqual([[7]]);
     });
 
     it('asks for no background time when no account is due', async () => {
@@ -929,7 +1031,7 @@ describe('PushHandoffService', () => {
 
       await firstValueFrom(h.service.refreshBeforeBackground());
 
-      expect(h.refresh.mock.calls).toEqual([['@pw:hs']]);
+      expect(refreshed(h)).toEqual(['@pw:hs']);
       expect(h.bridge.beginBackgroundWork).toHaveBeenCalledOnce();
     });
 

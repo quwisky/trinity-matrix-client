@@ -3,6 +3,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Observable, defer, from, map, of } from 'rxjs';
 import {
   PUSH_HANDOFF_PLUGIN_NAME,
+  type BackgroundWork,
   type PushHandoffAccount,
   type PushHandoffPlugin,
   type PushHandoffRoom,
@@ -72,15 +73,26 @@ export class PushHandoffBridge {
 
   /**
    * Cold. Asks the OS to keep the app running in the background until
-   * {@link endBackgroundWork}, and emits the id to end it with. iOS holds background time;
-   * Android and hosts without the plugin hold nothing and emit 0. Errors when the native side
-   * failed to answer.
+   * {@link endBackgroundWork}, and emits the id to end it with and whether protected data is
+   * available and the device locking. iOS holds background time; Android and hosts without
+   * the plugin hold nothing and emit id 0, available and not locking. Errors when the native
+   * side failed to answer.
    */
-  beginBackgroundWork(): Observable<number> {
+  beginBackgroundWork(): Observable<BackgroundWork> {
     return defer(() =>
       this.available
-        ? from(pushHandoff.beginBackgroundWork()).pipe(map(({ id }) => id))
-        : of(0),
+        ? from(pushHandoff.beginBackgroundWork()).pipe(
+            map(({ id, protectedDataAvailable, locking }): BackgroundWork => ({
+              id,
+              protectedDataAvailable: protectedDataAvailable !== false,
+              locking: locking === true,
+            })),
+          )
+        : of<BackgroundWork>({
+            id: 0,
+            protectedDataAvailable: true,
+            locking: false,
+          }),
     );
   }
 
