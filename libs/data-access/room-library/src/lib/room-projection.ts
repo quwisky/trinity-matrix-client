@@ -84,6 +84,9 @@ function lastMessageOf(room: Room): string {
  * counts, whether or not it would count as unread. Unlike Element, the main-timeline part is
  * left as the SDK reports it, so reactions and profile changes still move a room.
  * `getThreads` is called optionally, like `getLiveTimeline` above, for Room stubs without it.
+ *
+ * Only threads the client has loaded count: one whose replies fell outside the initial sync
+ * window moves the room once it is fetched (the threads panel) or gets a new reply.
  */
 export function roomActivityTs(room: Room): number {
   let latest = room.getLastActiveTimestamp();
