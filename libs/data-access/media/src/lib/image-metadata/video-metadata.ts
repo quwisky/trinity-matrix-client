@@ -55,6 +55,12 @@ const MAX_TOP_LEVEL_BOXES = 1024;
  */
 const MAX_SIBLING_BOXES = 1024;
 
+/**
+ * Upper bound on one `keys` entry's name. Real keys are reverse-DNS names well under 100
+ * bytes (`com.apple.quicktime.location.accuracy.horizontal` is 48).
+ */
+const MAX_KEY_BYTES = 1024;
+
 /** Brands of movies (MP4, QuickTime, 3GPP and their relatives) in `ftyp`. */
 const MOVIE_BRANDS = new Set([
   'isom',
@@ -337,7 +343,12 @@ function keyNames(walk: Walk, keys: Box): string[] {
   for (let i = 0; i < count; i++) {
     const entry = boxAt(bytes, at, keys.end, false);
     walk.step();
-    names.push(String.fromCharCode(...bytes.subarray(entry.body, entry.end)));
+    if (entry.end - entry.body > MAX_KEY_BYTES) throw new Malformed();
+    let name = '';
+    for (let c = entry.body; c < entry.end; c++) {
+      name += String.fromCharCode(bytes[c] ?? 0);
+    }
+    names.push(name);
     at = entry.end;
   }
   return names;

@@ -438,6 +438,17 @@ describe('stripVideoMetadata', () => {
           }),
       ],
       [
+        'a key name over 1 KiB',
+        () =>
+          identifyingMovie({
+            moovMetadata: [
+              keyedMeta([
+                [`com.apple.quicktime.location.${'x'.repeat(2048)}`, ISO6709],
+              ]),
+            ],
+          }),
+      ],
+      [
         'a meta box without a handler',
         () =>
           identifyingMovie({

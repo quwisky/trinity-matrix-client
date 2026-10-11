@@ -45,6 +45,8 @@ Video stripping has known limits. These are uploaded as they are:
 - location written into the samples by timed metadata tracks, such as iPhone `mebx` tracks, GoPro GPMF or DJI telemetry;
 - boxes outside `moov`, such as a top-level XMP `uuid` box, and vendor data after `mdat`, such as Samsung's trailer;
 - iTunes freeform `----` items in `ilst`;
+- vendor `udta` atoms that are not removed: Canon's `CMT1`–`CMT4` (Exif blocks that can hold GPS), and GoPro's `GPMF` (telemetry) and `CAME` (camera serial number);
+- compressed movies whose metadata is inside a `cmov` box, which are left unchanged as a whole;
 - fragmented MP4 (`moof`, or `mvex` in `moov`), which is left unchanged as a whole.
 
 Apple `keys` items that are stripped stay listed, with zeroed values.

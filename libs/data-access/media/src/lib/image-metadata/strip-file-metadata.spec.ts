@@ -45,12 +45,21 @@ async function blobReads<T>(
   }
 }
 
-/** A movie with 1 MiB of samples, so a read of them stands out. */
+/** A movie with 64 KiB of samples, far more than its moov, so a read of them stands out. */
 function largeMovie(): Uint8Array<ArrayBuffer> {
   return identifyingMovie({
     layout: 'moov-last',
-    samples: new Uint8Array(1024 * 1024).fill(0x5a),
+    samples: new Uint8Array(64 * 1024).fill(0x5a),
   });
+}
+
+/** Whether `a` and `b` hold the same bytes; a plain loop, cheap on large arrays. */
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }
 
 afterEach(() => {
@@ -141,9 +150,12 @@ describe('withoutMediaMetadata', () => {
     const bytes = new Uint8Array(await result.arrayBuffer());
     expectNoVideoLocation(bytes);
     const mdat = topLevelBox(input, 'mdat');
-    expect(bytes.subarray(mdat.start, mdat.end)).toEqual(
-      input.subarray(mdat.start, mdat.end),
-    );
+    expect(
+      sameBytes(
+        bytes.subarray(mdat.start, mdat.end),
+        input.subarray(mdat.start, mdat.end),
+      ),
+    ).toBe(true);
   });
 
   it('reads only box headers and moov, leaving the samples as a slice of the file', async () => {
@@ -235,9 +247,12 @@ describe('bytesWithoutMediaMetadata', () => {
     expect(bytes.length).toBe(input.length);
     expectNoVideoLocation(bytes);
     const mdat = topLevelBox(input, 'mdat');
-    expect(bytes.subarray(mdat.start, mdat.end)).toEqual(
-      input.subarray(mdat.start, mdat.end),
-    );
+    expect(
+      sameBytes(
+        bytes.subarray(mdat.start, mdat.end),
+        input.subarray(mdat.start, mdat.end),
+      ),
+    ).toBe(true);
   });
 
   it('returns the original bytes of a malformed video', async () => {
