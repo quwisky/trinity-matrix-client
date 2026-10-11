@@ -24,9 +24,25 @@ The recommendation is a **room-key handoff**. The app copies Megolm room keys, a
 receives them, into a native decrypt-only store. The notification code decrypts with that
 store and never processes to-device messages, so one Matrix device keeps exactly one Olm
 engine. This decrypts pushes for every message whose room key the app has already
-received. A push whose key arrived while the app was not running keeps today's
-"Encrypted message" text. The native engine stays the fallback if the measured gap is too
-large (owner decisions 1 and 2).
+received. A push whose key arrived while the app was not syncing keeps today's
+"Encrypted message" text. On iOS that means any time the app was not in the foreground,
+because a backgrounded WebView is suspended and does not sync.
+
+**This departs from approach B**, the model Element X uses, which the owner chose on #1153.
+Approach B shares one full crypto engine between the app and the notification code. Under
+it, the notification code can fetch a key it is missing. Trinity cannot follow it safely
+today:
+
+- crypto-ffi has no cross-process lock;
+- the WebView would need a large, synchronous-call shim;
+- web and mobile would run different crypto releases.
+
+The cost of departing is completeness. #1154's own on-device check cannot pass under the room-key handoff.
+That check sends, with the app closed, "a new encrypted DM with a fresh room key, then a
+follow-up message", and requires "Both show their text". The fresh key arrives by
+to-device while the app is not syncing. Only the follow-up message in an
+existing session would show text. The native engine stays the fallback if the measured gap
+is too large (owner decisions 1 and 2).
 
 ## Context and problem
 
@@ -70,7 +86,7 @@ large (owner decisions 1 and 2).
 | Process                | Separate process from the app; both can run at once                                                                                                                                                                                                                                                   | The app process; the WebView may or may not be alive                                                                                                                                        |
 | Time                   | About 30 s before `serviceExtensionTimeWillExpire` ([Apple](https://developer.apple.com/documentation/usernotifications/unnotificationserviceextension))                                                                                                                                              | `onMessageReceived` has a short window; Firebase's sample says to finish within 10 s ([Firebase](https://firebase.google.com/docs/cloud-messaging/android/receive-messages))                |
 | Trinity's budget today | 5 s for all reads                                                                                                                                                                                                                                                                                     | 5 s, with a watchdog                                                                                                                                                                        |
-| Memory                 | 24 MB, from Apple DTS forum replies, not documented ([forum](https://developer.apple.com/forums/thread/64634), [forum](https://developer.apple.com/forums/thread/722879))                                                                                                                             | Normal app process                                                                                                                                                                          |
+| Memory                 | About 24–25 MB, from developer reports; Apple does not document it ([forum](https://developer.apple.com/forums/thread/64634), [forum](https://developer.apple.com/forums/thread/722879))                                                                                                              | Normal app process                                                                                                                                                                          |
 | Delivery policy        | `mutable-content` alert; the NSE must call the content handler                                                                                                                                                                                                                                        | A data-only high-priority message that does not lead to a visible notification can be deprioritized ([Firebase](https://firebase.google.com/docs/cloud-messaging/android-message-priority)) |
 | Shared storage         | App group container and shared keychain group. A SQLite lock held by a suspended app in the app group gets the app killed with `0xdead10cc` ([forum](https://developer.apple.com/forums/thread/655225), [summary](https://mjtsai.com/blog/2025/05/15/sqlite-databases-in-app-group-containers-dont/)) | App-private files and the Android Keystore                                                                                                                                                  |
 | Locked device          | The store and its key must be readable after first unlock: `NSFileProtectionCompleteUntilFirstUserAuthentication` and `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`                                                                                                                              | Keystore keys without `setUnlockedDeviceRequired`                                                                                                                                           |
@@ -193,7 +209,8 @@ store or a copy, fails for the same reasons:
 - **One-time keys.** Each engine generates, uploads and forgets one-time keys on its own.
   A peer claims a key that the other engine owns or has dropped, and its Olm pre-key
   message can't be decrypted. matrix-rust-sdk [#1415](https://github.com/matrix-org/matrix-rust-sdk/issues/1415)
-  ("Lost OTK ... later UTDs") records exactly this from unsafe concurrent store access.
+  ("Lost OTK ... later UTDs") records this failure. It names unsafe concurrent store
+  access as one cause among others.
 - **Olm ratchets fork.** When either engine sends an Olm message (a key share, a
   verification step, a secret) it advances its copy of the session. The peer receives
   messages from two forks of one session, and later room keys sent over it fail.
@@ -274,9 +291,11 @@ decrypt-only store, and the renderers decrypt with it.
   chunks.
 - **Native store.** A crypto-ffi `OlmMachine` opened under a local-only pseudo device ID,
   so nothing it could ever upload can collide with the real device, takes the keys
-  through `import_decrypted_room_keys` and decrypts through `decrypt_room_event`. It never
-  calls `outgoing_requests` or `receive_sync_changes`, so it has no Olm sessions and
-  never syncs. No official Swift or Kotlin vodozemac bindings exist
+  through `import_decrypted_room_keys` and decrypts through `decrypt_room_event`.
+  `OlmMachineBuilder::build()` still creates and stores an Olm account for the pseudo
+  device. That account is inert and is not the real device's Olm account. The machine
+  never calls `outgoing_requests` or `receive_sync_changes`, so the account is never
+  uploaded, has no Olm sessions and never syncs. No official Swift or Kotlin vodozemac bindings exist
   ([vodozemac-bindings](https://github.com/matrix-org/vodozemac-bindings) covers C++, JavaScript and
   Python), and hand-written Megolm code is not proposed.
 - **iOS write path.** To keep SQLite out of two processes, the app appends exported keys
@@ -284,18 +303,76 @@ decrypt-only store, and the renderers decrypt with it.
   `beginBackgroundTask`. Only the NSE opens the SQLite store, importing the inbox before
   it decrypts. The app deletes both on sign-out. On Android the plugin imports directly
   into a store owned by one process.
-- **Rendering.** Decryption is local CPU work with no extra network request, so it fits
-  the existing 5 s budget. The shared text-rule fixture gains decrypted cases. A missing
+- **Rendering.** Decryption is local CPU work with no extra network request. It must
+  pass a decryption setting whose sender-trust requirement is untrusted, because imported
+  sessions carry no sender data. Trinity sets no device isolation mode, so matrix-js-sdk's
+  default (`AllDevicesIsolationMode`, which decrypts with `TrustRequirement.Untrusted`)
+  applies and the app behaves the same way.
+- **Known cost: PBKDF2 at every store open.** crypto-ffi cannot open its store with a raw
+  key. `OlmMachine::new(user_id, device_id, path, passphrase: Option<String>)` calls
+  `SqliteCryptoStore::open(path, passphrase)` (`machine.rs`, lines 199–210), which derives
+  the store cipher's key with PBKDF2 at 200,000 rounds (`KDF_ROUNDS` in
+  `matrix-sdk-store-encryption`). Every cold NSE launch pays that before it can decrypt.
+  Avoiding it needs a key-based open added to crypto-ffi upstream, as the full SDK's
+  `highEntropyPassphrase` provides for Element X.
+- **Budget.** Apart from that cost, decryption should fit the existing 5 s budget. The shared text-rule fixture gains decrypted cases. A missing
   key, or any failure, keeps "Encrypted message".
 - **The gap.** A push for a Megolm session that reached the device while the app was not
-  running can't be decrypted: the key is still in the to-device inbox, which only the app
-  consumes. This happens for a new conversation, a rotated session, or a sender's new
-  device, and lasts until the app next syncs.
+  syncing can't be decrypted: the key is still in the to-device inbox, which only the app
+  consumes. On iOS the app syncs only in the foreground, because a backgrounded WebView is
+  suspended. On Android a hidden but live WebView may keep syncing until the system stops
+  it. This happens for a new conversation, a rotated session, or a sender's new device,
+  and lasts until the app next syncs in the foreground.
 - **Optional key-backup fallback (3+).** The NSE fetches the missing session from
   server-side key backup (`GET /room_keys/keys/{roomId}/{sessionId}`). This needs the
   backup decryption key in the native store, which also decrypts the account's whole
   backed-up history. It only helps when another of the user's devices received and backed
   up that key; a user with one device gains nothing.
+
+**Where the keys live.** A random passphrase opens each account's SQLite store.
+
+- **iOS.** The passphrase and the AES-GCM key of the inbox file are keychain items in the
+  shared access group `$(AppIdentifierPrefix)dev.trinityproject.trinity.shared` with
+  `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`. The store and the inbox are in the
+  app group with `NSFileProtectionCompleteUntilFirstUserAuthentication`.
+- **Android.** A non-exportable Android Keystore AES-GCM key, as `PushHandoffStore` uses
+  today, wraps the passphrase, which is kept in app-private preferences. Android has no
+  inbox file: the plugin imports directly.
+
+**What a compromise exposes.** This adds a second copy of every handed-off Megolm session,
+readable by the extension while the phone is locked after first unlock. An attacker who
+can run code as the app or the extension, or extract the app group and keychain from a
+compromised or jailbroken phone, can decrypt every message in those sessions. Exported
+sessions start at their first known index, so that includes both history and later
+messages until the sender rotates. Such an attacker cannot:
+
+- impersonate the device or receive future room keys, because the Olm account stays in
+  the WASM store;
+- read cross-signing keys or the backup key.
+
+The NSE also parses server JSON, so a parsing bug there would now sit next to key
+material. The WASM store holds the same session keys, so the protection classes, not the
+key set, are what changes.
+
+**Deletion.** Each per-account store and inbox is keyed by the account's crypto prefix
+(user and device), like the WASM store. Every path that deletes a WASM store or its key
+([encryption and trust](../../apps/docs-developers/src/content/docs/architecture/encryption-and-trust.md#crypto-storage))
+deletes these too:
+
+- sign-out and hard logout, including a server-side logout the app detects (`M_UNKNOWN_TOKEN`
+  without `soft_logout`);
+- the orphan sweep, for stores no signed-in account owns;
+- installation reset and clear-all-data;
+- re-authentication after a lost store key, which reclaims the old device's store.
+
+A soft logout keeps them, as it keeps the WASM store.
+
+A remote sign-out while the app is closed leaves keys on disk. The notification code can
+notice it: an event fetch answered `401 M_UNKNOWN_TOKEN` without `soft_logout` means the
+device is gone. The renderer would then delete that account's room-key store, inbox and
+handoff entry before showing the fallback. If no push arrives, the keys stay on disk,
+encrypted at rest, until the app's next start: the app's hard-logout path then removes
+them, as it removes the WASM store.
 
 ### Option 4: a dedicated notification device
 
@@ -375,8 +452,8 @@ rewrite. Keep option 1 as a later, measured decision.
 
 Reasons:
 
-- It meets #1154's goal for most messages: ongoing conversations reuse sessions the app
-  already holds.
+- It is expected to meet #1154's goal for most messages, because ongoing conversations
+  reuse sessions the app already holds. This is an expectation until phase 3 measures it.
 - It never risks the Olm corruption and UTDs that the native engine guards against with
   a lock crypto-ffi does not have.
 - It leaves web, desktop and mobile on one crypto implementation, with nothing to keep in
@@ -404,10 +481,15 @@ Phased path:
 
 ## Owner decisions needed
 
-1. Replace #1153's native-engine plan with the room-key handoff (option 3), and treat
-   option 1 as a possible later step? (yes / no)
-2. Accept that a push whose room key arrived while the app was not running shows
-   "Encrypted message" until the app next syncs? (yes / no; "no" means option 1 or 4)
+1. Depart from approach B (the Element X model chosen on #1153) and replace its
+   native-engine plan with the room-key handoff (option 3), treating option 1 as a
+   possible later step? The reasons are the missing cross-process lock and APIs in
+   crypto-ffi, the synchronous-call shim, and the risk of Olm corruption. The cost is that
+   the first half of #1154's on-device check ("a new encrypted DM with a fresh room key",
+   with the app closed) can no longer show its text, and #1154 would be rewritten. (yes / no)
+2. Accept that a push whose room key arrived while the app was not syncing (on iOS, while
+   it was not in the foreground) shows "Encrypted message" until the app next syncs?
+   (yes / no; "no" means option 1 or 4)
 3. Revise the #1155 rule "the handoff store never holds crypto keys" to allow Megolm room
    keys, and only those, in a separate native store? (yes / no)
 4. Add the key-backup fallback (3+), which puts the backup decryption key in storage the
@@ -432,12 +514,21 @@ build of the app that exports keys. On a real iPhone (NSE) and a real Android ph
 
 - **Decrypt-only store.** Does a crypto-ffi `OlmMachine` under a pseudo device ID decrypt
   a real event from `import_decrypted_room_keys` data alone, without the sender's device
-  keys? What verification state does it report, and does creating it write anything that
-  needs suppressing?
+  keys? Decryption must pass `DecryptionSettings` with the untrusted sender-trust
+  requirement, because imported sessions carry no sender data. Does that succeed, and
+  what verification state does it report? Does creating the machine write anything beyond
+  the inert pseudo-device account?
 - **NSE cost.** Peak memory and cold-start time in the NSE with `MatrixSDKCryptoFFI`
-  loaded, including the store open. `SqliteCryptoStore::open` with a passphrase runs
-  PBKDF2 with 200,000 rounds in `matrix-sdk-store-encryption`. Can the FFI take a
-  high-entropy key instead, as Element X does through the full SDK?
+  loaded, including the store open. The open includes the known PBKDF2 cost (200,000
+  rounds). Measure how long that takes on a real iPhone, to judge whether an upstream
+  key-based open is needed before shipping.
+- **Inbox concurrency.** The NSE consumes the inbox while the app appends to it. What
+  coordinates them? Candidates: per-batch files renamed into place atomically and deleted
+  after import, or an `NSFileCoordinator`. Neither process may lose or import a batch
+  twice when the other is killed midway.
+- **First bulk import.** The first export can hold thousands of sessions. Can the NSE import
+  it within its memory and time budget, or does it have to import in chunks across
+  launches, with fallbacks until it finishes?
 - **Callback coverage.** Does `registerRoomKeyUpdatedCallback` fire for every source of a
   room key: to-device, forwarded keys, backup restore, file import and MSC4268 bundles?
 - **Export cost.** `exportRoomKeys(predicate)` visits every stored session. Measure the
@@ -457,6 +548,20 @@ Other open points:
   token? This only matters if notification code ever syncs (options 1 and 4).
 - Can the Angular application builder alias a bare import from inside `node_modules`?
   This only matters for option 1a.
+
+## Related findings
+
+Two observations from this spike, outside its scope:
+
+- [`PushHandoffStore.swift`](../../libs/native/capacitor-push/ios/TrinityPush/Sources/TrinityPush/PushHandoffStore.swift)
+  (line 62) stores the handoff accounts with `kSecAttrAccessibleAfterFirstUnlock`. That
+  goes against the this-device-only keychain policy in
+  [encryption and trust](../../apps/docs-developers/src/content/docs/architecture/encryption-and-trust.md#secret-storage),
+  so the access tokens it holds can move with an encrypted backup.
+- The [push reference](../maintenance/push-notifications.md#render-pushes-on-the-device)
+  (line 209) gives the path of the Swift package `TrinityPush` as `ios/TrinityPush`. That
+  path is ambiguous: it is relative to `libs/native/capacitor-push`, but it reads like the
+  repository's `ios/` host. The full path is `libs/native/capacitor-push/ios/TrinityPush`.
 
 ## Sources
 
