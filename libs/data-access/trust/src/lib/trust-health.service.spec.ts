@@ -18,6 +18,15 @@ describe('TrustHealthService', () => {
     isSecretStorageReady: vi.fn(async () => true),
     getActiveSessionBackupVersion: vi.fn(async () => null),
     getDeviceVerificationStatus: vi.fn(async () => null),
+    getCrossSigningStatus: vi.fn(async () => ({
+      publicKeysOnDevice: false,
+      privateKeysInSecretStorage: false,
+      privateKeysCachedLocally: {
+        masterKey: false,
+        selfSigningKey: false,
+        userSigningKey: false,
+      },
+    })),
   };
   const client = {
     getCrypto: () => crypto,

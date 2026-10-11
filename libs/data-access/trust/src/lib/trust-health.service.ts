@@ -9,10 +9,15 @@ import {
 } from '@trinity/data-access/matrix-client';
 import type { ProjectionReconcileContext } from '@trinity/runtime/projection';
 import { recoverTrustOperation } from './trust-operation-error';
+import { readTrustSnapshot } from './trust-snapshot';
 
-/** Where this device stands relative to the Account's encryption setup. */
+/**
+ * Where this device stands relative to the Account's encryption setup.
+ * `needs-verification`: the Account has an identity published elsewhere and no recovery;
+ * only verifying with a device that holds it (or an explicit reset) helps.
+ */
 export type TrustStatus =
-  'unknown' | 'ready' | 'needs-setup' | 'needs-recovery';
+  'unknown' | 'ready' | 'needs-setup' | 'needs-recovery' | 'needs-verification';
 
 /** One coherent read of the active Account's authoritative crypto state. */
 export interface TrustHealthSnapshot {
@@ -166,30 +171,7 @@ export class TrustHealthService {
     client: TrustMatrixClient | null,
     crypto: TrustCryptoApi | null,
   ): Promise<TrustHealthSnapshot | null> {
-    if (!client || !crypto) return null;
-    const [crossSigningReady, secretStorageReady, backupVersion, defaultKeyId] =
-      await Promise.all([
-        crypto.isCrossSigningReady(),
-        crypto.isSecretStorageReady(),
-        crypto.getActiveSessionBackupVersion(),
-        client.secretStorage.getDefaultKeyId(),
-      ]);
-    const deviceId = client.getDeviceId();
-    const userId = client.getUserId();
-    const deviceStatus =
-      userId && deviceId
-        ? await crypto.getDeviceVerificationStatus(userId, deviceId)
-        : null;
-    return {
-      keyBackupActive: backupVersion !== null,
-      thisDeviceVerified: deviceStatus?.crossSigningVerified ?? false,
-      status:
-        crossSigningReady && secretStorageReady
-          ? 'ready'
-          : defaultKeyId
-            ? 'needs-recovery'
-            : 'needs-setup',
-    };
+    return client && crypto ? readTrustSnapshot(client, crypto) : null;
   }
 
   private publishSnapshot(snapshot: TrustHealthSnapshot | null): void {

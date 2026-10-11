@@ -81,6 +81,11 @@ interface CryptoOpts {
    * rotated set it never published, which is the state the repair exists for.
    */
   privatesCachedLocally?: boolean;
+  /**
+   * Whether the homeserver holds a cross-signing identity for the account. False by
+   * default: most tests model a first device or one that already unlocked recovery.
+   */
+  identityOnServer?: boolean;
   providerManagement?: TrustProviderManagement | null;
   providerLookupFails?: boolean;
 }
@@ -137,11 +142,13 @@ function setup(opts: CryptoOpts = {}) {
     checkKeyBackupAndEnable: vi.fn().mockResolvedValue(null),
     exportRoomKeysAsJson: vi.fn().mockResolvedValue(opts.exportedKeys ?? '[]'),
     importRoomKeysAsJson: vi.fn().mockResolvedValue(undefined),
-    userHasCrossSigningKeys: vi.fn().mockResolvedValue(true),
+    userHasCrossSigningKeys: vi
+      .fn()
+      .mockResolvedValue(opts.identityOnServer ?? false),
     // Modelled on rust-crypto's own: 4S "contains" the keys only when all three are
     // there, and the locally cached set is what the olm machine happens to hold.
     getCrossSigningStatus: vi.fn().mockResolvedValue({
-      publicKeysOnDevice: true,
+      publicKeysOnDevice: opts.identityOnServer ?? false,
       privateKeysInSecretStorage: SEED_NAMES.every(
         (name) => opts.storedSecrets?.[name],
       ),
@@ -312,6 +319,14 @@ describe('TrustService', () => {
 
       expect(svc.status()).toBe('needs-setup');
       expect(svc.keyBackupActive()).toBe(false);
+      expect(svc.thisDeviceVerified()).toBe(false);
+    });
+
+    it('is "needs-verification" when another device set up an identity without recovery', async () => {
+      const { svc } = setup({ defaultKeyId: null, identityOnServer: true });
+      await firstValueFrom(svc.refresh());
+
+      expect(svc.status()).toBe('needs-verification');
       expect(svc.thisDeviceVerified()).toBe(false);
     });
 
