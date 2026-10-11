@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import {
   WorkspaceBackService,
   WorkspaceNavigationService,
+  type WorkspaceRoomSurface,
 } from '@trinity/application/workspace';
 import { BELOW_MD_QUERY, BELOW_MEMBERS_QUERY } from '@trinity/util/ui';
 import { firstValueFrom, of } from 'rxjs';
@@ -12,15 +13,6 @@ import {
   type RenderedRoomSurface,
   type RoomSurfaceTransition,
 } from './room-surface-lifecycle';
-
-const BOB = {
-  userId: '@bob:example.org',
-  roomDisplayName: 'Bob',
-  roomInitial: 'B',
-  roomAvatarMxc: null,
-  powerLevel: 0,
-  isCreator: false,
-} as const;
 
 function stubMedia(initial: Record<string, boolean> = {}) {
   const matches = new Map(Object.entries(initial));
@@ -261,24 +253,52 @@ describe('RoomSurfaceLifecycle', () => {
     expect(lifecycle.membersVisible()).toBe(true);
   });
 
-  it('returns member detail to its actual roster, temporary, or empty origin', () => {
+  it('returns every temporary surface to the remembered roster or an empty slot', () => {
     stubMedia();
     const { lifecycle } = build();
+    const temporary: readonly RoomSurfaceTransition[] = [
+      { kind: 'open-threads' },
+      { kind: 'open-thread', rootEventId: '$root' },
+      { kind: 'open-pinned' },
+      { kind: 'open-search' },
+    ];
 
     lifecycle.transition({ kind: 'open-members' });
-    lifecycle.transition({ kind: 'open-member', member: BOB, direct: false });
-    lifecycle.transition({ kind: 'dismiss' });
-    expect(lifecycle.renderedSurface()).toEqual({ kind: 'members' });
+    for (const intent of temporary) {
+      lifecycle.transition(intent);
+      expect(lifecycle.membersVisible()).toBe(false);
+      lifecycle.transition({ kind: 'dismiss' });
+      expect(lifecycle.renderedSurface()).toEqual({ kind: 'members' });
+    }
 
     lifecycle.transition({ kind: 'clear' });
-    lifecycle.transition({ kind: 'open-member', member: BOB, direct: false });
-    lifecycle.transition({ kind: 'dismiss' });
-    expect(lifecycle.renderedSurface()).toBeNull();
+    for (const intent of temporary) {
+      lifecycle.transition(intent);
+      lifecycle.transition({ kind: 'dismiss' });
+      expect(lifecycle.renderedSurface()).toBeNull();
+    }
+  });
 
-    lifecycle.transition({ kind: 'open-search' });
-    lifecycle.transition({ kind: 'open-member', member: BOB, direct: false });
-    lifecycle.transition({ kind: 'dismiss' });
-    expect(lifecycle.renderedSurface()).toEqual({ kind: 'search' });
+  it('has no member info surface: member info is a modal surface over the roster', () => {
+    // #1041 moved member info out of the slot into `TrnSurfaceService`, so neither the
+    // lifecycle nor Workspace Back can name it any more.
+    expectTypeOf<
+      Extract<RoomSurfaceTransition, { kind: 'open-member' }>
+    >().toBeNever();
+    expectTypeOf<
+      Extract<RenderedRoomSurface, { kind: 'member' }>
+    >().toBeNever();
+    expectTypeOf<
+      Extract<WorkspaceRoomSurface, { kind: 'member' }>
+    >().toBeNever();
+
+    stubMedia();
+    const { back, lifecycle } = build();
+    lifecycle.transition({ kind: 'open-members' });
+    expect(back.activeSurface()).toEqual({
+      layer: 'room',
+      surface: { kind: 'members' },
+    });
   });
 
   it('clears the whole slot and records remembered members closed', () => {

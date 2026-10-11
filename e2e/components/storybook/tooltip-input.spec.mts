@@ -48,6 +48,22 @@ test('mouse tooltip remains hoverable and closes after the pointer leaves', asyn
 test.describe('tooltip on a touch-capable desktop', () => {
   test.use({ hasTouch: true });
 
+  test('does not open when focus is restored after a tap', async ({ page }) => {
+    await page.goto(
+      '/iframe.html?id=components-tooltip--touch-action&viewMode=story',
+    );
+    await page.clock.install();
+    await page.getByTestId('tooltip-touch-target').tap();
+    // What a closing sheet does: hand focus back to the control that opened it.
+    await page
+      .getByTestId('tooltip-touch-source')
+      .evaluate((el) => (el as HTMLElement).focus());
+    await page.clock.runFor(1_000);
+
+    await expect(page.getByTestId('tooltip-touch-source')).toBeFocused();
+    await expect(page.getByRole('tooltip')).toBeHidden();
+  });
+
   test('switches from touch activation to mouse hover', async ({ page }) => {
     await page.goto(
       '/iframe.html?id=components-tooltip--touch-action&viewMode=story',

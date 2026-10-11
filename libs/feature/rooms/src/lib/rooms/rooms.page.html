@@ -328,19 +328,6 @@
                     (dismissed)="closeRightPanel()"
                   />
                 }
-                @case ('member') {
-                  <trn-member-info
-                    class="chat-panel"
-                    data-right-panel-surface
-                    role="complementary"
-                    aria-label="Member info"
-                    [member]="panel.member"
-                    [roomId]="room.id"
-                    [direct]="panel.direct"
-                    (messageUser)="memberActions.onMemberMessage($event)"
-                    (dismissed)="memberActions.onMemberPanelDismissed()"
-                  />
-                }
               }
             }
           }
