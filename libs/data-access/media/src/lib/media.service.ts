@@ -25,8 +25,9 @@ import { fetchMediaBytes } from '@trinity/util/matrix';
 import type { EncryptedFileInfo, MediaPayload } from '@trinity/util/matrix';
 import type { ImageMetadataPolicy, MediaHints } from './media-pipeline.models';
 import {
-  bytesWithoutImageMetadata,
+  bytesWithoutMediaMetadata,
   withoutImageMetadata,
+  withoutMediaMetadata,
 } from './image-metadata/strip-file-metadata';
 
 /** Which rendition of an attachment to resolve. */
@@ -244,14 +245,16 @@ export class MediaService {
    * Upload a picked file to the media repo, encrypting it first for E2EE rooms,
    * and return the descriptor {@link TimelineService} turns into an event. A JPEG,
    * PNG, WebP or HEIF image first loses its identifying metadata (location, camera,
-   * capture time; orientation is kept), on the plaintext before any encryption;
-   * anything else, or an image whose structure is in doubt, goes up as picked. In an
+   * capture time; orientation is kept), and an MP4/MOV/3GP movie its location and
+   * device, on the plaintext before any encryption; anything else, or a file whose
+   * structure is in doubt, goes up as picked. In an
    * encrypted room the ciphertext is uploaded with no filename/MIME (those leak),
    * and `info.url` is filled with the resulting `mxc://`; otherwise the file itself
    * is uploaded. `progress` reports an upload fraction in [0, 1].
    * `hints` (from a camera capture) win over the probe, which then fills only
    * what they leave out. `imageMetadata: 'keep'` (the person's opt-in for message
-   * attachments) skips stripping entirely, so the file goes up byte for byte.
+   * attachments) skips stripping entirely, so a photo or video goes up byte for byte;
+   * a host-supplied thumbnail is still stripped, being a derived preview.
    */
   uploadMedia(
     file: File,
@@ -334,14 +337,15 @@ export class MediaService {
       : undefined;
 
     // Photos leave without their location, camera and capture time (#1140); orientation is
-    // kept. Stripping happens on the plaintext, before encryption, and anything it cannot
-    // handle with certainty is uploaded exactly as picked. Someone who chose to keep photo
-    // metadata (#1178) gets the file untouched, never a partial strip.
+    // kept. Videos leave without their location and device (#1179), blanked in place.
+    // Stripping happens on the plaintext, before encryption, and anything it cannot handle
+    // with certainty is uploaded exactly as picked. Someone who chose to keep photo and
+    // video metadata (#1178) gets the file untouched, never a partial strip.
     const keep = imageMetadata === 'keep';
     if (encrypt) {
       const plaintext = keep
         ? await file.arrayBuffer()
-        : await bytesWithoutImageMetadata(file);
+        : await bytesWithoutMediaMetadata(file);
       abortController?.signal.throwIfAborted();
       const { data, info } = await encryptAttachment(plaintext);
       abortController?.signal.throwIfAborted();
@@ -362,7 +366,7 @@ export class MediaService {
       };
     }
 
-    const upload = keep ? file : await withoutImageMetadata(file);
+    const upload = keep ? file : await withoutMediaMetadata(file);
     abortController?.signal.throwIfAborted();
     const res = await client.uploadContent(upload, {
       name: file.name,
@@ -395,7 +399,14 @@ export class MediaService {
     if (!thumbnail) {
       return null;
     }
-    const { blob, w, h } = thumbnail;
+    const { w, h } = thumbnail;
+    // A host-rendered thumbnail (a native camera capture) is an image file of its own, so it
+    // loses its metadata like any photo before it goes up, encrypted or not, even when the
+    // person keeps the video's own metadata: it is a derived preview, not their file. One
+    // rendered here on a canvas has none and comes back as it was.
+    const blob = await withoutImageMetadata(
+      new File([thumbnail.blob], 'thumbnail', { type: thumbnail.blob.type }),
+    );
     const thumbnail_info = { mimetype: blob.type, w, h, size: blob.size };
     try {
       if (encrypt) {

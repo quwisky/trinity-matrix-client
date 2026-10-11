@@ -82,7 +82,7 @@ describe('privacy preference descriptors', () => {
         export: 'portable',
         editor: expect.objectContaining({
           kind: 'toggle',
-          label: 'Keep photo metadata',
+          label: 'Keep photo and video metadata',
           testId: 'privacy-keep-photo-metadata',
         }),
       }),
@@ -103,12 +103,13 @@ describe('privacy preference descriptors', () => {
     ]);
   });
 
-  it('explains what keeping photo metadata shares and that profile and room photos never keep it', () => {
+  it('explains what keeping photo and video metadata shares and that profile and room photos never keep it', () => {
     const editor = KEEP_PHOTO_METADATA_PREFERENCE.editor;
     if (editor.kind !== 'toggle') throw new Error('expected a toggle');
 
     // Flagged like the other opt-in that weakens privacy, encrypted link previews.
     expect(editor.description).toMatch(/^⚠ Off by default\./);
+    expect(editor.description).toMatch(/photos and videos/);
     expect(editor.description).toMatch(/where/);
     expect(editor.description).toMatch(/device/);
     expect(editor.description).toMatch(/HDR/);
@@ -121,7 +122,7 @@ describe('privacy preference descriptors', () => {
     ['link previews', LINK_PREVIEWS_PREFERENCE],
     ['encrypted link previews', ENCRYPTED_LINK_PREVIEWS_PREFERENCE],
     ['save captures to gallery', SAVE_CAPTURES_TO_GALLERY_PREFERENCE],
-    ['keep photo metadata', KEEP_PHOTO_METADATA_PREFERENCE],
+    ['keep photo and video metadata', KEEP_PHOTO_METADATA_PREFERENCE],
   ] as const)('migrates real %s legacy and current values', (_, descriptor) => {
     const migration = descriptor.persistence.migration;
 

@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { joinParts } from './image-metadata';
+import { SVG_SNIFF_BYTES } from './svg-metadata';
 import {
   JPEG_IMAGE_DATA,
   JPEG_JFIF,
@@ -13,8 +14,14 @@ import {
   identifyingTiff,
 } from './image-metadata.fixture';
 import {
-  bytesWithoutImageMetadata,
+  VIDEO_IDENTIFYING_MARKERS,
+  identifyingMovie,
+  topLevelBox,
+} from './video-metadata.fixture';
+import {
+  bytesWithoutMediaMetadata,
   withoutImageMetadata,
+  withoutMediaMetadata,
 } from './strip-file-metadata';
 import {
   expectedStrip,
@@ -25,6 +32,52 @@ import {
 vi.mock('./image-metadata', async (importOriginal) => {
   const real = await importOriginal<typeof import('./image-metadata')>();
   return { ...real, joinParts: vi.fn(real.joinParts) };
+});
+
+function expectNoVideoLocation(bytes: Uint8Array): void {
+  for (const marker of VIDEO_IDENTIFYING_MARKERS) {
+    expect(containsAscii(bytes, marker), marker).toBe(false);
+  }
+}
+
+/** Record the size of every Blob read into memory while `run` is pending. */
+async function blobReads<T>(
+  run: () => Promise<T>,
+): Promise<{ result: T; sizes: number[] }> {
+  const sizes: number[] = [];
+  const real = Blob.prototype.arrayBuffer;
+  const spy = vi
+    .spyOn(Blob.prototype, 'arrayBuffer')
+    .mockImplementation(function (this: Blob) {
+      sizes.push(this.size);
+      return real.call(this);
+    });
+  try {
+    return { result: await run(), sizes };
+  } finally {
+    spy.mockRestore();
+  }
+}
+
+/** A movie with 64 KiB of samples, far more than its moov, so a read of them stands out. */
+function largeMovie(): Uint8Array<ArrayBuffer> {
+  return identifyingMovie({
+    layout: 'moov-last',
+    samples: new Uint8Array(64 * 1024).fill(0x5a),
+  });
+}
+
+/** Whether `a` and `b` hold the same bytes; a plain loop, cheap on large arrays. */
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('withoutImageMetadata', () => {
@@ -134,7 +187,141 @@ describe('withoutImageMetadata', () => {
   });
 });
 
-describe('bytesWithoutImageMetadata', () => {
+describe('withoutMediaMetadata', () => {
+  it('returns a video without its location, keeping name, type, date and size', async () => {
+    const input = identifyingMovie({ layout: 'moov-last' });
+    const original = new File([input], 'IMG_0002.MOV', {
+      type: 'video/quicktime',
+      lastModified: 1_700_000_000_000,
+    });
+
+    const result = await withoutMediaMetadata(original);
+
+    expect(result).not.toBe(original);
+    expect(result.name).toBe('IMG_0002.MOV');
+    expect(result.type).toBe('video/quicktime');
+    expect(result.lastModified).toBe(1_700_000_000_000);
+    expect(result.size).toBe(original.size);
+    const bytes = new Uint8Array(await result.arrayBuffer());
+    expectNoVideoLocation(bytes);
+    const mdat = topLevelBox(input, 'mdat');
+    expect(
+      sameBytes(
+        bytes.subarray(mdat.start, mdat.end),
+        input.subarray(mdat.start, mdat.end),
+      ),
+    ).toBe(true);
+  });
+
+  it('reads only box headers and moov, leaving the samples as a slice of the file', async () => {
+    const input = largeMovie();
+    const moov = topLevelBox(input, 'moov');
+    const mdat = topLevelBox(input, 'mdat');
+    const original = new File([input], 'clip.mp4', { type: 'video/mp4' });
+    const slice = vi.spyOn(Blob.prototype, 'slice');
+
+    const { result, sizes } = await blobReads(() =>
+      withoutMediaMetadata(original),
+    );
+
+    expect(result).not.toBe(original);
+    // What was loaded: a sniff, top-level box headers, and moov. Never the samples.
+    for (const size of sizes) {
+      expect(
+        size <= SVG_SNIFF_BYTES || size === moov.end - moov.start,
+        `${size}`,
+      ).toBe(true);
+    }
+    expect(sizes.reduce((sum, size) => sum + size, 0)).toBeLessThan(
+      mdat.end - mdat.start,
+    );
+    // The bytes before moov (ftyp and the samples) are a slice of the picked file.
+    expect(slice).toHaveBeenCalledWith(0, moov.start);
+    slice.mockRestore();
+    expectNoVideoLocation(new Uint8Array(await result.arrayBuffer()));
+  });
+
+  it('strips a movie by its brand whatever MIME type the composer gave it', async () => {
+    const original = new File([identifyingMovie()], 'clip.bin', {
+      type: 'application/octet-stream',
+    });
+
+    const result = await withoutMediaMetadata(original);
+
+    expect(result).not.toBe(original);
+    expectNoVideoLocation(new Uint8Array(await result.arrayBuffer()));
+  });
+
+  it('still strips photos', async () => {
+    const original = new File([identifyingJpeg()], 'IMG_0001.jpg', {
+      type: 'image/jpeg',
+    });
+
+    const result = await withoutMediaMetadata(original);
+
+    expect(result).not.toBe(original);
+    expect(
+      containsAscii(new Uint8Array(await result.arrayBuffer()), '52.5200'),
+    ).toBe(false);
+  });
+
+  it('returns the very same file for a malformed or unreadable video', async () => {
+    const broken = new File([identifyingMovie().slice(0, -4)], 'broken.mp4', {
+      type: 'video/mp4',
+    });
+    const unreadable = new File([identifyingMovie()], 'gone.mp4', {
+      type: 'video/mp4',
+    });
+    // The sniff succeeds; every later read of the file fails, as when it is moved away.
+    const realSlice = unreadable.slice.bind(unreadable);
+    Object.defineProperty(unreadable, 'slice', {
+      value: (start?: number, end?: number) =>
+        start === 0 && end === SVG_SNIFF_BYTES
+          ? realSlice(start, end)
+          : {
+              arrayBuffer: () =>
+                Promise.reject(new DOMException('gone', 'NotReadableError')),
+            },
+    });
+
+    expect(await withoutMediaMetadata(broken)).toBe(broken);
+    expect(await withoutMediaMetadata(unreadable)).toBe(unreadable);
+  });
+});
+
+describe('bytesWithoutMediaMetadata', () => {
+  it('blanks a video in the buffer it read, without a second copy', async () => {
+    const input = largeMovie();
+    const original = new File([input], 'clip.mp4', { type: 'video/mp4' });
+
+    const { result, sizes } = await blobReads(() =>
+      bytesWithoutMediaMetadata(original),
+    );
+
+    expect(sizes).toEqual([original.size]);
+    const bytes = new Uint8Array(result);
+    expect(bytes.length).toBe(input.length);
+    expectNoVideoLocation(bytes);
+    const mdat = topLevelBox(input, 'mdat');
+    expect(
+      sameBytes(
+        bytes.subarray(mdat.start, mdat.end),
+        input.subarray(mdat.start, mdat.end),
+      ),
+    ).toBe(true);
+  });
+
+  it('returns the original bytes of a malformed video', async () => {
+    const input = identifyingMovie().slice(0, -4);
+    const original = new File([input], 'broken.mp4', { type: 'video/mp4' });
+
+    const bytes = new Uint8Array(await bytesWithoutMediaMetadata(original));
+
+    expect(Array.from(bytes)).toEqual(Array.from(input));
+  });
+});
+
+describe('bytesWithoutMediaMetadata for images', () => {
   beforeEach(() => {
     vi.mocked(joinParts).mockClear();
   });
@@ -143,7 +330,7 @@ describe('bytesWithoutImageMetadata', () => {
     const layout = tiffLayout('MM', [identifyingPage('MM')]);
     const scan = new File([layout.bytes], 'scan.tif', { type: 'image/tiff' });
 
-    const bytes = new Uint8Array(await bytesWithoutImageMetadata(scan));
+    const bytes = new Uint8Array(await bytesWithoutMediaMetadata(scan));
 
     expect(Array.from(bytes)).toEqual(Array.from(expectedStrip(layout)));
     expect(joinParts).not.toHaveBeenCalled();
@@ -155,7 +342,7 @@ describe('bytesWithoutImageMetadata', () => {
       type: 'image/jpeg',
     });
 
-    const bytes = new Uint8Array(await bytesWithoutImageMetadata(photo));
+    const bytes = new Uint8Array(await bytesWithoutMediaMetadata(photo));
 
     expect(Array.from(bytes)).toEqual(Array.from(clean));
   });
@@ -165,7 +352,7 @@ describe('bytesWithoutImageMetadata', () => {
       type: 'image/jpeg',
     });
 
-    const bytes = new Uint8Array(await bytesWithoutImageMetadata(original));
+    const bytes = new Uint8Array(await bytesWithoutMediaMetadata(original));
 
     expect(bytes.length).toBeLessThan(original.size);
     expect(containsAscii(bytes, 'Canon')).toBe(false);
@@ -177,7 +364,7 @@ describe('bytesWithoutImageMetadata', () => {
       type: 'image/x-nikon-nef',
     });
 
-    const bytes = new Uint8Array(await bytesWithoutImageMetadata(raw));
+    const bytes = new Uint8Array(await bytesWithoutMediaMetadata(raw));
 
     expect(Array.from(bytes)).toEqual(
       Array.from(expectedStrip(layout, { raw: true })),
@@ -189,7 +376,7 @@ describe('bytesWithoutImageMetadata', () => {
     const payload = ascii('Canon at 52.5200N');
     const text = new File([payload], 'notes.txt', { type: 'text/plain' });
 
-    const bytes = new Uint8Array(await bytesWithoutImageMetadata(text));
+    const bytes = new Uint8Array(await bytesWithoutMediaMetadata(text));
 
     expect(Array.from(bytes)).toEqual(Array.from(payload));
   });

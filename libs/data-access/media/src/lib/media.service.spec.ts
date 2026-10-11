@@ -16,13 +16,14 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import type { MediaPayload } from '@trinity/util/matrix';
 import { decryptAttachment, encryptAttachment } from '@trinity/util/matrix';
 import {
-  bytesWithoutImageMetadata,
-  withoutImageMetadata,
+  bytesWithoutMediaMetadata,
+  withoutMediaMetadata,
 } from './image-metadata/strip-file-metadata';
 import {
   containsAscii,
   identifyingJpeg,
 } from './image-metadata/image-metadata.fixture';
+import { identifyingMovie } from './image-metadata/video-metadata.fixture';
 
 // Stub attachment-crypto (now in @trinity/util/matrix): exercise MediaService's
 // fetch→decrypt→blob and encrypt→upload wiring without a real WebCrypto `subtle`
@@ -50,8 +51,8 @@ vi.mock('./image-metadata/strip-file-metadata', async (importOriginal) => {
     >();
   return {
     ...real,
-    withoutImageMetadata: vi.fn(real.withoutImageMetadata),
-    bytesWithoutImageMetadata: vi.fn(real.bytesWithoutImageMetadata),
+    withoutMediaMetadata: vi.fn(real.withoutMediaMetadata),
+    bytesWithoutMediaMetadata: vi.fn(real.bytesWithoutMediaMetadata),
   };
 });
 
@@ -180,8 +181,8 @@ describe('MediaService', () => {
     // per-test counts start clean. Their default implementations are preserved.
     decryptMock.mockClear();
     encryptMock.mockClear();
-    (withoutImageMetadata as Mock).mockClear();
-    (bytesWithoutImageMetadata as Mock).mockClear();
+    (withoutMediaMetadata as Mock).mockClear();
+    (bytesWithoutMediaMetadata as Mock).mockClear();
   });
 
   afterEach(() => {
@@ -1354,7 +1355,7 @@ describe('MediaService', () => {
 
         const res = await firstValueFrom(svc.uploadMedia(original, false));
 
-        expect(withoutImageMetadata).toHaveBeenCalledWith(original);
+        expect(withoutMediaMetadata).toHaveBeenCalledWith(original);
         const [body, opts] = client.uploadContent.mock.calls[0];
         expect(body).toBeInstanceOf(File);
         expect(body).not.toBe(original);
@@ -1379,8 +1380,8 @@ describe('MediaService', () => {
 
         await firstValueFrom(svc.uploadMedia(original, true));
 
-        expect(bytesWithoutImageMetadata).toHaveBeenCalledWith(original);
-        const stripOrder = (bytesWithoutImageMetadata as Mock).mock
+        expect(bytesWithoutMediaMetadata).toHaveBeenCalledWith(original);
+        const stripOrder = (bytesWithoutMediaMetadata as Mock).mock
           .invocationCallOrder[0];
         expect(stripOrder).toBeLessThan(
           encryptMock.mock.invocationCallOrder[0] ?? 0,
@@ -1409,7 +1410,7 @@ describe('MediaService', () => {
           ),
         );
 
-        expect(withoutImageMetadata).not.toHaveBeenCalled();
+        expect(withoutMediaMetadata).not.toHaveBeenCalled();
         expect(client.uploadContent.mock.calls[0]?.[0]).toBe(original);
         expect(res.info).toMatchObject({ size: original.size });
       });
@@ -1430,7 +1431,7 @@ describe('MediaService', () => {
           ),
         );
 
-        expect(bytesWithoutImageMetadata).not.toHaveBeenCalled();
+        expect(bytesWithoutMediaMetadata).not.toHaveBeenCalled();
         const plaintext = new Uint8Array(
           encryptMock.mock.calls[0]?.[0] as ArrayBuffer,
         );
@@ -1443,12 +1444,100 @@ describe('MediaService', () => {
 
         await firstValueFrom(svc.uploadMedia(original, true));
 
-        expect(bytesWithoutImageMetadata).toHaveBeenCalledWith(original);
+        expect(bytesWithoutMediaMetadata).toHaveBeenCalledWith(original);
       });
 
-      it('uploads a video exactly as picked', async () => {
+      it('uploads a plaintext video without its location, at the same size', async () => {
         const { svc, client } = setup();
-        const clip = mediaFile('clip.mp4', 'video/mp4');
+        const clip = new File([identifyingMovie()], 'clip.mp4', {
+          type: 'video/mp4',
+        });
+
+        const res = await firstValueFrom(svc.uploadMedia(clip, false));
+
+        expect(withoutMediaMetadata).toHaveBeenCalledWith(clip);
+        const [body, opts] = client.uploadContent.mock.calls.at(-1) ?? [];
+        expect(body).not.toBe(clip);
+        const sent = new Uint8Array(await (body as File).arrayBuffer());
+        expect(sent.length).toBe(clip.size);
+        expect(containsAscii(sent, '52.5200')).toBe(false);
+        expect(containsAscii(sent, 'iPhone 15 Pro')).toBe(false);
+        expect(opts).toMatchObject({ name: 'clip.mp4', type: 'video/mp4' });
+        expect(res.info).toMatchObject({
+          mimetype: 'video/mp4',
+          size: clip.size,
+        });
+      });
+
+      it('strips an E2EE video before it is encrypted', async () => {
+        const { svc } = setup();
+        const clip = new File([identifyingMovie()], 'clip.mov', {
+          type: 'video/quicktime',
+        });
+
+        await firstValueFrom(svc.uploadMedia(clip, true));
+
+        expect(bytesWithoutMediaMetadata).toHaveBeenCalledWith(clip);
+        const plaintext = new Uint8Array(
+          encryptMock.mock.calls[0]?.[0] as ArrayBuffer,
+        );
+        expect(plaintext.length).toBe(clip.size);
+        expect(containsAscii(plaintext, '52.5200')).toBe(false);
+        expect(containsAscii(plaintext, 'iPhone 15 Pro')).toBe(false);
+      });
+
+      it('uploads a plaintext video byte for byte when its metadata is kept', async () => {
+        const { svc, client } = setup();
+        const clip = new File([identifyingMovie()], 'clip.mp4', {
+          type: 'video/mp4',
+        });
+
+        const res = await firstValueFrom(
+          svc.uploadMedia(
+            clip,
+            false,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            'keep',
+          ),
+        );
+
+        expect(withoutMediaMetadata).not.toHaveBeenCalled();
+        expect(client.uploadContent.mock.calls.at(-1)?.[0]).toBe(clip);
+        expect(res.info).toMatchObject({ size: clip.size });
+      });
+
+      it('encrypts an E2EE video byte for byte when its metadata is kept', async () => {
+        const { svc } = setup();
+        const clip = new File([identifyingMovie()], 'clip.mov', {
+          type: 'video/quicktime',
+        });
+
+        await firstValueFrom(
+          svc.uploadMedia(
+            clip,
+            true,
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            'keep',
+          ),
+        );
+
+        expect(bytesWithoutMediaMetadata).not.toHaveBeenCalled();
+        const plaintext = new Uint8Array(
+          encryptMock.mock.calls[0]?.[0] as ArrayBuffer,
+        );
+        expect(plaintext).toEqual(new Uint8Array(await clip.arrayBuffer()));
+        expect(containsAscii(plaintext, 'iPhone 15 Pro')).toBe(true);
+      });
+
+      it('uploads a file that is neither a photo nor a movie exactly as picked', async () => {
+        const { svc, client } = setup();
+        const clip = mediaFile('clip.webm', 'video/webm');
 
         await firstValueFrom(svc.uploadMedia(clip, false));
 
@@ -1842,6 +1931,95 @@ describe('MediaService', () => {
         expect(createImageBitmap).not.toHaveBeenCalled();
         expect(res.info).toMatchObject({ w: 4032, h: 3024 });
         expect(res.info.thumbnail_url).toBe('mxc://hs/thumb');
+      });
+
+      describe('a host thumbnail with GPS Exif', () => {
+        const gpsThumbnail = () => ({
+          blob: new Blob([identifyingJpeg()], { type: 'image/jpeg' }),
+          w: 480,
+          h: 270,
+        });
+        const hints = () => ({
+          width: 1920,
+          height: 1080,
+          durationMs: 4000,
+          thumbnail: gpsThumbnail(),
+        });
+
+        it('uploads it without its location in a plaintext room', async () => {
+          const { svc, client } = setup();
+          client.uploadContent
+            .mockResolvedValueOnce({ content_uri: 'mxc://hs/thumb' })
+            .mockResolvedValueOnce({ content_uri: 'mxc://hs/full' });
+
+          const res = await firstValueFrom(
+            svc.uploadMedia(
+              mediaFile('video.mov', 'video/quicktime'),
+              false,
+              undefined,
+              undefined,
+              undefined,
+              hints(),
+            ),
+          );
+
+          const [body, opts] = client.uploadContent.mock.calls[0] ?? [];
+          expect(opts).toMatchObject({ name: 'thumbnail', type: 'image/jpeg' });
+          const sent = new Uint8Array(await (body as Blob).arrayBuffer());
+          expect(containsAscii(sent, '52.5200')).toBe(false);
+          expect(containsAscii(sent, 'Canon')).toBe(false);
+          expect(sent.length).toBeLessThan(gpsThumbnail().blob.size);
+          expect(res.info.thumbnail_info).toMatchObject({
+            mimetype: 'image/jpeg',
+            size: sent.length,
+          });
+        });
+
+        it('strips it before it is encrypted in an E2EE room', async () => {
+          const { svc } = setup();
+
+          await firstValueFrom(
+            svc.uploadMedia(
+              mediaFile('video.mov', 'video/quicktime'),
+              true,
+              undefined,
+              undefined,
+              undefined,
+              hints(),
+            ),
+          );
+
+          // The thumbnail is encrypted (and uploaded) before the main file.
+          const plaintext = new Uint8Array(
+            encryptMock.mock.calls[0]?.[0] as ArrayBuffer,
+          );
+          expect(plaintext.length).toBeGreaterThan(0);
+          expect(containsAscii(plaintext, '52.5200')).toBe(false);
+          expect(containsAscii(plaintext, 'Canon')).toBe(false);
+        });
+
+        it('strips it even when the video keeps its metadata', async () => {
+          const { svc, client } = setup();
+          const clip = mediaFile('video.mov', 'video/quicktime');
+
+          await firstValueFrom(
+            svc.uploadMedia(
+              clip,
+              false,
+              undefined,
+              undefined,
+              undefined,
+              hints(),
+              'keep',
+            ),
+          );
+
+          // A derived preview, not the person's file: keeping metadata covers the video only.
+          const thumb = client.uploadContent.mock.calls[0]?.[0] as Blob;
+          const sent = new Uint8Array(await thumb.arrayBuffer());
+          expect(containsAscii(sent, '52.5200')).toBe(false);
+          expect(client.uploadContent.mock.calls.at(-1)?.[0]).toBe(clip);
+        });
       });
 
       it('still sends when a hinted thumbnail fails to upload', async () => {

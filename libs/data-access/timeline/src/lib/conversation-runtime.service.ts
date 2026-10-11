@@ -567,8 +567,9 @@ export class ConversationRuntime {
   }
 
   /**
-   * Sends staged media with the person's photo-metadata choice as it stands when the send
-   * starts. The choice covers message attachments only; avatars never pass through here.
+   * Sends staged media with the person's photo and video metadata choice as it stands when
+   * the send starts. The choice covers message attachments only; avatars never pass through
+   * here.
    */
   private transferMedia(
     request: MediaTransferRequest,

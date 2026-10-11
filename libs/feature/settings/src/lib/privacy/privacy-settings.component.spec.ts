@@ -109,22 +109,30 @@ describe('PrivacySettingsComponent', () => {
     ).toBeNull();
   });
 
-  it('offers keeping photo metadata, off, and explains what it shares', async () => {
+  it('offers keeping photo and video metadata, off, and explains what it shares', async () => {
     const { container } = await renderPage();
 
-    const toggle = screen.getByRole('switch', { name: 'Keep photo metadata' });
+    const toggle = screen.getByRole('switch', {
+      name: 'Keep photo and video metadata',
+    });
     expect(toggle).not.toBeChecked();
+    expect(toggle).toHaveAccessibleDescription(/photos and videos you send/);
     expect(toggle).toHaveAccessibleDescription(/where and on what device/);
     expect(toggle).toHaveAccessibleDescription(/HDR and Motion Photo/);
     expect(
       container.querySelector('[data-testid=privacy-keep-photo-metadata]')
         ?.textContent,
     ).toContain('Profile and room photos');
+    expect(container.textContent).toContain(
+      'link previews, photo and video metadata',
+    );
   });
 
-  it('saves keeping photo metadata on this device', async () => {
+  it('saves keeping photo and video metadata on this device', async () => {
     const { fixture } = await renderPage();
-    const toggle = screen.getByRole('switch', { name: 'Keep photo metadata' });
+    const toggle = screen.getByRole('switch', {
+      name: 'Keep photo and video metadata',
+    });
 
     toggle.click();
     await fixture.whenStable();

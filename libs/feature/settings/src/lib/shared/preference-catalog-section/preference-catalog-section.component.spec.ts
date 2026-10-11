@@ -84,7 +84,7 @@ describe('PreferenceCatalogSectionComponent', () => {
       'Send read receipts',
       'Show link previews',
       'Show link previews in encrypted rooms',
-      'Keep photo metadata',
+      'Keep photo and video metadata',
     ]);
   });
 

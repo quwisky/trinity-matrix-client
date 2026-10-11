@@ -48,8 +48,9 @@ export interface MediaConversationKey {
 }
 
 /**
- * What an upload does with a photo's identifying metadata: `'strip'` removes its location,
- * camera and capture time (the default); `'keep'` sends the file byte for byte.
+ * What an upload does with a photo's or video's identifying metadata: `'strip'` removes its
+ * location, camera or device and (for photos) capture time (the default); `'keep'` sends the
+ * file byte for byte. Named before it covered videos too.
  */
 export type ImageMetadataPolicy = 'strip' | 'keep';
 
