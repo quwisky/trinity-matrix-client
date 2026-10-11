@@ -1,14 +1,15 @@
-import {
-  OpenIDRequestState,
-  SimpleObservable,
-  type Capability,
-} from 'matrix-widget-api';
-import { describe, expect, it, vi } from 'vitest';
+import { firstValueFrom } from 'rxjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RoomWidget, WidgetEmbed } from './widget.model';
-import {
-  RestrictedWidgetDriver,
-  WidgetBridgeService,
-} from './widget-bridge.service';
+import { WidgetBridgeService } from './widget-bridge.service';
+
+// Counts evaluations of the module that statically imports matrix-widget-api. A static
+// import from the service would evaluate it as soon as this spec loads the service.
+const runtime = vi.hoisted(() => ({ loads: 0 }));
+vi.mock('./widget-bridge-runtime', async (importOriginal) => {
+  runtime.loads += 1;
+  return importOriginal();
+});
 
 const WIDGET: RoomWidget = {
   id: 'board',
@@ -27,43 +28,45 @@ const EMBED: WidgetEmbed = {
   failure: null,
 };
 
-describe('RestrictedWidgetDriver', () => {
-  it('approves no requested capabilities', async () => {
-    const requested = new Set<Capability>([
-      'm.always_on_screen',
-      'org.matrix.msc2762.timeline:*',
-    ]);
-
-    expect(
-      await new RestrictedWidgetDriver().validateCapabilities(requested),
-    ).toEqual(new Set());
-  });
-
-  it('blocks OpenID requests', () => {
-    const updates = vi.fn();
-    const observer = new SimpleObservable(updates);
-
-    new RestrictedWidgetDriver().askOpenID(observer);
-
-    expect(updates).toHaveBeenCalledWith({ state: OpenIDRequestState.Blocked });
-  });
-});
+function attachedFrame(): HTMLIFrameElement {
+  const iframe = document.createElement('iframe');
+  document.body.append(iframe);
+  return iframe;
+}
 
 describe('WidgetBridgeService', () => {
-  it('targets the resolved widget origin and removes the frame on stop', () => {
-    const iframe = document.createElement('iframe');
-    document.body.append(iframe);
+  afterEach(() => {
+    document.body.replaceChildren();
+    vi.restoreAllMocks();
+  });
+
+  it('loads the Widget API only when a widget starts', async () => {
+    const iframe = attachedFrame();
+    const start = new WidgetBridgeService().start(
+      WIDGET,
+      EMBED,
+      '!r:hs',
+      iframe,
+    );
+
+    expect(runtime.loads).toBe(0);
+
+    const session = await firstValueFrom(start);
+
+    expect(runtime.loads).toBe(1);
+    session.stop();
+  });
+
+  it('targets the resolved widget origin and removes the frame on stop', async () => {
+    const iframe = attachedFrame();
     const postMessage = vi
       .spyOn(iframe.contentWindow!, 'postMessage')
       .mockImplementation(() => undefined);
     const transportLog = vi
       .spyOn(console, 'log')
       .mockImplementation(() => undefined);
-    const session = new WidgetBridgeService().start(
-      WIDGET,
-      EMBED,
-      '!r:hs',
-      iframe,
+    const session = await firstValueFrom(
+      new WidgetBridgeService().start(WIDGET, EMBED, '!r:hs', iframe),
     );
 
     iframe.dispatchEvent(new Event('load'));
@@ -80,6 +83,47 @@ describe('WidgetBridgeService', () => {
 
     session.stop();
     expect(iframe.isConnected).toBe(false);
-    transportLog.mockRestore();
+  });
+
+  it('attaches nothing to the frame when unsubscribed before the Widget API loads', async () => {
+    const iframe = attachedFrame();
+    const addEventListener = vi.spyOn(iframe, 'addEventListener');
+
+    new WidgetBridgeService()
+      .start(WIDGET, EMBED, '!r:hs', iframe)
+      .subscribe()
+      .unsubscribe();
+    await vi.dynamicImportSettled();
+
+    expect(addEventListener).not.toHaveBeenCalled();
+    expect(iframe.isConnected).toBe(true);
+  });
+
+  it('stops the previous widget when another one starts', async () => {
+    const service = new WidgetBridgeService();
+    const first = attachedFrame();
+    const second = attachedFrame();
+
+    await firstValueFrom(service.start(WIDGET, EMBED, '!r:hs', first));
+    const session = await firstValueFrom(
+      service.start(WIDGET, EMBED, '!r:hs', second),
+    );
+
+    expect(first.isConnected).toBe(false);
+    expect(second.isConnected).toBe(true);
+    session.stop();
+  });
+
+  it('rejects an embed whose destination changed', async () => {
+    await expect(
+      firstValueFrom(
+        new WidgetBridgeService().start(
+          WIDGET,
+          { ...EMBED, origin: 'https://other.example' },
+          '!r:hs',
+          attachedFrame(),
+        ),
+      ),
+    ).rejects.toThrow('Widget embed destination changed');
   });
 });

@@ -6,7 +6,7 @@ import {
   WidgetApiFromWidgetAction,
 } from 'matrix-widget-api';
 import { describe, expect, it, vi } from 'vitest';
-import { RestrictedWidgetDriver } from './widget-bridge.service';
+import { RestrictedWidgetDriver } from './widget-bridge-runtime';
 
 function inboundWindow() {
   let listener: ((event: MessageEvent) => void) | null = null;

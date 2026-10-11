@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   OnDestroy,
   AfterViewInit,
@@ -10,6 +11,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { BannerComponent } from '@trinity/components/generic-content';
 import {
@@ -37,6 +39,7 @@ export class RoomWidgetFrameComponent implements AfterViewInit, OnDestroy {
   readonly embed = input.required<WidgetEmbed>();
 
   private readonly bridge = inject(WidgetBridgeService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
   private readonly frame =
     viewChild.required<ElementRef<HTMLIFrameElement>>('widgetFrame');
@@ -72,14 +75,18 @@ export class RoomWidgetFrameComponent implements AfterViewInit, OnDestroy {
       this.startupFailed.set(true);
       return;
     }
-    try {
-      this.session.set(
-        this.bridge.start(this.widget(), embed, this.roomId(), iframe),
-      );
-      iframe.setAttribute('src', embed.url);
-    } catch {
-      this.startupFailed.set(true);
-    }
+    const url = embed.url;
+    // The bridge loads the Widget API on first use; the page loads only once it listens.
+    this.bridge
+      .start(this.widget(), embed, this.roomId(), iframe)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (session) => {
+          this.session.set(session);
+          iframe.setAttribute('src', url);
+        },
+        error: () => this.startupFailed.set(true),
+      });
   }
 
   ngOnDestroy(): void {
