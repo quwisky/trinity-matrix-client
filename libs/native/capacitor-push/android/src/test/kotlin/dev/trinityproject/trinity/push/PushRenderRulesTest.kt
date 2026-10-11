@@ -29,6 +29,7 @@ class PushRenderRulesTest {
                 storedRoom,
                 case.opt("stateRoomName") as? String,
                 case.opt("senderName") as? String,
+                case.optBoolean("tokenExpired", false),
             )
             assertEquals(
                 case.getString("name"),

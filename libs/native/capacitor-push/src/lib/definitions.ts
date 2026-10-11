@@ -8,6 +8,13 @@ export interface PushHandoffAccount {
   readonly accessToken: string;
   /** The account's "play a sound" notification preference. */
   readonly sound: boolean;
+  /**
+   * When `accessToken` stops working (epoch ms), for an OAuth account whose server gave the
+   * token a lifetime; absent when it does not expire on a schedule. Once it has passed, the
+   * renderers read nothing and show the expired-token text. Not secret; it still never goes
+   * to a log.
+   */
+  readonly accessTokenExpiresAt?: number;
 }
 
 /** A joined room's display name as the SDK computes it, and whether it is a DM. */
@@ -15,6 +22,24 @@ export interface PushHandoffRoom {
   readonly roomId: string;
   readonly name: string;
   readonly direct: boolean;
+}
+
+/** Background run time the OS granted, and whether a token refresh begun now can be saved. */
+export interface BackgroundWork {
+  /** What to pass to `endBackgroundWork`. */
+  readonly id: number;
+  /**
+   * Whether data protected until the device locks (the session's keychain items on iOS) can
+   * be read and written now. iOS reads `isProtectedDataAvailable`; other hosts are always
+   * available.
+   */
+  readonly protectedDataAvailable: boolean;
+  /**
+   * Whether the device is locking: iOS announced, within the last 10 s and without unlocking
+   * since, that protected data is about to become unavailable, which it does about 10 s
+   * after the lock. Other hosts never lock it away.
+   */
+  readonly locking: boolean;
 }
 
 /** The native plugin's calls. Debug iOS builds add `renderProbe`, which only the e2e suite calls. */
@@ -34,4 +59,18 @@ export interface PushHandoffPlugin {
    * configured (`register()` would crash the app otherwise); iOS always.
    */
   registrationAvailable(): Promise<{ value: boolean }>;
+  /**
+   * Asks the OS to keep the app running in the background until `endBackgroundWork`, or until
+   * the OS ends the time it granted, and reports whether protected data is available and
+   * whether the device is locking. iOS only (`beginBackgroundTask`); Android holds nothing
+   * and answers `id: 0`, available and not locking. A host that predates the protected-data
+   * fields omits them, which reads as available and not locking.
+   */
+  beginBackgroundWork(): Promise<{
+    id: number;
+    protectedDataAvailable?: boolean;
+    locking?: boolean;
+  }>;
+  /** Releases what `beginBackgroundWork` returned; an unknown or ended `id` is a no-op. */
+  endBackgroundWork(options: { id: number }): Promise<void>;
 }

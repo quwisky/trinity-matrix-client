@@ -16,6 +16,9 @@ data class HandoffRoom(val name: String, val direct: Boolean)
 object PushRenderRules {
     const val FALLBACK_TITLE = "Trinity"
     const val FALLBACK_BODY = "New message"
+
+    /** The body when the stored token had expired, so nothing was read; opening Trinity renews it. */
+    const val EXPIRED_TOKEN_BODY = "Open Trinity to read this message"
     const val ENCRYPTED_BODY = "Encrypted message"
     private const val MAX_BODY_CODE_POINTS = 200
     private const val ELLIPSIS = "…"
@@ -28,11 +31,16 @@ object PushRenderRules {
         "m.location" to "shared a location",
     )
 
+    /**
+     * [tokenExpired]: the account's stored token had expired, so nothing was read and [event]
+     * is null. The body then says how to read the message instead of "New message".
+     */
     fun render(
         event: JSONObject?,
         storedRoom: HandoffRoom?,
         stateRoomName: String?,
         senderName: String?,
+        tokenExpired: Boolean = false,
     ): RenderedNotification {
         val title = storedRoom?.name?.takeIf(::hasText)
             ?: stateRoomName?.takeIf(::hasText)
@@ -40,13 +48,13 @@ object PushRenderRules {
         val sender = senderName?.takeIf(::hasText)
             ?: event?.let { stringOrNull(it, "sender") }
         val subtitle = if (storedRoom?.direct == true || sender == null) "" else sender
-        return RenderedNotification(title, subtitle, body(event, sender.orEmpty()))
+        return RenderedNotification(title, subtitle, body(event, sender.orEmpty(), tokenExpired))
     }
 
     fun stringOrNull(json: JSONObject, key: String): String? = json.opt(key) as? String
 
-    private fun body(event: JSONObject?, sender: String): String {
-        if (event == null) return FALLBACK_BODY
+    private fun body(event: JSONObject?, sender: String, tokenExpired: Boolean): String {
+        if (event == null) return if (tokenExpired) EXPIRED_TOKEN_BODY else FALLBACK_BODY
         if (event.optJSONObject("unsigned")?.has("redacted_because") == true) return FALLBACK_BODY
         return when (stringOrNull(event, "type")) {
             "m.room.encrypted" -> ENCRYPTED_BODY

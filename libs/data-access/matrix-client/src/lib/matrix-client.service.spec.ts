@@ -14,6 +14,7 @@ import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import { Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  MATRIX_REQUEST_TIMEOUT_MS,
   MATRIX_SYNC_PROJECTION_BASELINE,
   MatrixClientService,
   type AccessTokenRotation,
@@ -409,6 +410,132 @@ describe('MatrixClientService', () => {
     // The access token only: refresh tokens rotate, and a second refresher would sign
     // the app out, so the push handoff never sees one.
     expect(rotations).toEqual([{ userId: '@me:hs', accessToken: 'a2' }]);
+  });
+
+  it('knows the expiry of the OAuth token a client starts with, and only for that token', async () => {
+    vi.mocked(createClient).mockReturnValue(fakeClient() as never);
+    const { svc } = setup();
+
+    await firstValueFrom(svc.init(OIDC_SESSION));
+
+    expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBe(1234);
+    expect(svc.accessTokenExpiry('@me:hs', 'another')).toBeUndefined();
+    expect(svc.accessTokenExpiry('@you:other', 'tok')).toBeUndefined();
+  });
+
+  it('knows no expiry for a password session', async () => {
+    vi.mocked(createClient).mockReturnValue(fakeClient() as never);
+    const { svc } = setup();
+
+    await firstValueFrom(svc.init(SESSION));
+
+    expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBeUndefined();
+  });
+
+  it('moves the expiry to a refreshed token before publishing the rotation', async () => {
+    vi.mocked(createClient).mockReturnValue(fakeClient() as never);
+    const { svc, storage } = setup();
+    const write = new Subject<void>();
+    vi.mocked(storage.updateTokens).mockReturnValue(write);
+    const seen: (number | undefined)[] = [];
+    svc.accessTokenRotations.subscribe(({ userId, accessToken }) =>
+      seen.push(svc.accessTokenExpiry(userId, accessToken)),
+    );
+    await firstValueFrom(svc.init(OIDC_SESSION));
+    const opts = vi.mocked(createClient).mock.calls[0][0];
+
+    const pending = opts.onTokenRefresh?.({
+      accessToken: 'a2',
+      refreshToken: 'r2',
+      expiry: new Date(5_000),
+    }) as unknown as Promise<void>;
+    await Promise.resolve();
+    // Not stored yet: the client still holds the old token.
+    expect(svc.accessTokenExpiry('@me:hs', 'a2')).toBeUndefined();
+    expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBe(1234);
+
+    write.next();
+    write.complete();
+    await pending;
+
+    expect(seen).toEqual([5_000]);
+    expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBeUndefined();
+  });
+
+  it('forgets the expiry when the account is removed', async () => {
+    vi.mocked(createClient).mockReturnValue(fakeClient() as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(OIDC_SESSION));
+
+    await firstValueFrom(svc.remove('@me:hs'));
+
+    expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBeUndefined();
+  });
+
+  it('refreshes nothing for an account that is not a live OAuth account', async () => {
+    const client = {
+      ...fakeClient(),
+      http: { refreshOAuthTokens: vi.fn().mockResolvedValue(true) },
+    };
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(SESSION));
+
+    await expect(
+      firstValueFrom(svc.refreshAccessToken('@me:hs')),
+    ).resolves.toBe(false);
+    await expect(
+      firstValueFrom(svc.refreshAccessToken('@nobody:hs')),
+    ).resolves.toBe(false);
+    expect(client.http.refreshOAuthTokens).not.toHaveBeenCalled();
+    expect(svc.canRefreshAccessToken('@me:hs')).toBe(false);
+    expect(svc.canRefreshAccessToken('@nobody:hs')).toBe(false);
+  });
+
+  it('refreshes nothing for an OAuth sign-in that came without a refresh token', async () => {
+    const client = {
+      ...fakeClient(),
+      http: { refreshOAuthTokens: vi.fn().mockResolvedValue(true) },
+    };
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+    const { refreshToken: _unused, ...withoutRefreshToken } = OIDC_SESSION;
+    await firstValueFrom(svc.init(withoutRefreshToken));
+
+    await expect(
+      firstValueFrom(svc.refreshAccessToken('@me:hs')),
+    ).resolves.toBe(false);
+    expect(client.http.refreshOAuthTokens).not.toHaveBeenCalled();
+    expect(svc.canRefreshAccessToken('@me:hs')).toBe(false);
+  });
+
+  it('can refresh a live OAuth account with a refresh token until it is removed', async () => {
+    vi.mocked(createClient).mockReturnValue(fakeClient() as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(OIDC_SESSION));
+
+    expect(svc.canRefreshAccessToken('@me:hs')).toBe(true);
+
+    await firstValueFrom(svc.remove('@me:hs'));
+
+    expect(svc.canRefreshAccessToken('@me:hs')).toBe(false);
+  });
+
+  it('reports a refresh that throws as false instead of an error', async () => {
+    const client = {
+      ...fakeClient(),
+      http: {
+        refreshOAuthTokens: vi.fn().mockRejectedValue(new Error('boom')),
+      },
+    };
+    vi.mocked(createClient).mockReturnValue(client as never);
+    const { svc } = setup();
+    await firstValueFrom(svc.init(OIDC_SESSION));
+
+    await expect(
+      firstValueFrom(svc.refreshAccessToken('@me:hs')),
+    ).resolves.toBe(false);
+    expect(client.http.refreshOAuthTokens).toHaveBeenCalledOnce();
   });
 
   describe('signOutAll', () => {
@@ -1529,6 +1656,9 @@ describe('OAuth tokens through a real MatrixClient', () => {
   /** `up` answers normally, `down` drops the connection, anything else is the error sent instead. */
   type Endpoint = 'up' | 'down' | { status: number; body: unknown };
 
+  /** The provider can also `hang`: never answer, until the caller aborts. */
+  type ProviderEndpoint = Endpoint | 'hang';
+
   const json = (body: unknown, status = 200): Response =>
     new Response(JSON.stringify(body), {
       status,
@@ -1546,8 +1676,17 @@ describe('OAuth tokens through a real MatrixClient', () => {
     const calls: string[] = [];
     const state = {
       discovery: 'up' as Endpoint,
-      provider: 'up' as Endpoint,
+      provider: 'up' as ProviderEndpoint,
+      /** Rotate at the provider, then drop the answer, as when iOS suspends the app mid-grant. */
+      loseGrantResponse: false,
+      /** How long auth metadata discovery takes to answer. */
+      discoveryDelayMs: 0,
     };
+    // Like MAS, a grant revokes the access token issued with the refresh token it spends.
+    const issuedWith = new Map<string, string>();
+    let whoamiGate: Promise<void> | undefined;
+    let whoamiHeld = 0;
+    let whoamiRefused = 0;
     let issued = 1;
     vi.stubGlobal(
       'fetch',
@@ -1558,6 +1697,11 @@ describe('OAuth tokens through a real MatrixClient', () => {
         const form = new URLSearchParams(String(init.body ?? ''));
         calls.push(`${init.method ?? 'GET'} ${url.host}${url.pathname}`);
         if (url.pathname === '/_matrix/client/v1/auth_metadata') {
+          if (state.discoveryDelayMs > 0) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, state.discoveryDelayMs),
+            );
+          }
           if (state.discovery === 'down')
             throw new TypeError('Failed to fetch');
           if (state.discovery !== 'up') {
@@ -1566,13 +1710,34 @@ describe('OAuth tokens through a real MatrixClient', () => {
           return json(METADATA);
         }
         if (url.href === METADATA.token_endpoint) {
+          // Like fetch, an already aborted signal sends nothing.
+          if (init.signal?.aborted) {
+            throw new DOMException('The operation was aborted.', 'AbortError');
+          }
           if (state.provider === 'down') throw new TypeError('Failed to fetch');
+          if (state.provider === 'hang') {
+            return new Promise<Response>((_, reject) => {
+              const abort = () =>
+                reject(
+                  new DOMException('The operation was aborted.', 'AbortError'),
+                );
+              if (init.signal?.aborted) abort();
+              init.signal?.addEventListener('abort', abort);
+            });
+          }
           if (state.provider !== 'up') {
             return json(state.provider.body, state.provider.status);
           }
           grants.push(form);
           issued += 1;
+          const spent = form.get('refresh_token') ?? '';
+          live.delete(issuedWith.get(spent) ?? '');
+          issuedWith.set(
+            rotation === 'rotate' ? `rt-${issued}` : spent,
+            `at-${issued}`,
+          );
           live.add(`at-${issued}`);
+          if (state.loseGrantResponse) throw new TypeError('Failed to fetch');
           return json({
             token_type: 'Bearer',
             access_token: `at-${issued}`,
@@ -1590,8 +1755,14 @@ describe('OAuth tokens through a real MatrixClient', () => {
           return new Response('', { status: 200 });
         }
         if (url.pathname === '/_matrix/client/v3/account/whoami') {
+          if (whoamiGate) {
+            whoamiHeld += 1;
+            await whoamiGate;
+          }
           const bearer = new Headers(init.headers).get('authorization') ?? '';
-          return live.has(bearer.replace(/^Bearer /, ''))
+          const known = live.has(bearer.replace(/^Bearer /, ''));
+          if (!known) whoamiRefused += 1;
+          return known
             ? json({ user_id: '@me:hs', device_id: 'DEV' })
             : json(
                 {
@@ -1613,6 +1784,17 @@ describe('OAuth tokens through a real MatrixClient', () => {
       calls,
       state,
       expireAll: () => live.clear(),
+      /** Hold whoami at the homeserver, before it reads the token; returns the release. */
+      holdWhoami: (): (() => void) => {
+        let release!: () => void;
+        whoamiGate = new Promise<void>((resolve) => (release = resolve));
+        return () => {
+          whoamiGate = undefined;
+          release();
+        };
+      },
+      whoamiHeld: () => whoamiHeld,
+      whoamiRefused: () => whoamiRefused,
     };
   }
 
@@ -1631,7 +1813,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
     vi.stubGlobal('indexedDB', undefined);
   }
 
-  async function startReal() {
+  async function startReal(session: MatrixSession = OIDC_SESSION) {
     await useRealClients();
     const ctx = setup();
     vi.mocked(ctx.storage.updateTokens).mockReturnValue(of(undefined));
@@ -1640,7 +1822,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
     vi.mocked(ctx.storage.remove).mockReturnValue(of(undefined));
     vi.mocked(ctx.storage.invalidateToken).mockReturnValue(of(undefined));
     vi.mocked(ctx.storage.setActive).mockReturnValue(of(undefined));
-    await firstValueFrom(ctx.svc.init(OIDC_SESSION));
+    await firstValueFrom(ctx.svc.init(session));
     return { ...ctx, client: ctx.svc.instance };
   }
 
@@ -1869,6 +2051,355 @@ describe('OAuth tokens through a real MatrixClient', () => {
     expectStillSignedIn(svc, client);
   });
 
+  it('refreshes on request through the patched SDK token manager', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, storage, client } = await startReal();
+
+    await expect(client.http.refreshOAuthTokens()).resolves.toBe(true);
+
+    expect(net.grants).toHaveLength(1);
+    expect(net.grants[0].get('refresh_token')).toBe('refresh-tok');
+    expect(client.getAccessToken()).toBe('at-2');
+    expect(storage.updateTokens).toHaveBeenCalledWith(
+      '@me:hs',
+      'at-2',
+      'rt-2',
+      expect.any(Number),
+    );
+    expectStillSignedIn(svc, client);
+  });
+
+  it('disarms the grant bound once the provider has answered', async () => {
+    fakeNetwork('rotate');
+    const { client } = await startReal();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      await expect(client.http.refreshOAuthTokens()).resolves.toBe(true);
+      const grant = vi
+        .mocked(globalThis.fetch)
+        .mock.calls.find(
+          ([input]) => String(input) === METADATA.token_endpoint,
+        );
+      const signal = grant?.[1]?.signal;
+      expect(signal).toBeInstanceOf(AbortSignal);
+
+      await vi.advanceTimersByTimeAsync(MATRIX_REQUEST_TIMEOUT_MS);
+
+      expect(signal?.aborted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('joins a refresh already in flight instead of starting another', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, client } = await startReal();
+
+    const [, refreshed] = await Promise.all([
+      client.whoami(),
+      client.http.refreshOAuthTokens(),
+    ]);
+
+    expect(refreshed).toBe(true);
+    expect(net.grants).toHaveLength(1);
+    expectStillSignedIn(svc, client);
+  });
+
+  it('answers a refused refresh with false and emits no sign-out', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, client } = await startReal();
+    const loggedOut = vi.fn();
+    client.on(HttpApiEvent.SessionLoggedOut, loggedOut);
+    net.state.provider = { status: 400, body: { error: 'invalid_grant' } };
+
+    await expect(client.http.refreshOAuthTokens()).resolves.toBe(false);
+
+    expect(loggedOut).not.toHaveBeenCalled();
+    expectStillSignedIn(svc, client);
+
+    // A dead session still ends through the normal path at its next request.
+    net.expireAll();
+    await client.whoami().catch(() => undefined);
+
+    expect(loggedOut).toHaveBeenCalled();
+  });
+
+  it('answers an unreachable provider with false and stays signed in', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, client } = await startReal();
+    const loggedOut = vi.fn();
+    client.on(HttpApiEvent.SessionLoggedOut, loggedOut);
+    net.state.provider = 'down';
+
+    await expect(client.http.refreshOAuthTokens()).resolves.toBe(false);
+
+    expect(loggedOut).not.toHaveBeenCalled();
+    expectStillSignedIn(svc, client);
+  });
+
+  it('gives up on a refresh the provider never answers, stays signed in and refreshes again', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, client } = await startReal();
+    const loggedOut = vi.fn();
+    client.on(HttpApiEvent.SessionLoggedOut, loggedOut);
+    net.state.provider = 'hang';
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let settled: boolean | undefined;
+      void client.http.refreshOAuthTokens().then((value) => (settled = value));
+
+      // The patch mirrors the app's request deadline; changing one alone fails here.
+      await vi.advanceTimersByTimeAsync(MATRIX_REQUEST_TIMEOUT_MS - 1);
+      expect(settled).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(settled).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(loggedOut).not.toHaveBeenCalled();
+    expectStillSignedIn(svc, client);
+    // The aborted grant released the SDK's shared refresh: the next request refreshes anew.
+    net.state.provider = 'up';
+    await expect(client.whoami()).resolves.toMatchObject({ user_id: '@me:hs' });
+    expect(net.grants).toHaveLength(1);
+  });
+
+  describe('a forced refresh with a grant bound', () => {
+    /** The bound is counted from the call, so the clock is faked as well as the timers. */
+    const useFakeClock = () =>
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+
+    /** Start a refresh through the service and record what it answers. */
+    function refreshing(svc: MatrixClientService, timeoutMs?: number) {
+      const outcome: { value?: boolean } = {};
+      svc
+        .refreshAccessToken(
+          OIDC_SESSION.userId,
+          timeoutMs === undefined ? undefined : { timeoutMs },
+        )
+        .subscribe((value) => (outcome.value = value));
+      return outcome;
+    }
+
+    it('aborts the grant at the given time, stays signed in and refreshes again', async () => {
+      const net = fakeNetwork('rotate');
+      const { svc, client } = await startReal();
+      const loggedOut = vi.fn();
+      client.on(HttpApiEvent.SessionLoggedOut, loggedOut);
+      net.state.provider = 'hang';
+      useFakeClock();
+      try {
+        const outcome = refreshing(svc, 8_000);
+
+        await vi.advanceTimersByTimeAsync(7_999);
+        expect(outcome.value).toBeUndefined();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(outcome.value).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(loggedOut).not.toHaveBeenCalled();
+      expectStillSignedIn(svc, client);
+      net.state.provider = 'up';
+      await expect(client.whoami()).resolves.toMatchObject({
+        user_id: '@me:hs',
+      });
+      expect(net.grants).toHaveLength(1);
+    });
+
+    it('counts the bound from the call, so a slow discovery leaves the grant less time', async () => {
+      const net = fakeNetwork('rotate');
+      const { svc } = await startReal();
+      net.state.discoveryDelayMs = 5_000;
+      net.state.provider = 'hang';
+      useFakeClock();
+      try {
+        const outcome = refreshing(svc, 8_000);
+
+        await vi.advanceTimersByTimeAsync(7_999);
+        expect(outcome.value).toBeUndefined();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(outcome.value).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('sends no grant once the bound has passed before the grant could start', async () => {
+      const net = fakeNetwork('rotate');
+      const { svc, client, storage } = await startReal();
+      net.state.discoveryDelayMs = 8_000;
+      useFakeClock();
+      try {
+        const outcome = refreshing(svc, 8_000);
+
+        await vi.advanceTimersByTimeAsync(8_000);
+        expect(outcome.value).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(net.grants).toHaveLength(0);
+      expect(storage.updateTokens).not.toHaveBeenCalled();
+      expect(client.getAccessToken()).toBe(OIDC_SESSION.accessToken);
+      expectStillSignedIn(svc, client);
+    });
+
+    it('keeps the default grant bound when none is given', async () => {
+      const net = fakeNetwork('rotate');
+      const { svc } = await startReal();
+      net.state.provider = 'hang';
+      useFakeClock();
+      try {
+        const outcome = refreshing(svc);
+
+        await vi.advanceTimersByTimeAsync(MATRIX_REQUEST_TIMEOUT_MS - 1);
+        expect(outcome.value).toBeUndefined();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(outcome.value).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  it('answers false for a session without OAuth and emits no sign-out', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, client } = await startReal(SESSION);
+    const loggedOut = vi.fn();
+    client.on(HttpApiEvent.SessionLoggedOut, loggedOut);
+
+    await expect(client.http.refreshOAuthTokens()).resolves.toBe(false);
+
+    expect(net.grants).toHaveLength(0);
+    expect(loggedOut).not.toHaveBeenCalled();
+    expectStillSignedIn(svc, client, SESSION.userId);
+  });
+
+  describe('a forced refresh while the known expiry is far away', () => {
+    // MAS revokes the previous access token on every grant, an hour before the expiry the
+    // client knows. The SDK reads a 401 that far from expiry as revocation and signs out.
+    async function startWithFarExpiry() {
+      const net = fakeNetwork('rotate', 3600);
+      const started = await startReal();
+      await started.client.whoami(); // the first refresh: at-2, an hour to run
+      return { net, ...started };
+    }
+
+    it('retries a request whose token was rotated behind it', async () => {
+      const { net, svc, client } = await startWithFarExpiry();
+      const release = net.holdWhoami();
+      const pending = client.whoami();
+      await vi.waitFor(() => expect(net.whoamiHeld()).toBe(1));
+
+      await expect(client.http.refreshOAuthTokens()).resolves.toBe(true);
+      release();
+
+      await expect(pending).resolves.toMatchObject({ user_id: '@me:hs' });
+      expect(net.grants).toHaveLength(2);
+      expectStillSignedIn(svc, client);
+    });
+
+    it('joins the refresh when a request meets its revoked token before adoption', async () => {
+      const { net, svc, storage, client } = await startWithFarExpiry();
+      const release = net.holdWhoami();
+      const pending = client.whoami();
+      await vi.waitFor(() => expect(net.whoamiHeld()).toBe(1));
+      const write = new Subject<void>();
+      vi.mocked(storage.updateTokens).mockReturnValueOnce(write);
+
+      const refreshed = client.http.refreshOAuthTokens();
+      // The provider has rotated, so revoked at-2; the client persists before adopting at-3.
+      await vi.waitFor(() =>
+        expect(storage.updateTokens).toHaveBeenLastCalledWith(
+          '@me:hs',
+          'at-3',
+          'rt-3',
+          expect.any(Number),
+        ),
+      );
+      const refusedBefore = net.whoamiRefused();
+      release();
+      await vi.waitFor(() =>
+        expect(net.whoamiRefused()).toBe(refusedBefore + 1),
+      );
+      // Let the client handle that refusal while the write is still pending.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      write.next();
+      write.complete();
+
+      await expect(refreshed).resolves.toBe(true);
+      await expect(pending).resolves.toMatchObject({ user_id: '@me:hs' });
+      expect(net.grants).toHaveLength(2);
+      expectStillSignedIn(svc, client);
+    });
+
+    it('refreshes for a request prepared before a forced refresh whose answer was lost', async () => {
+      const { net, svc, client } = await startWithFarExpiry();
+      const release = net.holdWhoami();
+      const pending = client.whoami();
+      await vi.waitFor(() => expect(net.whoamiHeld()).toBe(1));
+      net.state.loseGrantResponse = true;
+
+      await expect(client.http.refreshOAuthTokens()).resolves.toBe(false);
+      net.state.loseGrantResponse = false;
+      release();
+
+      await expect(pending).resolves.toMatchObject({ user_id: '@me:hs' });
+      expect(net.grants).toHaveLength(3);
+      expect(net.grants[2].get('refresh_token')).toBe('rt-2');
+      expectStillSignedIn(svc, client);
+    });
+
+    it('refreshes again after a forced refresh whose answer was lost', async () => {
+      const { net, svc, client } = await startWithFarExpiry();
+      net.state.loseGrantResponse = true;
+
+      await expect(client.http.refreshOAuthTokens()).resolves.toBe(false);
+      net.state.loseGrantResponse = false;
+
+      await expect(client.whoami()).resolves.toMatchObject({
+        user_id: '@me:hs',
+      });
+      expect(net.grants).toHaveLength(3);
+      expect(net.grants[2].get('refresh_token')).toBe('rt-2');
+      expectStillSignedIn(svc, client);
+    });
+  });
+
+  it('refreshes a live OAuth account before the background and records the new expiry', async () => {
+    const net = fakeNetwork('rotate', 300);
+    const { svc, client } = await startReal();
+    const before = Date.now();
+
+    await expect(
+      firstValueFrom(svc.refreshAccessToken('@me:hs')),
+    ).resolves.toBe(true);
+
+    expect(net.grants).toHaveLength(1);
+    const token = client.getAccessToken() ?? '';
+    expect(token).toBe('at-2');
+    expect(svc.accessTokenExpiry('@me:hs', token)).toBeGreaterThanOrEqual(
+      before + 300_000,
+    );
+    expectStillSignedIn(svc, client);
+  });
+
+  it('signs nothing out when the provider refuses a refresh before the background', async () => {
+    const net = fakeNetwork('rotate');
+    const { svc, storage, client } = await startReal();
+    net.state.provider = { status: 400, body: { error: 'invalid_grant' } };
+
+    await expect(
+      firstValueFrom(svc.refreshAccessToken('@me:hs')),
+    ).resolves.toBe(false);
+
+    expectStillSignedIn(svc, client);
+    expect(storage.remove).not.toHaveBeenCalled();
+  });
+
   it("persists each account's refreshed tokens under that account", async () => {
     const net = fakeNetwork('rotate');
     const { svc, storage } = await startReal();
@@ -1896,8 +2427,24 @@ describe('OAuth tokens through a real MatrixClient', () => {
         client.getRefreshToken(),
         expect.any(Number),
       );
+      expect(
+        svc.accessTokenExpiry(userId, client.getAccessToken()!),
+      ).toBeGreaterThan(Date.now());
       expectStillSignedIn(svc, client, userId);
     }
+    // Each expiry travels only with its own account's token.
+    expect(
+      svc.accessTokenExpiry(
+        '@me:hs',
+        svc.clientFor('@you:other')!.getAccessToken()!,
+      ),
+    ).toBeUndefined();
+    expect(
+      svc.accessTokenExpiry(
+        '@you:other',
+        svc.clientFor('@me:hs')!.getAccessToken()!,
+      ),
+    ).toBeUndefined();
     expect(net.grants.map((grant) => grant.get('client_id')).sort()).toEqual([
       'client-1',
       'client-2',

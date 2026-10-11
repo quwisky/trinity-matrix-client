@@ -13,6 +13,7 @@ import {
 } from '../support/matrix.mts';
 import { iosAppGroupContainer, resetApp } from '../support/session.mts';
 import { onlyOn } from '../support/platform.mts';
+import { storeExpiredPushAccount } from '../support/push-handoff.mts';
 
 const APP_GROUP = 'group.dev.trinityproject.trinity';
 
@@ -147,6 +148,41 @@ describe('device-rendered push on iOS', () => {
       subtitle: '',
       body: dmText,
       threadIdentifier: dmId,
+    });
+  });
+
+  it('shows the open-Trinity text without reading anything once the stored token has expired', async () => {
+    const room = await roomWithSender('ios-push-expired');
+    await login(room.user, room.pass);
+    const rooms = join(
+      await iosAppGroupContainer(APP_GROUP),
+      'push-handoff',
+      'rooms.json',
+    );
+    // The account is written before its rooms (one serialized queue), so once the room is
+    // stored nothing else rewrites the account in this test.
+    await browser.waitUntil(
+      async () =>
+        (await storedRooms(rooms))[room.userId]?.[room.roomId] !== undefined,
+      {
+        timeout: 60_000,
+        timeoutMsg: 'the app never wrote the room to the push handoff store',
+      },
+    );
+    await storeExpiredPushAccount(room.userId);
+
+    const eventId = await sendMessage(
+      room.senderToken,
+      room.roomId,
+      `expired ${uniqueId('msg')}`,
+    );
+    expect(
+      await renderProbe(gatewayPush(room.userId, room.roomId, eventId)),
+    ).toMatchObject({
+      title: room.roomName,
+      subtitle: '',
+      body: 'Open Trinity to read this message',
+      threadIdentifier: room.roomId,
     });
   });
 });

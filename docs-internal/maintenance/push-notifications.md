@@ -199,7 +199,7 @@ metadata private from the gateway operator.
 ## Render pushes on the device
 
 The device turns `event_id_only` pushes into readable notifications; #1152 tracks the
-out-of-repo setup and the device checks.
+out-of-repo setup and the device checks, and #1211 (part B) the checks for OAuth accounts.
 
 **Where the code lives.** The native half is one local Capacitor plugin, the pnpm workspace
 package `@trinity/capacitor-push` in [`libs/native/capacitor-push`](../../libs/native/capacitor-push/package.json):
@@ -215,10 +215,13 @@ app-owned `push_notification_appearance.xml` notification icon and accent.
 **Push handoff store.** `PushHandoffService` (data-access/notifications) keeps a native
 store current through the `PushHandoff` plugin (`setAccount`, `setRooms`, `removeAccount`,
 `clear`, `clearRoom`). Per signed-in account it holds the homeserver URL, the access token
-(rewritten when the SDK refreshes it) and the notification-sound choice, plus room display
-names and DM flags written in one batch per sync or rename. It never holds refresh tokens,
-crypto keys or message history. An account's entry is removed as the first step of its
-sign-out, together with that account's delivered pushes, and the store is emptied, with
+(rewritten when the SDK refreshes it), the token's expiry when the account signed in through
+OAuth 2.0 and its server gave the token a lifetime (MAS defaults to five minutes;
+`MatrixClientService.accessTokenExpiry` hands it over only with the token it belongs to) and
+the notification-sound choice, plus room display names and DM flags written in one batch per
+sync or rename. It never holds refresh tokens, crypto keys or message history. An account's
+entry is removed as the first step of its sign-out, together with that account's delivered
+pushes, and the store is emptied, with
 every delivered push, by clear-all-data and before a replace sign-in. A handoff failure
 never blocks sign-in or sign-out; the replace sign-in waits for it for at most the
 notification cleanup budget. On iOS the accounts live in the shared keychain
@@ -231,6 +234,84 @@ app-group file
 Android Keystore key and stored in the private preferences file `trinity_push_handoff`
 (`EncryptedSharedPreferences` is deprecated).
 
+**Refresh before the background.** Each time the app goes to the background,
+`NotificationSessionService` asks `PushHandoffService.refreshBeforeBackground` to refresh
+every bound account whose token has an expiry and that holds a refresh token
+(`MatrixClientService.canRefreshAccessToken`), unless that token rotated within the last
+minute, so the copy in the store lives one full lifetime from then. The refresh runs through
+the SDK's own token manager (`client.http.refreshOAuthTokens()`, added by
+`patches/matrix-js-sdk@43.0.0.patch`). It therefore joins a refresh already in flight,
+persists the pair before the SDK adopts it and reaches the store as an ordinary rotation. The
+app stays the only process that rotates tokens; the renderers refreshing tokens themselves is
+[#1210](https://github.com/quwisky/trinity-matrix-client/issues/1210). A refused refresh signs
+nothing out at that moment; the account's next request meets the refusal and takes the usual
+path. The tracked token, its expiry and the rotations are keyed by account, not by client, so
+a refresh that lands from a client already replaced by a new sign-in of the same account can
+still reach the store; [#1207](https://github.com/quwisky/trinity-matrix-client/issues/1207)
+tracks ignoring it.
+
+The run is bounded. `BACKGROUND_REFRESH_GRANT_TIMEOUT_MS` (8 s) bounds the token grant of
+each refresh the run starts, counted from the start of that refresh
+(`refreshOAuthTokens({ timeoutMs })`); past it the patched SDK aborts the grant, or does not
+send it at all. `BACKGROUND_REFRESH_TIMEOUT_MS` (15 s) caps each account's refresh, and then
+the wait for the store writes it queued; past it the run completes without that account, so
+the next background event refreshes again. `BACKGROUND_RUN_DEADLINE_MS` (25 s) cuts off the
+whole run, asking for background time included, so the worst case is about 25 s. While any
+account is due, the run holds iOS background time (`PushHandoff.beginBackgroundWork`,
+`UIApplication.beginBackgroundTask`) from before the refreshes until the rotation's native
+write has landed or a bound has passed. It completes only once the release has landed, and
+still releases on error, unsubscription or a late grant; the task ends itself if iOS ends the
+granted time first. Android holds nothing, and a run with no account due asks for nothing.
+The refresh is still not proven to finish before the OS suspends the app: iOS can end
+background time early, and Android can freeze or stop a backgrounded app. An interrupted
+refresh can leave three things behind, and a refresh that outlasts a lock a fourth.
+
+- Interrupted native write. If the server rotated but the native store write never ran,
+  the store still holds the previous token with its previous expiry. The forced refresh
+  revoked that token, so pushes for the account read "New message" only until that old
+  expiry passes: at most one token lifetime, about 5 minutes on MAS defaults. After that
+  they read "Open Trinity to read this message". Holding iOS background time until the write
+  lands narrows this window but does not close it.
+- Spent refresh token. This does not need the process to die. If the refresh grant's
+  response is lost, for example because the connection is cut as the OS suspends the app,
+  the app keeps the spent refresh token in memory and in storage, and the next refresh
+  reuses it. A provider that rejects reused refresh tokens answers `invalid_grant`, and the
+  SDK signs the account out and clears its local encryption state. MAS deployments that
+  include its idempotent refresh-token grant (matrix-authentication-service PR #3650)
+  accept the reuse while neither the new access token nor the new refresh token has been
+  used, which is the lost-response case. Other providers may not; the device check in
+  [#1211](https://github.com/quwisky/trinity-matrix-client/issues/1211) (part B) confirms
+  the behaviour for the deployment in use. The grant bounds below abort a request the server
+  may already have answered, which is the same case.
+- Suspended refresh request. The patch aborts every refresh-token grant after 30 s, the
+  same bound `localTimeoutMs` puts on every other Matrix request, and the background run's
+  grants after 8 s. An aborted grant fails like a network error: nothing signs out, the
+  SDK's shared refresh settles, and the next request refreshes again. A request suspended
+  mid-flight therefore holds the account's requests for at most the rest of its bound of run
+  time once the app resumes, and the 15 s run bound frees the background refresh sooner.
+  The device check (#1211, step B4) includes "go to the background mid-refresh, come back,
+  confirm sync resumes".
+- Lock during a refresh. Locking the phone is the most common way to send the app to the
+  background. The session's tokens are stored with
+  `KeychainAccess.whenUnlockedThisDeviceOnly`, and iOS discards the key for those items
+  about 10 s after the lock. A forced refresh whose grant answers after that cannot save the
+  rotated pair: `onTokenRefresh` rejects, the server has already rotated, and the SDK keeps
+  the spent pair, which is the spent-refresh-token case above. Two things guard against it.
+  `beginBackgroundWork` reports whether protected data is available
+  (`isProtectedDataAvailable`) and whether the device is locking (iOS posted
+  `protectedDataWillBecomeUnavailableNotification` within the last 10 s and has not posted
+  `protectedDataDidBecomeAvailableNotification` since); the run refreshes nothing in either
+  case, still ends the background task, and the next background event with the phone
+  unlocked refreshes. Otherwise every refresh starts at once as background time is granted,
+  so a lock that arrives mid-run finds none left to start, and each grant must answer within
+  8 s of the refresh call. The keychain write that saves the answer is not covered by that
+  bound, so it has about 2 s of the 10 s left after a lock that came as the run started.
+  What remains: a grant aborted at the 8 s bound after the server processed it spends the
+  refresh token (the spent-refresh-token case), and a refresh the run joined because it was
+  already in flight keeps the SDK's 30 s bound. The device check (#1211, step B4) should
+  include locking the phone with the side button mid-refresh, then unlocking and confirming
+  the account is still signed in and syncs.
+
 **Rendering.** iOS runs the `NotificationService` extension; Android replaces the push
 plugin's messaging service with `TrinityMessagingService`, which treats the app as
 foreground, and leaves the notification to the app, while an activity is visible. Both
@@ -242,8 +323,11 @@ token never follows one. Both apply the shared text rules (including the 200 cod
 limit and Unicode `White_Space` trimming) pinned by
 [`push-render-cases.json`](../../native/push-render/push-render-cases.json), which JUnit and
 XCTest both run. A push for an account the store does not know keeps the gateway's
-"Trinity" / "New message". The renderers never refresh a token (an expired one shows the
-room-name fallback) and never log tokens, IDs, room names or message text. Android posts
+"Trinity" / "New message". The renderers never refresh a token. Once the stored expiry has
+passed they read nothing and show the room name (or "Trinity") with "Open Trinity to read this
+message", because only the running app can renew the token; any other failed read shows
+"New message". Password and SSO tokens carry no expiry and are always read. The renderers
+never log tokens, expiries, IDs, room names or message text. Android posts
 one `MessagingStyle` notification per room on `messages` and cancels it when a push without
 `event_id` arrives for that room. The operating system's preview settings decide what shows
 on the lock screen.
@@ -274,7 +358,8 @@ account; iOS removes notifications whose `threadIdentifier` is the room and whos
   Android unit tests; CI runs them) for the text rules and the bounded reads.
 - `e2e/mobile/specs/push-render-ios.e2e.mts` and `push-render-android.e2e.mts` drive the
   renderers through debug-only probes; the Android spec also taps the notification it posted
-  with the app terminated and checks that the room opens. They do not show a real FCM token,
+  with the app terminated and checks that the room opens. Both also store an already expired
+  token and check for the expired-token text. They do not show a real FCM token,
   the extension launching, locked-phone rendering or closed-app delivery through
   `push.trinityproject.dev`, and nothing covers tap-to-open on iOS; check those on a device
   ([#1152](https://github.com/quwisky/trinity-matrix-client/issues/1152)).

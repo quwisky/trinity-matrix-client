@@ -24,7 +24,8 @@ final class PushRenderRulesTests: XCTestCase {
                 event: testCase["event"] as? [String: Any],
                 storedRoom: storedRoom,
                 stateRoomName: testCase["stateRoomName"] as? String,
-                senderName: testCase["senderName"] as? String
+                senderName: testCase["senderName"] as? String,
+                tokenExpired: testCase["tokenExpired"] as? Bool ?? false
             )
             XCTAssertEqual(
                 actual,

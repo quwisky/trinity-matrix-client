@@ -396,6 +396,74 @@
       }
     },
     {
+      "name": "token expired before the push: nothing read, the open-Trinity text",
+      "tokenExpired": true,
+      "event": null,
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": null,
+      "expected": {
+        "title": "Team",
+        "subtitle": "",
+        "body": "Open Trinity to read this message"
+      }
+    },
+    {
+      "name": "token expired in a DM",
+      "tokenExpired": true,
+      "event": null,
+      "storedRoom": {
+        "name": "Bob",
+        "direct": true
+      },
+      "stateRoomName": null,
+      "senderName": null,
+      "expected": {
+        "title": "Bob",
+        "subtitle": "",
+        "body": "Open Trinity to read this message"
+      }
+    },
+    {
+      "name": "token expired for a room the store does not know",
+      "tokenExpired": true,
+      "event": null,
+      "storedRoom": null,
+      "stateRoomName": null,
+      "senderName": null,
+      "expected": {
+        "title": "Trinity",
+        "subtitle": "",
+        "body": "Open Trinity to read this message"
+      }
+    },
+    {
+      "name": "an event that was read renders as usual even with the expired flag",
+      "tokenExpired": true,
+      "event": {
+        "type": "m.room.message",
+        "sender": "@alice:hs",
+        "content": {
+          "msgtype": "m.text",
+          "body": "hello"
+        }
+      },
+      "storedRoom": {
+        "name": "Team",
+        "direct": false
+      },
+      "stateRoomName": null,
+      "senderName": "Alice",
+      "expected": {
+        "title": "Team",
+        "subtitle": "Alice",
+        "body": "hello"
+      }
+    },
+    {
       "name": "DM has no subtitle",
       "event": {
         "type": "m.room.message",
