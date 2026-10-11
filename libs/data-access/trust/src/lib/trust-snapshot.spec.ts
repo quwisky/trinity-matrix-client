@@ -147,7 +147,13 @@ describe('readTrustSnapshot', () => {
       expect(downloadKeysForUsers).toHaveBeenCalledTimes(2);
 
       downloadKeysForUsers.mockResolvedValue({
-        master_keys: { '@me:hs': { keys: { 'ed25519:M': 'M' } } },
+        master_keys: {
+          '@me:hs': {
+            user_id: '@me:hs',
+            usage: ['master'],
+            keys: { 'ed25519:MASTER': 'MASTER' },
+          },
+        },
       });
       await expect(readTrustSnapshot(client, crypto)).resolves.toMatchObject({
         status: 'ready',
