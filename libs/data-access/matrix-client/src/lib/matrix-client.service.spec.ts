@@ -521,6 +521,145 @@ describe('MatrixClientService', () => {
     expect(svc.canRefreshAccessToken('@me:hs')).toBe(false);
   });
 
+  describe('a refresh from a client the account no longer runs on', () => {
+    const REPLACEMENT = {
+      ...OIDC_SESSION,
+      accessToken: 'tok-new',
+      refreshToken: 'refresh-new',
+      accessTokenExpiresAt: 9_999,
+    };
+    const LATE_TOKENS = {
+      accessToken: 'a-late',
+      refreshToken: 'r-late',
+      expiry: new Date(5_000),
+    };
+
+    it('keeps an in-flight OAuth start tracked when init replaces the other accounts', async () => {
+      const starting = fakeClient();
+      let release!: () => void;
+      starting.initRustCrypto.mockReturnValue(
+        new Promise<void>((resolve) => (release = resolve)),
+      );
+      vi.mocked(createClient)
+        .mockReturnValueOnce(starting as never)
+        .mockReturnValueOnce(fakeClient('https://other.example') as never);
+      const { svc } = setup();
+
+      const added = firstValueFrom(svc.add(OIDC_SESSION));
+      await vi.waitFor(() =>
+        expect(starting.initRustCrypto).toHaveBeenCalled(),
+      );
+      const replaced = firstValueFrom(svc.init(SESSION_B));
+      release();
+      await Promise.all([added, replaced]);
+
+      expect(svc.clientFor('@me:hs')).toBe(starting);
+      expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBe(1234);
+      expect(svc.canRefreshAccessToken('@me:hs')).toBe(true);
+    });
+
+    it("leaves a same-account re-sign-in's tokens alone", async () => {
+      vi.mocked(createClient)
+        .mockReturnValueOnce(fakeClient() as never)
+        .mockReturnValueOnce(fakeClient() as never);
+      const { svc, storage } = setup();
+      vi.mocked(storage.updateTokens).mockReturnValue(of(void 0));
+      const rotations: AccessTokenRotation[] = [];
+      svc.accessTokenRotations.subscribe((rotation) =>
+        rotations.push(rotation),
+      );
+      await firstValueFrom(svc.init(OIDC_SESSION));
+      const replacedOpts = vi.mocked(createClient).mock.calls[0][0];
+      await firstValueFrom(svc.add(REPLACEMENT));
+
+      await expect(
+        replacedOpts.onTokenRefresh?.(LATE_TOKENS),
+      ).resolves.toBeUndefined();
+
+      expect(storage.updateTokens).not.toHaveBeenCalled();
+      expect(rotations).toEqual([]);
+      expect(svc.accessTokenExpiry('@me:hs', 'tok-new')).toBe(9_999);
+      expect(svc.accessTokenExpiry('@me:hs', 'a-late')).toBeUndefined();
+    });
+
+    it('publishes nothing for a refresh whose client was replaced while storage wrote it', async () => {
+      vi.mocked(createClient)
+        .mockReturnValueOnce(fakeClient() as never)
+        .mockReturnValueOnce(fakeClient() as never);
+      const { svc, storage } = setup();
+      const write = new Subject<void>();
+      vi.mocked(storage.updateTokens).mockReturnValue(write);
+      const rotations: AccessTokenRotation[] = [];
+      svc.accessTokenRotations.subscribe((rotation) =>
+        rotations.push(rotation),
+      );
+      await firstValueFrom(svc.init(OIDC_SESSION));
+      const replacedOpts = vi.mocked(createClient).mock.calls[0][0];
+      const pending = replacedOpts.onTokenRefresh?.(
+        LATE_TOKENS,
+      ) as unknown as Promise<void>;
+      await firstValueFrom(svc.add(REPLACEMENT));
+
+      write.next();
+      write.complete();
+      await pending;
+
+      expect(rotations).toEqual([]);
+      expect(svc.accessTokenExpiry('@me:hs', 'tok-new')).toBe(9_999);
+      expect(svc.accessTokenExpiry('@me:hs', 'a-late')).toBeUndefined();
+    });
+
+    it("persists a detached client's refresh without moving the live client's pair", async () => {
+      vi.mocked(createClient).mockReturnValue(fakeClient() as never);
+      const { svc, storage } = setup();
+      vi.mocked(storage.updateTokens).mockReturnValue(of(void 0));
+      const rotations: AccessTokenRotation[] = [];
+      svc.accessTokenRotations.subscribe((rotation) =>
+        rotations.push(rotation),
+      );
+      await firstValueFrom(svc.init(OIDC_SESSION));
+      svc.detachedClient(OIDC_SESSION);
+      const detachedOpts = vi.mocked(createClient).mock.calls[1][0];
+
+      await detachedOpts.onTokenRefresh?.(LATE_TOKENS);
+
+      expect(storage.updateTokens).toHaveBeenCalledWith(
+        '@me:hs',
+        'a-late',
+        'r-late',
+        5_000,
+      );
+      expect(rotations).toEqual([]);
+      expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBe(1234);
+    });
+
+    it.each([
+      ['removed', (svc: MatrixClientService) => svc.remove('@me:hs')],
+      ['stopped', (svc: MatrixClientService) => svc.stop()],
+    ] as const)(
+      'touches neither storage nor the push handoff once the account is %s',
+      async (_, end) => {
+        vi.mocked(createClient).mockReturnValue(fakeClient() as never);
+        const { svc, storage } = setup();
+        vi.mocked(storage.updateTokens).mockReturnValue(of(void 0));
+        const rotations: AccessTokenRotation[] = [];
+        svc.accessTokenRotations.subscribe((rotation) =>
+          rotations.push(rotation),
+        );
+        await firstValueFrom(svc.init(OIDC_SESSION));
+        const opts = vi.mocked(createClient).mock.calls[0][0];
+        await firstValueFrom(end(svc));
+
+        await expect(
+          opts.onTokenRefresh?.(LATE_TOKENS),
+        ).resolves.toBeUndefined();
+
+        expect(storage.updateTokens).not.toHaveBeenCalled();
+        expect(rotations).toEqual([]);
+      },
+    );
+  });
+
   it('reports a refresh that throws as false instead of an error', async () => {
     const client = {
       ...fakeClient(),

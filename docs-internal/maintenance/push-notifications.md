@@ -245,10 +245,12 @@ persists the pair before the SDK adopts it and reaches the store as an ordinary 
 app stays the only process that rotates tokens; the renderers refreshing tokens themselves is
 [#1210](https://github.com/quwisky/trinity-matrix-client/issues/1210). A refused refresh signs
 nothing out at that moment; the account's next request meets the refusal and takes the usual
-path. The tracked token, its expiry and the rotations are keyed by account, not by client, so
-a refresh that lands from a client already replaced by a new sign-in of the same account can
-still reach the store; [#1207](https://github.com/quwisky/trinity-matrix-client/issues/1207)
-tracks ignoring it.
+path. The tracked token and its expiry belong to the client that started with them, so a
+refresh that lands from a client already replaced by a new sign-in of the same account, or
+removed or torn down, changes nothing: no stored session, no tracked pair, no rotation and so
+no store write ([#1207](https://github.com/quwisky/trinity-matrix-client/issues/1207)). A
+refresh whose storage write began before the replacement still lands in storage, but
+publishes nothing.
 
 The run is bounded. `BACKGROUND_REFRESH_GRANT_TIMEOUT_MS` (8 s) bounds the token grant of
 each refresh the run starts, counted from the start of that refresh
