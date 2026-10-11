@@ -65,6 +65,8 @@ function project(platform) {
   };
 }
 
+const ANDROID_NS = 'xmlns:android="http://schemas.android.com/apk/res/android"';
+
 function pushLibraryManifest(
   service = [
     '<service',
@@ -76,7 +78,26 @@ function pushLibraryManifest(
     '</service>',
   ].join('\n'),
 ) {
-  return `<manifest><application>${service}</application></manifest>`;
+  return `<manifest ${ANDROID_NS}><application>${service}</application></manifest>`;
+}
+
+function appManifest(
+  service = [
+    '<service android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"',
+    '  tools:node="remove" />',
+  ].join('\n'),
+) {
+  return [
+    '<manifest xmlns:android="http://schemas.android.com/apk/res/android"',
+    '    xmlns:tools="http://schemas.android.com/tools">',
+    '  <application>',
+    '    <activity android:name=".MainActivity">',
+    '      <intent-filter><data android:scheme="dev.trinityproject.trinity" /></intent-filter>',
+    '    </activity>',
+    `    ${service}`,
+    '  </application>',
+    '</manifest>',
+  ].join('\n');
 }
 
 function validInput() {
@@ -131,11 +152,7 @@ function validInput() {
       'CapawesomeCapacitorBadge',
       'TrinityCapacitorPush',
     ].join('\n'),
-    androidManifest: [
-      'android:scheme="dev.trinityproject.trinity"',
-      '<service android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"',
-      '  tools:node="remove" />',
-    ].join('\n'),
+    androidManifest: appManifest(),
     iosInfo:
       '<key>UIViewControllerBasedStatusBarAppearance</key><true/>' +
       '<key>CFBundleURLSchemes</key><string>dev.trinityproject.trinity</string>' +
@@ -180,6 +197,33 @@ describe('native host contract', () => {
         '</service>',
       ].join('\n'),
     );
+    const errors = [];
+
+    validateNativeHostContract(input, errors);
+
+    expect(errors).toEqual([]);
+  });
+
+  it('accepts a reformatted push plugin declaration and reordered app marker', () => {
+    const input = validInput();
+    input.androidManifest = appManifest(
+      '<service xmlns:t="http://schemas.android.com/tools" t:node="remove"\n' +
+        '    android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"/>',
+    );
+    input.androidPushPlugin = input.androidPushPlugin.replace(
+      '@CapacitorPlugin(name = "PushHandoff")\npublic class',
+      '@CapacitorPlugin( name="PushHandoff" )\n\n\npublic   class',
+    );
+    input.iosPushPlugin = input.iosPushPlugin
+      .replace('@objc(PushHandoffPlugin)', '@objc( PushHandoffPlugin )')
+      .replace(
+        'PushHandoffPlugin: CAPPlugin, CAPBridgedPlugin',
+        'PushHandoffPlugin :\n    CAPPlugin,\n    CAPBridgedPlugin',
+      )
+      .replace(
+        'public let jsName = "PushHandoff"',
+        'public  let jsName="PushHandoff"',
+      );
     const errors = [];
 
     validateNativeHostContract(input, errors);
@@ -446,7 +490,7 @@ describe('native host contract', () => {
     [
       'a missing removal of the push plugin service',
       (input) => {
-        input.androidManifest = 'android:scheme="dev.trinityproject.trinity"';
+        input.androidManifest = appManifest('');
       },
       'Android host must remove the push plugin MessagingService from the app manifest',
     ],
@@ -472,6 +516,40 @@ describe('native host contract', () => {
         );
       },
       'Capacitor push library must declare TrinityMessagingService for FCM messages',
+    ],
+    [
+      'a self-closing push library service beside another FCM service',
+      (input) => {
+        input.androidPushLibraryManifest = pushLibraryManifest(
+          [
+            '<service android:name="dev.trinityproject.trinity.push.TrinityMessagingService" />',
+            '<service android:name="com.example.OtherService">',
+            '  <intent-filter>',
+            '    <action android:name="com.google.firebase.MESSAGING_EVENT" />',
+            '  </intent-filter>',
+            '</service>',
+          ].join('\n'),
+        );
+      },
+      'Capacitor push library must declare TrinityMessagingService for FCM messages',
+    ],
+    [
+      'a removal marker on a different app service',
+      (input) => {
+        input.androidManifest = appManifest(
+          '<service android:name="com.example.Other" tools:node="remove" />',
+        );
+      },
+      'Android host must remove the push plugin MessagingService from the app manifest',
+    ],
+    [
+      'a push plugin service kept in the app manifest',
+      (input) => {
+        input.androidManifest = appManifest(
+          '<service android:name="com.capacitorjs.plugins.pushnotifications.MessagingService" tools:node="merge" />',
+        );
+      },
+      'Android host must remove the push plugin MessagingService from the app manifest',
     ],
     [
       'a commented-out push library service',

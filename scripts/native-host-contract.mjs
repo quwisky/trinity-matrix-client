@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { JSDOM } from 'jsdom';
 
 const workspaceRoot = join(import.meta.dirname, '..');
 
@@ -138,6 +139,30 @@ function withoutComments(source, preserveStrings = false) {
 
 function withoutXmlComments(source) {
   return source.replaceAll(/<!--(?:.|\n)*?-->/gu, '');
+}
+
+const ANDROID_NAMESPACE = 'http://schemas.android.com/apk/res/android';
+const TOOLS_NAMESPACE = 'http://schemas.android.com/tools';
+
+// Attribute order, quoting and layout are formatting; the contract reads the parsed
+// <service> elements. A manifest that is not well-formed XML declares nothing.
+function manifestServices(manifest) {
+  try {
+    const { document } = new JSDOM(manifest, {
+      contentType: 'text/xml',
+    }).window;
+    return [...document.getElementsByTagName('service')].map((service) => ({
+      name: service.getAttributeNS(ANDROID_NAMESPACE, 'name'),
+      node: service.getAttributeNS(TOOLS_NAMESPACE, 'node'),
+      actions: [...service.children]
+        .filter((child) => child.tagName === 'intent-filter')
+        .flatMap((filter) => [...filter.children])
+        .filter((child) => child.tagName === 'action')
+        .map((action) => action.getAttributeNS(ANDROID_NAMESPACE, 'name')),
+    }));
+  } catch {
+    return [];
+  }
 }
 
 function dependsOnProjectTarget(target, project, dependencyTarget) {
@@ -315,7 +340,7 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
     errors.push('iOS host must not register PushHandoffPlugin by hand');
   }
   if (
-    !/^@CapacitorPlugin\(name = "PushHandoff"\)\s+public class PushHandoffPlugin extends Plugin\b/mu.test(
+    !/^@CapacitorPlugin\(\s*name\s*=\s*"PushHandoff"\s*\)\s+public\s+class\s+PushHandoffPlugin\s+extends\s+Plugin\b/mu.test(
       withoutComments(input.androidPushPlugin, true),
     )
   ) {
@@ -323,12 +348,12 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
   }
   const iosPushPlugin = withoutComments(input.iosPushPlugin, true);
   if (
-    input.iosPushPlugin.match(/@objc\(([A-Za-z0-9_-]+)\)/u)?.[1] !==
+    input.iosPushPlugin.match(/@objc\(\s*([A-Za-z0-9_-]+)\s*\)/u)?.[1] !==
       'PushHandoffPlugin' ||
-    !/@objc\(PushHandoffPlugin\)\s+public class PushHandoffPlugin:\s*CAPPlugin,\s*CAPBridgedPlugin\b/u.test(
+    !/@objc\(\s*PushHandoffPlugin\s*\)\s+public\s+class\s+PushHandoffPlugin\s*:\s*CAPPlugin\s*,\s*CAPBridgedPlugin\b/u.test(
       iosPushPlugin,
     ) ||
-    !iosPushPlugin.includes('public let jsName = "PushHandoff"')
+    !/public\s+let\s+jsName\s*=\s*"PushHandoff"/u.test(iosPushPlugin)
   ) {
     errors.push('iOS PushHandoff plugin must be discoverable by cap sync');
   }
@@ -350,16 +375,13 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
   const pushLibraryManifest = withoutXmlComments(
     input.androidPushLibraryManifest,
   );
-  const declaresMessagingService = (
-    pushLibraryManifest.match(/<service\b[^>]*>(?:.|\n)*?<\/service>/gu) ?? []
-  ).some(
+  const declaresMessagingService = manifestServices(pushLibraryManifest).some(
     (service) =>
-      /android:name="(?:dev\.trinityproject\.trinity\.push)?\.TrinityMessagingService"/u.test(
-        service,
-      ) &&
-      /<action\s+android:name="com\.google\.firebase\.MESSAGING_EVENT"/u.test(
-        service,
-      ),
+      [
+        'dev.trinityproject.trinity.push.TrinityMessagingService',
+        '.TrinityMessagingService',
+      ].includes(service.name) &&
+      service.actions.includes('com.google.firebase.MESSAGING_EVENT'),
   );
   if (!declaresMessagingService) {
     errors.push(
@@ -370,8 +392,11 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
   // only applies from the higher-priority manifest. Otherwise FCM can deliver to it and
   // closed-app pushes silently stop rendering.
   if (
-    !/<service\s[^>]*android:name="com\.capacitorjs\.plugins\.pushnotifications\.MessagingService"[^>]*tools:node="remove"/u.test(
-      androidManifest,
+    !manifestServices(androidManifest).some(
+      (service) =>
+        service.name ===
+          'com.capacitorjs.plugins.pushnotifications.MessagingService' &&
+        service.node === 'remove',
     )
   ) {
     errors.push(
