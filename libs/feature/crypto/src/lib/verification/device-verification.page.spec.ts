@@ -8,8 +8,10 @@ import { DateTimeFormatService, QrCodeService } from '@trinity/platform-native';
 import { fireEvent, render, screen, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import {
+  TrustService,
   TrustVerificationService,
   type NewSessionDetails,
+  type TrustStatus,
   type VerificationView,
 } from '@trinity/data-access/trust';
 import { of, Subject } from 'rxjs';
@@ -36,14 +38,19 @@ function view(partial: Partial<VerificationView>): VerificationView {
 
 async function renderPage(
   active: WritableSignal<VerificationView | null>,
-  options: { returnTo?: string | null; asModal?: boolean } = {},
+  options: {
+    returnTo?: string | null;
+    asModal?: boolean;
+    status?: TrustStatus;
+  } = {},
 ) {
-  const { returnTo = null, asModal = false } = options;
+  const { returnTo = null, asModal = false, status = 'ready' } = options;
   const close = vi.fn();
   const result = await render(DeviceVerificationPage, {
     inputs: { asModal },
     providers: [
       MockProvider(TrustVerificationService, { active }),
+      MockProvider(TrustService, { status: signal(status) }),
       MockProvider(QrCodeService, {
         cameraSupported: true,
         createDataUrl: vi.fn(() =>
@@ -464,6 +471,102 @@ describe('DeviceVerificationPage', () => {
     fireEvent.click(button(container, 'Done'));
 
     expect(close).not.toHaveBeenCalled();
+  });
+
+  // #1223: an identity set up on another device, with no recovery, can only be verified
+  // from that device. Someone who no longer has it must find the way on (the confirmed
+  // reset in Security settings) from here; the dialog itself never offers the reset.
+  describe('without another device to verify with', () => {
+    const securitySettings = { kind: 'settings', section: 'security' };
+
+    it('routes the idle flow to Security settings', async () => {
+      const { router } = await renderPage(signal(null), {
+        status: 'needs-verification',
+      });
+
+      expect(screen.getByText('Can’t use your other device?')).toBeTruthy();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Open Security settings' }),
+      );
+
+      expect(router.navigateByUrl).toHaveBeenCalledWith('/settings/security', {
+        replaceUrl: true,
+      });
+    });
+
+    it('cancels the waiting request and asks the opener for Security settings', async () => {
+      const { svc, router, close } = await renderPage(
+        signal(view({ stage: 'requested' })),
+        { asModal: true, status: 'needs-verification' },
+      );
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Open Security settings' }),
+      );
+
+      expect(svc.cancel).toHaveBeenCalledOnce();
+      expect(svc.dismiss).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledWith(securitySettings);
+      expect(router.navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    it('offers the way on when the request stopped unanswered', async () => {
+      await renderPage(
+        signal(view({ stage: 'cancelled', cancelReason: 'Timed out.' })),
+        { status: 'needs-verification' },
+      );
+
+      expect(
+        screen.getByRole('button', { name: 'Open Security settings' }),
+      ).toBeTruthy();
+    });
+
+    it('describes the button with the question it answers', async () => {
+      await renderPage(signal(null), { status: 'needs-verification' });
+
+      const describedBy = screen
+        .getByRole('button', { name: 'Open Security settings' })
+        .getAttribute('aria-describedby');
+      expect(document.getElementById(describedBy ?? '')?.textContent).toContain(
+        'Can’t use your other device?',
+      );
+    });
+
+    it('never offers a reset itself', async () => {
+      await renderPage(signal(view({ stage: 'requested' })), {
+        status: 'needs-verification',
+      });
+
+      expect(screen.queryByRole('button', { name: /reset/i })).toBeNull();
+    });
+
+    it('stays out of the way once the other device answered', async () => {
+      await renderPage(signal(view({ stage: 'ready' })), {
+        status: 'needs-verification',
+      });
+
+      expect(
+        screen.queryByRole('button', { name: 'Open Security settings' }),
+      ).toBeNull();
+    });
+
+    it('stays out of an incoming request', async () => {
+      await renderPage(signal(view({ stage: 'requested', incoming: true })), {
+        status: 'needs-verification',
+      });
+
+      expect(
+        screen.queryByRole('button', { name: 'Open Security settings' }),
+      ).toBeNull();
+    });
+
+    it('stays out of the way when a recovery key can unlock the device', async () => {
+      await renderPage(signal(null), { status: 'needs-recovery' });
+
+      expect(
+        screen.queryByRole('button', { name: 'Open Security settings' }),
+      ).toBeNull();
+    });
   });
 
   describe('a request from a new session', () => {

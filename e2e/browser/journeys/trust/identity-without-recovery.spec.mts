@@ -11,10 +11,7 @@ import {
   registerUser,
 } from '../../../support/account.mts';
 import { publishIdentityWithoutRecovery } from '../../../support/cross-signing.mts';
-import {
-  closeSettings,
-  openSettingsSection,
-} from '../../../support/journeys/navigation.mts';
+import { closeSettings } from '../../../support/journeys/navigation.mts';
 
 // MSC4153 brief, gap G3: an account whose cross-signing identity was published by another
 // client, with no secret storage, used to read as "needs setup" — and setup there replaced
@@ -111,9 +108,24 @@ test.describe('An identity set up elsewhere without recovery', () => {
     // it never offered a reset in this state, and its actions are unit-tested.
     await expect(banner.getByRole('button', { name: /reset/i })).toHaveCount(0);
 
-    // Settings opens over the rooms shell, so the same app instance shows the banner
-    // going away once the reset has finished.
-    await openSettingsSection(page, 'security');
+    // With no other device to answer, the verify dialog the banner opens is the way on:
+    // it leads to Security settings, which holds the confirmed reset (#1223). Settings
+    // opens over the rooms shell, so the same app instance shows the banner going away
+    // once the reset has finished.
+    await banner
+      .getByRole('button', { name: 'Verify with another device' })
+      .click();
+    const verify = page.getByRole('dialog', { name: 'Verify device' });
+    await verify.getByTestId('verify-start').click();
+    await expect(verify).toContainText('Waiting for your other device', {
+      timeout: 30_000,
+    });
+    await expect(verify.getByRole('button', { name: /reset/i })).toHaveCount(0);
+    await verify
+      .getByRole('button', { name: 'Open Security settings' })
+      .click();
+    await expect(verify).toBeHidden();
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
     await page.getByTestId('security-reset-identity').click();
 
     // The door promised the reset, so the typed confirmation opens straight away.

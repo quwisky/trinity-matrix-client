@@ -401,6 +401,28 @@
       </button>
     }
 
+    @if (offerSecuritySettings()) {
+      <!-- A way on, not the reset: Security settings keeps it behind its typed
+           confirmation (#1214 R5). -->
+      <p
+        id="verify-no-other-device"
+        class="mt-6 text-muted-foreground"
+        data-testid="verify-no-other-device"
+      >
+        Can’t use your other device?
+      </p>
+      <button
+        trnBtn
+        presentation="ghost"
+        class="mt-2 w-full"
+        data-testid="verify-security-settings"
+        aria-describedby="verify-no-other-device"
+        (click)="openSecuritySettings()"
+      >
+        Open Security settings
+      </button>
+    }
+
     @if (error(); as message) {
       <p class="mt-2 text-danger" role="alert">{{ message }}</p>
     }

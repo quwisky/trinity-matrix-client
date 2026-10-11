@@ -253,6 +253,104 @@ describe('Workspace application-surface composition adapter', () => {
     expect(settingsClose).toHaveBeenCalledOnce();
   });
 
+  // #1223: the verify dialog cannot reach Settings itself (the trust capability does not
+  // depend on Workspace), so it closes with the surface it wants and the opener shows it.
+  it('opens Security settings when a trust dialog closes asking for it', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: true })),
+    );
+    const trustClosed = new Subject<unknown>();
+    dialogOpen.mockReturnValueOnce(
+      new TrnDialogRef({
+        closed: trustClosed,
+        close: (result?: unknown) => {
+          trustClosed.next(result);
+          trustClosed.complete();
+        },
+      }),
+    );
+    const restoreFocus = vi.fn();
+    await firstValueFrom(
+      presenter().present({
+        surface: { kind: 'trust', flow: 'verify' },
+        context: { restoreFocus },
+      }),
+    );
+
+    trustClosed.next({ kind: 'settings', section: 'security' });
+    trustClosed.complete();
+    await Promise.resolve();
+
+    expect(dialogOpen).toHaveBeenNthCalledWith(
+      2,
+      StubSettingsComponent,
+      expect.objectContaining({ inputs: { initialSection: 'security' } }),
+    );
+    expect(restoreFocus).not.toHaveBeenCalled();
+    await expect(
+      firstValueFrom(TestBed.inject(WorkspaceBackService).back()),
+    ).resolves.toMatchObject({
+      kind: 'dismissed',
+      surface: {
+        layer: 'application',
+        surface: { kind: 'settings', section: 'security' },
+      },
+    });
+  });
+
+  it('returns a nested trust dialog to the Settings it was opened from', async () => {
+    const settingsClosed = new Subject<void>();
+    const trustClosed = new Subject<unknown>();
+    dialogOpen
+      .mockReturnValueOnce(
+        new TrnDialogRef({ closed: settingsClosed, close: vi.fn() }),
+      )
+      .mockReturnValueOnce(
+        new TrnDialogRef({ closed: trustClosed, close: vi.fn() }),
+      );
+    const restoreFocus = vi.fn();
+    await firstValueFrom(
+      presenter().present({
+        surface: { kind: 'settings', section: 'security' },
+      }),
+    );
+    await firstValueFrom(
+      presenter().present({
+        surface: { kind: 'trust', flow: 'verify' },
+        context: { placement: 'nested', restoreFocus },
+      }),
+    );
+
+    trustClosed.next({ kind: 'settings', section: 'security' });
+    trustClosed.complete();
+    await Promise.resolve();
+
+    expect(dialogOpen).toHaveBeenCalledTimes(2);
+    expect(restoreFocus).toHaveBeenCalledOnce();
+  });
+
+  it('ignores any other close result from a trust dialog', async () => {
+    const trustClosed = new Subject<unknown>();
+    dialogOpen.mockReturnValueOnce(
+      new TrnDialogRef({ closed: trustClosed, close: vi.fn() }),
+    );
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({ matches: true })),
+    );
+    await firstValueFrom(
+      presenter().present({ surface: { kind: 'trust', flow: 'verify' } }),
+    );
+
+    trustClosed.next({ kind: 'trust', flow: 'setup' });
+    trustClosed.complete();
+    await Promise.resolve();
+
+    expect(dialogOpen).toHaveBeenCalledOnce();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it('keeps a flow-critical trust dialog blocked while local overlays can sit above it', async () => {
     vi.stubGlobal(
       'matchMedia',

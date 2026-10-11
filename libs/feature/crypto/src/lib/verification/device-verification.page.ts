@@ -3,6 +3,7 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  computed,
   effect,
   inject,
   input,
@@ -17,7 +18,10 @@ import {
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
 import { Observable } from 'rxjs';
-import { TrustVerificationService } from '@trinity/data-access/trust';
+import {
+  TrustService,
+  TrustVerificationService,
+} from '@trinity/data-access/trust';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
 import {
   PageHeaderComponent,
@@ -28,6 +32,12 @@ import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { QrScannerComponent } from '@trinity/components/controls';
 import { DateTimeFormatService, QrCodeService } from '@trinity/platform-native';
 import { SasCompareComponent } from './sas-compare.component';
+
+/**
+ * What the modal closes with to ask its opener for Security settings next. The trust
+ * capability cannot open Settings itself; the shape is Workspace's semantic surface.
+ */
+const SECURITY_SETTINGS = { kind: 'settings', section: 'security' } as const;
 
 /**
  * Drives an interactive device verification (emoji SAS) against
@@ -54,13 +64,17 @@ import { SasCompareComponent } from './sas-compare.component';
 })
 export class DeviceVerificationPage {
   private readonly verification = inject(TrustVerificationService);
+  private readonly trust = inject(TrustService);
   private readonly qrCode = inject(QrCodeService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   // Present only when opened as a dialog (incoming request); null on the routed page.
-  private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef, {
-    optional: true,
-  });
+  private readonly dialogRef = inject<TrnDialogRef<typeof SECURITY_SETTINGS>>(
+    TrnDialogRef,
+    {
+      optional: true,
+    },
+  );
   private readonly destroyRef = inject(DestroyRef);
 
   /** The active verification view (null until one starts). */
@@ -85,6 +99,25 @@ export class DeviceVerificationPage {
   readonly fmt = inject(DateTimeFormatService);
   readonly qrCodeUrl = signal<string | null>(null);
   private qrRequest = 0;
+
+  /**
+   * An identity set up elsewhere without recovery can only be verified from a device that
+   * holds it. While this device's own request is unanswered (or stopped unanswered), point
+   * someone without that device to Security settings, where the confirmed reset lives;
+   * this dialog never offers the reset itself.
+   */
+  readonly offerSecuritySettings = computed(() => {
+    if (this.trust.status() !== 'needs-verification') {
+      return false;
+    }
+    const active = this.active();
+    return (
+      !active ||
+      (active.isSelfVerification &&
+        !active.incoming &&
+        (active.stage === 'requested' || active.stage === 'cancelled'))
+    );
+  });
 
   private readonly synchronizeQrUi = effect(() => {
     if (this.active()?.stage !== 'qr-shown') {
@@ -193,11 +226,29 @@ export class DeviceVerificationPage {
 
   /** Cancel any in-flight verification, then leave. */
   cancelAndLeave(): void {
+    this.cancelInFlight();
+    this.leave();
+  }
+
+  /**
+   * Drop the unanswered request and go to Security settings: navigate on the routed page,
+   * or close the modal asking its opener to present Settings there.
+   */
+  openSecuritySettings(): void {
+    this.cancelInFlight();
+    if (this.asModal()) {
+      this.closed.emit();
+      this.dialogRef?.close(SECURITY_SETTINGS);
+      return;
+    }
+    void this.router.navigateByUrl('/settings/security', { replaceUrl: true });
+  }
+
+  private cancelInFlight(): void {
     if (this.active() && this.active()?.stage !== 'done') {
       this.verification.cancel().subscribe();
     }
     this.verification.dismiss();
-    this.leave();
   }
 
   private leave(): void {

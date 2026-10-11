@@ -211,8 +211,17 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
             )
             .subscribe();
           ref.closed
-            .pipe(take(1), takeUntil(this.navigationStarts))
-            .subscribe(() => this.restoreOwner(request));
+            .pipe(
+              take(1),
+              takeUntil(this.navigationStarts),
+              switchMap((result) => {
+                const next = this.followUp(request, result);
+                return next ? this.present(next) : of(null);
+              }),
+            )
+            .subscribe((outcome) => {
+              if (outcome?.kind !== 'presented') this.restoreOwner(request);
+            });
           return of({ kind: 'presented', surface: request.surface } as const);
         }),
       ),
@@ -297,6 +306,29 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
     flow: EncryptionDialogKind,
   ): (() => Observable<Type<unknown>>) | undefined {
     return this.encryptionLoaders?.[flow];
+  }
+
+  /**
+   * The Settings section a top-level trust dialog closed asking for. A trust page cannot
+   * open Settings itself (the trust capability does not depend on Workspace), so it closes
+   * with the semantic surface instead. Nested over Settings, closing already returns there.
+   */
+  private followUp(
+    request: WorkspaceApplicationSurfaceRequest,
+    result: unknown,
+  ): WorkspaceApplicationSurfaceRequest | null {
+    if (
+      request.surface.kind !== 'trust' ||
+      request.context?.placement === 'nested' ||
+      typeof result !== 'object' ||
+      result === null
+    ) {
+      return null;
+    }
+    const { kind, section } = result as Record<string, unknown>;
+    return kind === 'settings' && typeof section === 'string'
+      ? { surface: { kind: 'settings', section } }
+      : null;
   }
 
   private ownerIsActive(request: WorkspaceApplicationSurfaceRequest): boolean {
