@@ -26,8 +26,11 @@ public enum PushHandoffStoreError: Error {
 
 /// The push handoff store shared by the app (writes, through the PushHandoff plugin) and the
 /// NotificationService extension (reads). Accounts live in the shared keychain access group
-/// with `kSecAttrAccessibleAfterFirstUnlock`, so a locked phone can still render after its
-/// first unlock; room names live in the app-group file `push-handoff/rooms.json`.
+/// with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so a locked phone can still render
+/// after its first unlock, and an encrypted backup restored onto another phone does not bring
+/// the tokens along (the policy the app's own secrets follow). `SecItemUpdate` sets the class
+/// too, so an item written with an older class moves over at the next write; the app writes
+/// every account when it starts. Room names live in the app-group file `push-handoff/rooms.json`.
 /// Reads never throw: a keychain or file error reads as "no account" or "no room".
 /// Never logs what it stores.
 public final class PushHandoffStore: HandoffReading {
@@ -59,7 +62,7 @@ public final class PushHandoffStore: HandoffReading {
             let query = baseQuery(userId)
             let attributes: [String: Any] = [
                 kSecValueData as String: data,
-                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
             ]
             var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
             if status == errSecItemNotFound {
