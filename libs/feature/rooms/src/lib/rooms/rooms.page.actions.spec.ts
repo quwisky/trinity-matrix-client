@@ -554,6 +554,7 @@ describe('RoomsPage room / DM / invite actions', () => {
   let declineInvite: Mock;
   let canModerate: Mock;
   let dialogOpen: Mock;
+  let surfaceOpen: Mock;
   let resolveRoomId: Mock;
   let pending: WritableSignal<PendingInvite[]>;
 
@@ -588,6 +589,7 @@ describe('RoomsPage room / DM / invite actions', () => {
       myPower: 0,
     }));
     dialogOpen = vi.fn(() => of(null));
+    surfaceOpen = vi.fn();
     resolveRoomId = vi.fn(() => of('!linked:hs'));
     pending = signal<PendingInvite[]>([]);
     TestBed.configureTestingModule({
@@ -643,6 +645,7 @@ describe('RoomsPage room / DM / invite actions', () => {
           ).asReadonly(),
         }),
         MockProvider(TrnSurfaceService, {
+          open: surfaceOpen,
           openAndWait$: dialogOpen,
         }),
         MockProvider(TrnAlertService, { prompt$: alertPrompt }),
@@ -928,151 +931,179 @@ describe('RoomsPage room / DM / invite actions', () => {
     );
   });
 
-  it('opens a member info panel and starts a DM only if messaged', async () => {
+  // Member info from the list is a modal surface through `TrnSurfaceService` (#1041): the
+  // roster keeps its place in the Room surface slot and the dialog or sheet sits on top.
+  // `member-actions.service.spec.ts` renders the real surface stack for its placement and
+  // for the Account ownership rules.
+  const bob = {
+    userId: '@bob:hs',
+    roomDisplayName: 'Bob',
+    roomInitial: 'B',
+    roomAvatarMxc: null,
+    powerLevel: 0,
+    isCreator: false,
+  };
+
+  /** A member info handle the test closes itself, as the dialog would. */
+  function memberInfoRef() {
+    const closed = new Subject<string | undefined>();
+    const ref = {
+      closed: closed.asObservable(),
+      close: vi.fn((value?: string) => {
+        closed.next(value);
+        closed.complete();
+      }),
+    };
+    surfaceOpen.mockReturnValue(ref);
+    return ref;
+  }
+
+  function memberInfoOptions(roomId: string, direct = false) {
+    return {
+      ariaLabel: 'Member info',
+      inputs: { member: bob, roomId, owningAccountId: '@me:hs', direct },
+    };
+  }
+
+  it('opens member info over the roster and starts a DM only if messaged', async () => {
     const shell = build();
     setRouteRoom('!r:hs');
     await settleWorkspace();
-    const bob = {
-      userId: '@bob:hs',
-      roomDisplayName: 'Bob',
-      roomInitial: 'B',
-      roomAvatarMxc: null,
-      powerLevel: 0,
-      isCreator: false,
-    };
+    shell.surfaces.transition({ kind: 'open-members' });
+    const ref = memberInfoRef();
+
     shell.members.onSelectMember(bob);
-    await Promise.resolve();
-
-    // Into the slot, not a dialog: this member belongs to the OPEN room. `direct` says
-    // whether the room is a DM — the panel must not name an owner in a 1:1 chat, where
-    // both people sit at power level 100. Permissions remain live inside the panel.
-    expect(shell.surfaces.renderedSurface()).toEqual({
-      kind: 'member',
-      member: bob,
-      direct: false,
-    });
-    expect(dialogOpen).not.toHaveBeenCalledWith(
+    // `direct` says whether the room is a DM — member info must not name an owner in a 1:1
+    // chat, where both people sit at power level 100. No `kind`: the surface service applies
+    // the sheet-or-dialog rule rather than this caller picking one.
+    expect(surfaceOpen).toHaveBeenCalledWith(
       MemberInfoComponent,
-      expect.anything(),
+      memberInfoOptions('!r:hs'),
     );
-
-    // "Message" is announced by the panel's output rather than resolved by a dialog.
-    shell.members.onMemberMessage('@bob:hs');
-    await Promise.resolve();
+    ref.close('@bob:hs'); // the viewer chose "Message"
+    await settleWorkspace();
 
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
     expect(shell.store.activeRoomId()).toBe('!dm:hs');
   });
 
-  it('dismisses member detail when Message reuses the active DM', async () => {
+  it('keeps the roster open when member info closes without a pick', async () => {
+    const shell = build();
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+    shell.surfaces.transition({ kind: 'open-members' });
+    const ref = memberInfoRef();
+
+    shell.members.onSelectMember(bob);
+    // While it is open the roster is still the slot's surface, behind the dialog or sheet.
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
+
+    // Closing, or a kick or ban landing (member info closes itself with null), returns to
+    // the roster — which is where the change shows.
+    ref.close();
+    await settleWorkspace();
+
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
+    expect(createDirectMessage).not.toHaveBeenCalled();
+    expect(shell.store.activeRoomId()).toBe('!r:hs');
+  });
+
+  it('does not carry member info into the next room', async () => {
+    // Member info is bound to the Conversation it was opened in. A room switch (a link, a
+    // notification tap) closes it rather than leaving it over another room's timeline.
+    const shell = build();
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+    shell.surfaces.transition({ kind: 'open-members' });
+    const ref = memberInfoRef();
+    shell.members.onSelectMember(bob);
+    await settleWorkspace();
+    expect(ref.close).not.toHaveBeenCalled();
+
+    setRouteRoom('!other:hs');
+    await settleWorkspace();
+
+    expect(ref.close).toHaveBeenCalledWith();
+    expect(createDirectMessage).not.toHaveBeenCalled();
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
+  });
+
+  it('keeps the roster when Message reuses the active DM', async () => {
     const shell = build();
     setRouteRoom('!dm:hs');
     await settleWorkspace();
     createDirectMessage.mockReturnValue(of('!dm:hs'));
     shell.surfaces.transition({ kind: 'open-members' });
-    shell.members.onSelectMember({
-      userId: '@bob:hs',
-      roomDisplayName: 'Bob',
-      roomInitial: 'B',
-      roomAvatarMxc: null,
-      powerLevel: 0,
-      isCreator: false,
-    });
-    expect(shell.surfaces.renderedSurface()).toMatchObject({ kind: 'member' });
+    const ref = memberInfoRef();
 
-    shell.members.onMemberMessage('@bob:hs');
+    shell.members.onSelectMember(bob);
+    ref.close('@bob:hs');
     await settleWorkspace();
 
     expect(shell.store.activeRoomId()).toBe('!dm:hs');
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
   });
 
-  it('cannot dismiss a newer Room surface when DM creation finishes late', async () => {
+  it('leaves a newer Room surface alone when DM creation finishes late', async () => {
     const shell = build();
     const pendingDm = new Subject<string>();
     createDirectMessage.mockReturnValue(pendingDm);
     setRouteRoom('!first:hs');
     await settleWorkspace();
     shell.surfaces.transition({ kind: 'open-members' });
-    shell.members.onSelectMember({
-      userId: '@bob:hs',
-      roomDisplayName: 'Bob',
-      roomInitial: 'B',
-      roomAvatarMxc: null,
-      powerLevel: 0,
-      isCreator: false,
-    });
+    const ref = memberInfoRef();
 
-    shell.members.onMemberMessage('@bob:hs');
+    shell.members.onSelectMember(bob);
+    ref.close('@bob:hs');
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
     shell.routing.onSelectRoomSelection({
       accountId: '@me:hs',
       roomId: '!second:hs',
     });
     await settleWorkspace();
-    shell.surfaces.transition({ kind: 'open-members' });
+    shell.surfaces.transition({ kind: 'open-threads' });
 
     pendingDm.next('!second:hs');
     pendingDm.complete();
     await settleWorkspace();
 
     expect(shell.store.activeRoomId()).toBe('!second:hs');
-    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'threads' });
   });
 
-  it('tells the member panel when the room is a direct message', async () => {
+  it('tells member info when the room is a direct message', async () => {
     // Both participants of a DM sit at 100 (trusted_private_chat), so without this the
     // person who started the chat is labelled Owner and their friend Admin.
-    const bob = {
-      userId: '@bob:hs',
-      roomDisplayName: 'Bob',
-      roomInitial: 'B',
-      roomAvatarMxc: null,
-      powerLevel: 0,
-      isCreator: false,
-    };
     const shell = build();
     setRouteRoom('!dm:hs');
     await settleWorkspace();
     directIds.set(new Set(['!dm:hs']));
+    memberInfoRef();
 
     shell.members.onSelectMember(bob);
-    await Promise.resolve();
 
-    expect(shell.surfaces.renderedSurface()).toMatchObject({
-      kind: 'member',
-      direct: true,
-    });
+    expect(surfaceOpen).toHaveBeenCalledWith(
+      MemberInfoComponent,
+      memberInfoOptions('!dm:hs', true),
+    );
   });
 
-  it('opens no member info panel without an active room', () => {
+  it('opens no member info without an active room', () => {
     const shell = build();
     setRouteRoom(null);
     // The empty slot must be left exactly as it is. Reference identity, so any write to it
     // fails this rather than merely producing another falsy presentation.
     const before = shell.surfaces.renderedSurface();
 
-    shell.members.onSelectMember({
-      userId: '@bob:hs',
-      roomDisplayName: 'Bob',
-      roomInitial: 'B',
-      roomAvatarMxc: null,
-      powerLevel: 0,
-      isCreator: false,
-    });
+    shell.members.onSelectMember(bob);
 
-    expect(dialogOpen).not.toHaveBeenCalledWith(
-      MemberInfoComponent,
-      expect.anything(),
-    );
+    expect(surfaceOpen).not.toHaveBeenCalled();
     expect(shell.surfaces.renderedSurface()).toBe(before);
   });
 
-  it('replaces the roster with the member panel on the narrow layout', async () => {
-    // BEHAVIOUR CHANGE, and the point of the slice. This used to close the drawer, because
-    // member info was a dialog that would otherwise stack on top of it. There is one slot
-    // now, so the member panel takes the roster's place — the roster is no longer showing,
-    // which is what the old assertion was really protecting, but the slot is not empty.
+  it('keeps the member drawer open under member info on the narrow layout', async () => {
+    // Before #1041 member info replaced the roster in the one slot. Now the drawer stays
+    // where it was and the sheet sits on top, so closing the sheet shows the list again.
     const restore = stubNarrowLayout();
     try {
       const shell = build();
@@ -1080,21 +1111,13 @@ describe('RoomsPage room / DM / invite actions', () => {
       await settleWorkspace();
       shell.surfaces.transition({ kind: 'open-members' });
       expect(shell.surfaces.membersVisible()).toBe(true);
+      memberInfoRef();
 
-      shell.members.onSelectMember({
-        userId: '@bob:hs',
-        roomDisplayName: 'Bob',
-        roomInitial: 'B',
-        roomAvatarMxc: null,
-        powerLevel: 0,
-        isCreator: false,
-      });
+      shell.members.onSelectMember(bob);
 
-      expect(shell.surfaces.membersVisible()).toBe(false);
-      expect(shell.surfaces.renderedSurface()).toMatchObject({
-        kind: 'member',
-      });
-      expect(dialogOpen).not.toHaveBeenCalledWith(
+      expect(shell.surfaces.membersVisible()).toBe(true);
+      expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
+      expect(surfaceOpen).toHaveBeenCalledWith(
         MemberInfoComponent,
         expect.anything(),
       );
@@ -1103,160 +1126,21 @@ describe('RoomsPage room / DM / invite actions', () => {
     }
   });
 
-  it('replaces the roster with the member panel on the wide layout too', async () => {
-    // The same on desktop, and deliberately so: one slot means one surface, at every width.
-    // Previously the wide column stayed put and the info panel opened as a dialog over the
-    // timeline; keeping both would be the stacking this slice exists to remove.
+  it('keeps the member column open under member info on the wide layout', async () => {
     const shell = build();
     setRouteRoom('!r:hs');
     await settleWorkspace();
     shell.surfaces.transition({ kind: 'open-members' });
+    memberInfoRef();
 
-    shell.members.onSelectMember({
-      userId: '@bob:hs',
-      roomDisplayName: 'Bob',
-      roomInitial: 'B',
-      roomAvatarMxc: null,
-      powerLevel: 0,
-      isCreator: false,
-    });
+    shell.members.onSelectMember(bob);
 
-    expect(shell.surfaces.membersVisible()).toBe(false);
-    expect(shell.surfaces.renderedSurface()).toMatchObject({ kind: 'member' });
-    expect(dialogOpen).not.toHaveBeenCalledWith(
+    expect(shell.surfaces.membersVisible()).toBe(true);
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
+    expect(surfaceOpen).toHaveBeenCalledWith(
       MemberInfoComponent,
       expect.anything(),
     );
-  });
-
-  it('returns to the roster when the member panel closes, not to an empty slot', async () => {
-    // You reached member info by clicking a row in the member list, and it took that list's
-    // place in the slot. Closing has to give the list back — most visibly after a moderation
-    // write, where the panel closes itself and the whole point is seeing the change land in
-    // the roster. `promote-member.spec.mts` proves that end to end in a real browser.
-    const shell = build();
-    setRouteRoom('!r:hs');
-    await settleWorkspace();
-    shell.surfaces.transition({ kind: 'open-members' });
-    shell.members.onSelectMember({
-      userId: '@bob:hs',
-      roomDisplayName: 'Bob',
-      roomInitial: 'B',
-      roomAvatarMxc: null,
-      powerLevel: 0,
-      isCreator: false,
-    });
-    expect(shell.surfaces.renderedSurface()).toMatchObject({ kind: 'member' });
-
-    shell.members.onMemberPanelDismissed();
-
-    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
-  });
-
-  it('does not carry a member panel into the next room', async () => {
-    // The sharpest case of the slot being room-scoped. The member belongs to the room
-    // whose row was clicked, but the template binds the panel to the room that is open NOW —
-    // so a panel that survived a switch offered "Remove from room" for a room the viewer
-    // never opened it for, and `MemberInfoComponent.kick()` would have aimed there.
-    const shell = build();
-    setRouteRoom('!r:hs');
-    await settleWorkspace();
-    shell.surfaces.transition({ kind: 'open-members' });
-    shell.members.onSelectMember({
-      userId: '@bob:hs',
-      roomDisplayName: 'Bob',
-      roomInitial: 'B',
-      roomAvatarMxc: null,
-      powerLevel: 0,
-      isCreator: false,
-    });
-    expect(shell.surfaces.renderedSurface()).toMatchObject({ kind: 'member' });
-
-    setRouteRoom('!other:hs');
-    await settleWorkspace();
-
-    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
-  });
-
-  it('stays a DIALOG for a member who is not the open room\u2019s', async () => {
-    // There is no Conversation slot for a different Room or Space — and the shell behind
-    // it may have another room open — so putting it there would show one target's member
-    // beside another room's timeline. The discriminator is the id, not "is a room open".
-    const shell = build();
-    setRouteRoom('!r:hs');
-    const before = shell.surfaces.renderedSurface();
-    dialogOpen.mockReturnValue(of(null));
-
-    await shell.members.openMemberInfo(
-      {
-        userId: '@bob:hs',
-        roomDisplayName: 'Bob',
-        roomInitial: 'B',
-        roomAvatarMxc: null,
-        powerLevel: 0,
-        isCreator: false,
-      },
-      { accountId: '@me:hs', roomId: '!space:hs' },
-    );
-
-    expect(dialogOpen).toHaveBeenCalledWith(
-      MemberInfoComponent,
-      expect.anything(),
-    );
-    // And the open room's slot is left exactly as it was.
-    expect(shell.surfaces.renderedSurface()).toBe(before);
-  });
-
-  it('keeps same-room member info in a dialog when another Account owns it', async () => {
-    const shell = build();
-    setRouteRoom('!shared:hs');
-    await settleWorkspace();
-    const before = shell.surfaces.renderedSurface();
-    const bob = {
-      userId: '@bob:hs',
-      roomDisplayName: 'Bob',
-      roomInitial: 'B',
-      roomAvatarMxc: null,
-      powerLevel: 0,
-      isCreator: false,
-    };
-
-    shell.members.openMemberInfo(bob, {
-      accountId: '@other:hs',
-      roomId: '!shared:hs',
-    });
-    await Promise.resolve();
-
-    expect(dialogOpen).toHaveBeenCalledWith(
-      MemberInfoComponent,
-      expect.objectContaining({
-        inputs: expect.objectContaining({
-          member: bob,
-          roomId: '!shared:hs',
-          direct: false,
-        }),
-      }),
-    );
-    expect(shell.surfaces.renderedSurface()).toBe(before);
-  });
-
-  it('opens no conversation when the member panel is dismissed', async () => {
-    const shell = build();
-    setRouteRoom('!r:hs');
-
-    shell.members.onSelectMember({
-      userId: '@bob:hs',
-      roomDisplayName: 'Bob',
-      roomInitial: 'B',
-      roomAvatarMxc: null,
-      powerLevel: 0,
-      isCreator: false,
-    });
-    await Promise.resolve();
-    shell.page.closeRightPanel();
-
-    expect(shell.surfaces.renderedSurface()).toBeNull();
-    expect(createDirectMessage).not.toHaveBeenCalled();
   });
 
   it('invites the picked user to the active room and toasts success', async () => {

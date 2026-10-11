@@ -9,6 +9,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { mediaCaptionFields, type MediaPayload } from '@trinity/util/matrix';
 import { MediaService, type UploadedMedia } from './media.service';
 import type {
+  ImageMetadataPolicy,
   MediaHints,
   MediaStageOutcome,
   MediaTransferEvent,
@@ -19,6 +20,8 @@ import type {
 
 interface CachedUpload {
   readonly media: UploadedMedia;
+  /** What the upload did with the photo's metadata, so a retry can honour a change. */
+  readonly imageMetadata: ImageMetadataPolicy;
   txnId: string;
   pendingEvent: MatrixEvent | null;
   pendingCaption: string | null;
@@ -172,37 +175,42 @@ export class MediaPipeline {
           subscriber.complete();
         };
 
+        const inFlight = (): void => {
+          terminal = true;
+          subscriber.next({
+            kind: 'indeterminate',
+            failure: 'send-in-flight',
+            retryable: true,
+          });
+          subscriber.complete();
+        };
+
+        const canRetryPending = (pending: MatrixEvent): boolean =>
+          pending.status === EventStatus.NOT_SENT ||
+          pending.status === EventStatus.QUEUED ||
+          pending.status === EventStatus.ENCRYPTING;
+
+        /** Cancels a retained local echo; false (and in flight) when the SDK refuses. */
+        const withdraw = (pending: MatrixEvent): boolean => {
+          try {
+            client.cancelPendingEvent(pending);
+            return true;
+          } catch {
+            inFlight();
+            return false;
+          }
+        };
+
         const send = (cached: CachedUpload): void => {
           activeUpload = cached;
           const pending = cached.pendingEvent;
           if (pending) {
-            const canRetryPending =
-              pending.status === EventStatus.NOT_SENT ||
-              pending.status === EventStatus.QUEUED ||
-              pending.status === EventStatus.ENCRYPTING;
-            if (!canRetryPending) {
-              terminal = true;
-              subscriber.next({
-                kind: 'indeterminate',
-                failure: 'send-in-flight',
-                retryable: true,
-              });
-              subscriber.complete();
+            if (!canRetryPending(pending)) {
+              inFlight();
               return;
             }
             if (cached.pendingCaption !== request.caption) {
-              try {
-                client.cancelPendingEvent(pending);
-              } catch {
-                terminal = true;
-                subscriber.next({
-                  kind: 'indeterminate',
-                  failure: 'send-in-flight',
-                  retryable: true,
-                });
-                subscriber.complete();
-                return;
-              }
+              if (!withdraw(pending)) return;
               cached.pendingEvent = null;
               cached.pendingCaption = null;
               cached.txnId = client.makeTxnId();
@@ -268,6 +276,21 @@ export class MediaPipeline {
 
         progress('validating', 0);
         if (subscriber.closed) return cleanup;
+        const imageMetadata = request.imageMetadata ?? 'strip';
+        const previous = entry.uploads.get(targetKey);
+        // Bytes uploaded with their metadata must not go out once the person chose to strip
+        // it: sending the event is the disclosure, since nobody has the mxc (or, encrypted,
+        // the key) before it. Withdraw the failed echo and upload again, stripped.
+        if (previous?.imageMetadata === 'keep' && imageMetadata === 'strip') {
+          const pending = previous.pendingEvent;
+          if (pending && !canRetryPending(pending)) {
+            inFlight();
+            return cleanup;
+          }
+          if (pending && !withdraw(pending)) return cleanup;
+          entry.uploads.delete(targetKey);
+        }
+        // A stripped upload may serve a request that would keep metadata: it discloses less.
         const cached = entry.uploads.get(targetKey);
         if (cached) {
           send(cached);
@@ -283,11 +306,13 @@ export class MediaPipeline {
               abortController,
               client,
               request.media.hints,
+              imageMetadata,
             )
             .subscribe({
               next: (media) => {
                 const uploaded = {
                   media,
+                  imageMetadata,
                   txnId: client.makeTxnId(),
                   pendingEvent: null,
                   pendingCaption: null,

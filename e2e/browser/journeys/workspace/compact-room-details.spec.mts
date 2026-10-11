@@ -199,13 +199,22 @@ test.describe('Mobile room navigation', () => {
       .click({ position: { x: 10, y: 10 } });
     await expect(page.locator('.chat-members')).toBeHidden();
 
-    // Reopen and pick the buddy: the info panel opens and the drawer closes with it.
+    // Reopen and pick the buddy: member info opens as a bottom sheet over the drawer, which
+    // stays open under it, and closing the sheet goes back to the drawer (#1041).
     await openOverflowMenu(page);
     await page.getByTestId('overflow-toggle-members').click();
     await expect(page.locator('.chat-members')).toBeVisible();
     await page.locator('.members .member', { hasText: buddyName }).click();
-    await expect(page.getByTestId('member-info')).toBeVisible();
-    await expect(page.locator('.chat-members')).toBeHidden();
+    const memberInfo = page.getByRole('dialog', { name: 'Member info' });
+    await expect(memberInfo.getByTestId('member-info')).toBeVisible();
+    await expect(memberInfo.getByTestId('dialog-surface')).toHaveAttribute(
+      'data-trn-layout',
+      'sheet',
+    );
+    await expect(page.locator('.chat-members')).toBeVisible();
+    await memberInfo.getByTestId('member-info-close').click();
+    await expect(memberInfo).toBeHidden();
+    await expect(page.locator('.chat-members')).toBeVisible();
   });
 
   test('Escape dismisses the member drawer, and only when it is open', async ({

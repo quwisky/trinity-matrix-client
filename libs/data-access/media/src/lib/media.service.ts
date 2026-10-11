@@ -23,7 +23,7 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { fetchMediaBytes } from '@trinity/util/matrix';
 import type { EncryptedFileInfo, MediaPayload } from '@trinity/util/matrix';
-import type { MediaHints } from './media-pipeline.models';
+import type { ImageMetadataPolicy, MediaHints } from './media-pipeline.models';
 import {
   bytesWithoutImageMetadata,
   withoutImageMetadata,
@@ -250,7 +250,8 @@ export class MediaService {
    * and `info.url` is filled with the resulting `mxc://`; otherwise the file itself
    * is uploaded. `progress` reports an upload fraction in [0, 1].
    * `hints` (from a camera capture) win over the probe, which then fills only
-   * what they leave out.
+   * what they leave out. `imageMetadata: 'keep'` (the person's opt-in for message
+   * attachments) skips stripping entirely, so the file goes up byte for byte.
    */
   uploadMedia(
     file: File,
@@ -259,10 +260,19 @@ export class MediaService {
     abortController?: AbortController,
     client: MatrixClient = this.matrix.instance,
     hints?: MediaHints,
+    imageMetadata: ImageMetadataPolicy = 'strip',
   ): Observable<UploadedMedia> {
     return defer(() =>
       from(
-        this.doUpload(client, file, encrypt, progress, abortController, hints),
+        this.doUpload(
+          client,
+          file,
+          encrypt,
+          progress,
+          abortController,
+          hints,
+          imageMetadata,
+        ),
       ),
     );
   }
@@ -303,6 +313,7 @@ export class MediaService {
     progress?: (fraction: number) => void,
     abortController?: AbortController,
     hints?: MediaHints,
+    imageMetadata: ImageMetadataPolicy = 'strip',
   ): Promise<UploadedMedia> {
     abortController?.signal.throwIfAborted();
     const msgtype = msgTypeFor(file.type);
@@ -324,9 +335,13 @@ export class MediaService {
 
     // Photos leave without their location, camera and capture time (#1140); orientation is
     // kept. Stripping happens on the plaintext, before encryption, and anything it cannot
-    // handle with certainty is uploaded exactly as picked.
+    // handle with certainty is uploaded exactly as picked. Someone who chose to keep photo
+    // metadata (#1178) gets the file untouched, never a partial strip.
+    const keep = imageMetadata === 'keep';
     if (encrypt) {
-      const plaintext = await bytesWithoutImageMetadata(file);
+      const plaintext = keep
+        ? await file.arrayBuffer()
+        : await bytesWithoutImageMetadata(file);
       abortController?.signal.throwIfAborted();
       const { data, info } = await encryptAttachment(plaintext);
       abortController?.signal.throwIfAborted();
@@ -347,7 +362,7 @@ export class MediaService {
       };
     }
 
-    const upload = await withoutImageMetadata(file);
+    const upload = keep ? file : await withoutImageMetadata(file);
     abortController?.signal.throwIfAborted();
     const res = await client.uploadContent(upload, {
       name: file.name,

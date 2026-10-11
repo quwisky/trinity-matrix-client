@@ -13,10 +13,14 @@ import { Observable, defer, of } from 'rxjs';
 import {
   MediaPipeline,
   type MediaTransferEvent,
+  type MediaTransferRequest,
   type StagedMediaReference,
 } from '@trinity/data-access/media';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { DraftStoreService } from '@trinity/platform-native';
+import {
+  DraftStoreService,
+  PrivacySettingsService,
+} from '@trinity/platform-native';
 import {
   ConversationComposeController,
   type ConversationCompose,
@@ -279,6 +283,7 @@ export class ConversationRuntime {
   private readonly textSender = inject(CONVERSATION_TEXT_SENDER);
   private readonly messageAdapter = inject(CONVERSATION_MESSAGE_ADAPTER);
   private readonly mediaPipeline = inject(MediaPipeline);
+  private readonly privacy = inject(PrivacySettingsService);
   private readonly retainedPerAccount = Math.max(
     0,
     inject(CONVERSATION_RETENTION_LIMIT),
@@ -494,7 +499,7 @@ export class ConversationRuntime {
       isFocused: () => state() === 'focused',
       projection: controller.threads,
       messages: this.messageAdapter,
-      media: this.mediaPipeline,
+      media: { transfer: (request) => this.transferMedia(request) },
     });
     const threads = threadChildren.threads;
     const releaseThread = threadChildren.release;
@@ -537,7 +542,7 @@ export class ConversationRuntime {
       media: Object.freeze({
         send: (media: StagedMediaReference, caption: string) =>
           defer(() =>
-            this.mediaPipeline.transfer({
+            this.transferMedia({
               key: immutableKey,
               media,
               caption,
@@ -559,6 +564,19 @@ export class ConversationRuntime {
     account.set(key.roomId, entry);
     this.entries.set(key.accountId, account);
     return entry;
+  }
+
+  /**
+   * Sends staged media with the person's photo-metadata choice as it stands when the send
+   * starts. The choice covers message attachments only; avatars never pass through here.
+   */
+  private transferMedia(
+    request: MediaTransferRequest,
+  ): Observable<MediaTransferEvent> {
+    return this.mediaPipeline.transfer({
+      ...request,
+      imageMetadata: this.privacy.keepPhotoMetadata() ? 'keep' : 'strip',
+    });
   }
 
   private persistComposeSnapshot(

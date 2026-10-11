@@ -40,6 +40,8 @@ Encryption hides an attachment from the homeserver, not from the people in the r
 
 The parsers live in `libs/data-access/media/src/lib/image-metadata`. An Exif block that cannot be read inside an otherwise sound file is dropped whole, orientation included. Stripping never blocks a send: a file whose container cannot be parsed with certainty, a BigTIFF, an SVG that is not UTF-8, is over 16 MiB or has an element with more than 1,024 attributes, and every other format (videos, documents) is uploaded unchanged. A raw file is only recognised by its DNGVersion tag, name or MIME type, so a raw sent as a nameless blob with an empty type and no DNGVersion gets the full TIFF blanking. Videos therefore still carry their recording metadata, including any location the camera wrote.
 
+Settings → Privacy → **Keep photo metadata** (off by default, stored per device) lets a person send message attachments with their metadata. Conversations reads the choice when a send starts and passes it to Media Pipeline as the transfer's `imageMetadata` policy; with `'keep'` the file is uploaded byte for byte, never partially stripped. Profile and room photos ignore the setting and are always stripped, because they are public and persistent.
+
 ## Logout and reset are ordered cleanup {#cleanup-order}
 
 Sign-out targets an explicit account. Soft logout preserves recovery-critical local stores for reauthentication; hard logout requests their cleanup. Installation reset gathers the identifiers needed for cleanup before deleting registries and preferences, then clears clients, SDK stores, host secrets, caches, and service workers through bounded operations.

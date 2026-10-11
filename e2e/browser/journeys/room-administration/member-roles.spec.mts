@@ -13,6 +13,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { focusWithKeyboard } from '../../support/keyboard-focus.mts';
 
 const { defaultBrowserType: _pixelBrowser, ...pixel5 } = devices['Pixel 5'];
 
@@ -514,7 +515,7 @@ test.describe('Member role sections', () => {
       'You can only manage members with a lower role.',
     );
 
-    await kick.focus();
+    await focusWithKeyboard(kick);
     await expect(page.getByRole('tooltip')).toContainText(
       'You can only manage members with a lower role.',
     );
@@ -616,6 +617,21 @@ test.describe('Unavailable action touch feedback', () => {
     });
 
     await expect(kick).toBeVisible();
+    // On this phone member info is a bottom sheet (#1041) that slides up on entry; a forced
+    // tap does not wait for it, so wait until the sheet is seated at the bottom edge.
+    const sheet = page
+      .getByRole('dialog', { name: 'Member info' })
+      .getByTestId('dialog-surface');
+    await expect(sheet).toHaveAttribute('data-trn-layout', 'sheet');
+    await expect
+      .poll(async () => {
+        const box = await sheet.boundingBox();
+        const viewport = page.viewportSize();
+        return Math.abs(
+          (box?.y ?? 0) + (box?.height ?? 0) - (viewport?.height ?? 0),
+        );
+      })
+      .toBeLessThanOrEqual(1);
     await touchPlatform.tap(page, kick);
 
     await expect(page.getByTestId('action-unavailable-feedback')).toHaveText(
