@@ -276,7 +276,7 @@ describe('withoutMediaMetadata', () => {
     const realSlice = unreadable.slice.bind(unreadable);
     Object.defineProperty(unreadable, 'slice', {
       value: (start?: number, end?: number) =>
-        start === 0 && end === 512
+        start === 0 && end === SVG_SNIFF_BYTES
           ? realSlice(start, end)
           : {
               arrayBuffer: () =>
