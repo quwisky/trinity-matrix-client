@@ -32,6 +32,19 @@ interface MatrixApi {
 
 fun monotonicMillis(): Long = System.nanoTime() / 1_000_000
 
+/**
+ * Wall-clock epoch milliseconds, compared with the stored token expiry. A type of its own, so
+ * it cannot be passed where the monotonic read-budget clock (`() -> Long`) goes, or the other
+ * way round; a lambda still converts to it.
+ */
+fun interface WallClock {
+    fun nowMillis(): Long
+
+    companion object {
+        val SYSTEM = WallClock { System.currentTimeMillis() }
+    }
+}
+
 /** One budget shared by every read for a push. */
 class Deadline(private val endsAtMillis: Long, private val clock: () -> Long) {
     fun remainingMillis(): Long = endsAtMillis - clock()
@@ -73,8 +86,7 @@ sealed interface PushOutcome {
 class PushResolver(
     private val store: HandoffReader,
     private val api: MatrixApi,
-    /** Wall-clock epoch milliseconds, compared with the stored token expiry. */
-    private val wallClock: () -> Long = System::currentTimeMillis,
+    private val wallClock: WallClock = WallClock.SYSTEM,
     /** Monotonic milliseconds for the read budget. Last, so a trailing lambda still sets it. */
     private val clock: () -> Long = ::monotonicMillis,
 ) {
@@ -99,7 +111,7 @@ class PushResolver(
                 sound = true,
             )
         }
-        if (account.tokenExpired(wallClock())) {
+        if (account.tokenExpired(wallClock.nowMillis())) {
             val storedRoom = store.room(accountId, roomId)
             return PushOutcome.Post(
                 accountId,

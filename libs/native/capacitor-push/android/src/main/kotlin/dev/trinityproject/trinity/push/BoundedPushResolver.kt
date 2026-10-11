@@ -16,7 +16,7 @@ class BoundedPushResolver(
     store: HandoffReader,
     api: MatrixApi,
     private val budgetMillis: Long = Deadline.BUDGET_MILLIS,
-    private val wallClock: () -> Long = System::currentTimeMillis,
+    private val wallClock: WallClock = WallClock.SYSTEM,
 ) {
     private val store: HandoffReader = FaultTolerantReader(store)
     private val resolver = PushResolver(this.store, api, wallClock)
