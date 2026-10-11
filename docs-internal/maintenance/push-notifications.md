@@ -199,7 +199,7 @@ metadata private from the gateway operator.
 ## Render pushes on the device
 
 The device turns `event_id_only` pushes into readable notifications; #1152 tracks the
-out-of-repo setup and the device checks.
+out-of-repo setup and the device checks, and #1211 (part B) the checks for OAuth accounts.
 
 **Where the code lives.** The native half is one local Capacitor plugin, the pnpm workspace
 package `@trinity/capacitor-push` in [`libs/native/capacitor-push`](../../libs/native/capacitor-push/package.json):
@@ -236,17 +236,26 @@ Android Keystore key and stored in the private preferences file `trinity_push_ha
 
 **Refresh before the background.** Each time the app goes to the background,
 `NotificationSessionService` asks `PushHandoffService.refreshBeforeBackground` to refresh
-every bound account whose token has an expiry, unless that token rotated within the last
+every bound account whose token has an expiry and that holds a refresh token
+(`MatrixClientService.canRefreshAccessToken`), unless that token rotated within the last
 minute, so the copy in the store lives one full lifetime from then. The refresh runs through
 the SDK's own token manager (`client.http.refreshOAuthTokens()`, added by
 `patches/matrix-js-sdk@43.0.0.patch`). It therefore joins a refresh already in flight,
 persists the pair before the SDK adopts it and reaches the store as an ordinary rotation. The
-app stays the only process that rotates tokens. A refused refresh signs nothing out at that
-moment; the account's next request meets the refusal and takes the usual path.
+app stays the only process that rotates tokens; the renderers refreshing tokens themselves is
+[#1210](https://github.com/quwisky/trinity-matrix-client/issues/1210). A refused refresh signs
+nothing out at that moment; the account's next request meets the refusal and takes the usual
+path. The tracked token, its expiry and the rotations are keyed by account, not by client, so
+a refresh that lands from a client already replaced by a new sign-in of the same account can
+still reach the store; [#1207](https://github.com/quwisky/trinity-matrix-client/issues/1207)
+tracks ignoring it.
 
-The run is bounded. `BACKGROUND_REFRESH_TIMEOUT_MS` (15 s) caps each account's refresh, and
-then the wait for the store writes it queued; past it the run completes without that account,
-so the next background event refreshes again. `BACKGROUND_RUN_DEADLINE_MS` (25 s) cuts off the
+The run is bounded. `BACKGROUND_REFRESH_GRANT_TIMEOUT_MS` (8 s) bounds the token grant of
+each refresh the run starts, counted from the start of that refresh
+(`refreshOAuthTokens({ timeoutMs })`); past it the patched SDK aborts the grant, or does not
+send it at all. `BACKGROUND_REFRESH_TIMEOUT_MS` (15 s) caps each account's refresh, and then
+the wait for the store writes it queued; past it the run completes without that account, so
+the next background event refreshes again. `BACKGROUND_RUN_DEADLINE_MS` (25 s) cuts off the
 whole run, asking for background time included, so the worst case is about 25 s. While any
 account is due, the run holds iOS background time (`PushHandoff.beginBackgroundWork`,
 `UIApplication.beginBackgroundTask`) from before the refreshes until the rotation's native
@@ -255,7 +264,7 @@ still releases on error, unsubscription or a late grant; the task ends itself if
 granted time first. Android holds nothing, and a run with no account due asks for nothing.
 The refresh is still not proven to finish before the OS suspends the app: iOS can end
 background time early, and Android can freeze or stop a backgrounded app. An interrupted
-refresh can leave three things behind.
+refresh can leave three things behind, and a refresh that outlasts a lock a fourth.
 
 - Interrupted native write. If the server rotated but the native store write never ran,
   the store still holds the previous token with its previous expiry. The forced refresh
@@ -270,16 +279,37 @@ refresh can leave three things behind.
   SDK signs the account out and clears its local encryption state. MAS deployments that
   include its idempotent refresh-token grant (matrix-authentication-service PR #3650)
   accept the reuse while neither the new access token nor the new refresh token has been
-  used, which is the lost-response case. Other providers may not; the device check under
-  #1152 step 5 confirms the behaviour for the deployment in use. The grant bound below
-  aborts a request the server may already have answered, which is the same case.
+  used, which is the lost-response case. Other providers may not; the device check in
+  [#1211](https://github.com/quwisky/trinity-matrix-client/issues/1211) (part B) confirms
+  the behaviour for the deployment in use. The grant bounds below abort a request the server
+  may already have answered, which is the same case.
 - Suspended refresh request. The patch aborts every refresh-token grant after 30 s, the
-  same bound `localTimeoutMs` puts on every other Matrix request. An aborted grant fails
-  like a network error: nothing signs out, the SDK's shared refresh settles, and the next
-  request refreshes again. A request suspended mid-flight therefore holds the account's
-  requests for at most the rest of those 30 s of run time once the app resumes, and the
-  15 s run bound frees the background refresh sooner. The device check should still
-  include "go to the background mid-refresh, come back, confirm sync resumes".
+  same bound `localTimeoutMs` puts on every other Matrix request, and the background run's
+  grants after 8 s. An aborted grant fails like a network error: nothing signs out, the
+  SDK's shared refresh settles, and the next request refreshes again. A request suspended
+  mid-flight therefore holds the account's requests for at most the rest of its bound of run
+  time once the app resumes, and the 15 s run bound frees the background refresh sooner.
+  The device check (#1211, step B4) includes "go to the background mid-refresh, come back,
+  confirm sync resumes".
+- Lock during a refresh. Locking the phone is the most common way to send the app to the
+  background. The session's tokens are stored with
+  `KeychainAccess.whenUnlockedThisDeviceOnly`, and iOS discards the key for those items
+  about 10 s after the lock. A forced refresh whose grant answers after that cannot save the
+  rotated pair: `onTokenRefresh` rejects, the server has already rotated, and the SDK keeps
+  the spent pair, which is the spent-refresh-token case above. Two things guard against it.
+  `beginBackgroundWork` reports whether protected data is available
+  (`isProtectedDataAvailable`) and whether the device is locking (iOS posted
+  `protectedDataWillBecomeUnavailableNotification` within the last 10 s and has not posted
+  `protectedDataDidBecomeAvailableNotification` since); the run refreshes nothing in either
+  case, still ends the background task, and the next background event with the phone
+  unlocked refreshes. Otherwise every refresh starts at once as background time is granted,
+  so a lock that arrives mid-run finds none left to start, and each grant is bound to 8 s
+  from its start, so it answers inside the 10 s after any later lock. What remains: a grant
+  aborted at the 8 s bound after the server processed it spends the refresh token (the
+  spent-refresh-token case), and a refresh the run joined because it was already in flight
+  keeps the SDK's 30 s bound. The device check (#1211, step B4) should include locking the
+  phone with the side button mid-refresh, then unlocking and confirming the account is still
+  signed in and syncs.
 
 **Rendering.** iOS runs the `NotificationService` extension; Android replaces the push
 plugin's messaging service with `TrinityMessagingService`, which treats the app as
