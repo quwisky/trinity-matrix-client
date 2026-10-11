@@ -40,6 +40,17 @@
       @if (error(); as message) {
         <p class="error" role="alert">{{ message }}</p>
       }
+      @if (offerSecuritySettings()) {
+        <button
+          trnBtn
+          presentation="outline"
+          class="mt-2 w-full"
+          data-testid="setup-security-settings"
+          (click)="openSecuritySettings()"
+        >
+          Security settings
+        </button>
+      }
     </div>
   </section>
 </main>
