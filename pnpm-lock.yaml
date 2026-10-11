@@ -324,7 +324,7 @@ importers:
         version: 1.20.0(patch_hash=91cea261f6205a2447b8841d35ae12e99d438546e56e4aeffe6bf8d7acd1a79c)
       qr:
         specifier: ^0.7.0
-        version: 0.7.0
+        version: 0.7.2
       rxjs:
         specifier: ~7.8.2
         version: 7.8.2
@@ -10961,8 +10961,8 @@ packages:
     resolution: {integrity: sha512-8YOJEHtxpySA3fFDyCRxA+UUV+fA+rTWnuWvylOK/NCjhY+b4ocCtmu8TtsWb+mYeU+GCHf/S66KZF/AsteKHg==}
     engines: {node: '>=0.9'}
 
-  qr@0.7.0:
-    resolution: {integrity: sha512-/VrrACmOAwZVipuRITwfEwOL5oAMEHH5PTmBWaGtlTom2Thxaa+rhmna4zU9PRN2uLw2wdccbkHOLGZb1Q9SdA==}
+  qr@0.7.2:
+    resolution: {integrity: sha512-yovYRuacJBJkG9fWSwcB2bKZhr58c04DpOXguDU+rAAoJZdi6/J3DtlomkKqdd1MutIptIK+kigWmT7LKz8y7A==}
     engines: {node: '>= 20.19.0'}
 
   qs@6.15.3:
@@ -25300,7 +25300,7 @@ snapshots:
   qjobs@1.2.0:
     optional: true
 
-  qr@0.7.0: {}
+  qr@0.7.2: {}
 
   qs@6.15.3:
     dependencies:
