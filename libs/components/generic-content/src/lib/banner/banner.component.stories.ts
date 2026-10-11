@@ -67,6 +67,24 @@ export const LongMessage: Story = {
   }),
 };
 
+/**
+ * The encryption prompt's two actions: at phone width they move onto their own line rather
+ * than squeezing the message into a column a word wide (#1221).
+ */
+export const TwoActions: Story = {
+  render: () => ({
+    template: `
+      <trn-banner variant="accent">
+        <trn-icon trnBannerIcon name="lock" />
+        Verify this device to read your encrypted messages.
+        <span trnBannerActions>
+          <button trnBtn size="sm">Verify with another device</button>
+          <button trnBtn size="sm">Use recovery key</button>
+        </span>
+      </trn-banner>`,
+  }),
+};
+
 export const NoActions: Story = {
   render: () => ({
     template: `

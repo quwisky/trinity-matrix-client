@@ -231,3 +231,17 @@ test('tooltip position stays behavioral on the semantic tooltip surface', async 
     await renderedColour(trigger, '--trinity-tooltip-foreground'),
   );
 });
+
+test('banner actions share the message row when there is room (#1221)', async ({
+  page,
+}) => {
+  await page.goto(story('components-banner--two-actions'));
+  const text = page.locator('.banner__text');
+  const actions = page.locator('.banner__actions');
+  await expect(actions.getByRole('button')).toHaveCount(2);
+
+  const textBox = (await text.boundingBox())!;
+  const actionsBox = (await actions.boundingBox())!;
+  expect(actionsBox.y).toBeLessThan(textBox.y + textBox.height);
+  expect(actionsBox.x).toBeGreaterThanOrEqual(textBox.x + textBox.width);
+});

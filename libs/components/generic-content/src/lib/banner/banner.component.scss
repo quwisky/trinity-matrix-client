@@ -5,6 +5,7 @@
 
   .banner {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--trinity-density-row-gap);
     padding: var(--trinity-density-row-padding-block)
@@ -32,16 +33,24 @@
     font-size: 1.125rem;
   }
 
+  // The message keeps a readable width; when it and the actions can't share a row at that
+  // width, the actions wrap onto their own line instead of squeezing the message (#1221).
   .banner__text {
-    flex: 1;
+    flex: 1 1 12rem;
     min-width: 0;
   }
 
   .banner__actions {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    margin-inline-start: auto;
     display: flex;
     gap: var(--trinity-density-item-gap);
     flex-wrap: wrap;
     justify-content: flex-end;
+  }
+
+  // Without actions, an empty slot would wrap onto a line of its own in a narrow banner.
+  .banner__actions:empty {
+    display: none;
   }
 }

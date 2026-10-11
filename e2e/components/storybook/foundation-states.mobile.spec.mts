@@ -32,3 +32,25 @@ test('compact banner actions retain the coarse-pointer target floor', async ({
   expect(bounds!.width).toBeGreaterThanOrEqual(44);
   expect(bounds!.height).toBeGreaterThanOrEqual(44);
 });
+
+test('banner actions wrap below the message instead of squeezing it (#1221)', async ({
+  page,
+}) => {
+  await page.goto(
+    '/iframe.html?id=components-banner--two-actions&viewMode=story',
+  );
+  const banner = page.locator('.banner');
+  const text = page.locator('.banner__text');
+  const actions = page.locator('.banner__actions');
+  await expect(actions.getByRole('button')).toHaveCount(2);
+
+  const bannerBox = (await banner.boundingBox())!;
+  const textBox = (await text.boundingBox())!;
+  const actionsBox = (await actions.boundingBox())!;
+  // The message keeps its readable minimum (12rem) rather than a word-wide column.
+  expect(textBox.width).toBeGreaterThanOrEqual(192);
+  expect(actionsBox.y).toBeGreaterThanOrEqual(textBox.y + textBox.height);
+  expect(actionsBox.x + actionsBox.width).toBeLessThanOrEqual(
+    bannerBox.x + bannerBox.width,
+  );
+});
