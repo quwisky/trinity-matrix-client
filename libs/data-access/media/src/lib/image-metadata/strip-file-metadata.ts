@@ -3,13 +3,17 @@ import {
   strippableFormat,
   stripImageMetadata,
 } from './image-metadata';
+import { SVG_SNIFF_BYTES } from './svg-metadata';
 
-/** Enough of a file to recognise every strippable format, including a long `ftyp` box. */
-const SNIFF_BYTES = 512;
+/**
+ * Enough of a file to recognise every strippable format: a long `ftyp` box, or the prolog
+ * (XML declaration, comments, doctype) an editor writes before an SVG root.
+ */
+const SNIFF_BYTES = SVG_SNIFF_BYTES;
 
 /**
  * `file` with identifying image metadata removed (see `stripImageMetadata`), or `file`
- * itself when it is not a JPEG, PNG, WebP or HEIF image, carries nothing to remove, cannot
+ * itself when it is not a JPEG, PNG, WebP, HEIF, GIF, TIFF or SVG image, carries nothing to remove, cannot
  * be parsed with certainty, or cannot be read. Never rejects: stripping is a privacy
  * default, not a gate, so a failure here must still let the user's file go out.
  *

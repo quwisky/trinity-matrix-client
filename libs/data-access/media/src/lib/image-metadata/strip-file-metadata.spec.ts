@@ -42,6 +42,27 @@ describe('withoutImageMetadata', () => {
     expect(result.type).toBe('');
   });
 
+  it('recognises an SVG whose root follows a long editor prolog', async () => {
+    const prolog = `<?xml version="1.0"?>\n<!-- ${'Generator: '.repeat(80)} -->\n`;
+    const original = new File(
+      [
+        ascii(
+          `${prolog}<svg xmlns="http://www.w3.org/2000/svg"><!-- Alice Example --></svg>`,
+        ),
+      ],
+      'drawing.svg',
+      { type: 'image/svg+xml' },
+    );
+    expect(prolog.length).toBeGreaterThan(512);
+
+    const result = await withoutImageMetadata(original);
+
+    expect(result).not.toBe(original);
+    expect(result.type).toBe('image/svg+xml');
+    const bytes = new Uint8Array(await result.arrayBuffer());
+    expect(containsAscii(bytes, 'Alice Example')).toBe(false);
+  });
+
   it('returns the very same file for anything that is not a supported image', async () => {
     const video = new File(
       [concat(Uint8Array.of(0, 0, 0, 0x18), ascii('ftypmp42\0\0\0\0mp42isom'))],
