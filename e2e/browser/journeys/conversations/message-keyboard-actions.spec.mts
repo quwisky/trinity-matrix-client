@@ -14,6 +14,8 @@ import { registerUser } from '../../../support/account.mts';
 // toolbars were most of the timeline's DOM. Needs a Synapse homeserver (Docker).
 const session = homeserverSession();
 const SEED = 60;
+/** The app's `initialSyncLimit`: the timeline page the first /sync delivers. */
+const INITIAL_SYNC_PAGE = 20;
 
 test.describe('Message actions from the keyboard', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
@@ -71,12 +73,21 @@ test.describe('Message actions from the keyboard', () => {
     await page.getByTestId('composer-input').hover();
 
     // Every mounted message row is a tab stop, and none carries hidden toolbar buttons.
+    // The initial sync brings only the newest INITIAL_SYNC_PAGE messages; the timeline pages
+    // in older history after that. Wait until those rows are mounted too, so the check
+    // covers paged-in history and not just the first page. Read every row's tabindex in one
+    // DOM snapshot, so rows that arrive during the read cannot skew the comparison.
     const messages = timeline.locator('.msg:has(.msg__text)');
-    const mounted = await messages.count();
-    expect(mounted).toBeGreaterThan(20);
-    await expect(
-      timeline.locator('.msg[tabindex="0"]:has(.msg__text)'),
-    ).toHaveCount(mounted);
+    const readTabIndexes = () =>
+      messages.evaluateAll((rows) =>
+        rows.map((row) => row.getAttribute('tabindex')),
+      );
+    await expect
+      .poll(async () => (await readTabIndexes()).length, { timeout: 30_000 })
+      .toBeGreaterThan(INITIAL_SYNC_PAGE);
+    expect(
+      (await readTabIndexes()).filter((tabIndex) => tabIndex !== '0'),
+    ).toEqual([]);
     await expect(timeline.locator('trn-message-toolbar')).toHaveCount(0);
     await expect(timeline.locator('.toolbar__btn')).toHaveCount(0);
 
