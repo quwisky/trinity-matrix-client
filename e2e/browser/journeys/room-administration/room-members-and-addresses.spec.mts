@@ -74,6 +74,28 @@ async function openSpaceSettings(
   });
 }
 
+/**
+ * Member info embedded in settings spans the detail pane: its surface is as wide as the pane's
+ * content box (no empty strip beside it) and the pane does not scroll sideways (not wider).
+ */
+async function expectMemberInfoFillsDetail(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.getByTestId('members-settings-detail').evaluate((pane) => {
+        const surface =
+          pane.querySelector('trn-member-info')!.firstElementChild!;
+        return {
+          fills:
+            Math.abs(
+              surface.getBoundingClientRect().width - pane.clientWidth,
+            ) <= 1,
+          overflow: pane.scrollWidth - pane.clientWidth,
+        };
+      }),
+    )
+    .toEqual({ fills: true, overflow: 0 });
+}
+
 test.describe('Room settings', () => {
   configureRoomSettingsSuite();
 
@@ -266,6 +288,15 @@ test.describe('Room settings', () => {
 
     const detail = page.getByTestId('members-settings-detail');
     await expect(detail).toContainText(memberName);
+    // The detail pane owns the width at every viewport: desktop and a 390px phone.
+    await expectMemberInfoFillsDetail(page);
+    const desktopViewport = page.viewportSize()!;
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(detail).toContainText(memberName);
+    await expectMemberInfoFillsDetail(page);
+    await page.setViewportSize(desktopViewport);
+    await expect(detail).toContainText(memberName);
+    await expectMemberInfoFillsDetail(page);
     await page.getByTestId('member-info-role-50').click();
     const roleConfirmation = page.getByRole('dialog', { name: 'Change role' });
     await expect(roleConfirmation).toContainText(roomName);
