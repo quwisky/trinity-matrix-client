@@ -128,10 +128,11 @@ test.describe('Settings scrollbars', () => {
     // section that rendered nothing at all would have satisfied it; and the rule has two
     // halves ("never the outer, only the inner when necessary"), of which only the first
     // survives a count. Notifications and Appearance are the sections whose own content is
-    // long enough to scroll here; Privacy's is not.
+    // long enough to scroll here; Privacy's is not. The detail pane is a `<section>`: the
+    // app shell owns the page's only `<main>` landmark.
     const expected: Record<string, string[]> = {
-      notifications: ['MAIN[settings-detail]'],
-      appearance: ['MAIN[settings-detail]'],
+      notifications: ['SECTION[settings-detail]'],
+      appearance: ['SECTION[settings-detail]'],
       privacy: [],
     };
 
@@ -239,7 +240,7 @@ test.describe('Settings scrollbars', () => {
       .toBe('hidden');
     await expect
       .poll(() => scrollbarPainters(page))
-      .toEqual(['MAIN[settings-detail]']);
+      .toEqual(['SECTION[settings-detail]']);
   });
 
   test('uses the shared visible design across Mode and Theme changes', async ({
@@ -254,7 +255,7 @@ test.describe('Settings scrollbars', () => {
     const nav = page.locator('nav[aria-label="Settings sections"]');
     await expect
       .poll(() => scrollbarPainters(page))
-      .toEqual(['MAIN[settings-detail]']);
+      .toEqual(['SECTION[settings-detail]']);
 
     const railColours: string[] = [];
     for (const theme of [
