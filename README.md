@@ -75,11 +75,14 @@ or from the `Trinity-Web-X.Y.Z.zip` attached to each
 
 ## How Trinity compares
 
-| Platforms               | Trinity  | Element Web/Desktop | Element X | FluffyChat | Cinny |
-| ----------------------- | -------- | ------------------- | --------- | ---------- | ----- |
-| Web                     | ✅ (PWA) | ✅                  | —         | ✅         | ✅    |
-| Windows / macOS / Linux | ✅       | ✅                  | —         | Linux      | ✅    |
-| Android / iOS           | 🚧       | —                   | ✅        | ✅         | —     |
+| Platforms | Trinity            | Element Web/Desktop | Element X | FluffyChat | Cinny |
+| --------- | ------------------ | ------------------- | --------- | ---------- | ----- |
+| Web       | ✅ (PWA)           | ✅                  | —         | ✅         | ✅    |
+| Windows   | ✅                 | ✅                  | —         | ✅         | ✅    |
+| macOS     | ✅ (Apple Silicon) | ✅                  | —         | —          | ✅    |
+| Linux     | ✅ (x86-64)        | ✅                  | —         | ✅         | ✅    |
+| Android   | 🚧                 | —                   | ✅        | ✅         | —     |
+| iOS       | 🚧                 | —                   | ✅        | ✅         | —     |
 
 | Features                          | Trinity           | Element Web/Desktop | Element X | FluffyChat | Cinny |
 | --------------------------------- | ----------------- | ------------------- | --------- | ---------- | ----- |
@@ -99,8 +102,7 @@ or from the `Trinity-Web-X.Y.Z.zip` attached to each
 
 ✅ supported · 🟡 partial · ❌ not supported · ❔ unknown · 🚧 in development ·
 — not offered by that app. Element X is Element's mobile app, so Element Web/Desktop
-shows — for Android and iOS. Trinity's macOS builds are Apple Silicon only, and its
-Linux builds are x86-64 only.
+shows — for Android and iOS.
 From Trinity 0.3, OAuth 2.0 sign-in needs Synapse 1.138 or newer when the server uses
 Matrix Authentication Service (MAS). On an older Synapse with MAS, accounts stop
 connecting when their access token expires but keep their local encryption keys; see
@@ -109,8 +111,9 @@ connecting when their access token expires but keep their local encryption keys;
 Trinity also supports polls, voice messages, location sharing, stickers and GIFs, jump
 to date, pinned messages, room key export and import, and desktop notifications.
 
-Other clients: [matrix.org client pages](https://matrix.org/ecosystem/clients/),
-retrieved 2026-10-02. Trinity's column is self-assessed from this repository against the
+Other clients: [matrix.org client pages](https://matrix.org/ecosystem/clients/) for
+features, and each client's GitHub repository and releases for platforms, retrieved
+2026-10-11. Trinity's column is self-assessed from this repository against the
 same feature definitions.
 
 ## Run from source
