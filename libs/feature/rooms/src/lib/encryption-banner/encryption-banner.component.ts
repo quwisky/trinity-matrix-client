@@ -76,9 +76,9 @@ export class EncryptionBannerComponent {
     }
     switch (this.status()) {
       case 'needs-recovery':
-        return "This device isn't verified yet — unlock your encrypted messages.";
+        return 'This device isn’t verified yet — unlock your encrypted messages.';
       case 'needs-verification':
-        return "This device isn't verified yet — verify it with one of your other devices.";
+        return 'This device isn’t verified yet — verify it with one of your other devices.';
       default:
         return 'Set up encryption to secure your messages.';
     }
@@ -96,10 +96,10 @@ export class EncryptionBannerComponent {
       case 'needs-recovery':
         return [
           { label: 'Use recovery key', kind: 'unlock' },
-          { label: 'Verify another device', kind: 'verify' },
+          { label: 'Verify with another device', kind: 'verify' },
         ];
       case 'needs-verification':
-        return [{ label: 'Verify another device', kind: 'verify' }];
+        return [{ label: 'Verify with another device', kind: 'verify' }];
       default:
         return [];
     }

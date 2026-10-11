@@ -110,7 +110,7 @@ describe('EncryptionBannerComponent', () => {
     const labels = [...container.querySelectorAll('button')].map(
       (b: HTMLElement) => b.textContent?.trim(),
     );
-    expect(labels).toEqual(['Use recovery key', 'Verify another device']);
+    expect(labels).toEqual(['Use recovery key', 'Verify with another device']);
   });
 
   it('opens unlock and verify through the same semantic presenter', async () => {
@@ -118,7 +118,7 @@ describe('EncryptionBannerComponent', () => {
     const { container } = await renderBanner();
 
     clickAction(container, 'Use recovery key');
-    clickAction(container, 'Verify another device');
+    clickAction(container, 'Verify with another device');
     expect(open).toHaveBeenNthCalledWith(1, {
       surface: { kind: 'trust', flow: 'unlock' },
     });
@@ -137,9 +137,9 @@ describe('EncryptionBannerComponent', () => {
     const labels = [...container.querySelectorAll('trn-banner button')].map(
       (button) => button.textContent?.trim(),
     );
-    expect(labels).toEqual(['Verify another device']);
+    expect(labels).toEqual(['Verify with another device']);
 
-    clickAction(container, 'Verify another device');
+    clickAction(container, 'Verify with another device');
     expect(open).toHaveBeenCalledWith({
       surface: { kind: 'trust', flow: 'verify' },
     });

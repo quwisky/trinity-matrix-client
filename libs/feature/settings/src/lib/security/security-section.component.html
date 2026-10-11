@@ -25,8 +25,8 @@
                device holds. The reset is the explicit, separately confirmed way out. -->
             <button
               trnBtn
-              variant="secondary"
-              presentation="ghost"
+              variant="danger"
+              presentation="outline"
               size="sm"
               (click)="resetRecovery()"
               data-testid="security-reset-identity"
@@ -73,7 +73,7 @@
             (click)="resetRecovery()"
             data-testid="security-reset-recovery"
           >
-            I've lost my recovery key
+            I’ve lost my recovery key
           </button>
         }
         @case ('needs-verification') {
@@ -96,8 +96,8 @@
              device holds. The reset is the explicit, separately confirmed way out. -->
           <button
             trnBtn
-            variant="secondary"
-            presentation="ghost"
+            variant="danger"
+            presentation="outline"
             size="sm"
             (click)="resetRecovery()"
             data-testid="security-reset-identity"

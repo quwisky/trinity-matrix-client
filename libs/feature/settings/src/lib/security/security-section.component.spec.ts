@@ -126,12 +126,17 @@ describe('SecuritySectionComponent', () => {
       container.querySelector('[data-testid=security-needs-verification]'),
     ).not.toBeNull();
     expect(container.querySelector('[data-testid=security-setup]')).toBeNull();
+    // One label per action, the same words the rooms banner uses.
     expect(
-      container.querySelector('[data-testid=security-verify-device]'),
-    ).not.toBeNull();
+      container
+        .querySelector('[data-testid=security-verify-device]')
+        ?.textContent?.trim(),
+    ).toBe('Verify with another device');
     expect(
-      container.querySelector('[data-testid=security-reset-identity]'),
-    ).not.toBeNull();
+      container
+        .querySelector('[data-testid=security-reset-identity]')
+        ?.textContent?.trim(),
+    ).toBe('Reset my identity');
 
     click(container, 'security-verify-device');
     expect(open).toHaveBeenLastCalledWith({
