@@ -1,4 +1,8 @@
-<div class="banner" [attr.data-variant]="variant()">
+<div
+  class="banner"
+  [attr.data-variant]="variant()"
+  [attr.data-trn-surface]="surface()"
+>
   <!-- Keep each slot span free of whitespace: the stylesheet hides an empty slot
        with :empty, and a whitespace text node would keep it (#1221). -->
   <span class="banner__icon"><ng-content select="[trnBannerIcon]" /></span>

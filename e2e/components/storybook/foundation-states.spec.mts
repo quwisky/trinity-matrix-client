@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   AA_NORMAL_TEXT,
   contrastRatio,
+  measureLocatorContrast,
   resolveTokenSrgb,
   type Srgb,
 } from '../../browser/support/contrast.mts';
@@ -127,6 +128,38 @@ test.describe('semantic design foundations', () => {
       await bannerAction.evaluate((element) =>
         element.setAttribute('data-testid', 'attention-action'),
       );
+      // #1217: a solid action on the attention surface inverts, so its fill stands out from
+      // the banner at rest and on hover, and its label stays readable on both.
+      const bannerSurface = await computedColour(banner, 'background-color');
+      const restFill = await computedColour(bannerAction, 'background-color');
+      expect(restFill).toEqual(
+        await resolveTokenSrgb(
+          page,
+          'attention-action',
+          '--trinity-state-attention-action-surface',
+        ),
+      );
+      expect(contrastRatio(restFill, bannerSurface)).toBeGreaterThanOrEqual(3);
+      expect(
+        (await measureLocatorContrast(bannerAction)).ratio,
+      ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+      await bannerAction.hover();
+      const hoverSurface = await resolveTokenSrgb(
+        page,
+        'attention-action',
+        '--trinity-state-attention-action-hover-surface',
+      );
+      await expect
+        .poll(() => computedColour(bannerAction, 'background-color'))
+        .toEqual(hoverSurface);
+      expect(hoverSurface).not.toEqual(restFill);
+      expect(contrastRatio(hoverSurface, bannerSurface)).toBeGreaterThanOrEqual(
+        3,
+      );
+      expect(
+        (await measureLocatorContrast(bannerAction)).ratio,
+      ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+      await page.mouse.move(0, 0);
       await bannerAction.focus();
       await expect(bannerAction).toBeFocused();
       const attentionRing = await computedColour(bannerAction, 'outline-color');
@@ -141,6 +174,30 @@ test.describe('semantic design foundations', () => {
       expect(
         contrastRatio(attentionRing, attentionSurface),
       ).toBeGreaterThanOrEqual(3);
+      // The ring shares the inverted fill's colour, so a gap in the banner colour is what
+      // keeps it distinct from the button.
+      const ringOffset = await bannerAction.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          colour: style.getPropertyValue('--tw-ring-offset-color').trim(),
+          width: style.getPropertyValue('--tw-ring-offset-width').trim(),
+        };
+      });
+      expect(ringOffset.width).not.toMatch(/^0(px)?$/);
+      expect(ringOffset.colour).not.toBe('');
+
+      // An anchor action needs its own hover rule: Helm's `[a]:hover` outranks the plain one.
+      await openStory(
+        page,
+        'components-banner--accent-actions',
+        theme.id,
+        mode.id,
+      );
+      const linkAction = page.getByRole('link', { name: 'Learn more' });
+      await linkAction.hover();
+      await expect
+        .poll(() => computedColour(linkAction, 'background-color'))
+        .toEqual(hoverSurface);
 
       await openStory(page, 'components-input--default', theme.id, mode.id);
       const field = page.getByRole('textbox', { name: 'Room name' });

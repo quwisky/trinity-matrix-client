@@ -122,4 +122,17 @@ describe('BannerComponent', () => {
     fixture.detectChanges();
     expect(banner()?.getAttribute('data-variant')).toBe('accent');
   });
+
+  it('declares the attention surface for its actions only in the accent tone', async () => {
+    const { fixture, container } = await render(BannerComponent);
+    const banner = () => container.querySelector('.banner');
+    // Neutral paints a status surface; a solid button keeps its accent fill there.
+    expect(banner()?.hasAttribute('data-trn-surface')).toBe(false);
+
+    // Accent paints the attention surface, the same colour as a solid primary fill, so it
+    // tells trnBtn to use the on-attention action roles instead (#1217).
+    fixture.componentRef.setInput('variant', 'accent');
+    fixture.detectChanges();
+    expect(banner()?.getAttribute('data-trn-surface')).toBe('attention');
+  });
 });

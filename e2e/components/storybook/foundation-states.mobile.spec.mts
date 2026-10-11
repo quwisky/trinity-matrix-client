@@ -37,7 +37,7 @@ test('banner actions wrap below the message instead of squeezing it (#1221)', as
   page,
 }) => {
   await page.goto(
-    '/iframe.html?id=components-banner--two-actions&viewMode=story',
+    '/iframe.html?id=components-banner--accent-actions&viewMode=story',
   );
   const banner = page.locator('.banner');
   const text = page.locator('.banner__text');

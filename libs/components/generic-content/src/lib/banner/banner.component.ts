@@ -1,4 +1,9 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+} from '@angular/core';
 import type { TrnVariant } from '@trinity/components/foundations';
 
 export type TrnBannerVariant = Extract<TrnVariant, 'neutral' | 'accent'>;
@@ -17,7 +22,7 @@ export type TrnBannerVariant = Extract<TrnVariant, 'neutral' | 'accent'>;
  *   <trn-icon trnBannerIcon name="lock" />
  *   Set up encryption to secure your messages.
  *   <span trnBannerActions>
- *     <button hlmBtn size="sm">Set up</button>
+ *     <button trnBtn size="sm">Set up</button>
  *   </span>
  * </trn-banner>
  * ```
@@ -31,4 +36,13 @@ export type TrnBannerVariant = Extract<TrnVariant, 'neutral' | 'accent'>;
 export class BannerComponent {
   /** Semantic treatment: `neutral` status or `accent` call-to-action. */
   readonly variant = input<TrnBannerVariant>('neutral');
+
+  /**
+   * The accent tone paints the attention surface, so it declares that context for the
+   * projected actions: `trnBtn` reads `data-trn-surface="attention"` and inverts its solid
+   * fill, which would otherwise be the same accent as the banner (#1217).
+   */
+  protected readonly surface = computed(() =>
+    this.variant() === 'accent' ? 'attention' : null,
+  );
 }

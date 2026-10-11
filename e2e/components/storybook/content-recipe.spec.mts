@@ -235,7 +235,7 @@ test('tooltip position stays behavioral on the semantic tooltip surface', async 
 test('banner actions share the message row when there is room (#1221)', async ({
   page,
 }) => {
-  await page.goto(story('components-banner--two-actions'));
+  await page.goto(story('components-banner--accent-actions'));
   const text = page.locator('.banner__text');
   const actions = page.locator('.banner__actions');
   await expect(actions.getByRole('button')).toHaveCount(2);

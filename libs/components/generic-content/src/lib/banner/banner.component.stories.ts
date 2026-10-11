@@ -51,6 +51,26 @@ export const Accent: Story = {
   }),
 };
 
+/**
+ * The encryption prompt's shape: solid actions on the attention surface, including an anchor,
+ * which needs its own hover rule. They invert to the on-attention action roles, so each reads
+ * as a button with a visible hover and focus.
+ */
+export const AccentActions: Story = {
+  render: () => ({
+    template: `
+      <trn-banner variant="accent">
+        <trn-icon trnBannerIcon name="lock" />
+        Verify this device to read your encrypted messages.
+        <span trnBannerActions>
+          <button trnBtn size="sm">Verify with another device</button>
+          <button trnBtn size="sm">Use recovery key</button>
+          <a trnBtn size="sm" href="#">Learn more</a>
+        </span>
+      </trn-banner>`,
+  }),
+};
+
 export const LongMessage: Story = {
   // The state a screenshot never covers and a narrow window always finds: the text has to
   // wrap without pushing the actions off the end or crushing the icon.
@@ -62,24 +82,6 @@ export const LongMessage: Story = {
         above may be missing context that other people in the room can see.
         <span trnBannerActions>
           <button trnBtn size="sm">Learn more</button>
-        </span>
-      </trn-banner>`,
-  }),
-};
-
-/**
- * The encryption prompt's two actions: at phone width they move onto their own line rather
- * than squeezing the message into a column a word wide (#1221).
- */
-export const TwoActions: Story = {
-  render: () => ({
-    template: `
-      <trn-banner variant="accent">
-        <trn-icon trnBannerIcon name="lock" />
-        Verify this device to read your encrypted messages.
-        <span trnBannerActions>
-          <button trnBtn size="sm">Verify with another device</button>
-          <button trnBtn size="sm">Use recovery key</button>
         </span>
       </trn-banner>`,
   }),
