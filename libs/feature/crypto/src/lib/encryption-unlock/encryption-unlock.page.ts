@@ -134,12 +134,24 @@ export class EncryptionUnlockPage {
    * there is no recovery key to enter and the page offers only the reset. Every other
    * reading, `unknown` included, keeps the key form: a status that is not in yet must not
    * hide the ordinary path.
+   *
+   * Held while a reset runs: the reset moves the live status through other readings
+   * (parking the 4S pointer, publishing the new identity), and following them would swap
+   * the page's copy under the user mid-reset.
    */
-  readonly identityWithoutRecovery = computed(
-    () =>
-      this.crypto.status() === 'needs-verification' ||
-      this.crypto.recoverySetupElsewhere(),
-  );
+  readonly identityWithoutRecovery = linkedSignal<
+    { readonly live: boolean; readonly resetting: boolean },
+    boolean
+  >({
+    source: () => ({
+      live:
+        this.crypto.status() === 'needs-verification' ||
+        this.crypto.recoverySetupElsewhere(),
+      resetting: this.resetting(),
+    }),
+    computation: ({ live, resetting }, previous) =>
+      resetting && previous ? previous.value : live,
+  }).asReadonly();
 
   /** Page/modal title, which has to follow what the page is actually doing. */
   readonly title = computed(() => {

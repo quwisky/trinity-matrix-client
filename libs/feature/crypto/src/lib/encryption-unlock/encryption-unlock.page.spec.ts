@@ -10,7 +10,7 @@ import {
 import { TrnDialogRef, TrnAlertService } from '@trinity/components/overlay';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
-import { Observable, firstValueFrom, of, throwError } from 'rxjs';
+import { Observable, Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionUnlockPage } from './encryption-unlock.page';
 
@@ -58,6 +58,9 @@ async function renderPage(options: RenderOptions = {}) {
   const prompt = vi.fn();
   prompt.mockReturnValueOnce(of(typed ?? null)).mockReturnValue(of('pw'));
   const confirm = vi.fn(() => of(confirmClose));
+  // Writable so a test can move the live status while the page is open.
+  const liveStatus = signal<TrustStatus>(status);
+  const liveSetupElsewhere = signal(setupElsewhere);
   const result = await render(EncryptionUnlockPage, {
     inputs: {
       ...(asModal === undefined ? {} : { asModal }),
@@ -65,8 +68,8 @@ async function renderPage(options: RenderOptions = {}) {
     },
     providers: [
       MockProvider(TrustService, {
-        status: signal(status).asReadonly(),
-        recoverySetupElsewhere: signal(setupElsewhere).asReadonly(),
+        status: liveStatus.asReadonly(),
+        recoverySetupElsewhere: liveSetupElsewhere.asReadonly(),
       }),
       MockProvider(Router),
       MockProvider(ActivatedRoute, {
@@ -104,6 +107,8 @@ async function renderPage(options: RenderOptions = {}) {
     prompt,
     confirm,
     externalBrowser,
+    liveStatus,
+    liveSetupElsewhere,
   };
 }
 
@@ -603,6 +608,49 @@ describe('EncryptionUnlockPage', () => {
         expect(crypto.resetRecovery).not.toHaveBeenCalled();
       },
     );
+
+    it('keeps the key form while a reset moves the live status', async () => {
+      // Mid-reset the 4S pointer is parked and a new identity published, so the live
+      // status passes through readings that would otherwise flip the page's copy.
+      const reset = new Subject<string>();
+      const { fixture, liveStatus, liveSetupElsewhere } = await renderPage({
+        status: 'needs-recovery',
+        typed: 'RESET',
+        reset,
+      });
+      void fixture.componentInstance.resetRecovery();
+      await flush();
+      expect(fixture.componentInstance.resetting()).toBe(true);
+
+      liveStatus.set('needs-verification');
+      liveSetupElsewhere.set(true);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.identityWithoutRecovery()).toBe(false);
+      expect(fixture.componentInstance.title()).toBe('Verify this device');
+
+      reset.error(resetCancelled());
+      await flush();
+
+      // Once the reset is over the page follows the live status again.
+      expect(fixture.componentInstance.identityWithoutRecovery()).toBe(true);
+    });
+
+    it('keeps the reset-only copy while a reset moves the live status', async () => {
+      const { fixture, liveStatus } = await renderPage({
+        status: 'needs-verification',
+        typed: 'RESET',
+        reset: new Observable<string>(() => undefined), // never settles
+      });
+      void fixture.componentInstance.resetRecovery();
+      await flush();
+
+      liveStatus.set('needs-recovery');
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.identityWithoutRecovery()).toBe(true);
+      expect(fixture.componentInstance.title()).toBe('Reset your identity');
+    });
 
     it('runs the same confirmed reset from its own button', async () => {
       const { crypto, prompt } = await renderPage({
