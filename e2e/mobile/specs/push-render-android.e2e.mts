@@ -156,7 +156,11 @@ describe('device-rendered push on Android', () => {
     expect(sent).toContain('Broadcast completed');
 
     await browser.execute('mobile: openNotifications');
-    // No network is involved, so unlike the test above this needs no trusted CA.
+    // No network is involved, so unlike the test above this needs no trusted CA. The title
+    // is the stored room name.
+    await expect(
+      uiSelector(`new UiSelector().textContains("${room.roomName}")`),
+    ).toBeDisplayed({ wait: 30_000 });
     await expect(
       uiSelector(
         'new UiSelector().textContains("Open Trinity to read this message")',

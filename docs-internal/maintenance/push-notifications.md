@@ -218,9 +218,8 @@ store current through the `PushHandoff` plugin (`setAccount`, `setRooms`, `remov
 (rewritten when the SDK refreshes it), the token's expiry when the account signed in through
 OAuth 2.0 and its server gave the token a lifetime (MAS defaults to five minutes;
 `MatrixClientService.accessTokenExpiry` hands it over only with the token it belongs to) and
-the notification-sound choice, plus room display
-names and DM flags written in one batch per sync or rename. It never holds refresh tokens,
-crypto keys or message history. An account's entry is removed as the first step of its
+the notification-sound choice, plus room display names and DM flags written in one batch per
+sync or rename. It never holds refresh tokens, crypto keys or message history. An account's entry is removed as the first step of its
 sign-out, together with that account's delivered pushes, and the store is emptied, with
 every delivered push, by clear-all-data and before a replace sign-in. A handoff failure
 never blocks sign-in or sign-out; the replace sign-in waits for it for at most the
@@ -243,14 +242,27 @@ the SDK's own token manager (`client.http.refreshOAuthTokens()`, added by
 persists the pair before the SDK adopts it and reaches the store as an ordinary rotation. The
 app stays the only process that rotates tokens. A refused refresh signs nothing out at that
 moment; the account's next request meets the refusal and takes the usual path. The refresh
-is not proven to finish before iOS suspends the app, and an interrupted one leaves two
-outcomes. If the server rotated but the native store write never ran, the store may hold a
-token that is already revoked: closed-app notifications for that account then show the
-generic "New message" text, not the expired-token text, until the app next runs. If iOS ends
-the process after the provider rotated the refresh token but before Trinity's storage
-committed it, the next start holds a spent refresh token. Whether that costs the session
-depends on the provider's refresh-token reuse policy; this is unproven, and the owner's
-device check under #1152 step 5 should cover it.
+is not proven to finish before the OS suspends the app, and an interrupted one can leave
+three things behind.
+
+- Interrupted native write. If the server rotated but the native store write never ran,
+  the store still holds the previous token with its previous expiry. The forced refresh
+  revoked that token, so pushes for the account read "New message" only until that old
+  expiry passes: at most one token lifetime, about 5 minutes on MAS defaults. After that
+  they read "Open Trinity to read this message".
+- Spent refresh token. This does not need the process to die. If the refresh grant's
+  response is lost, for example because the connection is cut as the OS suspends the app,
+  the app keeps the spent refresh token in memory and in storage, and the next refresh
+  reuses it. A provider that rejects reused refresh tokens answers `invalid_grant`, and the
+  SDK signs the account out and clears its local encryption state. MAS deployments that
+  include its idempotent refresh-token grant (matrix-authentication-service PR #3650)
+  accept the reuse while neither the new access token nor the new refresh token has been
+  used, which is the lost-response case. Other providers may not; the device check under
+  #1152 step 5 confirms the behaviour for the deployment in use.
+- Suspended refresh request. The refresh request has no timeout. If the OS suspends it
+  mid-flight and it hangs rather than fails, requests for that account wait on it. The
+  device check should include "go to the background mid-refresh, come back, confirm sync
+  resumes".
 
 **Rendering.** iOS runs the `NotificationService` extension; Android replaces the push
 plugin's messaging service with `TrinityMessagingService`, which treats the app as

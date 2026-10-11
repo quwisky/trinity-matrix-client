@@ -115,9 +115,8 @@ Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed
   native code does not trust the run's Caddy CA, so the body there is the fallback "New
   message". Both specs also store an already expired token through the plugin and check for
   "Open Trinity to read this message", which needs no network. Neither shows a real FCM token,
-  the extension launching, locked-phone
-  rendering or closed-app delivery through `push.trinityproject.dev`, and the iOS spec does not
-  cover tap-to-open.
+  the extension launching, locked-phone rendering or closed-app delivery through
+  `push.trinityproject.dev`, and the iOS spec does not cover tap-to-open.
 - CI runs iOS in the `E2E (iOS nightly)` workflow, never on pull requests.
 
 ## MSC2545 image-pack management
