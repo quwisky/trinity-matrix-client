@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ENCRYPTED_LINK_PREVIEWS_PREFERENCE,
+  KEEP_PHOTO_METADATA_PREFERENCE,
   LINK_PREVIEWS_PREFERENCE,
   PRIVACY_PREFERENCE_DESCRIPTORS,
   SAVE_CAPTURES_TO_GALLERY_PREFERENCE,
@@ -69,6 +70,22 @@ describe('privacy preference descriptors', () => {
           testId: 'privacy-save-captures-to-gallery',
         }),
       }),
+      expect.objectContaining({
+        id: 'conversations.privacy.keep-photo-metadata',
+        owner: 'conversations',
+        section: 'privacy',
+        order: 40,
+        scope: 'installation',
+        defaultValue: false,
+        sensitivity: 'private',
+        storage: 'device-preferences',
+        export: 'portable',
+        editor: expect.objectContaining({
+          kind: 'toggle',
+          label: 'Keep photo metadata',
+          testId: 'privacy-keep-photo-metadata',
+        }),
+      }),
     ]);
   });
 
@@ -82,7 +99,19 @@ describe('privacy preference descriptors', () => {
       'trinity.privacy.link-previews',
       'trinity.privacy.link-previews-encrypted',
       'trinity.privacy.save-captures-to-gallery',
+      'trinity.privacy.keep-photo-metadata',
     ]);
+  });
+
+  it('explains what keeping photo metadata shares and that profile and room photos never keep it', () => {
+    const editor = KEEP_PHOTO_METADATA_PREFERENCE.editor;
+    if (editor.kind !== 'toggle') throw new Error('expected a toggle');
+
+    expect(editor.description).toMatch(/where/);
+    expect(editor.description).toMatch(/device/);
+    expect(editor.description).toMatch(/HDR/);
+    expect(editor.description).toMatch(/Motion Photo/);
+    expect(editor.description).toMatch(/[Pp]rofile and room photos/);
   });
 
   it.each([
@@ -90,6 +119,7 @@ describe('privacy preference descriptors', () => {
     ['link previews', LINK_PREVIEWS_PREFERENCE],
     ['encrypted link previews', ENCRYPTED_LINK_PREVIEWS_PREFERENCE],
     ['save captures to gallery', SAVE_CAPTURES_TO_GALLERY_PREFERENCE],
+    ['keep photo metadata', KEEP_PHOTO_METADATA_PREFERENCE],
   ] as const)('migrates real %s legacy and current values', (_, descriptor) => {
     const migration = descriptor.persistence.migration;
 

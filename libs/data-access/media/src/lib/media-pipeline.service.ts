@@ -283,6 +283,7 @@ export class MediaPipeline {
               abortController,
               client,
               request.media.hints,
+              request.imageMetadata ?? 'strip',
             )
             .subscribe({
               next: (media) => {

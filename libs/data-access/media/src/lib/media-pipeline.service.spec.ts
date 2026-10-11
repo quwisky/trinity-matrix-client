@@ -126,6 +126,7 @@ describe('MediaPipeline', () => {
       expect.any(AbortController),
       client,
       undefined,
+      'strip',
     );
     expect(events.at(-1)).toEqual({ kind: 'sent', eventId: '$event' });
     expect(events.some((event) => event.kind === 'progress')).toBe(true);
@@ -568,6 +569,38 @@ describe('MediaPipeline', () => {
       expect.any(AbortController),
       client,
       hints,
+      'strip',
+    );
+  });
+
+  it('uploads with the image metadata policy the transfer asks for', async () => {
+    const { pipeline, bytes, client } = setup();
+    const staged = pipeline.stage(
+      new File([new Uint8Array([1, 2, 3, 4])], 'photo.jpg', {
+        type: 'image/jpeg',
+      }),
+    );
+    if (staged.kind !== 'staged') throw new Error('not staged');
+
+    await firstValueFrom(
+      pipeline
+        .transfer({
+          key: KEY,
+          media: staged.media,
+          caption: '',
+          imageMetadata: 'keep',
+        })
+        .pipe(toArray()),
+    );
+
+    expect(bytes.uploadMedia).toHaveBeenCalledWith(
+      expect.any(File),
+      true,
+      expect.any(Function),
+      expect.any(AbortController),
+      client,
+      undefined,
+      'keep',
     );
   });
 

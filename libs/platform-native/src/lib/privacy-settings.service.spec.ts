@@ -26,6 +26,7 @@ const READ_RECEIPTS_KEY = 'trinity.privacy.send-read-receipts';
 const LINK_PREVIEWS_KEY = 'trinity.privacy.link-previews';
 const ENCRYPTED_PREVIEWS_KEY = 'trinity.privacy.link-previews-encrypted';
 const SAVE_CAPTURES_KEY = 'trinity.privacy.save-captures-to-gallery';
+const KEEP_PHOTO_METADATA_KEY = 'trinity.privacy.keep-photo-metadata';
 
 function testPreference(
   id: string,
@@ -95,6 +96,11 @@ const TEST_PRIVACY_PREFERENCES: PrivacyPreferenceSet = {
     SAVE_CAPTURES_KEY,
     false,
   ),
+  keepPhotoMetadata: testPreference(
+    'conversations.test.keep-photo-metadata',
+    KEEP_PHOTO_METADATA_KEY,
+    false,
+  ),
 };
 
 describe('PrivacySettingsService preference facade', () => {
@@ -131,24 +137,27 @@ describe('PrivacySettingsService preference facade', () => {
     expect(svc.linkPreviews()).toBe(true);
     expect(svc.linkPreviewsInEncrypted()).toBe(false);
     expect(svc.saveCapturesToGallery()).toBe(false);
+    expect(svc.keepPhotoMetadata()).toBe(false);
   });
 
-  it('hydrates all four preferences through one finite command', async () => {
+  it('hydrates all five preferences through one finite command', async () => {
     values.set(READ_RECEIPTS_KEY, 'false');
     values.set(LINK_PREVIEWS_KEY, 'false');
     values.set(ENCRYPTED_PREVIEWS_KEY, 'true');
     values.set(SAVE_CAPTURES_KEY, 'true');
+    values.set(KEEP_PHOTO_METADATA_KEY, '{"version":1,"value":true}');
     const svc = service();
 
     await expect(firstValueFrom(svc.init())).resolves.toEqual({
       kind: 'ready',
-      hydrated: 4,
+      hydrated: 5,
     });
     expect(svc.sendReadReceipts()).toBe(false);
     expect(svc.linkPreviews()).toBe(false);
     expect(svc.linkPreviewsInEncrypted()).toBe(true);
     expect(svc.saveCapturesToGallery()).toBe(true);
-    expect(get).toHaveBeenCalledTimes(4);
+    expect(svc.keepPhotoMetadata()).toBe(true);
+    expect(get).toHaveBeenCalledTimes(5);
   });
 
   it('migrates legacy booleans into versioned envelopes', async () => {
@@ -214,5 +223,19 @@ describe('PrivacySettingsService preference facade', () => {
 
     await firstValueFrom(svc.resetSaveCapturesToGallery());
     expect(svc.saveCapturesToGallery()).toBe(false);
+  });
+
+  it('saves the photo metadata choice and resets it to off', async () => {
+    const svc = service();
+
+    await firstValueFrom(svc.setKeepPhotoMetadata(true));
+    expect(svc.keepPhotoMetadata()).toBe(true);
+    expect(set).toHaveBeenCalledWith({
+      key: KEEP_PHOTO_METADATA_KEY,
+      value: '{"version":1,"value":true}',
+    });
+
+    await firstValueFrom(svc.resetKeepPhotoMetadata());
+    expect(svc.keepPhotoMetadata()).toBe(false);
   });
 });

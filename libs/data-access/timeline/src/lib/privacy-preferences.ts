@@ -113,12 +113,42 @@ export const SAVE_CAPTURES_TO_GALLERY_PREFERENCE = definePreference({
   validate: validateBoolean,
 } satisfies PreferenceDescriptor<boolean>);
 
+/**
+ * Whether photos sent as message attachments go out exactly as picked, metadata included,
+ * instead of without their location and camera details (#1140). Profile and room photos
+ * are public and stay up, so they are stripped whatever this says.
+ */
+export const KEEP_PHOTO_METADATA_PREFERENCE = definePreference({
+  id: 'conversations.privacy.keep-photo-metadata',
+  owner: 'conversations',
+  section: 'privacy',
+  order: 40,
+  scope: 'installation',
+  defaultValue: false,
+  sensitivity: 'private',
+  storage: 'device-preferences',
+  export: 'portable',
+  editor: {
+    kind: 'toggle',
+    label: 'Keep photo metadata',
+    description:
+      "Off by default. When on, photos you send in messages go out unchanged: anyone in the room can see where and on what device they were taken, and HDR and Motion Photo data is kept. Profile and room photos are always sent without it, because they're public and stay up.",
+    testId: 'privacy-keep-photo-metadata',
+  },
+  persistence: {
+    key: 'trinity.privacy.keep-photo-metadata',
+    migration: booleanMigration(),
+  },
+  validate: validateBoolean,
+} satisfies PreferenceDescriptor<boolean>);
+
 export const PRIVACY_PREFERENCE_DESCRIPTORS: readonly PreferenceDescriptor<PreferenceValue>[] =
   [
     SEND_READ_RECEIPTS_PREFERENCE,
     LINK_PREVIEWS_PREFERENCE,
     ENCRYPTED_LINK_PREVIEWS_PREFERENCE,
     SAVE_CAPTURES_TO_GALLERY_PREFERENCE,
+    KEEP_PHOTO_METADATA_PREFERENCE,
   ];
 
 export const CONVERSATION_PRIVACY_PREFERENCES = {
@@ -126,6 +156,7 @@ export const CONVERSATION_PRIVACY_PREFERENCES = {
   linkPreviews: LINK_PREVIEWS_PREFERENCE,
   linkPreviewsInEncrypted: ENCRYPTED_LINK_PREVIEWS_PREFERENCE,
   saveCapturesToGallery: SAVE_CAPTURES_TO_GALLERY_PREFERENCE,
+  keepPhotoMetadata: KEEP_PHOTO_METADATA_PREFERENCE,
 } as const;
 
 /** Contributes Conversations-owned privacy policy to the application catalog. */
