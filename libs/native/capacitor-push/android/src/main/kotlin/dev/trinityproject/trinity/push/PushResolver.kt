@@ -2,8 +2,20 @@ package dev.trinityproject.trinity.push
 
 import org.json.JSONObject
 
-/** One account's credentials as the app stored them; never a refresh token. */
-data class HandoffAccount(val homeserverUrl: String, val accessToken: String, val sound: Boolean)
+/**
+ * One account's credentials as the app stored them; never a refresh token.
+ * [accessTokenExpiresAt] is when the token stops working (epoch ms), for an OAuth account
+ * whose server gave it a lifetime; null when it does not expire on a schedule.
+ */
+data class HandoffAccount(
+    val homeserverUrl: String,
+    val accessToken: String,
+    val sound: Boolean,
+    val accessTokenExpiresAt: Long? = null,
+) {
+    /** Whether the token had expired at [nowMillis]. A token without an expiry never has. */
+    fun tokenExpired(nowMillis: Long): Boolean = accessTokenExpiresAt != null && nowMillis >= accessTokenExpiresAt
+}
 
 /** Read side of the push handoff store. */
 interface HandoffReader {
@@ -19,6 +31,19 @@ interface MatrixApi {
 }
 
 fun monotonicMillis(): Long = System.nanoTime() / 1_000_000
+
+/**
+ * Wall-clock epoch milliseconds, compared with the stored token expiry. A type of its own, so
+ * it cannot be passed where the monotonic read-budget clock (`() -> Long`) goes, or the other
+ * way round; a lambda still converts to it.
+ */
+fun interface WallClock {
+    fun nowMillis(): Long
+
+    companion object {
+        val SYSTEM = WallClock { System.currentTimeMillis() }
+    }
+}
 
 /** One budget shared by every read for a push. */
 class Deadline(private val endsAtMillis: Long, private val clock: () -> Long) {
@@ -54,12 +79,15 @@ sealed interface PushOutcome {
 
 /**
  * Turns a gateway push (`event_id`, `room_id`, `trinity_user_id`, `unread`) into what to
- * post. Never refreshes a token: an expired one reads as a failed fetch and the room-name
- * fallback.
+ * post. Never refreshes a token. A token the store marks expired is not sent at all, because
+ * only the app can renew it: the push shows the room name with the expired-token text. Any
+ * other failed read shows the room-name fallback.
  */
 class PushResolver(
     private val store: HandoffReader,
     private val api: MatrixApi,
+    private val wallClock: WallClock = WallClock.SYSTEM,
+    /** Monotonic milliseconds for the read budget. Last, so a trailing lambda still sets it. */
     private val clock: () -> Long = ::monotonicMillis,
 ) {
     fun resolve(data: Map<String, String>): PushOutcome {
@@ -81,6 +109,17 @@ class PushResolver(
                 RenderedNotification(PushRenderRules.FALLBACK_TITLE, "", PushRenderRules.FALLBACK_BODY),
                 direct = false,
                 sound = true,
+            )
+        }
+        if (account.tokenExpired(wallClock.nowMillis())) {
+            val storedRoom = store.room(accountId, roomId)
+            return PushOutcome.Post(
+                accountId,
+                roomId,
+                eventId,
+                PushRenderRules.render(null, storedRoom, null, null, tokenExpired = true),
+                direct = storedRoom?.direct == true,
+                sound = account.sound,
             )
         }
         val deadline = Deadline.start(clock)

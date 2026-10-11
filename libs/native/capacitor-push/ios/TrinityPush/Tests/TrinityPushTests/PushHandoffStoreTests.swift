@@ -64,3 +64,70 @@ final class PushHandoffStoreTests: XCTestCase {
         XCTAssertNil(store.account("@never-stored:hs"))
     }
 }
+
+/// The stored account record: items written before expiries existed must still decode.
+final class HandoffAccountTests: XCTestCase {
+    func testAnAccountStoredBeforeExpiriesExistedDecodesWithoutOne() throws {
+        let legacy = Data(#"{"homeserverUrl":"https://hs.example","accessToken":"token","sound":false}"#.utf8)
+
+        let account = try JSONDecoder().decode(HandoffAccount.self, from: legacy)
+
+        XCTAssertEqual(account, HandoffAccount(homeserverUrl: "https://hs.example", accessToken: "token", sound: false))
+        XCTAssertNil(account.accessTokenExpiresAt)
+        XCTAssertFalse(account.tokenExpired(at: .distantFuture))
+    }
+
+    func testTheExpiryRoundTripsThroughTheStoredEncoding() throws {
+        let account = HandoffAccount(
+            homeserverUrl: "https://hs.example",
+            accessToken: "token",
+            sound: true,
+            accessTokenExpiresAt: Date(timeIntervalSince1970: 1_760_000_000)
+        )
+
+        let decoded = try JSONDecoder().decode(HandoffAccount.self, from: JSONEncoder().encode(account))
+
+        XCTAssertEqual(decoded, account)
+    }
+
+    func testTheExpiryParsesLikeAndroidDoes() {
+        XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: nil))
+        XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: "1760000000000"))
+        XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: 0)))
+        XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: -1)))
+        XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: 0.4)))
+        XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: true)))
+        XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: false)))
+        XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: Double.nan)))
+        XCTAssertNil(HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: Double.infinity)))
+        XCTAssertEqual(
+            HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: 1_760_000_000_000.0)),
+            Date(timeIntervalSince1970: 1_760_000_000)
+        )
+        // Fractions of a millisecond are dropped, as Android's toLong() drops them.
+        XCTAssertEqual(
+            HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: 1_760_000_000_000.7)),
+            Date(timeIntervalSince1970: 1_760_000_000)
+        )
+        XCTAssertEqual(
+            HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: 1.9)),
+            Date(timeIntervalSince1970: 0.001)
+        )
+    }
+
+    func testAnAbsurdlyLargeExpiryIsAFarFutureDateAndNeverExpired() throws {
+        let expiry = try XCTUnwrap(HandoffAccount.expiry(fromEpochMilliseconds: NSNumber(value: 1e30)))
+        let account = HandoffAccount(homeserverUrl: "https://hs.example", accessToken: "token", sound: true, accessTokenExpiresAt: expiry)
+
+        XCTAssertFalse(account.tokenExpired(at: Date(timeIntervalSince1970: 4_000_000_000)))
+    }
+
+    func testATokenHasExpiredFromItsExpiryInstantOn() {
+        let expiry = Date(timeIntervalSince1970: 1_000)
+        let account = HandoffAccount(homeserverUrl: "https://hs.example", accessToken: "token", sound: true, accessTokenExpiresAt: expiry)
+
+        XCTAssertFalse(account.tokenExpired(at: expiry.addingTimeInterval(-0.001)))
+        XCTAssertTrue(account.tokenExpired(at: expiry))
+        XCTAssertTrue(account.tokenExpired(at: expiry.addingTimeInterval(60)))
+    }
+}

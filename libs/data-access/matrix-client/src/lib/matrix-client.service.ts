@@ -53,8 +53,13 @@ import {
 } from '@trinity/util/matrix';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 
-/** Default deadline for ordinary Matrix HTTP requests made by an account client. */
-const MATRIX_REQUEST_TIMEOUT_MS = 30_000;
+/**
+ * Default deadline for ordinary Matrix HTTP requests made by an account client. The
+ * matrix-js-sdk patch's refresh-token grant abort (`REFRESH_TOKEN_GRANT_TIMEOUT_MS` in
+ * `patches/matrix-js-sdk@43.0.0.patch`) mirrors this value and must change with it; the
+ * spec pins the two together.
+ */
+export const MATRIX_REQUEST_TIMEOUT_MS = 30_000;
 
 /** Resource ceiling for the first production Projection Runtime adapter. */
 export const MATRIX_SYNC_PROJECTION_BASELINE = {
@@ -245,6 +250,22 @@ export class MatrixClientService {
     this._accessTokenRotations.asObservable();
 
   /**
+   * The access token Trinity last saw each OAuth account's client start with or persist,
+   * with its expiry (epoch ms) when the server gave one, and whether the sign-in came with
+   * a refresh token. Set from the session when the client is built, and moved to each
+   * refreshed pair once storage accepted it and before the rotation is published. Read
+   * through {@link accessTokenExpiry}.
+   */
+  private readonly oauthTokens = new Map<
+    string,
+    {
+      readonly accessToken: string;
+      readonly expiresAt: number | undefined;
+      readonly refreshable: boolean;
+    }
+  >();
+
+  /**
    * In-flight background store wipes started by {@link reset}/{@link remove},
    * keyed by user id. Re-adding that account awaits its wipe first: the sync +
    * Rust-crypto IndexedDB names repeat across a same-account re-login, so opening
@@ -324,6 +345,52 @@ export class MatrixClientService {
   /** The live client for a specific account, or null (e.g. per-account server logout). */
   clientFor(userId: string): MatrixClient | null {
     return this.clients.get(userId)?.client ?? null;
+  }
+
+  /**
+   * When `accessToken` stops working (epoch ms), if it is the token Trinity last saw this
+   * account's client start with or persist and the server gave it a lifetime. Undefined
+   * for password and SSO tokens, a token without `expires_in`, and a token the client has
+   * already replaced, so an expiry never travels with the wrong token.
+   */
+  accessTokenExpiry(userId: string, accessToken: string): number | undefined {
+    const held = this.oauthTokens.get(userId);
+    return held?.accessToken === accessToken ? held.expiresAt : undefined;
+  }
+
+  /**
+   * Ask the SDK to refresh one live OAuth account's tokens now, joining a refresh already
+   * in flight. The new pair is persisted and published through `onTokenRefresh` like any
+   * refresh. Emits whether new tokens were adopted. A refusal signs nothing out here: the
+   * account's next request meets it and takes the usual path. Cold and finite; never
+   * errors; false for an account that is not live, not OAuth or signed in without a
+   * refresh token.
+   *
+   * `timeoutMs` bounds when the token grant this call starts may answer, counted from the
+   * call; past it the grant is aborted, which fails like a network error. Without it the
+   * patched SDK's own bound ({@link MATRIX_REQUEST_TIMEOUT_MS}, from the grant's start)
+   * applies. A refresh already in flight keeps its own bound.
+   */
+  refreshAccessToken(
+    userId: string,
+    options: { readonly timeoutMs?: number } = {},
+  ): Observable<boolean> {
+    return defer(() => {
+      const client = this.clients.get(userId)?.client;
+      if (!client || !this.canRefreshAccessToken(userId)) return of(false);
+      return from(client.http.refreshOAuthTokens(options));
+    }).pipe(catchError(() => of(false)));
+  }
+
+  /**
+   * Whether {@link refreshAccessToken} can refresh this account now: it is live, signed in
+   * through OAuth and holds a refresh token.
+   */
+  canRefreshAccessToken(userId: string): boolean {
+    return (
+      this.clients.has(userId) &&
+      this.oauthTokens.get(userId)?.refreshable === true
+    );
   }
 
   /**
@@ -650,6 +717,7 @@ export class MatrixClientService {
         created?.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
         created?.stopClient();
         holder.clear();
+        this.oauthTokens.delete(session.userId);
         this.closeStore(store);
       };
       return from(this.wipes.get(session.userId) ?? Promise.resolve()).pipe(
@@ -676,6 +744,13 @@ export class MatrixClientService {
               cacheSecretStorageKey: holder.cacheSecretStorageKey,
             },
           });
+          if (session.oidc) {
+            this.oauthTokens.set(session.userId, {
+              accessToken: session.accessToken,
+              expiresAt: session.accessTokenExpiresAt,
+              refreshable: !!session.refreshToken,
+            });
+          }
           // Best-effort cache load; a corrupt/blocked IndexedDB must NOT block login.
           return from(
             store ? store.startup().catch(() => undefined) : Promise.resolve(),
@@ -812,12 +887,23 @@ export class MatrixClientService {
                   tokens.refreshToken,
                   tokens.expiry?.getTime(),
                 ),
-              ).then(() =>
+              ).then(() => {
+                // Before publishing, so a reader of the rotation finds the new expiry. Only
+                // a tracked (live or starting) client's account: a detached client's
+                // refresh must not invent an entry.
+                const tracked = this.oauthTokens.get(session.userId);
+                if (tracked) {
+                  this.oauthTokens.set(session.userId, {
+                    accessToken: tokens.accessToken,
+                    expiresAt: tokens.expiry?.getTime(),
+                    refreshable: tracked.refreshable,
+                  });
+                }
                 this._accessTokenRotations.next({
                   userId: session.userId,
                   accessToken: tokens.accessToken,
-                }),
-              ),
+                });
+              }),
           }
         : {}),
     };
@@ -884,6 +970,7 @@ export class MatrixClientService {
       this.closeStore(account.syncStore);
     }
     this.clients.clear();
+    this.oauthTokens.clear();
     this._accountIds.set([]);
     this.publishCorsOrigins();
     this._activeUserId.set(null);
@@ -896,6 +983,7 @@ export class MatrixClientService {
    */
   private removeInternal(userId: string, wipe: boolean): void {
     this.clearSoftLoggedOut(userId); // any removal clears a stale re-auth flag
+    this.oauthTokens.delete(userId);
     const account = this.clients.get(userId);
     if (!account) {
       if (wipe) {

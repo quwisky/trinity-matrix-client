@@ -86,6 +86,56 @@ class PushResolverTest {
     }
 
     @Test
+    fun expiredTokenShowsTheOpenTrinityTextWithoutAnyRequest() {
+        val expired = alice.copy(accessTokenExpiresAt = 2_000L)
+        val store = FakeStore(mapOf("@alice:hs" to expired), mapOf(("@alice:hs" to "!r:hs") to HandoffRoom("Team", false)))
+        val api = FakeApi(event = message(), memberName = "Carol", roomName = "Lobby")
+
+        val outcome = post(PushResolver(store, api, wallClock = { 2_000L }).resolve(push()))
+
+        assertEquals(RenderedNotification("Team", "", "Open Trinity to read this message"), outcome.notification)
+        assertEquals(true, outcome.sound)
+        assertEquals(false, outcome.direct)
+        assertTrue(api.accounts.isEmpty())
+    }
+
+    @Test
+    fun expiredTokenInADmKeepsTheDmPresentation() {
+        val expired = alice.copy(accessTokenExpiresAt = 2_000L)
+        val store = FakeStore(mapOf("@alice:hs" to expired), mapOf(("@alice:hs" to "!r:hs") to HandoffRoom("Bob", true)))
+
+        val outcome = post(PushResolver(store, FakeApi(), wallClock = { 5_000L }).resolve(push()))
+
+        assertEquals(RenderedNotification("Bob", "", "Open Trinity to read this message"), outcome.notification)
+        assertEquals(true, outcome.direct)
+    }
+
+    @Test
+    fun expiredTokenForARoomNotStoredReadsNoRoomState() {
+        val store = FakeStore(mapOf("@alice:hs" to alice.copy(accessTokenExpiresAt = 2_000L)))
+        val api = FakeApi(roomName = "Lobby")
+
+        val outcome = post(PushResolver(store, api, wallClock = { 2_000L }).resolve(push()))
+
+        assertEquals(RenderedNotification("Trinity", "", "Open Trinity to read this message"), outcome.notification)
+        assertTrue(api.accounts.isEmpty())
+    }
+
+    @Test
+    fun tokenBeforeItsExpiryIsStillUsed() {
+        val store = FakeStore(
+            mapOf("@alice:hs" to alice.copy(accessTokenExpiresAt = 2_001L)),
+            mapOf(("@alice:hs" to "!r:hs") to HandoffRoom("Team", false)),
+        )
+        val api = FakeApi(event = message(), memberName = "Carol")
+
+        val outcome = post(PushResolver(store, api, wallClock = { 2_000L }).resolve(push()))
+
+        assertEquals(RenderedNotification("Team", "Carol", "hello"), outcome.notification)
+        assertTrue(api.accounts.isNotEmpty())
+    }
+
+    @Test
     fun timeoutSpendsTheOneBudgetForLaterReads() {
         var now = 1_000L
         val api = FakeApi(event = null, onEvent = { now += 6_000L })

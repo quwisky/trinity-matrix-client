@@ -11,6 +11,8 @@ const plugin = vi.hoisted(() => ({
   clear: vi.fn(),
   clearRoom: vi.fn(),
   registrationAvailable: vi.fn(),
+  beginBackgroundWork: vi.fn(),
+  endBackgroundWork: vi.fn(),
 }));
 // Recorded outside the mock: the registration happens once at import, and the runner clears
 // mock call history before each test.
@@ -43,6 +45,11 @@ describe('PushHandoffBridge', () => {
       method.mockReset().mockResolvedValue(undefined);
     }
     plugin.registrationAvailable.mockResolvedValue({ value: true });
+    plugin.beginBackgroundWork.mockResolvedValue({
+      id: 42,
+      protectedDataAvailable: true,
+      locking: false,
+    });
   });
 
   it('registers the native plugin under the name both hosts export', () => {
@@ -68,9 +75,38 @@ describe('PushHandoffBridge', () => {
     await firstValueFrom(handoff.clear());
     await firstValueFrom(handoff.clearRoom('@me:hs', '!a:hs'));
     expect(await firstValueFrom(handoff.registrationAvailable())).toBe(false);
+    expect(await firstValueFrom(handoff.beginBackgroundWork())).toEqual({
+      id: 0,
+      protectedDataAvailable: true,
+      locking: false,
+    });
+    await firstValueFrom(handoff.endBackgroundWork(0));
     expect(Object.values(plugin).some((m) => m.mock.calls.length > 0)).toBe(
       false,
     );
+  });
+
+  it('passes the access-token expiry through when the account has one', async () => {
+    isNative.mockReturnValue(true);
+    isAvailable.mockReturnValue(true);
+
+    await firstValueFrom(
+      bridge().setAccount({
+        userId: '@me:hs',
+        homeserverUrl: 'https://hs',
+        accessToken: 't',
+        sound: true,
+        accessTokenExpiresAt: 1_760_000_000_000,
+      }),
+    );
+
+    expect(plugin.setAccount).toHaveBeenCalledWith({
+      userId: '@me:hs',
+      homeserverUrl: 'https://hs',
+      accessToken: 't',
+      sound: true,
+      accessTokenExpiresAt: 1_760_000_000_000,
+    });
   });
 
   it('hands the native plugin plain objects on a native host', async () => {
@@ -135,5 +171,53 @@ describe('PushHandoffBridge', () => {
     await expect(
       firstValueFrom(handoff.registrationAvailable()),
     ).rejects.toThrow('no Firebase');
+  });
+
+  it('begins and ends background work with the id the native host returned', async () => {
+    isNative.mockReturnValue(true);
+    isAvailable.mockReturnValue(true);
+    const handoff = bridge();
+
+    const { id } = await firstValueFrom(handoff.beginBackgroundWork());
+    await firstValueFrom(handoff.endBackgroundWork(id));
+
+    expect(id).toBe(42);
+    expect(plugin.beginBackgroundWork).toHaveBeenCalledOnce();
+    expect(plugin.endBackgroundWork).toHaveBeenCalledWith({ id: 42 });
+
+    plugin.beginBackgroundWork.mockRejectedValue(new Error('no main thread'));
+    await expect(firstValueFrom(handoff.beginBackgroundWork())).rejects.toThrow(
+      'no main thread',
+    );
+  });
+
+  it('reports what the native host says about protected data', async () => {
+    isNative.mockReturnValue(true);
+    isAvailable.mockReturnValue(true);
+    const handoff = bridge();
+    plugin.beginBackgroundWork.mockResolvedValue({
+      id: 5,
+      protectedDataAvailable: false,
+      locking: true,
+    });
+
+    expect(await firstValueFrom(handoff.beginBackgroundWork())).toEqual({
+      id: 5,
+      protectedDataAvailable: false,
+      locking: true,
+    });
+  });
+
+  it('reads a host that reports only the id as available and not locking', async () => {
+    isNative.mockReturnValue(true);
+    isAvailable.mockReturnValue(true);
+    const handoff = bridge();
+    plugin.beginBackgroundWork.mockResolvedValue({ id: 3 });
+
+    expect(await firstValueFrom(handoff.beginBackgroundWork())).toEqual({
+      id: 3,
+      protectedDataAvailable: true,
+      locking: false,
+    });
   });
 });

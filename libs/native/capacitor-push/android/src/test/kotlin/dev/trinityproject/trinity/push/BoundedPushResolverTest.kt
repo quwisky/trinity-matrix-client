@@ -90,6 +90,32 @@ class BoundedPushResolverTest {
     }
 
     @Test
+    fun anExpiredTokenIsAnsweredAtOnceWithoutAnyRead() {
+        val expired = object : HandoffReader {
+            override fun account(userId: String) =
+                HandoffAccount("https://hs.example", "token", sound = false, accessTokenExpiresAt = 1_000L)
+
+            override fun room(userId: String, roomId: String) = HandoffRoom("Team", direct = false)
+        }
+        val api = BlockingApi()
+
+        val outcome = BoundedPushResolver(expired, api, budgetMillis = 5_000, wallClock = { 1_000L }).resolve(push)
+
+        assertEquals(
+            PushOutcome.Post(
+                "@a:hs",
+                "!r:hs",
+                "\$e",
+                RenderedNotification("Team", "", "Open Trinity to read this message"),
+                direct = false,
+                sound = false,
+            ),
+            outcome,
+        )
+        assertEquals(1L, api.calls.count)
+    }
+
+    @Test
     fun aStoreThatThrowsStillYieldsTheGenericFallback() {
         val faulty = object : HandoffReader {
             override fun account(userId: String): HandoffAccount? = throw java.security.ProviderException("keystore")
