@@ -245,10 +245,20 @@ persists the pair before the SDK adopts it and reaches the store as an ordinary 
 app stays the only process that rotates tokens; the renderers refreshing tokens themselves is
 [#1210](https://github.com/quwisky/trinity-matrix-client/issues/1210). A refused refresh signs
 nothing out at that moment; the account's next request meets the refusal and takes the usual
-path. The tracked token, its expiry and the rotations are keyed by account, not by client, so
-a refresh that lands from a client already replaced by a new sign-in of the same account can
-still reach the store; [#1207](https://github.com/quwisky/trinity-matrix-client/issues/1207)
-tracks ignoring it.
+path.
+
+A refresh is attributed to the sign-in and the client it came from
+([#1207](https://github.com/quwisky/trinity-matrix-client/issues/1207)). Every saved session
+carries a lineage id that storage mints on each save and a refresh never changes. The stored
+write is a compare-and-swap on it, checked in the same serialized turn as the write. A late
+refresh is therefore saved while its sign-in is still the stored one, even from a client that
+was retired, rolled back or stopped, because with refresh-token rotation those are the only
+valid next tokens. It never overwrites a newer sign-in of the same account, even one saved
+while the refresh waited, and does nothing once the account was signed out. A record saved
+before lineages existed accepts any refresh. Separately, the tracked token and its expiry
+belong to the client that started with them. Only a refresh from that client, while it is the
+account's live or starting client, moves them and publishes a rotation. A refresh from any
+other client never reaches the push store.
 
 The run is bounded. `BACKGROUND_REFRESH_GRANT_TIMEOUT_MS` (8 s) bounds the token grant of
 each refresh the run starts, counted from the start of that refresh

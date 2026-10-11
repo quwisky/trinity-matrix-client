@@ -1,4 +1,13 @@
-import { existsSync, globSync, readFileSync } from 'node:fs';
+import {
+  existsSync,
+  globSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ESLint } from 'eslint';
@@ -59,6 +68,17 @@ const SPARTAN_EXEMPT_RULES = [
   '@angular-eslint/component-selector',
   '@angular-eslint/directive-selector',
 ];
+
+/**
+ * Every script file under a project root that could import the SDK. Local build output
+ * and installed packages are not the project's source: a Gradle `build/` left by a native
+ * unit-test run must not turn a Kotlin-only project into a script project.
+ */
+const scriptSourcesUnder = (root, cwd = workspaceRoot) =>
+  globSync(`${root}/**/*.{ts,mts,cts,js,mjs,cjs}`, {
+    cwd,
+    exclude: ['**/node_modules/**', '**/build/**'],
+  });
 
 describe('lint invariants', () => {
   it('exempts libs/spartan from exactly the four generated-code rules, and nothing else', async () => {
@@ -627,6 +647,32 @@ describe('UI vendor boundary', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('leaves build output and installed packages out of the script-source sweep', () => {
+    // `node:fs` `globSync` silently drops options it does not know. It was once passed
+    // `ignore`, an option it does not have, so a stray Gradle `build/` made the Kotlin-only
+    // push plugin read as a script project with nothing to probe (#1209).
+    const fixture = mkdtempSync(join(tmpdir(), 'trinity-sdk-sweep-'));
+    try {
+      const files = [
+        'lib/build/tmp/R.js',
+        'lib/node_modules/vendor/index.mjs',
+        'lib/src/main/kotlin/Plugin.kt',
+      ];
+      for (const file of files) {
+        mkdirSync(dirname(join(fixture, file)), { recursive: true });
+        writeFileSync(join(fixture, file), '');
+      }
+      expect(scriptSourcesUnder('lib', fixture)).toEqual([]);
+
+      // And a real script file still counts, so the sweep cannot pass by matching nothing.
+      mkdirSync(join(fixture, 'lib/src'), { recursive: true });
+      writeFileSync(join(fixture, 'lib/src/index.ts'), '');
+      expect(scriptSourcesUnder('lib', fixture)).toEqual(['lib/src/index.ts']);
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
   it('applies the matrix-js-sdk ban to every library not allowed the SDK', async () => {
     // The SDK ban is allow-by-OMISSION: `eslint.config.mjs` lists the tiers it covers, so a
     // library that is merely forgotten lands in the permitted bucket and may import
@@ -652,11 +698,7 @@ describe('UI vendor boundary', () => {
       // A project with no script source at all, such as the push plugin's Kotlin and Swift
       // projects under libs/native/capacitor-push, has nothing that could import the SDK.
       // Measured over the whole root, so one stray script file brings the project back in.
-      const scripts = globSync(`${root}/**/*.{ts,mts,cts,js,mjs,cjs}`, {
-        cwd: workspaceRoot,
-        ignore: ['**/node_modules/**', '**/build/**'],
-      });
-      if (scripts.length === 0) {
+      if (scriptSourcesUnder(root).length === 0) {
         continue;
       }
       // A representative source file rather than a fixed `src/index.ts`: `libs/spartan/tests`

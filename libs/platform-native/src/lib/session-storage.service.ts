@@ -254,11 +254,17 @@ export class SessionStorageService {
    * Persist tokens rotated by the OIDC token refresher for an already-stored account:
    * write the new access token (and, when the provider rotated it, the new refresh
    * token) to secure storage and update the record's `accessTokenExpiresAt`. Leaves the
-   * existing refresh token in place when the provider returned none (no rotation). A
-   * no-op if the account is no longer registered (it was signed out mid-refresh).
+   * existing refresh token in place when the provider returned none (no rotation).
+   *
+   * A compare-and-swap on the sign-in: writes only while the record still holds the
+   * session `lineage` names (the {@link MatrixSession.lineage} the refreshing client
+   * started from), checked in the same serialized turn as the write. A no-op once the
+   * account was signed out or signed in again mid-refresh. A record saved before lineages
+   * existed matches any refresh. The write never changes the lineage.
    */
   updateTokens(
     userId: string,
+    lineage: string | undefined,
     accessToken: string,
     refreshToken?: string,
     accessTokenExpiresAt?: number,
@@ -268,6 +274,7 @@ export class SessionStorageService {
         this.serialize(() =>
           this.updateTokensInternal(
             userId,
+            lineage,
             accessToken,
             refreshToken,
             accessTokenExpiresAt,
@@ -338,6 +345,8 @@ export class SessionStorageService {
       );
     }
     const deviceChanged = !!existing && existing.deviceId !== incoming.deviceId;
+    // Every save is a new sign-in's tokens: a refresh from an earlier one must not land.
+    const lineage = crypto.randomUUID();
     const newPrefix =
       incoming.cryptoPrefix ??
       `${CRYPTO_PREFIX}${incoming.userId}:${incoming.deviceId}`;
@@ -353,6 +362,7 @@ export class SessionStorageService {
             ...existing,
             accessTokenExpiresAt: incoming.accessTokenExpiresAt,
             oidc: incoming.oidc,
+            lineage,
           }
         : // A brand-new account, OR an existing one whose device changed (a fresh login
           // minted a new device), binds a crypto store scoped to THIS device. Scoping
@@ -370,6 +380,7 @@ export class SessionStorageService {
             oidc: incoming.oidc,
             cryptoPrefix: newPrefix,
             cryptoStoreKeyed: true,
+            lineage,
           };
     registry.accounts = [
       ...registry.accounts.filter((a) => a.userId !== incoming.userId),
@@ -415,6 +426,7 @@ export class SessionStorageService {
 
   private async updateTokensInternal(
     userId: string,
+    lineage: string | undefined,
     accessToken: string,
     refreshToken?: string,
     accessTokenExpiresAt?: number,
@@ -423,6 +435,9 @@ export class SessionStorageService {
     const record = registry.accounts.find((a) => a.userId === userId);
     if (!record) {
       return; // signed out mid-refresh — drop the rotated tokens on the floor
+    }
+    if (record.lineage !== undefined && record.lineage !== lineage) {
+      return; // signed in again mid-refresh — these tokens belong to the old sign-in
     }
     await this.secure.set(this.tokenKey(userId), accessToken);
     // Truthiness, not `!== undefined`. A provider that rotated nothing may answer with
