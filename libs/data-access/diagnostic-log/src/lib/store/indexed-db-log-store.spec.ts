@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { IndexedDbLogStore, deleteIndexedDbLog } from './indexed-db-log-store';
 
 /** A fake IDBFactory whose open request fails the way a private window's does. */
@@ -74,5 +74,89 @@ describe('deleteIndexedDbLog', () => {
       deleteIndexedDbLog(deletingFactory([], 'error')),
     ).rejects.toThrow('diagnostic log not deleted: failed');
     await expect(deleteIndexedDbLog(undefined)).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * A fake IDBFactory that opens fine, then fails every request made in a transaction and
+ * aborts it, the way a quota or storage error does.
+ */
+function failingTransactionFactory(close: () => void): IDBFactory {
+  const failure = new DOMException('Quota', 'QuotaExceededError');
+  const fail = () => {
+    const request: Record<string, unknown> = { error: failure };
+    setTimeout(() => (request['onerror'] as (() => void) | undefined)?.(), 0);
+    return request;
+  };
+  const db = {
+    close,
+    transaction: () => {
+      const transaction: Record<string, unknown> = {
+        error: failure,
+        objectStore: () => ({ get: fail, getAll: fail, add: fail }),
+      };
+      setTimeout(
+        () => (transaction['onabort'] as (() => void) | undefined)?.(),
+        5,
+      );
+      return transaction;
+    },
+  };
+  return {
+    open: () => {
+      const request: Record<string, unknown> = { result: db };
+      queueMicrotask(() =>
+        (request['onsuccess'] as (() => void) | undefined)?.(),
+      );
+      return request as unknown as IDBOpenDBRequest;
+    },
+  } as unknown as IDBFactory;
+}
+
+describe('IndexedDbLogStore operations', () => {
+  const entry = {
+    ts: 1,
+    level: 'debug',
+    source: 'sdk',
+    logger: 'matrix',
+    message: 'm',
+  } as const;
+
+  it.each(['append', 'read'] as const)(
+    '%s rejects once when a request fails, leaving no unhandled rejection',
+    async (method) => {
+      const close = vi.fn();
+      const store = await IndexedDbLogStore.open(
+        failingTransactionFactory(close),
+      );
+
+      const result =
+        method === 'append' ? store.append([entry], 1) : store.read();
+
+      await expect(result).rejects.toThrow('Quota');
+      // Let the aborting transaction report itself; Vitest fails the run on any
+      // rejection nobody handled.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(close).toHaveBeenCalled();
+    },
+  );
+
+  it('closes a connection that opens after the open was reported blocked', async () => {
+    const close = vi.fn();
+    const idb = {
+      open: () => {
+        const request: Record<string, unknown> = { result: { close } };
+        queueMicrotask(() => {
+          (request['onblocked'] as (() => void) | undefined)?.();
+          (request['onsuccess'] as (() => void) | undefined)?.();
+        });
+        return request as unknown as IDBOpenDBRequest;
+      },
+    } as unknown as IDBFactory;
+
+    await expect(IndexedDbLogStore.open(idb)).rejects.toThrow('blocked');
+    await Promise.resolve();
+
+    expect(close).toHaveBeenCalledOnce();
   });
 });

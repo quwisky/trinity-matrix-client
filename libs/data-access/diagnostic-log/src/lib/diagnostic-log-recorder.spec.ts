@@ -202,4 +202,43 @@ describe('DiagnosticLogRecorder', () => {
 
     expect((await store.read()).entries).toEqual([]);
   });
+
+  it('discard empties a store that was never opened this session when removal fails', async () => {
+    const earlier = new MemoryLogStore();
+    await earlier.append([entry('from last session')], Date.now());
+    const recorder = new DiagnosticLogRecorder({
+      openStore: () => Promise.resolve(earlier),
+      removeStore: () => Promise.reject(new Error('blocked')),
+    });
+
+    await recorder.discard();
+
+    expect((await earlier.read()).entries).toEqual([]);
+  });
+
+  it('discard rejects when the log can neither be removed nor emptied', async () => {
+    const recorder = new DiagnosticLogRecorder({
+      openStore: () => Promise.reject(new Error('unavailable')),
+      removeStore: () => Promise.reject(new Error('blocked')),
+    });
+
+    await expect(recorder.discard()).rejects.toThrow('blocked');
+  });
+
+  it('trims entries past the age limit from the unflushed buffer when it overflows', async () => {
+    const recorder = new DiagnosticLogRecorder({
+      openStore: () => Promise.resolve(new MemoryLogStore()),
+      limits: { maxBytes: 500, maxAgeMs: 60_000 },
+    });
+    const stale = Date.now() - 120_000;
+
+    recorder.record(entry('a'.repeat(100), stale));
+    recorder.record(entry('b'.repeat(100), stale));
+    recorder.record(entry('c'.repeat(100)));
+    recorder.record(entry('d'.repeat(100)));
+    const snapshot = await recorder.snapshot();
+
+    expect(snapshot.entries.map((e) => e.message[0])).toEqual(['c', 'd']);
+    expect(snapshot.dropped).toBe(true);
+  });
 });

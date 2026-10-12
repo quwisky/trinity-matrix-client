@@ -132,6 +132,7 @@ export class IndexedDbLogStore implements DiagnosticLogStore {
 
   private connect(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
+      let blocked = false;
       let open: IDBOpenDBRequest;
       try {
         open = this.idb.open(this.name, VERSION);
@@ -153,12 +154,20 @@ export class IndexedDbLogStore implements DiagnosticLogStore {
       };
       open.onsuccess = () => {
         const db = open.result;
+        if (blocked) {
+          // Already reported as failed; do not leave this connection holding the database.
+          db.close();
+          return;
+        }
         // A factory reset deletes this database: never be the connection that blocks it.
         db.onversionchange = () => db.close();
         resolve(db);
       };
       open.onerror = () => reject(open.error);
-      open.onblocked = () => reject(new Error('IndexedDB open blocked'));
+      open.onblocked = () => {
+        blocked = true;
+        reject(new Error('IndexedDB open blocked'));
+      };
     });
   }
 
@@ -208,12 +217,16 @@ function request<T>(pending: IDBRequest): Promise<T> {
 }
 
 function done(transaction: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
+  const completed = new Promise<void>((resolve, reject) => {
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
     transaction.onabort = () =>
       reject(transaction.error ?? new Error('IndexedDB transaction aborted'));
   });
+  // Created before the work it covers: when that work fails first, nothing awaits this and
+  // the abort would surface as an unhandled rejection. The caller's `await` still sees it.
+  completed.catch(() => undefined);
+  return completed;
 }
 
 /** Delete under the cursor while `keepGoing(removedSoFar)` holds; resolves with the size removed. */

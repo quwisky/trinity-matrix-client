@@ -108,7 +108,9 @@ export class DiagnosticLogRecorder {
    * drop the unflushed batch at once, then delete the store in turn. Dropping the batch
    * before queueing means nothing recorded after this call is lost to the removal: it goes
    * to a fresh store, opened by the next write. Where the store cannot be removed, it is
-   * emptied instead.
+   * emptied instead, opening it first if this session never did (an earlier session's log
+   * can still be on disk). Rejects only when the log could be neither removed nor emptied,
+   * so the caller can tell the user it is still there.
    */
   discard(): Promise<void> {
     if (this.timer !== null) {
@@ -122,15 +124,20 @@ export class DiagnosticLogRecorder {
       const store = this.store;
       this.store = null;
       this.opening = null;
+      let removal: unknown = new Error('Diagnostic log cannot be removed');
       if (this.options.removeStore) {
         try {
           await this.options.removeStore();
           return;
-        } catch {
-          // Fall through and empty what is still there.
+        } catch (error) {
+          removal = error;
         }
       }
-      await store?.clear().catch(() => undefined);
+      try {
+        await (store ?? (await this.options.openStore())).clear();
+      } catch {
+        throw removal;
+      }
     });
   }
 
