@@ -60,6 +60,42 @@ function storedMessages(page: Page): Promise<string[]> {
   );
 }
 
+/** The recorder batches writes and flushes every 5 s (`FLUSH_DELAY_MS`). */
+const FLUSH_DELAY_MS = 5_000;
+
+/** A value that must never appear, named so a failure can say which without printing it. */
+interface Secret {
+  readonly label: string;
+  readonly value: string;
+}
+
+/**
+ * Fail if `text` holds any secret. The message names the secret and the text's source but
+ * prints neither the secret nor the text: CI logs of this public repository are readable.
+ */
+function expectNoSecret(
+  text: string,
+  secrets: readonly Secret[],
+  where: string,
+): void {
+  for (const { label, value } of secrets) {
+    expect(text.includes(value), `${where} holds the ${label}`).toBe(false);
+  }
+}
+
+/**
+ * Log a line through the app's captured console and wait until IndexedDB holds it. The
+ * recorder writes in order, so every line logged before the marker is stored by then.
+ */
+async function storeMarker(page: Page, marker: string): Promise<void> {
+  await page.evaluate((line) => console.warn(line), marker);
+  await expect
+    .poll(async () => (await storedMessages(page)).includes(marker), {
+      timeout: 4 * FLUSH_DELAY_MS,
+    })
+    .toBe(true);
+}
+
 /** Reload; the app restores the open room from its URL, so wait for its composer. */
 async function reloadIntoRoom(page: Page): Promise<void> {
   await page.reload();
@@ -170,45 +206,62 @@ test.describe('Report a bug', () => {
       page.locator('.msg__text', { hasText: sealedBody }),
     ).toBeVisible({ timeout: 20_000 });
 
-    // Persistence: the first session's lines reach IndexedDB, then a reload adds a second
-    // session; both "app started" markers must be in the export.
-    await expect
-      .poll(async () => (await storedMessages(page)).length, {
-        timeout: 20_000,
-      })
-      .toBeGreaterThan(0);
-    await reloadIntoRoom(page);
-
-    // The hard rule holds in the store itself, not only in the export: after real sign-in,
-    // sync, send, encrypt and decrypt, no stored entry carries a credential.
+    // The hard rule holds in the store itself, not only in the export. A marker logged after
+    // the last action waits out the recorder's batch, so the store is read only once real
+    // sign-in, sync, send, encrypt and decrypt have all reached IndexedDB.
     expect(appTokens.size).toBeGreaterThan(0);
-    const credentials = [...appTokens, rest.accessToken, pass];
-    const stored = (await storedMessages(page)).join('\n');
-    expect(stored.length).toBeGreaterThan(0);
-    for (const credential of credentials) {
-      expect(
-        stored,
-        `stored log holds ${credential.slice(0, 6)}…`,
-      ).not.toContain(credential);
-    }
+    const credentials: Secret[] = [
+      ...[...appTokens].map((value, index) => ({
+        label: `app token ${index + 1}`,
+        value,
+      })),
+      { label: 'REST access token', value: rest.accessToken },
+      { label: 'password', value: pass },
+    ];
+    await storeMarker(page, `[bug-report-e2e] first session done ${runId}`);
+    expectNoSecret(
+      (await storedMessages(page)).join('\n'),
+      credentials,
+      'stored log (first session)',
+    );
+
+    // Persistence: a reload starts a second session on top of the stored first one; both
+    // "app started" markers are stored, and the second session's entries hold no credential
+    // either.
+    await reloadIntoRoom(page);
+    await storeMarker(page, `[bug-report-e2e] second session done ${runId}`);
+    const stored = await storedMessages(page);
+    expect(
+      stored.filter((message) => message.startsWith('app started: ')).length,
+    ).toBeGreaterThanOrEqual(2);
+    expectNoSecret(
+      stored.join('\n'),
+      credentials,
+      'stored log (both sessions)',
+    );
 
     const [appToken] = [...appTokens];
     const { device_id: deviceId } = (await (
       await request.get(`${hs}/_matrix/client/v3/account/whoami`, {
         headers: { Authorization: `Bearer ${appToken}` },
       })
-    ).json()) as { device_id: string };
+    ).json()) as { device_id?: unknown };
+    expect(typeof deviceId, 'whoami returns a device ID').toBe('string');
+    expect((deviceId as string).length).toBeGreaterThan(0);
     const serverName = rest.userId.slice(rest.userId.indexOf(':') + 1);
-    const secrets = [
+    const secrets: Secret[] = [
       ...credentials,
-      deviceId,
-      roomId,
-      sealedRoomId,
-      rest.userId,
-      serverName,
-      body,
-      sealedBody,
+      { label: 'device ID', value: deviceId as string },
+      { label: 'room ID', value: roomId },
+      { label: 'encrypted room ID', value: sealedRoomId },
+      { label: 'user ID', value: rest.userId },
+      { label: 'server name', value: serverName },
+      { label: 'received message body', value: body },
+      { label: 'encrypted message body', value: sealedBody },
     ];
+    for (const { label, value } of secrets) {
+      expect(value.length, `${label} is known`).toBeGreaterThan(0);
+    }
 
     await openSettingsSection(page, 'advanced');
     const reportButton = page.getByTestId('advanced-report-bug');
@@ -221,31 +274,35 @@ test.describe('Report a bug', () => {
       name: 'Diagnostic log preview',
     });
     await expect(preview).toBeVisible();
+    // Both sessions' markers are in the export. Read as a count so a failure never prints
+    // the log.
+    await expect
+      .poll(
+        async () =>
+          ((await preview.textContent()) ?? '').match(/app started: /g)
+            ?.length ?? 0,
+      )
+      .toBeGreaterThanOrEqual(2);
     const previewText = (await preview.textContent()) ?? '';
 
-    expect(previewText).toContain('# Accounts signed in: 1');
-    expect(previewText).toContain('@me:server1');
-    expect(previewText).toContain('FetchHttpApi');
-    expect(
-      previewText.match(/app started: /g)?.length ?? 0,
-    ).toBeGreaterThanOrEqual(2);
-    for (const secret of secrets) {
-      expect(previewText, `preview leaks ${secret.slice(0, 6)}…`).not.toContain(
-        secret,
+    for (const expected of [
+      '# Accounts signed in: 1',
+      '@me:server1',
+      'FetchHttpApi',
+    ]) {
+      expect(previewText.includes(expected), `preview shows ${expected}`).toBe(
+        true,
       );
     }
+    expectNoSecret(previewText, secrets, 'preview');
 
     const downloadPromise = page.waitForEvent('download');
     await dialog.getByTestId('report-bug-save').click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe(await expectedLogName(page));
     const saved = readFileSync(await download.path(), 'utf8');
-    expect(saved).toBe(previewText);
-    for (const secret of secrets) {
-      expect(saved, `saved file leaks ${secret.slice(0, 6)}…`).not.toContain(
-        secret,
-      );
-    }
+    expect(saved === previewText, 'saved file is the preview text').toBe(true);
+    expectNoSecret(saved, secrets, 'saved file');
 
     const popupPromise = page.context().waitForEvent('page');
     await dialog.getByTestId('report-bug-github').click();
@@ -257,9 +314,20 @@ test.describe('Report a bug', () => {
     expect(issue.searchParams.get('logs')).toContain(
       download.suggestedFilename(),
     );
-    for (const secret of secrets) {
-      expect(popup.url()).not.toContain(encodeURIComponent(secret));
-    }
+    expectNoSecret(popup.url(), secrets, 'issue URL');
+    expectNoSecret(
+      popup.url(),
+      secrets.map(({ label, value }) => ({
+        label,
+        value: encodeURIComponent(value),
+      })),
+      'issue URL (encoded)',
+    );
+    expectNoSecret(
+      [...issue.searchParams.values()].join('\n'),
+      secrets,
+      'issue fields',
+    );
     await popup.close();
 
     await dialog.getByRole('button', { name: 'Close Report a bug' }).click();
@@ -288,9 +356,21 @@ test.describe('Report a bug', () => {
     await expect(
       page.getByTestId('advanced-clear-diagnostic-logs'),
     ).toHaveCount(0);
+    // Nothing is recorded while off: a line logged now must still be absent once more than
+    // one flush delay has passed.
     await page.evaluate(() =>
       console.warn('[trinity] written while the log is off'),
     );
+    const quietUntil = Date.now() + FLUSH_DELAY_MS + 1_500;
+    await expect
+      .poll(
+        async () => {
+          if ((await storedMessages(page)).length > 0) return 'recorded';
+          return Date.now() >= quietUntil ? 'quiet' : 'waiting';
+        },
+        { timeout: 3 * FLUSH_DELAY_MS, intervals: [500] },
+      )
+      .toBe('quiet');
     await reportButton.click();
     await expect(dialog.getByTestId('report-bug-logging-off')).toBeVisible();
     await expect(dialog.getByTestId('report-bug-include-logs')).toHaveCount(0);
