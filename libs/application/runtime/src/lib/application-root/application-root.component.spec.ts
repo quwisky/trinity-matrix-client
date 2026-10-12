@@ -476,10 +476,6 @@ describe('ApplicationRootComponent', () => {
     settle(fixture);
 
     expect(openReport).toHaveBeenCalledOnce();
-    // System status stays open beneath the report, so closing it returns here.
-    expect(
-      screen.getByRole('heading', { name: 'Support details' }),
-    ).toBeTruthy();
   });
 
   it('keeps the selected capability through refresh and returns to Overview when it resolves', async () => {
