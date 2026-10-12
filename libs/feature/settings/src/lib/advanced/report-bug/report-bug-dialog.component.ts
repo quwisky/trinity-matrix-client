@@ -55,10 +55,10 @@ const reportSchema = schema<ReportModel>((path) => {
 });
 
 /**
- * Settings › Advanced › Report a bug: describe the problem, preview the redacted diagnostic
- * log, save it as `trinity-<date>.log`, and open a pre-filled GitHub issue. The description
- * only pre-fills the issue and is never stored. The preview and the saved file are the same
- * text, from one export.
+ * Report a bug, opened from Settings › Advanced, the sign-in screen or System status: describe
+ * the problem, preview the redacted diagnostic log, save it as `trinity-<date>.log`, and open
+ * a pre-filled GitHub issue. The description only pre-fills the issue and is never stored.
+ * The preview and the saved file are the same text, from one export.
  */
 @Component({
   selector: 'trn-report-bug-dialog',

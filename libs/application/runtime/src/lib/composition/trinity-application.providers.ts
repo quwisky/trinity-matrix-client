@@ -63,7 +63,10 @@ export interface TrinityApplicationProviderOptions {
   readonly pushConfig: PushConfig | null;
   /** matrix-js-sdk console verbosity; applied before any client is created. */
   readonly matrixSdkLogLevel: MatrixSdkLogLevel;
-  /** GitHub repository for Settings › Advanced › Report a bug; null leaves GitHub out. */
+  /**
+   * GitHub repository for Report a bug, from Settings › Advanced, the sign-in screen and
+   * System status; null leaves GitHub out.
+   */
   readonly issueRepositoryUrl: string | null;
   readonly buildInfo: BuildInfo;
   readonly dialogLoaders: TrinityApplicationDialogLoaders;
