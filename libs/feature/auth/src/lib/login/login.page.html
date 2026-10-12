@@ -221,32 +221,34 @@
     </button>
   }
 
-  <!-- The way out of a wedged installation. Danger carries meaning while ghost keeps
-       this last-resort action subordinate to signing in. The public recipe owns every
-       rest, hover, focus and disabled colour. -->
-  <button
-    trnBtn
-    variant="danger"
-    presentation="ghost"
-    size="sm"
-    class="mt-4 w-full"
-    [disabled]="erasing()"
-    (click)="clearAllData()"
-    data-testid="clear-all-data"
-  >
-    Erase all data on this device
-  </button>
-  @if (canReportBug) {
+  <!-- Secondary actions. Erasing is the way out of a wedged installation and stays last.
+       Danger carries meaning while ghost keeps this last-resort action subordinate to
+       signing in. The public recipe owns every rest, hover, focus and disabled colour. -->
+  <div class="mt-4 flex flex-col gap-2">
+    @if (canReportBug) {
+      <button
+        trnBtn
+        presentation="ghost"
+        size="sm"
+        type="button"
+        class="w-full"
+        (click)="reportBug()"
+        data-testid="login-report-bug"
+      >
+        Report a bug
+      </button>
+    }
     <button
       trnBtn
+      variant="danger"
       presentation="ghost"
       size="sm"
-      type="button"
-      class="mt-2 w-full"
-      (click)="reportBug()"
-      data-testid="login-report-bug"
+      class="w-full"
+      [disabled]="erasing()"
+      (click)="clearAllData()"
+      data-testid="clear-all-data"
     >
-      Report a bug
+      Erase all data on this device
     </button>
-  }
+  </div>
 </trn-auth-card>

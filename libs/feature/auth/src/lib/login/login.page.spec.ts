@@ -1041,7 +1041,7 @@ describe('LoginPage', () => {
   });
 
   describe('Report a bug', () => {
-    it('sits beside the erase button and opens the report without signing in', async () => {
+    it('sits just before the erase button, which stays last, and opens the report without signing in', async () => {
       const open = vi.fn();
       const { fixture } = await renderLogin(
         {} as unknown as Partial<AuthService>,
@@ -1052,9 +1052,13 @@ describe('LoginPage', () => {
       ).querySelector<HTMLButtonElement>('[data-testid="login-report-bug"]');
 
       expect(button?.textContent?.trim()).toBe('Report a bug');
-      expect(button?.previousElementSibling?.getAttribute('data-testid')).toBe(
+      expect(button?.nextElementSibling?.getAttribute('data-testid')).toBe(
         'clear-all-data',
       );
+      expect(
+        button?.nextElementSibling?.nextElementSibling,
+        'erase is the last action',
+      ).toBeNull();
       button?.click();
 
       expect(open).toHaveBeenCalledOnce();
