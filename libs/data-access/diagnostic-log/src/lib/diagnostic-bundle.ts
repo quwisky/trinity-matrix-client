@@ -1,12 +1,16 @@
 import type { BuildInfo } from '@trinity/platform-native';
 import type { Observable } from 'rxjs';
 import type { DiagnosticEntry } from './diagnostic-entry.model';
-import { createLogRedactor, type LogRedactor } from './redaction/redact-log';
+import {
+  createLogRedactorInSteps,
+  type LogRedactor,
+} from './redaction/redact-log';
 import {
   diagnosticLogFileName,
   diagnosticReportFacts,
   softwareLabel,
   type DiagnosticAccount,
+  type DiagnosticKnownNames,
   type DiagnosticReportFacts,
 } from './report-facts';
 import {
@@ -30,11 +34,13 @@ export interface DiagnosticBundleInput {
   readonly platform: string;
   /** Active account first. */
   readonly accounts: readonly DiagnosticAccount[];
+  /** Names of every signed-in account, replaced throughout; held only while building. */
+  readonly knownNames: DiagnosticKnownNames;
   readonly snapshot: DiagnosticSnapshot;
 }
 
 const PLACEHOLDER_NOTE =
-  'Matrix IDs and server names are replaced with placeholders such as @user1:server1; tokens, keys and messages are never stored.';
+  'Matrix IDs, server names, email addresses and known room names, topics and display names are replaced with placeholders such as @user1:server1 and Room 1; tokens, keys and messages are never stored.';
 
 /**
  * Build the exported file: `# ` header lines, then one redacted line per entry, oldest
@@ -65,12 +71,13 @@ function* diagnosticBundleSteps(
   input: DiagnosticBundleInput,
 ): Generator<void, DiagnosticBundle> {
   const { accounts, snapshot } = input;
-  const redactor = createLogRedactor({
+  const redactor = yield* createLogRedactorInSteps({
     selfUserIds: accounts.map((account) => account.userId),
     selfDeviceIds: accounts.flatMap((account) =>
       account.deviceId ? [account.deviceId] : [],
     ),
     homeserverUrls: accounts.map((account) => account.homeserverUrl),
+    knownNames: input.knownNames,
   });
   // Learn every identifier and server in the file before writing a line, so a bare server
   // name is replaced even where it appears before the first ID or URL that names it. Entry

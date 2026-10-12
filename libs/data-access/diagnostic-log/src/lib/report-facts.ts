@@ -19,6 +19,22 @@ export interface DiagnosticAccount {
   readonly software: { readonly name: string; readonly version: string } | null;
 }
 
+/**
+ * Room names, room topics and display names known to the signed-in accounts, gathered when a
+ * report is prepared and replaced wherever they appear in the file. Never stored.
+ */
+export interface DiagnosticKnownNames {
+  readonly roomNames: readonly string[];
+  readonly roomTopics: readonly string[];
+  readonly displayNames: readonly string[];
+}
+
+export const NO_KNOWN_NAMES: DiagnosticKnownNames = {
+  roomNames: [],
+  roomTopics: [],
+  displayNames: [],
+};
+
 /** What the GitHub form is pre-filled with. Never carries a server name. */
 export interface DiagnosticReportFacts {
   readonly version: string;
@@ -71,6 +87,20 @@ export function readAccounts(
     take(1),
     defaultIfEmpty([] as readonly DiagnosticAccount[]),
     catchError(() => of<readonly DiagnosticAccount[]>([])),
+  );
+}
+
+/**
+ * The names to replace in the file, read once when the file is built: none when the app has
+ * no source, or when it fails or completes empty. Never errors. Cold.
+ */
+export function readKnownNames(
+  source: DiagnosticAccountSource | null,
+): Observable<DiagnosticKnownNames> {
+  return defer(() => source?.knownNames() ?? of(NO_KNOWN_NAMES)).pipe(
+    take(1),
+    defaultIfEmpty(NO_KNOWN_NAMES),
+    catchError(() => of(NO_KNOWN_NAMES)),
   );
 }
 

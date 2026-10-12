@@ -20,6 +20,7 @@ import {
 import { TestBed } from '@angular/core/testing';
 import {
   DIAGNOSTIC_ACCOUNT_SOURCE,
+  NO_KNOWN_NAMES,
   DIAGNOSTIC_LOG_STORE_FACTORY,
   DIAGNOSTIC_REPORT_CONFIG,
   DiagnosticLogService,
@@ -190,7 +191,10 @@ describe('Trinity application provider composition', () => {
         },
         {
           provide: DIAGNOSTIC_ACCOUNT_SOURCE,
-          useValue: { accounts: () => of([]) },
+          useValue: {
+            accounts: () => of([]),
+            knownNames: () => of(NO_KNOWN_NAMES),
+          },
         },
         {
           provide: PREFERENCE_STORAGE_ADAPTER,

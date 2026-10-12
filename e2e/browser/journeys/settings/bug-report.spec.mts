@@ -20,11 +20,12 @@ import {
 // Covers Report a bug: matrix-js-sdk debug output is captured into IndexedDB and survives a
 // reload; the stored entries never hold a credential; the preview and the saved
 // trinity-<date>.log are the same redacted text, and neither contains the app's access token,
-// its device ID, a room ID, the user ID, the server name or a message body received, sent,
-// encrypted or decrypted. Turning "Keep a diagnostic log" off deletes the log and the report
-// then says logging is off; after a reload it can be turned on again and stores a fresh
-// log. Report a bug also opens over System status and, signed out, from
-// the sign-in page. The homeserver tests self-skip without one.
+// its device ID, a room ID, the user ID, the server name, a room name or topic, the user's
+// display name, an email address or a message body received, sent, encrypted or decrypted.
+// Turning "Keep a diagnostic log" off deletes the log and the report then says logging is
+// off; after a reload it can be turned on again and stores a fresh log. Report a bug also
+// opens over System status and, signed out, from the sign-in page. The homeserver tests
+// self-skip without one.
 const session = homeserverSession();
 const DB_NAME = 'trinity-diagnostic-log';
 const KEEP_LOG_KEY = 'trinity.diagnostics.keep-log';
@@ -129,14 +130,23 @@ test.describe('Report a bug', () => {
     const body = `diagnostic-secret-body-${runId}`;
     const sealedRoomName = `Bug report sealed ${runId}`;
     const sealedBody = `diagnostic-sealed-body-${runId}`;
+    const roomTopic = `Quarterly launch plans ${runId}`;
+    const displayName = `Wren Quillfeather ${runId}`;
+    const email = `wren.${runId}@mail.example.net`;
 
     await registerUser(request, user, pass);
     const rest = await passwordLogin(request, hs, user, pass);
     const headers = { Authorization: `Bearer ${rest.accessToken}` };
+    // Set before the rooms exist, so every membership event carries the display name.
+    const named = await request.put(
+      `${hs}/_matrix/client/v3/profile/${encodeURIComponent(rest.userId)}/displayname`,
+      { headers, data: { displayname: displayName } },
+    );
+    expect(named.ok()).toBe(true);
     const { room_id: roomId } = (await (
       await request.post(`${hs}/_matrix/client/v3/createRoom`, {
         headers,
-        data: { name: roomName, preset: 'private_chat' },
+        data: { name: roomName, topic: roomTopic, preset: 'private_chat' },
       })
     ).json()) as { room_id: string };
     const sent = await request.put(
@@ -219,6 +229,12 @@ test.describe('Report a bug', () => {
       { label: 'REST access token', value: rest.accessToken },
       { label: 'password', value: pass },
     ];
+    // Names reach the log whenever the app or the SDK prints them; the export must replace
+    // them. Logged through the captured console, so the store holds them as any log would.
+    await page.evaluate(
+      (line) => console.warn(line),
+      `[bug-report-e2e] in ${roomName} (${roomTopic}), also ${sealedRoomName}, as ${displayName} <${email}>`,
+    );
     await storeMarker(page, `[bug-report-e2e] first session done ${runId}`);
     expectNoSecret(
       (await storedMessages(page)).join('\n'),
@@ -259,6 +275,11 @@ test.describe('Report a bug', () => {
       { label: 'server name', value: serverName },
       { label: 'received message body', value: body },
       { label: 'encrypted message body', value: sealedBody },
+      { label: 'room name', value: roomName },
+      { label: 'encrypted room name', value: sealedRoomName },
+      { label: 'room topic', value: roomTopic },
+      { label: 'display name', value: displayName },
+      { label: 'email address', value: email },
     ];
     for (const { label, value } of secrets) {
       expect(value.length, `${label} is known`).toBeGreaterThan(0);
@@ -290,6 +311,9 @@ test.describe('Report a bug', () => {
       '# Accounts signed in: 1',
       '@me:server1',
       'FetchHttpApi',
+      'email1@example.invalid',
+      'Person 1',
+      'Topic 1',
     ]) {
       expect(previewText.includes(expected), `preview shows ${expected}`).toBe(
         true,

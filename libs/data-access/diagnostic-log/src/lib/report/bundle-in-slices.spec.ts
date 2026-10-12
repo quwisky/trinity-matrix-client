@@ -8,6 +8,7 @@ import {
 } from '../diagnostic-bundle';
 import { runInSlices } from './run-in-slices';
 import type { DiagnosticEntry } from '../diagnostic-entry.model';
+import { NO_KNOWN_NAMES } from '../report-facts';
 import {
   ALICE,
   CORPUS_CONTEXT,
@@ -60,7 +61,17 @@ function largeLog(): DiagnosticEntry[] {
   return entries;
 }
 
-function input(entries: readonly DiagnosticEntry[]): DiagnosticBundleInput {
+/** Names that occur in {@link largeLog}, so the sliced build replaces them too. */
+const LARGE_LOG_NAMES = {
+  roomNames: ['second line'],
+  roomTopics: [],
+  displayNames: ['FetchHttpApi'],
+};
+
+function input(
+  entries: readonly DiagnosticEntry[],
+  knownNames: DiagnosticBundleInput['knownNames'] = NO_KNOWN_NAMES,
+): DiagnosticBundleInput {
   return {
     now: new Date(2026, 9, 11, 9, 30),
     build: {
@@ -78,6 +89,7 @@ function input(entries: readonly DiagnosticEntry[]): DiagnosticBundleInput {
         software: { name: 'Synapse', version: '1.140.0' },
       },
     ],
+    knownNames,
     snapshot: { entries, dropped: true, storage: 'indexeddb' },
   };
 }
@@ -88,11 +100,12 @@ function sha256(text: string): string {
 
 /**
  * The files the synchronous builder produced before the export was split into slices,
- * pinned so the sliced build can be checked byte for byte against them.
+ * pinned so the sliced build can be checked byte for byte against them. Re-pinned once when
+ * the header's placeholder note began to list names and email addresses; nothing else moved.
  */
 const PINNED = {
-  corpus: 'f84f6aa2b4a67ae98c41860a867686cbaef1982f1d0b6170c9e8e3a3ad347b23',
-  large: '3be833be0c1b9748b066949beaa0b4671b3c2c93f74d70ce6e2b9dba013fe628',
+  corpus: '8b897c8b864abd8a48794c4da244e43c7f94ad75d7f8a95041303419fbcb666a',
+  large: '24b951f6b78fafaa2653152cca5c8024b63900c9701a782ec4cb5fba6e089b2e',
 };
 
 describe('the diagnostic file', () => {
@@ -139,6 +152,21 @@ describe('building the diagnostic file in slices', () => {
       }
     },
   );
+
+  it('produces exactly the synchronous file when names are replaced', async () => {
+    const sliced = await firstValueFrom(
+      buildDiagnosticBundleInSlices(input(largeLog(), LARGE_LOG_NAMES), {
+        sliceMs: SLICE_MS,
+        now: steppingClock().now,
+      }),
+    );
+
+    expect(sliced).toEqual(
+      buildDiagnosticBundle(input(largeLog(), LARGE_LOG_NAMES)),
+    );
+    expect(sliced.text).not.toContain('second line');
+    expect(sliced.text).toContain('Room 1');
+  });
 
   it('yields to the event loop between slices', async () => {
     const order: string[] = [];

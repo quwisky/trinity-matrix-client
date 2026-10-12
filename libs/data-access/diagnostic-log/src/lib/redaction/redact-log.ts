@@ -1,4 +1,7 @@
+import type { DiagnosticKnownNames } from '../report-facts';
+import { runToEnd } from '../report/run-in-slices';
 import { scrubSecrets } from '../scrub-secrets';
+import { KnownNameRedactor } from './known-names';
 
 /** What the redactor knows about this installation before it reads a line. */
 export interface RedactionContext {
@@ -8,6 +11,8 @@ export interface RedactionContext {
   readonly selfDeviceIds: readonly string[];
   /** Homeserver base URLs of the signed-in accounts. */
   readonly homeserverUrls: readonly string[];
+  /** Room names, topics and display names, replaced by exact substring; none by default. */
+  readonly knownNames?: DiagnosticKnownNames;
 }
 
 /** Replaces identifiers with placeholders that stay the same for the life of one redactor. */
@@ -30,6 +35,11 @@ const OPAQUE = String.raw`[A-Za-z0-9._~+/=-]+`;
 // The optional userinfo is bounded, so a long run of "@" or ":" cannot make the scan quadratic.
 const URL_HOST =
   /\b(https?|wss?):\/\/(?:[^\s/@?#]{1,256}@)?(\[[0-9A-Fa-f:.]+\]|[\p{L}\p{N}.-]+)(?::\d{1,5})?/giu;
+// An email address. The local part starts a run (no ID or URL character before it) and every
+// part is bounded, so a long run of address characters cannot make the scan quadratic. A
+// Matrix ID has nothing before its "@"; a URL's userinfo is already gone when this runs.
+const EMAIL =
+  /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@(?:[A-Za-z0-9-]{1,63}\.){1,8}[A-Za-z]{2,63}(?![A-Za-z0-9-])/g;
 const MXC = /\bmxc:\/\/([\p{L}\p{N}.-]+(?::\d{1,5})?)\/([A-Za-z0-9_-]+)/gu;
 // An identifier inside a request path. matrix-js-sdk builds paths with encodeURIComponent
 // (`encodeUri` in utils.js), which escapes "@", "#", "$" and ":" but leaves "!" alone, so a
@@ -142,7 +152,20 @@ function classifyDeviceKeyword(
 
 /** A redactor for one exported file. */
 export function createLogRedactor(context: RedactionContext): LogRedactor {
-  return new IdentifierRedactor(context);
+  return runToEnd(createLogRedactorInSteps(context));
+}
+
+/**
+ * {@link createLogRedactor}, pausing (`yield`) while it indexes the known names, so a file
+ * built in slices never holds the main thread for a whole large set of names.
+ */
+export function* createLogRedactorInSteps(
+  context: RedactionContext,
+): Generator<void, LogRedactor> {
+  const names = context.knownNames
+    ? yield* KnownNameRedactor.build(context.knownNames)
+    : null;
+  return new IdentifierRedactor(context, names);
 }
 
 class IdentifierRedactor implements LogRedactor {
@@ -153,9 +176,13 @@ class IdentifierRedactor implements LogRedactor {
   private readonly events = new Map<string, string>();
   private readonly devices = new Map<string, string>();
   private readonly media = new Map<string, string>();
+  private readonly emails = new Map<string, string>();
   private otherUsers = 0;
 
-  constructor(context: RedactionContext) {
+  constructor(
+    context: RedactionContext,
+    private readonly names: KnownNameRedactor | null,
+  ) {
     context.selfUserIds.forEach((userId, index) => {
       const server = this.server(userId.slice(userId.indexOf(':') + 1));
       this.users.set(
@@ -188,6 +215,13 @@ class IdentifierRedactor implements LogRedactor {
       (match, scheme: string, host: string) =>
         `${scheme}://${match.includes('@') ? '<redacted>@' : ''}${this.server(host)}`,
     );
+    text = text.replace(EMAIL, (match) =>
+      this.placeholder(
+        this.emails,
+        match.toLowerCase(),
+        (n) => `email${n}@example.invalid`,
+      ),
+    );
     text = text.replace(
       MXC,
       (_match, host: string, mediaId: string) =>
@@ -200,7 +234,9 @@ class IdentifierRedactor implements LogRedactor {
     text = text.replace(ENCODED_ID, (match) => this.redactEncoded(match));
     text = this.redactIdentifiers(text);
     text = this.redactServerNames(text);
-    return this.redactDevices(text);
+    text = this.redactDevices(text);
+    // Last, so a display name equal to a localpart cannot break the ID that carries it.
+    return this.names ? this.names.redact(text) : text;
   }
 
   private redactEncoded(match: string): string {

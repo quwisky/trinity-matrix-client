@@ -1,9 +1,13 @@
-import type { DiagnosticAccount } from '@trinity/data-access/diagnostic-log';
+import type {
+  DiagnosticAccount,
+  DiagnosticKnownNames,
+} from '@trinity/data-access/diagnostic-log';
 import type { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import type { SessionStorageService } from '@trinity/platform-native';
 import {
   EMPTY,
   catchError,
+  defer,
   endWith,
   forkJoin,
   ignoreElements,
@@ -65,4 +69,36 @@ export function diagnosticAccounts(
       );
     }),
   );
+}
+
+/**
+ * The names a diagnostic file must replace, from every signed-in account's client, read when
+ * subscribed (the export builds its file then) and kept nowhere. An account whose client
+ * can't be read is left out; its IDs are still redacted. Completes once.
+ */
+export function diagnosticKnownNames<Client>(
+  clients: { all(): readonly { readonly client: Client }[] },
+  read: (client: Client) => DiagnosticKnownNames,
+): Observable<DiagnosticKnownNames> {
+  return defer(() => {
+    const roomNames = new Set<string>();
+    const roomTopics = new Set<string>();
+    const displayNames = new Set<string>();
+    for (const { client } of clients.all()) {
+      let names: DiagnosticKnownNames;
+      try {
+        names = read(client);
+      } catch {
+        continue;
+      }
+      names.roomNames.forEach((name) => roomNames.add(name));
+      names.roomTopics.forEach((topic) => roomTopics.add(topic));
+      names.displayNames.forEach((name) => displayNames.add(name));
+    }
+    return of<DiagnosticKnownNames>({
+      roomNames: [...roomNames],
+      roomTopics: [...roomTopics],
+      displayNames: [...displayNames],
+    });
+  });
 }
