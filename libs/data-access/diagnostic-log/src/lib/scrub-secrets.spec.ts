@@ -265,6 +265,98 @@ describe('scrubSecrets', () => {
     );
   });
 
+  it('masks every secret parameter name as a parameter, not only as a field', () => {
+    expect(scrubSecrets('new_password=hunter2&x=1')).toBe(
+      `new_password=${REDACTED}&x=1`,
+    );
+    expect(scrubSecrets('(accessToken=abcdef)')).not.toContain('abcdef');
+    expect(scrubSecrets('?key=abcdef&secret=xyz')).toBe(
+      `?key=${REDACTED}&secret=${REDACTED}`,
+    );
+    expect(scrubSecrets('refreshToken=r1&idToken=i1')).toBe(
+      `refreshToken=${REDACTED}&idToken=${REDACTED}`,
+    );
+    expect(scrubSecrets('csrf_password=zz1')).not.toContain('zz1');
+  });
+
+  it.each(['"', "'", '(', '[', ',', '<', '{'])(
+    'masks a parameter that follows %s',
+    (before) => {
+      expect(scrubSecrets(`${before}password=hunter2&a=b`)).not.toContain(
+        'hunter2',
+      );
+    },
+  );
+
+  it('masks fields inside escaped JSON, with any key case, bare keys or single quotes', () => {
+    expect(
+      scrubSecrets(String.raw`{"message":"{\"password\":\"hunter2\"}"}`),
+    ).not.toContain('hunter2');
+    expect(scrubSecrets('{"Password":"hunter2"}')).toBe(
+      `{"Password":"${REDACTED}"}`,
+    );
+    expect(scrubSecrets("{ password: 'hunter2' }")).not.toContain('hunter2');
+    expect(scrubSecrets('{ password: hunter2 }')).not.toContain('hunter2');
+  });
+
+  it('masks non-string values of secret fields', () => {
+    expect(scrubSecrets('{"password":12345}')).toBe(
+      `{"password":"${REDACTED}"}`,
+    );
+    expect(scrubSecrets('{"token":true,"key":null,"secret":-1.5e3}')).toBe(
+      `{"token":"${REDACTED}","key":"${REDACTED}","secret":"${REDACTED}"}`,
+    );
+  });
+
+  it('masks a secret object through its balanced end, however deep', () => {
+    expect(scrubSecrets('{"auth":{"a":{"b":{"c":"zzz"}}},"x":1}')).toBe(
+      `{"auth":"${REDACTED}","x":1}`,
+    );
+    expect(scrubSecrets('{"auth":{"a":"} zzz {"},"x":1}')).toBe(
+      `{"auth":"${REDACTED}","x":1}`,
+    );
+    expect(scrubSecrets('{"auth":["a",["b","zzz"]],"x":1}')).toBe(
+      `{"auth":"${REDACTED}","x":1}`,
+    );
+  });
+
+  it('masks to the end of the input when a secret object never balances', () => {
+    expect(scrubSecrets('{"auth":{"a":{"b":"zzz"')).not.toContain('zzz');
+    expect(scrubSecrets('{"auth":{"a":"zzz')).not.toContain('zzz');
+  });
+
+  it('masks every opaque code and state, keeping only known diagnostic shapes', () => {
+    expect(scrubSecrets('{"code":"ABCDEFGHIJ","state":"abc-def-ghi1"}')).toBe(
+      `{"code":"${REDACTED}","state":"${REDACTED}"}`,
+    );
+    expect(scrubSecrets('{"code":"ABCDEFGHIJ"} code=ABCDEFGHIJ')).not.toContain(
+      'ABCDEFGHIJ',
+    );
+    expect(scrubSecrets('{"state":"abcdefghij"} {"code":1234}')).not.toMatch(
+      /abcdefghij|1234/,
+    );
+    expect(scrubSecrets('sync state: SYNCING -> ERROR')).toBe(
+      'sync state: SYNCING -> ERROR',
+    );
+  });
+
+  it('masks 32-character and longer hex secrets, and the whole FCM token', () => {
+    const hex40 = 'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3';
+    expect(scrubSecrets(`token digest ${hex40}`)).toBe(
+      `token digest ${REDACTED}`,
+    );
+    const scrubbed = scrubSecrets(`registered FCM token ${FCM_TOKEN}`);
+    expect(scrubbed).toBe(`registered FCM token ${REDACTED}`);
+    expect(scrubbed).not.toContain('dQw4w9WgXcQ');
+  });
+
+  it('keeps Matrix identifiers, short hex and ISO timestamps', () => {
+    const line =
+      '2026-10-11T12:34:56.789Z @user:server.example !room:server.example $event:server.example deadbeef 0123456789abcdef 123e4567-e89b-12d3-a456-426614174000';
+
+    expect(scrubSecrets(line)).toBe(line);
+  });
+
   it.each(CAPTURED_SHAPES.map((shape) => [shape.name, shape] as const))(
     'never keeps a secret from the shapes Trinity and the SDK produce: %s',
     (_name, shape) => {
