@@ -268,6 +268,12 @@ const CUT_RECOVERY_KEY =
   /\bEs[1-9A-HJ-NP-Za-km-z]{2}(?:\s?[1-9A-HJ-NP-Za-km-z]{4}){0,11}\s*$/;
 
 /**
+ * Key material has digits or capitals; words like "Esto casa" don't. An all-lowercase key
+ * start is rare (about one in six after one group, one in 200 after two) and short.
+ */
+const KEY_CHARACTER = /[0-9A-Z]/;
+
+/**
  * The text up to `limit`, backed off to the last separator so no token is cut in half, and
  * without a recovery key's leading groups, which the full-key rule would no longer match.
  */
@@ -276,7 +282,11 @@ function cutAtSeparator(text: string, limit: number): string {
   while (end > 0 && !SEPARATOR.test(text[end - 1])) {
     end -= 1;
   }
-  return text.slice(0, end).replace(CUT_RECOVERY_KEY, '');
+  const kept = text.slice(0, end);
+  const keyStart = CUT_RECOVERY_KEY.exec(kept);
+  return keyStart && KEY_CHARACTER.test(keyStart[0].slice(2))
+    ? kept.slice(0, keyStart.index)
+    : kept;
 }
 
 interface FieldValue {

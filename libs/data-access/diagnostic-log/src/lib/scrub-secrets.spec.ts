@@ -519,11 +519,25 @@ describe('scrubMessage', () => {
     expect(scrubbed.endsWith(' [rest dropped before scrubbing]')).toBe(true);
   });
 
-  it('keeps a word that merely starts like a recovery key before the cut', () => {
-    const before = `${'w'.repeat(MAX_SCRUB_INPUT - 30)} `;
+  it.each(['Esta frase', 'Esto', 'Esto casa', 'Este vino tinto'])(
+    'keeps ordinary words that merely start like a recovery key at the cut: %s',
+    (words) => {
+      // The words and their space end just before the cut, which falls in the x run.
+      const before = `${'w'.repeat(MAX_SCRUB_INPUT - words.length - 3)} `;
 
-    const scrubbed = scrubMessage(`${before}Esta frase ${'x'.repeat(40)}`);
+      const scrubbed = scrubMessage(`${before}${words} ${'x'.repeat(40)}`);
 
-    expect(scrubbed).toContain(' Esta frase');
+      expect(scrubbed).toContain(` ${words} `);
+      expect(scrubbed).not.toContain('x');
+    },
+  );
+
+  it('drops a recovery key cut straight after its first group', () => {
+    const [first] = RECOVERY_KEY.split(' ');
+    const before = `${'w'.repeat(MAX_SCRUB_INPUT - 7)} `;
+
+    const scrubbed = scrubMessage(`${before}${RECOVERY_KEY} tail`);
+
+    expect(scrubbed).not.toContain(first);
   });
 });
