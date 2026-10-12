@@ -197,6 +197,7 @@ export function applicationCapabilityProviders(
                 })
               : of(void 0),
           stopDiagnosticLog: () => diagnosticLog.discard(),
+          resumeDiagnosticLog: () => diagnosticLog.resumeAfterReset(),
           releaseSharedCaches: () => {
             avatars.releaseAll();
             media.releaseAll();

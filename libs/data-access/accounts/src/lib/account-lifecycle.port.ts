@@ -18,6 +18,12 @@ export interface AccountLifecyclePort {
    * Settles once no write is under way.
    */
   stopDiagnosticLog(): Observable<void>;
+  /**
+   * After the installation reset's wipes: start a fresh diagnostic log for the rest of the
+   * session if its setting is back to its default (on), without saving the setting, so an
+   * app that keeps running after the reset logs again as a fresh installation would.
+   */
+  resumeDiagnosticLog(): Observable<void>;
   releaseSharedCaches(): void;
   clearDrafts(): void;
 }
@@ -28,6 +34,7 @@ const NOOP_ACCOUNT_LIFECYCLE_PORT: AccountLifecyclePort = {
   unregisterNotifications: () => of(void 0),
   revokeProviderSession: () => of(void 0),
   stopDiagnosticLog: () => of(void 0),
+  resumeDiagnosticLog: () => of(void 0),
   releaseSharedCaches: () => undefined,
   clearDrafts: () => undefined,
 };

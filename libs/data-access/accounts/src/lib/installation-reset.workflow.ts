@@ -126,6 +126,7 @@ export class InstallationResetWorkflow {
                 }),
               ),
               concatMap(() => this.wipeServiceWorker(attempt)),
+              concatMap(() => this.resumeDiagnosticLog()),
             ),
         (attempt) => this.terminal(attempt),
         (attempt) => this.unexpected(attempt),
@@ -177,6 +178,10 @@ export class InstallationResetWorkflow {
           }
           if (scopes.has('service-worker')) {
             operations.push(this.wipeServiceWorker(attempt, true));
+          }
+          if (scopes.has('preferences')) {
+            // The retried wipe may have returned the log's setting to its default.
+            operations.push(this.resumeDiagnosticLog());
           }
           return operations.length === 0
             ? of(void 0)
@@ -273,6 +278,24 @@ export class InstallationResetWorkflow {
    */
   private stopDiagnosticLog(): Observable<void> {
     return defer(() => this.lifecycle.stopDiagnosticLog()).pipe(
+      take(1),
+      timeout({
+        first: ACCOUNT_CLEANUP_STEP_BUDGET_MS.diagnosticLogStop,
+        with: () => of(void 0),
+      }),
+      catchError(() => of(void 0)),
+      defaultIfEmpty(void 0),
+      map(() => void 0),
+    );
+  }
+
+  /**
+   * Once the wipes are done, start a fresh diagnostic log if its setting is back to its
+   * default. Bounded and never an issue of its own: the log is not installation data, and an
+   * app that restarts reads the setting afresh anyway.
+   */
+  private resumeDiagnosticLog(): Observable<void> {
+    return defer(() => this.lifecycle.resumeDiagnosticLog()).pipe(
       take(1),
       timeout({
         first: ACCOUNT_CLEANUP_STEP_BUDGET_MS.diagnosticLogStop,

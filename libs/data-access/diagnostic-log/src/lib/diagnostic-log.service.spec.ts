@@ -569,6 +569,62 @@ describe('DiagnosticLogService', () => {
       expect(remove).toHaveBeenCalledOnce();
     });
 
+    it('starts a fresh log once the reset has returned the setting to its default, without saving it', async () => {
+      storedSetting = KEEP_LOG_OFF;
+      const service = setup();
+      await firstValueFrom(service.discard());
+      // The reset wipes installation preferences: the setting is back to its default.
+      storedSetting = null;
+
+      await firstValueFrom(service.resumeAfterReset());
+      console.warn('[trinity] after the reset');
+      const messages = (await stored()).map((entry) => entry.message);
+
+      expect(service.keepLog()).toBe(true);
+      expect(service.settingKnown()).toBe(true);
+      expect(setSdkCapture.mock.calls.at(-1)).toEqual([true]);
+      expect(messages).toEqual([
+        expect.stringMatching(
+          /^diagnostic log restarted after a factory reset: /,
+        ),
+        '[trinity] after the reset',
+      ]);
+      expect(storedSetting).toBeNull();
+    });
+
+    it('stays off after the reset when the setting is still stored off', async () => {
+      const service = setup();
+      await firstValueFrom(service.discard());
+      storedSetting = KEEP_LOG_OFF;
+
+      await firstValueFrom(service.resumeAfterReset());
+      console.warn('[trinity] after the reset');
+
+      expect(service.keepLog()).toBe(false);
+      expect(await stored()).toEqual([]);
+    });
+
+    it('stays off after the reset when the setting cannot be read', async () => {
+      let readable = true;
+      const service = setup(undefined, {
+        read: () =>
+          readable
+            ? of({ kind: 'missing' } as const)
+            : of({
+                kind: 'unavailable',
+                diagnostic: { code: 'storage-down' },
+              } as const),
+        write: () => of({ kind: 'completed' } as const),
+      });
+      await firstValueFrom(service.discard());
+      readable = false;
+
+      await firstValueFrom(service.resumeAfterReset());
+
+      expect(service.keepLog()).toBe(false);
+      expect(setSdkCapture).not.toHaveBeenCalledWith(true);
+    });
+
     it('stays stopped when the stored setting arrives afterwards', async () => {
       const reads = new Subject<PreferenceStorageReadOutcome>();
       const service = setup(undefined, pendingAdapter(reads));

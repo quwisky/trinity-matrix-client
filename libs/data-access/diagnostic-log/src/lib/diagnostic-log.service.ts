@@ -339,6 +339,35 @@ export class DiagnosticLogService {
     });
   }
 
+  /**
+   * After a factory reset in a session that keeps running: read the setting again and, when
+   * it is on (back to its default once the reset wiped it), start a fresh log for the rest
+   * of the session. Never saves the setting; a stored "off" or an unreadable setting leaves
+   * the log off. Cold; never errors.
+   */
+  resumeAfterReset(): Observable<void> {
+    return defer(() =>
+      this.preferences.hydrateDescriptors(INSTALLATION_PREFERENCE_CONTEXT, [
+        KEEP_DIAGNOSTIC_LOG_PREFERENCE,
+      ]),
+    ).pipe(
+      take(1),
+      map((outcome) => {
+        const on =
+          outcome.kind === 'ready' &&
+          this.preferences.stateFor(
+            KEEP_DIAGNOSTIC_LOG_PREFERENCE,
+            INSTALLATION_PREFERENCE_CONTEXT,
+          )().value !== false;
+        if (on && !this._keepLog()) {
+          this.resume('diagnostic log restarted after a factory reset');
+        }
+      }),
+      catchError(() => of(undefined)),
+      defaultIfEmpty(undefined),
+    );
+  }
+
   /** Wait for the stored setting before anything reaches the recorder (or is dropped). */
   private readSetting(): void {
     this.preferences
@@ -407,7 +436,11 @@ export class DiagnosticLogService {
     if (keep === this._keepLog()) {
       return Promise.resolve();
     }
-    return keep ? this.resume() : this.stop();
+    if (!keep) {
+      return this.stop();
+    }
+    this.resume('diagnostic log turned on');
+    return Promise.resolve();
   }
 
   private stop(): Promise<void> {
@@ -416,11 +449,12 @@ export class DiagnosticLogService {
     return this.recorder.discard();
   }
 
-  private resume(): Promise<void> {
+  /** Start a fresh log, its first line saying why. */
+  private resume(reason: string): void {
     this._keepLog.set(true);
+    this._settingKnown.set(true);
     this.sdkCapture?.setEnabled(true);
-    this.marker(`diagnostic log turned on: ${this.describeBuild()}`);
-    return Promise.resolve();
+    this.marker(`${reason}: ${this.describeBuild()}`);
   }
 
   /** The signed-in accounts, once; none when the app has no source or it fails. */

@@ -257,6 +257,10 @@ describe('ReportBugDialogComponent', () => {
     expect(screen.getByTestId('report-bug-logging-off').textContent).toContain(
       'Diagnostic logging is off',
     );
+    // Signed out, Settings is out of reach until the user signs in.
+    expect(screen.getByTestId('report-bug-logging-off').textContent).toContain(
+      'After you sign in, you can turn it on in Settings › Advanced.',
+    );
     expect(screen.queryByLabelText('Include diagnostic logs')).toBeNull();
     expect(screen.queryByTestId('report-bug-preview-toggle')).toBeNull();
     expect(screen.queryByTestId('report-bug-save')).toBeNull();

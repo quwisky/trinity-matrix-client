@@ -225,23 +225,29 @@ describe('Trinity application provider composition', () => {
     }
   });
 
-  it('stops the diagnostic log for a factory reset through the account lifecycle port', async () => {
+  it('stops and resumes the diagnostic log for a factory reset through the account lifecycle port', async () => {
     const discard = vi.fn(() => of(undefined));
+    const resumeAfterReset = vi.fn(() => of(undefined));
     TestBed.configureTestingModule({
       providers: [
         ...applicationCapabilityProviders({
           buildInfo: {} as BuildInfo,
           pushConfig: null,
         }),
-        { provide: DiagnosticLogService, useValue: { discard } },
+        {
+          provide: DiagnosticLogService,
+          useValue: { discard, resumeAfterReset },
+        },
       ],
     });
+    const port = TestBed.inject(ACCOUNT_LIFECYCLE_PORT);
 
-    await firstValueFrom(
-      TestBed.inject(ACCOUNT_LIFECYCLE_PORT).stopDiagnosticLog(),
-    );
-
+    await firstValueFrom(port.stopDiagnosticLog());
     expect(discard).toHaveBeenCalledOnce();
+    expect(resumeAfterReset).not.toHaveBeenCalled();
+    await firstValueFrom(port.resumeDiagnosticLog());
+
+    expect(resumeAfterReset).toHaveBeenCalledOnce();
   });
 
   it('offers Report a bug to the sign-in screen and System status through BUG_REPORT_LAUNCHER', () => {
