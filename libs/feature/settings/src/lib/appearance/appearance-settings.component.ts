@@ -126,7 +126,7 @@ export class AppearanceSettingsComponent {
     this.appearance.update('mode', value);
   }
   /**
-   * `computed`, not a field initializer, because the preview text is not static.
+   * `computed`, not a field initializer, because the format sample text is not static.
    *
    * `sample` is a fixed instant on purpose, but `sampleTime` formats it through
    * `format.prefs()` — whose locales come from a `languagechange` listener. Android keeps

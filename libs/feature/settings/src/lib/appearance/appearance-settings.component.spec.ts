@@ -182,13 +182,18 @@ describe('AppearanceSettingsComponent', () => {
     ).toHaveLength(0);
   });
 
-  it('shows no static preview; the settings apply to the real app', async () => {
+  it('renders the Mode group and Theme control without a preview', async () => {
     const { container } = await renderPage();
 
     expect(
+      container.querySelector('[data-testid=appearance-mode-theme]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid=theme-select]'),
+    ).not.toBeNull();
+    expect(
       container.querySelector('[data-testid=appearance-preview]'),
     ).toBeNull();
-    expect(container.querySelector('trn-appearance-preview')).toBeNull();
   });
 
   it('applies the chosen Mode on change', async () => {
