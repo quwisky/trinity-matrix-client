@@ -13,7 +13,7 @@
         #tab
         type="button"
         role="tab"
-        class="min-h-9 rounded-[var(--trinity-shape-control-radius)] px-3 text-sm font-semibold text-[var(--trinity-text-muted)] hover:bg-[var(--trinity-state-hover-surface)] hover:text-[var(--trinity-state-hover-foreground)] aria-selected:bg-[var(--trinity-state-selected-surface)] aria-selected:text-[var(--trinity-state-selected-foreground)]"
+        class="min-h-9 rounded-[var(--trinity-shape-control-radius)] px-3 text-sm font-semibold text-[var(--trinity-text-muted)] hover:bg-[var(--trinity-state-hover-surface)] hover:text-[var(--trinity-state-hover-foreground)] aria-selected:bg-[var(--trinity-state-selected-surface)] aria-selected:text-[var(--trinity-state-selected-foreground)] pointer-coarse:min-h-11"
         [id]="tabId(tab)"
         [attr.aria-selected]="tab === active()"
         [attr.aria-controls]="tab === active() ? tabPanelId(tab) : null"
