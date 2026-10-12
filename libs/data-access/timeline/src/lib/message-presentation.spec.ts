@@ -25,6 +25,93 @@ const BASE = {
 } as const;
 
 describe('Message Presentation', () => {
+  it.each([
+    ['missing-key', '⚠️ Unable to decrypt this message', false],
+    [
+      'device-unverified',
+      '⚠️ You can’t read this message because this device wasn’t verified when it was sent',
+      true,
+    ],
+    [
+      'history-locked',
+      '⚠️ Unlock your encrypted messages on this device to read messages sent before you signed in',
+      true,
+    ],
+    [
+      'withheld',
+      '⚠️ The sender didn’t share the key for this message with this device',
+      false,
+    ],
+    [
+      'sent-before-sign-in',
+      '⚠️ This message was sent before you signed in on this device, and there’s no backup to restore it from',
+      false,
+    ],
+    [
+      'sent-before-joining',
+      '⚠️ This message was sent before you joined the room',
+      false,
+    ],
+    ['unverified-sender-device', '⚠️ Sent from an unverified device', false],
+    [
+      'sender-identity-changed',
+      '⚠️ The sender’s identity changed after you verified them',
+      false,
+    ],
+  ] as const)(
+    'explains an undecryptable message (%s)',
+    (reason, body, deviceFixable) => {
+      const presentation = presentNormalizedTimelineEvent({
+        ...BASE,
+        type: 'unsupported',
+        fallback: 'undecryptable-message',
+        decryptionFailed: true,
+        body: '',
+        replyFallback: false,
+        undecryptableReason: reason,
+      });
+
+      expect(presentation).toMatchObject({
+        kind: 'unsupported',
+        body,
+        decryptionFailed: true,
+        undecryptable: { reason, deviceFixable },
+      });
+      expect(Object.isFrozen(presentation?.undecryptable)).toBe(true);
+    },
+  );
+
+  it('keeps the generic text when no reason was recorded', () => {
+    const presentation = presentNormalizedTimelineEvent({
+      ...BASE,
+      type: 'unsupported',
+      fallback: 'undecryptable-message',
+      decryptionFailed: true,
+      body: '',
+      replyFallback: false,
+    });
+
+    expect(presentation).toMatchObject({
+      body: '⚠️ Unable to decrypt this message',
+      undecryptable: { reason: 'missing-key', deviceFixable: false },
+    });
+  });
+
+  it('says nothing about decryption for other unsupported messages', () => {
+    const presentation = presentNormalizedTimelineEvent({
+      ...BASE,
+      type: 'unsupported',
+      fallback: 'unsupported-message',
+      decryptionFailed: false,
+      body: 'a custom event',
+      replyFallback: false,
+    });
+
+    expect(presentation).toMatchObject({
+      body: 'a custom event',
+      undecryptable: null,
+    });
+  });
   it('presents normalized plain text with an HTTPS-only preview policy', () => {
     const event: NormalizedTimelineEvent = {
       ...BASE,

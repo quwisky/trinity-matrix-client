@@ -24,7 +24,9 @@ import type {
   ReactionView,
   ReceiptView,
   ReplyPreview,
+  UndecryptableReason,
 } from './message-presentation';
+import { undecryptableReasonOf } from './undecryptable-reason';
 
 const SYSTEM_EVENT_TYPES = new Set<string>([
   EventType.RoomMember,
@@ -247,6 +249,7 @@ function unsupported(
     'unsupported-message' | 'undecryptable-message' | 'redacted-message',
   decryptionFailed: boolean,
   body = '',
+  undecryptableReason: UndecryptableReason | null = null,
 ): NormalizedTimelineEvent {
   return Object.freeze({
     ...normalizeCommon(client, room, event, shield),
@@ -255,6 +258,7 @@ function unsupported(
     decryptionFailed,
     body,
     replyFallback: read(() => Boolean(event.replyEventId), false),
+    undecryptableReason,
   });
 }
 
@@ -382,6 +386,8 @@ export function normalizeTimelineEvent(
       shield,
       'undecryptable-message',
       true,
+      '',
+      undecryptableReasonOf(read(() => event.decryptionFailureReason, null)),
     );
   }
   if (read(() => event.isRedacted(), false)) {

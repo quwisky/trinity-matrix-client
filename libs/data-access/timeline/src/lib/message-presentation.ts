@@ -87,6 +87,56 @@ export interface LocationView {
   readonly label: string;
 }
 
+/** Why an encrypted message could not be read, in terms a person can act on. */
+export type UndecryptableReason =
+  | 'missing-key'
+  | 'device-unverified'
+  | 'withheld'
+  | 'history-locked'
+  | 'sent-before-sign-in'
+  | 'sent-before-joining'
+  | 'unverified-sender-device'
+  | 'sender-identity-changed';
+
+/**
+ * An unreadable message's reason, and whether verifying or unlocking this device can fix
+ * it. Which button that is depends on this device's trust status, which the Rooms feature
+ * reads; Conversations knows nothing about trust.
+ */
+export interface UndecryptableView {
+  readonly reason: UndecryptableReason;
+  readonly deviceFixable: boolean;
+}
+
+/** The row text for each reason. Edit history and the room-list preview keep their own. */
+const UNDECRYPTABLE_TEXT: Readonly<Record<UndecryptableReason, string>> = {
+  'missing-key': '⚠️ Unable to decrypt this message',
+  'device-unverified':
+    '⚠️ You can’t read this message because this device wasn’t verified when it was sent',
+  withheld:
+    '⚠️ The sender didn’t share the key for this message with this device',
+  'history-locked':
+    '⚠️ Unlock your encrypted messages on this device to read messages sent before you signed in',
+  'sent-before-sign-in':
+    '⚠️ This message was sent before you signed in on this device, and there’s no backup to restore it from',
+  'sent-before-joining': '⚠️ This message was sent before you joined the room',
+  'unverified-sender-device': '⚠️ Sent from an unverified device',
+  'sender-identity-changed':
+    '⚠️ The sender’s identity changed after you verified them',
+};
+
+/** The reasons this device can fix by verifying or unlocking itself. */
+const DEVICE_FIXABLE: Readonly<Record<UndecryptableReason, boolean>> = {
+  'missing-key': false,
+  'device-unverified': true,
+  withheld: false,
+  'history-locked': true,
+  'sent-before-sign-in': false,
+  'sent-before-joining': false,
+  'unverified-sender-device': false,
+  'sender-identity-changed': false,
+};
+
 /**
  * Immutable render model exposed by the Conversations capability.
  *
@@ -121,6 +171,8 @@ export interface MessageView {
   readonly previewEncrypted?: boolean;
   readonly summary?: string | null;
   readonly systemCategory?: SystemLineCategory | null;
+  /** Why it could not be decrypted, and whether this device can fix it; null otherwise. */
+  readonly undecryptable?: UndecryptableView | null;
 }
 
 /** Whether the presented message can be edited as text. */
@@ -278,6 +330,8 @@ export interface NormalizedUnsupportedEvent extends NormalizedCommon {
   /** Safe plaintext retained for unsupported message types; empty for other fallbacks. */
   readonly body: string;
   readonly replyFallback: boolean;
+  /** For `undecryptable-message`: why, as far as the SDK said; absent means unknown. */
+  readonly undecryptableReason?: UndecryptableReason | null;
 }
 
 export type NormalizedTimelineEvent =
@@ -616,14 +670,17 @@ export function presentNormalizedTimelineEvent(
   }
 
   const redacted = event.fallback === 'redacted-message';
-  const body =
+  const reason =
     event.fallback === 'undecryptable-message'
-      ? '⚠️ Unable to decrypt this message'
-      : redacted
-        ? '(message deleted)'
-        : (event.replyFallback
-            ? stripReplyFallbackText(event.body)
-            : event.body) || '[unsupported message]';
+      ? (event.undecryptableReason ?? 'missing-key')
+      : null;
+  const body = reason
+    ? UNDECRYPTABLE_TEXT[reason]
+    : redacted
+      ? '(message deleted)'
+      : (event.replyFallback
+          ? stripReplyFallbackText(event.body)
+          : event.body) || '[unsupported message]';
   return Object.freeze({
     ...neutral(immutableCommon(event)),
     body,
@@ -634,5 +691,8 @@ export function presentNormalizedTimelineEvent(
     previewEncrypted: true,
     summary: null,
     systemCategory: null,
+    undecryptable: reason
+      ? Object.freeze({ reason, deviceFixable: DEVICE_FIXABLE[reason] })
+      : null,
   });
 }
