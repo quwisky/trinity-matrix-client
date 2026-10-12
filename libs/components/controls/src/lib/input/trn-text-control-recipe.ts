@@ -24,6 +24,8 @@ const base =
  * accent, where the neutral value, placeholder and border colours fall near 1:1 (#1241). There
  * it switches to the attention control roles, and a disabled field stays transparent instead
  * of nesting a neutral fill. Its focus ring already follows the surface's on-attention ring.
+ * Invalid state has no attention role yet: there the attention border replaces the danger
+ * border while the danger shadow stays, so keep invalid fields off attention surfaces.
  */
 const onAttention =
   'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-border)] in-data-[trn-surface=attention]:text-[var(--trinity-state-attention-control-foreground)] in-data-[trn-surface=attention]:placeholder:text-[var(--trinity-state-attention-control-placeholder)] in-data-[trn-surface=attention]:disabled:bg-transparent';

@@ -73,7 +73,8 @@ const MEMBER_ORDERS: readonly TrnSelectOption<string>[] = [
  * Form controls on the accent header. Each sits on the attention surface, so the field's
  * value, placeholder and resting border, the segmented track and the select trigger use the
  * attention control roles rather than colours tuned for a neutral surface. The toolbar
- * layout paints the accent too; pass `layout:toolbar`.
+ * layout paints the accent too; pass `layout:toolbar`. The controls wrap in the page layout
+ * on a phone; the toolbar layout is a fixed-height bar with room for them only on wider screens.
  */
 export const AccentControls: Story = {
   args: { title: 'Members', variant: 'accent', layout: 'page' },
@@ -92,7 +93,7 @@ export const AccentControls: Story = {
     },
     template: `
       <trn-page-header [title]="title" [variant]="variant" [layout]="layout">
-        <span trnHeaderActions class="flex items-center gap-2">
+        <span trnHeaderActions class="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
           <input trnInput size="sm" class="w-36" aria-label="Filter members" placeholder="Filter members" />
           <trn-radio-group
             layout="segmented"

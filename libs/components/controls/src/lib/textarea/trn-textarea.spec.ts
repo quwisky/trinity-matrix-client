@@ -56,7 +56,11 @@ describe('TrnTextarea', () => {
         `${attention}border-[var(--trinity-state-attention-control-border)]`,
         `${attention}text-[var(--trinity-state-attention-control-foreground)]`,
         `${attention}placeholder:text-[var(--trinity-state-attention-control-placeholder)]`,
+        `${attention}disabled:bg-transparent`,
       ]),
+    );
+    expect(recipe.filter((token) => token.includes('attention'))).toEqual(
+      recipe.filter((token) => token.startsWith(attention)),
     );
   });
 });

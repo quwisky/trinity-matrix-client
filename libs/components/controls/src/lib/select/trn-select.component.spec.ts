@@ -199,6 +199,9 @@ describe('TrnSelectComponent', () => {
         // Helm's dark fill and hover are translucent mixes that would tint the accent ground.
         `${attention}dark:bg-transparent`,
         `${attention}dark:hover:bg-transparent`,
+        // Helm's focus border and halo use `--ring`; the drawn ring takes the surface's.
+        `${attention}focus-visible:border-[var(--trinity-focus-ring)]`,
+        `${attention}focus-visible:ring-[color:var(--trinity-focus-ring)]`,
       ]),
     );
     expect(trigger.filter((token) => token.includes('attention'))).toEqual(
