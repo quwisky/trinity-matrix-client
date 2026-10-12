@@ -70,6 +70,8 @@ function setup(activeAccountId: string | null = '@old:hs') {
     registerNotifications: vi.fn(() => of(void 0)),
     unregisterNotifications: vi.fn(() => of(void 0)),
     revokeProviderSession: vi.fn(() => of(void 0)),
+    stopDiagnosticLog: vi.fn(() => of(void 0)),
+    resumeDiagnosticLog: vi.fn(() => of(void 0)),
     releaseSharedCaches: vi.fn(),
     clearDrafts: vi.fn(),
   };
@@ -771,6 +773,12 @@ describe('MatrixAccountRuntimeAdapter', () => {
         return of(void 0);
       }),
     );
+    vi.mocked(lifecycle.stopDiagnosticLog).mockReturnValue(
+      defer(() => {
+        order.push('diagnostic-log');
+        return of(void 0);
+      }),
+    );
     vi.mocked(wipe.wipeIndexedDb).mockImplementation(() => {
       order.push('indexed-db');
       return Promise.resolve({ blocked: [], failed: [], enumerated: true });
@@ -803,6 +811,12 @@ describe('MatrixAccountRuntimeAdapter', () => {
         return true;
       },
     );
+    vi.mocked(lifecycle.resumeDiagnosticLog).mockReturnValue(
+      defer(() => {
+        order.push('resume-diagnostic-log');
+        return of(void 0);
+      }),
+    );
 
     await expect(firstValueFrom(adapter.resetInstallation())).resolves.toEqual({
       kind: 'ready',
@@ -812,6 +826,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
       'notifications',
       'sign-out',
       'stop',
+      'diagnostic-log',
       'indexed-db',
       'secure-and-registry',
       'secure-storage',
@@ -819,7 +834,63 @@ describe('MatrixAccountRuntimeAdapter', () => {
       'web-storage',
       'cache-storage',
       'service-worker',
+      'resume-diagnostic-log',
     ]);
+  });
+
+  it('settles ready when the diagnostic log cannot be resumed, or never answers', async () => {
+    vi.useFakeTimers();
+    try {
+      const test = setup();
+      prepareSuccessfulReset(test);
+      vi.mocked(test.lifecycle.resumeDiagnosticLog).mockReturnValue(
+        throwError(() => new Error('preferences unreadable')),
+      );
+      await expect(
+        firstValueFrom(test.adapter.resetInstallation()),
+      ).resolves.toEqual({ kind: 'ready' });
+
+      vi.mocked(test.lifecycle.resumeDiagnosticLog).mockReturnValue(NEVER);
+      const outcome = firstValueFrom(test.adapter.resetInstallation());
+      await vi.advanceTimersByTimeAsync(
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.diagnosticLogStop,
+      );
+      await expect(outcome).resolves.toEqual({ kind: 'ready' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('still wipes, with nothing to report, when the diagnostic log cannot be stopped', async () => {
+    const test = setup();
+    prepareSuccessfulReset(test);
+    vi.mocked(test.lifecycle.stopDiagnosticLog).mockReturnValue(
+      throwError(() => new Error('log database blocked')),
+    );
+
+    await expect(
+      firstValueFrom(test.adapter.resetInstallation()),
+    ).resolves.toEqual({ kind: 'ready' });
+    expect(test.wipe.beginIndexedDbWipe).toHaveBeenCalledOnce();
+  });
+
+  it('wipes after its budget when stopping the diagnostic log never settles', async () => {
+    vi.useFakeTimers();
+    try {
+      const test = setup();
+      prepareSuccessfulReset(test);
+      vi.mocked(test.lifecycle.stopDiagnosticLog).mockReturnValue(NEVER);
+
+      const outcome = firstValueFrom(test.adapter.resetInstallation());
+      await vi.advanceTimersByTimeAsync(
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.diagnosticLogStop,
+      );
+
+      await expect(outcome).resolves.toEqual({ kind: 'ready' });
+      expect(test.wipe.beginIndexedDbWipe).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('reports cleanup failures by safe scope without leaking database names', async () => {
@@ -1275,6 +1346,13 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(wipe.wipeSecureStorage).not.toHaveBeenCalled();
     expect(matrix.signOutAll).not.toHaveBeenCalled();
     expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
+    // The retried preferences wipe may have returned the log's setting to its default.
+    expect(lifecycle.resumeDiagnosticLog).toHaveBeenCalledOnce();
+    expect(
+      vi.mocked(lifecycle.resumeDiagnosticLog).mock.invocationCallOrder[0],
+    ).toBeGreaterThan(
+      vi.mocked(wipe.wipePreferences).mock.invocationCallOrder[0],
+    );
   });
   it('prepares only live Accounts for an Active Account switch', async () => {
     const { adapter, matrix } = setup();

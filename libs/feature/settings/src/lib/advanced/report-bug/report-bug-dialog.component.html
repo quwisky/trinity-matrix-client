@@ -1,0 +1,187 @@
+<!-- `[formRoot]` sets novalidate and prevents the native submit (see jump-to-date). -->
+<form [formRoot]="reportForm" (submit)="openGitHub()">
+  <trn-dialog-shell
+    title="Report a bug"
+    size="md"
+    closeLabel="Close Report a bug"
+    (closed)="close()"
+  >
+    <div class="flex flex-col gap-4">
+      <div>
+        <label trnLabel for="report-bug-description">What went wrong?</label>
+        <textarea
+          id="report-bug-description"
+          trnTextarea
+          class="mt-1 min-h-24 w-full resize-y"
+          [formField]="reportForm.description"
+          [attr.aria-describedby]="descriptionDescribedBy()"
+          data-autofocus
+          data-testid="report-bug-description"
+        ></textarea>
+        <p
+          id="report-bug-description-hint"
+          class="m-0 pt-1 text-13 text-muted-foreground"
+        >
+          Optional. It fills in the GitHub issue and is not stored.
+        </p>
+        @if (descriptionError(); as error) {
+          <p
+            id="report-bug-description-error"
+            role="alert"
+            class="m-0 pt-1 text-13 text-danger"
+            data-testid="report-bug-description-error"
+          >
+            {{ error }}
+          </p>
+        }
+      </div>
+
+      @if (loggingOff()) {
+        <p
+          class="m-0 text-13 text-muted-foreground"
+          role="status"
+          data-testid="report-bug-logging-off"
+        >
+          Diagnostic logging is off on this device, so this report has no log to
+          include.
+          @if (turnOnHint(); as hint) {
+            {{ hint }}
+          }
+        </p>
+      } @else {
+        <trn-settings-row
+          label="Include diagnostic logs"
+          description="Up to two days of Trinity and Matrix logs from this device. Matrix IDs and server names are replaced, and tokens, keys and messages are never included."
+          for="report-bug-include-logs"
+          [divider]="false"
+        >
+          <trn-switch
+            inputId="report-bug-include-logs"
+            aria-describedby="report-bug-include-logs-description"
+            [checked]="includeLogs()"
+            (checkedChange)="setIncludeLogs($event)"
+            data-testid="report-bug-include-logs"
+          />
+        </trn-settings-row>
+
+        @if (includeLogs()) {
+          @if (loading()) {
+            <p class="m-0 text-13 text-muted-foreground" role="status">
+              Preparing the log…
+            </p>
+          } @else if (!hasLogs()) {
+            <p
+              class="m-0 text-13 text-muted-foreground"
+              role="status"
+              data-testid="report-bug-no-logs"
+            >
+              There are no diagnostic logs on this device yet. You can still
+              open a bug report.
+            </p>
+          } @else {
+            <div>
+              <button
+                trnBtn
+                type="button"
+                presentation="link"
+                shape="inline"
+                size="sm"
+                [attr.aria-expanded]="previewOpen()"
+                [attr.aria-controls]="
+                  previewOpen() ? 'report-bug-preview' : null
+                "
+                (click)="togglePreview()"
+                data-testid="report-bug-preview-toggle"
+              >
+                {{ previewOpen() ? 'Hide preview' : 'Preview' }}
+              </button>
+              @if (previewOpen()) {
+                <pre
+                  id="report-bug-preview"
+                  role="region"
+                  aria-label="Diagnostic log preview"
+                  tabindex="0"
+                  class="mt-2 max-h-72 overflow-auto rounded-md border border-solid border-border p-2 font-mono text-xs whitespace-pre select-text"
+                  data-testid="report-bug-preview"
+                  >{{ bundle()?.text }}</pre>
+              }
+            </div>
+            @if (saveUnavailable()) {
+              <p
+                class="m-0 text-13 text-muted-foreground"
+                data-testid="report-bug-save-unavailable"
+              >
+                Saving a file isn’t available here. Open the preview, select the
+                text and copy it instead.
+              </p>
+            }
+          }
+        }
+      }
+
+      @if (saveFailed()) {
+        <p
+          class="m-0 text-13 text-danger"
+          role="alert"
+          data-testid="report-bug-save-error"
+        >
+          Couldn’t save the log file. The preview has the same text to select
+          and copy. Try again.
+        </p>
+      }
+      @if (saved()) {
+        <p class="m-0 text-13" role="status" data-testid="report-bug-saved">
+          Saved {{ bundle()?.filename }}. Attach it to the issue on GitHub.
+        </p>
+      }
+      @if (showGitHub) {
+        <p
+          class="m-0 text-13 text-muted-foreground"
+          id="report-bug-public-note"
+          data-testid="report-bug-public-note"
+        >
+          GitHub issues are public. Don’t put Matrix IDs, room names or other
+          private details in your description; only the log is redacted.
+          @if (showSave()) {
+            After the issue opens, attach the saved log file under “Other
+            observations”.
+          }
+        </p>
+      }
+      @if (openFailed()) {
+        <p
+          class="m-0 text-13 text-danger"
+          role="alert"
+          data-testid="report-bug-open-error"
+        >
+          Couldn’t open GitHub. Check your connection. Try again.
+        </p>
+      }
+    </div>
+
+    <div trnDialogActions>
+      @if (showSave()) {
+        <button
+          trnBtn
+          type="button"
+          presentation="outline"
+          [disabled]="saving()"
+          (click)="save()"
+          data-testid="report-bug-save"
+        >
+          Save log file
+        </button>
+      }
+      @if (showGitHub) {
+        <button
+          trnBtn
+          type="submit"
+          [disabled]="!canOpenGitHub()"
+          data-testid="report-bug-github"
+        >
+          Open bug report on GitHub
+        </button>
+      }
+    </div>
+  </trn-dialog-shell>
+</form>

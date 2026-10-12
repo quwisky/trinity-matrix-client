@@ -16,6 +16,10 @@ Configuration is split by owner. Do not create a second general-purpose environm
 
 Production mode also sets matrix-js-sdk console logging. `main.ts` passes `matrixSdkLogLevel` to `provideTrinityApplication()`, which applies it through `provideMatrixSdkLogging()` from `@trinity/data-access/matrix-client` before any client is created. Production builds, including the Web and Electron renderer, log the SDK's warnings and errors only. Development builds keep its debug and info output, which covers sync, crypto and request details. To see that output, use a development build.
 
+Console verbosity does not limit what Trinity keeps for bug reports. `provideTrinityApplication()` starts the on-device diagnostic log from `@trinity/data-access/diagnostic-log` and gives `provideMatrixSdkLogging()` a sink through `MATRIX_SDK_LOG_SINK`, so the SDK's debug lines are stored in every build while the console stays at the configured level. With Settings › Advanced › Keep a diagnostic log off, or unreadable, `DiagnosticLogService` detaches the sink at once through `DIAGNOSTIC_SDK_CAPTURE`, and the SDK runs at the configured level only. See [diagnostics](../diagnostics/#diagnostic-log).
+
+`issueTracker.repositoryUrl` names the GitHub repository in which Report a bug opens a pre-filled issue, from Settings › Advanced, the sign-in screen and System status alike. A fork sets its own repository, or `null` to leave the GitHub step out.
+
 A push gateway URL and public application identifier are configuration; FCM/APNs credentials and deployment procedures are not application source and do not belong in public documentation.
 
 ## Capacitor host {#capacitor-host}

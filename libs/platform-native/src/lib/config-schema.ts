@@ -220,6 +220,7 @@ export type ConfigOwner =
   | 'data-access/gif'
   | 'data-access/notifications'
   | 'data-access/room-library'
+  | 'data-access/diagnostic-log'
   | 'runtime/projection'
   | 'feature/settings';
 
@@ -497,6 +498,17 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     disposition: 'exported',
     key: 'trinity.rail.unread-chats',
     owner: 'data-access/room-library',
+  },
+
+  // — data-access/diagnostic-log —
+  {
+    disposition: 'excluded',
+    key: 'trinity.diagnostics.keep-log',
+    owner: 'data-access/diagnostic-log',
+    reason:
+      'A per-installation privacy choice about what this device records. A pasted or ' +
+      'imported document must not switch logging on for another device, and an unreadable ' +
+      'value already means off.',
   },
 
   // — runtime/projection —

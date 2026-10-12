@@ -7,7 +7,8 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
   host: {
     'data-slot': 'settings-row',
     class:
-      'flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[var(--trinity-border-subtle)] py-3',
+      'flex flex-wrap items-center gap-x-4 gap-y-2 border-[var(--trinity-border-subtle)] py-3',
+    '[class.border-b]': 'divider()',
   },
   template: `
     <div class="min-w-0 flex-[1_1_12rem]">
@@ -44,4 +45,9 @@ export class TrnSettingsRowComponent {
   readonly for = input<string>();
   /** Id of the label element, for a control that is named by it (`aria-labelledby`). */
   readonly labelId = input<string>();
+  /**
+   * The divider below the row, which separates it from the next one in a settings group.
+   * Off for a row that stands alone, such as a switch in a dialog.
+   */
+  readonly divider = input(true);
 }

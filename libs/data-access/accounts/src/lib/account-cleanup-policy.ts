@@ -6,6 +6,7 @@ export const ACCOUNT_CLEANUP_STEP_BUDGET_MS = {
   providerLogout: 3_000,
   matrixLogout: 3_000,
   matrixStop: 3_000,
+  diagnosticLogStop: 3_000,
   databaseWipe: 6_000,
   registryWrite: 3_000,
   secureStorageWipe: 3_000,

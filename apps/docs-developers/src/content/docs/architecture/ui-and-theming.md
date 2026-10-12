@@ -16,6 +16,19 @@ Feature and application code imports reusable UI from `@trinity/components/*`. T
 
 If a control has product meaning, keep it with the owning feature. Move it into the component tier only when its API is domain-neutral and reusable. Components never import `matrix-js-sdk`.
 
+### Button shapes {#button-shapes}
+
+`trnBtn` takes a `shape` alongside its variant, size and presentation:
+
+| Shape    | Use it for                                                                                                                                                                                |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `label`  | The default: a text button with its size's padding.                                                                                                                                       |
+| `icon`   | An icon-only button. It needs an accessible name and joins the shared icon-button interaction contract.                                                                                   |
+| `row`    | A full-width list row whose label starts at the inline start and wraps instead of clipping; pair it with `ghost`.                                                                         |
+| `inline` | A link-style action inside a column of text, such as a Preview toggle under a description. It has no inline padding, so its label lines up with the text; pair it with `link` or `ghost`. |
+
+Feature templates choose a shape instead of adding padding, height or width classes to a `trnBtn`; the design-system contract rejects those.
+
 ## Style with semantic tokens {#semantic-tokens}
 
 The root theme foundation defines color, spacing, shape, typography, motion, and surface tokens for light and dark appearance. Product styles consume those meanings instead of hard-coded color values or vendor custom properties.

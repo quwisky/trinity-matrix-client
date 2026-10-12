@@ -23,6 +23,7 @@ import {
   TrnSurfaceService,
   type TrnSettingsLayoutSection,
 } from '@trinity/components/overlay';
+import { BUG_REPORT_LAUNCHER } from '@trinity/platform-native';
 import { textScaledViewportSignal } from '@trinity/util/ui';
 import type { CapabilityRecoveryOutcome } from '@trinity/runtime/projection';
 import { of, take } from 'rxjs';
@@ -55,6 +56,10 @@ export class SystemStatusComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly layout = viewChild(TrnSettingsLayoutComponent);
+  private readonly bugReport = inject(BUG_REPORT_LAUNCHER, { optional: true });
+
+  /** Report a bug opens over this panel in any start-up phase; Settings is not involved. */
+  protected readonly canReportBug = this.bugReport !== null;
 
   readonly status = inject(CapabilityStatusService);
   readonly wide = textScaledViewportSignal(48, this.destroyRef);
@@ -144,6 +149,10 @@ export class SystemStatusComponent {
 
   protected close(): void {
     this.ref.close();
+  }
+
+  protected reportBug(): void {
+    this.bugReport?.open();
   }
 
   protected retry(entry: CapabilityStatusEntry): void {

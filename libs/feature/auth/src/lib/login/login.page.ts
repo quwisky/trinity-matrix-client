@@ -48,6 +48,7 @@ import {
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
   AppRestartService,
+  BUG_REPORT_LAUNCHER,
   SessionStorageService,
 } from '@trinity/platform-native';
 import { TrnAlertService } from '@trinity/components/overlay';
@@ -126,11 +127,14 @@ export class LoginPage {
   private readonly restart = inject(AppRestartService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
+  private readonly bugReport = inject(BUG_REPORT_LAUNCHER, { optional: true });
   private readonly usernameInput =
     viewChild<ElementRef<HTMLInputElement>>('usernameInput');
 
   /** `/login?add` — add a second account instead of replacing the current one. */
   readonly addMode = this.route.snapshot.queryParamMap.has('add');
+  /** Report a bug needs the app's launcher; a host without one leaves it out. */
+  readonly canReportBug = this.bugReport !== null;
   /** `/login?reauth=<userId>` — re-authenticate a soft-logged-out account (add mode,
    * reusing its existing device so no re-verification is needed). */
   readonly reauthUserId = signal<string | null>(
@@ -422,6 +426,15 @@ export class LoginPage {
       this.error,
       SIGN_IN_FALLBACK,
     ).subscribe();
+  }
+
+  /**
+   * Report a bug without signing in: the way to send a diagnostic log when signing in is
+   * what fails. It lives here for the same reason as the erase button: Settings is behind
+   * `authGuard`. Opens the same dialog as Settings › Advanced, through the app's launcher.
+   */
+  reportBug(): void {
+    this.bugReport?.open();
   }
 
   /**

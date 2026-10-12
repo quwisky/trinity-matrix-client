@@ -30,6 +30,7 @@ void bootstrapApplication(ApplicationRootComponent, {
       // matrix-js-sdk logs sync, crypto and request details at debug level; production
       // builds keep its warnings and errors only.
       matrixSdkLogLevel: environment.production ? 'warn' : 'debug',
+      issueRepositoryUrl: environment.issueTracker?.repositoryUrl ?? null,
       buildInfo: BUILD_INFO_VALUE,
       dialogLoaders: APPLICATION_DIALOG_LOADERS,
     }),

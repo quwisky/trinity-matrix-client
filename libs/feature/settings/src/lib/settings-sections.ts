@@ -177,6 +177,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
         label: 'What this document leaves out',
       },
       { id: 'reset-to-defaults', label: 'Reset to defaults' },
+      { id: 'diagnostics', label: 'Diagnostics' },
     ],
   },
 ];

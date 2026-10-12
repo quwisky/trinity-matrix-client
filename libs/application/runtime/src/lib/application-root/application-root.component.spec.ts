@@ -17,7 +17,7 @@ import {
   TrustVerificationService,
   type TrustStatus,
 } from '@trinity/data-access/trust';
-import { BUILD_INFO } from '@trinity/platform-native';
+import { BUG_REPORT_LAUNCHER, BUILD_INFO } from '@trinity/platform-native';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, firstValueFrom, of, type Observable } from 'rxjs';
@@ -57,6 +57,7 @@ describe('ApplicationRootComponent', () => {
     const prompt = vi.fn(() => of<string | null>(null));
     const confirm = vi.fn(() => of(true));
     const showToast = vi.fn();
+    const openReport = vi.fn();
     const rendered = await render(ApplicationRootComponent, {
       providers: [
         provideRouter(routes),
@@ -74,6 +75,7 @@ describe('ApplicationRootComponent', () => {
           provide: BUILD_INFO,
           useValue: { version: '1.2.3', commit: 'test', builtAt: '' },
         },
+        { provide: BUG_REPORT_LAUNCHER, useValue: { open: openReport } },
         MockProvider(AccountIdentitiesService, {
           identityOf: (id: string) => ({
             userId: id,
@@ -101,6 +103,7 @@ describe('ApplicationRootComponent', () => {
       prompt,
       confirm,
       showToast,
+      openReport,
       router: rendered.fixture.debugElement.injector.get(Router),
       health: rendered.fixture.debugElement.injector.get(
         CapabilityHealthService,
@@ -451,6 +454,28 @@ describe('ApplicationRootComponent', () => {
     ).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Overview' })).toBeNull();
     expect(screen.getByTestId('app-startup-blocked')).toBeTruthy();
+  });
+
+  it('opens Report a bug over Support details, even while startup is blocked', async () => {
+    const { fixture, getByRole, openReport } = await setup({
+      phase: 'blocked',
+      attempt: 1,
+      failure: {
+        stage: 'account-restoration',
+        recovery: 'reauthenticate',
+        diagnostic: { code: 'active-account-unavailable' },
+      },
+      settlements: [],
+    });
+
+    getByRole('button', { name: 'System status' }).click();
+    settle(fixture);
+    screen.getByRole('button', { name: 'Support details' }).click();
+    settle(fixture);
+    screen.getByTestId('system-status-report-bug').click();
+    settle(fixture);
+
+    expect(openReport).toHaveBeenCalledOnce();
   });
 
   it('keeps the selected capability through refresh and returns to Overview when it resolves', async () => {

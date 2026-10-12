@@ -12,6 +12,7 @@ import {
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
   AppRestartService,
+  BUG_REPORT_LAUNCHER,
   SessionStorageService,
   provideHostCapabilities,
 } from '@trinity/platform-native';
@@ -50,6 +51,8 @@ async function renderLogin(
     typed?: string | null;
     /** What the wipe reports back. */
     report?: { blocked: string[]; failed: string[] };
+    /** The app's Report a bug launcher; absent unless a test provides one. */
+    bugReport?: { open: () => void };
   } = {},
 ): Promise<{
   fixture: Awaited<ReturnType<typeof render<LoginPage>>>['fixture'];
@@ -132,6 +135,9 @@ async function renderLogin(
         ),
       }),
       MockProvider(AppRestartService, { restart: vi.fn() }),
+      ...(opts.bugReport
+        ? [{ provide: BUG_REPORT_LAUNCHER, useValue: opts.bugReport }]
+        : []),
       { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap } } },
     ],
   });
@@ -1031,6 +1037,43 @@ describe('LoginPage', () => {
       cmp.startOidc();
 
       expect(redirect.startOidc).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Report a bug', () => {
+    it('sits just before the erase button, which stays last, and opens the report without signing in', async () => {
+      const open = vi.fn();
+      const { fixture } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+        { bugReport: { open } },
+      );
+      const button = (
+        fixture.nativeElement as HTMLElement
+      ).querySelector<HTMLButtonElement>('[data-testid="login-report-bug"]');
+
+      expect(button?.textContent?.trim()).toBe('Report a bug');
+      expect(button?.nextElementSibling?.getAttribute('data-testid')).toBe(
+        'clear-all-data',
+      );
+      expect(
+        button?.nextElementSibling?.nextElementSibling,
+        'erase is the last action',
+      ).toBeNull();
+      button?.click();
+
+      expect(open).toHaveBeenCalledOnce();
+    });
+
+    it('is left out when the app provides no way to report', async () => {
+      const { fixture } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+      );
+
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="login-report-bug"]',
+        ),
+      ).toBeNull();
     });
   });
 });

@@ -1,4 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -150,5 +156,37 @@ describe('generate', () => {
       now: () => 'T',
     });
     expect(result.commit).toBe('abc1234-dirty');
+  });
+
+  it('records the installed matrix-js-sdk and crypto WASM versions', () => {
+    const root = fakeRoot();
+    for (const [name, version] of [
+      ['matrix-js-sdk', '43.0.0'],
+      ['@matrix-org/matrix-sdk-crypto-wasm', '18.9.0'],
+    ]) {
+      const dir = join(root, 'node_modules', name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ version }));
+    }
+    const out = tmpOut();
+
+    generate({ root, outFile: out, git: fakeGit('abc1234'), now: () => 'T' });
+
+    const written = readFileSync(out, 'utf8');
+    expect(written).toContain("matrixJsSdk: '43.0.0'");
+    expect(written).toContain("cryptoWasm: '18.9.0'");
+  });
+
+  it('writes unknown for a dependency that is not installed', () => {
+    const out = tmpOut();
+
+    generate({
+      root: fakeRoot(),
+      outFile: out,
+      git: fakeGit('abc1234'),
+      now: () => 'T',
+    });
+
+    expect(readFileSync(out, 'utf8')).toContain("matrixJsSdk: 'unknown'");
   });
 });
