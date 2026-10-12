@@ -12,9 +12,10 @@ export * from './lib/diagnostic-log.tokens';
 export { provideDiagnosticLog } from './lib/provide-diagnostic-log';
 export type { DiagnosticBundle } from './lib/diagnostic-bundle';
 export type { DiagnosticReportProgress } from './lib/report/prepare-report';
-export type {
-  DiagnosticAccount,
-  DiagnosticReportFacts,
+export {
+  diagnosticLogFileName,
+  type DiagnosticAccount,
+  type DiagnosticReportFacts,
 } from './lib/report-facts';
 export type { BugReportDraft } from './lib/bug-report-url';
 export {

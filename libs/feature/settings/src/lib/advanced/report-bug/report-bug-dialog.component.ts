@@ -4,6 +4,7 @@ import {
   DestroyRef,
   computed,
   inject,
+  input,
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
@@ -28,6 +29,7 @@ import {
 import {
   DIAGNOSTIC_REPORT_CONFIG,
   DiagnosticLogService,
+  diagnosticLogFileName,
   loadBugReportUrlBuilder,
   type DiagnosticBundle,
   type DiagnosticReportFacts,
@@ -92,6 +94,8 @@ export class ReportBugDialogComponent {
   private readonly fileSupport = toSignal(this.files.support());
   /** The issue's facts, known before the log, so GitHub needn't wait for a slow export. */
   private readonly facts = signal<DiagnosticReportFacts | null>(null);
+  /** Whether anyone is signed in on this device; null until the facts say. */
+  private readonly signedIn = signal<boolean | null>(null);
   /**
    * The issue URL builder, loaded with the export code when the dialog opens, so the click
    * on GitHub can open the issue at once.
@@ -104,7 +108,22 @@ export class ReportBugDialogComponent {
     () => this.bundle()?.facts ?? this.facts() ?? null,
   );
 
+  /** Opened from Settings › Advanced, where the log's switch sits behind this dialog. */
+  readonly fromSettings = input(false);
   readonly reportForm = form(this.model, reportSchema);
+  /** Where the logging-off note sends the user to turn the log on. */
+  readonly turnOnHint = computed(() => {
+    if (this.fromSettings()) {
+      return 'To include one, close this and turn on Keep a diagnostic log.';
+    }
+    const signedIn = this.signedIn();
+    if (signedIn === null) {
+      return null;
+    }
+    return signedIn
+      ? 'You can turn it on in Settings › Advanced.'
+      : 'After you sign in, you can turn it on in Settings › Advanced.';
+  });
   /** Settings › Advanced › Keep a diagnostic log is off: there is no log to offer. */
   readonly loggingOff = computed(() => !this.log.keepLog());
   readonly includeLogs = computed(() => this.model().includeLogs);
@@ -161,6 +180,7 @@ export class ReportBugDialogComponent {
         next: (step) => {
           if (step.kind === 'facts') {
             this.facts.set(step.facts);
+            this.signedIn.set(step.signedIn);
           } else {
             this.logState.set({ kind: 'ready', bundle: step.bundle });
           }
@@ -224,11 +244,10 @@ export class ReportBugDialogComponent {
     ) {
       return;
     }
-    const bundle = this.bundle();
     const url = buildUrl(repository, {
       description: this.model().description,
       facts,
-      logFileName: bundle && this.offersLog() ? bundle.filename : null,
+      logFileName: this.issueLogFileName(),
     });
     if (!url) {
       this.openFailed.set(true);
@@ -250,6 +269,22 @@ export class ReportBugDialogComponent {
 
   close(): void {
     this.dialogRef.close();
+  }
+
+  /**
+   * The log the issue names: the built file when it has entries, or, while it is still
+   * being prepared, the name it will be saved under, so a log saved after GitHub opened is
+   * still named there.
+   */
+  private issueLogFileName(): string | null {
+    if (this.loggingOff() || !this.includeLogs()) {
+      return null;
+    }
+    const bundle = this.bundle();
+    if (bundle) {
+      return this.hasLogs() ? bundle.filename : null;
+    }
+    return this.loading() ? diagnosticLogFileName(new Date()) : null;
   }
 
   private failSave(): void {

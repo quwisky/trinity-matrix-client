@@ -40,6 +40,8 @@ interface SetupOptions {
   readonly facts?: Observable<DiagnosticReportFacts>;
   /** Whether anyone is signed in, as the facts report it; yes unless a test says otherwise. */
   readonly signedIn?: boolean;
+  /** Opened from Settings › Advanced, beside the switch; elsewhere unless a test says so. */
+  readonly fromSettings?: boolean;
   readonly saved?: Observable<unknown>;
   readonly fileExport?: boolean | 'pending';
   readonly repository?: string | null;
@@ -54,6 +56,10 @@ async function setup(options: SetupOptions = {}) {
   // The dialog loads the issue URL builder lazily; have it loaded before the dialog asks.
   await loadBugReportUrlBuilder();
   const rendered = await render(ReportBugDialogComponent, {
+    inputs:
+      options.fromSettings === undefined
+        ? {}
+        : { fromSettings: options.fromSettings },
     providers: [
       MockProvider(DiagnosticLogService, {
         prepareReport: () =>
@@ -247,18 +253,38 @@ describe('ReportBugDialogComponent', () => {
     expect(screen.getByTestId('report-bug-save-unavailable')).toBeTruthy();
   });
 
-  it('offers GitHub with the facts alone while the log is still loading', async () => {
-    const { open } = await setup({ exported: NEVER });
-    const github = screen.getByTestId('report-bug-github') as HTMLButtonElement;
+  it('offers GitHub while the log is still loading, naming the file the log will be saved as', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 9, 12, 23, 30));
+    try {
+      const { open } = await setup({ exported: NEVER });
+      const github = screen.getByTestId(
+        'report-bug-github',
+      ) as HTMLButtonElement;
 
-    expect(github.disabled).toBe(false);
-    github.click();
+      expect(github.disabled).toBe(false);
+      github.click();
 
-    expect(issueFields(open)).toMatchObject({
-      version: 'Trinity v0.4.0 · abc1234',
-      os: 'Web, Firefox 141 on Linux',
-      homeserver: 'Synapse 1.140.0',
-    });
+      expect(issueFields(open)).toMatchObject({
+        version: 'Trinity v0.4.0 · abc1234',
+        os: 'Web, Firefox 141 on Linux',
+        homeserver: 'Synapse 1.140.0',
+      });
+      expect(issueFields(open)['logs']).toContain('trinity-2026-10-12.log');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('names no log file while loading when logs are left out', async () => {
+    const { fixture, open } = await setup({ exported: NEVER });
+
+    (
+      screen.getByLabelText('Include diagnostic logs') as HTMLInputElement
+    ).click();
+    fixture.detectChanges();
+    screen.getByTestId('report-bug-github').click();
+
     expect(issueFields(open)).not.toHaveProperty('logs');
   });
 
@@ -293,10 +319,10 @@ describe('ReportBugDialogComponent', () => {
     expect(screen.getByTestId('report-bug-logging-off').textContent).toContain(
       'Diagnostic logging is off',
     );
-    // Signed out, Settings is out of reach until the user signs in.
-    expect(screen.getByTestId('report-bug-logging-off').textContent).toContain(
-      'After you sign in, you can turn it on in Settings › Advanced.',
-    );
+    // Signed in, away from Settings: where the switch is.
+    const hint = screen.getByTestId('report-bug-logging-off').textContent;
+    expect(hint).toContain('You can turn it on in Settings › Advanced.');
+    expect(hint).not.toContain('After you sign in');
     expect(screen.queryByLabelText('Include diagnostic logs')).toBeNull();
     expect(screen.queryByTestId('report-bug-preview-toggle')).toBeNull();
     expect(screen.queryByTestId('report-bug-save')).toBeNull();
@@ -312,6 +338,32 @@ describe('ReportBugDialogComponent', () => {
       os: 'Web, Firefox 141 on Linux',
     });
     expect(issueFields(open)).not.toHaveProperty('logs');
+  });
+
+  it('says signed out that logging can be turned on after signing in', async () => {
+    await setup({
+      keepLog: false,
+      signedIn: false,
+      exported: of({ ...BUNDLE, text: '', entryCount: 0 }),
+    });
+
+    expect(screen.getByTestId('report-bug-logging-off').textContent).toContain(
+      'After you sign in, you can turn it on in Settings › Advanced.',
+    );
+  });
+
+  it('points at the switch itself when opened from Settings', async () => {
+    await setup({
+      keepLog: false,
+      fromSettings: true,
+      exported: of({ ...BUNDLE, text: '', entryCount: 0 }),
+    });
+    const hint = screen.getByTestId('report-bug-logging-off').textContent;
+
+    expect(hint).toContain(
+      'To include one, close this and turn on Keep a diagnostic log.',
+    );
+    expect(hint).not.toContain('Settings › Advanced');
   });
 
   it('treats a failed export as no logs, and still files the facts', async () => {

@@ -133,6 +133,7 @@ describe('DiagnosticsGroupComponent', () => {
     expect(open).toHaveBeenCalledWith(ReportBugDialogComponent, {
       ariaLabel: 'Report a bug',
       autoFocus: '[data-autofocus]',
+      inputs: { fromSettings: true },
     });
   });
 

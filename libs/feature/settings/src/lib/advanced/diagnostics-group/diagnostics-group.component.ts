@@ -73,6 +73,8 @@ export class DiagnosticsGroupComponent {
     this.surfaces.open(ReportBugDialogComponent, {
       ariaLabel: 'Report a bug',
       autoFocus: '[data-autofocus]',
+      // The switch is right here: the dialog can point at it rather than at Settings.
+      inputs: { fromSettings: true },
     });
   }
 
