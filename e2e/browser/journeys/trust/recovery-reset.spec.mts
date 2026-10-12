@@ -1,4 +1,4 @@
-import { testResourceId, test, expect, type Page } from '../../../fixtures.mts';
+import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   login,
   homeserverSession,
@@ -12,6 +12,10 @@ import {
   passwordLogin,
   registerUser,
 } from '../../../support/account.mts';
+import {
+  answerUiaIfAsked,
+  setUpEncryption,
+} from '../../support/encryption-journey.mts';
 
 // End-to-end for the recovery-key reset (issue #43): the escape hatch for someone who has
 // lost their recovery key and has no other verified device.
@@ -23,55 +27,6 @@ import {
 //
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
 const session = homeserverSession();
-
-/** Answer the device-signing UIA prompt if the server asks for it. */
-async function answerUiaIfAsked(
-  page: Page,
-  password: string,
-  settled: () => Promise<unknown>,
-): Promise<void> {
-  // Scoped by its own copy, not just the element: the confirmation gate is the same
-  // component and may still be detaching when this is called, which would either match
-  // the wrong dialog (and time out filling a text input as a password) or trip strict
-  // mode with two of them on screen.
-  const uia = page.locator('trn-alert-dialog', {
-    hasText: 'Confirm your password',
-  });
-  const outcome = await Promise.race([
-    uia
-      .waitFor({ state: 'visible', timeout: 30_000 })
-      .then(() => 'uia')
-      .catch(() => null),
-    settled()
-      .then(() => 'done')
-      .catch(() => null),
-  ]);
-  if (outcome === 'uia') {
-    await uia.locator('input[type="password"]').fill(password);
-    await uia.getByRole('button', { name: 'Confirm' }).click();
-  }
-}
-
-/**
- * Bootstrap cross-signing + recovery on this device, so there is something to reset.
- * Returns the recovery key it minted, so the test can prove the reset replaces it.
- */
-async function setUpEncryption(page: Page, password: string): Promise<string> {
-  await page.goto('/encryption/setup', { waitUntil: 'domcontentloaded' });
-  await page.getByRole('button', { name: 'Set up encryption' }).click();
-  const key = page.getByTestId('recovery-key');
-  await answerUiaIfAsked(page, password, () =>
-    key.waitFor({ state: 'visible', timeout: 30_000 }),
-  );
-  await key.waitFor({ state: 'visible', timeout: 60_000 });
-  const original = (await key.innerText()).trim();
-  await page
-    .getByRole('checkbox', { name: /I’ve saved my recovery key/ })
-    .click();
-  await page.getByRole('button', { name: 'Continue to Trinity' }).click();
-  await waitForRooms(page);
-  return original;
-}
 
 test.describe('Recovery reset', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
