@@ -1,0 +1,39 @@
+import { InjectionToken } from '@angular/core';
+import type { DiagnosticLogStore } from './store/diagnostic-log-store';
+import {
+  IndexedDbLogStore,
+  deleteIndexedDbLog,
+} from './store/indexed-db-log-store';
+
+function browserIndexedDb(): IDBFactory | undefined {
+  return typeof indexedDB === 'undefined' ? undefined : indexedDB;
+}
+
+/** Opens the persistent store; a spec swaps in a memory store or a refusal. */
+export const DIAGNOSTIC_LOG_STORE_FACTORY = new InjectionToken<
+  () => Promise<DiagnosticLogStore>
+>('DIAGNOSTIC_LOG_STORE_FACTORY', {
+  providedIn: 'root',
+  factory: () => () => IndexedDbLogStore.open(browserIndexedDb()),
+});
+
+/** Deletes the persistent store when "Keep a diagnostic log" is turned off. */
+export const DIAGNOSTIC_LOG_STORE_REMOVER = new InjectionToken<
+  () => Promise<void>
+>('DIAGNOSTIC_LOG_STORE_REMOVER', {
+  providedIn: 'root',
+  factory: () => () => deleteIndexedDbLog(browserIndexedDb()),
+});
+
+/**
+ * Switches matrix-js-sdk's debug capture on and off; implemented by the app, which owns the
+ * SDK logging configuration. Called synchronously, first thing, whenever "Keep a diagnostic
+ * log" turns off, so no SDK logger stays at debug level for a moment longer.
+ */
+export interface DiagnosticSdkCapture {
+  setEnabled(enabled: boolean): void;
+}
+
+export const DIAGNOSTIC_SDK_CAPTURE = new InjectionToken<DiagnosticSdkCapture>(
+  'DIAGNOSTIC_SDK_CAPTURE',
+);
