@@ -10,10 +10,18 @@ import {
 import { EnvironmentInjector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
+  DIAGNOSTIC_ACCOUNT_SOURCE,
+  DIAGNOSTIC_LOG_STORE_FACTORY,
+  DiagnosticLogService,
+  MemoryLogStore,
+} from '@trinity/data-access/diagnostic-log';
+import {
+  MATRIX_SDK_LOG_SINK,
   configureMatrixSdkLogging,
   matrixSdkLogLevel,
 } from '@trinity/data-access/matrix-client';
-import { NEVER } from 'rxjs';
+import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
+import { NEVER, firstValueFrom, of } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { applicationCapabilityProviders } from './application-capability.providers';
 import { provideTrinityApplication } from './trinity-application.providers';
@@ -95,6 +103,7 @@ describe('Trinity application provider composition', () => {
           routes: [],
           pushConfig: null,
           matrixSdkLogLevel: 'warn',
+          issueRepositoryUrl: null,
           buildInfo: {} as BuildInfo,
           dialogLoaders: {
             settings: () => NEVER,
@@ -109,6 +118,62 @@ describe('Trinity application provider composition', () => {
 
       expect(matrixSdkLogLevel()).toBe('warn');
     } finally {
+      configureMatrixSdkLogging('debug');
+    }
+  });
+
+  it('starts the diagnostic log at startup and wires the SDK sink into it', async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideTrinityApplication({
+          routes: [],
+          pushConfig: null,
+          matrixSdkLogLevel: 'warn',
+          issueRepositoryUrl:
+            'https://github.com/quwisky/trinity-matrix-client',
+          buildInfo: { version: '1.2.3', commit: 'abc1234', builtAt: '' },
+          dialogLoaders: {
+            settings: () => NEVER,
+            encryption: { unlock: () => NEVER, verify: () => NEVER },
+          },
+        }),
+        {
+          provide: DIAGNOSTIC_LOG_STORE_FACTORY,
+          useValue: () => Promise.resolve(new MemoryLogStore()),
+        },
+        {
+          provide: DIAGNOSTIC_ACCOUNT_SOURCE,
+          useValue: { accounts: () => of([]) },
+        },
+        {
+          provide: PREFERENCE_STORAGE_ADAPTER,
+          useValue: {
+            read: () => of({ kind: 'missing' } as const),
+            write: () => of({ kind: 'completed' } as const),
+          },
+        },
+      ],
+    });
+
+    try {
+      TestBed.inject(EnvironmentInjector);
+      TestBed.inject(MATRIX_SDK_LOG_SINK).write({
+        method: 'debug',
+        logger: 'matrix',
+        args: ['FetchHttpApi: --> GET probe'],
+      });
+
+      const bundle = await firstValueFrom(
+        TestBed.inject(DiagnosticLogService).export(),
+      );
+
+      expect(bundle.text).toContain('app started: Trinity v1.2.3 · abc1234');
+      expect(bundle.text).toContain(
+        'DEBUG sdk/matrix FetchHttpApi: --> GET probe',
+      );
+      expect(matrixSdkLogLevel()).toBe('warn');
+    } finally {
+      TestBed.resetTestingModule();
       configureMatrixSdkLogging('debug');
     }
   });

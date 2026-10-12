@@ -41,6 +41,7 @@ import {
   type EncryptionDialogLoaders,
 } from '../application-dialog-loaders';
 import { applicationCapabilityProviders } from './application-capability.providers';
+import { trinityDiagnosticProviders } from './diagnostic-log.providers';
 import { TrinityApplicationRuntimeAdapter } from './trinity-application-runtime.adapter';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { CapabilityHealthService } from '../capability-health.service';
@@ -57,6 +58,8 @@ export interface TrinityApplicationProviderOptions {
   readonly pushConfig: PushConfig | null;
   /** matrix-js-sdk console verbosity; applied before any client is created. */
   readonly matrixSdkLogLevel: MatrixSdkLogLevel;
+  /** GitHub repository for Settings › Advanced › Report a bug; null leaves GitHub out. */
+  readonly issueRepositoryUrl: string | null;
   readonly buildInfo: BuildInfo;
   readonly dialogLoaders: TrinityApplicationDialogLoaders;
 }
@@ -71,7 +74,12 @@ export function provideTrinityApplication(
   options: TrinityApplicationProviderOptions,
 ): EnvironmentProviders {
   return makeEnvironmentProviders([
+    // SDK logging first: it attaches the diagnostic sink, which the diagnostic log can then
+    // detach again once it reads a stored "off".
     provideMatrixSdkLogging(options.matrixSdkLogLevel),
+    ...trinityDiagnosticProviders({
+      issueRepositoryUrl: options.issueRepositoryUrl,
+    }),
     provideZonelessChangeDetection(),
     provideHostCapabilities(),
     provideCapacitorPreferenceStorage(),
