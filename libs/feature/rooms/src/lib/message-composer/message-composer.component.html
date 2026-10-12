@@ -14,6 +14,10 @@
   (retryStaged)="retryStaged($event)"
 />
 
+<!-- Persistent, like the notice region below, so the GIF wait is announced when it starts. -->
+<span class="sr-only" aria-live="polite" data-testid="composer-gif-status">{{
+  attachments.gifDownloading() ? 'Sending GIF…' : ''
+}}</span>
 <!-- Persistent, so the notice is announced when it appears: `trn-banner` leaves announcing
      to its consumer, and a live region inserted with its text is not reliably read. -->
 <span class="sr-only" aria-live="assertive">{{
@@ -58,21 +62,22 @@
   class="composer"
   [class.composer--recording]="attachments.recordingVoice()"
 >
-  <!-- The expression panel (GIFs, stickers and emoji) renders in the CDK overlay container,
-       anchored to the input row, so no `overflow: hidden` ancestor can cut it in half.
-       `[(open)]` because it is opened and closed by the person using it, so an outside press
-       is theirs to answer. -->
+  <!-- On a wide screen the expression panel (GIFs, stickers and emoji) renders in the CDK
+       overlay container, anchored to the input row, so no `overflow: hidden` ancestor can cut
+       it in half; where the app prefers sheets it opens as a bottom sheet instead (see
+       `togglePicker`). An outside press closes the anchored panel and writes back `false`. -->
   <ng-template
     [trnAnchoredOverlay]="composerField"
-    [(open)]="pickerOpen"
+    [open]="pickerOpen() && !pickerSheet()"
+    (openChange)="pickerOpen.set($event)"
     side="top"
     align="end"
   >
     <trn-expression-picker
       [panelId]="pickerId"
-      [gifEnabled]="attachments.gifEnabled()"
+      [gifEnabled]="panelGifEnabled()"
       [gifBusy]="attachments.gifDownloading()"
-      [stickerEnabled]="stickerEnabled()"
+      [stickerEnabled]="panelStickerEnabled()"
       [stickerPacks]="stickerPacks()"
       (emojiPick)="onPickerSelect($event)"
       (gifSelect)="onGifSelect($event)"
@@ -230,12 +235,14 @@
       (dismissed)="formatting.restoreSelection()"
     />
     <button
+      #pickerTrigger
       type="button"
       trnIconButton
       class="composer__emoji"
       trnTooltip="Emoji, GIFs and stickers"
       aria-label="Emoji, GIFs and stickers"
       data-testid="composer-expressions"
+      [attr.aria-busy]="attachments.gifDownloading() ? true : null"
       [attr.aria-expanded]="pickerOpen()"
       [attr.aria-controls]="pickerOpen() ? pickerId : null"
       (click)="togglePicker()"

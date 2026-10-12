@@ -72,6 +72,7 @@ interface Options {
   readonly stickerEnabled?: boolean;
   readonly stickerPacks?: readonly ImagePack[];
   readonly remembered?: ComposerExpressionTab;
+  readonly presentation?: 'popover' | 'sheet';
 }
 
 /** The latest render; queries stay inside its container, since earlier renders are not torn down. */
@@ -107,6 +108,7 @@ async function renderPanel(options: Options = {}) {
       gifEnabled: options.gifEnabled ?? true,
       stickerEnabled: options.stickerEnabled ?? true,
       stickerPacks: options.stickerPacks ?? [stickerPack],
+      presentation: options.presentation ?? 'popover',
     },
     on: handlers,
     providers: [
@@ -296,5 +298,99 @@ describe('ExpressionPickerComponent', () => {
     });
 
     expect(handlers.dismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('selects the focused tab with Enter and with Space', async () => {
+    const { fixture, remember } = await renderPanel();
+    const tab = (name: string) => view.getByRole('tab', { name });
+
+    tab('Emoji').focus();
+    fireEvent.keyDown(tab('Emoji'), { key: 'ArrowRight' });
+    fireEvent.keyDown(tab('GIFs'), { key: 'Enter' });
+    await fixture.whenStable();
+    expect(tab('GIFs')).toHaveAttribute('aria-selected', 'true');
+
+    tab('Stickers').focus();
+    fireEvent.keyDown(tab('GIFs'), { key: 'ArrowRight' });
+    fireEvent.keyDown(tab('Stickers'), { key: ' ' });
+    await fixture.whenStable();
+    expect(tab('Stickers')).toHaveAttribute('aria-selected', 'true');
+    expect(remember.mock.calls.map(([chosen]) => chosen)).toEqual([
+      'gif',
+      'sticker',
+    ]);
+  });
+
+  it('gives the single tab stop back to the selected tab once focus leaves the tab row', async () => {
+    // Shift+Tab from a picker's search field lands on the one tab with tabindex 0, so that
+    // has to be the selected tab again, not the one the arrows last visited.
+    const { fixture } = await renderPanel();
+    const emoji = view.getByRole('tab', { name: 'Emoji' });
+    emoji.focus();
+    fireEvent.keyDown(emoji, { key: 'ArrowRight' });
+    await fixture.whenStable();
+    const gifs = view.getByRole('tab', { name: 'GIFs' });
+    expect(gifs).toHaveAttribute('tabindex', '0');
+
+    fireEvent.focusOut(gifs, { relatedTarget: document.body });
+    await fixture.whenStable();
+
+    expect(emoji).toHaveAttribute('tabindex', '0');
+    expect(gifs).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('keeps one tab panel, under one id, whichever tab shows', async () => {
+    const { fixture } = await renderPanel();
+    const panel = view.getByRole('tabpanel');
+    const id = panel.id;
+
+    view.getByRole('tab', { name: 'GIFs' }).click();
+    await fixture.whenStable();
+
+    expect(view.getByRole('tabpanel')).toBe(panel);
+    expect(panel.id).toBe(id);
+    expect(view.getByRole('tab', { name: 'GIFs' })).toHaveAttribute(
+      'aria-controls',
+      id,
+    );
+    expect(panel).toHaveAttribute(
+      'aria-labelledby',
+      view.getByRole('tab', { name: 'GIFs' }).id,
+    );
+  });
+
+  it("names the tab row by what it chooses, not with the trigger's name", async () => {
+    await renderPanel();
+
+    expect(view.getByRole('tablist')).toHaveAttribute(
+      'aria-label',
+      'Picker type',
+    );
+  });
+
+  it("is the emoji picker's width, in rem and clamped to the viewport, as a popover", async () => {
+    const { fixture } = await renderPanel();
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(host.style.width).toBe('calc(18.875rem)'); // 302rem / 16
+    expect(host.style.maxWidth).toBe('calc(100vw - 1rem)');
+  });
+
+  it('fills the sheet that holds it', async () => {
+    const { fixture } = await renderPanel({ presentation: 'sheet' });
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(host.style.width).toBe('100%');
+    expect(host.getAttribute('data-presentation')).toBe('sheet');
+  });
+
+  it('leaves Escape to the sheet that holds it', async () => {
+    const { handlers } = await renderPanel({ presentation: 'sheet' });
+
+    fireEvent.keyDown(view.getByRole('tab', { name: 'Emoji' }), {
+      key: 'Escape',
+    });
+
+    expect(handlers.dismiss).not.toHaveBeenCalled();
   });
 });

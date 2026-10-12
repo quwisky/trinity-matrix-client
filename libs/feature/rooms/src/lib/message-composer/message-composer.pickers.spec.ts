@@ -382,6 +382,134 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     expect(cmp.pickerOpen()).toBe(true);
   });
 
+  it('tells assistive tech the trigger is busy while a chosen GIF downloads', async () => {
+    const { fixture, container } = await renderComposer(
+      {},
+      gifProviders(() => NEVER),
+    );
+    const cmp = fixture.componentInstance;
+    const trigger = container.querySelector<HTMLElement>('.composer__emoji');
+    const status = container.querySelector('[data-testid=composer-gif-status]');
+    expect(trigger?.getAttribute('aria-busy')).toBeNull();
+    expect(status?.textContent?.trim()).toBe('');
+
+    cmp.onGifSelect(gifResult);
+    await fixture.whenStable();
+
+    expect(trigger?.getAttribute('aria-busy')).toBe('true');
+    expect(status?.getAttribute('aria-live')).toBe('polite');
+    expect(status?.textContent?.trim()).toBe('Sending GIF…');
+  });
+
+  it('offers only Emoji while editing a message, with no tab bar', async () => {
+    // An edit cannot become a GIF or a sticker; the `+` tray is disabled while editing for
+    // the same reason.
+    const { fixture } = await renderComposer(
+      { editing: true, stickerPacks: [stickerPack] },
+      gifProviders(),
+    );
+    fixture.componentInstance.pickerOpen.set(true);
+    await fixture.whenStable();
+
+    expect(
+      document.querySelector('[data-testid=expression-picker]'),
+    ).not.toBeNull();
+    expect(document.querySelector('[role=tablist]')).toBeNull();
+    expect(
+      document.querySelector('[data-testid=expression-tab-gif]'),
+    ).toBeNull();
+    expect(
+      document.querySelector('[data-testid=expression-tab-sticker]'),
+    ).toBeNull();
+  });
+
+  it('refuses a GIF or a sticker while editing a message', async () => {
+    const download = vi.fn();
+    const { fixture } = await renderComposer(
+      { editing: true, stickerPacks: [stickerPack] },
+      gifProviders(download),
+    );
+    const cmp = fixture.componentInstance;
+    const sent = vi.fn();
+    cmp.stickerSelect.subscribe(sent);
+
+    cmp.onGifSelect(gifResult);
+    cmp.onStickerSelect(stickerPack.images[0]!);
+
+    expect(download).not.toHaveBeenCalled();
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  it('opens the panel as a bottom sheet where the app prefers sheets', async () => {
+    const { fixture, container } = await renderComposer({}, gifProviders());
+    const cmp = fixture.componentInstance;
+    vi.spyOn(TestBed.inject(TrnSurfaceService), 'prefersSheet').mockReturnValue(
+      true,
+    );
+    const trigger = container.querySelector<HTMLElement>('.composer__emoji')!;
+
+    trigger.click();
+    await fixture.whenStable();
+
+    const sheet = document.querySelector('trn-sheet-frame');
+    const panel = document.querySelector<HTMLElement>(
+      '[data-testid=expression-picker]',
+    );
+    expect(sheet).not.toBeNull();
+    expect(sheet?.contains(panel)).toBe(true);
+    expect(panel?.getAttribute('data-presentation')).toBe('sheet');
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      document.querySelector('[data-testid=expression-tab-gif]'),
+    ).not.toBeNull();
+
+    // Picking closes it, as it closes the popover.
+    cmp.onPickerSelect({
+      native: '😎',
+      id: 'sunglasses',
+      colons: ':sunglasses:',
+    });
+    await fixture.whenStable();
+
+    expect(cmp.pickerOpen()).toBe(false);
+    expect(document.querySelector('trn-sheet-frame')).toBeNull();
+  });
+
+  it('reports a sheet the person closed as closed', async () => {
+    const { fixture, container } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    vi.spyOn(TestBed.inject(TrnSurfaceService), 'prefersSheet').mockReturnValue(
+      true,
+    );
+    container.querySelector<HTMLElement>('.composer__emoji')!.click();
+    await fixture.whenStable();
+
+    document
+      .querySelector<HTMLButtonElement>('[data-testid=dialog-close]')
+      ?.click();
+    await fixture.whenStable();
+
+    expect(document.querySelector('trn-sheet-frame')).toBeNull();
+    expect(cmp.pickerOpen()).toBe(false);
+  });
+
+  it('keeps the anchored panel where the app does not prefer sheets', async () => {
+    const { fixture, container } = await renderComposer();
+    vi.spyOn(TestBed.inject(TrnSurfaceService), 'prefersSheet').mockReturnValue(
+      false,
+    );
+
+    container.querySelector<HTMLElement>('.composer__emoji')!.click();
+    await fixture.whenStable();
+
+    expect(document.querySelector('trn-sheet-frame')).toBeNull();
+    expect(
+      document
+        .querySelector('[data-testid=expression-picker]')
+        ?.getAttribute('data-presentation'),
+    ).toBe('popover');
+  });
+
   it('ends an active reply when a GIF is sent (media carries no reply relation)', async () => {
     const { fixture } = await renderComposer(
       { replyingTo: 'Alice' },

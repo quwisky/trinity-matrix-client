@@ -1,14 +1,22 @@
 <!-- With Emoji alone there is nothing to choose between, so the panel is the emoji picker
      exactly as it was before the tabs existed. -->
 @if (tabs().length > 1) {
+  <!-- The track carries the same chrome as the overlay surface recipe the GIF and sticker
+       cards use (subtle border, raised surface, overlay radius and shadow), so the row and the
+       cards beneath it read as one layer. Inside a sheet it drops the shadow: the sheet is the
+       layer there. -->
   <div
     role="tablist"
-    aria-label="Emoji, GIFs and stickers"
-    class="grid auto-cols-fr grid-flow-col gap-1 rounded-[var(--trinity-shape-overlay-radius)] border border-[var(--trinity-border-subtle)] bg-[var(--trinity-surface-floating)] p-1 shadow-overlay"
+    aria-label="Picker type"
+    class="grid auto-cols-fr grid-flow-col gap-1 rounded-[var(--trinity-shape-overlay-radius)] border border-[var(--trinity-border-subtle)] bg-[var(--trinity-surface-raised)] p-1"
+    [class.shadow-overlay]="presentation() === 'popover'"
     data-testid="expression-tabs"
     (keydown)="onTabKeydown($event)"
+    (focusout)="onTabFocusOut($event)"
   >
     @for (tab of tabs(); track tab) {
+      <!-- Plain buttons rather than `trnBtn`: the button recipe has no selected-tab state,
+           and a shared tabs recipe is tracked in #1269. -->
       <button
         #tab
         type="button"
@@ -16,7 +24,7 @@
         class="min-h-9 rounded-[var(--trinity-shape-control-radius)] px-3 text-sm font-semibold text-[var(--trinity-text-muted)] hover:bg-[var(--trinity-state-hover-surface)] hover:text-[var(--trinity-state-hover-foreground)] aria-selected:bg-[var(--trinity-state-selected-surface)] aria-selected:text-[var(--trinity-state-selected-foreground)] pointer-coarse:min-h-11"
         [id]="tabId(tab)"
         [attr.aria-selected]="tab === active()"
-        [attr.aria-controls]="tab === active() ? tabPanelId(tab) : null"
+        [attr.aria-controls]="tab === active() ? tabPanelId() : null"
         [attr.tabindex]="tab === tabStop() ? 0 : -1"
         [attr.data-testid]="'expression-tab-' + tab"
         (click)="select(tab)"
@@ -26,9 +34,14 @@
     }
   </div>
 }
+<!-- Focusable so a sheet can put focus on the content when it opens; the GIF and sticker
+     pickers then move it on into their own search fields. -->
 <div
+  class="grid outline-none"
+  tabindex="-1"
+  data-expression-content
   [attr.role]="tabs().length > 1 ? 'tabpanel' : null"
-  [attr.id]="tabs().length > 1 ? tabPanelId(active()) : null"
+  [attr.id]="tabs().length > 1 ? tabPanelId() : null"
   [attr.aria-labelledby]="tabs().length > 1 ? tabId(active()) : null"
   [attr.aria-busy]="active() === 'gif' && gifBusy() ? true : null"
 >
@@ -45,7 +58,11 @@
       />
     }
     @case ('emoji') {
-      <trn-emoji-picker (picked)="emojiPick.emit($event)" />
+      <!-- The vendor grid is a fixed px width; centred, it sits evenly in a wider panel. -->
+      <trn-emoji-picker
+        class="justify-self-center"
+        (picked)="emojiPick.emit($event)"
+      />
     }
   }
 </div>

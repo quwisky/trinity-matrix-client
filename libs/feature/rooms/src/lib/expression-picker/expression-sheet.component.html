@@ -1,0 +1,19 @@
+<trn-dialog-shell
+  title="Emoji, GIFs and stickers"
+  [titleHidden]="true"
+  bodyClass="px-3 pb-3 pt-0"
+>
+  <trn-expression-picker
+    presentation="sheet"
+    [panelId]="bridge().panelId"
+    [gifEnabled]="bridge().gifEnabled()"
+    [gifBusy]="bridge().gifBusy()"
+    [stickerEnabled]="bridge().stickerEnabled()"
+    [stickerPacks]="bridge().stickerPacks()"
+    (emojiPick)="bridge().emojiPick($event)"
+    (gifSelect)="bridge().gifSelect($event)"
+    (stickerSelect)="bridge().stickerSelect($event)"
+    (dismiss)="bridge().dismiss()"
+    (manage)="bridge().manage()"
+  />
+</trn-dialog-shell>

@@ -54,9 +54,16 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
   ],
   templateUrl: './expression-picker.component.html',
   host: {
-    // The emoji picker's own fixed width in px (it does not scale with the text size), so
-    // switching tabs does not resize the panel; the GIF and sticker surfaces stretch to it.
-    class: 'flex w-[302px] max-w-full flex-col items-stretch gap-2',
+    class: 'flex flex-col items-stretch gap-2',
+    // As a popover: the emoji picker's 302px expressed in rem, so it follows the text size
+    // and stays one width across tabs, clamped to the viewport less the overlay's 8px
+    // margins. The vendor emoji grid itself is fixed in px and is centred inside. As a
+    // sheet: the sheet's full width.
+    '[style.width]':
+      "presentation() === 'sheet' ? '100%' : 'calc(302rem / 16)'",
+    '[style.max-width]':
+      "presentation() === 'sheet' ? null : 'calc(100vw - 1rem)'",
+    '[attr.data-presentation]': 'presentation()',
     '[attr.id]': 'panelId()',
     'data-testid': 'expression-picker',
     '(keydown.escape)': 'onEscape($event)',
@@ -83,6 +90,8 @@ export class ExpressionPickerComponent {
   readonly stickerPacks = input<readonly ImagePack[]>([]);
   /** A chosen GIF is being fetched. */
   readonly gifBusy = input(false);
+  /** Anchored above the composer, or filling a bottom sheet on a phone or narrow screen. */
+  readonly presentation = input<'popover' | 'sheet'>('popover');
 
   readonly emojiPick = output<TrnEmojiPick>();
   readonly gifSelect = output<GifResult>();
@@ -119,8 +128,9 @@ export class ExpressionPickerComponent {
     return `${this.panelId()}-tab-${tab}`;
   }
 
-  protected tabPanelId(tab: ComposerExpressionTab): string {
-    return `${this.panelId()}-tabpanel-${tab}`;
+  /** One panel whose content swaps, so its element and id survive a tab change. */
+  protected tabPanelId(): string {
+    return `${this.panelId()}-tabpanel`;
   }
 
   protected select(tab: ComposerExpressionTab): void {
@@ -149,6 +159,13 @@ export class ExpressionPickerComponent {
       case 'End':
         to = tabs.length - 1;
         break;
+      case 'Enter':
+      case ' ':
+        // Handled here rather than left to the button's own activation, so a held key
+        // selects once and the behaviour does not depend on how the host synthesises clicks.
+        event.preventDefault();
+        this.select(this.tabStop());
+        return;
       default:
         return;
     }
@@ -161,7 +178,20 @@ export class ExpressionPickerComponent {
     this.tabButtons()[to]?.nativeElement.focus();
   }
 
+  /** Focus left the tab row: the selected tab holds the tab stop again. */
+  protected onTabFocusOut(event: FocusEvent): void {
+    const next = event.relatedTarget;
+    const row = event.currentTarget as HTMLElement;
+    if (!(next instanceof Node) || !row.contains(next)) {
+      this.focusTarget.set(null);
+    }
+  }
+
   protected onEscape(event: Event): void {
+    // A sheet is a dialog, which closes itself on Escape and restores focus to the trigger.
+    if (this.presentation() === 'sheet') {
+      return;
+    }
     event.preventDefault();
     this.dismiss.emit();
   }

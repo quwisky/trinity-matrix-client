@@ -50,10 +50,18 @@ import { ComposerDrafts } from './composer-drafts';
 import { ComposerFormatting } from './composer-formatting';
 import { composerPreview } from './composer-preview';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { TrnAnchoredOverlayDirective } from '@trinity/components/overlay';
+import {
+  TrnAnchoredOverlayDirective,
+  TrnSurfaceService,
+  type TrnDialogRef,
+} from '@trinity/components/overlay';
 import { TrnEmojiIndex, type TrnEmojiPick } from '@trinity/components/controls';
 import { type MentionMember } from './mention-autocomplete';
 import { ExpressionPickerComponent } from '../expression-picker/expression-picker.component';
+import {
+  ExpressionSheetComponent,
+  type ExpressionSheetBridge,
+} from '../expression-picker/expression-sheet.component';
 import { ComposerExpressionTabPreference } from '@trinity/data-access/timeline';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 
@@ -122,10 +130,10 @@ export class MessageComposerComponent {
   private readonly expressionTab = inject(ComposerExpressionTabPreference);
   /**
    * The expression panel's id. Unique per instance, because two composers are routinely
-   * alive at once: the room's own and the thread panel's. A shared literal put the same `id` on both open panels and left
-   * the trigger's `aria-controls` resolving to whichever the document reached first — the
-   * failure ARIA is least able to report, since the attribute is present and points at a
-   * real element either way.
+   * alive at once: the room's own and the thread panel's. A shared literal put the same
+   * `id` on both open panels and left the trigger's `aria-controls` resolving to whichever
+   * the document reached first — the failure ARIA is least able to report, since the
+   * attribute is present and points at a real element either way.
    */
   protected readonly pickerId = `composer-expressions-${nextPickerId++}`;
 
@@ -234,6 +242,15 @@ export class MessageComposerComponent {
 
   /** Whether the expression panel (GIFs, stickers and emoji) is open. */
   readonly pickerOpen = signal(false);
+  /** Whether the open panel is a bottom sheet rather than anchored; decided at each open. */
+  protected readonly pickerSheet = signal(false);
+  /** An edit cannot become a GIF or a sticker, so editing offers Emoji alone. */
+  protected readonly panelGifEnabled = computed(
+    () => this.attachments.gifEnabled() && !this.editing(),
+  );
+  protected readonly panelStickerEnabled = computed(
+    () => this.stickerEnabled() && !this.editing(),
+  );
   readonly stickerEnabled = computed(() =>
     this.stickerPacks().some((pack) =>
       pack.images.some((image) => image.usage.includes('sticker')),
@@ -327,6 +344,11 @@ export class MessageComposerComponent {
   private readonly videoCaptureInput =
     viewChild<ElementRef<HTMLInputElement>>('videoCaptureInput');
   private readonly voiceBar = viewChild(ComposerVoiceBarComponent);
+  private readonly pickerTrigger =
+    viewChild<ElementRef<HTMLButtonElement>>('pickerTrigger');
+  private readonly surfaces = inject(TrnSurfaceService);
+  /** The open expression sheet, while there is one. */
+  private pickerSheetRef: TrnDialogRef | null = null;
   private readonly injector = inject(Injector);
   private readonly emojiIndex = inject(TrnEmojiIndex);
 
@@ -467,6 +489,16 @@ export class MessageComposerComponent {
       },
       this.injector,
     );
+
+    // The sheet follows `pickerOpen` like the anchored panel does, so every path that closes
+    // the panel (a pick, a send, a room switch, Escape) closes the sheet too.
+    effect(() => {
+      const sheetOpen = this.pickerOpen() && this.pickerSheet();
+      untracked(() =>
+        sheetOpen ? this.openPickerSheet() : this.closePickerSheet(),
+      );
+    });
+    this.destroyRef.onDestroy(() => this.closePickerSheet());
 
     // Highlight the first suggestion whenever either result set changes.
     effect(() => {
@@ -678,22 +710,73 @@ export class MessageComposerComponent {
     this.field.focus();
   }
 
-  /** Open or close the expression panel (GIFs, stickers and emoji). */
+  /**
+   * Open or close the expression panel (GIFs, stickers and emoji): a bottom sheet where the
+   * app prefers sheets (a phone, a tablet or a narrow window), the anchored panel otherwise.
+   */
   togglePicker(): void {
+    if (!this.pickerOpen()) {
+      this.pickerSheet.set(this.surfaces.prefersSheet());
+    }
     this.pickerOpen.update((open) => !open);
   }
 
+  private openPickerSheet(): void {
+    if (this.pickerSheetRef) {
+      return;
+    }
+    const bridge: ExpressionSheetBridge = {
+      panelId: this.pickerId,
+      gifEnabled: this.panelGifEnabled,
+      stickerEnabled: this.panelStickerEnabled,
+      stickerPacks: this.stickerPacks,
+      gifBusy: this.attachments.gifDownloading,
+      emojiPick: (pick) => this.onPickerSelect(pick),
+      gifSelect: (gif) => this.onGifSelect(gif),
+      stickerSelect: (sticker) => this.onStickerSelect(sticker),
+      manage: () => this.manageImagePacks(),
+      dismiss: () => this.closePicker(),
+    };
+    const ref = this.surfaces.open(ExpressionSheetComponent, {
+      ariaLabel: 'Emoji, GIFs and stickers',
+      // The content, not the first tabbable (the sheet's close button); the GIF and sticker
+      // pickers then move focus into their search fields.
+      autoFocus: '[data-expression-content]',
+      inputs: { bridge },
+    });
+    this.pickerSheetRef = ref;
+    ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      if (this.pickerSheetRef === ref) {
+        // Closed by the person (handle, backdrop, Escape, close button): the panel is shut.
+        this.pickerSheetRef = null;
+        this.pickerOpen.set(false);
+      }
+    });
+  }
+
+  private closePickerSheet(): void {
+    const ref = this.pickerSheetRef;
+    this.pickerSheetRef = null;
+    ref?.close();
+  }
+
   onStickerSelect(sticker: ImagePackImage): void {
-    if (this.sendBlocked()) return;
+    if (this.sendBlocked() || this.editing()) return;
     this.pickerOpen.set(false);
     this.stickerSelect.emit(sticker);
     queueMicrotask(() => this.field.focus());
   }
 
-  /** The panel asked to be dismissed (Escape inside it); the caret goes back to the input. */
+  /**
+   * The panel asked to be dismissed (Escape inside it). From the anchored panel the caret goes
+   * back to the input; a sheet hands focus back to the button that opened it, as sheets do.
+   */
   closePicker(): void {
+    const sheet = this.pickerSheet();
     this.pickerOpen.set(false);
-    queueMicrotask(() => this.field.focus());
+    queueMicrotask(() =>
+      sheet ? this.pickerTrigger()?.nativeElement.focus() : this.field.focus(),
+    );
   }
 
   manageImagePacks(): void {
@@ -741,11 +824,17 @@ export class MessageComposerComponent {
 
   /**
    * A GIF was chosen → download it and send it through the media path; the panel closes
-   * once it arrives. Refused while the Conversation cannot send or another upload runs,
-   * which is when the `+` tray used to disable its GIF item.
+   * once it arrives. Refused while editing, while the Conversation cannot send or while
+   * another upload runs, which is when the `+` tray used to disable its GIF item.
    */
   onGifSelect(gif: GifResult): void {
-    if (this.sendBlocked() || this.contextUploadProgress() !== null) return;
+    if (
+      this.sendBlocked() ||
+      this.editing() ||
+      this.contextUploadProgress() !== null
+    ) {
+      return;
+    }
     this.attachments.gifSelected(gif);
   }
 

@@ -87,7 +87,6 @@ export class ComposerInsertMenuComponent {
   readonly contextKey = input<string | null>(null);
   /** Edit mode disables the whole tray — an edit can't become an attachment. */
   readonly editing = input(false);
-  /** Whether an attachment upload is in flight (blocks another attachment only). */
   /**
    * A media send is in flight. Gates the item that dispatches IMMEDIATELY — a voice clip
    * goes straight out and would collide with it. Attaching is deliberately not gated:
