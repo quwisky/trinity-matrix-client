@@ -484,6 +484,27 @@ describe('ReportBugDialogComponent', () => {
     ).toBe(false);
   });
 
+  it('says nothing when the share sheet is dismissed', async () => {
+    const { fixture, save } = await setup();
+
+    screen.getByTestId('report-bug-save').click();
+    fixture.detectChanges();
+    expect(screen.getByTestId('report-bug-saved')).toBeTruthy();
+
+    save.mockReturnValueOnce(of({ kind: 'cancelled' }));
+    screen.getByTestId('report-bug-save').click();
+    fixture.detectChanges();
+
+    expect(screen.queryByTestId('report-bug-save-error')).toBeNull();
+    expect(screen.queryByTestId('report-bug-saved')).toBeNull();
+    expect(
+      screen.queryByRole('region', { name: 'Diagnostic log preview' }),
+    ).toBeNull();
+    expect(
+      (screen.getByTestId('report-bug-save') as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
   it('does not show a past success next to a later failure', async () => {
     const { fixture, save } = await setup();
 

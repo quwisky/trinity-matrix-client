@@ -59,10 +59,11 @@ const reportSchema = schema<ReportModel>((path) => {
 });
 
 /**
- * Report a bug, opened from Settings › Advanced, the sign-in screen or System status: describe
- * the problem, preview the redacted diagnostic log, save it as `trinity-<date>.log`, and open
- * a pre-filled GitHub issue. The description only pre-fills the issue and is never stored.
- * The preview and the saved file are the same text, from one export.
+ * Report a bug, opened from Settings › Advanced, the sign-in screen, System status or the
+ * desktop title bar: describe the problem, preview the redacted diagnostic log, save it as
+ * `trinity-<date>.log`, and open a pre-filled GitHub issue. The description only pre-fills
+ * the issue and is never stored. The preview and the saved file are the same text, from one
+ * export.
  */
 @Component({
   selector: 'trn-report-bug-dialog',
@@ -210,10 +211,23 @@ export class ReportBugDialogComponent {
       .subscribe({
         next: (outcome) => {
           this.saving.set(false);
-          if (outcome.kind === 'completed') {
-            this.saved.set(true);
-          } else {
-            this.failSave();
+          switch (outcome.kind) {
+            case 'completed':
+              this.saved.set(true);
+              break;
+            case 'cancelled':
+              // A dismissed share sheet may have saved nothing, so it is neither.
+              break;
+            case 'unavailable':
+            case 'rejected':
+              this.failSave();
+              break;
+            default: {
+              // A new outcome kind fails to compile here; at run time it is never a success.
+              const unhandled: never = outcome;
+              this.failSave();
+              return unhandled;
+            }
           }
         },
         error: () => {
