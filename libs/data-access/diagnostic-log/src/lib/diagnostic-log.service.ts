@@ -6,7 +6,7 @@ import {
   PreferenceStoreService,
   type PreferenceCommandOutcome,
 } from '@trinity/runtime/preferences';
-import { defer, from, map, of, switchMap, type Observable } from 'rxjs';
+import { defer, filter, from, map, of, switchMap, type Observable } from 'rxjs';
 import { buildLabel } from './build-label';
 import {
   buildDiagnosticBundle,
@@ -36,11 +36,11 @@ import {
   saveKeepLogSetting,
 } from './keep-diagnostic-log.preference';
 import { describePlatform, readPlatformFacts } from './platform-description';
+import { readAccounts } from './report-facts';
 import {
-  diagnosticReportFacts,
-  readAccounts,
-  type DiagnosticReportFacts,
-} from './report-facts';
+  prepareDiagnosticReport,
+  type DiagnosticReportProgress,
+} from './report/prepare-report';
 import { scrubMessage } from './scrub-secrets';
 import type { DiagnosticSnapshot } from './store/diagnostic-log-store';
 
@@ -235,48 +235,33 @@ export class DiagnosticLogService {
   }
 
   /**
-   * The redacted file and the facts for the issue form, from everything stored plus the
-   * last unflushed seconds. Waits until the setting is known (`start()` must have run, as
-   * `provideDiagnosticLog()` ensures); with the log off it carries no entries and never
-   * opens the store. Cold; the account source failing leaves the accounts out rather than
-   * failing the export.
+   * Prepare a bug report: the issue's facts as soon as the accounts are read, then the
+   * redacted file from everything stored plus the last unflushed seconds. The file waits
+   * until the setting is known (`start()` must have run, as `provideDiagnosticLog()`
+   * ensures); with the log off it carries no entries and never opens the store. Cold; the
+   * account source failing leaves the accounts out rather than failing the report.
    */
-  export(): Observable<DiagnosticBundle> {
-    return defer(() => from(this.settled)).pipe(
-      switchMap(() =>
-        this._keepLog() ? from(this.recorder.snapshot()) : of(LOG_OFF_SNAPSHOT),
-      ),
-      switchMap((snapshot) =>
-        readAccounts(this.accountSource).pipe(
-          map((accounts) =>
-            buildDiagnosticBundle({
-              now: new Date(),
-              build: this.build,
-              platform: describePlatform(readPlatformFacts()),
-              accounts,
-              snapshot,
-            }),
-          ),
+  prepareReport(): Observable<DiagnosticReportProgress> {
+    return prepareDiagnosticReport({
+      build: this.build,
+      platform: () => describePlatform(readPlatformFacts()),
+      accounts: readAccounts(this.accountSource),
+      snapshot: defer(() => from(this.settled)).pipe(
+        switchMap(() =>
+          this._keepLog()
+            ? from(this.recorder.snapshot())
+            : of(LOG_OFF_SNAPSHOT),
         ),
       ),
-    );
+      bundle: (input) => of(buildDiagnosticBundle(input)),
+    });
   }
 
-  /**
-   * The facts for the issue form alone, without the setting or the store: a report can be
-   * filed while the log is still loading, or when it could not be read. Cold.
-   */
-  facts(): Observable<DiagnosticReportFacts> {
-    return defer(() =>
-      readAccounts(this.accountSource).pipe(
-        map((accounts) =>
-          diagnosticReportFacts(
-            this.build,
-            describePlatform(readPlatformFacts()),
-            accounts,
-          ),
-        ),
-      ),
+  /** The redacted file alone, as {@link prepareReport} builds it. Cold. */
+  export(): Observable<DiagnosticBundle> {
+    return this.prepareReport().pipe(
+      filter((step) => step.kind === 'bundle'),
+      map((step) => step.bundle),
     );
   }
 

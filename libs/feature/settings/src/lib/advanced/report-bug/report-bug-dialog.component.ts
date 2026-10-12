@@ -30,8 +30,9 @@ import {
   DiagnosticLogService,
   buildBugReportUrl,
   type DiagnosticBundle,
+  type DiagnosticReportFacts,
 } from '@trinity/data-access/diagnostic-log';
-import { EMPTY, catchError, finalize } from 'rxjs';
+import { finalize } from 'rxjs';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { HostFileExportService } from '@trinity/runtime/host';
 
@@ -89,10 +90,8 @@ export class ReportBugDialogComponent {
   private readonly logState = signal<ReportLog>({ kind: 'loading' });
   /** Undefined until the host answers, so "not available" never flashes before then. */
   private readonly fileSupport = toSignal(this.files.support());
-  /** The issue's facts without the log, so GitHub needn't wait for a slow or failed export. */
-  private readonly facts = toSignal(
-    this.log.facts().pipe(catchError(() => EMPTY)),
-  );
+  /** The issue's facts, known before the log, so GitHub needn't wait for a slow export. */
+  private readonly facts = signal<DiagnosticReportFacts | null>(null);
   /** GitHub needs only the facts: from the export once it is ready, or read on their own. */
   private readonly reportFacts = computed(
     () => this.bundle()?.facts ?? this.facts() ?? null,
@@ -146,10 +145,16 @@ export class ReportBugDialogComponent {
 
   constructor() {
     this.log
-      .export()
+      .prepareReport()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (bundle) => this.logState.set({ kind: 'ready', bundle }),
+        next: (step) => {
+          if (step.kind === 'facts') {
+            this.facts.set(step.facts);
+          } else {
+            this.logState.set({ kind: 'ready', bundle: step.bundle });
+          }
+        },
         error: () => this.logState.set({ kind: 'unavailable' }),
       });
   }

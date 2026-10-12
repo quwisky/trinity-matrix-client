@@ -6,7 +6,7 @@ import {
   type PreferenceStorageAdapter,
   type PreferenceStorageReadOutcome,
 } from '@trinity/runtime/preferences';
-import { Subject, firstValueFrom, of, throwError } from 'rxjs';
+import { Subject, firstValueFrom, of, throwError, toArray } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MAX_MESSAGE_LENGTH,
@@ -24,6 +24,7 @@ import {
   DiagnosticLogService,
   MAX_EARLY_ENTRIES,
 } from './diagnostic-log.service';
+import type { DiagnosticReportProgress } from './report/prepare-report';
 import {
   MemoryLogStore,
   type DiagnosticLogStore,
@@ -796,37 +797,62 @@ describe('DiagnosticLogService', () => {
       expect(entryCount).toBe(0);
     });
 
-    it('reads the facts for the issue without the setting or the store', async () => {
+    it('reports the facts first, without the setting or the store, then the file, probing once', async () => {
       const reads = new Subject<PreferenceStorageReadOutcome>();
-      const openStore = vi.fn(
-        () => new Promise<DiagnosticLogStore>(() => undefined),
-      );
+      const accounts = vi.fn(() => of([ALICE_ACCOUNT]));
       TestBed.configureTestingModule({
         providers: [
           { provide: BUILD_INFO, useValue: BUILD },
-          { provide: DIAGNOSTIC_LOG_STORE_FACTORY, useValue: openStore },
+          {
+            provide: DIAGNOSTIC_LOG_STORE_FACTORY,
+            useValue: () => Promise.resolve(store),
+          },
           { provide: DIAGNOSTIC_LOG_STORE_REMOVER, useValue: remove },
           {
             provide: PREFERENCE_STORAGE_ADAPTER,
             useValue: pendingAdapter(reads),
           },
-          {
-            provide: DIAGNOSTIC_ACCOUNT_SOURCE,
-            useValue: { accounts: () => of([ALICE_ACCOUNT]) },
-          },
+          { provide: DIAGNOSTIC_ACCOUNT_SOURCE, useValue: { accounts } },
         ],
       });
       const service = TestBed.inject(DiagnosticLogService);
       service.start();
+      const progress: DiagnosticReportProgress[] = [];
+      const done = new Promise<void>((resolve) =>
+        service.prepareReport().subscribe({
+          next: (step) => progress.push(step),
+          complete: resolve,
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(0);
 
-      const facts = await firstValueFrom(service.facts());
+      expect(progress).toEqual([
+        {
+          kind: 'facts',
+          signedIn: true,
+          facts: {
+            version: 'Trinity v1.2.3 · abc1234',
+            platform: expect.any(String),
+            homeservers: ['Synapse 1.140.0'],
+          },
+        },
+      ]);
+      reads.next({ kind: 'missing' });
+      reads.complete();
+      await done;
 
-      expect(facts).toEqual({
-        version: 'Trinity v1.2.3 · abc1234',
-        platform: expect.any(String),
-        homeservers: ['Synapse 1.140.0'],
-      });
-      expect(openStore).not.toHaveBeenCalled();
+      expect(progress.map((step) => step.kind)).toEqual(['facts', 'bundle']);
+      expect(accounts).toHaveBeenCalledOnce();
+    });
+
+    it('reports nobody signed in when there are no accounts', async () => {
+      const service = setup();
+
+      const [first] = await firstValueFrom(
+        service.prepareReport().pipe(toArray()),
+      );
+
+      expect(first).toMatchObject({ kind: 'facts', signedIn: false });
     });
 
     it('exports when the user chooses while the setting is still being read', async () => {

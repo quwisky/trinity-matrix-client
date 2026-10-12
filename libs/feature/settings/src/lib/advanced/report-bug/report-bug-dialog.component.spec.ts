@@ -9,6 +9,7 @@ import {
   provideDiagnosticLog,
   type DiagnosticBundle,
   type DiagnosticReportFacts,
+  type DiagnosticReportProgress,
 } from '@trinity/data-access/diagnostic-log';
 import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
 import { TrnDialogRef } from '@trinity/components/overlay';
@@ -16,7 +17,7 @@ import { ExternalBrowserService } from '@trinity/platform-native';
 import { HostFileExportService } from '@trinity/runtime/host';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, of, throwError, type Observable } from 'rxjs';
+import { NEVER, concat, map, of, throwError, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ReportBugDialogComponent } from './report-bug-dialog.component';
 
@@ -36,6 +37,8 @@ interface SetupOptions {
   readonly exported?: Observable<DiagnosticBundle>;
   /** The facts read without the log; the bundle's facts unless a test says otherwise. */
   readonly facts?: Observable<DiagnosticReportFacts>;
+  /** Whether anyone is signed in, as the facts report it; yes unless a test says otherwise. */
+  readonly signedIn?: boolean;
   readonly saved?: Observable<unknown>;
   readonly fileExport?: boolean | 'pending';
   readonly repository?: string | null;
@@ -50,8 +53,22 @@ async function setup(options: SetupOptions = {}) {
   const rendered = await render(ReportBugDialogComponent, {
     providers: [
       MockProvider(DiagnosticLogService, {
-        export: () => options.exported ?? of(BUNDLE),
-        facts: () => options.facts ?? of(BUNDLE.facts),
+        prepareReport: () =>
+          concat(
+            (options.facts ?? of(BUNDLE.facts)).pipe(
+              map((facts): DiagnosticReportProgress => ({
+                kind: 'facts',
+                facts,
+                signedIn: options.signedIn ?? true,
+              })),
+            ),
+            (options.exported ?? of(BUNDLE)).pipe(
+              map((bundle): DiagnosticReportProgress => ({
+                kind: 'bundle',
+                bundle,
+              })),
+            ),
+          ),
         keepLog: signal(options.keepLog ?? true).asReadonly(),
       }),
       MockProvider(HostFileExportService, {
