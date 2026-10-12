@@ -220,7 +220,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
   it('offers no GIFs tab, and no tab bar, when no provider is configured', async () => {
     const { fixture } = await renderComposer();
     fixture.componentInstance.pickerOpen.set(true);
-    await fixture.whenStable();
+    TestBed.tick();
 
     expect(
       document.querySelector('[data-testid=expression-picker]'),
@@ -231,7 +231,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
   it('offers a GIFs tab in the panel when a provider + key are configured', async () => {
     const { fixture } = await renderComposer({}, gifProviders());
     fixture.componentInstance.pickerOpen.set(true);
-    await fixture.whenStable();
+    TestBed.tick();
 
     expect(
       document.querySelector('[data-testid=expression-tab-gif]'),
@@ -241,7 +241,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
   it('offers a Stickers tab only where the room has stickers', async () => {
     const { fixture } = await renderComposer({ stickerPacks: [stickerPack] });
     fixture.componentInstance.pickerOpen.set(true);
-    await fixture.whenStable();
+    TestBed.tick();
 
     expect(
       document.querySelector('[data-testid=expression-tab-sticker]'),
@@ -263,16 +263,16 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     const sent = vi.fn();
     cmp.stickerSelect.subscribe(sent);
     cmp.pickerOpen.set(true);
-    await fixture.whenStable();
+    TestBed.tick();
 
     document
       .querySelector<HTMLButtonElement>('[data-testid=expression-tab-sticker]')
       ?.click();
-    await fixture.whenStable();
+    TestBed.tick();
     document
       .querySelector<HTMLButtonElement>('[data-testid=sticker-party]')
       ?.click();
-    await fixture.whenStable();
+    TestBed.tick();
 
     expect(sent).toHaveBeenCalledWith(
       expect.objectContaining({ shortcode: 'party' }),
@@ -287,14 +287,14 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     const { fixture, container } = await renderComposer({}, gifProviders());
     const cmp = fixture.componentInstance;
     cmp.pickerOpen.set(true);
-    await fixture.whenStable();
+    TestBed.tick();
 
     document
       .querySelector('[data-testid=expression-tab-gif]')
       ?.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
       );
-    await fixture.whenStable();
+    TestBed.tick();
     await Promise.resolve();
 
     expect(cmp.pickerOpen()).toBe(false);
@@ -409,7 +409,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
       gifProviders(),
     );
     fixture.componentInstance.pickerOpen.set(true);
-    await fixture.whenStable();
+    TestBed.tick();
 
     expect(
       document.querySelector('[data-testid=expression-picker]'),
@@ -449,7 +449,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     const trigger = container.querySelector<HTMLElement>('.composer__emoji')!;
 
     trigger.click();
-    await fixture.whenStable();
+    TestBed.tick();
 
     const sheet = document.querySelector('trn-sheet-frame');
     const panel = document.querySelector<HTMLElement>(
@@ -469,7 +469,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
       id: 'sunglasses',
       colons: ':sunglasses:',
     });
-    await fixture.whenStable();
+    TestBed.tick();
 
     expect(cmp.pickerOpen()).toBe(false);
     expect(document.querySelector('trn-sheet-frame')).toBeNull();
@@ -482,25 +482,25 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
       true,
     );
     container.querySelector<HTMLElement>('.composer__emoji')!.click();
-    await fixture.whenStable();
+    TestBed.tick();
 
     document
       .querySelector<HTMLButtonElement>('[data-testid=dialog-close]')
       ?.click();
-    await fixture.whenStable();
+    TestBed.tick();
 
     expect(document.querySelector('trn-sheet-frame')).toBeNull();
     expect(cmp.pickerOpen()).toBe(false);
   });
 
   it('keeps the anchored panel where the app does not prefer sheets', async () => {
-    const { fixture, container } = await renderComposer();
+    const { container } = await renderComposer();
     vi.spyOn(TestBed.inject(TrnSurfaceService), 'prefersSheet').mockReturnValue(
       false,
     );
 
     container.querySelector<HTMLElement>('.composer__emoji')!.click();
-    await fixture.whenStable();
+    TestBed.tick();
 
     expect(document.querySelector('trn-sheet-frame')).toBeNull();
     expect(
