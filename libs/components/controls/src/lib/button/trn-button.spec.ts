@@ -150,7 +150,6 @@ describe('TrnButton', () => {
     for (const [variant, presentation] of [
       ['secondary', 'solid'],
       ['danger', 'solid'],
-      ['primary', 'outline'],
       ['primary', 'ghost'],
     ] as const) {
       expect(recipe(variant, presentation)).not.toContain(attention);
@@ -340,5 +339,51 @@ describe('TrnButton', () => {
         expect(recipe).not.toMatch(/focus-visible:ring-(ring|destructive)/);
       }
     }
+  });
+  it('keeps an outline action transparent with attention roles only inside an attention surface', () => {
+    const recipe = (
+      variant: TrnButtonVariant,
+      presentation: TrnButtonPresentation,
+    ) =>
+      trnButtonRecipe({
+        presentation,
+        shape: 'label',
+        size: 'sm',
+        variant,
+      }).split(' ');
+    const onAttention = [
+      'in-data-[trn-surface=attention]:border-[color:var(--trinity-state-attention-control-border)]',
+      'in-data-[trn-surface=attention]:dark:border-[color:var(--trinity-state-attention-control-border)]',
+      'in-data-[trn-surface=attention]:bg-transparent',
+      'in-data-[trn-surface=attention]:dark:bg-transparent',
+      'in-data-[trn-surface=attention]:text-[color:var(--trinity-state-attention-control-foreground)]',
+      'in-data-[trn-surface=attention]:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)]',
+      'in-data-[trn-surface=attention]:dark:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)]',
+      'in-data-[trn-surface=attention]:hover:text-[color:var(--trinity-state-attention-action-foreground)]',
+      // Helm's `aria-expanded:` grey chip would paint on the accent while a menu is open.
+      'in-data-[trn-surface=attention]:aria-expanded:bg-transparent',
+      'in-data-[trn-surface=attention]:aria-expanded:text-[color:var(--trinity-state-attention-control-foreground)]',
+    ];
+
+    for (const variant of ['primary', 'secondary'] as const) {
+      const outline = recipe(variant, 'outline');
+      // The neutral border stays the default; the attention roles only add a scoped override.
+      expect(outline).toEqual(
+        expect.arrayContaining([
+          'border-[color:var(--trinity-border-control)]',
+          'dark:border-[color:var(--trinity-border-control)]',
+          ...onAttention,
+        ]),
+      );
+      expect(outline.filter((token) => token.includes('attention'))).toEqual(
+        outline.filter((token) =>
+          token.startsWith('in-data-[trn-surface=attention]:'),
+        ),
+      );
+    }
+    // A danger outline keeps its danger roles: no danger colour reaches 4.5:1 on the accent.
+    expect(recipe('danger', 'outline').join(' ')).not.toContain(
+      'in-data-[trn-surface=attention]:',
+    );
   });
 });

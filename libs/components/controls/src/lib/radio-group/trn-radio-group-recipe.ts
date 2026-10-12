@@ -19,6 +19,36 @@ const segmentedTrackOnAttention =
 const segmentedOptionOnAttention =
   'in-data-[trn-surface=attention]:text-[var(--trinity-state-attention-control-foreground)] in-data-[trn-surface=attention]:hover:bg-[var(--trinity-state-attention-action-hover-surface)] in-data-[trn-surface=attention]:hover:text-[var(--trinity-state-attention-action-foreground)] in-data-[trn-surface=attention]:data-[state=selected]:bg-[var(--trinity-state-attention-action-surface)] in-data-[trn-surface=attention]:data-[state=selected]:text-[var(--trinity-state-attention-action-foreground)] in-data-[trn-surface=attention]:has-[:focus-visible]:shadow-[0_0_0_var(--trinity-focus-ring-offset)_var(--trinity-state-attention-control-track-surface),0_0_0_calc(var(--trinity-focus-ring-offset)+var(--trinity-focus-ring-width))_var(--trinity-focus-ring)]';
 
+/**
+ * A list option on an attention surface (#1244). Its label takes the attention foreground,
+ * the indicator ring the attention control border, and the checked dot the attention
+ * foreground. In an invalid group the indicator takes the attention danger border and the
+ * same opaque 2px danger ring as an invalid field, the cue that does not rely on hue. The
+ * focused indicator's border and ring keep the on-attention ring the surface sets, because
+ * the neutral `peer-focus-visible:` classes already out-rank these.
+ */
+const listOptionOnAttention =
+  'in-data-[trn-surface=attention]:text-[var(--trinity-state-attention-control-foreground)]';
+
+const indicatorBorderOnAttention = {
+  valid:
+    'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-border)]',
+  invalid:
+    'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-danger)] in-data-[trn-surface=attention]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-state-attention-control-danger)]',
+} as const;
+
+const dotOnAttention =
+  'in-data-[trn-surface=attention]:bg-[var(--trinity-state-attention-control-foreground)]';
+
+/**
+ * An option description is quieter than its label on a neutral surface. On an attention
+ * surface it follows its option's foreground instead, so it stays readable on the track, the
+ * hover fill and the inverted selected fill, where the muted neutral text falls below 4.5:1.
+ */
+export function trnRadioDescriptionRecipe(): string {
+  return 'text-xs leading-snug font-normal text-[var(--trinity-text-muted)] in-data-[trn-surface=attention]:text-current';
+}
+
 export function trnRadioGroupRecipe(layout: TrnRadioGroupLayout): string {
   if (layout === 'segmented') {
     return hlm(
@@ -38,7 +68,7 @@ export function trnRadioOptionRecipe(layout: TrnRadioGroupLayout): string {
       ? 'justify-center rounded-[calc(var(--trinity-shape-control-radius)-2px)] px-3 text-center [overflow-wrap:anywhere] hover:bg-[var(--trinity-state-hover-surface)] hover:text-[var(--trinity-state-hover-foreground)]'
       : 'gap-3',
     layout === 'segmented' ? selectedTone : '',
-    layout === 'segmented' ? segmentedOptionOnAttention : '',
+    layout === 'segmented' ? segmentedOptionOnAttention : listOptionOnAttention,
   );
 }
 
@@ -51,6 +81,9 @@ export function trnRadioIndicatorRecipe(
     layout === 'segmented' ? 'hidden' : '',
     'size-4',
     invalid ? 'border-danger' : 'border-[var(--trinity-border-control)]',
+    invalid
+      ? indicatorBorderOnAttention.invalid
+      : indicatorBorderOnAttention.valid,
   );
 }
 
@@ -60,5 +93,6 @@ export function trnRadioIndicatorDotRecipe(selected: boolean): string {
     selected
       ? 'bg-[var(--trinity-state-selected-foreground)]'
       : 'bg-transparent',
+    selected ? dotOnAttention : '',
   );
 }

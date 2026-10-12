@@ -101,4 +101,25 @@ describe('TrnInput', () => {
       recipe.filter((token) => token.startsWith(attention)),
     );
   });
+  it('marks an invalid field and its file button label with attention roles only inside an attention surface', () => {
+    const recipe = trnInputRecipe('md').split(' ');
+
+    expect(recipe).toEqual(
+      expect.arrayContaining([
+        'data-[matches-spartan-invalid=true]:border-danger',
+        'data-[matches-spartan-invalid=true]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-danger)]',
+        'file:text-[var(--trinity-text-bright)]',
+        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:border-[var(--trinity-state-attention-control-danger)]',
+        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-state-attention-control-danger)]',
+        'in-data-[trn-surface=attention]:file:text-[var(--trinity-state-attention-control-foreground)]',
+        // Focused, the danger ring would otherwise out-rank the focus ring.
+        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)]',
+      ]),
+    );
+    expect(recipe.filter((token) => token.includes('attention'))).toEqual(
+      recipe.filter((token) =>
+        token.startsWith('in-data-[trn-surface=attention]:'),
+      ),
+    );
+  });
 });

@@ -158,6 +158,7 @@ const colorRoles = Object.freeze([
   '--trinity-state-attention-control-placeholder',
   '--trinity-state-attention-control-border',
   '--trinity-state-attention-control-track-surface',
+  '--trinity-state-attention-control-danger',
   '--trinity-focus-ring',
   '--trinity-focus-ring-on-attention',
   '--trinity-focus-ring-halo',

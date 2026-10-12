@@ -208,4 +208,24 @@ describe('TrnSelectComponent', () => {
       trigger.filter((token) => token.startsWith(attention)),
     );
   });
+  it('switches the invalid trigger’s border and ring to the attention danger role only inside an attention surface', () => {
+    const trigger = trnSelectTriggerRecipe().split(' ');
+
+    // Helm's destructive border and translucent halo fall near 1:1 on the accent.
+    expect(trigger).toEqual(
+      expect.arrayContaining([
+        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:border-[var(--trinity-state-attention-control-danger)]',
+        'in-data-[trn-surface=attention]:dark:data-[matches-spartan-invalid=true]:border-[var(--trinity-state-attention-control-danger)]',
+        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:ring-[color:var(--trinity-state-attention-control-danger)]',
+        'in-data-[trn-surface=attention]:dark:data-[matches-spartan-invalid=true]:ring-[color:var(--trinity-state-attention-control-danger)]',
+        // Focused, the danger ring would otherwise out-rank the focus ring.
+        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:focus-visible:ring-[color:var(--trinity-focus-ring)]',
+      ]),
+    );
+    expect(trigger.filter((token) => token.includes('attention'))).toEqual(
+      trigger.filter((token) =>
+        token.startsWith('in-data-[trn-surface=attention]:'),
+      ),
+    );
+  });
 });

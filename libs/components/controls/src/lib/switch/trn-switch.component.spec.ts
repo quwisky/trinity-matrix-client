@@ -1,6 +1,10 @@
 import { Component, signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
+import {
+  trnSwitchRecipe,
+  trnSwitchThumbRecipe,
+} from '../choice-control/trn-choice-control-recipe';
 import { TrnSwitchComponent } from './trn-switch.component';
 
 @Component({
@@ -121,5 +125,32 @@ describe('TrnSwitchComponent', () => {
 
     expect(box(container)?.checked).toBe(true);
     expect(box(container)?.getAttribute('aria-checked')).toBe('true');
+  });
+  it('inverts its checked track and uses attention roles only inside an attention surface', () => {
+    const track = trnSwitchRecipe().split(' ');
+
+    expect(track).toEqual(
+      expect.arrayContaining([
+        'bg-[var(--trinity-border-control)]',
+        'data-[checked=true]:bg-[var(--trinity-accent)]',
+        'in-data-[trn-surface=attention]:bg-[var(--trinity-state-attention-control-border)]',
+        'in-data-[trn-surface=attention]:data-[checked=true]:bg-[var(--trinity-state-attention-action-surface)]',
+        'in-data-[trn-surface=attention]:peer-focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-offset)_var(--trinity-state-attention-surface),0_0_0_calc(var(--trinity-focus-ring-offset)+var(--trinity-focus-ring-width))_var(--trinity-focus-ring)]',
+      ]),
+    );
+    for (const checked of [false, true]) {
+      // The thumb takes the attention action foreground on either track.
+      expect(trnSwitchThumbRecipe(checked).split(' ')).toContain(
+        'in-data-[trn-surface=attention]:bg-[var(--trinity-state-attention-action-foreground)]',
+      );
+    }
+    expect(trnSwitchThumbRecipe(true).split(' ')).toContain(
+      'bg-[var(--trinity-accent-foreground)]',
+    );
+    expect(track.filter((token) => token.includes('attention'))).toEqual(
+      track.filter((token) =>
+        token.startsWith('in-data-[trn-surface=attention]:'),
+      ),
+    );
   });
 });

@@ -71,16 +71,28 @@ const solidTone = {
 const controlBorder =
   'border-[color:var(--trinity-border-control)] dark:border-[color:var(--trinity-border-control)]';
 
+/**
+ * An outline button on an attention surface (#1244). Helm's light fill, its translucent dark
+ * fill and the neutral border and label all sit on the accent there, where the border falls
+ * near 1:1 and the label below 4.5:1. It stays transparent with the attention control border
+ * and foreground, also while it holds an open menu (Helm's `aria-expanded:` grey chip would
+ * otherwise paint on the accent), and hovers like a solid action. The shared focus border and
+ * ring already out-rank these classes. The `dark:` copies out-rank Helm's and the control
+ * border's own `dark:` classes.
+ */
+const outlineOnAttention =
+  'in-data-[trn-surface=attention]:border-[color:var(--trinity-state-attention-control-border)] in-data-[trn-surface=attention]:dark:border-[color:var(--trinity-state-attention-control-border)] in-data-[trn-surface=attention]:bg-transparent in-data-[trn-surface=attention]:dark:bg-transparent in-data-[trn-surface=attention]:text-[color:var(--trinity-state-attention-control-foreground)] in-data-[trn-surface=attention]:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)] in-data-[trn-surface=attention]:dark:hover:bg-[color:var(--trinity-state-attention-action-hover-surface)] in-data-[trn-surface=attention]:hover:text-[color:var(--trinity-state-attention-action-foreground)] in-data-[trn-surface=attention]:aria-expanded:bg-transparent in-data-[trn-surface=attention]:aria-expanded:text-[color:var(--trinity-state-attention-control-foreground)]';
+
 // `dark:hover:bg-*` stays: it out-merges Helm's own `dark:hover:bg-input/50` (outline) and
 // `dark:hover:bg-muted/50` (ghost). Without it, Helm's dark hover fill wins in dark mode.
 const nonSolidTone = {
   primary: {
-    outline: controlBorder,
+    outline: `${controlBorder} ${outlineOnAttention}`,
     ghost: '',
     link: '',
   },
   secondary: {
-    outline: `${controlBorder} text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground`,
+    outline: `${controlBorder} text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground ${outlineOnAttention}`,
     ghost:
       'text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground',
     link: 'text-secondary-foreground',
