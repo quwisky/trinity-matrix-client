@@ -59,6 +59,19 @@ const UNAVAILABLE_TRUST_HEALTH: TrustHealth = Object.freeze({
   stale: null,
 });
 
+/**
+ * The crypto and account-data events that can move an Account's trust status. The
+ * active-Account projection and the per-Account summaries react to the same list.
+ */
+export const TRUST_HEALTH_EVENTS = [
+  CryptoEvent.KeysChanged,
+  CryptoEvent.UserTrustStatusChanged,
+  CryptoEvent.KeyBackupStatus,
+  CryptoEvent.DevicesUpdated,
+  // Restored /sync may contain old secrets until fresh account data arrives.
+  ClientEvent.AccountData,
+] as const;
+
 /** Internal active-Account projection behind {@link TrustService}'s health facade. */
 @Injectable({ providedIn: 'root' })
 export class TrustHealthService {
@@ -93,14 +106,7 @@ export class TrustHealthService {
 
   private readonly projection = this.cryptoPort.project({
     id: 'trust.health',
-    events: [
-      CryptoEvent.KeysChanged,
-      CryptoEvent.UserTrustStatusChanged,
-      CryptoEvent.KeyBackupStatus,
-      CryptoEvent.DevicesUpdated,
-      // Restored /sync may contain old secrets until fresh account data arrives.
-      ClientEvent.AccountData,
-    ],
+    events: TRUST_HEALTH_EVENTS,
     rebuild: (client, context) =>
       defer(() => from(this.reconcileProjection(client, context))),
     reset: () => {
