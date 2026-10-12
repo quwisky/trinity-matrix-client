@@ -56,6 +56,11 @@ function fakeRoom(opts: {
   markedUnread?: { unread: boolean };
   /** The same flag under the legacy unstable type some clients still write. */
   legacyMarkedUnread?: { unread: boolean };
+  /**
+   * The room's threads, by timestamp: `replyTs` is the latest reply's, absent when the
+   * thread has none yet, which is when the SDK's `replyToEvent` is null.
+   */
+  threads?: { rootTs: number; replyTs?: number }[];
 }) {
   return {
     roomId: opts.roomId,
@@ -91,6 +96,12 @@ function fakeRoom(opts: {
     getUnreadNotificationCount: (type?: string) =>
       type === 'highlight' ? (opts.highlight ?? 0) : (opts.unread ?? 0),
     getLastActiveTimestamp: () => opts.activity ?? 0,
+    getThreads: () =>
+      (opts.threads ?? []).map((thread) => ({
+        rootEvent: { getTs: () => thread.rootTs },
+        replyToEvent:
+          thread.replyTs === undefined ? null : { getTs: () => thread.replyTs },
+      })),
     // Room state hangs off the live timeline (what liveRoomState() reads, and what
     // the SDK's deprecated `currentState` aliased).
     getLiveTimeline: () => ({
@@ -714,6 +725,76 @@ describe('RoomLibraryService', () => {
     expect(mid.hasUnread).toBe(false);
     // totalUnread is the app-wide sum of every room's unread count.
     expect(svc.totalUnread()).toBe(3);
+  });
+
+  describe('thread activity', () => {
+    // With `threadSupport` on, a thread reply lives in its thread's timeline, so the
+    // main timeline's last event (`getLastActiveTimestamp`) never sees it.
+    it('moves a room up when a thread reply is its newest activity', () => {
+      const svc = setup([
+        fakeRoom({ roomId: '!a:hs', name: 'A', activity: 200 }),
+        fakeRoom({
+          roomId: '!b:hs',
+          name: 'B',
+          activity: 100,
+          threads: [{ rootTs: 50, replyTs: 300 }],
+        }),
+      ]);
+
+      expect(svc.rooms().map((r) => r.id)).toEqual(['!b:hs', '!a:hs']);
+      expect(svc.rooms()[0].activityTs).toBe(300);
+    });
+
+    it('takes the newest of several threads, and a reply-less thread by its root', () => {
+      const svc = setup([
+        fakeRoom({
+          roomId: '!a:hs',
+          name: 'A',
+          activity: 100,
+          threads: [{ rootTs: 50, replyTs: 150 }, { rootTs: 400 }],
+        }),
+      ]);
+
+      expect(svc.rooms()[0].activityTs).toBe(400);
+    });
+
+    it('keeps the main timeline time when it is newer than every thread', () => {
+      const svc = setup([
+        fakeRoom({
+          roomId: '!a:hs',
+          name: 'A',
+          activity: 500,
+          threads: [{ rootTs: 50, replyTs: 300 }],
+        }),
+      ]);
+
+      expect(svc.rooms()[0].activityTs).toBe(500);
+    });
+
+    it('reorders on the next sync after a thread reply arrives', async () => {
+      const threads: { rootTs: number; replyTs?: number }[] = [];
+      const handlers = new Map<string, () => void>();
+      const client = {
+        baseUrl: 'https://hs.example',
+        getRooms: () => [
+          fakeRoom({ roomId: '!a:hs', name: 'A', activity: 200 }),
+          fakeRoom({ roomId: '!b:hs', name: 'B', activity: 100, threads }),
+        ],
+        on: (event: string, cb: () => void) => handlers.set(event, cb),
+        off: vi.fn(),
+      };
+      const { svc } = provideRooms(client);
+      svc.runProjection().subscribe();
+      expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
+
+      // The SDK files the reply into B's thread while it processes the sync response,
+      // then emits Sync — the same signal a main-timeline message moves the list on.
+      threads.push({ rootTs: 50, replyTs: 300 });
+      handlers.get(ClientEvent.Sync)?.();
+      await Promise.resolve();
+
+      expect(svc.rooms().map((r) => r.id)).toEqual(['!b:hs', '!a:hs']);
+    });
   });
 
   it('marks a room read by acking its latest confirmed event', async () => {
