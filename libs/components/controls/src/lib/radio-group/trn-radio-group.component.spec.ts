@@ -2,6 +2,10 @@ import { Component, signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
+  trnRadioGroupRecipe,
+  trnRadioOptionRecipe,
+} from './trn-radio-group-recipe';
+import {
   TrnRadioComponent,
   TrnRadioGroupComponent,
   type TrnRadioGroupLayout,
@@ -187,5 +191,40 @@ describe('TrnRadioGroupComponent', () => {
 
     expect(host?.getAttribute('data-layout')).toBe('segmented');
     expect(selected?.getAttribute('data-state')).toBe('selected');
+  });
+
+  it('keeps the segmented track on the attention surface instead of nesting a neutral one', () => {
+    const attention = 'in-data-[trn-surface=attention]:';
+    const track = trnRadioGroupRecipe('segmented').split(' ');
+    const option = trnRadioOptionRecipe('segmented').split(' ');
+
+    // The neutral track stays the default; the attention roles only add a scoped override.
+    expect(track).toEqual(
+      expect.arrayContaining([
+        'bg-[var(--trinity-surface-floating)]',
+        'border-[var(--trinity-border-control)]',
+        `${attention}bg-[var(--trinity-state-attention-control-track-surface)]`,
+        `${attention}border-[var(--trinity-state-attention-control-border)]`,
+      ]),
+    );
+    // The selected option inverts like a solid action, and the focus ring sits on a gap in
+    // the track colour so it stays distinct from the selected fill it shares a colour with.
+    expect(option).toEqual(
+      expect.arrayContaining([
+        `${attention}text-[var(--trinity-state-attention-control-foreground)]`,
+        `${attention}hover:bg-[var(--trinity-state-attention-action-hover-surface)]`,
+        `${attention}hover:text-[var(--trinity-state-attention-action-foreground)]`,
+        `${attention}data-[state=selected]:bg-[var(--trinity-state-attention-action-surface)]`,
+        `${attention}data-[state=selected]:text-[var(--trinity-state-attention-action-foreground)]`,
+        `${attention}has-[:focus-visible]:shadow-[0_0_0_var(--trinity-focus-ring-offset)_var(--trinity-state-attention-control-track-surface),0_0_0_calc(var(--trinity-focus-ring-offset)+var(--trinity-focus-ring-width))_var(--trinity-focus-ring)]`,
+      ]),
+    );
+    for (const classes of [track, option]) {
+      expect(classes.filter((token) => token.includes('attention'))).toEqual(
+        classes.filter((token) => token.startsWith(attention)),
+      );
+    }
+    expect(trnRadioGroupRecipe('list')).not.toContain(attention);
+    expect(trnRadioOptionRecipe('list')).not.toContain(attention);
   });
 });

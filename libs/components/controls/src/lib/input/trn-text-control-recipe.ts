@@ -18,12 +18,25 @@ const textareaSize = {
 const base =
   'w-full min-w-0 rounded-[var(--trinity-shape-control-radius)] border border-[var(--trinity-border-control)] bg-transparent text-[var(--trinity-text-bright)] outline-none transition-[background-color,border-color,box-shadow] placeholder:text-[var(--trinity-text-muted)] focus-visible:border-[var(--trinity-focus-ring)] focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)] data-[matches-spartan-invalid=true]:border-danger data-[matches-spartan-invalid=true]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-danger)] disabled:cursor-not-allowed disabled:bg-[var(--trinity-surface-raised)] disabled:opacity-[var(--trinity-disabled-opacity)]';
 
+/**
+ * A field on an attention surface (an accent `trn-banner`, `trn-page-header` or
+ * `trnOverlaySurface`, which mark themselves `data-trn-surface="attention"`) sits on the
+ * accent, where the neutral value, placeholder and border colours fall near 1:1 (#1241). There
+ * it switches to the attention control roles, and a disabled field stays transparent instead
+ * of nesting a neutral fill. Its focus ring already follows the surface's on-attention ring.
+ * Invalid state has no attention role yet: there the attention border replaces the danger
+ * border while the danger shadow stays, so keep invalid fields off attention surfaces.
+ */
+const onAttention =
+  'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-border)] in-data-[trn-surface=attention]:text-[var(--trinity-state-attention-control-foreground)] in-data-[trn-surface=attention]:placeholder:text-[var(--trinity-state-attention-control-placeholder)] in-data-[trn-surface=attention]:disabled:bg-transparent';
+
 export function trnInputRecipe(
   size: TrnTextControlSize,
   invalid = false,
 ): string {
   return hlm(
     base,
+    onAttention,
     'file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-[var(--trinity-text-bright)]',
     inputSize[size],
     invalid
@@ -38,6 +51,7 @@ export function trnTextareaRecipe(
 ): string {
   return hlm(
     base,
+    onAttention,
     'flex field-sizing-content',
     textareaSize[size],
     invalid
