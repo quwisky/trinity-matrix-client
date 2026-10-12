@@ -377,8 +377,12 @@ export function normalizeTimelineEvent(
   shield: MessageShield | null,
 ): NormalizedTimelineEvent | null {
   const type = read(() => event.getType(), '');
-  const decryptionFailed = read(() => event.isDecryptionFailure(), false);
-  if (decryptionFailed) {
+  // Redaction first: the SDK keeps the failure reason on an event it redacts after a
+  // failed decryption, and a removed message has nothing left to read or fix.
+  if (read(() => event.isRedacted(), false)) {
+    return unsupported(client, room, event, shield, 'redacted-message', false);
+  }
+  if (read(() => event.isDecryptionFailure(), false)) {
     return unsupported(
       client,
       room,
@@ -389,9 +393,6 @@ export function normalizeTimelineEvent(
       '',
       undecryptableReasonOf(read(() => event.decryptionFailureReason, null)),
     );
-  }
-  if (read(() => event.isRedacted(), false)) {
-    return unsupported(client, room, event, shield, 'redacted-message', false);
   }
 
   if (read(() => isPollStart(event), false)) {

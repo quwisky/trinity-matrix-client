@@ -75,6 +75,29 @@ describe('normalizeTimelineEvent', () => {
 
     expect(normalized).toMatchObject({ undecryptableReason: 'missing-key' });
   });
+
+  // The SDK's makeRedacted clears the clear event but keeps the failure reason, so a
+  // message redacted after it failed to decrypt still reports a decryption failure.
+  it('shows a redacted message as redacted even when it could not be decrypted', () => {
+    const normalized = normalizeTimelineEvent(
+      client,
+      room,
+      event({
+        isRedacted: () => true,
+        isDecryptionFailure: () => true,
+        decryptionFailureReason:
+          DecryptionFailureCode.HISTORICAL_MESSAGE_BACKUP_UNCONFIGURED,
+      }),
+      null,
+    );
+
+    expect(normalized).toMatchObject({
+      type: 'unsupported',
+      fallback: 'redacted-message',
+      decryptionFailed: false,
+      undecryptableReason: null,
+    });
+  });
   it('turns an SDK text event into a frozen plain record', () => {
     const normalized = normalizeTimelineEvent(client, room, event(), null);
 
