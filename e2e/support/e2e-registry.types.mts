@@ -95,11 +95,27 @@ export interface E2EAggregateTarget {
     | { readonly kind: 'environment'; readonly value: E2EEnvironment };
 }
 
-export interface E2ECiEntrypoint {
+interface E2ECiEntrypointBase {
   readonly command: string;
-  readonly tier: Exclude<E2ECiTier, 'local-only'>;
   readonly suiteIds: readonly string[];
 }
+
+/** Runs each listed suite in its own CI tier. */
+interface E2ETierCiEntrypoint extends E2ECiEntrypointBase {
+  readonly tier: Exclude<E2ECiTier, 'local-only'>;
+  readonly changedPathsOnly?: never;
+}
+
+/**
+ * An extra pull-request run of suites that keep their own later-tier entrypoint. Its job
+ * runs only when the pull request changes the paths those suites check.
+ */
+interface E2EChangedPathsCiEntrypoint extends E2ECiEntrypointBase {
+  readonly tier: 'pull-request';
+  readonly changedPathsOnly: true;
+}
+
+export type E2ECiEntrypoint = E2ETierCiEntrypoint | E2EChangedPathsCiEntrypoint;
 
 export interface E2EQuarantineEntry {
   readonly suiteId: string;

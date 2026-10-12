@@ -192,8 +192,15 @@ describe('split E2E jobs', () => {
       'browser-e2e',
       'storybook',
       'mas-e2e',
+      'scrollbars-e2e',
     ]);
-    for (const id of ['e2e', 'browser-e2e', 'storybook', 'mas-e2e']) {
+    for (const id of [
+      'e2e',
+      'browser-e2e',
+      'storybook',
+      'mas-e2e',
+      'scrollbars-e2e',
+    ]) {
       expect(jobs[id].name).not.toBe('E2E (Playwright + homeserver)');
     }
   });
@@ -307,16 +314,26 @@ describe('MAS sign-in journeys', () => {
       expect(run({}).status).toBe(0);
     });
 
-    it('passes when only the MAS job was skipped', () => {
-      expect(run({ 'mas-e2e': 'skipped' }).status).toBe(0);
+    // Both are skipped by design when a pull request leaves the paths they check alone.
+    const pathFiltered = ['mas-e2e', 'scrollbars-e2e'];
+
+    it.each(pathFiltered)('passes when only %s was skipped', (id) => {
+      expect(run({ [id]: 'skipped' }).status).toBe(0);
     });
 
-    it.each(['failure', 'cancelled'])('fails when the MAS job %s', (result) => {
-      expect(run({ 'mas-e2e': result }).status).not.toBe(0);
+    it.each(
+      pathFiltered.flatMap((id) => [
+        [id, 'failure'],
+        [id, 'cancelled'],
+      ]),
+    )('fails when %s ends in %s', (id, result) => {
+      expect(run({ [id]: result }).status).not.toBe(0);
     });
 
-    it('fails when any other job did not succeed', () => {
-      for (const id of gate.needs.filter((need) => need !== 'mas-e2e')) {
+    it('fails when any job that always runs did not succeed', () => {
+      for (const id of gate.needs.filter(
+        (need) => !pathFiltered.includes(need),
+      )) {
         for (const result of ['skipped', 'failure', 'cancelled']) {
           expect(run({ [id]: result }).status, `${id} ${result}`).not.toBe(0);
         }

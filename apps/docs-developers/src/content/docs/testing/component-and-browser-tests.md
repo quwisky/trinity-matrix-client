@@ -19,6 +19,8 @@ pnpm e2e:components
 
 The focused library test is fast feedback for component state and rendered semantics. The registered component browser suites cover public UI, styling, scrollbars, and isolated responsive surfaces.
 
+CI runs the Storybook and styling suites on every pull request. The scrollbar suite (`pnpm nx run trinity-e2e-components:scrollbars`) checks Chromium, Firefox and WebKit against a disposable homeserver. It runs in the weekly scheduled tier, and on a pull request only when the change touches what it renders: Settings, the overlay and navigation-layout components, theme and scrollbar styles, code-block rendering (the Markdown renderer, sanitizer, highlighter and their styles), the suite with its fixtures, or the Playwright, Tailwind or Shiki version. Run it locally when a change affects scrolling surfaces it does not list.
+
 ## Write resilient browser journeys {#resilient-journeys}
 
 Use role, label, and visible text locators. Use an established `data-testid` only when semantics cannot identify the interaction. Scope locators to the relevant landmark or dialog and use Playwright's retrying assertions.

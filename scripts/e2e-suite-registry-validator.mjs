@@ -68,6 +68,10 @@ export const registrySnapshot = () =>
     inventory: E2E_INVENTORY,
   });
 
+/** Entrypoints that run each suite in its own tier, without the changed-paths extras. */
+const tierEntrypoints = (snapshot) =>
+  snapshot.ciEntrypoints.filter(({ changedPathsOnly }) => !changedPathsOnly);
+
 const duplicateValues = (values) => {
   const seen = new Set();
   const duplicates = new Set();
@@ -128,7 +132,7 @@ export function validateRegistry(snapshot, now = new Date()) {
   recordDuplicates(
     errors,
     'CI suite',
-    snapshot.ciEntrypoints.flatMap(({ suiteIds }) => suiteIds),
+    tierEntrypoints(snapshot).flatMap(({ suiteIds }) => suiteIds),
   );
 
   for (const suite of snapshot.suites) {
@@ -229,12 +233,24 @@ export function validateRegistry(snapshot, now = new Date()) {
         `${entrypoint.command} uses CI tier ${entrypoint.tier}, which no workflow runs`,
       );
     }
+    if (entrypoint.changedPathsOnly && entrypoint.tier !== 'pull-request') {
+      errors.push(
+        `${entrypoint.command} runs on changed paths outside the pull-request tier`,
+      );
+    }
     for (const suiteId of entrypoint.suiteIds) {
       const suite = snapshot.suites.find(({ id }) => id === suiteId);
       if (!suite) {
         errors.push(
           `${entrypoint.command} references unknown suite ${suiteId}`,
         );
+      } else if (entrypoint.changedPathsOnly) {
+        // The suite keeps its own tier's run; this one only adds pull requests that touch it.
+        if (!['scheduled', 'nightly'].includes(suite.ciTier)) {
+          errors.push(
+            `${suiteId} runs on changed paths but is classified ${suite.ciTier}`,
+          );
+        }
       } else if (suite.ciTier !== entrypoint.tier) {
         errors.push(
           `${suiteId} runs in ${entrypoint.tier} CI but is classified ${suite.ciTier}`,
@@ -381,9 +397,10 @@ export const validateCiReportPaths = (
   }
   for (const suite of snapshot.suites) {
     if (
-      suite.ciTier !== 'local-only' &&
-      suite.ciTier !== 'scheduled' &&
-      entrypoints.some(({ suiteIds }) => suiteIds.includes(suite.id)) &&
+      entrypoints.some(
+        ({ tier, suiteIds }) =>
+          tier !== 'scheduled' && suiteIds.includes(suite.id),
+      ) &&
       !coveredSuites.has(suite.id)
     ) {
       errors.push(`CI report path is missing suite ${suite.id}`);
@@ -623,7 +640,7 @@ const validateCiEntrypoints = (errors, workspaceRoot, snapshot) => {
     }
   }
   const ciSuiteIds = new Set(
-    snapshot.ciEntrypoints.flatMap(({ suiteIds }) => suiteIds),
+    tierEntrypoints(snapshot).flatMap(({ suiteIds }) => suiteIds),
   );
   for (const suite of snapshot.suites) {
     if (suite.ciTier === 'local-only' && ciSuiteIds.has(suite.id)) {
