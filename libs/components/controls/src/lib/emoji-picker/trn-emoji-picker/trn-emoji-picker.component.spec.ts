@@ -203,6 +203,27 @@ describe('TrnEmojiPickerComponent', () => {
     expect(vendor.componentInstance.emojiSize).toBe(24);
   });
 
+  it('moves focus into its search once the deferred grid arrives, when asked to', async () => {
+    const { fixture } = await renderLoaded(TrnEmojiPickerComponent, {
+      inputs: { autoFocusSearch: true },
+    });
+    const search = (fixture.nativeElement as HTMLElement).querySelector(
+      '.emoji-mart-search input',
+    );
+
+    expect(search).not.toBeNull();
+    expect(document.activeElement).toBe(search);
+  });
+
+  it('leaves focus alone by default', async () => {
+    const { fixture } = await renderLoaded(TrnEmojiPickerComponent);
+    const search = (fixture.nativeElement as HTMLElement).querySelector(
+      '.emoji-mart-search input',
+    );
+
+    expect(document.activeElement).not.toBe(search);
+  });
+
   it('never puts the vendor dark class on the element, even on a dark OS', async () => {
     // `darkMode` is pinned `false`, and the dark OS here is the whole point. The vendor's
     // default is not `false` — it is `matchMedia('(prefers-color-scheme: dark)').matches`,

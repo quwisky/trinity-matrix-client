@@ -739,9 +739,9 @@ export class MessageComposerComponent {
     };
     const ref = this.surfaces.open(ExpressionSheetComponent, {
       ariaLabel: 'Emoji, GIFs and stickers',
-      // The content, not the first tabbable (the sheet's close button); the GIF and sticker
-      // pickers then move focus into their search fields.
-      autoFocus: '[data-expression-content]',
+      // The panel puts focus on its content itself, and the pickers move it on into their
+      // search fields; the dialog's own autofocus would run after them and take it back.
+      autoFocus: false,
       inputs: { bridge },
     });
     this.pickerSheetRef = ref;

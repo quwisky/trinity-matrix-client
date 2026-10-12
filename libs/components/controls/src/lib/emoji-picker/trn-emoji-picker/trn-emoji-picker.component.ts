@@ -74,6 +74,12 @@ export class TrnEmojiPickerComponent {
   readonly pickerId = input<string | null>(null);
   /** Trinity-owned ordinal size; the vendor's pixel input stays private. */
   readonly size = input<TrnEmojiPickerSize>('md');
+  /**
+   * Move focus into the search field when the deferred grid arrives. For a surface that put
+   * focus on its content before the vendor chunk loaded (the composer's bottom sheet), so
+   * focus continues to the search rather than staying on the container.
+   */
+  readonly autoFocusSearch = input(false);
 
   /** A usable pick. Entries without a `native` character never reach here. */
   readonly picked = output<TrnEmojiPick>();

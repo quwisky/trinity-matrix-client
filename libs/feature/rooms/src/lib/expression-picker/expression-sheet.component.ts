@@ -31,13 +31,13 @@ export interface ExpressionSheetBridge {
 /**
  * The expression panel as a bottom sheet, for phones and narrow screens. Opened by the
  * composer through `TrnSurfaceService`, so it has the app's sheet frame: the handle, swipe
- * and Escape to close, the backdrop and focus restored to the trigger.
+ * and Escape to close, the backdrop and focus restored to the trigger. Its close button sits
+ * on the panel's tab row rather than in a header row of its own.
  *
- * It is as tall as its picker, and each picker caps its own height at a little over half the
- * screen (the GIF grid at 60vh, the sticker list at 55vh, the emoji grid at its fixed 358px),
- * so the search field at the top stays above the on-screen keyboard while someone types.
- * The sheet frame's own cap (90svh) only matters on a very short screen, where the body
- * scrolls.
+ * It is as tall as its picker (each picker caps its own height). While the on-screen
+ * keyboard is open, the sheet frame lifts the sheet above it, fits it to the visible area and
+ * scrolls the focused search back into view (`TrnSheetKeyboardAvoidance`), so the search
+ * stays visible even where the keyboard overlays the page rather than resizing it.
  */
 @Component({
   selector: 'trn-expression-sheet',

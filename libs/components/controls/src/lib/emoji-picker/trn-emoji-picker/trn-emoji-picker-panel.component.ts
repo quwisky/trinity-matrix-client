@@ -30,6 +30,7 @@ import {
 })
 export class TrnEmojiPickerPanelComponent {
   readonly size = input.required<TrnEmojiPickerSize>();
+  readonly autoFocusSearch = input(false);
   readonly emojiSelect = output<EmojiEvent>();
 
   protected readonly vendorEmojiSize = computed(() =>

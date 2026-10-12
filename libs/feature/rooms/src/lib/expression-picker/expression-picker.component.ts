@@ -3,18 +3,22 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  afterNextRender,
   computed,
   inject,
   input,
   output,
   signal,
+  viewChild,
   viewChildren,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
+  TrnButton,
   TrnEmojiPickerComponent,
   type TrnEmojiPick,
 } from '@trinity/components/controls';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { type GifResult } from '@trinity/data-access/gif';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 import {
@@ -50,7 +54,9 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
   imports: [
     GifPickerComponent,
     StickerPickerComponent,
+    TrnButton,
     TrnEmojiPickerComponent,
+    TrnIconComponent,
   ],
   templateUrl: './expression-picker.component.html',
   host: {
@@ -74,6 +80,8 @@ export class ExpressionPickerComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly tabButtons =
     viewChildren<ElementRef<HTMLButtonElement>>('tab');
+  private readonly content =
+    viewChild.required<ElementRef<HTMLElement>>('content');
   /** The tab chosen while this panel is open; null until one is. */
   private readonly chosen = signal<ComposerExpressionTab | null>(null);
   /** The tab holding the single tab stop; null means the selected one. */
@@ -97,7 +105,7 @@ export class ExpressionPickerComponent {
   readonly gifSelect = output<GifResult>();
   readonly stickerSelect = output<ImagePackImage>();
   readonly manage = output<void>();
-  /** Escape inside the panel, or the sticker picker's own dismiss. */
+  /** Escape inside the panel, the sticker picker's own dismiss, or the sheet's close button. */
   readonly dismiss = output<void>();
 
   protected readonly tabs = computed<readonly ComposerExpressionTab[]>(() =>
@@ -123,6 +131,22 @@ export class ExpressionPickerComponent {
     const target = this.focusTarget();
     return target && this.tabs().includes(target) ? target : this.active();
   });
+
+  constructor() {
+    // A sheet opens with focus on its content. Done here rather than by the dialog's own
+    // autofocus, which runs later and would take focus back out of a search field a picker
+    // has already focused (the emoji grid does as soon as its chunk is loaded); so only when
+    // focus is not inside the content already.
+    afterNextRender(() => {
+      const content = this.content().nativeElement;
+      if (
+        this.presentation() === 'sheet' &&
+        !content.contains(content.ownerDocument.activeElement)
+      ) {
+        content.focus();
+      }
+    });
+  }
 
   protected tabId(tab: ComposerExpressionTab): string {
     return `${this.panelId()}-tab-${tab}`;

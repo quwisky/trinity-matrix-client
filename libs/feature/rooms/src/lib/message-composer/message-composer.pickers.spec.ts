@@ -475,6 +475,54 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     expect(document.querySelector('trn-sheet-frame')).toBeNull();
   });
 
+  it('moves focus into the sheet and on into the emoji search once its grid loads, and keeps it there', async () => {
+    const { container } = await renderComposer();
+    vi.spyOn(TestBed.inject(TrnSurfaceService), 'prefersSheet').mockReturnValue(
+      true,
+    );
+    const focused: string[] = [];
+    const record = (event: FocusEvent) => {
+      const target = event.target as HTMLElement;
+      focused.push(
+        target.hasAttribute('data-expression-content')
+          ? 'content'
+          : target.closest('.emoji-mart-search')
+            ? 'emoji-search'
+            : target.tagName.toLowerCase(),
+      );
+    };
+    document.addEventListener('focusin', record);
+
+    try {
+      container.querySelector<HTMLElement>('.composer__emoji')!.click();
+      TestBed.tick();
+      // The emoji grid loads behind `@defer`, so this waits for the vendor chunk.
+      await vi.waitFor(
+        () => {
+          TestBed.tick();
+          expect(
+            document.activeElement?.closest('.emoji-mart-search'),
+          ).not.toBeNull();
+        },
+        { timeout: 15_000 },
+      );
+    } finally {
+      document.removeEventListener('focusin', record);
+    }
+
+    // With a cold chunk focus lands on the content first; with a warm one the search takes
+    // it straight away. Either way it ends in the search and nothing takes it back out.
+    expect(
+      focused.every((step) => step === 'content' || step === 'emoji-search'),
+    ).toBe(true);
+    expect(focused.at(-1)).toBe('emoji-search');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    TestBed.tick();
+    expect(
+      document.activeElement?.closest('.emoji-mart-search'),
+    ).not.toBeNull();
+  }, 20_000);
+
   it('reports a sheet the person closed as closed', async () => {
     const { fixture, container } = await renderComposer();
     const cmp = fixture.componentInstance;

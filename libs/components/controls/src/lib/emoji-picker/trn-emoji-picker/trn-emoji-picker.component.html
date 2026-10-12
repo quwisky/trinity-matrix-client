@@ -5,7 +5,11 @@
   the vendor pins and theming notes live in the panel's template.
 -->
 @defer (on immediate) {
-  <trn-emoji-picker-panel [size]="size()" (emojiSelect)="onSelect($event)" />
+  <trn-emoji-picker-panel
+    [size]="size()"
+    [autoFocusSearch]="autoFocusSearch()"
+    (emojiSelect)="onSelect($event)"
+  />
 } @placeholder {
   <div
     class="trn-emoji-picker__placeholder"

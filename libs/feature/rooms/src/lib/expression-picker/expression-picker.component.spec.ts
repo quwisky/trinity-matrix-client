@@ -14,7 +14,8 @@ import {
   ComposerExpressionTabPreference,
   type ComposerExpressionTab,
 } from '@trinity/data-access/timeline';
-import { type TrnEmojiPick } from '@trinity/components/controls';
+import { TrnButton, type TrnEmojiPick } from '@trinity/components/controls';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { GifPickerComponent } from '../gif-picker/gif-picker.component';
 import { StickerPickerComponent } from '../sticker-picker/sticker-picker.component';
 import { ExpressionPickerComponent } from './expression-picker.component';
@@ -30,6 +31,7 @@ import { ExpressionPickerComponent } from './expression-picker.component';
 })
 class EmojiPickerStubComponent {
   readonly pickerId = input<string | null>(null);
+  readonly autoFocusSearch = input(false);
   readonly picked = output<TrnEmojiPick>();
 }
 
@@ -99,6 +101,8 @@ async function renderPanel(options: Options = {}) {
         GifPickerComponent,
         StickerPickerComponent,
         EmojiPickerStubComponent,
+        TrnButton,
+        TrnIconComponent,
       ],
     },
   });
@@ -392,5 +396,58 @@ describe('ExpressionPickerComponent', () => {
     });
 
     expect(handlers.dismiss).not.toHaveBeenCalled();
+  });
+
+  it("puts the sheet's close button at the start of the tab row", async () => {
+    const { handlers } = await renderPanel({ presentation: 'sheet' });
+    const close = view.getByRole('button', { name: 'Close' });
+    const tablist = view.getByRole('tablist');
+
+    expect(close.parentElement).toBe(tablist.parentElement);
+    // First in focus order, as it was in the sheet's own header.
+    expect(
+      close.compareDocumentPosition(tablist) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    close.click();
+    expect(handlers.dismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the sheet's close button when Emoji is the only tab", async () => {
+    await renderPanel({
+      presentation: 'sheet',
+      gifEnabled: false,
+      stickerEnabled: false,
+    });
+
+    expect(view.queryByRole('tablist')).toBeNull();
+    expect(view.getByRole('button', { name: 'Close' })).toBeInTheDocument();
+  });
+
+  it('has no close button of its own as a popover', async () => {
+    await renderPanel();
+
+    expect(view.queryByRole('button', { name: 'Close' })).toBeNull();
+  });
+
+  it("asks the sheet's emoji picker to take focus into its search once loaded", async () => {
+    const { fixture } = await renderPanel({ presentation: 'sheet' });
+    const picker = fixture.debugElement.query(
+      (el) => el.name === 'trn-emoji-picker',
+    );
+
+    expect(
+      (picker.componentInstance as EmojiPickerStubComponent).autoFocusSearch(),
+    ).toBe(true);
+  });
+
+  it("leaves the anchored emoji picker's focus alone", async () => {
+    const { fixture } = await renderPanel();
+    const picker = fixture.debugElement.query(
+      (el) => el.name === 'trn-emoji-picker',
+    );
+
+    expect(
+      (picker.componentInstance as EmojiPickerStubComponent).autoFocusSearch(),
+    ).toBe(false);
   });
 });

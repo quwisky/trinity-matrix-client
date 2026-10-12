@@ -9,7 +9,10 @@
     @include picker-surface;
 
     height: 360px;
+
+    // `dvh` shrinks with a mobile browser's toolbars; `vh` is the fallback before it.
     max-height: 60vh;
+    max-height: 60dvh;
     padding: var(--trinity-space-3);
   }
 
