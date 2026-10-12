@@ -467,6 +467,22 @@ describe('createLogRedactor', () => {
       ).toEqual({ complete: true });
     });
 
+    it('keeps the names read before a source failed, and says the reading is incomplete', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+      redactor.learn('Garden Club with Alice Liddell');
+      function* failing() {
+        yield { ...rooms('Garden Club'), displayNames: ['Alice Liddell'] };
+        throw new Error('client stopped');
+      }
+
+      expect(runToEnd(redactor.learnNames(failing()))).toEqual({
+        complete: false,
+      });
+      expect(redactor.redact('Garden Club with Alice Liddell')).toBe(
+        'Room 1 with Person 1',
+      );
+    });
+
     it('pauses while it reads many names', () => {
       const names = Array.from({ length: 2_000 }, (_, n) => `Member ${n}`);
       const redactor = createLogRedactor(CORPUS_CONTEXT);

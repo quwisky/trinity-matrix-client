@@ -141,22 +141,24 @@ describe('diagnosticKnownNames', () => {
     expect(read).toHaveBeenCalledTimes(1);
   });
 
-  it('skips the rest of an account whose client fails, and goes on', () => {
+  it('reads every other account when one fails, then reports the failure', () => {
     const clients = {
       all: () => [{ client: 'alice' as const }, { client: 'bob' as const }],
     };
-
     const read = function* (client: 'alice' | 'bob') {
       yield* groups[client];
       if (client === 'alice') {
         throw new Error('client stopped');
       }
     };
+    const seen: unknown[] = [];
 
-    expect([...diagnosticKnownNames(clients, read)]).toEqual([
-      ...groups.alice,
-      ...groups.bob,
-    ]);
+    expect(() => {
+      for (const group of diagnosticKnownNames(clients, read)) {
+        seen.push(group);
+      }
+    }).toThrow('could not be read');
+    expect(seen).toEqual([...groups.alice, ...groups.bob]);
   });
 
   it('reads nothing when no account is signed in', () => {

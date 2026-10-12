@@ -202,9 +202,14 @@ export class KnownNameRedactor {
         members.push(group.displayNames);
         yield;
       }
-      let read = 0;
-      for (const names of members) {
-        let taken = 0;
+    } catch {
+      // The groups read so far are kept, their display names included.
+      complete = false;
+    }
+    let read = 0;
+    for (const names of members) {
+      let taken = 0;
+      try {
         for (const name of names) {
           read += 1;
           if (read % NAMES_PER_STEP === 0) {
@@ -220,13 +225,13 @@ export class KnownNameRedactor {
             taken += 1;
           }
         }
-        if (!complete && index.full()) {
-          break;
-        }
+      } catch {
+        // This room's members read so far are kept; the other rooms are still read.
+        complete = false;
       }
-    } catch {
-      // The names read so far are kept; the identifiers are redacted regardless.
-      complete = false;
+      if (!complete && index.full()) {
+        break;
+      }
     }
     const matcher = yield* LiteralMatcher.build(
       [...index.literals.keys()].map((text) => {

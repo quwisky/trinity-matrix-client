@@ -771,6 +771,7 @@ describe('DiagnosticLogService', () => {
 
       expect(bundle.text).toContain('# Accounts signed in: 1');
       expect(bundle.text).toContain('sync stalled in Room 1');
+      expect(bundle.text).toContain('# Some names were not replaced');
     });
 
     it('still exports when the account source fails', async () => {
