@@ -164,16 +164,9 @@ test.describe('Settings', () => {
       page.evaluate(() =>
         document.documentElement.getAttribute('data-density'),
       );
-    const previewGap = () =>
-      page
-        .locator('.preview__canvas')
-        .first()
-        .evaluate((element) => getComputedStyle(element).columnGap);
-
     // The default leaves no attribute, and the scale is the 4px rhythm's 16px step.
     expect(await densityAttr()).toBeNull();
     expect(await spaceToken()).toBe('16px');
-    expect(await previewGap()).toBe('12px');
 
     const trigger = page.getByTestId('density-select').locator('button');
     await trigger.click();
@@ -185,11 +178,6 @@ test.describe('Settings', () => {
     // `[data-density]` selector, so the unit spec can only see the attribute.
     await expect.poll(densityAttr).toBe('compact');
     await expect.poll(spaceToken).toBe('12px');
-    await expect.poll(previewGap).toBe('8px');
-
-    await expect(page.getByTestId('appearance-preview-state')).toContainText(
-      'Compact',
-    );
 
     // Back to cosy → the attribute goes and the scale returns.
     await trigger.click();
@@ -212,19 +200,13 @@ test.describe('Settings', () => {
       const detail = document.querySelector<HTMLElement>(
         '[data-testid=settings-detail]',
       );
-      const preview = document.querySelector<HTMLElement>(
-        '[data-testid=appearance-preview]',
-      );
-      if (!detail || !preview) throw new Error('settings geometry missing');
+      if (!detail) throw new Error('settings geometry missing');
       const pane = detail.getBoundingClientRect();
-      const sample = preview.getBoundingClientRect();
       const controls = [...detail.querySelectorAll<HTMLElement>('button')].map(
         (control) => control.getBoundingClientRect(),
       );
       return {
         horizontalOverflow: detail.scrollWidth - detail.clientWidth,
-        previewInside:
-          sample.left >= pane.left - 1 && sample.right <= pane.right + 1,
         controlsInside: controls.every(
           (control) =>
             control.left >= pane.left - 1 && control.right <= pane.right + 1,
@@ -233,7 +215,6 @@ test.describe('Settings', () => {
     });
 
     expect(geometry.horizontalOverflow).toBeLessThanOrEqual(1);
-    expect(geometry.previewInside).toBe(true);
     expect(geometry.controlsInside).toBe(true);
   });
 
@@ -290,11 +271,15 @@ test.describe('Settings', () => {
 
     // The default Theme sets no data-theme attribute.
     expect(await themeAttr(page)).toBeNull();
-    const previewAccent = () =>
-      page
-        .locator('.preview__avatar')
-        .evaluate((element) => getComputedStyle(element).backgroundColor);
-    const initialPreviewAccent = await previewAccent();
+    // The accent token the whole app reads (selected rows, active states) follows the Theme.
+    const accentToken = () =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--trinity-state-selected-surface')
+          .trim(),
+      );
+    const initialAccent = await accentToken();
+    expect(initialAccent).not.toBe('');
 
     const trigger = page.getByTestId('theme-select').locator('button');
     const amethyst = page.getByTestId('theme-amethyst');
@@ -312,12 +297,13 @@ test.describe('Settings', () => {
     await expect(amethyst).toHaveCount(0); // closed after selecting
     // #168: and the closed trigger reads the label, not the stored id `amethyst`.
     await expect(trigger).toHaveText('Amethyst');
-    expect(await previewAccent()).not.toBe(initialPreviewAccent);
+    await expect.poll(accentToken).not.toBe(initialAccent);
 
     // Back to the default Theme → the attribute is removed again.
     await trigger.click();
     await page.getByTestId('theme-trinity').click();
     await expect.poll(() => themeAttr(page)).toBeNull();
+    await expect.poll(accentToken).toBe(initialAccent);
     await expect(amethyst).toHaveCount(0);
     await expect(trigger).toHaveText('Graphite');
   });

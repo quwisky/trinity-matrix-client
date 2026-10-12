@@ -182,31 +182,13 @@ describe('AppearanceSettingsComponent', () => {
     ).toHaveLength(0);
   });
 
-  it('renders a labelled live preview of the active appearance recipe', async () => {
-    const { container, fixture } = await renderPage();
-    const preview = container.querySelector('[data-testid=appearance-preview]');
-    const state = container.querySelector(
-      '[data-testid=appearance-preview-state]',
-    );
+  it('shows no static preview; the settings apply to the real app', async () => {
+    const { container } = await renderPage();
 
-    expect(preview).not.toBeNull();
-    expect(preview?.getAttribute('aria-hidden')).toBe('true');
-    expect(state?.textContent).toContain('dark · Graphite · Cosy');
-
-    resolved.set({
-      mode: 'light',
-      theme: 'midnight',
-      textSize: 'default',
-      density: 'compact',
-      roomList: 'rich',
-      codeSize: 'default',
-      codeLinePresentation: 'auto',
-    });
-    fixture.componentInstance.appearance.update('theme', 'midnight');
-    fixture.componentInstance.appearance.update('density', 'compact');
-    fixture.detectChanges();
-
-    expect(state?.textContent).toContain('light · Midnight · Compact');
+    expect(
+      container.querySelector('[data-testid=appearance-preview]'),
+    ).toBeNull();
+    expect(container.querySelector('trn-appearance-preview')).toBeNull();
   });
 
   it('applies the chosen Mode on change', async () => {
