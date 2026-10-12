@@ -28,6 +28,7 @@ import {
 } from '@trinity/data-access/matrix-client';
 import type { PushConfig } from '@trinity/data-access/notifications';
 import {
+  BUG_REPORT_LAUNCHER,
   TrinityErrorHandler,
   type BuildInfo,
   provideCapacitorPreferenceStorage,
@@ -36,12 +37,14 @@ import {
 import { APPLICATION_RUNTIME_ADAPTER } from '../application-runtime.adapter';
 import {
   ENCRYPTION_DIALOG_COMPONENTS,
+  REPORT_BUG_DIALOG_COMPONENT,
   SETTINGS_DIALOG_COMPONENT,
   type ApplicationDialogLoader,
   type EncryptionDialogLoaders,
 } from '../application-dialog-loaders';
 import { applicationCapabilityProviders } from './application-capability.providers';
 import { trinityDiagnosticProviders } from './diagnostic-log.providers';
+import { ReportBugLauncherAdapter } from './report-bug-launcher.adapter';
 import { TrinityApplicationRuntimeAdapter } from './trinity-application-runtime.adapter';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { CapabilityHealthService } from '../capability-health.service';
@@ -51,6 +54,8 @@ import { SystemStatusVisibilityService } from '../system-status-visibility.servi
 export interface TrinityApplicationDialogLoaders {
   readonly settings: ApplicationDialogLoader;
   readonly encryption: EncryptionDialogLoaders;
+  /** Report a bug, for the sign-in screen and System status. */
+  readonly reportBug: ApplicationDialogLoader;
 }
 
 export interface TrinityApplicationProviderOptions {
@@ -125,5 +130,10 @@ export function provideTrinityApplication(
       provide: ENCRYPTION_DIALOG_COMPONENTS,
       useValue: options.dialogLoaders.encryption,
     },
+    {
+      provide: REPORT_BUG_DIALOG_COMPONENT,
+      useValue: options.dialogLoaders.reportBug,
+    },
+    { provide: BUG_REPORT_LAUNCHER, useExisting: ReportBugLauncherAdapter },
   ]);
 }

@@ -236,4 +236,17 @@
   >
     Erase all data on this device
   </button>
+  @if (canReportBug) {
+    <button
+      trnBtn
+      presentation="ghost"
+      size="sm"
+      type="button"
+      class="mt-2 w-full"
+      (click)="reportBug()"
+      data-testid="login-report-bug"
+    >
+      Report a bug
+    </button>
+  }
 </trn-auth-card>

@@ -1,9 +1,15 @@
 import { signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import {
+  DIAGNOSTIC_ACCOUNT_SOURCE,
+  DIAGNOSTIC_LOG_STORE_FACTORY,
   DIAGNOSTIC_REPORT_CONFIG,
   DiagnosticLogService,
+  MemoryLogStore,
+  provideDiagnosticLog,
   type DiagnosticBundle,
 } from '@trinity/data-access/diagnostic-log';
+import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { HostFileExportService } from '@trinity/runtime/host';
@@ -407,5 +413,47 @@ describe('ReportBugDialogComponent', () => {
     fixture.detectChanges();
 
     expect(toggle.getAttribute('aria-controls')).toBe('report-bug-preview');
+  });
+
+  it('opens signed out, on root services alone, with no accounts in the log', async () => {
+    // The sign-in screen opens this with nobody signed in: only the storage boundaries and
+    // the app's account source (an empty registry) are supplied; the services are the root's.
+    const rendered = await render(ReportBugDialogComponent, {
+      providers: [
+        {
+          provide: DIAGNOSTIC_LOG_STORE_FACTORY,
+          useValue: () => Promise.resolve(new MemoryLogStore()),
+        },
+        {
+          provide: PREFERENCE_STORAGE_ADAPTER,
+          useValue: {
+            read: () => of({ kind: 'missing' } as const),
+            write: () => of({ kind: 'completed' } as const),
+          },
+        },
+        {
+          provide: DIAGNOSTIC_ACCOUNT_SOURCE,
+          useValue: { accounts: () => of([]) },
+        },
+        { provide: TrnDialogRef, useValue: { close: vi.fn() } },
+        // Starts the log at app start-up, as the application does.
+        provideDiagnosticLog(),
+      ],
+    });
+
+    await vi.waitFor(() => {
+      rendered.fixture.detectChanges();
+      expect(screen.getByTestId('report-bug-preview-toggle')).toBeTruthy();
+    });
+    screen.getByTestId('report-bug-preview-toggle').click();
+    rendered.fixture.detectChanges();
+
+    expect(
+      screen.getByRole('region', { name: 'Diagnostic log preview' })
+        .textContent,
+    ).toContain('# Accounts signed in: 0');
+    expect(TestBed.inject(DIAGNOSTIC_REPORT_CONFIG).issueRepositoryUrl).toBe(
+      null,
+    );
   });
 });

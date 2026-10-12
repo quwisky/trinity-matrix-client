@@ -23,3 +23,10 @@ export const SETTINGS_DIALOG_COMPONENT =
  */
 export const ENCRYPTION_DIALOG_COMPONENTS =
   new InjectionToken<EncryptionDialogLoaders>('ENCRYPTION_DIALOG_COMPONENTS');
+
+/**
+ * Keeps Application Runtime independent of the Settings feature while it opens Report a bug
+ * for surfaces that cannot import Settings: the sign-in screen and System status.
+ */
+export const REPORT_BUG_DIALOG_COMPONENT =
+  new InjectionToken<ApplicationDialogLoader>('REPORT_BUG_DIALOG_COMPONENT');

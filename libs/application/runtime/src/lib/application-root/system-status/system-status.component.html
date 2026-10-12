@@ -35,6 +35,21 @@
         @if (status.copyConfirmed()) {
           <span role="status">Copied locally. Nothing was uploaded.</span>
         }
+        @if (canReportBug) {
+          <p>
+            To send the developers a diagnostic log from this device, report a
+            bug.
+          </p>
+          <button
+            trnBtn
+            presentation="outline"
+            type="button"
+            data-testid="system-status-report-bug"
+            (click)="reportBug()"
+          >
+            Report a bug
+          </button>
+        }
       </section>
     } @else if (selectedSection()) {
       @if (selectedSection() === 'overview') {

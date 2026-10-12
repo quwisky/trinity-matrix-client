@@ -17,4 +17,8 @@ export const APPLICATION_DIALOG_LOADERS = {
         map((module) => module.DeviceVerificationPage),
       ),
   },
+  reportBug: () =>
+    defer(() => import('@trinity/feature/settings')).pipe(
+      map((module) => module.ReportBugDialogComponent),
+    ),
 } satisfies TrinityApplicationDialogLoaders;

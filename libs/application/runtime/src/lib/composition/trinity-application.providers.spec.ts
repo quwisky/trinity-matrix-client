@@ -3,18 +3,31 @@ import { PRIVACY_PREFERENCE_DESCRIPTORS } from '@trinity/data-access/timeline';
 import { RAIL_UNREAD_CHATS_PREFERENCE } from '@trinity/data-access/room-library';
 import {
   AppConfigService,
+  BUG_REPORT_LAUNCHER,
   CONFIG_EXPORT_VERSION,
+  ExternalBrowserService,
+  SessionStorageService,
   exportedKeysFor,
   type BuildInfo,
 } from '@trinity/platform-native';
-import { EnvironmentInjector } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  EnvironmentInjector,
+  inject,
+  signal,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   DIAGNOSTIC_ACCOUNT_SOURCE,
   DIAGNOSTIC_LOG_STORE_FACTORY,
+  DIAGNOSTIC_REPORT_CONFIG,
   DiagnosticLogService,
   MemoryLogStore,
 } from '@trinity/data-access/diagnostic-log';
+import { TrnDialogRef } from '@trinity/components/overlay';
+import { HostFileExportService } from '@trinity/runtime/host';
+import { MockProvider } from 'ng-mocks';
 import {
   MATRIX_SDK_LOG_SINK,
   configureMatrixSdkLogging,
@@ -25,7 +38,38 @@ import { NEVER, firstValueFrom, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ACCOUNT_LIFECYCLE_PORT } from '@trinity/data-access/accounts';
 import { applicationCapabilityProviders } from './application-capability.providers';
+import { ReportBugLauncherAdapter } from './report-bug-launcher.adapter';
 import { provideTrinityApplication } from './trinity-application.providers';
+
+/**
+ * Stands in for Report a bug (feature-settings, which Application Runtime may not import):
+ * it asks the root for exactly what the dialog injects and shows the export's account header.
+ */
+@Component({
+  selector: 'trn-report-bug-probe',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<pre data-testid="report-bug-probe">{{ header() }}</pre>',
+})
+class ReportBugDependencyProbeComponent {
+  private readonly log = inject(DiagnosticLogService);
+
+  protected readonly header = signal('');
+
+  constructor() {
+    inject(HostFileExportService);
+    inject(ExternalBrowserService);
+    inject(DIAGNOSTIC_REPORT_CONFIG);
+    inject(TrnDialogRef);
+    this.log.export().subscribe((bundle) =>
+      this.header.set(
+        bundle.text
+          .split('\n')
+          .filter((line) => line.startsWith('# Accounts'))
+          .join('\n'),
+      ),
+    );
+  }
+}
 
 describe('Trinity application provider composition', () => {
   it('pins portable Appearance descriptors to the Advanced config ledger', () => {
@@ -109,6 +153,7 @@ describe('Trinity application provider composition', () => {
           dialogLoaders: {
             settings: () => NEVER,
             encryption: { unlock: () => NEVER, verify: () => NEVER },
+            reportBug: () => NEVER,
           },
         }),
       ],
@@ -136,6 +181,7 @@ describe('Trinity application provider composition', () => {
           dialogLoaders: {
             settings: () => NEVER,
             encryption: { unlock: () => NEVER, verify: () => NEVER },
+            reportBug: () => NEVER,
           },
         }),
         {
@@ -196,5 +242,81 @@ describe('Trinity application provider composition', () => {
     );
 
     expect(discard).toHaveBeenCalledOnce();
+  });
+
+  it('offers Report a bug to the sign-in screen and System status through BUG_REPORT_LAUNCHER', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideTrinityApplication({
+          routes: [],
+          pushConfig: null,
+          matrixSdkLogLevel: 'warn',
+          issueRepositoryUrl: null,
+          buildInfo: {} as BuildInfo,
+          dialogLoaders: {
+            settings: () => NEVER,
+            encryption: { unlock: () => NEVER, verify: () => NEVER },
+            reportBug: () => NEVER,
+          },
+        }),
+      ],
+    });
+
+    try {
+      expect(TestBed.inject(BUG_REPORT_LAUNCHER)).toBe(
+        TestBed.inject(ReportBugLauncherAdapter),
+      );
+    } finally {
+      TestBed.resetTestingModule();
+      configureMatrixSdkLogging('debug');
+    }
+  });
+
+  it('opens Report a bug signed out, with everything it needs from the root injector', async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideTrinityApplication({
+          routes: [],
+          pushConfig: null,
+          matrixSdkLogLevel: 'warn',
+          issueRepositoryUrl: null,
+          buildInfo: { version: '1.2.3', commit: 'abc1234', builtAt: '' },
+          dialogLoaders: {
+            settings: () => NEVER,
+            encryption: { unlock: () => NEVER, verify: () => NEVER },
+            reportBug: () => of(ReportBugDependencyProbeComponent),
+          },
+        }),
+        {
+          provide: DIAGNOSTIC_LOG_STORE_FACTORY,
+          useValue: () => Promise.resolve(new MemoryLogStore()),
+        },
+        {
+          provide: PREFERENCE_STORAGE_ADAPTER,
+          useValue: {
+            read: () => of({ kind: 'missing' } as const),
+            write: () => of({ kind: 'completed' } as const),
+          },
+        },
+        // Signed out: the account registry is empty.
+        MockProvider(SessionStorageService, {
+          snapshot: () => of({ activeAccountId: null, accounts: [] }),
+        }),
+      ],
+    });
+
+    try {
+      TestBed.inject(EnvironmentInjector);
+      TestBed.inject(BUG_REPORT_LAUNCHER).open();
+      await vi.waitFor(() => {
+        expect(
+          document.querySelector('[data-testid="report-bug-probe"]')
+            ?.textContent,
+        ).toBe('# Accounts signed in: 0');
+      });
+    } finally {
+      TestBed.resetTestingModule();
+      configureMatrixSdkLogging('debug');
+    }
   });
 });
