@@ -8,10 +8,7 @@ import {
 } from '@trinity/runtime/preferences';
 import { defer, filter, from, map, of, switchMap, type Observable } from 'rxjs';
 import { buildLabel } from './build-label';
-import {
-  buildDiagnosticBundleInSlices,
-  type DiagnosticBundle,
-} from './diagnostic-bundle';
+import type { DiagnosticBundle } from './diagnostic-bundle';
 import { formatLogArgs, truncateMessage } from './capture/format-log-args';
 import {
   installConsoleCapture,
@@ -37,6 +34,7 @@ import {
 } from './keep-diagnostic-log.preference';
 import { describePlatform, readPlatformFacts } from './platform-description';
 import { readAccounts } from './report-facts';
+import { loadReportExport } from './report/load-report-export';
 import {
   prepareDiagnosticReport,
   type DiagnosticReportProgress,
@@ -253,7 +251,11 @@ export class DiagnosticLogService {
             : of(LOG_OFF_SNAPSHOT),
         ),
       ),
-      bundle: (input) => buildDiagnosticBundleInSlices(input),
+      // The export code loads on first use, keeping it out of the initial bundle.
+      bundle: (input) =>
+        from(loadReportExport()).pipe(
+          switchMap((module) => module.buildDiagnosticBundleInSlices(input)),
+        ),
     });
   }
 

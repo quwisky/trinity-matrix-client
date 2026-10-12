@@ -28,11 +28,11 @@ import {
 import {
   DIAGNOSTIC_REPORT_CONFIG,
   DiagnosticLogService,
-  buildBugReportUrl,
+  loadBugReportUrlBuilder,
   type DiagnosticBundle,
   type DiagnosticReportFacts,
 } from '@trinity/data-access/diagnostic-log';
-import { finalize } from 'rxjs';
+import { EMPTY, catchError, finalize, from } from 'rxjs';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { HostFileExportService } from '@trinity/runtime/host';
 
@@ -92,6 +92,13 @@ export class ReportBugDialogComponent {
   private readonly fileSupport = toSignal(this.files.support());
   /** The issue's facts, known before the log, so GitHub needn't wait for a slow export. */
   private readonly facts = signal<DiagnosticReportFacts | null>(null);
+  /**
+   * The issue URL builder, loaded with the export code when the dialog opens, so the click
+   * on GitHub can open the issue at once.
+   */
+  private readonly issueUrl = toSignal(
+    from(loadBugReportUrlBuilder()).pipe(catchError(() => EMPTY)),
+  );
   /** GitHub needs only the facts: from the export once it is ready, or read on their own. */
   private readonly reportFacts = computed(
     () => this.bundle()?.facts ?? this.facts() ?? null,
@@ -121,7 +128,10 @@ export class ReportBugDialogComponent {
   readonly showSave = computed(() => this.offersLog() && this.canSaveFile());
   readonly showGitHub = this.config.issueRepositoryUrl !== null;
   readonly canOpenGitHub = computed(
-    () => this.reportFacts() !== null && !this.reportForm().invalid(),
+    () =>
+      this.reportFacts() !== null &&
+      this.issueUrl() !== undefined &&
+      !this.reportForm().invalid(),
   );
   readonly descriptionError = computed(
     () => this.reportForm.description().errors()[0]?.message ?? null,
@@ -204,11 +214,18 @@ export class ReportBugDialogComponent {
   openGitHub(): void {
     const repository = this.config.issueRepositoryUrl;
     const facts = this.reportFacts();
-    if (!repository || !facts || this.opening() || !this.canOpenGitHub()) {
+    const buildUrl = this.issueUrl();
+    if (
+      !repository ||
+      !facts ||
+      !buildUrl ||
+      this.opening() ||
+      !this.canOpenGitHub()
+    ) {
       return;
     }
     const bundle = this.bundle();
-    const url = buildBugReportUrl(repository, {
+    const url = buildUrl(repository, {
       description: this.model().description,
       facts,
       logFileName: bundle && this.offersLog() ? bundle.filename : null,

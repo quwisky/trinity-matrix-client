@@ -5,6 +5,7 @@ import {
   DIAGNOSTIC_LOG_STORE_FACTORY,
   DIAGNOSTIC_REPORT_CONFIG,
   DiagnosticLogService,
+  loadBugReportUrlBuilder,
   MemoryLogStore,
   provideDiagnosticLog,
   type DiagnosticBundle,
@@ -50,6 +51,8 @@ async function setup(options: SetupOptions = {}) {
   const save = vi.fn(() => options.saved ?? of({ kind: 'completed' }));
   const open = vi.fn(() => of(true));
   const close = vi.fn();
+  // The dialog loads the issue URL builder lazily; have it loaded before the dialog asks.
+  await loadBugReportUrlBuilder();
   const rendered = await render(ReportBugDialogComponent, {
     providers: [
       MockProvider(DiagnosticLogService, {
@@ -97,6 +100,8 @@ async function setup(options: SetupOptions = {}) {
     ],
   });
   await rendered.fixture.whenStable();
+  // The URL builder arrives on a promise, outside what whenStable waits for.
+  await new Promise((resolve) => setTimeout(resolve, 0));
   rendered.fixture.detectChanges();
   return { ...rendered, save, open, close };
 }

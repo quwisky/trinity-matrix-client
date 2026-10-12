@@ -16,11 +16,11 @@ export type {
   DiagnosticAccount,
   DiagnosticReportFacts,
 } from './lib/report-facts';
+export type { BugReportDraft } from './lib/bug-report-url';
 export {
-  GITHUB_ISSUE_URL_LIMIT,
-  buildBugReportUrl,
-  type BugReportDraft,
-} from './lib/bug-report-url';
+  loadBugReportUrlBuilder,
+  type BugReportUrlBuilder,
+} from './lib/report/load-report-export';
 export type {
   DiagnosticEntry,
   DiagnosticLevel,
