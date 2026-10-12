@@ -303,7 +303,7 @@ describe('scrubSecrets', () => {
     expect(scrubSecrets('{"password":12345}')).toBe(
       `{"password":"${REDACTED}"}`,
     );
-    expect(scrubSecrets('{"token":true,"key":null,"secret":-1.5e3}')).toBe(
+    expect(scrubSecrets('{"token":7,"key":0,"secret":-1.5e3}')).toBe(
       `{"token":"${REDACTED}","key":"${REDACTED}","secret":"${REDACTED}"}`,
     );
   });
@@ -416,6 +416,13 @@ describe('scrubSecrets', () => {
       '"auth":['.repeat(8000),
       "'".repeat(65000),
       'aB1'.repeat(21000),
+      `x ${'a-'.repeat(32500)}`,
+      'a_'.repeat(32500),
+      'aB-'.repeat(21000),
+      `x ${'aB-'.repeat(21000)}`,
+      '%41'.repeat(21000),
+      `%41${'aB1-'.repeat(16000)}`,
+      'a:'.repeat(32500),
     ];
 
     for (const input of inputs) {
@@ -425,6 +432,31 @@ describe('scrubSecrets', () => {
 
       expect(performance.now() - started).toBeLessThan(200);
     }
+  });
+
+  it.each([
+    'hasPassword: true',
+    '{"password_set":false}',
+    '{ secretStorageReady: true }',
+    'requestingTokens: false',
+    '?hasPassword=true',
+    '{"token":null}',
+  ])(
+    'keeps a boolean or null under a secret-looking name readable: %s',
+    (line) => {
+      expect(scrubSecrets(line)).toBe(line);
+    },
+  );
+
+  it('still masks numbers, strings and look-alike words under secret names', () => {
+    expect(scrubSecrets('{"password":12345}')).toBe(
+      `{"password":"${REDACTED}"}`,
+    );
+    expect(scrubSecrets('{"password":"true"}')).toBe(
+      `{"password":"${REDACTED}"}`,
+    );
+    expect(scrubSecrets('{"password":truely}')).not.toContain('truely');
+    expect(scrubSecrets('password: nullable')).not.toContain('nullable');
   });
 
   it.each(CAPTURED_SHAPES.map((shape) => [shape.name, shape] as const))(

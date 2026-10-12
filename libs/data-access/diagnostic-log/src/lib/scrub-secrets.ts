@@ -141,6 +141,9 @@ function isSecretParam(name: string): boolean {
  */
 const FIELD_NAME = String.raw`(?<![\w$-])(\\{0,8}["']?)([A-Za-z_][\w.-]{0,63})\1\s*:\s*`;
 
+/** A bare `true`, `false` or `null` carries no secret, whatever the name. */
+const FLAG_VALUE = /^(?:true|false|null)$/;
+
 /** A parameter name and its value; the name may start after any non-alphanumeric character. */
 const PARAM = /(?<![A-Za-z0-9])([A-Za-z_][\w.-]{0,63})=([^&#\s"']*)/g;
 
@@ -170,7 +173,7 @@ const SECRET_RULES: readonly (readonly [RegExp, string])[] = [
   [/\b(?:syt|syr|mat|mar|mct)_[A-Za-z0-9_-]{8,}/g, REDACTED],
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g, REDACTED],
   // FCM registration tokens, prefix included.
-  [/\b[A-Za-z0-9_-]{8,}:APA91[A-Za-z0-9_-]{16,}/g, REDACTED],
+  [/(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{8,64}:APA91[A-Za-z0-9_-]{16,}/g, REDACTED],
   // Recovery keys: base58 starting "Es", twelve groups of four, spaces optional.
   [
     /\bEs[1-9A-HJ-NP-Za-km-z]{2}(?:\s?[1-9A-HJ-NP-Za-km-z]{4}){11}\b/g,
@@ -205,8 +208,10 @@ export function scrubSecrets(text: string): string {
   }
   // Credential query, fragment and form parameters. matrix-js-sdk masks its own request URLs
   // (`sanitizeUrlForLogs`); URLs in errors, callbacks, widgets and form bodies are not masked.
-  scrubbed = scrubbed.replace(PARAM, (whole, name: string) =>
-    isSecretParam(name) ? `${name}=${REDACTED}` : whole,
+  scrubbed = scrubbed.replace(PARAM, (whole, name: string, value: string) =>
+    isSecretParam(name) && !FLAG_VALUE.test(value)
+      ? `${name}=${REDACTED}`
+      : whole,
   );
   for (const [pattern, replacement] of SECRET_RULES) {
     scrubbed = scrubbed.replace(pattern, replacement);
@@ -249,6 +254,8 @@ interface FieldValue {
   readonly masked: string;
   /** The value's text for strings and bare scalars; `undefined` for objects and arrays. */
   readonly content: string | undefined;
+  /** Whether the value was written without quotes (a number, flag or bare word). */
+  readonly bare: boolean;
 }
 
 /**
@@ -280,11 +287,12 @@ function maskFields(
     }
     pattern.lastIndex = value.end;
     const alreadyMasked = value.content === REDACTED;
+    const flag = value.bare && FLAG_VALUE.test(value.content ?? '');
     const kept =
       oauth &&
       value.content !== undefined &&
       KEPT_OAUTH_VALUE.test(value.content);
-    if (alreadyMasked || kept) {
+    if (alreadyMasked || flag || kept) {
       continue;
     }
     out += text.slice(position, start) + value.masked;
@@ -316,6 +324,7 @@ function readValue(
       end: balancedEnd(text, start),
       masked: `"${REDACTED}"`,
       content: undefined,
+      bare: false,
     };
   }
   let end = start;
@@ -330,6 +339,7 @@ function readValue(
     end: start + content.length,
     masked: `"${REDACTED}"`,
     content,
+    bare: true,
   };
 }
 
@@ -363,6 +373,7 @@ function readString(text: string, start: number, opener: string): FieldValue {
     end: close === -1 ? text.length : close + opener.length,
     masked: `${opener}${REDACTED}${opener}`,
     content: text.slice(from, contentEnd),
+    bare: false,
   };
 }
 
