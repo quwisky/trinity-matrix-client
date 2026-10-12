@@ -71,6 +71,7 @@
         [threadSummary]="threadSummaries()[row.id] ?? null"
         [threadContinues]="threadContinuationIds().has(row.id)"
         [caps]="rowCaps(row)"
+        [undecryptableFix]="undecryptableFix()"
         [runExpanded]="expandedRuns().has(row.id)"
         (toggleRun)="toggleRun(row.id)"
         (action)="onRowAction(row, $event)"

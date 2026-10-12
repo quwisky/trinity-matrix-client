@@ -73,6 +73,10 @@ import {
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 import { observeScrollerHeight } from './scroller-height-anchor';
 import { confirmMessageDeletion$ } from '../message-actions/confirm-message-deletion';
+import {
+  UndecryptableFixService,
+  type UndecryptableFix,
+} from '../shared/undecryptable-fix.service';
 
 /**
  * How long after a jump a width change still counts as "the same jump".
@@ -832,6 +836,17 @@ export abstract class MessageListBase {
   }
 
   /**
+   * The fix Trust offers for an unreadable message, handed to every row; each row decides
+   * whether its reason can use it. Resolved only while some row can, so a timeline with no
+   * fixable message never constructs Trust.
+   */
+  readonly undecryptableFix = computed<UndecryptableFix | null>(() =>
+    this.messages().some((message) => message.undecryptable?.deviceFixable)
+      ? this.injector.get(UndecryptableFixService).fix()
+      : null,
+  );
+
+  /**
    * Dispatch the semantic action the row captured when its sideways drag committed.
    *
    * The host owns dispatch because `row` is its stable snapshot. It deliberately does not
@@ -877,6 +892,10 @@ export abstract class MessageListBase {
         mediaSave: this.mediaSave,
         reactions: this.reactionsDialog,
         editHistory: this.editHistorySvc,
+        // Resolved on use, like the computed above.
+        undecryptableFix: {
+          open: () => this.injector.get(UndecryptableFixService).open(),
+        },
         react: (id, key) => this.react.emit({ id, key }),
         quote: (r) => this.startQuote(r),
         // No anchor: the dialog that held the link has already closed, so a user card from

@@ -3,6 +3,7 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  Injector,
   OnDestroy,
   computed,
   effect,
@@ -24,6 +25,10 @@ import {
   isMobileOs,
 } from '@trinity/platform-native';
 import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
+import {
+  UndecryptableFixService,
+  type UndecryptableFix,
+} from '../shared/undecryptable-fix.service';
 import {
   type MessageSwipeAction,
   type SwipeDirection,
@@ -117,6 +122,7 @@ export class ThreadViewComponent implements OnDestroy {
   private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly timeline = this.conversations.timeline;
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
 
   readonly roomId = input.required<string>();
   readonly accountId = input<string | null>(null);
@@ -381,6 +387,13 @@ export class ThreadViewComponent implements OnDestroy {
     return this.rowCapsById().get(row.id) ?? THREAD_ROW_CAPS;
   }
 
+  /** As in the main timeline: resolved only while a thread row can use it. */
+  readonly undecryptableFix = computed<UndecryptableFix | null>(() =>
+    this.rows().some((row) => row.undecryptable?.deviceFixable)
+      ? this.injector.get(UndecryptableFixService).fix()
+      : null,
+  );
+
   /** Route a single row action to its thread handler. */
   onRowAction(row: MessageRow, action: MessageRowAction): void {
     if (
@@ -394,6 +407,9 @@ export class ThreadViewComponent implements OnDestroy {
         mediaSave: this.mediaSave,
         reactions: this.reactionsDialog,
         editHistory: this.editHistorySvc,
+        undecryptableFix: {
+          open: () => this.injector.get(UndecryptableFixService).open(),
+        },
         react: (id, key) => this.onReact(id, key),
         quote: (r) => this.startQuote(r),
         // The thread panel routes no permalinks (its rows don't bind matrixLink either),

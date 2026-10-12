@@ -169,6 +169,18 @@
           ></div>
         } @else {
           <p class="msg__text">{{ r.body }}</p>
+          @if (undecryptableFixLabel(); as label) {
+            <button
+              trnBtn
+              type="button"
+              presentation="link"
+              size="sm"
+              data-testid="msg-utd-fix"
+              (click)="action.emit({ type: 'fix-undecryptable' })"
+            >
+              {{ label }}
+            </button>
+          }
         }
         @if (r.previewUrl) {
           <trn-link-preview

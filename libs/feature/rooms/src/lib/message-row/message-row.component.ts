@@ -48,6 +48,8 @@ import { MessageReplyPreviewComponent } from '../message-reply-preview/message-r
 import { MessageReceiptsComponent } from '../message-receipts/message-receipts.component';
 import { MessageTimeComponent } from '../message-time/message-time.component';
 import { MessageThreadSummaryComponent } from '../message-thread-summary/message-thread-summary.component';
+import { TrnButton } from '@trinity/components/controls';
+import { type UndecryptableFix } from '../shared/undecryptable-fix.service';
 
 /** A collapsed run of adjacent system lines (see `groupSystemRuns`). */
 export interface SystemRun {
@@ -110,7 +112,9 @@ export type MessageRowAction =
    *  part of the row rather than the toolbar, so it stays out of `MessageAction`. */
   | { type: 'edit-history' }
   /** Show everyone who reacted — raised by the reaction pills' trailing chip. */
-  | { type: 'reactors' };
+  | { type: 'reactors' }
+  /** Open the fix Trust offers for a message this device could not decrypt. */
+  | { type: 'fix-undecryptable' };
 
 /** How long a press has to be held before it counts as one, in milliseconds. */
 const LONG_PRESS_MS = 500;
@@ -154,6 +158,7 @@ export type MessageSwipeAction = 'edit' | 'reply';
     MessageReceiptsComponent,
     MessageTimeComponent,
     MessageSwipeDirective,
+    TrnButton,
   ],
   templateUrl: './message-row.component.html',
   styleUrl: './message-row.component.scss',
@@ -537,6 +542,19 @@ export class MessageRowComponent {
     canQuote: false,
     saveMedia: null,
     readOnly: false,
+  });
+
+  /** The fix Trust offers for an unreadable message on this device; null when none applies. */
+  readonly undecryptableFix = input<UndecryptableFix | null>(null);
+
+  /** The unreadable-message button's label, or null when this row offers none. */
+  readonly undecryptableFixLabel = computed(() => {
+    const fix = this.undecryptableFix();
+    return fix &&
+      this.row().undecryptable?.deviceFixable &&
+      !this.caps().readOnly
+      ? fix.label
+      : null;
   });
 
   /**

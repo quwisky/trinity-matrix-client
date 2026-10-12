@@ -25,6 +25,7 @@ import {
   type MessageRowAction,
   type MessageRowCaps,
 } from './message-row.component';
+import { type UndecryptableFix } from '../shared/undecryptable-fix.service';
 
 /** Build a row caps object, overriding only the flags a test cares about. */
 const caps = (over: Partial<MessageRowCaps> = {}): MessageRowCaps => ({
@@ -104,8 +105,12 @@ describe('MessageRowComponent', () => {
       threadSummary?: ThreadSummary | null;
       caps?: MessageRowCaps;
       runExpanded?: boolean;
+      undecryptableFix?: UndecryptableFix | null;
     },
-    on: { toggleRun?: () => void } = {},
+    on: {
+      toggleRun?: () => void;
+      action?: (action: MessageRowAction) => void;
+    } = {},
   ) {
     return render(MessageRowComponent, {
       inputs,
@@ -1184,6 +1189,84 @@ describe('MessageRowComponent', () => {
 
     expect(container.querySelector('trn-message-toolbar')).toBeNull();
     expect(container.querySelector('.msg__retry')).toBeNull();
+  });
+
+  const lockedHistory = (): MessageRow =>
+    row({
+      kind: 'unsupported',
+      decryptionFailed: true,
+      body: '⚠️ Unlock your encrypted messages on this device to read messages sent before you signed in',
+      undecryptable: { reason: 'history-locked', deviceFixable: true },
+    });
+
+  it('offers the fix on a message this device can fix, named by its visible text', async () => {
+    const action = vi.fn();
+    const { container } = await renderRow(
+      {
+        row: lockedHistory(),
+        caps: caps(),
+        undecryptableFix: { label: 'Verify this device', target: 'unlock' },
+      },
+      { action },
+    );
+
+    const button = container.querySelector<HTMLButtonElement>(
+      '[data-testid="msg-utd-fix"]',
+    );
+    expect(button?.textContent?.trim()).toBe('Verify this device');
+    expect(button?.getAttribute('aria-label')).toBeNull();
+    expect(button?.type).toBe('button');
+    fireEvent.click(button as HTMLElement);
+    expect(action).toHaveBeenCalledOnce();
+    expect(action).toHaveBeenCalledWith({ type: 'fix-undecryptable' });
+  });
+
+  it('shows the label trust derives, and drops the button when trust has none', async () => {
+    const { container, fixture } = await renderRow({
+      row: lockedHistory(),
+      caps: caps(),
+      undecryptableFix: { label: 'Verify this device', target: 'unlock' },
+    });
+
+    fixture.componentRef.setInput('undecryptableFix', {
+      label: 'Use recovery key',
+      target: 'unlock',
+    });
+    fixture.detectChanges();
+    expect(
+      container
+        .querySelector('[data-testid="msg-utd-fix"]')
+        ?.textContent?.trim(),
+    ).toBe('Use recovery key');
+
+    fixture.componentRef.setInput('undecryptableFix', null);
+    fixture.detectChanges();
+    expect(container.querySelector('[data-testid="msg-utd-fix"]')).toBeNull();
+  });
+
+  // One render per test: the shared TestBed cannot be configured a second time.
+  it('offers nothing for a reason this device cannot fix', async () => {
+    const { container } = await renderRow({
+      row: row({
+        kind: 'unsupported',
+        decryptionFailed: true,
+        undecryptable: { reason: 'withheld', deviceFixable: false },
+      }),
+      caps: caps(),
+      undecryptableFix: { label: 'Verify this device', target: 'unlock' },
+    });
+
+    expect(container.querySelector('[data-testid="msg-utd-fix"]')).toBeNull();
+  });
+
+  it('offers nothing in read-only mode', async () => {
+    const { container } = await renderRow({
+      row: lockedHistory(),
+      caps: caps({ readOnly: true }),
+      undecryptableFix: { label: 'Verify this device', target: 'unlock' },
+    });
+
+    expect(container.querySelector('[data-testid="msg-utd-fix"]')).toBeNull();
   });
 
   describe('right-click and long-press', () => {

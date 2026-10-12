@@ -30,6 +30,7 @@
       <trn-message-row
         [row]="row"
         [caps]="rowCaps(row)"
+        [undecryptableFix]="undecryptableFix()"
         (action)="onRowAction(row, $event)"
         (longPress)="onRowLongPress(row, $event)"
         [swipeDirection]="swipeDirection()"
