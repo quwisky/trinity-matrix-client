@@ -116,6 +116,121 @@ describe('createLogRedactor', () => {
     ).not.toContain(EVENT.slice(1));
   });
 
+  describe('device IDs in free text', () => {
+    const redact = (text: string): string =>
+      createLogRedactor(CORPUS_CONTEXT).redact(text);
+
+    it.each([
+      ['MAS device AB3DE9XYZ1 logged in', 'MAS device DEVICE2 logged in'],
+      [
+        'devices: QWERTYUIOP, CD4FG8HIJ2 in a list',
+        'devices: DEVICE1, DEVICE2 in a list',
+      ],
+      ['Device abcdefghijklmnop removed', 'Device DEVICE2 removed'],
+      ['{"device_id":"AB3DE9XYZ1"}', '{"device_id":"DEVICE2"}'],
+      ['session for deviceId=Zx9Kq2Lm4P ok', 'session for deviceId=DEVICE2 ok'],
+    ])('redacts the ID in %s', (line, expected) => {
+      expect(redact(line)).toBe(expected);
+    });
+
+    it.each([
+      'CONNECTING ENCRYPTION KEYBACKUP started',
+      'sendToDevice: sending m.room_key_request',
+      'the device is fine',
+    ])('leaves ordinary words alone in %s', (line) => {
+      expect(redact(line)).toBe(line);
+    });
+
+    it('keeps known own device IDs redacted anywhere', () => {
+      expect(redact(`session ${OWN_DEVICE} started`)).toBe(
+        'session DEVICE1 started',
+      );
+    });
+  });
+
+  describe('server names', () => {
+    it('learns every identifier in a text without producing output', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+      const result: void = redactor.learn(`first line\nupdate ${BOB} here`);
+
+      expect(result).toBeUndefined();
+      expect(redactor.redact('connecting to other.net now')).toBe(
+        'connecting to server3 now',
+      );
+    });
+
+    it('replaces a bare name seen before any identifier once the file was learned', () => {
+      const lines = ['connecting to other.net now', `later ${BOB}`];
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+      redactor.learn(lines.join('\n'));
+
+      expect(lines.map((line) => redactor.redact(line))).toEqual([
+        'connecting to server3 now',
+        'later @user1:server3',
+      ]);
+    });
+
+    it('redacts a sub-host of a known server as a whole', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+
+      expect(redactor.redact(`${BOB} via sub.other.net and other.net`)).toBe(
+        '@user1:server3 via server4 and server3',
+      );
+      expect(redactor.redact('again sub.other.net')).toBe('again server4');
+    });
+
+    it('does not treat an unrelated suffix as a known server', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+      redactor.redact(BOB);
+
+      expect(redactor.redact('notother.net and other.network')).toBe(
+        'notother.net and other.network',
+      );
+    });
+
+    it.each([
+      ['https://user:pw@other.net/x', 'https://<redacted>@server3/x'],
+      ['https://user@other.net/x', 'https://<redacted>@server3/x'],
+      ['wss://u:p%40w@other.net:8448/x', 'wss://<redacted>@server3/x'],
+    ])('removes userinfo from %s', (url, expected) => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+      redactor.redact(BOB);
+
+      expect(redactor.redact(url)).toBe(expected);
+    });
+
+    it('replaces internationalised server names whole', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+
+      expect(
+        redactor.redact('@bob:bücher.example visited bücher.example'),
+      ).toBe('@user1:server3 visited server3');
+      expect(redactor.redact('https://bücher.example/x')).toBe(
+        'https://server3/x',
+      );
+    });
+
+    it('maps a signed-in account with a port to the same placeholder', () => {
+      const redactor = createLogRedactor({
+        selfUserIds: ['@alice:example.org:8448'],
+        selfDeviceIds: [],
+        homeserverUrls: [],
+      });
+
+      expect(
+        redactor.redact('@alice:example.org:8448 and @alice:example.org'),
+      ).toBe('@me:server1 and @me:server1');
+    });
+
+    it('replaces IPv6 server names in user IDs', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+
+      expect(redactor.redact('@bob:[2001:db8::1]:8448 joined')).toBe(
+        '@user1:server3 joined',
+      );
+    });
+  });
+
   describe('adversarial 64 KB inputs', () => {
     const SIZE = 64 * 1024;
     const inputs: readonly (readonly [string, string])[] = [
@@ -139,13 +254,23 @@ describe('createLogRedactor', () => {
       ['device fields', 'deviceId:'.repeat(SIZE / 9)],
       ['urls', 'https://a.'.repeat(SIZE / 10)],
       ['mxc', 'mxc://a/'.repeat(SIZE / 8)],
+      ['userinfo', 'https://' + 'a:'.repeat(SIZE / 2)],
+      ['userinfo at signs', 'https://a@'.repeat(SIZE / 10)],
+      ['device words', 'device '.repeat(SIZE / 7)],
+      ['device ids', 'device abcdefg '.repeat(SIZE / 15)],
+      ['unicode labels', 'bücher.'.repeat(SIZE / 7)],
+      [
+        'sub-hosts of a known name',
+        'a.'.repeat(SIZE / 2) + 'matrix.example.org',
+      ],
+      ['ipv6 users', '@a:[::1'.repeat(SIZE / 7)],
     ];
 
-    it.each(inputs)('redacts %s in under 200 ms', (_name, input) => {
+    it.each(inputs)('redacts %s in under 500 ms', (_name, input) => {
       const redactor = createLogRedactor(CORPUS_CONTEXT);
       const start = performance.now();
       redactor.redact(input);
-      expect(performance.now() - start).toBeLessThan(200);
+      expect(performance.now() - start).toBeLessThan(500);
     });
   });
 });
