@@ -34,6 +34,21 @@
         <trn-icon name="command" motion="pop" />
       </button>
     }
+    @if (canReportBug()) {
+      <button
+        trnBtn
+        presentation="ghost"
+        size="sm"
+        shape="icon"
+        class="title-bar__button"
+        type="button"
+        aria-label="Report a bug"
+        data-testid="title-bar-report-bug"
+        (click)="reportBug()"
+      >
+        <trn-icon name="bug" motion="pop" />
+      </button>
+    }
     @if (systemStatus.hasProblems()) {
       <button
         trnBtn

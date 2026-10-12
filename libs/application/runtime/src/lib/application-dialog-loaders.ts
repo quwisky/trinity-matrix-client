@@ -26,7 +26,8 @@ export const ENCRYPTION_DIALOG_COMPONENTS =
 
 /**
  * Keeps Application Runtime independent of the Settings feature while it opens Report a bug
- * for surfaces that cannot import Settings: the sign-in screen and System status.
+ * for surfaces that cannot import Settings: the sign-in screen, System status and the desktop
+ * title bar.
  */
 export const REPORT_BUG_DIALOG_COMPONENT =
   new InjectionToken<ApplicationDialogLoader>('REPORT_BUG_DIALOG_COMPONENT');

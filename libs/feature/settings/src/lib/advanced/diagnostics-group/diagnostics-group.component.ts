@@ -22,8 +22,8 @@ import { ReportBugDialogComponent } from '../report-bug/report-bug-dialog.compon
 
 /**
  * Settings › Advanced › Diagnostics: Keep a diagnostic log, Report a bug and Clear
- * diagnostic logs. The sign-in screen and System status open the same dialog through
- * `BUG_REPORT_LAUNCHER`; here it opens directly.
+ * diagnostic logs. The sign-in screen, System status and the desktop title bar open the same
+ * dialog through `BUG_REPORT_LAUNCHER`; here it opens directly.
  */
 @Component({
   selector: 'trn-diagnostics-group',

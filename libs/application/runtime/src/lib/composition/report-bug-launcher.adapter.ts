@@ -10,8 +10,8 @@ import { defer, finalize, take } from 'rxjs';
 import { REPORT_BUG_DIALOG_COMPONENT } from '../application-dialog-loaders';
 
 /**
- * `BUG_REPORT_LAUNCHER` for the sign-in screen and System status. The application host
- * supplies the dialog lazily from feature-settings, as it does Settings
+ * `BUG_REPORT_LAUNCHER` for the sign-in screen, System status and the desktop title bar. The
+ * application host supplies the dialog lazily from feature-settings, as it does Settings
  * (`APPLICATION_DIALOG_LOADERS`); this opens it as a surface over whatever is showing, so
  * focus returns to the button that asked. One report at a time.
  */

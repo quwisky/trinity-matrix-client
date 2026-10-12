@@ -13,6 +13,8 @@ import {
   unavailableHostManifest,
 } from '@trinity/runtime/host';
 import { AppearanceEffects } from '@trinity/application/appearance';
+import { DiagnosticLogService } from '@trinity/data-access/diagnostic-log';
+import { BUG_REPORT_LAUNCHER } from '@trinity/platform-native';
 import { Subject, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TitleBarComponent } from './title-bar.component';
@@ -34,11 +36,20 @@ describe('TitleBarComponent', () => {
       platform?: string;
       mode?: string | null;
       problems?: boolean;
+      /** Settings › Advanced › Keep a diagnostic log; on unless a test says otherwise. */
+      keepLog?: boolean;
+      /** Whether the stored setting has been read; yes unless a test says otherwise. */
+      settingKnown?: boolean;
+      /** Whether Report a bug can be opened here; yes unless a test says otherwise. */
+      launcher?: boolean;
     } = {},
   ) {
     const setOverlayColors = vi.fn();
     const popupMenu = vi.fn();
     const show = vi.fn();
+    const openReport = vi.fn();
+    const keepLog = signal(opts.keepLog ?? true);
+    const settingKnown = signal(opts.settingKnown ?? true);
     const root = document.documentElement;
     root.style.setProperty('--trinity-surface-app', 'rgb(18, 18, 20)');
     root.style.setProperty('--trinity-text', 'rgb(219, 222, 225)');
@@ -67,12 +78,32 @@ describe('TitleBarComponent', () => {
             show,
           },
         },
+        {
+          provide: DiagnosticLogService,
+          useValue: {
+            keepLog: keepLog.asReadonly(),
+            settingKnown: settingKnown.asReadonly(),
+          },
+        },
+        ...(opts.launcher === false
+          ? []
+          : [{ provide: BUG_REPORT_LAUNCHER, useValue: { open: openReport } }]),
       ],
     });
     const state = rendered.fixture.debugElement.injector.get(TitleBarState);
     await rendered.fixture.whenStable();
     rendered.fixture.detectChanges();
-    return { ...rendered, state, setOverlayColors, popupMenu, show, resolved };
+    return {
+      ...rendered,
+      state,
+      setOverlayColors,
+      popupMenu,
+      show,
+      resolved,
+      openReport,
+      keepLog,
+      settingKnown,
+    };
   }
 
   it('renders nothing and is inactive without the desktop bridge', async () => {
@@ -283,6 +314,59 @@ describe('TitleBarComponent', () => {
     screen.getByTestId('title-bar-status').click();
 
     expect(show).toHaveBeenCalledOnce();
+  });
+
+  describe('Report a bug', () => {
+    it('shows while the diagnostic log is known to be on, and opens the report', async () => {
+      const { openReport } = await setup();
+      const button = screen.getByRole('button', { name: 'Report a bug' });
+
+      expect(button.dataset['testid']).toBe('title-bar-report-bug');
+      button.click();
+
+      expect(openReport).toHaveBeenCalledOnce();
+    });
+
+    it('sits before the status warning in the actions', async () => {
+      await setup({ problems: true });
+      const actions = [
+        ...document.querySelectorAll('.title-bar__actions [data-testid]'),
+      ].map((element) => element.getAttribute('data-testid'));
+
+      expect(actions).toEqual(['title-bar-report-bug', 'title-bar-status']);
+    });
+
+    it('hides while the diagnostic log is off', async () => {
+      await setup({ keepLog: false });
+
+      expect(screen.queryByTestId('title-bar-report-bug')).toBeNull();
+    });
+
+    it('hides until the setting is known, then shows', async () => {
+      const { fixture, settingKnown } = await setup({ settingKnown: false });
+      expect(screen.queryByTestId('title-bar-report-bug')).toBeNull();
+
+      settingKnown.set(true);
+      fixture.detectChanges();
+
+      expect(screen.getByTestId('title-bar-report-bug')).toBeTruthy();
+    });
+
+    it('hides where Report a bug cannot be opened', async () => {
+      await setup({ launcher: false });
+
+      expect(screen.queryByTestId('title-bar-report-bug')).toBeNull();
+    });
+
+    it('hides as soon as the diagnostic log is turned off', async () => {
+      const { fixture, keepLog } = await setup();
+      expect(screen.getByTestId('title-bar-report-bug')).toBeTruthy();
+
+      keepLog.set(false);
+      fixture.detectChanges();
+
+      expect(screen.queryByTestId('title-bar-report-bug')).toBeNull();
+    });
   });
 
   it('sends hex overlay colours and resends them when the theme changes', async () => {
