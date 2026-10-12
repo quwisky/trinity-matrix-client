@@ -141,8 +141,30 @@ function isSecretParam(name: string): boolean {
  */
 const FIELD_NAME = String.raw`(?<![\w$-])(\\{0,8}["']?)([A-Za-z_][\w.-]{0,63})\1\s*:\s*`;
 
-/** A bare `true`, `false` or `null` carries no secret, whatever the name. */
+/** A bare `true`, `false` or `null`: no secret, unless the name is a credential itself. */
 const FLAG_VALUE = /^(?:true|false|null)$/;
+
+/**
+ * Names that are a credential word and nothing more (`password`, `token`, `code`): the value
+ * under one is the secret itself, so even a flag is masked. A name that only contains one,
+ * such as `hasPassword`, keeps its flag readable.
+ */
+const CREDENTIAL_WORDS: ReadonlySet<string> = new Set([
+  'password',
+  'passphrase',
+  'passwd',
+  'secret',
+  'token',
+  'key',
+  'code',
+  'state',
+  'credential',
+]);
+
+/** A flag that may be kept under `name`: see {@link CREDENTIAL_WORDS}. */
+function isReadableFlag(name: string, value: string): boolean {
+  return FLAG_VALUE.test(value) && !CREDENTIAL_WORDS.has(normalizeName(name));
+}
 
 /** A parameter name and its value; the name may start after any non-alphanumeric character. */
 const PARAM = /(?<![A-Za-z0-9])([A-Za-z_][\w.-]{0,63})=([^&#\s"']*)/g;
@@ -209,7 +231,7 @@ export function scrubSecrets(text: string): string {
   // Credential query, fragment and form parameters. matrix-js-sdk masks its own request URLs
   // (`sanitizeUrlForLogs`); URLs in errors, callbacks, widgets and form bodies are not masked.
   scrubbed = scrubbed.replace(PARAM, (whole, name: string, value: string) =>
-    isSecretParam(name) && !FLAG_VALUE.test(value)
+    isSecretParam(name) && !isReadableFlag(name, value)
       ? `${name}=${REDACTED}`
       : whole,
   );
@@ -238,13 +260,23 @@ export function scrubMessage(text: string): string {
   }
 }
 
-/** The text up to `limit`, backed off to the last separator so no token is cut in half. */
+/**
+ * A recovery key's start left at the end of a cut: "Es" and up to eleven more groups. Its
+ * groups are separated by spaces, so backing off to a separator can stop inside the key.
+ */
+const CUT_RECOVERY_KEY =
+  /\bEs[1-9A-HJ-NP-Za-km-z]{2}(?:\s?[1-9A-HJ-NP-Za-km-z]{4}){0,11}\s*$/;
+
+/**
+ * The text up to `limit`, backed off to the last separator so no token is cut in half, and
+ * without a recovery key's leading groups, which the full-key rule would no longer match.
+ */
 function cutAtSeparator(text: string, limit: number): string {
   let end = limit;
   while (end > 0 && !SEPARATOR.test(text[end - 1])) {
     end -= 1;
   }
-  return text.slice(0, end);
+  return text.slice(0, end).replace(CUT_RECOVERY_KEY, '');
 }
 
 interface FieldValue {
@@ -287,7 +319,7 @@ function maskFields(
     }
     pattern.lastIndex = value.end;
     const alreadyMasked = value.content === REDACTED;
-    const flag = value.bare && FLAG_VALUE.test(value.content ?? '');
+    const flag = value.bare && isReadableFlag(match[2], value.content ?? '');
     const kept =
       oauth &&
       value.content !== undefined &&

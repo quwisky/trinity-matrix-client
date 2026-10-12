@@ -440,11 +440,26 @@ describe('scrubSecrets', () => {
     '{ secretStorageReady: true }',
     'requestingTokens: false',
     '?hasPassword=true',
-    '{"token":null}',
+    '{"access_token_present":null}',
   ])(
     'keeps a boolean or null under a secret-looking name readable: %s',
     (line) => {
       expect(scrubSecrets(line)).toBe(line);
+    },
+  );
+
+  it.each([
+    ['password=true', `password=${REDACTED}`],
+    ['{"password":true}', `{"password":"${REDACTED}"}`],
+    ['passphrase: false', `passphrase: "${REDACTED}"`],
+    ['{"token":null}', `{"token":"${REDACTED}"}`],
+    ['?key=true&secret=null', `?key=${REDACTED}&secret=${REDACTED}`],
+    ['?code=false&state=true', `?code=${REDACTED}&state=${REDACTED}`],
+    ['{"credential":true}', `{"credential":"${REDACTED}"}`],
+  ])(
+    'masks a flag under a name that is itself a credential word: %s',
+    (line, expected) => {
+      expect(scrubSecrets(line)).toBe(expected);
     },
   );
 
@@ -486,5 +501,29 @@ describe('scrubMessage', () => {
     expect(scrubbed).not.toContain('syt_');
     expect(scrubbed.endsWith(' [rest dropped before scrubbing]')).toBe(true);
     expect(scrubbed.length).toBeLessThanOrEqual(MAX_SCRUB_INPUT + 40);
+  });
+
+  it('drops every group of a recovery key cut by the input limit', () => {
+    // Cut after the fifth group: its spaces let the cut back off inside the key.
+    const before = `${'w'.repeat(MAX_SCRUB_INPUT - 26)} `;
+    const groups = RECOVERY_KEY.split(' ');
+
+    const scrubbed = scrubMessage(`${before}${RECOVERY_KEY} tail`);
+
+    expect(`${before}${RECOVERY_KEY}`.slice(0, MAX_SCRUB_INPUT)).toContain(
+      groups.slice(0, 5).join(' '),
+    );
+    for (const group of groups) {
+      expect(scrubbed).not.toContain(group);
+    }
+    expect(scrubbed.endsWith(' [rest dropped before scrubbing]')).toBe(true);
+  });
+
+  it('keeps a word that merely starts like a recovery key before the cut', () => {
+    const before = `${'w'.repeat(MAX_SCRUB_INPUT - 30)} `;
+
+    const scrubbed = scrubMessage(`${before}Esta frase ${'x'.repeat(40)}`);
+
+    expect(scrubbed).toContain(' Esta frase');
   });
 });
