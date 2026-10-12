@@ -720,6 +720,39 @@ describe('DiagnosticLogService', () => {
       expect(entryCount).toBe(0);
     });
 
+    it('reads the facts for the issue without the setting or the store', async () => {
+      const reads = new Subject<PreferenceStorageReadOutcome>();
+      const openStore = vi.fn(
+        () => new Promise<DiagnosticLogStore>(() => undefined),
+      );
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: BUILD_INFO, useValue: BUILD },
+          { provide: DIAGNOSTIC_LOG_STORE_FACTORY, useValue: openStore },
+          { provide: DIAGNOSTIC_LOG_STORE_REMOVER, useValue: remove },
+          {
+            provide: PREFERENCE_STORAGE_ADAPTER,
+            useValue: pendingAdapter(reads),
+          },
+          {
+            provide: DIAGNOSTIC_ACCOUNT_SOURCE,
+            useValue: { accounts: () => of([ALICE_ACCOUNT]) },
+          },
+        ],
+      });
+      const service = TestBed.inject(DiagnosticLogService);
+      service.start();
+
+      const facts = await firstValueFrom(service.facts());
+
+      expect(facts).toEqual({
+        version: 'Trinity v1.2.3 · abc1234',
+        platform: expect.any(String),
+        homeservers: ['Synapse 1.140.0'],
+      });
+      expect(openStore).not.toHaveBeenCalled();
+    });
+
     it('exports when the user chooses while the setting is still being read', async () => {
       const reads = new Subject<PreferenceStorageReadOutcome>();
       const service = setup(undefined, pendingAdapter(reads));

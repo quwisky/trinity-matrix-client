@@ -1,5 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
-import { IndexedDbLogStore, deleteIndexedDbLog } from './indexed-db-log-store';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DiagnosticLogRecorder } from '../diagnostic-log-recorder';
+import {
+  IDB_CONNECT_TIMEOUT_MS,
+  IndexedDbLogStore,
+  deleteIndexedDbLog,
+} from './indexed-db-log-store';
 
 /** A fake IDBFactory whose open request fails the way a private window's does. */
 function refusingFactory(): IDBFactory {
@@ -158,5 +163,94 @@ describe('IndexedDbLogStore operations', () => {
     await Promise.resolve();
 
     expect(close).toHaveBeenCalledOnce();
+  });
+});
+
+/**
+ * A fake IDBFactory whose open requests never settle until the test fires `succeed`, the
+ * way a wedged browser profile leaves them. Each request's database records its `close`.
+ */
+function hangingFactory(close: () => void): {
+  readonly idb: IDBFactory;
+  readonly succeed: () => void;
+} {
+  const requests: Record<string, unknown>[] = [];
+  return {
+    idb: {
+      open: () => {
+        const request: Record<string, unknown> = { result: { close } };
+        requests.push(request);
+        return request as unknown as IDBOpenDBRequest;
+      },
+    } as unknown as IDBFactory,
+    succeed: () => {
+      for (const request of requests) {
+        (request['onsuccess'] as (() => void) | undefined)?.();
+      }
+    },
+  };
+}
+
+describe('IndexedDbLogStore with an open that never settles', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('refuses after the time limit, and closes a connection that opens later', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const close = vi.fn();
+    const { idb, succeed } = hangingFactory(close);
+
+    const opened = IndexedDbLogStore.open(idb);
+    const refused = expect(opened).rejects.toThrow('timed out');
+    await vi.advanceTimersByTimeAsync(IDB_CONNECT_TIMEOUT_MS);
+    await refused;
+    succeed();
+
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('moves the recorder to memory within the time limit', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const onStorage = vi.fn();
+    const recorder = new DiagnosticLogRecorder({
+      openStore: () => IndexedDbLogStore.open(hangingFactory(vi.fn()).idb),
+      onStorage,
+    });
+
+    recorder.record({
+      ts: Date.now(),
+      level: 'info',
+      source: 'app',
+      logger: 'lifecycle',
+      message: 'app started',
+    });
+    const snapshot = recorder.snapshot();
+    await vi.advanceTimersByTimeAsync(IDB_CONNECT_TIMEOUT_MS);
+
+    await expect(snapshot).resolves.toMatchObject({
+      storage: 'memory',
+      entries: [expect.objectContaining({ message: 'app started' })],
+    });
+    expect(onStorage).toHaveBeenCalledWith('memory');
+  });
+
+  it('lets discard and clear settle when the database stops opening', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const recorder = new DiagnosticLogRecorder({
+      openStore: () => IndexedDbLogStore.open(hangingFactory(vi.fn()).idb),
+      removeStore: () => Promise.reject(new Error('delete blocked')),
+    });
+
+    const discarded = recorder.discard().then(
+      () => 'emptied',
+      () => 'reported',
+    );
+    await vi.advanceTimersByTimeAsync(IDB_CONNECT_TIMEOUT_MS);
+    await expect(discarded).resolves.toBe('reported');
+
+    const cleared = recorder.clear();
+    await vi.advanceTimersByTimeAsync(IDB_CONNECT_TIMEOUT_MS);
+    await expect(cleared).resolves.toBeUndefined();
   });
 });

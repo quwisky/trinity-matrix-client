@@ -45,6 +45,26 @@ export function diagnosticLogFileName(now: Date): string {
   return `trinity-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.log`;
 }
 
+/** The issue form's facts: the build, the platform and each server's software, never its name. */
+export function diagnosticReportFacts(
+  build: BuildInfo | null,
+  platform: string,
+  accounts: readonly DiagnosticAccount[],
+): DiagnosticReportFacts {
+  return {
+    version: buildLabel(build),
+    platform,
+    homeservers: [
+      ...new Set(
+        accounts.flatMap((account) => {
+          const label = softwareLabel(account);
+          return label ? [label] : [];
+        }),
+      ),
+    ],
+  };
+}
+
 /**
  * Build the exported file: `# ` header lines, then one redacted line per entry, oldest
  * first. Header and body share one redactor, so a placeholder means the same thing
@@ -64,18 +84,7 @@ export function buildDiagnosticBundle(
   // Learn every identifier and server in the file before writing a line, so a bare server
   // name is replaced even where it appears before the first ID or URL that names it.
   redactor.learn(snapshot.entries.map(entryText).join('\n'));
-  const facts: DiagnosticReportFacts = {
-    version: buildLabel(input.build),
-    platform: input.platform,
-    homeservers: [
-      ...new Set(
-        accounts.flatMap((account) => {
-          const label = softwareLabel(account);
-          return label ? [label] : [];
-        }),
-      ),
-    ],
-  };
+  const facts = diagnosticReportFacts(input.build, input.platform, accounts);
   const dependencies = input.build?.dependencies;
   const header = [
     'Trinity diagnostic log',

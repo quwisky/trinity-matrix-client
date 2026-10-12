@@ -8,6 +8,7 @@ import {
   MemoryLogStore,
   provideDiagnosticLog,
   type DiagnosticBundle,
+  type DiagnosticReportFacts,
 } from '@trinity/data-access/diagnostic-log';
 import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
 import { TrnDialogRef } from '@trinity/components/overlay';
@@ -33,6 +34,8 @@ const REPOSITORY = 'https://github.com/quwisky/trinity-matrix-client';
 
 interface SetupOptions {
   readonly exported?: Observable<DiagnosticBundle>;
+  /** The facts read without the log; the bundle's facts unless a test says otherwise. */
+  readonly facts?: Observable<DiagnosticReportFacts>;
   readonly saved?: Observable<unknown>;
   readonly fileExport?: boolean | 'pending';
   readonly repository?: string | null;
@@ -48,6 +51,7 @@ async function setup(options: SetupOptions = {}) {
     providers: [
       MockProvider(DiagnosticLogService, {
         export: () => options.exported ?? of(BUNDLE),
+        facts: () => options.facts ?? of(BUNDLE.facts),
         keepLog: signal(options.keepLog ?? true).asReadonly(),
       }),
       MockProvider(HostFileExportService, {
@@ -221,8 +225,24 @@ describe('ReportBugDialogComponent', () => {
     expect(screen.getByTestId('report-bug-save-unavailable')).toBeTruthy();
   });
 
-  it('waits for the log before offering GitHub', async () => {
-    await setup({ exported: NEVER });
+  it('offers GitHub with the facts alone while the log is still loading', async () => {
+    const { open } = await setup({ exported: NEVER });
+    const github = screen.getByTestId('report-bug-github') as HTMLButtonElement;
+
+    expect(github.disabled).toBe(false);
+    github.click();
+
+    expect(issueFields(open)).toMatchObject({
+      version: 'Trinity v0.4.0 · abc1234',
+      os: 'Web, Firefox 141 on Linux',
+      homeserver: 'Synapse 1.140.0',
+    });
+    expect(issueFields(open)).not.toHaveProperty('logs');
+  });
+
+  it('waits for the facts before offering GitHub', async () => {
+    await setup({ exported: NEVER, facts: NEVER });
+
     expect(
       (screen.getByTestId('report-bug-github') as HTMLButtonElement).disabled,
     ).toBe(true);
@@ -254,13 +274,21 @@ describe('ReportBugDialogComponent', () => {
     expect(issueFields(open)).not.toHaveProperty('logs');
   });
 
-  it('treats a failed export as no logs', async () => {
-    await setup({ exported: throwError(() => new Error('store unreadable')) });
+  it('treats a failed export as no logs, and still files the facts', async () => {
+    const { open } = await setup({
+      exported: throwError(() => new Error('store unreadable')),
+    });
 
     expect(screen.getByTestId('report-bug-no-logs')).toBeTruthy();
-    expect(
-      (screen.getByTestId('report-bug-github') as HTMLButtonElement).disabled,
-    ).toBe(false);
+    const github = screen.getByTestId('report-bug-github') as HTMLButtonElement;
+    expect(github.disabled).toBe(false);
+    github.click();
+
+    expect(issueFields(open)).toMatchObject({
+      version: 'Trinity v0.4.0 · abc1234',
+      os: 'Web, Firefox 141 on Linux',
+    });
+    expect(issueFields(open)).not.toHaveProperty('logs');
   });
   it('warns that the issue and the description are public', async () => {
     await setup();

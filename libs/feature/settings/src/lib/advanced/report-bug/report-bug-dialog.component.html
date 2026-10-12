@@ -180,7 +180,7 @@
         <button
           trnBtn
           type="submit"
-          [disabled]="loading() || reportForm().invalid()"
+          [disabled]="!canOpenGitHub()"
           data-testid="report-bug-github"
         >
           Open bug report on GitHub

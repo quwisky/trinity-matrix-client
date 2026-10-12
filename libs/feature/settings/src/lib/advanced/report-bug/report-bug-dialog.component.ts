@@ -31,7 +31,7 @@ import {
   buildBugReportUrl,
   type DiagnosticBundle,
 } from '@trinity/data-access/diagnostic-log';
-import { finalize } from 'rxjs';
+import { EMPTY, catchError, finalize } from 'rxjs';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { HostFileExportService } from '@trinity/runtime/host';
 
@@ -89,6 +89,14 @@ export class ReportBugDialogComponent {
   private readonly logState = signal<ReportLog>({ kind: 'loading' });
   /** Undefined until the host answers, so "not available" never flashes before then. */
   private readonly fileSupport = toSignal(this.files.support());
+  /** The issue's facts without the log, so GitHub needn't wait for a slow or failed export. */
+  private readonly facts = toSignal(
+    this.log.facts().pipe(catchError(() => EMPTY)),
+  );
+  /** GitHub needs only the facts: from the export once it is ready, or read on their own. */
+  private readonly reportFacts = computed(
+    () => this.bundle()?.facts ?? this.facts() ?? null,
+  );
 
   readonly reportForm = form(this.model, reportSchema);
   /** Settings › Advanced › Keep a diagnostic log is off: there is no log to offer. */
@@ -113,6 +121,9 @@ export class ReportBugDialogComponent {
   });
   readonly showSave = computed(() => this.offersLog() && this.canSaveFile());
   readonly showGitHub = this.config.issueRepositoryUrl !== null;
+  readonly canOpenGitHub = computed(
+    () => this.reportFacts() !== null && !this.reportForm().invalid(),
+  );
   readonly descriptionError = computed(
     () => this.reportForm.description().errors()[0]?.message ?? null,
   );
@@ -187,18 +198,14 @@ export class ReportBugDialogComponent {
 
   openGitHub(): void {
     const repository = this.config.issueRepositoryUrl;
-    if (
-      !repository ||
-      this.opening() ||
-      this.loading() ||
-      this.reportForm().invalid()
-    ) {
+    const facts = this.reportFacts();
+    if (!repository || !facts || this.opening() || !this.canOpenGitHub()) {
       return;
     }
     const bundle = this.bundle();
     const url = buildBugReportUrl(repository, {
       description: this.model().description,
-      facts: bundle?.facts ?? { version: '', platform: '', homeservers: [] },
+      facts,
       logFileName: bundle && this.offersLog() ? bundle.filename : null,
     });
     if (!url) {

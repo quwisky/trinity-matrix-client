@@ -21,8 +21,10 @@ import {
 import { buildLabel } from './build-label';
 import {
   buildDiagnosticBundle,
+  diagnosticReportFacts,
   type DiagnosticAccount,
   type DiagnosticBundle,
+  type DiagnosticReportFacts,
 } from './diagnostic-bundle';
 import { formatLogArgs, truncateMessage } from './capture/format-log-args';
 import {
@@ -250,12 +252,7 @@ export class DiagnosticLogService {
         this._keepLog() ? from(this.recorder.snapshot()) : of(LOG_OFF_SNAPSHOT),
       ),
       switchMap((snapshot) =>
-        (
-          this.accountSource?.accounts() ?? of<readonly DiagnosticAccount[]>([])
-        ).pipe(
-          take(1),
-          defaultIfEmpty([] as readonly DiagnosticAccount[]),
-          catchError(() => of<readonly DiagnosticAccount[]>([])),
+        this.accounts().pipe(
           map((accounts) =>
             buildDiagnosticBundle({
               now: new Date(),
@@ -264,6 +261,24 @@ export class DiagnosticLogService {
               accounts,
               snapshot,
             }),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /**
+   * The facts for the issue form alone, without the setting or the store: a report can be
+   * filed while the log is still loading, or when it could not be read. Cold.
+   */
+  facts(): Observable<DiagnosticReportFacts> {
+    return defer(() =>
+      this.accounts().pipe(
+        map((accounts) =>
+          diagnosticReportFacts(
+            this.build,
+            describePlatform(readPlatformFacts()),
+            accounts,
           ),
         ),
       ),
@@ -406,6 +421,17 @@ export class DiagnosticLogService {
     this.sdkCapture?.setEnabled(true);
     this.marker(`diagnostic log turned on: ${this.describeBuild()}`);
     return Promise.resolve();
+  }
+
+  /** The signed-in accounts, once; none when the app has no source or it fails. */
+  private accounts(): Observable<readonly DiagnosticAccount[]> {
+    return (
+      this.accountSource?.accounts() ?? of<readonly DiagnosticAccount[]>([])
+    ).pipe(
+      take(1),
+      defaultIfEmpty([] as readonly DiagnosticAccount[]),
+      catchError(() => of<readonly DiagnosticAccount[]>([])),
+    );
   }
 
   private marker(message: string): void {

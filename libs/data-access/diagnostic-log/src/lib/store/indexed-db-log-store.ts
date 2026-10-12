@@ -18,6 +18,13 @@ const ENTRIES = 'entries';
 const META = 'meta';
 const META_KEY = 'state';
 
+/**
+ * How long opening the database may take before it counts as unusable. An open that never
+ * settles (a wedged profile, a stuck upgrade) would otherwise hold the recorder's queue, and
+ * with it every export, clear and delete, for good.
+ */
+export const IDB_CONNECT_TIMEOUT_MS = 5_000;
+
 /** An entry as stored: its size travels with it so eviction never re-measures. */
 interface StoredEntry extends DiagnosticEntry {
   readonly size: number;
@@ -130,14 +137,27 @@ export class IndexedDbLogStore implements DiagnosticLogStore {
     });
   }
 
+  /** Open the database, rejecting when it is refused, blocked or takes too long. */
   private connect(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
-      let blocked = false;
+      let failed = false;
+      const fail = (error: unknown): void => {
+        if (failed) {
+          return;
+        }
+        failed = true;
+        clearTimeout(timer);
+        reject(error);
+      };
+      const timer = setTimeout(
+        () => fail(new Error('IndexedDB open timed out')),
+        IDB_CONNECT_TIMEOUT_MS,
+      );
       let open: IDBOpenDBRequest;
       try {
         open = this.idb.open(this.name, VERSION);
       } catch (error) {
-        reject(error);
+        fail(error);
         return;
       }
       open.onupgradeneeded = () => {
@@ -154,20 +174,19 @@ export class IndexedDbLogStore implements DiagnosticLogStore {
       };
       open.onsuccess = () => {
         const db = open.result;
-        if (blocked) {
-          // Already reported as failed; do not leave this connection holding the database.
+        if (failed) {
+          // Already reported as failed (blocked or too late): do not leave this connection
+          // holding the database.
           db.close();
           return;
         }
+        clearTimeout(timer);
         // A factory reset deletes this database: never be the connection that blocks it.
         db.onversionchange = () => db.close();
         resolve(db);
       };
-      open.onerror = () => reject(open.error);
-      open.onblocked = () => {
-        blocked = true;
-        reject(new Error('IndexedDB open blocked'));
-      };
+      open.onerror = () => fail(open.error);
+      open.onblocked = () => fail(new Error('IndexedDB open blocked'));
     });
   }
 
