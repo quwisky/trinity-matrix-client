@@ -1197,6 +1197,8 @@ export function eventRevision(
     event.status ?? '',
     event.isRedacted() ? 'r' : '',
     event.isDecryptionFailure() ? 'd' : '',
+    // A new failure reason (after a reload or a key-backup change) changes the row's text.
+    event.decryptionFailureReason ?? '',
     event.replacingEvent() ? 'e' : '',
     // Effective content captures edits (m.replace) and decrypted bodies; it is far
     // cheaper than the DOMPurify pass that a rebuild would otherwise repeat.

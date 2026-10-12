@@ -5,8 +5,12 @@ import {
   ReceiptType,
   RoomEvent,
   RoomStateEvent,
+  type MatrixClient,
+  type MatrixEvent,
+  type Room,
 } from 'matrix-js-sdk';
 import {
+  DecryptionFailureCode,
   EventShieldColour,
   EventShieldReason,
 } from 'matrix-js-sdk/lib/crypto-api';
@@ -19,7 +23,7 @@ import {
   type Mock,
   vi,
 } from 'vitest';
-import { TimelineService } from './timeline.service';
+import { TimelineService, eventRevision } from './timeline.service';
 import { TYPING_REFRESH_MS, TYPING_TIMEOUT_MS } from '@trinity/util/matrix';
 import {
   fakeClient,
@@ -593,6 +597,29 @@ describe('TimelineService', () => {
     expect(redacted.kind).toBe('redacted');
     expect(failed.decryptionFailed).toBe(true);
     expect(failed.body).toContain('Unable to decrypt');
+  });
+
+  it('re-projects an unreadable message when its failure reason changes', () => {
+    const failed = {
+      ...fakeEvent({ id: '$e', sender: '@a:hs', decryptFail: true }),
+      decryptionFailureReason:
+        DecryptionFailureCode.HISTORICAL_MESSAGE_BACKUP_UNCONFIGURED as
+          DecryptionFailureCode | undefined,
+    };
+    const room = fakeRoom([failed]);
+    const client = fakeClient(room, []);
+    const revision = () =>
+      eventRevision(
+        client as unknown as MatrixClient,
+        room as unknown as Room,
+        failed as unknown as MatrixEvent,
+      );
+
+    const before = revision();
+    failed.decryptionFailureReason =
+      DecryptionFailureCode.HISTORICAL_MESSAGE_WORKING_BACKUP;
+
+    expect(revision()).not.toBe(before);
   });
 
   it('resets loadingOlder after a failed scrollback so pagination can retry', async () => {
