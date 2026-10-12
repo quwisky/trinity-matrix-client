@@ -1,24 +1,14 @@
 import type { BuildInfo } from '@trinity/platform-native';
-import { buildLabel } from './build-label';
 import type { DiagnosticEntry } from './diagnostic-entry.model';
 import { createLogRedactor, type LogRedactor } from './redaction/redact-log';
+import {
+  diagnosticLogFileName,
+  diagnosticReportFacts,
+  softwareLabel,
+  type DiagnosticAccount,
+  type DiagnosticReportFacts,
+} from './report-facts';
 import type { DiagnosticSnapshot } from './store/diagnostic-log-store';
-
-/** One signed-in account as the export sees it; never a token. */
-export interface DiagnosticAccount {
-  readonly userId: string;
-  readonly deviceId: string | null;
-  readonly homeserverUrl: string;
-  /** What the server says it runs, or null when it did not answer. */
-  readonly software: { readonly name: string; readonly version: string } | null;
-}
-
-/** What the GitHub form is pre-filled with. Never carries a server name. */
-export interface DiagnosticReportFacts {
-  readonly version: string;
-  readonly platform: string;
-  readonly homeservers: readonly string[];
-}
 
 /** The redacted file plus what the report flow needs alongside it. */
 export interface DiagnosticBundle {
@@ -39,31 +29,6 @@ export interface DiagnosticBundleInput {
 
 const PLACEHOLDER_NOTE =
   'Matrix IDs and server names are replaced with placeholders such as @user1:server1; tokens, keys and messages are never stored.';
-
-/** `trinity-<YYYY-MM-DD>.log` on the user's calendar, not UTC's. */
-export function diagnosticLogFileName(now: Date): string {
-  return `trinity-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.log`;
-}
-
-/** The issue form's facts: the build, the platform and each server's software, never its name. */
-export function diagnosticReportFacts(
-  build: BuildInfo | null,
-  platform: string,
-  accounts: readonly DiagnosticAccount[],
-): DiagnosticReportFacts {
-  return {
-    version: buildLabel(build),
-    platform,
-    homeservers: [
-      ...new Set(
-        accounts.flatMap((account) => {
-          const label = softwareLabel(account);
-          return label ? [label] : [];
-        }),
-      ),
-    ],
-  };
-}
 
 /**
  * Build the exported file: `# ` header lines, then one redacted line per entry, oldest
@@ -131,14 +96,4 @@ function captureWindow(entries: readonly DiagnosticEntry[]): string {
     return 'Capture window: no entries';
   }
   return `Capture window: ${new Date(first.ts).toISOString()} to ${new Date(last.ts).toISOString()} (${entries.length} entries)`;
-}
-
-function softwareLabel(account: DiagnosticAccount): string | null {
-  return account.software
-    ? `${account.software.name} ${account.software.version}`
-    : null;
-}
-
-function pad(value: number): string {
-  return String(value).padStart(2, '0');
 }

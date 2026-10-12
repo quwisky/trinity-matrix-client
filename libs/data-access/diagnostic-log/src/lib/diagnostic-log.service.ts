@@ -3,28 +3,14 @@ import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { BUILD_INFO } from '@trinity/platform-native';
 import {
-  INSTALLATION_PREFERENCE_CONTEXT,
   PreferenceStoreService,
   type PreferenceCommandOutcome,
 } from '@trinity/runtime/preferences';
-import {
-  catchError,
-  defaultIfEmpty,
-  defer,
-  from,
-  map,
-  of,
-  switchMap,
-  take,
-  type Observable,
-} from 'rxjs';
+import { defer, from, map, of, switchMap, type Observable } from 'rxjs';
 import { buildLabel } from './build-label';
 import {
   buildDiagnosticBundle,
-  diagnosticReportFacts,
-  type DiagnosticAccount,
   type DiagnosticBundle,
-  type DiagnosticReportFacts,
 } from './diagnostic-bundle';
 import { formatLogArgs, truncateMessage } from './capture/format-log-args';
 import {
@@ -44,8 +30,17 @@ import {
   DIAGNOSTIC_LOG_STORE_REMOVER,
   DIAGNOSTIC_SDK_CAPTURE,
 } from './diagnostic-log.tokens';
-import { KEEP_DIAGNOSTIC_LOG_PREFERENCE } from './keep-diagnostic-log.preference';
+import {
+  KEEP_DIAGNOSTIC_LOG_PREFERENCE,
+  readKeepLogSetting,
+  saveKeepLogSetting,
+} from './keep-diagnostic-log.preference';
 import { describePlatform, readPlatformFacts } from './platform-description';
+import {
+  diagnosticReportFacts,
+  readAccounts,
+  type DiagnosticReportFacts,
+} from './report-facts';
 import { scrubMessage } from './scrub-secrets';
 import type { DiagnosticSnapshot } from './store/diagnostic-log-store';
 
@@ -252,7 +247,7 @@ export class DiagnosticLogService {
         this._keepLog() ? from(this.recorder.snapshot()) : of(LOG_OFF_SNAPSHOT),
       ),
       switchMap((snapshot) =>
-        this.accounts().pipe(
+        readAccounts(this.accountSource).pipe(
           map((accounts) =>
             buildDiagnosticBundle({
               now: new Date(),
@@ -273,7 +268,7 @@ export class DiagnosticLogService {
    */
   facts(): Observable<DiagnosticReportFacts> {
     return defer(() =>
-      this.accounts().pipe(
+      readAccounts(this.accountSource).pipe(
         map((accounts) =>
           diagnosticReportFacts(
             this.build,
@@ -301,20 +296,14 @@ export class DiagnosticLogService {
         ),
       ).pipe(
         switchMap((notDeleted) =>
-          this.preferences
-            .setPreference(
-              KEEP_DIAGNOSTIC_LOG_PREFERENCE,
-              INSTALLATION_PREFERENCE_CONTEXT,
-              keep,
-            )
-            .pipe(
-              map((outcome) => {
-                if (notDeleted) {
-                  throw notDeleted;
-                }
-                return outcome;
-              }),
-            ),
+          saveKeepLogSetting(this.preferences, keep).pipe(
+            map((outcome) => {
+              if (notDeleted) {
+                throw notDeleted;
+              }
+              return outcome;
+            }),
+          ),
         ),
       ),
     );
@@ -346,57 +335,30 @@ export class DiagnosticLogService {
    * the log off. Cold; never errors.
    */
   resumeAfterReset(): Observable<void> {
-    return defer(() =>
-      this.preferences.hydrateDescriptors(INSTALLATION_PREFERENCE_CONTEXT, [
-        KEEP_DIAGNOSTIC_LOG_PREFERENCE,
-      ]),
-    ).pipe(
-      take(1),
-      map((outcome) => {
-        const on =
-          outcome.kind === 'ready' &&
-          this.preferences.stateFor(
-            KEEP_DIAGNOSTIC_LOG_PREFERENCE,
-            INSTALLATION_PREFERENCE_CONTEXT,
-          )().value !== false;
-        if (on && !this._keepLog()) {
+    return readKeepLogSetting(this.preferences).pipe(
+      map((stored) => {
+        if (stored === 'on' && !this._keepLog()) {
           this.resume('diagnostic log restarted after a factory reset');
         }
       }),
-      catchError(() => of(undefined)),
-      defaultIfEmpty(undefined),
     );
   }
 
   /** Wait for the stored setting before anything reaches the recorder (or is dropped). */
   private readSetting(): void {
-    this.preferences
-      .hydrateDescriptors(INSTALLATION_PREFERENCE_CONTEXT, [
-        KEEP_DIAGNOSTIC_LOG_PREFERENCE,
-      ])
+    readKeepLogSetting(this.preferences)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (outcome) => {
-          if (this.early === null) {
-            return; // the user chose while the read was in flight
-          }
-          if (outcome.kind !== 'ready') {
-            this.offUnconfirmed();
-            return;
-          }
-          const stored = this.preferences.stateFor(
-            KEEP_DIAGNOSTIC_LOG_PREFERENCE,
-            INSTALLATION_PREFERENCE_CONTEXT,
-          )().value;
-          // Off already holds for this session; a log that can't be deleted now is
-          // deleted at the next start, which reads the same stored "off".
-          this.applySetting(stored !== false).catch(() => undefined);
-        },
-        error: () => {
-          if (this.early !== null) {
-            this.offUnconfirmed(); // unless the user chose while the read was in flight
-          }
-        },
+      .subscribe((stored) => {
+        if (this.early === null) {
+          return; // the user chose while the read was in flight
+        }
+        if (stored === 'unreadable') {
+          this.offUnconfirmed();
+          return;
+        }
+        // Off already holds for this session; a log that can't be deleted now is deleted at
+        // the next start, which reads the same stored "off".
+        this.applySetting(stored === 'on').catch(() => undefined);
       });
   }
 
@@ -459,17 +421,6 @@ export class DiagnosticLogService {
     this._settingKnown.set(true);
     this.sdkCapture?.setEnabled(true);
     this.marker(`${reason}: ${this.describeBuild()}`);
-  }
-
-  /** The signed-in accounts, once; none when the app has no source or it fails. */
-  private accounts(): Observable<readonly DiagnosticAccount[]> {
-    return (
-      this.accountSource?.accounts() ?? of<readonly DiagnosticAccount[]>([])
-    ).pipe(
-      take(1),
-      defaultIfEmpty([] as readonly DiagnosticAccount[]),
-      catchError(() => of<readonly DiagnosticAccount[]>([])),
-    );
   }
 
   private marker(message: string): void {

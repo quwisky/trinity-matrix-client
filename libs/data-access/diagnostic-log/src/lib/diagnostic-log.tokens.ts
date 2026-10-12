@@ -1,6 +1,6 @@
 import { InjectionToken } from '@angular/core';
 import type { Observable } from 'rxjs';
-import type { DiagnosticAccount } from './diagnostic-bundle';
+import type { DiagnosticAccount } from './report-facts';
 import type { DiagnosticLogStore } from './store/diagnostic-log-store';
 import {
   IndexedDbLogStore,

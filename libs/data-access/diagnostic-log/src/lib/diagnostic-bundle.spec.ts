@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DiagnosticEntry } from './diagnostic-entry.model';
-import {
-  buildDiagnosticBundle,
-  diagnosticLogFileName,
-  type DiagnosticAccount,
-} from './diagnostic-bundle';
+import { buildDiagnosticBundle } from './diagnostic-bundle';
+import { diagnosticLogFileName, type DiagnosticAccount } from './report-facts';
 import type { DiagnosticSnapshot } from './store/diagnostic-log-store';
 
 const T0 = Date.UTC(2026, 9, 11, 8);

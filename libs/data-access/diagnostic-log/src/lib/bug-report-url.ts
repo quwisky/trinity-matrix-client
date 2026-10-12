@@ -1,4 +1,4 @@
-import type { DiagnosticReportFacts } from './diagnostic-bundle';
+import type { DiagnosticReportFacts } from './report-facts';
 
 /** Stay well inside what GitHub and browsers accept for one URL. */
 export const GITHUB_ISSUE_URL_LIMIT = 8000;

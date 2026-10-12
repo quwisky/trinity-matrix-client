@@ -10,11 +10,11 @@ export {
 } from './lib/diagnostic-log.service';
 export * from './lib/diagnostic-log.tokens';
 export { provideDiagnosticLog } from './lib/provide-diagnostic-log';
+export type { DiagnosticBundle } from './lib/diagnostic-bundle';
 export type {
   DiagnosticAccount,
-  DiagnosticBundle,
   DiagnosticReportFacts,
-} from './lib/diagnostic-bundle';
+} from './lib/report-facts';
 export {
   GITHUB_ISSUE_URL_LIMIT,
   buildBugReportUrl,
