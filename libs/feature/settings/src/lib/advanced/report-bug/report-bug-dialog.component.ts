@@ -25,6 +25,7 @@ import {
   TrnDialogActions,
   TrnDialogRef,
   TrnDialogShellComponent,
+  TrnSettingsRowComponent,
 } from '@trinity/components/overlay';
 import {
   DIAGNOSTIC_REPORT_CONFIG,
@@ -76,6 +77,7 @@ const reportSchema = schema<ReportModel>((path) => {
     TrnTextarea,
     TrnDialogActions,
     TrnDialogShellComponent,
+    TrnSettingsRowComponent,
   ],
 })
 export class ReportBugDialogComponent {

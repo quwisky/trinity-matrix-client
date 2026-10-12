@@ -49,32 +49,20 @@
           }
         </p>
       } @else {
-        <!-- The settings-row layout (trn-settings-row) without its divider: the text takes
-             the space and wraps, and the switch keeps its size at the end edge. -->
-        <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <div class="min-w-0 flex-[1_1_12rem]">
-            <label trnLabel for="report-bug-include-logs">
-              Include diagnostic logs
-            </label>
-            <p
-              id="report-bug-include-logs-hint"
-              class="m-0 text-13 text-muted-foreground"
-            >
-              Up to two days of Trinity and Matrix logs from this device. Matrix
-              IDs and server names are replaced, and tokens, keys and messages
-              are never included.
-            </p>
-          </div>
-          <div class="ms-auto max-w-full min-w-0">
-            <trn-switch
-              inputId="report-bug-include-logs"
-              aria-describedby="report-bug-include-logs-hint"
-              [checked]="includeLogs()"
-              (checkedChange)="setIncludeLogs($event)"
-              data-testid="report-bug-include-logs"
-            />
-          </div>
-        </div>
+        <trn-settings-row
+          label="Include diagnostic logs"
+          description="Up to two days of Trinity and Matrix logs from this device. Matrix IDs and server names are replaced, and tokens, keys and messages are never included."
+          for="report-bug-include-logs"
+          [divider]="false"
+        >
+          <trn-switch
+            inputId="report-bug-include-logs"
+            aria-describedby="report-bug-include-logs-description"
+            [checked]="includeLogs()"
+            (checkedChange)="setIncludeLogs($event)"
+            data-testid="report-bug-include-logs"
+          />
+        </trn-settings-row>
 
         @if (includeLogs()) {
           @if (loading()) {

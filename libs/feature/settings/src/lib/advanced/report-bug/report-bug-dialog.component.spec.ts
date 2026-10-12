@@ -132,6 +132,18 @@ describe('ReportBugDialogComponent', () => {
     ).toBe(true);
   });
 
+  it('describes the log switch with what the log holds', async () => {
+    await setup();
+    const control = screen.getByLabelText('Include diagnostic logs');
+    const described = document.getElementById(
+      control.getAttribute('aria-describedby') ?? '',
+    );
+
+    expect(described?.textContent).toContain(
+      'Up to two days of Trinity and Matrix logs from this device.',
+    );
+  });
+
   it('previews exactly the text it saves', async () => {
     const { fixture, save } = await setup();
 

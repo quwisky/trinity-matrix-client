@@ -91,3 +91,25 @@ describe('TrnSettingsRowComponent', () => {
     expect(control.className).toContain('max-w-full');
   });
 });
+
+@Component({
+  imports: [TrnSettingsRowComponent],
+  template: `<trn-settings-row label="Sound" /><trn-settings-row
+      label="Alone"
+      [divider]="false"
+    />`,
+})
+class DividerHostComponent {}
+
+describe('TrnSettingsRowComponent divider', () => {
+  it('draws a divider below the row by default, and leaves it out for a row that stands alone', async () => {
+    const { container } = await render(DividerHostComponent);
+    const [listed, alone] = container.querySelectorAll(
+      '[data-slot="settings-row"]',
+    );
+
+    expect(listed.classList).toContain('border-b');
+    expect(alone.classList).not.toContain('border-b');
+    expect(alone.classList).toContain('flex');
+  });
+});
