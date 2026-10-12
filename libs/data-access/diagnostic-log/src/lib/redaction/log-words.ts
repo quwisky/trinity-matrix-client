@@ -1,5 +1,6 @@
 import { forEachWord } from './word-units';
 
+const PERCENT_RUN = /(?:%[0-9A-Fa-f]{2})+/g;
 const PERCENT_ESCAPE = /%([0-9A-Fa-f]{2})/g;
 const JSON_ESCAPE = /\\(?:u([0-9A-Fa-f]{4})|(["\\/bfnrt]))/g;
 const JSON_SIMPLE: Readonly<Record<string, string>> = {
@@ -42,11 +43,16 @@ export class LogWords {
     }
   }
 
-  /** False only when some word of `name` never occurs in the log. */
-  mayContain(name: string): boolean {
+  /**
+   * False only when some word of `text` never occurs in the log. With `cutEnd`, `text` is
+   * the start of something longer, so a word running into its end may be cut and is not
+   * checked.
+   */
+  mayContain(text: string, cutEnd = false): boolean {
     let found = true;
-    forEachWord(name, (hash, unspaced) => {
-      found &&= unspaced || this.hashes.has(hash);
+    forEachWord(text, (hash, unspaced, end) => {
+      found &&=
+        unspaced || (cutEnd && end === text.length) || this.hashes.has(hash);
     });
     return found;
   }
@@ -56,13 +62,18 @@ export class LogWords {
   }
 }
 
-/** `text` with URL escapes decoded: as UTF-8 where they form it, else byte by byte. */
+/**
+ * `text` with URL escapes decoded, each run of them on its own so that a stray "%" elsewhere
+ * does not stop the rest: as UTF-8 where a run forms it, else byte by byte.
+ */
 function percentDecoded(text: string): string {
-  try {
-    return decodeURIComponent(text);
-  } catch {
-    return text.replace(PERCENT_ESCAPE, (_escape, hex: string) =>
-      String.fromCharCode(Number.parseInt(hex, 16)),
-    );
-  }
+  return text.replace(PERCENT_RUN, (run) => {
+    try {
+      return decodeURIComponent(run);
+    } catch {
+      return run.replace(PERCENT_ESCAPE, (_escape, hex: string) =>
+        String.fromCharCode(Number.parseInt(hex, 16)),
+      );
+    }
+  });
 }

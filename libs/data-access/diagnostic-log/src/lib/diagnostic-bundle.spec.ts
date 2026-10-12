@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DiagnosticEntry } from './diagnostic-entry.model';
 import { buildDiagnosticBundle } from './diagnostic-bundle';
+import { MAX_DISPLAY_NAMES_PER_GROUP } from './redaction/known-names';
 import {
   diagnosticLogFileName,
   type DiagnosticAccount,
@@ -198,6 +199,33 @@ describe('buildDiagnosticBundle', () => {
     ]) {
       expect(result.text).not.toContain(known);
     }
+  });
+
+  it('says in the header when some names were not replaced', () => {
+    const names = Array.from(
+      { length: MAX_DISPLAY_NAMES_PER_GROUP + 1 },
+      (_, n) => `Member ${n}`,
+    );
+    const result = bundle(
+      {
+        entries: [
+          {
+            ts: T0,
+            level: 'warn',
+            source: 'console',
+            logger: 'trinity',
+            message: names.join(', '),
+          },
+        ],
+      },
+      [ALICE],
+      [{ roomNames: [], roomTopics: [], displayNames: names }],
+    );
+
+    expect(result.text.split('\n')).toContain(
+      '# Some names were not replaced: there were too many, or they could not be read. Check the file before attaching it.',
+    );
+    expect(bundle().text).not.toContain('Some names were not replaced');
   });
 
   it('reports facts for the issue without any server name', () => {

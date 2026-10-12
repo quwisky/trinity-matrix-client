@@ -39,6 +39,9 @@ export interface DiagnosticBundleInput {
 const PLACEHOLDER_NOTE =
   'Matrix IDs, server names, email addresses and known room names, topics and display names are replaced with placeholders such as @user1:server1 and Room 1; tokens, keys and messages are never stored.';
 
+const NAMES_INCOMPLETE_NOTE =
+  'Some names were not replaced: there were too many, or they could not be read. Check the file before attaching it.';
+
 /**
  * Build the exported file: `# ` header lines, then one redacted line per entry, oldest
  * first. Header and body share one redactor, so a placeholder means the same thing
@@ -83,7 +86,7 @@ function* diagnosticBundleSteps(
     yield;
   }
   // Then the names, kept only where they occur in the file just learned.
-  yield* redactor.learnNames(input.knownNames);
+  const names = yield* redactor.learnNames(input.knownNames);
   const facts = diagnosticReportFacts(input.build, input.platform, accounts);
   const dependencies = input.build?.dependencies;
   const header = [
@@ -105,6 +108,7 @@ function* diagnosticBundleSteps(
       ? 'Dropped entries: older entries were removed to stay within 5 MB and 48 hours'
       : 'Dropped entries: none',
     PLACEHOLDER_NOTE,
+    ...(names.complete ? [] : [NAMES_INCOMPLETE_NOTE]),
   ].map((line) => `# ${line}`);
   const body: string[] = [];
   for (const entry of snapshot.entries) {

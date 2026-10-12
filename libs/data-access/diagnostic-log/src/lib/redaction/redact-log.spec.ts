@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DiagnosticNameGroup } from '../report-facts';
 import { runToEnd } from '../report/run-in-slices';
-import { MAX_DISPLAY_NAMES_PER_GROUP } from './known-names';
+import { MAX_DISPLAY_NAMES_PER_GROUP, MAX_NAMES } from './known-names';
 import { createLogRedactor } from './redact-log';
 import {
   ALICE,
@@ -300,6 +300,14 @@ describe('createLogRedactor', () => {
       );
     });
 
+    it('keeps an address placeholder intact after a device keyword', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+
+      expect(
+        redactor.redact('devices: alice@example.org, mxc://x.org/abc'),
+      ).toBe('devices: email1@example.invalid, mxc://server3/media1');
+    });
+
     it('keeps package versions and addresses without a top-level domain', () => {
       const redactor = createLogRedactor(CORPUS_CONTEXT);
 
@@ -410,6 +418,55 @@ describe('createLogRedactor', () => {
       expect(redactor.redact('Bob and Alice Liddell')).toBe('Bob and Person 1');
     });
 
+    it('does not take a name that occurs only inside a Matrix ID', () => {
+      const redactor = namedRedactor([`${ALICE} joined`], [people('alice')]);
+
+      expect(redactor.redact('alice')).toBe('alice');
+    });
+
+    it('takes every room name and topic before any display name', () => {
+      const members = Array.from(
+        { length: MAX_NAMES },
+        (_, n) => `Member ${n}`,
+      );
+      const groups = Array.from(
+        { length: MAX_NAMES / MAX_DISPLAY_NAMES_PER_GROUP },
+        (_, group) =>
+          people(
+            ...members.slice(
+              group * MAX_DISPLAY_NAMES_PER_GROUP,
+              (group + 1) * MAX_DISPLAY_NAMES_PER_GROUP,
+            ),
+          ),
+      );
+      const log = [members.join(', '), 'opened Late Room'];
+
+      const redacted = redactLog(log, [...groups, rooms('Late Room')]);
+
+      expect(redacted[1]).toBe('opened Room 1');
+    });
+
+    it('reports whether every name it could have taken was taken', () => {
+      const names = Array.from(
+        { length: MAX_DISPLAY_NAMES_PER_GROUP + 1 },
+        (_, n) => `Member ${n}`,
+      );
+      const capped = createLogRedactor(CORPUS_CONTEXT);
+      capped.learn(names.join(', '));
+      const whole = createLogRedactor(CORPUS_CONTEXT);
+      whole.learn(names.join(', '));
+
+      expect(runToEnd(capped.learnNames([people(...names)]))).toEqual({
+        complete: false,
+      });
+      // Exactly the cap, then names already taken: nothing is left out.
+      expect(
+        runToEnd(
+          whole.learnNames([people(...names.slice(1), names[1], names[2])]),
+        ),
+      ).toEqual({ complete: true });
+    });
+
     it('pauses while it reads many names', () => {
       const names = Array.from({ length: 2_000 }, (_, n) => `Member ${n}`);
       const redactor = createLogRedactor(CORPUS_CONTEXT);
@@ -448,6 +505,7 @@ describe('createLogRedactor', () => {
         ['matrix.example.org Admins', 'matrix.example.org Admins changed'],
         [`Chat with ${BOB}`, `opened Chat with ${BOB} now`],
         ['Device ABCDEFGHIJ room', 'Device ABCDEFGHIJ room is quiet'],
+        [`Phone ${OWN_DEVICE} Club`, `Phone ${OWN_DEVICE} Club rang`],
       ])('replaces %s whole', (name, line) => {
         const [redacted] = redactLog([line], [rooms(name)]);
 
@@ -482,6 +540,29 @@ describe('createLogRedactor', () => {
 
         expect(redacted).toBe('[Topic 1]');
       });
+
+      it('replaces a line quoted alone from a multi-line topic', () => {
+        const topic = 'Planning for spring\nBring your notes along';
+
+        expect(
+          redactLog(
+            ['b: Bring your notes along'],
+            [{ ...people(), roomTopics: [topic] }],
+          ),
+        ).toEqual(['b: Topic 1']);
+      });
+
+      it.each([20, 100, 513, 700, 1_100])(
+        'replaces a topic logged cut at %i characters',
+        (length) => {
+          const topic = `Long topic ${'with many words '.repeat(80)}and a tail end`;
+          const log = [`whole: ${topic}.`, `cut: ${topic.slice(0, length)}…`];
+
+          expect(
+            redactLog(log, [{ ...people(), roomTopics: [topic] }]),
+          ).toEqual(['whole: Topic 1.', 'cut: Topic 1…']);
+        },
+      );
 
       it('maps every line of a multi-line topic to one placeholder', () => {
         const topic = 'Planning for spring\nBring your notes along';
@@ -541,6 +622,18 @@ describe('createLogRedactor', () => {
         expect(
           redactLog(['{"name":"Café \\"Noir\\""}'], [rooms('Café "Noir"')]),
         ).toEqual(['{"name":"Room 1"}']);
+      });
+
+      it('replaces a name escaped as JSON \\u escapes', () => {
+        expect(
+          redactLog(['{"name":"Caf\\u00e9 Noir"}'], [rooms('Café Noir')]),
+        ).toEqual(['{"name":"Room 1"}']);
+      });
+
+      it('replaces a URL-encoded name next to a stray percent sign', () => {
+        expect(
+          redactLog(['GET /s?q=Caf%C3%A9%20Noir&p=100%'], [rooms('Café Noir')]),
+        ).toEqual(['GET /s?q=Room 1&p=100%']);
       });
 
       it('replaces a name encoded in a URL', () => {

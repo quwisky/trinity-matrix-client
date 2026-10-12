@@ -38,7 +38,7 @@ export function wordUnitClass(unit: number): WordUnitClass {
  */
 export function forEachWord(
   text: string,
-  visit: (hash: number, unspaced: boolean) => void,
+  visit: (hash: number, unspaced: boolean, end: number) => void,
 ): void {
   let start = -1;
   let ascii = true;
@@ -62,6 +62,7 @@ export function forEachWord(
           ? asciiLowerHash(text, start, index)
           : stringHash(text.slice(start, index).toLowerCase().normalize('NFC')),
         unspaced,
+        index,
       );
       start = -1;
     }

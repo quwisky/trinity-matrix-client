@@ -12,6 +12,14 @@ export interface MatcherLiteral {
 /** A `[start, end)` range of the text that a match may contain whole but never cut. */
 export type ProtectedSpan = readonly [start: number, end: number];
 
+/**
+ * What replaces a match: text for the literal alone, or text for a longer stretch that
+ * begins with the literal (a name of which the literal is the start). The stretch is
+ * shortened so that it never ends strictly inside a protected span.
+ */
+export type Replacement =
+  string | { readonly text: string; readonly length: number };
+
 /** How many characters or states one build step handles before it may pause. */
 const BUILD_STEP = 4_096;
 /** Shorter literals tried at one position after the longest fails a boundary check. */
@@ -89,7 +97,7 @@ export class LiteralMatcher {
    */
   replace(
     text: string,
-    replace: (literal: string, start: number) => string,
+    replace: (literal: string, start: number) => Replacement,
     protectedSpans: readonly ProtectedSpan[] = [],
   ): string {
     if (this.fail.length === 1 || text.length === 0) {
@@ -105,10 +113,25 @@ export class LiteralMatcher {
         position += 1;
         continue;
       }
+      const replacement = replace(
+        text.slice(position, position + length),
+        position,
+      );
+      const extended = typeof replacement !== 'string';
+      let end = position + length;
+      if (extended) {
+        end = Math.min(
+          text.length,
+          position + Math.max(length, replacement.length),
+        );
+        while (end > position + length && guarded && this.noEnd[end - 1]) {
+          end -= 1;
+        }
+      }
       output +=
         text.slice(copied, position) +
-        replace(text.slice(position, position + length), position);
-      position += length;
+        (extended ? replacement.text : replacement);
+      position = end;
       copied = position;
     }
     return copied === 0 ? text : output + text.slice(copied);

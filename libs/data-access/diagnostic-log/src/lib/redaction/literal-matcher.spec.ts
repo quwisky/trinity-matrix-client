@@ -96,6 +96,23 @@ describe('LiteralMatcher', () => {
     ).toBe('@me:server1 [Ops at server2] [erver]');
   });
 
+  it('lets a replacement cover more than its literal, never ending inside a protected span', () => {
+    const text = 'Long topic cut here; Long topic and server1 more';
+    const extend = (match: string, start: number) => ({
+      text: '[topic]',
+      length:
+        start === 0 ? 'Long topic cut'.length : 'Long topic and serv'.length,
+    });
+
+    expect(
+      matcher(['Long topic'], { checkStart: true, checkEnd: false }).replace(
+        text,
+        extend,
+        [[36, 43]],
+      ),
+    ).toBe('[topic] here; [topic]server1 more');
+  });
+
   it('tells the replacement where each match starts', () => {
     const starts: number[] = [];
     matcher(['Ann']).replace('Ann and Ann', (match, start) => {

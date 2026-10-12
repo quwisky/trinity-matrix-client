@@ -99,12 +99,13 @@ function sha256(text: string): string {
 
 /**
  * The files the synchronous builder produced before the export was split into slices,
- * pinned so the sliced build can be checked byte for byte against them. Re-pinned once when
- * the header's placeholder note began to list names and email addresses; nothing else moved.
+ * pinned so the sliced build can be checked byte for byte against them. Re-pinned when the
+ * header's placeholder note began to list names and email addresses, and when placeholders
+ * stopped being read as device IDs (`@user10` had become `@DEVICE441` after "device … of").
  */
 const PINNED = {
   corpus: '8b897c8b864abd8a48794c4da244e43c7f94ad75d7f8a95041303419fbcb666a',
-  large: '24b951f6b78fafaa2653152cca5c8024b63900c9701a782ec4cb5fba6e089b2e',
+  large: '3c7611959b87ffbe6518970e9dd5dd3422495428caddabcf476a68023a6584c5',
 };
 
 describe('the diagnostic file', () => {

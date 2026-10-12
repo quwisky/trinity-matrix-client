@@ -1,6 +1,6 @@
 import type { DiagnosticNameGroup } from '../report-facts';
 import { scrubSecrets } from '../scrub-secrets';
-import { KnownNameRedactor } from './known-names';
+import { KnownNameRedactor, type NameReading } from './known-names';
 import { LogWords } from './log-words';
 
 /** What the redactor knows about this installation before it reads a line. */
@@ -28,7 +28,9 @@ export interface LogRedactor {
    * from then on those that occur in it, whole words only and after the identifier rules.
    * Pauses (`yield`) every few names, so a sliced build never holds the main thread long.
    */
-  learnNames(groups: Iterable<DiagnosticNameGroup>): Generator<void, void>;
+  learnNames(
+    groups: Iterable<DiagnosticNameGroup>,
+  ): Generator<void, NameReading>;
 }
 
 // A server name: DNS name or IP literal, optional port (Matrix spec, "Server name").
@@ -75,6 +77,10 @@ const DEVICE_AFTER_USER =
 // A bare server name: dot-separated labels. Labels and dots cannot overlap, so matching is linear.
 const NAME_TOKEN =
   /(?<![\p{L}\p{N}.-])[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*(?![\p{L}\p{N}-])/gu;
+// Characters every ID, URL, address and secret assignment is written with, and words that
+// open a device ID or a secret in prose.
+const MAY_CARRY_IDENTIFIER =
+  /[@:.!#$%=/]|device|bearer|token|key|secret|password|passphrase/i;
 // A run of device-ID characters, looked up in the known devices.
 const WORD = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]+(?![A-Za-z0-9_-])/g;
 // Longest bare name tried against known servers (a DNS name is at most 253 characters).
@@ -121,7 +127,9 @@ function isFirstWordDeviceId(word: string): boolean {
     !ENGLISH_SUFFIX.test(word)
   );
 }
-const ALREADY_PLACEHOLDER = /^(?:DEVICE|server)\d+$/;
+// Placeholders written by earlier rules; `email1` and `media1` sit next to device lists too.
+const ALREADY_PLACEHOLDER =
+  /^(?:DEVICE|server|email|media|user|room|alias|event|me)\d+$/;
 
 /**
  * How the words after a device keyword are read:
@@ -194,25 +202,49 @@ class IdentifierRedactor implements LogRedactor {
 
   learn(text: string): void {
     // Line by line, as the capture path stores them: scrubSecrets bounds its input.
+    // The words are taken from the redacted line, which is what names are matched in: a
+    // localpart alone, gone once its ID is replaced, does not make a name worth keeping.
     for (const line of text.split('\n')) {
-      this.words?.add(line);
-      this.redactAllButNames(line);
+      const redacted = this.redactAllButNames(line);
+      this.words?.add(redacted);
     }
   }
 
-  *learnNames(groups: Iterable<DiagnosticNameGroup>): Generator<void, void> {
+  *learnNames(
+    groups: Iterable<DiagnosticNameGroup>,
+  ): Generator<void, NameReading> {
     const words = this.words ?? new LogWords();
-    this.names = yield* KnownNameRedactor.build(groups, {
-      mayOccur: (name) => words.mayContain(name),
+    const names = yield* KnownNameRedactor.build(groups, {
+      mayOccur: (literal, cutEnd) => words.mayContain(literal, cutEnd),
       redactIdentifiers: (text) => this.redactAllButNames(text),
+      mayCarryIdentifier: (text) => this.mayCarryIdentifier(text),
     });
+    this.names = names;
     this.words = null;
+    return names.reading;
   }
 
   redact(input: string): string {
     const text = this.redactAllButNames(input);
     // Last, so a display name equal to a localpart cannot break the ID that carries it.
     return this.names ? this.names.redact(text) : text;
+  }
+
+  /**
+   * A cheap test that `redactAllButNames` would change nothing: no character an ID, URL,
+   * address or secret is written with, no device keyword or secret word, and no word that
+   * is a known device ID or server name.
+   */
+  private mayCarryIdentifier(text: string): boolean {
+    if (MAY_CARRY_IDENTIFIER.test(text)) {
+      return true;
+    }
+    for (const [word] of text.matchAll(WORD)) {
+      if (this.devices.has(word) || this.servers.has(word.toLowerCase())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Every rule but the names. */
