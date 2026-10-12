@@ -4,6 +4,7 @@ import {
   stripReplyFallbackText,
   type MediaPayload,
   type PollView,
+  UNDECRYPTABLE_BODY,
 } from '@trinity/util/matrix';
 import { type PresentedMediaReference } from '@trinity/data-access/media';
 
@@ -110,7 +111,7 @@ export interface UndecryptableView {
 
 /** The row text for each reason. Edit history and the room-list preview keep their own. */
 const UNDECRYPTABLE_TEXT: Readonly<Record<UndecryptableReason, string>> = {
-  'missing-key': '⚠️ Unable to decrypt this message',
+  'missing-key': UNDECRYPTABLE_BODY,
   'device-unverified':
     '⚠️ You can’t read this message because this device wasn’t verified when it was sent',
   withheld:

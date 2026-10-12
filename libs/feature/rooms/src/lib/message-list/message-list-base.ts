@@ -838,7 +838,7 @@ export abstract class MessageListBase {
   /**
    * The fix Trust offers for an unreadable message, handed to every row; each row decides
    * whether its reason can use it. Resolved only while some row can, so a timeline with no
-   * fixable message never constructs Trust.
+   * fixable message does not depend on Trust.
    */
   readonly undecryptableFix = computed<UndecryptableFix | null>(() =>
     this.messages().some((message) => message.undecryptable?.deviceFixable)
