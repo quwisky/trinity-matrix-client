@@ -204,7 +204,7 @@ describe('file, lifecycle and update host operation contracts', () => {
   }
 
   it('keeps file export cold, finite and normalized through the selected host adapter', async () => {
-    const save = vi.fn(() => of(undefined));
+    const save = vi.fn(() => of('saved' as const));
     TestBed.configureTestingModule({
       providers: [
         HostFileExportAdapter,
@@ -226,6 +226,29 @@ describe('file, lifecycle and update host operation contracts', () => {
       request.bytes,
       request.filename,
     );
+  });
+
+  it('reports a dismissed native save as cancelled, never completed', async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        HostFileExportAdapter,
+        MockProvider(HostCapabilitiesService, {
+          manifest: () => of(manifest()),
+        }),
+        MockProvider(FileSaveService, {
+          save: () => of('cancelled' as const),
+        }),
+      ],
+    });
+
+    await expect(
+      firstValueFrom(
+        TestBed.inject(HostFileExportAdapter).save({
+          bytes: new Blob(['safe']),
+          filename: 'safe.txt',
+        }),
+      ),
+    ).resolves.toEqual({ kind: 'cancelled' });
   });
 
   it('contains file-host failures behind a secret-safe rejection', async () => {

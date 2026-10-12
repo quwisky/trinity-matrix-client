@@ -4,6 +4,9 @@ import { Capacitor } from '@capacitor/core';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
+/** `cancelled` when the user dismissed the native share sheet; the web path can't tell. */
+export type FileSaveResult = 'saved' | 'cancelled';
+
 /**
  * Host adapter that saves a downloaded attachment blob. On a native platform it
  * writes the bytes to the cache and opens the OS share sheet (so the user can
@@ -23,7 +26,7 @@ export class FileSaveService {
     Capacitor.isPluginAvailable('Share');
 
   /** Save (native: write + share sheet; web: download link) a blob under its name. */
-  save(blob: Blob, filename: string): Observable<void> {
+  save(blob: Blob, filename: string): Observable<FileSaveResult> {
     return defer(() =>
       from(
         this.nativeAvailable
@@ -34,7 +37,10 @@ export class FileSaveService {
   }
 
   /** Write the blob to the cache and surface the native share sheet. */
-  private async saveNative(blob: Blob, filename: string): Promise<void> {
+  private async saveNative(
+    blob: Blob,
+    filename: string,
+  ): Promise<FileSaveResult> {
     const data = await blobToBase64(blob);
     // The OS hands the receiving app a content:// URI it reads asynchronously —
     // on Android share() resolves before that read completes, so deleting the
@@ -53,16 +59,18 @@ export class FileSaveService {
     });
     try {
       await Share.share({ files: [uri], dialogTitle: 'Save or share' });
+      return 'saved';
     } catch (err) {
-      // Dismissing the share sheet rejects — that's a user choice, not a failure.
-      if (!isShareCancel(err)) {
-        throw err;
+      // Dismissing the share sheet rejects: a user choice, neither a save nor a failure.
+      if (isShareCancel(err)) {
+        return 'cancelled';
       }
+      throw err;
     }
   }
 
   /** Browser download via a transient object URL on an `<a download>`. */
-  private async saveWeb(blob: Blob, filename: string): Promise<void> {
+  private async saveWeb(blob: Blob, filename: string): Promise<FileSaveResult> {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -72,6 +80,7 @@ export class FileSaveService {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+    return 'saved';
   }
 }
 
@@ -145,8 +154,19 @@ function safeName(filename: string): string {
   return base.slice(0, MAX_NAME_LENGTH);
 }
 
+/**
+ * The rejection @capacitor/share 8 gives a dismissed sheet, with no error code, on both
+ * platforms: iOS when `UIActivityViewController` completes with `completed == false`,
+ * Android when the chooser returns `RESULT_CANCELED` while Trinity's activity never stopped.
+ *
+ * Re-check this exact match whenever @capacitor/share is upgraded: 8.0.3 rejects with it in
+ * `ios/Sources/SharePlugin/SharePlugin.swift:63` and
+ * `android/src/main/java/com/capacitorjs/plugins/share/SharePlugin.java:79`. If the message
+ * changes, a dismissal becomes a reported failure.
+ */
+const SHARE_CANCELED = 'Share canceled';
+
 /** Whether a Share rejection is the user dismissing the sheet (not an error). */
 function isShareCancel(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err);
-  return /cancel|abort|dismiss/i.test(message);
+  return err instanceof Error && err.message === SHARE_CANCELED;
 }

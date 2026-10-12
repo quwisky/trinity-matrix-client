@@ -390,6 +390,34 @@ describe('AdvancedSettingsComponent', () => {
     await expect(request.bytes.text()).resolves.toContain('{"version":1}');
   });
 
+  it('toasts when the host could not export the document', async () => {
+    fileSave.mockReturnValueOnce(
+      of({ kind: 'rejected', diagnostic: { code: 'file-export-failed' } }),
+    );
+    const { container } = await render(AdvancedSettingsComponent, {
+      providers: mockedConfig(),
+    });
+
+    button(container, 'advanced-export')?.click();
+
+    expect(toastShow).toHaveBeenCalledWith(
+      'Could not export your settings.',
+      expect.objectContaining({ variant: 'danger' }),
+    );
+  });
+
+  it('says nothing when the user cancels the export', async () => {
+    fileSave.mockReturnValueOnce(of({ kind: 'cancelled' }));
+    const { container } = await render(AdvancedSettingsComponent, {
+      providers: mockedConfig(),
+    });
+
+    button(container, 'advanced-export')?.click();
+
+    expect(fileSave).toHaveBeenCalledOnce();
+    expect(toastShow).not.toHaveBeenCalled();
+  });
+
   // 12:00 UTC is already the 2nd in Kiritimati: a UTC-dated filename is a day out either
   // side of midnight for most of the world, on the one string people scan a folder for.
   it('dates the file by the user’s calendar, not UTC', async () => {

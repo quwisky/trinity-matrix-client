@@ -87,7 +87,9 @@ describe('FileSaveService host adapter', () => {
         },
       );
 
-      await firstValueFrom(svc.save(new Blob(['x']), 'pic.png'));
+      await expect(
+        firstValueFrom(svc.save(new Blob(['x']), 'pic.png')),
+      ).resolves.toBe('saved');
 
       expect(downloadName).toBe('pic.png');
       expect(createObjectURL).toHaveBeenCalledTimes(1);
@@ -168,17 +170,44 @@ describe('FileSaveService host adapter', () => {
       expect(name.endsWith('.png')).toBe(true);
     });
 
-    it('swallows a user-cancelled share (not a failure), no immediate delete', async () => {
+    // iOS resolves with the chosen activity; Android with the chosen package, or '' when
+    // the chooser closed after Trinity stopped without naming one.
+    it.each([
+      [{ activityType: 'com.apple.DocumentManagerUICore.SaveToFiles' }],
+      [{ activityType: '' }],
+    ])('reports a share the user completed as saved (%o)', async (result) => {
+      share.mockResolvedValueOnce(result);
+      const svc = build();
+
+      await expect(
+        firstValueFrom(svc.save(new Blob(['x']), 'pic.png')),
+      ).resolves.toBe('saved');
+    });
+
+    // Both native plugins reject a dismissed sheet with exactly this message and no code.
+    it('reports a dismissed share sheet as cancelled, no immediate delete', async () => {
       share.mockRejectedValueOnce(new Error('Share canceled'));
       const svc = build();
 
       await expect(
         firstValueFrom(svc.save(new Blob(['x']), 'pic.png')),
-      ).resolves.toBeUndefined();
+      ).resolves.toBe('cancelled');
       // The file is left for the next save's sweep — never deleted out from under
       // a receiver that may still be reading it.
       expect(writeFile).toHaveBeenCalledTimes(1);
     });
+
+    it.each(['Error sharing item', "Can't share while sharing is in progress"])(
+      'propagates any other share rejection as a failure (%s)',
+      async (message) => {
+        share.mockRejectedValueOnce(new Error(message));
+        const svc = build();
+
+        await expect(
+          firstValueFrom(svc.save(new Blob(['x']), 'pic.png')),
+        ).rejects.toThrow(message);
+      },
+    );
 
     it('propagates a genuine share failure', async () => {
       share.mockRejectedValueOnce(new Error('kaboom'));

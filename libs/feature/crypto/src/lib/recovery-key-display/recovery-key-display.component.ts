@@ -82,12 +82,19 @@ export class RecoveryKeyDisplayComponent {
       .save({ bytes: blob, filename: 'trinity-recovery-key.txt' })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (outcome) =>
+        next: (outcome) => {
+          // A dismissed share sheet may have saved nothing: never announce "downloaded"
+          // for it, and clear an earlier message so it doesn't linger.
+          if (outcome.kind === 'cancelled') {
+            this.announcement.set('');
+            return;
+          }
           this.announcement.set(
             outcome.kind === 'completed'
               ? 'Recovery key downloaded.'
               : 'Could not download the recovery key.',
-          ),
+          );
+        },
         error: () =>
           this.announcement.set('Could not download the recovery key.'),
       });

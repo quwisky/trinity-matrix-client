@@ -446,6 +446,17 @@ describe('SecuritySectionComponent', () => {
     );
   });
 
+  it('says nothing and clears the busy state when the user cancels the save', async () => {
+    const fileSave = vi.fn(() => of({ kind: 'cancelled' } as const));
+    const { cmp, toastShow } = await build({}, { fileSave });
+
+    await cmp.exportKeys();
+
+    expect(fileSave).toHaveBeenCalledOnce();
+    expect(toastShow).not.toHaveBeenCalled();
+    expect(cmp.busy()).toBe(false);
+  });
+
   it('does not export when the passphrase prompt is cancelled', async () => {
     const prompt = vi.fn(() => of(null));
     const { cmp, exportRoomKeys } = await build({}, { prompt });

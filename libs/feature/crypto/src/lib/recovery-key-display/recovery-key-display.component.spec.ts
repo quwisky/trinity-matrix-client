@@ -1,7 +1,10 @@
 import { render, screen } from '@trinity/testing';
-import { HostFileExportService } from '@trinity/runtime/host';
+import {
+  HostFileExportService,
+  type HostFileExportOutcome,
+} from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { type Observable, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RecoveryKeyDisplayComponent } from './recovery-key-display.component';
 
@@ -9,8 +12,10 @@ const KEY = 'EsTa bcde fghi jklm nopq rstu vwxy z012 3456 789a bcde fghi';
 
 describe('RecoveryKeyDisplayComponent', () => {
   const save = vi.fn(
-    (_request: { readonly bytes: Blob; readonly filename: string }) =>
-      of({ kind: 'completed' as const }),
+    (_request: {
+      readonly bytes: Blob;
+      readonly filename: string;
+    }): Observable<HostFileExportOutcome> => of({ kind: 'completed' }),
   );
 
   afterEach(() => vi.restoreAllMocks());
@@ -62,6 +67,41 @@ describe('RecoveryKeyDisplayComponent', () => {
     });
     const [{ bytes }] = save.mock.calls[0];
     await expect(bytes.text()).resolves.toBe(KEY);
+  });
+
+  it('announces a completed download', async () => {
+    const { fixture } = await renderKey();
+
+    fixture.componentInstance.download();
+
+    expect(fixture.componentInstance.announcement()).toBe(
+      'Recovery key downloaded.',
+    );
+  });
+
+  // A dismissed share sheet saved nothing: claiming "downloaded" would let the user
+  // believe the key is stored, and it is not a failure either.
+  it('announces nothing when the user cancels the save', async () => {
+    save.mockReturnValueOnce(of({ kind: 'cancelled' }));
+    const { fixture } = await renderKey();
+
+    fixture.componentInstance.download();
+
+    expect(fixture.componentInstance.announcement()).toBe('');
+  });
+
+  // A stale "downloaded" from an earlier save must not stay in the live region either.
+  it('clears an earlier announcement when the user cancels a later save', async () => {
+    const { fixture } = await renderKey();
+    fixture.componentInstance.download();
+    expect(fixture.componentInstance.announcement()).toBe(
+      'Recovery key downloaded.',
+    );
+
+    save.mockReturnValueOnce(of({ kind: 'cancelled' }));
+    fixture.componentInstance.download();
+
+    expect(fixture.componentInstance.announcement()).toBe('');
   });
 
   it('surfaces a manual-copy hint when the clipboard write fails', async () => {

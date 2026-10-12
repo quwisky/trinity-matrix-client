@@ -67,12 +67,21 @@ export interface HostBackOperation {
   background(): Observable<HostOperationOutcome>;
 }
 
+/**
+ * `cancelled`: the host reported its save UI (the native share sheet) as dismissed, so it
+ * may not have saved anything. On Android this also covers a share target that kept Trinity
+ * in the foreground, such as Copy. Consumers report neither success nor failure for it.
+ * Browser and desktop downloads cannot observe a cancel and never produce it.
+ */
+export type HostFileExportOutcome =
+  HostOperationOutcome | { readonly kind: 'cancelled' };
+
 export interface HostFileExportOperation {
   support(): Observable<HostCapabilitySupport>;
   save(request: {
     readonly bytes: Blob;
     readonly filename: string;
-  }): Observable<HostOperationOutcome>;
+  }): Observable<HostFileExportOutcome>;
 }
 
 export interface HostNotificationPresentationOperation {
