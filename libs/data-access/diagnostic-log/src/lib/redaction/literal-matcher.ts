@@ -97,7 +97,7 @@ export class LiteralMatcher {
    */
   replace(
     text: string,
-    replace: (literal: string, start: number) => Replacement,
+    replace: (literal: string, start: number) => Replacement | null,
     protectedSpans: readonly ProtectedSpan[] = [],
   ): string {
     if (this.fail.length === 1 || text.length === 0) {
@@ -108,15 +108,12 @@ export class LiteralMatcher {
     let output = '';
     let copied = 0;
     for (let position = 0; position < text.length;) {
-      const length = this.matchAt(text, position, states, guarded);
-      if (length === 0) {
+      const match = this.matchAt(text, position, states, guarded, replace);
+      if (!match) {
         position += 1;
         continue;
       }
-      const replacement = replace(
-        text.slice(position, position + length),
-        position,
-      );
+      const { length, replacement } = match;
       const extended = typeof replacement !== 'string';
       let end = position + length;
       if (extended) {
@@ -137,17 +134,21 @@ export class LiteralMatcher {
     return copied === 0 ? text : output + text.slice(copied);
   }
 
-  /** The length of the literal taken at `position`, or 0. */
+  /**
+   * The longest literal at `position` that passes its checks and that `replace` accepts
+   * (a null replacement declines it, and the next shorter literal is tried), or null.
+   */
   private matchAt(
     text: string,
     position: number,
     states: Int32Array,
     guarded: boolean,
-  ): number {
+    replace: (literal: string, start: number) => Replacement | null,
+  ): { length: number; replacement: Replacement } | null {
     const state = states[position];
     let output = this.flags[state] & TERMINAL ? state : this.outLink[state];
     if (output === 0 || (guarded && this.noStart[position])) {
-      return 0;
+      return null;
     }
     const startCut =
       position > 0 &&
@@ -159,7 +160,8 @@ export class LiteralMatcher {
       tries += 1, output = this.outLink[output]
     ) {
       const flags = this.flags[output];
-      const last = position + this.depth[output] - 1;
+      const length = this.depth[output];
+      const last = position + length - 1;
       const endCut =
         last + 1 < text.length &&
         isSpacedWord(text.charCodeAt(last)) &&
@@ -171,9 +173,15 @@ export class LiteralMatcher {
       ) {
         continue;
       }
-      return this.depth[output];
+      const replacement = replace(
+        text.slice(position, position + length),
+        position,
+      );
+      if (replacement !== null) {
+        return { length, replacement };
+      }
     }
-    return 0;
+    return null;
   }
 
   /** The automaton state after reading the text backwards from its end to each position. */

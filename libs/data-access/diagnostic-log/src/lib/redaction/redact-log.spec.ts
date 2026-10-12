@@ -580,6 +580,49 @@ describe('createLogRedactor', () => {
         },
       );
 
+      it.each([
+        [
+          'Failed to decrypt? Verify this session first',
+          'Failed to decrypt event 42',
+        ],
+        [
+          'Starting the synchronisation of all rooms',
+          'Starting the synchroniser now',
+        ],
+      ])(
+        'leaves a line that only begins like the topic %j alone',
+        (topic, line) => {
+          expect(
+            redactLog(
+              [`full: ${topic}`, line],
+              [{ ...people(), roomTopics: [topic] }],
+            ),
+          ).toEqual(['full: Topic 1', line]);
+        },
+      );
+
+      it('still replaces a name inside a line it declined as the topic', () => {
+        const topic = 'Meeting with Alice about the budget';
+
+        expect(
+          redactLog(
+            [`full: ${topic}`, 'Meeting with Alice Liddell today'],
+            [{ ...people('Alice Liddell'), roomTopics: [topic] }],
+          ),
+        ).toEqual(['full: Topic 1', 'Meeting with Person 1 today']);
+      });
+
+      it('replaces a topic that the capture cut short', () => {
+        const topic = 'Starting the synchronisation of all rooms';
+
+        expect(
+          redactLog(
+            [`${topic.slice(0, 30)}… [11 characters truncated]`],
+            [{ ...people(), roomTopics: [topic] }],
+          ),
+        ).toEqual(['Topic 1… [11 characters truncated]']);
+      });
+
       it('maps every line of a multi-line topic to one placeholder', () => {
         const topic = 'Planning for spring\nBring your notes along';
 

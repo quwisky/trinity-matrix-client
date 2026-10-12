@@ -1,4 +1,5 @@
 import type { DiagnosticNameGroup } from '../report-facts';
+import { SPACED_WORD, wordUnitClass } from './word-units';
 import {
   LiteralMatcher,
   type ProtectedSpan,
@@ -256,22 +257,31 @@ export class KnownNameRedactor {
     );
   }
 
-  private replacement(text: string, match: string, start: number): Replacement {
+  private replacement(
+    text: string,
+    match: string,
+    start: number,
+  ): Replacement | null {
     const literal = this.literals.get(match);
     if (!literal) {
-      return match;
+      return null;
     }
     let best: { name: number; length: number } | null = null;
     for (const { name, spelling } of literal.prefixOf) {
       const length = sharedLength(text, start, spelling);
-      if (!best || length > best.length) {
+      const whole = length === spelling.length;
+      if (
+        (whole || endsAtCut(text, start + length)) &&
+        length > (best?.length ?? 0)
+      ) {
         best = { name, length };
       }
     }
     if (best && (literal.whole === -1 || best.length > match.length)) {
       return { text: this.placeholder(best.name), length: best.length };
     }
-    return literal.whole === -1 ? match : this.placeholder(literal.whole);
+    // A line that only begins like a long name is declined; a shorter name may still match.
+    return literal.whole === -1 ? null : this.placeholder(literal.whole);
   }
 
   private placeholder(name: number): string {
@@ -436,6 +446,29 @@ function unicodeEscape(unit: string, upper: boolean): string {
   const hex = unit.charCodeAt(0).toString(16).padStart(4, '0');
   return `\\u${upper ? hex.toUpperCase() : hex}`;
 }
+
+/**
+ * Whether a long name repeated only up to `end` was cut there, rather than the line going on
+ * with other words: the line ends, or a mark such as "…", a quote or a bracket follows. A
+ * space or a letter means the line merely begins like the name, as "Failed to decrypt
+ * event" begins like a topic "Failed to decrypt? …" or "synchroniser" like
+ * "synchronisation", and the line is left alone. Scripts written without spaces give no
+ * such clue, so a cut before one of their letters is taken as a cut.
+ */
+function endsAtCut(text: string, end: number): boolean {
+  if (end >= text.length) {
+    return true;
+  }
+  const unit = text.charCodeAt(end);
+  if (unit === 0x0a || unit === 0x0d) {
+    return true;
+  }
+  return (
+    wordUnitClass(unit) !== SPACED_WORD && !WHITESPACE.test(text.charAt(end))
+  );
+}
+
+const WHITESPACE = /\s/;
 
 /** How many units of `spelling` the text repeats from `start`, ending between code points. */
 function sharedLength(text: string, start: number, spelling: string): number {
