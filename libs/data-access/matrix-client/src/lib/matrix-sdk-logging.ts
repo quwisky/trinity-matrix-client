@@ -59,7 +59,7 @@ const METHOD_RANK: Readonly<Record<MatrixSdkLogMethod, number>> = {
  * Marks a factory this module already wrapped. The SDK copies a parent's factory to every
  * new child, so without the mark a grandchild would write each line to the sink twice.
  */
-const SINK_AWARE = Symbol('trinity.matrixSdkSinkAware');
+const SINK_AWARE = Symbol('matrixSdkSinkAware');
 
 let sdkLogLevel: MatrixSdkLogLevel = 'debug';
 let sdkSink: MatrixSdkLogSink | null = null;
