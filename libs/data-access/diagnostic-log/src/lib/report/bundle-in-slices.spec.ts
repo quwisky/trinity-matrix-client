@@ -29,14 +29,19 @@ function corpusEntries(): DiagnosticEntry[] {
   }));
 }
 
+/** Enough entries for the build to take many slices at {@link SLICE_MS}, and no more. */
+const LARGE_LOG_ENTRIES = 2_500;
+const SLICE_MS = 100;
+const MIN_SLICES = 20;
+
 /**
- * A deterministic log of about 1.5 MB: the corpus over and over with varying users, rooms,
+ * A deterministic log of about 300 KB: the corpus over and over with varying users, rooms,
  * servers and devices, and some multi-line messages, so placeholders keep being assigned.
  */
 function largeLog(): DiagnosticEntry[] {
   const lines = REDACTION_CORPUS.map((entry) => entry.line);
   const entries: DiagnosticEntry[] = [];
-  for (let n = 0; n < 12_000; n += 1) {
+  for (let n = 0; n < LARGE_LOG_ENTRIES; n += 1) {
     const server = `server${n % 7}.example.net`;
     const variable = [
       `sync for @user${n % 113}:${server} in !room${n % 89}x:${server}`,
@@ -87,7 +92,7 @@ function sha256(text: string): string {
  */
 const PINNED = {
   corpus: 'f84f6aa2b4a67ae98c41860a867686cbaef1982f1d0b6170c9e8e3a3ad347b23',
-  large: 'a53675548fea49be6f16220231368ffeb7b229b525483495074e8892efa3710d',
+  large: '3be833be0c1b9748b066949beaa0b4671b3c2c93f74d70ce6e2b9dba013fe628',
 };
 
 describe('the diagnostic file', () => {
@@ -106,9 +111,9 @@ describe('the diagnostic file', () => {
  * A clock that moves one millisecond each time it is read, so a slice of `sliceMs` runs
  * about that many steps and the build takes many slices, whatever the machine's speed.
  */
-function steppingClock(): () => number {
+function steppingClock(): { now: () => number; reads: () => number } {
   let now = 0;
-  return () => (now += 1);
+  return { now: () => (now += 1), reads: () => now };
 }
 
 describe('building the diagnostic file in slices', () => {
@@ -118,15 +123,20 @@ describe('building the diagnostic file in slices', () => {
   ] as const)(
     'produces exactly the synchronous file for %s',
     async (_name, entries, pinned) => {
+      const clock = steppingClock();
       const sliced = await firstValueFrom(
         buildDiagnosticBundleInSlices(input(entries()), {
-          sliceMs: 500,
-          now: steppingClock(),
+          sliceMs: SLICE_MS,
+          now: clock.now,
         }),
       );
 
       expect(sha256(sliced.text)).toBe(pinned());
       expect(sliced).toEqual(buildDiagnosticBundle(input(entries())));
+      if (entries === largeLog) {
+        // One clock read per step and per slice start: this many reads is many slices.
+        expect(clock.reads() / (SLICE_MS + 1)).toBeGreaterThan(MIN_SLICES);
+      }
     },
   );
 
@@ -134,8 +144,8 @@ describe('building the diagnostic file in slices', () => {
     const order: string[] = [];
     const built = firstValueFrom(
       buildDiagnosticBundleInSlices(input(largeLog()), {
-        sliceMs: 500,
-        now: steppingClock(),
+        sliceMs: SLICE_MS,
+        now: steppingClock().now,
       }),
     ).then(() => order.push('built'));
     setTimeout(() => order.push('timer'), 0);
@@ -157,7 +167,7 @@ describe('building the diagnostic file in slices', () => {
     const next = vi.fn();
     const subscription = runInSlices(work, {
       sliceMs: 5,
-      now: steppingClock(),
+      now: steppingClock().now,
     }).subscribe(next);
 
     // The first slice ran on subscription; the rest wait for later tasks.
