@@ -6,9 +6,12 @@ import {
 } from '@storybook/angular-vite';
 import {
   TrnButton,
+  TrnCheckboxComponent,
   TrnInput,
   TrnRadioGroupComponent,
   TrnSelectComponent,
+  TrnSwitchComponent,
+  TrnTextarea,
   type TrnRadioOption,
   type TrnSelectOption,
 } from '@trinity/components/controls';
@@ -59,6 +62,14 @@ const REMINDERS: readonly TrnSelectOption<string>[] = [
   { value: 'tomorrow', label: 'Tomorrow' },
   { value: 'week', label: 'Next week' },
 ];
+const BACKUP_METHODS: readonly TrnRadioOption<string>[] = [
+  { value: 'key', label: 'Recovery key', description: 'Save a key you keep' },
+  { value: 'phrase', label: 'Passphrase', description: 'Remember a phrase' },
+];
+const KEY_STORAGE: readonly TrnRadioOption<string>[] = [
+  { value: 'device', label: 'This device', description: 'Stays here' },
+  { value: 'server', label: 'Server', description: 'Encrypted backup' },
+];
 
 const meta: Meta = {
   title: 'Components/Overlay recipes',
@@ -71,10 +82,13 @@ const meta: Meta = {
         FeedbackOverlayStoryComponent,
         LayeredOverlayStoryComponent,
         TrnButton,
+        TrnCheckboxComponent,
         TrnInput,
         TrnOverlaySurfaceDirective,
         TrnRadioGroupComponent,
         TrnSelectComponent,
+        TrnSwitchComponent,
+        TrnTextarea,
       ],
     }),
   ],
@@ -156,6 +170,115 @@ export const AccentSurface: Story = {
             <button trnBtn presentation="ghost" size="sm" type="button">Not now</button>
             <a trnBtn size="sm" href="#">Learn more</a>
             <button trnBtn size="sm" type="button">Verify now</button>
+          </div>
+        </section>
+      </div>
+    `,
+  }),
+};
+
+/**
+ * The remaining controls on an accent dialog: outline actions (one holding an open menu), a
+ * checkbox and a switch (their checked fills invert like a solid action), a list radio group
+ * and a segmented group with option descriptions, a file input, and invalid field, textarea,
+ * select and checkbox states. Each uses the attention control roles. The invalid states take the attention danger
+ * role, which keeps 3:1 against the accent, plus a 2px ring that does not rely on hue; their
+ * messages inherit the surface's foreground.
+ */
+export const AccentSurfaceControls: Story = {
+  render: () => ({
+    props: {
+      backupMethods: BACKUP_METHODS,
+      backupMethod: 'key',
+      storage: KEY_STORAGE,
+      storageChoice: 'device',
+      reminders: REMINDERS,
+      reminder: null,
+      remember: false,
+      saved: false,
+      sync: false,
+    },
+    template: `
+      <div class="p-6">
+        <section
+          trnOverlaySurface
+          variant="accent"
+          size="md"
+          layout="dialog"
+          class="grid gap-4 p-6"
+          aria-labelledby="accent-controls-title"
+          data-testid="accent-overlay-controls"
+        >
+          <h2 id="accent-controls-title" class="text-lg font-semibold">Set up secure backup</h2>
+          <trn-radio-group
+            aria-label="Back up with"
+            [options]="backupMethods"
+            [value]="backupMethod"
+            (valueChange)="backupMethod = $event"
+          />
+          <trn-radio-group
+            layout="segmented"
+            aria-label="Keep the key on"
+            [options]="storage"
+            [value]="storageChoice"
+            (valueChange)="storageChoice = $event"
+          />
+          <div class="grid gap-1">
+            <input
+              trnInput
+              explicitInvalid
+              aria-label="Passphrase"
+              aria-describedby="accent-controls-passphrase-error"
+              value="short"
+            />
+            <span id="accent-controls-passphrase-error" class="text-sm">Use at least 12 characters</span>
+          </div>
+          <div class="grid gap-1">
+            <textarea
+              trnTextarea
+              explicitInvalid
+              aria-label="Backup note"
+              aria-describedby="accent-controls-note-error"
+            ></textarea>
+            <span id="accent-controls-note-error" class="text-sm">Add a note</span>
+          </div>
+          <span id="accent-controls-reminder" class="sr-only">Remind me</span>
+          <trn-select
+            invalid
+            aria-labelledby="accent-controls-reminder"
+            placeholder="Remind me later"
+            [options]="reminders"
+            [value]="reminder"
+            (valueChange)="reminder = $event"
+          />
+          <input trnInput type="file" aria-label="Key file" />
+          <div class="flex flex-wrap gap-4">
+            <label class="flex items-center gap-1 text-sm">
+              <trn-checkbox [checked]="remember" (checkedChange)="remember = $event" />
+              Remember this device
+            </label>
+            <label class="flex items-center gap-1 text-sm">
+              <trn-checkbox invalid [checked]="saved" (checkedChange)="saved = $event" />
+              I saved my key
+            </label>
+            <label class="flex items-center gap-1 text-sm">
+              <trn-switch [checked]="sync" (checkedChange)="sync = $event" />
+              Sync keys
+            </label>
+          </div>
+          <div class="flex flex-wrap justify-end gap-2">
+            <button
+              trnBtn
+              presentation="outline"
+              size="sm"
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded="true"
+            >
+              More options
+            </button>
+            <button trnBtn presentation="outline" size="sm" type="button">Export key</button>
+            <button trnBtn size="sm" type="button">Continue</button>
           </div>
         </section>
       </div>

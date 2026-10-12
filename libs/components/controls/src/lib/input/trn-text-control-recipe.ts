@@ -24,11 +24,13 @@ const base =
  * accent, where the neutral value, placeholder and border colours fall near 1:1 (#1241). There
  * it switches to the attention control roles, and a disabled field stays transparent instead
  * of nesting a neutral fill. Its focus ring already follows the surface's on-attention ring.
- * Invalid state has no attention role yet: there the attention border replaces the danger
- * border while the danger shadow stays, so keep invalid fields off attention surfaces.
+ * An invalid field's border and ring take the attention danger role (#1244), which keeps 3:1
+ * against the accent where the neutral danger falls near 1.4:1; the 2px ring is the cue that
+ * does not rely on hue. Focused, the ring turns to the surface's focus ring and the danger
+ * border stays; without that override the danger ring out-ranks the focus ring.
  */
 const onAttention =
-  'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-border)] in-data-[trn-surface=attention]:text-[var(--trinity-state-attention-control-foreground)] in-data-[trn-surface=attention]:placeholder:text-[var(--trinity-state-attention-control-placeholder)] in-data-[trn-surface=attention]:disabled:bg-transparent';
+  'in-data-[trn-surface=attention]:border-[var(--trinity-state-attention-control-border)] in-data-[trn-surface=attention]:text-[var(--trinity-state-attention-control-foreground)] in-data-[trn-surface=attention]:placeholder:text-[var(--trinity-state-attention-control-placeholder)] in-data-[trn-surface=attention]:disabled:bg-transparent in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:border-[var(--trinity-state-attention-control-danger)] in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-state-attention-control-danger)] in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)]';
 
 export function trnInputRecipe(
   size: TrnTextControlSize,
@@ -37,7 +39,7 @@ export function trnInputRecipe(
   return hlm(
     base,
     onAttention,
-    'file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-[var(--trinity-text-bright)]',
+    'file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-[var(--trinity-text-bright)] in-data-[trn-surface=attention]:file:text-[var(--trinity-state-attention-control-foreground)]',
     inputSize[size],
     invalid
       ? 'border-danger shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-danger)]'

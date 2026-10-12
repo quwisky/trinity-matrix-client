@@ -5,9 +5,12 @@ import {
 } from '@storybook/angular-vite';
 import {
   TrnButton,
+  TrnCheckboxComponent,
   TrnInput,
   TrnRadioGroupComponent,
   TrnSelectComponent,
+  TrnSwitchComponent,
+  TrnTextarea,
   type TrnRadioOption,
   type TrnSelectOption,
 } from '@trinity/components/controls';
@@ -112,6 +115,184 @@ export const AccentControls: Story = {
             [value]="order"
             (valueChange)="order = $event"
           />
+        </span>
+      </trn-page-header>`,
+  }),
+};
+
+/**
+ * A checkbox, a switch, a file input and an outline button on the accent header. The
+ * resting checkbox border and switch track use the attention control border, and once
+ * checked both invert like a solid action. The file input's button label takes the attention
+ * foreground, and the outline button stays transparent with the attention border and label,
+ * also while it holds an open menu (`aria-expanded="true"`). Both layouts paint the accent; pass `layout:toolbar`. The toolbar layout is a fixed 48px
+ * bar with room for these only on wider screens.
+ */
+export const AccentChoiceControls: Story = {
+  args: { title: 'Members', variant: 'accent', layout: 'page' },
+  decorators: [
+    moduleMetadata({
+      imports: [TrnButton, TrnCheckboxComponent, TrnInput, TrnSwitchComponent],
+    }),
+  ],
+  render: (args) => ({
+    props: { ...args, adminsOnly: false, live: false },
+    template: `
+      <trn-page-header [title]="title" [variant]="variant" [layout]="layout">
+        <span trnHeaderActions class="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          <label class="flex items-center gap-1 text-sm">
+            <trn-checkbox [checked]="adminsOnly" (checkedChange)="adminsOnly = $event" />
+            Admins only
+          </label>
+          <label class="flex items-center gap-1 text-sm">
+            <trn-switch [checked]="live" (checkedChange)="live = $event" />
+            Live
+          </label>
+          <input trnInput type="file" size="sm" class="w-48" aria-label="Import members" />
+          <button trnBtn presentation="outline" size="sm" type="button">Export</button>
+          <button
+            trnBtn
+            presentation="outline"
+            size="sm"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded="true"
+          >
+            Filters
+          </button>
+        </span>
+      </trn-page-header>`,
+  }),
+};
+
+const MEMBER_ROLES: readonly TrnSelectOption<string>[] = [
+  { value: 'admin', label: 'Admin' },
+  { value: 'member', label: 'Member' },
+];
+
+/**
+ * Invalid controls on the accent header. The danger border and its 2px ring take the
+ * attention danger role, which keeps 3:1 against the accent; the ring is the cue that does
+ * not rely on hue, and the error message inherits the header's foreground because the
+ * neutral danger text falls near 1.4:1 there. Both layouts paint the accent; pass
+ * `layout:toolbar`. The toolbar layout has room for these only on wider screens.
+ */
+export const AccentFieldStates: Story = {
+  args: { title: 'Invite', variant: 'accent', layout: 'page' },
+  decorators: [
+    moduleMetadata({
+      imports: [TrnCheckboxComponent, TrnInput, TrnSelectComponent],
+    }),
+  ],
+  render: (args) => ({
+    props: { ...args, roles: MEMBER_ROLES, role: null, agreed: false },
+    template: `
+      <trn-page-header [title]="title" [variant]="variant" [layout]="layout">
+        <span trnHeaderActions class="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          <input
+            trnInput
+            explicitInvalid
+            size="sm"
+            class="w-36"
+            aria-label="Invitee"
+            aria-describedby="accent-header-invitee-error"
+            value="@alice"
+          />
+          <span id="accent-header-invitee-error" class="text-sm">Use a full ID</span>
+          <span id="accent-header-role" class="sr-only">Role</span>
+          <trn-select
+            class="w-32"
+            size="sm"
+            invalid
+            aria-labelledby="accent-header-role"
+            placeholder="Choose a role"
+            [options]="roles"
+            [value]="role"
+            (valueChange)="role = $event"
+          />
+          <label class="flex items-center gap-1 text-sm">
+            <trn-checkbox invalid [checked]="agreed" (checkedChange)="agreed = $event" />
+            I agree
+          </label>
+        </span>
+      </trn-page-header>`,
+  }),
+};
+
+const NOTIFY_LEVELS: readonly TrnRadioOption<string>[] = [
+  { value: 'all', label: 'All messages', description: 'Every new message' },
+  { value: 'mentions', label: 'Mentions', description: 'Only when named' },
+];
+const JOIN_RULES: readonly TrnRadioOption<string>[] = [
+  { value: 'invite', label: 'Invite only', description: 'You add each person' },
+  { value: 'public', label: 'Public', description: 'Anyone can join' },
+];
+const HISTORY_SCOPES: readonly TrnRadioOption<string>[] = [
+  { value: 'members', label: 'Members', description: 'Since they joined' },
+  { value: 'anyone', label: 'Anyone', description: 'All history' },
+];
+
+/**
+ * Controls that stack more than one line on the accent header: a list radio group, an invalid
+ * list radio group with nothing chosen, a segmented group with option descriptions and an
+ * invalid textarea. The radio ring, the checked dot, the labels and the descriptions use the
+ * attention control roles; the invalid group's rings take the attention danger border and
+ * ring. Only the page layout grows to fit them; the toolbar layout is a fixed 48px bar.
+ */
+export const AccentStackedControls: Story = {
+  args: { title: 'Room defaults', variant: 'accent', layout: 'page' },
+  decorators: [
+    moduleMetadata({
+      imports: [TrnRadioGroupComponent, TrnTextarea],
+    }),
+  ],
+  render: (args) => ({
+    props: {
+      ...args,
+      levels: NOTIFY_LEVELS,
+      level: 'all',
+      joinRules: JOIN_RULES,
+      joinRule: null,
+      scopes: HISTORY_SCOPES,
+      scope: 'members',
+    },
+    template: `
+      <trn-page-header [title]="title" [variant]="variant" [layout]="layout">
+        <span trnHeaderActions class="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-4 py-2">
+          <trn-radio-group
+            aria-label="Notify me"
+            [options]="levels"
+            [value]="level"
+            (valueChange)="level = $event"
+          />
+          <span class="grid gap-1">
+            <trn-radio-group
+              invalid
+              aria-label="Who can join"
+              [options]="joinRules"
+              [value]="joinRule"
+              (valueChange)="joinRule = $event"
+            />
+            <span id="accent-header-join-error" class="text-sm">Choose who can join</span>
+          </span>
+          <trn-radio-group
+            layout="segmented"
+            aria-label="History visible to"
+            [options]="scopes"
+            [value]="scope"
+            (valueChange)="scope = $event"
+          />
+          <span class="grid gap-1">
+            <textarea
+              trnTextarea
+              explicitInvalid
+              size="sm"
+              class="w-56"
+              aria-label="Room topic"
+              aria-describedby="accent-header-topic-error"
+            ></textarea>
+            <span id="accent-header-topic-error" class="text-sm">Add a topic</span>
+          </span>
         </span>
       </trn-page-header>`,
   }),

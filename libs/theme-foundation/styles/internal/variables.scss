@@ -385,6 +385,12 @@
     --trinity-state-attention-control-track-surface: var(
       --trinity-state-attention-surface
     );
+
+    // An invalid control on the attention surface (#1244). The neutral danger falls to
+    // 1.25-1.43:1 against the accent, so the danger border and ring take a pale red that keeps
+    // 3:1 against it in every Theme (a dark red in dark Modes, below). It sits close to the
+    // control border in lightness, so the invalid ring, not hue alone, marks the state.
+    --trinity-state-attention-control-danger: oklch(86% 0.075 25deg);
     --trinity-status-neutral-surface: oklch(91% 0.01 85deg);
     --trinity-status-neutral-foreground: oklch(32% 0.012 60deg);
     --trinity-focus-ring: var(--trinity-link);
@@ -547,6 +553,7 @@
 
     // The dark attention foreground is a dark indigo, so the placeholder steps lighter.
     --trinity-state-attention-control-placeholder: oklch(30% 0.02 275deg);
+    --trinity-state-attention-control-danger: oklch(30% 0.1 25deg);
 
     // Semantic control roles (dark). Elevated surfaces track the active Theme: cards and
     // popovers use navigation, while muted/secondary/accent use the hover surface.
