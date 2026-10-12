@@ -369,6 +369,22 @@
       --trinity-accent-tint-30
     );
     --trinity-state-attention-action-foreground: var(--trinity-link);
+
+    // A form control on the attention surface (#1241) sits on the accent directly, so the
+    // neutral text, placeholder and border roles all fall near 1:1 there. The value takes the
+    // attention foreground and the resting border the accent tint (3:1 or more). The
+    // placeholder is an authored stop a step toward the accent from the foreground: the
+    // accent leaves little room between 4.5:1 and the foreground, so it is close to the value
+    // in light Modes. The segmented track keeps the surface colour rather than nesting a
+    // neutral fill, so the inverted selected option and the on-attention ring both sit on it.
+    --trinity-state-attention-control-foreground: var(
+      --trinity-state-attention-foreground
+    );
+    --trinity-state-attention-control-placeholder: oklch(96% 0.01 275deg);
+    --trinity-state-attention-control-border: var(--trinity-accent-tint-30);
+    --trinity-state-attention-control-track-surface: var(
+      --trinity-state-attention-surface
+    );
     --trinity-status-neutral-surface: oklch(91% 0.01 85deg);
     --trinity-status-neutral-foreground: oklch(32% 0.012 60deg);
     --trinity-focus-ring: var(--trinity-link);
@@ -528,6 +544,9 @@
     --trinity-state-selected-hover-surface: oklch(32% 0.01 269deg);
     --trinity-status-neutral-surface: oklch(28% 0.008 269deg);
     --trinity-status-neutral-foreground: oklch(90% 0.004 269deg);
+
+    // The dark attention foreground is a dark indigo, so the placeholder steps lighter.
+    --trinity-state-attention-control-placeholder: oklch(30% 0.02 275deg);
 
     // Semantic control roles (dark). Elevated surfaces track the active Theme: cards and
     // popovers use navigation, while muted/secondary/accent use the hover surface.

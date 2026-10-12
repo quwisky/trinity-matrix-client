@@ -114,6 +114,11 @@ describe('trinity design tokens', () => {
       '--trinity-focus-ring': '--trinity-link',
       '--trinity-focus-ring-on-attention':
         '--trinity-state-attention-foreground',
+      '--trinity-state-attention-control-foreground':
+        '--trinity-state-attention-foreground',
+      '--trinity-state-attention-control-border': '--trinity-accent-tint-30',
+      '--trinity-state-attention-control-track-surface':
+        '--trinity-state-attention-surface',
     };
 
     const wrong = Object.entries(aliases)

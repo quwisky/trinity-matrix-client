@@ -80,4 +80,25 @@ describe('TrnInput', () => {
     expect(recipe).toContain('min-h-[max(1.75rem');
     expect(recipe).toContain('border-danger');
   });
+
+  it('switches its value, placeholder and resting border only inside an attention surface', () => {
+    const attention = 'in-data-[trn-surface=attention]:';
+    const recipe = trnInputRecipe('md').split(' ');
+
+    // The neutral roles stay the default; the attention roles only add a scoped override.
+    expect(recipe).toEqual(
+      expect.arrayContaining([
+        'border-[var(--trinity-border-control)]',
+        'text-[var(--trinity-text-bright)]',
+        'placeholder:text-[var(--trinity-text-muted)]',
+        `${attention}border-[var(--trinity-state-attention-control-border)]`,
+        `${attention}text-[var(--trinity-state-attention-control-foreground)]`,
+        `${attention}placeholder:text-[var(--trinity-state-attention-control-placeholder)]`,
+        `${attention}disabled:bg-transparent`,
+      ]),
+    );
+    expect(recipe.filter((token) => token.includes('attention'))).toEqual(
+      recipe.filter((token) => token.startsWith(attention)),
+    );
+  });
 });

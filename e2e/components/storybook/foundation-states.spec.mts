@@ -54,6 +54,73 @@ async function computedColour(
   }, property);
 }
 
+/** One visible `box-shadow` layer: its colour flattened to sRGB, its alpha and its spread. */
+interface ShadowLayer {
+  colour: Srgb;
+  alpha: number;
+  spread: number;
+}
+
+/**
+ * Every visible layer of a computed `box-shadow` list, topmost first. Tailwind composes its
+ * ring and inset layers into every shadow utility as transparent placeholders, so fully
+ * transparent layers are skipped.
+ */
+async function boxShadowLayers(element: Locator): Promise<ShadowLayer[]> {
+  return element.evaluate((node) => {
+    const shadow = getComputedStyle(node).boxShadow;
+    const layers = [
+      ...shadow.matchAll(
+        /((?:rgba?|oklch|oklab|lab|lch|color)\([^)]*\))\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s+(-?[\d.]+)px/gu,
+      ),
+    ];
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('foundation states: no canvas context');
+    return layers.flatMap(([, colour, , , , spread]) => {
+      context.clearRect(0, 0, 1, 1);
+      context.fillStyle = colour;
+      context.fillRect(0, 0, 1, 1);
+      const [r, g, b, alpha] = context.getImageData(0, 0, 1, 1).data;
+      return alpha === 0
+        ? []
+        : [{ colour: { r, g, b }, alpha, spread: Number(spread) }];
+    });
+  });
+}
+
+/**
+ * The focus ring an element actually paints, not a property that happens to hold a colour.
+ * Helm controls keep `outline-none`, so the global outline's colour is computed but never
+ * drawn; their ring is a box-shadow. An outline counts only when its style is not `none` and
+ * it is at least 2px wide. A shadow ring counts only when it is opaque, in the expected
+ * colour, and spreads at least 2px. Returns the painted colour.
+ */
+async function expectPaintedRing(
+  element: Locator,
+  expected: Srgb,
+): Promise<Srgb> {
+  const outline = await element.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return {
+      style: style.outlineStyle,
+      width: Number.parseFloat(style.outlineWidth),
+    };
+  });
+  if (outline.style !== 'none') {
+    expect(outline.width).toBeGreaterThanOrEqual(2);
+    const colour = await computedColour(element, 'outline-color');
+    expect(colour).toEqual(expected);
+    return colour;
+  }
+  const rings = (await boxShadowLayers(element)).filter(
+    (layer) => layer.alpha === 255 && layer.spread >= 2,
+  );
+  expect(rings.map((layer) => layer.colour)).toContainEqual(expected);
+  return expected;
+}
+
 /**
  * #1217: a solid action on an attention surface inverts, so its fill stands out from the
  * surface at rest and on hover, its label stays readable on both, and its focus ring sits
@@ -108,8 +175,8 @@ async function expectAttentionAction(
 
   await action.focus();
   await expect(action).toBeFocused();
-  const attentionRing = await computedColour(action, 'outline-color');
-  expect(attentionRing).toEqual(
+  const attentionRing = await expectPaintedRing(
+    action,
     await resolveTokenSrgb(
       page,
       'attention-action',
@@ -153,21 +220,166 @@ async function expectAttentionSurfaceRing(
     );
     await focusable.focus();
     await expect(focusable).toBeFocused();
-    // Buttons draw the global outline; trnInput draws its ring as border and shadow.
-    const ring = await focusable.evaluate((element) =>
-      getComputedStyle(element).outlineStyle === 'none'
-        ? 'border-top-color'
-        : 'outline-color',
+    const ringColour = await expectPaintedRing(
+      focusable,
+      await resolveTokenSrgb(page, testId, '--trinity-focus-ring-on-attention'),
     );
-    const ringColour = await computedColour(focusable, ring);
     expect(contrastRatio(ringColour, attentionSurface)).toBeGreaterThanOrEqual(
       3,
     );
-    expect(ringColour).toEqual(
-      await resolveTokenSrgb(page, testId, '--trinity-focus-ring-on-attention'),
-    );
     await focusable.evaluate((element: HTMLElement) => element.blur());
   }
+}
+
+/** Ratios measured by {@link expectAttentionControls}, for the evidence log. */
+interface AttentionControlRatios {
+  placeholder: number;
+  border: number;
+  fieldRing: number;
+  trackBorder: number;
+  selectedFill: number;
+  segmentRing: number;
+  selectPlaceholder: number;
+  selectBorder: number;
+  selectRing: number;
+}
+
+/**
+ * #1241: form controls on an attention surface use the attention control roles. The field's
+ * placeholder clears 4.5:1 and its resting border 3:1 against the surface; the segmented
+ * track stays the surface colour, so the selected option's inverted fill and the on-attention
+ * ring (drawn on a gap in the track colour) clear 3:1 against what is directly behind them;
+ * the select trigger's placeholder, border and ring follow the field.
+ */
+async function expectAttentionControls(
+  page: Page,
+  surface: Locator,
+  controls: { field: Locator; segmented: Locator; select: Locator },
+): Promise<AttentionControlRatios> {
+  const { field, segmented, select } = controls;
+  // The field sits inside the surface, so it resolves the tokens the controls actually see.
+  await field.evaluate((element) =>
+    element.setAttribute('data-testid', 'attention-controls-field'),
+  );
+  const token = (name: string) =>
+    resolveTokenSrgb(page, 'attention-controls-field', name);
+  const attentionSurface = await computedColour(surface, 'background-color');
+  expect(attentionSurface).toEqual(
+    await token('--trinity-state-attention-surface'),
+  );
+  const controlBorder = await token('--trinity-state-attention-control-border');
+  const placeholderToken = await token(
+    '--trinity-state-attention-control-placeholder',
+  );
+  const onAttentionRing = await token('--trinity-focus-ring-on-attention');
+
+  // Text field: placeholder, resting border and focus ring.
+  const placeholder = await field.evaluate((element) => {
+    const colour = getComputedStyle(element, '::placeholder').color;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('foundation states: no canvas context');
+    context.fillStyle = colour;
+    context.fillRect(0, 0, 1, 1);
+    const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
+    return { r, g, b };
+  });
+  expect(placeholder).toEqual(placeholderToken);
+  const fieldBorder = await computedColour(field, 'border-top-color');
+  expect(fieldBorder).toEqual(controlBorder);
+  await field.focus();
+  await expect(field).toBeFocused();
+  const fieldRing = await expectPaintedRing(field, onAttentionRing);
+  await field.evaluate((element: HTMLElement) => element.blur());
+
+  // Segmented radio group: the track, the selected option and the ring on its gap.
+  const track = segmented.getByRole('radiogroup');
+  const trackSurface = await computedColour(track, 'background-color');
+  expect(trackSurface).toEqual(
+    await token('--trinity-state-attention-control-track-surface'),
+  );
+  const trackBorder = await computedColour(track, 'border-top-color');
+  expect(trackBorder).toEqual(controlBorder);
+  const selectedRadio = segmented.getByRole('radio', { checked: true });
+  const selectedOption = segmented.locator('label[data-state="selected"]');
+  const selectedFill = await computedColour(selectedOption, 'background-color');
+  expect(selectedFill).toEqual(
+    await token('--trinity-state-attention-action-surface'),
+  );
+  expect(
+    (await measureLocatorContrast(selectedOption)).ratio,
+  ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+  const idleOptions = segmented.locator('label[data-state="idle"]');
+  expect(await idleOptions.count()).toBeGreaterThan(0);
+  for (const option of await idleOptions.all()) {
+    expect((await measureLocatorContrast(option)).ratio).toBeGreaterThanOrEqual(
+      AA_NORMAL_TEXT,
+    );
+  }
+  // Keyboard modality, so the native radio matches `:focus-visible`.
+  await page.keyboard.press('Tab');
+  await selectedRadio.focus();
+  await expect(selectedRadio).toBeFocused();
+  const { offset, width } = await selectedOption.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const length = (name: string) =>
+      Number.parseFloat(style.getPropertyValue(name));
+    return {
+      offset: length('--trinity-focus-ring-offset'),
+      width: length('--trinity-focus-ring-width'),
+    };
+  });
+  expect(offset).toBeGreaterThanOrEqual(2);
+  expect(width).toBeGreaterThanOrEqual(2);
+  // The gap in the track colour, then the ring beyond it.
+  const [gap, ring] = await boxShadowLayers(selectedOption);
+  expect(gap).toEqual({ colour: trackSurface, alpha: 255, spread: offset });
+  expect(ring).toEqual({
+    colour: onAttentionRing,
+    alpha: 255,
+    spread: offset + width,
+  });
+  const segmentRing = ring.colour;
+  await selectedRadio.evaluate((element: HTMLElement) => element.blur());
+
+  // Select trigger: transparent on the surface, with the attention placeholder and border.
+  const trigger = select.getByRole('combobox');
+  await trigger.evaluate((element) =>
+    element.setAttribute('data-testid', 'attention-select-trigger'),
+  );
+  expect(await trigger.getAttribute('data-placeholder')).not.toBeNull();
+  const selectPlaceholder = await computedColour(trigger, 'color');
+  expect(selectPlaceholder).toEqual(placeholderToken);
+  const selectContrast = await measureLocatorContrast(trigger);
+  expect(selectContrast.background).toEqual(attentionSurface);
+  const selectBorder = await computedColour(trigger, 'border-top-color');
+  expect(selectBorder).toEqual(controlBorder);
+  await trigger.focus();
+  await expect(trigger).toBeFocused();
+  const selectRing = await expectPaintedRing(trigger, onAttentionRing);
+  expect(await computedColour(trigger, 'border-top-color')).toEqual(
+    onAttentionRing,
+  );
+  await trigger.evaluate((element: HTMLElement) => element.blur());
+
+  const ratios = {
+    placeholder: contrastRatio(placeholder, attentionSurface),
+    border: contrastRatio(fieldBorder, attentionSurface),
+    fieldRing: contrastRatio(fieldRing, attentionSurface),
+    trackBorder: contrastRatio(trackBorder, attentionSurface),
+    selectedFill: contrastRatio(selectedFill, trackSurface),
+    segmentRing: contrastRatio(segmentRing, trackSurface),
+    selectPlaceholder: contrastRatio(selectPlaceholder, attentionSurface),
+    selectBorder: contrastRatio(selectBorder, attentionSurface),
+    selectRing: contrastRatio(selectRing, attentionSurface),
+  };
+  for (const [name, ratio] of Object.entries(ratios)) {
+    expect(ratio, name).toBeGreaterThanOrEqual(
+      name.toLowerCase().includes('placeholder') ? AA_NORMAL_TEXT : 3,
+    );
+  }
+  return ratios;
 }
 
 test.describe('semantic design foundations', () => {
@@ -229,8 +441,8 @@ test.describe('semantic design foundations', () => {
       expect(
         await action.evaluate((element) => element.matches(':focus-visible')),
       ).toBe(true);
-      const focus = await computedColour(action, 'outline-color');
-      expect(focus).toEqual(
+      const focus = await expectPaintedRing(
+        action,
         await resolveTokenSrgb(
           page,
           'foundation-action',
@@ -280,12 +492,48 @@ test.describe('semantic design foundations', () => {
         );
       }
 
+      // #1241: form controls on the accent header, in both layouts, and the accent overlay.
+      for (const layout of ['page', 'toolbar'] as const) {
+        await openStory(
+          page,
+          'components-page-header--accent-controls',
+          theme.id,
+          mode.id,
+          'cosy',
+          `layout:${layout}`,
+        );
+        const header = page.locator('header[data-trn-variant="accent"]');
+        await expect(header).toHaveAttribute('data-trn-layout', layout);
+        const ratios = await expectAttentionControls(page, header, {
+          field: page.getByRole('textbox', { name: 'Filter members' }),
+          segmented: page.locator('trn-radio-group'),
+          select: page.locator('trn-select'),
+        });
+        test.info().annotations.push({
+          type: 'contrast',
+          description: `${theme.id} ${mode.id} header ${layout} ${JSON.stringify(ratios)}`,
+        });
+      }
+
       await openStory(
         page,
         'components-overlay-recipes--accent-surface',
         theme.id,
         mode.id,
       );
+      const overlayRatios = await expectAttentionControls(
+        page,
+        page.getByTestId('accent-overlay-surface'),
+        {
+          field: page.getByRole('textbox', { name: 'Recovery key' }),
+          segmented: page.locator('trn-radio-group'),
+          select: page.locator('trn-select'),
+        },
+      );
+      test.info().annotations.push({
+        type: 'contrast',
+        description: `${theme.id} ${mode.id} overlay ${JSON.stringify(overlayRatios)}`,
+      });
       await expectAttentionSurfaceRing(
         page,
         page.getByTestId('accent-overlay-surface'),

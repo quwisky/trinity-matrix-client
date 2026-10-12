@@ -5,6 +5,7 @@ import {
   TrnSelectComponent,
   type TrnSelectOption,
 } from './trn-select.component';
+import { trnSelectTriggerRecipe } from './trn-select-recipe';
 
 const OPTIONS: readonly TrnSelectOption<string>[] = [
   { value: 'recent', label: 'Recent activity', testId: 'space-order-recent' },
@@ -182,5 +183,29 @@ describe('TrnSelectComponent', () => {
     fixture.detectChanges();
 
     expect(container.querySelector('[disabled]')).not.toBeNull();
+  });
+
+  it('switches the trigger’s value, placeholder, chevron, border and fill only inside an attention surface', () => {
+    const attention = 'in-data-[trn-surface=attention]:';
+    const trigger = trnSelectTriggerRecipe().split(' ');
+
+    expect(trigger).toContain('border-[var(--trinity-border-control)]');
+    expect(trigger).toEqual(
+      expect.arrayContaining([
+        `${attention}border-[var(--trinity-state-attention-control-border)]`,
+        `${attention}text-[var(--trinity-state-attention-control-foreground)]`,
+        `${attention}data-placeholder:text-[var(--trinity-state-attention-control-placeholder)]`,
+        `${attention}[&_ng-icon]:text-[var(--trinity-state-attention-control-foreground)]`,
+        // Helm's dark fill and hover are translucent mixes that would tint the accent ground.
+        `${attention}dark:bg-transparent`,
+        `${attention}dark:hover:bg-transparent`,
+        // Helm's focus border and halo use `--ring`; the drawn ring takes the surface's.
+        `${attention}focus-visible:border-[var(--trinity-focus-ring)]`,
+        `${attention}focus-visible:ring-[color:var(--trinity-focus-ring)]`,
+      ]),
+    );
+    expect(trigger.filter((token) => token.includes('attention'))).toEqual(
+      trigger.filter((token) => token.startsWith(attention)),
+    );
   });
 });
