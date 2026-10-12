@@ -264,7 +264,7 @@ export class AdvancedSettingsComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (outcome) => {
-          if (outcome.kind !== 'completed') {
+          if (outcome.kind !== 'completed' && outcome.kind !== 'cancelled') {
             this.toast.show('Could not export your settings.', {
               duration: 3000,
               variant: 'danger',

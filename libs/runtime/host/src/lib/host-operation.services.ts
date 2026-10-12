@@ -7,6 +7,7 @@ import {
   type HostNotificationPresentationOperation,
   type HostCapabilitySupport,
   type HostFileExportOperation,
+  type HostFileExportOutcome,
   type HostLifecycleOperation,
   type HostOperationOutcome,
   type HostUpdatesOperation,
@@ -114,7 +115,7 @@ export class HostFileExportService implements HostFileExportOperation {
 
   save(
     request: Parameters<HostFileExportOperation['save']>[0],
-  ): Observable<HostOperationOutcome> {
+  ): Observable<HostFileExportOutcome> {
     return defer(() => this.adapter?.save(request) ?? of(unavailableOutcome()));
   }
 }

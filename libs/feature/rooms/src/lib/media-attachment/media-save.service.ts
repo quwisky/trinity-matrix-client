@@ -79,7 +79,9 @@ export class MediaSaveService {
       )
       .subscribe({
         next: (outcome) => {
-          if (outcome.kind !== 'completed') fail();
+          if (outcome.kind !== 'completed' && outcome.kind !== 'cancelled') {
+            fail();
+          }
         },
         error: fail,
       });

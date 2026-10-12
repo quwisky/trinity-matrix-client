@@ -143,4 +143,16 @@ describe('MediaSaveService', () => {
       variant: 'danger',
     });
   });
+
+  it('says nothing when the user cancels the save', () => {
+    save.mockReturnValue(of({ kind: 'cancelled' }));
+    const service = TestBed.inject(MediaSaveService);
+    const m = media('video');
+
+    service.save(m);
+
+    expect(save).toHaveBeenCalledOnce();
+    expect(show).not.toHaveBeenCalled();
+    expect(service.isSaving(m)).toBe(false);
+  });
 });

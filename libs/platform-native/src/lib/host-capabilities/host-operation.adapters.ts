@@ -17,6 +17,7 @@ import {
   type HostCapabilitySupport,
   type HostDeepLinksOperation,
   type HostFileExportOperation,
+  type HostFileExportOutcome,
   type HostLifecycleOperation,
   type HostOperationOutcome,
   type HostUpdatesOperation,
@@ -243,13 +244,15 @@ export class HostFileExportAdapter implements HostFileExportOperation {
 
   save(
     request: Parameters<HostFileExportOperation['save']>[0],
-  ): Observable<HostOperationOutcome> {
+  ): Observable<HostFileExportOutcome> {
     return this.support().pipe(
       switchMap((support) =>
         support.kind === 'unavailable'
           ? of(support)
           : this.files.save(request.bytes, request.filename).pipe(
-              map(() => completed()),
+              map((result): HostFileExportOutcome =>
+                result === 'cancelled' ? { kind: 'cancelled' } : completed(),
+              ),
               catchError(() => of(rejected('file-export-failed'))),
             ),
       ),

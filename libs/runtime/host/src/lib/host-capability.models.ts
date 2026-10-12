@@ -67,12 +67,20 @@ export interface HostBackOperation {
   background(): Observable<HostOperationOutcome>;
 }
 
+/**
+ * `cancelled`: the user dismissed the host's save UI (the native share sheet), so nothing
+ * was saved and nothing failed. Consumers report neither success nor failure for it.
+ * Browser and desktop downloads cannot observe a cancel and never produce it.
+ */
+export type HostFileExportOutcome =
+  HostOperationOutcome | { readonly kind: 'cancelled' };
+
 export interface HostFileExportOperation {
   support(): Observable<HostCapabilitySupport>;
   save(request: {
     readonly bytes: Blob;
     readonly filename: string;
-  }): Observable<HostOperationOutcome>;
+  }): Observable<HostFileExportOutcome>;
 }
 
 export interface HostNotificationPresentationOperation {

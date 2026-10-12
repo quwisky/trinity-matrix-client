@@ -146,6 +146,7 @@ export class SecuritySectionComponent {
       )
       .subscribe({
         next: (outcome) => {
+          if (outcome.kind === 'cancelled') return;
           this.toast.show(
             outcome.kind === 'completed'
               ? 'Room keys exported.'
