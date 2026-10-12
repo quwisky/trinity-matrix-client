@@ -56,11 +56,13 @@ test.describe('MSC2545 stickers and custom emoji', () => {
           pass,
         } as HomeserverSession);
         await openImagePackJourneyRoom(deviceB, roomName);
-        await deviceB.getByTestId('composer-insert').click();
-        await expect(deviceB.getByTestId('insert-sticker')).toBeVisible({
-          timeout: 20_000,
-        });
-        await deviceB.getByTestId('insert-sticker').click();
+        await deviceB.getByTestId('composer-expressions').click();
+        await expect(deviceB.getByTestId('expression-tab-sticker')).toBeVisible(
+          {
+            timeout: 20_000,
+          },
+        );
+        await deviceB.getByTestId('expression-tab-sticker').click();
         const deviceBPack = deviceB
           .getByTestId('sticker-pack')
           .filter({ hasText: 'Fun pack' });

@@ -197,7 +197,9 @@ test.describe('Responsive auth, crypto, and overlay surfaces', () => {
     await signInFromPasswordStage(page, credentials);
     await openRoom(page, roomName);
 
-    const emojiTrigger = page.getByRole('button', { name: 'Insert emoji' });
+    const emojiTrigger = page.getByRole('button', {
+      name: 'Emoji, GIFs and stickers',
+    });
     await emojiTrigger.click();
     const picker = page.locator('trn-emoji-picker');
     await expect(picker).toBeVisible({ timeout: 20_000 });

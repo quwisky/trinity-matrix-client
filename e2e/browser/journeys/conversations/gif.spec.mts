@@ -230,7 +230,7 @@ test.describe('GIF picker', () => {
     );
   });
 
-  test('omits GIF from the tray until a provider is configured', async ({
+  test('offers no GIFs tab until a provider is configured', async ({
     page,
     request,
   }) => {
@@ -241,12 +241,12 @@ test.describe('GIF picker', () => {
     await login(page, reader);
     await openSeededRoom(page, roomName);
 
-    // Composer is present, but the GIF affordance is not (no key configured): the `+`
-    // tray opens without a GIF item.
+    // Composer is present, but the GIF affordance is not (no key configured): the
+    // expression panel opens on the emoji picker with no GIFs tab.
     await expect(page.locator('textarea.composer__input')).toBeVisible();
-    await page.getByTestId('composer-insert').click();
-    await expect(page.getByTestId('insert-attach')).toBeVisible();
-    await expect(page.getByTestId('insert-gif')).toHaveCount(0);
+    await page.getByTestId('composer-expressions').click();
+    await expect(page.getByTestId('emoji-picker')).toBeVisible();
+    await expect(page.getByTestId('expression-tab-gif')).toHaveCount(0);
   });
 
   test('searches GIFs and sends the chosen one as an image message', async ({
@@ -268,9 +268,10 @@ test.describe('GIF picker', () => {
     await login(page, reader);
     await openSeededRoom(page, roomName);
 
-    // Open the picker from the `+` tray → trending loads (stubbed) → a result renders.
-    await page.getByTestId('composer-insert').click();
-    await page.getByTestId('insert-gif').click();
+    // Open the GIFs tab of the expression panel → trending loads (stubbed) → a result
+    // renders.
+    await page.getByTestId('composer-expressions').click();
+    await page.getByTestId('expression-tab-gif').click();
     await expect(page.getByTestId('gif-search')).toBeVisible();
     const firstResult = page.getByTestId('gif-result').first();
     await expect(firstResult).toBeVisible({ timeout: 15_000 });
@@ -324,10 +325,10 @@ test.describe('GIF picker', () => {
     // we're driving B's client.
     await openSeededRoom(page, b.roomName);
 
-    // The GIF item is still there under B: the key is global, not account-scoped.
-    await page.getByTestId('composer-insert').click();
-    await expect(page.getByTestId('insert-gif')).toBeVisible();
-    await page.getByTestId('insert-gif').click();
+    // The GIFs tab is still there under B: the key is global, not account-scoped.
+    await page.getByTestId('composer-expressions').click();
+    await expect(page.getByTestId('expression-tab-gif')).toBeVisible();
+    await page.getByTestId('expression-tab-gif').click();
     const firstResult = page.getByTestId('gif-result').first();
     await expect(firstResult).toBeVisible({ timeout: 15_000 });
     await firstResult.click();

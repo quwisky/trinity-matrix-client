@@ -180,7 +180,9 @@ async function main(protocolBrowser) {
 
     // ── SCENARIO 4: the emoji-mart picker inserts a native emoji ──────────
     log('--- Scenario 4: emoji-mart picker → search → insert ---');
-    await page.getByRole('button', { name: 'Insert emoji' }).click();
+    await page
+      .getByRole('button', { name: 'Emoji, GIFs and stickers' })
+      .click();
     // Handled by OUR testid, not the vendor's tag: a swap of @ctrl/ngx-emoji-mart should
     // break one file — the kit wrapper — rather than two e2e suites. The inner
     // `.emoji-mart-*` locators below are still the vendor's, and deliberately so: they
@@ -194,7 +196,9 @@ async function main(protocolBrowser) {
     // a typo in either leaves the attribute present and resolving to nothing — invisible in
     // a browser and to every rendering test. Checked here as well as in the unit spec
     // because this is the only place the real DOM is available to resolve the id against.
-    const trigger = page.getByRole('button', { name: 'Insert emoji' });
+    const trigger = page.getByRole('button', {
+      name: 'Emoji, GIFs and stickers',
+    });
     const controls = await trigger.getAttribute('aria-controls');
     if (!controls) {
       throw new Error(

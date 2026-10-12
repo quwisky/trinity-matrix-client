@@ -269,8 +269,8 @@ export async function runImagePackManagementJourney({
   await expect(inline).toBeVisible({ timeout: 20_000 });
   await expect(inline).toHaveAttribute('src', /^blob:/);
 
-  await page.getByTestId('composer-insert').click();
-  await expect(page.getByTestId('insert-sticker')).toBeHidden();
+  await page.getByTestId('composer-expressions').click();
+  await expect(page.getByTestId('expression-tab-sticker')).toBeHidden();
   await page.keyboard.press('Escape');
 
   await openStickerSettings(page);
@@ -323,8 +323,8 @@ export async function runImagePackManagementJourney({
 
   await leaveSettings(page);
   await openImagePackJourneyRoom(page, roomName);
-  await page.getByTestId('composer-insert').click();
-  await expect(page.getByTestId('insert-sticker')).toBeHidden({
+  await page.getByTestId('composer-expressions').click();
+  await expect(page.getByTestId('expression-tab-sticker')).toBeHidden({
     timeout: 20_000,
   });
   await page.keyboard.press('Escape');
@@ -366,11 +366,11 @@ export async function runImagePackManagementJourney({
     auth.user_id as string,
   );
 
-  await page.getByTestId('composer-insert').click();
-  await expect(page.getByTestId('insert-sticker')).toBeVisible({
+  await page.getByTestId('composer-expressions').click();
+  await expect(page.getByTestId('expression-tab-sticker')).toBeVisible({
     timeout: 20_000,
   });
-  await page.getByTestId('insert-sticker').click();
+  await page.getByTestId('expression-tab-sticker').click();
   await expect(page.getByTestId('manage-image-packs')).toBeVisible();
   const globalPack = page
     .getByTestId('sticker-pack')
@@ -444,8 +444,8 @@ export async function runImagePackManagementJourney({
 
   await leaveSettings(page);
   await openImagePackJourneyRoom(page, roomName);
-  await page.getByTestId('composer-insert').click();
-  await expect(page.getByTestId('insert-sticker')).toBeHidden({
+  await page.getByTestId('composer-expressions').click();
+  await expect(page.getByTestId('expression-tab-sticker')).toBeHidden({
     timeout: 20_000,
   });
 }

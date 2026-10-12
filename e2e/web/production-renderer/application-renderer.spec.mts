@@ -455,7 +455,9 @@ test.describe('@production-renderer application surface', () => {
       }
     }
 
-    const emojiTrigger = page.getByRole('button', { name: 'Insert emoji' });
+    const emojiTrigger = page.getByRole('button', {
+      name: 'Emoji, GIFs and stickers',
+    });
     await emojiTrigger.click();
     const emoji = page.locator('trn-emoji-picker');
     await expect(emoji).toBeVisible({ timeout: 20_000 });

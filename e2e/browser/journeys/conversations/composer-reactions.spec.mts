@@ -92,7 +92,9 @@ test.describe('Full emoji reaction picker', () => {
     await login(page, user);
     await openRoom(page, roomName);
 
-    const trigger = page.getByRole('button', { name: 'Insert emoji' });
+    const trigger = page.getByRole('button', {
+      name: 'Emoji, GIFs and stickers',
+    });
     const picker = page.locator('trn-emoji-picker');
 
     await trigger.click();
