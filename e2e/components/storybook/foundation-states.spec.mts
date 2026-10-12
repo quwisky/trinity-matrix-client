@@ -426,7 +426,8 @@ async function paintedShadowRings(element: Locator): Promise<Srgb[]> {
 
 /**
  * A focused invalid control must show focus, not only its invalid state: its painted rings
- * switch from the danger ring to the on-attention ring.
+ * switch from the danger ring to the on-attention ring. With `keepsDangerBorder`, the danger
+ * border must also stay while focused, so the invalid state is still visible.
  */
 async function expectFocusOverInvalid(
   page: Page,
@@ -434,6 +435,7 @@ async function expectFocusOverInvalid(
   painted: Locator,
   danger: Srgb,
   onAttentionRing: Srgb,
+  keepsDangerBorder = false,
 ): Promise<Srgb> {
   await page.keyboard.press('Tab');
   await focusable.focus();
@@ -441,6 +443,9 @@ async function expectFocusOverInvalid(
   const rings = await paintedShadowRings(painted);
   expect(rings).toContainEqual(onAttentionRing);
   expect(rings).not.toContainEqual(danger);
+  if (keepsDangerBorder) {
+    expect(await computedColour(painted, 'border-top-color')).toEqual(danger);
+  }
   await focusable.evaluate((element: HTMLElement) => element.blur());
   return onAttentionRing;
 }
@@ -714,7 +719,14 @@ async function expectAttentionFieldStates(
       await measureLocatorContrast(message)
     ).ratio;
     ratios[`field${index}FocusRing`] = contrastRatio(
-      await expectFocusOverInvalid(page, field, field, danger, onAttentionRing),
+      await expectFocusOverInvalid(
+        page,
+        field,
+        field,
+        danger,
+        onAttentionRing,
+        true,
+      ),
       attentionSurface,
     );
   }
@@ -734,6 +746,7 @@ async function expectAttentionFieldStates(
         trigger,
         danger,
         onAttentionRing,
+        true,
       ),
       attentionSurface,
     );

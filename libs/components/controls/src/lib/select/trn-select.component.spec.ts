@@ -220,7 +220,6 @@ describe('TrnSelectComponent', () => {
         'in-data-[trn-surface=attention]:dark:data-[matches-spartan-invalid=true]:ring-[color:var(--trinity-state-attention-control-danger)]',
         // Focused, the danger ring would otherwise out-rank the focus ring.
         'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:focus-visible:ring-[color:var(--trinity-focus-ring)]',
-        'in-data-[trn-surface=attention]:dark:data-[matches-spartan-invalid=true]:focus-visible:ring-[color:var(--trinity-focus-ring)]',
       ]),
     );
     expect(trigger.filter((token) => token.includes('attention'))).toEqual(

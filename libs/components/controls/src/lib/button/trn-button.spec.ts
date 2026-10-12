@@ -362,9 +362,7 @@ describe('TrnButton', () => {
       'in-data-[trn-surface=attention]:hover:text-[color:var(--trinity-state-attention-action-foreground)]',
       // Helm's `aria-expanded:` grey chip would paint on the accent while a menu is open.
       'in-data-[trn-surface=attention]:aria-expanded:bg-transparent',
-      'in-data-[trn-surface=attention]:dark:aria-expanded:bg-transparent',
       'in-data-[trn-surface=attention]:aria-expanded:text-[color:var(--trinity-state-attention-control-foreground)]',
-      'in-data-[trn-surface=attention]:dark:aria-expanded:text-[color:var(--trinity-state-attention-control-foreground)]',
     ];
 
     for (const variant of ['primary', 'secondary'] as const) {
