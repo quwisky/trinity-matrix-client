@@ -21,6 +21,7 @@
             account.userId === firstFocusableAccountId() ? '' : null
           "
           [attr.data-testid]="'show-account-' + account.userId"
+          [attr.data-trust]="account.trust"
           (click)="toggle(account.userId)"
         >
           <span class="account-pick__indicator" aria-hidden="true">

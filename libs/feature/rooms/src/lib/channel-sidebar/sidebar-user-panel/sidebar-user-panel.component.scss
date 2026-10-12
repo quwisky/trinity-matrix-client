@@ -168,9 +168,14 @@
     color: var(--trinity-text-muted);
   }
 
-  .account-row__badge,
-  .account-row__trust {
+  .account-row__badge {
     flex: 0 0 auto;
+  }
+
+  // Its own line under the handle, as wide as its text, so it never squeezes the id.
+  .account-row__trust {
+    align-self: flex-start;
+    margin-top: var(--trinity-space-1);
   }
 
   .account-row__check {
@@ -183,8 +188,7 @@
     color: var(--trinity-text-bright);
   }
 
-  .account-row__badge + .account-row__check,
-  .account-row__trust + .account-row__check {
+  .account-row__badge + .account-row__check {
     margin-left: 2px;
   }
 

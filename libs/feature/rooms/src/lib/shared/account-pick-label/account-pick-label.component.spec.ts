@@ -54,11 +54,12 @@ describe('AccountPickLabelComponent', () => {
       inputs: { account: ACCOUNT, unverified: true },
     });
 
-    expect(
-      container
-        .querySelector('[data-testid="account-pick-unverified"]')
-        ?.textContent?.trim(),
-    ).toBe('Unverified');
+    const mark = container.querySelector(
+      '[data-testid="account-pick-unverified"]',
+    );
+    expect(mark?.textContent?.trim()).toBe('Unverified');
+    // Its own line in the id column, so it never squeezes the name or the handle.
+    expect(mark?.parentElement?.classList).toContain('account-pick__id');
 
     fixture.componentRef.setInput('unverified', false);
     fixture.detectChanges();

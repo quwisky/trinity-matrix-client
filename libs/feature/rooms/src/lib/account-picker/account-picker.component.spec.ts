@@ -132,6 +132,12 @@ describe('AccountPickerComponent', () => {
       screen.getByRole('checkbox', { name: /Bob.*Unverified/ }),
     ).toBeTruthy();
     expect(row(container, '@carol:hs').textContent).not.toContain('Unverified');
+    expect(row(container, '@bob:hs').getAttribute('data-trust')).toBe(
+      'unverified',
+    );
+    expect(row(container, '@carol:hs').getAttribute('data-trust')).toBe(
+      'not-set-up',
+    );
   });
 
   it('toggles an account without closing — this is a multi-select', async () => {

@@ -135,6 +135,12 @@ describe('SidebarUserPanelComponent', () => {
     expect(row?.textContent).toContain('@bob:hs');
     // The visible text is the row's name; nothing generic overrides it.
     expect(row?.getAttribute('aria-label')).toBeNull();
+    // Its own line in the id column, so it never squeezes the name or the handle.
+    expect(marks[0].parentElement?.classList).toContain('account-row__id');
+    const trust = [
+      ...document.querySelectorAll<HTMLElement>('[data-testid="account-row"]'),
+    ].map((each) => each.getAttribute('data-trust'));
+    expect(trust).toEqual(['verified', 'unverified', 'not-set-up']);
   });
 
   it('shows ? for an account whose display name is only a sigil', async () => {
