@@ -519,18 +519,50 @@ describe('scrubMessage', () => {
     expect(scrubbed.endsWith(' [rest dropped before scrubbing]')).toBe(true);
   });
 
-  it.each(['Esta frase', 'Esto', 'Esto casa', 'Este vino tinto'])(
-    'keeps ordinary words that merely start like a recovery key at the cut: %s',
-    (words) => {
-      // The words and their space end just before the cut, which falls in the x run.
-      const before = `${'w'.repeat(MAX_SCRUB_INPUT - words.length - 3)} `;
+  it.each(Array.from({ length: 11 }, (_, index) => index + 1))(
+    'drops a recovery key cut after %i of its groups',
+    (groups) => {
+      const kept = RECOVERY_KEY.split(' ').slice(0, groups).join(' ');
+      // The cut falls inside the next group, so it backs off to the space before it.
+      const before = `${'w'.repeat(MAX_SCRUB_INPUT - kept.length - 3)} `;
 
-      const scrubbed = scrubMessage(`${before}${words} ${'x'.repeat(40)}`);
+      const scrubbed = scrubMessage(`${before}${RECOVERY_KEY} tail`);
 
-      expect(scrubbed).toContain(` ${words} `);
-      expect(scrubbed).not.toContain('x');
+      for (const group of RECOVERY_KEY.split(' ')) {
+        expect(scrubbed).not.toContain(group);
+      }
+      expect(scrubbed.endsWith(' [rest dropped before scrubbing]')).toBe(true);
     },
   );
+
+  it.each(['Es', 'Esab', 'Esab cdef', 'Esab cdef ghij'])(
+    'drops an all-lowercase key start at the cut: %s',
+    (start) => {
+      const before = `${'w'.repeat(MAX_SCRUB_INPUT - start.length - 3)} `;
+
+      const scrubbed = scrubMessage(`${before}${start} ${'x'.repeat(40)}`);
+
+      expect(scrubbed).not.toContain(` ${start}`);
+    },
+  );
+
+  it('drops a trailing word like "Esto" at the cut, since it could start a key', () => {
+    // Fail-closed by the owner's ruling: losing a word at a rare cut is acceptable.
+    const before = `${'w'.repeat(MAX_SCRUB_INPUT - 'Esto'.length - 3)} `;
+
+    const scrubbed = scrubMessage(`${before}Esto ${'x'.repeat(40)}`);
+
+    expect(scrubbed).not.toContain('Esto');
+    expect(scrubbed.endsWith(' [rest dropped before scrubbing]')).toBe(true);
+  });
+
+  it('keeps words that could not start a recovery key at the cut', () => {
+    const before = `${'w'.repeat(MAX_SCRUB_INPUT - 'Esta frase'.length - 3)} `;
+
+    const scrubbed = scrubMessage(`${before}Esta frase ${'x'.repeat(40)}`);
+
+    expect(scrubbed).toContain(' Esta frase ');
+  });
 
   it('drops a recovery key cut straight after its first group', () => {
     const [first] = RECOVERY_KEY.split(' ');

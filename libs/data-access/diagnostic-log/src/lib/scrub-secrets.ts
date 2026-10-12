@@ -261,32 +261,25 @@ export function scrubMessage(text: string): string {
 }
 
 /**
- * A recovery key's start left at the end of a cut: "Es" and up to eleven more groups. Its
- * groups are separated by spaces, so backing off to a separator can stop inside the key.
+ * Anything that could be a recovery key's start left at the end of a cut: "Es", its first
+ * group and up to ten more. Its groups are separated by spaces, so backing off to a
+ * separator can stop inside the key. Fail-closed: a word like "Esto" at the cut is dropped
+ * too, since it is indistinguishable from a key's first group.
  */
 const CUT_RECOVERY_KEY =
-  /\bEs[1-9A-HJ-NP-Za-km-z]{2}(?:\s?[1-9A-HJ-NP-Za-km-z]{4}){0,11}\s*$/;
-
-/**
- * Key material has digits or capitals; words like "Esto casa" don't. An all-lowercase key
- * start is rare (about one in six after one group, one in 200 after two) and short.
- */
-const KEY_CHARACTER = /[0-9A-Z]/;
+  /\bEs(?:[1-9A-HJ-NP-Za-km-z]{2}(?:\s?[1-9A-HJ-NP-Za-km-z]{4}){0,10})?\s*$/;
 
 /**
  * The text up to `limit`, backed off to the last separator so no token is cut in half, and
- * without a recovery key's leading groups, which the full-key rule would no longer match.
+ * without anything that could be a recovery key's leading groups, which the full-key rule
+ * would no longer match.
  */
 function cutAtSeparator(text: string, limit: number): string {
   let end = limit;
   while (end > 0 && !SEPARATOR.test(text[end - 1])) {
     end -= 1;
   }
-  const kept = text.slice(0, end);
-  const keyStart = CUT_RECOVERY_KEY.exec(kept);
-  return keyStart && KEY_CHARACTER.test(keyStart[0].slice(2))
-    ? kept.slice(0, keyStart.index)
-    : kept;
+  return text.slice(0, end).replace(CUT_RECOVERY_KEY, '');
 }
 
 interface FieldValue {
